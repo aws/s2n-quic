@@ -13,12 +13,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: hecrj/setup-rust-action@v1
-      with:
-        rust-version: stable
-        components: rustfmt, clippy
-
     - uses: actions/checkout@master
+
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+        components: rustfmt, clippy
 
     - name: Format
       uses: actions-rs/cargo@v1
@@ -28,11 +29,25 @@ jobs:
         args: --all -- --check
 
     - name: Clippy
-      uses: actions-rs/cargo@v1
+      uses: actions-rs/clippy-check@v1
       with:
-        command: clippy
-        toolchain: stable
-        args: -- -D warnings
+        token: ${{ secrets.GITHUB_TOKEN }}
+        args: --all-features
+
+  cargo_bloat:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@master
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Run cargo bloat
+        uses: orf/cargo-bloat-action@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
   test:
     runs-on: ${{ matrix.os }}
@@ -42,9 +57,9 @@ jobs:
         os: [ubuntu-latest, macOS-latest]
 
     steps:
-    - uses: hecrj/setup-rust-action@v1
+    - uses: actions-rs/toolchain@v1
       with:
-        rust-version: ${{ matrix.rust }}
+        toolchain: ${{ matrix.rust }}
 
     - uses: actions/checkout@master
 
