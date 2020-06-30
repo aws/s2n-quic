@@ -1,0 +1,55 @@
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+name: ci
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: hecrj/setup-rust-action@v1
+      with:
+        rust-version: stable
+        components: rustfmt, clippy
+
+    - uses: actions/checkout@master
+
+    - name: Format
+      uses: actions-rs/cargo@v1
+      with:
+        command: fmt
+        toolchain: stable
+        args: --all -- --check
+
+    - name: Clippy
+      uses: actions-rs/cargo@v1
+      with:
+        command: clippy
+        toolchain: stable
+        args: -- -D warnings
+
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        rust: [stable, beta, nightly, 1.42.0]
+        os: [ubuntu-latest, macOS-latest]
+
+    steps:
+    - uses: hecrj/setup-rust-action@v1
+      with:
+        rust-version: ${{ matrix.rust }}
+
+    - uses: actions/checkout@master
+
+    - name: tests
+      uses: actions-rs/cargo@v1
+      with:
+        command: test
+        toolchain: ${{ matrix.rust }}

@@ -167,8 +167,17 @@ mod tests {
         }
 
         let mut count = 0;
+        let mut failure_count = 0;
         while count < slot_count {
-            server.sync_rx().unwrap();
+            if let Err(err) = server.sync_rx() {
+                if err.kind() == std::io::ErrorKind::WouldBlock {
+                    std::thread::sleep(core::time::Duration::from_millis(1));
+                    assert!(failure_count < 10, "blocked too many times");
+                    failure_count += 1;
+                    continue;
+                }
+                panic!("socket rx failed: {:?}", err);
+            }
 
             let (tx, rx) = server.split_mut();
             while let Some((info, payload)) = rx.pop(crate::time::now()) {
