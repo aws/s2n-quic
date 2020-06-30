@@ -17,4 +17,3 @@ zerocopy = "0.3"
 
 [dev-dependencies]
 insta = "0.15"
-

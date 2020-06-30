@@ -135,29 +135,16 @@ macro_rules! frames {
         #[cfg(test)]
         mod snapshots {
             use super::*;
-            use insta::assert_debug_snapshot;
-            use s2n_codec::assert_codec_round_trip_value_mut;
+            use s2n_codec::assert_codec_round_trip_sample_file;
 
             $(
                 #[test]
                 fn $module() {
-                    let mut expected = std::fs::read(concat!(
-                        env!("CARGO_MANIFEST_DIR"),
-                        "/src/frame/test_samples/",
+                    assert_codec_round_trip_sample_file!(FrameMut, concat!(
+                        "src/frame/test_samples/",
                         stringify!($module),
-                        ".bin"))
-                    .unwrap();
-                    let mut buffer = DecoderBufferMut::new(&mut expected);
-                    let mut frames = vec![];
-
-                    while !buffer.is_empty() {
-                        let (frame, remaining) = buffer.decode::<FrameMut>().unwrap();
-                        assert_codec_round_trip_value_mut!(FrameMut, frame);
-                        frames.push(frame);
-                        buffer = remaining;
-                    }
-
-                    assert_debug_snapshot!(frames);
+                        ".bin"
+                    ));
                 }
             )*
         }

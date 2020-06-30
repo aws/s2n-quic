@@ -191,6 +191,7 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // this test is too expensive for miri
     fn incremental_insert() {
         let mut window = SlidingWindow::default();
         let space = PacketNumberSpace::ApplicationData;

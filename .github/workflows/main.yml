@@ -53,3 +53,21 @@ jobs:
       with:
         command: test
         toolchain: ${{ matrix.rust }}
+
+  miri:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        crate: [quic/s2n-quic-core]
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain: nightly
+        override: true
+        components: miri
+
+    - name: ${{ matrix.crate }}
+      run: cd ${{ matrix.crate }} && cargo miri test

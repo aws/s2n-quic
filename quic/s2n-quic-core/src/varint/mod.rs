@@ -74,6 +74,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg_attr(miri, ignore)] // snapshot tests don't work on miri
     fn table_snapshot_test() {
         use insta::assert_debug_snapshot;
         assert_debug_snapshot!("max_value", MAX_VARINT_VALUE);

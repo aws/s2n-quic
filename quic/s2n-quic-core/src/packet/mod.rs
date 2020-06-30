@@ -234,26 +234,22 @@ pub trait PacketDecoder<'a> {
 #[cfg(test)]
 mod snapshots {
     use super::*;
-    use insta::assert_debug_snapshot;
 
     macro_rules! snapshot {
         ($name:ident) => {
             #[test]
             fn $name() {
-                let mut expected = std::fs::read(concat!(
-                    env!("CARGO_MANIFEST_DIR"),
-                    "/src/packet/test_samples/",
-                    stringify!($name),
-                    ".bin"
-                ))
-                .unwrap();
-                let buffer = DecoderBufferMut::new(&mut expected);
-                let result = crate::packet::ProtectedPacket::decode(
-                    buffer,
-                    long::DESTINATION_CONNECTION_ID_MAX_LEN,
+                s2n_codec::assert_codec_round_trip_sample_file!(
+                    crate::packet::ProtectedPacket,
+                    concat!("src/packet/test_samples/", stringify!($name), ".bin"),
+                    |buffer| {
+                        crate::packet::ProtectedPacket::decode(
+                            buffer,
+                            long::DESTINATION_CONNECTION_ID_MAX_LEN,
+                        )
+                        .unwrap()
+                    }
                 );
-
-                assert_debug_snapshot!(result);
             }
         };
     }

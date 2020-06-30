@@ -259,9 +259,11 @@ fn decode_packet_number(
 
 #[test]
 fn decode_packet_number_test() {
-    // Brute-force test the first 2000 packet numbers and
+    // Brute-force test the first 2048 packet numbers and
     // assert round trip truncation and expansion
-    let iterations = 2000;
+    //
+    // In the case we're using miri, shrink this down to reduce the cost of it
+    let iterations = if cfg!(miri) { 16 } else { 2048 };
 
     fn new(value: u64) -> PacketNumber {
         PacketNumberSpace::Initial.new_packet_number(VarInt::new(value).unwrap())
@@ -280,6 +282,7 @@ fn decode_packet_number_test() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // snapshot tests don't work on miri
 fn size_of_snapshots() {
     use core::mem::size_of;
     use insta::assert_debug_snapshot;
