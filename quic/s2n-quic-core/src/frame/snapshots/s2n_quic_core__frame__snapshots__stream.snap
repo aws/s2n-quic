@@ -1,0 +1,88 @@
+---
+source: quic/s2n-quic-core/src/frame/mod.rs
+expression: frames
+---
+[
+    Stream(
+        Stream {
+            stream_id: VarInt(
+                1,
+            ),
+            offset: VarInt(
+                2,
+            ),
+            is_last_frame: false,
+            is_fin: true,
+            data: DecoderBufferMut {
+                bytes: [
+                    104,
+                    101,
+                    108,
+                    108,
+                    111,
+                ],
+            },
+        },
+    ),
+    Stream(
+        Stream {
+            stream_id: VarInt(
+                2,
+            ),
+            offset: VarInt(
+                3,
+            ),
+            is_last_frame: false,
+            is_fin: false,
+            data: DecoderBufferMut {
+                bytes: [
+                    104,
+                    101,
+                    108,
+                    108,
+                    111,
+                ],
+            },
+        },
+    ),
+    Stream(
+        Stream {
+            stream_id: VarInt(
+                3,
+            ),
+            offset: VarInt(
+                0,
+            ),
+            is_last_frame: false,
+            is_fin: false,
+            data: DecoderBufferMut {
+                bytes: [
+                    104,
+                    101,
+                    108,
+                    108,
+                    111,
+                ],
+            },
+        },
+    ),
+    Stream(
+        Stream {
+            stream_id: VarInt(
+                4,
+            ),
+            offset: VarInt(
+                0,
+            ),
+            is_last_frame: true,
+            is_fin: false,
+            data: DecoderBufferMut {
+                bytes: [
+                    1,
+                    2,
+                    3,
+                ],
+            },
+        },
+    ),
+]

@@ -1,0 +1,16 @@
+---
+source: quic/s2n-quic-core/src/frame/mod.rs
+expression: frames
+---
+[
+    StreamDataBlocked(
+        StreamDataBlocked {
+            stream_id: VarInt(
+                1,
+            ),
+            stream_data_limit: VarInt(
+                2,
+            ),
+        },
+    ),
+]

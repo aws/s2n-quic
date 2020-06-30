@@ -1,0 +1,13 @@
+---
+source: quic/s2n-quic-core/src/frame/mod.rs
+expression: frames
+---
+[
+    RetireConnectionID(
+        RetireConnectionID {
+            sequence_number: VarInt(
+                1,
+            ),
+        },
+    ),
+]

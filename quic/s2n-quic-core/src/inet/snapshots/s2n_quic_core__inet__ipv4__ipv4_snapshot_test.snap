@@ -1,0 +1,8 @@
+---
+source: quic/s2n-quic-core/src/inet/ipv4.rs
+expression: values
+---
+[
+    IPv4Address(192.0.0.1),
+    IPv4Address(8.8.8.8),
+]

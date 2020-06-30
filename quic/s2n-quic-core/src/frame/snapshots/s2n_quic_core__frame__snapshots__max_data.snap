@@ -1,0 +1,13 @@
+---
+source: quic/s2n-quic-core/src/frame/mod.rs
+expression: frames
+---
+[
+    MaxData(
+        MaxData {
+            maximum_data: VarInt(
+                494878333,
+            ),
+        },
+    ),
+]

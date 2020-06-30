@@ -1,0 +1,5 @@
+---
+source: quic/s2n-quic-transport/src/space/rx_packet_numbers/ack_transmission_state.rs
+expression: "size_of::<AckTransmissionState>()"
+---
+16

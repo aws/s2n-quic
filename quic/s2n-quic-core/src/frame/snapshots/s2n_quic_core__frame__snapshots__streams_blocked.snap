@@ -1,0 +1,22 @@
+---
+source: quic/s2n-quic-core/src/frame/mod.rs
+expression: frames
+---
+[
+    StreamsBlocked(
+        StreamsBlocked {
+            stream_type: Bidirectional,
+            stream_limit: VarInt(
+                1,
+            ),
+        },
+    ),
+    StreamsBlocked(
+        StreamsBlocked {
+            stream_type: Unidirectional,
+            stream_limit: VarInt(
+                2,
+            ),
+        },
+    ),
+]

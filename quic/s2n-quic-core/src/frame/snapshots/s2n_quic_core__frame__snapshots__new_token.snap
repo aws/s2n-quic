@@ -1,0 +1,22 @@
+---
+source: quic/s2n-quic-core/src/frame/mod.rs
+expression: frames
+---
+[
+    NewToken(
+        NewToken {
+            token: [
+                104,
+                101,
+                108,
+                108,
+                111,
+            ],
+        },
+    ),
+    Padding(
+        Padding {
+            length: 1,
+        },
+    ),
+]

@@ -1,0 +1,8 @@
+---
+source: quic/s2n-quic-core/src/inet/ipv6.rs
+expression: values
+---
+[
+    SocketAddressV6([2001:db8:ac10:fe01:0:0:0:0]:80),
+    SocketAddressV6([2001:db8:85a3:0:0:8a2e:370:7334]:5000),
+]

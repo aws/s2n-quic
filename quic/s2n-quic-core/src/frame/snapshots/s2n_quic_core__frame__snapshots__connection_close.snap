@@ -1,0 +1,44 @@
+---
+source: quic/s2n-quic-core/src/frame/mod.rs
+expression: frames
+---
+[
+    ConnectionClose(
+        ConnectionClose {
+            error_code: VarInt(
+                1,
+            ),
+            frame_type: Some(
+                VarInt(
+                    2,
+                ),
+            ),
+            reason: Some(
+                [
+                    101,
+                    114,
+                    114,
+                    111,
+                    114,
+                ],
+            ),
+        },
+    ),
+    ConnectionClose(
+        ConnectionClose {
+            error_code: VarInt(
+                2,
+            ),
+            frame_type: None,
+            reason: Some(
+                [
+                    111,
+                    116,
+                    104,
+                    101,
+                    114,
+                ],
+            ),
+        },
+    ),
+]

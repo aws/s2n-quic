@@ -1,0 +1,19 @@
+---
+source: quic/s2n-quic-core/src/frame/mod.rs
+expression: frames
+---
+[
+    Padding(
+        Padding {
+            length: 4,
+        },
+    ),
+    Ping(
+        Ping,
+    ),
+    Padding(
+        Padding {
+            length: 3,
+        },
+    ),
+]

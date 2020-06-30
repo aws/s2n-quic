@@ -1,0 +1,20 @@
+[package]
+name = "s2n-codec"
+version = "0.1.0"
+authors = ["Cameron Bytheway <bythewc@amazon.com>"]
+edition = "2018"
+publish = false
+
+[features]
+default = ["std"]
+std = []
+testing = ["std"]
+checked_range_unsafe = []
+
+[dependencies]
+byteorder = { version = "1.1", default-features = false }
+zerocopy = "0.3"
+
+[dev-dependencies]
+insta = "0.15"
+

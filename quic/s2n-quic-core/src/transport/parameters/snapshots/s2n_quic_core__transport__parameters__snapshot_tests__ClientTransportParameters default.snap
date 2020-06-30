@@ -1,0 +1,69 @@
+---
+source: quic/s2n-quic-core/src/transport/parameters/mod.rs
+expression: default_value
+---
+TransportParameters {
+    max_idle_timeout: MaxIdleTimeout(
+        VarInt(
+            0,
+        ),
+    ),
+    max_packet_size: MaxPacketSize(
+        VarInt(
+            65527,
+        ),
+    ),
+    initial_max_data: InitialMaxData(
+        VarInt(
+            0,
+        ),
+    ),
+    initial_max_stream_data_bidi_local: InitialMaxStreamDataBidiLocal(
+        VarInt(
+            0,
+        ),
+    ),
+    initial_max_stream_data_bidi_remote: InitialMaxStreamDataBidiRemote(
+        VarInt(
+            0,
+        ),
+    ),
+    initial_max_stream_data_uni: InitialMaxStreamDataUni(
+        VarInt(
+            0,
+        ),
+    ),
+    initial_max_streams_bidi: InitialMaxStreamsBidi(
+        VarInt(
+            0,
+        ),
+    ),
+    initial_max_streams_uni: InitialMaxStreamsUni(
+        VarInt(
+            0,
+        ),
+    ),
+    ack_delay_exponent: AckDelayExponent(
+        3,
+    ),
+    max_ack_delay: MaxAckDelay(
+        VarInt(
+            25,
+        ),
+    ),
+    migration_support: Enabled,
+    active_connection_id_limit: ActiveConnectionIdLimit(
+        VarInt(
+            2,
+        ),
+    ),
+    original_connection_id: DisabledParameter(
+        PhantomData,
+    ),
+    stateless_reset_token: DisabledParameter(
+        PhantomData,
+    ),
+    preferred_address: DisabledParameter(
+        PhantomData,
+    ),
+}

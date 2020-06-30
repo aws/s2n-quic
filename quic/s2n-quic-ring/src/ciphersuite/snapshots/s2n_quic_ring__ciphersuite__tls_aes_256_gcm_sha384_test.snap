@@ -1,0 +1,5 @@
+---
+source: quic/s2n-quic-ring/src/ciphersuite/mod.rs
+expression: "core::mem::size_of::<TLS_AES_256_GCM_SHA384>()"
+---
+240

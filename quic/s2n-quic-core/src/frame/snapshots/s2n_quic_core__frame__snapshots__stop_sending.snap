@@ -1,0 +1,16 @@
+---
+source: quic/s2n-quic-core/src/frame/mod.rs
+expression: frames
+---
+[
+    StopSending(
+        StopSending {
+            stream_id: VarInt(
+                1,
+            ),
+            application_error_code: VarInt(
+                2,
+            ),
+        },
+    ),
+]

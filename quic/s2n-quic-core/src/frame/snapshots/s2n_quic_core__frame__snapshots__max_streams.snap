@@ -1,0 +1,22 @@
+---
+source: quic/s2n-quic-core/src/frame/mod.rs
+expression: frames
+---
+[
+    MaxStreams(
+        MaxStreams {
+            stream_type: Bidirectional,
+            maximum_streams: VarInt(
+                1,
+            ),
+        },
+    ),
+    MaxStreams(
+        MaxStreams {
+            stream_type: Unidirectional,
+            maximum_streams: VarInt(
+                2,
+            ),
+        },
+    ),
+]

@@ -1,0 +1,20 @@
+[package]
+name = "s2n-quic-transport"
+version = "0.1.0"
+authors = ["Cameron Bytheway <bythewc@amazon.com>", "Matthias Einwag <einwag@amazon.com>"]
+edition = "2018"
+publish = false
+
+[dependencies]
+bytes = { version = "0.5", default-features = false }
+s2n-codec = { path = "../../common/s2n-codec" }
+s2n-quic-core = { path = "../s2n-quic-core" }
+s2n-quic-platform = { path = "../s2n-quic-platform" }
+intrusive-collections = "0.8"
+smallvec = "1.3"
+
+[dev-dependencies]
+bolero = "0.5"
+futures-test = "0.3" # For testing Waker interactions
+insta = "0.15"
+s2n-codec = { path = "../../common/s2n-codec", features = ["testing"] }

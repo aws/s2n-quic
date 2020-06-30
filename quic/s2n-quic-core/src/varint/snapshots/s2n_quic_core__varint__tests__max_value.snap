@@ -1,0 +1,5 @@
+---
+source: quic/s2n-quic-core/src/varint/mod.rs
+expression: MAX_VARINT_VALUE
+---
+4611686018427387903

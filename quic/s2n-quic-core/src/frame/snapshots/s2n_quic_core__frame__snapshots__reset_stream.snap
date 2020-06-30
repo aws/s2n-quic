@@ -1,0 +1,19 @@
+---
+source: quic/s2n-quic-core/src/frame/mod.rs
+expression: frames
+---
+[
+    ResetStream(
+        ResetStream {
+            stream_id: VarInt(
+                1,
+            ),
+            application_error_code: VarInt(
+                2,
+            ),
+            final_size: VarInt(
+                3,
+            ),
+        },
+    ),
+]

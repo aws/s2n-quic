@@ -1,0 +1,78 @@
+---
+source: quic/s2n-quic-core/src/frame/mod.rs
+expression: frames
+---
+[
+    Ack(
+        Ack {
+            ack_delay: VarInt(
+                1,
+            ),
+            ack_ranges: [
+                VarInt(
+                    1000,
+                )..=VarInt(
+                    9000,
+                ),
+                VarInt(
+                    100,
+                )..=VarInt(
+                    141,
+                ),
+                VarInt(
+                    10,
+                )..=VarInt(
+                    19,
+                ),
+                VarInt(
+                    2,
+                )..=VarInt(
+                    2,
+                ),
+            ],
+            ecn_counts: None,
+        },
+    ),
+    Ack(
+        Ack {
+            ack_delay: VarInt(
+                2,
+            ),
+            ack_ranges: [
+                VarInt(
+                    1000,
+                )..=VarInt(
+                    9000,
+                ),
+                VarInt(
+                    100,
+                )..=VarInt(
+                    141,
+                ),
+                VarInt(
+                    10,
+                )..=VarInt(
+                    19,
+                ),
+                VarInt(
+                    2,
+                )..=VarInt(
+                    2,
+                ),
+            ],
+            ecn_counts: Some(
+                ECNCounts {
+                    ect_0_count: VarInt(
+                        1,
+                    ),
+                    ect_1_count: VarInt(
+                        2,
+                    ),
+                    ce_count: VarInt(
+                        3,
+                    ),
+                },
+            ),
+        },
+    ),
+]

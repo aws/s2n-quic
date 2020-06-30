@@ -1,0 +1,16 @@
+[workspace]
+members = [
+    "common/s2n-*",
+    "quic/s2n-*",
+    "quic/interop-*"
+]
+
+[profile.release]
+lto = true
+codegen-units = 1
+incremental = false
+
+[profile.bench]
+lto = true
+codegen-units = 1
+incremental = false

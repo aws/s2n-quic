@@ -1,0 +1,59 @@
+[package]
+name = "s2n-quic-core"
+version = "0.1.0"
+authors = ["Cameron Bytheway <bythewc@amazon.com>"]
+edition = "2018"
+
+[features]
+default = ["std"]
+std = []
+
+[dependencies]
+byteorder = { version = "1.1", default-features = false }
+bytes = { version = "0.5", default-features = false }
+hex-literal = "0.2"
+s2n-codec = { version = "0.1", path = "../../common/s2n-codec", default-features = false }
+zerocopy = "0.3"
+
+[dev-dependencies]
+bolero = "0.5"
+criterion = "0.3"
+insta = "0.15"
+s2n-codec = { version = "0.1", path = "../../common/s2n-codec", features = ["testing"] }
+
+[[test]]
+name = "crypto"
+path = "tests/crypto/fuzz_target.rs"
+harness = false
+
+[[bench]]
+name = "frame"
+harness = false
+
+[[test]]
+name = "frame"
+path = "tests/frame/fuzz_target.rs"
+harness = false
+
+[[bench]]
+name = "packet"
+harness = false
+
+[[test]]
+name = "packet"
+path = "tests/packet/fuzz_target.rs"
+harness = false
+
+[[test]]
+name = "transport_parameters"
+path = "tests/transport_parameters/fuzz_target.rs"
+harness = false
+
+[[bench]]
+name = "varint"
+harness = false
+
+[[test]]
+name = "varint"
+path = "tests/varint/fuzz_target.rs"
+harness = false
