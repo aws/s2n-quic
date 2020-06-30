@@ -24,12 +24,14 @@ jobs:
       uses: actions-rs/cargo@v1
       with:
         command: fmt
+        toolchain: stable
         args: --all -- --check
 
     - name: Clippy
       uses: actions-rs/cargo@v1
       with:
         command: clippy
+        toolchain: stable
         args: -- -D warnings
 
   test:
@@ -37,7 +39,7 @@ jobs:
     strategy:
       matrix:
         rust: [stable, beta, nightly, 1.42.0]
-        os: [ubuntu-latest, macOS-latest, windows-latest]
+        os: [ubuntu-latest, macOS-latest]
 
     steps:
     - uses: hecrj/setup-rust-action@v1
@@ -47,4 +49,7 @@ jobs:
     - uses: actions/checkout@master
 
     - name: tests
-      run: cargo test
+      uses: actions-rs/cargo@v1
+      with:
+        command: test
+        toolchain: ${{ matrix.rust }}
