@@ -45,10 +45,9 @@ jobs:
           toolchain: stable
 
       - name: Run cargo bloat
-        uses: orf/cargo-bloat-action@v1
+        uses: orf/cargo-bloat-action@master
         with:
           bloat_args: --bin interop-server
-          tree_args: --package interop-server
           token: ${{ secrets.GITHUB_TOKEN }}
 
   test:
