@@ -194,6 +194,12 @@ mod if_testing {
             timestamp: Mutex<Timestamp>,
         }
 
+        impl Default for MockClock {
+            fn default() -> Self {
+                Self::new()
+            }
+        }
+
         impl MockClock {
             /// Creats a new clock instance for testing purposes.
             ///
