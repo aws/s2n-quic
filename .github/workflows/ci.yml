@@ -8,31 +8,139 @@ on:
 
 name: ci
 
+env:
+  CARGO_INCREMENTAL: 0
+  CARGO_NET_RETRY: 10
+  RUSTUP_MAX_RETRIES: 10
+  SCCACHE_CACHE_SIZE: 300M
+  SCCACHE_DIR: ${{ github.workspace }}/.sccache
+  SCCACHE_IDLE_TIMEOUT: 0
+
 jobs:
-  check:
+  rustfmt:
     runs-on: ubuntu-latest
-
     steps:
-    - uses: actions/checkout@v2
+      - uses: actions/checkout@v2
 
-    - uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
-        override: true
-        components: rustfmt, clippy
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          profile: minimal
+          override: true
+          components: rustfmt
 
-    - name: Format
-      uses: actions-rs/cargo@v1
-      with:
-        command: fmt
-        toolchain: stable
-        args: --all -- --check
+      - name: Run cargo fmt
+        uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --all -- --check
 
-    - name: Clippy
-      uses: actions-rs/clippy-check@v1
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-        args: --all-features --all-targets -- -D warnings
+  clippy:
+    runs-on: ubuntu-latest
+    env:
+      RUSTC_WRAPPER: sccache
+    steps:
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+          components: clippy
+
+      - uses: actions/checkout@v2
+
+      - name: Install sccache
+        uses: actions-rs/install@v0.1
+        with:
+          crate: sccache
+          use-tool-cache: true
+          version: latest
+
+      - name: Generate Cargo.lock
+        run: cargo update
+
+      - name: Cache cargo registry
+        uses: actions/cache@v2
+        continue-on-error: true
+        with:
+          path: ~/.cargo/registry/cache
+          key: ${{ runner.os }}-clippy-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-clippy-cargo-registry-
+
+      - name: Cache sccache output
+        uses: actions/cache@v2
+        continue-on-error: true
+        with:
+          path: ${{ github.workspace }}/.sccache
+          key: ${{ runner.os }}-clippy-sccache-${{ hashFiles('**/Cargo.*') }}
+          restore-keys: ${{ runner.os }}-clippy-sccache-
+
+      - name: Start sccache
+        run: sccache --start-server
+
+      - name: Run cargo clippy
+        uses: actions-rs/clippy-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          args: --all-features --all-targets -- -D warnings
+
+      - name: Stop sccache
+        run: sccache --stop-server
+
+  udeps:
+    runs-on: ubuntu-latest
+    env:
+      RUSTC_WRAPPER: sccache
+    steps:
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+
+      - uses: actions-rs/install@v0.1
+        with:
+          crate: cargo-udeps
+          use-tool-cache: true
+          version: latest
+
+      - uses: actions/checkout@v2
+
+      - name: Install sccache
+        uses: actions-rs/install@v0.1
+        with:
+          crate: sccache
+          use-tool-cache: true
+          version: latest
+
+      - name: Generate Cargo.lock
+        run: cargo update
+
+      - name: Cache cargo registry
+        uses: actions/cache@v2
+        continue-on-error: true
+        with:
+          path: ~/.cargo/registry/cache
+          key: ${{ runner.os }}-clippy-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-clippy-cargo-registry-
+
+      - name: Cache sccache output
+        uses: actions/cache@v2
+        continue-on-error: true
+        with:
+          path: ${{ github.workspace }}/.sccache
+          key: ${{ runner.os }}-clippy-sccache-${{ hashFiles('**/Cargo.*') }}
+          restore-keys: ${{ runner.os }}-clippy-sccache-
+
+      - name: Start sccache
+        run: sccache --start-server
+
+      - name: Run cargo udeps
+        run: cargo udeps --workspace --all-targets
+
+      - name: Stop sccache
+        run: sccache --stop-server
+
 
   test:
     runs-on: ${{ matrix.os }}
@@ -40,13 +148,8 @@ jobs:
       matrix:
         rust: [stable, beta, nightly, 1.42.0]
         os: [ubuntu-latest, macOS-latest]
-
     env:
       RUSTC_WRAPPER: sccache
-      SCCACHE_CACHE_SIZE: 300M
-      SCCACHE_DIR: ${{ github.workspace }}/.sccache
-      SCCACHE_IDLE_TIMEOUT: 0
-
     steps:
       - uses: actions-rs/toolchain@v1
         with:
@@ -97,7 +200,8 @@ jobs:
     strategy:
       matrix:
         crate: [quic/s2n-quic-core]
-
+    env:
+      RUSTC_WRAPPER: sccache
     steps:
       - uses: actions-rs/toolchain@v1
         with:
@@ -144,19 +248,13 @@ jobs:
 
   coverage:
     runs-on: ubuntu-latest
-
     env:
       # From https://github.com/mozilla/grcov#example-how-to-generate-gcda-files-for-a-rust-project
-      CARGO_INCREMENTAL: '0'
       RUSTFLAGS: '-Zprofile -Ccodegen-units=1 -Copt-level=0 -Clink-dead-code -Coverflow-checks=off -Zpanic_abort_tests -Cpanic=abort'
       RUSTDOCFLAGS: '-Cpanic=abort'
       GRCOV_CONFIG: '--branch --llvm --ignore-not-existing --source-dir .'
       GRCOV_FILTER: "--excl-start '\\#\\[cfg\\(test\\)\\]' --excl-stop KCOV_END_TEST_MARKER --ignore tests --ignore test --ignore testing.rs"
       RUSTC_WRAPPER: sccache
-      SCCACHE_CACHE_SIZE: 300M
-      SCCACHE_DIR: ${{ github.workspace }}/.sccache
-      SCCACHE_IDLE_TIMEOUT: 0
-
     steps:
       - uses: actions/checkout@v2
 

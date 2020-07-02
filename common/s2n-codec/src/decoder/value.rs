@@ -102,7 +102,8 @@ decoder_value!(
             let len = buffer.len();
             let (slice, buffer) = buffer.decode_slice(len)?;
             #[allow(clippy::identity_conversion)]
-            Ok((slice.into(), buffer))
+            let slice = slice.into();
+            Ok((slice, buffer))
         }
     }
 );

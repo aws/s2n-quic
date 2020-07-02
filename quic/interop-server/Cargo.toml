@@ -3,6 +3,7 @@ name = "interop-server"
 version = "0.1.0"
 authors = ["Cameron Bytheway <bythewc@amazon.com>", "Matthias Einwag <einwag@amazon.com>"]
 edition = "2018"
+license = "Apache-2.0"
 
 [features]
 default = []
