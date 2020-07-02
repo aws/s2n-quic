@@ -1,6 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use s2n_codec::{DecoderBuffer, EncoderBuffer, EncoderValue};
-use s2n_quic_codec::VarInt;
+use s2n_quic_core::varint::VarInt;
 
 fn round_trip(c: &mut Criterion) {
     for i in [0, 1, 5, 6, 13, 14, 29, 30, 61].iter() {

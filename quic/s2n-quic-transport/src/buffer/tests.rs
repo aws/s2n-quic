@@ -297,6 +297,7 @@ fn chunk_partial_larger_after_test() {
 }
 
 #[test]
+#[allow(clippy::cognitive_complexity)] // several operations are needed to get the buffer in the desired state
 fn write_and_read_buffer() {
     let mut buf = StreamReceiveBuffer::new();
 
@@ -406,7 +407,7 @@ fn create_and_fill_large_gaps() {
     // This creates 3 full buffer gaps of full allocation ranges
     buf.write_at(
         (DEFAULT_STREAM_RECEIVE_BUFFER_ALLOCATION_SIZE as u32 * 3 + 2).into(),
-        &mut [7, 8, 9],
+        &[7, 8, 9],
     )
     .unwrap();
     assert_eq!(0, buf.len());
@@ -414,7 +415,7 @@ fn create_and_fill_large_gaps() {
     // Insert something in the middle, which still leaves us with 2 gaps
     buf.write_at(
         (DEFAULT_STREAM_RECEIVE_BUFFER_ALLOCATION_SIZE as u32 + 1).into(),
-        &mut [10, 11, 12],
+        &[10, 11, 12],
     )
     .unwrap();
     assert_eq!(0, buf.len());
@@ -422,13 +423,13 @@ fn create_and_fill_large_gaps() {
     // Close the last gap
     buf.write_at(
         (DEFAULT_STREAM_RECEIVE_BUFFER_ALLOCATION_SIZE as u32 * 2 + 1).into(),
-        &mut [14, 15, 16],
+        &[14, 15, 16],
     )
     .unwrap();
     assert_eq!(0, buf.len());
 
     // Close the first gap
-    buf.write_at(4u32.into(), &mut [4, 5, 6, 7]).unwrap();
+    buf.write_at(4u32.into(), &[4, 5, 6, 7]).unwrap();
     assert_eq!(0, buf.len());
 
     // Now fill all the preallocated chunks with data
@@ -586,8 +587,8 @@ fn use_custom_buffer_size() {
     let mut buf = StreamReceiveBuffer::with_buffer_size(MIN_STREAM_RECEIVE_BUFFER_ALLOCATION_SIZE);
 
     let mut data = [0u8; 3 * MIN_STREAM_RECEIVE_BUFFER_ALLOCATION_SIZE + 3];
-    for i in 0..data.len() {
-        data[i] = i as u8;
+    for (i, item) in data.iter_mut().enumerate() {
+        *item = i as u8;
     }
 
     buf.write_at(0u32.into(), &data[..]).unwrap();
@@ -661,6 +662,7 @@ fn fail_to_push_out_of_bounds_data() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // miri fails because the slice points to invalid memory
 #[cfg(target_pointer_width = "64")]
 fn fail_to_push_out_of_bounds_data_with_long_buffer() {
     let mut buffer = StreamReceiveBuffer::new();

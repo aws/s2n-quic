@@ -2,7 +2,7 @@
 //! map of all active Streams, as well as a variety of dynamic Stream lists.
 
 // Silence the clippy warning that shows up when using the intrusive adapter
-#![allow(clippy::unneeded_field_pattern)]
+#![allow(clippy::unneeded_field_pattern, clippy::useless_transmute)]
 
 use crate::stream::{stream_impl::StreamTrait, stream_interests::StreamInterests};
 use alloc::rc::Rc;

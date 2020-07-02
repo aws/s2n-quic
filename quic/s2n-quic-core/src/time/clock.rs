@@ -65,4 +65,5 @@ mod std_clock {
     }
 }
 
+#[cfg(any(test, feature = "std"))]
 pub use std_clock::*;

@@ -4,7 +4,7 @@
 // TODO: Remove as soon as used
 #![allow(dead_code)]
 // Silence the clippy warning that shows up when using the intrusive adapter
-#![allow(clippy::unneeded_field_pattern)]
+#![allow(clippy::unneeded_field_pattern, clippy::useless_transmute)]
 
 use crate::{
     connection::{
