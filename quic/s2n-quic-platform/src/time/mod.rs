@@ -5,7 +5,7 @@
 use cfg_if::cfg_if;
 
 cfg_if! {
-    if #[cfg(feature = "testing")] {
+    if #[cfg(any(feature = "testing", test))] {
         pub use if_testing::*;
     } else if #[cfg(feature = "std")] {
         pub use if_std::*;
@@ -60,7 +60,7 @@ mod if_no_std {
     static CLOCK_STATE: AtomicUsize = AtomicUsize::new(CLOCK_UNINITIALIZED);
 
     /// Initialize the global Clock for use in `no-std` mode.
-    /// The configured clock will be queried on all `Timestamp::now()` calls.
+    /// The configured clock will be queried on all `crate::time::now()` calls.
     /// The global clock can only be set once.
     pub fn init_global_clock(clock: &'static dyn Clock) -> Result<(), ()> {
         unsafe {
@@ -114,9 +114,9 @@ mod if_testing {
 
     cfg_if! {
         if #[cfg(feature = "std")] {
-            pub use super::if_std::now as inner_now;
+            use super::if_std::now as inner_now;
         } else {
-            pub use super::if_no_std::now as inner_now;
+            use super::if_no_std::now as inner_now;
         }
     }
 
@@ -154,19 +154,20 @@ mod if_testing {
         use std::sync::Mutex;
 
         /// Configures a [`Clock`] which will be utilized for the following
-        /// calls to `Timestamp::now()` on the current thread.
+        /// calls to `crate::time::now()` on the current thread.
         ///
         /// Example:
         ///
-        /// ```
+        /// ```ignore
         /// # use core::time::Duration;
-        /// use s2n_quic_platform::time::{testing, Timestamp};
-        /// let clock = std::sync::Arc::new(testing::MockClock::new());
+        /// use std::sync::Arc;
+        /// use s2n_quic_platform::time::{self, testing};
+        /// let clock = Arc::new(testing::MockClock::new());
         /// testing::set_local_clock(clock.clone());
         ///
-        /// let before = Timestamp::now();
+        /// let before = time::now();
         /// clock.adjust_by(Duration::from_millis(333));
-        /// let after = Timestamp::now();
+        /// let after = time::now();
         /// assert_eq!(after - before, Duration::from_millis(333));
         /// ```
         pub fn set_local_clock(clock: Arc<dyn Clock>) {
@@ -177,7 +178,7 @@ mod if_testing {
 
         /// Resets the local clock.
         ///
-        /// Following invocations to [`Timestamp::now()`]
+        /// Following invocations to [`crate::time::now()`]
         /// will return the system time again.
         pub fn reset_local_clock() {
             LOCAL_CLOCK.with(|current_local_clock| {

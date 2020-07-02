@@ -139,7 +139,14 @@ macro_rules! assert_codec_round_trip_sample_file {
         }
 
         #[cfg(not(miri))]
-        insta::assert_debug_snapshot!(values);
+        insta::assert_debug_snapshot!(
+            std::path::Path::new($path)
+                .file_stem()
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            values
+        );
     }};
 }
 
