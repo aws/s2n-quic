@@ -25,6 +25,12 @@ This project is licensed under the Apache-2.0 License.
 
 - Install [rustup](https://rustup.rs/)
 - Run `rustup component add rustfmt clippy rls rust-analysis`
+- Run `rustup toolchain install nightly` if you plan to run the fuzzer
+
+If you are running a Linux based system you will need libunwind and libbfd.
+On Ubuntu you can install these requirements as follows
+
+- Run `sudo apt install libunwind-dev binutils-dev`
 
 ### Running a fuzz target
 
