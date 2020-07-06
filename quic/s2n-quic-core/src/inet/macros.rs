@@ -32,25 +32,10 @@ macro_rules! test_inet_snapshot {
     ($test:ident, $name:ident, $ty:ty) => {
         #[test]
         fn $name() {
-            let file = concat!(
-                env!("CARGO_MANIFEST_DIR"),
-                "/src/inet/test_samples/",
-                stringify!($test),
-                ".bin"
+            s2n_codec::assert_codec_round_trip_sample_file!(
+                $ty,
+                concat!("src/inet/test_samples/", stringify!($test), ".bin")
             );
-            let mut expected =
-                std::fs::read(file).unwrap_or_else(|_| panic!("could not open {:?}", file));
-            let mut buffer = s2n_codec::DecoderBufferMut::new(&mut expected);
-            let mut values = vec![];
-
-            while !buffer.is_empty() {
-                let (value, remaining) = buffer.decode::<$ty>().unwrap();
-                s2n_codec::assert_codec_round_trip_value_mut!($ty, value);
-                values.push(value);
-                buffer = remaining;
-            }
-
-            insta::assert_debug_snapshot!(values);
         }
     };
 }

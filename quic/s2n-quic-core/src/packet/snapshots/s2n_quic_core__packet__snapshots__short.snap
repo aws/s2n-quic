@@ -1,55 +1,50 @@
 ---
 source: quic/s2n-quic-core/src/packet/mod.rs
-expression: result
+expression: values
 ---
-Ok(
-    (
-        Short(
-            Short {
-                spin_bit: Zero,
-                key_phase: ProtectedKeyPhase,
-                destination_connection_id: 1..21,
-                packet_number: ProtectedPacketNumber,
-                payload: ProtectedPayload {
-                    header_len: 21,
-                    buffer: DecoderBufferMut {
-                        bytes: [
-                            64,
-                            1,
-                            2,
-                            3,
-                            4,
-                            5,
-                            6,
-                            7,
-                            8,
-                            9,
-                            10,
-                            11,
-                            12,
-                            13,
-                            14,
-                            15,
-                            16,
-                            17,
-                            18,
-                            19,
-                            20,
-                            1,
-                            2,
-                            3,
-                            4,
-                            5,
-                            6,
-                            7,
-                            8,
-                        ],
-                    },
+[
+    Short(
+        Short {
+            spin_bit: Zero,
+            key_phase: ProtectedKeyPhase,
+            destination_connection_id: 1..21,
+            packet_number: ProtectedPacketNumber,
+            payload: ProtectedPayload {
+                header_len: 21,
+                buffer: DecoderBufferMut {
+                    bytes: [
+                        64,
+                        1,
+                        2,
+                        3,
+                        4,
+                        5,
+                        6,
+                        7,
+                        8,
+                        9,
+                        10,
+                        11,
+                        12,
+                        13,
+                        14,
+                        15,
+                        16,
+                        17,
+                        18,
+                        19,
+                        20,
+                        1,
+                        2,
+                        3,
+                        4,
+                        5,
+                        6,
+                        7,
+                        8,
+                    ],
                 },
             },
-        ),
-        DecoderBufferMut {
-            bytes: [],
         },
     ),
-)
+]

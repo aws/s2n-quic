@@ -114,6 +114,35 @@ impl_round_trip_bytes!(
     as_mut
 );
 
+#[macro_export]
+macro_rules! assert_codec_round_trip_sample_file {
+    ($ty:ty, $path:expr) => {{
+        $crate::assert_codec_round_trip_sample_file!($ty, $path, |buffer| {
+            let (value, buffer) = buffer.decode::<$ty>().unwrap();
+            $crate::assert_codec_round_trip_value_mut!($ty, value);
+            (value, buffer)
+        });
+    }};
+    ($ty:ty, $path:expr, | $buffer:ident | $decode:expr) => {{
+        #[cfg(not(miri))]
+        let mut expected = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/", $path)).unwrap();
+        #[cfg(miri)]
+        let mut expected = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/", $path)).to_vec();
+
+        let mut $buffer = $crate::DecoderBufferMut::new(&mut expected);
+        let mut values = vec![];
+
+        while !$buffer.is_empty() {
+            let (value, remaining) = $decode;
+            values.push(value);
+            $buffer = remaining;
+        }
+
+        #[cfg(not(miri))]
+        insta::assert_debug_snapshot!(values);
+    }};
+}
+
 macro_rules! ensure {
     ($expr:expr, $message:expr $(, $format:expr)*) => {
         if !($expr) {

@@ -141,7 +141,7 @@ mod test {
     macro_rules! assert_window {
         (
             $window:expr, $to_insert:expr, $duplicate:expr, $expected_window:expr, $right_edge:expr
-        ) => {
+        ) => {{
             assert_eq!($window.check($to_insert), $duplicate);
             assert_eq!($window.insert($to_insert), $duplicate);
             assert_eq!(
@@ -150,10 +150,11 @@ mod test {
                 $expected_window, $window.window
             );
             assert_eq!($window.right_edge.unwrap(), $right_edge);
-        };
+        }};
     }
 
     #[test]
+    #[allow(clippy::cognitive_complexity)] // several operations are needed to get the desired state
     fn insert() {
         let space = PacketNumberSpace::ApplicationData;
         let mut window = SlidingWindow::default();
@@ -191,6 +192,7 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // this test is too expensive for miri
     fn incremental_insert() {
         let mut window = SlidingWindow::default();
         let space = PacketNumberSpace::ApplicationData;
@@ -213,6 +215,7 @@ mod test {
     }
 
     #[test]
+    #[allow(clippy::cognitive_complexity)] // several comparisons are needed
     fn insert_at_edge() {
         let mut window = SlidingWindow::default();
         let space = PacketNumberSpace::ApplicationData;

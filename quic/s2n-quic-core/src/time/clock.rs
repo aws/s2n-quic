@@ -55,6 +55,7 @@ mod std_clock {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // time isn't queryable in miri
     fn monotonicity_test() {
         let clock = StdClock::default();
         let ts1 = clock.get_time();
@@ -64,4 +65,5 @@ mod std_clock {
     }
 }
 
+#[cfg(any(test, feature = "std"))]
 pub use std_clock::*;

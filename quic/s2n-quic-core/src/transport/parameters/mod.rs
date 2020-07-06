@@ -720,6 +720,7 @@ mod ack_settings_tests {
     use super::*;
 
     #[test]
+    #[cfg_attr(miri, ignore)] // this test is too expensive for miri
     fn ack_settings_test() {
         for ack_delay_exponent in 0..=20 {
             let settings = AckSettings {
@@ -1177,7 +1178,6 @@ impl_transport_parameters!(
 #[cfg(test)]
 mod snapshot_tests {
     use super::*;
-    use insta::assert_debug_snapshot;
     use s2n_codec::assert_codec_round_trip_value;
 
     #[test]
@@ -1185,7 +1185,9 @@ mod snapshot_tests {
         macro_rules! default_transport_parameter_test {
             ($endpoint_params:ident) => {
                 let default_value = $endpoint_params::default();
-                assert_debug_snapshot!(
+
+                #[cfg(not(miri))] // snapshot tests don't work on miri
+                insta::assert_debug_snapshot!(
                     concat!(stringify!($endpoint_params), " default"),
                     default_value
                 );
@@ -1233,7 +1235,11 @@ mod snapshot_tests {
         };
 
         let encoded_output = assert_codec_round_trip_value!(ServerTransportParameters, value);
-        assert_debug_snapshot!(encoded_output);
+
+        #[cfg(not(miri))] // snapshot tests don't work on miri
+        insta::assert_debug_snapshot!(encoded_output);
+
+        let _ = encoded_output;
     }
 
     #[test]
@@ -1260,7 +1266,11 @@ mod snapshot_tests {
         };
 
         let encoded_output = assert_codec_round_trip_value!(ClientTransportParameters, value);
-        assert_debug_snapshot!(encoded_output);
+
+        #[cfg(not(miri))] // snapshot tests don't work on miri
+        insta::assert_debug_snapshot!(encoded_output);
+
+        let _ = encoded_output;
     }
 
     #[test]

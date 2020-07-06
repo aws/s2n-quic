@@ -32,7 +32,7 @@ jobs:
       uses: actions-rs/clippy-check@v1
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
-        args: --all-features -- -D warnings
+        args: --all-features --all-targets -- -D warnings
 
   test:
     runs-on: ${{ matrix.os }}
@@ -53,3 +53,21 @@ jobs:
       with:
         command: test
         toolchain: ${{ matrix.rust }}
+
+  miri:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        crate: [quic/s2n-quic-core]
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain: nightly
+        override: true
+        components: miri
+
+    - name: ${{ matrix.crate }}
+      run: cd ${{ matrix.crate }} && cargo miri test
