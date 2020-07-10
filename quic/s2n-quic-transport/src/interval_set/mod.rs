@@ -235,7 +235,7 @@ impl<T> IntervalSet<T> {
     /// Removes the lowest `Interval` in the set, if any
     ///
     /// # Examples
-    /// ignore```
+    /// ```ignore
     /// # use s2n_quic_transport::interval_set::IntervalSet;
     /// let mut set = IntervalSet::new();
     /// assert_eq!(set.pop_min(), None);
