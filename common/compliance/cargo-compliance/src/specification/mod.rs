@@ -50,7 +50,7 @@ impl Default for Format {
 }
 
 impl Format {
-    pub fn parse<'a>(self, contents: &'a str) -> Result<Specification<'a>, Error> {
+    pub fn parse(self, contents: &str) -> Result<Specification, Error> {
         match self {
             Self::Auto => ietf::parse(contents),
             Self::IETF => ietf::parse(contents),
