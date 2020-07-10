@@ -110,7 +110,7 @@ impl Annotation {
             .spawn()?;
 
         {
-            let stdin = child.stdin.as_mut().unwrap();
+            let stdin = child.stdin.as_mut().expect("piped stdin above");
             stdin.write_all(self.code.as_bytes())?;
         }
 
