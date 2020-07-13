@@ -310,16 +310,22 @@ jobs:
           command: test
           args: --no-fail-fast --workspace --exclude s2n-quic-rustls --exclude interop-server --all-features
 
+      - name: Run cargo compliance
+        uses: actions-rs/cargo@v1
+        with:
+          command: run
+          args: --bin cargo-compliance -- report --lcov target/compliance/coverage
+
       - name: Stop sccache
         run: sccache --stop-server
 
       - name: Run grcov html
         run: |
-          grcov $GRCOV_CONFIG $GRCOV_FILTER --output-type html --output-path coverage ./target/debug
+          grcov $GRCOV_CONFIG $GRCOV_FILTER --output-type html --output-path coverage ./target/debug ./target/compliance/coverage
 
       - name: Run grcov lcov
         run: |
-          grcov $GRCOV_CONFIG $GRCOV_FILTER --output-type lcov --output-path coverage/s2n-quic.lcov ./target/debug
+          grcov $GRCOV_CONFIG $GRCOV_FILTER --output-type lcov --output-path coverage/s2n-quic.lcov ./target/debug ./target/compliance/coverage
 
       - name: Upload report
         uses: actions/upload-artifact@v1
