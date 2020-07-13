@@ -182,7 +182,7 @@ impl<ConnectionConfigType: ConnectionConfig> ConnectionApiProvider
             return;
         }
 
-        stream_manager.close(StreamError::ConnectionClosed(error_code));
+        stream_manager.close(error_code.into());
 
         // Wake up the Connection so that it gets aware about the close request.
         // So far we only reset the Streams, but we didn't have the chance to change

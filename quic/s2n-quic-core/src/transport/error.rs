@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 use crate::{
+    application::{ApplicationErrorCode, ApplicationErrorExt},
     crypto::CryptoError,
     varint::{VarInt, VarIntError},
 };
@@ -217,6 +218,19 @@ impl TransportError {
             code,
             reason,
             frame_type: None,
+        }
+    }
+}
+
+// If a `TransportError` contains no frame type it was sent by an application
+// and contains an `ApplicationLevelErrorCode`. Otherwise it is an
+// error on the QUIC layer.
+impl ApplicationErrorExt for TransportError {
+    fn application_error_code(&self) -> Option<ApplicationErrorCode> {
+        if self.frame_type.is_none() {
+            Some(self.code.into())
+        } else {
+            None
         }
     }
 }

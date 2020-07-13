@@ -1,11 +1,11 @@
 //! Defines the Stream objects that applications are interacting with
 
-use crate::{connection::ConnectionApi, stream::StreamError};
+use crate::connection::ConnectionApi;
 use bytes::Bytes;
 use core::task::{Context, Poll};
 pub use s2n_quic_core::{
     application::ApplicationErrorCode,
-    stream::{StreamId, StreamType},
+    stream::{StreamError, StreamId, StreamType},
 };
 
 struct StreamState {
