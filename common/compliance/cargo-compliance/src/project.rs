@@ -1,4 +1,5 @@
-use crate::{source::SourceFile, Error};
+use crate::{pattern::Pattern, source::SourceFile, Error};
+use glob::glob;
 use serde::Deserialize;
 use std::{
     collections::HashSet,
@@ -40,6 +41,10 @@ pub struct Project {
     /// Path to Cargo.toml
     #[structopt(long = "manifest-path")]
     manifest_path: Option<String>,
+
+    /// Glob patterns for additional source files
+    #[structopt(long = "source-pattern")]
+    source_patterns: Vec<String>,
 }
 
 macro_rules! arg {
@@ -65,6 +70,10 @@ impl Project {
         self.executables(&mut sources)?;
 
         self.cargo_files(&mut sources)?;
+
+        for pattern in &self.source_patterns {
+            self.source_file(&pattern, &mut sources)?;
+        }
 
         Ok(sources)
     }
@@ -125,6 +134,30 @@ impl Project {
         }
 
         // TODO automatically populate file list from project files
+
+        Ok(())
+    }
+
+    fn source_file<'a>(
+        &self,
+        pattern: &'a str,
+        files: &mut HashSet<SourceFile<'a>>,
+    ) -> Result<(), Error> {
+        let (compliance_pattern, file_pattern) = if pattern.starts_with('(') {
+            let mut parts = pattern.splitn(2, ')');
+            let pattern = parts.next().expect("invalid pattern");
+            let file_pattern = parts.next().expect("invalid pattern");
+
+            let pattern = Pattern::from_arg(pattern)?;
+
+            (pattern, file_pattern)
+        } else {
+            (Pattern::default(), pattern)
+        };
+
+        for entry in glob(file_pattern)? {
+            files.insert(SourceFile::Text(compliance_pattern, entry?));
+        }
 
         Ok(())
     }

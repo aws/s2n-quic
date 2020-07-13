@@ -4,7 +4,7 @@ use core::{
 };
 use s2n_codec::{decoder_value, Encoder, EncoderValue};
 
-//= https://quicwg.org/base-drafts/draft-ietf-quic-transport.html#rfc.section.16
+//#! https://quicwg.org/base-drafts/draft-ietf-quic-transport.html#rfc.section.16
 //# 16.  Variable-Length Integer Encoding
 //#
 //#    QUIC packets and frames commonly use a variable-length encoding for

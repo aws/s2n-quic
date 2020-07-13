@@ -3,6 +3,7 @@ use structopt::StructOpt;
 mod annotation;
 mod object;
 mod parser;
+mod pattern;
 mod project;
 mod report;
 mod source;
