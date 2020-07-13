@@ -7,6 +7,7 @@ mod project;
 mod report;
 mod source;
 mod specification;
+mod target;
 
 pub type Error = Box<dyn std::error::Error>;
 

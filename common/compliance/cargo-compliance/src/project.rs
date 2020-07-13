@@ -1,6 +1,7 @@
-use crate::Error;
+use crate::{source::SourceFile, Error};
 use serde::Deserialize;
 use std::{
+    collections::HashSet,
     path::PathBuf,
     process::{Command, Stdio},
 };
@@ -23,6 +24,10 @@ pub struct Project {
     /// Do not activate the `default` feature
     #[structopt(long = "no-default-features")]
     no_default_features: bool,
+
+    /// Disables running cargo commands
+    #[structopt(long = "no-cargo")]
+    no_cargo: bool,
 
     /// TRIPLE
     #[structopt(long)]
@@ -54,7 +59,21 @@ macro_rules! flag {
 }
 
 impl Project {
-    pub fn executables(&self) -> Result<Vec<PathBuf>, Error> {
+    pub fn sources(&self) -> Result<HashSet<SourceFile>, Error> {
+        let mut sources = HashSet::new();
+
+        self.executables(&mut sources)?;
+
+        self.cargo_files(&mut sources)?;
+
+        Ok(sources)
+    }
+
+    fn executables(&self, sources: &mut HashSet<SourceFile>) -> Result<(), Error> {
+        if self.no_cargo {
+            return Ok(());
+        }
+
         let mut cmd = Command::new("cargo");
 
         cmd.stdout(Stdio::piped())
@@ -89,16 +108,25 @@ impl Project {
 
         let stdout = core::str::from_utf8(&output.stdout)?;
 
-        let mut executables = vec![];
         for line in stdout.lines() {
             if let Ok(event) = serde_json::from_str::<Event>(line) {
                 if let Some(executable) = event.executable {
-                    executables.push(PathBuf::from(executable))
+                    sources.insert(SourceFile::Object(PathBuf::from(executable)));
                 }
             }
         }
 
-        Ok(executables)
+        Ok(())
+    }
+
+    fn cargo_files(&self, _files: &mut HashSet<SourceFile>) -> Result<(), Error> {
+        if self.no_cargo {
+            return Ok(());
+        }
+
+        // TODO automatically populate file list from project files
+
+        Ok(())
     }
 }
 
