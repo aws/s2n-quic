@@ -1,0 +1,45 @@
+name: dependencies
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - '**/Cargo.toml'
+      - '**/Cargo.lock'
+
+  pull_request:
+    branches:
+      - master
+    paths:
+      - '**/Cargo.toml'
+      - '**/Cargo.lock'
+
+  schedule:
+    # run every morning at 10am Pacific Time
+    - cron: '0 17 * * *'
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: actions-rs/install@v0.1
+        with:
+          crate: cargo-audit
+          use-tool-cache: true
+          version: latest
+
+      - uses: actions-rs/audit-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  deny:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: EmbarkStudios/cargo-deny-action@v1
+        with:
+          command: check --config .github/config/cargo-deny.toml

@@ -206,7 +206,7 @@ macro_rules! impl_ciphersuite {
                 out
             }
 
-            insta::assert_debug_snapshot!(core::mem::size_of::<$name>());
+            insta::assert_debug_snapshot!(stringify!($test_name), core::mem::size_of::<$name>());
 
             assert_eq!($name::KEY_LEN, $cipher.key_len(), "key len mismatch");
 

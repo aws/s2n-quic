@@ -1237,7 +1237,7 @@ mod snapshot_tests {
         let encoded_output = assert_codec_round_trip_value!(ServerTransportParameters, value);
 
         #[cfg(not(miri))] // snapshot tests don't work on miri
-        insta::assert_debug_snapshot!(encoded_output);
+        insta::assert_debug_snapshot!("server_snapshot_test", encoded_output);
 
         let _ = encoded_output;
     }
@@ -1268,7 +1268,7 @@ mod snapshot_tests {
         let encoded_output = assert_codec_round_trip_value!(ClientTransportParameters, value);
 
         #[cfg(not(miri))] // snapshot tests don't work on miri
-        insta::assert_debug_snapshot!(encoded_output);
+        insta::assert_debug_snapshot!("client_snapshot_test", encoded_output);
 
         let _ = encoded_output;
     }
