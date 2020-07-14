@@ -24,7 +24,7 @@ pub enum StreamError {
     /// of data (4611686018427387903 bytes) had already been writtten to the
     /// Stream.
     MaxStreamDataSizeExceeded,
-    /// The Stream was reset the due to a Connection Error
+    /// The Stream was reset due to a Connection Error
     ConnectionError(ConnectionError),
     /// All Stream IDs for Streams on a given connection had been exhausted
     StreamIdExhausted,

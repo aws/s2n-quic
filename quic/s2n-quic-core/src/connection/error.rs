@@ -12,7 +12,7 @@ pub enum ConnectionError {
     /// by the peer. The argument contains the error code which the application
     /// supplied in order to close the connection.
     ConnectionClosed(ApplicationErrorCode),
-    /// The connection was closed because the connections idle timer expired
+    /// The connection was closed because the connection's idle timer expired
     IdleTimerExpired,
     /// The connection was closed due to an unspecified reason
     Unspecified,
