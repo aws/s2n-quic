@@ -8,10 +8,10 @@ use crate::{
         InternalConnectionId, SharedConnectionState,
     },
     contexts::{ConnectionOnTransmitError, ConnectionWriteContext},
-    stream::StreamError,
 };
 use core::time::Duration;
 use s2n_quic_core::{
+    application::ApplicationErrorExt,
     connection::ConnectionId,
     inet::{DatagramInfo, SocketAddress},
     packet::{
@@ -58,6 +58,30 @@ enum ConnectionState {
     /// The connection was drained, and is in its terminal state.
     /// The connection will be removed from the endpoint when it reached this state.
     Finished,
+}
+
+impl<'a> From<ConnectionCloseReason<'a>> for ConnectionState {
+    fn from(close_reason: ConnectionCloseReason<'a>) -> Self {
+        match close_reason {
+            ConnectionCloseReason::IdleTimerExpired => {
+                // If the idle timer expired we directly move into the final state
+                ConnectionState::Finished
+            }
+            ConnectionCloseReason::LocalImmediateClose(_error) => {
+                //= An endpoint enters a closing period after initiating an immediate close (Section 10.3).
+                ConnectionState::Closing
+            }
+            ConnectionCloseReason::PeerImmediateClose(_error) => {
+                //= The draining state is entered once an endpoint receives a signal that its peer is closing or draining.
+                ConnectionState::Draining
+            }
+            ConnectionCloseReason::LocalObservedTransportErrror(_error) => {
+                // Since the local side observes the error, it initiates the close
+                // Therefore this is similar to an application initiated close
+                ConnectionState::Closing
+            }
+        }
+    }
 }
 
 pub struct ConnectionImpl<ConfigType: ConnectionConfig> {
@@ -223,41 +247,14 @@ impl<ConfigType: ConnectionConfig> ConnectionTrait for ConnectionImpl<ConfigType
         // We are not interested in this timer anymore
         // TODO: There might be more such timers need to get added in the future
         self.timers.peer_idle_timer.cancel();
-
-        let stream_error: StreamError;
-
-        match close_reason {
-            ConnectionCloseReason::IdleTimerExpired => {
-                // If the idle timer expired we directly move into the final state
-                self.state = ConnectionState::Finished;
-                stream_error = StreamError::IdleTimerExpired;
-            }
-            ConnectionCloseReason::LocalImmediateClose(error_code) => {
-                //= An endpoint enters a closing period after initiating an immediate close (Section 10.3).
-                self.state = ConnectionState::Closing;
-                stream_error = StreamError::ConnectionClosed(error_code);
-            }
-            ConnectionCloseReason::PeerImmediateClose(error) => {
-                //= The draining state is entered once an endpoint receives a signal that its peer is closing or draining.
-                self.state = ConnectionState::Draining;
-                // The [`StreamError`] gets derived from the `ConnectionClose`
-                stream_error = error.into();
-            }
-            ConnectionCloseReason::LocalObservedTransportErrror(error) => {
-                // Since the local side observes the error, it initiates the close
-                // Therefore this is similar to an application initiated close
-                self.state = ConnectionState::Closing;
-                // The [`StreamError`] gets derived from the `TransportError`
-                stream_error = error.into();
-            }
-        };
+        self.state = close_reason.into();
 
         shared_state.space_manager.discard_initial();
         shared_state.space_manager.discard_handshake();
         shared_state.space_manager.discard_zero_rtt_crypto();
         if let Some(application) = shared_state.space_manager.application_mut() {
             // Close all streams with the derived error
-            application.stream_manager.close(stream_error);
+            application.stream_manager.close(close_reason.into());
         }
         // TODO: Discard application state?
 
@@ -380,13 +377,10 @@ impl<ConfigType: ConnectionConfig> ConnectionTrait for ConnectionImpl<ConfigType
                 if let Some(stream_error) = application.stream_manager.close_reason() {
                     // A connection close was requested. This needs to have an
                     // associated error code which can be used as `TransportError`
-                    let error_code =
-                        stream_error
-                            .as_application_protocol_error_code()
-                            .expect(concat!(
-                                "The connection should only be closeable through an ",
-                                "API call which submits an error code while active"
-                            ));
+                    let error_code = stream_error.application_error_code().expect(concat!(
+                        "The connection should only be closeable through an ",
+                        "API call which submits an error code while active"
+                    ));
                     self.close(
                         shared_state,
                         ConnectionCloseReason::LocalImmediateClose(error_code),

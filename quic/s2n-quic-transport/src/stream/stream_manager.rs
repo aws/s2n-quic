@@ -196,11 +196,8 @@ impl<S: StreamTrait> StreamManagerState<S> {
         F: FnOnce(&mut Self) -> Result<R, TransportError>,
     {
         let result = func(self);
-        if result.is_err() {
-            // TODO: Maybe derive the error from the internal error,
-            // or create a StreamError variant which wraps a connection error
-            let error = StreamError::ConnectionError;
-            self.close(error);
+        if let Err(err) = result.as_ref() {
+            self.close((*err).into());
         }
         result
     }

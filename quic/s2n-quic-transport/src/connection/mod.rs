@@ -3,12 +3,13 @@
 use crate::stream::{StreamLimits, StreamTrait};
 use s2n_quic_core::{
     application::ApplicationErrorCode,
-    connection::ConnectionId,
+    connection::{ConnectionError, ConnectionId},
     crypto::tls::TLSSession,
     endpoint::EndpointType,
     frame::ConnectionClose,
     inet::SocketAddress,
     packet::DestinationConnectionIDDecoder,
+    stream::StreamError,
     time::Timestamp,
     transport::{
         error::TransportError,
@@ -90,7 +91,7 @@ pub struct ConnectionParameters<ConfigType: ConnectionConfig> {
 }
 
 /// Enumerates reasons for closing a connection
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum ConnectionCloseReason<'a> {
     /// The connection gets closed because the idle timer expired
     IdleTimerExpired,
@@ -102,6 +103,24 @@ pub enum ConnectionCloseReason<'a> {
     /// The connection closed due to a transport error, which requires sending
     /// CONNECTION_CLOSE to the peer
     LocalObservedTransportErrror(TransportError),
+}
+
+impl<'a> Into<ConnectionError> for ConnectionCloseReason<'a> {
+    fn into(self) -> ConnectionError {
+        match self {
+            Self::IdleTimerExpired => ConnectionError::IdleTimerExpired,
+            Self::PeerImmediateClose(error) => error.into(),
+            Self::LocalImmediateClose(error) => error.into(),
+            Self::LocalObservedTransportErrror(error) => error.into(),
+        }
+    }
+}
+
+impl<'a> Into<StreamError> for ConnectionCloseReason<'a> {
+    fn into(self) -> StreamError {
+        let error: ConnectionError = self.into();
+        error.into()
+    }
 }
 
 /// Per-connection limits

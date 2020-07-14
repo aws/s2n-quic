@@ -1,6 +1,6 @@
 //! Defines QUIC Application Error Codes
 
-use crate::varint::VarInt;
+use crate::{application::ApplicationErrorExt, varint::VarInt};
 
 //=https://tools.ietf.org/html/draft-ietf-quic-transport-24#section-20.1
 //# 20.1.  Application Protocol Error Codes
@@ -34,6 +34,12 @@ impl ApplicationErrorCode {
     /// range for error codes and return `Err` otherwise.
     pub fn new(value: u64) -> Result<ApplicationErrorCode, ()> {
         Ok(ApplicationErrorCode(VarInt::new(value).map_err(|_| ())?))
+    }
+}
+
+impl ApplicationErrorExt for ApplicationErrorCode {
+    fn application_error_code(&self) -> Option<ApplicationErrorCode> {
+        Some(*self)
     }
 }
 

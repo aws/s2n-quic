@@ -1,4 +1,8 @@
-use crate::{frame::Tag, varint::VarInt};
+use crate::{
+    application::{ApplicationErrorCode, ApplicationErrorExt},
+    frame::Tag,
+    varint::VarInt,
+};
 use s2n_codec::{decoder_parameterized_value, Encoder, EncoderValue};
 
 //=https://quicwg.org/base-drafts/draft-ietf-quic-transport.html#rfc.section.19.19
@@ -60,7 +64,7 @@ const APPLICATION_ERROR_TAG: u8 = 0x1d;
 //#       give details beyond the Error Code.  This SHOULD be a UTF-8
 //#       encoded string [RFC3629].
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ConnectionClose<'a> {
     /// A variable length integer error code which indicates the reason
     /// for closing this connection.
@@ -81,6 +85,18 @@ impl<'a> ConnectionClose<'a> {
             QUIC_ERROR_TAG
         } else {
             APPLICATION_ERROR_TAG
+        }
+    }
+}
+
+// If a `ConnectionClose` contains no frame type it was sent by an application and contains
+// an `ApplicationErrorCode`. Otherwise it is an error on the QUIC layer.
+impl<'a> ApplicationErrorExt for ConnectionClose<'a> {
+    fn application_error_code(&self) -> Option<ApplicationErrorCode> {
+        if self.frame_type.is_none() {
+            Some(self.error_code.into())
+        } else {
+            None
         }
     }
 }
