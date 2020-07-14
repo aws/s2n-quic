@@ -7,15 +7,15 @@ use std::path::Path;
 
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord, Hash)]
 pub struct Pattern<'a> {
-    open: &'a str,
-    close: Option<&'a str>,
+    meta: &'a str,
+    content: &'a str,
 }
 
 impl<'a> Default for Pattern<'a> {
     fn default() -> Self {
         Self {
-            open: "//#",
-            close: None,
+            meta: "//=",
+            content: "//#",
         }
     }
 }
@@ -23,14 +23,14 @@ impl<'a> Default for Pattern<'a> {
 impl<'a> Pattern<'a> {
     pub fn from_arg(arg: &'a str) -> Result<Self, Error> {
         let mut parts = arg.split(' ').filter(|p| !p.is_empty());
-        let open = parts.next().expect("should have at least one pattern");
-        if open.is_empty() {
+        let meta = parts.next().expect("should have at least one pattern");
+        if meta.is_empty() {
             return Err("compliance pattern cannot be empty".to_string().into());
         }
 
-        let close = parts.next();
+        let content = parts.next().unwrap();
 
-        Ok(Self { open, close })
+        Ok(Self { meta, content })
     }
 
     pub fn extract(
@@ -46,56 +46,43 @@ impl<'a> Pattern<'a> {
 
             match core::mem::replace(&mut state, ParserState::Search) {
                 ParserState::Search => {
-                    let open = if content.starts_with(self.open) {
-                        &content[self.open.len()..]
+                    let content = if content.starts_with(self.meta) {
+                        &content[self.meta.len()..]
                     } else {
                         continue;
                     };
 
-                    if open.is_empty() {
+                    if content.is_empty() {
                         continue;
                     }
 
-                    let column = line.len() - open.len();
-
-                    if let Some(close) = self.close {
-                        if let Some(close_offset) = open.find(close) {
-                            let content = &open[..close_offset];
-                            let mut capture = Capture::new(line_no, column);
-                            capture.push(content);
-                            annotations.insert(capture.done(line_no, path)?);
-                            continue;
-                        }
-                    }
-
-                    // the first line needs to start with metadata
-                    if !open.starts_with('!') {
-                        continue;
-                    }
+                    let column = line.len() - content.len();
 
                     let mut capture = Capture::new(line_no, column);
-                    capture.push(open);
+                    capture.meta.push(content);
 
-                    state = ParserState::Capturing(capture);
+                    state = ParserState::CapturingMeta(capture);
                 }
-                ParserState::Capturing(mut capture) => {
-                    if let Some(close) = self.close {
-                        if let Some(close_offset) = content.find(close) {
-                            let content = &content[..close_offset];
-                            capture.push(content);
-                            annotations.insert(capture.done(line_no, path)?);
-                            continue;
-                        } else {
-                            capture.push(content);
-                        }
-                    } else if content.starts_with(self.open) {
-                        capture.push(&content[self.open.len()..]);
+                ParserState::CapturingMeta(mut capture) => {
+                    if content.starts_with(self.meta) {
+                        capture.meta.push(&content[self.meta.len()..]);
+                        state = ParserState::CapturingMeta(capture);
+                    } else if content.starts_with(self.content) {
+                        capture.contents.push(&content[self.content.len()..]);
+                        state = ParserState::CapturingContent(capture);
                     } else {
                         annotations.insert(capture.done(line_no, path)?);
-                        continue;
                     }
-
-                    state = ParserState::Capturing(capture);
+                }
+                ParserState::CapturingContent(mut capture) => {
+                    if content.starts_with(self.meta) {
+                        return Err("cannot set metadata while parsing content".into());
+                    } else if content.starts_with(self.content) {
+                        capture.contents.push(&content[self.content.len()..]);
+                        state = ParserState::CapturingContent(capture);
+                    } else {
+                        annotations.insert(capture.done(line_no, path)?);
+                    }
                 }
             }
         }
@@ -106,7 +93,8 @@ impl<'a> Pattern<'a> {
 
 enum ParserState<'a> {
     Search,
-    Capturing(Capture<'a>),
+    CapturingMeta(Capture<'a>),
+    CapturingContent(Capture<'a>),
 }
 
 #[derive(Debug)]
@@ -124,15 +112,6 @@ impl<'a> Capture<'a> {
             column,
             meta: vec![],
             contents: vec![],
-        }
-    }
-
-    fn push(&mut self, content: &'a str) {
-        let content = content.trim();
-        if content.starts_with('!') && self.contents.is_empty() {
-            self.meta.push(&content[1..].trim_start());
-        } else {
-            self.contents.push(content);
         }
     }
 
