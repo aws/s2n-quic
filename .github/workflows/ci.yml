@@ -246,6 +246,60 @@ jobs:
       - name: Stop sccache
         run: sccache --stop-server
 
+  no_std:
+    runs-on: ubuntu-latest
+    env:
+      RUSTC_WRAPPER: sccache
+    steps:
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          override: true
+          target: thumbv7m-none-eabi
+
+      - uses: actions/checkout@v2
+
+      - name: Install sccache
+        uses: actions-rs/install@v0.1
+        with:
+          crate: sccache
+          use-tool-cache: true
+          version: latest
+
+      - name: Generate Cargo.lock
+        run: cargo update
+
+      - name: Cache cargo registry
+        uses: actions/cache@v2
+        continue-on-error: true
+        with:
+          path: ~/.cargo/registry/cache
+          key: ${{ runner.os }}-${{ matrix.rust }}-no-std-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-${{ matrix.rust }}-no-std-cargo-registry-
+
+      - name: Cache sccache output
+        uses: actions/cache@v2
+        continue-on-error: true
+        with:
+          path: ${{ github.workspace }}/.sccache
+          key: ${{ runner.os }}-${{ matrix.rust }}-no-std-sccache-${{ hashFiles('**/Cargo.*') }}
+          restore-keys: ${{ runner.os }}-${{ matrix.rust }}-no-std-sccache-
+
+      - name: Start sccache
+        run: sccache --start-server
+
+      # see https://github.com/rust-lang/cargo/issues/7916
+      - name: Run cargo build
+        run: |
+          cd quic/s2n-quic-core && \
+            cargo build \
+              -Z features=dev_dep \
+              --no-default-features \
+              --target thumbv7m-none-eabi
+
+      - name: Stop sccache
+        run: sccache --stop-server
+
   coverage:
     runs-on: ubuntu-latest
     env:

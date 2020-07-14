@@ -1,5 +1,5 @@
-#![cfg_attr(all(not(feature = "checked_range_unsafe")), forbid(unsafe_code))]
-#![cfg_attr(all(not(test), not(feature = "std")), no_std)]
+#![cfg_attr(not(feature = "checked_range_unsafe"), forbid(unsafe_code))]
+#![cfg_attr(not(any(test, feature = "std")), no_std)]
 
 #[cfg(any(feature = "testing", test))]
 #[macro_use]

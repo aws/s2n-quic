@@ -306,11 +306,7 @@ impl core::fmt::Display for ValidationError {
 
 impl From<DecoderError> for ValidationError {
     fn from(error: DecoderError) -> Self {
-        ValidationError(match error {
-            DecoderError::InvariantViolation(message) => message,
-            DecoderError::UnexpectedEof(_) => "unexpected eof",
-            DecoderError::UnexpectedBytes(_) => "unexpected bytes",
-        })
+        ValidationError(error.into())
     }
 }
 

@@ -86,11 +86,12 @@ macro_rules! impl_buffer {
                 "```";
 
                 #[inline]
-                pub fn decode_slice_with_len_prefix<Length: $value<'a> + Into<usize>>(
+                pub fn decode_slice_with_len_prefix<Length: $value<'a> + core::convert::TryInto<usize>>(
                     self,
                 ) -> $result<'a, Self> {
                     let (len, buffer) = self.decode::<Length>()?;
-                    buffer.decode_slice(len.into())
+                    let len = len.try_into().map_err(|_| DecoderError::LengthCapacityExceeded)?;
+                    buffer.decode_slice(len)
                 }
             }
 
@@ -120,7 +121,7 @@ macro_rules! impl_buffer {
                 "```";
 
                 #[inline]
-                pub fn decode_with_len_prefix<Length: $value<'a> + Into<usize>, T: $value<'a>>(
+                pub fn decode_with_len_prefix<Length: $value<'a> + core::convert::TryInto<usize>, T: $value<'a>>(
                     self,
                 ) -> $result<'a, T> {
                     let (slice, buffer) = self.decode_slice_with_len_prefix::<Length>()?;
@@ -173,11 +174,12 @@ macro_rules! impl_buffer {
                 "```";
 
                 #[inline]
-                pub fn skip_with_len_prefix<Length: $value<'a> + Into<usize>>(
+                pub fn skip_with_len_prefix<Length: $value<'a> + core::convert::TryInto<usize>>(
                     self,
                 ) -> Result<$name<'a>, DecoderError> {
                     let (len, buffer) = self.decode::<Length>()?;
-                    buffer.skip(len.into())
+                    let len = len.try_into().map_err(|_| DecoderError::LengthCapacityExceeded)?;
+                    buffer.skip(len)
                 }
             }
 
@@ -207,12 +209,13 @@ macro_rules! impl_buffer {
                 // TODO add doctest
 
                 #[inline]
-                pub fn skip_into_range_with_len_prefix<Length: $value<'a> + Into<usize>>(
+                pub fn skip_into_range_with_len_prefix<Length: $value<'a> + core::convert::TryInto<usize>>(
                     self,
                     original_buffer: &crate::DecoderBufferMut,
                 ) -> $result<'a, crate::CheckedRange> {
                     let (len, buffer) = self.decode::<Length>()?;
-                    buffer.skip_into_range(len.into(), original_buffer)
+                    let len = len.try_into().map_err(|_| DecoderError::LengthCapacityExceeded)?;
+                    buffer.skip_into_range(len, original_buffer)
                 }
             }
 
@@ -409,6 +412,7 @@ pub use value::*;
 pub enum DecoderError {
     UnexpectedEof(usize),
     UnexpectedBytes(usize),
+    LengthCapacityExceeded,
     InvariantViolation(&'static str), // TODO replace with a &'static Invariant
 }
 
@@ -418,7 +422,24 @@ impl fmt::Display for DecoderError {
         match self {
             Self::UnexpectedEof(len) => write!(f, "unexpected eof: {}", len),
             Self::UnexpectedBytes(len) => write!(f, "unexpected bytes: {}", len),
+            Self::LengthCapacityExceeded => write!(
+                f,
+                "length could not be represented in platform's usize type"
+            ),
             Self::InvariantViolation(msg) => write!(f, "{}", msg),
+        }
+    }
+}
+
+impl Into<&'static str> for DecoderError {
+    fn into(self) -> &'static str {
+        match self {
+            Self::UnexpectedEof(_len) => "unexpected eof",
+            Self::UnexpectedBytes(_len) => "unexpected bytes",
+            Self::LengthCapacityExceeded => {
+                "length could not be represented in platform's usize type"
+            }
+            Self::InvariantViolation(msg) => msg,
         }
     }
 }

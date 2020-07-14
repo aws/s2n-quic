@@ -260,15 +260,10 @@ macro_rules! transport_error {
 impl From<DecoderError> for TransportError {
     fn from(decoder_error: DecoderError) -> Self {
         match decoder_error {
-            DecoderError::UnexpectedEof(_) => {
-                transport_error!(PROTOCOL_VIOLATION, "malformed packet")
-            }
-            DecoderError::UnexpectedBytes(_) => {
-                transport_error!(PROTOCOL_VIOLATION, "malformed packet")
-            }
             DecoderError::InvariantViolation(reason) => {
                 transport_error!(PROTOCOL_VIOLATION, reason)
             }
+            _ => transport_error!(PROTOCOL_VIOLATION, "malformed packet"),
         }
     }
 }

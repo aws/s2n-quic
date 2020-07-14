@@ -1,4 +1,7 @@
-use core::{convert::TryFrom, ops::Deref};
+use core::{
+    convert::{TryFrom, TryInto},
+    ops::Deref,
+};
 use s2n_codec::{decoder_value, Encoder, EncoderValue};
 
 //= https://quicwg.org/base-drafts/draft-ietf-quic-transport.html#rfc.section.16
@@ -352,13 +355,6 @@ impl_from_lesser!(u8);
 impl_from_lesser!(u16);
 impl_from_lesser!(u32);
 
-#[cfg(target_pointer_width = "64")]
-impl Into<usize> for VarInt {
-    fn into(self) -> usize {
-        self.0 as usize
-    }
-}
-
 impl Into<u64> for VarInt {
     fn into(self) -> u64 {
         self.0
@@ -370,6 +366,14 @@ impl TryFrom<usize> for VarInt {
 
     fn try_from(value: usize) -> Result<Self, Self::Error> {
         Self::new(value as u64)
+    }
+}
+
+impl TryInto<usize> for VarInt {
+    type Error = <usize as TryFrom<u64>>::Error;
+
+    fn try_into(self) -> Result<usize, Self::Error> {
+        self.0.try_into()
     }
 }
 
