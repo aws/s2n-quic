@@ -21,7 +21,7 @@ pub enum StreamError {
     /// already closed.
     WriterAfterFinish,
     /// Data could not be written to a stream, because the maximum possible amount
-    /// of data (4611686018427387903 bytes) had already been writtten to the
+    /// of data (2^62-1 bytes) had already been writtten to the
     /// Stream.
     MaxStreamDataSizeExceeded,
     /// The Stream was reset due to a Connection Error
