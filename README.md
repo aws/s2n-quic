@@ -1,4 +1,4 @@
-## s2n-quic
+## s2n-quic ![ci](https://github.com/awslabs/s2n-quic/workflows/ci/badge.svg) ![dependencies](https://github.com/awslabs/s2n-quic/workflows/dependencies/badge.svg)
 
 TODO: Fill this README out!
 
