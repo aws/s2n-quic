@@ -25,8 +25,6 @@ This project is licensed under the Apache-2.0 License.
 
 - Install [rustup](https://rustup.rs/)
 - Run `rustup component add rustfmt clippy rls rust-analysis`
-- Run `rustup toolchain install nightly` if you plan to run the fuzzer
-
 
 ### Running a fuzz target
 
