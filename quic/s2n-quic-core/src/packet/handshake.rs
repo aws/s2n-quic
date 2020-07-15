@@ -18,35 +18,33 @@ use crate::{
 use s2n_codec::{CheckedRange, DecoderBufferMut, DecoderBufferMutResult, Encoder, EncoderValue};
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-22.txt#17.2.4
-//# 17.2.4.  Handshake Packet
+//# A Handshake packet uses long headers with a type value of 0x2,
+//# followed by the Length and Packet Number fields.  The first byte
+//# contains the Reserved and Packet Number Length bits.  It is used to
+//# carry acknowledgments and cryptographic handshake messages from the
+//# server and client.
 //#
-//#    A Handshake packet uses long headers with a type value of 0x2,
-//#    followed by the Length and Packet Number fields.  The first byte
-//#    contains the Reserved and Packet Number Length bits.  It is used to
-//#    carry acknowledgments and cryptographic handshake messages from the
-//#    server and client.
+//# +-+-+-+-+-+-+-+-+
+//# |1|1| 2 |R R|P P|
+//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//# |                         Version (32)                          |
+//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//# | DCID Len (8)  |
+//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//# |               Destination Connection ID (0..160)            ...
+//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//# | SCID Len (8)  |
+//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//# |                 Source Connection ID (0..160)               ...
+//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//# |                           Length (i)                        ...
+//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//# |                    Packet Number (8/16/24/32)               ...
+//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//# |                          Payload (*)                        ...
+//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 //#
-//#    +-+-+-+-+-+-+-+-+
-//#    |1|1| 2 |R R|P P|
-//#    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//#    |                         Version (32)                          |
-//#    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//#    | DCID Len (8)  |
-//#    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//#    |               Destination Connection ID (0..160)            ...
-//#    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//#    | SCID Len (8)  |
-//#    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//#    |                 Source Connection ID (0..160)               ...
-//#    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//#    |                           Length (i)                        ...
-//#    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//#    |                    Packet Number (8/16/24/32)               ...
-//#    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//#    |                          Payload (*)                        ...
-//#    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//#
-//#                    Figure 12: Handshake Protected Packet
+//#                 Figure 12: Handshake Protected Packet
 
 macro_rules! handshake_tag {
     () => {
@@ -54,27 +52,28 @@ macro_rules! handshake_tag {
     };
 }
 
-//#    Once a client has received a Handshake packet from a server, it uses
-//#    Handshake packets to send subsequent cryptographic handshake messages
-//#    and acknowledgments to the server.
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-22.txt#17.2.4
+//# Once a client has received a Handshake packet from a server, it uses
+//# Handshake packets to send subsequent cryptographic handshake messages
+//# and acknowledgments to the server.
 //#
-//#    The Destination Connection ID field in a Handshake packet contains a
-//#    connection ID that is chosen by the recipient of the packet; the
-//#    Source Connection ID includes the connection ID that the sender of
-//#    the packet wishes to use (see Section 7.2).
+//# The Destination Connection ID field in a Handshake packet contains a
+//# connection ID that is chosen by the recipient of the packet; the
+//# Source Connection ID includes the connection ID that the sender of
+//# the packet wishes to use (see Section 7.2).
 //#
-//#    Handshake packets are their own packet number space, and thus the
-//#    first Handshake packet sent by a server contains a packet number of
-//#    0.
+//# Handshake packets are their own packet number space, and thus the
+//# first Handshake packet sent by a server contains a packet number of
+//# 0.
 //#
-//#    The payload of this packet contains CRYPTO frames and could contain
-//#    PADDING, or ACK frames.  Handshake packets MAY contain
-//#    CONNECTION_CLOSE frames.  Endpoints MUST treat receipt of Handshake
-//#    packets with other frames as a connection error.
+//# The payload of this packet contains CRYPTO frames and could contain
+//# PADDING, or ACK frames.  Handshake packets MAY contain
+//# CONNECTION_CLOSE frames.  Endpoints MUST treat receipt of Handshake
+//# packets with other frames as a connection error.
 //#
-//#    Like Initial packets (see Section 17.2.2.1), data in CRYPTO frames at
-//#    the Handshake encryption level is discarded - and no longer
-//#    retransmitted - when Handshake protection keys are discarded.
+//# Like Initial packets (see Section 17.2.2.1), data in CRYPTO frames at
+//# the Handshake encryption level is discarded - and no longer
+//# retransmitted - when Handshake protection keys are discarded.
 
 #[derive(Debug)]
 pub struct Handshake<DCID, SCID, PacketNumber, Payload> {

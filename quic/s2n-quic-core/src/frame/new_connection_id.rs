@@ -2,12 +2,10 @@ use crate::{frame::Tag, varint::VarInt};
 use core::{convert::TryInto, mem::size_of};
 use s2n_codec::{decoder_invariant, decoder_parameterized_value, Encoder, EncoderValue};
 
-//=https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.15
-//# 19.15.  NEW_CONNECTION_ID Frame
-//#
-//#    An endpoint sends a NEW_CONNECTION_ID frame (type=0x18) to provide
-//#    its peer with alternative connection IDs that can be used to break
-//#    linkability when migrating connections (see Section 9.5).
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.15
+//# An endpoint sends a NEW_CONNECTION_ID frame (type=0x18) to provide
+//# its peer with alternative connection IDs that can be used to break
+//# linkability when migrating connections (see Section 9.5).
 
 macro_rules! new_connection_id_tag {
     () => {
@@ -15,84 +13,86 @@ macro_rules! new_connection_id_tag {
     };
 }
 
-//#    The NEW_CONNECTION_ID frame is as follows:
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.15
+//# The NEW_CONNECTION_ID frame is as follows:
 //#
-//#     0                   1                   2                   3
-//#     0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-//#    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//#    |                      Sequence Number (i)                    ...
-//#    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//#    |                      Retire Prior To (i)                    ...
-//#    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//#    |   Length (8)  |                                               |
-//#    +-+-+-+-+-+-+-+-+       Connection ID (8..160)                  +
-//#    |                                                             ...
-//#    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//#    |                                                               |
-//#    +                                                               +
-//#    |                                                               |
-//#    +                   Stateless Reset Token (128)                 +
-//#    |                                                               |
-//#    +                                                               +
-//#    |                                                               |
-//#    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//#  0                   1                   2                   3
+//#  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//# |                      Sequence Number (i)                    ...
+//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//# |                      Retire Prior To (i)                    ...
+//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//# |   Length (8)  |                                               |
+//# +-+-+-+-+-+-+-+-+       Connection ID (8..160)                  +
+//# |                                                             ...
+//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//# |                                                               |
+//# +                                                               +
+//# |                                                               |
+//# +                   Stateless Reset Token (128)                 +
+//# |                                                               |
+//# +                                                               +
+//# |                                                               |
+//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 //#
-//#    NEW_CONNECTION_ID frames contain the following fields:
+//# NEW_CONNECTION_ID frames contain the following fields:
 //#
-//#    Sequence Number:  The sequence number assigned to the connection ID
-//#       by the sender.  See Section 5.1.1.
+//# Sequence Number:  The sequence number assigned to the connection ID
+//#    by the sender.  See Section 5.1.1.
 //#
-//#    Retire Prior To:  A variable-length integer indicating which
-//#       connection IDs should be retired.  See Section 5.1.2.
+//# Retire Prior To:  A variable-length integer indicating which
+//#    connection IDs should be retired.  See Section 5.1.2.
 //#
-//#    Length:  An 8-bit unsigned integer containing the length of the
-//#       connection ID.  Values less than 1 and greater than 20 are invalid
-//#       and MUST be treated as a connection error of type
-//#       PROTOCOL_VIOLATION.
+//# Length:  An 8-bit unsigned integer containing the length of the
+//#    connection ID.  Values less than 1 and greater than 20 are invalid
+//#    and MUST be treated as a connection error of type
+//#    PROTOCOL_VIOLATION.
 //#
-//#    Connection ID:  A connection ID of the specified length.
+//# Connection ID:  A connection ID of the specified length.
 //#
-//#    Stateless Reset Token:  A 128-bit value that will be used for a
-//#       stateless reset when the associated connection ID is used (see
-//#       Section 10.4).
+//# Stateless Reset Token:  A 128-bit value that will be used for a
+//#    stateless reset when the associated connection ID is used (see
+//#    Section 10.4).
 
 const STATELESS_RESET_TOKEN_LEN: usize = size_of::<u128>();
 
-//#    An endpoint MUST NOT send this frame if it currently requires that
-//#    its peer send packets with a zero-length Destination Connection ID.
-//#    Changing the length of a connection ID to or from zero-length makes
-//#    it difficult to identify when the value of the connection ID changed.
-//#    An endpoint that is sending packets with a zero-length Destination
-//#    Connection ID MUST treat receipt of a NEW_CONNECTION_ID frame as a
-//#    connection error of type PROTOCOL_VIOLATION.
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.15
+//# An endpoint MUST NOT send this frame if it currently requires that
+//# its peer send packets with a zero-length Destination Connection ID.
+//# Changing the length of a connection ID to or from zero-length makes
+//# it difficult to identify when the value of the connection ID changed.
+//# An endpoint that is sending packets with a zero-length Destination
+//# Connection ID MUST treat receipt of a NEW_CONNECTION_ID frame as a
+//# connection error of type PROTOCOL_VIOLATION.
 //#
-//#    Transmission errors, timeouts and retransmissions might cause the
-//#    same NEW_CONNECTION_ID frame to be received multiple times.  Receipt
-//#    of the same frame multiple times MUST NOT be treated as a connection
-//#    error.  A receiver can use the sequence number supplied in the
-//#    NEW_CONNECTION_ID frame to identify new connection IDs from old ones.
+//# Transmission errors, timeouts and retransmissions might cause the
+//# same NEW_CONNECTION_ID frame to be received multiple times.  Receipt
+//# of the same frame multiple times MUST NOT be treated as a connection
+//# error.  A receiver can use the sequence number supplied in the
+//# NEW_CONNECTION_ID frame to identify new connection IDs from old ones.
 //#
-//#    If an endpoint receives a NEW_CONNECTION_ID frame that repeats a
-//#    previously issued connection ID with a different Stateless Reset
-//#    Token or a different sequence number, or if a sequence number is used
-//#    for different connection IDs, the endpoint MAY treat that receipt as
-//#    a connection error of type PROTOCOL_VIOLATION.
+//# If an endpoint receives a NEW_CONNECTION_ID frame that repeats a
+//# previously issued connection ID with a different Stateless Reset
+//# Token or a different sequence number, or if a sequence number is used
+//# for different connection IDs, the endpoint MAY treat that receipt as
+//# a connection error of type PROTOCOL_VIOLATION.
 //#
-//#    The Retire Prior To field is a request for the peer to retire all
-//#    connection IDs with a sequence number less than the specified value.
-//#    This includes the initial and preferred_address transport parameter
-//#    connection IDs.  The peer SHOULD retire the corresponding connection
-//#    IDs and send the corresponding RETIRE_CONNECTION_ID frames in a
-//#    timely manner.
+//# The Retire Prior To field is a request for the peer to retire all
+//# connection IDs with a sequence number less than the specified value.
+//# This includes the initial and preferred_address transport parameter
+//# connection IDs.  The peer SHOULD retire the corresponding connection
+//# IDs and send the corresponding RETIRE_CONNECTION_ID frames in a
+//# timely manner.
 //#
-//#    The Retire Prior To field MUST be less than or equal to the Sequence
-//#    Number field.  Receiving a value greater than the Sequence Number
-//#    MUST be treated as a connection error of type PROTOCOL_VIOLATION.
+//# The Retire Prior To field MUST be less than or equal to the Sequence
+//# Number field.  Receiving a value greater than the Sequence Number
+//# MUST be treated as a connection error of type PROTOCOL_VIOLATION.
 //#
-//#    Once a sender indicates a Retire Prior To value, smaller values sent
-//#    in subsequent NEW_CONNECTION_ID frames have no effect.  A receiver
-//#    MUST ignore any Retire Prior To fields that do not increase the
-//#    largest received Retire Prior To value.
+//# Once a sender indicates a Retire Prior To value, smaller values sent
+//# in subsequent NEW_CONNECTION_ID frames have no effect.  A receiver
+//# MUST ignore any Retire Prior To fields that do not increase the
+//# largest received Retire Prior To value.
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct NewConnectionID<'a> {

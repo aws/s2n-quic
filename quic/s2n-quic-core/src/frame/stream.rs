@@ -7,13 +7,11 @@ use s2n_codec::{
     decoder_parameterized_value, DecoderBuffer, DecoderBufferMut, Encoder, EncoderValue,
 };
 
-//=https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.8
-//# 19.8.  STREAM Frames
-//#
-//#    STREAM frames implicitly create a stream and carry stream data.  The
-//#    STREAM frame takes the form 0b00001XXX (or the set of values from
-//#    0x08 to 0x0f).  The value of the three low-order bits of the frame
-//#    type determines the fields that are present in the frame.
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.8
+//# STREAM frames implicitly create a stream and carry stream data.  The
+//# STREAM frame takes the form 0b00001XXX (or the set of values from
+//# 0x08 to 0x0f).  The value of the three low-order bits of the frame
+//# type determines the fields that are present in the frame.
 
 macro_rules! stream_tag {
     () => {
@@ -23,72 +21,76 @@ macro_rules! stream_tag {
 
 const STREAM_TAG: u8 = 0x08;
 
-//#    o  The OFF bit (0x04) in the frame type is set to indicate that there
-//#       is an Offset field present.  When set to 1, the Offset field is
-//#       present.  When set to 0, the Offset field is absent and the Stream
-//#       Data starts at an offset of 0 (that is, the frame contains the
-//#       first bytes of the stream, or the end of a stream that includes no
-//#       data).
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.8
+//# o  The OFF bit (0x04) in the frame type is set to indicate that there
+//#    is an Offset field present.  When set to 1, the Offset field is
+//#    present.  When set to 0, the Offset field is absent and the Stream
+//#    Data starts at an offset of 0 (that is, the frame contains the
+//#    first bytes of the stream, or the end of a stream that includes no
+//#    data).
 
 const OFF_BIT: u8 = 0x04;
 
-//#    o  The LEN bit (0x02) in the frame type is set to indicate that there
-//#       is a Length field present.  If this bit is set to 0, the Length
-//#       field is absent and the Stream Data field extends to the end of
-//#       the packet.  If this bit is set to 1, the Length field is present.
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.8
+//# o  The LEN bit (0x02) in the frame type is set to indicate that there
+//#    is a Length field present.  If this bit is set to 0, the Length
+//#    field is absent and the Stream Data field extends to the end of
+//#    the packet.  If this bit is set to 1, the Length field is present.
 
 const LEN_BIT: u8 = 0x02;
 
-//#    o  The FIN bit (0x01) of the frame type is set only on frames that
-//#       contain the final size of the stream.  Setting this bit indicates
-//#       that the frame marks the end of the stream.
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.8
+//# o  The FIN bit (0x01) of the frame type is set only on frames that
+//#    contain the final size of the stream.  Setting this bit indicates
+//#    that the frame marks the end of the stream.
 
 const FIN_BIT: u8 = 0x01;
 
-//#    An endpoint that receives a STREAM frame for a send-only stream MUST
-//#    terminate the connection with error STREAM_STATE_ERROR.
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.8
+//# An endpoint that receives a STREAM frame for a send-only stream MUST
+//# terminate the connection with error STREAM_STATE_ERROR.
 //#
-//#    The STREAM frames are as follows:
+//# The STREAM frames are as follows:
 //#
-//#     0                   1                   2                   3
-//#     0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-//#    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//#    |                         Stream ID (i)                       ...
-//#    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//#    |                         [Offset (i)]                        ...
-//#    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//#    |                         [Length (i)]                        ...
-//#    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//#    |                        Stream Data (*)                      ...
-//#    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//#  0                   1                   2                   3
+//#  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//# |                         Stream ID (i)                       ...
+//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//# |                         [Offset (i)]                        ...
+//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//# |                         [Length (i)]                        ...
+//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//# |                        Stream Data (*)                      ...
+//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 //#
-//#                       Figure 20: STREAM Frame Format
+//#                    Figure 20: STREAM Frame Format
 //#
-//#    STREAM frames contain the following fields:
+//# STREAM frames contain the following fields:
 //#
-//#    Stream ID:  A variable-length integer indicating the stream ID of the
-//#       stream (see Section 2.1).
+//# Stream ID:  A variable-length integer indicating the stream ID of the
+//#    stream (see Section 2.1).
 //#
-//#    Offset:  A variable-length integer specifying the byte offset in the
-//#       stream for the data in this STREAM frame.  This field is present
-//#       when the OFF bit is set to 1.  When the Offset field is absent,
-//#       the offset is 0.
+//# Offset:  A variable-length integer specifying the byte offset in the
+//#    stream for the data in this STREAM frame.  This field is present
+//#    when the OFF bit is set to 1.  When the Offset field is absent,
+//#    the offset is 0.
 //#
-//#    Length:  A variable-length integer specifying the length of the
-//#       Stream Data field in this STREAM frame.  This field is present
-//#       when the LEN bit is set to 1.  When the LEN bit is set to 0, the
-//#       Stream Data field consumes all the remaining bytes in the packet.
+//# Length:  A variable-length integer specifying the length of the
+//#    Stream Data field in this STREAM frame.  This field is present
+//#    when the LEN bit is set to 1.  When the LEN bit is set to 0, the
+//#    Stream Data field consumes all the remaining bytes in the packet.
 //#
-//#    Stream Data:  The bytes from the designated stream to be delivered.
+//# Stream Data:  The bytes from the designated stream to be delivered.
 //#
-//#    When a Stream Data field has a length of 0, the offset in the STREAM
-//#    frame is the offset of the next byte that would be sent.
+//# When a Stream Data field has a length of 0, the offset in the STREAM
+//# frame is the offset of the next byte that would be sent.
 //#
-//#    The first byte in the stream has an offset of 0.  The largest offset
-//#    delivered on a stream - the sum of the offset and data length -
-//#    cannot exceed 2^62-1, as it is not possible to provide flow control
-//#    credit for that data.  Receipt of a frame that exceeds this limit
-//#    will be treated as a connection error of type FLOW_CONTROL_ERROR.
+//# The first byte in the stream has an offset of 0.  The largest offset
+//# delivered on a stream - the sum of the offset and data length -
+//# cannot exceed 2^62-1, as it is not possible to provide flow control
+//# credit for that data.  Receipt of a frame that exceeds this limit
+//# will be treated as a connection error of type FLOW_CONTROL_ERROR.
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Stream<Data> {

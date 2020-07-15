@@ -4,17 +4,15 @@ use s2n_codec::{
     decoder_parameterized_value, decoder_value, DecoderBuffer, DecoderError, Encoder, EncoderValue,
 };
 
-//=https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.3
-//# 19.3.  ACK Frames
-//#
-//#    Receivers send ACK frames (types 0x02 and 0x03) to inform senders of
-//#    packets they have received and processed.  The ACK frame contains one
-//#    or more ACK Ranges.  ACK Ranges identify acknowledged packets.  If
-//#    the frame type is 0x03, ACK frames also contain the sum of QUIC
-//#    packets with associated ECN marks received on the connection up until
-//#    this point.  QUIC implementations MUST properly handle both types
-//#    and, if they have enabled ECN for packets they send, they SHOULD use
-//#    the information in the ECN section to manage their congestion state.
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.3
+//# Receivers send ACK frames (types 0x02 and 0x03) to inform senders of
+//# packets they have received and processed.  The ACK frame contains one
+//# or more ACK Ranges.  ACK Ranges identify acknowledged packets.  If
+//# the frame type is 0x03, ACK frames also contain the sum of QUIC
+//# packets with associated ECN marks received on the connection up until
+//# this point.  QUIC implementations MUST properly handle both types
+//# and, if they have enabled ECN for packets they send, they SHOULD use
+//# the information in the ECN section to manage their congestion state.
 
 macro_rules! ack_tag {
     () => {
@@ -24,76 +22,77 @@ macro_rules! ack_tag {
 const ACK_TAG: u8 = 0x02;
 const ACK_W_ECN_TAG: u8 = 0x03;
 
-//#    QUIC acknowledgements are irrevocable.  Once acknowledged, a packet
-//#    remains acknowledged, even if it does not appear in a future ACK
-//#    frame.  This is unlike TCP SACKs ([RFC2018]).
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.3
+//# QUIC acknowledgements are irrevocable.  Once acknowledged, a packet
+//# remains acknowledged, even if it does not appear in a future ACK
+//# frame.  This is unlike TCP SACKs ([RFC2018]).
 //#
-//#    It is expected that a sender will reuse the same packet number across
-//#    different packet number spaces.  ACK frames only acknowledge the
-//#    packet numbers that were transmitted by the sender in the same packet
-//#    number space of the packet that the ACK was received in.
+//# It is expected that a sender will reuse the same packet number across
+//# different packet number spaces.  ACK frames only acknowledge the
+//# packet numbers that were transmitted by the sender in the same packet
+//# number space of the packet that the ACK was received in.
 //#
-//#    Version Negotiation and Retry packets cannot be acknowledged because
-//#    they do not contain a packet number.  Rather than relying on ACK
-//#    frames, these packets are implicitly acknowledged by the next Initial
-//#    packet sent by the client.
+//# Version Negotiation and Retry packets cannot be acknowledged because
+//# they do not contain a packet number.  Rather than relying on ACK
+//# frames, these packets are implicitly acknowledged by the next Initial
+//# packet sent by the client.
 //#
-//#    An ACK frame is as follows:
+//# An ACK frame is as follows:
 //#
-//#     0                   1                   2                   3
-//#     0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-//#    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//#    |                     Largest Acknowledged (i)                ...
-//#    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//#    |                          ACK Delay (i)                      ...
-//#    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//#    |                       ACK Range Count (i)                   ...
-//#    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//#    |                       First ACK Range (i)                   ...
-//#    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//#    |                          ACK Ranges (*)                     ...
-//#    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//#    |                          [ECN Counts]                       ...
-//#    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//#  0                   1                   2                   3
+//#  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//# |                     Largest Acknowledged (i)                ...
+//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//# |                          ACK Delay (i)                      ...
+//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//# |                       ACK Range Count (i)                   ...
+//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//# |                       First ACK Range (i)                   ...
+//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//# |                          ACK Ranges (*)                     ...
+//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//# |                          [ECN Counts]                       ...
+//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 //#
-//#                         Figure 17: ACK Frame Format
+//#                      Figure 17: ACK Frame Format
 //#
-//#    ACK frames contain the following fields:
+//# ACK frames contain the following fields:
 //#
-//#    Largest Acknowledged:  A variable-length integer representing the
-//#       largest packet number the peer is acknowledging; this is usually
-//#       the largest packet number that the peer has received prior to
-//#       generating the ACK frame.  Unlike the packet number in the QUIC
-//#       long or short header, the value in an ACK frame is not truncated.
+//# Largest Acknowledged:  A variable-length integer representing the
+//#    largest packet number the peer is acknowledging; this is usually
+//#    the largest packet number that the peer has received prior to
+//#    generating the ACK frame.  Unlike the packet number in the QUIC
+//#    long or short header, the value in an ACK frame is not truncated.
 //#
-//#    ACK Delay:  A variable-length integer representing the time delta in
-//#       microseconds between when this ACK was sent and when the largest
-//#       acknowledged packet, as indicated in the Largest Acknowledged
-//#       field, was received by this peer.  The value of the ACK Delay
-//#       field is scaled by multiplying the encoded value by 2 to the power
-//#       of the value of the "ack_delay_exponent" transport parameter set
-//#       by the sender of the ACK frame (see Section 18.1).  Scaling in
-//#       this fashion allows for a larger range of values with a shorter
-//#       encoding at the cost of lower resolution.  Because the receiver
-//#       doesn't use the ACK Delay for Initial and Handshake packets, a
-//#       sender SHOULD send a value of 0.
+//# ACK Delay:  A variable-length integer representing the time delta in
+//#    microseconds between when this ACK was sent and when the largest
+//#    acknowledged packet, as indicated in the Largest Acknowledged
+//#    field, was received by this peer.  The value of the ACK Delay
+//#    field is scaled by multiplying the encoded value by 2 to the power
+//#    of the value of the "ack_delay_exponent" transport parameter set
+//#    by the sender of the ACK frame (see Section 18.1).  Scaling in
+//#    this fashion allows for a larger range of values with a shorter
+//#    encoding at the cost of lower resolution.  Because the receiver
+//#    doesn't use the ACK Delay for Initial and Handshake packets, a
+//#    sender SHOULD send a value of 0.
 //#
-//#    ACK Range Count:  A variable-length integer specifying the number of
-//#       Gap and ACK Range fields in the frame.
+//# ACK Range Count:  A variable-length integer specifying the number of
+//#    Gap and ACK Range fields in the frame.
 //#
-//#    First ACK Range:  A variable-length integer indicating the number of
-//#       contiguous packets preceding the Largest Acknowledged that are
-//#       being acknowledged.  The First ACK Range is encoded as an ACK
-//#       Range (see Section 19.3.1) starting from the Largest Acknowledged.
-//#       That is, the smallest packet acknowledged in the range is
-//#       determined by subtracting the First ACK Range value from the
-//#       Largest Acknowledged.
+//# First ACK Range:  A variable-length integer indicating the number of
+//#    contiguous packets preceding the Largest Acknowledged that are
+//#    being acknowledged.  The First ACK Range is encoded as an ACK
+//#    Range (see Section 19.3.1) starting from the Largest Acknowledged.
+//#    That is, the smallest packet acknowledged in the range is
+//#    determined by subtracting the First ACK Range value from the
+//#    Largest Acknowledged.
 //#
-//#    ACK Ranges:  Contains additional ranges of packets which are
-//#       alternately not acknowledged (Gap) and acknowledged (ACK Range);
-//#       see Section 19.3.1.
+//# ACK Ranges:  Contains additional ranges of packets which are
+//#    alternately not acknowledged (Gap) and acknowledged (ACK Range);
+//#    see Section 19.3.1.
 //#
-//#    ECN Counts:  The three ECN Counts; see Section 19.3.2.
+//# ECN Counts:  The three ECN Counts; see Section 19.3.2.
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct Ack<AckRanges> {
@@ -192,13 +191,11 @@ impl<A: AckRanges> EncoderValue for Ack<A> {
     }
 }
 
-//=https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.3.1
-//# 19.3.1.  ACK Ranges
-//#
-//#    The ACK Ranges field consists of alternating Gap and ACK Range values
-//#    in descending packet number order.  The number of Gap and ACK Range
-//#    values is determined by the ACK Range Count field; one of each value
-//#    is present for each value in the ACK Range Count field.
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.3.1
+//# The ACK Ranges field consists of alternating Gap and ACK Range values
+//# in descending packet number order.  The number of Gap and ACK Range
+//# values is determined by the ACK Range Count field; one of each value
+//# is present for each value in the ACK Range Count field.
 
 pub trait AckRanges {
     type Iter: Iterator<Item = RangeInclusive<VarInt>> + ExactSizeIterator;
@@ -237,53 +234,54 @@ impl<'a> core::fmt::Debug for AckRangesDecoder<'a> {
     }
 }
 
-//#    ACK Ranges are structured as follows:
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.3.1
+//# ACK Ranges are structured as follows:
 //#
-//#     0                   1                   2                   3
-//#     0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-//#    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//#    |                           [Gap (i)]                        ...
-//#    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//#    |                          [ACK Range (i)]                    ...
-//#    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//#    |                           [Gap (i)]                        ...
-//#    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//#    |                          [ACK Range (i)]                    ...
-//#    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//#                                   ...
-//#    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//#    |                           [Gap (i)]                        ...
-//#    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//#    |                          [ACK Range (i)]                    ...
-//#    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//#  0                   1                   2                   3
+//#  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//# |                           [Gap (i)]                        ...
+//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//# |                          [ACK Range (i)]                    ...
+//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//# |                           [Gap (i)]                        ...
+//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//# |                          [ACK Range (i)]                    ...
+//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//#                                ...
+//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//# |                           [Gap (i)]                        ...
+//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//# |                          [ACK Range (i)]                    ...
+//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 //#
-//#                            Figure 18: ACK Ranges
+//#                         Figure 18: ACK Ranges
 //#
-//#    The fields that form the ACK Ranges are:
+//# The fields that form the ACK Ranges are:
 //#
-//#    Gap (repeated):  A variable-length integer indicating the number of
-//#       contiguous unacknowledged packets preceding the packet number one
-//#       lower than the smallest in the preceding ACK Range.
+//# Gap (repeated):  A variable-length integer indicating the number of
+//#    contiguous unacknowledged packets preceding the packet number one
+//#    lower than the smallest in the preceding ACK Range.
 //#
-//#    ACK Range (repeated):  A variable-length integer indicating the
-//#       number of contiguous acknowledged packets preceding the largest
-//#       packet number, as determined by the preceding Gap.
+//# ACK Range (repeated):  A variable-length integer indicating the
+//#    number of contiguous acknowledged packets preceding the largest
+//#    packet number, as determined by the preceding Gap.
 //#
-//#    Gap and ACK Range value use a relative integer encoding for
-//#    efficiency.  Though each encoded value is positive, the values are
-//#    subtracted, so that each ACK Range describes progressively lower-
-//#    numbered packets.
+//# Gap and ACK Range value use a relative integer encoding for
+//# efficiency.  Though each encoded value is positive, the values are
+//# subtracted, so that each ACK Range describes progressively lower-
+//# numbered packets.
 //#
-//#    Each ACK Range acknowledges a contiguous range of packets by
-//#    indicating the number of acknowledged packets that precede the
-//#    largest packet number in that range.  A value of zero indicates that
-//#    only the largest packet number is acknowledged.  Larger ACK Range
-//#    values indicate a larger range, with corresponding lower values for
-//#    the smallest packet number in the range.  Thus, given a largest
-//#    packet number for the range, the smallest value is determined by the
-//#    formula:
+//# Each ACK Range acknowledges a contiguous range of packets by
+//# indicating the number of acknowledged packets that precede the
+//# largest packet number in that range.  A value of zero indicates that
+//# only the largest packet number is acknowledged.  Larger ACK Range
+//# values indicate a larger range, with corresponding lower values for
+//# the smallest packet number in the range.  Thus, given a largest
+//# packet number for the range, the smallest value is determined by the
+//# formula:
 //#
-//#       smallest = largest - ack_range
+//#    smallest = largest - ack_range
 
 decoder_parameterized_value!(
     impl<'a> AckRangesDecoder<'a> {
@@ -328,20 +326,21 @@ decoder_parameterized_value!(
     }
 );
 
-//#    An ACK Range acknowledges all packets between the smallest packet
-//#    number and the largest, inclusive.
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.3.1
+//# An ACK Range acknowledges all packets between the smallest packet
+//# number and the largest, inclusive.
 //#
-//#    The largest value for an ACK Range is determined by cumulatively
-//#    subtracting the size of all preceding ACK Ranges and Gaps.
+//# The largest value for an ACK Range is determined by cumulatively
+//# subtracting the size of all preceding ACK Ranges and Gaps.
 //#
-//#    Each Gap indicates a range of packets that are not being
-//#    acknowledged.  The number of packets in the gap is one higher than
-//#    the encoded value of the Gap field.
+//# Each Gap indicates a range of packets that are not being
+//# acknowledged.  The number of packets in the gap is one higher than
+//# the encoded value of the Gap field.
 //#
-//#    The value of the Gap field establishes the largest packet number
-//#    value for the subsequent ACK Range using the following formula:
+//# The value of the Gap field establishes the largest packet number
+//# value for the subsequent ACK Range using the following formula:
 //#
-//#       largest = previous_smallest - gap - 2
+//#    largest = previous_smallest - gap - 2
 
 fn encode_ack_range<E: Encoder>(
     range: RangeInclusive<VarInt>,
@@ -406,46 +405,45 @@ impl<'a> core::fmt::Debug for AckRangesIter<'a> {
     }
 }
 
-//#    If any computed packet number is negative, an endpoint MUST generate
-//#    a connection error of type FRAME_ENCODING_ERROR indicating an error
-//#    in an ACK frame.
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.3.1
+//# If any computed packet number is negative, an endpoint MUST generate
+//# a connection error of type FRAME_ENCODING_ERROR indicating an error
+//# in an ACK frame.
 
 const ACK_RANGE_DECODING_ERROR: DecoderError =
     DecoderError::InvariantViolation("invalid ACK ranges");
 
-//=https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.3.2
-//# 19.3.2.  ECN Counts
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.3.2
+//# The ACK frame uses the least significant bit (that is, type 0x03) to
+//# indicate ECN feedback and report receipt of QUIC packets with
+//# associated ECN codepoints of ECT(0), ECT(1), or CE in the packet's IP
+//# header.  ECN Counts are only present when the ACK frame type is 0x03.
 //#
-//#    The ACK frame uses the least significant bit (that is, type 0x03) to
-//#    indicate ECN feedback and report receipt of QUIC packets with
-//#    associated ECN codepoints of ECT(0), ECT(1), or CE in the packet's IP
-//#    header.  ECN Counts are only present when the ACK frame type is 0x03.
+//# ECN Counts are only parsed when the ACK frame type is 0x03.  There
+//# are 3 ECN counts, as follows:
 //#
-//#    ECN Counts are only parsed when the ACK frame type is 0x03.  There
-//#    are 3 ECN counts, as follows:
+//#  0                   1                   2                   3
+//#  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//# |                        ECT(0) Count (i)                     ...
+//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//# |                        ECT(1) Count (i)                     ...
+//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//# |                        ECN-CE Count (i)                     ...
+//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 //#
-//#     0                   1                   2                   3
-//#     0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-//#    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//#    |                        ECT(0) Count (i)                     ...
-//#    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//#    |                        ECT(1) Count (i)                     ...
-//#    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//#    |                        ECN-CE Count (i)                     ...
-//#    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//# The three ECN Counts are:
 //#
-//#    The three ECN Counts are:
+//# ECT(0) Count:  A variable-length integer representing the total
+//#    number of packets received with the ECT(0) codepoint.
 //#
-//#    ECT(0) Count:  A variable-length integer representing the total
-//#       number of packets received with the ECT(0) codepoint.
+//# ECT(1) Count:  A variable-length integer representing the total
+//#    number of packets received with the ECT(1) codepoint.
 //#
-//#    ECT(1) Count:  A variable-length integer representing the total
-//#       number of packets received with the ECT(1) codepoint.
+//# CE Count:  A variable-length integer representing the total number of
+//#    packets received with the CE codepoint.
 //#
-//#    CE Count:  A variable-length integer representing the total number of
-//#       packets received with the CE codepoint.
-//#
-//#    ECN counts are maintained separately for each packet number space.
+//# ECN counts are maintained separately for each packet number space.
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct ECNCounts {
