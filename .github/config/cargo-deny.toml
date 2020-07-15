@@ -16,6 +16,11 @@ skip = [
     { name = "winapi" },
 ]
 
+# compliance is a separate binary target so just ignore it
+skip-tree = [
+    { name = "cargo-compliance" },
+]
+
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"

@@ -64,16 +64,16 @@ jobs:
         continue-on-error: true
         with:
           path: ~/.cargo/registry/cache
-          key: ${{ runner.os }}-clippy-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-clippy-cargo-registry-
+          key: ${{ runner.os }}-${{ github.job }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-${{ github.job }}-cargo-registry-
 
       - name: Cache sccache output
         uses: actions/cache@v2
         continue-on-error: true
         with:
           path: ${{ github.workspace }}/.sccache
-          key: ${{ runner.os }}-clippy-sccache-${{ hashFiles('**/Cargo.*') }}
-          restore-keys: ${{ runner.os }}-clippy-sccache-
+          key: ${{ runner.os }}-${{ github.job }}-sccache-${{ hashFiles('**/Cargo.*') }}
+          restore-keys: ${{ runner.os }}-${{ github.job }}-sccache-
 
       - name: Start sccache
         run: sccache --start-server
@@ -121,16 +121,16 @@ jobs:
         continue-on-error: true
         with:
           path: ~/.cargo/registry/cache
-          key: ${{ runner.os }}-clippy-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-clippy-cargo-registry-
+          key: ${{ runner.os }}-${{ github.job }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-${{ github.job }}-cargo-registry-
 
       - name: Cache sccache output
         uses: actions/cache@v2
         continue-on-error: true
         with:
           path: ${{ github.workspace }}/.sccache
-          key: ${{ runner.os }}-clippy-sccache-${{ hashFiles('**/Cargo.*') }}
-          restore-keys: ${{ runner.os }}-clippy-sccache-
+          key: ${{ runner.os }}-${{ github.job }}-sccache-${{ hashFiles('**/Cargo.*') }}
+          restore-keys: ${{ runner.os }}-${{ github.job }}-sccache-
 
       - name: Start sccache
         run: sccache --start-server
@@ -173,16 +173,16 @@ jobs:
         continue-on-error: true
         with:
           path: ~/.cargo/registry/cache
-          key: ${{ runner.os }}-${{ matrix.rust }}-test-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-${{ matrix.rust }}-test-cargo-registry-
+          key: ${{ runner.os }}-${{ matrix.rust }}-${{ github.job }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-${{ matrix.rust }}-${{ github.job }}-cargo-registry-
 
       - name: Cache sccache output
         uses: actions/cache@v2
         continue-on-error: true
         with:
           path: ${{ github.workspace }}/.sccache
-          key: ${{ runner.os }}-${{ matrix.rust }}-test-sccache-${{ hashFiles('**/Cargo.*') }}
-          restore-keys: ${{ runner.os }}-${{ matrix.rust }}-test-sccache-
+          key: ${{ runner.os }}-${{ matrix.rust }}-${{ github.job }}-sccache-${{ hashFiles('**/Cargo.*') }}
+          restore-keys: ${{ runner.os }}-${{ matrix.rust }}-${{ github.job }}-sccache-
 
       - name: Start sccache
         run: sccache --start-server
@@ -226,16 +226,16 @@ jobs:
         continue-on-error: true
         with:
           path: ~/.cargo/registry/cache
-          key: ${{ runner.os }}-${{ matrix.rust }}-miri-${{ matrix.crate }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-${{ matrix.rust }}-miri-${{ matrix.crate }}-cargo-registry-
+          key: ${{ runner.os }}-${{ matrix.rust }}-${{ github.job }}-${{ matrix.crate }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-${{ matrix.rust }}-${{ github.job }}-${{ matrix.crate }}-cargo-registry-
 
       - name: Cache sccache output
         uses: actions/cache@v2
         continue-on-error: true
         with:
           path: ${{ github.workspace }}/.sccache
-          key: ${{ runner.os }}-${{ matrix.rust }}-miri-${{ matrix.crate }}-sccache-${{ hashFiles('**/Cargo.*') }}
-          restore-keys: ${{ runner.os }}-${{ matrix.rust }}-miri-${{ matrix.crate }}-sccache-
+          key: ${{ runner.os }}-${{ matrix.rust }}-${{ github.job }}-${{ matrix.crate }}-sccache-${{ hashFiles('**/Cargo.*') }}
+          restore-keys: ${{ runner.os }}-${{ matrix.rust }}-${{ github.job }}-${{ matrix.crate }}-sccache-
 
       - name: Start sccache
         run: sccache --start-server
@@ -338,16 +338,16 @@ jobs:
         continue-on-error: true
         with:
           path: ~/.cargo/registry/cache
-          key: ${{ runner.os }}-coverage-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-coverage-cargo-registry-
+          key: ${{ runner.os }}-${{ github.job }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-${{ github.job }}-cargo-registry-
 
       - name: Cache sccache output
         uses: actions/cache@v2
         continue-on-error: true
         with:
           path: ${{ github.workspace }}/.sccache
-          key: ${{ runner.os }}-coverage-sccache-${{ hashFiles('**/Cargo.*') }}
-          restore-keys: ${{ runner.os }}-coverage-sccache-
+          key: ${{ runner.os }}-${{ github.job }}-sccache-${{ hashFiles('**/Cargo.*') }}
+          restore-keys: ${{ runner.os }}-${{ github.job }}-sccache-
 
       - name: Start sccache
         run: sccache --start-server

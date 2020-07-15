@@ -8,12 +8,12 @@ use core::convert::TryInto;
 pub struct Parser<'a>(pub &'a [u8]);
 
 #[derive(Debug, Default)]
-struct ParsedAnnotation<'a> {
-    spec: &'a str,
+pub struct ParsedAnnotation<'a> {
+    target: &'a str,
     quote: &'a str,
     anno: AnnotationType,
     code: &'a str,
-    file: &'a str,
+    source: &'a str,
     anno_line: u32,
     anno_column: u32,
     item_line: u32,
@@ -63,11 +63,11 @@ impl<'a> ParsedAnnotation<'a> {
             }
 
             match name {
-                b"spec" => parsed.spec = to_str!(),
+                b"spec" => parsed.target = to_str!(),
                 b"quot" => parsed.quote = to_str!(),
                 b"anno" => parsed.anno = to_str!().parse()?,
                 b"code" => parsed.code = to_str!(),
-                b"file" => parsed.file = to_str!(),
+                b"file" => parsed.source = to_str!(),
                 b"ilin" => parsed.item_line = to_u32!(),
                 b"icol" => parsed.item_column = to_u32!(),
                 b"alin" => parsed.anno_line = to_u32!(),
@@ -93,11 +93,11 @@ impl<'a> ParsedAnnotation<'a> {
 impl Into<Annotation> for ParsedAnnotation<'_> {
     fn into(self) -> Annotation {
         Annotation {
-            spec: self.spec.to_string(),
+            target: self.target.to_string(),
             quote: self.quote.to_string(),
             anno: self.anno,
             code: self.code.to_string(),
-            file: self.file.into(),
+            source: self.source.into(),
             path: self.path.to_string(),
             anno_line: self.anno_line,
             anno_column: self.anno_column,
