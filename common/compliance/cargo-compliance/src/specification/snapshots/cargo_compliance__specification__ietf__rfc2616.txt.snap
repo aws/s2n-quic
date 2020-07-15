@@ -1,5 +1,5 @@
 ---
-source: cargo-compliance/src/specification/ietf.rs
+source: common/compliance/cargo-compliance/src/specification/ietf.rs
 expression: res
 ---
 Specification {
