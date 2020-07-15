@@ -113,7 +113,7 @@ impl Report {
                     }
                 } else {
                     // TODO
-                    eprintln!("TOTAL REFERENCE");
+                    eprintln!("TOTAL REFERENCE {:?}", annotations);
                 }
 
                 // TODO upgrade levels whenever they overlap

@@ -56,19 +56,18 @@ impl<'a> Pattern<'a> {
                         continue;
                     }
 
-                    let column = line.len() - content.len();
-
-                    let mut capture = Capture::new(line_no, column);
-                    capture.meta.push(content);
+                    let indent = line.len() - content.len();
+                    let mut capture = Capture::new(line_no, indent);
+                    capture.push_meta(content)?;
 
                     state = ParserState::CapturingMeta(capture);
                 }
                 ParserState::CapturingMeta(mut capture) => {
                     if content.starts_with(self.meta) {
-                        capture.meta.push(&content[self.meta.len()..]);
+                        capture.push_meta(&content[self.meta.len()..])?;
                         state = ParserState::CapturingMeta(capture);
                     } else if content.starts_with(self.content) {
-                        capture.contents.push(&content[self.content.len()..]);
+                        capture.push_content(&content[self.content.len()..]);
                         state = ParserState::CapturingContent(capture);
                     } else {
                         annotations.insert(capture.done(line_no, path)?);
@@ -78,7 +77,7 @@ impl<'a> Pattern<'a> {
                     if content.starts_with(self.meta) {
                         return Err("cannot set metadata while parsing content".into());
                     } else if content.starts_with(self.content) {
-                        capture.contents.push(&content[self.content.len()..]);
+                        capture.push_content(&content[self.content.len()..]);
                         state = ParserState::CapturingContent(capture);
                     } else {
                         annotations.insert(capture.done(line_no, path)?);
@@ -99,31 +98,62 @@ enum ParserState<'a> {
 
 #[derive(Debug)]
 struct Capture<'a> {
-    line: usize,
-    column: usize,
-    meta: Vec<&'a str>,
-    contents: Vec<&'a str>,
+    contents: String,
+    annotation: ParsedAnnotation<'a>,
 }
 
 impl<'a> Capture<'a> {
     fn new(line: usize, column: usize) -> Self {
         Self {
-            line,
-            column,
-            meta: vec![],
-            contents: vec![],
+            contents: String::new(),
+            annotation: ParsedAnnotation {
+                anno_line: line as _,
+                anno_column: column as _,
+                item_line: line as _,
+                item_column: column as _,
+                ..Default::default()
+            },
         }
     }
 
-    fn done(&self, item_line: usize, path: &Path) -> Result<Annotation, Error> {
-        let annotation = ParsedAnnotation::default();
+    fn push_meta(&mut self, value: &'a str) -> Result<(), Error> {
+        let mut parts = value.trim_start().splitn(2, '=');
 
-        // TODO print meta
-        eprintln!("{:#?}", &self.meta);
+        let key = parts.next().unwrap();
+        let value = parts.next();
 
-        // TODO concat into quote
-        eprintln!("{:#?}", &self.contents);
+        match (key, value) {
+            ("source", Some(value)) => self.annotation.target = value,
+            ("level", Some(value)) => self.annotation.level = value.parse()?,
+            ("format", Some(value)) => self.annotation.format = value.parse()?,
+            ("type", Some(value)) => self.annotation.anno = value.parse()?,
+            (key, Some(_)) => return Err(format!("invalid metadata field {}", key).into()),
+            (value, None) if self.annotation.target.is_empty() => self.annotation.target = value,
+            (_, None) => return Err("annotation source already specified".into()),
+        }
 
-        Ok(annotation.into())
+        Ok(())
+    }
+
+    fn push_content(&mut self, value: &'a str) {
+        self.contents.push_str(value.trim_start());
+        self.contents.push(' ');
+    }
+
+    fn done(self, item_line: usize, path: &Path) -> Result<Annotation, Error> {
+        let annotation = Annotation {
+            item_line: item_line as _,
+            item_column: 0,
+            source: path.into(),
+            quote: self.contents,
+            manifest_dir: std::env::current_dir()?,
+            ..self.annotation.into()
+        };
+
+        if annotation.target.is_empty() {
+            return Err("missing source information".into());
+        }
+
+        Ok(annotation)
     }
 }

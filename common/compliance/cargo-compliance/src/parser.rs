@@ -9,19 +9,19 @@ pub struct Parser<'a>(pub &'a [u8]);
 
 #[derive(Debug, Default)]
 pub struct ParsedAnnotation<'a> {
-    target: &'a str,
-    quote: &'a str,
-    anno: AnnotationType,
-    code: &'a str,
-    source: &'a str,
-    anno_line: u32,
-    anno_column: u32,
-    item_line: u32,
-    item_column: u32,
-    path: &'a str,
-    manifest_dir: &'a str,
-    level: AnnotationLevel,
-    format: Format,
+    pub target: &'a str,
+    pub quote: &'a str,
+    pub anno: AnnotationType,
+    pub code: &'a str,
+    pub source: &'a str,
+    pub anno_line: u32,
+    pub anno_column: u32,
+    pub item_line: u32,
+    pub item_column: u32,
+    pub path: &'a str,
+    pub manifest_dir: &'a str,
+    pub level: AnnotationLevel,
+    pub format: Format,
 }
 
 const U32_SIZE: usize = core::mem::size_of::<u32>();
