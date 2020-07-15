@@ -221,7 +221,7 @@ pub trait ConnectionTrait: Sized {
                 ProtectedPacket::decode(payload, destination_connnection_id_decoder)?;
             payload = remaining;
 
-            //=https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#12.2
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#12.2
             //# Senders MUST NOT coalesce QUIC packets for different connections into
             //# a single UDP datagram.  Receivers SHOULD ignore any subsequent
             //# packets with a different Destination Connection ID than the first
@@ -422,17 +422,15 @@ pub trait ConnectionTrait: Sized {
         }
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#13.1
-        //# 13.1.  Packet Processing
+        //# A packet MUST NOT be acknowledged until packet protection has been
+        //# successfully removed and all frames contained in the packet have been
+        //# processed.  For STREAM frames, this means the data has been enqueued
+        //# in preparation to be received by the application protocol, but it
+        //# does not require that data is delivered and consumed.
         //#
-        //#   A packet MUST NOT be acknowledged until packet protection has been
-        //#   successfully removed and all frames contained in the packet have been
-        //#   processed.  For STREAM frames, this means the data has been enqueued
-        //#   in preparation to be received by the application protocol, but it
-        //#   does not require that data is delivered and consumed.
-        //#
-        //#   Once the packet has been fully processed, a receiver acknowledges
-        //#   receipt by sending one or more ACK frames containing the packet
-        //#   number of the received packet.
+        //# Once the packet has been fully processed, a receiver acknowledges
+        //# receipt by sending one or more ACK frames containing the packet
+        //# number of the received packet.
 
         space.on_processed_packet(processed_packet)?;
 
