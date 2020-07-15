@@ -159,7 +159,7 @@ impl Report {
                 .par_iter()
                 .map(|(source, report)| {
                     let id = crate::fnv(source);
-                    let path = lcov_dir.join(format!("compliance.{}.info", id));
+                    let path = lcov_dir.join(format!("compliance.{}.lcov", id));
                     let mut output = BufWriter::new(std::fs::File::create(&path)?);
                     lcov::report(report, &mut output)?;
                     Ok(())

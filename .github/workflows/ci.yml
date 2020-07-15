@@ -89,8 +89,6 @@ jobs:
 
   udeps:
     runs-on: ubuntu-latest
-    env:
-      RUSTC_WRAPPER: sccache
     steps:
       - uses: actions-rs/toolchain@v1
         with:
@@ -106,41 +104,8 @@ jobs:
 
       - uses: actions/checkout@v2
 
-      - name: Install sccache
-        uses: actions-rs/install@v0.1
-        with:
-          crate: sccache
-          use-tool-cache: true
-          version: latest
-
-      - name: Generate Cargo.lock
-        run: cargo update
-
-      - name: Cache cargo registry
-        uses: actions/cache@v2
-        continue-on-error: true
-        with:
-          path: ~/.cargo/registry/cache
-          key: ${{ runner.os }}-${{ github.job }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-${{ github.job }}-cargo-registry-
-
-      - name: Cache sccache output
-        uses: actions/cache@v2
-        continue-on-error: true
-        with:
-          path: ${{ github.workspace }}/.sccache
-          key: ${{ runner.os }}-${{ github.job }}-sccache-${{ hashFiles('**/Cargo.*') }}
-          restore-keys: ${{ runner.os }}-${{ github.job }}-sccache-
-
-      - name: Start sccache
-        run: sccache --start-server
-
       - name: Run cargo udeps
         run: cargo udeps --workspace --all-targets
-
-      - name: Stop sccache
-        run: sccache --stop-server
-
 
   test:
     runs-on: ${{ matrix.os }}
