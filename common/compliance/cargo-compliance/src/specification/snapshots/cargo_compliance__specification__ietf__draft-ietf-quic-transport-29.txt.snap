@@ -1,5 +1,5 @@
 ---
-source: cargo-compliance/src/specification/ietf.rs
+source: common/compliance/cargo-compliance/src/specification/ietf.rs
 expression: res
 ---
 Specification {
@@ -8052,7 +8052,13 @@ Specification {
                 "[STD]      Bradner, S., \"The Internet Standards Process -- Revision",
                 "           3\", BCP 9, RFC 2026, DOI 10.17487/RFC2026, October 1996,",
                 "           <https://www.rfc-editor.org/info/rfc2026>.",
-                "",
+            ],
+        },
+        Section {
+            id: "A",
+            title: "Sample Packet Number Decoding Algorithm",
+            full_title: "Appendix A.  Sample Packet Number Decoding Algorithm",
+            lines: [
                 "The pseudo-code in Figure 44 shows how an implementation can decode",
                 "packet numbers after header protection has been removed.",
                 "",
@@ -8082,7 +8088,13 @@ Specification {
                 "   return candidate_pn",
                 "",
                 "          Figure 44: Sample Packet Number Decoding Algorithm",
-                "",
+            ],
+        },
+        Section {
+            id: "B",
+            title: "Sample ECN Validation Algorithm",
+            full_title: "Appendix B.  Sample ECN Validation Algorithm",
+            lines: [
                 "Each time an endpoint commences sending on a new network path, it",
                 "determines whether the path supports ECN; see Section 13.4.  If the",
                 "path supports ECN, the goal is to use ECN.  Endpoints might also",
@@ -8123,12 +8135,24 @@ Specification {
                 "markings will cause ECN to be disabled.  For those rare cases where",
                 "marked packets are discarded by the path, the short duration of the",
                 "testing period limits the number of losses incurred.",
-                "",
+            ],
+        },
+        Section {
+            id: "C",
+            title: "Change Log",
+            full_title: "Appendix C.  Change Log",
+            lines: [
                 "   *RFC Editor\'s Note:* Please remove this section prior to",
                 "   publication of a final version of this document.",
                 "",
                 "Issue and pull request numbers are listed with a leading octothorp.",
-                "",
+            ],
+        },
+        Section {
+            id: "C.1",
+            title: "Since draft-ietf-quic-transport-28",
+            full_title: "C.1.  Since draft-ietf-quic-transport-28",
+            lines: [
                 "*  Made SERVER_BUSY error (0x2) more generic, now CONNECTION_REFUSED",
                 "   (#3709, #3690, #3694)",
                 "",
@@ -8140,7 +8164,13 @@ Specification {
                 "",
                 "*  disable_active_migration does not apply to the addresses offered",
                 "   in server_preferred_address (#3608, #3670)",
-                "",
+            ],
+        },
+        Section {
+            id: "C.2",
+            title: "Since draft-ietf-quic-transport-27",
+            full_title: "C.2.  Since draft-ietf-quic-transport-27",
+            lines: [
                 "*  Allowed CONNECTION_CLOSE in any packet number space, with a",
                 "   requirement to use a new transport-level error for application-",
                 "   specific errors in Initial and Handshake packets (#3430, #3435,",
@@ -8187,10 +8217,22 @@ Specification {
                 "*  Added authentication of handshake connection IDs (#3439, #3499)",
                 "",
                 "*  Opening a stream in the wrong direction is an error (#3527)",
-                "",
+            ],
+        },
+        Section {
+            id: "C.3",
+            title: "Since draft-ietf-quic-transport-26",
+            full_title: "C.3.  Since draft-ietf-quic-transport-26",
+            lines: [
                 "*  Change format of transport parameters to use varints (#3294,",
                 "   #3169)",
-                "",
+            ],
+        },
+        Section {
+            id: "C.4",
+            title: "Since draft-ietf-quic-transport-25",
+            full_title: "C.4.  Since draft-ietf-quic-transport-25",
+            lines: [
                 "*  Define the use of CONNECTION_CLOSE prior to establishing",
                 "   connection state (#3269, #3297, #3292)",
                 "",
@@ -8198,7 +8240,13 @@ Specification {
                 "   changes (#3307, #3308)",
                 "",
                 "*  Define the timer for address validation (#2910, #3339)",
-                "",
+            ],
+        },
+        Section {
+            id: "C.5",
+            title: "Since draft-ietf-quic-transport-24",
+            full_title: "C.5.  Since draft-ietf-quic-transport-24",
+            lines: [
                 "*  Added HANDSHAKE_DONE to signal handshake confirmation (#2863,",
                 "   #3142, #3145)",
                 "",
@@ -8248,7 +8296,13 @@ Specification {
                 "",
                 "*  Packets on one path must not adjust values for a different path",
                 "   (#2909, #3139)",
-                "",
+            ],
+        },
+        Section {
+            id: "C.6",
+            title: "Since draft-ietf-quic-transport-23",
+            full_title: "C.6.  Since draft-ietf-quic-transport-23",
+            lines: [
                 "*  Allow ClientHello to span multiple packets (#2928, #3045)",
                 "",
                 "*  Client Initial size constraints apply to UDP datagram payload",
@@ -8282,7 +8336,13 @@ Specification {
                 "   eliciting packets (#3100, #3104)",
                 "",
                 "*  Servers have to change connection IDs in Retry (#2837, #3147)",
-                "",
+            ],
+        },
+        Section {
+            id: "C.7",
+            title: "Since draft-ietf-quic-transport-22",
+            full_title: "C.7.  Since draft-ietf-quic-transport-22",
+            lines: [
                 "*  Rules for preventing correlation by connection ID tightened",
                 "   (#2084, #2929)",
                 "",
@@ -8334,10 +8394,22 @@ Specification {
                 "",
                 "*  Moved ACK generation guidance from recovery draft to transport",
                 "   draft (#1860, #2916).",
-                "",
+            ],
+        },
+        Section {
+            id: "C.8",
+            title: "Since draft-ietf-quic-transport-21",
+            full_title: "C.8.  Since draft-ietf-quic-transport-21",
+            lines: [
                 "*  Connection ID lengths are now one octet, but limited in version 1",
                 "   to 20 octets of length (#2736, #2749)",
-                "",
+            ],
+        },
+        Section {
+            id: "C.9",
+            title: "Since draft-ietf-quic-transport-20",
+            full_title: "C.9.  Since draft-ietf-quic-transport-20",
+            lines: [
                 "*  Error codes are encoded as variable-length integers (#2672, #2680)",
                 "",
                 "*  NEW_CONNECTION_ID includes a request to retire old connection IDs",
@@ -8379,7 +8451,13 @@ Specification {
                 "",
                 "*  Document hack for enabling routing of ICMP when doing PMTU probing",
                 "   (#1243, #2402)",
-                "",
+            ],
+        },
+        Section {
+            id: "C.10",
+            title: "Since draft-ietf-quic-transport-19",
+            full_title: "C.10.  Since draft-ietf-quic-transport-19",
+            lines: [
                 "*  Refine discussion of 0-RTT transport parameters (#2467, #2464)",
                 "",
                 "*  Fewer transport parameters need to be remembered for 0-RTT (#2624,",
@@ -8404,7 +8482,13 @@ Specification {
                 "   (#1834, #2524)",
                 "",
                 "*  Stateless reset uses a short header packet (#2599, #2600)",
-                "",
+            ],
+        },
+        Section {
+            id: "C.11",
+            title: "Since draft-ietf-quic-transport-18",
+            full_title: "C.11.  Since draft-ietf-quic-transport-18",
+            lines: [
                 "*  Removed version negotiation; version negotiation, including",
                 "   authentication of the result, will be addressed in the next",
                 "   version of QUIC (#1773, #2313)",
@@ -8421,7 +8505,13 @@ Specification {
                 "   network paths (#2413, #2414)",
                 "",
                 "*  Increased the set of permissible frames in 0-RTT (#2344, #2355)",
-                "",
+            ],
+        },
+        Section {
+            id: "C.12",
+            title: "Since draft-ietf-quic-transport-17",
+            full_title: "C.12.  Since draft-ietf-quic-transport-17",
+            lines: [
                 "*  Stream-related errors now use STREAM_STATE_ERROR (#2305)",
                 "",
                 "*  Endpoints discard initial keys as soon as handshake keys are",
@@ -8458,7 +8548,13 @@ Specification {
                 "   (#2146, #2349)",
                 "",
                 "*  ACK of non-existent packet is illegal (#2298, #2302)",
-                "",
+            ],
+        },
+        Section {
+            id: "C.13",
+            title: "Since draft-ietf-quic-transport-16",
+            full_title: "C.13.  Since draft-ietf-quic-transport-16",
+            lines: [
                 "*  Stream limits are defined as counts, not maximums (#1850, #1906)",
                 "",
                 "*  Require amplification attack defense after closing (#1905, #1911)",
@@ -8511,9 +8607,21 @@ Specification {
                 "   #2045)",
                 "",
                 "*  ICMP PTB validation clarifications (#2161, #2109, #2108)",
-                "",
+            ],
+        },
+        Section {
+            id: "C.14",
+            title: "Since draft-ietf-quic-transport-15",
+            full_title: "C.14.  Since draft-ietf-quic-transport-15",
+            lines: [
                 "Substantial editorial reorganization; no technical changes.",
-                "",
+            ],
+        },
+        Section {
+            id: "C.15",
+            title: "Since draft-ietf-quic-transport-14",
+            full_title: "C.15.  Since draft-ietf-quic-transport-14",
+            lines: [
                 "*  Merge ACK and ACK_ECN (#1778, #1801)",
                 "",
                 "*  Explicitly communicate max_ack_delay (#981, #1781)",
@@ -8530,7 +8638,13 @@ Specification {
                 "*  Include a Token in all Initial packets (#1649, #1794)",
                 "",
                 "*  Prevent handshake deadlock (#1764, #1824)",
-                "",
+            ],
+        },
+        Section {
+            id: "C.16",
+            title: "Since draft-ietf-quic-transport-13",
+            full_title: "C.16.  Since draft-ietf-quic-transport-13",
+            lines: [
                 "*  Streams open when higher-numbered streams of the same type open",
                 "   (#1342, #1549)",
                 "",
@@ -8566,7 +8680,13 @@ Specification {
                 "   (#1555, #1481, #1565)",
                 "",
                 "*  Remove frame type field from APPLICATION_CLOSE (#1508, #1528)",
-                "",
+            ],
+        },
+        Section {
+            id: "C.17",
+            title: "Since draft-ietf-quic-transport-12",
+            full_title: "C.17.  Since draft-ietf-quic-transport-12",
+            lines: [
                 "*  Changes to integration of the TLS handshake (#829, #1018, #1094,",
                 "   #1165, #1190, #1233, #1242, #1252, #1450, #1458)",
                 "",
@@ -8607,7 +8727,13 @@ Specification {
                 "   (#466, #1346)",
                 "",
                 "*  Added frame type extension mechanism (#58, #1473)",
-                "",
+            ],
+        },
+        Section {
+            id: "C.18",
+            title: "Since draft-ietf-quic-transport-11",
+            full_title: "C.18.  Since draft-ietf-quic-transport-11",
+            lines: [
                 "*  Enable server to transition connections to a preferred address",
                 "   (#560, #1251)",
                 "",
@@ -8617,7 +8743,13 @@ Specification {
                 "*  Packet numbers use a variable-length encoding (#989, #1334)",
                 "",
                 "*  STREAM frames can now be empty (#1350)",
-                "",
+            ],
+        },
+        Section {
+            id: "C.19",
+            title: "Since draft-ietf-quic-transport-10",
+            full_title: "C.19.  Since draft-ietf-quic-transport-10",
+            lines: [
                 "*  Swap payload length and packed number fields in long header",
                 "   (#1294)",
                 "",
@@ -8651,7 +8783,13 @@ Specification {
                 "",
                 "*  Remove implication that Version Negotiation is sent when a packet",
                 "   of the wrong version is received (#1197)",
-                "",
+            ],
+        },
+        Section {
+            id: "C.20",
+            title: "Since draft-ietf-quic-transport-09",
+            full_title: "C.20.  Since draft-ietf-quic-transport-09",
+            lines: [
                 "*  Added PATH_CHALLENGE and PATH_RESPONSE frames to replace PING with",
                 "   Data and PONG frame.  Changed ACK frame type from 0x0e to 0x0d.",
                 "   (#1091, #725, #1086)",
@@ -8676,7 +8814,13 @@ Specification {
                 "   Connection IDs are variable length.  Removed the",
                 "   omit_connection_id transport parameter and the corresponding short",
                 "   header flag. (#1089, #1052, #1146, #821, #745, #821, #1166, #1151)",
-                "",
+            ],
+        },
+        Section {
+            id: "C.21",
+            title: "Since draft-ietf-quic-transport-08",
+            full_title: "C.21.  Since draft-ietf-quic-transport-08",
+            lines: [
                 "*  Clarified requirements for BLOCKED usage (#65, #924)",
                 "",
                 "*  BLOCKED frame now includes reason for blocking (#452, #924, #927,",
@@ -8702,7 +8846,13 @@ Specification {
                 "   #1009)",
                 "",
                 "*  Removed transport parameters from NewSessionTicket (#1015)",
-                "",
+            ],
+        },
+        Section {
+            id: "C.22",
+            title: "Since draft-ietf-quic-transport-07",
+            full_title: "C.22.  Since draft-ietf-quic-transport-07",
+            lines: [
                 "*  The long header now has version before packet number (#926, #939)",
                 "",
                 "*  Rename and consolidate packet types (#846, #822, #847)",
@@ -8744,7 +8894,13 @@ Specification {
                 "",
                 "*  Increased the range over which packet numbers are randomized",
                 "   (#864, #850, #964)",
-                "",
+            ],
+        },
+        Section {
+            id: "C.23",
+            title: "Since draft-ietf-quic-transport-06",
+            full_title: "C.23.  Since draft-ietf-quic-transport-06",
+            lines: [
                 "*  Replaced FNV-1a with AES-GCM for all \"Cleartext\" packets (#554)",
                 "",
                 "*  Split error code space between application and transport (#485)",
@@ -8760,7 +8916,13 @@ Specification {
                 "*  Remove timestamps from the ACK frame (#841)",
                 "",
                 "*  Require transport parameters to only appear once (#792)",
-                "",
+            ],
+        },
+        Section {
+            id: "C.24",
+            title: "Since draft-ietf-quic-transport-05",
+            full_title: "C.24.  Since draft-ietf-quic-transport-05",
+            lines: [
                 "*  Stateless token is server-only (#726)",
                 "",
                 "*  Refactor section on connection termination (#733, #748, #328,",
@@ -8773,7 +8935,13 @@ Specification {
                 "*  Renamed STREAM_ID_NEEDED to STREAM_ID_BLOCKED",
                 "",
                 "*  Clarify Keep-alive requirements (#729)",
-                "",
+            ],
+        },
+        Section {
+            id: "C.25",
+            title: "Since draft-ietf-quic-transport-04",
+            full_title: "C.25.  Since draft-ietf-quic-transport-04",
+            lines: [
                 "*  Introduce STOP_SENDING frame, RESET_STREAM only resets in one",
                 "   direction (#165)",
                 "",
@@ -8805,11 +8973,23 @@ Specification {
                 "   #328)",
                 "",
                 "*  Update labels used in HKDF-Expand-Label to match TLS 1.3 (#642)",
-                "",
+            ],
+        },
+        Section {
+            id: "C.26",
+            title: "Since draft-ietf-quic-transport-03",
+            full_title: "C.26.  Since draft-ietf-quic-transport-03",
+            lines: [
                 "*  Change STREAM and RESET_STREAM layout",
                 "",
                 "*  Add MAX_STREAM_ID settings",
-                "",
+            ],
+        },
+        Section {
+            id: "C.27",
+            title: "Since draft-ietf-quic-transport-02",
+            full_title: "C.27.  Since draft-ietf-quic-transport-02",
+            lines: [
                 "*  The size of the initial packet payload has a fixed minimum (#267,",
                 "   #472)",
                 "",
@@ -8853,7 +9033,13 @@ Specification {
                 "      (#425, #479)",
                 "",
                 "*  Expanded security considerations (#440, #444, #445, #448)",
-                "",
+            ],
+        },
+        Section {
+            id: "C.28",
+            title: "Since draft-ietf-quic-transport-01",
+            full_title: "C.28.  Since draft-ietf-quic-transport-01",
+            lines: [
                 "*  Defined short and long packet headers (#40, #148, #361)",
                 "",
                 "*  Defined a versioning scheme and stable fields (#51, #361)",
@@ -8946,7 +9132,13 @@ Specification {
                 "",
                 "*  Defined priority as the responsibility of the application protocol",
                 "   (#104, #303)",
-                "",
+            ],
+        },
+        Section {
+            id: "C.29",
+            title: "Since draft-ietf-quic-transport-00",
+            full_title: "C.29.  Since draft-ietf-quic-transport-00",
+            lines: [
                 "*  Replaced DIVERSIFICATION_NONCE flag with KEY_PHASE flag",
                 "",
                 "*  Defined versioning",
@@ -8956,7 +9148,13 @@ Specification {
                 "*  Error code space is divided into regions for each component",
                 "",
                 "*  Use big endian for all numeric values",
-                "",
+            ],
+        },
+        Section {
+            id: "C.30",
+            title: "Since draft-hamilton-quic-transport-protocol-01",
+            full_title: "C.30.  Since draft-hamilton-quic-transport-protocol-01",
+            lines: [
                 "*  Adopted as base for draft-ietf-quic-tls",
                 "",
                 "*  Updated authors/editors list",

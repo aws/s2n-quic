@@ -6,7 +6,7 @@ use regex::Regex;
 
 lazy_static! {
     static ref SECTION_HEADER_RE: Regex = Regex::new(r"^(([A-Z]\.)?[0-9\.]+)\s+(.*)").unwrap();
-    static ref APPENDIX_HEADER_RE: Regex = Regex::new(r"^Appendix ([A-Z]\.)").unwrap();
+    static ref APPENDIX_HEADER_RE: Regex = Regex::new(r"^Appendix ([A-Z]\.)\s+(.*)").unwrap();
 
     /// Table of contents have at least 5 periods
     static ref TOC_RE: Regex = Regex::new(r"\.{5,}").unwrap();
@@ -97,18 +97,20 @@ fn section_header(line: Content) -> Option<(Content, Section)> {
         ))
     } else if let Some(info) = APPENDIX_HEADER_RE.captures(&line) {
         let id = info.get(1)?;
+        let title = info.get(2)?;
 
-        if TOC_RE.is_match(&line) {
+        if TOC_RE.is_match(title.as_str()) {
             return None;
         }
 
         let id = line.slice(id.range()).trim_end_matches('.');
+        let title = line.slice(title.range());
 
         Some((
             id,
             Section {
                 id,
-                title: line.trim(),
+                title,
                 full_title: line.trim(),
                 lines: vec![],
             },
