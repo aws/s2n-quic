@@ -7,14 +7,9 @@ use s2n_codec::{
     decoder_parameterized_value, DecoderBuffer, DecoderBufferMut, Encoder, EncoderValue,
 };
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.5
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#19.6
 //# The CRYPTO frame (type=0x06) is used to transmit cryptographic
-//# handshake messages.  It can be sent in all packet types.  The CRYPTO
-//# frame offers the cryptographic protocol an in-order stream of bytes.
-//# CRYPTO frames are functionally identical to STREAM frames, except
-//# that they do not bear a stream identifier; they are not flow
-//# controlled; and they do not carry markers for optional offset,
-//# optional length, and the end of the stream.
+//# handshake messages.
 
 macro_rules! crypto_tag {
     () => {
@@ -22,20 +17,17 @@ macro_rules! crypto_tag {
     };
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.5
-//# The CRYPTO frame is as follows:
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#19.6
+//# The CRYPTO frame is shown in Figure 29.
 //#
-//#  0                   1                   2                   3
-//#  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# |                          Offset (i)                         ...
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# |                          Length (i)                         ...
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# |                        Crypto Data (*)                      ...
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//# CRYPTO Frame {
+//#   Type (i) = 0x06,
+//#   Offset (i),
+//#   Length (i),
+//#   Crypto Data (..),
+//# }
 //#
-//#                    Figure 19: CRYPTO Frame Format
+//#                     Figure 29: CRYPTO Frame Format
 //#
 //# CRYPTO frames contain the following fields:
 //#
@@ -46,16 +38,6 @@ macro_rules! crypto_tag {
 //#    Crypto Data field in this CRYPTO frame.
 //#
 //# Crypto Data:  The cryptographic message data.
-//#
-//# There is a separate flow of cryptographic handshake data in each
-//# encryption level, each of which starts at an offset of 0.  This
-//# implies that each encryption level is treated as a separate CRYPTO
-//# stream of data.
-//#
-//# Unlike STREAM frames, which include a Stream ID indicating to which
-//# stream the data belongs, the CRYPTO frame carries data for a single
-//# stream per encryption level.  The stream does not have an explicit
-//# end, so CRYPTO frames do not have a FIN bit.
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Crypto<Data> {

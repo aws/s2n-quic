@@ -17,6 +17,8 @@ pub fn parse(contents: &str) -> Result<Specification, Error> {
 
     let mut pos = 0;
     for (line_no, line) in contents.lines().enumerate() {
+        // lines start at 1
+        let line_no = line_no + 1;
         // TODO handle \r\n?
         let len = line.len();
         let nl_len = "\n".len();

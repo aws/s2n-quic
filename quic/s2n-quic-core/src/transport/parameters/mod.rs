@@ -16,7 +16,7 @@ use s2n_codec::{
     DecoderBufferResult, DecoderError, DecoderValue, DecoderValueMut, Encoder, EncoderValue,
 };
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#7.3
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#7.3
 //# During connection establishment, both endpoints make authenticated
 //# declarations of their transport parameters.  These declarations are
 //# made unilaterally by each endpoint.  Endpoints are required to comply
@@ -75,7 +75,7 @@ pub trait TransportParameterValidator: Sized {
     }
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#7.3.1
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#7.3.1
 //# Both endpoints store the value of the server transport parameters
 //# from a connection and apply them to any 0-RTT packets that are sent
 //# in subsequent connections to that peer, except for transport
@@ -84,41 +84,19 @@ pub trait TransportParameterValidator: Sized {
 //# and the client starts sending 1-RTT packets.  Once the handshake
 //# completes, the client uses the transport parameters established in
 //# the handshake.
+
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#7.3.1
+//# *  initial_max_data
 //#
-//# The definition of new transport parameters (Section 7.3.2) MUST
-//# specify whether they MUST, MAY, or MUST NOT be stored for 0-RTT.  A
-//# client need not store a transport parameter it cannot process.
+//# *  initial_max_stream_data_bidi_local
 //#
-//# A client MUST NOT use remembered values for the following parameters:
-//# original_connection_id, preferred_address, stateless_reset_token,
-//# ack_delay_exponent and active_connection_id_limit.  The client MUST
-//# use the server's new values in the handshake instead, and absent new
-//# values from the server, the default value.
+//# *  initial_max_stream_data_bidi_remote
 //#
-//# A client that attempts to send 0-RTT data MUST remember all other
-//# transport parameters used by the server.  The server can remember
-//# these transport parameters, or store an integrity-protected copy of
-//# the values in the ticket and recover the information when accepting
-//# 0-RTT data.  A server uses the transport parameters in determining
-//# whether to accept 0-RTT data.
+//# *  initial_max_stream_data_uni
 //#
-//# If 0-RTT data is accepted by the server, the server MUST NOT reduce
-//# any limits or alter any values that might be violated by the client
-//# with its 0-RTT data.  In particular, a server that accepts 0-RTT data
-//# MUST NOT set values for the following parameters (Section 18.2) that
-//# are smaller than the remembered value of the parameters.
+//# *  initial_max_streams_bidi
 //#
-//# o  initial_max_data
-//#
-//# o  initial_max_stream_data_bidi_local
-//#
-//# o  initial_max_stream_data_bidi_remote
-//#
-//# o  initial_max_stream_data_uni
-//#
-//# o  initial_max_streams_bidi
-//#
-//# o  initial_max_streams_uni
+//# *  initial_max_streams_uni
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub struct ZeroRTTParameters {
@@ -155,41 +133,7 @@ impl<OriginalConnectionID, StatelessResetToken, PreferredAddress>
     }
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#7.3.1
-//# Omitting or setting a zero value for certain transport parameters can
-//# result in 0-RTT data being enabled, but not usable.  The applicable
-//# subset of transport parameters that permit sending of application
-//# data SHOULD be set to non-zero values for 0-RTT.  This includes
-//# initial_max_data and either initial_max_streams_bidi and
-//# initial_max_stream_data_bidi_remote, or initial_max_streams_uni and
-//# initial_max_stream_data_uni.
-//#
-//# A server MUST either reject 0-RTT data or abort a handshake if the
-//# implied values for transport parameters cannot be supported.
-//#
-//# When sending frames in 0-RTT packets, a client MUST only use
-//# remembered transport parameters; importantly, it MUST NOT use updated
-//# values that it learns from the server's updated transport parameters
-//# or from frames received in 1-RTT packets.  Updated values of
-//# transport parameters from the handshake apply only to 1-RTT packets.
-//# For instance, flow control limits from remembered transport
-//# parameters apply to all 0-RTT packets even if those values are
-//# increased by the handshake or by frames sent in 1-RTT packets.  A
-//# server MAY treat use of updated transport parameters in 0-RTT as a
-//# connection error of type PROTOCOL_VIOLATION.
-
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#7.3.2
-//# New transport parameters can be used to negotiate new protocol
-//# behavior.  An endpoint MUST ignore transport parameters that it does
-//# not support.  Absence of a transport parameter therefore disables any
-//# optional protocol feature that is negotiated using the parameter.
-//#
-//# New transport parameters can be registered according to the rules in
-//# Section 22.1.
-
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#18
-//# 18.  Transport Parameter Encoding
-//#
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#18
 //# The "extension_data" field of the quic_transport_parameters extension
 //# defined in [QUIC-TLS] contains the QUIC transport parameters.  They
 //# are encoded as a sequence of transport parameters, as shown in
@@ -206,8 +150,6 @@ impl<OriginalConnectionID, StatelessResetToken, PreferredAddress>
 //# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 //# |                  Transport Parameter N (*)                  ...
 //# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//#
-//#              Figure 16: Sequence of Transport Parameters
 
 decoder_value!(
     impl<'a> ClientTransportParameters {
@@ -231,7 +173,7 @@ decoder_value!(
     }
 );
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#7.3.2
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#18
 //# Each transport parameter is encoded as an (identifier, length, value)
 //# tuple, as shown in Figure 17:
 //#
@@ -421,35 +363,7 @@ macro_rules! server_transport_parameter {
     };
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#7.3.2
-//# The "extension_data" field of the quic_transport_parameters extension
-//# defined in [QUIC-TLS] contains a TransportParameters value.  TLS
-//# encoding rules are therefore used to describe the encoding of
-//# transport parameters.
-//#
-//# QUIC encodes transport parameters into a sequence of bytes, which are
-//# then included in the cryptographic handshake.
-
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#18.1
-//# 18.1.  Reserved Transport Parameters
-//#
-//# Transport parameters with an identifier of the form "31 * N + 27" for
-//# integer values of N are reserved to exercise the requirement that
-//# unknown transport parameters be ignored.  These transport parameters
-//# have no semantics, and may carry arbitrary values.
-
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#18.2
-//# 18.2.  Transport Parameter Definitions
-//# This section details the transport parameters defined in this
-//# document.
-//#
-//# Many transport parameters listed here have integer values.  Those
-//# transport parameters that are identified as integers use a variable-
-//# length integer encoding (see Section 16) and have a default value of
-//# 0 if the transport parameter is absent, unless otherwise stated.
-//#
-//# The following transport parameters are defined:
-//#
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#18.2
 //# original_connection_id (0x00):  The value of the Destination
 //#    Connection ID field from the first Initial packet sent by the
 //#    client.  This transport parameter is only sent by a server.  This
@@ -462,7 +376,7 @@ server_transport_parameter!(ConnectionId, 0x00);
 
 impl TransportParameterValidator for ConnectionId {}
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#18.2
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#18.2
 //# max_idle_timeout (0x01):  The max idle timeout is a value in
 //#    milliseconds that is encoded as an integer; see (Section 10.2).
 //#    Idle timeout is disabled when both endpoints omit this transport
@@ -499,7 +413,7 @@ impl Into<Duration> for MaxIdleTimeout {
     }
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#18.2
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#18.2
 //# stateless_reset_token (0x02):  A stateless reset token is used in
 //#    verifying a stateless reset; see Section 10.4.  This parameter is
 //#    a sequence of 16 bytes.  This transport parameter MUST NOT be sent
@@ -512,7 +426,7 @@ server_transport_parameter!(StatelessResetToken, 0x02);
 
 impl TransportParameterValidator for StatelessResetToken {}
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#18.2
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#18.2
 //# max_packet_size (0x03):  The maximum packet size parameter is an
 //#    integer value that limits the size of packets that the endpoint is
 //#    willing to receive.  This indicates that packets larger than this
@@ -533,7 +447,7 @@ impl TransportParameterValidator for MaxPacketSize {
     }
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#18.2
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#18.2
 //# initial_max_data (0x04):  The initial maximum data parameter is an
 //#    integer value that contains the initial value for the maximum
 //#    amount of data that can be sent on the connection.  This is
@@ -544,7 +458,7 @@ transport_parameter!(InitialMaxData(VarInt), 0x04);
 
 impl TransportParameterValidator for InitialMaxData {}
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#18.2
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#18.2
 //# initial_max_stream_data_bidi_local (0x05):  This parameter is an
 //#    integer value specifying the initial flow control limit for
 //#    locally-initiated bidirectional streams.  This limit applies to
@@ -559,7 +473,7 @@ transport_parameter!(InitialMaxStreamDataBidiLocal(VarInt), 0x05);
 
 impl TransportParameterValidator for InitialMaxStreamDataBidiLocal {}
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#18.2
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#18.2
 //# initial_max_stream_data_bidi_remote (0x06):  This parameter is an
 //#    integer value specifying the initial flow control limit for peer-
 //#    initiated bidirectional streams.  This limit applies to newly
@@ -573,7 +487,7 @@ transport_parameter!(InitialMaxStreamDataBidiRemote(VarInt), 0x06);
 
 impl TransportParameterValidator for InitialMaxStreamDataBidiRemote {}
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#18.2
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#18.2
 //# initial_max_stream_data_uni (0x07):  This parameter is an integer
 //#    value specifying the initial flow control limit for unidirectional
 //#    streams.  This limit applies to newly created unidirectional
@@ -587,7 +501,7 @@ transport_parameter!(InitialMaxStreamDataUni(VarInt), 0x07);
 
 impl TransportParameterValidator for InitialMaxStreamDataUni {}
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#18.2
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#18.2
 //# initial_max_streams_bidi (0x08):  The initial maximum bidirectional
 //#    streams parameter is an integer value that contains the initial
 //#    maximum number of bidirectional streams the peer may initiate.  If
@@ -600,7 +514,7 @@ transport_parameter!(InitialMaxStreamsBidi(VarInt), 0x08);
 
 impl TransportParameterValidator for InitialMaxStreamsBidi {}
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#18.2
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#18.2
 //# initial_max_streams_uni (0x09):  The initial maximum unidirectional
 //#    streams parameter is an integer value that contains the initial
 //#    maximum number of unidirectional streams the peer may initiate.
@@ -613,7 +527,7 @@ transport_parameter!(InitialMaxStreamsUni(VarInt), 0x09);
 
 impl TransportParameterValidator for InitialMaxStreamsUni {}
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#18.2
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#18.2
 //# ack_delay_exponent (0x0a):  The ACK delay exponent is an integer
 //#    value indicating an exponent used to decode the ACK Delay field in
 //#    the ACK frame (Section 19.3).  If this value is absent, a default
@@ -629,7 +543,7 @@ impl TransportParameterValidator for AckDelayExponent {
     }
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#18.2
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#18.2
 //# max_ack_delay (0x0b):  The maximum ACK delay is an integer value
 //#    indicating the maximum amount of time in milliseconds by which the
 //#    endpoint will delay sending acknowledgments.  This value SHOULD
@@ -752,7 +666,7 @@ mod ack_settings_tests {
 }
 // KCOV_END_TEST_MARKER
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#18.2
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#18.2
 //# disable_active_migration (0x0c):  The disable active migration
 //#    transport parameter is included if the endpoint does not support
 //#    active connection migration (Section 9).  Peers of an endpoint
@@ -797,7 +711,7 @@ impl TransportParameter for MigrationSupport {
 
 impl TransportParameterValidator for MigrationSupport {}
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#18.2
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#18.2
 //# preferred_address (0x0d):  The server's preferred address is used to
 //#    effect a change in server address at the end of the handshake, as
 //#    described in Section 9.6.  The format of this transport parameter
@@ -842,7 +756,7 @@ impl TransportParameterValidator for PreferredAddress {
     }
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#18.2
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#18.2
 //#  0                   1                   2                   3
 //#  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
 //# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -915,7 +829,7 @@ impl EncoderValue for PreferredAddress {
     }
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#18.2
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#18.2
 //# active_connection_id_limit (0x0e):  The active connection ID limit is
 //#    an integer value specifying the maximum number of connection IDs
 //#    from the peer that an endpoint is willing to store.  This value
@@ -947,7 +861,7 @@ impl ActiveConnectionIdLimit {
     }
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#18.2
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#18.2
 //# If present, transport parameters that set initial flow control limits
 //# (initial_max_stream_data_bidi_local,
 //# initial_max_stream_data_bidi_remote, and initial_max_stream_data_uni)
@@ -1035,7 +949,7 @@ impl<OriginalConnectionID, StatelessResetToken, PreferredAddress>
     }
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#18.2
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#18.2
 //# A client MUST NOT include server-only transport parameters
 //# (original_connection_id, stateless_reset_token, or
 //# preferred_address).  A server MUST treat receipt of any of these
@@ -1151,6 +1065,20 @@ macro_rules! impl_transport_parameters {
                             }
                         )*
                         _ => {
+                            //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#7.3.2
+                            //# New transport parameters can be used to negotiate new protocol
+                            //# behavior.  An endpoint MUST ignore transport parameters that it does
+                            //# not support.  Absence of a transport parameter therefore disables any
+                            //# optional protocol feature that is negotiated using the parameter.  As
+                            //# described in Section 18.1, some identifiers are reserved in order to
+                            //# exercise this requirement.
+
+                            //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#18.1
+                            //# Transport parameters with an identifier of the form "31 * N + 27" for
+                            //# integer values of N are reserved to exercise the requirement that
+                            //# unknown transport parameters be ignored.  These transport parameters
+                            //# have no semantics, and may carry arbitrary values.
+
                             // ignore transport parameters with unknown tags
                             // We need to skip the actual content of the parameters, which
                             // consists of a VarInt length field plus payload

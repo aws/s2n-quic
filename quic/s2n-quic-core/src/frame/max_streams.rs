@@ -1,7 +1,7 @@
 use crate::{frame::Tag, stream::StreamType, varint::VarInt};
 use s2n_codec::{decoder_parameterized_value, Encoder, EncoderValue};
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.11
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#19.11
 //# The MAX_STREAMS frames (type=0x12 and 0x13) inform the peer of the
 //# cumulative number of streams of a given type it is permitted to open.
 //# A MAX_STREAMS frame with a type of 0x12 applies to bidirectional
@@ -16,37 +16,24 @@ macro_rules! max_streams_tag {
 const BIDIRECTIONAL_TAG: u8 = 0x12;
 const UNIDIRECTIONAL_TAG: u8 = 0x13;
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.11
-//# The MAX_STREAMS frames are as follows:
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#19.11
+//# The MAX_STREAMS frames are shown in Figure 34;
 //#
-//#  0                   1                   2                   3
-//#  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# |                     Maximum Streams (i)                     ...
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//# MAX_STREAMS Frame {
+//#   Type (i) = 0x12..0x13,
+//#   Maximum Streams (i),
+//# }
+//#
+//#                  Figure 34: MAX_STREAMS Frame Format
 //#
 //# MAX_STREAMS frames contain the following fields:
 //#
 //# Maximum Streams:  A count of the cumulative number of streams of the
 //#    corresponding type that can be opened over the lifetime of the
-//#    connection.
-//#
-//# Loss or reordering can cause a MAX_STREAMS frame to be received which
-//# states a lower stream limit than an endpoint has previously received.
-//# MAX_STREAMS frames which do not increase the stream limit MUST be
-//# ignored.
-//#
-//# An endpoint MUST NOT open more streams than permitted by the current
-//# stream limit set by its peer.  For instance, a server that receives a
-//# unidirectional stream limit of 3 is permitted to open stream 3, 7,
-//# and 11, but not stream 15.  An endpoint MUST terminate a connection
-//# with a STREAM_LIMIT_ERROR error if a peer opens more streams than was
-//# permitted.
-//#
-//# Note that these frames (and the corresponding transport parameters)
-//# do not describe the number of streams that can be opened
-//# concurrently.  The limit includes streams that have been closed as
-//# well as those that are open.
+//#    connection.  This value cannot exceed 2^60, as it is not possible
+//#    to encode stream IDs larger than 2^62-1.  Receipt of a frame that
+//#    permits opening of a stream larger than this limit MUST be treated
+//#    as a FRAME_ENCODING_ERROR.
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct MaxStreams {

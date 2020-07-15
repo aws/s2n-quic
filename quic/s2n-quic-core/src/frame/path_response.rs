@@ -1,10 +1,10 @@
 use crate::frame::Tag;
 use s2n_codec::{decoder_parameterized_value, Encoder, EncoderValue};
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.18
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#19.18
 //# The PATH_RESPONSE frame (type=0x1b) is sent in response to a
-//# PATH_CHALLENGE frame.  Its format is identical to the PATH_CHALLENGE
-//# frame (Section 19.17).
+//# PATH_CHALLENGE frame.  Its format, shown in Figure 41 is identical to
+//# the PATH_CHALLENGE frame (Section 19.17).
 
 macro_rules! path_response_tag {
     () => {
@@ -13,10 +13,11 @@ macro_rules! path_response_tag {
 }
 use crate::frame::path_challenge::{PathChallenge, DATA_LEN};
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.18
-//# If the content of a PATH_RESPONSE frame does not match the content of
-//# a PATH_CHALLENGE frame previously sent by the endpoint, the endpoint
-//# MAY generate a connection error of type PROTOCOL_VIOLATION.
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#19.18
+//# PATH_RESPONSE Frame {
+//#   Type (i) = 0x1b,
+//#   Data (64),
+//# }
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct PathResponse<'a> {

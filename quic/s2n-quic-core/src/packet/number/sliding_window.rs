@@ -39,7 +39,6 @@ enum WindowPosition {
 }
 
 //= https://tools.ietf.org/rfc/rfc4303.txt#3.4.3
-//# An efficient algorithm for duplicate suppression:
 //# Duplicates are rejected through the use of a sliding receive window.
 //# How the window is implemented is a local matter, but the following
 //# text describes the functionality that the implementation must

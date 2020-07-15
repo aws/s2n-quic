@@ -5,7 +5,7 @@ use crate::{
 };
 use s2n_codec::{decoder_parameterized_value, Encoder, EncoderValue};
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.19
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#19.19
 //# An endpoint sends a CONNECTION_CLOSE frame (type=0x1c or 0x1d) to
 //# notify its peer that the connection is being closed.  The
 //# CONNECTION_CLOSE with a frame type of 0x1c is used to signal errors
@@ -21,23 +21,18 @@ macro_rules! connection_close_tag {
 const QUIC_ERROR_TAG: u8 = 0x1c;
 const APPLICATION_ERROR_TAG: u8 = 0x1d;
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.19
-//# If there are open streams that haven't been explicitly closed, they
-//# are implicitly closed when the connection is closed.
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#19.19
+//# The CONNECTION_CLOSE frames are shown in Figure 42.
 //#
-//# The CONNECTION_CLOSE frames are as follows:
+//# CONNECTION_CLOSE Frame {
+//#   Type (i) = 0x1c..0x1d,
+//#   Error Code (i),
+//#   [Frame Type (i)],
+//#   Reason Phrase Length (i),
+//#   Reason Phrase (..),
+//# }
 //#
-//#  0                   1                   2                   3
-//#  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# |                         Error Code (i)                      ...
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# |                       [ Frame Type (i) ]                    ...
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# |                    Reason Phrase Length (i)                 ...
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# |                        Reason Phrase (*)                    ...
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//#                Figure 42: CONNECTION_CLOSE Frame Format
 //#
 //# CONNECTION_CLOSE frames contain the following fields:
 //#
@@ -45,7 +40,7 @@ const APPLICATION_ERROR_TAG: u8 = 0x1d;
 //#    reason for closing this connection.  A CONNECTION_CLOSE frame of
 //#    type 0x1c uses codes from the space defined in Section 20.  A
 //#    CONNECTION_CLOSE frame of type 0x1d uses codes from the
-//#    application protocol error code space; see Section 20.1
+//#    application protocol error code space; see Section 20.1.
 //#
 //# Frame Type:  A variable-length integer encoding the type of frame
 //#    that triggered the error.  A value of 0 (equivalent to the mention

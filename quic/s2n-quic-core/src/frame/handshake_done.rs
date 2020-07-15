@@ -9,12 +9,6 @@ macro_rules! handshake_done_tag {
     };
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-25.txt#19.20
-//# This frame can only be sent by the server.  Servers MUST NOT send a
-//# HANDSHAKE_DONE frame before completing the handshake.  A server MUST
-//# treat receipt of a HANDSHAKE_DONE frame as a connection error of type
-//# PROTOCOL_VIOLATION.
-
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct HandshakeDone;
 

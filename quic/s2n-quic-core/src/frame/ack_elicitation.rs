@@ -1,6 +1,6 @@
 use core::ops::{BitOr, BitOrAssign};
 
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-25.txt#2
+//= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#2
 //# Ack-eliciting Packets:  Packets that contain ack-eliciting frames
 //#    elicit an ACK from the receiver within the maximum ack delay and
 //#    are called ack-eliciting packets.
@@ -54,7 +54,7 @@ pub trait AckElicitable {
     }
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-25.txt#2
+//= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#2
 //# Ack-eliciting Frames:  All frames other than ACK, PADDING, and
 //#    CONNECTION_CLOSE are considered ack-eliciting.
 

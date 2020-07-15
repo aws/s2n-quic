@@ -10,8 +10,7 @@ const TEST_BLOCK: &str = "1,0";
 
 macro_rules! line {
     ($value:expr) => {
-        // lines are 1 index
-        $value.line + 1
+        $value.line
     };
 }
 

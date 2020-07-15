@@ -1,6 +1,6 @@
 use crate::varint::VarInt;
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.4
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#19.4
 //# An endpoint uses a RESET_STREAM frame (type=0x04) to abruptly
 //# terminate the sending part of a stream.
 
@@ -10,26 +10,17 @@ macro_rules! reset_stream_tag {
     };
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.4
-//# After sending a RESET_STREAM, an endpoint ceases transmission and
-//# retransmission of STREAM frames on the identified stream.  A receiver
-//# of RESET_STREAM can discard any data that it already received on that
-//# stream.
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#19.4
+//# The RESET_STREAM frame is shown in Figure 27.
 //#
-//# An endpoint that receives a RESET_STREAM frame for a send-only stream
-//# MUST terminate the connection with error STREAM_STATE_ERROR.
+//# RESET_STREAM Frame {
+//#   Type (i) = 0x04,
+//#   Stream ID (i),
+//#   Application Protocol Error Code (i),
+//#   Final Size (i),
+//# }
 //#
-//# The RESET_STREAM frame is as follows:
-//#
-//#  0                   1                   2                   3
-//#  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# |                        Stream ID (i)                        ...
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# |                  Application Error Code (i)                 ...
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# |                        Final Size (i)                       ...
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//#                  Figure 27: RESET_STREAM Frame Format
 //#
 //# RESET_STREAM frames contain the following fields:
 //#
