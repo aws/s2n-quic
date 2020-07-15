@@ -1,5 +1,6 @@
 use crate::interval_set::{IntervalSet, RangeInclusiveIter};
 use core::{
+    convert::TryInto,
     num::NonZeroUsize,
     ops::{Deref, DerefMut, RangeInclusive},
 };
@@ -47,7 +48,7 @@ impl AckRanges {
             (Some(min), Some(max)) => {
                 let min = PacketNumber::as_varint(min);
                 let max = PacketNumber::as_varint(max);
-                (max - min).into()
+                (max - min).try_into().unwrap_or(core::usize::MAX)
             }
             _ => 0,
         }

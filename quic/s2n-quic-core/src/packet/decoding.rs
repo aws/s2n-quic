@@ -10,7 +10,7 @@ use crate::{
     },
     varint::VarInt,
 };
-use core::mem::size_of;
+use core::{convert::TryInto, mem::size_of};
 use s2n_codec::{CheckedRange, DecoderBuffer, DecoderBufferMut, DecoderError, DecoderValue};
 
 pub struct HeaderDecoder<'a> {
@@ -76,7 +76,7 @@ impl<'a> HeaderDecoder<'a> {
         Ok(source_connection_id)
     }
 
-    pub fn decode_checked_range<'b, Len: DecoderValue<'a> + Into<usize>>(
+    pub fn decode_checked_range<'b, Len: DecoderValue<'a> + TryInto<usize>>(
         &mut self,
         buffer: &DecoderBufferMut<'b>,
     ) -> Result<CheckedRange, DecoderError> {
