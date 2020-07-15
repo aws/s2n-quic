@@ -1,6 +1,6 @@
 use crate::varint::VarInt;
 
-//=https://quicwg.org/base-drafts/draft-ietf-quic-transport.html#rfc.section.19.1-
+//=https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.1-
 //# 19.10.  MAX_STREAM_DATA Frame
 //#
 //#    The MAX_STREAM_DATA frame (type=0x11) is used in flow control to

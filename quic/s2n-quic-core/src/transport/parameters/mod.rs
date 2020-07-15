@@ -16,7 +16,7 @@ use s2n_codec::{
     DecoderBufferResult, DecoderError, DecoderValue, DecoderValueMut, Encoder, EncoderValue,
 };
 
-//= https://tools.ietf.org/html/draft-ietf-quic-transport-24#section-7.3
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#7.3
 //# 7.3.  Transport Parameters
 //#
 //#    During connection establishment, both endpoints make authenticated
@@ -77,7 +77,7 @@ pub trait TransportParameterValidator: Sized {
     }
 }
 
-//= https://tools.ietf.org/html/draft-ietf-quic-transport-24#section-7.3.1
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#7.3.1
 //# 7.3.1.  Values of Transport Parameters for 0-RTT
 //#
 //#    Both endpoints store the value of the server transport parameters
@@ -181,7 +181,7 @@ impl<OriginalConnectionID, StatelessResetToken, PreferredAddress>
 //#    server MAY treat use of updated transport parameters in 0-RTT as a
 //#    connection error of type PROTOCOL_VIOLATION.
 
-//= https://tools.ietf.org/html/draft-ietf-quic-transport-24#section-7.3.2
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#7.3.2
 //# 7.3.2.  New Transport Parameters
 //#
 //#    New transport parameters can be used to negotiate new protocol
@@ -192,7 +192,7 @@ impl<OriginalConnectionID, StatelessResetToken, PreferredAddress>
 //#    New transport parameters can be registered according to the rules in
 //#    Section 22.1.
 
-//= https://tools.ietf.org/html/draft-ietf-quic-transport-24#section-18
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#18
 //# 18.  Transport Parameter Encoding
 //#
 //#    The "extension_data" field of the quic_transport_parameters extension
@@ -433,7 +433,7 @@ macro_rules! server_transport_parameter {
 //#    QUIC encodes transport parameters into a sequence of bytes, which are
 //#    then included in the cryptographic handshake.
 
-//= https://tools.ietf.org/html/draft-ietf-quic-transport-24#section-18.1
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#18.1
 //# 18.1.  Reserved Transport Parameters
 //#
 //#    Transport parameters with an identifier of the form "31 * N + 27" for
@@ -441,7 +441,7 @@ macro_rules! server_transport_parameter {
 //#    unknown transport parameters be ignored.  These transport parameters
 //#    have no semantics, and may carry arbitrary values.
 
-//= https://tools.ietf.org/html/draft-ietf-quic-transport-24#section-18.2
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#18.2
 //# 18.2.  Transport Parameter Definitions
 //#    This section details the transport parameters defined in this
 //#    document.
@@ -681,7 +681,7 @@ pub struct AckSettings {
     pub ack_delay_exponent: u8,
 }
 
-//= https://tools.ietf.org/html/draft-ietf-quic-transport-27#section-19.3
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.3
 //# A variable-length integer representing the time delta in
 //# microseconds between when this ACK was sent and when the largest
 //# acknowledged packet, as indicated in the Largest Acknowledged
@@ -1115,7 +1115,7 @@ macro_rules! impl_transport_parameters {
                     buffer = match tag {
                         $(
                             tag if tag == $field_ty::ID => {
-                                //=https://tools.ietf.org/html/draft-ietf-quic-transport-25#section-18.2
+                                //=https://tools.ietf.org/id/draft-ietf-quic-transport-25.txt#18.2
                                 //# A client MUST NOT include server-only transport parameters
                                 //# (original_connection_id, stateless_reset_token, or
                                 //# preferred_address).  A server MUST treat receipt of any of these

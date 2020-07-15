@@ -50,10 +50,10 @@ enum ConnectionState {
     /// The connection is active
     Active,
     /// The connection is closing, as described in
-    /// https://tools.ietf.org/html/draft-ietf-quic-transport-25#section-10.1
+    /// https://tools.ietf.org/id/draft-ietf-quic-transport-25.txt#10.1
     Closing,
     /// The connection is draining, as described in
-    /// https://tools.ietf.org/html/draft-ietf-quic-transport-25#section-10.1
+    /// https://tools.ietf.org/id/draft-ietf-quic-transport-25.txt#10.1
     Draining,
     /// The connection was drained, and is in its terminal state.
     /// The connection will be removed from the endpoint when it reached this state.
@@ -68,11 +68,13 @@ impl<'a> From<ConnectionCloseReason<'a>> for ConnectionState {
                 ConnectionState::Finished
             }
             ConnectionCloseReason::LocalImmediateClose(_error) => {
-                //= An endpoint enters a closing period after initiating an immediate close (Section 10.3).
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#10.1
+                //# An endpoint enters a closing period after initiating an immediate close (Section 10.3).
                 ConnectionState::Closing
             }
             ConnectionCloseReason::PeerImmediateClose(_error) => {
-                //= The draining state is entered once an endpoint receives a signal that its peer is closing or draining.
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#10.1
+                //# The draining state is entered once an endpoint receives a signal that its peer is closing or draining.
                 ConnectionState::Draining
             }
             ConnectionCloseReason::LocalObservedTransportErrror(_error) => {
@@ -139,7 +141,7 @@ impl<ConfigType: ConnectionConfig> ConnectionImpl<ConfigType> {
 
     /// Returns the idle timeout based on transport parameters of both peers
     fn get_idle_timer_duration(&self) -> Duration {
-        //= https://tools.ietf.org/html/draft-ietf-quic-transport-27#section-10.2
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#10.2
         //# Each endpoint advertises a max_idle_timeout, but the effective value
         //# at an endpoint is computed as the minimum of the two advertised
         //# values.  By announcing a max_idle_timeout, an endpoint commits to
@@ -167,14 +169,14 @@ macro_rules! packet_validator {
             let crypto = &space.crypto;
             let packet_number_decoder = space.packet_number_decoder();
 
-            //= https://tools.ietf.org/html/draft-ietf-quic-tls-27#section-5.5
+            //= https://tools.ietf.org/id/draft-ietf-quic-tls-27.txt#5.5
             //# Failure to unprotect a packet does not necessarily indicate the
             //# existence of a protocol error in a peer or an attack.
 
             // In this case we silently drop the packet
             let packet = $packet.unprotect(crypto, packet_number_decoder).ok()?;
 
-            //= https://tools.ietf.org/html/draft-ietf-quic-transport-27#section-12.3
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#12.3
             //# A receiver MUST discard a newly unprotected packet unless it is
             //# certain that it has not processed another packet with the same packet
             //# number from the same packet number space.
@@ -221,7 +223,7 @@ impl<ConfigType: ConnectionConfig> ConnectionTrait for ConnectionImpl<ConfigType
     }
 
     /// Initiates closing the connection as described in
-    /// https://tools.ietf.org/html/draft-ietf-quic-transport-25#section-10
+    /// https://tools.ietf.org/id/draft-ietf-quic-transport-25.txt#10
     ///
     /// This method can be called for any of the close reasons:
     /// - Idle timeout
@@ -242,7 +244,7 @@ impl<ConfigType: ConnectionConfig> ConnectionTrait for ConnectionImpl<ConfigType
         // TODO: Rember close reason
         // TODO: Build a CONNECTION_CLOSE frame based on the keys that are available
         // at the moment. We need to use the highest set of available keys as
-        // described in https://tools.ietf.org/html/draft-ietf-quic-transport-25#section-10.3
+        // described in https://tools.ietf.org/id/draft-ietf-quic-transport-25.txt#10.3
 
         // We are not interested in this timer anymore
         // TODO: There might be more such timers need to get added in the future
@@ -408,7 +410,7 @@ impl<ConfigType: ConnectionConfig> ConnectionTrait for ConnectionImpl<ConfigType
         {
             self.handle_cleartext_initial_packet(shared_state, datagram, packet)?;
 
-            //= https://tools.ietf.org/html/draft-ietf-quic-transport-27#section-10.2
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#10.2
             //# An endpoint restarts its idle timer when a packet from its peer is
             //# received and processed successfully.
             self.restart_peer_idle_timer(datagram.timestamp);
@@ -446,7 +448,7 @@ impl<ConfigType: ConnectionConfig> ConnectionTrait for ConnectionImpl<ConfigType
         {
             self.handle_cleartext_packet(shared_state, datagram, packet)?;
 
-            //= https://tools.ietf.org/html/draft-ietf-quic-tls-27#section-4.10.1
+            //= https://tools.ietf.org/id/draft-ietf-quic-tls-27.txt#4.10.1
             //# A server MUST discard Initial keys when it first successfully
             //# processes a Handshake packet.
 
@@ -454,7 +456,7 @@ impl<ConfigType: ConnectionConfig> ConnectionTrait for ConnectionImpl<ConfigType
                 shared_state.space_manager.discard_initial();
             }
 
-            //= https://tools.ietf.org/html/draft-ietf-quic-transport-27#section-10.2
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#10.2
             //# An endpoint restarts its idle timer when a packet from its peer is
             //# received and processed successfully.
             self.restart_peer_idle_timer(datagram.timestamp);
@@ -480,7 +482,7 @@ impl<ConfigType: ConnectionConfig> ConnectionTrait for ConnectionImpl<ConfigType
         {
             self.handle_cleartext_packet(shared_state, datagram, packet)?;
 
-            //= https://tools.ietf.org/html/draft-ietf-quic-transport-27#section-10.2
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#10.2
             //# An endpoint restarts its idle timer when a packet from its peer is
             //# received and processed successfully.
             self.restart_peer_idle_timer(datagram.timestamp);

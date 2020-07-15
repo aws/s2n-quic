@@ -3,7 +3,7 @@ use s2n_codec::{
     DecoderBufferResult, DecoderError,
 };
 
-//= https://tools.ietf.org/html/draft-ietf-quic-transport-23#section-17
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-23.txt#17
 //# 17.  Packet Formats
 //#
 //#    All numeric values are encoded in network byte order (that is, big-

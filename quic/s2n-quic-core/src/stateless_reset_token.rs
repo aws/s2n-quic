@@ -3,7 +3,7 @@
 use core::convert::{TryFrom, TryInto};
 use s2n_codec::{decoder_value, Encoder, EncoderValue};
 
-//= https://tools.ietf.org/html/draft-ietf-quic-transport-24#section-10.4
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#10.4
 //# 10.4.  Stateless Reset
 //#
 //#    A stateless reset is provided as an option of last resort for an

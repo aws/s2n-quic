@@ -5,7 +5,7 @@ use alloc::collections::VecDeque;
 use bytes::BytesMut;
 use s2n_quic_core::varint::VarInt;
 
-//= https://tools.ietf.org/html/draft-ietf-quic-transport-22#section-2.2
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-22.txt#2.2
 //# 2.2.  Sending and Receiving Data
 //#
 //#    STREAM frames (Section 19.8) encapsulate data sent by an application.

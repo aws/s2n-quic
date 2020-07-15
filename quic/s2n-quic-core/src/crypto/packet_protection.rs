@@ -1,4 +1,4 @@
-//= https://tools.ietf.org/html/draft-ietf-quic-tls-22#section-5.1
+//= https://tools.ietf.org/id/draft-ietf-quic-tls-22.txt#5.1
 //# 5.1.  Packet Protection Keys
 //#
 //#    QUIC derives packet protection keys in the same way that TLS derives

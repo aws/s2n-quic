@@ -1,6 +1,6 @@
 use crate::varint::VarInt;
 
-//=https://quicwg.org/base-drafts/draft-ietf-quic-transport.html#rfc.section.19.5
+//=https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.5
 //# 19.5.  STOP_SENDING Frame
 //#
 //#    An endpoint uses a STOP_SENDING frame (type=0x05) to communicate that

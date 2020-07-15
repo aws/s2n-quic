@@ -22,7 +22,7 @@ use s2n_quic_core::{
     varint::VarInt,
 };
 
-//=https://tools.ietf.org/html/draft-ietf-quic-transport-24#section-3.2
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#3.2
 //# 3.2.  Receiving Stream States
 //#
 //#    Figure 2 shows the states for the part of a stream that receives data
@@ -243,7 +243,7 @@ impl ReceiveStreamFlowController {
     ) -> Result<(), TransportError> {
         // Step 1: Check the stream limit
 
-        //=https://tools.ietf.org/html/draft-ietf-quic-transport-24#section-19.10
+        //=https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#19.10
         //# The data sent on a stream MUST NOT exceed the largest maximum stream
         //# data value advertised by the receiver.  An endpoint MUST terminate a
         //# connection with a FLOW_CONTROL_ERROR error if it receives more data
@@ -430,7 +430,7 @@ impl ReceiveStream {
 
                 if let Some(total_size) = total_size {
                     if data_end > total_size || frame.is_fin && data_end != total_size {
-                        //= https://tools.ietf.org/html/draft-ietf-quic-transport-24#section-4.4
+                        //= https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#4.4
                         //# Once a final size for a stream is known, it cannot change.  If a
                         //# RESET_STREAM or STREAM frame is received indicating a change in the
                         //# final size for the stream, an endpoint SHOULD respond with a
@@ -452,8 +452,7 @@ impl ReceiveStream {
                     .write_at(frame.offset, frame.data)
                     .map_err(|error| {
                         let error_code = match error {
-                            //=https://tools.ietf.org/html/draft-ietf-quic-transport-24#section-19.9
-                            //=https://tools.ietf.org/html/draft-ietf-quic-transport-24#section-19.10
+                            //=https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#19.9
                             //# An endpoint MUST terminate a connection with a FLOW_CONTROL_ERROR
                             //# error if it receives more data than the maximum data value that it
                             //# has sent, unless this is a result of a change in the initial limits
@@ -485,7 +484,7 @@ impl ReceiveStream {
                     // the FIN and more data to us. Since we neither can prove the peer
                     // right there is nothing we can do about this.
 
-                    //=https://tools.ietf.org/html/draft-ietf-quic-transport-24#section-3.2
+                    //=https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#3.2
                     //# When a STREAM frame with a FIN bit is received, the final size of the
                     //# stream is known (see Section 4.4).  The receiving part of the stream
                     //# then enters the "Size Known" state.  In this state, the endpoint no
@@ -581,7 +580,7 @@ impl ReceiveStream {
                     // diverges from the stream size which had been communicated
                     // before this is an error
 
-                    //=https://tools.ietf.org/html/draft-ietf-quic-transport-24#section-4.4
+                    //=https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#4.4
                     //# Once a final size for a stream is known, it cannot change.  If a
                     //# RESET_STREAM or STREAM frame is received indicating a change in the
                     //# final size for the stream, an endpoint SHOULD respond with a

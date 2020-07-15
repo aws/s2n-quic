@@ -34,7 +34,7 @@ impl RingNegotiatedCrypto {
     }
 
     /// Update the ciphersuite as defined in
-    /// https://tools.ietf.org/html/draft-ietf-quic-tls-24#section-6
+    /// https://tools.ietf.org/id/draft-ietf-quic-tls-24.txt#6
     pub fn update(&self) -> Self {
         Self {
             sealer: self.sealer.update(),
@@ -112,7 +112,7 @@ macro_rules! negotiated_crypto {
             }
 
             /// Update the ciphersuite as defined in
-            /// https://tools.ietf.org/html/draft-ietf-quic-tls-24#section-6
+            //= https://tools.ietf.org/id/draft-ietf-quic-tls-24.txt#6
             pub fn update(&self) -> Self {
                 Self(self.0.update())
             }

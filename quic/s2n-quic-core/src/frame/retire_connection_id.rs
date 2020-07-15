@@ -1,6 +1,6 @@
 use crate::varint::VarInt;
 
-//=https://quicwg.org/base-drafts/draft-ietf-quic-transport.html#rfc.section.19.16
+//=https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.16
 // 19.16.  RETIRE_CONNECTION_ID Frame
 //
 //    An endpoint sends a RETIRE_CONNECTION_ID frame (type=0x19) to

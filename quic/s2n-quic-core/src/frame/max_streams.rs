@@ -1,7 +1,7 @@
 use crate::{frame::Tag, stream::StreamType, varint::VarInt};
 use s2n_codec::{decoder_parameterized_value, Encoder, EncoderValue};
 
-//=https://quicwg.org/base-drafts/draft-ietf-quic-transport.html#rfc.section.19.1-
+//=https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.1-
 //# 19.11.  MAX_STREAMS Frames
 //#
 //#    The MAX_STREAMS frames (type=0x12 and 0x13) inform the peer of the

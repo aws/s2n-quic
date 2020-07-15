@@ -1,6 +1,6 @@
 use crate::varint::VarInt;
 
-//=https://quicwg.org/base-drafts/draft-ietf-quic-transport.html#rfc.section.19.13
+//=https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.13
 //# 19.13.  STREAM_DATA_BLOCKED Frame
 //#
 //#    A sender SHOULD send a STREAM_DATA_BLOCKED frame (type=0x15) when it

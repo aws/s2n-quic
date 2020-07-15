@@ -1,7 +1,7 @@
 use crate::{frame::Tag, stream::StreamType, varint::VarInt};
 use s2n_codec::{decoder_parameterized_value, Encoder, EncoderValue};
 
-//=https://quicwg.org/base-drafts/draft-ietf-quic-transport.html#rfc.section.19.14
+//=https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.14
 //# 19.14.  STREAMS_BLOCKED Frames
 //#
 //#    A sender SHOULD send a STREAMS_BLOCKED frame (type=0x16 or 0x17) when

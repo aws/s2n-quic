@@ -7,7 +7,7 @@ use s2n_codec::{
     decoder_invariant, CheckedRange, DecoderError, Encoder, EncoderBuffer, EncoderValue,
 };
 
-//= https://tools.ietf.org/html/draft-ietf-quic-transport-22#section-17.2
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-22.txt#17.2
 //# 17.2.  Long Header Packets
 //#
 //#     0                   1                   2                   3

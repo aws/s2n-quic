@@ -4,19 +4,18 @@ pub use sliding_window::*;
 mod protected_packet_number;
 pub use protected_packet_number::ProtectedPacketNumber;
 
-//= https://tools.ietf.org/html/draft-ietf-quic-transport-22#section-12.3
-//# 12.3.  Packet Numbers
-//#
-//#    The packet number is an integer in the range 0 to 2^62-1.  This
-//#    number is used in determining the cryptographic nonce for packet
-//#    protection.  Each endpoint maintains a separate packet number for
-//#    sending and receiving.
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-22.txt#12.3
+//# The packet number is an integer in the range 0 to 2^62-1.  This
+//# number is used in determining the cryptographic nonce for packet
+//# protection.  Each endpoint maintains a separate packet number for
+//# sending and receiving.
 
 use crate::varint::VarInt;
 
 mod packet_number;
 pub use packet_number::PacketNumber;
 
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-22.txt#12.3
 //#    Packet numbers are limited to this range because they need to be
 //#    representable in whole in the Largest Acknowledged field of an ACK
 //#    frame (Section 19.3).  When present in a long or short header
@@ -26,6 +25,7 @@ pub use packet_number::PacketNumber;
 mod truncated_packet_number;
 pub use truncated_packet_number::TruncatedPacketNumber;
 
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-22.txt#12.3
 //#    Version Negotiation (Section 17.2.1) and Retry (Section 17.2.5)
 //#    packets do not include a packet number.
 //#
@@ -43,6 +43,7 @@ pub use truncated_packet_number::TruncatedPacketNumber;
 mod packet_number_space;
 pub use packet_number_space::PacketNumberSpace;
 
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-22.txt#12.3
 //#    As described in [QUIC-TLS], each packet type uses different
 //#    protection keys.
 //#
@@ -79,9 +80,7 @@ pub use packet_number_space::PacketNumberSpace;
 //#    Packet number encoding at a sender and decoding at a receiver are
 //#    described in Section 17.1.
 
-//= https://tools.ietf.org/html/draft-ietf-quic-transport-22#section-17.1
-//# 17.1.  Packet Number Encoding and Decoding
-//#
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-22.txt#17.1
 //#    Packet numbers are integers in the range 0 to 2^62-1 (Section 12.3).
 //#    When present in long or short packet headers, they are encoded in 1
 //#    to 4 bytes.  The number of bits required to represent the packet
@@ -94,6 +93,7 @@ pub(crate) const PACKET_NUMBER_LEN_MASK: u8 = 0b11;
 mod packet_number_len;
 pub use packet_number_len::PacketNumberLen;
 
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-22.txt#17.1
 //#    The encoded packet number is protected as described in Section 5.4 of
 //#    [QUIC-TLS].
 //#
@@ -121,6 +121,7 @@ fn derive_truncation_range(
         .and_then(|value| PacketNumberLen::from_varint(value, space))
 }
 
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-22.txt#17.1
 //#    As a result, the size of the packet number encoding is at least one
 //#    bit more than the base-2 logarithm of the number of contiguous
 //#    unacknowledged packet numbers, including the new packet.
@@ -155,6 +156,7 @@ fn packet_number_len_example_test() {
     );
 }
 
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-22.txt#17.1
 //#    At a receiver, protection of the packet number is removed prior to
 //#    recovering the full packet number.  The full packet number is then
 //#    reconstructed based on the number of significant bits present, the
@@ -185,7 +187,7 @@ fn packet_decoding_example_test() {
     );
 }
 
-//= https://tools.ietf.org/html/draft-ietf-quic-transport-22#appendix-A
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-22.txt#A
 //# Appendix A.  Sample Packet Number Decoding Algorithm
 //#
 //#    The following pseudo-code shows how an implementation can decode

@@ -24,7 +24,7 @@ use s2n_quic_core::{
     varint::VarInt,
 };
 
-//=https://tools.ietf.org/html/draft-ietf-quic-transport-24#section-3.1
+//=https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#3.1
 //# 3.1.  Sending Stream States
 //#
 //#    Figure 1 shows the states for the part of a stream that sends data to
@@ -538,7 +538,7 @@ impl SendStream {
         frame: &StopSending,
         events: &mut StreamEvents,
     ) -> Result<(), TransportError> {
-        //=https://tools.ietf.org/html/draft-ietf-quic-transport-24#section-3.5
+        //=https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#3.5
         //# A STOP_SENDING frame requests that the receiving endpoint send a
         //# RESET_STREAM frame.  An endpoint that receives a STOP_SENDING frame
         //# MUST send a RESET_STREAM frame if the stream is in the Ready or Send

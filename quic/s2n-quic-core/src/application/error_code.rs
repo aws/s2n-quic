@@ -2,7 +2,7 @@
 
 use crate::{application::ApplicationErrorExt, varint::VarInt};
 
-//=https://tools.ietf.org/html/draft-ietf-quic-transport-24#section-20.1
+//=https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#20.1
 //# 20.1.  Application Protocol Error Codes
 //#
 //#    Application protocol error codes are 62-bit unsigned integers, but

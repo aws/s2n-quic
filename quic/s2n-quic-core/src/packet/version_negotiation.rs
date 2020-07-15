@@ -11,7 +11,7 @@ use s2n_codec::{
     EncoderValue,
 };
 
-//= https://quicwg.org/base-drafts/draft-ietf-quic-transport.html#rfc.section.17.2.1
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#17.2.1
 //# 17.2.1.  Version Negotiation Packet
 //#
 //#    A Version Negotiation packet is inherently not version-specific.

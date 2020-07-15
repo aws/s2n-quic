@@ -1,7 +1,7 @@
 use crate::{frame::Tag, varint::VarInt};
 use s2n_codec::{decoder_parameterized_value, Encoder, EncoderValue};
 
-//=https://quicwg.org/base-drafts/draft-ietf-quic-transport.html#rfc.section.19.7
+//=https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.7
 //# 19.7.  NEW_TOKEN Frame
 //#
 //#    A server sends a NEW_TOKEN frame (type=0x07) to provide the client

@@ -7,7 +7,7 @@ use s2n_codec::{
     decoder_parameterized_value, DecoderBuffer, DecoderBufferMut, Encoder, EncoderValue,
 };
 
-//=https://quicwg.org/base-drafts/draft-ietf-quic-transport.html#rfc.section.19.8
+//=https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.8
 //# 19.8.  STREAM Frames
 //#
 //#    STREAM frames implicitly create a stream and carry stream data.  The

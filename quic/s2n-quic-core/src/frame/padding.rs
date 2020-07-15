@@ -1,7 +1,7 @@
 use crate::frame::Tag;
 use s2n_codec::{decoder_parameterized_value, Encoder, EncoderValue};
 
-//=https://quicwg.org/base-drafts/draft-ietf-quic-transport.html#rfc.section.19.1
+//=https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.1
 //# 19.1.  PADDING Frame
 //#
 //#    The PADDING frame (type=0x00) has no semantic value.  PADDING frames

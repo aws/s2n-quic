@@ -1,4 +1,4 @@
-//= https://tools.ietf.org/html/draft-ietf-quic-transport-25#section-19.20
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-25.txt#19.20
 //# 19.20.  HANDSHAKE_DONE frame
 //#
 //#    The server uses the HANDSHAKE_DONE frame (type=0x1e) to signal

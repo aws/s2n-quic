@@ -4,7 +4,7 @@ use crate::transport::error::TransportError;
 use core::convert::TryFrom;
 use s2n_codec::{decoder_value, Encoder, EncoderValue};
 
-//= https://tools.ietf.org/html/draft-ietf-quic-transport-24#section-5.1
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#5.1
 //# 5.1.  Connection ID
 //#
 //# Each connection possesses a set of connection identifiers, or

@@ -8,7 +8,7 @@ use crate::{
 use core::fmt;
 use s2n_codec::DecoderError;
 
-//= https://tools.ietf.org/html/draft-ietf-quic-transport-23#section-20
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-23.txt#20
 //# 20.  Transport Error Codes
 //#
 //#    QUIC error codes are 62-bit unsigned integers.

@@ -12,7 +12,7 @@ use crate::{
 };
 use s2n_codec::{CheckedRange, DecoderBufferMut, DecoderBufferMutResult, Encoder, EncoderValue};
 
-//= https://tools.ietf.org/html/draft-ietf-quic-transport-22#section-17.3
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-22.txt#17.3
 //# 17.3.  Short Header Packets
 //#
 //#    This version of QUIC defines a single packet type which uses the

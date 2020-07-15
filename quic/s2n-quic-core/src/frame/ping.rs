@@ -1,4 +1,4 @@
-//=https://quicwg.org/base-drafts/draft-ietf-quic-transport.html#rfc.section.19.2
+//=https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.2
 //# 19.2.  PING Frame
 //#
 //#    Endpoints can use PING frames (type=0x01) to verify that their peers

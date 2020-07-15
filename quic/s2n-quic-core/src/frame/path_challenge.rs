@@ -2,7 +2,7 @@ use crate::frame::Tag;
 use core::convert::TryInto;
 use s2n_codec::{decoder_parameterized_value, Encoder, EncoderValue};
 
-//=https://quicwg.org/base-drafts/draft-ietf-quic-transport.html#rfc.section.19.17
+//=https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.17
 //# 19.17.  PATH_CHALLENGE Frame
 //#
 //#    Endpoints can use PATH_CHALLENGE frames (type=0x1a) to check

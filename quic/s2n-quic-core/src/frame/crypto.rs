@@ -7,7 +7,7 @@ use s2n_codec::{
     decoder_parameterized_value, DecoderBuffer, DecoderBufferMut, Encoder, EncoderValue,
 };
 
-//=https://quicwg.org/base-drafts/draft-ietf-quic-transport.html#rfc.section.19.5
+//=https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.5
 //# 19.6.  CRYPTO Frame
 //#
 //#    The CRYPTO frame (type=0x06) is used to transmit cryptographic

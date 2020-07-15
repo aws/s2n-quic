@@ -4,7 +4,7 @@ use s2n_codec::{
     decoder_parameterized_value, decoder_value, DecoderBuffer, DecoderError, Encoder, EncoderValue,
 };
 
-//=https://quicwg.org/base-drafts/draft-ietf-quic-transport.html#rfc.section.19.3
+//=https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.3
 //# 19.3.  ACK Frames
 //#
 //#    Receivers send ACK frames (types 0x02 and 0x03) to inform senders of
@@ -192,7 +192,7 @@ impl<A: AckRanges> EncoderValue for Ack<A> {
     }
 }
 
-//=https://quicwg.org/base-drafts/draft-ietf-quic-transport.html#rfc.section.19.3.1
+//=https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.3.1
 //# 19.3.1.  ACK Ranges
 //#
 //#    The ACK Ranges field consists of alternating Gap and ACK Range values
@@ -413,7 +413,7 @@ impl<'a> core::fmt::Debug for AckRangesIter<'a> {
 const ACK_RANGE_DECODING_ERROR: DecoderError =
     DecoderError::InvariantViolation("invalid ACK ranges");
 
-//=https://quicwg.org/base-drafts/draft-ietf-quic-transport.html#rfc.section.19.3.2
+//=https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.3.2
 //# 19.3.2.  ECN Counts
 //#
 //#    The ACK frame uses the least significant bit (that is, type 0x03) to

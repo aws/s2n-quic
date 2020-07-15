@@ -5,7 +5,7 @@ use crate::packet::{
 };
 use s2n_codec::{DecoderBufferMut, DecoderBufferMutResult, Encoder, EncoderValue};
 
-//= https://tools.ietf.org/html/draft-ietf-quic-transport-22#section-17.2.5
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-22.txt#17.2.5
 //# 17.2.5.  Retry Packet
 //#
 //#    A Retry packet uses a long packet header with a type value of 0x3.

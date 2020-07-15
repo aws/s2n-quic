@@ -2,7 +2,7 @@ use crate::{frame::Tag, varint::VarInt};
 use core::{convert::TryInto, mem::size_of};
 use s2n_codec::{decoder_invariant, decoder_parameterized_value, Encoder, EncoderValue};
 
-//=https://quicwg.org/base-drafts/draft-ietf-quic-transport.html#rfc.section.19.15
+//=https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.15
 //# 19.15.  NEW_CONNECTION_ID Frame
 //#
 //#    An endpoint sends a NEW_CONNECTION_ID frame (type=0x18) to provide

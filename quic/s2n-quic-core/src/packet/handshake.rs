@@ -17,7 +17,7 @@ use crate::{
 };
 use s2n_codec::{CheckedRange, DecoderBufferMut, DecoderBufferMutResult, Encoder, EncoderValue};
 
-//= https://tools.ietf.org/html/draft-ietf-quic-transport-22#section-17.2.4
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-22.txt#17.2.4
 //# 17.2.4.  Handshake Packet
 //#
 //#    A Handshake packet uses long headers with a type value of 0x2,

@@ -2,7 +2,7 @@
 
 use crate::{endpoint::EndpointType, stream::StreamType, varint::VarInt};
 
-//=https://tools.ietf.org/html/draft-ietf-quic-transport-24#section-2.1
+//=https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#2.1
 //# 2.1.  Stream Types and Identifiers
 //#
 //#    Streams can be unidirectional or bidirectional.  Unidirectional

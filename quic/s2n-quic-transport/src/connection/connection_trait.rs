@@ -45,7 +45,7 @@ pub trait ConnectionTrait: Sized {
     fn internal_connection_id(&self) -> InternalConnectionId;
 
     /// Initiates closing the connection as described in
-    /// https://tools.ietf.org/html/draft-ietf-quic-transport-25#section-10
+    /// https://tools.ietf.org/id/draft-ietf-quic-transport-25.txt#10
     ///
     /// This method can be called for any of the close reasons:
     /// - Idle timeout
@@ -221,7 +221,7 @@ pub trait ConnectionTrait: Sized {
                 ProtectedPacket::decode(payload, destination_connnection_id_decoder)?;
             payload = remaining;
 
-            //=https://tools.ietf.org/html/draft-ietf-quic-transport-24#section-12.2
+            //=https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#12.2
             //# Senders MUST NOT coalesce QUIC packets for different connections into
             //# a single UDP datagram.  Receivers SHOULD ignore any subsequent
             //# packets with a different Destination Connection ID than the first
@@ -267,13 +267,13 @@ pub trait ConnectionTrait: Sized {
 
             match frame {
                 Frame::Padding(frame) => {
-                    //= https://tools.ietf.org/html/draft-ietf-quic-transport-27#section-19.1
+                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.1
                     //# A PADDING frame has no content.  That is, a PADDING frame consists of
                     //# the single byte that identifies the frame as a PADDING frame.
                     processed_packet.on_processed_frame(&frame);
                 }
                 Frame::Ping(frame) => {
-                    //= https://tools.ietf.org/html/draft-ietf-quic-transport-27#section-19.2
+                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.2
                     //# The receiver of a PING frame simply needs to acknowledge the packet
                     //# containing this frame.
                     processed_packet.on_processed_frame(&frame);
@@ -396,7 +396,7 @@ pub trait ConnectionTrait: Sized {
                         .map_err(on_error)?;
                 }
                 Frame::HandshakeDone(frame) => {
-                    //= https://tools.ietf.org/html/draft-ietf-quic-transport-27#section-19.20
+                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.20
                     //# This frame can only be sent by the server.  Servers MUST NOT send a
                     //# HANDSHAKE_DONE frame before completing the handshake.  A server MUST
                     //# treat receipt of a HANDSHAKE_DONE frame as a connection error of type
@@ -421,7 +421,7 @@ pub trait ConnectionTrait: Sized {
             payload = remaining;
         }
 
-        //= https://tools.ietf.org/html/draft-ietf-quic-transport-27#section-13.1
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#13.1
         //# 13.1.  Packet Processing
         //#
         //#   A packet MUST NOT be acknowledged until packet protection has been

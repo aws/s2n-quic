@@ -1,6 +1,6 @@
 use crate::varint::VarInt;
 
-//=https://quicwg.org/base-drafts/draft-ietf-quic-transport.html#rfc.section.19.4
+//=https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.4
 //# 19.4.  RESET_STREAM Frame
 //#
 //#    An endpoint uses a RESET_STREAM frame (type=0x04) to abruptly

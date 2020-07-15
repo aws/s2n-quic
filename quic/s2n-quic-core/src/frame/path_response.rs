@@ -1,7 +1,7 @@
 use crate::frame::Tag;
 use s2n_codec::{decoder_parameterized_value, Encoder, EncoderValue};
 
-//=https://quicwg.org/base-drafts/draft-ietf-quic-transport.html#rfc.section.19.18
+//=https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.18
 //# 19.18.  PATH_RESPONSE Frame
 //#
 //#    The PATH_RESPONSE frame (type=0x1b) is sent in response to a
