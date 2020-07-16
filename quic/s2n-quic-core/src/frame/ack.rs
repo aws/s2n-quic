@@ -280,7 +280,7 @@ decoder_parameterized_value!(
             );
             let (range_buffer, remaining) = buffer.decode_slice(buffer_len - peek_len)?;
 
-            // clippy changed it's name so use both for backwards compatibility
+            // clippy changed its lint name so use both for backwards compatibility
             #[allow(
                 clippy::unknown_clippy_lints,
                 clippy::useless_conversion,
