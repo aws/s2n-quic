@@ -5,6 +5,7 @@ use crate::{
     target::Target,
     Error,
 };
+use core::fmt;
 use rayon::prelude::*;
 use std::{
     collections::{BTreeSet, HashMap},
@@ -41,6 +42,30 @@ struct Reference<'a> {
 enum ReportError<'a> {
     QuoteMismatch { annotation: &'a Annotation },
     MissingSection { annotation: &'a Annotation },
+}
+
+impl<'a> fmt::Display for ReportError<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::QuoteMismatch { annotation } => write!(
+                f,
+                "{}#{}:{} - quote not found in {:?}",
+                annotation.source.display(),
+                annotation.anno_line,
+                annotation.anno_column,
+                annotation.target,
+            ),
+            Self::MissingSection { annotation } => write!(
+                f,
+                "{}#{}:{} - section {:?} not found in {:?}",
+                annotation.source.display(),
+                annotation.anno_line,
+                annotation.anno_column,
+                annotation.target_section().unwrap_or("-"),
+                annotation.target_path(),
+            ),
+        }
+    }
 }
 
 impl Report {
@@ -123,6 +148,7 @@ impl Report {
             .collect();
 
         let mut report = ReportResult::default();
+        let mut errors = BTreeSet::new();
 
         for result in results {
             let (target, result) = match result {
@@ -134,7 +160,6 @@ impl Report {
                 .targets
                 .entry(&target)
                 .or_insert_with(|| TargetReport {
-                    errors: vec![],
                     target,
                     references: BTreeSet::new(),
                     contents: contents.get(&target).expect("content should exist"),
@@ -146,9 +171,17 @@ impl Report {
                     entry.references.insert(reference);
                 }
                 Err(err) => {
-                    entry.errors.push(err);
+                    errors.insert(err.to_string());
                 }
             }
+        }
+
+        if !errors.is_empty() {
+            for error in &errors {
+                eprintln!("{}", error);
+            }
+
+            return Err("source errors were found. no reports were generated".into());
         }
 
         if let Some(lcov_dir) = &self.lcov {
@@ -182,7 +215,6 @@ pub struct ReportResult<'a> {
 
 #[derive(Debug)]
 pub struct TargetReport<'a> {
-    errors: Vec<ReportError<'a>>,
     target: &'a Target,
     references: BTreeSet<Reference<'a>>,
     contents: &'a String,

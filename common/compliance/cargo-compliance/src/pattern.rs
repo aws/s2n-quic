@@ -42,6 +42,8 @@ impl<'a> Pattern<'a> {
         let mut state = ParserState::Search;
 
         for (line_no, line) in source.lines().enumerate() {
+            // lines start at 1
+            let line_no = line_no + 1;
             let content = line.trim_start();
 
             match core::mem::replace(&mut state, ParserState::Search) {
@@ -136,12 +138,15 @@ impl<'a> Capture<'a> {
     }
 
     fn push_content(&mut self, value: &'a str) {
-        self.contents.push_str(value.trim_start());
-        self.contents.push(' ');
+        let value = value.trim();
+        if !value.is_empty() {
+            self.contents.push_str(value);
+            self.contents.push(' ');
+        }
     }
 
     fn done(self, item_line: usize, path: &Path) -> Result<Annotation, Error> {
-        let annotation = Annotation {
+        let mut annotation = Annotation {
             item_line: item_line as _,
             item_column: 0,
             source: path.into(),
@@ -149,6 +154,10 @@ impl<'a> Capture<'a> {
             manifest_dir: std::env::current_dir()?,
             ..self.annotation.into()
         };
+
+        while annotation.quote.ends_with(' ') {
+            annotation.quote.pop();
+        }
 
         if annotation.target.is_empty() {
             return Err("missing source information".into());

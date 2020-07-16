@@ -7,12 +7,10 @@ use s2n_codec::{
 
 pub mod ack_elicitation;
 
-//=
-//# 19.  Frame Types and Formats
-//#
-//#   As described in Section 12.4, packets contain one or more frames.
-//#   This section describes the format and semantics of the core QUIC
-//#   frame types.
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#19
+//# As described in Section 12.4, packets contain one or more frames.
+//# This section describes the format and semantics of the core QUIC
+//# frame types.
 
 pub(crate) type Tag = u8;
 

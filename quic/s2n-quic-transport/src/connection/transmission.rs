@@ -69,7 +69,7 @@ impl<'a, ConnectionConfigType: ConnectionConfig> TxPayload
         let encoder = if let Some(space) = space_manager.handshake_mut() {
             match space.on_transmit(&self.context, encoder) {
                 Ok(encoder) => {
-                    //= https://tools.ietf.org/html/draft-ietf-quic-tls-27#section-4.10.1
+                    //= https://tools.ietf.org/id/draft-ietf-quic-tls-27.txt#4.10.1
                     //# A client MUST discard Initial keys when it first sends a Handshake packet
 
                     if ConnectionConfigType::ENDPOINT_TYPE.is_client() {

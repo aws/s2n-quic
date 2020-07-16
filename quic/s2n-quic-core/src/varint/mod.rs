@@ -4,37 +4,34 @@ use core::{
 };
 use s2n_codec::{decoder_value, Encoder, EncoderValue};
 
-//= https://quicwg.org/base-drafts/draft-ietf-quic-transport.html#rfc.section.16
-//# 16.  Variable-Length Integer Encoding
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#16
+//# QUIC packets and frames commonly use a variable-length encoding for
+//# non-negative integer values.  This encoding ensures that smaller
+//# integer values need fewer bytes to encode.
 //#
-//#    QUIC packets and frames commonly use a variable-length encoding for
-//#    non-negative integer values.  This encoding ensures that smaller
-//#    integer values need fewer bytes to encode.
-//#
-//#    The QUIC variable-length integer encoding reserves the two most
-//#    significant bits of the first byte to encode the base 2 logarithm of
-//#    the integer encoding length in bytes.  The integer value is encoded
-//#    on the remaining bits, in network byte order.
+//# The QUIC variable-length integer encoding reserves the two most
+//# significant bits of the first byte to encode the base 2 logarithm of
+//# the integer encoding length in bytes.  The integer value is encoded
+//# on the remaining bits, in network byte order.
 
 use byteorder::{ByteOrder, NetworkEndian};
 
-//#    This means that integers are encoded on 1, 2, 4, or 8 bytes and can
-//#    encode 6, 14, 30, or 62 bit values respectively.  Table 4 summarizes
-//#    the encoding properties.
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#16
+//# This means that integers are encoded on 1, 2, 4, or 8 bytes and can
+//# encode 6, 14, 30, or 62 bit values respectively.  Table 4 summarizes
+//# the encoding properties.
 //#
-//#           +------+--------+-------------+-----------------------+
-//#           | 2Bit | Length | Usable Bits | Range                 |
-//#           +------+--------+-------------+-----------------------+
-//#           | 00   | 1      | 6           | 0-63                  |
-//#           |      |        |             |                       |
-//#           | 01   | 2      | 14          | 0-16383               |
-//#           |      |        |             |                       |
-//#           | 10   | 4      | 30          | 0-1073741823          |
-//#           |      |        |             |                       |
-//#           | 11   | 8      | 62          | 0-4611686018427387903 |
-//#           +------+--------+-------------+-----------------------+
-//#
-//#                    Table 4: Summary of Integer Encodings
+//#        +------+--------+-------------+-----------------------+
+//#        | 2Bit | Length | Usable Bits | Range                 |
+//#        +======+========+=============+=======================+
+//#        | 00   | 1      | 6           | 0-63                  |
+//#        +------+--------+-------------+-----------------------+
+//#        | 01   | 2      | 14          | 0-16383               |
+//#        +------+--------+-------------+-----------------------+
+//#        | 10   | 4      | 30          | 0-1073741823          |
+//#        +------+--------+-------------+-----------------------+
+//#        | 11   | 8      | 62          | 0-4611686018427387903 |
+//#        +------+--------+-------------+-----------------------+
 
 pub const MAX_VARINT_VALUE: u64 = 4_611_686_018_427_387_903;
 
@@ -88,11 +85,12 @@ mod tests {
         }
     }
 
-    //#    For example, the eight byte sequence c2 19 7c 5e ff 14 e8 8c (in
-    //#    hexadecimal) decodes to the decimal value 151288809941952652; the
-    //#    four byte sequence 9d 7f 3e 7d decodes to 494878333; the two byte
-    //#    sequence 7b bd decodes to 15293; and the single byte 25 decodes to 37
-    //#    (as does the two byte sequence 40 25).
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#16
+    //# For example, the eight byte sequence c2 19 7c 5e ff 14 e8 8c (in
+    //# hexadecimal) decodes to the decimal value 151288809941952652; the
+    //# four byte sequence 9d 7f 3e 7d decodes to 494878333; the two byte
+    //# sequence 7b bd decodes to 15293; and the single byte 25 decodes to 37
+    //# (as does the two byte sequence 40 25).
 
     macro_rules! sequence_test {
         ($name:ident($input:expr, $expected:expr)) => {
@@ -123,9 +121,6 @@ mod tests {
     sequence_test!(one_byte_sequence_test([0x25], 37));
 }
 // KCOV_END_TEST_MARKER
-
-//#    Error codes (Section 20) and versions (Section 15) are described
-//#    using integers, but do not use this encoding.
 
 // === API ===
 

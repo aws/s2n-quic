@@ -22,122 +22,120 @@ use s2n_quic_core::{
     varint::VarInt,
 };
 
-//=https://tools.ietf.org/html/draft-ietf-quic-transport-24#section-3.2
-//# 3.2.  Receiving Stream States
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#3.2
+//# Figure 2 shows the states for the part of a stream that receives data
+//# from a peer.  The states for a receiving part of a stream mirror only
+//# some of the states of the sending part of the stream at the peer.
+//# The receiving part of a stream does not track states on the sending
+//# part that cannot be observed, such as the "Ready" state.  Instead,
+//# the receiving part of a stream tracks the delivery of data to the
+//# application, some of which cannot be observed by the sender.
 //#
-//#    Figure 2 shows the states for the part of a stream that receives data
-//#    from a peer.  The states for a receiving part of a stream mirror only
-//#    some of the states of the sending part of the stream at the peer.
-//#    The receiving part of a stream does not track states on the sending
-//#    part that cannot be observed, such as the "Ready" state.  Instead,
-//#    the receiving part of a stream tracks the delivery of data to the
-//#    application, some of which cannot be observed by the sender.
+//#        o
+//#        | Recv STREAM / STREAM_DATA_BLOCKED / RESET_STREAM
+//#        | Create Bidirectional Stream (Sending)
+//#        | Recv MAX_STREAM_DATA / STOP_SENDING (Bidirectional)
+//#        | Create Higher-Numbered Stream
+//#        v
+//#    +-------+
+//#    | Recv  | Recv RESET_STREAM
+//#    |       |-----------------------.
+//#    +-------+                       |
+//#        |                           |
+//#        | Recv STREAM + FIN         |
+//#        v                           |
+//#    +-------+                       |
+//#    | Size  | Recv RESET_STREAM     |
+//#    | Known |---------------------->|
+//#    +-------+                       |
+//#        |                           |
+//#        | Recv All Data             |
+//#        v                           v
+//#    +-------+ Recv RESET_STREAM +-------+
+//#    | Data  |--- (optional) --->| Reset |
+//#    | Recvd |  Recv All Data    | Recvd |
+//#    +-------+<-- (optional) ----+-------+
+//#        |                           |
+//#        | App Read All Data         | App Read RST
+//#        v                           v
+//#    +-------+                   +-------+
+//#    | Data  |                   | Reset |
+//#    | Read  |                   | Read  |
+//#    +-------+                   +-------+
 //#
-//#           o
-//#           | Recv STREAM / STREAM_DATA_BLOCKED / RESET_STREAM
-//#           | Create Bidirectional Stream (Sending)
-//#           | Recv MAX_STREAM_DATA / STOP_SENDING (Bidirectional)
-//#           | Create Higher-Numbered Stream
-//#           v
-//#       +-------+
-//#       | Recv  | Recv RESET_STREAM
-//#       |       |-----------------------.
-//#       +-------+                       |
-//#           |                           |
-//#           | Recv STREAM + FIN         |
-//#           v                           |
-//#       +-------+                       |
-//#       | Size  | Recv RESET_STREAM     |
-//#       | Known |---------------------->|
-//#       +-------+                       |
-//#           |                           |
-//#           | Recv All Data             |
-//#           v                           v
-//#       +-------+ Recv RESET_STREAM +-------+
-//#       | Data  |--- (optional) --->| Reset |
-//#       | Recvd |  Recv All Data    | Recvd |
-//#       +-------+<-- (optional) ----+-------+
-//#           |                           |
-//#           | App Read All Data         | App Read RST
-//#           v                           v
-//#       +-------+                   +-------+
-//#       | Data  |                   | Reset |
-//#       | Read  |                   | Read  |
-//#       +-------+                   +-------+
+//#            Figure 2: States for Receiving Parts of Streams
 //#
-//#               Figure 2: States for Receiving Parts of Streams
+//# The receiving part of a stream initiated by a peer (types 1 and 3 for
+//# a client, or 0 and 2 for a server) is created when the first STREAM,
+//# STREAM_DATA_BLOCKED, or RESET_STREAM is received for that stream.
+//# For bidirectional streams initiated by a peer, receipt of a
+//# MAX_STREAM_DATA or STOP_SENDING frame for the sending part of the
+//# stream also creates the receiving part.  The initial state for the
+//# receiving part of stream is "Recv".
 //#
-//#    The receiving part of a stream initiated by a peer (types 1 and 3 for
-//#    a client, or 0 and 2 for a server) is created when the first STREAM,
-//#    STREAM_DATA_BLOCKED, or RESET_STREAM is received for that stream.
-//#    For bidirectional streams initiated by a peer, receipt of a
-//#    MAX_STREAM_DATA or STOP_SENDING frame for the sending part of the
-//#    stream also creates the receiving part.  The initial state for the
-//#    receiving part of stream is "Recv".
+//# The receiving part of a stream enters the "Recv" state when the
+//# sending part of a bidirectional stream initiated by the endpoint
+//# (type 0 for a client, type 1 for a server) enters the "Ready" state.
 //#
-//#    The receiving part of a stream enters the "Recv" state when the
-//#    sending part of a bidirectional stream initiated by the endpoint
-//#    (type 0 for a client, type 1 for a server) enters the "Ready" state.
+//# An endpoint opens a bidirectional stream when a MAX_STREAM_DATA or
+//# STOP_SENDING frame is received from the peer for that stream.
+//# Receiving a MAX_STREAM_DATA frame for an unopened stream indicates
+//# that the remote peer has opened the stream and is providing flow
+//# control credit.  Receiving a STOP_SENDING frame for an unopened
+//# stream indicates that the remote peer no longer wishes to receive
+//# data on this stream.  Either frame might arrive before a STREAM or
+//# STREAM_DATA_BLOCKED frame if packets are lost or reordered.
 //#
-//#    An endpoint opens a bidirectional stream when a MAX_STREAM_DATA or
-//#    STOP_SENDING frame is received from the peer for that stream.
-//#    Receiving a MAX_STREAM_DATA frame for an unopened stream indicates
-//#    that the remote peer has opened the stream and is providing flow
-//#    control credit.  Receiving a STOP_SENDING frame for an unopened
-//#    stream indicates that the remote peer no longer wishes to receive
-//#    data on this stream.  Either frame might arrive before a STREAM or
-//#    STREAM_DATA_BLOCKED frame if packets are lost or reordered.
+//# Before a stream is created, all streams of the same type with lower-
+//# numbered stream IDs MUST be created.  This ensures that the creation
+//# order for streams is consistent on both endpoints.
 //#
-//#    Before a stream is created, all streams of the same type with lower-
-//#    numbered stream IDs MUST be created.  This ensures that the creation
-//#    order for streams is consistent on both endpoints.
+//# In the "Recv" state, the endpoint receives STREAM and
+//# STREAM_DATA_BLOCKED frames.  Incoming data is buffered and can be
+//# reassembled into the correct order for delivery to the application.
+//# As data is consumed by the application and buffer space becomes
+//# available, the endpoint sends MAX_STREAM_DATA frames to allow the
+//# peer to send more data.
 //#
-//#    In the "Recv" state, the endpoint receives STREAM and
-//#    STREAM_DATA_BLOCKED frames.  Incoming data is buffered and can be
-//#    reassembled into the correct order for delivery to the application.
-//#    As data is consumed by the application and buffer space becomes
-//#    available, the endpoint sends MAX_STREAM_DATA frames to allow the
-//#    peer to send more data.
+//# When a STREAM frame with a FIN bit is received, the final size of the
+//# stream is known (see Section 4.4).  The receiving part of the stream
+//# then enters the "Size Known" state.  In this state, the endpoint no
+//# longer needs to send MAX_STREAM_DATA frames, it only receives any
+//# retransmissions of stream data.
 //#
-//#    When a STREAM frame with a FIN bit is received, the final size of the
-//#    stream is known (see Section 4.4).  The receiving part of the stream
-//#    then enters the "Size Known" state.  In this state, the endpoint no
-//#    longer needs to send MAX_STREAM_DATA frames, it only receives any
-//#    retransmissions of stream data.
+//# Once all data for the stream has been received, the receiving part
+//# enters the "Data Recvd" state.  This might happen as a result of
+//# receiving the same STREAM frame that causes the transition to "Size
+//# Known".  After all data has been received, any STREAM or
+//# STREAM_DATA_BLOCKED frames for the stream can be discarded.
 //#
-//#    Once all data for the stream has been received, the receiving part
-//#    enters the "Data Recvd" state.  This might happen as a result of
-//#    receiving the same STREAM frame that causes the transition to "Size
-//#    Known".  After all data has been received, any STREAM or
-//#    STREAM_DATA_BLOCKED frames for the stream can be discarded.
+//# The "Data Recvd" state persists until stream data has been delivered
+//# to the application.  Once stream data has been delivered, the stream
+//# enters the "Data Read" state, which is a terminal state.
 //#
-//#    The "Data Recvd" state persists until stream data has been delivered
-//#    to the application.  Once stream data has been delivered, the stream
-//#    enters the "Data Read" state, which is a terminal state.
+//# Receiving a RESET_STREAM frame in the "Recv" or "Size Known" states
+//# causes the stream to enter the "Reset Recvd" state.  This might cause
+//# the delivery of stream data to the application to be interrupted.
 //#
-//#    Receiving a RESET_STREAM frame in the "Recv" or "Size Known" states
-//#    causes the stream to enter the "Reset Recvd" state.  This might cause
-//#    the delivery of stream data to the application to be interrupted.
+//# It is possible that all stream data is received when a RESET_STREAM
+//# is received (that is, from the "Data Recvd" state).  Similarly, it is
+//# possible for remaining stream data to arrive after receiving a
+//# RESET_STREAM frame (the "Reset Recvd" state).  An implementation is
+//# free to manage this situation as it chooses.
 //#
-//#    It is possible that all stream data is received when a RESET_STREAM
-//#    is received (that is, from the "Data Recvd" state).  Similarly, it is
-//#    possible for remaining stream data to arrive after receiving a
-//#    RESET_STREAM frame (the "Reset Recvd" state).  An implementation is
-//#    free to manage this situation as it chooses.
+//# Sending RESET_STREAM means that an endpoint cannot guarantee delivery
+//# of stream data; however there is no requirement that stream data not
+//# be delivered if a RESET_STREAM is received.  An implementation MAY
+//# interrupt delivery of stream data, discard any data that was not
+//# consumed, and signal the receipt of the RESET_STREAM.  A RESET_STREAM
+//# signal might be suppressed or withheld if stream data is completely
+//# received and is buffered to be read by the application.  If the
+//# RESET_STREAM is suppressed, the receiving part of the stream remains
+//# in "Data Recvd".
 //#
-//#    Sending RESET_STREAM means that an endpoint cannot guarantee delivery
-//#    of stream data; however there is no requirement that stream data not
-//#    be delivered if a RESET_STREAM is received.  An implementation MAY
-//#    interrupt delivery of stream data, discard any data that was not
-//#    consumed, and signal the receipt of the RESET_STREAM.  A RESET_STREAM
-//#    signal might be suppressed or withheld if stream data is completely
-//#    received and is buffered to be read by the application.  If the
-//#    RESET_STREAM is suppressed, the receiving part of the stream remains
-//#    in "Data Recvd".
-//#
-//#    Once the application receives the signal indicating that the stream
-//#    was reset, the receiving part of the stream transitions to the "Reset
-//#    Read" state, which is a terminal state.
+//# Once the application receives the signal indicating that the stream
+//# was reset, the receiving part of the stream transitions to the "Reset
+//# Read" state, which is a terminal state.
 
 /// Enumerates the possible states of the receiving side of a stream.
 /// These states are equivalent to the ones in the QUIC transport specification.
@@ -243,7 +241,7 @@ impl ReceiveStreamFlowController {
     ) -> Result<(), TransportError> {
         // Step 1: Check the stream limit
 
-        //=https://tools.ietf.org/html/draft-ietf-quic-transport-24#section-19.10
+        //=https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#19.10
         //# The data sent on a stream MUST NOT exceed the largest maximum stream
         //# data value advertised by the receiver.  An endpoint MUST terminate a
         //# connection with a FLOW_CONTROL_ERROR error if it receives more data
@@ -430,7 +428,7 @@ impl ReceiveStream {
 
                 if let Some(total_size) = total_size {
                     if data_end > total_size || frame.is_fin && data_end != total_size {
-                        //= https://tools.ietf.org/html/draft-ietf-quic-transport-24#section-4.4
+                        //= https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#4.4
                         //# Once a final size for a stream is known, it cannot change.  If a
                         //# RESET_STREAM or STREAM frame is received indicating a change in the
                         //# final size for the stream, an endpoint SHOULD respond with a
@@ -452,8 +450,7 @@ impl ReceiveStream {
                     .write_at(frame.offset, frame.data)
                     .map_err(|error| {
                         let error_code = match error {
-                            //=https://tools.ietf.org/html/draft-ietf-quic-transport-24#section-19.9
-                            //=https://tools.ietf.org/html/draft-ietf-quic-transport-24#section-19.10
+                            //=https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#19.9
                             //# An endpoint MUST terminate a connection with a FLOW_CONTROL_ERROR
                             //# error if it receives more data than the maximum data value that it
                             //# has sent, unless this is a result of a change in the initial limits
@@ -485,7 +482,7 @@ impl ReceiveStream {
                     // the FIN and more data to us. Since we neither can prove the peer
                     // right there is nothing we can do about this.
 
-                    //=https://tools.ietf.org/html/draft-ietf-quic-transport-24#section-3.2
+                    //=https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#3.2
                     //# When a STREAM frame with a FIN bit is received, the final size of the
                     //# stream is known (see Section 4.4).  The receiving part of the stream
                     //# then enters the "Size Known" state.  In this state, the endpoint no
@@ -581,7 +578,7 @@ impl ReceiveStream {
                     // diverges from the stream size which had been communicated
                     // before this is an error
 
-                    //=https://tools.ietf.org/html/draft-ietf-quic-transport-24#section-4.4
+                    //=https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#4.4
                     //# Once a final size for a stream is known, it cannot change.  If a
                     //# RESET_STREAM or STREAM frame is received indicating a change in the
                     //# final size for the stream, an endpoint SHOULD respond with a

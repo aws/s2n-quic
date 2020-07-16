@@ -9,7 +9,7 @@ pub struct RangeBuffer<Buffer> {
 
 impl<Buffer> RangeBuffer<Buffer> {
     pub fn new(buffer: Buffer, slot_size: usize) -> Self {
-        //= https://tools.ietf.org/html/draft-ietf-quic-transport-24#section-14
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#14
         //# The payload of a UDP datagram carrying the first Initial packet MUST
         //# be expanded to at least 1200 bytes, by adding PADDING frames to the
         //# Initial packet and/or by coalescing the Initial packet (see

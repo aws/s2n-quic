@@ -273,6 +273,8 @@ jobs:
       GRCOV_CONFIG: '--branch --llvm --ignore-not-existing --source-dir .'
       GRCOV_FILTER: "--excl-start '\\#\\[cfg\\(test\\)\\]' --excl-stop KCOV_END_TEST_MARKER --ignore tests --ignore test --ignore testing.rs"
       RUSTC_WRAPPER: sccache
+      # increase the size a bit to maintain cache hits
+      SCCACHE_CACHE_SIZE: 600M
     steps:
       - uses: actions/checkout@v2
 
@@ -333,7 +335,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: run
-          args: --bin cargo-compliance -- report --lcov target/compliance/coverage
+          args: --bin cargo-compliance --release -- report --lcov target/compliance/coverage --source-pattern 'quic/**/*.rs'
 
       - name: Stop sccache
         run: sccache --stop-server
