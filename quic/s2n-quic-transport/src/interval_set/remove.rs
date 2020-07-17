@@ -12,10 +12,15 @@ pub(crate) fn remove<T: IntervalBound + Ord>(
     start_index: usize,
     limit: Option<NonZeroUsize>,
 ) -> Result<usize, IntervalSetError> {
+    // this range is intentionally invalid and will only be
+    // valid if the `scan` method finds a match
+    #[allow(clippy::unknown_clippy_lints, clippy::reversed_empty_ranges)]
+    let replace_range = core::usize::MAX..0;
+
     let can_push_range = limit.map(|l| l.get() > ranges.len() + 1).unwrap_or(true);
 
     let mut removal = Removal {
-        replace_range: core::usize::MAX..0,
+        replace_range,
         push_range: None,
         can_push_range,
     };

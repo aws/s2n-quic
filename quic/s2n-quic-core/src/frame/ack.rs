@@ -280,7 +280,13 @@ decoder_parameterized_value!(
             );
             let (range_buffer, remaining) = buffer.decode_slice(buffer_len - peek_len)?;
 
-            #[allow(clippy::identity_conversion)]
+            // clippy changed identity_conversion to useless_conversion
+            // specify both for backwards compatibility
+            #[allow(
+                clippy::unknown_clippy_lints,
+                clippy::useless_conversion,
+                clippy::identity_conversion
+            )]
             let range_buffer = range_buffer.into();
 
             let ack_ranges = AckRangesDecoder {
