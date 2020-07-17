@@ -102,7 +102,7 @@ decoder_value!(
             let len = buffer.len();
             let (slice, buffer) = buffer.decode_slice(len)?;
             // clippy changed identity_conversion to useless_conversion
-            // specifiy both for backwards compatibility
+            // specify both for backwards compatibility
             #[allow(
                 clippy::unknown_clippy_lints,
                 clippy::useless_conversion,
