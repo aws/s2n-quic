@@ -1,4 +1,4 @@
-use super::SourceReport;
+use super::TargetReport;
 use crate::annotation::AnnotationType;
 use std::{
     collections::HashSet,
@@ -10,8 +10,7 @@ const TEST_BLOCK: &str = "1,0";
 
 macro_rules! line {
     ($value:expr) => {
-        // lines are 1 index
-        $value.line + 1
+        $value.line
     };
 }
 
@@ -40,7 +39,7 @@ macro_rules! record {
 }
 
 #[allow(clippy::cognitive_complexity)]
-pub fn report<Output: Write>(report: &SourceReport, output: &mut Output) -> Result<(), Error> {
+pub fn report<Output: Write>(report: &TargetReport, output: &mut Output) -> Result<(), Error> {
     macro_rules! put {
         ($($arg:expr),* $(,)?) => {
             writeln!(output $(, $arg)*)?;
@@ -49,7 +48,7 @@ pub fn report<Output: Write>(report: &SourceReport, output: &mut Output) -> Resu
 
     put!("TN:Compliance");
     let relative =
-        pathdiff::diff_paths(report.source.path.local(), std::env::current_dir()?).unwrap();
+        pathdiff::diff_paths(report.target.path.local(), std::env::current_dir()?).unwrap();
     put!("SF:{}", relative.display());
 
     // record all sections
@@ -66,7 +65,7 @@ pub fn report<Output: Write>(report: &SourceReport, output: &mut Output) -> Resu
 
     // record all references to specific sections
     for reference in &report.references {
-        let title = if let Some(section_id) = reference.annotation.section() {
+        let title = if let Some(section_id) = reference.annotation.target_section() {
             let section = report.specification.sections.get(section_id).unwrap();
             Some(section.full_title)
         } else {

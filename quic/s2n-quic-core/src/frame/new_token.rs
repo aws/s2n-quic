@@ -1,12 +1,10 @@
 use crate::{frame::Tag, varint::VarInt};
 use s2n_codec::{decoder_parameterized_value, Encoder, EncoderValue};
 
-//=https://quicwg.org/base-drafts/draft-ietf-quic-transport.html#rfc.section.19.7
-//# 19.7.  NEW_TOKEN Frame
-//#
-//#    A server sends a NEW_TOKEN frame (type=0x07) to provide the client
-//#    with a token to send in the header of an Initial packet for a future
-//#    connection.
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#19.7
+//# A server sends a NEW_TOKEN frame (type=0x07) to provide the client
+//# with a token to send in the header of an Initial packet for a future
+//# connection.
 
 macro_rules! new_token_tag {
     () => {
@@ -14,23 +12,26 @@ macro_rules! new_token_tag {
     };
 }
 
-//#    The NEW_TOKEN frame is as follows:
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#19.7
+//# The NEW_TOKEN frame is shown in Figure 30.
 //#
-//#     0                   1                   2                   3
-//#     0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-//#    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//#    |                        Token Length (i)                     ...
-//#    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//#    |                            Token (*)                        ...
-//#    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//# NEW_TOKEN Frame {
+//#   Type (i) = 0x07,
+//#   Token Length (i),
+//#   Token (..),
+//# }
 //#
-//#    NEW_TOKEN frames contain the following fields:
+//#                   Figure 30: NEW_TOKEN Frame Format
 //#
-//#    Token Length:  A variable-length integer specifying the length of the
-//#       token in bytes.
+//# NEW_TOKEN frames contain the following fields:
 //#
-//#    Token:  An opaque blob that the client may use with a future Initial
-//#       packet.
+//# Token Length:  A variable-length integer specifying the length of the
+//#    token in bytes.
+//#
+//# Token:  An opaque blob that the client may use with a future Initial
+//#    packet.  The token MUST NOT be empty.  An endpoint MUST treat
+//#    receipt of a NEW_TOKEN frame with an empty Token field as a
+//#    connection error of type FRAME_ENCODING_ERROR.
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct NewToken<'a> {

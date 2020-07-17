@@ -57,13 +57,12 @@ fn entity_header_fields_test() {
     entity_header_fields();
 }
 
-// TODO implement direct urls
-// #[compliance::implements(
-//     /// Leading zeros MUST be ignored by recipients and
-//     /// MUST NOT be sent.
-//     "https://tools.ietf.org/rfc/rfc2616.txt#3.1"
-// )]
-// pub fn doc_fn() {}
+#[compliance::implements(
+    /// Leading zeros MUST be ignored by recipients and
+    /// MUST NOT be sent.
+    "https://www.ietf.org/rfc/rfc2616.txt#3.1"
+)]
+pub fn doc_fn() {}
 
 #[compliance::implements(
     /// Leading zeros MUST be ignored by recipients and

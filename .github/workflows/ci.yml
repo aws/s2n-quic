@@ -64,16 +64,16 @@ jobs:
         continue-on-error: true
         with:
           path: ~/.cargo/registry/cache
-          key: ${{ runner.os }}-clippy-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-clippy-cargo-registry-
+          key: ${{ runner.os }}-${{ github.job }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-${{ github.job }}-cargo-registry-
 
       - name: Cache sccache output
         uses: actions/cache@v2
         continue-on-error: true
         with:
           path: ${{ github.workspace }}/.sccache
-          key: ${{ runner.os }}-clippy-sccache-${{ hashFiles('**/Cargo.*') }}
-          restore-keys: ${{ runner.os }}-clippy-sccache-
+          key: ${{ runner.os }}-${{ github.job }}-sccache-${{ hashFiles('**/Cargo.*') }}
+          restore-keys: ${{ runner.os }}-${{ github.job }}-sccache-
 
       - name: Start sccache
         run: sccache --start-server
@@ -89,8 +89,6 @@ jobs:
 
   udeps:
     runs-on: ubuntu-latest
-    env:
-      RUSTC_WRAPPER: sccache
     steps:
       - uses: actions-rs/toolchain@v1
         with:
@@ -106,41 +104,8 @@ jobs:
 
       - uses: actions/checkout@v2
 
-      - name: Install sccache
-        uses: actions-rs/install@v0.1
-        with:
-          crate: sccache
-          use-tool-cache: true
-          version: latest
-
-      - name: Generate Cargo.lock
-        run: cargo update
-
-      - name: Cache cargo registry
-        uses: actions/cache@v2
-        continue-on-error: true
-        with:
-          path: ~/.cargo/registry/cache
-          key: ${{ runner.os }}-clippy-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-clippy-cargo-registry-
-
-      - name: Cache sccache output
-        uses: actions/cache@v2
-        continue-on-error: true
-        with:
-          path: ${{ github.workspace }}/.sccache
-          key: ${{ runner.os }}-clippy-sccache-${{ hashFiles('**/Cargo.*') }}
-          restore-keys: ${{ runner.os }}-clippy-sccache-
-
-      - name: Start sccache
-        run: sccache --start-server
-
       - name: Run cargo udeps
         run: cargo udeps --workspace --all-targets
-
-      - name: Stop sccache
-        run: sccache --stop-server
-
 
   test:
     runs-on: ${{ matrix.os }}
@@ -173,16 +138,16 @@ jobs:
         continue-on-error: true
         with:
           path: ~/.cargo/registry/cache
-          key: ${{ runner.os }}-${{ matrix.rust }}-test-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-${{ matrix.rust }}-test-cargo-registry-
+          key: ${{ runner.os }}-${{ matrix.rust }}-${{ github.job }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-${{ matrix.rust }}-${{ github.job }}-cargo-registry-
 
       - name: Cache sccache output
         uses: actions/cache@v2
         continue-on-error: true
         with:
           path: ${{ github.workspace }}/.sccache
-          key: ${{ runner.os }}-${{ matrix.rust }}-test-sccache-${{ hashFiles('**/Cargo.*') }}
-          restore-keys: ${{ runner.os }}-${{ matrix.rust }}-test-sccache-
+          key: ${{ runner.os }}-${{ matrix.rust }}-${{ github.job }}-sccache-${{ hashFiles('**/Cargo.*') }}
+          restore-keys: ${{ runner.os }}-${{ matrix.rust }}-${{ github.job }}-sccache-
 
       - name: Start sccache
         run: sccache --start-server
@@ -226,22 +191,76 @@ jobs:
         continue-on-error: true
         with:
           path: ~/.cargo/registry/cache
-          key: ${{ runner.os }}-${{ matrix.rust }}-miri-${{ matrix.crate }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-${{ matrix.rust }}-miri-${{ matrix.crate }}-cargo-registry-
+          key: ${{ runner.os }}-${{ matrix.rust }}-${{ github.job }}-${{ matrix.crate }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-${{ matrix.rust }}-${{ github.job }}-${{ matrix.crate }}-cargo-registry-
 
       - name: Cache sccache output
         uses: actions/cache@v2
         continue-on-error: true
         with:
           path: ${{ github.workspace }}/.sccache
-          key: ${{ runner.os }}-${{ matrix.rust }}-miri-${{ matrix.crate }}-sccache-${{ hashFiles('**/Cargo.*') }}
-          restore-keys: ${{ runner.os }}-${{ matrix.rust }}-miri-${{ matrix.crate }}-sccache-
+          key: ${{ runner.os }}-${{ matrix.rust }}-${{ github.job }}-${{ matrix.crate }}-sccache-${{ hashFiles('**/Cargo.*') }}
+          restore-keys: ${{ runner.os }}-${{ matrix.rust }}-${{ github.job }}-${{ matrix.crate }}-sccache-
 
       - name: Start sccache
         run: sccache --start-server
 
       - name: ${{ matrix.crate }}
         run: cd ${{ matrix.crate }} && cargo miri test
+
+      - name: Stop sccache
+        run: sccache --stop-server
+
+  no_std:
+    runs-on: ubuntu-latest
+    env:
+      RUSTC_WRAPPER: sccache
+    steps:
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          override: true
+          target: thumbv7m-none-eabi
+
+      - uses: actions/checkout@v2
+
+      - name: Install sccache
+        uses: actions-rs/install@v0.1
+        with:
+          crate: sccache
+          use-tool-cache: true
+          version: latest
+
+      - name: Generate Cargo.lock
+        run: cargo update
+
+      - name: Cache cargo registry
+        uses: actions/cache@v2
+        continue-on-error: true
+        with:
+          path: ~/.cargo/registry/cache
+          key: ${{ runner.os }}-${{ matrix.rust }}-no-std-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-${{ matrix.rust }}-no-std-cargo-registry-
+
+      - name: Cache sccache output
+        uses: actions/cache@v2
+        continue-on-error: true
+        with:
+          path: ${{ github.workspace }}/.sccache
+          key: ${{ runner.os }}-${{ matrix.rust }}-no-std-sccache-${{ hashFiles('**/Cargo.*') }}
+          restore-keys: ${{ runner.os }}-${{ matrix.rust }}-no-std-sccache-
+
+      - name: Start sccache
+        run: sccache --start-server
+
+      # see https://github.com/rust-lang/cargo/issues/7916
+      - name: Run cargo build
+        run: |
+          cd quic/s2n-quic-core && \
+            cargo build \
+              -Z features=dev_dep \
+              --no-default-features \
+              --target thumbv7m-none-eabi
 
       - name: Stop sccache
         run: sccache --stop-server
@@ -254,6 +273,8 @@ jobs:
       GRCOV_CONFIG: '--branch --llvm --ignore-not-existing --source-dir .'
       GRCOV_FILTER: "--excl-start '\\#\\[cfg\\(test\\)\\]' --excl-stop KCOV_END_TEST_MARKER --ignore tests --ignore test --ignore testing.rs"
       RUSTC_WRAPPER: sccache
+      # increase the size a bit to maintain cache hits
+      SCCACHE_CACHE_SIZE: 600M
     steps:
       - uses: actions/checkout@v2
 
@@ -284,16 +305,16 @@ jobs:
         continue-on-error: true
         with:
           path: ~/.cargo/registry/cache
-          key: ${{ runner.os }}-coverage-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-coverage-cargo-registry-
+          key: ${{ runner.os }}-${{ github.job }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-${{ github.job }}-cargo-registry-
 
       - name: Cache sccache output
         uses: actions/cache@v2
         continue-on-error: true
         with:
           path: ${{ github.workspace }}/.sccache
-          key: ${{ runner.os }}-coverage-sccache-${{ hashFiles('**/Cargo.*') }}
-          restore-keys: ${{ runner.os }}-coverage-sccache-
+          key: ${{ runner.os }}-${{ github.job }}-sccache-${{ hashFiles('**/Cargo.*') }}
+          restore-keys: ${{ runner.os }}-${{ github.job }}-sccache-
 
       - name: Start sccache
         run: sccache --start-server
@@ -314,7 +335,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: run
-          args: --bin cargo-compliance -- report --lcov target/compliance/coverage
+          args: --bin cargo-compliance --release -- report --lcov target/compliance/coverage --source-pattern 'quic/**/*.rs'
 
       - name: Stop sccache
         run: sccache --stop-server

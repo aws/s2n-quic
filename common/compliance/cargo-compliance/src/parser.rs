@@ -8,20 +8,20 @@ use core::convert::TryInto;
 pub struct Parser<'a>(pub &'a [u8]);
 
 #[derive(Debug, Default)]
-struct ParsedAnnotation<'a> {
-    spec: &'a str,
-    quote: &'a str,
-    anno: AnnotationType,
-    code: &'a str,
-    file: &'a str,
-    anno_line: u32,
-    anno_column: u32,
-    item_line: u32,
-    item_column: u32,
-    path: &'a str,
-    manifest_dir: &'a str,
-    level: AnnotationLevel,
-    format: Format,
+pub struct ParsedAnnotation<'a> {
+    pub target: &'a str,
+    pub quote: &'a str,
+    pub anno: AnnotationType,
+    pub code: &'a str,
+    pub source: &'a str,
+    pub anno_line: u32,
+    pub anno_column: u32,
+    pub item_line: u32,
+    pub item_column: u32,
+    pub path: &'a str,
+    pub manifest_dir: &'a str,
+    pub level: AnnotationLevel,
+    pub format: Format,
 }
 
 const U32_SIZE: usize = core::mem::size_of::<u32>();
@@ -63,11 +63,11 @@ impl<'a> ParsedAnnotation<'a> {
             }
 
             match name {
-                b"spec" => parsed.spec = to_str!(),
+                b"spec" => parsed.target = to_str!(),
                 b"quot" => parsed.quote = to_str!(),
                 b"anno" => parsed.anno = to_str!().parse()?,
                 b"code" => parsed.code = to_str!(),
-                b"file" => parsed.file = to_str!(),
+                b"file" => parsed.source = to_str!(),
                 b"ilin" => parsed.item_line = to_u32!(),
                 b"icol" => parsed.item_column = to_u32!(),
                 b"alin" => parsed.anno_line = to_u32!(),
@@ -93,11 +93,11 @@ impl<'a> ParsedAnnotation<'a> {
 impl Into<Annotation> for ParsedAnnotation<'_> {
     fn into(self) -> Annotation {
         Annotation {
-            spec: self.spec.to_string(),
+            target: self.target.to_string(),
             quote: self.quote.to_string(),
             anno: self.anno,
             code: self.code.to_string(),
-            file: self.file.into(),
+            source: self.source.into(),
             path: self.path.to_string(),
             anno_line: self.anno_line,
             anno_column: self.anno_column,

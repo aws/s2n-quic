@@ -1,15 +1,17 @@
-use crate::{frame::Tag, varint::VarInt};
+use crate::{
+    application::{ApplicationErrorCode, ApplicationErrorExt},
+    frame::Tag,
+    varint::VarInt,
+};
 use s2n_codec::{decoder_parameterized_value, Encoder, EncoderValue};
 
-//=https://quicwg.org/base-drafts/draft-ietf-quic-transport.html#rfc.section.19.19
-//# 19.19.  CONNECTION_CLOSE Frames
-//#
-//#    An endpoint sends a CONNECTION_CLOSE frame (type=0x1c or 0x1d) to
-//#    notify its peer that the connection is being closed.  The
-//#    CONNECTION_CLOSE with a frame type of 0x1c is used to signal errors
-//#    at only the QUIC layer, or the absence of errors (with the NO_ERROR
-//#    code).  The CONNECTION_CLOSE frame with a type of 0x1d is used to
-//#    signal an error with the application that uses QUIC.
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#19.19
+//# An endpoint sends a CONNECTION_CLOSE frame (type=0x1c or 0x1d) to
+//# notify its peer that the connection is being closed.  The
+//# CONNECTION_CLOSE with a frame type of 0x1c is used to signal errors
+//# at only the QUIC layer, or the absence of errors (with the NO_ERROR
+//# code).  The CONNECTION_CLOSE frame with a type of 0x1d is used to
+//# signal an error with the application that uses QUIC.
 
 macro_rules! connection_close_tag {
     () => {
@@ -19,48 +21,44 @@ macro_rules! connection_close_tag {
 const QUIC_ERROR_TAG: u8 = 0x1c;
 const APPLICATION_ERROR_TAG: u8 = 0x1d;
 
-//#    If there are open streams that haven't been explicitly closed, they
-//#    are implicitly closed when the connection is closed.
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#19.19
+//# The CONNECTION_CLOSE frames are shown in Figure 42.
 //#
-//#    The CONNECTION_CLOSE frames are as follows:
+//# CONNECTION_CLOSE Frame {
+//#   Type (i) = 0x1c..0x1d,
+//#   Error Code (i),
+//#   [Frame Type (i)],
+//#   Reason Phrase Length (i),
+//#   Reason Phrase (..),
+//# }
 //#
-//#     0                   1                   2                   3
-//#     0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-//#    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//#    |                         Error Code (i)                      ...
-//#    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//#    |                       [ Frame Type (i) ]                    ...
-//#    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//#    |                    Reason Phrase Length (i)                 ...
-//#    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//#    |                        Reason Phrase (*)                    ...
-//#    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//#                Figure 42: CONNECTION_CLOSE Frame Format
 //#
-//#    CONNECTION_CLOSE frames contain the following fields:
+//# CONNECTION_CLOSE frames contain the following fields:
 //#
-//#    Error Code:  A variable length integer error code which indicates the
-//#       reason for closing this connection.  A CONNECTION_CLOSE frame of
-//#       type 0x1c uses codes from the space defined in Section 20.  A
-//#       CONNECTION_CLOSE frame of type 0x1d uses codes from the
-//#       application protocol error code space; see Section 20.1
+//# Error Code:  A variable length integer error code which indicates the
+//#    reason for closing this connection.  A CONNECTION_CLOSE frame of
+//#    type 0x1c uses codes from the space defined in Section 20.  A
+//#    CONNECTION_CLOSE frame of type 0x1d uses codes from the
+//#    application protocol error code space; see Section 20.1.
 //#
-//#    Frame Type:  A variable-length integer encoding the type of frame
-//#       that triggered the error.  A value of 0 (equivalent to the mention
-//#       of the PADDING frame) is used when the frame type is unknown.  The
-//#       application-specific variant of CONNECTION_CLOSE (type 0x1d) does
-//#       not include this field.
+//# Frame Type:  A variable-length integer encoding the type of frame
+//#    that triggered the error.  A value of 0 (equivalent to the mention
+//#    of the PADDING frame) is used when the frame type is unknown.  The
+//#    application-specific variant of CONNECTION_CLOSE (type 0x1d) does
+//#    not include this field.
 //#
-//#    Reason Phrase Length:  A variable-length integer specifying the
-//#       length of the reason phrase in bytes.  Because a CONNECTION_CLOSE
-//#       frame cannot be split between packets, any limits on packet size
-//#       will also limit the space available for a reason phrase.
+//# Reason Phrase Length:  A variable-length integer specifying the
+//#    length of the reason phrase in bytes.  Because a CONNECTION_CLOSE
+//#    frame cannot be split between packets, any limits on packet size
+//#    will also limit the space available for a reason phrase.
 //#
-//#    Reason Phrase:  A human-readable explanation for why the connection
-//#       was closed.  This can be zero length if the sender chooses to not
-//#       give details beyond the Error Code.  This SHOULD be a UTF-8
-//#       encoded string [RFC3629].
+//# Reason Phrase:  A human-readable explanation for why the connection
+//#    was closed.  This can be zero length if the sender chooses to not
+//#    give details beyond the Error Code.  This SHOULD be a UTF-8
+//#    encoded string [RFC3629].
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ConnectionClose<'a> {
     /// A variable length integer error code which indicates the reason
     /// for closing this connection.
@@ -81,6 +79,18 @@ impl<'a> ConnectionClose<'a> {
             QUIC_ERROR_TAG
         } else {
             APPLICATION_ERROR_TAG
+        }
+    }
+}
+
+// If a `ConnectionClose` contains no frame type it was sent by an application and contains
+// an `ApplicationErrorCode`. Otherwise it is an error on the QUIC layer.
+impl<'a> ApplicationErrorExt for ConnectionClose<'a> {
+    fn application_error_code(&self) -> Option<ApplicationErrorCode> {
+        if self.frame_type.is_none() {
+            Some(self.error_code.into())
+        } else {
+            None
         }
     }
 }

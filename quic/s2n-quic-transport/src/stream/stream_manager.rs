@@ -196,11 +196,8 @@ impl<S: StreamTrait> StreamManagerState<S> {
         F: FnOnce(&mut Self) -> Result<R, TransportError>,
     {
         let result = func(self);
-        if result.is_err() {
-            // TODO: Maybe derive the error from the internal error,
-            // or create a StreamError variant which wraps a connection error
-            let error = StreamError::ConnectionError;
-            self.close(error);
+        if let Err(err) = result.as_ref() {
+            self.close((*err).into());
         }
         result
     }
@@ -285,18 +282,14 @@ impl<S: StreamTrait> StreamManagerState<S> {
 
                 // We must create ALL streams which a lower Stream ID too:
 
-                //=https://quicwg.org/base-drafts/draft-ietf-quic-transport.html#name-stream-states
-                //# 3.  Stream States
-                //#
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#3
                 //# An endpoint MUST open streams of the same type in increasing order of
                 //# stream ID.
 
-                //=https://quicwg.org/base-drafts/draft-ietf-quic-transport.html#name-receiving-stream-states
-                //# 3.2.  Receiving Stream States
-                //#
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#3.2
                 //# Before a stream is created, all streams of the same type with lower-
-                //#    numbered stream IDs MUST be created.  This ensures that the creation
-                //#    order for streams is consistent on both endpoints.
+                //# numbered stream IDs MUST be created.  This ensures that the creation
+                //# order for streams is consistent on both endpoints.
 
                 let mut stream_id_iter = first_unopened_id;
                 while stream_id_iter <= stream_id {

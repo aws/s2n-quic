@@ -53,7 +53,7 @@ impl NegotiatedCiphersuite {
     }
 
     /// Update the ciphersuite as defined in
-    /// https://tools.ietf.org/html/draft-ietf-quic-tls-24#section-6
+    /// https://tools.ietf.org/id/draft-ietf-quic-tls-24.txt#6
     pub fn update(&self) -> Self {
         dispatch!(self, |cipher| cipher.update().into())
     }

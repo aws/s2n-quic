@@ -2,8 +2,8 @@ use crate::inet::unspecified::Unspecified;
 use core::fmt;
 use s2n_codec::zerocopy::U16;
 
-/// Length defined at https://tools.ietf.org/html/rfc2373#section-2.0
-/// > IPv6 addresses are 128-bit identifiers for interfaces and sets of interfaces.
+//= https://tools.ietf.org/rfc/rfc2373.txt#2.0
+//# IPv6 addresses are 128-bit identifiers for interfaces and sets of interfaces.
 const IPV6_LEN: usize = 128 / 8;
 
 define_inet_type!(

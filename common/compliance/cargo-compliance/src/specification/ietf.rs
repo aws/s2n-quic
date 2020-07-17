@@ -5,7 +5,8 @@ use lazy_static::lazy_static;
 use regex::Regex;
 
 lazy_static! {
-    static ref SECTION_HEADER_RE: Regex = Regex::new(r"^([0-9\.]+)\s+(.*)").unwrap();
+    static ref SECTION_HEADER_RE: Regex = Regex::new(r"^(([A-Z]\.)?[0-9\.]+)\s+(.*)").unwrap();
+    static ref APPENDIX_HEADER_RE: Regex = Regex::new(r"^Appendix ([A-Z]\.)\s+(.*)").unwrap();
 
     /// Table of contents have at least 5 periods
     static ref TOC_RE: Regex = Regex::new(r"\.{5,}").unwrap();
@@ -16,6 +17,8 @@ pub fn parse(contents: &str) -> Result<Specification, Error> {
 
     let mut pos = 0;
     for (line_no, line) in contents.lines().enumerate() {
+        // lines start at 1
+        let line_no = line_no + 1;
         // TODO handle \r\n?
         let len = line.len();
         let nl_len = "\n".len();
@@ -74,8 +77,27 @@ impl<'a> Default for ParserState<'a> {
 }
 
 fn section_header(line: Content) -> Option<(Content, Section)> {
-    // TODO support appendix
     if let Some(info) = SECTION_HEADER_RE.captures(&line) {
+        let id = info.get(1)?;
+        let title = info.get(3)?;
+
+        if TOC_RE.is_match(title.as_str()) {
+            return None;
+        }
+
+        let id = line.slice(id.range()).trim_end_matches('.');
+        let title = line.slice(title.range());
+
+        Some((
+            id,
+            Section {
+                id,
+                title,
+                full_title: line.trim(),
+                lines: vec![],
+            },
+        ))
+    } else if let Some(info) = APPENDIX_HEADER_RE.captures(&line) {
         let id = info.get(1)?;
         let title = info.get(2)?;
 

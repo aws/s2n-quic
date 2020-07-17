@@ -1,6 +1,6 @@
 use crate::{
-    source::{Source, SourceSet},
     specification::Format,
+    target::{Target, TargetSet},
     Error,
 };
 use core::{ops::Range, str::FromStr};
@@ -15,18 +15,18 @@ use triple_accel::levenshtein_search as text_search;
 pub type AnnotationSet = BTreeSet<Annotation>;
 
 pub type AnnotationReferenceMap<'a> =
-    HashMap<(Source, Option<&'a str>), Vec<(usize, &'a Annotation)>>;
+    HashMap<(Target, Option<&'a str>), Vec<(usize, &'a Annotation)>>;
 
 pub trait AnnotationSetExt {
-    fn sources(&self) -> Result<SourceSet, Error>;
+    fn targets(&self) -> Result<TargetSet, Error>;
     fn reference_map(&self) -> Result<AnnotationReferenceMap, Error>;
 }
 
 impl AnnotationSetExt for AnnotationSet {
-    fn sources(&self) -> Result<SourceSet, Error> {
-        let mut set = SourceSet::new();
+    fn targets(&self) -> Result<TargetSet, Error> {
+        let mut set = TargetSet::new();
         for anno in self.iter() {
-            set.insert(anno.source()?);
+            set.insert(anno.target()?);
         }
         Ok(set)
     }
@@ -34,9 +34,9 @@ impl AnnotationSetExt for AnnotationSet {
     fn reference_map(&self) -> Result<AnnotationReferenceMap, Error> {
         let mut map = AnnotationReferenceMap::new();
         for (id, anno) in self.iter().enumerate() {
-            let source = anno.source()?;
-            let section = anno.section();
-            map.entry((source, section)).or_default().push((id, anno));
+            let target = anno.target()?;
+            let section = anno.target_section();
+            map.entry((target, section)).or_default().push((id, anno));
         }
         Ok(map)
     }
@@ -44,14 +44,14 @@ impl AnnotationSetExt for AnnotationSet {
 
 #[derive(Debug, PartialEq, PartialOrd, Eq, Ord, Hash)]
 pub struct Annotation {
-    pub file: PathBuf,
+    pub source: PathBuf,
     pub anno_line: u32,
     pub anno_column: u32,
     pub item_line: u32,
     pub item_column: u32,
     pub path: String,
     pub anno: AnnotationType,
-    pub spec: String,
+    pub target: String,
     pub quote: String,
     pub code: String,
     pub manifest_dir: PathBuf,
@@ -60,20 +60,20 @@ pub struct Annotation {
 }
 
 impl Annotation {
-    pub fn source(&self) -> Result<Source, Error> {
-        Source::from_annotation(&self)
+    pub fn target(&self) -> Result<Target, Error> {
+        Target::from_annotation(&self)
     }
 
-    pub fn file(&self) -> Result<PathBuf, Error> {
-        self.resolve_file(&self.file)
+    pub fn source(&self) -> Result<PathBuf, Error> {
+        self.resolve_file(&self.source)
     }
 
-    pub fn spec(&self) -> &str {
-        self.spec.splitn(2, '#').next().unwrap()
+    pub fn target_path(&self) -> &str {
+        self.target.splitn(2, '#').next().unwrap()
     }
 
-    pub fn section(&self) -> Option<&str> {
-        self.spec.splitn(2, '#').nth(1)
+    pub fn target_section(&self) -> Option<&str> {
+        self.target.splitn(2, '#').nth(1)
     }
 
     pub fn resolve_file(&self, file: &Path) -> Result<PathBuf, Error> {
@@ -104,6 +104,10 @@ impl Annotation {
 
     #[allow(dead_code)]
     pub fn format_code(&mut self) -> Result<(), Error> {
+        if self.code.is_empty() {
+            return Ok(());
+        }
+
         let mut child = Command::new("rustfmt")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())

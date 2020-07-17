@@ -1,7 +1,6 @@
 //! This module contains the implementation of QUIC `Streams` and their management
 
 mod api;
-mod error;
 mod incoming_connection_flow_controller;
 mod limits;
 mod outgoing_connection_flow_controller;
@@ -14,7 +13,6 @@ mod stream_interests;
 mod stream_manager;
 
 pub use api::*;
-pub use error::StreamError;
 pub use limits::StreamLimits;
 pub use stream_events::StreamEvents;
 pub use stream_impl::{StreamImpl, StreamTrait};

@@ -125,7 +125,7 @@ impl<Suite: CryptoSuite> FrameExchangeInterestProvider for HandshakeSpace<Suite>
     }
 }
 
-//= https://tools.ietf.org/html/draft-ietf-quic-transport-27#section-17.2.4
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#17.2.4
 //# The payload of this packet contains CRYPTO frames and could contain
 //# PING, PADDING, or ACK frames.  Handshake packets MAY contain
 //# CONNECTION_CLOSE frames.  Endpoints MUST treat receipt of Handshake

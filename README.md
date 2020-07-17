@@ -1,4 +1,4 @@
-## s2n-quic
+## s2n-quic ![ci](https://github.com/awslabs/s2n-quic/workflows/ci/badge.svg) ![dependencies](https://github.com/awslabs/s2n-quic/workflows/dependencies/badge.svg)
 
 TODO: Fill this README out!
 
@@ -28,11 +28,9 @@ This project is licensed under the Apache-2.0 License.
 
 ### Running a fuzz target
 
-You'll need to have `cargo-bolero` installed first:
+You'll need to have `cargo-bolero` installed first.
 
-```bash
-$ cargo install cargo-bolero --force
-```
+See Bolero's [instructions](https://camshaft.github.io/bolero/cli-installation.html) to install.
 
 ```bash
 $ cargo bolero fuzz varint -p s2n-quic-core -s address

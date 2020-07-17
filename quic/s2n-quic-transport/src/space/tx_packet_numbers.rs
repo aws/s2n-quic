@@ -32,7 +32,7 @@ impl TxPacketNumbers {
     ) -> Result<(), TransportError> {
         let largest = ack_set.largest();
 
-        //= https://tools.ietf.org/html/draft-ietf-quic-transport-27#section-13.2.1
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#13.2.1
         //# An endpoint SHOULD treat receipt of an acknowledgment for a packet it
         //# did not send as a connection error of type PROTOCOL_VIOLATION, if it
         //# is able to detect the condition.
@@ -54,7 +54,7 @@ impl TxPacketNumbers {
 
     /// Called after a packet is transmitted with a given packet number
     pub fn on_transmit(&mut self, packet_number: PacketNumber) {
-        //= https://tools.ietf.org/html/draft-ietf-quic-transport-27#section-12.3
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#12.3
         //# A QUIC endpoint MUST NOT reuse a packet number within the same packet
         //# number space in one connection.  If the packet number for sending
         //# reaches 2^62 - 1, the sender MUST close the connection without

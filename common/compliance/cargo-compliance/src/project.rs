@@ -1,6 +1,8 @@
-use crate::Error;
+use crate::{pattern::Pattern, source::SourceFile, Error};
+use glob::glob;
 use serde::Deserialize;
 use std::{
+    collections::HashSet,
     path::PathBuf,
     process::{Command, Stdio},
 };
@@ -24,6 +26,10 @@ pub struct Project {
     #[structopt(long = "no-default-features")]
     no_default_features: bool,
 
+    /// Disables running cargo commands
+    #[structopt(long = "no-cargo")]
+    no_cargo: bool,
+
     /// TRIPLE
     #[structopt(long)]
     target: Option<String>,
@@ -35,6 +41,10 @@ pub struct Project {
     /// Path to Cargo.toml
     #[structopt(long = "manifest-path")]
     manifest_path: Option<String>,
+
+    /// Glob patterns for additional source files
+    #[structopt(long = "source-pattern")]
+    source_patterns: Vec<String>,
 }
 
 macro_rules! arg {
@@ -54,7 +64,25 @@ macro_rules! flag {
 }
 
 impl Project {
-    pub fn executables(&self) -> Result<Vec<PathBuf>, Error> {
+    pub fn sources(&self) -> Result<HashSet<SourceFile>, Error> {
+        let mut sources = HashSet::new();
+
+        self.executables(&mut sources)?;
+
+        self.cargo_files(&mut sources)?;
+
+        for pattern in &self.source_patterns {
+            self.source_file(&pattern, &mut sources)?;
+        }
+
+        Ok(sources)
+    }
+
+    fn executables(&self, sources: &mut HashSet<SourceFile>) -> Result<(), Error> {
+        if self.no_cargo {
+            return Ok(());
+        }
+
         let mut cmd = Command::new("cargo");
 
         cmd.stdout(Stdio::piped())
@@ -89,16 +117,49 @@ impl Project {
 
         let stdout = core::str::from_utf8(&output.stdout)?;
 
-        let mut executables = vec![];
         for line in stdout.lines() {
             if let Ok(event) = serde_json::from_str::<Event>(line) {
                 if let Some(executable) = event.executable {
-                    executables.push(PathBuf::from(executable))
+                    sources.insert(SourceFile::Object(PathBuf::from(executable)));
                 }
             }
         }
 
-        Ok(executables)
+        Ok(())
+    }
+
+    fn cargo_files(&self, _files: &mut HashSet<SourceFile>) -> Result<(), Error> {
+        if self.no_cargo {
+            return Ok(());
+        }
+
+        // TODO automatically populate file list from project files
+
+        Ok(())
+    }
+
+    fn source_file<'a>(
+        &self,
+        pattern: &'a str,
+        files: &mut HashSet<SourceFile<'a>>,
+    ) -> Result<(), Error> {
+        let (compliance_pattern, file_pattern) = if pattern.starts_with('(') {
+            let mut parts = pattern.splitn(2, ')');
+            let pattern = parts.next().expect("invalid pattern");
+            let file_pattern = parts.next().expect("invalid pattern");
+
+            let pattern = Pattern::from_arg(pattern)?;
+
+            (pattern, file_pattern)
+        } else {
+            (Pattern::default(), pattern)
+        };
+
+        for entry in glob(file_pattern)? {
+            files.insert(SourceFile::Text(compliance_pattern, entry?));
+        }
+
+        Ok(())
     }
 }
 

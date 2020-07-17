@@ -1,12 +1,10 @@
 use crate::varint::VarInt;
 
-//=https://quicwg.org/base-drafts/draft-ietf-quic-transport.html#rfc.section.19.12
-//# 19.12.  DATA_BLOCKED Frame
-//#
-//#    A sender SHOULD send a DATA_BLOCKED frame (type=0x14) when it wishes
-//#    to send data, but is unable to due to connection-level flow control
-//#    (see Section 4).  DATA_BLOCKED frames can be used as input to tuning
-//#    of flow control algorithms (see Section 4.2).
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#19.12
+//# A sender SHOULD send a DATA_BLOCKED frame (type=0x14) when it wishes
+//# to send data, but is unable to due to connection-level flow control;
+//# see Section 4.  DATA_BLOCKED frames can be used as input to tuning of
+//# flow control algorithms; see Section 4.2.
 
 macro_rules! data_blocked_tag {
     () => {
@@ -14,18 +12,20 @@ macro_rules! data_blocked_tag {
     };
 }
 
-//#    The DATA_BLOCKED frame is as follows:
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#19.12
+//# The DATA_BLOCKED frame is shown in Figure 35.
 //#
-//#     0                   1                   2                   3
-//#     0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-//#    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//#    |                       Data Limit (i)                        ...
-//#    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//# DATA_BLOCKED Frame {
+//#   Type (i) = 0x14,
+//#   Maximum Data (i),
+//# }
 //#
-//#    DATA_BLOCKED frames contain the following fields:
+//#                  Figure 35: DATA_BLOCKED Frame Format
 //#
-//#    Data Limit:  A variable-length integer indicating the connection-
-//#       level limit at which blocking occurred.
+//# DATA_BLOCKED frames contain the following fields:
+//#
+//# Maximum Data:  A variable-length integer indicating the connection-
+//#    level limit at which blocking occurred.
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct DataBlocked {

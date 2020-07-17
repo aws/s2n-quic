@@ -1,11 +1,9 @@
 use crate::varint::VarInt;
 
-//=https://quicwg.org/base-drafts/draft-ietf-quic-transport.html#rfc.section.19.13
-//# 19.13.  STREAM_DATA_BLOCKED Frame
-//#
-//#    A sender SHOULD send a STREAM_DATA_BLOCKED frame (type=0x15) when it
-//#    wishes to send data, but is unable to due to stream-level flow
-//#    control.  This frame is analogous to DATA_BLOCKED (Section 19.12).
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#19.13
+//# A sender SHOULD send a STREAM_DATA_BLOCKED frame (type=0x15) when it
+//# wishes to send data, but is unable to due to stream-level flow
+//# control.  This frame is analogous to DATA_BLOCKED (Section 19.12).
 
 macro_rules! stream_data_blocked_tag {
     () => {
@@ -13,26 +11,24 @@ macro_rules! stream_data_blocked_tag {
     };
 }
 
-//#    An endpoint that receives a STREAM_DATA_BLOCKED frame for a send-only
-//#    stream MUST terminate the connection with error STREAM_STATE_ERROR.
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#19.13
+//# The STREAM_DATA_BLOCKED frame is shown in Figure 36.
 //#
-//#    The STREAM_DATA_BLOCKED frame is as follows:
+//# STREAM_DATA_BLOCKED Frame {
+//#   Type (i) = 0x15,
+//#   Stream ID (i),
+//#   Maximum Stream Data (i),
+//# }
 //#
-//#     0                   1                   2                   3
-//#     0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-//#    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//#    |                        Stream ID (i)                        ...
-//#    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//#    |                    Stream Data Limit (i)                    ...
-//#    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//#              Figure 36: STREAM_DATA_BLOCKED Frame Format
 //#
-//#    STREAM_DATA_BLOCKED frames contain the following fields:
+//# STREAM_DATA_BLOCKED frames contain the following fields:
 //#
-//#    Stream ID:  A variable-length integer indicating the stream which is
-//#       flow control blocked.
+//# Stream ID:  A variable-length integer indicating the stream which is
+//#    flow control blocked.
 //#
-//#    Stream Data Limit:  A variable-length integer indicating the offset
-//#       of the stream at which the blocking occurred.
+//# Maximum Stream Data:  A variable-length integer indicating the offset
+//#    of the stream at which the blocking occurred.
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct StreamDataBlocked {

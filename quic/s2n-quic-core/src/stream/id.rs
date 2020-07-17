@@ -2,53 +2,51 @@
 
 use crate::{endpoint::EndpointType, stream::StreamType, varint::VarInt};
 
-//=https://tools.ietf.org/html/draft-ietf-quic-transport-24#section-2.1
-//# 2.1.  Stream Types and Identifiers
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#2.1
+//# Streams can be unidirectional or bidirectional.  Unidirectional
+//# streams carry data in one direction: from the initiator of the stream
+//# to its peer.  Bidirectional streams allow for data to be sent in both
+//# directions.
 //#
-//#    Streams can be unidirectional or bidirectional.  Unidirectional
-//#    streams carry data in one direction: from the initiator of the stream
-//#    to its peer.  Bidirectional streams allow for data to be sent in both
-//#    directions.
+//# Streams are identified within a connection by a numeric value,
+//# referred to as the stream ID.  A stream ID is a 62-bit integer (0 to
+//# 2^62-1) that is unique for all streams on a connection.  Stream IDs
+//# are encoded as variable-length integers (see Section 16).  A QUIC
+//# endpoint MUST NOT reuse a stream ID within a connection.
 //#
-//#    Streams are identified within a connection by a numeric value,
-//#    referred to as the stream ID.  A stream ID is a 62-bit integer (0 to
-//#    2^62-1) that is unique for all streams on a connection.  Stream IDs
-//#    are encoded as variable-length integers (see Section 16).  A QUIC
-//#    endpoint MUST NOT reuse a stream ID within a connection.
+//# The least significant bit (0x1) of the stream ID identifies the
+//# initiator of the stream.  Client-initiated streams have even-numbered
+//# stream IDs (with the bit set to 0), and server-initiated streams have
+//# odd-numbered stream IDs (with the bit set to 1).
 //#
-//#    The least significant bit (0x1) of the stream ID identifies the
-//#    initiator of the stream.  Client-initiated streams have even-numbered
-//#    stream IDs (with the bit set to 0), and server-initiated streams have
-//#    odd-numbered stream IDs (with the bit set to 1).
+//# The second least significant bit (0x2) of the stream ID distinguishes
+//# between bidirectional streams (with the bit set to 0) and
+//# unidirectional streams (with the bit set to 1).
 //#
-//#    The second least significant bit (0x2) of the stream ID distinguishes
-//#    between bidirectional streams (with the bit set to 0) and
-//#    unidirectional streams (with the bit set to 1).
+//# The least significant two bits from a stream ID therefore identify a
+//# stream as one of four types, as summarized in Table 1.
 //#
-//#    The least significant two bits from a stream ID therefore identify a
-//#    stream as one of four types, as summarized in Table 1.
+//#              +------+----------------------------------+
+//#              | Bits | Stream Type                      |
+//#              +------+----------------------------------+
+//#              | 0x0  | Client-Initiated, Bidirectional  |
+//#              |      |                                  |
+//#              | 0x1  | Server-Initiated, Bidirectional  |
+//#              |      |                                  |
+//#              | 0x2  | Client-Initiated, Unidirectional |
+//#              |      |                                  |
+//#              | 0x3  | Server-Initiated, Unidirectional |
+//#              +------+----------------------------------+
 //#
-//#                 +------+----------------------------------+
-//#                 | Bits | Stream Type                      |
-//#                 +------+----------------------------------+
-//#                 | 0x0  | Client-Initiated, Bidirectional  |
-//#                 |      |                                  |
-//#                 | 0x1  | Server-Initiated, Bidirectional  |
-//#                 |      |                                  |
-//#                 | 0x2  | Client-Initiated, Unidirectional |
-//#                 |      |                                  |
-//#                 | 0x3  | Server-Initiated, Unidirectional |
-//#                 +------+----------------------------------+
+//#                       Table 1: Stream ID Types
 //#
-//#                          Table 1: Stream ID Types
+//# Within each type, streams are created with numerically increasing
+//# stream IDs.  A stream ID that is used out of order results in all
+//# streams of that type with lower-numbered stream IDs also being
+//# opened.
 //#
-//#    Within each type, streams are created with numerically increasing
-//#    stream IDs.  A stream ID that is used out of order results in all
-//#    streams of that type with lower-numbered stream IDs also being
-//#    opened.
-//#
-//#    The first bidirectional stream opened by the client has a stream ID
-//#    of 0.
+//# The first bidirectional stream opened by the client has a stream ID
+//# of 0.
 
 /// The ID of a stream.
 ///

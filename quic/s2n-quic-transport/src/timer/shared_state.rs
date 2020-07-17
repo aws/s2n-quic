@@ -34,7 +34,6 @@ impl<T> TimerNodeInner<T> {
 }
 
 /// A timer node which is part of a timer tree
-//#[derive(Copy, Clone, PartialEq, Eq)]
 #[derive(Debug)]
 pub struct TimerNode<T> {
     /// The actual state of the timer

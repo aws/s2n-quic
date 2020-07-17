@@ -3,10 +3,12 @@ use structopt::StructOpt;
 mod annotation;
 mod object;
 mod parser;
+mod pattern;
 mod project;
 mod report;
 mod source;
 mod specification;
+mod target;
 
 pub type Error = Box<dyn std::error::Error>;
 

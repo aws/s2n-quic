@@ -19,6 +19,7 @@ use futures_test::task::new_count_waker;
 use s2n_quic_core::{
     ack_set::AckSet,
     application::ApplicationErrorCode,
+    connection::ConnectionError,
     endpoint::EndpointType,
     frame::{
         stream::StreamRef, MaxData, MaxStreamData, ResetStream, StopSending, Stream as StreamFrame,
@@ -440,7 +441,7 @@ fn remote_streams_do_not_open_if_manager_is_closed() {
                 };
 
                 let mut manager = create_stream_manager(*local_ep_type);
-                manager.close(StreamError::ConnectionClosed(ApplicationErrorCode::UNKNOWN));
+                manager.close(ApplicationErrorCode::UNKNOWN.into());
 
                 assert_is_transport_error(
                     manager.on_reset_stream(&reset_frame),
@@ -487,9 +488,9 @@ fn opens_locally_initiated_streams() {
 fn open_returns_error_after_close() {
     let mut manager = create_stream_manager(EndpointType::Server);
 
-    manager.close(StreamError::ConnectionError);
+    manager.close(ConnectionError::Unspecified.into());
     assert_eq!(
-        Err(StreamError::ConnectionError),
+        Err(ConnectionError::Unspecified.into()),
         manager.open(StreamType::Bidirectional)
     )
 }
@@ -506,7 +507,7 @@ fn returns_finalization_interest_after_last_stream_is_drained() {
     assert_eq!(2, manager.active_streams().len());
     assert_eq!(false, manager.interests().finalization);
 
-    manager.close(StreamError::ConnectionClosed(ApplicationErrorCode::UNKNOWN));
+    manager.close(ApplicationErrorCode::UNKNOWN.into());
     assert_eq!(false, manager.interests().finalization);
 
     let error = ApplicationErrorCode::new(0).unwrap();
@@ -716,7 +717,7 @@ fn accept_returns_opened_streams_even_if_stream_manager_was_closed() {
 
                 // Close the StreamManager
                 // This should still allow us to accept Streams
-                manager.close(StreamError::ConnectionError);
+                manager.close(ConnectionError::Unspecified.into());
 
                 for n in 0..STREAMS_TO_OPEN {
                     let stream_id = StreamId::nth(*initiator_type, *stream_type, n).unwrap();
@@ -728,7 +729,7 @@ fn accept_returns_opened_streams_even_if_stream_manager_was_closed() {
 
                 // Now the error should be visible
                 assert_eq!(
-                    Poll::Ready(Err(StreamError::ConnectionError)),
+                    Poll::Ready(Err(ConnectionError::Unspecified.into())),
                     manager.poll_accept(*stream_type, &Context::from_waker(&accept_waker))
                 );
             }
@@ -757,12 +758,12 @@ fn closing_stream_manager_wakes_blocked_accepts() {
 
                 // Close the StreamManager
                 // This should wake up the accept call
-                manager.close(StreamError::ConnectionError);
+                manager.close(ConnectionError::Unspecified.into());
                 assert_eq!(accept_wake_counter, 1);
 
                 // Now the error should be visible
                 assert_eq!(
-                    Poll::Ready(Err(StreamError::ConnectionError)),
+                    Poll::Ready(Err(ConnectionError::Unspecified.into())),
                     manager.poll_accept(*stream_type, &Context::from_waker(&accept_waker))
                 );
             }
@@ -1160,7 +1161,8 @@ fn close_is_forwarded_to_all_streams() {
         stream.write_waker_to_return = Some(write_waker);
     });
 
-    manager.close(StreamError::ConnectionClosed(VarInt::from_u32(1).into()));
+    let error_code: ApplicationErrorCode = VarInt::from_u32(1).into();
+    manager.close(error_code.into());
     assert_eq!([stream_2, stream_4], *manager.active_streams());
     assert_eq!(read_wake_counter, 2);
     assert_eq!(write_wake_counter, 1);

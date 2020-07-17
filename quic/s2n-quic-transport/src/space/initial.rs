@@ -127,7 +127,7 @@ impl<Suite: CryptoSuite> FrameExchangeInterestProvider for InitialSpace<Suite> {
     }
 }
 
-//= https://tools.ietf.org/html/draft-ietf-quic-transport-27#section-17.2.2
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#17.2.2
 //# The payload of an Initial packet includes a CRYPTO frame (or frames)
 //# containing a cryptographic handshake message, ACK frames, or both.
 //# PING, PADDING, and CONNECTION_CLOSE frames are also permitted.  An

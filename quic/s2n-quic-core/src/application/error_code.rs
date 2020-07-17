@@ -1,16 +1,14 @@
 //! Defines QUIC Application Error Codes
 
-use crate::varint::VarInt;
+use crate::{application::ApplicationErrorExt, varint::VarInt};
 
-//=https://tools.ietf.org/html/draft-ietf-quic-transport-24#section-20.1
-//# 20.1.  Application Protocol Error Codes
-//#
-//#    Application protocol error codes are 62-bit unsigned integers, but
-//#    the management of application error codes is left to application
-//#    protocols.  Application protocol error codes are used for the
-//#    RESET_STREAM frame (Section 19.4), the STOP_SENDING frame
-//#    (Section 19.5), and the CONNECTION_CLOSE frame with a type of 0x1d
-//#    (Section 19.19).
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#20.1
+//# Application protocol error codes are 62-bit unsigned integers, but
+//# the management of application error codes is left to application
+//# protocols.  Application protocol error codes are used for the
+//# RESET_STREAM frame (Section 19.4), the STOP_SENDING frame
+//# (Section 19.5), and the CONNECTION_CLOSE frame with a type of 0x1d
+//# (Section 19.19).
 
 /// Application Error Codes are 62-bit unsigned integer values which
 /// may be used by applications to exchange errors.
@@ -34,6 +32,12 @@ impl ApplicationErrorCode {
     /// range for error codes and return `Err` otherwise.
     pub fn new(value: u64) -> Result<ApplicationErrorCode, ()> {
         Ok(ApplicationErrorCode(VarInt::new(value).map_err(|_| ())?))
+    }
+}
+
+impl ApplicationErrorExt for ApplicationErrorCode {
+    fn application_error_code(&self) -> Option<ApplicationErrorCode> {
+        Some(*self)
     }
 }
 

@@ -1,10 +1,11 @@
 use crate::{
     annotation::{Annotation, AnnotationLevel, AnnotationSet, AnnotationSetExt},
     project::Project,
-    source::Source,
     specification::Specification,
+    target::Target,
     Error,
 };
+use core::fmt;
 use rayon::prelude::*;
 use std::{
     collections::{BTreeSet, HashMap},
@@ -43,35 +44,57 @@ enum ReportError<'a> {
     MissingSection { annotation: &'a Annotation },
 }
 
+impl<'a> fmt::Display for ReportError<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::QuoteMismatch { annotation } => write!(
+                f,
+                "{}#{}:{} - quote not found in {:?}",
+                annotation.source.display(),
+                annotation.anno_line,
+                annotation.anno_column,
+                annotation.target,
+            ),
+            Self::MissingSection { annotation } => write!(
+                f,
+                "{}#{}:{} - section {:?} not found in {:?}",
+                annotation.source.display(),
+                annotation.anno_line,
+                annotation.anno_column,
+                annotation.target_section().unwrap_or("-"),
+                annotation.target_path(),
+            ),
+        }
+    }
+}
+
 impl Report {
     pub fn exec(&self) -> Result<(), Error> {
-        let executables = self.project.executables()?;
+        let project_sources = self.project.sources()?;
 
-        let annotations: AnnotationSet = executables
+        let annotations: AnnotationSet = project_sources
             .par_iter()
-            .flat_map(|file| {
-                let mut annotations = AnnotationSet::new();
-                let bytes = std::fs::read(file).unwrap();
-                crate::object::extract(&bytes, &mut annotations).unwrap();
-                annotations
+            .flat_map(|source| {
+                // TODO gracefully handle error
+                source.annotations().expect("could not extract annotations")
             })
             .collect();
 
-        let sources = annotations.sources()?;
+        let targets = annotations.targets()?;
 
-        let contents: HashMap<_, _> = sources
+        let contents: HashMap<_, _> = targets
             .par_iter()
-            .map(|source| {
-                let contents = source.path.load().unwrap();
-                (source, contents)
+            .map(|target| {
+                let contents = target.path.load().unwrap();
+                (target, contents)
             })
             .collect();
 
         let specifications: HashMap<_, _> = contents
             .par_iter()
-            .map(|(source, contents)| {
-                let spec = source.format.parse(contents).unwrap();
-                (source, spec)
+            .map(|(target, contents)| {
+                let spec = target.format.parse(contents).unwrap();
+                (target, spec)
             })
             .collect();
 
@@ -79,8 +102,8 @@ impl Report {
 
         let results: Vec<_> = reference_map
             .par_iter()
-            .flat_map(|((source, section_id), annotations)| {
-                let spec = specifications.get(&source).expect("spec already checked");
+            .flat_map(|((target, section_id), annotations)| {
+                let spec = specifications.get(&target).expect("spec already checked");
 
                 let mut results = vec![];
 
@@ -92,7 +115,7 @@ impl Report {
                             if let Some(range) = annotation.quote_range(&contents) {
                                 for (line, range) in contents.ranges(range) {
                                     results.push(Ok((
-                                        source,
+                                        target,
                                         Reference {
                                             line,
                                             start: range.start,
@@ -105,17 +128,17 @@ impl Report {
                                 }
                             } else {
                                 results
-                                    .push(Err((source, ReportError::QuoteMismatch { annotation })));
+                                    .push(Err((target, ReportError::QuoteMismatch { annotation })));
                             }
                         }
                     } else {
                         for (_, annotation) in annotations {
-                            results.push(Err((source, ReportError::MissingSection { annotation })));
+                            results.push(Err((target, ReportError::MissingSection { annotation })));
                         }
                     }
                 } else {
                     // TODO
-                    eprintln!("TOTAL REFERENCE");
+                    eprintln!("TOTAL REFERENCE {:?}", annotations);
                 }
 
                 // TODO upgrade levels whenever they overlap
@@ -125,22 +148,22 @@ impl Report {
             .collect();
 
         let mut report = ReportResult::default();
+        let mut errors = BTreeSet::new();
 
         for result in results {
-            let (source, result) = match result {
-                Ok((source, entry)) => (source, Ok(entry)),
-                Err((source, err)) => (source, Err(err)),
+            let (target, result) = match result {
+                Ok((target, entry)) => (target, Ok(entry)),
+                Err((target, err)) => (target, Err(err)),
             };
 
             let entry = report
-                .sources
-                .entry(&source)
-                .or_insert_with(|| SourceReport {
-                    errors: vec![],
-                    source,
+                .targets
+                .entry(&target)
+                .or_insert_with(|| TargetReport {
+                    target,
                     references: BTreeSet::new(),
-                    contents: contents.get(&source).expect("content should exist"),
-                    specification: specifications.get(&source).expect("content should exist"),
+                    contents: contents.get(&target).expect("content should exist"),
+                    specification: specifications.get(&target).expect("content should exist"),
                 });
 
             match result {
@@ -148,20 +171,28 @@ impl Report {
                     entry.references.insert(reference);
                 }
                 Err(err) => {
-                    entry.errors.push(err);
+                    errors.insert(err.to_string());
                 }
             }
+        }
+
+        if !errors.is_empty() {
+            for error in &errors {
+                eprintln!("{}", error);
+            }
+
+            return Err("source errors were found. no reports were generated".into());
         }
 
         if let Some(lcov_dir) = &self.lcov {
             std::fs::create_dir_all(&lcov_dir)?;
             let lcov_dir = lcov_dir.canonicalize()?;
             let results: Vec<Result<(), std::io::Error>> = report
-                .sources
+                .targets
                 .par_iter()
                 .map(|(source, report)| {
                     let id = crate::fnv(source);
-                    let path = lcov_dir.join(format!("compliance.{}.info", id));
+                    let path = lcov_dir.join(format!("compliance.{}.lcov", id));
                     let mut output = BufWriter::new(std::fs::File::create(&path)?);
                     lcov::report(report, &mut output)?;
                     Ok(())
@@ -179,19 +210,18 @@ impl Report {
 
 #[derive(Debug, Default)]
 pub struct ReportResult<'a> {
-    sources: HashMap<&'a Source, SourceReport<'a>>,
+    targets: HashMap<&'a Target, TargetReport<'a>>,
 }
 
 #[derive(Debug)]
-pub struct SourceReport<'a> {
-    errors: Vec<ReportError<'a>>,
-    source: &'a Source,
+pub struct TargetReport<'a> {
+    target: &'a Target,
     references: BTreeSet<Reference<'a>>,
     contents: &'a String,
     specification: &'a Specification<'a>,
 }
 
-impl<'a> SourceReport<'a> {
+impl<'a> TargetReport<'a> {
     #[allow(dead_code)]
     pub fn statistics(&self) -> Statistics {
         let mut stats = Statistics::default();
