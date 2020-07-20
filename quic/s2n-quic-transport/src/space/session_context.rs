@@ -9,10 +9,7 @@ use crate::{
 use bytes::Bytes;
 use s2n_codec::{DecoderBuffer, DecoderValue};
 use s2n_quic_core::{
-    crypto::{
-        tls::{TLSApplicationParameters, TLSContext},
-        CryptoError, CryptoSuite,
-    },
+    crypto::{tls, CryptoError, CryptoSuite},
     packet::number::PacketNumberSpace,
     time::Timestamp,
     transport::parameters::ClientTransportParameters,
@@ -30,7 +27,7 @@ pub struct SessionContext<'a, ConnectionConfigType: ConnectionConfig> {
         &'a mut Option<Box<<ConnectionConfigType::TLSSession as CryptoSuite>::ZeroRTTCrypto>>,
 }
 
-impl<'a, ConnectionConfigType: ConnectionConfig> TLSContext<ConnectionConfigType::TLSSession>
+impl<'a, ConnectionConfigType: ConnectionConfig> tls::Context<ConnectionConfigType::TLSSession>
     for SessionContext<'a, ConnectionConfigType>
 {
     fn on_handshake_keys(
@@ -57,7 +54,7 @@ impl<'a, ConnectionConfigType: ConnectionConfig> TLSContext<ConnectionConfigType
     fn on_zero_rtt_keys(
         &mut self,
         keys: <ConnectionConfigType::TLSSession as CryptoSuite>::ZeroRTTCrypto,
-        _application_parameters: TLSApplicationParameters,
+        _application_parameters: tls::ApplicationParameters,
     ) -> Result<(), CryptoError> {
         *self.zero_rtt_crypto = Some(Box::new(keys));
 
@@ -67,7 +64,7 @@ impl<'a, ConnectionConfigType: ConnectionConfig> TLSContext<ConnectionConfigType
     fn on_one_rtt_keys(
         &mut self,
         keys: <ConnectionConfigType::TLSSession as CryptoSuite>::OneRTTCrypto,
-        application_parameters: TLSApplicationParameters,
+        application_parameters: tls::ApplicationParameters,
     ) -> Result<(), CryptoError> {
         if let Some(handshake) = self.handshake.as_mut() {
             // TODO make sure the rx buffer is empty, otherwise it's a

@@ -4,7 +4,7 @@ use crate::stream::{StreamLimits, StreamTrait};
 use s2n_quic_core::{
     application::ApplicationErrorCode,
     connection::{ConnectionError, ConnectionId},
-    crypto::tls::TLSSession,
+    crypto::tls,
     endpoint::EndpointType,
     frame::ConnectionClose,
     inet::SocketAddress,
@@ -49,7 +49,7 @@ pub trait ConnectionConfig: 'static + Send {
     /// The type of the Streams which are managed by the `Connection`
     type StreamType: StreamTrait;
     /// Session type
-    type TLSSession: TLSSession;
+    type TLSSession: tls::Session;
     /// The type which is used for decoding destination connection IDs
     type DestinationConnectionIDDecoderType: DestinationConnectionIDDecoder;
 

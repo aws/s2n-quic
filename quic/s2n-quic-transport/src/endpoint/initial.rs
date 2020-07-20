@@ -10,10 +10,10 @@ use core::{convert::TryInto, time::Duration};
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     connection::ConnectionId,
-    crypto::{tls::TLSEndpoint, CryptoSuite, InitialCrypto},
+    crypto::{tls::Endpoint as TLSEndpoint, CryptoSuite, InitialCrypto},
     inet::DatagramInfo,
     packet::initial::ProtectedInitial,
-    transport::error::TransportError,
+    transport::{error::TransportError, parameters::ServerTransportParameters},
 };
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#14
@@ -94,7 +94,10 @@ impl<ConfigType: EndpointConfig> Endpoint<ConfigType> {
             .wakeup_queue
             .create_wakeup_handle(internal_connection_id);
 
-        let tls_session = self.tls_endpoint.new_server_session();
+        // TODO initialize transport parameters from provider values
+        let transport_parameters = ServerTransportParameters::default();
+
+        let tls_session = self.tls_endpoint.new_server_session(&transport_parameters);
 
         let connection_config = self.config.create_connection_config();
 

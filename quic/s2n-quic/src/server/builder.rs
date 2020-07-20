@@ -264,12 +264,12 @@ impl<Providers: ServerProviders> Builder<Providers> {
         /// path to the private key.
         ///
         /// ```rust
-        /// # use std::error::Error;
+        /// # use std::{error::Error, path::Path};
         /// # use s2n_quic::Server;
         /// #
         /// # fn main() -> Result<(), Box<dyn Error>> {
         /// let server = Server::builder()
-        ///     .with_tls("./certs/key.pem")?
+        ///     .with_tls((Path::new("./certs/cert.pem"), Path::new("./certs/key.pem")))?
         ///     .build()?;
         /// #
         /// #    Ok(())
@@ -279,12 +279,12 @@ impl<Providers: ServerProviders> Builder<Providers> {
         /// Sets the TLS provider to a TLS server builder
         ///
         /// ```rust,ignore
-        /// # use std::error::Error;
+        /// # use std::{error::Error, path::Path};
         /// # use s2n_quic::Server;
         /// #
         /// # fn main() -> Result<(), Box<dyn Error>> {
         /// let tls = s2n::tls::Server::builder()
-        ///     .with_certificate("./certs/key.pem")?
+        ///     .with_certificate(Path::new("./certs/cert.pem"), Path::new("./certs/key.pem"))?
         ///     .with_security_policy(s2n::tls::security_policy::S2N_20190802)?;
         ///
         /// let server = Server::builder()
@@ -303,12 +303,12 @@ impl<Providers: ServerProviders> Builder<Providers> {
     /// # Examples
     ///
     /// ```rust,no_run
-    /// # use std::error::Error;
+    /// # use std::{error::Error, path::Path};
     /// # use s2n_quic::Server;
     /// #
     /// # fn main() -> Result<(), Box<dyn Error>> {
     /// let server = Server::builder()
-    ///     .with_tls("./certs/key.pem")?
+    ///     .with_tls((Path::new("./certs/cert.pem"), Path::new("./certs/key.pem")))?
     ///     .with_io("127.0.0.1:443")?
     ///     .build()?;
     /// #

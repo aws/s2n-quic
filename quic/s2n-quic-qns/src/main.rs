@@ -1,13 +1,12 @@
-use std::io;
 use structopt::StructOpt;
 
+pub type Error = Box<dyn std::error::Error>;
+pub type Result<T> = core::result::Result<T, Error>;
 mod client;
-mod endpoint;
 mod server;
-mod socket;
 
 #[tokio::main]
-async fn main() -> Result<(), io::Error> {
+async fn main() -> Result<()> {
     Arguments::from_args().run().await
 }
 
@@ -17,7 +16,7 @@ enum Arguments {
 }
 
 impl Arguments {
-    pub async fn run(&self) -> io::Result<()> {
+    pub async fn run(&self) -> Result<()> {
         match self {
             Self::Interop(interop) => interop.run().await,
         }
@@ -31,7 +30,7 @@ enum Interop {
 }
 
 impl Interop {
-    pub async fn run(&self) -> io::Result<()> {
+    pub async fn run(&self) -> Result<()> {
         match self {
             Self::Server(server) => server.run().await,
             Self::Client(client) => client.run().await,

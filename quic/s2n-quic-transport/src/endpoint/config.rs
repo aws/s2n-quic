@@ -3,7 +3,7 @@
 use crate::connection::{ConnectionConfig, ConnectionTrait};
 use core::time::Duration;
 use s2n_quic_core::{
-    connection::ConnectionId, crypto::tls::TLSEndpoint, endpoint::EndpointType,
+    connection::ConnectionId, crypto::tls, endpoint::EndpointType,
     packet::DestinationConnectionIDDecoder,
 };
 
@@ -13,7 +13,7 @@ pub trait EndpointConfig {
     /// endpoint.
     type ConnectionConfigType: ConnectionConfig;
     /// The type of the TLS endpoint which is utilized
-    type TLSEndpointType: TLSEndpoint<
+    type TLSEndpointType: tls::Endpoint<
         Session = <Self::ConnectionConfigType as ConnectionConfig>::TLSSession,
     >;
     /// The connections type

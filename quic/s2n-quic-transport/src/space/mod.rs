@@ -6,7 +6,7 @@ use crate::{
 };
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
-    crypto::{tls::TLSSession, CryptoSuite},
+    crypto::{tls::Session as TLSSession, CryptoSuite},
     frame::{
         ack::AckRanges, crypto::CryptoRef, stream::StreamRef, Ack, DataBlocked, HandshakeDone,
         MaxData, MaxStreamData, MaxStreams, NewConnectionID, NewToken, PathChallenge, PathResponse,
