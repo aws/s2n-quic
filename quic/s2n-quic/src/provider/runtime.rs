@@ -10,4 +10,7 @@ pub struct Default {
 
 impl Provider for Default {}
 
+#[cfg(feature = "tokio")]
+pub use crate::tokio::Runtime as Tokio;
+
 impl_provider_utils!();
