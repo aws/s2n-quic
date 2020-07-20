@@ -7,6 +7,7 @@ mod pattern;
 mod project;
 mod report;
 mod source;
+mod sourcemap;
 mod specification;
 mod target;
 

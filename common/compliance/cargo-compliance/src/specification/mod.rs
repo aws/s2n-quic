@@ -1,4 +1,4 @@
-use crate::Error;
+use crate::{sourcemap::Str, Error};
 use core::{
     cmp::Ordering,
     fmt,
@@ -11,7 +11,7 @@ pub mod ietf;
 
 #[derive(Default)]
 pub struct Specification<'a> {
-    pub title: Option<Content<'a>>,
+    pub title: Option<Str<'a>>,
     pub sections: HashMap<&'a str, Section<'a>>,
 }
 
@@ -72,26 +72,26 @@ impl FromStr for Format {
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Section<'a> {
-    pub id: Content<'a>,
-    pub title: Content<'a>,
-    pub full_title: Content<'a>,
-    pub lines: Vec<Content<'a>>,
+    pub id: Str<'a>,
+    pub title: Str<'a>,
+    pub full_title: Str<'a>,
+    pub lines: Vec<Str<'a>>,
 }
 
 impl<'a> Section<'a> {
-    pub fn contents(&self) -> ContentView {
-        ContentView::new(&self.lines)
+    pub fn contents(&self) -> StrView {
+        StrView::new(&self.lines)
     }
 }
 
-pub struct ContentView {
+pub struct StrView {
     pub value: String,
     pub byte_map: Vec<usize>,
     pub line_map: Vec<usize>,
 }
 
-impl ContentView {
-    pub fn new(contents: &[Content]) -> Self {
+impl StrView {
+    pub fn new(contents: &[Str]) -> Self {
         let mut value = String::new();
         let mut byte_map = vec![];
         let mut line_map = vec![];
@@ -118,8 +118,8 @@ impl ContentView {
         }
     }
 
-    pub fn ranges(&self, src: Range<usize>) -> ContentRangeIter {
-        ContentRangeIter {
+    pub fn ranges(&self, src: Range<usize>) -> StrRangeIter {
+        StrRangeIter {
             byte_map: &self.byte_map,
             line_map: &self.line_map,
             start: src.start,
@@ -128,7 +128,7 @@ impl ContentView {
     }
 }
 
-impl Deref for ContentView {
+impl Deref for StrView {
     type Target = str;
 
     fn deref(&self) -> &str {
@@ -136,14 +136,14 @@ impl Deref for ContentView {
     }
 }
 
-pub struct ContentRangeIter<'a> {
+pub struct StrRangeIter<'a> {
     byte_map: &'a [usize],
     line_map: &'a [usize],
     start: usize,
     end: usize,
 }
 
-impl<'a> Iterator for ContentRangeIter<'a> {
+impl<'a> Iterator for StrRangeIter<'a> {
     type Item = (usize, Range<usize>);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -168,74 +168,5 @@ impl<'a> Iterator for ContentRangeIter<'a> {
         }
 
         Some((line, range))
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Content<'a> {
-    pub value: &'a str,
-    pub pos: usize,
-    pub line: usize,
-}
-
-impl<'a> fmt::Debug for Content<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.value.fmt(f)
-    }
-}
-
-impl<'a> fmt::Display for Content<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.value.fmt(f)
-    }
-}
-
-impl<'a> Content<'a> {
-    pub fn indentation(&self) -> usize {
-        let trimmed_line = self.trim_start();
-        self.len() - trimmed_line.len()
-    }
-
-    pub fn slice(&self, bounds: Range<usize>) -> Self {
-        let pos = self.pos + bounds.start;
-        let value = &self.value[bounds];
-        Self {
-            value,
-            pos,
-            line: self.line,
-        }
-    }
-
-    pub fn range(&self) -> Range<usize> {
-        let pos = self.pos;
-        pos..(pos + self.value.len())
-    }
-
-    pub fn trim(&self) -> Self {
-        let value = self.value.trim_start();
-        let pos = self.pos + (self.len() - value.len());
-        let value = value.trim_end();
-        Self {
-            value,
-            pos,
-            line: self.line,
-        }
-    }
-
-    pub fn trim_end_matches(&self, pat: char) -> Self {
-        let value = self.value.trim_end_matches(pat);
-        Self {
-            value,
-            pos: self.pos,
-            line: self.line,
-        }
-    }
-}
-
-impl<'a> Deref for Content<'a> {
-    type Target = str;
-
-    fn deref(&self) -> &str {
-        self.value
     }
 }

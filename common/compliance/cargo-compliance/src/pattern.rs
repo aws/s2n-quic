@@ -1,6 +1,7 @@
 use crate::{
     annotation::{Annotation, AnnotationSet},
     parser::ParsedAnnotation,
+    sourcemap::{LinesIter, Str},
     Error,
 };
 use std::path::Path;
@@ -41,9 +42,12 @@ impl<'a> Pattern<'a> {
     ) -> Result<(), Error> {
         let mut state = ParserState::Search;
 
-        for (line_no, line) in source.lines().enumerate() {
-            // lines start at 1
-            let line_no = line_no + 1;
+        for Str {
+            value: line,
+            line: line_no,
+            ..
+        } in LinesIter::new(source)
+        {
             let content = line.trim_start();
 
             match core::mem::replace(&mut state, ParserState::Search) {
