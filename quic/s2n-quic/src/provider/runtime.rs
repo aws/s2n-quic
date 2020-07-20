@@ -1,4 +1,4 @@
-/// Provides logging support for an endpoint
+/// Provides runtime support for an endpoint
 pub trait Provider {
     // TODO
 }

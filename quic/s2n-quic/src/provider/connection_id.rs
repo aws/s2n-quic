@@ -1,8 +1,13 @@
-/// Provides connection ID support for an endpoint
+/// Provides connection id support for an endpoint
 pub trait Provider {
     // TODO
 }
 
-impl Provider for () {}
+#[derive(Debug, Default)]
+pub struct Default {
+    // TODO
+}
+
+impl Provider for Default {}
 
 impl_provider_utils!();

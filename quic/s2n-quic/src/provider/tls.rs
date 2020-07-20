@@ -1,21 +1,23 @@
-use std::io::Error as IOError;
+use std::io;
 
 /// Provides TLS support for an endpoint
 pub trait Provider {
     // TODO
 }
 
-impl Provider for usize {
-    // add code here
+#[derive(Debug, Default)]
+pub struct Default {
+    // TODO
 }
 
+impl Provider for Default {}
+
 impl TryInto for &str {
-    type Error = IOError;
-    type Provider = usize;
+    type Error = io::Error;
+    type Provider = Default;
 
     fn try_into(self) -> Result<Self::Provider, Self::Error> {
-        // let _key = std::fs::read_file(self)?;
-        Ok(0)
+        Ok(Default::default())
     }
 }
 

@@ -19,25 +19,16 @@ pub struct Server {
 impl_providers_state! {
     #[derive(Debug, Default)]
     struct Providers {
-        #[default = usize]
+        clock: Clock,
         congestion_controller: CongestionController,
-
-        #[default = usize]
-        tls: Tls,
-        #[default = limits::Limits]
-        limits: Limits,
-
-        #[default = usize]
-        socket: Socket,
-
-        #[default = ()]
-        log: Log,
-
-        #[default = ()]
         connection_id: ConnectionID,
-
-        #[default = ()]
+        limits: Limits,
+        log: Log,
         retry_token: RetryToken,
+        runtime: Runtime,
+        socket: Socket,
+        sync: Sync,
+        tls: Tls,
     }
 
     /// Opaque trait containing all of the configured providers

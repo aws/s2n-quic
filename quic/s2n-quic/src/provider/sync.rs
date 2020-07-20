@@ -1,4 +1,4 @@
-/// Provides logging support for an endpoint
+/// Provides synchronization support for an endpoint
 pub trait Provider {
     // TODO
 }
@@ -9,5 +9,12 @@ pub struct Default {
 }
 
 impl Provider for Default {}
+
+#[derive(Debug, Default)]
+pub struct Mutex {
+    // TODO
+}
+
+impl Provider for Mutex {}
 
 impl_provider_utils!();

@@ -1,25 +1,23 @@
-/// Provides Congestion Controller support for an endpoint
+/// Provides congestion controller support for an endpoint
 pub trait Provider {
     // TODO
 }
 
-/// Converts `usize` into an initial congestion window
-impl Provider for usize {
-    // add code here
-}
-
-impl_provider_utils!();
-
 #[derive(Debug, Default)]
-pub struct Reno {
+pub struct Default {
     // TODO
 }
+
+impl Provider for Default {}
+
+#[derive(Default, Debug)]
+pub struct Cubic {}
+
+impl Provider for Cubic {}
+
+#[derive(Default, Debug)]
+pub struct Reno {}
 
 impl Provider for Reno {}
 
-#[derive(Debug, Default)]
-pub struct Cubic {
-    // TODO
-}
-
-impl Provider for Cubic {}
+impl_provider_utils!();

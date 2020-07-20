@@ -34,7 +34,6 @@ macro_rules! impl_providers_state {
                 $(
                     #[doc = $($doc:tt)*]
                 )*
-                #[default = $default_ty:ty]
                 $field:ident: $field_ty:ident
             ),* $(,)?
         }
@@ -115,14 +114,14 @@ macro_rules! impl_providers_state {
         /// change between releases.
         #[derive(Debug, Default)]
         pub struct DefaultProviders {
-            providers: Providers<$($default_ty,)*>
+            providers: Providers<$($field::Default,)*>
         }
 
         #[doc(hidden)]
         impl $trait for DefaultProviders {
             $(
                 #[doc(hidden)]
-                type $field_ty = $default_ty;
+                type $field_ty = $field::Default;
             )*
 
             #[doc(hidden)]

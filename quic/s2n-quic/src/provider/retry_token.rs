@@ -3,6 +3,11 @@ pub trait Provider {
     // TODO
 }
 
-impl Provider for () {}
+#[derive(Debug, Default)]
+pub struct Default {
+    // TODO
+}
+
+impl Provider for Default {}
 
 impl_provider_utils!();

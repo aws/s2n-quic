@@ -1,4 +1,4 @@
-/// Provides logging support for an endpoint
+/// Provides clock support for an endpoint
 pub trait Provider {
     // TODO
 }

@@ -1,44 +1,34 @@
-use std::{
-    io::Error as IOError,
-    net::{ToSocketAddrs, UdpSocket},
-};
+use std::{io, net::ToSocketAddrs};
 
-/// Provides Socket support for an endpoint
+/// Provides socket support for an endpoint
 pub trait Provider {
     // TODO
 }
 
-impl Provider for usize {
-    // add code here
+#[derive(Debug, Default)]
+pub struct Default {
+    // TODO
 }
 
-// TODO enable with specialization
-// impl<Addr: ToSocketAddrs> TryInto for Addr {
-//     type Error = std::io::Error;
-//     type Provider = usize;
+impl Provider for Default {}
 
-//     fn try_into(self) -> Result<Self::Provider, Self::Error> {
-//         let addrs = self.to_socket_addrs()?;
-//         Ok(1)
-//     }
-// }
-
-impl TryInto for &str {
-    type Error = IOError;
-    type Provider = usize;
+impl TryInto for u16 {
+    type Error = io::Error;
+    type Provider = Default;
 
     fn try_into(self) -> Result<Self::Provider, Self::Error> {
-        let _addrs = self.to_socket_addrs()?;
-        Ok(0)
+        // let _addrs = self.to_socket_addrs()?;
+        Ok(Default::default())
     }
 }
 
-impl TryInto for UdpSocket {
-    type Error = IOError;
-    type Provider = usize;
+impl TryInto for &str {
+    type Error = io::Error;
+    type Provider = Default;
 
     fn try_into(self) -> Result<Self::Provider, Self::Error> {
-        todo!()
+        let _addrs = self.to_socket_addrs()?;
+        Ok(Default::default())
     }
 }
 
