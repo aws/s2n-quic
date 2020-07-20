@@ -1,0 +1,25 @@
+on:
+  push:
+    branches:
+      - master
+
+  release:
+    types: [published]
+
+jobs:
+  qns:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Build and push image
+        uses: docker/build-push-action@v1
+        with:
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+          registry: docker.pkg.github.com
+          repository: awslabs/s2n-quic/s2n-quic-qns
+          tag_with_ref: true
+          dockerfile: qns/Dockerfile
+
+
