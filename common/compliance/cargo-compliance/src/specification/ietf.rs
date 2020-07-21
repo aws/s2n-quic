@@ -1,5 +1,5 @@
-use super::{Content, Section, Specification};
-use crate::Error;
+use super::{Section, Specification, Str};
+use crate::{sourcemap::LinesIter, Error};
 use core::ops::Deref;
 use lazy_static::lazy_static;
 use regex::Regex;
@@ -15,20 +15,8 @@ lazy_static! {
 pub fn parse(contents: &str) -> Result<Specification, Error> {
     let mut parser = Parser::default();
 
-    let mut pos = 0;
-    for (line_no, line) in contents.lines().enumerate() {
-        // lines start at 1
-        let line_no = line_no + 1;
-        // TODO handle \r\n?
-        let len = line.len();
-        let nl_len = "\n".len();
-        let content = Content {
-            value: line,
-            pos,
-            line: line_no,
-        };
-        parser.on_line(content)?;
-        pos += len + nl_len;
+    for line in LinesIter::new(contents) {
+        parser.on_line(line)?;
     }
 
     let spec = parser.done()?;
@@ -64,7 +52,7 @@ pub struct Parser<'a> {
 pub enum ParserState<'a> {
     Init,
     Section {
-        id: Content<'a>,
+        id: Str<'a>,
         section: Section<'a>,
         indent: usize,
     },
@@ -76,7 +64,7 @@ impl<'a> Default for ParserState<'a> {
     }
 }
 
-fn section_header(line: Content) -> Option<(Content, Section)> {
+fn section_header(line: Str) -> Option<(Str, Section)> {
     if let Some(info) = SECTION_HEADER_RE.captures(&line) {
         let id = info.get(1)?;
         let title = info.get(3)?;
@@ -123,7 +111,7 @@ fn section_header(line: Content) -> Option<(Content, Section)> {
 }
 
 impl<'a> Parser<'a> {
-    pub fn on_line(&mut self, line: Content<'a>) -> Result<(), Error> {
+    pub fn on_line(&mut self, line: Str<'a>) -> Result<(), Error> {
         // remove footer marker
         if line.deref() == "\u{c}" {
             return Ok(());
@@ -195,7 +183,7 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
-    fn on_section(&mut self, id: Content<'a>, mut section: Section<'a>, indent: usize) {
+    fn on_section(&mut self, id: Str<'a>, mut section: Section<'a>, indent: usize) {
         for content in &mut section.lines {
             if !content.is_empty() {
                 let range = indent..content.len();

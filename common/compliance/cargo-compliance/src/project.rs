@@ -1,4 +1,4 @@
-use crate::{pattern::Pattern, source::SourceFile, Error};
+use crate::{pattern::Pattern, source::SourceFile, sourcemap::LinesIter, Error};
 use glob::glob;
 use serde::Deserialize;
 use std::{
@@ -117,8 +117,8 @@ impl Project {
 
         let stdout = core::str::from_utf8(&output.stdout)?;
 
-        for line in stdout.lines() {
-            if let Ok(event) = serde_json::from_str::<Event>(line) {
+        for line in LinesIter::new(stdout) {
+            if let Ok(event) = serde_json::from_str::<Event>(line.value) {
                 if let Some(executable) = event.executable {
                     sources.insert(SourceFile::Object(PathBuf::from(executable)));
                 }

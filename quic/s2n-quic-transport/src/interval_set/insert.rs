@@ -12,9 +12,12 @@ pub(crate) fn insert<T: IntervalBound + Ord>(
     start_index: usize,
     limit: Option<NonZeroUsize>,
 ) -> Result<usize, IntervalSetError> {
-    let mut insertion = Insertion {
-        replace_range: core::usize::MAX..0,
-    };
+    // this range is intentionally invalid and will only be
+    // valid if the `scan` method finds a match
+    #[allow(clippy::unknown_clippy_lints, clippy::reversed_empty_ranges)]
+    let replace_range = core::usize::MAX..0;
+
+    let mut insertion = Insertion { replace_range };
 
     let iter = ranges.iter().enumerate().skip(start_index);
 
