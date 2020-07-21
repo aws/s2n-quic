@@ -349,7 +349,7 @@ jobs:
           grcov $GRCOV_CONFIG $GRCOV_FILTER --output-type lcov --output-path coverage/s2n-quic.lcov ./target/debug ./target/compliance/coverage
 
       - name: Upload report
-        uses: actions/upload-artifact@v1
+        uses: actions/upload-artifact@2.1.0
         with:
           name: coverage
           path: coverage
