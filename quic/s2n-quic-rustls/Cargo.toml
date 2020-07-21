@@ -9,5 +9,5 @@ license = "Apache-2.0"
 s2n-codec = { version = "0.1", path = "../../common/s2n-codec", default-features = false }
 s2n-quic-core = { version = "0.1", path = "../s2n-quic-core", default-features = false }
 s2n-quic-ring = { version = "0.1", path = "../s2n-quic-ring", default-features = false }
-rustls = { version = "0.17", features = ["quic"] }
+rustls = { version = "0.18", features = ["quic"] }
 webpki = "0.21"
