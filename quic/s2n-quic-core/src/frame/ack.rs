@@ -1,5 +1,5 @@
 use crate::{frame::Tag, varint::VarInt};
-use core::{convert::TryInto, ops::RangeInclusive, time::Duration};
+use core::{convert::TryInto, ops::RangeInclusive};
 use s2n_codec::{
     decoder_parameterized_value, decoder_value, DecoderBuffer, DecoderError, Encoder, EncoderValue,
 };
@@ -103,16 +103,6 @@ impl<AckRanges> Ack<AckRanges> {
 impl<A: AckRanges> Ack<A> {
     pub fn ack_ranges(&self) -> A::Iter {
         self.ack_ranges.ack_ranges()
-    }
-
-    #[inline]
-    pub fn ack_delay(&self) -> Duration {
-        Duration::from_micros(*self.ack_delay)
-    }
-
-    #[inline]
-    pub fn largest_acknowledged(&self) -> VarInt {
-        *self.ack_ranges().next().expect("at least one ack range is required").end()
     }
 }
 
