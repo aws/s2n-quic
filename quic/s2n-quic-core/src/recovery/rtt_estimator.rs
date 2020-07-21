@@ -1,10 +1,11 @@
 use crate::packet::number::PacketNumberSpace;
-use core::{cmp::min, time::Duration, u64};
+use core::{cmp::min, time::Duration};
 
 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#6.2.2
 //# When no previous RTT is available, the initial RTT SHOULD be set to 333ms,
 //# resulting in a 1 second initial timeout, as recommended in [RFC6298].
-const DEFAULT_INITIAL_RTT_MILLISECONDS: u64 = 333;
+const DEFAULT_INITIAL_RTT: Duration = Duration::from_millis(333);
+const ZERO_DURATION: Duration = Duration::from_millis(0);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct RTTEstimator {
@@ -19,30 +20,31 @@ pub struct RTTEstimator {
     /// The maximum amount of time by which the receiver intends to delay acknowledgments for
     /// packets in the ApplicationData packet number space. The actual ack_delay in a received
     /// ACK frame may be larger due to late timers, reordering, or lost ACK frames.
-    pub max_ack_delay: Duration,
-    /// True if no rtt samples have been received yet
-    pub is_first_rtt_sample: bool,
+    max_ack_delay: Duration,
 }
 
 impl RTTEstimator {
     /// Creates a new RTT Estimator with default initial values using the given `max_ack_delay`.
-    fn new(max_ack_delay: Duration) -> Self {
+    pub fn new(max_ack_delay: Duration) -> Self {
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#5.3
         //# Before any RTT samples are available, the initial RTT is used as rtt_sample.
-        let rtt_sample = Duration::from_millis(DEFAULT_INITIAL_RTT_MILLISECONDS);
+        let rtt_sample = DEFAULT_INITIAL_RTT;
+
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#5.3
         //# When there are no samples for a network path, and on the first RTT
         //# sample for the network path:
         //#
         //# smoothed_rtt = rtt_sample
         //# rttvar = rtt_sample / 2
+        let smoothed_rtt = rtt_sample;
+        let rttvar = rtt_sample / 2;
+
         Self {
-            latest_rtt: Duration::from_millis(0),
-            min_rtt: Duration::from_millis(0),
-            smoothed_rtt: rtt_sample,
-            rttvar: rtt_sample / 2,
+            latest_rtt: ZERO_DURATION,
+            min_rtt: ZERO_DURATION,
+            smoothed_rtt,
+            rttvar,
             max_ack_delay,
-            is_first_rtt_sample: true,
         }
     }
 }
@@ -58,11 +60,10 @@ impl RTTEstimator {
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#5.2
         //# min_rtt is set to the latest_rtt on the first RTT sample,
-        if self.is_first_rtt_sample {
+        if self.min_rtt == ZERO_DURATION {
             self.min_rtt = self.latest_rtt;
             self.smoothed_rtt = self.latest_rtt;
             self.rttvar = self.latest_rtt / 2;
-            self.is_first_rtt_sample = false;
             return;
         }
 
@@ -78,7 +79,7 @@ impl RTTEstimator {
         //# *  MUST ignore the Ack Delay field of the ACK frame for packets sent in the Initial
         //#    and Handshake packet number space.
         if space.is_initial() || space.is_handshake() {
-            ack_delay = Duration::from_millis(0);
+            ack_delay = ZERO_DURATION;
         }
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#5.3
@@ -118,5 +119,3 @@ fn abs_difference<T: core::ops::Sub + PartialOrd>(a: T, b: T) -> <T as core::ops
         b - a
     }
 }
-
-// TODO add tests https://cs.chromium.org/chromium/src/net/third_party/quiche/src/quic/core/congestion_control/rtt_stats_test.cc?g=0
