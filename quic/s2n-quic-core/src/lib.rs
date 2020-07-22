@@ -8,6 +8,7 @@ pub mod endpoint;
 pub mod frame;
 pub mod inet;
 pub mod packet;
+pub mod recovery;
 pub mod stateless_reset_token;
 pub mod stream;
 pub mod time;
