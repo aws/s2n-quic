@@ -14,3 +14,5 @@ pub mod stream;
 pub mod time;
 pub mod transport;
 pub mod varint;
+
+extern crate alloc;
