@@ -15,16 +15,40 @@ env:
   SCCACHE_CACHE_SIZE: 300M
   SCCACHE_DIR: ${{ github.workspace }}/.sccache
   SCCACHE_IDLE_TIMEOUT: 0
+  # Pin the nightly toolchain to prevent breakage.
+  # This should be occasionally updated.
+  RUST_NIGHTLY_TOOLCHAIN: nightly-2020-07-11
 
 jobs:
+  env:
+    runs-on: ubuntu-latest
+    outputs:
+      rust-versions: ${{ steps.rust-versions.outputs.value }}
+      msrv: ${{ steps.msrv.outputs.value }}
+    steps:
+      - uses: actions/checkout@v2
+      - name: Define msrv
+        id: msrv
+        run: |
+          export MSRV=$(cat rust-toolchain | awk '{$1=$1};1')
+          echo "::set-env name=MSRV::$MSRV"
+          echo "::set-output name=value::$MSRV"
+      - name: Define rust-versions
+        id: rust-versions
+        run: |
+          export RAW_VERSIONS="stable beta $RUST_NIGHTLY_TOOLCHAIN $MSRV"
+          export VERSIONS=$(echo $RAW_VERSIONS | jq -scR 'rtrimstr("\n")|split(" ")|.')
+          echo "::set-output name=value::$VERSIONS"
+
   rustfmt:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
 
       - uses: actions-rs/toolchain@v1
+        id: toolchain
         with:
-          toolchain: nightly
+          toolchain: ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
           profile: minimal
           override: true
           components: rustfmt
@@ -41,6 +65,7 @@ jobs:
       RUSTC_WRAPPER: sccache
     steps:
       - uses: actions-rs/toolchain@v1
+        id: toolchain
         with:
           toolchain: stable
           profile: minimal
@@ -64,16 +89,16 @@ jobs:
         continue-on-error: true
         with:
           path: ~/.cargo/registry/cache
-          key: ${{ runner.os }}-${{ github.job }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-${{ github.job }}-cargo-registry-
+          key: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-cargo-registry-
 
       - name: Cache sccache output
         uses: actions/cache@v2
         continue-on-error: true
         with:
           path: ${{ github.workspace }}/.sccache
-          key: ${{ runner.os }}-${{ github.job }}-sccache-${{ hashFiles('**/Cargo.*') }}
-          restore-keys: ${{ runner.os }}-${{ github.job }}-sccache-
+          key: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-sccache-${{ hashFiles('**/Cargo.*') }}
+          restore-keys: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-sccache-
 
       - name: Start sccache
         run: sccache --start-server
@@ -91,8 +116,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions-rs/toolchain@v1
+        id: toolchain
         with:
-          toolchain: nightly
+          toolchain: ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
           profile: minimal
           override: true
 
@@ -109,14 +135,16 @@ jobs:
 
   test:
     runs-on: ${{ matrix.os }}
+    needs: env
     strategy:
       matrix:
-        rust: [stable, beta, nightly, 1.42.0]
+        rust: ${{ fromJson(needs.env.outputs.rust-versions) }}
         os: [ubuntu-latest, macOS-latest]
     env:
       RUSTC_WRAPPER: sccache
     steps:
       - uses: actions-rs/toolchain@v1
+        id: toolchain
         with:
           toolchain: ${{ matrix.rust }}
           override: true
@@ -138,16 +166,16 @@ jobs:
         continue-on-error: true
         with:
           path: ~/.cargo/registry/cache
-          key: ${{ runner.os }}-${{ matrix.rust }}-${{ github.job }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-${{ matrix.rust }}-${{ github.job }}-cargo-registry-
+          key: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-cargo-registry-
 
       - name: Cache sccache output
         uses: actions/cache@v2
         continue-on-error: true
         with:
           path: ${{ github.workspace }}/.sccache
-          key: ${{ runner.os }}-${{ matrix.rust }}-${{ github.job }}-sccache-${{ hashFiles('**/Cargo.*') }}
-          restore-keys: ${{ runner.os }}-${{ matrix.rust }}-${{ github.job }}-sccache-
+          key: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-sccache-${{ hashFiles('**/Cargo.*') }}
+          restore-keys: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-sccache-
 
       - name: Start sccache
         run: sccache --start-server
@@ -169,8 +197,9 @@ jobs:
       RUSTC_WRAPPER: sccache
     steps:
       - uses: actions-rs/toolchain@v1
+        id: toolchain
         with:
-          toolchain: nightly
+          toolchain: ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
           override: true
           components: miri
 
@@ -191,16 +220,16 @@ jobs:
         continue-on-error: true
         with:
           path: ~/.cargo/registry/cache
-          key: ${{ runner.os }}-${{ matrix.rust }}-${{ github.job }}-${{ matrix.crate }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-${{ matrix.rust }}-${{ github.job }}-${{ matrix.crate }}-cargo-registry-
+          key: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-${{ matrix.crate }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-${{ matrix.crate }}-cargo-registry-
 
       - name: Cache sccache output
         uses: actions/cache@v2
         continue-on-error: true
         with:
           path: ${{ github.workspace }}/.sccache
-          key: ${{ runner.os }}-${{ matrix.rust }}-${{ github.job }}-${{ matrix.crate }}-sccache-${{ hashFiles('**/Cargo.*') }}
-          restore-keys: ${{ runner.os }}-${{ matrix.rust }}-${{ github.job }}-${{ matrix.crate }}-sccache-
+          key: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-${{ matrix.crate }}-sccache-${{ hashFiles('**/Cargo.*') }}
+          restore-keys: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-${{ matrix.crate }}-sccache-
 
       - name: Start sccache
         run: sccache --start-server
@@ -217,8 +246,9 @@ jobs:
       RUSTC_WRAPPER: sccache
     steps:
       - uses: actions-rs/toolchain@v1
+        id: toolchain
         with:
-          toolchain: nightly
+          toolchain: ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
           override: true
           target: thumbv7m-none-eabi
 
@@ -239,16 +269,16 @@ jobs:
         continue-on-error: true
         with:
           path: ~/.cargo/registry/cache
-          key: ${{ runner.os }}-${{ matrix.rust }}-no-std-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-${{ matrix.rust }}-no-std-cargo-registry-
+          key: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-cargo-registry-
 
       - name: Cache sccache output
         uses: actions/cache@v2
         continue-on-error: true
         with:
           path: ${{ github.workspace }}/.sccache
-          key: ${{ runner.os }}-${{ matrix.rust }}-no-std-sccache-${{ hashFiles('**/Cargo.*') }}
-          restore-keys: ${{ runner.os }}-${{ matrix.rust }}-no-std-sccache-
+          key: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-sccache-${{ hashFiles('**/Cargo.*') }}
+          restore-keys: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-sccache-
 
       - name: Start sccache
         run: sccache --start-server
@@ -279,8 +309,9 @@ jobs:
       - uses: actions/checkout@v2
 
       - uses: actions-rs/toolchain@v1
+        id: toolchain
         with:
-          toolchain: nightly
+          toolchain: ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
           override: true
 
       - name: Install grcov
@@ -305,16 +336,16 @@ jobs:
         continue-on-error: true
         with:
           path: ~/.cargo/registry/cache
-          key: ${{ runner.os }}-${{ github.job }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-${{ github.job }}-cargo-registry-
+          key: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-cargo-registry-
 
       - name: Cache sccache output
         uses: actions/cache@v2
         continue-on-error: true
         with:
           path: ${{ github.workspace }}/.sccache
-          key: ${{ runner.os }}-${{ github.job }}-sccache-${{ hashFiles('**/Cargo.*') }}
-          restore-keys: ${{ runner.os }}-${{ github.job }}-sccache-
+          key: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-sccache-${{ hashFiles('**/Cargo.*') }}
+          restore-keys: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-sccache-
 
       - name: Start sccache
         run: sccache --start-server
@@ -349,7 +380,7 @@ jobs:
           grcov $GRCOV_CONFIG $GRCOV_FILTER --output-type lcov --output-path coverage/s2n-quic.lcov ./target/debug ./target/compliance/coverage
 
       - name: Upload report
-        uses: actions/upload-artifact@v1
+        uses: actions/upload-artifact@2.1.0
         with:
           name: coverage
           path: coverage
