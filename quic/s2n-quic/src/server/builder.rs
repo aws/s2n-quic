@@ -1,0 +1,299 @@
+use crate::{
+    provider::*,
+    server::{DefaultProviders, Server, ServerProviders},
+};
+
+/// A builder for configuring [`Server`] providers
+#[derive(Debug)]
+pub struct Builder<Providers>(Providers);
+
+impl Default for Builder<DefaultProviders> {
+    fn default() -> Self {
+        Self(Default::default())
+    }
+}
+
+/// An error indicating a failure to build a [`Server`]
+#[derive(Debug)]
+#[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
+#[non_exhaustive]
+pub enum BuilderError {}
+
+impl<Providers: ServerProviders> Builder<Providers> {
+    impl_provider_method!(
+        /// Sets the clock provider for the [`Server`]
+        ///
+        /// # Examples
+        ///
+        /// ```rust
+        /// # use std::error::Error;
+        /// use s2n_quic::{Server, provider::clock};
+        /// #
+        /// # fn main() -> Result<(), Box<dyn Error>> {
+        /// let server = Server::builder()
+        ///     .with_clock(clock::Default::default())?
+        ///     .build()?;
+        /// #
+        /// #   Ok(())
+        /// # }
+        /// ```
+        with_clock,
+        clock
+    );
+
+    impl_provider_method!(
+        /// Sets the congestion controller provider for the [`Server`]
+        ///
+        /// # Examples
+        ///
+        /// Sets the congestion controller to `Reno` with the default configuration.
+        ///
+        /// ```rust
+        /// # use std::error::Error;
+        /// use s2n_quic::{Server, provider::congestion_controller};
+        /// #
+        /// # fn main() -> Result<(), Box<dyn Error>> {
+        /// let server = Server::builder()
+        ///     .with_congestion_controller(congestion_controller::Reno::default())?
+        ///     .build()?;
+        /// #
+        /// #    Ok(())
+        /// # }
+        /// ```
+        with_congestion_controller,
+        congestion_controller
+    );
+
+    impl_provider_method!(
+        /// Sets the connection ID provider for the [`Server`]
+        ///
+        /// # Examples
+        ///
+        /// Sets a custom connection ID provider for the server
+        ///
+        /// ```rust,ignore
+        /// # use std::{error::Error, time::Duration};
+        /// use s2n_quic::Server;
+        /// #
+        /// # fn main() -> Result<(), Box<dyn Error>> {
+        /// let server = Server::builder()
+        ///     .with_connection_id(MyConnectionIDFormat::new())?
+        ///     .build()?;
+        /// #
+        /// #    Ok(())
+        /// # }
+        /// ```
+        with_connection_id,
+        connection_id
+    );
+
+    impl_provider_method!(
+        /// Sets the limits provider for the [`Server`]
+        ///
+        /// # Examples
+        ///
+        /// Sets the max idle time, while inheriting the remaining default limits
+        ///
+        /// ```rust
+        /// # use std::{error::Error, time::Duration};
+        /// use s2n_quic::{Server, provider::limits};
+        /// #
+        /// # fn main() -> Result<(), Box<dyn Error>> {
+        /// let server = Server::builder()
+        ///     .with_limits(
+        ///         limits::Builder::default()
+        ///             .with_max_idle_time(Duration::from_secs(30))?
+        ///             .build()?
+        ///     )?
+        ///     .build()?;
+        /// #
+        /// #    Ok(())
+        /// # }
+        /// ```
+        with_limits,
+        limits
+    );
+
+    impl_provider_method!(
+        /// Sets the log provider for the [`Server`]
+        ///
+        /// # Examples
+        ///
+        /// Sets a custom logger for the server
+        ///
+        /// ```rust,ignore
+        /// # use std::{error::Error, time::Duration};
+        /// use s2n_quic::Server;
+        /// #
+        /// # fn main() -> Result<(), Box<dyn Error>> {
+        /// let server = Server::builder()
+        ///     .with_log(MyLogger::new("./path/to/logs"))?
+        ///     .build()?;
+        /// #
+        /// #    Ok(())
+        /// # }
+        /// ```
+        with_log,
+        log
+    );
+
+    impl_provider_method!(
+        /// Sets the retry token provider for the [`Server`]
+        ///
+        /// # Examples
+        ///
+        /// Sets a custom logger for the server
+        ///
+        /// ```rust,ignore
+        /// # use std::{error::Error, time::Duration};
+        /// use s2n_quic::Server;
+        /// #
+        /// # fn main() -> Result<(), Box<dyn Error>> {
+        /// let server = Server::builder()
+        ///     .with_retry_token(MyRetryToken::new())?
+        ///     .build()?;
+        /// #
+        /// #    Ok(())
+        /// # }
+        /// ```
+        with_retry_token,
+        retry_token
+    );
+
+    impl_provider_method!(
+        /// Sets the runtime provider for the [`Server`]
+        ///
+        /// # Examples
+        ///
+        /// Uses the tokio runtime.
+        ///
+        /// ```rust
+        /// # use std::error::Error;
+        /// use s2n_quic::{Server, provider::runtime};
+        /// #
+        /// # fn main() -> Result<(), Box<dyn Error>> {
+        /// let server = Server::builder()
+        ///     .with_runtime(runtime::Tokio::default())?
+        ///     .build()?;
+        /// #
+        /// #    Ok(())
+        /// # }
+        /// ```
+        with_runtime,
+        runtime
+    );
+
+    impl_provider_method!(
+        /// Sets the Socket provider for the [`Server`]
+        ///
+        /// # Examples
+        ///
+        /// Starts listening on [`127.0.0.1:443`](https://127.0.0.1)
+        ///
+        /// ```rust
+        /// # use std::error::Error;
+        /// # use s2n_quic::Server;
+        /// #
+        /// # fn main() -> Result<(), Box<dyn Error>> {
+        /// let server = Server::builder()
+        ///     .with_socket("127.0.0.1:443")?
+        ///     .build()?;
+        /// #
+        /// #    Ok(())
+        /// # }
+        /// ```
+        with_socket,
+        socket
+    );
+
+    impl_provider_method!(
+        /// Sets the synchronization provider for the [`Server`]
+        ///
+        /// # Examples
+        ///
+        /// Uses [`std::sync::Mutex`] to perform synchronization.
+        ///
+        /// ```rust
+        /// # use std::{error::Error, time::Duration};
+        /// use s2n_quic::{Server, provider::sync};
+        /// #
+        /// # fn main() -> Result<(), Box<dyn Error>> {
+        /// let server = Server::builder()
+        ///     .with_sync(sync::Mutex::default())?
+        ///     .build()?;
+        /// #
+        /// #    Ok(())
+        /// # }
+        /// ```
+        with_sync,
+        sync
+    );
+
+    impl_provider_method!(
+        /// Sets the TLS provider for the [`Server`]
+        ///
+        /// # Examples
+        ///
+        /// The default TLS provider and configuration will be used with the
+        /// path to the private key.
+        ///
+        /// ```rust
+        /// # use std::error::Error;
+        /// # use s2n_quic::Server;
+        /// #
+        /// # fn main() -> Result<(), Box<dyn Error>> {
+        /// let server = Server::builder()
+        ///     .with_tls("./certs/key.pem")?
+        ///     .build()?;
+        /// #
+        /// #    Ok(())
+        /// # }
+        /// ```
+        ///
+        /// Sets the TLS provider to a TLS server builder
+        ///
+        /// ```rust,ignore
+        /// # use std::error::Error;
+        /// # use s2n_quic::Server;
+        /// #
+        /// # fn main() -> Result<(), Box<dyn Error>> {
+        /// let tls = s2n::tls::Server::builder()
+        ///     .with_certificate("./certs/key.pem")?
+        ///     .with_security_policy(s2n::tls::security_policy::S2N_20190802)?;
+        ///
+        /// let server = Server::builder()
+        ///     .with_tls(tls)?
+        ///     .build()?;
+        /// #
+        /// #    Ok(())
+        /// # }
+        /// ```
+        with_tls,
+        tls
+    );
+
+    /// Builds the [`Server`] with the configured providers
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use std::error::Error;
+    /// # use s2n_quic::Server;
+    /// #
+    /// # fn main() -> Result<(), Box<dyn Error>> {
+    /// let server = Server::builder()
+    ///     .with_tls("./certs/key.pem")?
+    ///     .with_socket("127.0.0.1:443")?
+    ///     .build()?;
+    /// #
+    /// #    Ok(())
+    /// # }
+    /// ```
+    pub fn build(self) -> Result<Server, BuilderError> {
+        let _providers = self.0.build();
+
+        // TODO spawn endpoint with providers and return handle
+
+        Ok(Server {})
+    }
+}
