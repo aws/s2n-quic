@@ -4,19 +4,19 @@ use core::{cmp::min, time::Duration};
 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#6.2.2
 //# When no previous RTT is available, the initial RTT SHOULD be set to 333ms,
 //# resulting in a 1 second initial timeout, as recommended in [RFC6298].
-const DEFAULT_INITIAL_RTT: Duration = Duration::from_millis(333);
+pub const DEFAULT_INITIAL_RTT: Duration = Duration::from_millis(333);
 const ZERO_DURATION: Duration = Duration::from_millis(0);
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct RTTEstimator {
     /// Latest RTT sample
-    pub latest_rtt: Duration,
+    latest_rtt: Duration,
     /// The minimum value observed over the lifetime of the connection
-    pub min_rtt: Duration,
+    min_rtt: Duration,
     /// An exponentially-weighted moving average
-    pub smoothed_rtt: Duration,
+    smoothed_rtt: Duration,
     /// The variance in the observed RTT samples
-    pub rttvar: Duration,
+    rttvar: Duration,
     /// The maximum amount of time by which the receiver intends to delay acknowledgments for
     /// packets in the ApplicationData packet number space. The actual ack_delay in a received
     /// ACK frame may be larger due to late timers, reordering, or lost ACK frames.
@@ -47,6 +47,21 @@ impl RTTEstimator {
             max_ack_delay,
         }
     }
+
+    /// Gets the latest round trip time sample
+    pub fn latest_rtt(&self) -> Duration {
+        self.latest_rtt
+    }
+
+    /// Gets the weighted average round trip time
+    pub fn smoothed_rtt(&self) -> Duration {
+        self.smoothed_rtt
+    }
+
+    /// Gets the variance in observed round trip time samples
+    pub fn rttvar(&self) -> Duration {
+        self.rttvar
+    }
 }
 
 impl RTTEstimator {
@@ -56,7 +71,7 @@ impl RTTEstimator {
         rtt_sample: Duration,
         space: PacketNumberSpace,
     ) {
-        self.latest_rtt = rtt_sample;
+        self.latest_rtt = rtt_sample.max(Duration::from_millis(1));
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#5.2
         //# min_rtt is set to the latest_rtt on the first RTT sample,
@@ -117,5 +132,149 @@ fn abs_difference<T: core::ops::Sub + PartialOrd>(a: T, b: T) -> <T as core::ops
         a - b
     } else {
         b - a
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::packet::number::PacketNumberSpace;
+    use crate::recovery::{RTTEstimator, DEFAULT_INITIAL_RTT};
+    use crate::time::Duration;
+
+    /// Test the initial values before any RTT samples
+    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#5.3")]
+    #[test]
+    fn initial_rtt() {
+        let rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
+        assert_eq!(rtt_estimator.min_rtt, Duration::from_millis(0));
+        assert_eq!(rtt_estimator.latest_rtt(), Duration::from_millis(0));
+        assert_eq!(rtt_estimator.smoothed_rtt(), DEFAULT_INITIAL_RTT);
+        assert_eq!(rtt_estimator.rttvar(), DEFAULT_INITIAL_RTT / 2);
+    }
+
+    /// Test a zero RTT value is treated as 1 ms
+    #[test]
+    fn zero_rtt_sample() {
+        let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
+        rtt_estimator.update_rtt(
+            Duration::from_millis(10),
+            Duration::from_millis(0),
+            PacketNumberSpace::ApplicationData,
+        );
+        assert_eq!(rtt_estimator.min_rtt, Duration::from_millis(1));
+        assert_eq!(rtt_estimator.latest_rtt(), Duration::from_millis(1));
+    }
+
+    #[compliance::tests(
+    /// MUST use the lesser of the value reported in Ack Delay field of the ACK frame and the peer's
+    /// max_ack_delay transport parameter.
+    "https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#5.3")]
+    #[test]
+    fn max_ack_delay() {
+        let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
+        rtt_estimator.update_rtt(
+            Duration::from_millis(0),
+            Duration::from_millis(100),
+            PacketNumberSpace::ApplicationData,
+        );
+        rtt_estimator.update_rtt(
+            Duration::from_millis(1000),
+            Duration::from_millis(200),
+            PacketNumberSpace::ApplicationData,
+        );
+        assert_eq!(
+            rtt_estimator.smoothed_rtt,
+            7 * Duration::from_millis(100) / 8 + Duration::from_millis(200 - 10) / 8
+        );
+    }
+
+    /// Test several rounds of RTT updates
+    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#5.2")]
+    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#5.3")]
+    #[test]
+    fn update_rtt() {
+        let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
+        let rtt_sample = Duration::from_millis(500);
+        rtt_estimator.update_rtt(
+            Duration::from_millis(10),
+            rtt_sample,
+            PacketNumberSpace::ApplicationData,
+        );
+        assert_eq!(rtt_estimator.min_rtt, rtt_sample);
+        assert_eq!(rtt_estimator.latest_rtt, rtt_sample);
+        assert_eq!(rtt_estimator.smoothed_rtt, rtt_sample);
+        assert_eq!(rtt_estimator.rttvar, rtt_sample / 2);
+
+        let prev_smoothed_rtt = rtt_estimator.smoothed_rtt;
+        let rtt_sample = Duration::from_millis(800);
+        let ack_delay = Duration::from_millis(10);
+
+        rtt_estimator.update_rtt(ack_delay, rtt_sample, PacketNumberSpace::ApplicationData);
+
+        let adjusted_rtt = rtt_sample - ack_delay;
+
+        assert_eq!(rtt_estimator.min_rtt, prev_smoothed_rtt);
+        assert_eq!(rtt_estimator.latest_rtt, rtt_sample);
+        assert_eq!(
+            rtt_estimator.smoothed_rtt,
+            7 * prev_smoothed_rtt / 8 + adjusted_rtt / 8
+        );
+
+        // This rtt_sample is a new minimum, so the ack_delay is not used for adjustment
+        let prev_smoothed_rtt = rtt_estimator.smoothed_rtt;
+        let rtt_sample = Duration::from_millis(200);
+        let ack_delay = Duration::from_millis(10);
+
+        rtt_estimator.update_rtt(ack_delay, rtt_sample, PacketNumberSpace::ApplicationData);
+
+        assert_eq!(rtt_estimator.min_rtt, rtt_sample);
+        assert_eq!(rtt_estimator.latest_rtt, rtt_sample);
+        assert_eq!(
+            rtt_estimator.smoothed_rtt,
+            7 * prev_smoothed_rtt / 8 + rtt_sample / 8
+        );
+    }
+
+    #[compliance::tests(
+    /// MUST ignore the Ack Delay field of the ACK frame for packets 
+    /// sent in the Initial and Handshake packet number space.
+    "https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#5.3")]
+    #[test]
+    fn initial_and_handshake_space() {
+        let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
+        let rtt_sample = Duration::from_millis(500);
+        rtt_estimator.update_rtt(
+            Duration::from_millis(10),
+            rtt_sample,
+            PacketNumberSpace::Initial,
+        );
+
+        let prev_smoothed_rtt = rtt_estimator.smoothed_rtt;
+        let rtt_sample = Duration::from_millis(1000);
+
+        rtt_estimator.update_rtt(
+            Duration::from_millis(100),
+            rtt_sample,
+            PacketNumberSpace::Initial,
+        );
+
+        assert_eq!(
+            rtt_estimator.smoothed_rtt,
+            7 * prev_smoothed_rtt / 8 + rtt_sample / 8
+        );
+
+        let prev_smoothed_rtt = rtt_estimator.smoothed_rtt;
+        let rtt_sample = Duration::from_millis(2000);
+
+        rtt_estimator.update_rtt(
+            Duration::from_millis(100),
+            rtt_sample,
+            PacketNumberSpace::Handshake,
+        );
+
+        assert_eq!(
+            rtt_estimator.smoothed_rtt,
+            7 * prev_smoothed_rtt / 8 + rtt_sample / 8
+        );
     }
 }
