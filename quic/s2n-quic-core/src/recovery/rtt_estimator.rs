@@ -137,9 +137,11 @@ fn abs_difference<T: core::ops::Sub + PartialOrd>(a: T, b: T) -> <T as core::ops
 
 #[cfg(test)]
 mod test {
-    use crate::packet::number::PacketNumberSpace;
-    use crate::recovery::{RTTEstimator, DEFAULT_INITIAL_RTT};
-    use crate::time::Duration;
+    use crate::{
+        packet::number::PacketNumberSpace,
+        recovery::{RTTEstimator, DEFAULT_INITIAL_RTT},
+        time::Duration,
+    };
 
     /// Test the initial values before any RTT samples
     #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#5.3")]
