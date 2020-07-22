@@ -46,10 +46,7 @@ jobs:
           tsc ./.github/workflows/ci.ts
           node ./.github/workflows/ci.js
 
-  rustfmt:
-    runs-on: ubuntu-latest
-    needs: env
-    steps: ${{ fromJson(needs.env.outputs.rustfmt) }}
+  rustfmt: ${{ fromJson(needs.env.outputs.rustfmt) }}
 
   clippy:
     runs-on: ubuntu-latest

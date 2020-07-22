@@ -1,4 +1,4 @@
-const rustfmt = [
+const rustfmtSteps = [
   {
     uses: "actions/checkout@v2"
   },
@@ -21,5 +21,11 @@ const rustfmt = [
     },
   },
 ];
+
+const rustfmt = {
+  "runs-on": "ubuntu-latest",
+  needs: "env",
+  steps: rustfmtSteps,
+};
 
 console.log(`::set-output name=rustfmt::${JSON.stringify(rustfmt)}`);
