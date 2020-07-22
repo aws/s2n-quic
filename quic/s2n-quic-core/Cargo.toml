@@ -13,13 +13,13 @@ std = []
 [dependencies]
 byteorder = { version = "1.1", default-features = false }
 bytes = { version = "0.5", default-features = false }
-compliance = { path = "../../common/compliance/compliance" }
 hex-literal = "0.2"
 s2n-codec = { version = "0.1", path = "../../common/s2n-codec", default-features = false }
 zerocopy = "0.3"
 
 [dev-dependencies]
 bolero = "0.5"
+compliance = { path = "../../common/compliance/compliance" }
 criterion = "0.3"
 insta = "0.16"
 s2n-codec = { version = "0.1", path = "../../common/s2n-codec", features = ["testing"] }
