@@ -46,7 +46,7 @@ impl<Buffer: MessageBuffer> TxBuffer<Buffer> {
         }
     }
 
-    #[cfg(not(s2n_quic_platform_socket_msg))]
+    #[cfg(not(s2n_quic_platform_socket_mmsg))]
     pub(crate) fn sync(&mut self, socket: &mut UdpSocket) -> io::Result<usize> {
         use super::udp::UdpSocketExt;
 
