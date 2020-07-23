@@ -10,6 +10,7 @@ mod contexts;
 mod frame_exchange_interests;
 mod interval_set;
 mod processed_packet;
+mod recovery;
 mod space;
 mod sync;
 mod timer;
