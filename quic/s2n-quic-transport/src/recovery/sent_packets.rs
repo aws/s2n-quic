@@ -5,8 +5,9 @@ use alloc::collections::{btree_map::Range, BTreeMap};
 use core::ops::RangeInclusive;
 use s2n_quic_core::{packet::number::PacketNumber, time::Timestamp};
 
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#a.1
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#a.1.1
+//= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.1
+
+//= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.1.1
 #[derive(Clone, Debug, Default)]
 pub struct SentPackets {
     sent_packets: BTreeMap<PacketNumber, SentPacketInfo>,
