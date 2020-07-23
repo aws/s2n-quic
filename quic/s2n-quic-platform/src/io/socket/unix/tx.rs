@@ -1,7 +1,13 @@
-use crate::io::{
-    buffer::message::MessageBuffer,
-    socket::unix::{queue::MessageQueue, udp::UdpSocket},
-    tx::{TxError, TxPayload, TxQueue},
+use crate::{
+    buffer::Buffer as MessageBuffer,
+    io::{
+        socket::unix::{
+            queue::{new as new_queue, MessageQueue},
+            udp::UdpSocket,
+        },
+        tx::{TxError, TxPayload, TxQueue},
+    },
+    message::Message,
 };
 use s2n_quic_core::inet::{ExplicitCongestionNotification, SocketAddress};
 use std::{io, os::unix::io::AsRawFd};
@@ -9,11 +15,11 @@ use std::{io, os::unix::io::AsRawFd};
 const FLAGS: i32 = 0;
 
 #[derive(Debug)]
-pub struct TxBuffer<Buffer>(MessageQueue<Buffer>);
+pub struct TxBuffer<Buffer: MessageBuffer>(MessageQueue<Buffer>);
 
 impl<Buffer: MessageBuffer> TxBuffer<Buffer> {
     pub fn new(buffer: Buffer) -> Self {
-        TxBuffer(MessageQueue::new(buffer))
+        TxBuffer(new_queue(buffer))
     }
 
     #[cfg(s2n_quic_platform_socket_mmsg)]
@@ -89,7 +95,7 @@ impl<Buffer: MessageBuffer> TxQueue for TxBuffer<Buffer> {
         ecn: ExplicitCongestionNotification,
         payload: Payload,
     ) -> Result<usize, TxError> {
-        let max_payload_size = self.0.max_payload_size();
+        let mtu = self.0.mtu();
         let (mut msg, msg_cursor) = if let Some(res) = self.0.pop_ready() {
             res
         } else {
@@ -97,7 +103,9 @@ impl<Buffer: MessageBuffer> TxQueue for TxBuffer<Buffer> {
         };
 
         // Set the buffer size to the maximum payload size
-        msg.set_payload_len(max_payload_size);
+        unsafe {
+            msg.set_payload_len(mtu);
+        }
 
         match payload.write(msg.payload_mut()) {
             0 => {
@@ -108,7 +116,10 @@ impl<Buffer: MessageBuffer> TxQueue for TxBuffer<Buffer> {
             payload_len => {
                 msg.set_remote_address(remote_address);
                 msg.set_ecn(ecn);
-                msg.set_payload_len(payload_len);
+                unsafe {
+                    debug_assert!(payload_len <= mtu);
+                    msg.set_payload_len(payload_len);
+                }
 
                 msg_cursor.finish();
 

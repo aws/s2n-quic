@@ -1,5 +1,5 @@
 use super::{udp::UdpSocket, RxQueue, Socket, TxQueue};
-use crate::io::buffer::message::MessageBuffer;
+use crate::buffer::Buffer as MessageBuffer;
 use net2::{unix::UnixUdpBuilderExt, UdpBuilder};
 use std::{
     io::Result as IOResult,

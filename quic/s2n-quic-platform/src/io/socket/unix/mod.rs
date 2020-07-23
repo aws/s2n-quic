@@ -1,8 +1,10 @@
-use crate::io::{
-    buffer::message::MessageBuffer,
-    rx::RxQueue as RxQueueTrait,
-    socket::unix::{rx::RxBuffer, tx::TxBuffer},
-    tx::{TxError, TxPayload, TxQueue as TxQueueTrait},
+use crate::{
+    buffer::Buffer as MessageBuffer,
+    io::{
+        rx::RxQueue as RxQueueTrait,
+        socket::unix::{rx::RxBuffer, tx::TxBuffer},
+        tx::{TxError, TxPayload, TxQueue as TxQueueTrait},
+    },
 };
 use core::ops::{Deref, DerefMut};
 use s2n_quic_core::{
@@ -23,13 +25,13 @@ pub use builder::SocketBuilder;
 pub use udp::UdpSocket;
 
 #[derive(Debug)]
-pub struct Socket<Tx, Rx> {
+pub struct Socket<Tx: MessageBuffer, Rx: MessageBuffer> {
     tx_buffer: TxQueue<Tx>,
     rx_buffer: RxQueue<Rx>,
     socket: UdpSocket,
 }
 
-impl<Tx, Rx> Deref for Socket<Tx, Rx> {
+impl<Tx: MessageBuffer, Rx: MessageBuffer> Deref for Socket<Tx, Rx> {
     type Target = UdpSocket;
 
     fn deref(&self) -> &Self::Target {
@@ -37,7 +39,7 @@ impl<Tx, Rx> Deref for Socket<Tx, Rx> {
     }
 }
 
-impl<Tx, Rx> DerefMut for Socket<Tx, Rx> {
+impl<Tx: MessageBuffer, Rx: MessageBuffer> DerefMut for Socket<Tx, Rx> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.socket
     }
@@ -138,13 +140,13 @@ impl<Tx: MessageBuffer, Rx: MessageBuffer> mio::Evented for Socket<Tx, Rx> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::io::buffer::VecBuffer;
+    use crate::buffer::VecBuffer;
 
     fn test_socket<Addrs: ToSocketAddrs + Copy>(addr: Addrs) {
         let bind = |slot_count| -> IOResult<Socket<_, _>> {
             let slot_size = 1200;
-            let tx_buffer = VecBuffer::with_slot_count(slot_count, slot_size);
-            let rx_buffer = VecBuffer::with_slot_count(slot_count, slot_size);
+            let tx_buffer = VecBuffer::new(slot_count, slot_size);
+            let rx_buffer = VecBuffer::new(slot_count, slot_size);
 
             Socket::bind(addr, tx_buffer, rx_buffer)
         };

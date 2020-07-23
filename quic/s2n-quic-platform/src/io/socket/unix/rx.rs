@@ -1,7 +1,13 @@
-use crate::io::{
-    buffer::message::MessageBuffer,
-    rx::RxQueue,
-    socket::unix::{queue::MessageQueue, udp::UdpSocket},
+use crate::{
+    buffer::Buffer as MessageBuffer,
+    io::{
+        rx::RxQueue,
+        socket::unix::{
+            queue::{new as new_queue, MessageQueue},
+            udp::UdpSocket,
+        },
+    },
+    message::Message,
 };
 use s2n_quic_core::{inet::DatagramInfo, time::Timestamp};
 use std::{io, os::unix::io::AsRawFd};
@@ -9,11 +15,11 @@ use std::{io, os::unix::io::AsRawFd};
 const FLAGS: i32 = 0;
 
 #[derive(Debug)]
-pub struct RxBuffer<Buffer>(MessageQueue<Buffer>);
+pub struct RxBuffer<Buffer: MessageBuffer>(MessageQueue<Buffer>);
 
 impl<Buffer: MessageBuffer> RxBuffer<Buffer> {
     pub fn new(buffer: Buffer) -> Self {
-        RxBuffer(MessageQueue::new(buffer))
+        RxBuffer(new_queue(buffer))
     }
 
     #[cfg(s2n_quic_platform_socket_mmsg)]
@@ -88,7 +94,7 @@ impl<Buffer: MessageBuffer> RxBuffer<Buffer> {
 
 impl<Buffer: MessageBuffer> RxQueue for RxBuffer<Buffer> {
     fn pop(&mut self, timestamp: Timestamp) -> Option<(DatagramInfo, &mut [u8])> {
-        let max_payload_size = self.0.max_payload_size();
+        let mtu = self.0.mtu();
         let (mut msg, cursor) = self.0.pop_pending()?;
 
         let remote_address = msg.remote_address().unwrap_or_default();
@@ -99,11 +105,15 @@ impl<Buffer: MessageBuffer> RxQueue for RxBuffer<Buffer> {
 
         // Reset the msg back to the maximum size.
         let payload_len = msg.payload_len();
-        msg.set_payload_len(max_payload_size);
+        unsafe {
+            msg.set_payload_len(mtu);
+        }
 
-        // trim the payload down
-        let payload = msg.take_payload();
-        let payload = &mut payload[..payload_len];
+        // return the payload down
+        let payload = msg.payload_ptr_mut();
+
+        // Safety: the current buffer is locked until this payload goes out of scope
+        let payload = unsafe { core::slice::from_raw_parts_mut(payload, payload_len) };
 
         // move ownership back to the ready pool
         cursor.finish();

@@ -1,11 +1,11 @@
 #![allow(dead_code)] // only used in mmsg mode
 
-use super::{Message, Segment};
+use super::Segment;
 use core::ops::{Deref, DerefMut};
 
 /// A view of the currently enqueued messages for a given segment
 #[derive(Debug)]
-pub struct Slice<'a> {
+pub struct Slice<'a, Message> {
     /// A slice of all of the messages in the buffer
     pub messages: &'a mut [Message],
     /// Reference to the primary segment
@@ -14,7 +14,7 @@ pub struct Slice<'a> {
     pub secondary: &'a mut Segment,
 }
 
-impl<'a> Slice<'a> {
+impl<'a, Message: crate::message::Message> Slice<'a, Message> {
     /// Finishes the borrow of the `Slice` with a specified `count`
     ///
     /// Calling this method will move `count` messages from one segment
@@ -37,7 +37,7 @@ impl<'a> Slice<'a> {
             .iter_mut()
             .zip(secondary[..overflow_len].iter_mut())
         {
-            primary_msg.copy_field_lengths_from(secondary_msg);
+            primary_msg.replicate_fields_from(secondary_msg);
         }
 
         self.primary.move_into(self.secondary, count);
@@ -49,7 +49,7 @@ impl<'a> Slice<'a> {
     }
 }
 
-impl<'a> Deref for Slice<'a> {
+impl<'a, Message> Deref for Slice<'a, Message> {
     type Target = [Message];
 
     fn deref(&self) -> &Self::Target {
@@ -59,7 +59,7 @@ impl<'a> Deref for Slice<'a> {
     }
 }
 
-impl<'a> DerefMut for Slice<'a> {
+impl<'a, Message> DerefMut for Slice<'a, Message> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         let index = self.primary.index;
         let range = index..(index + self.primary.len);

@@ -2,12 +2,17 @@ use core::task::{Context, Poll};
 use futures::{future::poll_fn, ready};
 use mio::Ready;
 use s2n_quic_core::{inet::DatagramInfo, time::Timestamp};
-use s2n_quic_platform::io::{
+use s2n_quic_platform::{
     buffer::VecBuffer,
-    rx::RxQueue as RxQueueTrait,
-    socket::{RxQueue as PlatformRxQueue, Socket as PlatformSocket, TxQueue as PlatformTxQueue},
-    tx::{
-        ExplicitCongestionNotification, SocketAddress, TxError, TxPayload, TxQueue as TxQueueTrait,
+    io::{
+        rx::RxQueue as RxQueueTrait,
+        socket::{
+            RxQueue as PlatformRxQueue, Socket as PlatformSocket, TxQueue as PlatformTxQueue,
+        },
+        tx::{
+            ExplicitCongestionNotification, SocketAddress, TxError, TxPayload,
+            TxQueue as TxQueueTrait,
+        },
     },
 };
 use std::{
@@ -25,10 +30,10 @@ impl Socket {
     pub fn bind<Addr: ToSocketAddrs>(
         addr: Addr,
         slot_count: usize,
-        slot_size: usize,
+        mtu: usize,
     ) -> Result<Self, IOError> {
-        let rx_queue = VecBuffer::with_slot_count(slot_count, slot_size);
-        let tx_queue = VecBuffer::with_slot_count(slot_count, slot_size);
+        let rx_queue = VecBuffer::new(slot_count, mtu);
+        let tx_queue = VecBuffer::new(slot_count, mtu);
         let socket = PlatformSocket::bind(addr, tx_queue, rx_queue)?;
         Ok(Self(PollEvented::new(socket)?))
     }
