@@ -14,9 +14,8 @@ pub struct SentPackets {
 
 impl SentPackets {
     /// Inserts the given `sent_packet_info`
-    pub fn insert(&mut self, sent_packet_info: SentPacketInfo) {
-        self.sent_packets
-            .insert(sent_packet_info.packet_number, sent_packet_info);
+    pub fn insert(&mut self, packet_number: PacketNumber, sent_packet_info: SentPacketInfo) {
+        self.sent_packets.insert(packet_number, sent_packet_info);
     }
 
     /// Returns a reference to the `SentPacketInfo` associated with the given `packet_number`
@@ -40,8 +39,6 @@ impl SentPackets {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct SentPacketInfo {
-    /// The packet number of the sent packet
-    pub packet_number: PacketNumber,
     /// Indicates whether the packet counts towards bytes in flight
     pub in_flight: bool,
     /// The number of bytes sent in the packet, not including UDP or IP overhead,
@@ -52,14 +49,8 @@ pub struct SentPacketInfo {
 }
 
 impl SentPacketInfo {
-    pub fn new(
-        packet_number: PacketNumber,
-        in_flight: bool,
-        sent_bytes: u64,
-        time_sent: Timestamp,
-    ) -> Self {
+    pub fn new(in_flight: bool, sent_bytes: u64, time_sent: Timestamp) -> Self {
         SentPacketInfo {
-            packet_number,
             in_flight,
             sent_bytes,
             time_sent,
@@ -77,19 +68,16 @@ mod test {
         let mut sent_packets = SentPackets::default();
 
         let packet_number_1 = PacketNumberSpace::Initial.new_packet_number(VarInt::from_u8(1));
-        let sent_packet_1 =
-            SentPacketInfo::new(packet_number_1, false, 1, s2n_quic_platform::time::now());
+        let sent_packet_1 = SentPacketInfo::new(false, 1, s2n_quic_platform::time::now());
 
         let packet_number_2 = PacketNumberSpace::Initial.new_packet_number(VarInt::from_u8(2));
-        let sent_packet_2 =
-            SentPacketInfo::new(packet_number_2, false, 2, s2n_quic_platform::time::now());
+        let sent_packet_2 = SentPacketInfo::new(false, 2, s2n_quic_platform::time::now());
 
         let packet_number_3 = PacketNumberSpace::Initial.new_packet_number(VarInt::from_u8(3));
-        let sent_packet_3 =
-            SentPacketInfo::new(packet_number_3, false, 3, s2n_quic_platform::time::now());
+        let sent_packet_3 = SentPacketInfo::new(false, 3, s2n_quic_platform::time::now());
 
-        sent_packets.insert(sent_packet_1);
-        sent_packets.insert(sent_packet_2);
+        sent_packets.insert(packet_number_1, sent_packet_1);
+        sent_packets.insert(packet_number_2, sent_packet_2);
 
         assert!(sent_packets.get(packet_number_1).is_some());
         assert!(sent_packets.get(packet_number_2).is_some());
@@ -98,7 +86,7 @@ mod test {
         assert_eq!(sent_packets.get(packet_number_1).unwrap(), &sent_packet_1);
         assert_eq!(sent_packets.get(packet_number_2).unwrap(), &sent_packet_2);
 
-        sent_packets.insert(sent_packet_3);
+        sent_packets.insert(packet_number_3, sent_packet_3);
 
         assert!(sent_packets.get(packet_number_3).is_some());
         assert_eq!(sent_packets.get(packet_number_3).unwrap(), &sent_packet_3);
@@ -114,9 +102,8 @@ mod test {
     fn remove() {
         let mut sent_packets = SentPackets::default();
         let packet_number = PacketNumberSpace::Initial.new_packet_number(VarInt::from_u8(1));
-        let sent_packet =
-            SentPacketInfo::new(packet_number, false, 0, s2n_quic_platform::time::now());
-        sent_packets.insert(sent_packet);
+        let sent_packet = SentPacketInfo::new(false, 0, s2n_quic_platform::time::now());
+        sent_packets.insert(packet_number, sent_packet);
 
         assert!(sent_packets.get(packet_number).is_some());
         assert_eq!(sent_packets.get(packet_number).unwrap(), &sent_packet);
@@ -136,10 +123,9 @@ mod test {
 
         let packet_number =
             PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u8(1));
-        let sent_packet =
-            SentPacketInfo::new(packet_number, false, 0, s2n_quic_platform::time::now());
+        let sent_packet = SentPacketInfo::new(false, 0, s2n_quic_platform::time::now());
 
-        sent_packets.insert(sent_packet);
+        sent_packets.insert(packet_number, sent_packet);
     }
 
     #[test]
@@ -177,9 +163,8 @@ mod test {
     fn new_sent_packets(space: PacketNumberSpace) -> SentPackets {
         let mut sent_packets = SentPackets::default();
         let packet_number = space.new_packet_number(VarInt::from_u8(1));
-        let sent_packet =
-            SentPacketInfo::new(packet_number, false, 0, s2n_quic_platform::time::now());
-        sent_packets.insert(sent_packet);
+        let sent_packet = SentPacketInfo::new(false, 0, s2n_quic_platform::time::now());
+        sent_packets.insert(packet_number, sent_packet);
         sent_packets
     }
 }
