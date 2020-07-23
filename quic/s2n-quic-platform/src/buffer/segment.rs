@@ -9,17 +9,13 @@ pub struct SegmentBuffer<Region> {
 
 impl<Region> SegmentBuffer<Region> {
     pub fn new(region: Region, mtu: usize) -> Self {
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#14
-        //# The payload of a UDP datagram carrying the first Initial packet MUST
-        //# be expanded to at least 1200 bytes, by adding PADDING frames to the
-        //# Initial packet and/or by coalescing the Initial packet (see
-        //# Section 12.2).  Sending a UDP datagram of this size ensures that the
-        //# network path supports a reasonable Maximum Transmission Unit (MTU),
-        //# and helps reduce the amplitude of amplification attacks caused by
-        //# server responses toward an unverified client address; see Section 8.
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#14.1
+        //# A client MUST expand the payload of all UDP datagrams carrying
+        //# Initial packets to at least the smallest allowed maximum packet size
+        //# (1200 bytes)
         assert!(
             mtu >= 1200,
-            "slots must be at least 1200 for spec compatibility"
+            "MTU must be at least 1200 for spec compatibility"
         );
         Self { region, mtu }
     }
