@@ -4,10 +4,8 @@ pub mod mmsg;
 #[cfg(s2n_quic_platform_socket_msg)]
 pub mod msg;
 
-#[cfg(feature = "std")]
-pub mod std;
-
 pub mod queue;
+pub mod simple;
 
 use libc::c_void;
 use s2n_quic_core::inet::{ExplicitCongestionNotification, SocketAddress};

@@ -144,7 +144,7 @@ mod tests {
     use super::*;
     use crate::{
         buffer::VecBuffer,
-        message::{std::Ring, Message},
+        message::{simple::Ring, Message},
     };
 
     type Q = Queue<Ring<VecBuffer>>;
