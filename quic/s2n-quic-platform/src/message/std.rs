@@ -2,6 +2,9 @@ use crate::message::Message as MessageTrait;
 use alloc::vec::Vec;
 use s2n_quic_core::inet::{ExplicitCongestionNotification, SocketAddress};
 
+/// A simple message type that holds an address and payload
+///
+/// All other fields are not supported by the platform.
 #[derive(Clone, Copy, Debug)]
 pub struct Message {
     address: SocketAddress,

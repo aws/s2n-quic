@@ -12,6 +12,7 @@ pub mod queue;
 use libc::c_void;
 use s2n_quic_core::inet::{ExplicitCongestionNotification, SocketAddress};
 
+/// An abstract message that can be sent and received on a network
 pub trait Message {
     /// Returns the ECN values for the message
     fn ecn(&self) -> ExplicitCongestionNotification;
@@ -62,15 +63,31 @@ pub trait Message {
     }
 }
 
+/// A message ring used to back a queue
 pub trait Ring {
+    /// The type of message that is stored in the ring
     type Message: Message;
 
+    /// Returns the length of the ring
+    ///
+    /// This value should be half the length of the slice
+    /// returned to ensure contiguous access.
     fn len(&self) -> usize;
+
+    /// Returns true if the ring is empty
     #[inline]
     fn is_empty(&self) -> bool {
         self.len() == 0
     }
+
+    /// Returns the maximum transmission unit for the ring
     fn mtu(&self) -> usize;
+
+    /// Returns all of the messages in the ring
+    ///
+    /// The first half of the slice should be duplicated into the second half
     fn as_slice(&self) -> &[Self::Message];
+
+    /// Returns a mutable slice of the messages in the ring
     fn as_mut_slice(&mut self) -> &mut [Self::Message];
 }
