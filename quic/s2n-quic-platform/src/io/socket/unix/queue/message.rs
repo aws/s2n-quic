@@ -76,7 +76,7 @@ impl fmt::Debug for Message {
     }
 }
 
-#[cfg(feature = "mmsg")]
+#[cfg(s2n_quic_platform_socket_mmsg)]
 mod platform {
     #![allow(dead_code)]
     use super::*;
@@ -146,7 +146,7 @@ mod platform {
     }
 }
 
-#[cfg(not(feature = "mmsg"))]
+#[cfg(not(s2n_quic_platform_socket_mmsg))]
 mod platform {
     #![allow(dead_code)]
     use super::*;

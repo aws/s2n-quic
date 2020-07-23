@@ -89,7 +89,7 @@ impl<Buffer: MessageBuffer> MessageQueue<Buffer> {
         let mut msg_names = Vec::with_capacity(capacity);
 
         // double the capacity in both mmsg mode and test to allow for slice wrapping
-        let mut messages = Vec::with_capacity(if cfg!(any(test, feature = "mmsg")) {
+        let mut messages = Vec::with_capacity(if cfg!(any(test, s2n_quic_platform_socket_mmsg)) {
             capacity * 2
         } else {
             capacity
@@ -122,7 +122,7 @@ impl<Buffer: MessageBuffer> MessageQueue<Buffer> {
             messages.push(Message::new(msghdr));
         }
 
-        #[cfg(any(test, feature = "mmsg"))]
+        #[cfg(any(test, s2n_quic_platform_socket_mmsg))]
         for index in 0..capacity {
             // Clone all of the messages in the queue to implement a ring buffer that
             // can be viewed in a single continuous slice
