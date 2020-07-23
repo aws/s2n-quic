@@ -16,7 +16,7 @@ impl<Buffer: MessageBuffer> TxBuffer<Buffer> {
         TxBuffer(MessageQueue::new(buffer))
     }
 
-    #[cfg(feature = "mmsg")]
+    #[cfg(s2n_quic_platform_socket_mmsg)]
     pub(crate) fn sync(&mut self, socket: &mut UdpSocket) -> io::Result<usize> {
         let pending = self.0.pending_mut();
 
@@ -46,7 +46,7 @@ impl<Buffer: MessageBuffer> TxBuffer<Buffer> {
         }
     }
 
-    #[cfg(not(feature = "mmsg"))]
+    #[cfg(not(s2n_quic_platform_socket_mmsg))]
     pub(crate) fn sync(&mut self, socket: &mut UdpSocket) -> io::Result<usize> {
         use super::udp::UdpSocketExt;
 

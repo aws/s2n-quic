@@ -8,7 +8,6 @@ license = "Apache-2.0"
 [features]
 default = ["std", "ipv6"]
 ipv6 = []
-mmsg = []
 std = ["s2n-quic-core/std", "lazy_static"]
 testing = ["std"] # Testing allows to overwrite the system time
 
