@@ -5,7 +5,13 @@ use crate::{
     },
     varint::VarInt,
 };
-use core::{cmp::Ordering, fmt, mem::size_of, num::NonZeroU64};
+use core::{
+    cmp::Ordering,
+    fmt,
+    hash::{Hash, Hasher},
+    mem::size_of,
+    num::NonZeroU64,
+};
 
 const PACKET_SPACE_BITLEN: usize = 2;
 const PACKET_SPACE_SHIFT: usize = (size_of::<PacketNumber>() * 8) - PACKET_SPACE_BITLEN;
@@ -26,6 +32,12 @@ pub struct PacketNumber(NonZeroU64);
 impl Default for PacketNumber {
     fn default() -> Self {
         Self::from_varint(Default::default(), PacketNumberSpace::Initial)
+    }
+}
+
+impl Hash for PacketNumber {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.0.hash(state)
     }
 }
 
