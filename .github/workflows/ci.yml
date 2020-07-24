@@ -348,7 +348,7 @@ jobs:
         run: test -f target/release/cargo-compliance || cargo build --bin cargo-compliance --release
 
       - name: Run cargo compliance
-        run: ./target/release/cargo-compliance report --lcov compliance --source-pattern 'quic/**/*.rs'
+        run: ./target/release/cargo-compliance report --lcov compliance --source-pattern 'quic/**/*.rs' --workspace --exclude compliance --exclude cargo-compliance
 
       - name: Stop sccache
         run: sccache --stop-server
