@@ -10,6 +10,16 @@ coverage:
         target: auto
         flags:
           - compliance
+    patch:
+      default: off
+      unit-tests:
+        target: auto
+        flags:
+          - unit-tests
+      compliance:
+        target: auto
+        flags:
+          - compliance 
 flags:
   unit-tests:
     paths:
