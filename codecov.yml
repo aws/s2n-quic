@@ -1,0 +1,20 @@
+coverage:
+  status:
+    project:
+      default: off
+      tests:
+        target: auto
+        flags:
+          - tests
+      compliance:
+        target: auto
+        flags:
+          - compliance
+flags:
+  tests:
+    paths:
+      - common/
+      - quic/
+  compliance:
+    paths:
+      - specs/
