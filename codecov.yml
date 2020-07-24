@@ -30,4 +30,8 @@ flags:
       - specs/**/*.spec
 ignore:
   - common/compliance/**/*
+  - '**/tests.rs'
   - '**/tests/**'
+  - '**/test/**'
+  - '**/testing/**'
+  - '**/testing.rs'
