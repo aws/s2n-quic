@@ -2,16 +2,16 @@ coverage:
   status:
     project:
       default: off
-      tests:
+      unit-tests:
         target: auto
         flags:
-          - tests
+          - unit-tests
       compliance:
         target: auto
         flags:
           - compliance
 flags:
-  tests:
+  unit-tests:
     paths:
       - common/*/src/**/*.rs
       - quic/*/src/**/*.rs

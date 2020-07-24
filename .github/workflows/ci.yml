@@ -430,4 +430,4 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           file: coverage.lcov
-          flags: tests
+          flags: unit-tests
