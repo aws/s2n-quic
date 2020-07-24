@@ -414,7 +414,7 @@ jobs:
 
       - name: Run grcov lcov
         run: |
-          grcov $GRCOV_CONFIG $GRCOV_FILTER --output-type lcov --output-path coverage.lcov ./target/debug ./target/compliance/coverage
+          eval grcov $GRCOV_CONFIG $GRCOV_FILTER --output-type lcov --output-path coverage.lcov ./target/debug
 
       - name: Upload report to codecov
         uses: codecov/codecov-action@v1
