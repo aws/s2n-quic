@@ -1,4 +1,4 @@
-## s2n-quic ![ci](https://github.com/awslabs/s2n-quic/workflows/ci/badge.svg) ![dependencies](https://github.com/awslabs/s2n-quic/workflows/dependencies/badge.svg)
+## s2n-quic ![ci](https://github.com/awslabs/s2n-quic/workflows/ci/badge.svg) ![dependencies](https://github.com/awslabs/s2n-quic/workflows/dependencies/badge.svg) [![codecov](https://codecov.io/gh/awslabs/s2n-quic/branch/master/graph/badge.svg?token=DUSPM9SQW2)](https://codecov.io/gh/awslabs/s2n-quic)
 
 TODO: Fill this README out!
 
