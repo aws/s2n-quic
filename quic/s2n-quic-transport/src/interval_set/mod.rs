@@ -7,7 +7,7 @@ mod remove;
 
 #[cfg(test)]
 mod fuzz_target;
-// KCOV_END_TEST_MARKER
+// COVERAGE_END_TEST
 
 use alloc::collections::vec_deque::{self, VecDeque};
 use core::{

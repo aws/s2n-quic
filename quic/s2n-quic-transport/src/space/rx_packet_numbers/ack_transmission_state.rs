@@ -253,4 +253,4 @@ mod tests {
         assert_debug_snapshot!("AckTransmissionState", size_of::<AckTransmissionState>());
     }
 }
-// KCOV_END_TEST_MARKER
+// COVERAGE_END_TEST

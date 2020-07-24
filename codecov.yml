@@ -1,0 +1,33 @@
+coverage:
+  status:
+    project:
+      default: off
+      unit-tests:
+        target: auto
+        flags:
+          - unit-tests
+      compliance:
+        target: auto
+        flags:
+          - compliance
+    patch:
+      default: off
+      unit-tests:
+        target: auto
+        flags:
+          - unit-tests
+      compliance:
+        target: auto
+        flags:
+          - compliance 
+flags:
+  unit-tests:
+    paths:
+      - common/*/src/**/*.rs
+      - quic/*/src/**/*.rs
+  compliance:
+    paths:
+      - specs/**/*.txt
+ignore:
+  - common/compliance/**/*
+  - '**/tests/**'

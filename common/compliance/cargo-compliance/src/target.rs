@@ -84,8 +84,6 @@ impl TargetPath {
         match self {
             Self::Url(url) => {
                 let mut path = std::env::current_dir().unwrap();
-                path.push("target");
-                path.push("compliance");
                 path.push("specs");
                 path.push(url.host_str().expect("url should have host"));
                 path.extend(url.path_segments().expect("url should have path"));

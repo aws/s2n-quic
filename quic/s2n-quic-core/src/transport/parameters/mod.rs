@@ -664,7 +664,7 @@ mod ack_settings_tests {
         }
     }
 }
-// KCOV_END_TEST_MARKER
+// COVERAGE_END_TEST
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#18.2
 //# disable_active_migration (0x0c):  The disable active migration
@@ -1255,4 +1255,4 @@ mod snapshot_tests {
         assert_eq!(0, remaining.len());
     }
 }
-// KCOV_END_TEST_MARKER
+// COVERAGE_END_TEST

@@ -96,4 +96,4 @@ impl<'a> ConnectionApiCallContext<'a> {
 
 #[cfg(test)]
 pub mod testing;
-// KCOV_END_TEST_MARKER
+// COVERAGE_END_TEST

@@ -138,4 +138,4 @@ pub mod tests {
         assert_debug_snapshot!("AckRanges", size_of::<AckRanges>());
     }
 }
-// KCOV_END_TEST_MARKER
+// COVERAGE_END_TEST

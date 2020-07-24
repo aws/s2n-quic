@@ -325,13 +325,13 @@ impl ReceiveStreamFlowController {
         self.read_window_sync.latest_value()
     }
 
-    // KCOV_END_TEST_MARKER
+    // COVERAGE_END_TEST
 
     #[cfg(test)]
     pub(super) fn remaining_connection_receive_window(&self) -> VarInt {
         self.connection_flow_controller.remaining_window()
     }
-    // KCOV_END_TEST_MARKER
+    // COVERAGE_END_TEST
 }
 
 /// The read half of a stream
