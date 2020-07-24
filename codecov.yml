@@ -13,8 +13,11 @@ coverage:
 flags:
   tests:
     paths:
-      - common/
-      - quic/
+      - common/*/src/**/*.rs
+      - quic/*/src/**/*.rs
   compliance:
     paths:
-      - specs/
+      - specs/*/src/**/*.rs
+ignore:
+  - common/compliance/**/*
+  - '**/tests/**'
