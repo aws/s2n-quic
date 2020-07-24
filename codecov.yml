@@ -17,7 +17,7 @@ flags:
       - quic/*/src/**/*.rs
   compliance:
     paths:
-      - specs/*/src/**/*.rs
+      - specs/**/*.txt
 ignore:
   - common/compliance/**/*
   - '**/tests/**'
