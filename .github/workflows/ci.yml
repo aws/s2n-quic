@@ -295,16 +295,73 @@ jobs:
       - name: Stop sccache
         run: sccache --stop-server
 
+  compliance:
+    runs-on: ubuntu-latest
+    env:
+      RUSTC_WRAPPER: sccache
+    steps:
+      - uses: actions/checkout@v1
+
+      - uses: actions-rs/toolchain@v1
+        id: toolchain
+        with:
+          toolchain: ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
+          override: true
+
+      - name: Install sccache
+        uses: actions-rs/install@v0.1
+        with:
+          crate: sccache
+          use-tool-cache: true
+          version: latest
+
+      - name: Generate Cargo.lock
+        run: cargo update
+
+      - name: Cache cargo registry
+        uses: actions/cache@v2
+        continue-on-error: true
+        with:
+          path: ~/.cargo/registry/cache
+          key: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-cargo-registry-
+
+      - name: Cache sccache output
+        uses: actions/cache@v2
+        continue-on-error: true
+        with:
+          path: ${{ github.workspace }}/.sccache
+          key: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-sccache-${{ hashFiles('**/Cargo.*') }}
+          restore-keys: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-sccache-
+
+      - name: Start sccache
+        run: sccache --start-server
+
+      - name: Run cargo compliance
+        uses: actions-rs/cargo@v1
+        with:
+          command: run
+          args: --bin cargo-compliance --release -- report --lcov compliance --source-pattern 'quic/**/*.rs'
+
+      - name: Stop sccache
+        run: sccache --stop-server
+
+      - name: Upload report to codecov
+        uses: codecov/codecov-action@v1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          directory: compliance
+          flags: compliance
+
   coverage:
     runs-on: ubuntu-latest
     env:
       # From https://github.com/mozilla/grcov#example-how-to-generate-gcda-files-for-a-rust-project
-      RUSTFLAGS: '-Zprofile -Ccodegen-units=1 -Copt-level=0 -Clink-dead-code -Coverflow-checks=off -Zpanic_abort_tests'
-      GRCOV_CONFIG: '--branch --llvm --ignore-not-existing --source-dir .'
-      GRCOV_FILTER: "--excl-start '\\#\\[cfg\\(test\\)\\]' --excl-stop KCOV_END_TEST_MARKER --ignore tests --ignore test --ignore testing.rs"
+      RUSTFLAGS: -Zprofile -Ccodegen-units=1 -Copt-level=0 -Clink-dead-code -Coverflow-checks=off -Zpanic_abort_tests
+      GRCOV_CONFIG: --branch --llvm --ignore-not-existing --source-dir .
+      GRCOV_FILTER: |
+        --excl-start '#\[cfg\(test\)\]' --excl-stop COVERAGE_END_TEST --excl-line '#\[derive\(' --ignore '**/compliance/**' --ignore '**/tests/**' --ignore '**/test/**' --ignore '**/testing/**' --ignore '**/testing.rs'
       RUSTC_WRAPPER: sccache
-      # increase the size a bit to maintain cache hits
-      SCCACHE_CACHE_SIZE: 600M
     steps:
       - uses: actions/checkout@v2
 
@@ -354,39 +411,15 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --no-fail-fast --workspace --exclude s2n-quic-rustls --exclude interop-server
-
-      - name: Run cargo test --all-features
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
           args: --no-fail-fast --workspace --exclude s2n-quic-rustls --exclude interop-server --all-features
-
-      - name: Run cargo compliance
-        uses: actions-rs/cargo@v1
-        with:
-          command: run
-          args: --bin cargo-compliance --release -- report --lcov target/compliance/coverage --source-pattern 'quic/**/*.rs'
-
-      - name: Stop sccache
-        run: sccache --stop-server
-
-      - name: Run grcov html
-        run: |
-          grcov $GRCOV_CONFIG $GRCOV_FILTER --output-type html --output-path coverage ./target/debug ./target/compliance/coverage
 
       - name: Run grcov lcov
         run: |
-          grcov $GRCOV_CONFIG $GRCOV_FILTER --output-type lcov --output-path coverage/s2n-quic.lcov ./target/debug ./target/compliance/coverage
-
-      - name: Upload report
-        uses: actions/upload-artifact@2.1.0
-        with:
-          name: coverage
-          path: coverage
+          grcov $GRCOV_CONFIG $GRCOV_FILTER --output-type lcov --output-path coverage.lcov ./target/debug ./target/compliance/coverage
 
       - name: Upload report to codecov
         uses: codecov/codecov-action@v1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          file: coverage/s2n-quic.lcov
+          file: coverage.lcov
+          flags: tests

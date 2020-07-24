@@ -248,7 +248,7 @@ impl<
         self.total_acknowledged = total_acknowledged;
     }
 
-    // KCOV_END_TEST_MARKER
+    // COVERAGE_END_TEST
 
     /// Returns the amount of data that can be additionally buffered for sending
     ///

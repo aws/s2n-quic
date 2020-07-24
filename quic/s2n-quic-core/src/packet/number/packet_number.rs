@@ -192,4 +192,4 @@ mod tests {
             .checked_distance(PacketNumberSpace::Handshake.new_packet_number(VarInt::from_u8(0)));
     }
 }
-// KCOV_END_TEST_MARKER
+// COVERAGE_END_TEST

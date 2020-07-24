@@ -8,4 +8,4 @@ pub use ack_ranges::DEFAULT_ACK_RANGES_LIMIT;
 
 #[cfg(test)]
 mod tests;
-// KCOV_END_TEST_MARKER
+// COVERAGE_END_TEST

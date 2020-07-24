@@ -479,4 +479,4 @@ mod tests {
         );
     }
 }
-// KCOV_END_TEST_MARKER
+// COVERAGE_END_TEST

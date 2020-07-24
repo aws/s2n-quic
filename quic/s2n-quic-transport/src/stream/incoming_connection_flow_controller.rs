@@ -68,7 +68,7 @@ impl IncomingConnectionFlowControllerImpl {
         self.read_window_sync.latest_value()
     }
 
-    // KCOV_END_TEST_MARKER
+    // COVERAGE_END_TEST
 
     pub fn release_window(&mut self, amount: VarInt) {
         self.consumed_window += amount;
@@ -171,7 +171,7 @@ impl IncomingConnectionFlowController {
         self.inner.borrow_mut().remaining_window()
     }
 
-    // KCOV_END_TEST_MARKER
+    // COVERAGE_END_TEST
 
     /// Returns the MAX_DATA window that is currently synchronized
     /// towards the peer.
@@ -180,13 +180,13 @@ impl IncomingConnectionFlowController {
         self.inner.borrow().current_receive_window()
     }
 
-    // KCOV_END_TEST_MARKER
+    // COVERAGE_END_TEST
 
     #[cfg(test)]
     pub fn desired_flow_control_window(&self) -> u32 {
         self.inner.borrow().desired_flow_control_window
     }
-    // KCOV_END_TEST_MARKER
+    // COVERAGE_END_TEST
 }
 
 impl FrameExchangeInterestProvider for IncomingConnectionFlowController {
