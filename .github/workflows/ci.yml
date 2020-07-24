@@ -337,11 +337,18 @@ jobs:
       - name: Start sccache
         run: sccache --start-server
 
-      - name: Run cargo compliance
-        uses: actions-rs/cargo@v1
+      - name: Cache cargo-compliance
+        uses: actions/cache@v2
+        continue-on-error: true
         with:
-          command: run
-          args: --bin cargo-compliance --release -- report --lcov compliance --source-pattern 'quic/**/*.rs'
+          path: target/release/cargo-compliance
+          key: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-cargo-compliance-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('common/compliance/**') }}
+
+      - name: Build cargo compliance
+        run: test -f target/release/cargo-compliance || cargo build --bin cargo-compliance --release
+
+      - name: Run cargo compliance
+        run: ./target/release/cargo-compliance report --lcov compliance --source-pattern 'quic/**/*.rs'
 
       - name: Stop sccache
         run: sccache --stop-server
