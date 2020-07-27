@@ -348,7 +348,7 @@ jobs:
         run: test -f target/release/cargo-compliance || cargo build --bin cargo-compliance --release
 
       - name: Run cargo compliance
-        run: ./target/release/cargo-compliance report --lcov compliance --source-pattern 'quic/**/*.rs'
+        run: ./target/release/cargo-compliance report --lcov compliance --source-pattern 'quic/**/*.rs' --workspace --exclude compliance --exclude cargo-compliance
 
       - name: Stop sccache
         run: sccache --stop-server
@@ -368,7 +368,7 @@ jobs:
       GRCOV_CONFIG: --branch --llvm --ignore-not-existing --source-dir .
       GRCOV_EXCL: --excl-start '#\[cfg\(test\)\]' --excl-stop COVERAGE_END_TEST --excl-line '#\[derive\('
       GRCOV_EXCL_BR: --excl-br-start '#\[cfg\(test\)\]' --excl-br-stop COVERAGE_END_TEST --excl-br-line '#\[derive\('
-      GRCOV_IGNORE: --ignore '**/compliance/**' --ignore 'quic/interop-server/**' --ignore '**/tests/**' --ignore '**/test/**' --ignore '**/testing/**' --ignore '**/testing.rs'
+      GRCOV_IGNORE: --ignore '**/compliance/**' --ignore 'quic/interop-server/**' --ignore '**/tests/**' --ignore '**/test/**' --ignore '**/testing/**' --ignore '**/testing.rs' --ignore '**/tests.rs'
       RUSTC_WRAPPER: sccache
     steps:
       - uses: actions/checkout@v2

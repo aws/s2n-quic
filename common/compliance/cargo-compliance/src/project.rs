@@ -18,6 +18,14 @@ pub struct Project {
     #[structopt(long)]
     features: Vec<String>,
 
+    /// Build all packages in the workspace
+    #[structopt(long)]
+    workspace: bool,
+
+    /// Exclude packages from the test
+    #[structopt(long = "exclude")]
+    excludes: Vec<String>,
+
     /// Activate all available features
     #[structopt(long = "all-features")]
     all_features: bool,
@@ -101,11 +109,15 @@ impl Project {
                 .filter(|f| !f.is_empty())
                 .map(|f| f.join(","))
         );
+        flag!(cmd, "--workspace", self.workspace);
         flag!(cmd, "--all-features", self.all_features);
         flag!(cmd, "--no-default-features", self.no_default_features);
         arg!(cmd, "--target", self.target.as_ref());
         arg!(cmd, "--target-dir", Some(&self.target_dir));
         arg!(cmd, "--manifest-path", self.manifest_path.as_ref());
+        for exclude in &self.excludes {
+            arg!(cmd, "--exclude", Some(exclude));
+        }
 
         let child = cmd.spawn()?;
 

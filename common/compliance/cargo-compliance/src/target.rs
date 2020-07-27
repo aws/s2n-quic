@@ -87,6 +87,7 @@ impl TargetPath {
                 path.push("specs");
                 path.push(url.host_str().expect("url should have host"));
                 path.extend(url.path_segments().expect("url should have path"));
+                path.set_extension("spec");
                 path
             }
             Self::Path(path) => path.clone(),
