@@ -253,4 +253,3 @@ mod tests {
         assert_debug_snapshot!("AckTransmissionState", size_of::<AckTransmissionState>());
     }
 }
-// COVERAGE_END_TEST

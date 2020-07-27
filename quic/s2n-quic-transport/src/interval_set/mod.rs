@@ -7,7 +7,6 @@ mod remove;
 
 #[cfg(test)]
 mod fuzz_target;
-// COVERAGE_END_TEST
 
 use alloc::collections::vec_deque::{self, VecDeque};
 use core::{

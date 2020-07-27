@@ -96,4 +96,3 @@ impl<'a> ConnectionApiCallContext<'a> {
 
 #[cfg(test)]
 pub mod testing;
-// COVERAGE_END_TEST
