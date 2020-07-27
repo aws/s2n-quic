@@ -68,8 +68,6 @@ impl IncomingConnectionFlowControllerImpl {
         self.read_window_sync.latest_value()
     }
 
-    // COVERAGE_END_TEST
-
     pub fn release_window(&mut self, amount: VarInt) {
         self.consumed_window += amount;
         debug_assert!(
@@ -171,8 +169,6 @@ impl IncomingConnectionFlowController {
         self.inner.borrow_mut().remaining_window()
     }
 
-    // COVERAGE_END_TEST
-
     /// Returns the MAX_DATA window that is currently synchronized
     /// towards the peer.
     #[cfg(test)]
@@ -180,13 +176,10 @@ impl IncomingConnectionFlowController {
         self.inner.borrow().current_receive_window()
     }
 
-    // COVERAGE_END_TEST
-
     #[cfg(test)]
     pub fn desired_flow_control_window(&self) -> u32 {
         self.inner.borrow().desired_flow_control_window
     }
-    // COVERAGE_END_TEST
 }
 
 impl FrameExchangeInterestProvider for IncomingConnectionFlowController {

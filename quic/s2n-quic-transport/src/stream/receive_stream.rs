@@ -325,13 +325,10 @@ impl ReceiveStreamFlowController {
         self.read_window_sync.latest_value()
     }
 
-    // COVERAGE_END_TEST
-
     #[cfg(test)]
     pub(super) fn remaining_connection_receive_window(&self) -> VarInt {
         self.connection_flow_controller.remaining_window()
     }
-    // COVERAGE_END_TEST
 }
 
 /// The read half of a stream

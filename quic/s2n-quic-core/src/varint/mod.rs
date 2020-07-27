@@ -120,7 +120,6 @@ mod tests {
 
     sequence_test!(one_byte_sequence_test([0x25], 37));
 }
-// COVERAGE_END_TEST
 
 // === API ===
 
@@ -320,7 +319,6 @@ mod encoder_tests {
         test_update(initial, VarInt::from_u32(1 << 30), &mut encoder);
     }
 }
-// COVERAGE_END_TEST
 
 impl AsRef<u64> for VarInt {
     fn as_ref(&self) -> &u64 {

@@ -248,8 +248,6 @@ impl<
         self.total_acknowledged = total_acknowledged;
     }
 
-    // COVERAGE_END_TEST
-
     /// Returns the amount of data that can be additionally buffered for sending
     ///
     /// This depends on the configured maximum buffer size.

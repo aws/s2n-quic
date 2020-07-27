@@ -61,8 +61,6 @@ jobs:
 
   clippy:
     runs-on: ubuntu-latest
-    env:
-      RUSTC_WRAPPER: sccache
     steps:
       - uses: actions-rs/toolchain@v1
         id: toolchain
@@ -108,6 +106,8 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           args: --all-features --all-targets -- -D warnings
+        env:
+          RUSTC_WRAPPER: sccache
 
       - name: Stop sccache
         run: sccache --stop-server
@@ -140,8 +140,6 @@ jobs:
       matrix:
         rust: ${{ fromJson(needs.env.outputs.rust-versions) }}
         os: [ubuntu-latest, macOS-latest]
-    env:
-      RUSTC_WRAPPER: sccache
     steps:
       - uses: actions-rs/toolchain@v1
         id: toolchain
@@ -190,6 +188,8 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
+        env:
+          RUSTC_WRAPPER: sccache
 
       - name: Stop sccache
         run: sccache --stop-server
@@ -199,8 +199,6 @@ jobs:
     strategy:
       matrix:
         crate: [quic/s2n-quic-core]
-    env:
-      RUSTC_WRAPPER: sccache
     steps:
       - uses: actions-rs/toolchain@v1
         id: toolchain
@@ -242,14 +240,14 @@ jobs:
 
       - name: ${{ matrix.crate }}
         run: cd ${{ matrix.crate }} && cargo miri test
+        env:
+          RUSTC_WRAPPER: sccache
 
       - name: Stop sccache
         run: sccache --stop-server
 
   no_std:
     runs-on: ubuntu-latest
-    env:
-      RUSTC_WRAPPER: sccache
     steps:
       - uses: actions-rs/toolchain@v1
         id: toolchain
@@ -297,14 +295,14 @@ jobs:
               -Z features=dev_dep \
               --no-default-features \
               --target thumbv7m-none-eabi
+        env:
+          RUSTC_WRAPPER: sccache
 
       - name: Stop sccache
         run: sccache --stop-server
 
   compliance:
     runs-on: ubuntu-latest
-    env:
-      RUSTC_WRAPPER: sccache
     steps:
       - uses: actions/checkout@v1
 
@@ -352,6 +350,8 @@ jobs:
 
       - name: Build cargo compliance
         run: test -f target/release/cargo-compliance || cargo build --bin cargo-compliance --release
+        env:
+          RUSTC_WRAPPER: sccache
 
       - name: Run cargo compliance
         run: ./target/release/cargo-compliance report --lcov compliance --source-pattern 'quic/**/*.rs' --workspace --exclude compliance --exclude cargo-compliance
@@ -369,13 +369,8 @@ jobs:
   coverage:
     runs-on: ubuntu-latest
     env:
-      # From https://github.com/mozilla/grcov#example-how-to-generate-gcda-files-for-a-rust-project
-      RUSTFLAGS: -Zprofile -Ccodegen-units=1 -Copt-level=0 -Clink-dead-code -Coverflow-checks=off -Zpanic_abort_tests
       GRCOV_CONFIG: --branch --llvm --ignore-not-existing --source-dir .
-      GRCOV_EXCL: --excl-start '#\[cfg\(test\)\]' --excl-stop COVERAGE_END_TEST --excl-line '#\[derive\('
-      GRCOV_EXCL_BR: --excl-br-start '#\[cfg\(test\)\]' --excl-br-stop COVERAGE_END_TEST --excl-br-line '#\[derive\('
-      GRCOV_IGNORE: --ignore '**/compliance/**' --ignore 'quic/interop-server/**' --ignore '**/tests/**' --ignore '**/test/**' --ignore '**/testing/**' --ignore '**/testing.rs' --ignore '**/tests.rs'
-      RUSTC_WRAPPER: sccache
+      GRCOV_IGNORE: --ignore '**/compliance/**' --ignore 'quic/interop-server/**' --ignore '**/tests/**' --ignore '**/test/**' --ignore '**/testing/**' --ignore '**/testing.rs' --ignore '**/tests.rs' --ignore '**/.cargo/registry/**'
     steps:
       - uses: actions/checkout@v2
         with:
@@ -395,6 +390,13 @@ jobs:
         uses: actions-rs/install@v0.1
         with:
           crate: grcov
+          use-tool-cache: true
+          version: latest
+
+      - name: Install covfix
+        uses: actions-rs/install@v0.1
+        with:
+          crate: rust-covfix
           use-tool-cache: true
           version: latest
 
@@ -432,10 +434,17 @@ jobs:
         with:
           command: test
           args: --no-fail-fast --workspace --exclude s2n-quic-rustls --exclude interop-server --all-features
+        env:
+          # From https://github.com/mozilla/grcov#example-how-to-generate-gcda-files-for-a-rust-project
+          RUSTFLAGS: -Zprofile -Ccodegen-units=1 -Copt-level=0 -Clink-dead-code -Coverflow-checks=off -Zpanic_abort_tests
+          RUSTC_WRAPPER: sccache
 
       - name: Run grcov lcov
         run: |
-          eval grcov $GRCOV_CONFIG $GRCOV_EXCL $GRCOV_EXCL_BR $GRCOV_IGNORE --output-type lcov --output-path coverage.lcov ./target/debug
+          eval grcov $GRCOV_CONFIG $GRCOV_IGNORE --output-type lcov --output-path coverage.unfiltered.lcov ./target/debug
+
+      - name: Run covfix
+        run: rust-covfix -o coverage.lcov coverage.unfiltered.lcov
 
       - name: Upload report to codecov
         uses: codecov/codecov-action@v1

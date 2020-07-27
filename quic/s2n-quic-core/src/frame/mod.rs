@@ -146,7 +146,6 @@ macro_rules! frames {
                 }
             )*
         }
-        // COVERAGE_END_TEST
     };
 }
 
