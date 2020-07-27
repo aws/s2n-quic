@@ -150,6 +150,12 @@ jobs:
           override: true
 
       - uses: actions/checkout@v2
+        with:
+          lfs: true
+
+      - name: Restore fuzz corpus
+        run: |
+          find . -name 'corpus.tar.gz' -exec dirname {} ';' | xargs -L 1 bash -c 'cd "$0" && rm -rf corpus && tar xf corpus.tar.gz'
 
       - name: Install sccache
         uses: actions-rs/install@v0.1
@@ -372,6 +378,12 @@ jobs:
       RUSTC_WRAPPER: sccache
     steps:
       - uses: actions/checkout@v2
+        with:
+          lfs: true
+
+      - name: Restore fuzz corpus
+        run: |
+          find . -name 'corpus.tar.gz' -exec dirname {} ';' | xargs -L 1 bash -c 'cd "$0" && rm -rf corpus && tar xf corpus.tar.gz'
 
       - uses: actions-rs/toolchain@v1
         id: toolchain
