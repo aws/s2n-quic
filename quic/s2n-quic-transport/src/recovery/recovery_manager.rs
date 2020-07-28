@@ -1,5 +1,5 @@
 use crate::recovery::{SentPacketInfo, SentPackets};
-use core::{cmp::max, time::Duration};
+use core::{cmp::max, ops::RangeInclusive, time::Duration};
 use s2n_quic_core::{
     ack_set::AckSet,
     packet::number::{PacketNumber, PacketNumberSpace},
@@ -32,20 +32,20 @@ impl RecoveryManager {
     //OnDatagramReceived
 
     //OnAckReceived(ack, pn_space)
-    pub fn on_ack_received<A: AckSet>(
+    pub fn on_ack_received(
         &mut self,
-        ack_set: &A,
+        acked_packets: RangeInclusive<PacketNumber>,
         ack_delay: Duration,
     ) -> Result<(), TransportError> {
         if let Some(largest_acked_packet) = self.largest_acked_packet {
-            self.largest_acked_packet = Some(max(largest_acked_packet, ack_set.largest()));
+            self.largest_acked_packet = Some(max(largest_acked_packet, acked_packets.largest()));
         } else {
-            self.largest_acked_packet = Some(ack_set.largest());
+            self.largest_acked_packet = Some(acked_packets.largest());
         }
 
         // detect_and_remove_acked_packets finds packets that are newly
         // acknowledged and removes them from sent_packets.
-        let newly_acked_packets = self.detect_and_remove_acked_packets(ack_set);
+        let newly_acked_packets = self.detect_and_remove_acked_packets(acked_packets);
         // Nothing to do if there are no newly acked packets.
         if newly_acked_packets.is_empty() {
             return Ok(());
@@ -57,7 +57,7 @@ impl RecoveryManager {
 
         // If the largest acknowledged is newly acked and
         // at least one ack-eliciting was newly acked, update the RTT.
-        if largest_newly_acked.0 == ack_set.largest() {
+        if largest_newly_acked.0 == acked_packets.largest() {
             let latest_rtt = s2n_quic_platform::time::now() - largest_newly_acked.1.time_sent;
             self.rtt_estimator
                 .update_rtt(ack_delay, latest_rtt, largest_newly_acked.0.space());
@@ -75,19 +75,28 @@ impl RecoveryManager {
     //DetectAndRemoveLostPackets
 
     // Finds packets that are newly acknowledged and removes them from sent_packets.
-    fn detect_and_remove_acked_packets<A: AckSet>(
+    fn detect_and_remove_acked_packets(
         &mut self,
-        ack_set: &A,
+        acked_packets: RangeInclusive<PacketNumber>,
     ) -> Vec<(PacketNumber, SentPacketInfo)> {
-        let newly_acked_packets = self
-            .sent_packets
-            .range(ack_set.smallest()..=ack_set.largest())
-            .map(|(pn, spi)| (pn.clone(), spi.clone()))
-            .collect();
+        let mut newly_acked_packets = Vec::new();
 
-        for &(packet_number, _sent_packet_info) in &newly_acked_packets {
-            self.sent_packets.remove(packet_number);
+        for acked_packet in acked_packets {
+            if let Some((packet_number, sent_packet_info)) = self.sent_packets.remove(acked_packet)
+            {
+                newly_acked_packets.push((packet_number, sent_packet_info));
+            }
         }
+        //
+        // let newly_acked_packets = self
+        //     .sent_packets
+        //     .range(ack_set.smallest()..=ack_set.largest())
+        //     .map(|(pn, spi)| (pn.clone(), spi.clone()))
+        //     .collect();
+        //
+        // for &(packet_number, _sent_packet_info) in &newly_acked_packets {
+        //     self.sent_packets.remove(packet_number);
+        // }
 
         newly_acked_packets
     }
