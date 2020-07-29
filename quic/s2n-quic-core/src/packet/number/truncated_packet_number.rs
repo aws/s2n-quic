@@ -6,8 +6,12 @@ use crate::packet::number::{
 };
 use s2n_codec::{u24, DecoderBuffer, DecoderBufferResult, DecoderValue, Encoder, EncoderValue};
 
+#[cfg(feature = "generator")]
+use bolero_generator::*;
+
 /// A truncated packet number, which is derived from the largest acknowledged packet number
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "generator", derive(TypeGenerator))]
 pub struct TruncatedPacketNumber {
     pub(crate) space: PacketNumberSpace,
     pub(crate) value: TruncatedPacketNumberValue,
@@ -81,7 +85,8 @@ impl EncoderValue for TruncatedPacketNumber {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub(crate) enum TruncatedPacketNumberValue {
+#[cfg_attr(feature = "generator", derive(TypeGenerator))]
+pub enum TruncatedPacketNumberValue {
     U8(u8),
     U16(u16),
     U24(u24),

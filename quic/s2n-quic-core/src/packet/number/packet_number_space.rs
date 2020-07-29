@@ -3,8 +3,12 @@ use crate::{
     varint::VarInt,
 };
 
+#[cfg(feature = "generator")]
+use bolero_generator::*;
+
 /// Contains all of the available packet spaces for QUIC packets
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "generator", derive(TypeGenerator))]
 #[repr(u8)]
 pub enum PacketNumberSpace {
     // This MUST start with 1 to enable optimized memory layout
