@@ -5,7 +5,7 @@ use crate::packet::number::PacketNumber;
 pub struct PacketNumberRange {
     pub start: PacketNumber,
     pub end: PacketNumber,
-    current: Option<PacketNumber>,
+    exhausted: bool,
 }
 
 impl PacketNumberRange {
@@ -14,7 +14,7 @@ impl PacketNumberRange {
         Self {
             start,
             end,
-            current: None,
+            exhausted: false,
         }
     }
 }
@@ -23,16 +23,18 @@ impl Iterator for PacketNumberRange {
     type Item = PacketNumber;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(current) = self.current {
-            if current < self.end {
-                self.current = current.next();
-                self.current
+        if !self.exhausted && self.start <= self.end {
+            let current = self.start;
+            if let Some(next) = current.next() {
+                self.start = next;
             } else {
-                None
+                // PacketNumber range has been exceeded
+                self.exhausted = true;
             }
+            Some(current)
         } else {
-            self.current = Some(self.start);
-            self.current
+            self.exhausted = true;
+            None
         }
     }
 }
@@ -75,5 +77,17 @@ mod test {
         let start = PacketNumberSpace::Handshake.new_packet_number(VarInt::from_u8(1));
         let end = PacketNumberSpace::Handshake.new_packet_number(VarInt::from_u8(10));
         PacketNumberRange::new(end, start);
+    }
+
+    #[test]
+    fn end_is_max_packet_number() {
+        let start = PacketNumberSpace::Handshake.new_packet_number(
+            VarInt::new(0b11111111111111111111111111111111111111111111111111111111111110).unwrap(),
+        );
+        let end = PacketNumberSpace::Handshake.new_packet_number(
+            VarInt::new(0b11111111111111111111111111111111111111111111111111111111111111).unwrap(),
+        );
+
+        assert_eq!(2, PacketNumberRange::new(start, end).count());
     }
 }
