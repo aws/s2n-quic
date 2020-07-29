@@ -3,12 +3,13 @@ use crate::packet::number::PacketNumber;
 /// An inclusive range of `PacketNumber`s
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub struct PacketNumberRange {
-    pub start: PacketNumber,
-    pub end: PacketNumber,
+    start: PacketNumber,
+    end: PacketNumber,
     exhausted: bool,
 }
 
 impl PacketNumberRange {
+    /// Creates a new packet number range.
     pub fn new(start: PacketNumber, end: PacketNumber) -> Self {
         assert!(start <= end, "start must be less than or equal to end");
         Self {
@@ -16,6 +17,16 @@ impl PacketNumberRange {
             end,
             exhausted: false,
         }
+    }
+
+    /// Returns the lower bound of the range (inclusive).
+    pub fn start(&self) -> PacketNumber {
+        self.start
+    }
+
+    /// Returns the upper bound of the range (inclusive).
+    pub fn end(&self) -> PacketNumber {
+        self.end
     }
 }
 
@@ -52,7 +63,11 @@ mod test {
         let start = PacketNumberSpace::Handshake.new_packet_number(VarInt::from_u8(1));
         let end = PacketNumberSpace::Handshake.new_packet_number(VarInt::from_u8(10));
 
-        for packet_number in PacketNumberRange::new(start, end) {
+        let range = PacketNumberRange::new(start, end);
+        assert_eq!(start, range.start());
+        assert_eq!(end, range.end());
+
+        for packet_number in range {
             assert_eq!(counter, packet_number.as_u64());
             counter += 1;
         }
@@ -81,12 +96,10 @@ mod test {
 
     #[test]
     fn end_is_max_packet_number() {
-        let start = PacketNumberSpace::Handshake.new_packet_number(
-            VarInt::new(0b11111111111111111111111111111111111111111111111111111111111110).unwrap(),
-        );
-        let end = PacketNumberSpace::Handshake.new_packet_number(
-            VarInt::new(0b11111111111111111111111111111111111111111111111111111111111111).unwrap(),
-        );
+        let start = PacketNumberSpace::Handshake
+            .new_packet_number(VarInt::new((u64::max_value() >> 2) - 1).unwrap());
+        let end = PacketNumberSpace::Handshake
+            .new_packet_number(VarInt::new(u64::max_value() >> 2).unwrap());
 
         assert_eq!(2, PacketNumberRange::new(start, end).count());
     }
