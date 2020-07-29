@@ -18,6 +18,14 @@ pub trait Tx<'a> {
     /// Returns the transmission queue
     fn queue(&'a mut self) -> Self::Queue;
 
+    /// Returns number of items in the queue
+    fn len(&self) -> usize;
+
+    /// Returns true if the queue is empty
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     /// Transmits messages from the queue and returns the number
     /// of messages sent.
     fn transmit(&mut self) -> Result<usize, Self::Error>;

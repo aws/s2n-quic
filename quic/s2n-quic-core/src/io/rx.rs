@@ -9,6 +9,14 @@ pub trait Rx<'a> {
     /// Returns the reception queue
     fn queue(&'a mut self) -> Self::Queue;
 
+    /// Returns number of items in the queue
+    fn len(&self) -> usize;
+
+    /// Returns true if the queue is empty
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     /// Receives messages into the queue and returns the number
     /// of messages received.
     fn receive(&mut self) -> Result<usize, Self::Error>;
@@ -18,11 +26,11 @@ pub trait Rx<'a> {
 pub trait Queue {
     type Entry: Entry;
 
-    /// Returns a single entry in the queue
-    fn pop(&mut self) -> Option<&mut Self::Entry>;
+    /// Returns a slice of all of the entries in the queue
+    fn as_slice_mut(&mut self) -> &mut [Self::Entry];
 
-    /// Consumes and returns all of the entries in the queue
-    fn take_all(&mut self) -> &mut [Self::Entry];
+    /// Consumes `count` number of entries in the queue
+    fn finish(&mut self, count: usize);
 }
 
 /// An entry in a Rx queue
