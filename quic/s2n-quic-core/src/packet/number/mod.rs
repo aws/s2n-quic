@@ -93,6 +93,9 @@ pub(crate) const PACKET_NUMBER_LEN_MASK: u8 = 0b11;
 mod packet_number_len;
 pub use packet_number_len::PacketNumberLen;
 
+mod packet_number_range;
+pub use packet_number_range::PacketNumberRange;
+
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-22.txt#17.1
 //# The encoded packet number is protected as described in Section 5.4 of
 //# [QUIC-TLS].
