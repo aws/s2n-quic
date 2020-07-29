@@ -137,6 +137,7 @@ pub mod label;
 pub mod one_rtt;
 pub mod packet_protection;
 pub mod payload;
+pub mod pseudo_retry;
 pub mod tls;
 pub mod zero_rtt;
 
