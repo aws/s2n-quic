@@ -91,6 +91,10 @@ impl SocketAddressV6 {
     pub fn port(&self) -> u16 {
         self.port.into()
     }
+
+    pub fn set_port(&mut self, port: u16) {
+        self.port.set(port)
+    }
 }
 
 impl fmt::Debug for SocketAddressV6 {

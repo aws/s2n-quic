@@ -5,6 +5,9 @@ use crate::inet::{
 };
 use core::fmt;
 
+#[cfg(feature = "generator")]
+use bolero_generator::*;
+
 /// An IP address, either IPv4 or IPv6.
 ///
 /// Instead of using `std::net::IPAddr`, this implementation
@@ -12,6 +15,7 @@ use core::fmt;
 ///
 /// The size is also consistent across target operating systems.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "generator", derive(TypeGenerator))]
 pub enum IPAddress {
     IPv4(IPv4Address),
     IPv6(IPv6Address),
@@ -63,6 +67,7 @@ impl<'a> From<&'a IPv6Address> for IPAddressRef<'a> {
 ///
 /// The size is also consistent across target operating systems.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "generator", derive(TypeGenerator))]
 pub enum SocketAddress {
     IPv4(SocketAddressV4),
     IPv6(SocketAddressV6),

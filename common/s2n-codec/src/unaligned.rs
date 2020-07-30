@@ -25,6 +25,13 @@ macro_rules! unaligned_integer_type {
             }
         }
 
+        #[cfg(feature = "generator")]
+        impl bolero_generator::TypeGenerator for $name {
+            fn generate<D: bolero_generator::Driver>(driver: &mut D) -> Option<Self> {
+                Some(Self::new_truncated(driver.gen()?))
+            }
+        }
+
         impl TryFrom<$storage_type> for $name {
             type Error = TryFromIntError;
 
