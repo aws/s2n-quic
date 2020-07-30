@@ -1,7 +1,10 @@
 // TODO: Remove when used
 #![allow(dead_code)]
 
-use alloc::collections::{btree_map::Range, BTreeMap};
+use alloc::collections::{
+    btree_map::{Iter, Range},
+    BTreeMap,
+};
 use core::ops::RangeInclusive;
 use s2n_quic_core::{packet::number::PacketNumber, time::Timestamp};
 
@@ -39,6 +42,11 @@ impl SentPackets {
         packet_number: PacketNumber,
     ) -> Option<(PacketNumber, SentPacketInfo)> {
         self.sent_packets.remove_entry(&packet_number)
+    }
+
+    /// Gets an iterator over the sent packet entries, sorted by PacketNumber
+    pub fn iter(&self) -> Iter<'_, PacketNumber, SentPacketInfo> {
+        self.sent_packets.iter()
     }
 }
 
@@ -99,6 +107,10 @@ mod test {
         for (&packet_number, &sent_packet_info) in
             sent_packets.range(packet_number_1..=packet_number_3)
         {
+            assert_eq!(sent_packets.get(packet_number).unwrap(), &sent_packet_info);
+        }
+
+        for (&packet_number, &sent_packet_info) in sent_packets.iter() {
             assert_eq!(sent_packets.get(packet_number).unwrap(), &sent_packet_info);
         }
     }
