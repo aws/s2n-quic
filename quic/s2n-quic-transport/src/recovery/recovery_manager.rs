@@ -44,6 +44,8 @@ const K_TIME_THRESHOLD: f32 = 9.0 / 8.0;
 // Timer granularity
 const K_GRANULARITY: Duration = Duration::from_millis(1);
 
+type SentPacket = (PacketNumber, SentPacketInfo);
+
 impl RecoveryManager {
     pub fn new(
         pn_space: PacketNumberSpace,
@@ -177,25 +179,20 @@ impl RecoveryManager {
     fn detect_and_remove_acked_packets<A: AckRanges>(
         &mut self,
         ack: &Ack<A>,
-    ) -> (
-        Option<(PacketNumber, SentPacketInfo)>,
-        Vec<(PacketNumber, SentPacketInfo)>,
-    ) {
+    ) -> (Option<SentPacket>, Vec<SentPacket>) {
         let mut newly_acked_packets = Vec::new();
-        let mut largest_newly_acked: Option<(PacketNumber, SentPacketInfo)> = None;
+        let mut largest_newly_acked: Option<SentPacket> = None;
 
         for ack_range in ack.ack_ranges() {
             let start = self.pn_space.new_packet_number(*ack_range.start());
             let end = self.pn_space.new_packet_number(*ack_range.end());
 
             for acked_packet in PacketNumberRange::new(start, end) {
-                if let Some((packet_number, sent_packet_info)) =
-                    self.sent_packets.remove(acked_packet)
-                {
-                    newly_acked_packets.push((packet_number, sent_packet_info));
+                if let Some(sent_packet_info) = self.sent_packets.remove(acked_packet) {
+                    newly_acked_packets.push((acked_packet, sent_packet_info));
 
                     if largest_newly_acked.map_or(true, |a| a.0 < acked_packet) {
-                        largest_newly_acked = Some((packet_number, sent_packet_info));
+                        largest_newly_acked = Some((acked_packet, sent_packet_info));
                     }
                 }
             }

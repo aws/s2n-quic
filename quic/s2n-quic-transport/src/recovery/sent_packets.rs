@@ -36,12 +36,9 @@ impl SentPackets {
     }
 
     /// Removes the `SentPacketInfo` associated with the given `packet_number`
-    /// and returns a (PacketNumber, SentPacketInfo) tuple if it was present
-    pub fn remove(
-        &mut self,
-        packet_number: PacketNumber,
-    ) -> Option<(PacketNumber, SentPacketInfo)> {
-        self.sent_packets.remove_entry(&packet_number)
+    /// and returns the `SentPacketInfo` if it was present
+    pub fn remove(&mut self, packet_number: PacketNumber) -> Option<SentPacketInfo> {
+        self.sent_packets.remove(&packet_number)
     }
 
     /// Gets an iterator over the sent packet entries, sorted by PacketNumber
@@ -125,10 +122,7 @@ mod test {
         assert!(sent_packets.get(packet_number).is_some());
         assert_eq!(sent_packets.get(packet_number).unwrap(), &sent_packet);
 
-        assert_eq!(
-            Some((packet_number, sent_packet)),
-            sent_packets.remove(packet_number)
-        );
+        assert_eq!(Some(sent_packet), sent_packets.remove(packet_number));
 
         assert!(sent_packets.get(packet_number).is_none());
 
