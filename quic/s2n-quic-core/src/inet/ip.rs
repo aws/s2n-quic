@@ -89,9 +89,9 @@ impl SocketAddress {
     }
 
     /// Converts the IP address into a IPv6 mapped address
-    pub fn to_v6_mapped(&self) -> SocketAddressV6 {
+    pub fn to_ipv6_mapped(&self) -> SocketAddressV6 {
         match self {
-            Self::IPv4(addr) => addr.to_v6_mapped(),
+            Self::IPv4(addr) => addr.to_ipv6_mapped(),
             Self::IPv6(addr) => *addr,
         }
     }
@@ -238,7 +238,7 @@ mod tests {
                 }
                 _ => addr,
             };
-            let address = address.to_v6_mapped().into();
+            let address = address.to_ipv6_mapped().into();
             assert_eq!(addr, address);
         }
     }

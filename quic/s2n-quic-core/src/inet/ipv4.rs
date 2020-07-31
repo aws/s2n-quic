@@ -17,7 +17,7 @@ define_inet_type!(
 
 impl IPv4Address {
     /// Converts the IP address into a IPv6 mapped address
-    pub const fn to_v6_mapped(self) -> IPv6Address {
+    pub const fn to_ipv6_mapped(self) -> IPv6Address {
         //= https://tools.ietf.org/rfc/rfc5156.txt#2.2
         //# ::FFFF:0:0/96 are the IPv4-mapped addresses [RFC4291].
         let mut addr = [0; size_of::<IPv6Address>()];
@@ -80,8 +80,8 @@ impl SocketAddressV4 {
     }
 
     /// Converts the IP address into a IPv6 mapped address
-    pub fn to_v6_mapped(&self) -> SocketAddressV6 {
-        let ip = self.ip().to_v6_mapped();
+    pub fn to_ipv6_mapped(&self) -> SocketAddressV6 {
+        let ip = self.ip().to_ipv6_mapped();
         let port = self.port;
         SocketAddressV6 { ip, port }
     }
