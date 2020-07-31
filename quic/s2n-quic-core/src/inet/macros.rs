@@ -14,7 +14,7 @@ macro_rules! define_inet_type {
         #[repr(C)]
         $($vis)? struct $name {
             $(
-                $field: $field_ty,
+                pub(crate) $field: $field_ty,
             )*
         }
 
