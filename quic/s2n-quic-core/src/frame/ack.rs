@@ -104,6 +104,14 @@ impl<A: AckRanges> Ack<A> {
     pub fn ack_ranges(&self) -> A::Iter {
         self.ack_ranges.ack_ranges()
     }
+
+    pub fn largest_acked(&self) -> VarInt {
+        *self
+            .ack_ranges()
+            .next()
+            .expect("at least one ack range is required")
+            .end()
+    }
 }
 
 impl<A: core::fmt::Debug> core::fmt::Debug for Ack<A> {
