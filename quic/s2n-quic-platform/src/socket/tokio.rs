@@ -56,7 +56,7 @@ impl Builder {
 
 #[cfg(feature = "futures")]
 pub(crate) mod sync {
-    #![allow(dead_code)] // TODO remove once platform changes are merged
+    #![allow(dead_code)] // TODO remove once platform io changes are merged
 
     use super::Socket;
     use core::ops::Deref;
@@ -79,7 +79,7 @@ pub(crate) mod sync {
 
 #[cfg(feature = "futures")]
 pub(crate) mod poll {
-    #![allow(dead_code)] // TODO remove once platform changes are merged
+    #![allow(dead_code)] // TODO remove once platform io changes are merged
 
     use super::Socket;
     use core::{

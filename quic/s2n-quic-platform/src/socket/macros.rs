@@ -94,12 +94,11 @@ macro_rules! impl_socket2_builder {
 
                 for addr in addr.to_socket_addrs()? {
                     let addr = if cfg!(feature = "ipv6") {
-                        // TODO uncomment when https://github.com/awslabs/s2n-quic/pull/63 is merged
-                        // use ::s2n_quic_core::inet::SocketAddress;
-                        // use ::std::net::SocketAddr;
-                        //
-                        // let addr: SocketAddress = addr.into();
-                        // let addr: SocketAddr = addr.to_v6_mapped().into();
+                        use ::s2n_quic_core::inet::SocketAddress;
+                        use ::std::net::SocketAddr;
+
+                        let addr: SocketAddress = addr.into();
+                        let addr: SocketAddr = addr.to_ipv6_mapped().into();
                         addr
                     } else {
                         addr
