@@ -5,7 +5,12 @@ macro_rules! define_inet_type {
         ),*
         $(,)*
     }) => {
+        #[allow(unused_imports)]
+        #[cfg(feature = "generator")]
+        use bolero_generator::*;
+
         #[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, zerocopy::FromBytes, zerocopy::AsBytes, zerocopy::Unaligned)]
+        #[cfg_attr(feature = "generator", derive(bolero_generator::TypeGenerator))]
         #[repr(C)]
         $($vis)? struct $name {
             $(

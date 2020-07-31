@@ -115,7 +115,7 @@ impl<Tx, Rx> SocketBuilder<Tx, Rx> {
     /// receiving IPv6 packets only. In this case two IPv4 and IPv6 applications
     /// can bind the same port at the same time.
     ///
-    /// By default, IPv6 sockets will recieve IPv4 and IPv6 packets.
+    /// By default, IPv6 sockets will receive IPv4 and IPv6 packets.
     #[cfg(feature = "ipv6")]
     pub fn only_v6(self) -> IOResult<Self> {
         self.socket.only_v6(true)?;

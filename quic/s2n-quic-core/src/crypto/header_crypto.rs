@@ -4,7 +4,7 @@ use crate::{
 };
 use s2n_codec::{DecoderBuffer, DecoderError};
 
-//= https://tools.ietf.org/id/draft-ietf-quic-tls-22.txt#5.4
+//= https://tools.ietf.org/id/draft-ietf-quic-tls-29.txt#5.4
 //# Parts of QUIC packet headers, in particular the Packet Number field,
 //# are protected using a key that is derived separate to the packet
 //# protection key and IV.  The key derived using the "quic hp" label is
@@ -51,7 +51,7 @@ pub trait HeaderCrypto: Send {
     fn sealing_sample_len(&self) -> usize;
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-tls-22.txt#5.4.1
+//= https://tools.ietf.org/id/draft-ietf-quic-tls-29.txt#5.4.1
 //# Header protection is applied after packet protection is applied (see
 //# Section 5.3).  The ciphertext of the packet is sampled and used as
 //# input to an encryption algorithm.  The algorithm used depends on the
@@ -67,7 +67,7 @@ pub trait HeaderCrypto: Send {
 pub const HEADER_PROTECTION_MASK_LEN: usize = 5;
 pub type HeaderProtectionMask = [u8; HEADER_PROTECTION_MASK_LEN];
 
-//= https://tools.ietf.org/id/draft-ietf-quic-tls-22.txt#5.4.1
+//= https://tools.ietf.org/id/draft-ietf-quic-tls-29.txt#5.4.1
 //# Figure 4 shows a sample algorithm for applying header protection.
 //# Removing header protection only differs in the order in which the
 //# packet number length (pn_length) is determined.
@@ -84,6 +84,10 @@ pub type HeaderProtectionMask = [u8; HEADER_PROTECTION_MASK_LEN];
 //#
 //# # pn_offset is the start of the Packet Number field.
 //# packet[pn_offset:pn_offset+pn_length] ^= mask[1:1+pn_length]
+
+const LONG_HEADER_TAG: u8 = 0x80;
+const LONG_HEADER_MASK: u8 = 0x0f;
+const SHORT_HEADER_MASK: u8 = 0x1f;
 
 #[inline(always)]
 fn mask_from_packet_tag(tag: u8) -> u8 {
@@ -144,51 +148,3 @@ pub(crate) fn remove_header_protection(
         EncryptedPayload::new(header_len, packet_number_len, payload),
     ))
 }
-
-//= https://tools.ietf.org/id/draft-ietf-quic-tls-22.txt#5.4.1
-//#                Figure 4: Header Protection Pseudocode
-//#
-//# Figure 5 shows the protected fields of long and short headers marked
-//# with an E.  Figure 5 also shows the sampled fields.
-//#
-//# Long Header:
-//# +-+-+-+-+-+-+-+-+
-//# |1|1|T T|E E E E|
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# |                    Version -> Length Fields                 ...
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-
-const LONG_HEADER_TAG: u8 = 0b1000_0000;
-const LONG_HEADER_MASK: u8 = 0b1111;
-
-//= https://tools.ietf.org/id/draft-ietf-quic-tls-22.txt#5.4.1
-//# Short Header:
-//# +-+-+-+-+-+-+-+-+
-//# |0|1|S|E E E E E|
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# |               Destination Connection ID (0/32..144)         ...
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-
-const SHORT_HEADER_MASK: u8 = 0b1_1111;
-
-//= https://tools.ietf.org/id/draft-ietf-quic-tls-22.txt#5.4.1
-//# Common Fields:
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# |E E E E E E E E E  Packet Number (8/16/24/32) E E E E E E E E...
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# |   [Protected Payload (8/16/24)]             ...
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# |             Sampled part of Protected Payload (128)         ...
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# |                 Protected Payload Remainder (*)             ...
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//#
-//#           Figure 5: Header Protection and Ciphertext Sample
-//#
-//# Before a TLS ciphersuite can be used with QUIC, a header protection
-//# algorithm MUST be specified for the AEAD used with that ciphersuite.
-//# This document defines algorithms for AEAD_AES_128_GCM,
-//# AEAD_AES_128_CCM, AEAD_AES_256_GCM (all AES AEADs are defined in
-//# [AEAD]), and AEAD_CHACHA20_POLY1305 [CHACHA].  Prior to TLS selecting
-//# a ciphersuite, AES header protection is used (Section 5.4.3),
-//# matching the AEAD_AES_128_GCM packet protection.

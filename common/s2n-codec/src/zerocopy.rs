@@ -6,6 +6,9 @@ use core::{
 };
 pub use zerocopy::*;
 
+#[cfg(feature = "generator")]
+use bolero_generator::*;
+
 /// Define a codec implementation for a zerocopy value that implements
 /// `FromBytes`, `AsBytes`, and `Unaligned`.
 #[macro_export]
@@ -124,6 +127,16 @@ macro_rules! zerocopy_network_integer {
         #[repr(C)]
         pub struct $name(::zerocopy::byteorder::$name<NetworkEndian>);
 
+        impl $name {
+            pub fn new(value: $native) -> Self {
+                value.into()
+            }
+
+            pub fn set(&mut self, value: $native) {
+                self.0.set(value);
+            }
+        }
+
         impl PartialEq for $name {
             fn eq(&self, other: &Self) -> bool {
                 self.cmp(other) == Ordering::Equal
@@ -181,6 +194,13 @@ macro_rules! zerocopy_network_integer {
         impl Into<$native> for $name {
             fn into(self) -> $native {
                 self.0.get()
+            }
+        }
+
+        #[cfg(feature = "generator")]
+        impl TypeGenerator for $name {
+            fn generate<D: Driver>(driver: &mut D) -> Option<Self> {
+                Some(Self::new(driver.gen()?))
             }
         }
 

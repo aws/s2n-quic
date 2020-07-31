@@ -4,6 +4,9 @@ use core::{
 };
 use s2n_codec::{decoder_value, Encoder, EncoderValue};
 
+#[cfg(feature = "generator")]
+use bolero_generator::*;
+
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#16
 //# QUIC packets and frames commonly use a variable-length encoding for
 //# non-negative integer values.  This encoding ensures that smaller
@@ -124,7 +127,8 @@ mod tests {
 // === API ===
 
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq, PartialOrd, Ord)]
-pub struct VarInt(u64);
+#[cfg_attr(feature = "generator", derive(TypeGenerator))]
+pub struct VarInt(#[cfg_attr(feature = "generator", generator(0..=MAX_VARINT_VALUE))] u64);
 
 impl core::fmt::Display for VarInt {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {

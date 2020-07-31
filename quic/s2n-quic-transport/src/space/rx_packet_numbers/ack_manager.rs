@@ -54,7 +54,7 @@ pub struct AckManager {
     largest_received_packet_number_acked: PacketNumber,
 
     /// The time at which we received the largest pn
-    largest_recieved_packet_number_at: Option<Timestamp>,
+    largest_received_packet_number_at: Option<Timestamp>,
 
     /// The number of processed packets since transmission
     processed_packets_since_transmission: u8,
@@ -86,7 +86,7 @@ impl AckManager {
             ack_ranges: AckRanges::new(ack_ranges_limit),
             largest_received_packet_number_acked: packet_space
                 .new_packet_number(VarInt::from_u8(0)),
-            largest_recieved_packet_number_at: None,
+            largest_received_packet_number_at: None,
             processed_packets_since_transmission: 0,
             transmissions_since_elicitation: 0,
             transmission_state: AckTransmissionState::default(),
@@ -240,7 +240,7 @@ impl AckManager {
         //# is important for getting a better estimate of the path RTT when
         //# acknowledgments are delayed.
         if is_largest {
-            self.largest_recieved_packet_number_at = Some(now);
+            self.largest_received_packet_number_at = Some(now);
         }
 
         if processed_packet.is_ack_eliciting() {
@@ -318,7 +318,7 @@ impl AckManager {
         //#    acknowledged packet, as indicated in the Largest Acknowledged
         //#    field, was received by this peer.
         let ack_delay = self
-            .largest_recieved_packet_number_at
+            .largest_received_packet_number_at
             .map(|prev| now.saturating_duration_since(prev))
             .unwrap_or_default();
         self.ack_settings.encode_ack_delay(ack_delay)

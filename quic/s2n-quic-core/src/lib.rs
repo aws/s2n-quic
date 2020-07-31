@@ -7,6 +7,7 @@ pub mod crypto;
 pub mod endpoint;
 pub mod frame;
 pub mod inet;
+pub mod io;
 pub mod packet;
 pub mod recovery;
 pub mod stateless_reset_token;

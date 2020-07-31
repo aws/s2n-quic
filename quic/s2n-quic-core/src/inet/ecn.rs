@@ -1,3 +1,6 @@
+#[cfg(feature = "generator")]
+use bolero_generator::*;
+
 //= https://tools.ietf.org/rfc/rfc3168.txt#5
 //# This document specifies that the Internet provide a congestion
 //# indication for incipient congestion (as in RED and earlier work
@@ -44,6 +47,7 @@
 /// Explicit Congestion Notification
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord)]
+#[cfg_attr(feature = "generator", derive(TypeGenerator))]
 pub enum ExplicitCongestionNotification {
     /// The not-ECT codepoint '00' indicates a packet that is not using ECN.
     NotECT = 0b00,

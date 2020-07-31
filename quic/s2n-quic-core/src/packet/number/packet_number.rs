@@ -13,6 +13,9 @@ use core::{
     num::NonZeroU64,
 };
 
+#[cfg(feature = "generator")]
+use bolero_generator::*;
+
 const PACKET_SPACE_BITLEN: usize = 2;
 const PACKET_SPACE_SHIFT: usize = (size_of::<PacketNumber>() * 8) - PACKET_SPACE_BITLEN;
 const PACKET_NUMBER_MASK: u64 = core::u64::MAX >> PACKET_SPACE_BITLEN;
@@ -27,6 +30,7 @@ const PACKET_NUMBER_MASK: u64 = core::u64::MAX >> PACKET_SPACE_BITLEN;
 /// there are only 3 spaces, the zero state is never used, which is why
 /// [`NonZeroU64`] can be used instead of `u64`.
 #[derive(Clone, Copy, Eq)]
+#[cfg_attr(feature = "generator", derive(TypeGenerator))]
 pub struct PacketNumber(NonZeroU64);
 
 impl Default for PacketNumber {
