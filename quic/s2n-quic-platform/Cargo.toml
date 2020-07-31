@@ -6,19 +6,24 @@ edition = "2018"
 license = "Apache-2.0"
 
 [features]
-default = ["std", "ipv6"]
+default = ["futures", "ipv6", "mio", "std", "tokio"]
 ipv6 = []
-std = ["s2n-quic-core/std", "lazy_static"]
+std = ["s2n-quic-core/std", "socket2", "lazy_static"]
 testing = ["std"] # Testing allows to overwrite the system time
 
 [dependencies]
 cfg-if = "0.1"
+futures = { version = "0.3", optional = true }
 lazy_static = { version = "1.4", optional = true }
-libc = "0.2"
 mio = { version = "0.6", optional = true }
 net2 = "0.2"
 s2n-codec = { version = "0.1.0", path = "../../common/s2n-codec" }
-s2n-quic-core = { version = "0.1.0", path = "../s2n-quic-core" }
+s2n-quic-core = { version = "0.1.0", path = "../s2n-quic-core", default-features = false }
+socket2 = { version = "0.3", features = ["reuseport"], optional = true }
+tokio = { version = "0.2", default-features = false, features = ["io-driver"], optional = true }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 [dev-dependencies]
-s2n-quic-core = { version = "0.1.0", path = "../s2n-quic-core", features = ["std"] }
+s2n-quic-core = { version = "0.1.0", path = "../s2n-quic-core", features = ["testing"] }
