@@ -1,6 +1,9 @@
 use crate::message::Message as MessageTrait;
 use alloc::vec::Vec;
-use s2n_quic_core::inet::{ExplicitCongestionNotification, SocketAddress};
+use s2n_quic_core::{
+    inet::{ExplicitCongestionNotification, SocketAddress},
+    io::{rx, tx},
+};
 
 /// A simple message type that holds an address and payload
 ///
@@ -26,7 +29,13 @@ impl MessageTrait for Message {
     }
 
     fn set_remote_address(&mut self, remote_address: &SocketAddress) {
-        self.address = *remote_address;
+        let remote_address = *remote_address;
+
+        // macos doesn't like sending ipv4 addresses on ipv6 sockets
+        #[cfg(all(target_os = "macos", feature = "ipv6"))]
+        let remote_address = remote_address.to_ipv6_mapped().into();
+
+        self.address = remote_address;
     }
 
     fn reset_remote_address(&mut self) {
@@ -39,6 +48,10 @@ impl MessageTrait for Message {
 
     unsafe fn set_payload_len(&mut self, len: usize) {
         self.payload_len = len;
+    }
+
+    fn payload_ptr(&self) -> *const u8 {
+        self.payload_ptr as *const _
     }
 
     fn payload_ptr_mut(&mut self) -> *mut u8 {
@@ -106,5 +119,53 @@ impl<Payloads: crate::buffer::Buffer> super::Ring for Ring<Payloads> {
 
     fn as_mut_slice(&mut self) -> &mut [Self::Message] {
         &mut self.messages[..]
+    }
+}
+
+impl tx::Entry for Message {
+    fn set<M: tx::Message>(&mut self, mut message: M) -> Result<usize, tx::Error> {
+        let payload = MessageTrait::payload_mut(self);
+
+        let len = message.write_payload(payload);
+
+        // don't send empty payloads
+        if len == 0 {
+            return Err(tx::Error::EmptyPayload);
+        }
+
+        unsafe {
+            debug_assert!(len <= payload.len());
+            let len = len.min(payload.len());
+            self.set_payload_len(len);
+        }
+        self.set_remote_address(&message.remote_address());
+
+        Ok(len)
+    }
+
+    fn payload(&self) -> &[u8] {
+        MessageTrait::payload(self)
+    }
+
+    fn payload_mut(&mut self) -> &mut [u8] {
+        MessageTrait::payload_mut(self)
+    }
+}
+
+impl rx::Entry for Message {
+    fn remote_address(&self) -> Option<SocketAddress> {
+        MessageTrait::remote_address(self)
+    }
+
+    fn ecn(&self) -> ExplicitCongestionNotification {
+        MessageTrait::ecn(self)
+    }
+
+    fn payload(&self) -> &[u8] {
+        MessageTrait::payload(self)
+    }
+
+    fn payload_mut(&mut self) -> &mut [u8] {
+        MessageTrait::payload_mut(self)
     }
 }

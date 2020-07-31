@@ -1,13 +1,57 @@
-use crate::message::Message;
+use crate::message::Message as MessageTrait;
 use alloc::vec::Vec;
-use core::mem::{size_of, zeroed};
+use core::{
+    fmt,
+    mem::{size_of, zeroed},
+};
 use libc::{c_void, iovec, msghdr, sockaddr_in, sockaddr_in6, AF_INET, AF_INET6};
-use s2n_quic_core::inet::{
-    ExplicitCongestionNotification, IPv4Address, IPv6Address, SocketAddress, SocketAddressV4,
-    SocketAddressV6,
+use s2n_quic_core::{
+    inet::{ExplicitCongestionNotification, IPv4Address, SocketAddress, SocketAddressV4},
+    io::{rx, tx},
 };
 
-impl Message for msghdr {
+#[cfg(feature = "ipv6")]
+use s2n_quic_core::inet::{IPv6Address, SocketAddressV6};
+
+#[repr(transparent)]
+pub struct Message(pub(crate) msghdr);
+
+impl_message_delegate!(Message, 0);
+
+impl fmt::Debug for Message {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("msghdr")
+            .field("ecn", &self.ecn())
+            .field("remote_address", &self.remote_address())
+            .field("payload", &self.payload())
+            .finish()
+    }
+}
+
+impl Message {
+    fn new(
+        iovec: *mut iovec,
+        msg_name: *mut c_void,
+        msg_namelen: usize,
+        msg_control: *mut c_void,
+        msg_controllen: usize,
+    ) -> Self {
+        let mut msghdr = unsafe { core::mem::zeroed::<msghdr>() };
+
+        msghdr.msg_iov = iovec;
+        msghdr.msg_iovlen = 1; // a single iovec is allocated per message
+
+        msghdr.msg_name = msg_name;
+        msghdr.msg_namelen = msg_namelen as _;
+
+        msghdr.msg_control = msg_control;
+        msghdr.msg_controllen = msg_controllen as _;
+
+        Self(msghdr)
+    }
+}
+
+impl MessageTrait for msghdr {
     fn ecn(&self) -> ExplicitCongestionNotification {
         // TODO support ecn
         ExplicitCongestionNotification::default()
@@ -26,6 +70,7 @@ impl Message for msghdr {
                 let addr: IPv4Address = sockaddr.sin_addr.s_addr.to_ne_bytes().into();
                 Some(SocketAddressV4::new(addr, port).into())
             }
+            #[cfg(feature = "ipv6")]
             size if size == size_of::<sockaddr_in6>() as _ => {
                 let sockaddr: &sockaddr_in6 = unsafe { &*(self.msg_name as *const _) };
                 let port = sockaddr.sin6_port.to_be();
@@ -38,6 +83,11 @@ impl Message for msghdr {
 
     fn set_remote_address(&mut self, remote_address: &SocketAddress) {
         debug_assert!(!self.msg_name.is_null());
+
+        // macos doesn't like sending ipv4 addresses on ipv6 sockets
+        #[cfg(all(target_os = "macos", feature = "ipv6"))]
+        let remote_address = remote_address.to_ipv6_mapped().into();
+
         match remote_address {
             SocketAddress::IPv4(addr) => {
                 let sockaddr: &mut sockaddr_in = unsafe { &mut *(self.msg_name as *mut _) };
@@ -80,16 +130,23 @@ impl Message for msghdr {
         self.msg_namelen = other.msg_namelen;
     }
 
-    fn payload_ptr_mut(&mut self) -> *mut u8 {
+    fn payload_ptr(&self) -> *const u8 {
         unsafe {
             let iovec = &*self.msg_iov;
+            iovec.iov_base as *const _
+        }
+    }
+
+    fn payload_ptr_mut(&mut self) -> *mut u8 {
+        unsafe {
+            let iovec = &mut *self.msg_iov;
             iovec.iov_base as *mut _
         }
     }
 }
 
 pub struct Ring<Payloads> {
-    pub(crate) messages: Vec<msghdr>,
+    pub(crate) messages: Vec<Message>,
 
     // this field holds references to allocated payloads, but is never read directly
     #[allow(dead_code)]
@@ -127,7 +184,7 @@ impl<Payloads: crate::buffer::Buffer> Ring<Payloads> {
 
             msg_names.push(unsafe { zeroed() });
 
-            let msg = new_msg(
+            let msg = Message::new(
                 (&mut iovecs[index]) as *mut _,
                 (&mut msg_names[index]) as *mut _ as *mut _,
                 size_of::<sockaddr_in6>(),
@@ -139,7 +196,7 @@ impl<Payloads: crate::buffer::Buffer> Ring<Payloads> {
         }
 
         for index in 0..capacity {
-            messages.push(messages[index]);
+            messages.push(Message(messages[index].0));
         }
 
         Self {
@@ -152,7 +209,7 @@ impl<Payloads: crate::buffer::Buffer> Ring<Payloads> {
 }
 
 impl<Payloads: crate::buffer::Buffer> super::Ring for Ring<Payloads> {
-    type Message = msghdr;
+    type Message = Message;
 
     fn len(&self) -> usize {
         self.payloads.len()
@@ -171,30 +228,65 @@ impl<Payloads: crate::buffer::Buffer> super::Ring for Ring<Payloads> {
     }
 }
 
-fn new_msg(
-    iovec: *mut iovec,
-    msg_name: *mut c_void,
-    msg_namelen: usize,
-    msg_control: *mut c_void,
-    msg_controllen: usize,
-) -> msghdr {
-    let mut msghdr = unsafe { core::mem::zeroed::<msghdr>() };
+impl tx::Entry for Message {
+    fn set<M: tx::Message>(&mut self, mut message: M) -> Result<usize, tx::Error> {
+        let payload = MessageTrait::payload_mut(self);
 
-    msghdr.msg_iov = iovec;
-    msghdr.msg_iovlen = 1; // a single iovec is allocated per message
+        let len = message.write_payload(payload);
 
-    msghdr.msg_name = msg_name;
-    msghdr.msg_namelen = msg_namelen as _;
+        // don't send empty payloads
+        if len == 0 {
+            return Err(tx::Error::EmptyPayload);
+        }
 
-    msghdr.msg_control = msg_control;
-    msghdr.msg_controllen = msg_controllen as _;
+        unsafe {
+            debug_assert!(len <= payload.len());
+            let len = len.min(payload.len());
+            self.set_payload_len(len);
+        }
+        self.set_remote_address(&message.remote_address());
 
-    msghdr
+        // TODO ecn
+
+        Ok(len)
+    }
+
+    fn payload(&self) -> &[u8] {
+        MessageTrait::payload(self)
+    }
+
+    fn payload_mut(&mut self) -> &mut [u8] {
+        MessageTrait::payload_mut(self)
+    }
+}
+
+impl rx::Entry for Message {
+    fn remote_address(&self) -> Option<SocketAddress> {
+        MessageTrait::remote_address(self)
+    }
+
+    fn ecn(&self) -> ExplicitCongestionNotification {
+        MessageTrait::ecn(self)
+    }
+
+    fn payload(&self) -> &[u8] {
+        MessageTrait::payload(self)
+    }
+
+    fn payload_mut(&mut self) -> &mut [u8] {
+        MessageTrait::payload_mut(self)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bolero::fuzz;
+
+    #[cfg(feature = "ipv6")]
+    use s2n_quic_core::inet::SocketAddress;
+    #[cfg(not(feature = "ipv6"))]
+    use s2n_quic_core::inet::SocketAddressV4 as SocketAddress;
 
     #[test]
     fn address_inverse_pair_test() {
@@ -206,16 +298,21 @@ mod tests {
         msghdr.msg_name = &mut msgname as *mut _ as *mut _;
         msghdr.msg_namelen = size_of::<sockaddr_in6>() as _;
 
-        let tests = ["192.168.1.2:1337", "[2001:db8:85a3::8a2e:370:7334]:1337"];
+        let mut message = Message(msghdr);
 
-        for addr in tests.iter() {
-            let addr: std::net::SocketAddr = addr.parse().unwrap();
-            let addr: SocketAddress = addr.into();
+        fuzz!()
+            .with_type::<SocketAddress>()
+            .cloned()
+            .for_each(|addr| {
+                #[cfg(not(feature = "ipv6"))]
+                let addr = addr.into();
+                message.reset_remote_address();
+                message.set_remote_address(&addr);
 
-            msghdr.set_remote_address(&addr);
-            assert_eq!(msghdr.remote_address(), Some(addr));
+                #[cfg(all(target_os = "macos", feature = "ipv6"))]
+                let addr = addr.to_ipv6_mapped().into();
 
-            msghdr.reset_remote_address();
-        }
+                assert_eq!(message.remote_address(), Some(addr));
+            });
     }
 }
