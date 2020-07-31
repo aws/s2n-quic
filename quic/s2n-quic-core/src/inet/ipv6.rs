@@ -84,7 +84,7 @@ define_inet_type!(
 );
 
 impl SocketAddressV6 {
-    pub fn ip(&self) -> &IPv6Address {
+    pub const fn ip(&self) -> &IPv6Address {
         &self.ip
     }
 

@@ -106,3 +106,55 @@ pub trait Message {
     /// Writes the payload of the message to an output buffer
     fn write_payload(&mut self, buffer: &mut [u8]) -> usize;
 }
+
+impl<Payload: AsRef<[u8]>> Message for (SocketAddress, Payload) {
+    fn remote_address(&mut self) -> SocketAddress {
+        self.0
+    }
+
+    fn ecn(&mut self) -> ExplicitCongestionNotification {
+        Default::default()
+    }
+
+    fn delay(&mut self) -> Duration {
+        Default::default()
+    }
+
+    fn ipv6_flow_label(&mut self) -> u32 {
+        0
+    }
+
+    fn write_payload(&mut self, buffer: &mut [u8]) -> usize {
+        let payload = self.1.as_ref();
+        let len = payload.len();
+        if let Some(buffer) = buffer.get_mut(..len) {
+            buffer.copy_from_slice(payload);
+            len
+        } else {
+            0
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::inet::SocketAddressV4;
+
+    #[test]
+    fn message_tuple_test() {
+        let address: SocketAddress = SocketAddressV4::new([127, 0, 0, 1], 80).into();
+        let mut message = (address, [1u8, 2, 3]);
+
+        let mut buffer = [0u8; 10];
+
+        assert_eq!(message.remote_address(), address);
+        assert_eq!(message.ecn(), Default::default());
+        assert_eq!(message.delay(), Default::default());
+        assert_eq!(message.ipv6_flow_label(), 0);
+        assert_eq!(message.write_payload(&mut buffer[..]), 3);
+
+        // assert an empty buffer doesn't panic
+        assert_eq!(message.write_payload(&mut [][..]), 0);
+    }
+}
