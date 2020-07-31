@@ -1,6 +1,7 @@
 use crate::buffer::{Buffer, SegmentBuffer};
 use core::ops::{Index, IndexMut};
 
+// TODO decide on better defaults
 const DEFAULT_MESSAGE_COUNT: usize = 4096;
 const DEFAULT_MTU: usize = 1500;
 
