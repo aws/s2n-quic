@@ -5,6 +5,7 @@ macro_rules! impl_socket {
         pub struct Socket(pub(crate) $inner);
 
         impl Socket {
+            /// Creates and binds a socket to an address
             pub fn bind<A: ::std::net::ToSocketAddrs>(addr: A) -> ::std::io::Result<Self> {
                 Self::builder()?.with_address(addr)?.build()
             }
@@ -48,6 +49,7 @@ macro_rules! impl_socket2_builder {
         }
 
         impl $name {
+            /// Creates a new builder
             pub fn new() -> ::std::io::Result<Self> {
                 use cfg_if::cfg_if;
                 use socket2::{Domain, Protocol, Socket, Type};
@@ -83,6 +85,7 @@ macro_rules! impl_socket2_builder {
                 Ok(Self { socket })
             }
 
+            /// Sets the address binding on the socket
             pub fn with_address<A: ::std::net::ToSocketAddrs>(
                 mut self,
                 addr: A,
@@ -109,6 +112,7 @@ macro_rules! impl_socket2_builder {
                 Ok(self)
             }
 
+            /// Enables address and port reuse
             pub fn with_address_reuse(mut self) -> ::std::io::Result<Self> {
                 let socket = &mut self.socket;
                 socket.set_reuse_address(true)?;
@@ -119,18 +123,21 @@ macro_rules! impl_socket2_builder {
                 Ok(self)
             }
 
+            /// Sets the TTL for the socket
             pub fn with_ttl(mut self, ttl: u32) -> ::std::io::Result<Self> {
                 let socket = &mut self.socket;
                 socket.set_ttl(ttl)?;
                 Ok(self)
             }
 
+            /// Sets the OS recv buffer size
             pub fn with_recv_buffer_size(mut self, size: usize) -> ::std::io::Result<Self> {
                 let socket = &mut self.socket;
                 socket.set_recv_buffer_size(size)?;
                 Ok(self)
             }
 
+            /// Sets the OS send buffer size
             pub fn with_send_buffer_size(mut self, size: usize) -> ::std::io::Result<Self> {
                 let socket = &mut self.socket;
                 socket.set_send_buffer_size(size)?;

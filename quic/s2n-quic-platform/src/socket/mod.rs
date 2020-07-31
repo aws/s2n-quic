@@ -12,14 +12,18 @@ pub mod tokio;
 
 use s2n_quic_core::inet::SocketAddress;
 
+/// Socket interface for sending simple messages with an address and payload
 pub trait Simple {
     type Error;
 
+    /// Receives a payload and returns the length and source address
     fn recv_from(&self, buf: &mut [u8]) -> Result<(usize, Option<SocketAddress>), Self::Error>;
 
+    /// Sends a payload to the given address and returns the length of the sent payload
     fn send_to(&self, buf: &[u8], addr: &SocketAddress) -> Result<usize, Self::Error>;
 }
 
+/// Provides raw access to os-specific socket handles
 pub mod raw {
     use cfg_if::cfg_if;
 
@@ -53,6 +57,7 @@ pub mod raw {
     }
 }
 
+/// Default sockets for the current platform and enabled features
 pub mod default {
     use cfg_if::cfg_if;
 
