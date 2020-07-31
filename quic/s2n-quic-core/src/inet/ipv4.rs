@@ -65,13 +65,12 @@ define_inet_type!(
 );
 
 impl SocketAddressV4 {
-    pub fn ip(&self) -> &IPv4Address {
+    pub const fn ip(&self) -> &IPv4Address {
         &self.ip
     }
 
     #[inline(always)]
-    #[allow(clippy::trivially_copy_pass_by_ref)]
-    pub fn port(&self) -> u16 {
+    pub fn port(self) -> u16 {
         self.port.into()
     }
 
@@ -80,7 +79,7 @@ impl SocketAddressV4 {
     }
 
     /// Converts the IP address into a IPv6 mapped address
-    pub fn to_ipv6_mapped(&self) -> SocketAddressV6 {
+    pub const fn to_ipv6_mapped(self) -> SocketAddressV6 {
         let ip = self.ip().to_ipv6_mapped();
         let port = self.port;
         SocketAddressV6 { ip, port }
