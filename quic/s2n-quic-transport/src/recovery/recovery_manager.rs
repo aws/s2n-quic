@@ -9,44 +9,57 @@ use s2n_quic_core::{
     packet::number::{PacketNumber, PacketNumberRange, PacketNumberSpace},
     recovery::RTTEstimator,
     time::Timestamp,
-    transport::error::TransportError,
 };
+use s2n_quic_platform::time;
 
 pub struct RecoveryManager {
+    // The packet number space this recovery manager is managing
     pn_space: PacketNumberSpace,
 
+    // A round trip time estimator used for keeping track of estimated RTT
     rtt_estimator: RTTEstimator,
 
-    // The maximum amount of time by which the receiver intends to delay acknowledgments for packets
-    // in the ApplicationData packet number space. The actual ack_delay in a received ACK frame may
-    // be larger due to late timers, reordering, or lost ACK frames.
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#a.3
+    //# The maximum amount of time by which the receiver intends to delay acknowledgments for packets
+    //# in the ApplicationData packet number space. The actual ack_delay in a received ACK frame may
+    //# be larger due to late timers, reordering, or lost ACK frames.
     max_ack_delay: Duration,
 
-    // The time the most recent ack-eliciting packet was sent.
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#a.3
+    //# The time the most recent ack-eliciting packet was sent.
     time_of_last_ack_eliciting_packet: Option<Timestamp>,
 
-    // The largest packet number acknowledged in the packet number space so far.
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#a.3
+    //# The largest packet number acknowledged in the packet number space so far.
     largest_acked_packet: Option<PacketNumber>,
 
-    // The time at which the next packet in that packet number space will be considered lost based on exceeding the reordering window in time.
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#a.3
+    //# The time at which the next packet in that packet number space will be considered lost based
+    //# on exceeding the reordering window in time.
     loss_time: Option<Timestamp>,
 
-    // An association of packet numbers in a packet number space to information about them.
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#a.3
+    //# An association of packet numbers in a packet number space to information about them.
     sent_packets: SentPackets,
 }
 
-// Maximum reordering in packets before packet threshold loss detection considers a packet lost.
+//= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#a.2
+//# Maximum reordering in packets before packet threshold loss detection considers a packet lost.
 const K_PACKET_THRESHOLD: u8 = 3;
 
-// Maximum reordering in time before time threshold loss detection considers a packet lost. Specified as an RTT multiplier.
+//= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#a.2
+//# Maximum reordering in time before time threshold loss detection considers a packet lost.
+//# Specified as an RTT multiplier.
 const K_TIME_THRESHOLD: f32 = 9.0 / 8.0;
 
-// Timer granularity
+//= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#a.2
+//# Timer granularity.
 const K_GRANULARITY: Duration = Duration::from_millis(1);
 
 type SentPacket = (PacketNumber, SentPacketInfo);
 
 impl RecoveryManager {
+    /// Constructs a new `RecoveryManager` for the given `PacketNumberSpace`
     pub fn new(
         pn_space: PacketNumberSpace,
         rtt_estimator: RTTEstimator,
@@ -63,7 +76,8 @@ impl RecoveryManager {
         }
     }
 
-    /// After a packet is sent, information about the packet is stored.
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#a.6
+    //# After a packet is sent, information about the packet is stored.
     pub fn on_packet_sent(
         &mut self,
         packet_number: PacketNumber,
@@ -71,25 +85,26 @@ impl RecoveryManager {
         in_flight: bool,
         sent_bytes: u64,
     ) {
-        if ack_eliciting {
-            let sent_packet_info =
-                SentPacketInfo::new(in_flight, sent_bytes, s2n_quic_platform::time::now());
-            self.sent_packets.insert(packet_number, sent_packet_info);
+        let time_sent = time::now();
 
-            if in_flight {
-                self.time_of_last_ack_eliciting_packet = Some(sent_packet_info.time_sent);
-            }
+        if ack_eliciting {
+            let sent_packet_info = SentPacketInfo::new(in_flight, sent_bytes, time_sent);
+            self.sent_packets.insert(packet_number, sent_packet_info);
         }
 
         if in_flight {
+            if ack_eliciting {
+                self.time_of_last_ack_eliciting_packet = Some(time_sent);
+            }
             // TODO: self.congestion_controller.on_packet_sent_cc(sent_bytes)
             // TODO: self.loss_detection_timer.set()
         }
     }
 
-    /// When a server is blocked by anti-amplification limits, receiving a datagram unblocks it,
-    /// even if none of the packets in the datagram are successfully processed. In such a case,
-    /// the PTO timer will need to be re-armed
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#a.6
+    //# When a server is blocked by anti-amplification limits, receiving a datagram unblocks it,
+    //# even if none of the packets in the datagram are successfully processed. In such a case,
+    //# the PTO timer will need to be re-armed
     pub fn on_datagram_received(_datagram: DatagramInfo) {
         // If this datagram unblocks the server, arm the
         // PTO timer to avoid deadlock.
@@ -97,8 +112,9 @@ impl RecoveryManager {
         //          self.loss_detection_timer.set()
     }
 
-    /// When an ACK frame is received, it may newly acknowledge any number of packets.
-    pub fn on_ack_received<A: AckRanges>(&mut self, ack: Ack<A>) -> Result<(), TransportError> {
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#a.7
+    //# When an ACK frame is received, it may newly acknowledge any number of packets.
+    pub fn on_ack_received<A: AckRanges>(&mut self, ack: Ack<A>) {
         let largest_acked = self.pn_space.new_packet_number(ack.largest_acked());
 
         if let Some(largest_acked_packet) = self.largest_acked_packet {
@@ -112,7 +128,7 @@ impl RecoveryManager {
         let (largest_newly_acked, newly_acked_packets) = self.detect_and_remove_acked_packets(&ack);
         // Nothing to do if there are no newly acked packets.
         if newly_acked_packets.is_empty() {
-            return Ok(());
+            return;
         }
 
         let largest_newly_acked = largest_newly_acked
@@ -121,7 +137,7 @@ impl RecoveryManager {
         // If the largest acknowledged is newly acked and
         // at least one ack-eliciting was newly acked, update the RTT.
         if largest_newly_acked.0 == largest_acked {
-            let latest_rtt = s2n_quic_platform::time::now() - largest_newly_acked.1.time_sent;
+            let latest_rtt = time::now() - largest_newly_acked.1.time_sent;
             self.rtt_estimator.update_rtt(
                 Duration::from_micros(ack.ack_delay.as_u64()),
                 latest_rtt,
@@ -147,10 +163,10 @@ impl RecoveryManager {
             // TODO: pto_count = 0;
         }
         // TODO: self.loss_detection_timer.set()
-
-        Ok(())
     }
 
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#a.9
+    //# When the loss detection timer expires, the timer's mode determines the action to be performed.
     fn on_loss_detection_timeout(&mut self) {
         // earliest_loss_time = loss_detection_timer.get_loss_time_and_space();
         // if earliest_loss_time.is_some() {
@@ -201,9 +217,10 @@ impl RecoveryManager {
         (largest_newly_acked, newly_acked_packets)
     }
 
-    /// detect_and_remove_lost_packets is called every time an ACK is received or the time threshold
-    /// loss detection timer expires. This function operates on the sent_packets for that packet
-    /// number space and returns a list of packets newly detected as lost.
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#a.10
+    //# DetectAndRemoveLostPackets is called every time an ACK is received or the time threshold
+    //# loss detection timer expires. This function operates on the sent_packets for that packet
+    //# number space and returns a list of packets newly detected as lost.
     fn detect_and_remove_lost_packets(&mut self) -> Vec<PacketNumber> {
         let largest_acked_packet = &self
             .largest_acked_packet
@@ -220,7 +237,7 @@ impl RecoveryManager {
         let loss_delay = max(loss_delay, K_GRANULARITY);
 
         // Packets sent before this time are deemed lost.
-        let lost_send_time = s2n_quic_platform::time::now() - loss_delay;
+        let lost_send_time = time::now() - loss_delay;
 
         let mut sent_packets_to_remove = Vec::new();
 
