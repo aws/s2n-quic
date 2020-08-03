@@ -5,8 +5,10 @@
 
 extern crate alloc;
 
+#[macro_use]
+pub mod socket;
+
 pub mod buffer;
 pub mod io;
 pub mod message;
-pub mod socket;
 pub mod time;

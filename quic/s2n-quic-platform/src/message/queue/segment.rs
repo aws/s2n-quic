@@ -1,3 +1,5 @@
+use core::ops::Range;
+
 /// Maintains information for a single queue segment of messages.
 ///
 /// A segment is a subsection of the total capacity of messages
@@ -20,6 +22,12 @@ impl Segment {
         } else {
             Some(self.index)
         }
+    }
+
+    /// Returns the range of messages for the given segment
+    pub fn range(&self) -> Range<usize> {
+        let index = self.index;
+        index..(index + self.len)
     }
 
     /// Moves `count` number of messages from one segment to the other
