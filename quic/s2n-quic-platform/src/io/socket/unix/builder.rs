@@ -1,6 +1,7 @@
 use super::{udp::UdpSocket, RxQueue, Socket, TxQueue};
 use crate::buffer::Buffer as MessageBuffer;
 use net2::{unix::UnixUdpBuilderExt, UdpBuilder};
+use s2n_quic_core::inet::SocketAddress;
 use std::{
     io::Result as IOResult,
     net::{SocketAddr, ToSocketAddrs},
@@ -26,6 +27,7 @@ impl SocketBuilder<(), ()> {
         let addr = addr.next().expect("Invalid address");
 
         let socket = match addr {
+            SocketAddr::V4(_) if cfg!(feature = "ipv6") => UdpBuilder::new_v6()?,
             SocketAddr::V4(_) => UdpBuilder::new_v4()?,
             SocketAddr::V6(_) if cfg!(feature = "ipv6") => {
                 let socket = UdpBuilder::new_v6()?;
@@ -126,7 +128,10 @@ impl<Tx, Rx> SocketBuilder<Tx, Rx> {
 impl<Tx: MessageBuffer, Rx: MessageBuffer> SocketBuilder<Tx, Rx> {
     /// Create a Socket for the given builder
     pub fn build(self) -> IOResult<Socket<Tx, Rx>> {
-        let socket = self.socket.bind(self.addr)?;
+        let addr: SocketAddress = self.addr.into();
+        #[cfg(feature = "ipv6")]
+        let addr = addr.to_ipv6_mapped();
+        let socket = self.socket.bind(addr)?;
         let socket = UdpSocket::from_socket(socket)?;
 
         let tx_buffer = TxQueue::new(self.tx_buffer);

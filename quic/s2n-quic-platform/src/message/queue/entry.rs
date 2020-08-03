@@ -58,6 +58,12 @@ impl<'a, Msg: Message> Message for Entry<'a, Msg> {
         self.secondary.reset_remote_address();
     }
 
+    fn payload_ptr(&self) -> *const u8 {
+        debug_assert_eq!(self.primary.payload_ptr(), self.secondary.payload_ptr());
+
+        self.primary.payload_ptr()
+    }
+
     fn payload_ptr_mut(&mut self) -> *mut u8 {
         debug_assert_eq!(
             self.primary.payload_ptr_mut(),

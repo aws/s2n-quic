@@ -26,4 +26,5 @@ tokio = { version = "0.2", default-features = false, features = ["io-driver"], o
 libc = "0.2"
 
 [dev-dependencies]
+bolero = "0.5"
 s2n-quic-core = { version = "0.1.0", path = "../s2n-quic-core", features = ["testing"] }
