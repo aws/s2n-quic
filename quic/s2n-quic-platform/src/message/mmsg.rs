@@ -1,10 +1,28 @@
-use crate::message::{msg::Ring as MsgRing, Message};
+use crate::message::{msg::Ring as MsgRing, Message as MessageTrait};
 use alloc::vec::Vec;
-use core::mem::zeroed;
+use core::{fmt, mem::zeroed};
 use libc::{iovec, mmsghdr, sockaddr_in6};
-use s2n_quic_core::inet::{ExplicitCongestionNotification, SocketAddress};
+use s2n_quic_core::{
+    inet::{ExplicitCongestionNotification, SocketAddress},
+    io::{rx, tx},
+};
 
-impl Message for mmsghdr {
+#[repr(transparent)]
+pub struct Message(pub(crate) mmsghdr);
+
+impl_message_delegate!(Message, 0);
+
+impl fmt::Debug for Message {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("mmsghdr")
+            .field("ecn", &self.ecn())
+            .field("remote_address", &self.remote_address())
+            .field("payload", &self.payload())
+            .finish()
+    }
+}
+
+impl MessageTrait for mmsghdr {
     fn ecn(&self) -> ExplicitCongestionNotification {
         self.msg_hdr.ecn()
     }
@@ -35,6 +53,10 @@ impl Message for mmsghdr {
         self.msg_hdr.set_payload_len(len);
     }
 
+    fn payload_ptr(&self) -> *const u8 {
+        self.msg_hdr.payload_ptr()
+    }
+
     fn payload_ptr_mut(&mut self) -> *mut u8 {
         self.msg_hdr.payload_ptr_mut()
     }
@@ -46,7 +68,7 @@ impl Message for mmsghdr {
 }
 
 pub struct Ring<Payloads> {
-    messages: Vec<mmsghdr>,
+    messages: Vec<Message>,
 
     // this field holds references to allocated payloads, but is never read directly
     #[allow(dead_code)]
@@ -80,9 +102,9 @@ impl<Payloads: crate::buffer::Buffer> Ring<Payloads> {
             .map(|msg_hdr| unsafe {
                 let mut mmsghdr = zeroed::<mmsghdr>();
                 let payload_len = msg_hdr.payload_len();
-                mmsghdr.msg_hdr = msg_hdr;
+                mmsghdr.msg_hdr = msg_hdr.0;
                 mmsghdr.set_payload_len(payload_len);
-                mmsghdr
+                Message(mmsghdr)
             })
             .collect();
 
@@ -96,7 +118,7 @@ impl<Payloads: crate::buffer::Buffer> Ring<Payloads> {
 }
 
 impl<Payloads: crate::buffer::Buffer> super::Ring for Ring<Payloads> {
-    type Message = mmsghdr;
+    type Message = Message;
 
     fn len(&self) -> usize {
         self.payloads.len()
@@ -112,5 +134,55 @@ impl<Payloads: crate::buffer::Buffer> super::Ring for Ring<Payloads> {
 
     fn as_mut_slice(&mut self) -> &mut [Self::Message] {
         &mut self.messages[..]
+    }
+}
+
+impl tx::Entry for Message {
+    fn set<M: tx::Message>(&mut self, mut message: M) -> Result<usize, tx::Error> {
+        let payload = MessageTrait::payload_mut(self);
+
+        let len = message.write_payload(payload);
+
+        // don't send empty payloads
+        if len == 0 {
+            return Err(tx::Error::EmptyPayload);
+        }
+
+        unsafe {
+            debug_assert!(len <= payload.len());
+            let len = len.min(payload.len());
+            self.set_payload_len(len);
+        }
+        self.set_remote_address(&message.remote_address());
+
+        // TODO ecn
+
+        Ok(len)
+    }
+
+    fn payload(&self) -> &[u8] {
+        MessageTrait::payload(self)
+    }
+
+    fn payload_mut(&mut self) -> &mut [u8] {
+        MessageTrait::payload_mut(self)
+    }
+}
+
+impl rx::Entry for Message {
+    fn remote_address(&self) -> Option<SocketAddress> {
+        MessageTrait::remote_address(self)
+    }
+
+    fn ecn(&self) -> ExplicitCongestionNotification {
+        MessageTrait::ecn(self)
+    }
+
+    fn payload(&self) -> &[u8] {
+        MessageTrait::payload(self)
+    }
+
+    fn payload_mut(&mut self) -> &mut [u8] {
+        MessageTrait::payload_mut(self)
     }
 }

@@ -21,4 +21,5 @@ s2n-codec = { version = "0.1.0", path = "../../common/s2n-codec" }
 s2n-quic-core = { version = "0.1.0", path = "../s2n-quic-core" }
 
 [dev-dependencies]
-s2n-quic-core = { version = "0.1.0", path = "../s2n-quic-core", features = ["std"] }
+bolero = "0.5"
+s2n-quic-core = { version = "0.1.0", path = "../s2n-quic-core", features = ["testing"] }

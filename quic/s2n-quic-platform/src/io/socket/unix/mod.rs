@@ -155,6 +155,10 @@ mod tests {
 
         let mut server = bind(slot_count).unwrap();
         let server_addr: SocketAddress = server.local_addr().unwrap().into();
+
+        #[cfg(feature = "ipv6")]
+        let server_addr = server_addr.to_ipv6_mapped().into();
+
         let mut client = bind(slot_count).unwrap();
         let client_addr = client.local_addr().unwrap();
 
@@ -202,7 +206,7 @@ mod tests {
 
     #[test]
     fn ipv4_test() {
-        test_socket("0.0.0.0:0");
+        test_socket("127.0.0.1:0");
     }
 
     #[cfg(feature = "ipv6")]

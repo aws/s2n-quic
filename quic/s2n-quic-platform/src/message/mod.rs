@@ -1,3 +1,6 @@
+#[macro_use]
+mod macros;
+
 #[cfg(s2n_quic_platform_socket_mmsg)]
 pub mod mmsg;
 
@@ -7,7 +10,7 @@ pub mod msg;
 pub mod queue;
 pub mod simple;
 
-use libc::c_void;
+use core::ffi::c_void;
 use s2n_quic_core::inet::{ExplicitCongestionNotification, SocketAddress};
 
 /// An abstract message that can be sent and received on a network
@@ -43,9 +46,18 @@ pub trait Message {
     /// This should used in scenarios where the data pointers are the same.
     fn replicate_fields_from(&mut self, other: &Self);
 
-    /// Returns a mutable slice for the message payload
+    /// Returns a pointer for the message payload
+    fn payload_ptr(&self) -> *const u8;
+
+    /// Returns a mutable pointer for the message payload
     fn payload_ptr_mut(&mut self) -> *mut u8;
 
+    /// Returns a slice for the message payload
+    fn payload(&self) -> &[u8] {
+        unsafe { core::slice::from_raw_parts(self.payload_ptr(), self.payload_len()) }
+    }
+
+    /// Returns a mutable slice for the message payload
     fn payload_mut(&mut self) -> &mut [u8] {
         unsafe { core::slice::from_raw_parts_mut(self.payload_ptr_mut(), self.payload_len()) }
     }
