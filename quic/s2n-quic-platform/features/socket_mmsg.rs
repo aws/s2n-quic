@@ -10,6 +10,7 @@ fn main() {
 /// Try to resolve the required references from the linker
 ///
 /// The build will fail if they don't exist.
+#[cfg(all(unix, feature = "std"))]
 extern "C" {
     #[link_name = "sendmmsg"]
     static SENDMMSG: *const u8;
