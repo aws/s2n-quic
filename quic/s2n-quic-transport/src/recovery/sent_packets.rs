@@ -5,14 +5,18 @@ use alloc::collections::{
     btree_map::{Iter, Range},
     BTreeMap,
 };
-use core::ops::RangeInclusive;
-use s2n_quic_core::{packet::number::PacketNumber, time::Timestamp};
+use s2n_quic_core::{
+    packet::number::{PacketNumber, PacketNumberRange},
+    time::Timestamp,
+};
 
 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.1
 
 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.1.1
 #[derive(Clone, Debug, Default)]
 pub struct SentPackets {
+    // TODO: Investigate a more efficient mechanism for managing sent_packets
+    //       See https://github.com/awslabs/s2n-quic/issues/69
     sent_packets: BTreeMap<PacketNumber, SentPacketInfo>,
 }
 
@@ -28,11 +32,8 @@ impl SentPackets {
     }
 
     /// Constructs a double-ended iterator over a sub-range of packet numbers
-    pub fn range(
-        &self,
-        range: RangeInclusive<PacketNumber>,
-    ) -> Range<'_, PacketNumber, SentPacketInfo> {
-        self.sent_packets.range(range)
+    pub fn range(&self, range: PacketNumberRange) -> Range<'_, PacketNumber, SentPacketInfo> {
+        self.sent_packets.range(range.start()..=range.end())
     }
 
     /// Removes the `SentPacketInfo` associated with the given `packet_number`
@@ -71,7 +72,10 @@ impl SentPacketInfo {
 #[cfg(test)]
 mod test {
     use crate::recovery::{SentPacketInfo, SentPackets};
-    use s2n_quic_core::{packet::number::PacketNumberSpace, varint::VarInt};
+    use s2n_quic_core::{
+        packet::number::{PacketNumberRange, PacketNumberSpace},
+        varint::VarInt,
+    };
 
     #[test]
     fn insert_get_range() {
@@ -102,7 +106,7 @@ mod test {
         assert_eq!(sent_packets.get(packet_number_3).unwrap(), &sent_packet_3);
 
         for (&packet_number, &sent_packet_info) in
-            sent_packets.range(packet_number_1..=packet_number_3)
+            sent_packets.range(PacketNumberRange::new(packet_number_1, packet_number_3))
         {
             assert_eq!(sent_packets.get(packet_number).unwrap(), &sent_packet_info);
         }
@@ -161,7 +165,10 @@ mod test {
             PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u8(1));
         let packet_number_end =
             PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u8(2));
-        sent_packets.range(packet_number_start..=packet_number_end);
+        sent_packets.range(PacketNumberRange::new(
+            packet_number_start,
+            packet_number_end,
+        ));
     }
 
     #[test]

@@ -4,7 +4,7 @@
 use crate::recovery::{SentPacketInfo, SentPackets};
 use core::{cmp::max, time::Duration};
 use s2n_quic_core::{
-    frame::{ack::AckRanges, Ack},
+    frame::{ack::AckRanges, ack_elicitation::AckElicitation, Ack},
     inet::DatagramInfo,
     packet::number::{PacketNumber, PacketNumberRange, PacketNumberSpace},
     recovery::RTTEstimator,
@@ -40,6 +40,7 @@ pub struct RecoveryManager {
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#a.3
     //# An association of packet numbers in a packet number space to information about them.
+    //  These are packets that are pending acknowledgement.
     sent_packets: SentPackets,
 }
 
@@ -81,19 +82,20 @@ impl RecoveryManager {
     pub fn on_packet_sent(
         &mut self,
         packet_number: PacketNumber,
-        ack_eliciting: bool,
+        ack_elicitation: AckElicitation,
         in_flight: bool,
         sent_bytes: u64,
     ) {
         let time_sent = time::now();
 
-        if ack_eliciting {
+        if ack_elicitation.is_ack_eliciting() {
             let sent_packet_info = SentPacketInfo::new(in_flight, sent_bytes, time_sent);
             self.sent_packets.insert(packet_number, sent_packet_info);
         }
 
+        #[allow(clippy::collapsible_if)]
         if in_flight {
-            if ack_eliciting {
+            if ack_elicitation.is_ack_eliciting() {
                 self.time_of_last_ack_eliciting_packet = Some(time_sent);
             }
             // TODO: self.congestion_controller.on_packet_sent_cc(sent_bytes)
@@ -114,21 +116,23 @@ impl RecoveryManager {
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#a.7
     //# When an ACK frame is received, it may newly acknowledge any number of packets.
-    pub fn on_ack_received<A: AckRanges>(&mut self, ack: Ack<A>) {
-        let largest_acked = self.pn_space.new_packet_number(ack.largest_acked());
-
+    pub fn on_ack_received(
+        &mut self,
+        acked_packets: PacketNumberRange,
+        largest_acked: PacketNumber,
+        ack_delay: Duration,
+    ) -> bool {
         if let Some(largest_acked_packet) = self.largest_acked_packet {
             self.largest_acked_packet = Some(max(largest_acked_packet, largest_acked));
         } else {
             self.largest_acked_packet = Some(largest_acked);
         }
 
-        // detect_and_remove_acked_packets finds packets that are newly
-        // acknowledged and removes them from sent_packets.
-        let (largest_newly_acked, newly_acked_packets) = self.detect_and_remove_acked_packets(&ack);
+        let largest_newly_acked = self.sent_packets.range(acked_packets).last();
+
         // Nothing to do if there are no newly acked packets.
-        if newly_acked_packets.is_empty() {
-            return;
+        if largest_newly_acked.is_none() {
+            return false;
         }
 
         let largest_newly_acked = largest_newly_acked
@@ -136,33 +140,53 @@ impl RecoveryManager {
 
         // If the largest acknowledged is newly acked and
         // at least one ack-eliciting was newly acked, update the RTT.
-        if largest_newly_acked.0 == largest_acked {
+        if *largest_newly_acked.0 == largest_acked {
             let latest_rtt = time::now() - largest_newly_acked.1.time_sent;
-            self.rtt_estimator.update_rtt(
-                Duration::from_micros(ack.ack_delay.as_u64()),
-                latest_rtt,
-                largest_newly_acked.0.space(),
-            );
+            self.rtt_estimator
+                .update_rtt(ack_delay, latest_rtt, largest_newly_acked.0.space());
         };
 
-        // Process ECN information if present.
-        if ack.ecn_counts.is_some() {
-            // TODO: self.congestion_controller.process_ecn(ack, pn_space)
+        // TODO: self.congestion_controller.on_packets_acked(self.sent_packets.range(acked_packets));
+
+        // TODO: Investigate a more efficient mechanism for managing sent_packets
+        //       See https://github.com/awslabs/s2n-quic/issues/69
+        let acked_packets_to_remove: Vec<PacketNumber> = self
+            .sent_packets
+            .range(acked_packets)
+            .map(|p| p.0)
+            .cloned()
+            .collect();
+
+        for packet_number in acked_packets_to_remove {
+            self.sent_packets.remove(packet_number);
         }
 
-        let lost_packets = self.detect_and_remove_lost_packets();
-        if !lost_packets.is_empty() {
-            // TODO: self.congestion_controller.on_packets_lost(lost_packets)
-        }
-        // TODO: self.congestion_controller.on_packets_acked(newly_acked_packets)
+        true
+    }
 
-        // Reset pto_count unless the client is unsure if
-        // the server has validated the client's address.
-        if self.peer_completed_address_validation() {
+    /// Finishes processing an ack frame. This should be called after on_ack_received has
+    /// been called for each range of packets being acknowledged in the ack frame. `newly_acked`
+    /// should be set to true if any call to on_ack_received newly acknowledged packets
+    pub fn on_ack_received_finish<A: AckRanges>(&mut self, ack: Ack<A>, newly_acked: bool) {
+        if newly_acked {
+            // Process ECN information if present.
+            if ack.ecn_counts.is_some() {
+                // TODO: self.congestion_controller.process_ecn(ack, pn_space)
+            }
+
+            let lost_packets = self.detect_and_remove_lost_packets();
+            if !lost_packets.is_empty() {
+                // TODO: self.congestion_controller.on_packets_lost(lost_packets)
+            }
+
+            // Reset pto_count unless the client is unsure if
+            // the server has validated the client's address.
+            if self.peer_completed_address_validation() {
+                // TODO: self.loss_detection_timer.set()
+                // TODO: pto_count = 0;
+            }
             // TODO: self.loss_detection_timer.set()
-            // TODO: pto_count = 0;
         }
-        // TODO: self.loss_detection_timer.set()
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#a.9
@@ -191,32 +215,6 @@ impl RecoveryManager {
         // self.lost_detection_timer.set();
     }
 
-    // Finds packets that are newly acknowledged and removes them from sent_packets.
-    fn detect_and_remove_acked_packets<A: AckRanges>(
-        &mut self,
-        ack: &Ack<A>,
-    ) -> (Option<SentPacket>, Vec<SentPacket>) {
-        let mut newly_acked_packets = Vec::new();
-        let mut largest_newly_acked: Option<SentPacket> = None;
-
-        for ack_range in ack.ack_ranges() {
-            let start = self.pn_space.new_packet_number(*ack_range.start());
-            let end = self.pn_space.new_packet_number(*ack_range.end());
-
-            for acked_packet in PacketNumberRange::new(start, end) {
-                if let Some(sent_packet_info) = self.sent_packets.remove(acked_packet) {
-                    newly_acked_packets.push((acked_packet, sent_packet_info));
-
-                    if largest_newly_acked.map_or(true, |a| a.0 < acked_packet) {
-                        largest_newly_acked = Some((acked_packet, sent_packet_info));
-                    }
-                }
-            }
-        }
-
-        (largest_newly_acked, newly_acked_packets)
-    }
-
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#a.10
     //# DetectAndRemoveLostPackets is called every time an ACK is received or the time threshold
     //# loss detection timer expires. This function operates on the sent_packets for that packet
@@ -239,6 +237,8 @@ impl RecoveryManager {
         // Packets sent before this time are deemed lost.
         let lost_send_time = time::now() - loss_delay;
 
+        // TODO: Investigate a more efficient mechanism for managing sent_packets
+        //       See https://github.com/awslabs/s2n-quic/issues/69
         let mut sent_packets_to_remove = Vec::new();
 
         for (unacked_packet_number, unacked_sent_info) in self.sent_packets.iter() {
