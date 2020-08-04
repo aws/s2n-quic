@@ -77,6 +77,7 @@ impl RecoveryManager {
         }
     }
 
+    #[allow(clippy::collapsible_if)]
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.5
     //# After a packet is sent, information about the packet is stored.
     pub fn on_packet_sent(
@@ -93,7 +94,6 @@ impl RecoveryManager {
             self.sent_packets.insert(packet_number, sent_packet_info);
         }
 
-        #[allow(clippy::collapsible_if)]
         if in_flight {
             if ack_elicitation.is_ack_eliciting() {
                 self.time_of_last_ack_eliciting_packet = Some(time_sent);
