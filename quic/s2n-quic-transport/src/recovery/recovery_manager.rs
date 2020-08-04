@@ -19,41 +19,41 @@ pub struct RecoveryManager {
     // A round trip time estimator used for keeping track of estimated RTT
     rtt_estimator: RTTEstimator,
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#a.3
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.3
     //# The maximum amount of time by which the receiver intends to delay acknowledgments for packets
     //# in the ApplicationData packet number space. The actual ack_delay in a received ACK frame may
     //# be larger due to late timers, reordering, or lost ACK frames.
     max_ack_delay: Duration,
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#a.3
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.3
     //# The time the most recent ack-eliciting packet was sent.
     time_of_last_ack_eliciting_packet: Option<Timestamp>,
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#a.3
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.3
     //# The largest packet number acknowledged in the packet number space so far.
     largest_acked_packet: Option<PacketNumber>,
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#a.3
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.3
     //# The time at which the next packet in that packet number space will be considered lost based
     //# on exceeding the reordering window in time.
     loss_time: Option<Timestamp>,
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#a.3
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.3
     //# An association of packet numbers in a packet number space to information about them.
     //  These are packets that are pending acknowledgement.
     sent_packets: SentPackets,
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#a.2
+//= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.2
 //# Maximum reordering in packets before packet threshold loss detection considers a packet lost.
 const K_PACKET_THRESHOLD: u8 = 3;
 
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#a.2
+//= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.2
 //# Maximum reordering in time before time threshold loss detection considers a packet lost.
 //# Specified as an RTT multiplier.
 const K_TIME_THRESHOLD: f32 = 9.0 / 8.0;
 
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#a.2
+//= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.2
 //# Timer granularity.
 const K_GRANULARITY: Duration = Duration::from_millis(1);
 
@@ -77,7 +77,7 @@ impl RecoveryManager {
         }
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#a.6
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.5
     //# After a packet is sent, information about the packet is stored.
     pub fn on_packet_sent(
         &mut self,
@@ -103,7 +103,7 @@ impl RecoveryManager {
         }
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#a.6
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.6
     //# When a server is blocked by anti-amplification limits, receiving a datagram unblocks it,
     //# even if none of the packets in the datagram are successfully processed. In such a case,
     //# the PTO timer will need to be re-armed
@@ -114,7 +114,7 @@ impl RecoveryManager {
         //          self.loss_detection_timer.set()
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#a.7
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.7
     //# When an ACK frame is received, it may newly acknowledge any number of packets.
     pub fn on_ack_received(
         &mut self,
@@ -189,7 +189,7 @@ impl RecoveryManager {
         }
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#a.9
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.9
     //# When the loss detection timer expires, the timer's mode determines the action to be performed.
     fn on_loss_detection_timeout(&mut self) {
         // earliest_loss_time = loss_detection_timer.get_loss_time_and_space();
@@ -215,7 +215,7 @@ impl RecoveryManager {
         // self.lost_detection_timer.set();
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#a.10
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.10
     //# DetectAndRemoveLostPackets is called every time an ACK is received or the time threshold
     //# loss detection timer expires. This function operates on the sent_packets for that packet
     //# number space and returns a list of packets newly detected as lost.
