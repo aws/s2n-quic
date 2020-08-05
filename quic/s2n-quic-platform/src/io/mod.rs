@@ -23,11 +23,3 @@ pub mod default {
         }
     }
 }
-
-// TODO everything after this is deprecated - remove after not used.
-
-pub mod rx;
-pub mod tx;
-
-#[cfg(any(feature = "std", test))]
-pub mod socket;

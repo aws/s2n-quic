@@ -1,5 +1,8 @@
 use crate::buffer::{Buffer, SegmentBuffer};
-use core::ops::{Index, IndexMut};
+use core::{
+    fmt,
+    ops::{Index, IndexMut},
+};
 
 // TODO decide on better defaults
 const DEFAULT_MESSAGE_COUNT: usize = 4096;
@@ -25,6 +28,15 @@ impl Default for VecBuffer {
         } else {
             Self::new(DEFAULT_MESSAGE_COUNT, DEFAULT_MTU)
         }
+    }
+}
+
+impl fmt::Debug for VecBuffer {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("VecBuffer")
+            .field("mtu", &self.mtu())
+            .field("message_count", &self.len())
+            .finish()
     }
 }
 

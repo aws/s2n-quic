@@ -2,12 +2,16 @@ use crate::{
     connection::{ConnectionConfig, SharedConnectionState},
     contexts::ConnectionContext,
 };
+use core::time::Duration;
 use s2n_codec::{Encoder, EncoderBuffer};
 use s2n_quic_core::{
-    connection::ConnectionId, endpoint::EndpointType, packet::encoding::PacketEncodingError,
+    connection::ConnectionId,
+    endpoint::EndpointType,
+    inet::{ExplicitCongestionNotification, SocketAddress},
+    io::tx,
+    packet::encoding::PacketEncodingError,
     time::Timestamp,
 };
-use s2n_quic_platform::io::tx::TxPayload;
 
 #[derive(Clone, Copy, Debug)]
 pub struct ConnectionTransmissionContext {
@@ -16,6 +20,8 @@ pub struct ConnectionTransmissionContext {
     pub destination_connection_id: ConnectionId,
     pub timestamp: Timestamp,
     pub local_endpoint_type: EndpointType,
+    pub remote_address: SocketAddress,
+    pub ecn: ExplicitCongestionNotification,
 }
 
 impl ConnectionContext for ConnectionTransmissionContext {
@@ -33,17 +39,35 @@ pub struct ConnectionTransmission<'a, ConnectionConfigType: ConnectionConfig> {
     pub shared_state: &'a mut SharedConnectionState<ConnectionConfigType>,
 }
 
-impl<'a, ConnectionConfigType: ConnectionConfig> TxPayload
+impl<'a, ConnectionConfigType: ConnectionConfig> tx::Message
     for ConnectionTransmission<'a, ConnectionConfigType>
 {
-    fn write(self, buffer: &mut [u8]) -> usize {
+    fn remote_address(&mut self) -> SocketAddress {
+        self.context.remote_address
+    }
+
+    fn ecn(&mut self) -> ExplicitCongestionNotification {
+        self.context.ecn
+    }
+
+    fn delay(&mut self) -> Duration {
+        // TODO return delay from pacer
+        Default::default()
+    }
+
+    fn ipv6_flow_label(&mut self) -> u32 {
+        // TODO compute flow label from connection id
+        0
+    }
+
+    fn write_payload(&mut self, buffer: &mut [u8]) -> usize {
         // TODO trim off based on path MTU
         // TODO trim off based on congestion controller
 
         let encoder = EncoderBuffer::new(buffer);
         let initial_capacity = encoder.capacity();
 
-        let shared_state = self.shared_state;
+        let shared_state = &mut self.shared_state;
         let space_manager = &mut shared_state.space_manager;
 
         let encoder = if let Some(space) = space_manager.initial_mut() {

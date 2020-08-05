@@ -11,6 +11,7 @@ impl_socket!(Inner, Builder);
 impl_socket_deref!(MioSocket, |self| self.0.get_ref(), |self| self.0.get_mut());
 impl_socket_raw_delegate!(impl[] Socket, |self| self.0.get_ref());
 impl_socket_mio_delegate!(impl[] Socket, |self| self.0.get_ref());
+impl_socket_debug!(impl[] Socket, |self| &self.0.get_ref().local_addr().ok());
 
 impl Socket {
     pub fn try_clone(&self) -> io::Result<Self> {
@@ -56,8 +57,6 @@ impl Builder {
 
 #[cfg(feature = "futures")]
 pub(crate) mod sync {
-    #![allow(dead_code)] // TODO remove once platform io changes are merged
-
     use super::Socket;
     use core::ops::Deref;
     use futures::future::poll_fn;
@@ -79,8 +78,6 @@ pub(crate) mod sync {
 
 #[cfg(feature = "futures")]
 pub(crate) mod poll {
-    #![allow(dead_code)] // TODO remove once platform io changes are merged
-
     use super::Socket;
     use core::{
         ops::Deref,

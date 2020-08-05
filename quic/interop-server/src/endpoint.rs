@@ -8,12 +8,10 @@ use core::{
 };
 use futures::{select, FutureExt};
 use s2n_quic_core::{
-    connection::ConnectionId, endpoint::EndpointType, stream::StreamType, transport::parameters,
+    connection::ConnectionId, endpoint::EndpointType, io::tx::Tx as TxTrait, stream::StreamType,
+    transport::parameters,
 };
-use s2n_quic_platform::{
-    io::{rx::RxQueue, tx::TxQueue},
-    time,
-};
+use s2n_quic_platform::time;
 use s2n_quic_rustls::{rustls, RustlsServerEndpoint, RustlsServerSession};
 use s2n_quic_transport::{
     acceptor::Acceptor,
@@ -154,13 +152,7 @@ impl Endpoint {
                         // We received packets on the UDP socket
                         let received_packets = receive_result?;
                         if received_packets > 0 {
-                            let now = time::now();
-
-                            while let Some((info, payload)) = socket.pop(now) {
-                                endpoint.receive_datagram(&info, payload);
-
-                                // TODO notify of new connections
-                            }
+                            endpoint.receive(&mut socket.rx, time::now());
                         }
                     }
                     _ = tokio::time::delay_for(max_sleep_time).fuse() => {
@@ -173,11 +165,11 @@ impl Endpoint {
 
                 endpoint.handle_timers(time::now());
 
-                endpoint.transmit(&mut socket, time::now());
+                endpoint.transmit(&mut socket.tx, time::now());
 
-                // TODO: This will wait until all messages had been received, but
+                // TODO: This will wait until all messages had been transmitted, but
                 // we should receive and handle user calls in parallel.
-                while !TxQueue::is_empty(&socket) {
+                while !socket.tx.is_empty() {
                     socket.sync_tx().await?;
                 }
             }
@@ -202,7 +194,7 @@ impl<'a> Future for WaitForWakeupFuture<'a> {
         // In every poll iteration we check whether a wakeup occurred and try to handle it
         // If a wakeup occurred we return `Ready` and resolve the `Future`. Otherwise we continue
         // to wait for wakeups (as well as other events like timeouts).
-        self.endpoint.poll_pending_wakeups(cx)
+        self.endpoint.poll_pending_wakeups(cx, time::now())
     }
 }
 
