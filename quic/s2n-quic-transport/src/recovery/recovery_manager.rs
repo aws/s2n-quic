@@ -4,7 +4,7 @@
 use crate::recovery::{SentPacketInfo, SentPackets};
 use core::{cmp::max, time::Duration};
 use s2n_quic_core::{
-    frame::{ack::AckRanges, ack_elicitation::AckElicitation, Ack},
+    frame::{ack::ECNCounts, ack_elicitation::AckElicitation},
     inet::DatagramInfo,
     packet::number::{PacketNumber, PacketNumberRange, PacketNumberSpace},
     recovery::RTTEstimator,
@@ -127,6 +127,7 @@ impl RecoveryManager {
         acked_packets: PacketNumberRange,
         largest_acked: PacketNumber,
         ack_delay: Duration,
+        ecn_counts: Option<ECNCounts>,
     ) {
         let largest_newly_acked = self.sent_packets.range(acked_packets).last();
 
@@ -153,6 +154,11 @@ impl RecoveryManager {
             let latest_rtt = time::now() - largest_newly_acked.1.time_sent;
             self.rtt_estimator
                 .update_rtt(ack_delay, latest_rtt, largest_newly_acked.0.space());
+
+            // Process ECN information if present.
+            if ecn_counts.is_some() {
+                // TODO: self.congestion_controller.process_ecn(ecn_counts, largest_newly_acked, pn_space)
+            }
         };
 
         // TODO: self.congestion_controller.on_packets_acked(self.sent_packets.range(acked_packets));
@@ -173,13 +179,8 @@ impl RecoveryManager {
 
     /// Finishes processing an ack frame. This should be called after on_ack_received has
     /// been called for each range of packets being acknowledged in the ack frame.
-    pub fn on_ack_received_finish<A: AckRanges>(&mut self, ack: Ack<A>) {
+    pub fn on_ack_received_finish(&mut self) {
         if self.newly_acked {
-            // Process ECN information if present.
-            if ack.ecn_counts.is_some() {
-                // TODO: self.congestion_controller.process_ecn(ack, pn_space)
-            }
-
             let lost_packets = self.detect_and_remove_lost_packets();
             if !lost_packets.is_empty() {
                 // TODO: self.congestion_controller.on_packets_lost(lost_packets)
@@ -188,7 +189,6 @@ impl RecoveryManager {
             // Reset pto_count unless the client is unsure if
             // the server has validated the client's address.
             if self.peer_completed_address_validation() {
-                // TODO: self.loss_detection_timer.set()
                 // TODO: pto_count = 0;
             }
             // TODO: self.loss_detection_timer.set()
@@ -350,6 +350,7 @@ mod test {
     fn on_ack_received() {
         let clock = Arc::new(testing::MockClock::new());
         testing::set_local_clock(clock.clone());
+        clock.adjust_by(Duration::from_secs(10));
         let pn_space = PacketNumberSpace::ApplicationData;
         let rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
 
@@ -378,6 +379,7 @@ mod test {
             acked_packets,
             pn_space.new_packet_number(VarInt::from_u8(9)),
             Duration::from_millis(10),
+            None,
         );
 
         // The largest packet wasn't part of this call so the RTT is not updated
@@ -403,6 +405,7 @@ mod test {
             ),
             pn_space.new_packet_number(VarInt::from_u8(9)),
             Duration::from_millis(10),
+            None,
         );
 
         let acked_packets = PacketNumberRange::new(
@@ -414,6 +417,7 @@ mod test {
             acked_packets,
             pn_space.new_packet_number(VarInt::from_u8(9)),
             Duration::from_millis(10),
+            None,
         );
 
         // Now the largest packet number has been acked so the RTT is updated
@@ -421,5 +425,87 @@ mod test {
             recovery_manager.rtt_estimator.latest_rtt(),
             Duration::from_millis(500)
         );
+
+        assert!(recovery_manager.newly_acked);
+        recovery_manager.on_ack_received_finish();
+        assert!(!recovery_manager.newly_acked);
+    }
+
+    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.10")]
+    #[test]
+    fn detect_and_remove_lost_packets() {
+        let clock = Arc::new(testing::MockClock::new());
+        testing::set_local_clock(clock.clone());
+        let pn_space = PacketNumberSpace::ApplicationData;
+        let rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
+
+        let mut recovery_manager =
+            RecoveryManager::new(pn_space, rtt_estimator, Duration::from_millis(100));
+
+        recovery_manager.largest_acked_packet =
+            Some(pn_space.new_packet_number(VarInt::from_u8(10)));
+
+        // Send a packet that was sent too long ago (lost)
+        let old_packet_time_sent = pn_space.new_packet_number(VarInt::from_u8(9));
+        recovery_manager.on_packet_sent(old_packet_time_sent, AckElicitation::Eliciting, true, 1);
+
+        clock.adjust_by(Duration::from_secs(10));
+
+        //Send a packet with a packet number K_PACKET_THRESHOLD away from the largest (lost)
+        let old_packet_packet_number =
+            pn_space.new_packet_number(VarInt::from_u8(10 - K_PACKET_THRESHOLD));
+        recovery_manager.on_packet_sent(
+            old_packet_packet_number,
+            AckElicitation::Eliciting,
+            true,
+            1,
+        );
+
+        // Send a packet larger than the largest acked (not lost)
+        let larger_than_largest = recovery_manager
+            .largest_acked_packet
+            .unwrap()
+            .next()
+            .unwrap();
+        recovery_manager.on_packet_sent(larger_than_largest, AckElicitation::Eliciting, true, 1);
+
+        // Send a packet that is less than the largest acked but not lost
+        let not_lost = pn_space.new_packet_number(VarInt::from_u8(8));
+        recovery_manager.on_packet_sent(not_lost, AckElicitation::Eliciting, true, 1);
+
+        recovery_manager.rtt_estimator.update_rtt(
+            Duration::from_millis(10),
+            Duration::from_millis(150),
+            pn_space,
+        );
+
+        let lost_packets = recovery_manager.detect_and_remove_lost_packets();
+        let sent_packets = &recovery_manager.sent_packets;
+        assert!(lost_packets.contains(&old_packet_time_sent));
+        assert!(sent_packets.get(old_packet_time_sent).is_none());
+
+        assert!(lost_packets.contains(&old_packet_packet_number));
+        assert!(sent_packets.get(old_packet_packet_number).is_none());
+
+        assert!(!lost_packets.contains(&larger_than_largest));
+        assert!(sent_packets.get(larger_than_largest).is_some());
+
+        assert!(!lost_packets.contains(&not_lost));
+        assert!(sent_packets.get(not_lost).is_some());
+
+        let expected_loss_time = sent_packets.get(not_lost).unwrap().time_sent
+            + recovery_manager
+                .rtt_estimator
+                .latest_rtt()
+                .mul_f32(K_TIME_THRESHOLD);
+        assert!(recovery_manager.loss_time.is_some());
+        assert_eq!(expected_loss_time, recovery_manager.loss_time.unwrap());
+
+        // Send another not lost packet to confirm the lost time is not changed
+        clock.adjust_by(Duration::from_millis(10));
+        let not_lost = pn_space.new_packet_number(VarInt::from_u8(9));
+        recovery_manager.on_packet_sent(not_lost, AckElicitation::Eliciting, true, 1);
+        assert!(recovery_manager.detect_and_remove_lost_packets().is_empty());
+        assert_eq!(expected_loss_time, recovery_manager.loss_time.unwrap());
     }
 }
