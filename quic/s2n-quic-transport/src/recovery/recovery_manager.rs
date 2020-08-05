@@ -42,6 +42,11 @@ pub struct RecoveryManager {
     //# An association of packet numbers in a packet number space to information about them.
     //  These are packets that are pending acknowledgement.
     sent_packets: SentPackets,
+
+    // True if calls to `on_ack_received` resulted in new packets being acknowledged. This is used
+    // by `on_ack_received_finish` to determine what additional actions to take after processing an
+    // ack frame. Calling `on_ack_received_finish` resets this to false.
+    newly_acked: bool,
 }
 
 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.2
@@ -74,6 +79,7 @@ impl RecoveryManager {
             largest_acked_packet: None,
             loss_time: None,
             sent_packets: SentPackets::default(),
+            newly_acked: false,
         }
     }
 
@@ -121,7 +127,7 @@ impl RecoveryManager {
         acked_packets: PacketNumberRange,
         largest_acked: PacketNumber,
         ack_delay: Duration,
-    ) -> bool {
+    ) {
         if let Some(largest_acked_packet) = self.largest_acked_packet {
             self.largest_acked_packet = Some(max(largest_acked_packet, largest_acked));
         } else {
@@ -132,8 +138,11 @@ impl RecoveryManager {
 
         // Nothing to do if there are no newly acked packets.
         if largest_newly_acked.is_none() {
-            return false;
+            return;
         }
+
+        // There are newly acked packets, so set new_acked to true for use in on_ack_received_finish
+        self.newly_acked = true;
 
         let largest_newly_acked = largest_newly_acked
             .expect("there must be at least one newly acked packet at this point");
@@ -160,15 +169,12 @@ impl RecoveryManager {
         for packet_number in acked_packets_to_remove {
             self.sent_packets.remove(packet_number);
         }
-
-        true
     }
 
     /// Finishes processing an ack frame. This should be called after on_ack_received has
-    /// been called for each range of packets being acknowledged in the ack frame. `newly_acked`
-    /// should be set to true if any call to on_ack_received newly acknowledged packets
-    pub fn on_ack_received_finish<A: AckRanges>(&mut self, ack: Ack<A>, newly_acked: bool) {
-        if newly_acked {
+    /// been called for each range of packets being acknowledged in the ack frame.
+    pub fn on_ack_received_finish<A: AckRanges>(&mut self, ack: Ack<A>) {
+        if self.newly_acked {
             // Process ECN information if present.
             if ack.ecn_counts.is_some() {
                 // TODO: self.congestion_controller.process_ecn(ack, pn_space)
@@ -186,6 +192,8 @@ impl RecoveryManager {
                 // TODO: pto_count = 0;
             }
             // TODO: self.loss_detection_timer.set()
+
+            self.newly_acked = false;
         }
     }
 
