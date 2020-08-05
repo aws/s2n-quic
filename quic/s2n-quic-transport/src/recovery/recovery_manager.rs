@@ -128,12 +128,6 @@ impl RecoveryManager {
         largest_acked: PacketNumber,
         ack_delay: Duration,
     ) {
-        if let Some(largest_acked_packet) = self.largest_acked_packet {
-            self.largest_acked_packet = Some(max(largest_acked_packet, largest_acked));
-        } else {
-            self.largest_acked_packet = Some(largest_acked);
-        }
-
         let largest_newly_acked = self.sent_packets.range(acked_packets).last();
 
         // Nothing to do if there are no newly acked packets.
@@ -146,6 +140,12 @@ impl RecoveryManager {
 
         let largest_newly_acked = largest_newly_acked
             .expect("there must be at least one newly acked packet at this point");
+
+        if let Some(largest_acked_packet) = self.largest_acked_packet {
+            self.largest_acked_packet = Some(max(largest_acked_packet, *largest_newly_acked.0));
+        } else {
+            self.largest_acked_packet = Some(*largest_newly_acked.0);
+        }
 
         // If the largest acknowledged is newly acked and
         // at least one ack-eliciting was newly acked, update the RTT.
@@ -293,5 +293,133 @@ impl RecoveryManager {
         // return has received Handshake ACK ||
         //     has received 1-RTT ACK ||
         //     has received HANDSHAKE_DONE
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use core::time::Duration;
+    use s2n_quic_core::{time::Clock, varint::VarInt};
+    use s2n_quic_platform::time::testing;
+    use std::sync::Arc;
+
+    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.5")]
+    #[test]
+    fn on_packet_sent() {
+        let clock = Arc::new(testing::MockClock::new());
+        testing::set_local_clock(clock.clone());
+        let pn_space = PacketNumberSpace::ApplicationData;
+        let rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
+
+        let mut recovery_manager =
+            RecoveryManager::new(pn_space, rtt_estimator, Duration::from_millis(100));
+
+        for i in 1..=10 {
+            let sent_packet = pn_space.new_packet_number(VarInt::from_u8(i));
+            let ack_elicitation = {
+                if i % 2 == 0 {
+                    AckElicitation::Eliciting
+                } else {
+                    AckElicitation::NonEliciting
+                }
+            };
+            let in_flight = { i % 3 == 0 };
+            let sent_bytes = (2 * i) as u64;
+
+            recovery_manager.on_packet_sent(sent_packet, ack_elicitation, in_flight, sent_bytes);
+
+            if ack_elicitation == AckElicitation::Eliciting {
+                assert!(recovery_manager.sent_packets.get(sent_packet).is_some());
+                let actual_sent_packet = recovery_manager.sent_packets.get(sent_packet).unwrap();
+                assert_eq!(actual_sent_packet.sent_bytes, sent_bytes);
+                assert_eq!(actual_sent_packet.in_flight, in_flight);
+                assert_eq!(actual_sent_packet.time_sent, clock.get_time())
+            } else {
+                assert!(recovery_manager.sent_packets.get(sent_packet).is_none());
+            }
+
+            clock.adjust_by(Duration::from_millis(10));
+        }
+
+        assert_eq!(recovery_manager.sent_packets.iter().count(), 5);
+    }
+
+    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.7")]
+    #[test]
+    fn on_ack_received() {
+        let clock = Arc::new(testing::MockClock::new());
+        testing::set_local_clock(clock.clone());
+        let pn_space = PacketNumberSpace::ApplicationData;
+        let rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
+
+        let mut recovery_manager =
+            RecoveryManager::new(pn_space, rtt_estimator, Duration::from_millis(100));
+
+        let packets = PacketNumberRange::new(
+            pn_space.new_packet_number(VarInt::from_u8(1)),
+            pn_space.new_packet_number(VarInt::from_u8(10)),
+        );
+
+        for packet in packets {
+            recovery_manager.on_packet_sent(packet, AckElicitation::Eliciting, true, 128);
+        }
+
+        assert_eq!(recovery_manager.sent_packets.iter().count(), 10);
+
+        clock.adjust_by(Duration::from_millis(500));
+
+        let acked_packets = PacketNumberRange::new(
+            pn_space.new_packet_number(VarInt::from_u8(4)),
+            pn_space.new_packet_number(VarInt::from_u8(7)),
+        );
+
+        recovery_manager.on_ack_received(
+            acked_packets,
+            pn_space.new_packet_number(VarInt::from_u8(9)),
+            Duration::from_millis(10),
+        );
+
+        // The largest packet wasn't part of this call so the RTT is not updated
+        assert_eq!(
+            recovery_manager.rtt_estimator.latest_rtt(),
+            Duration::from_millis(0)
+        );
+
+        assert_eq!(recovery_manager.sent_packets.iter().count(), 6);
+        for packet in acked_packets {
+            assert!(recovery_manager.sent_packets.get(packet).is_none());
+        }
+        assert_eq!(
+            recovery_manager.largest_acked_packet.unwrap(),
+            acked_packets.end()
+        );
+
+        // Acknowledging already acked packets does nothing
+        recovery_manager.on_ack_received(
+            PacketNumberRange::new(
+                pn_space.new_packet_number(VarInt::from_u8(4)),
+                pn_space.new_packet_number(VarInt::from_u8(7)),
+            ),
+            pn_space.new_packet_number(VarInt::from_u8(9)),
+            Duration::from_millis(10),
+        );
+
+        let acked_packets = PacketNumberRange::new(
+            pn_space.new_packet_number(VarInt::from_u8(8)),
+            pn_space.new_packet_number(VarInt::from_u8(9)),
+        );
+
+        recovery_manager.on_ack_received(
+            acked_packets,
+            pn_space.new_packet_number(VarInt::from_u8(9)),
+            Duration::from_millis(10),
+        );
+
+        // Now the largest packet number has been acked so the RTT is updated
+        assert_eq!(
+            recovery_manager.rtt_estimator.latest_rtt(),
+            Duration::from_millis(500)
+        );
     }
 }
