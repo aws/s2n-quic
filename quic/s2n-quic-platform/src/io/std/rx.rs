@@ -44,6 +44,12 @@ impl<'a, Buffer: buffer::Buffer, Socket: socket::Simple<Error = io::Error>> rx::
                 Ok((payload_len, Some(remote_address))) => {
                     entry.set_remote_address(&remote_address);
                     unsafe {
+                        // Safety: The payload_len should not be bigger than the number of
+                        // allocated bytes.
+
+                        debug_assert!(payload_len < entry.payload_len());
+                        let payload_len = payload_len.min(entry.payload_len());
+
                         entry.set_payload_len(payload_len);
                     }
                     count += 1;
@@ -53,6 +59,7 @@ impl<'a, Buffer: buffer::Buffer, Socket: socket::Simple<Error = io::Error>> rx::
                     if count > 0 && err.kind() == io::ErrorKind::WouldBlock {
                         break;
                     } else {
+                        free.finish(count);
                         return Err(err);
                     }
                 }

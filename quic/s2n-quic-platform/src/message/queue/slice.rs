@@ -36,15 +36,36 @@ impl<'a, Message: message::Message, B: Behavior> Slice<'a, Message, B> {
             "cannot finish more messages than available"
         );
 
+        let (start, end, overflow, capacity) = self.compute_behavior_arguments(count);
+
+        let (primary, secondary) = self.messages.split_at_mut(capacity);
+
         self.behavior
-            .advance(&mut self.messages, &self.primary, count);
+            .advance(primary, secondary, start, end, overflow);
         self.primary.move_into(self.secondary, count);
     }
 
     /// Preserves the messages in the current segment
-    pub fn cancel(mut self, count: usize) {
+    pub fn cancel(self, count: usize) {
+        let (start, end, overflow, capacity) = self.compute_behavior_arguments(count);
+
+        let (primary, secondary) = self.messages.split_at_mut(capacity);
+
         self.behavior
-            .cancel(&mut self.messages, &self.primary, count);
+            .cancel(primary, secondary, start, end, overflow);
+    }
+
+    #[inline]
+    fn compute_behavior_arguments(&self, count: usize) -> (usize, usize, usize, usize) {
+        let capacity = self.primary.capacity;
+        let prev_index = self.primary.index;
+        let new_index = prev_index + count;
+
+        let start = prev_index;
+        let end = new_index.min(capacity);
+        let overflow = new_index.saturating_sub(capacity);
+
+        (start, end, overflow, capacity)
     }
 }
 

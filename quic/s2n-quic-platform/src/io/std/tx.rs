@@ -39,7 +39,7 @@ impl<'a, Buffer: buffer::Buffer, Socket: socket::Simple<Error = io::Error>> tx::
         let mut count = 0;
         let mut occupied = self.queue.occupied_mut();
 
-        while let Some(entry) = occupied.get_mut(count) {
+        for entry in occupied.as_mut() {
             if let Some(remote_address) = entry.remote_address() {
                 match self.socket.send_to(entry.payload_mut(), &remote_address) {
                     Ok(_) => {
@@ -49,6 +49,7 @@ impl<'a, Buffer: buffer::Buffer, Socket: socket::Simple<Error = io::Error>> tx::
                         if count > 0 && err.kind() == io::ErrorKind::WouldBlock {
                             break;
                         } else {
+                            occupied.finish(count);
                             return Err(err);
                         }
                     }
