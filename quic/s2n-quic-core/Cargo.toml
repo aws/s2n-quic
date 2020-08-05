@@ -7,7 +7,7 @@ license = "Apache-2.0"
 
 [features]
 default = ["std"]
-std = []
+std = ["thiserror"]
 testing = ["std", "generator", "s2n-codec/testing"]
 generator = ["bolero-generator"]
 
@@ -15,8 +15,10 @@ generator = ["bolero-generator"]
 bolero-generator = { version = "0.5", default-features = false, optional = true }
 byteorder = { version = "1.1", default-features = false }
 bytes = { version = "0.5", default-features = false }
+displaydoc = { version = "0.1", default-features = false }
 hex-literal = "0.2"
 s2n-codec = { version = "0.1", path = "../../common/s2n-codec", default-features = false }
+thiserror = { version = "1", optional = true }
 zerocopy = "0.3"
 
 [dev-dependencies]

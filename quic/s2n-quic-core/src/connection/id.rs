@@ -102,11 +102,7 @@ pub struct TryFromSliceError(());
 
 impl From<TryFromSliceError> for TransportError {
     fn from(_: TryFromSliceError) -> TransportError {
-        TransportError::new(
-            TransportError::PROTOCOL_VIOLATION,
-            "invalid connection id",
-            None,
-        )
+        TransportError::PROTOCOL_VIOLATION.with_reason("invalid connection id")
     }
 }
 

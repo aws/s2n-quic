@@ -9,7 +9,6 @@ use s2n_quic_core::{
     frame::{crypto::CryptoRef, MaxPayloadSizeForFrame},
     packet::number::PacketNumber,
     transport::error::TransportError,
-    transport_error,
     varint::VarInt,
 };
 
@@ -109,7 +108,7 @@ impl CryptoStream {
 
         self.rx
             .write_at(frame.offset, frame.data)
-            .map_err(|_| transport_error!(CRYPTO_BUFFER_EXCEEDED))?;
+            .map_err(|_| TransportError::CRYPTO_BUFFER_EXCEEDED)?;
 
         Ok(())
     }

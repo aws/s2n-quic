@@ -140,7 +140,7 @@ macro_rules! impl_ciphersuite {
 
                 self.aead_key()
                     .open_in_place(nonce, aead, payload)
-                    .map_err(|_| CryptoError::decrypt_error())?;
+                    .map_err(|_| CryptoError::DECRYPT_ERROR)?;
 
                 Ok(())
             }
@@ -162,7 +162,7 @@ macro_rules! impl_ciphersuite {
                 let tagged = self
                     .aead_key()
                     .seal_in_place_separate_tag(nonce, aead, &mut payload[..payload_len])
-                    .map_err(|_| CryptoError::decrypt_error())?;
+                    .map_err(|_| CryptoError::DECRYPT_ERROR)?;
 
                 payload[payload_len..].copy_from_slice(tagged.as_ref());
 

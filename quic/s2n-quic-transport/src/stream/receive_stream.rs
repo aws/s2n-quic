@@ -249,11 +249,9 @@ impl ReceiveStreamFlowController {
         //# affected stream, unless this is a result of a change in the initial
         //# limits (see Section 7.3.1).
         if offset > self.read_window_sync.latest_value() {
-            return Err(TransportError::new(
-                TransportError::FLOW_CONTROL_ERROR,
-                "Stream flow control window exceeded",
-                source_frame_type.map(|ty| ty.into()),
-            ));
+            return Err(TransportError::FLOW_CONTROL_ERROR
+                .with_reason("Stream flow control window exceeded")
+                .with_optional_frame_type(source_frame_type.map(|ty| ty.into())));
         }
         // Remark: Actually this read window might not have yet been
         // transmitted to the peer. In that case it might have now
@@ -274,11 +272,9 @@ impl ReceiveStreamFlowController {
             self.connection_flow_controller
                 .acquire_window(additional_connection_window)
                 .map_err(|_| {
-                    TransportError::new(
-                        TransportError::FLOW_CONTROL_ERROR,
-                        "Connection flow control window exceeded",
-                        source_frame_type.map(|ty| ty.into()),
-                    )
+                    TransportError::FLOW_CONTROL_ERROR
+                        .with_reason("Connection flow control window exceeded")
+                        .with_optional_frame_type(source_frame_type.map(|ty| ty.into()))
                 })?;
             // The connection window was acquired successfully
             self.acquired_connection_window += additional_connection_window;
@@ -416,11 +412,9 @@ impl ReceiveStream {
                     .offset
                     .checked_add_usize(frame.data.len())
                     .ok_or_else(|| {
-                        TransportError::new(
-                            TransportError::FLOW_CONTROL_ERROR,
-                            "data size overflow",
-                            Some(frame.tag().into()),
-                        )
+                        TransportError::FLOW_CONTROL_ERROR
+                            .with_reason("data size overflow")
+                            .with_frame_type(frame.tag().into())
                     })?;
 
                 if let Some(total_size) = total_size {
@@ -430,11 +424,9 @@ impl ReceiveStream {
                         //# RESET_STREAM or STREAM frame is received indicating a change in the
                         //# final size for the stream, an endpoint SHOULD respond with a
                         //# FINAL_SIZE_ERROR error
-                        return Err(TransportError::new(
-                            TransportError::FINAL_SIZE_ERROR,
-                            "Final size changed",
-                            Some(frame.tag().into()),
-                        ));
+                        return Err(TransportError::FINAL_SIZE_ERROR
+                            .with_reason("Final size changed")
+                            .with_frame_type(frame.tag().into()));
                     }
                 } else {
                     self.flow_controller
@@ -446,7 +438,7 @@ impl ReceiveStream {
                 self.receive_buffer
                     .write_at(frame.offset, frame.data)
                     .map_err(|error| {
-                        let error_code = match error {
+                        match error {
                             //=https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#19.9
                             //# An endpoint MUST terminate a connection with a FLOW_CONTROL_ERROR
                             //# error if it receives more data than the maximum data value that it
@@ -458,12 +450,9 @@ impl ReceiveStream {
                             StreamReceiveBufferError::AllocationError => {
                                 TransportError::INTERNAL_ERROR
                             }
-                        };
-                        TransportError::new(
-                            error_code,
-                            "data reception error",
-                            Some(frame.tag().into()),
-                        )
+                        }
+                        .with_reason("data reception error")
+                        .with_frame_type(frame.tag().into())
                     })?;
 
                 if frame.is_fin && total_size.is_none() {
@@ -583,11 +572,11 @@ impl ReceiveStream {
                     //# receipt of data at or beyond the final size as a FINAL_SIZE_ERROR
                     //# error, even after a stream is closed.
                     if Into::<u64>::into(actual_size) != total_size {
-                        return Err(TransportError::new(
-                            TransportError::FINAL_SIZE_ERROR,
-                            "Final size in reset frame did not match previous final size",
-                            frame_tag.map(|tag| tag.into()),
-                        ));
+                        return Err(TransportError::FINAL_SIZE_ERROR
+                            .with_reason(
+                                "Final size in reset frame did not match previous final size",
+                            )
+                            .with_optional_frame_type(frame_tag.map(|tag| tag.into())));
                     }
                 }
 

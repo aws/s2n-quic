@@ -21,7 +21,6 @@ use s2n_quic_core::{
     },
     time::Timestamp,
     transport::error::TransportError,
-    transport_error,
 };
 
 #[derive(Debug)]
@@ -160,11 +159,9 @@ impl<StreamType: StreamTrait, Suite: CryptoSuite> PacketSpace
         _datagram: &DatagramInfo,
         frame: CryptoRef,
     ) -> Result<(), TransportError> {
-        Err(transport_error!(
-            INTERNAL_ERROR,
-            "crypto frames are not currently supported in application space",
-            frame.tag()
-        ))
+        Err(TransportError::INTERNAL_ERROR
+            .with_reason("crypto frames are not currently supported in application space")
+            .with_frame_type(frame.tag().into()))
     }
 
     fn handle_ack_frame<A: AckRanges>(

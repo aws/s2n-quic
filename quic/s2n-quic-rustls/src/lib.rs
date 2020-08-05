@@ -195,7 +195,7 @@ macro_rules! impl_tls {
                 Ok(TLSApplicationParameters {
                     alpn_protocol: self.0.session.get_alpn_protocol(),
                     transport_parameters: self.0.session.get_quic_transport_parameters().ok_or(
-                        CryptoError::missing_extension()
+                        CryptoError::MISSING_EXTENSION
                             .with_reason("Missing QUIC transport parameters"),
                     )?,
                     sni: self.sni(),

@@ -269,12 +269,7 @@ impl<S: StreamTrait> StreamManagerState<S> {
                 // to create a new Stream instance
 
                 if self.close_reason.is_some() {
-                    return Err(TransportError::new(
-                        TransportError::NO_ERROR,
-                        "Connection was closed",
-                        // Threading the frame tag into this function is a lot of overhead
-                        None,
-                    ));
+                    return Err(TransportError::NO_ERROR.with_reason("Connection was closed"));
                 }
 
                 // TODO: Check if the peer is allowed to open the stream according to `MAX_STREAMS`.
@@ -323,12 +318,9 @@ impl<S: StreamTrait> StreamManagerState<S> {
             // Future Stream IDs we might use. We also will not accept this and
             // close the connection.
             if stream_id >= first_unopened_id {
-                return Err(TransportError::new(
-                    TransportError::STREAM_STATE_ERROR,
-                    "Stream was not yet opened",
-                    // Threading the frame tag into this function is a lot of overhead
-                    None,
-                ));
+                return Err(
+                    TransportError::STREAM_STATE_ERROR.with_reason("Stream was not yet opened")
+                );
             }
         }
 

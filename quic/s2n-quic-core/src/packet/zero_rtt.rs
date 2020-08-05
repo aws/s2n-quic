@@ -150,7 +150,7 @@ impl<'a> ProtectedZeroRTT<'a> {
 
         let packet_number = truncated_packet_number
             .expand(largest_acknowledged_packet_number)
-            .ok_or_else(CryptoError::decode_error)?;
+            .ok_or(CryptoError::DECODE_ERROR)?;
 
         Ok(ZeroRTT {
             version,

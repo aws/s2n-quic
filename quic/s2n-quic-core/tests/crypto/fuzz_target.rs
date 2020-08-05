@@ -55,13 +55,13 @@ fn fuzz_unprotect(
 
     let packet_number = truncated_packet_number
         .expand(largest_packet_number)
-        .ok_or_else(CryptoError::decode_error)?;
+        .ok_or(CryptoError::DECODE_ERROR)?;
 
     // make sure the packet number can be truncated and is canonical
     packet_number
         .truncate(largest_packet_number)
         .filter(|actual| truncated_packet_number.eq(actual))
-        .ok_or_else(CryptoError::decode_error)?;
+        .ok_or(CryptoError::DECODE_ERROR)?;
 
     let (_header, _payload) = s2n_quic_core::crypto::decrypt(&FuzzCrypto, packet_number, payload)?;
 

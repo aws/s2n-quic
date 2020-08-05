@@ -1,48 +1,87 @@
+use core::fmt;
 use s2n_codec::DecoderError;
 
 /// Error type for crypto-related errors
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
 pub struct CryptoError {
     pub reason: &'static str,
     pub code: u8,
 }
 
 impl CryptoError {
-    /// Creates a `CryptoError` with the `decrypt_error` status code
-    pub const fn decrypt_error() -> Self {
-        Self {
-            reason: "",
-            code: DECRYPT_ERROR,
-        }
-    }
-
-    /// Creates a `CryptoError` with the `decode_error` status code
-    pub const fn decode_error() -> Self {
-        Self {
-            reason: "",
-            code: DECODE_ERROR,
-        }
-    }
-
-    /// Creates a `CryptoError` with the `missing_extension` status code
-    pub const fn missing_extension() -> Self {
-        Self {
-            reason: "",
-            code: MISSING_EXTENSION,
-        }
+    /// Creates a new `CryptoError`
+    pub const fn new(code: u8) -> Self {
+        Self { code, reason: "" }
     }
 
     /// Sets the reason for `CryptoError`
-    pub fn with_reason(mut self, reason: &'static str) -> Self {
+    pub const fn with_reason(mut self, reason: &'static str) -> Self {
         self.reason = reason;
         self
     }
 }
 
+impl fmt::Display for CryptoError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if !self.reason.is_empty() {
+            self.reason.fmt(f)
+        } else if let Some(description) = self.description() {
+            description.fmt(f)
+        } else {
+            write!(f, "CryptoError({})", self.code)
+        }
+    }
+}
+
+impl fmt::Debug for CryptoError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut d = f.debug_struct("CryptoError");
+
+        d.field("code", &self.code);
+
+        if let Some(description) = self.description() {
+            d.field("description", &description);
+        }
+
+        if !self.reason.is_empty() {
+            d.field("reason", &self.reason);
+        }
+
+        d.finish()
+    }
+}
+
 impl From<DecoderError> for CryptoError {
     fn from(_: DecoderError) -> Self {
-        Self::decode_error()
+        Self::DECODE_ERROR
     }
+}
+
+macro_rules! alert_descriptions {
+    ($($name:ident = $value:expr),* $(,)?) => {
+        impl CryptoError {
+            pub fn description(&self) -> Option<&'static str> {
+                match self.code {
+                    $(
+                        $value => Some(stringify!($name)),
+                    )*
+                    _ => None,
+                }
+            }
+
+            $(
+                pub const $name: Self = Self::new($value);
+            )*
+        }
+
+        #[test]
+        fn description_test() {
+            $(
+                assert_eq!(&CryptoError::$name.to_string(), stringify!($name));
+            )*
+        }
+    };
 }
 
 //= https://tools.ietf.org/rfc/rfc8446.txt#B.2
@@ -91,6 +130,39 @@ impl From<DecoderError> for CryptoError {
 //#     AlertDescription description;
 //# } Alert;
 
-const DECODE_ERROR: u8 = 50;
-const DECRYPT_ERROR: u8 = 51;
-const MISSING_EXTENSION: u8 = 109;
+alert_descriptions!(
+    CLOSE_NOTIFY = 0,
+    UNEXPECTED_MESSAGE = 10,
+    BAD_RECORD_MAC = 20,
+    DECRYPTION_FAILED_RESERVED = 21,
+    RECORD_OVERFLOW = 22,
+    DECOMPRESSION_FAILURE_RESERVED = 30,
+    HANDSHAKE_FAILURE = 40,
+    NO_CERTIFICATE_RESERVED = 41,
+    BAD_CERTIFICATE = 42,
+    UNSUPPORTED_CERTIFICATE = 43,
+    CERTIFICATE_REVOKED = 44,
+    CERTIFICATE_EXPIRED = 45,
+    CERTIFICATE_UNKNOWN = 46,
+    ILLEGAL_PARAMETER = 47,
+    UNKNOWN_CA = 48,
+    ACCESS_DENIED = 49,
+    DECODE_ERROR = 50,
+    DECRYPT_ERROR = 51,
+    EXPORT_RESTRICTION_RESERVED = 60,
+    PROTOCOL_VERSION = 70,
+    INSUFFICIENT_SECURITY = 71,
+    INTERNAL_ERROR = 80,
+    INAPPROPRIATE_FALLBACK = 86,
+    USER_CANCELED = 90,
+    NO_RENEGOTIATION_RESERVED = 100,
+    MISSING_EXTENSION = 109,
+    UNSUPPORTED_EXTENSION = 110,
+    CERTIFICATE_UNOBTAINABLE_RESERVED = 111,
+    UNRECOGNIZED_NAME = 112,
+    BAD_CERTIFICATE_STATUS_RESPONSE = 113,
+    BAD_CERTIFICATE_HASH_VALUE_RESERVED = 114,
+    UNKNOWN_PSK_IDENTITY = 115,
+    CERTIFICATE_REQUIRED = 116,
+    NO_APPLICATION_PROTOCOL = 120,
+);
