@@ -14,7 +14,6 @@ use s2n_quic_core::{
     inet::DatagramInfo,
     packet::initial::ProtectedInitial,
     transport::error::TransportError,
-    transport_error,
 };
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#14
@@ -49,17 +48,15 @@ impl<ConfigType: EndpointConfig> Endpoint<ConfigType> {
         // TODO: Check that the connection ID is at least 8 byte
         // But maybe we really would need to do this before or inside parsing
         if datagram.payload_len < MINIMUM_INITIAL_PACKET_LEN {
-            return Err(transport_error!(PROTOCOL_VIOLATION, "packet too small"));
+            return Err(TransportError::PROTOCOL_VIOLATION.with_reason("packet too small"));
         }
 
         let destination_connection_id: ConnectionId =
             packet.destination_connection_id().try_into()?;
 
         if destination_connection_id.len() < DESTINATION_CONNECTION_ID_MIN_LEN {
-            return Err(transport_error!(
-                PROTOCOL_VIOLATION,
-                "destination connection id too short"
-            ));
+            return Err(TransportError::PROTOCOL_VIOLATION
+                .with_reason("destination connection id too short"));
         }
 
         let source_connection_id: ConnectionId = packet.source_connection_id().try_into()?;

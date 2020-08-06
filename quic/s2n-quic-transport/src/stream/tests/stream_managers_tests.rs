@@ -571,11 +571,8 @@ fn remote_messages_which_target_locally_initiated_unopened_streams_error() {
                     assert!(!manager.active_streams().contains(&target_stream_id));
 
                     assert_eq!(
-                        Err(TransportError::new(
-                            TransportError::STREAM_STATE_ERROR,
-                            "Stream was not yet opened",
-                            None
-                        )),
+                        Err(TransportError::STREAM_STATE_ERROR
+                            .with_reason("Stream was not yet opened")),
                         manager.on_reset_stream(&reset_frame)
                     );
                 }
@@ -1450,11 +1447,7 @@ fn forwards_on_data() {
     manager.with_asserted_stream(stream_1, |stream| {
         assert_eq!(stream.on_data_count, 1);
         stream.write_waker_to_return = Some(write_waker);
-        stream.next_packet_error = Some(TransportError::new(
-            TransportError::INTERNAL_ERROR,
-            "",
-            None,
-        ));
+        stream.next_packet_error = Some(TransportError::INTERNAL_ERROR);
     });
 
     assert_is_transport_error(manager.on_data(&frame), TransportError::INTERNAL_ERROR);
@@ -1500,11 +1493,7 @@ fn forwards_on_stream_data_blocked() {
     manager.with_asserted_stream(stream_1, |stream| {
         assert_eq!(stream.on_stream_data_blocked_count, 1);
         assert_eq!(Some(frame), stream.last_on_stream_data_blocked);
-        stream.next_packet_error = Some(TransportError::new(
-            TransportError::INTERNAL_ERROR,
-            "",
-            None,
-        ));
+        stream.next_packet_error = Some(TransportError::INTERNAL_ERROR);
         stream.write_waker_to_return = Some(write_waker);
     });
 
@@ -1557,11 +1546,7 @@ fn forwards_on_max_stream_data() {
     manager.with_asserted_stream(stream_1, |stream| {
         assert_eq!(stream.on_max_stream_data_count, 1);
         assert_eq!(Some(frame), stream.last_max_stream_data);
-        stream.next_packet_error = Some(TransportError::new(
-            TransportError::INTERNAL_ERROR,
-            "",
-            None,
-        ));
+        stream.next_packet_error = Some(TransportError::INTERNAL_ERROR);
         stream.write_waker_to_return = Some(write_waker);
     });
 
@@ -1614,11 +1599,7 @@ fn forwards_on_stop_sending() {
     manager.with_asserted_stream(stream_1, |stream| {
         assert_eq!(stream.on_stop_sending_count, 1);
         assert_eq!(Some(frame), stream.last_stop_sending);
-        stream.next_packet_error = Some(TransportError::new(
-            TransportError::INTERNAL_ERROR,
-            "",
-            None,
-        ));
+        stream.next_packet_error = Some(TransportError::INTERNAL_ERROR);
         stream.write_waker_to_return = Some(write_waker);
     });
 
@@ -1673,11 +1654,7 @@ fn forwards_on_reset() {
         assert_eq!(Some(frame), stream.last_reset);
         stream.write_waker_to_return = Some(write_waker);
         stream.read_waker_to_return = None;
-        stream.next_packet_error = Some(TransportError::new(
-            TransportError::INTERNAL_ERROR,
-            "",
-            None,
-        ));
+        stream.next_packet_error = Some(TransportError::INTERNAL_ERROR);
     });
 
     assert_is_transport_error(
