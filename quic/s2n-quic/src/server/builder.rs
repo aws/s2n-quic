@@ -184,26 +184,52 @@ impl<Providers: ServerProviders> Builder<Providers> {
     );
 
     impl_provider_method!(
-        /// Sets the Socket provider for the [`Server`]
+        /// Sets the IO provider for the [`Server`]
         ///
         /// # Examples
         ///
         /// Starts listening on [`127.0.0.1:443`](https://127.0.0.1)
         ///
-        /// ```rust
+        /// ```rust,no_run
         /// # use std::error::Error;
-        /// # use s2n_quic::Server;
+        /// use s2n_quic::Server;
         /// #
         /// # fn main() -> Result<(), Box<dyn Error>> {
         /// let server = Server::builder()
-        ///     .with_socket("127.0.0.1:443")?
+        ///     .with_io("127.0.0.1:443")?
         ///     .build()?;
         /// #
         /// #    Ok(())
         /// # }
         /// ```
-        with_socket,
-        socket
+        ///
+        /// Configures a socket pair
+        ///
+        /// ```rust,no_run
+        /// # use std::error::Error;
+        /// use s2n_quic::{Server, provider::io::default as io};
+        /// #
+        /// # fn main() -> Result<(), Box<dyn Error>> {
+        /// let addr = "127.0.0.1:443";
+        ///
+        /// let socket = io::Socket::builder()?
+        ///     .with_address(addr)?
+        ///     .with_address_reuse()?
+        ///     .build()?;
+        ///
+        /// let rx = io::Rx::new(io::Buffer::default(), socket.try_clone()?);
+        /// let tx = io::Tx::new(io::Buffer::default(), socket);
+        /// let pair = io::Pair { rx, tx };
+        ///
+        /// let server = Server::builder()
+        ///     .with_io(pair)?
+        ///     .build()?;
+        /// #
+        /// #    Ok(())
+        /// # }
+        /// ```
+        with_io,
+        io
     );
 
     impl_provider_method!(
@@ -276,14 +302,14 @@ impl<Providers: ServerProviders> Builder<Providers> {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```rust,no_run
     /// # use std::error::Error;
     /// # use s2n_quic::Server;
     /// #
     /// # fn main() -> Result<(), Box<dyn Error>> {
     /// let server = Server::builder()
     ///     .with_tls("./certs/key.pem")?
-    ///     .with_socket("127.0.0.1:443")?
+    ///     .with_io("127.0.0.1:443")?
     ///     .build()?;
     /// #
     /// #    Ok(())
