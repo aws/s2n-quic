@@ -96,8 +96,10 @@ impl RecoveryManager {
         let time_sent = time::now();
 
         if ack_elicitation.is_ack_eliciting() {
-            let sent_packet_info = SentPacketInfo::new(in_flight, sent_bytes, time_sent);
-            self.sent_packets.insert(packet_number, sent_packet_info);
+            self.sent_packets.insert(
+                packet_number,
+                SentPacketInfo::new(in_flight, sent_bytes, time_sent),
+            );
         }
 
         if in_flight {
@@ -142,18 +144,17 @@ impl RecoveryManager {
         let largest_newly_acked = largest_newly_acked
             .expect("there must be at least one newly acked packet at this point");
 
-        if let Some(largest_acked_packet) = self.largest_acked_packet {
-            self.largest_acked_packet = Some(max(largest_acked_packet, *largest_newly_acked.0));
-        } else {
-            self.largest_acked_packet = Some(*largest_newly_acked.0);
-        }
+        self.largest_acked_packet = Some(
+            self.largest_acked_packet
+                .map_or(*largest_newly_acked.0, |pn| pn.max(*largest_newly_acked.0)),
+        );
 
         // If the largest acknowledged is newly acked and
         // at least one ack-eliciting was newly acked, update the RTT.
         if *largest_newly_acked.0 == largest_acked {
             let latest_rtt = time::now() - largest_newly_acked.1.time_sent;
             self.rtt_estimator
-                .update_rtt(ack_delay, latest_rtt, largest_newly_acked.0.space());
+                .update_rtt(ack_delay, latest_rtt, self.pn_space);
 
             // Process ECN information if present.
             if ecn_counts.is_some() {
@@ -163,16 +164,7 @@ impl RecoveryManager {
 
         // TODO: self.congestion_controller.on_packets_acked(self.sent_packets.range(acked_packets));
 
-        // TODO: Investigate a more efficient mechanism for managing sent_packets
-        //       See https://github.com/awslabs/s2n-quic/issues/69
-        let acked_packets_to_remove: Vec<PacketNumber> = self
-            .sent_packets
-            .range(acked_packets)
-            .map(|p| p.0)
-            .cloned()
-            .collect();
-
-        for packet_number in acked_packets_to_remove {
+        for packet_number in acked_packets {
             self.sent_packets.remove(packet_number);
         }
     }
