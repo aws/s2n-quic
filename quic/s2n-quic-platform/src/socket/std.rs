@@ -6,6 +6,14 @@ type Inner = UdpSocket;
 
 impl_socket!(Inner, Builder);
 impl_socket_raw_delegate!(impl[] Socket, |self| &self.0);
+impl_socket_debug!(impl[] Socket, |self| &self.0.local_addr().ok());
+
+impl Socket {
+    pub fn try_clone(&self) -> io::Result<Self> {
+        let socket = self.0.try_clone()?;
+        Ok(Self(socket))
+    }
+}
 
 impl crate::socket::Simple for Socket {
     type Error = io::Error;

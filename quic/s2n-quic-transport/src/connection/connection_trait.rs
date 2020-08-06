@@ -6,7 +6,7 @@ use crate::{
         shared_state::SharedConnectionState, ConnectionCloseReason, ConnectionConfig,
         ConnectionParameters,
     },
-    contexts::{ConnectionOnTransmitError, ConnectionWriteContext},
+    contexts::ConnectionOnTransmitError,
     processed_packet::ProcessedPacket,
     space::{PacketSpace, PacketSpaceHandler, PacketSpaceManager},
 };
@@ -15,6 +15,7 @@ use s2n_quic_core::{
     connection::ConnectionId,
     frame::{Frame, FrameMut},
     inet::DatagramInfo,
+    io::tx,
     packet::{
         handshake::ProtectedHandshake,
         initial::{CleartextInitial, ProtectedInitial},
@@ -54,6 +55,7 @@ pub trait ConnectionTrait: Sized {
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         close_reason: ConnectionCloseReason,
+        timestamp: Timestamp,
     );
 
     /// Marks a connection which advertised itself as having completed the handshake
@@ -62,10 +64,10 @@ pub trait ConnectionTrait: Sized {
     fn mark_as_accepted(&mut self);
 
     /// Queries the connection for outgoing packets
-    fn on_transmit<W: ConnectionWriteContext>(
+    fn on_transmit<Tx: tx::Queue>(
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
-        context: &mut W,
+        context: &mut Tx,
         timestamp: Timestamp,
     ) -> Result<(), ConnectionOnTransmitError>;
 
@@ -84,7 +86,11 @@ pub trait ConnectionTrait: Sized {
     fn update_connection_timer(&mut self, shared_state: &mut SharedConnectionState<Self::Config>);
 
     /// Handles all external wakeups on the [`Connection`].
-    fn on_wakeup(&mut self, shared_state: &mut SharedConnectionState<Self::Config>);
+    fn on_wakeup(
+        &mut self,
+        shared_state: &mut SharedConnectionState<Self::Config>,
+        timestamp: Timestamp,
+    );
 
     // Packet handling
 
@@ -294,6 +300,7 @@ pub trait ConnectionTrait: Sized {
                     self.close(
                         shared_state,
                         ConnectionCloseReason::PeerImmediateClose(frame),
+                        datagram.timestamp,
                     );
                     return Ok(());
                 }

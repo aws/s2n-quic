@@ -187,3 +187,13 @@ macro_rules! impl_socket_mio_delegate {
         }
     };
 }
+
+macro_rules! impl_socket_debug {
+    (impl[$($gen:tt)*] $impl:ty, |$self:ident| $address:expr ) => {
+        impl<$($gen)*> ::core::fmt::Debug for $impl {
+            fn fmt(&$self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                f.debug_struct("Socket").field("address", $address).finish()
+            }
+        }
+    };
+}
