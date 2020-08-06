@@ -156,6 +156,13 @@ pub trait ConnectionTrait: Sized {
         transport_error: TransportError,
     );
 
+    /// Handles metrics associated with this datagram
+    fn on_datagram_received(
+        &mut self,
+        shared_state: &mut SharedConnectionState<Self::Config>,
+        datagram: &DatagramInfo,
+    ) -> Result<(), TransportError>;
+
     /// Returns the Connections interests
     fn interests(&self, shared_state: &SharedConnectionState<Self::Config>) -> ConnectionInterests;
 

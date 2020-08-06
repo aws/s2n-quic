@@ -15,7 +15,7 @@ pub enum State {
 //# packets
 const MINIMUM_MTU: u16 = 1200;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Path {
     /// The peer's socket address
     pub peer_socket_address: SocketAddress,

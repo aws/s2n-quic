@@ -71,8 +71,8 @@ impl<Config: connection::Config> InitialSpace<Config> {
 
         let packet = Initial {
             version: context.quic_version,
-            destination_connection_id: context.destination_connection_id.as_ref(),
-            source_connection_id: context.source_connection_id.as_ref(),
+            destination_connection_id: context.path.destination_connection_id.as_ref(),
+            source_connection_id: context.path.source_connection_id.as_ref(),
             token,
             packet_number,
             payload,

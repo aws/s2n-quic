@@ -70,8 +70,8 @@ impl<Config: connection::Config> HandshakeSpace<Config> {
 
         let packet = Handshake {
             version: context.quic_version,
-            destination_connection_id: context.destination_connection_id.as_ref(),
-            source_connection_id: context.source_connection_id.as_ref(),
+            destination_connection_id: context.path.destination_connection_id.as_ref(),
+            source_connection_id: context.path.source_connection_id.as_ref(),
             packet_number,
             payload,
         };

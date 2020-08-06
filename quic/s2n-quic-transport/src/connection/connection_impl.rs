@@ -12,7 +12,7 @@ use crate::{
 use core::time::Duration;
 use s2n_quic_core::{
     application::ApplicationErrorExt,
-    inet::{DatagramInfo, SocketAddress},
+    inet::DatagramInfo,
     io::tx,
     packet::{
         handshake::ProtectedHandshake,
@@ -22,6 +22,7 @@ use s2n_quic_core::{
         version_negotiation::ProtectedVersionNegotiation,
         zero_rtt::ProtectedZeroRTT,
     },
+    path_manager::PathManager,
     time::Timestamp,
     transport::error::TransportError,
 };
@@ -97,18 +98,14 @@ pub struct ConnectionImpl<ConfigType: connection::Config> {
     timers: ConnectionTimers,
     /// The timer entry in the endpoint timer list
     timer_entry: ConnectionTimerEntry,
-    /// The last utilized remote Connection ID
-    peer_connection_id: connection::Id,
-    /// The last utilized local Connection ID
-    local_connection_id: connection::Id,
-    /// The peers socket address
-    peer_socket_address: SocketAddress,
     /// The QUIC protocol version which is used for this particular connection
     quic_version: u32,
     /// Describes whether the connection is known to be accepted by the application
     accept_state: AcceptState,
     /// The current state of the connection
     state: ConnectionState,
+    /// Manage the paths that the connection could use
+    path_manager: PathManager,
 }
 
 impl<ConfigType: connection::Config> ConnectionImpl<ConfigType> {
@@ -194,18 +191,20 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
 
     /// Creates a new `Connection` instance with the given configuration
     fn new(parameters: ConnectionParameters<Self::Config>) -> Self {
+        // The path manager always starts with a single path containing the known peer and local
+        // connetion ids.
+        let path_manager: PathManager = PathManager::new();
+
         Self {
             config: parameters.connection_config,
             internal_connection_id: parameters.internal_connection_id,
             connection_id_mapper_registration: parameters.connection_id_mapper_registration,
             timers: Default::default(),
             timer_entry: parameters.timer,
-            peer_connection_id: parameters.peer_connection_id,
-            local_connection_id: parameters.local_connection_id,
-            peer_socket_address: parameters.peer_socket_address,
             quic_version: parameters.quic_version,
             accept_state: AcceptState::Handshaking,
             state: ConnectionState::Handshaking,
+            path_manager,
         }
     }
 
@@ -283,11 +282,9 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
                     .push(ConnectionTransmission {
                         context: ConnectionTransmissionContext {
                             quic_version: self.quic_version,
-                            destination_connection_id: self.peer_connection_id,
-                            source_connection_id: self.local_connection_id,
                             timestamp,
                             local_endpoint_type: Self::Config::ENDPOINT_TYPE,
-                            remote_address: self.peer_socket_address,
+                            path: self.path_manager.get_active_path_mut(),
                             ecn,
                         },
                         shared_state,
@@ -398,6 +395,16 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
     }
 
     // Packet handling
+    fn on_datagram_received(
+        &mut self,
+        _shared_state: &mut SharedConnectionState<Self::Config>,
+        datagram: &DatagramInfo,
+    ) -> Result<(), TransportError> {
+        self.path_manager
+            .get_active_path_mut()
+            .on_bytes_received(datagram.payload_len as u32);
+        Ok(())
+    }
 
     /// Is called when a initial packet had been received
     fn handle_initial_packet(
@@ -411,6 +418,22 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
             .initial_mut()
             .and_then(packet_validator!(packet))
         {
+            // We get here from transport::endpoint::receive_datagram. Whether the connection
+            // was known or not, this function is called. So we can verify whether this is a new
+            // connection's initial packet, or an existing connection being migrated to a new
+            // endpoint.
+            if self.path_manager.is_new_path(&datagram.remote_address, &connection::Id::try_from_bytes(packet.destination_connection_id).unwrap()) {
+                if self.state == ConnectionState::Handshaking {
+                    //= https://tools.ietf.org/html/draft-ietf-quic-transport-29#section-9
+                    //# The design of QUIC relies on endpoints retaining a stable address
+                    //# for the duration of the handshake.  An endpoint MUST NOT initiate
+                    //# connection migration before the handshake is confirmed, as defined
+                    //# in section 4.1.2 of [QUIC-TLS].
+                    return Err(TransportError::PROTOCOL_VIOLATION);
+                }
+            }
+
+            // The path is already known
             self.handle_cleartext_initial_packet(shared_state, datagram, packet)?;
 
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#10.2
