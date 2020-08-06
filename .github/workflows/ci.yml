@@ -134,6 +134,29 @@ jobs:
       - name: Run cargo udeps
         run: cargo udeps --workspace --all-targets
 
+  doc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions-rs/toolchain@v1
+        id: toolchain
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+
+      - uses: actions/checkout@v2
+
+      - name: Run cargo doc
+        uses: actions-rs/cargo@v1
+        with:
+          command: doc
+          args: --all-features --no-deps --workspace --exclude cargo-compliance --exclude compliance --exclude interop-server
+
+      - uses: actions/upload-artifact@v2
+        with:
+          name: docs
+          path: target/doc
+
   test:
     runs-on: ${{ matrix.os }}
     needs: env
@@ -361,6 +384,11 @@ jobs:
       - name: Stop sccache
         run: sccache --stop-server
 
+      - uses: actions/upload-artifact@v2
+        with:
+          name: compliance
+          path: compliance
+
       - name: Upload report to codecov
         uses: codecov/codecov-action@v1
         with:
@@ -447,6 +475,11 @@ jobs:
 
       - name: Run covfix
         run: rust-covfix -o coverage.lcov coverage.unfiltered.lcov
+
+      - uses: actions/upload-artifact@v2
+        with:
+          name: unit-tests.lcov
+          path: coverage.lcov
 
       - name: Upload report to codecov
         uses: codecov/codecov-action@v1
