@@ -12,6 +12,7 @@ env:
   CARGO_INCREMENTAL: 0
   CARGO_NET_RETRY: 10
   RUSTUP_MAX_RETRIES: 10
+  RUST_BACKTRACE: 1
   SCCACHE_CACHE_SIZE: 300M
   SCCACHE_DIR: ${{ github.workspace }}/.sccache
   SCCACHE_IDLE_TIMEOUT: 0
@@ -139,7 +140,7 @@ jobs:
     strategy:
       matrix:
         rust: ${{ fromJson(needs.env.outputs.rust-versions) }}
-        os: [ubuntu-latest, macOS-latest]
+        os: [ubuntu-latest, macOS-latest, windows-latest]
     steps:
       - uses: actions-rs/toolchain@v1
         id: toolchain
@@ -152,6 +153,7 @@ jobs:
           lfs: true
 
       - name: Restore fuzz corpus
+        shell: bash
         run: |
           find . -name 'corpus.tar.gz' -exec dirname {} ';' | xargs -L 1 bash -c 'cd "$0" && rm -rf corpus && tar xf corpus.tar.gz'
 
