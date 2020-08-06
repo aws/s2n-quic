@@ -6,6 +6,8 @@ on:
   release:
     types: [published]
 
+name: release
+
 jobs:
   qns:
     runs-on: ubuntu-latest
@@ -20,6 +22,4 @@ jobs:
           registry: docker.pkg.github.com
           repository: awslabs/s2n-quic/s2n-quic-qns
           tag_with_ref: true
-          dockerfile: qns/Dockerfile
-
-
+          dockerfile: qns/Dockerfile.build

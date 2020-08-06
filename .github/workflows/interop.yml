@@ -1,0 +1,185 @@
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+name: interop
+
+env:
+  CARGO_INCREMENTAL: 0
+  CARGO_NET_RETRY: 10
+  RUSTUP_MAX_RETRIES: 10
+  RUST_BACKTRACE: 1
+  SCCACHE_CACHE_SIZE: 300M
+  SCCACHE_DIR: ${{ github.workspace }}/.sccache
+  SCCACHE_IDLE_TIMEOUT: 0
+
+jobs:
+  env:
+    runs-on: ubuntu-latest
+    outputs:
+      clients: ${{ steps.implementations.outputs.clients }}
+      servers: ${{ steps.implementations.outputs.servers }}
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          repository: marten-seemann/quic-interop-runner
+          path: quic-interop-runner
+
+      - uses: actions/setup-python@v2
+        with:
+          python-version: 3.8
+
+      - name: Define implementations
+        id: implementations
+        working-directory: quic-interop-runner
+        run: |
+          PROGRAM="
+          import json
+          from implementations import IMPLEMENTATIONS
+
+          def filter(targets):
+            implementations = [
+              key for (key, value) in IMPLEMENTATIONS.items() if value.get('role') in targets
+            ]
+            implementations.sort()
+            return json.dumps(implementations)
+
+          # role: 0 == 'client', 1 == 'server', 2 == both
+          print(f'::set-output name=clients::{filter([0,2])}')
+          print(f'::set-output name=servers::{filter([1,2])}')"
+
+          echo -e "$PROGRAM" | python3
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions-rs/toolchain@v1
+        id: toolchain
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+
+      - uses: actions/checkout@v2
+
+      - name: Install sccache
+        uses: actions-rs/install@v0.1
+        with:
+          crate: sccache
+          use-tool-cache: true
+          version: latest
+
+      - name: Generate Cargo.lock
+        run: cargo update
+
+      - name: Cache cargo registry
+        uses: actions/cache@v2
+        continue-on-error: true
+        with:
+          path: ~/.cargo/registry/cache
+          key: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-cargo-registry-
+
+      - name: Cache sccache output
+        uses: actions/cache@v2
+        continue-on-error: true
+        with:
+          path: ${{ github.workspace }}/.sccache
+          key: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-sccache-${{ hashFiles('**/Cargo.*') }}
+          restore-keys: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-sccache-
+
+      - name: Start sccache
+        run: sccache --start-server
+
+      - name: Run cargo build
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --bin s2n-quic-qns --release
+        env:
+          RUSTC_WRAPPER: sccache
+
+      - uses: actions/upload-artifact@v2
+        with:
+          name: s2n-quic-qns
+          path: target/release/s2n-quic-qns
+
+      - name: Stop sccache
+        run: sccache --stop-server
+
+  server:
+    runs-on: ubuntu-latest
+    needs: [env, build]
+    strategy:
+      matrix:
+        client: ${{ fromJson(needs.env.outputs.clients) }}
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          path: s2n-quic
+
+      - uses: actions/download-artifact@v2
+        with:
+          name: s2n-quic-qns
+          path: s2n-quic/qns/
+
+      - name: Run docker build
+        working-directory: s2n-quic/qns
+        run: |
+          docker build . --file Dockerfile --tag awslabs/s2n-quic-qns
+ 
+      - uses: actions/checkout@v2
+        with:
+          repository: marten-seemann/quic-interop-runner
+          path: quic-interop-runner
+
+      - name: Patch implementations.py
+        working-directory: quic-interop-runner
+        run: |
+          # Delete last line
+          sed -i '$d' implementations.py
+          # Append our implementation
+          echo '    "s2n-quic": {"url": "awslabs/s2n-quic-qns:latest", "role": 1},' >> implementations.py
+          echo '}' >> implementations.py
+          cat implementations.py
+
+      - name: Run docker pull
+        working-directory: quic-interop-runner
+        run: |
+          docker pull martenseemann/quic-network-simulator:latest
+          docker pull martenseemann/quic-interop-iperf-endpoint:latest
+
+          PROGRAM="
+          from implementations import IMPLEMENTATIONS
+          print(IMPLEMENTATIONS.get('${{ matrix.client }}').get('url'))"
+
+          docker pull $(echo -e "$PROGRAM" | python3)
+
+      - uses: actions/setup-python@v2
+        with:
+          python-version: 3.8
+
+      - name: Install dependencies
+        working-directory: quic-interop-runner
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y tshark
+          python3 -m pip install --upgrade pip
+          pip3 install -r requirements.txt
+
+      - name: Run quic-interop-server
+        working-directory: quic-interop-runner
+        run: |
+          mkdir -p results
+          python3 run.py --client ${{ matrix.client }} --server s2n-quic --json results/results.json --debug
+          ls -al
+          mv logs* results | true
+
+      - uses: actions/upload-artifact@v2
+        with:
+          name: interop-with-${{ matrix.client }}-client
+          path: quic-interop-runner/results/

@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 
 # Set up the routing needed for the simulation
 /setup.sh
@@ -9,10 +10,7 @@
 # - CLIENT_PARAMS contains user-supplied command line parameters
 
 if [ "$ROLE" == "client" ]; then
-    # Wait for the simulator to start up.
-    /wait-for-it.sh sim:57832 -s -t 30
+    s2n-quic-qns interop client $CLIENT_PARAMS
 elif [ "$ROLE" == "server" ]; then
-    echo "Running QUIC server on 0.0.0.0:4433"
-    echo "$@"
-    s2n-quic-qns -p 4433
+    s2n-quic-qns interop server $SERVER_PARAMS
 fi

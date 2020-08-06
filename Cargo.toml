@@ -4,7 +4,6 @@ members = [
     "common/compliance/cargo-compliance",
     "common/s2n-*",
     "quic/s2n-*",
-    "quic/interop-*"
 ]
 
 [profile.release]
