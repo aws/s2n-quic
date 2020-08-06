@@ -69,6 +69,14 @@ impl<'a> ack::AckRanges for &'a AckRanges {
             PacketNumber::as_varint(start)..=PacketNumber::as_varint(end)
         })
     }
+
+    fn largest_acknowledged(&self) -> VarInt {
+        *self
+            .ack_ranges()
+            .next()
+            .expect("at least one ack range is required")
+            .end()
+    }
 }
 
 impl Deref for AckRanges {

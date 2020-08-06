@@ -104,14 +104,6 @@ impl<A: AckRanges> Ack<A> {
     pub fn ack_ranges(&self) -> A::Iter {
         self.ack_ranges.ack_ranges()
     }
-
-    pub fn largest_acked(&self) -> VarInt {
-        *self
-            .ack_ranges()
-            .next()
-            .expect("at least one ack range is required")
-            .end()
-    }
 }
 
 impl<A: core::fmt::Debug> core::fmt::Debug for Ack<A> {
@@ -190,6 +182,8 @@ pub trait AckRanges {
     type Iter: Iterator<Item = RangeInclusive<VarInt>> + ExactSizeIterator;
 
     fn ack_ranges(&self) -> Self::Iter;
+
+    fn largest_acknowledged(&self) -> VarInt;
 }
 
 #[derive(Clone, Copy)]
@@ -208,6 +202,10 @@ impl<'a> AckRanges for AckRangesDecoder<'a> {
             ack_range_count: self.ack_range_count,
             range_buffer: self.range_buffer,
         }
+    }
+
+    fn largest_acknowledged(&self) -> VarInt {
+        self.largest_acknowledged
     }
 }
 
