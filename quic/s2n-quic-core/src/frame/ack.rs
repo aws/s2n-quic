@@ -183,7 +183,13 @@ pub trait AckRanges {
 
     fn ack_ranges(&self) -> Self::Iter;
 
-    fn largest_acknowledged(&self) -> VarInt;
+    fn largest_acknowledged(&self) -> VarInt {
+        *self
+            .ack_ranges()
+            .next()
+            .expect("at least one ack range is required")
+            .end()
+    }
 }
 
 #[derive(Clone, Copy)]
