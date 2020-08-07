@@ -12,7 +12,7 @@ use s2n_quic::Server;
 async fn main() -> Result<(), Box<dyn Error>> {
     let mut server = Server::builder()
         .with_tls("./certs/key.pem")?
-        .with_socket("127.0.0.1:443")?
+        .with_io("127.0.0.1:443")?
         .build()?;
 
     while let Ok(mut connection) = server.accept().await {
@@ -46,6 +46,7 @@ pub mod connection;
 pub mod server;
 pub mod stream;
 
+pub use connection::Connection;
 pub use s2n_quic_core::application::ApplicationErrorCode;
 pub use server::Server;
 

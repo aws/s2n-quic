@@ -26,7 +26,7 @@ impl_providers_state! {
         log: Log,
         retry_token: RetryToken,
         runtime: Runtime,
-        socket: Socket,
+        io: IO,
         sync: Sync,
         tls: Tls,
     }
@@ -40,7 +40,7 @@ impl Server {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```rust,no_run
     /// # use std::error::Error;
     /// # use s2n_quic::Server;
     /// #
@@ -52,10 +52,10 @@ impl Server {
     /// ```
     pub fn bind<T>(socket: T) -> Result<Server, T::Error>
     where
-        T: socket::TryInto,
+        T: io::TryInto,
     {
         let server = Self::builder()
-            .with_socket(socket)?
+            .with_io(socket)?
             .build()
             .expect("The server could not be built");
         Ok(server)
@@ -65,14 +65,14 @@ impl Server {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```rust,no_run
     /// # use std::error::Error;
     /// # use s2n_quic::Server;
     /// #
     /// # fn main() -> Result<(), Box<dyn Error>> {
     /// let server = Server::builder()
     ///     .with_tls("./certs/key.pem")?
-    ///     .with_socket("127.0.0.1:443")?
+    ///     .with_io("127.0.0.1:443")?
     ///     .build()?;
     /// #
     /// #    Ok(())
