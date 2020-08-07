@@ -1,15 +1,22 @@
 // TODO: Remove when used
 #![allow(dead_code)]
 
-use alloc::collections::{btree_map::Range, BTreeMap};
-use core::ops::RangeInclusive;
-use s2n_quic_core::{packet::number::PacketNumber, time::Timestamp};
+use alloc::collections::{
+    btree_map::{Iter, Range},
+    BTreeMap,
+};
+use s2n_quic_core::{
+    packet::number::{PacketNumber, PacketNumberRange},
+    time::Timestamp,
+};
 
 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.1
 
 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.1.1
 #[derive(Clone, Debug, Default)]
 pub struct SentPackets {
+    // TODO: Investigate a more efficient mechanism for managing sent_packets
+    //       See https://github.com/awslabs/s2n-quic/issues/69
     sent_packets: BTreeMap<PacketNumber, SentPacketInfo>,
 }
 
@@ -25,16 +32,19 @@ impl SentPackets {
     }
 
     /// Constructs a double-ended iterator over a sub-range of packet numbers
-    pub fn range(
-        &self,
-        range: RangeInclusive<PacketNumber>,
-    ) -> Range<'_, PacketNumber, SentPacketInfo> {
-        self.sent_packets.range(range)
+    pub fn range(&self, range: PacketNumberRange) -> Range<'_, PacketNumber, SentPacketInfo> {
+        self.sent_packets.range(range.start()..=range.end())
     }
 
     /// Removes the `SentPacketInfo` associated with the given `packet_number`
-    pub fn remove(&mut self, packet_number: PacketNumber) {
-        self.sent_packets.remove(&packet_number);
+    /// and returns the `SentPacketInfo` if it was present
+    pub fn remove(&mut self, packet_number: PacketNumber) -> Option<SentPacketInfo> {
+        self.sent_packets.remove(&packet_number)
+    }
+
+    /// Gets an iterator over the sent packet entries, sorted by PacketNumber
+    pub fn iter(&self) -> Iter<'_, PacketNumber, SentPacketInfo> {
+        self.sent_packets.iter()
     }
 }
 
@@ -62,7 +72,10 @@ impl SentPacketInfo {
 #[cfg(test)]
 mod test {
     use crate::recovery::{SentPacketInfo, SentPackets};
-    use s2n_quic_core::{packet::number::PacketNumberSpace, varint::VarInt};
+    use s2n_quic_core::{
+        packet::number::{PacketNumberRange, PacketNumberSpace},
+        varint::VarInt,
+    };
 
     #[test]
     fn insert_get_range() {
@@ -93,8 +106,12 @@ mod test {
         assert_eq!(sent_packets.get(packet_number_3).unwrap(), &sent_packet_3);
 
         for (&packet_number, &sent_packet_info) in
-            sent_packets.range(packet_number_1..=packet_number_3)
+            sent_packets.range(PacketNumberRange::new(packet_number_1, packet_number_3))
         {
+            assert_eq!(sent_packets.get(packet_number).unwrap(), &sent_packet_info);
+        }
+
+        for (&packet_number, &sent_packet_info) in sent_packets.iter() {
             assert_eq!(sent_packets.get(packet_number).unwrap(), &sent_packet_info);
         }
     }
@@ -109,12 +126,12 @@ mod test {
         assert!(sent_packets.get(packet_number).is_some());
         assert_eq!(sent_packets.get(packet_number).unwrap(), &sent_packet);
 
-        sent_packets.remove(packet_number);
+        assert_eq!(Some(sent_packet), sent_packets.remove(packet_number));
 
         assert!(sent_packets.get(packet_number).is_none());
 
         // Removing a packet that was already removed doesn't panic
-        sent_packets.remove(packet_number);
+        assert_eq!(None, sent_packets.remove(packet_number));
     }
 
     #[test]
@@ -148,7 +165,10 @@ mod test {
             PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u8(1));
         let packet_number_end =
             PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u8(2));
-        sent_packets.range(packet_number_start..=packet_number_end);
+        sent_packets.range(PacketNumberRange::new(
+            packet_number_start,
+            packet_number_end,
+        ));
     }
 
     #[test]
