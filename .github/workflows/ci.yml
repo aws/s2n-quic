@@ -12,6 +12,7 @@ env:
   CARGO_INCREMENTAL: 0
   CARGO_NET_RETRY: 10
   RUSTUP_MAX_RETRIES: 10
+  RUST_BACKTRACE: 1
   SCCACHE_CACHE_SIZE: 300M
   SCCACHE_DIR: ${{ github.workspace }}/.sccache
   SCCACHE_IDLE_TIMEOUT: 0
@@ -133,13 +134,36 @@ jobs:
       - name: Run cargo udeps
         run: cargo udeps --workspace --all-targets
 
+  doc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions-rs/toolchain@v1
+        id: toolchain
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+
+      - uses: actions/checkout@v2
+
+      - name: Run cargo doc
+        uses: actions-rs/cargo@v1
+        with:
+          command: doc
+          args: --all-features --no-deps --workspace --exclude cargo-compliance --exclude compliance --exclude interop-server
+
+      - uses: actions/upload-artifact@v2
+        with:
+          name: docs
+          path: target/doc
+
   test:
     runs-on: ${{ matrix.os }}
     needs: env
     strategy:
       matrix:
         rust: ${{ fromJson(needs.env.outputs.rust-versions) }}
-        os: [ubuntu-latest, macOS-latest]
+        os: [ubuntu-latest, macOS-latest, windows-latest]
     steps:
       - uses: actions-rs/toolchain@v1
         id: toolchain
@@ -152,6 +176,7 @@ jobs:
           lfs: true
 
       - name: Restore fuzz corpus
+        shell: bash
         run: |
           find . -name 'corpus.tar.gz' -exec dirname {} ';' | xargs -L 1 bash -c 'cd "$0" && rm -rf corpus && tar xf corpus.tar.gz'
 
@@ -359,6 +384,11 @@ jobs:
       - name: Stop sccache
         run: sccache --stop-server
 
+      - uses: actions/upload-artifact@v2
+        with:
+          name: compliance
+          path: compliance
+
       - name: Upload report to codecov
         uses: codecov/codecov-action@v1
         with:
@@ -445,6 +475,11 @@ jobs:
 
       - name: Run covfix
         run: rust-covfix -o coverage.lcov coverage.unfiltered.lcov
+
+      - uses: actions/upload-artifact@v2
+        with:
+          name: unit-tests.lcov
+          path: coverage.lcov
 
       - name: Upload report to codecov
         uses: codecov/codecov-action@v1

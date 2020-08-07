@@ -4,7 +4,6 @@ use s2n_quic_core::{
     packet::number::{PacketNumber, PacketNumberSpace},
     time::Timestamp,
     transport::error::TransportError,
-    transport_error,
     varint::VarInt,
 };
 
@@ -38,10 +37,8 @@ impl TxPacketNumbers {
         //# is able to detect the condition.
 
         if largest >= self.next {
-            return Err(transport_error!(
-                PROTOCOL_VIOLATION,
-                "received an ACK for a packet that was not sent"
-            ));
+            return Err(TransportError::PROTOCOL_VIOLATION
+                .with_reason("received an ACK for a packet that was not sent"));
         }
 
         // record the largest packet acked

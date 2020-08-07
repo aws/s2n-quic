@@ -37,7 +37,9 @@ impl Env {
 
     // Tries to compile the program and returns if it was successful
     fn check(&self, path: &Path) -> Result<bool, Error> {
-        let mut child = Command::new(&self.rustc)
+        let mut command = Command::new(&self.rustc);
+
+        command
             .arg("--out-dir")
             .arg(&self.out_dir)
             .arg("--target")
@@ -46,10 +48,21 @@ impl Env {
             .arg("bin")
             .arg("--codegen")
             .arg("opt-level=0")
-            .arg(path)
-            .spawn()?;
+            .arg(path);
 
-        Ok(child.wait()?.success())
+        for (key, _) in std::env::vars() {
+            const CARGO_FEATURE: &str = "CARGO_FEATURE_";
+            if key.starts_with(CARGO_FEATURE) {
+                command.arg("--cfg").arg(format!(
+                    "feature=\"{}\"",
+                    key.trim_start_matches(CARGO_FEATURE)
+                        .to_lowercase()
+                        .replace('_', "-")
+                ));
+            }
+        }
+
+        Ok(command.spawn()?.wait()?.success())
     }
 }
 

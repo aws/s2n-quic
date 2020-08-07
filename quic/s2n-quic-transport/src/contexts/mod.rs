@@ -10,7 +10,6 @@ use s2n_quic_core::{
     packet::number::PacketNumber,
     time::Timestamp,
 };
-use s2n_quic_platform::io::tx::TxQueue;
 
 /// Context information about the connection to which a stream is attached to
 /// that is passed on calls to the stream
@@ -59,15 +58,6 @@ pub enum OnTransmitError {
     CouldNotWriteFrame,
     /// It was not possible to obtain a large enough space for writing a frame
     CoundNotAcquireEnoughSpace,
-}
-
-/// The type of the Context parameter which is passed to `on_transmit` calls
-/// on connections.
-pub trait ConnectionWriteContext {
-    type QueueType: TxQueue;
-
-    /// Returns a reference to the transmission queue
-    fn tx_queue(&mut self) -> &mut Self::QueueType;
 }
 
 /// Enumerates error values for `on_transmit` calls on connections

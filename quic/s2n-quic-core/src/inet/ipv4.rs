@@ -1,9 +1,12 @@
-use crate::inet::unspecified::Unspecified;
-use core::fmt;
+use crate::inet::{
+    ipv6::{IPv6Address, SocketAddressV6},
+    unspecified::Unspecified,
+};
+use core::{fmt, mem::size_of};
 use s2n_codec::zerocopy::U16;
 
-/// Length defined at https://tools.ietf.org/html/rfc791#section-2.3
-/// > Addresses are fixed length of four octets (32 bits).
+//= https://tools.ietf.org/rfc/rfc791.txt#2.3
+//# Addresses are fixed length of four octets (32 bits).
 const IPV4_LEN: usize = 32 / 8;
 
 define_inet_type!(
@@ -11,6 +14,23 @@ define_inet_type!(
         octets: [u8; IPV4_LEN],
     }
 );
+
+impl IPv4Address {
+    /// Converts the IP address into a IPv6 mapped address
+    pub const fn to_ipv6_mapped(self) -> IPv6Address {
+        //= https://tools.ietf.org/rfc/rfc5156.txt#2.2
+        //# ::FFFF:0:0/96 are the IPv4-mapped addresses [RFC4291].
+        let mut addr = [0; size_of::<IPv6Address>()];
+        let [a, b, c, d] = self.octets;
+        addr[10] = 0xFF;
+        addr[11] = 0xFF;
+        addr[12] = a;
+        addr[13] = b;
+        addr[14] = c;
+        addr[15] = d;
+        IPv6Address { octets: addr }
+    }
+}
 
 impl fmt::Debug for IPv4Address {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
@@ -45,18 +65,24 @@ define_inet_type!(
 );
 
 impl SocketAddressV4 {
-    pub fn ip(&self) -> &IPv4Address {
+    pub const fn ip(&self) -> &IPv4Address {
         &self.ip
     }
 
     #[inline(always)]
-    #[allow(clippy::trivially_copy_pass_by_ref)]
-    pub fn port(&self) -> u16 {
+    pub fn port(self) -> u16 {
         self.port.into()
     }
 
     pub fn set_port(&mut self, port: u16) {
         self.port.set(port)
+    }
+
+    /// Converts the IP address into a IPv6 mapped address
+    pub const fn to_ipv6_mapped(self) -> SocketAddressV6 {
+        let ip = self.ip().to_ipv6_mapped();
+        let port = self.port;
+        SocketAddressV6 { ip, port }
     }
 }
 

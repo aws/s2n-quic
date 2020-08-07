@@ -87,6 +87,14 @@ impl SocketAddress {
             SocketAddress::IPv6(addr) => addr.port(),
         }
     }
+
+    /// Converts the IP address into a IPv6 mapped address
+    pub fn to_ipv6_mapped(&self) -> SocketAddressV6 {
+        match self {
+            Self::IPv4(addr) => addr.to_ipv6_mapped(),
+            Self::IPv6(addr) => *addr,
+        }
+    }
 }
 
 impl Default for SocketAddress {
@@ -194,6 +202,64 @@ mod std_conversion {
             match addr {
                 net::SocketAddr::V4(addr) => Self::IPv4(addr.into()),
                 net::SocketAddr::V6(addr) => Self::IPv6(addr.into()),
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::{SocketAddr, ToSocketAddrs};
+
+    const TESTS: &[&str] = &[
+        "127.0.0.1:80",
+        "192.168.1.1:40",
+        "255.255.255.255:12345",
+        "[::]:443",
+        "[::1]:123",
+        "[2001:0db8:85a3:0001:0002:8a2e:0370:7334]:9000",
+    ];
+
+    #[test]
+    #[compliance::tests(
+        /// ::FFFF:0:0/96 are the IPv4-mapped addresses [RFC4291].
+        "https://tools.ietf.org/rfc/rfc5156.txt#2.2"
+    )]
+    fn to_ipv6_mapped_test() {
+        for test in TESTS.iter() {
+            // assert that this implementation matches the standard library
+            let addr: SocketAddr = test.parse().unwrap();
+            let address: SocketAddress = addr.into();
+            let addr = match addr {
+                SocketAddr::V4(addr) => {
+                    let ip = addr.ip().to_ipv6_mapped();
+                    (ip, addr.port()).into()
+                }
+                _ => addr,
+            };
+            let address = address.to_ipv6_mapped().into();
+            assert_eq!(addr, address);
+        }
+    }
+
+    #[test]
+    fn display_test() {
+        for test in TESTS.iter() {
+            // assert that this implementation matches the standard library
+            let addr: SocketAddr = test.parse().unwrap();
+            let address: SocketAddress = addr.into();
+            assert_eq!(addr.to_string(), address.to_string());
+        }
+    }
+
+    #[test]
+    fn to_socket_addrs_test() {
+        for test in TESTS.iter() {
+            let addr: SocketAddr = test.parse().unwrap();
+            let address: SocketAddress = addr.into();
+            for address in address.to_socket_addrs().unwrap() {
+                assert_eq!(addr, address);
             }
         }
     }

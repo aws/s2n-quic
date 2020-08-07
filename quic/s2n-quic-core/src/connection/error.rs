@@ -5,8 +5,9 @@ use crate::{
 };
 
 /// Errors that a connection can encounter.
-#[derive(PartialEq, Debug, Copy, Clone)]
+#[derive(PartialEq, Debug, Copy, Clone, displaydoc::Display)]
 #[non_exhaustive]
+#[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
 pub enum ConnectionError {
     /// The connection was closed on application level either locally or
     /// by the peer. The argument contains the error code which the application

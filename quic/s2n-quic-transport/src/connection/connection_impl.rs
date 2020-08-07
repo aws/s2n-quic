@@ -7,13 +7,14 @@ use crate::{
         ConnectionTrait, ConnectionTransmission, ConnectionTransmissionContext,
         InternalConnectionId, SharedConnectionState,
     },
-    contexts::{ConnectionOnTransmitError, ConnectionWriteContext},
+    contexts::ConnectionOnTransmitError,
 };
 use core::time::Duration;
 use s2n_quic_core::{
     application::ApplicationErrorExt,
     connection::ConnectionId,
     inet::{DatagramInfo, SocketAddress},
+    io::tx,
     packet::{
         handshake::ProtectedHandshake,
         initial::{CleartextInitial, ProtectedInitial},
@@ -25,7 +26,6 @@ use s2n_quic_core::{
     time::Timestamp,
     transport::error::TransportError,
 };
-use s2n_quic_platform::io::tx::TxQueue;
 
 /// Possible states for handing over a connection from the endpoint to the
 /// application.
@@ -232,6 +232,7 @@ impl<ConfigType: ConnectionConfig> ConnectionTrait for ConnectionImpl<ConfigType
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         close_reason: ConnectionCloseReason,
+        timestamp: Timestamp,
     ) {
         match self.state {
             ConnectionState::Closing | ConnectionState::Draining | ConnectionState::Finished => {
@@ -263,20 +264,18 @@ impl<ConfigType: ConnectionConfig> ConnectionTrait for ConnectionImpl<ConfigType
         if let ConnectionState::Closing | ConnectionState::Draining = self.state {
             // Start closing/draining timer
             // TODO: The time should be coming from config + PTO estimation
-            self.timers
-                .close_timer
-                .set(s2n_quic_platform::time::now() + core::time::Duration::from_millis(100));
+            let delay = core::time::Duration::from_millis(100);
+            self.timers.close_timer.set(timestamp + delay);
         }
     }
 
     /// Queries the connection for outgoing packets
-    fn on_transmit<W: ConnectionWriteContext>(
+    fn on_transmit<Tx: tx::Queue>(
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
-        context: &mut W,
+        queue: &mut Tx,
         timestamp: Timestamp,
     ) -> Result<(), ConnectionOnTransmitError> {
-        let queue = context.tx_queue();
         let mut count = 0;
 
         match self.state {
@@ -284,20 +283,18 @@ impl<ConfigType: ConnectionConfig> ConnectionTrait for ConnectionImpl<ConfigType
                 let ecn = Default::default();
 
                 while queue
-                    .push(
-                        &self.peer_socket_address,
-                        ecn,
-                        ConnectionTransmission {
-                            context: ConnectionTransmissionContext {
-                                quic_version: self.quic_version,
-                                destination_connection_id: self.peer_connection_id,
-                                source_connection_id: self.local_connection_id,
-                                timestamp,
-                                local_endpoint_type: Self::Config::ENDPOINT_TYPE,
-                            },
-                            shared_state,
+                    .push(ConnectionTransmission {
+                        context: ConnectionTransmissionContext {
+                            quic_version: self.quic_version,
+                            destination_connection_id: self.peer_connection_id,
+                            source_connection_id: self.local_connection_id,
+                            timestamp,
+                            local_endpoint_type: Self::Config::ENDPOINT_TYPE,
+                            remote_address: self.peer_socket_address,
+                            ecn,
                         },
-                    )
+                        shared_state,
+                    })
                     .is_ok()
                 {
                     count += 1;
@@ -334,7 +331,11 @@ impl<ConfigType: ConnectionConfig> ConnectionTrait for ConnectionImpl<ConfigType
             .poll_expiration(timestamp)
             .is_ready()
         {
-            self.close(shared_state, ConnectionCloseReason::IdleTimerExpired);
+            self.close(
+                shared_state,
+                ConnectionCloseReason::IdleTimerExpired,
+                timestamp,
+            );
         }
 
         if self
@@ -366,7 +367,11 @@ impl<ConfigType: ConnectionConfig> ConnectionTrait for ConnectionImpl<ConfigType
     }
 
     /// Handles all external wakeups on the [`Connection`].
-    fn on_wakeup(&mut self, shared_state: &mut SharedConnectionState<Self::Config>) {
+    fn on_wakeup(
+        &mut self,
+        shared_state: &mut SharedConnectionState<Self::Config>,
+        timestamp: Timestamp,
+    ) {
         // This method is intentionally mostly empty at the moment. The most important thing on a
         // wakeup is that the connection manager synchronizes the interests of the individual connection.
         // This will happen automatically through the [`interests()`] call after the [`Connection`]
@@ -386,6 +391,7 @@ impl<ConfigType: ConnectionConfig> ConnectionTrait for ConnectionImpl<ConfigType
                     self.close(
                         shared_state,
                         ConnectionCloseReason::LocalImmediateClose(error_code),
+                        timestamp,
                     );
                 }
             }
@@ -530,13 +536,14 @@ impl<ConfigType: ConnectionConfig> ConnectionTrait for ConnectionImpl<ConfigType
     fn handle_transport_error(
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
-        _datagram: &DatagramInfo,
+        datagram: &DatagramInfo,
         transport_error: TransportError,
     ) {
         dbg!(&transport_error);
         self.close(
             shared_state,
             ConnectionCloseReason::LocalObservedTransportErrror(transport_error),
+            datagram.timestamp,
         );
     }
 

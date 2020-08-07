@@ -6,7 +6,8 @@ use crate::{
 };
 
 /// Errors that a stream can encounter.
-#[derive(PartialEq, Debug, Copy, Clone)]
+#[derive(PartialEq, Debug, Copy, Clone, displaydoc::Display)]
+#[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
 #[non_exhaustive]
 pub enum StreamError {
     /// The Stream ID which was referenced is invalid and/or no longer tracked

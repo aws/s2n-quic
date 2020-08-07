@@ -6,7 +6,6 @@ use crate::{
         ConnectionContainer, ConnectionContainerIterationResult, ConnectionIdMapper,
         ConnectionTrait, InternalConnectionId, InternalConnectionIdGenerator,
     },
-    contexts::ConnectionWriteContext,
     timer::TimerManager,
     unbounded_channel,
     wakeup_queue::WakeupQueue,
@@ -15,9 +14,12 @@ use alloc::collections::VecDeque;
 use core::task::{Context, Poll};
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
-    connection::ConnectionId, inet::DatagramInfo, packet::ProtectedPacket, time::Timestamp,
+    connection::ConnectionId,
+    inet::DatagramInfo,
+    io::{rx, tx},
+    packet::ProtectedPacket,
+    time::Timestamp,
 };
-use s2n_quic_platform::io::tx::TxQueue;
 
 mod config;
 pub use config::{ConnectionIdGenerator, EndpointConfig};
@@ -79,8 +81,31 @@ impl<ConfigType: EndpointConfig> Endpoint<ConfigType> {
         (endpoint, acceptor)
     }
 
-    /// Ingests a datagram
-    pub fn receive_datagram(&mut self, datagram: &DatagramInfo, payload: &mut [u8]) {
+    /// Ingests a queue of datagrams
+    pub fn receive<'a, Rx: rx::Rx<'a>>(&mut self, rx: &'a mut Rx, timestamp: Timestamp) {
+        use rx::{Entry, Queue};
+
+        let mut queue = rx.queue();
+        let entries = queue.as_slice_mut();
+
+        for entry in entries.iter_mut() {
+            if let Some(remote_address) = entry.remote_address() {
+                let datagram = DatagramInfo {
+                    timestamp,
+                    payload_len: entry.payload_len(),
+                    ecn: entry.ecn(),
+                    remote_address,
+                };
+
+                self.receive_datagram(&datagram, entry.payload_mut())
+            }
+        }
+        let len = entries.len();
+        queue.finish(len);
+    }
+
+    /// Ingests a single datagram
+    fn receive_datagram(&mut self, datagram: &DatagramInfo, payload: &mut [u8]) {
         // Obtain the connection ID decoder from the generator that we are using.
         let destination_connection_id_decoder = self
             .local_connection_id_generator
@@ -167,29 +192,14 @@ impl<ConfigType: EndpointConfig> Endpoint<ConfigType> {
     }
 
     /// Queries the endpoint for outgoing datagrams
-    pub fn transmit<Tx: TxQueue>(&mut self, tx: &mut Tx, timestamp: Timestamp) {
-        /// Adaptor struct from `Tx` to `ConnectionWriteContext`.
-        /// Should be extracted as soon as more parameters are used for
-        /// `ConnectionWriteContext`
-        struct WriteContext<'a, QueueType> {
-            queue: &'a mut QueueType,
-        }
-
-        impl<'a, QueueType: TxQueue> ConnectionWriteContext for WriteContext<'a, QueueType> {
-            type QueueType = QueueType;
-
-            fn tx_queue(&mut self) -> &mut Self::QueueType {
-                self.queue
-            }
-        }
-
-        let mut context = WriteContext { queue: tx };
+    pub fn transmit<'a, Tx: tx::Tx<'a>>(&mut self, tx: &'a mut Tx, timestamp: Timestamp) {
+        let mut queue = tx.queue();
 
         // Iterate over all connections which want to transmit data
         let mut transmit_result = Ok(());
         self.connections
             .iterate_transmission_list(|connection, shared_state| {
-                transmit_result = connection.on_transmit(shared_state, &mut context, timestamp);
+                transmit_result = connection.on_transmit(shared_state, &mut queue, timestamp);
                 if transmit_result.is_err() {
                     // If one connection fails, return
                     ConnectionContainerIterationResult::BreakAndInsertAtBack
@@ -215,7 +225,11 @@ impl<ConfigType: EndpointConfig> Endpoint<ConfigType> {
     /// Handles all wakeup events.
     /// This should be called in every eventloop iteration.
     /// Returns the number of wakeups which have occurred and had been handled.
-    pub fn poll_pending_wakeups(&mut self, context: &'_ Context) -> Poll<usize> {
+    pub fn poll_pending_wakeups(
+        &mut self,
+        context: &'_ Context,
+        timestamp: Timestamp,
+    ) -> Poll<usize> {
         // The mem::replace is needed to work around a limitation which does not allow us to pass
         // the new queue directly - even though we will populate the field again after the call.
         let dequeued_wakeups = core::mem::replace(&mut self.dequeued_wakeups, VecDeque::new());
@@ -227,7 +241,7 @@ impl<ConfigType: EndpointConfig> Endpoint<ConfigType> {
         for internal_id in &self.dequeued_wakeups {
             self.connections
                 .with_connection(*internal_id, |conn, shared_state| {
-                    conn.on_wakeup(shared_state);
+                    conn.on_wakeup(shared_state, timestamp);
                 });
         }
 

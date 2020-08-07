@@ -1,5 +1,6 @@
 mod segment;
 mod vec;
+// TODO support mmap buffers
 
 pub use segment::*;
 pub use vec::*;
@@ -14,4 +15,8 @@ pub trait Buffer: Index<usize, Output = [u8]> + IndexMut<usize> {
     }
 
     fn mtu(&self) -> usize;
+}
+
+pub mod default {
+    pub use super::vec::VecBuffer as Buffer;
 }

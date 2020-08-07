@@ -8,14 +8,15 @@ use crate::{
 use core::fmt;
 use s2n_codec::DecoderError;
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-23.txt#20
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#20
 //# QUIC error codes are 62-bit unsigned integers.
 //#
 //# This section lists the defined QUIC transport error codes that may be
 //# used in a CONNECTION_CLOSE frame.  These errors apply to the entire
 //# connection.
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
 pub struct TransportError {
     pub code: VarInt,
     pub frame_type: Option<VarInt>,
@@ -23,18 +24,23 @@ pub struct TransportError {
 }
 
 impl TransportError {
-    /// Creates a new `TransportError` with the specified information
-    pub const fn new(code: VarInt, reason: &'static str, frame_type: Option<VarInt>) -> Self {
+    /// Creates a new `TransportError`
+    pub const fn new(code: VarInt) -> Self {
         Self {
             code,
-            reason,
-            frame_type,
+            reason: "",
+            frame_type: None,
         }
     }
 
     /// Updates the `TransportError` with the specified `frame_type`
-    pub const fn with_frame_type(mut self, frame_type: VarInt) -> Self {
-        self.frame_type = Some(frame_type);
+    pub const fn with_frame_type(self, frame_type: VarInt) -> Self {
+        self.with_optional_frame_type(Some(frame_type))
+    }
+
+    /// Updated the `TransportError` with the optional `frame_type`
+    pub const fn with_optional_frame_type(mut self, frame_type: Option<VarInt>) -> Self {
+        self.frame_type = frame_type;
         self
     }
 
@@ -47,150 +53,187 @@ impl TransportError {
 
 impl fmt::Display for TransportError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if self.reason.is_empty() {
-            let code: u64 = self.code.into();
-            write!(f, "TransportError({})", code)?;
+        if !self.reason.is_empty() {
+            self.reason.fmt(f)
+        } else if let Some(description) = self.description() {
+            description.fmt(f)
         } else {
-            f.write_str(&self.reason)?;
+            write!(f, "TransportError({})", self.code)
+        }
+    }
+}
+
+impl fmt::Debug for TransportError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut d = f.debug_struct("TransportError");
+
+        d.field("code", &self.code);
+
+        if let Some(description) = self.description() {
+            d.field("description", &description);
         }
 
-        Ok(())
+        if !self.reason.is_empty() {
+            d.field("reason", &self.reason);
+        }
+
+        if let Some(frame_type) = self.frame_type {
+            d.field("frame_type", &frame_type);
+        }
+
+        d.finish()
     }
 }
 
 /// Internal convenience macro for defining standard error codes
-macro_rules! def_error {
-    ($doc:expr, $name:ident, $code:expr) => {
+macro_rules! impl_errors {
+    ($($(#[doc = $doc:expr])* $name:ident = $code:expr),* $(,)?) => {
         impl TransportError {
-            #[doc = $doc]
-            pub const $name: VarInt = VarInt::from_u32($code);
+            $(
+                $(#[doc = $doc])*
+                pub const $name: Self = Self::new(VarInt::from_u32($code));
+            )*
+
+            pub fn description(&self) -> Option<&'static str> {
+                match self.code.as_u64() {
+                    $(
+                        $code => Some(stringify!($name)),
+                    )*
+                    code @ 0x100..=0x1ff => CryptoError::new(code as u8).description(),
+                    _ => None
+                }
+            }
+        }
+
+        #[test]
+        fn description_test() {
+            $(
+                assert_eq!(&TransportError::$name.to_string(), stringify!($name));
+            )*
+            assert_eq!(&TransportError::from(CryptoError::DECODE_ERROR).to_string(), "DECODE_ERROR");
         }
     };
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-23.txt#20
-//# NO_ERROR (0x0):  An endpoint uses this with CONNECTION_CLOSE to
-//#    signal that the connection is being closed abruptly in the absence
-//#    of any error.
+impl_errors! {
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#20
+    //# NO_ERROR (0x0):  An endpoint uses this with CONNECTION_CLOSE to
+    //#    signal that the connection is being closed abruptly in the absence
+    //#    of any error.
+    /// An endpoint uses this with CONNECTION_CLOSE to
+    /// signal that the connection is being closed abruptly in the absence
+    /// of any error
+    NO_ERROR = 0x0,
 
-def_error!(
-    "An endpoint uses this with CONNECTION_CLOSE to signal that the connection is being closed abruptly in the absence of any error.",
-    NO_ERROR,
-    0x0
-);
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#20
+    //# INTERNAL_ERROR (0x1):  The endpoint encountered an internal error and
+    //#    cannot continue with the connection.
+    /// The endpoint encountered an internal error
+    /// and cannot continue with the connection.
+    INTERNAL_ERROR = 0x1,
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-23.txt#20
-//# INTERNAL_ERROR (0x1):  The endpoint encountered an internal error and
-//#    cannot continue with the connection.
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#20
+    //# CONNECTION_REFUSED (0x2):  The server refused to accept a new
+    //#  connection.
+    /// The server refused to accept a new
+    ///  connection.
+    CONNECTION_REFUSED = 0x2,
 
-def_error!(
-    "The endpoint encountered an internal error and cannot continue with the connection.",
-    INTERNAL_ERROR,
-    0x1
-);
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#20
+    //# FLOW_CONTROL_ERROR (0x3):  An endpoint received more data than it
+    //#    permitted in its advertised data limits; see Section 4.
+    /// An endpoint received more data than it
+    /// permitted in its advertised data limits.
+    FLOW_CONTROL_ERROR = 0x3,
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-23.txt#20
-//# SERVER_BUSY (0x2):  The server is currently busy and does not accept
-//#    any new connections.
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#20
+    //# STREAM_LIMIT_ERROR (0x4):  An endpoint received a frame for a stream
+    //#    identifier that exceeded its advertised stream limit for the
+    //#    corresponding stream type.
+    /// An endpoint received a frame for a stream
+    /// identifier that exceeded its advertised stream limit for the
+    /// corresponding stream type.
+    STREAM_LIMIT_ERROR = 0x4,
 
-def_error!(
-    "The server is currently busy and does not accept any new connections.",
-    SERVER_BUSY,
-    0x2
-);
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#20
+    //# STREAM_STATE_ERROR (0x5):  An endpoint received a frame for a stream
+    //#    that was not in a state that permitted that frame; see Section 3.
+    /// An endpoint received a frame for a stream
+    /// that was not in a state that permitted that frame.
+    STREAM_STATE_ERROR = 0x5,
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-23.txt#20
-//# FLOW_CONTROL_ERROR (0x3):  An endpoint received more data than it
-//#    permitted in its advertised data limits (see Section 4).
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#20
+    //# FINAL_SIZE_ERROR (0x6):  An endpoint received a STREAM frame
+    //#    containing data that exceeded the previously established final
+    //#    size.  Or an endpoint received a STREAM frame or a RESET_STREAM
+    //#    frame containing a final size that was lower than the size of
+    //#    stream data that was already received.  Or an endpoint received a
+    //#    STREAM frame or a RESET_STREAM frame containing a different final
+    //#    size to the one already established.
+    /// An endpoint received a STREAM frame
+    /// containing data that exceeded the previously established final
+    /// size.
+    FINAL_SIZE_ERROR = 0x6,
 
-def_error!(
-    "An endpoint received more data than it permitted in its advertised data limits.",
-    FLOW_CONTROL_ERROR,
-    0x3
-);
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#20
+    //# FRAME_ENCODING_ERROR (0x7):  An endpoint received a frame that was
+    //#    badly formatted.  For instance, a frame of an unknown type, or an
+    //#    ACK frame that has more acknowledgment ranges than the remainder
+    //#    of the packet could carry.
+    /// An endpoint received a frame that was
+    /// badly formatted.
+    FRAME_ENCODING_ERROR = 0x7,
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-23.txt#20
-//# STREAM_LIMIT_ERROR (0x4):  An endpoint received a frame for a stream
-//#    identifier that exceeded its advertised stream limit for the
-//#    corresponding stream type.
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#20
+    //# TRANSPORT_PARAMETER_ERROR (0x8):  An endpoint received transport
+    //#    parameters that were badly formatted, included an invalid value,
+    //#    was absent even though it is mandatory, was present though it is
+    //#    forbidden, or is otherwise in error.
+    /// An endpoint received transport
+    /// parameters that were badly formatted.
+    TRANSPORT_PARAMETER_ERROR = 0x8,
 
-def_error!(
-    "An endpoint received a frame for a stream identifier that exceeded its advertised stream limit for the corresponding stream type.",
-    STREAM_LIMIT_ERROR,
-    0x4
-);
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#20
+    //# CONNECTION_ID_LIMIT_ERROR (0x9):  The number of connection IDs
+    //#    provided by the peer exceeds the advertised
+    //#    active_connection_id_limit.
+    /// The number of connection IDs
+    /// provided by the peer exceeds the advertised
+    /// active_connection_id_limit.
+    CONNECTION_ID_LIMIT_ERROR = 0x9,
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-23.txt#20
-//# STREAM_STATE_ERROR (0x5):  An endpoint received a frame for a stream
-//#    that was not in a state that permitted that frame (see Section 3).
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#20
+    //# PROTOCOL_VIOLATION (0xA):  An endpoint detected an error with
+    //#    protocol compliance that was not covered by more specific error
+    //#    codes.
+    /// An endpoint detected an error with
+    /// protocol compliance that was not covered by more specific error
+    /// codes.
+    PROTOCOL_VIOLATION = 0xA,
 
-def_error!(
-    "An endpoint received a frame for a stream that was not in a state that permitted that frame.",
-    STREAM_STATE_ERROR,
-    0x5
-);
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#20
+    //# INVALID_TOKEN (0xB):  A server received a Retry Token in a client
+    //#    Initial that is invalid.
+    /// A server received a Retry Token in a client
+    /// Initial that is invalid.
+    INVALID_TOKEN = 0xB,
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-23.txt#20
-//# FINAL_SIZE_ERROR (0x6):  An endpoint received a STREAM frame
-//#    containing data that exceeded the previously established final
-//#    size.  Or an endpoint received a STREAM frame or a RESET_STREAM
-//#    frame containing a final size that was lower than the size of
-//#    stream data that was already received.  Or an endpoint received a
-//#    STREAM frame or a RESET_STREAM frame containing a different final
-//#    size to the one already established.
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#20
+    //# APPLICATION_ERROR (0xC):  The application or application protocol
+    //#    caused the connection to be closed.
+    /// The application or application protocol
+    /// caused the connection to be closed.
+    APPLICATION_ERROR = 0xC,
 
-def_error!(
-    "An endpoint received a STREAM frame containing data that exceeded the previously established final size.",
-    FINAL_SIZE_ERROR,
-    0x6
-);
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#20
+    //# CRYPTO_BUFFER_EXCEEDED (0xD):  An endpoint has received more data in
+    //#    CRYPTO frames than it can buffer.
+    /// An endpoint has received more data in
+    /// CRYPTO frames than it can buffer.
+    CRYPTO_BUFFER_EXCEEDED = 0xD,
+}
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-23.txt#20
-//# FRAME_ENCODING_ERROR (0x7):  An endpoint received a frame that was
-//#    badly formatted.  For instance, a frame of an unknown type, or an
-//#    ACK frame that has more acknowledgment ranges than the remainder
-//#    of the packet could carry.
-
-def_error!(
-    "An endpoint received a frame that was badly formatted.",
-    FRAME_ENCODING_ERROR,
-    0x7
-);
-
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-23.txt#20
-//# TRANSPORT_PARAMETER_ERROR (0x8):  An endpoint received transport
-//#    parameters that were badly formatted, included an invalid value,
-//#    was absent even though it is mandatory, was present though it is
-//#    forbidden, or is otherwise in error.
-
-def_error!(
-    "An endpoint received transport parameters that were badly formatted.",
-    TRANSPORT_PARAMETER_ERROR,
-    0x8
-);
-
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-23.txt#20
-//# PROTOCOL_VIOLATION (0xA):  An endpoint detected an error with
-//#    protocol compliance that was not covered by more specific error
-//#    codes.
-
-def_error!(
-    "An endpoint detected an error with protocol compliance that was not covered by more specific error codes.",
-    PROTOCOL_VIOLATION,
-    0xA
-);
-
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-23.txt#20
-//# CRYPTO_BUFFER_EXCEEDED (0xD):  An endpoint has received more data in
-//#    CRYPTO frames than it can buffer.
-
-def_error!(
-    "An endpoint has received more data in CRYPTO frames than it can buffer.",
-    CRYPTO_BUFFER_EXCEEDED,
-    0xD
-);
-
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-23.txt#20
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#20
 //# CRYPTO_ERROR (0x1XX):  The cryptographic handshake failed.  A range
 //#    of 256 values is reserved for carrying error codes specific to the
 //#    cryptographic handshake that is used.  Codes for errors occurring
@@ -200,12 +243,8 @@ def_error!(
 impl TransportError {
     #[inline]
     /// Creates a crypto-level `TransportError` from a TLS alert code.
-    pub fn crypto_error(code: u8, reason: &'static str) -> Self {
-        Self {
-            code: VarInt::from_u32(0x100 | u32::from(code)),
-            reason,
-            frame_type: None,
-        }
+    pub const fn crypto_error(code: u8) -> Self {
+        Self::new(VarInt::from_u16(0x100 | (code as u16)))
     }
 }
 
@@ -220,12 +259,8 @@ impl TransportError {
 impl TransportError {
     #[inline]
     /// Creates an application-level `TransportError`
-    pub const fn applicaton_error(code: VarInt, reason: &'static str) -> Self {
-        Self {
-            code,
-            reason,
-            frame_type: None,
-        }
+    pub const fn applicaton_error(code: VarInt) -> Self {
+        Self::new(code)
     }
 }
 
@@ -242,49 +277,14 @@ impl ApplicationErrorExt for TransportError {
     }
 }
 
-/// Creates a `TransportErrors` with variable arguments
-#[macro_export]
-macro_rules! transport_error {
-    ($error:ident) => {
-        $crate::transport::error::TransportError::new(
-            $crate::transport::error::TransportError::$error,
-            "",
-            None,
-        )
-    };
-    ($error:expr) => {
-        $crate::transport::error::TransportError::new($error, "", None)
-    };
-    ($error:ident, $reason:expr) => {
-        $crate::transport::error::TransportError::new(
-            $crate::transport::error::TransportError::$error,
-            $reason,
-            None,
-        )
-    };
-    ($error:expr, $reason:expr) => {
-        $crate::transport::error::TransportError::new($error, $reason, None)
-    };
-    ($error:ident, $reason:expr, $frame:expr) => {
-        $crate::transport::error::TransportError::new(
-            $crate::transport::error::TransportError::$error,
-            $reason,
-            Some($frame.into()),
-        )
-    };
-    ($error:expr, $reason:expr, $frame:expr) => {
-        $crate::transport::error::TransportError::new($error, $reason, Some($frame.into()))
-    };
-}
-
 /// Implements conversion from decoder errors
 impl From<DecoderError> for TransportError {
     fn from(decoder_error: DecoderError) -> Self {
         match decoder_error {
             DecoderError::InvariantViolation(reason) => {
-                transport_error!(PROTOCOL_VIOLATION, reason)
+                Self::PROTOCOL_VIOLATION.with_reason(reason)
             }
-            _ => transport_error!(PROTOCOL_VIOLATION, "malformed packet"),
+            _ => Self::PROTOCOL_VIOLATION.with_reason("malformed packet"),
         }
     }
 }
@@ -293,7 +293,7 @@ impl From<DecoderError> for TransportError {
 /// See `TransportError::crypto_error` for more details
 impl From<CryptoError> for TransportError {
     fn from(crypto_error: CryptoError) -> Self {
-        Self::crypto_error(crypto_error.code, crypto_error.reason)
+        Self::crypto_error(crypto_error.code).with_reason(crypto_error.reason)
     }
 }
 
@@ -301,24 +301,6 @@ impl From<CryptoError> for TransportError {
 /// See `TransportError::crypto_error` for more details
 impl From<VarIntError> for TransportError {
     fn from(_: VarIntError) -> Self {
-        transport_error!(INTERNAL_ERROR, "varint encoding limit exceeded")
+        Self::INTERNAL_ERROR.with_reason("varint encoding limit exceeded")
     }
-}
-
-/// Converts an error into a `TransportError` and adds
-/// error context.
-#[macro_export]
-macro_rules! with_transport_information {
-    ($reason:expr) => {
-        |err| {
-            let err: $crate::transport::error::TransportError = err.into();
-            err.with_reason($reason)
-        }
-    };
-    ($reason:expr, $frame:expr) => {
-        |err| {
-            let err: $crate::transport::error::TransportError = err.into();
-            err.with_reason($reason).with_frame_type($frame)
-        }
-    };
 }

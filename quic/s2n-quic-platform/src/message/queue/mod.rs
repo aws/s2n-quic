@@ -1,22 +1,24 @@
-mod cursor;
-mod entry;
+mod behavior;
 mod segment;
 mod slice;
 
-use core::fmt;
-pub use cursor::Cursor;
-pub use entry::Entry;
+pub use behavior::Behavior;
 pub(crate) use segment::Segment;
 pub use slice::Slice;
 
+pub type Free<'a, M> = Slice<'a, M, behavior::Free>;
+pub type Occupied<'a, M> = Slice<'a, M, behavior::Occupied>;
+
+use crate::message;
+use core::fmt;
+
 /// Structure for queueing network messages
 ///
-/// Two segment queues are maintained: `ready` and `pending`. There is no predesignated meaning
-/// or behavior and should be defined by the caller. When consuming a message from one segment
+/// Two segment queues are maintained: `free` and `occupied`. When consuming a message from one segment
 /// it will be moved to the other.
 ///
 /// The payloads of the messages are backed by a parameterized
-/// [`MessageBuffer`] to reduce allocations.
+/// [`Ring`] to reduce allocations.
 ///
 /// The queue uses a `Vec` of [`Message`]s double the length of the payload buffer.
 /// The messages in the second half point to the same payloads as the first half, which
@@ -29,32 +31,32 @@ pub use slice::Slice;
 ///
 /// Because the payloads at index `X` and `capacity + X` point to the same location in memory, the
 /// messages are mostly interchangeable. When overflow messages are written to, some of the
-/// fields need to be copied to the primary messages, which is handled by [`Cursor`] and [`Slice`].
+/// fields need to be copied to the primary messages, which is handled by [`Slice`].
 ///
-/// To illustrate further, if the `ready` segment started at index 2 with a length of 2, the slice
+/// To illustrate further, if the `free` segment started at index 2 with a length of 2, the slice
 /// returned would be:
 ///
 /// ```ignore
 /// [ Message { payload: 2 }, Message { payload: 0 } ]
 /// ```
-pub struct Queue<Ring: super::Ring> {
+pub struct Queue<Ring: message::Ring> {
     ring: Ring,
-    /// Segment of the `ready` messages
-    ready: Segment,
-    /// Segment of the `pending` messages
-    pending: Segment,
+    /// Segment of the `occupied` messages
+    occupied: Segment,
+    /// Segment of the `free` messages
+    free: Segment,
 }
 
-impl<Ring: super::Ring> Queue<Ring> {
+impl<Ring: message::Ring> Queue<Ring> {
     /// Creates a new `MessageQueue` with a `MessageBuffer`
     pub fn new(ring: Ring) -> Self {
         let capacity = ring.len();
-        let pending = Segment {
+        let occupied = Segment {
             index: 0,
             len: 0,
             capacity,
         };
-        let ready = Segment {
+        let free = Segment {
             index: 0,
             len: capacity,
             capacity,
@@ -62,8 +64,8 @@ impl<Ring: super::Ring> Queue<Ring> {
 
         Self {
             ring,
-            ready,
-            pending,
+            occupied,
+            free,
         }
     }
 
@@ -77,64 +79,46 @@ impl<Ring: super::Ring> Queue<Ring> {
         self.ring.len()
     }
 
-    /// Tries to reserve a `ready` message to be moved to `pending`
-    pub fn pop_ready(&mut self) -> Option<(Entry<Ring::Message>, Cursor)> {
-        let capacity = self.capacity();
-        let index = self.ready.index(&self.pending)?;
-
-        let cursor = Cursor::new(&mut self.ready, &mut self.pending);
-        let entry = Entry::new(self.ring.as_mut_slice(), index, capacity);
-
-        Some((entry, cursor))
+    /// Returns the length of the `free` message queue
+    pub fn free_len(&self) -> usize {
+        self.free.len
     }
 
-    /// Tries to reserve a `pending` message to be moved to `ready`
-    pub fn pop_pending(&mut self) -> Option<(Entry<Ring::Message>, Cursor)> {
-        let capacity = self.capacity();
-        let index = self.pending.index(&self.ready)?;
-
-        let cursor = Cursor::new(&mut self.pending, &mut self.ready);
-        let entry = Entry::new(self.ring.as_mut_slice(), index, capacity);
-
-        Some((entry, cursor))
+    /// Returns the length of the `occupied` message queue
+    pub fn occupied_len(&self) -> usize {
+        self.occupied.len
     }
 
-    /// Returns the length of the `ready` message queue
-    pub fn ready_len(&self) -> usize {
-        self.ready.len
-    }
-
-    /// Returns the length of the `pending` message queue
-    pub fn pending_len(&self) -> usize {
-        self.pending.len
-    }
-
-    /// Returns a slice of all of the `ready` messages
-    pub fn ready_mut(&mut self) -> Slice<Ring::Message> {
+    /// Returns a slice of all of the `free` messages
+    pub fn free_mut(&mut self) -> Free<Ring::Message> {
+        let mtu = self.mtu();
         Slice {
             messages: self.ring.as_mut_slice(),
-            primary: &mut self.ready,
-            secondary: &mut self.pending,
+            primary: &mut self.free,
+            secondary: &mut self.occupied,
+            behavior: behavior::Free { mtu },
         }
     }
 
-    /// Returns a slice of all of the `pending` messages
-    pub fn pending_mut(&mut self) -> Slice<Ring::Message> {
+    /// Returns a slice of all of the `occupied` messages
+    pub fn occupied_mut(&mut self) -> Occupied<Ring::Message> {
+        let mtu = self.mtu();
         Slice {
             messages: self.ring.as_mut_slice(),
-            primary: &mut self.pending,
-            secondary: &mut self.ready,
+            primary: &mut self.occupied,
+            secondary: &mut self.free,
+            behavior: behavior::Occupied { mtu },
         }
     }
 }
 
-impl<Ring: super::Ring> fmt::Debug for Queue<Ring> {
+impl<Ring: message::Ring> fmt::Debug for Queue<Ring> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Queue")
-            .field("ready_index", &self.ready.index)
-            .field("ready_len", &self.ready.len)
-            .field("pending_index", &self.pending.index)
-            .field("pending_len", &self.pending.len)
+            .field("free_index", &self.free.index)
+            .field("free_len", &self.free.len)
+            .field("occupied_index", &self.occupied.index)
+            .field("occupied_len", &self.occupied.len)
             .finish()
     }
 }
@@ -142,114 +126,155 @@ impl<Ring: super::Ring> fmt::Debug for Queue<Ring> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        buffer::VecBuffer,
-        message::{simple::Ring, Message},
-    };
+    use crate::{buffer::VecBuffer, message::Message};
+    use bolero::{fuzz, generator::*};
+    use s2n_quic_core::inet;
+    use std::collections::VecDeque;
 
-    type Q = Queue<Ring<VecBuffer>>;
+    const MTU: usize = 1200;
 
-    fn new_queue(message_len: usize) -> Q {
-        let payloads = VecBuffer::new(message_len, 1200);
-        let ring = Ring::new(payloads);
-        Queue::new(ring)
-    }
-
-    fn pop_ready_payload(queue: &mut Q, payload: &[u8]) {
-        let (mut message, cursor) = queue.pop_ready().unwrap();
+    fn set<M: Message>(message: &mut M, value: u8, len: usize) {
+        assert_eq!(
+            message.payload_len(),
+            MTU,
+            "payload len should be reset for free messages"
+        );
         unsafe {
-            message.set_payload_len(payload.len());
+            message.set_payload_len(len);
         }
-        message.payload_mut().copy_from_slice(payload);
-        cursor.finish();
+        for b in message.payload_mut().iter_mut() {
+            *b = value;
+        }
     }
 
-    fn pop_pending_check(queue: &mut Q, payload: &[u8]) {
-        let (mut message, cursor) = queue.pop_pending().unwrap();
-        assert_eq!(message.payload_mut(), payload);
-        cursor.finish();
+    fn gen_address() -> impl ValueGenerator<Output = inet::SocketAddress> {
+        #[cfg(feature = "ipv6")]
+        let generator = gen();
+
+        #[cfg(not(feature = "ipv6"))]
+        let generator = gen::<inet::SocketAddressV4>().map(|addr| addr.into());
+
+        generator
     }
 
-    #[test]
-    fn pop_test() {
-        let mut queue = new_queue(4);
+    #[derive(Clone, Copy, Debug, TypeGenerator)]
+    enum Operation {
+        Push {
+            /// Number of payloads to push
+            #[generator(0..20)]
+            count: usize,
 
-        pop_ready_payload(&mut queue, &[0]);
-        pop_ready_payload(&mut queue, &[1]);
-        pop_ready_payload(&mut queue, &[2]);
-        pop_ready_payload(&mut queue, &[3]);
-        assert!(queue.pop_ready().is_none());
+            /// Length of the payload to be pushed
+            #[generator(1..32)]
+            len: usize,
 
-        pop_pending_check(&mut queue, &[0]);
-        pop_pending_check(&mut queue, &[1]);
-        pop_pending_check(&mut queue, &[2]);
-        pop_pending_check(&mut queue, &[3]);
-        assert!(queue.pop_pending().is_none());
+            #[generator(gen_address())]
+            address: inet::SocketAddress,
 
-        // make `cancel` works
-        let (_, cursor) = queue.pop_ready().unwrap();
-        cursor.cancel();
-        assert_eq!(queue.ready_len(), 4);
+            /// true if the operation is successful
+            success: bool,
+        },
+        Pop {
+            /// Number of payloads to pop
+            #[generator(0..20)]
+            count: usize,
 
-        pop_ready_payload(&mut queue, &[4]);
-        pop_pending_check(&mut queue, &[4]);
-        assert!(queue.pop_pending().is_none());
-
-        pop_ready_payload(&mut queue, &[5]);
-        pop_ready_payload(&mut queue, &[6]);
-        pop_pending_check(&mut queue, &[5]);
-        pop_pending_check(&mut queue, &[6]);
-        assert!(queue.pop_pending().is_none());
+            /// true if the operation is successful
+            success: bool,
+        },
     }
 
-    #[test]
-    fn slice_test() {
-        let mut queue = new_queue(4);
+    fn check<R: message::Ring>(mut queue: Queue<R>, capacity: usize, ops: &[Operation]) {
+        let mut oracle = VecDeque::new();
+        let mut value = 0u8;
+        for op in ops {
+            match *op {
+                Operation::Push {
+                    count,
+                    len,
+                    address,
+                    success,
+                } => {
+                    let mut free = queue.free_mut();
+                    let count = count.min(free.len());
+                    let mut payload = value;
 
-        pop_ready_payload(&mut queue, &[0]);
-        pop_ready_payload(&mut queue, &[1]);
-        pop_ready_payload(&mut queue, &[2]);
-        pop_ready_payload(&mut queue, &[3]);
-        assert!(queue.pop_ready().is_none());
+                    // push messages onto the queue and the oracle
+                    for message in &mut free[..count] {
+                        set(message, payload, len);
 
-        // there should be no remaining `ready` slots
-        assert_eq!(queue.ready_mut().len(), 0);
+                        message.set_remote_address(&address);
+                        oracle.push_back((address, len, payload));
+                        payload = payload.wrapping_add(1);
+                    }
 
-        // make sure the payloads are correct
-        let mut pending = queue.pending_mut();
-        assert_eq!(pending.len(), 4);
-        assert_eq!(pending[0].payload_mut(), &[0]);
-        assert_eq!(pending[1].payload_mut(), &[1]);
-        assert_eq!(pending[2].payload_mut(), &[2]);
-        assert_eq!(pending[3].payload_mut(), &[3]);
-        // partially consume the slice
-        pending.finish(2);
+                    // if successful, finish the slice, otherwise cancel
+                    if success {
+                        value = payload;
+                        free.finish(count);
+                    } else {
+                        oracle.drain((oracle.len() - count)..);
+                        free.cancel(count);
+                    }
+                }
+                Operation::Pop { count, success } => {
+                    let occupied = queue.occupied_mut();
+                    let count = count.min(occupied.len());
 
-        // test that cancelling works
-        let mut ready = queue.ready_mut();
-        assert_eq!(ready.len(), 2);
-        assert_eq!(ready[0].payload_mut(), &[0]);
-        assert_eq!(ready[1].payload_mut(), &[1]);
-        ready.cancel();
+                    // if successful, finish the slice, otherwise cancel
+                    if success {
+                        occupied.finish(count);
+                        oracle.drain(..count);
+                    } else {
+                        occupied.cancel(count);
+                    }
+                }
+            }
 
-        // move 2 ready messages into pending
-        let mut ready = queue.ready_mut();
-        assert_eq!(ready.len(), 2);
-        ready[0].payload_mut()[0] = 4;
-        ready[1].payload_mut()[0] = 5;
-        ready.finish(2);
+            assert_eq!(capacity, queue.capacity());
+            assert_eq!(capacity, queue.occupied_len() + queue.free_len());
 
-        // make sure the payloads are correct
-        let mut pending = queue.pending_mut();
-        assert_eq!(pending.len(), 4);
-        assert_eq!(pending[0].payload_mut(), &[2]);
-        assert_eq!(pending[1].payload_mut(), &[3]);
-        assert_eq!(pending[2].payload_mut(), &[4]);
-        assert_eq!(pending[3].payload_mut(), &[5]);
-        // consume all messages
-        pending.finish(4);
+            // assert the queue matches the oracle
+            let occupied = queue.occupied_mut();
+            assert_eq!(oracle.len(), occupied.len());
 
-        assert_eq!(queue.ready_mut().len(), 4);
-        assert_eq!(queue.pending_mut().len(), 0);
+            for (message, (address, len, value)) in occupied.iter().zip(oracle.iter()) {
+                let address = *address;
+
+                #[cfg(all(target_os = "macos", feature = "ipv6"))]
+                let address = address.to_ipv6_mapped().into();
+
+                assert_eq!(message.remote_address(), Some(address));
+                assert_eq!(message.payload_len(), *len);
+                assert!(message.payload().iter().all(|v| v == value));
+            }
+        }
     }
+
+    macro_rules! differential_test {
+        ($name:ident, $ring:path) => {
+            /// A VecDeque is used to assert the behavior matches the Queue
+            #[test]
+            fn $name() {
+                fuzz!()
+                    .with_generator((0usize..16, gen::<Vec<Operation>>()))
+                    .for_each(|(capacity, ops)| {
+                        use $ring;
+                        let payloads = VecBuffer::new(*capacity, MTU);
+                        let ring = Ring::new(payloads);
+                        let queue = Queue::new(ring);
+                        assert_eq!(queue.mtu(), MTU);
+                        check(queue, *capacity, ops);
+                    });
+            }
+        };
+    }
+
+    differential_test!(simple_differential_test, message::simple::Ring);
+
+    #[cfg(s2n_quic_platform_socket_msg)]
+    differential_test!(msg_differential_test, message::msg::Ring);
+
+    #[cfg(s2n_quic_platform_socket_mmsg)]
+    differential_test!(mmsg_differential_test, message::mmsg::Ring);
 }

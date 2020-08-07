@@ -7,9 +7,8 @@ license = "Apache-2.0"
 
 [dependencies]
 bytes = { version = "0.5", default-features = false }
-s2n-codec = { path = "../../common/s2n-codec" }
-s2n-quic-core = { path = "../s2n-quic-core" }
-s2n-quic-platform = { path = "../s2n-quic-platform" }
+s2n-codec = { version = "0.1", path = "../../common/s2n-codec", default-features = false }
+s2n-quic-core = { version = "0.1", path = "../s2n-quic-core", default-features = false }
 intrusive-collections = "0.9"
 smallvec = "1.3"
 

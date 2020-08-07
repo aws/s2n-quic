@@ -82,14 +82,15 @@ impl<'a, ConnectionConfigType: ConnectionConfig> TLSContext<ConnectionConfigType
             Ok(parameters) => parameters,
             Err(_e) => {
                 return Err(
-                    CryptoError::missing_extension().with_reason("Invalid transport parameters")
+                    CryptoError::MISSING_EXTENSION.with_reason("Invalid transport parameters")
                 );
             }
         };
 
         if !remaining.is_empty() {
-            return Err(CryptoError::missing_extension()
-                .with_reason("Invalid bytes in transport parameters"));
+            return Err(
+                CryptoError::MISSING_EXTENSION.with_reason("Invalid bytes in transport parameters")
+            );
         }
 
         let peer_limits = peer_parameters.flow_control_limits();

@@ -21,7 +21,6 @@ use s2n_quic_core::{
     },
     time::Timestamp,
     transport::error::TransportError,
-    transport_error,
 };
 
 mod application;
@@ -192,11 +191,9 @@ impl<ConnectionConfigType: ConnectionConfig> PacketSpaceManager<ConnectionConfig
 macro_rules! default_frame_handler {
     ($name:ident, $frame:ty) => {
         fn $name(&mut self, _datagram: &DatagramInfo, frame: $frame) -> Result<(), TransportError> {
-            Err(transport_error!(
-                PROTOCOL_VIOLATION,
-                Self::INVALID_FRAME_ERROR,
-                frame.tag()
-            ))
+            Err(TransportError::PROTOCOL_VIOLATION
+                .with_reason(Self::INVALID_FRAME_ERROR)
+                .with_frame_type(frame.tag().into()))
         }
     };
 }

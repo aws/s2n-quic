@@ -27,10 +27,10 @@ pub fn stream_data<Data>(
 /// error code.
 fn assert_is_transport_error<T: core::fmt::Debug>(
     result: Result<T, TransportError>,
-    error_code: VarInt,
+    expected: TransportError,
 ) {
-    let err = result.unwrap_err();
-    assert_eq!(error_code, err.code);
+    let actual = result.unwrap_err();
+    assert_eq!(expected.code, actual.code);
 }
 
 /// Generates test data using a pattern which is identifieable. For a given
