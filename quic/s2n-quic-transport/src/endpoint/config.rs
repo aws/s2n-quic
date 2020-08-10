@@ -19,6 +19,7 @@ pub trait Config: Sized {
     type Connection: connection::Trait<Config = Self::ConnectionConfig>;
     /// The connection ID format
     type ConnectionIdFormat: connection::id::Format;
+    type TokenFormat: s2n_quic_core::token::Format;
 
     /// The type of the local endpoint
     const ENDPOINT_TYPE: EndpointType =
