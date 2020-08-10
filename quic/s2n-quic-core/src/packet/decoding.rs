@@ -4,10 +4,10 @@ use crate::{
     packet::{
         long::{
             validate_destination_connection_id_range, validate_source_connection_id_range,
-            DestinationConnectionIDLen, SourceConnectionIDLen, Version,
+            validate_token, DestinationConnectionIDLen, SourceConnectionIDLen, Version,
         },
         number::ProtectedPacketNumber,
-        Tag,
+        DestinationConnectionIDDecoder, Tag, TokenDecoder,
     },
     varint::VarInt,
 };
@@ -80,6 +80,19 @@ impl<'a> HeaderDecoder<'a> {
         let source_connection_id = self.decode_checked_range::<SourceConnectionIDLen>(buffer)?;
         validate_source_connection_id_range(&source_connection_id)?;
         Ok(source_connection_id)
+    }
+
+    pub fn decode_token<'b, TD: TokenDecoder>(
+        &mut self,
+        buffer: &DecoderBufferMut<'b>,
+        token_decoder: TD,
+    ) -> Result<CheckedRange, DecoderError> {
+        let (token_len, _) = token_decoder.len(self.peek.peek())?;
+
+        let (token, peek) = self.peek.skip_into_range(token_len, buffer)?;
+        self.peek = peek;
+        validate_token(&token)?;
+        Ok(token)
     }
 
     pub fn decode_checked_range<'b, Len: DecoderValue<'a> + TryInto<usize>>(

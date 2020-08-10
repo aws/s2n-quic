@@ -118,6 +118,29 @@ impl<'a> Into<StreamError> for CloseReason<'a> {
     }
 }
 
+//= https://tools.ietf.org/html/draft-ietf-quic-transport-29#section-8.1
+//# Prior to validating the client address, servers MUST NOT send more
+//# than three times as many bytes as the number of bytes they have
+//# received.  This limits the magnitude of any amplification attack that
+//# can be mounted using spoofed source addresses.  For the purposes of
+//# avoiding amplification prior to address validation, servers MUST
+//# count all of the payload bytes received in datagrams that are
+//# uniquely attributed to a single connection.
+#[derive(Debug, Copy, Clone, Default, PartialEq, Eq)]
+pub struct ConnectionSendLimits {
+    pub bytes_sent: usize,
+    pub bytes_recv: usize,
+}
+
+impl ConnectionSendLimits {
+    pub fn max_allowed(self) -> usize {
+        match (self.bytes_recv * 3).checked_sub(self.bytes_sent) {
+            Some(n) => n,
+            None => 0,
+        }
+    }
+}
+
 /// Per-connection limits
 #[derive(Debug, Copy, Clone, Default, PartialEq, Eq)]
 #[non_exhaustive]
