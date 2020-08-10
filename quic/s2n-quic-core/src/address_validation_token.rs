@@ -2,8 +2,25 @@
 
 use crate::inet::{SocketAddressV4, SocketAddressV6, Unspecified};
 use core::mem::size_of;
-use s2n_codec::{decoder_value, Encoder, EncoderValue};
-//use std::convert::TryFrom;
+use s2n_codec::{decoder_value, DecoderError, Encoder, EncoderValue};
+
+pub enum TokenType {
+    RetryToken,
+    NewToken,
+}
+
+decoder_value!(
+    impl<'a> TokenType {
+        fn decode(buffer: Buffer) -> Result<Self> {
+            let (value, buffer) = buffer.decode::<u8>()?;
+            match value {
+                0x00 => Ok((TokenType::RetryToken, buffer)),
+                0x01 => Ok((TokenType::NewToken, buffer)),
+                _ => Err(DecoderError::InvariantViolation("Invalid token type")),
+            }
+        }
+    }
+);
 
 pub trait AddressValidation {
     //= https://tools.ietf.org/html/draft-ietf-quic-transport-29.txt#8.1.3
@@ -13,17 +30,17 @@ pub trait AddressValidation {
     fn validate(&self) -> bool;
 }
 
-//= https://tools.ietf.org/html/draft-ietf-quic-transport-29.txt#8.1.1
-//#   8.1.1.  Token Construction
-//#
-//#   A token sent in a NEW_TOKEN frames or a Retry packet MUST be
-//#   constructed in a way that allows the server to identify how it was
-//#   provided to a client.  These tokens are carried in the same field,
-//#   but require different handling from servers.
+//= https://tools.ietf.org/html/draft-ietf-quic-transport-29.txt#8.1.4
+//#   There is no need for a single well-defined format for the token
+//#   because the server that generates the token also consumes it.
 pub struct AddressValidationToken {
-    //= https://tools.ietf.org/html/draft-ietf-quic-transport-29.txt#8.1.4
-    //#   There is no need for a single well-defined format for the token
-    //#   because the server that generates the token also consumes it.
+    //= https://tools.ietf.org/html/draft-ietf-quic-transport-29.txt#8.1.1
+    //#   A token sent in a NEW_TOKEN frames or a Retry packet MUST be
+    //#   constructed in a way that allows the server to identify how it was
+    //#   provided to a client.  These tokens are carried in the same field,
+    //#   but require different handling from servers.
+    #[allow(dead_code)]
+    token_type: TokenType,
 
     //= https://tools.ietf.org/html/draft-ietf-quic-transport-29.txt#8.1.4
     //#   Tokens sent in Retry packets SHOULD include information that allows the
@@ -82,6 +99,7 @@ impl<'a> EncoderValue for AddressValidationToken {
 decoder_value!(
     impl<'a> AddressValidationToken {
         fn decode(buffer: Buffer) -> Result<Self> {
+            let (token_type, buffer) = buffer.decode::<TokenType>()?;
             let (ipv4_address, buffer) = buffer.decode::<SocketAddressV4>()?;
             let ipv4_address = ipv4_address.filter_unspecified();
             let (ipv6_address, buffer) = buffer.decode::<SocketAddressV6>()?;
@@ -97,6 +115,7 @@ decoder_value!(
             mac[..32].copy_from_slice(mac_slice);
 
             let token = Self {
+                token_type: token_type,
                 ipv4_peer_address: ipv4_address,
                 ipv6_peer_address: ipv6_address,
                 lifetime,
