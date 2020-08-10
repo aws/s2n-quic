@@ -35,11 +35,11 @@ impl_providers_state! {
         connection_id: ConnectionID,
         limits: Limits,
         log: Log,
-        retry_token: RetryToken,
         runtime: Runtime,
         io: IO,
         sync: Sync,
         tls: Tls,
+        token: Token,
     }
 
     /// Opaque trait containing all of the configured providers
