@@ -167,6 +167,13 @@ pub trait ConnectionTrait: Sized {
         datagram: &DatagramInfo,
         packet: ProtectedPacket,
     ) -> Result<(), TransportError> {
+        //= https://tools.ietf.org/html/draft-ietf-quic-transport-29.txt#21.12.1.1
+        //#   For the purposes of avoiding amplification prior to address validation, servers MUST
+        //#   count all of the payload bytes received in datagrams that are
+        //#   uniquely attributed to a single connection.
+        // TODO increment the received byte count for this connection based on the packet payload
+        // length.
+
         match packet {
             ProtectedPacket::Short(packet) => {
                 self.handle_short_packet(shared_state, datagram, packet)

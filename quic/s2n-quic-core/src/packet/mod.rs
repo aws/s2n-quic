@@ -51,6 +51,17 @@ impl DestinationConnectionIDDecoder for usize {
     }
 }
 
+pub trait TokenDecoder: Copy {
+    fn len(self, buffer: DecoderBuffer) -> DecoderBufferResult<usize>;
+}
+
+impl TokenDecoder for usize {
+    #[inline]
+    fn len(self, buffer: DecoderBuffer) -> DecoderBufferResult<usize> {
+        Ok((self, buffer))
+    }
+}
+
 #[derive(Debug)]
 pub enum ProtectedPacket<'a> {
     Short(ProtectedShort<'a>),
