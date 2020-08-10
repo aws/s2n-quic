@@ -2,12 +2,11 @@ use crate::{
     crypto::ProtectedPayload,
     packet::{
         long::{
-            validate_destination_connection_id_range, validate_source_connection_id_range, validate_token,
-            DestinationConnectionIDLen, SourceConnectionIDLen, Version,
+            validate_destination_connection_id_range, validate_source_connection_id_range,
+            validate_token, DestinationConnectionIDLen, SourceConnectionIDLen, Version,
         },
         number::ProtectedPacketNumber,
-        DestinationConnectionIDDecoder,
-        TokenDecoder, Tag,
+        DestinationConnectionIDDecoder, Tag, TokenDecoder,
     },
     varint::VarInt,
 };
@@ -82,12 +81,9 @@ impl<'a> HeaderDecoder<'a> {
         buffer: &DecoderBufferMut<'b>,
         token_decoder: TD,
     ) -> Result<CheckedRange, DecoderError> {
-        let (token_len, _) =
-            token_decoder.len(self.peek.peek())?;
+        let (token_len, _) = token_decoder.len(self.peek.peek())?;
 
-        let (token, peek) = self
-            .peek
-            .skip_into_range(token_len, buffer)?;
+        let (token, peek) = self.peek.skip_into_range(token_len, buffer)?;
         self.peek = peek;
         validate_token(&token)?;
         Ok(token)

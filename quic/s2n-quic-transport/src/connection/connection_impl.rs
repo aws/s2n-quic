@@ -432,7 +432,6 @@ impl<ConfigType: ConnectionConfig> ConnectionTrait for ConnectionImpl<ConfigType
         datagram: &DatagramInfo,
         packet: CleartextInitial,
     ) -> Result<(), TransportError> {
-
         //= https://tools.ietf.org/html/draft-ietf-quic-transport-29.txt#8.1
         //# A server might wish to validate the client address before starting
         //# the cryptographic handshake.  QUIC uses a token in the Initial packet

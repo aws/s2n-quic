@@ -1,8 +1,8 @@
 //! Defines the Address Validation token
 
-use core::mem::size_of;
 use crate::inet::{SocketAddressV4, SocketAddressV6, Unspecified};
-use s2n_codec::{Encoder, EncoderValue, decoder_value};
+use core::mem::size_of;
+use s2n_codec::{decoder_value, Encoder, EncoderValue};
 //use std::convert::TryFrom;
 
 pub trait AddressValidation {
@@ -21,7 +21,6 @@ pub trait AddressValidation {
 //#   provided to a client.  These tokens are carried in the same field,
 //#   but require different handling from servers.
 pub struct AddressValidationToken {
-
     //= https://tools.ietf.org/html/draft-ietf-quic-transport-29.txt#8.1.4
     //#   There is no need for a single well-defined format for the token
     //#   because the server that generates the token also consumes it.
@@ -60,7 +59,7 @@ pub struct AddressValidationToken {
     mac: [u8; 32],
 }
 
-impl <'a> EncoderValue for AddressValidationToken {
+impl<'a> EncoderValue for AddressValidationToken {
     fn encode<E: Encoder>(&self, buffer: &mut E) {
         if let Some(ip) = self.ipv4_peer_address.as_ref() {
             buffer.encode(ip);
@@ -100,9 +99,9 @@ decoder_value!(
             let token = Self {
                 ipv4_peer_address: ipv4_address,
                 ipv6_peer_address: ipv6_address,
-                lifetime: lifetime,
-                nonce: nonce,
-                mac: mac,
+                lifetime,
+                nonce,
+                mac,
             };
 
             Ok((token, buffer))

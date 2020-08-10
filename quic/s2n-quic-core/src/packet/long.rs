@@ -125,9 +125,7 @@ pub(crate) fn validate_source_connection_id_len(len: usize) -> Result<(), Decode
     Ok(())
 }
 
-pub(crate) fn validate_token(
-    _range: &CheckedRange,
-) -> Result<(), DecoderError> {
+pub(crate) fn validate_token(_range: &CheckedRange) -> Result<(), DecoderError> {
     // TODO validate the data is correct
     Ok(())
 }
