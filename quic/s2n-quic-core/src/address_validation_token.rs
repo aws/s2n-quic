@@ -4,15 +4,29 @@ use crate::inet::{SocketAddressV4, SocketAddressV6, Unspecified};
 use core::mem::size_of;
 use s2n_codec::{decoder_value, DecoderError, Encoder, EncoderValue};
 
+#[derive(Debug, PartialEq)]
 pub enum TokenType {
     RetryToken,
     NewToken,
+}
+
+impl<'a> EncoderValue for TokenType {
+    fn encode<E: Encoder>(&self, buffer: &mut E) {
+        let one: u8 = 0x00;
+        let two: u8 = 0x01;
+
+        match self {
+            TokenType::RetryToken => one.encode(buffer),
+            TokenType::NewToken => two.encode(buffer),
+        }
+    }
 }
 
 decoder_value!(
     impl<'a> TokenType {
         fn decode(buffer: Buffer) -> Result<Self> {
             let (value, buffer) = buffer.decode::<u8>()?;
+            println!("Token Value: {:?}", value);
             match value {
                 0x00 => Ok((TokenType::RetryToken, buffer)),
                 0x01 => Ok((TokenType::NewToken, buffer)),
@@ -78,6 +92,7 @@ pub struct AddressValidationToken {
 
 impl<'a> EncoderValue for AddressValidationToken {
     fn encode<E: Encoder>(&self, buffer: &mut E) {
+        buffer.encode(&self.token_type);
         if let Some(ip) = self.ipv4_peer_address.as_ref() {
             buffer.encode(ip);
         } else {
@@ -115,7 +130,7 @@ decoder_value!(
             mac[..32].copy_from_slice(mac_slice);
 
             let token = Self {
-                token_type: token_type,
+                token_type,
                 ipv4_peer_address: ipv4_address,
                 ipv6_peer_address: ipv6_address,
                 lifetime,
@@ -127,3 +142,37 @@ decoder_value!(
         }
     }
 );
+
+#[cfg(test)]
+mod token_tests {
+    use super::*;
+    use s2n_codec::{DecoderBufferMut, EncoderBuffer};
+
+    #[test]
+    fn test_encoding() {
+        let nonce: [u8; 16] = [1; 16];
+        let mac: [u8; 32] = [2; 32];
+        let token = AddressValidationToken {
+            token_type: TokenType::NewToken,
+            ipv4_peer_address: Some(SocketAddressV4::new([127, 0, 0, 1], 80).into()),
+            ipv6_peer_address: None,
+            lifetime: 0,
+            nonce,
+            mac,
+        };
+
+        let mut b = vec![0; 128];
+        let mut encoder = EncoderBuffer::new(&mut b);
+        token.encode(&mut encoder);
+
+        let decoder = DecoderBufferMut::new(&mut b);
+        let (decoded_token, _) = decoder.decode::<AddressValidationToken>().unwrap();
+
+        assert_eq!(token.token_type, decoded_token.token_type);
+        assert_eq!(token.nonce, decoded_token.nonce);
+        assert_eq!(token.mac, decoded_token.mac);
+        assert_eq!(token.lifetime, decoded_token.lifetime);
+        assert_eq!(token.ipv4_peer_address, decoded_token.ipv4_peer_address);
+        assert_eq!(token.ipv6_peer_address, decoded_token.ipv6_peer_address);
+    }
+}
