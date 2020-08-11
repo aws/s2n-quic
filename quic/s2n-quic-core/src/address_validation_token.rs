@@ -26,7 +26,6 @@ decoder_value!(
     impl<'a> TokenType {
         fn decode(buffer: Buffer) -> Result<Self> {
             let (value, buffer) = buffer.decode::<u8>()?;
-            println!("Token Value: {:?}", value);
             match value {
                 0x00 => Ok((TokenType::RetryToken, buffer)),
                 0x01 => Ok((TokenType::NewToken, buffer)),
@@ -130,7 +129,7 @@ decoder_value!(
             mac[..32].copy_from_slice(mac_slice);
 
             let token = Self {
-                token_type,
+                token_type: token_type,
                 ipv4_peer_address: ipv4_address,
                 ipv6_peer_address: ipv6_address,
                 lifetime,
@@ -157,8 +156,8 @@ mod token_tests {
             ipv4_peer_address: Some(SocketAddressV4::new([127, 0, 0, 1], 80).into()),
             ipv6_peer_address: None,
             lifetime: 0,
-            nonce,
-            mac,
+            nonce: nonce,
+            mac: mac,
         };
 
         let mut b = vec![0; 128];
