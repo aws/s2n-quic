@@ -12,9 +12,6 @@ pub enum TokenType {
 
 impl<'a> EncoderValue for TokenType {
     fn encode<E: Encoder>(&self, buffer: &mut E) {
-        let one: u8 = 0x00;
-        let two: u8 = 0x01;
-
         match self {
             TokenType::RetryToken => 0u8.encode(buffer),
             TokenType::NewToken => 1u8.encode(buffer),
@@ -52,7 +49,6 @@ pub struct AddressValidationToken {
     //#   constructed in a way that allows the server to identify how it was
     //#   provided to a client.  These tokens are carried in the same field,
     //#   but require different handling from servers.
-    #[allow(dead_code)]
     token_type: TokenType,
 
     //= https://tools.ietf.org/html/draft-ietf-quic-transport-29.txt#8.1.4
@@ -156,8 +152,8 @@ mod token_tests {
             ipv4_peer_address: Some(SocketAddressV4::new([127, 0, 0, 1], 80).into()),
             ipv6_peer_address: None,
             lifetime: 0,
-            nonce: nonce,
-            mac: mac,
+            nonce,
+            mac,
         };
 
         let mut b = vec![0; 128];
