@@ -16,8 +16,8 @@ impl<'a> EncoderValue for TokenType {
         let two: u8 = 0x01;
 
         match self {
-            TokenType::RetryToken => one.encode(buffer),
-            TokenType::NewToken => two.encode(buffer),
+            TokenType::RetryToken => 0u8.encode(buffer),
+            TokenType::NewToken => 1u8.encode(buffer),
         }
     }
 }
@@ -114,10 +114,10 @@ decoder_value!(
     impl<'a> AddressValidationToken {
         fn decode(buffer: Buffer) -> Result<Self> {
             let (token_type, buffer) = buffer.decode::<TokenType>()?;
-            let (ipv4_address, buffer) = buffer.decode::<SocketAddressV4>()?;
-            let ipv4_address = ipv4_address.filter_unspecified();
-            let (ipv6_address, buffer) = buffer.decode::<SocketAddressV6>()?;
-            let ipv6_address = ipv6_address.filter_unspecified();
+            let (ipv4_peer_address, buffer) = buffer.decode::<SocketAddressV4>()?;
+            let ipv4_peer_address = ipv4_peer_address.filter_unspecified();
+            let (ipv6_peer_address, buffer) = buffer.decode::<SocketAddressV6>()?;
+            let ipv6_peer_address = ipv6_peer_address.filter_unspecified();
             let (lifetime, buffer) = buffer.decode::<u64>()?;
             let (nonce_slice, buffer) = buffer.decode_slice(16)?;
             let nonce_slice: &[u8] = nonce_slice.into_less_safe_slice();
@@ -129,9 +129,9 @@ decoder_value!(
             mac[..32].copy_from_slice(mac_slice);
 
             let token = Self {
-                token_type: token_type,
-                ipv4_peer_address: ipv4_address,
-                ipv6_peer_address: ipv6_address,
+                token_type,
+                ipv4_peer_address,
+                ipv6_peer_address,
                 lifetime,
                 nonce,
                 mac,
