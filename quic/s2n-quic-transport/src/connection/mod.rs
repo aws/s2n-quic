@@ -123,12 +123,29 @@ impl<'a> Into<StreamError> for ConnectionCloseReason<'a> {
     }
 }
 
+//= https://tools.ietf.org/html/draft-ietf-quic-transport-29#section-8.1
+//# Prior to validating the client address, servers MUST NOT send more
+//# than three times as many bytes as the number of bytes they have
+//# received.  This limits the magnitude of any amplification attack that
+//# can be mounted using spoofed source addresses.  For the purposes of
+//# avoiding amplification prior to address validation, servers MUST
+//# count all of the payload bytes received in datagrams that are
+//# uniquely attributed to a single connection.
+#[derive(Debug, Copy, Clone, Default, PartialEq, Eq)]
+pub struct ConnectionSendLimits {
+    pub bytes_sent: usize,
+    pub bytes_recv: usize,
+}
+
 /// Per-connection limits
 #[derive(Debug, Copy, Clone, Default, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct ConnectionLimits {
     /// The limits for streams on this connection
     pub stream_limits: StreamLimits,
+
+    /// The send limits for non-validated addresses
+    pub send_limits: ConnectionSendLimits,
 
     // TODO remove this field when more fields are added to increase the size
     // temporary field to supress clippy::trivially_copy_pass_by_ref warnings
