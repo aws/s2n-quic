@@ -2,7 +2,7 @@
 
 use crate::inet::{SocketAddressV4, SocketAddressV6, Unspecified};
 use core::mem::size_of;
-use s2n_codec::{decoder_value, DecoderError, Encoder, EncoderValue};
+use s2n_codec::{decoder_value, DecoderBuffer, DecoderError, Encoder, EncoderValue};
 
 #[derive(Debug, PartialEq)]
 pub enum TokenType {
@@ -33,11 +33,6 @@ decoder_value!(
 );
 
 pub trait AddressValidation {
-    //= https://tools.ietf.org/html/draft-ietf-quic-transport-29.txt#8.1.3
-    //#   When a server receives an Initial packet with an address validation
-    //#   token, it MUST attempt to validate the token, unless it has already
-    //#   completed address validation.
-    fn validate(&self) -> bool;
 }
 
 //= https://tools.ietf.org/html/draft-ietf-quic-transport-29.txt#8.1.4
@@ -85,6 +80,17 @@ pub struct AddressValidationToken {
     mac: [u8; 32],
 }
 
+impl AddressValidationToken {
+    //= https://tools.ietf.org/html/draft-ietf-quic-transport-29.txt#8.1.3
+    //#   When a server receives an Initial packet with an address validation
+    //#   token, it MUST attempt to validate the token, unless it has already
+    //#   completed address validation.
+    pub fn validate(&self) -> bool {
+        true
+    }
+}
+
+
 impl<'a> EncoderValue for AddressValidationToken {
     fn encode<E: Encoder>(&self, buffer: &mut E) {
         buffer.encode(&self.token_type);
@@ -103,6 +109,14 @@ impl<'a> EncoderValue for AddressValidationToken {
         buffer.encode(&self.lifetime);
         buffer.encode(&self.nonce.as_ref());
         buffer.encode(&self.mac.as_ref());
+    }
+}
+
+impl From<&[u8]> for AddressValidationToken {
+    fn from(bytes: &[u8]) -> Self {
+        let decoder = DecoderBuffer::new(bytes);
+        let (decoded_token, _) = decoder.decode::<AddressValidationToken>().unwrap();
+        decoded_token
     }
 }
 

@@ -11,6 +11,7 @@ use crate::{
 };
 use core::time::Duration;
 use s2n_quic_core::{
+    address_validation_token::AddressValidationToken,
     application::ApplicationErrorExt,
     connection::ConnectionId,
     inet::{DatagramInfo, SocketAddress},
@@ -443,6 +444,11 @@ impl<ConfigType: ConnectionConfig> ConnectionTrait for ConnectionImpl<ConfigType
             // TODO if the packet does not contain a token, then send a RETRY packet
             // If the packet did contain a token, and that token was invalid, then we should not
             // have gotten here.
+        }
+
+        let token: AddressValidationToken = packet.token.into();
+        if !token.validate() {
+            // TODO handle invalid token
         }
 
         self.handle_cleartext_packet(shared_state, datagram, packet)?;
