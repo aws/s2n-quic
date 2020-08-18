@@ -3,8 +3,8 @@
 use crate::{
     connection::{
         ConnectionCloseReason, ConnectionConfig, ConnectionIdMapperRegistration,
-        ConnectionInterests, ConnectionParameters, ConnectionTimerEntry, ConnectionTimers,
-        ConnectionTrait, ConnectionTransmission, ConnectionTransmissionContext,
+        ConnectionInterests, ConnectionParameters, ConnectionSendLimits, ConnectionTimerEntry,
+        ConnectionTimers, ConnectionTrait, ConnectionTransmission, ConnectionTransmissionContext,
         InternalConnectionId, SharedConnectionState,
     },
     contexts::ConnectionOnTransmitError,
@@ -111,6 +111,8 @@ pub struct ConnectionImpl<ConfigType: ConnectionConfig> {
     accept_state: AcceptState,
     /// The current state of the connection
     state: ConnectionState,
+    /// The current lmits of the connection
+    send_limits: ConnectionSendLimits,
 }
 
 impl<ConfigType: ConnectionConfig> ConnectionImpl<ConfigType> {
@@ -210,6 +212,7 @@ impl<ConfigType: ConnectionConfig> ConnectionTrait for ConnectionImpl<ConfigType
             quic_version: parameters.quic_version,
             accept_state: AcceptState::Handshaking,
             state: ConnectionState::Handshaking,
+            send_limits: Default::default(),
         }
     }
 
@@ -293,6 +296,7 @@ impl<ConfigType: ConnectionConfig> ConnectionTrait for ConnectionImpl<ConfigType
                             local_endpoint_type: Self::Config::ENDPOINT_TYPE,
                             remote_address: self.peer_socket_address,
                             ecn,
+                            send_limits: self.send_limits,
                         },
                         shared_state,
                     })
@@ -399,6 +403,10 @@ impl<ConfigType: ConnectionConfig> ConnectionTrait for ConnectionImpl<ConfigType
         }
 
         shared_state.wakeup_handle.wakeup_handled();
+    }
+
+    fn increment_recv_bytes(&mut self, bytes: usize) {
+        self.send_limits.bytes_recv += bytes;
     }
 
     // Packet handling

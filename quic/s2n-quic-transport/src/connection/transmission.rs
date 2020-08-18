@@ -1,5 +1,5 @@
 use crate::{
-    connection::{ConnectionConfig, SharedConnectionState},
+    connection::{ConnectionConfig, ConnectionSendLimits, SharedConnectionState},
     contexts::ConnectionContext,
 };
 use core::time::Duration;
@@ -22,6 +22,7 @@ pub struct ConnectionTransmissionContext {
     pub local_endpoint_type: EndpointType,
     pub remote_address: SocketAddress,
     pub ecn: ExplicitCongestionNotification,
+    pub send_limits: ConnectionSendLimits,
 }
 
 impl ConnectionContext for ConnectionTransmissionContext {
@@ -61,14 +62,20 @@ impl<'a, ConnectionConfigType: ConnectionConfig> tx::Message
     }
 
     fn write_payload(&mut self, buffer: &mut [u8]) -> usize {
-        // TODO trim off based on path MTU
         // TODO trim off based on congestion controller
-
-        let encoder = EncoderBuffer::new(buffer);
-        let initial_capacity = encoder.capacity();
 
         let shared_state = &mut self.shared_state;
         let space_manager = &mut shared_state.space_manager;
+        let mtu = self.context.send_limits.max_allowed();
+        let buffer = {
+            match space_manager.initial_mut() {
+                Some(_) => &mut buffer[..mtu],
+                None => buffer,
+            }
+        };
+
+        let encoder = EncoderBuffer::new(buffer);
+        let initial_capacity = encoder.capacity();
 
         let encoder = if let Some(space) = space_manager.initial_mut() {
             match space.on_transmit(&self.context, encoder) {

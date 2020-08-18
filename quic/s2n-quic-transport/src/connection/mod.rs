@@ -137,15 +137,21 @@ pub struct ConnectionSendLimits {
     pub bytes_recv: usize,
 }
 
+impl ConnectionSendLimits {
+    pub fn max_allowed(self) -> usize {
+        match (self.bytes_recv * 3).checked_sub(self.bytes_sent) {
+            Some(n) => n,
+            None => 0,
+        }
+    }
+}
+
 /// Per-connection limits
 #[derive(Debug, Copy, Clone, Default, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct ConnectionLimits {
     /// The limits for streams on this connection
     pub stream_limits: StreamLimits,
-
-    /// The send limits for non-validated addresses
-    pub send_limits: ConnectionSendLimits,
 
     // TODO remove this field when more fields are added to increase the size
     // temporary field to supress clippy::trivially_copy_pass_by_ref warnings

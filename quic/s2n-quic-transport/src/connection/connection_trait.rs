@@ -157,6 +157,8 @@ pub trait ConnectionTrait: Sized {
         transport_error: TransportError,
     );
 
+    fn increment_recv_bytes(&mut self, bytes: usize);
+
     /// Returns the Connections interests
     fn interests(&self, shared_state: &SharedConnectionState<Self::Config>) -> ConnectionInterests;
 
@@ -173,6 +175,7 @@ pub trait ConnectionTrait: Sized {
         //#   uniquely attributed to a single connection.
         // TODO increment the received byte count for this connection based on the packet payload
         // length.
+        self.increment_recv_bytes(datagram.payload_len);
 
         match packet {
             ProtectedPacket::Short(packet) => {

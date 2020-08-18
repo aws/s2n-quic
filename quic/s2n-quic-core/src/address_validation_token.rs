@@ -32,8 +32,7 @@ decoder_value!(
     }
 );
 
-pub trait AddressValidation {
-}
+pub trait AddressValidation {}
 
 //= https://tools.ietf.org/html/draft-ietf-quic-transport-29.txt#8.1.4
 //#   There is no need for a single well-defined format for the token
@@ -89,7 +88,6 @@ impl AddressValidationToken {
         true
     }
 }
-
 
 impl<'a> EncoderValue for AddressValidationToken {
     fn encode<E: Encoder>(&self, buffer: &mut E) {
