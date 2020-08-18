@@ -49,7 +49,7 @@ const K_PACKET_THRESHOLD: u64 = 3;
 
 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.2
 //# Timer granularity. This is a system-dependent value, and Section 6.1.2 recommends a value of 1ms.
-const K_GRANULARITY: Duration = Duration::from_millis(1);
+pub(crate) const K_GRANULARITY: Duration = Duration::from_millis(1);
 
 type SentPacket = (PacketNumber, SentPacketInfo);
 
