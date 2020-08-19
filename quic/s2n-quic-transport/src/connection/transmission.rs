@@ -149,3 +149,50 @@ impl<'a, ConnectionConfigType: ConnectionConfig> tx::Message
         initial_capacity - encoder.capacity()
     }
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        connection::InternalConnectionIdGenerator,
+        endpoint::EndpointConfig,
+        space::PacketSpaceManager,
+        wakeup_queue::WakeupQueue,
+    };
+    use s2n_quic_core::endpoint::EndpointType;
+
+    #[test]
+    fn test_byte_counting() {
+        let connection_id = ConnectionId::try_from_bytes(&"0000000000000000".as_ref()).unwrap();
+        let context = ConnectionTransmissionContext {
+            quic_version: 0,
+            destination_connection_id: connection_id,
+            source_connection_id: connection_id,
+            timestamp: unsafe { Timestamp::from_duration(Duration::from_millis(100)) },
+            local_endpoint_type: EndpointType::Server,
+            remote_address: Default::default(),
+            ecn: Default::default(),
+            send_limits: Default::default(),
+        };
+
+        let space_manager = PacketSpaceManager::<EndpointConfig> {
+            session: None,
+            initial: None,
+            handshake: None,
+            application: None,
+            zero_rtt_crypto: None,
+        };
+
+        let generator = InternalConnectionIdGenerator::new();
+        let internal_connection_id = generator.generate_id();
+        let mut queue = WakeupQueue::new();
+        let mut handle1 = queue.create_wakeup_handle(internal_connection_id);
+        let state = SharedConnectionState::new(space_manager, handle1);
+        let trans = ConnectionTransmission {
+            context: context,
+            shared_state: &mut state,
+        };
+
+    }
+}
