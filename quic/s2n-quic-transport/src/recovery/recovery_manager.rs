@@ -1,7 +1,7 @@
 // TODO: Remove when used
 #![allow(dead_code)]
 
-use crate::recovery::{SentPacketInfo, SentPackets};
+use crate::recovery::{LossDetectionInfo, LossDetectionTimer, SentPacketInfo, SentPackets};
 use core::{cmp::max, time::Duration};
 use s2n_quic_core::{
     frame::{ack::ECNCounts, ack_elicitation::AckElicitation},
@@ -19,22 +19,8 @@ pub struct RecoveryManager {
     max_ack_delay: Duration,
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.3
-    //# The time the most recent ack-eliciting packet was sent.
-    time_of_last_ack_eliciting_packet: Option<Timestamp>,
-
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.3
     //# The largest packet number acknowledged in the packet number space so far.
     largest_acked_packet: Option<PacketNumber>,
-
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.3
-    //# The time at which the next packet in that packet number space will be considered lost based
-    //# on exceeding the reordering window in time.
-    loss_time: Option<Timestamp>,
-
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.3
-    //# An association of packet numbers in a packet number space to information about them.
-    //  These are packets that are pending acknowledgement.
-    sent_packets: SentPackets,
 
     // True if calls to `on_ack_received` resulted in new packets being acknowledged. This is used
     // by `on_ack_received_finish` to determine what additional actions to take after processing an
@@ -58,15 +44,11 @@ impl RecoveryManager {
     pub fn new(max_ack_delay: Duration) -> Self {
         Self {
             max_ack_delay,
-            time_of_last_ack_eliciting_packet: None,
             largest_acked_packet: None,
-            loss_time: None,
-            sent_packets: SentPackets::default(),
             newly_acked: false,
         }
     }
 
-    #[allow(clippy::collapsible_if)]
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.5
     //# After a packet is sent, information about the packet is stored.
     pub fn on_packet_sent(
@@ -76,9 +58,16 @@ impl RecoveryManager {
         in_flight: bool,
         sent_bytes: u64,
         time_sent: Timestamp,
+        time_of_last_ack_eliciting_packet: &mut Option<Timestamp>,
+        sent_packets: &mut SentPackets,
+        rtt_estimator: &mut RTTEstimator,
+        peer_completed_address_validation: bool,
+        at_anti_amplification_limit: bool,
+        loss_detection_timer: &mut LossDetectionTimer,
+        loss_detection_info: impl ExactSizeIterator<Item = LossDetectionInfo> + Copy,
     ) {
         if ack_elicitation.is_ack_eliciting() {
-            self.sent_packets.insert(
+            sent_packets.insert(
                 packet_number,
                 SentPacketInfo::new(in_flight, sent_bytes, time_sent),
             );
@@ -86,10 +75,15 @@ impl RecoveryManager {
 
         if in_flight {
             if ack_elicitation.is_ack_eliciting() {
-                self.time_of_last_ack_eliciting_packet = Some(time_sent);
+                *time_of_last_ack_eliciting_packet = Some(time_sent);
             }
             // TODO: self.congestion_controller.on_packet_sent_cc(sent_bytes)
-            // TODO: self.loss_detection_timer.set()
+            loss_detection_timer.set_loss_detection_timer(
+                rtt_estimator,
+                peer_completed_address_validation,
+                at_anti_amplification_limit,
+                loss_detection_info,
+            );
         }
     }
 
@@ -97,11 +91,12 @@ impl RecoveryManager {
     //# When a server is blocked by anti-amplification limits, receiving a datagram unblocks it,
     //# even if none of the packets in the datagram are successfully processed. In such a case,
     //# the PTO timer will need to be re-armed
-    pub fn on_datagram_received(_datagram: DatagramInfo) {
+    pub fn on_datagram_received(_datagram: DatagramInfo, at_anti_amplification_limit: bool) {
         // If this datagram unblocks the server, arm the
         // PTO timer to avoid deadlock.
-        // TODO: if (server was at anti-amplification limit):
-        //          self.loss_detection_timer.set()
+        if at_anti_amplification_limit {
+            // TODO self.loss_detection_timer.set()
+        }
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.7
@@ -114,9 +109,9 @@ impl RecoveryManager {
         ecn_counts: Option<ECNCounts>,
         receive_time: Timestamp,
         rtt_estimator: &mut RTTEstimator,
+        sent_packets: &mut SentPackets,
     ) {
-        let largest_newly_acked = if let Some(last) = self.sent_packets.range(acked_packets).last()
-        {
+        let largest_newly_acked = if let Some(last) = sent_packets.range(acked_packets).last() {
             // There are newly acked packets, so set newly_acked to true for use in on_ack_received_finish
             self.newly_acked = true;
             last
@@ -145,7 +140,7 @@ impl RecoveryManager {
         // TODO: self.congestion_controller.on_packets_acked(self.sent_packets.range(acked_packets));
 
         for packet_number in acked_packets {
-            self.sent_packets.remove(packet_number);
+            sent_packets.remove(packet_number);
         }
     }
 
@@ -156,12 +151,16 @@ impl RecoveryManager {
         receive_time: Timestamp,
         peer_completed_address_validation: bool,
         rtt_estimator: &RTTEstimator,
+        loss_time: &mut Option<Timestamp>,
+        sent_packets: &mut SentPackets,
     ) {
         if self.newly_acked {
             let lost_packets = self.detect_and_remove_lost_packets(
                 rtt_estimator.latest_rtt(),
                 rtt_estimator.smoothed_rtt(),
                 receive_time,
+                loss_time,
+                sent_packets,
             );
             if !lost_packets.is_empty() {
                 // TODO: self.congestion_controller.on_packets_lost(lost_packets)
@@ -178,43 +177,19 @@ impl RecoveryManager {
         }
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.9
-    //# When the loss detection timer expires, the timer's mode determines the action to be performed.
-    fn on_loss_detection_timeout(&mut self) {
-        // earliest_loss_time = loss_detection_timer.get_loss_time_and_space();
-        // if earliest_loss_time.is_some() {
-        //     // Time threshold loss detection
-        //     let lost_packets = self.detect_and_remove_lost_packets();
-        //     assert!(!lost_packets.is_empty());
-        //     // self.congestion_controller.on_packets_lost(lost_packets);
-        //     // self.loss_detection_timer.set();
-        //     return;
-        // }
-
-        // if self.congestion_controller.bytes_in_flight() > 0 {
-        // PTO. Send new data if available, else retransmit old data.
-        // If neither is available, send a single PING frame.
-        // _, pn_space = loss_detection_timer.get_pto_time_and_space();
-        // send_one_or_two_ack_eliciting_packets(pn_space)
-        // else {
-        // TODO: implement client
-        // }
-
-        // self.lost_detection_timer.increment_pto_count();
-        // self.lost_detection_timer.set();
-    }
-
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.10
     //# DetectAndRemoveLostPackets is called every time an ACK is received or the time threshold
     //# loss detection timer expires. This function operates on the sent_packets for that packet
     //# number space and returns a list of packets newly detected as lost.
-    fn detect_and_remove_lost_packets(
+    pub fn detect_and_remove_lost_packets(
         &mut self,
         latest_rtt: Duration,
         smoothed_rtt: Duration,
         now: Timestamp,
+        loss_time: &mut Option<Timestamp>,
+        sent_packets: &mut SentPackets,
     ) -> Vec<PacketNumber> {
-        self.loss_time = None;
+        *loss_time = None;
         let loss_delay = self.calculate_loss_delay(latest_rtt, smoothed_rtt);
 
         // Packets sent before this time are deemed lost.
@@ -229,7 +204,7 @@ impl RecoveryManager {
             .expect("This function is only called after an ack has been received");
         let mut lost_packets = Vec::new();
 
-        for (unacked_packet_number, unacked_sent_info) in self.sent_packets.iter() {
+        for (unacked_packet_number, unacked_sent_info) in sent_packets.iter() {
             if unacked_packet_number > largest_acked_packet {
                 // sent_packets is ordered by packet number, so all remaining packets will be larger
                 break;
@@ -248,7 +223,7 @@ impl RecoveryManager {
                     lost_packets.push(*unacked_packet_number)
                 }
             } else {
-                self.loss_time = Some(unacked_sent_info.time_sent + loss_delay);
+                *loss_time = Some(unacked_sent_info.time_sent + loss_delay);
                 // assuming sent_packets is ordered by packet number and sent time, all remaining
                 // packets will have a larger packet number and sent time, and are thus not lost.
                 break;
@@ -256,7 +231,7 @@ impl RecoveryManager {
         }
 
         for packet_number in sent_packets_to_remove {
-            self.sent_packets.remove(packet_number);
+            sent_packets.remove(packet_number);
         }
 
         lost_packets

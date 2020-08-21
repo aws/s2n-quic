@@ -1,60 +1,63 @@
 // TODO: Remove when used
 #![allow(dead_code)]
 
-use crate::{recovery::K_GRANULARITY, timer::VirtualTimer};
-use alloc::collections::BTreeMap;
-use core::cmp::max;
+use crate::{
+    recovery::{RecoveryManager, SentPackets, K_GRANULARITY},
+    timer::VirtualTimer,
+};
+use core::{cmp::max, time::Duration};
 use s2n_quic_core::{packet::number::PacketNumberSpace, recovery::RTTEstimator, time::Timestamp};
 
 pub struct LossDetectionTimer {
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.3
     //# The number of times a PTO has been sent without receiving an ack.
     pto_count: u32,
-    loss_time: BTreeMap<PacketNumberSpace, Timestamp>,
-    time_of_last_ack_eliciting_packet: BTreeMap<PacketNumberSpace, Timestamp>,
     timer: VirtualTimer,
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.3
+    //# The maximum amount of time by which the receiver intends to delay acknowledgments for packets
+    //# in the ApplicationData packet number space. The actual ack_delay in a received ACK frame may
+    //# be larger due to late timers, reordering, or lost ACK frames.
+    max_ack_delay: Duration,
+}
+
+pub struct LossDetectionInfo {
+    pub pn_space: PacketNumberSpace,
+    pub loss_time: Option<Timestamp>,
+    pub time_of_last_ack_eliciting_packet: Option<Timestamp>,
 }
 
 impl LossDetectionTimer {
     /// Constructs a new `LossDetectionTimer`
-    pub fn new() -> Self {
+    pub fn new(max_ack_delay: Duration) -> Self {
         Self {
             pto_count: 0,
-            loss_time: BTreeMap::default(),
-            time_of_last_ack_eliciting_packet: BTreeMap::default(),
             timer: VirtualTimer::default(),
+            max_ack_delay,
         }
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.5
     //# Gets the earliest loss time and associated packet space.
-    fn get_loss_time_and_space(&self) -> Option<(PacketNumberSpace, Timestamp)> {
-        let mut loss_time_and_space: Option<(PacketNumberSpace, Timestamp)> = None;
-
-        for (&pn_space, &loss_time) in self.loss_time.iter() {
-            if let Some(time_and_space) = loss_time_and_space {
-                if loss_time < time_and_space.1 {
-                    loss_time_and_space = Some((pn_space, loss_time));
-                }
-            } else {
-                loss_time_and_space = Some((pn_space, loss_time));
-            }
-        }
-
-        loss_time_and_space
+    fn get_loss_time_and_space(
+        &self,
+        loss_detection_info: impl Iterator<Item = LossDetectionInfo>,
+    ) -> Option<LossDetectionInfo> {
+        loss_detection_info.min_by(|l1, l2| l1.loss_time.cmp(&l2.loss_time))
     }
 
     fn get_pto_time_and_space(
         &self,
         rtt_estimator: &RTTEstimator,
-        no_inflight_packets: bool,
+        loss_detection_info: impl ExactSizeIterator<Item = LossDetectionInfo>,
+        peer_completed_address_validation: bool,
     ) -> Option<(PacketNumberSpace, Timestamp)> {
-        let duration = (rtt_estimator.smoothed_rtt()
+        let mut duration = (rtt_estimator.smoothed_rtt()
             + max(4 * rtt_estimator.rttvar(), K_GRANULARITY))
-            * (2_i32.pow(self.pto_count)) as u32;
+            * (2_u32.pow(self.pto_count));
         // Arm PTO from now when there are no inflight packets.
-        if no_inflight_packets {
-            // assert(!PeerCompletedAddressValidation())
+        if loss_detection_info.len() == 0 {
+            assert!(!peer_completed_address_validation);
+            // TODO:
             // if (has handshake keys):
             // return (now() + duration), Handshake
             // else:
@@ -63,35 +66,26 @@ impl LossDetectionTimer {
 
         let mut pto_time_and_space: Option<(PacketNumberSpace, Timestamp)> = None;
 
-        for &pn_space in [
-            PacketNumberSpace::Initial,
-            PacketNumberSpace::Handshake,
-            PacketNumberSpace::ApplicationData,
-        ]
-        .iter()
-        {
-            //if (no in-flight packets in space):
-            //         continue;
-            if pn_space.is_application_data() {
-                // // Skip ApplicationData until handshake complete.
-                // if (handshake is not complete):
+        for loss_detection_info in loss_detection_info {
+            if loss_detection_info.pn_space.is_application_data() {
+                // Skip ApplicationData until handshake complete.
+                // TODO: if (handshake is not complete):
                 // return pto_timeout, pto_space
-                // // Include max_ack_delay and backoff for ApplicationData.
-                // duration += max_ack_delay * (2 ^ pto_count)
+                // Include max_ack_delay and backoff for ApplicationData.
+                duration += self.max_ack_delay * (2_u32.pow(self.pto_count));
             }
 
-            if let Some(time_of_last_ack_eliciting_packet) =
-                self.time_of_last_ack_eliciting_packet.get(&pn_space)
-            {
-                let t = *time_of_last_ack_eliciting_packet + duration;
+            let t = loss_detection_info
+                .time_of_last_ack_eliciting_packet
+                .expect("ack eliciting packets must have been sent")
+                + duration;
 
-                if let Some(time_and_space) = pto_time_and_space {
-                    if t < time_and_space.1 {
-                        pto_time_and_space = Some((pn_space, t));
-                    }
-                } else {
-                    pto_time_and_space = Some((pn_space, t));
+            if let Some(time_and_space) = pto_time_and_space {
+                if t < time_and_space.1 {
+                    pto_time_and_space = Some((loss_detection_info.pn_space, t));
                 }
+            } else {
+                pto_time_and_space = Some((loss_detection_info.pn_space, t));
             }
         }
 
@@ -101,13 +95,17 @@ impl LossDetectionTimer {
     pub fn set_loss_detection_timer(
         &mut self,
         rtt_estimator: &RTTEstimator,
-        no_inflight_packets: bool,
         peer_completed_address_validation: bool,
         at_anti_amplification_limit: bool,
+        loss_detection_info: impl ExactSizeIterator<Item = LossDetectionInfo> + Copy,
     ) {
-        if let Some(earliest_loss_time) = self.get_loss_time_and_space() {
+        if let Some(earliest_loss_time) = self
+            .get_loss_time_and_space(loss_detection_info)
+            .map(|l| l.loss_time)
+            .flatten()
+        {
             // Time threshold loss detection.
-            self.timer.set(earliest_loss_time.1);
+            self.timer.set(earliest_loss_time);
             return;
         }
 
@@ -117,7 +115,7 @@ impl LossDetectionTimer {
             return;
         }
 
-        if no_inflight_packets && peer_completed_address_validation {
+        if loss_detection_info.len() == 0 && peer_completed_address_validation {
             // There is nothing to detect lost, so no timer is set.
             // However, the client needs to arm the timer if the
             // server might be blocked by the anti-amplification limit.
@@ -126,17 +124,67 @@ impl LossDetectionTimer {
         }
 
         // Determine which PN space to arm PTO for.
-        if let Some(pto_time_and_space) =
-            self.get_pto_time_and_space(rtt_estimator, no_inflight_packets)
-        {
+        if let Some(pto_time_and_space) = self.get_pto_time_and_space(
+            rtt_estimator,
+            loss_detection_info,
+            peer_completed_address_validation,
+        ) {
             self.timer.set(pto_time_and_space.1);
         }
     }
 
-    pub fn on_loss_detection_timeout(&self) {
-        if let Some(_earliest_loss_time) = self.get_loss_time_and_space() {
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.9
+    //# When the loss detection timer expires, the timer's mode determines the action to be performed.
+    pub fn on_loss_detection_timeout(
+        &mut self,
+        loss_detection_info: impl ExactSizeIterator<Item = LossDetectionInfo> + Copy,
+        rtt_estimator: &RTTEstimator,
+        peer_completed_address_validation: bool,
+        at_anti_amplification_limit: bool,
+        mut recovery_manager: RecoveryManager,
+        now: Timestamp,
+        sent_packets: &mut SentPackets,
+    ) {
+        if let Some(earliest_loss_time) = self
+            .get_loss_time_and_space(loss_detection_info)
+            .map(|l| l.loss_time)
+            .flatten()
+        {
             // Time threshold loss Detection
+            let lost_packets = recovery_manager.detect_and_remove_lost_packets(
+                rtt_estimator.latest_rtt(),
+                rtt_estimator.smoothed_rtt(),
+                now,
+                &mut Some(earliest_loss_time),
+                sent_packets,
+            );
+            assert!(!lost_packets.is_empty());
+            // TODO: congestion_controller.on_packets_lost(lost_packets)
+            self.set_loss_detection_timer(
+                rtt_estimator,
+                peer_completed_address_validation,
+                at_anti_amplification_limit,
+                loss_detection_info,
+            );
+            return;
         }
+
+        // if congestion_controller.bytes_in_flight() > 0 {
+        // PTO. Send new data if available, else retransmit old data.
+        // If neither is available, send a single PING frame.
+        // _, pn_space = loss_detection_timer.get_pto_time_and_space();
+        // send_one_or_two_ack_eliciting_packets(pn_space)
+        // else {
+        // TODO: implement client
+        // }
+
+        self.pto_count += 1;
+        self.set_loss_detection_timer(
+            rtt_estimator,
+            peer_completed_address_validation,
+            at_anti_amplification_limit,
+            loss_detection_info,
+        );
     }
 }
 
