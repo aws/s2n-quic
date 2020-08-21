@@ -37,12 +37,11 @@ impl LossDetectionTimer {
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.5
-    //# Gets the earliest loss time and associated packet space.
+    //# Gets the `LossDetectionInfo` with the earliest loss time.
     fn get_loss_time_and_space(
-        &self,
         loss_detection_info: impl Iterator<Item = LossDetectionInfo>,
     ) -> Option<LossDetectionInfo> {
-        loss_detection_info.min_by(|l1, l2| l1.loss_time.cmp(&l2.loss_time))
+        loss_detection_info.min_by_key(|l| l.loss_time)
     }
 
     fn get_pto_time_and_space(
@@ -51,9 +50,10 @@ impl LossDetectionTimer {
         loss_detection_info: impl ExactSizeIterator<Item = LossDetectionInfo>,
         peer_completed_address_validation: bool,
     ) -> Option<(PacketNumberSpace, Timestamp)> {
-        let mut duration = (rtt_estimator.smoothed_rtt()
+        let backoff = 2_u32.pow(self.pto_count);
+        let duration = (rtt_estimator.smoothed_rtt()
             + max(4 * rtt_estimator.rttvar(), K_GRANULARITY))
-            * (2_u32.pow(self.pto_count));
+            * backoff;
         // Arm PTO from now when there are no inflight packets.
         if loss_detection_info.len() == 0 {
             assert!(!peer_completed_address_validation);
@@ -67,25 +67,25 @@ impl LossDetectionTimer {
         let mut pto_time_and_space: Option<(PacketNumberSpace, Timestamp)> = None;
 
         for loss_detection_info in loss_detection_info {
-            if loss_detection_info.pn_space.is_application_data() {
+            if loss_detection_info.pn_space.is_application_data()
+            /* TODO && (handshake is not complete) */
+            {
                 // Skip ApplicationData until handshake complete.
-                // TODO: if (handshake is not complete):
-                // return pto_timeout, pto_space
-                // Include max_ack_delay and backoff for ApplicationData.
-                duration += self.max_ack_delay * (2_u32.pow(self.pto_count));
+                continue;
             }
 
-            let t = loss_detection_info
+            let mut timeout = loss_detection_info
                 .time_of_last_ack_eliciting_packet
                 .expect("ack eliciting packets must have been sent")
                 + duration;
 
-            if let Some(time_and_space) = pto_time_and_space {
-                if t < time_and_space.1 {
-                    pto_time_and_space = Some((loss_detection_info.pn_space, t));
-                }
-            } else {
-                pto_time_and_space = Some((loss_detection_info.pn_space, t));
+            // Include max_ack_delay and backoff for ApplicationData.
+            if loss_detection_info.pn_space.is_application_data() {
+                timeout += self.max_ack_delay * backoff;
+            }
+
+            if pto_time_and_space.map_or(true, |(_, t)| timeout < t) {
+                pto_time_and_space = Some((loss_detection_info.pn_space, timeout));
             }
         }
 
@@ -95,14 +95,15 @@ impl LossDetectionTimer {
     pub fn set_loss_detection_timer(
         &mut self,
         rtt_estimator: &RTTEstimator,
+        //TODO: use Path struct
         peer_completed_address_validation: bool,
         at_anti_amplification_limit: bool,
         loss_detection_info: impl ExactSizeIterator<Item = LossDetectionInfo> + Copy,
     ) {
-        if let Some(earliest_loss_time) = self
-            .get_loss_time_and_space(loss_detection_info)
-            .map(|l| l.loss_time)
-            .flatten()
+        if let Some(earliest_loss_time) =
+            LossDetectionTimer::get_loss_time_and_space(loss_detection_info)
+                .map(|l| l.loss_time)
+                .flatten()
         {
             // Time threshold loss detection.
             self.timer.set(earliest_loss_time);
@@ -145,10 +146,10 @@ impl LossDetectionTimer {
         now: Timestamp,
         sent_packets: &mut SentPackets,
     ) {
-        if let Some(earliest_loss_time) = self
-            .get_loss_time_and_space(loss_detection_info)
-            .map(|l| l.loss_time)
-            .flatten()
+        if let Some(earliest_loss_time) =
+            LossDetectionTimer::get_loss_time_and_space(loss_detection_info)
+                .map(|l| l.loss_time)
+                .flatten()
         {
             // Time threshold loss Detection
             let lost_packets = recovery_manager.detect_and_remove_lost_packets(

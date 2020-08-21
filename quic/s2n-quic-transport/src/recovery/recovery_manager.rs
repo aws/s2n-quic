@@ -61,6 +61,7 @@ impl RecoveryManager {
         time_of_last_ack_eliciting_packet: &mut Option<Timestamp>,
         sent_packets: &mut SentPackets,
         rtt_estimator: &mut RTTEstimator,
+        // TODO: replace with Path struct
         peer_completed_address_validation: bool,
         at_anti_amplification_limit: bool,
         loss_detection_timer: &mut LossDetectionTimer,
