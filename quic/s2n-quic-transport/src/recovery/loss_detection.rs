@@ -12,6 +12,8 @@ pub struct LossDetectionTimer {
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.3
     //# The number of times a PTO has been sent without receiving an ack.
     pto_count: u32,
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.3
+    //# Multi-modal timer used for loss detection.
     timer: VirtualTimer,
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.3
     //# The maximum amount of time by which the receiver intends to delay acknowledgments for packets
@@ -36,19 +38,24 @@ impl LossDetectionTimer {
         }
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.5
-    //# Gets the `LossDetectionInfo` with the earliest loss time.
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.8
+    /// Gets the `LossDetectionInfo` with the earliest loss time.
     fn get_loss_time_and_space(
         loss_detection_info: impl Iterator<Item = LossDetectionInfo>,
     ) -> Option<LossDetectionInfo> {
         loss_detection_info.min_by_key(|l| l.loss_time)
     }
 
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.8
+    //#
     fn get_pto_time_and_space(
         &self,
         rtt_estimator: &RTTEstimator,
         loss_detection_info: impl ExactSizeIterator<Item = LossDetectionInfo>,
         peer_completed_address_validation: bool,
+        has_handshake_keys: bool,
+        is_handshake_complete: bool,
+        now: Timestamp,
     ) -> Option<(PacketNumberSpace, Timestamp)> {
         let backoff = 2_u32.pow(self.pto_count);
         let duration = (rtt_estimator.smoothed_rtt()
@@ -57,19 +64,17 @@ impl LossDetectionTimer {
         // Arm PTO from now when there are no inflight packets.
         if loss_detection_info.len() == 0 {
             assert!(!peer_completed_address_validation);
-            // TODO:
-            // if (has handshake keys):
-            // return (now() + duration), Handshake
-            // else:
-            // return (now() + duration), Initial
+            if has_handshake_keys {
+                return Some((PacketNumberSpace::Handshake, now + duration));
+            } else {
+                return Some((PacketNumberSpace::Initial, now + duration));
+            }
         }
 
         let mut pto_time_and_space: Option<(PacketNumberSpace, Timestamp)> = None;
 
         for loss_detection_info in loss_detection_info {
-            if loss_detection_info.pn_space.is_application_data()
-            /* TODO && (handshake is not complete) */
-            {
+            if loss_detection_info.pn_space.is_application_data() && !is_handshake_complete {
                 // Skip ApplicationData until handshake complete.
                 continue;
             }
@@ -92,12 +97,17 @@ impl LossDetectionTimer {
         pto_time_and_space
     }
 
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.8
+    //# QUIC loss detection uses a single timer for all timeout loss detection.
     pub fn set_loss_detection_timer(
         &mut self,
-        rtt_estimator: &RTTEstimator,
         //TODO: use Path struct
+        rtt_estimator: &RTTEstimator,
         peer_completed_address_validation: bool,
         at_anti_amplification_limit: bool,
+        has_handshake_keys: bool,
+        is_handshake_complete: bool,
+        now: Timestamp,
         loss_detection_info: impl ExactSizeIterator<Item = LossDetectionInfo> + Copy,
     ) {
         if let Some(earliest_loss_time) =
@@ -125,12 +135,15 @@ impl LossDetectionTimer {
         }
 
         // Determine which PN space to arm PTO for.
-        if let Some(pto_time_and_space) = self.get_pto_time_and_space(
+        if let Some((_, pto_time)) = self.get_pto_time_and_space(
             rtt_estimator,
             loss_detection_info,
             peer_completed_address_validation,
+            has_handshake_keys,
+            is_handshake_complete,
+            now,
         ) {
-            self.timer.set(pto_time_and_space.1);
+            self.timer.set(pto_time);
         }
     }
 
@@ -143,6 +156,8 @@ impl LossDetectionTimer {
         peer_completed_address_validation: bool,
         at_anti_amplification_limit: bool,
         mut recovery_manager: RecoveryManager,
+        has_handshake_keys: bool,
+        is_handshake_complete: bool,
         now: Timestamp,
     ) {
         if let Some(earliest_loss_time) =
@@ -163,6 +178,9 @@ impl LossDetectionTimer {
                 rtt_estimator,
                 peer_completed_address_validation,
                 at_anti_amplification_limit,
+                has_handshake_keys,
+                is_handshake_complete,
+                now,
                 loss_detection_info,
             );
             return;
@@ -182,6 +200,9 @@ impl LossDetectionTimer {
             rtt_estimator,
             peer_completed_address_validation,
             at_anti_amplification_limit,
+            has_handshake_keys,
+            is_handshake_complete,
+            now,
             loss_detection_info,
         );
     }
