@@ -2,18 +2,24 @@
 
 use crate::{connection::ConnectionId, inet::SocketAddress};
 
-/// Maintain metrics for each connection
-#[derive(Debug, Copy, Clone)]
-pub struct ConnectionMetrics {
-    pub bytes_sent: usize,
-    pub bytes_recv: usize,
+#[derive(Debug, Clone, Copy)]
+pub enum PathState {
+    Validated,
+    NotValidated,
 }
 
-impl Default for ConnectionMetrics {
+/// Maintain metrics for each connection
+#[derive(Debug, Copy, Clone)]
+struct Metrics {
+    tx_bytes: u32,
+    rx_bytes: u32,
+}
+
+impl Default for Metrics {
     fn default() -> Self {
-        ConnectionMetrics {
-            bytes_sent: 0,
-            bytes_recv: 0,
+        Metrics {
+            tx_bytes: 0,
+            rx_bytes: 0,
         }
     }
 }
@@ -27,9 +33,9 @@ pub struct Path {
     /// The the connection id the peer wanted to access
     pub destination_connection_id: ConnectionId,
     /// Holds metrics about bytes sent to the peer and received from the peer
-    metrics: ConnectionMetrics,
+    metrics: Metrics,
     /// Tracks whether this path has passed Address or Path validation
-    validated: bool,
+    state: PathState,
 }
 
 /// A Path holds the local and peer socket addresses, conneciton ids, and metrics. It can be
@@ -45,23 +51,28 @@ impl Path {
             source_connection_id,
             destination_connection_id,
             metrics: Default::default(),
-            validated: false,
+            state: PathState::NotValidated,
         }
     }
 
     /// Called when bytes have been transmitted on this path
-    pub fn on_bytes_transmitted(&mut self, bytes: usize) {
-        self.metrics.bytes_sent += bytes;
+    pub fn on_bytes_transmitted(&mut self, bytes: u32) {
+        self.metrics.tx_bytes += bytes;
     }
 
     /// Called when bytes have been received on this path
-    pub fn on_bytes_received(&mut self, bytes: usize) {
-        self.metrics.bytes_recv += bytes;
+    pub fn on_bytes_received(&mut self, bytes: u32) {
+        self.metrics.rx_bytes += bytes;
+    }
+
+    /// Called when the path is validated
+    pub fn on_validated(&mut self) {
+        self.state = PathState::Validated
     }
 
     /// Returns whether this path has passed address validation
-    pub fn is_validated(&self) -> bool {
-        self.validated
+    pub fn is_validated(&self) -> PathState {
+        self.state
     }
 
     //= https://tools.ietf.org/html/draft-ietf-quic-transport-29#section-8.1
@@ -69,21 +80,22 @@ impl Path {
     //# than three times as many bytes as the number of bytes they have
     //# received.
     pub fn mtu(&self, requested_size: usize) -> usize {
-        if self.validated {
-            return requested_size;
-        }
-
-        let limit = (self.metrics.bytes_recv * 3) - self.metrics.bytes_sent;
-        if limit < requested_size {
-            limit
-        } else {
-            requested_size
+        match self.state {
+            PathState::Validated => requested_size,
+            PathState::NotValidated => {
+                let limit = (self.metrics.rx_bytes * 3) - self.metrics.tx_bytes;
+                if (limit as usize) < requested_size {
+                    limit as usize
+                } else {
+                    requested_size
+                }
+            }
         }
     }
 
     /// Returns whether this path is blocked from transmitting more data
-    pub fn at_amplification_limit(&self) -> bool {
-        self.mtu(1) == 0
+    pub fn at_amplification_limit(&self, min_packet_size: usize) -> bool {
+        self.mtu(min_packet_size) != min_packet_size
     }
 }
 
@@ -101,14 +113,15 @@ mod tests {
 
         path.on_bytes_received(3);
         path.on_bytes_transmitted(8);
-        assert_eq!(path.at_amplification_limit(), false);
+        assert_eq!(path.at_amplification_limit(9), true);
 
-        path.on_bytes_transmitted(1);
-        assert_eq!(path.at_amplification_limit(), true);
+        path.on_bytes_received(3);
+        assert_eq!(path.at_amplification_limit(9), false);
 
-        path.validated = true;
+        path.on_validated();
+        path.on_bytes_transmitted(24);
         // Validated paths should always be able to transmit
-        assert_eq!(path.at_amplification_limit(), false);
+        assert_eq!(path.at_amplification_limit(9), false);
     }
 
     #[test]
@@ -138,7 +151,7 @@ mod tests {
         assert_eq!(path.mtu(2), 2);
         assert_eq!(path.mtu(4), 3);
 
-        path.validated = true;
+        path.on_validated();
         // Validated paths should always be able to transmit
         assert_eq!(path.mtu(4), 4);
     }
