@@ -3,24 +3,11 @@
 use crate::{connection::ConnectionId, inet::SocketAddress};
 
 #[derive(Debug, Clone, Copy)]
-pub enum PathState {
+pub enum State {
     Validated,
-    NotValidated,
-}
-
-/// Maintain metrics for each connection
-#[derive(Debug, Copy, Clone)]
-struct Metrics {
-    tx_bytes: u32,
-    rx_bytes: u32,
-}
-
-impl Default for Metrics {
-    fn default() -> Self {
-        Metrics {
-            tx_bytes: 0,
-            rx_bytes: 0,
-        }
+    Pending {
+        tx_bytes: u32,
+        rx_bytes: u32,
     }
 }
 
@@ -32,14 +19,12 @@ pub struct Path {
     pub source_connection_id: ConnectionId,
     /// The the connection id the peer wanted to access
     pub destination_connection_id: ConnectionId,
-    /// Holds metrics about bytes sent to the peer and received from the peer
-    metrics: Metrics,
     /// Tracks whether this path has passed Address or Path validation
-    state: PathState,
+    state: State,
 }
 
-/// A Path holds the local and peer socket addresses, conneciton ids, and metrics. It can be
-/// validated or not-yet-validated.
+/// A Path holds the local and peer socket addresses, connection ids, and state. It can be
+/// validated or pending validation.
 impl Path {
     pub fn new(
         destination_connection_id: ConnectionId,
@@ -50,28 +35,37 @@ impl Path {
             peer_socket_address,
             source_connection_id,
             destination_connection_id,
-            metrics: Default::default(),
-            state: PathState::NotValidated,
+            state: State::Pending { tx_bytes: 0, rx_bytes: 0 },
         }
     }
 
     /// Called when bytes have been transmitted on this path
     pub fn on_bytes_transmitted(&mut self, bytes: u32) {
-        self.metrics.tx_bytes += bytes;
+        match self.state {
+            State::Pending { ref mut tx_bytes, rx_bytes: _ }  => {
+                *tx_bytes += bytes;
+            },
+            _ => (),
+        }
     }
 
     /// Called when bytes have been received on this path
     pub fn on_bytes_received(&mut self, bytes: u32) {
-        self.metrics.rx_bytes += bytes;
+        match self.state {
+            State::Pending { tx_bytes: _, ref mut rx_bytes} => {
+                *rx_bytes += bytes;
+            },
+            _ => (),
+        }
     }
 
     /// Called when the path is validated
     pub fn on_validated(&mut self) {
-        self.state = PathState::Validated
+        self.state = State::Validated
     }
 
     /// Returns whether this path has passed address validation
-    pub fn is_validated(&self) -> PathState {
+    pub fn is_validated(&self) -> State {
         self.state
     }
 
@@ -81,9 +75,9 @@ impl Path {
     //# received.
     pub fn mtu(&self, requested_size: usize) -> usize {
         match self.state {
-            PathState::Validated => requested_size,
-            PathState::NotValidated => {
-                let limit = (self.metrics.rx_bytes * 3) - self.metrics.tx_bytes;
+            State::Validated => requested_size,
+            State::Pending { tx_bytes, rx_bytes } => {
+                let limit = (rx_bytes * 3) - tx_bytes;
                 if (limit as usize) < requested_size {
                     limit as usize
                 } else {
