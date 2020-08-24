@@ -38,6 +38,11 @@ impl LossDetectionTimer {
         }
     }
 
+    /// Resets the `pto_count` to zero
+    pub fn reset_pto_count(&mut self) {
+        self.pto_count = 0;
+    }
+
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.8
     /// Gets the `LossDetectionInfo` with the earliest loss time.
     fn get_loss_time_and_space(

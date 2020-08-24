@@ -85,6 +85,7 @@ impl RecoveryManager {
         }
     }
 
+    // TODO: does this belong here?
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.6
     //# When a server is blocked by anti-amplification limits, receiving a datagram unblocks it,
     //# even if none of the packets in the datagram are successfully processed. In such a case,
@@ -143,14 +144,14 @@ impl RecoveryManager {
     }
 
     /// Finishes processing an ack frame. This should be called after on_ack_received has
-    /// been called for each range of packets being acknowledged in the ack frame.
+    /// been called for each range of packets being acknowledged in the ack frame. Returns
+    /// true if any packets were newly acknowledged.
     pub fn on_ack_received_finish(
         &mut self,
         receive_time: Timestamp,
-        peer_completed_address_validation: bool,
         rtt_estimator: &RTTEstimator,
         loss_time: &mut Option<Timestamp>,
-    ) {
+    ) -> bool {
         if self.newly_acked {
             let lost_packets = self.detect_and_remove_lost_packets(
                 rtt_estimator.latest_rtt(),
@@ -162,15 +163,11 @@ impl RecoveryManager {
                 // TODO: self.congestion_controller.on_packets_lost(lost_packets)
             }
 
-            // Reset pto_count unless the client is unsure if
-            // the server has validated the client's address.
-            if peer_completed_address_validation {
-                // TODO: pto_count = 0;
-            }
-            // TODO: self.loss_detection_timer.set()
-
+            // TODO: Add comment about where pto_count is reset and loss_detection_timer is set
             self.newly_acked = false;
+            return true;
         }
+        false
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.10
@@ -382,7 +379,7 @@ mod test {
         assert_eq!(rtt_estimator.latest_rtt(), Duration::from_millis(500));
 
         assert!(recovery_manager.newly_acked);
-        recovery_manager.on_ack_received_finish(ack_receive_time, true, &rtt_estimator, &mut None);
+        recovery_manager.on_ack_received_finish(ack_receive_time, &rtt_estimator, &mut None);
         assert!(!recovery_manager.newly_acked);
     }
 
