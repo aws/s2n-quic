@@ -42,7 +42,7 @@ impl Path {
     /// Called when bytes have been transmitted on this path
     pub fn on_bytes_transmitted(&mut self, bytes: u32) {
         match self.state {
-            State::Pending { ref mut tx_bytes, rx_bytes: _ }  => {
+            State::Pending { tx_bytes: ref mut tx_bytes, ... }  => {
                 *tx_bytes += bytes;
             },
             _ => (),
@@ -52,7 +52,7 @@ impl Path {
     /// Called when bytes have been received on this path
     pub fn on_bytes_received(&mut self, bytes: u32) {
         match self.state {
-            State::Pending { tx_bytes: _, ref mut rx_bytes} => {
+            State::Pending { rx_bytes: ref mut rx_bytes, ... } => {
                 *rx_bytes += bytes;
             },
             _ => (),
