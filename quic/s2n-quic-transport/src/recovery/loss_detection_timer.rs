@@ -2,7 +2,7 @@
 #![allow(dead_code)]
 
 use crate::{
-    recovery::{RecoveryManager, SentPackets, K_GRANULARITY},
+    recovery::{RecoveryManager, K_GRANULARITY},
     timer::VirtualTimer,
 };
 use core::{cmp::max, time::Duration};
@@ -144,7 +144,6 @@ impl LossDetectionTimer {
         at_anti_amplification_limit: bool,
         mut recovery_manager: RecoveryManager,
         now: Timestamp,
-        sent_packets: &mut SentPackets,
     ) {
         if let Some(earliest_loss_time) =
             LossDetectionTimer::get_loss_time_and_space(loss_detection_info)
@@ -157,7 +156,6 @@ impl LossDetectionTimer {
                 rtt_estimator.smoothed_rtt(),
                 now,
                 &mut Some(earliest_loss_time),
-                sent_packets,
             );
             assert!(!lost_packets.is_empty());
             // TODO: congestion_controller.on_packets_lost(lost_packets)
