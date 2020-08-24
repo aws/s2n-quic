@@ -5,10 +5,7 @@ use crate::{connection::ConnectionId, inet::SocketAddress};
 #[derive(Debug, Clone, Copy)]
 pub enum State {
     Validated,
-    Pending {
-        tx_bytes: u32,
-        rx_bytes: u32,
-    }
+    Pending { tx_bytes: u32, rx_bytes: u32 },
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -35,27 +32,30 @@ impl Path {
             peer_socket_address,
             source_connection_id,
             destination_connection_id,
-            state: State::Pending { tx_bytes: 0, rx_bytes: 0 },
+            state: State::Pending {
+                tx_bytes: 0,
+                rx_bytes: 0,
+            },
         }
     }
 
     /// Called when bytes have been transmitted on this path
     pub fn on_bytes_transmitted(&mut self, bytes: u32) {
-        match self.state {
-            State::Pending { tx_bytes: ref mut tx_bytes, ... }  => {
-                *tx_bytes += bytes;
-            },
-            _ => (),
+        if let State::Pending {
+            ref mut tx_bytes, ..
+        } = self.state
+        {
+            *tx_bytes += bytes;
         }
     }
 
     /// Called when bytes have been received on this path
     pub fn on_bytes_received(&mut self, bytes: u32) {
-        match self.state {
-            State::Pending { rx_bytes: ref mut rx_bytes, ... } => {
-                *rx_bytes += bytes;
-            },
-            _ => (),
+        if let State::Pending {
+            ref mut rx_bytes, ..
+        } = self.state
+        {
+            *rx_bytes += bytes;
         }
     }
 
