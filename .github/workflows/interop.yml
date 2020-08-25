@@ -175,6 +175,11 @@ jobs:
           python3 run.py --client ${{ matrix.client }} --server s2n-quic --json results/results.json --debug
           ls -al
           mv logs* results | true
+          # clean up invalid path characters
+          find results -name '*:*' | while read from; do
+            to=$(echo $from | sed 's/:/_/g')
+            mv $from $to
+          done
 
       - uses: actions/upload-artifact@v2
         with:
