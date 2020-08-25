@@ -1,6 +1,6 @@
 //! This module contains the Path implementation
 
-use crate::{connection::ConnectionId, inet::SocketAddress};
+use crate::{connection::ConnectionId, inet::SocketAddress, recovery::RTTEstimator};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum State {
@@ -16,8 +16,16 @@ pub struct Path {
     pub source_connection_id: ConnectionId,
     /// The the connection id the peer wanted to access
     pub destination_connection_id: ConnectionId,
+    /// The path owns the roundtrip between peers
+    pub rtt_estimator: RTTEstimator,
     /// Tracks whether this path has passed Address or Path validation
     state: State,
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#section-14.2
+    //# If a QUIC endpoint determines that the PMTU between any pair of local
+    //# and remote IP addresses has fallen below the smallest allowed maximum
+    //# packet size of 1200 bytes, it MUST immediately cease sending QUIC
+    //# packets...
+    mtu: u16,
 }
 
 /// A Path holds the local and peer socket addresses, connection ids, and state. It can be
@@ -27,15 +35,20 @@ impl Path {
         destination_connection_id: ConnectionId,
         peer_socket_address: SocketAddress,
         source_connection_id: ConnectionId,
+        rtt_estimator: RTTEstimator,
     ) -> Self {
         Path {
             peer_socket_address,
             source_connection_id,
             destination_connection_id,
+            rtt_estimator,
             state: State::Pending {
                 tx_bytes: 0,
                 rx_bytes: 0,
             },
+            // TODO Allow this value to be configurable via probing as specified
+            // in https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#section-14.
+            mtu: 1200,
         }
     }
 
@@ -63,29 +76,31 @@ impl Path {
         self.state == State::Validated
     }
 
-    //= https://tools.ietf.org/html/draft-ietf-quic-transport-29.txt#8.1
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#8.1
     //# Prior to validating the client address, servers MUST NOT send more
     //# than three times as many bytes as the number of bytes they have
     //# received.
-    pub fn mtu(&self, requested_size: usize) -> usize {
+    pub fn clamp_mtu(&self, requested_size: usize) -> usize {
         match self.state {
-            State::Validated => requested_size,
+            State::Validated => requested_size.min(self.mtu as usize),
             State::Pending { tx_bytes, rx_bytes } => {
                 let limit = (rx_bytes * 3) - tx_bytes;
-                requested_size.min(limit as usize)
+                requested_size.min(limit as usize).min(self.mtu as usize)
             }
         }
     }
 
     /// Returns whether this path is blocked from transmitting more data
-    pub fn at_amplification_limit(&self, min_packet_size: usize) -> bool {
-        self.mtu(min_packet_size) < min_packet_size
+    pub fn at_amplification_limit(&self) -> bool {
+        let mtu = self.mtu as usize;
+        self.clamp_mtu(mtu) < mtu
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use core::time::Duration;
 
     #[test]
     fn amplification_limit_test() {
@@ -93,19 +108,22 @@ mod tests {
             ConnectionId::try_from_bytes(&[]).unwrap(),
             SocketAddress::default(),
             ConnectionId::try_from_bytes(&[]).unwrap(),
+            RTTEstimator::new(Duration::from_millis(30)),
         );
 
-        path.on_bytes_received(3);
-        path.on_bytes_transmitted(8);
-        assert_eq!(path.at_amplification_limit(9), true);
+        // Verify we enforce the amplification limit if we can't send
+        // at least 1 minimum sized packet
+        path.on_bytes_received(1200);
+        path.on_bytes_transmitted((1200 * 2) + 1);
+        assert_eq!(path.at_amplification_limit(), true);
 
-        path.on_bytes_received(3);
-        assert_eq!(path.at_amplification_limit(9), false);
+        path.on_bytes_received(1200);
+        assert_eq!(path.at_amplification_limit(), false);
 
         path.on_validated();
         path.on_bytes_transmitted(24);
         // Validated paths should always be able to transmit
-        assert_eq!(path.at_amplification_limit(9), false);
+        assert_eq!(path.at_amplification_limit(), false);
     }
 
     #[test]
@@ -115,28 +133,29 @@ mod tests {
             ConnectionId::try_from_bytes(&[]).unwrap(),
             SocketAddress::default(),
             ConnectionId::try_from_bytes(&[]).unwrap(),
+            RTTEstimator::new(Duration::from_millis(30)),
         );
 
         path.on_bytes_received(3);
         path.on_bytes_transmitted(8);
 
         // Verify we can transmit one more byte
-        assert_eq!(path.mtu(1), 1);
-        assert_eq!(path.mtu(10), 1);
+        assert_eq!(path.clamp_mtu(1), 1);
+        assert_eq!(path.clamp_mtu(10), 1);
 
         path.on_bytes_transmitted(1);
         // Verify we can't transmit any more bytes
-        assert_eq!(path.mtu(1), 0);
-        assert_eq!(path.mtu(10), 0);
+        assert_eq!(path.clamp_mtu(1), 0);
+        assert_eq!(path.clamp_mtu(10), 0);
 
         path.on_bytes_received(1);
         // Verify we can transmit up to 3 more bytes
-        assert_eq!(path.mtu(1), 1);
-        assert_eq!(path.mtu(2), 2);
-        assert_eq!(path.mtu(4), 3);
+        assert_eq!(path.clamp_mtu(1), 1);
+        assert_eq!(path.clamp_mtu(2), 2);
+        assert_eq!(path.clamp_mtu(4), 3);
 
         path.on_validated();
         // Validated paths should always be able to transmit
-        assert_eq!(path.mtu(4), 4);
+        assert_eq!(path.clamp_mtu(4), 4);
     }
 }
