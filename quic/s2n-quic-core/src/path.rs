@@ -63,7 +63,7 @@ impl Path {
         self.state == State::Validated
     }
 
-    //= https://tools.ietf.org/html/draft-ietf-quic-transport-29#section-8.1
+    //= https://tools.ietf.org/html/draft-ietf-quic-transport-29.txt#8.1
     //# Prior to validating the client address, servers MUST NOT send more
     //# than three times as many bytes as the number of bytes they have
     //# received.
