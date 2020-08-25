@@ -22,10 +22,22 @@ pub struct LossDetectionTimer {
     max_ack_delay: Duration,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct LossDetectionInfo {
     pub pn_space: PacketNumberSpace,
     pub loss_time: Option<Timestamp>,
     pub time_of_last_ack_eliciting_packet: Option<Timestamp>,
+}
+
+impl LossDetectionInfo {
+    /// Constructs a new `LossDetectionInfo`
+    pub fn new(pn_space: PacketNumberSpace) -> Self {
+        Self {
+            pn_space,
+            loss_time: None,
+            time_of_last_ack_eliciting_packet: None,
+        }
+    }
 }
 
 impl LossDetectionTimer {
@@ -214,4 +226,38 @@ impl LossDetectionTimer {
 }
 
 #[cfg(test)]
-mod test {}
+mod test {
+    use crate::recovery::{LossDetectionInfo, LossDetectionTimer};
+    use core::time::Duration;
+    use s2n_quic_core::packet::number::PacketNumberSpace;
+
+    #[test]
+    fn get_loss_time_and_space() {
+        let mut loss_detection_info_1 = LossDetectionInfo::new(PacketNumberSpace::Initial);
+        let mut loss_detection_info_2 = LossDetectionInfo::new(PacketNumberSpace::Handshake);
+        let mut loss_detection_info_3 = LossDetectionInfo::new(PacketNumberSpace::ApplicationData);
+
+        let now = s2n_quic_platform::time::now();
+
+        loss_detection_info_1.loss_time = Some(now);
+        loss_detection_info_2.loss_time = Some(now + Duration::from_millis(1));
+        loss_detection_info_3.loss_time = Some(now + Duration::from_millis(2));
+
+        let mut loss_detection_info = Vec::new();
+        loss_detection_info.push(loss_detection_info_3);
+        loss_detection_info.push(loss_detection_info_2);
+        loss_detection_info.push(loss_detection_info_1);
+
+        assert_eq!(
+            Some(loss_detection_info_1),
+            LossDetectionTimer::get_loss_time_and_space(loss_detection_info.into_iter())
+        );
+    }
+    #[test]
+    fn reset_pto_count() {
+        let mut loss_detection_timer = LossDetectionTimer::new(Duration::default());
+        loss_detection_timer.pto_count = 100;
+        loss_detection_timer.reset_pto_count();
+        assert_eq!(0, loss_detection_timer.pto_count);
+    }
+}
