@@ -2,7 +2,7 @@
 
 use crate::{connection::ConnectionId, inet::SocketAddress};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum State {
     Validated,
     Pending { tx_bytes: u32, rx_bytes: u32 },
@@ -41,20 +41,14 @@ impl Path {
 
     /// Called when bytes have been transmitted on this path
     pub fn on_bytes_transmitted(&mut self, bytes: u32) {
-        if let State::Pending {
-            ref mut tx_bytes, ..
-        } = self.state
-        {
+        if let State::Pending { tx_bytes, .. } = &mut self.state {
             *tx_bytes += bytes;
         }
     }
 
     /// Called when bytes have been received on this path
     pub fn on_bytes_received(&mut self, bytes: u32) {
-        if let State::Pending {
-            ref mut rx_bytes, ..
-        } = self.state
-        {
+        if let State::Pending { rx_bytes, .. } = &mut self.state {
             *rx_bytes += bytes;
         }
     }
@@ -65,8 +59,8 @@ impl Path {
     }
 
     /// Returns whether this path has passed address validation
-    pub fn is_validated(&self) -> State {
-        self.state
+    pub fn is_validated(&self) -> bool {
+        self.state == State::Validated
     }
 
     //= https://tools.ietf.org/html/draft-ietf-quic-transport-29#section-8.1
@@ -78,18 +72,14 @@ impl Path {
             State::Validated => requested_size,
             State::Pending { tx_bytes, rx_bytes } => {
                 let limit = (rx_bytes * 3) - tx_bytes;
-                if (limit as usize) < requested_size {
-                    limit as usize
-                } else {
-                    requested_size
-                }
+                requested_size.min(limit as usize)
             }
         }
     }
 
     /// Returns whether this path is blocked from transmitting more data
     pub fn at_amplification_limit(&self, min_packet_size: usize) -> bool {
-        self.mtu(min_packet_size) != min_packet_size
+        self.mtu(min_packet_size) < min_packet_size
     }
 }
 
