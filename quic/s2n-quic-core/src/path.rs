@@ -8,6 +8,13 @@ pub enum State {
     Pending { tx_bytes: u32, rx_bytes: u32 },
 }
 
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#14.2
+//# If a QUIC endpoint determines that the PMTU between any pair of local
+//# and remote IP addresses has fallen below the smallest allowed maximum
+//# packet size of 1200 bytes, it MUST immediately cease sending QUIC
+//# packets
+const MINIMUM_MTU: u16 = 1200;
+
 #[derive(Debug, Clone, Copy)]
 pub struct Path {
     /// The peer's socket address
@@ -20,11 +27,7 @@ pub struct Path {
     pub rtt_estimator: RTTEstimator,
     /// Tracks whether this path has passed Address or Path validation
     state: State,
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#section-14.2
-    //# If a QUIC endpoint determines that the PMTU between any pair of local
-    //# and remote IP addresses has fallen below the smallest allowed maximum
-    //# packet size of 1200 bytes, it MUST immediately cease sending QUIC
-    //# packets...
+    /// Maximum transmission unit of the path
     mtu: u16,
 }
 
@@ -46,9 +49,7 @@ impl Path {
                 tx_bytes: 0,
                 rx_bytes: 0,
             },
-            // TODO Allow this value to be configurable via probing as specified
-            // in https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#section-14.
-            mtu: 1200,
+            mtu: MINIMUM_MTU,
         }
     }
 
@@ -84,7 +85,10 @@ impl Path {
         match self.state {
             State::Validated => requested_size.min(self.mtu as usize),
             State::Pending { tx_bytes, rx_bytes } => {
-                let limit = (rx_bytes * 3) - tx_bytes;
+                let limit = rx_bytes
+                    .checked_mul(3)
+                    .and_then(|v| v.checked_sub(tx_bytes))
+                    .unwrap_or(0);
                 requested_size.min(limit as usize).min(self.mtu as usize)
             }
         }
