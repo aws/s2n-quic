@@ -28,6 +28,7 @@ mod application_transmission;
 mod crypto_stream;
 mod early_transmission;
 mod handshake;
+mod handshake_status;
 mod initial;
 mod rx_packet_numbers;
 mod session_context;
@@ -38,6 +39,8 @@ pub(crate) use application_transmission::ApplicationTransmission;
 pub(crate) use crypto_stream::CryptoStream;
 pub(crate) use early_transmission::EarlyTransmission;
 pub(crate) use handshake::HandshakeSpace;
+#[allow(unused)]
+pub(crate) use handshake_status::HandshakeStatus;
 pub(crate) use initial::InitialSpace;
 pub(crate) use session_context::SessionContext;
 pub(crate) use tx_packet_numbers::TxPacketNumbers;
