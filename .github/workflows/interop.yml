@@ -140,11 +140,8 @@ jobs:
       - name: Patch implementations.py
         working-directory: quic-interop-runner
         run: |
-          # Delete last line
-          sed -i '$d' implementations.py
           # Append our implementation
-          echo '    "s2n-quic": {"url": "awslabs/s2n-quic-qns:latest", "role": 1},' >> implementations.py
-          echo '}' >> implementations.py
+          echo -e '\nIMPLEMENTATIONS["s2n-quic"] = {"url": "awslabs/s2n-quic-qns:latest", "role": 1}' >> implementations.py
           cat implementations.py
 
       - name: Run docker pull
@@ -178,6 +175,11 @@ jobs:
           python3 run.py --client ${{ matrix.client }} --server s2n-quic --json results/results.json --debug
           ls -al
           mv logs* results | true
+          # clean up invalid path characters
+          find results -name '*:*' | while read from; do
+            to=$(echo $from | sed 's/:/_/g')
+            mv $from $to
+          done
 
       - uses: actions/upload-artifact@v2
         with:
