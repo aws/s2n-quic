@@ -123,7 +123,7 @@ impl Endpoint {
             local_ack_settings: transport_parameters.ack_settings(),
         };
 
-        let tls_endpoint = RustlsServerEndpoint::new(tls_config, transport_parameters);
+        let tls_endpoint = RustlsServerEndpoint::new(tls_config);
 
         let connection_id_generator = LocalConnectionIdGenerator::new();
         let (endpoint, acceptor) =

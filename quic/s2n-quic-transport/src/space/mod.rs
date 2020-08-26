@@ -6,7 +6,7 @@ use crate::{
 };
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
-    crypto::{tls::TLSSession, CryptoSuite},
+    crypto::{tls::Session as TLSSession, CryptoSuite},
     frame::{
         ack::AckRanges, crypto::CryptoRef, stream::StreamRef, Ack, DataBlocked, HandshakeDone,
         MaxData, MaxStreamData, MaxStreams, NewConnectionID, NewToken, PathChallenge, PathResponse,
@@ -44,11 +44,9 @@ pub(crate) use tx_packet_numbers::TxPacketNumbers;
 
 pub struct PacketSpaceManager<ConnectionConfigType: ConnectionConfig> {
     session: Option<ConnectionConfigType::TLSSession>,
-    initial: Option<Box<InitialSpace<ConnectionConfigType::TLSSession>>>,
-    handshake: Option<Box<HandshakeSpace<ConnectionConfigType::TLSSession>>>,
-    application: Option<
-        Box<ApplicationSpace<ConnectionConfigType::StreamType, ConnectionConfigType::TLSSession>>,
-    >,
+    initial: Option<Box<InitialSpace<ConnectionConfigType>>>,
+    handshake: Option<Box<HandshakeSpace<ConnectionConfigType>>>,
+    application: Option<Box<ApplicationSpace<ConnectionConfigType>>>,
     zero_rtt_crypto: Option<Box<<ConnectionConfigType::TLSSession as CryptoSuite>::ZeroRTTCrypto>>,
 }
 
@@ -76,20 +74,24 @@ macro_rules! packet_space_api {
 
 impl<ConnectionConfigType: ConnectionConfig> PacketSpaceManager<ConnectionConfigType> {
     packet_space_api!(
-        InitialSpace<ConnectionConfigType::TLSSession>,
+        InitialSpace<ConnectionConfigType>,
         initial,
         initial_mut,
         discard_initial
     );
 
     packet_space_api!(
-        HandshakeSpace<ConnectionConfigType::TLSSession>,
+        HandshakeSpace<ConnectionConfigType>,
         handshake,
         handshake_mut,
         discard_handshake
     );
 
-    packet_space_api!(ApplicationSpace<ConnectionConfigType::StreamType, ConnectionConfigType::TLSSession>, application, application_mut);
+    packet_space_api!(
+        ApplicationSpace<ConnectionConfigType>,
+        application,
+        application_mut
+    );
 
     pub fn zero_rtt_crypto(
         &self,
@@ -247,7 +249,7 @@ pub trait PacketSpaceHandler<'a, Packet> {
 impl<'a, Config: ConnectionConfig> PacketSpaceHandler<'a, CleartextInitial<'a>>
     for PacketSpaceManager<Config>
 {
-    type Space = InitialSpace<Config::TLSSession>;
+    type Space = InitialSpace<Config>;
 
     fn space_for_packet(
         &mut self,
@@ -260,7 +262,7 @@ impl<'a, Config: ConnectionConfig> PacketSpaceHandler<'a, CleartextInitial<'a>>
 impl<'a, Config: ConnectionConfig> PacketSpaceHandler<'a, CleartextHandshake<'a>>
     for PacketSpaceManager<Config>
 {
-    type Space = HandshakeSpace<Config::TLSSession>;
+    type Space = HandshakeSpace<Config>;
 
     fn space_for_packet(
         &mut self,
@@ -273,7 +275,7 @@ impl<'a, Config: ConnectionConfig> PacketSpaceHandler<'a, CleartextHandshake<'a>
 impl<'a, Config: ConnectionConfig> PacketSpaceHandler<'a, CleartextShort<'a>>
     for PacketSpaceManager<Config>
 {
-    type Space = ApplicationSpace<Config::StreamType, Config::TLSSession>;
+    type Space = ApplicationSpace<Config>;
 
     fn space_for_packet(
         &mut self,

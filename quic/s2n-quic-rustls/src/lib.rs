@@ -7,13 +7,7 @@ use rustls::{
     ClientConfig, ProtocolVersion, ServerConfig, Session, SupportedCipherSuite,
 };
 use s2n_codec::{EncoderBuffer, EncoderValue};
-use s2n_quic_core::{
-    crypto::{
-        tls::{TLSApplicationParameters, TLSContext, TLSEndpoint, TLSSession},
-        CryptoError, CryptoSuite,
-    },
-    transport::parameters::{ClientTransportParameters, ServerTransportParameters},
-};
+use s2n_quic_core::crypto::{tls, CryptoError, CryptoSuite};
 use s2n_quic_ring::{
     handshake::RingHandshakeCrypto, one_rtt::RingOneRTTCrypto, zero_rtt::RingZeroRTTCrypto, Prk,
     RingCryptoSuite, SecretPair,
@@ -65,7 +59,6 @@ macro_rules! impl_tls {
     ($endpoint:ident, $session:ident, $rustls_session:ident, $config:ident, $new:ident) => {
         pub struct $endpoint {
             config: Arc<rustls::$config>,
-            params_buffer: Vec<u8>,
         }
 
         impl fmt::Debug for $endpoint {
@@ -91,8 +84,8 @@ macro_rules! impl_tls {
             type ZeroRTTCrypto = <RingCryptoSuite as CryptoSuite>::ZeroRTTCrypto;
         }
 
-        impl TLSSession for $session {
-            fn poll<W: TLSContext<Self>>(&mut self, context: &mut W) -> Result<(), CryptoError> {
+        impl tls::Session for $session {
+            fn poll<W: tls::Context<Self>>(&mut self, context: &mut W) -> Result<(), CryptoError> {
                 let crypto_data = match self.0.phase {
                     HandshakePhase::Initial => context.receive_initial(),
                     HandshakePhase::Handshake => context.receive_handshake(),
@@ -191,8 +184,8 @@ macro_rules! impl_tls {
                     })
             }
 
-            fn application_parameters(&self) -> Result<TLSApplicationParameters, CryptoError> {
-                Ok(TLSApplicationParameters {
+            fn application_parameters(&self) -> Result<tls::ApplicationParameters, CryptoError> {
+                Ok(tls::ApplicationParameters {
                     alpn_protocol: self.0.session.get_alpn_protocol(),
                     transport_parameters: self.0.session.get_quic_transport_parameters().ok_or(
                         CryptoError::MISSING_EXTENSION
@@ -231,26 +224,32 @@ impl_tls!(
 );
 
 impl RustlsServerEndpoint {
-    pub fn new(config: ServerConfig, server_params: ServerTransportParameters) -> Self {
-        let len = server_params.encoding_size();
-        let mut params_buffer = vec![0; len];
-        server_params.encode(&mut EncoderBuffer::new(&mut params_buffer));
+    pub fn new(config: ServerConfig) -> Self {
         Self {
             config: Arc::new(config),
-            params_buffer,
         }
     }
 }
 
-impl TLSEndpoint for RustlsServerEndpoint {
+impl tls::Endpoint for RustlsServerEndpoint {
     type Session = RustlsServerSession;
 
-    fn new_server_session(&mut self) -> Self::Session {
-        let session = rustls::ServerSession::new_quic(&self.config, self.params_buffer.clone());
+    fn new_server_session<Params: EncoderValue>(
+        &mut self,
+        transport_parameters: &Params,
+    ) -> Self::Session {
+        let len = transport_parameters.encoding_size();
+        let mut params_buffer = vec![0; len];
+        transport_parameters.encode(&mut EncoderBuffer::new(&mut params_buffer));
+        let session = rustls::ServerSession::new_quic(&self.config, params_buffer);
         Self::Session::new(session)
     }
 
-    fn new_client_session(&mut self, __sni: &[u8]) -> Self::Session {
+    fn new_client_session<Params: EncoderValue>(
+        &mut self,
+        _transport_parameters: &Params,
+        _sni: &[u8],
+    ) -> Self::Session {
         panic!("Client sessions are not supported in server mode");
     }
 }
@@ -270,28 +269,33 @@ impl_tls!(
 );
 
 impl RustlsClientEndpoint {
-    pub fn new(config: ClientConfig, server_params: ClientTransportParameters) -> Self {
-        let len = server_params.encoding_size();
-        let mut params_buffer = vec![0; len];
-        server_params.encode(&mut EncoderBuffer::new(&mut params_buffer));
+    pub fn new(config: ClientConfig) -> Self {
         Self {
             config: Arc::new(config),
-            params_buffer,
         }
     }
 }
 
-impl TLSEndpoint for RustlsClientEndpoint {
+impl tls::Endpoint for RustlsClientEndpoint {
     type Session = RustlsClientSession;
 
-    fn new_server_session(&mut self) -> Self::Session {
+    fn new_server_session<Params: EncoderValue>(
+        &mut self,
+        _transport_parameters: &Params,
+    ) -> Self::Session {
         panic!("Server sessions are not supported in client mode");
     }
 
-    fn new_client_session(&mut self, sni: &[u8]) -> Self::Session {
+    fn new_client_session<Params: EncoderValue>(
+        &mut self,
+        transport_parameters: &Params,
+        sni: &[u8],
+    ) -> Self::Session {
+        let len = transport_parameters.encoding_size();
+        let mut params_buffer = vec![0; len];
+        transport_parameters.encode(&mut EncoderBuffer::new(&mut params_buffer));
         let sni = DNSNameRef::try_from_ascii(sni).expect("sni hostname should be valid");
-        let session =
-            rustls::ClientSession::new_quic(&self.config, sni, self.params_buffer.clone());
+        let session = rustls::ClientSession::new_quic(&self.config, sni, params_buffer);
         Self::Session::new(session)
     }
 }

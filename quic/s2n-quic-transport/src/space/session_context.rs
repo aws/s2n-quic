@@ -9,10 +9,7 @@ use crate::{
 use bytes::Bytes;
 use s2n_codec::{DecoderBuffer, DecoderValue};
 use s2n_quic_core::{
-    crypto::{
-        tls::{TLSApplicationParameters, TLSContext},
-        CryptoError, CryptoSuite,
-    },
+    crypto::{tls, CryptoError, CryptoSuite},
     packet::number::PacketNumberSpace,
     time::Timestamp,
     transport::parameters::ClientTransportParameters,
@@ -21,26 +18,23 @@ use s2n_quic_core::{
 pub struct SessionContext<'a, ConnectionConfigType: ConnectionConfig> {
     pub now: Timestamp,
     pub connection_config: &'a ConnectionConfigType,
-    pub initial: &'a mut Option<Box<InitialSpace<ConnectionConfigType::TLSSession>>>,
-    pub handshake: &'a mut Option<Box<HandshakeSpace<ConnectionConfigType::TLSSession>>>,
-    pub application: &'a mut Option<
-        Box<ApplicationSpace<ConnectionConfigType::StreamType, ConnectionConfigType::TLSSession>>,
-    >,
+    pub initial: &'a mut Option<Box<InitialSpace<ConnectionConfigType>>>,
+    pub handshake: &'a mut Option<Box<HandshakeSpace<ConnectionConfigType>>>,
+    pub application: &'a mut Option<Box<ApplicationSpace<ConnectionConfigType>>>,
     pub zero_rtt_crypto:
         &'a mut Option<Box<<ConnectionConfigType::TLSSession as CryptoSuite>::ZeroRTTCrypto>>,
 }
 
-impl<'a, ConnectionConfigType: ConnectionConfig> TLSContext<ConnectionConfigType::TLSSession>
+impl<'a, ConnectionConfigType: ConnectionConfig> tls::Context<ConnectionConfigType::TLSSession>
     for SessionContext<'a, ConnectionConfigType>
 {
     fn on_handshake_keys(
         &mut self,
         keys: <ConnectionConfigType::TLSSession as CryptoSuite>::HandshakeCrypto,
     ) -> Result<(), CryptoError> {
-        if let Some(initial) = self.initial.as_mut() {
-            // TODO make sure the rx buffer is empty, otherwise it's a
-            // transport violation
-            initial.crypto_stream.finish();
+        if self.handshake.is_some() {
+            return Err(CryptoError::INTERNAL_ERROR
+                .with_reason("handshake keys initialized more than once"));
         }
 
         let ack_manager = AckManager::new(
@@ -57,8 +51,14 @@ impl<'a, ConnectionConfigType: ConnectionConfig> TLSContext<ConnectionConfigType
     fn on_zero_rtt_keys(
         &mut self,
         keys: <ConnectionConfigType::TLSSession as CryptoSuite>::ZeroRTTCrypto,
-        _application_parameters: TLSApplicationParameters,
+        _application_parameters: tls::ApplicationParameters,
     ) -> Result<(), CryptoError> {
+        if self.zero_rtt_crypto.is_some() {
+            return Err(
+                CryptoError::INTERNAL_ERROR.with_reason("zero rtt keys initialized more than once")
+            );
+        }
+
         *self.zero_rtt_crypto = Some(Box::new(keys));
 
         Ok(())
@@ -67,12 +67,11 @@ impl<'a, ConnectionConfigType: ConnectionConfig> TLSContext<ConnectionConfigType
     fn on_one_rtt_keys(
         &mut self,
         keys: <ConnectionConfigType::TLSSession as CryptoSuite>::OneRTTCrypto,
-        application_parameters: TLSApplicationParameters,
+        application_parameters: tls::ApplicationParameters,
     ) -> Result<(), CryptoError> {
-        if let Some(handshake) = self.handshake.as_mut() {
-            // TODO make sure the rx buffer is empty, otherwise it's a
-            // transport violation
-            handshake.crypto_stream.finish();
+        if self.application.is_some() {
+            return Err(CryptoError::INTERNAL_ERROR
+                .with_reason("application keys initialized more than once"));
         }
 
         // Parse transport parameters
@@ -120,6 +119,16 @@ impl<'a, ConnectionConfigType: ConnectionConfig> TLSContext<ConnectionConfigType
         )));
 
         Ok(())
+    }
+
+    fn on_handshake_done(&mut self) -> Result<(), CryptoError> {
+        if let Some(application) = self.application.as_mut() {
+            application.on_handshake_done();
+            Ok(())
+        } else {
+            Err(CryptoError::INTERNAL_ERROR
+                .with_reason("handshake cannot be completed without application keys"))
+        }
     }
 
     fn receive_initial(&mut self) -> Option<Bytes> {
@@ -171,6 +180,10 @@ impl<'a, ConnectionConfigType: ConnectionConfig> TLSContext<ConnectionConfigType
     }
 
     fn send_handshake(&mut self, transmission: Bytes) {
+        if let Some(initial) = self.initial.as_mut() {
+            initial.crypto_stream.finish();
+        }
+
         self.handshake
             .as_mut()
             .expect("can_send_handshake should be called before sending")

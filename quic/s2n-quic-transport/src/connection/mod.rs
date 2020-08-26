@@ -4,8 +4,8 @@ use crate::stream::{StreamLimits, StreamTrait};
 use s2n_quic_core::{
     application::ApplicationErrorCode,
     connection::{ConnectionError, ConnectionId},
-    crypto::tls::TLSSession,
-    endpoint::EndpointType,
+    crypto::tls,
+    endpoint,
     frame::ConnectionClose,
     inet::SocketAddress,
     packet::DestinationConnectionIDDecoder,
@@ -49,12 +49,11 @@ pub trait ConnectionConfig: 'static + Send {
     /// The type of the Streams which are managed by the `Connection`
     type StreamType: StreamTrait;
     /// Session type
-    type TLSSession: TLSSession;
+    type TLSSession: tls::Session;
     /// The type which is used for decoding destination connection IDs
     type DestinationConnectionIDDecoderType: DestinationConnectionIDDecoder;
 
-    /// The type of the local endpoint
-    const ENDPOINT_TYPE: EndpointType;
+    const ENDPOINT_TYPE: endpoint::EndpointType;
 
     /// Our initial flow control limits as advertised in transport parameters.
     fn local_flow_control_limits(&self) -> &InitialFlowControlLimits;
