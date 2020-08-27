@@ -244,9 +244,9 @@ impl OutgoingFrameBuffer {
 
 #[derive(Debug)]
 pub struct MockWriteContext<'a> {
-    connection_context: &'a MockConnectionContext,
-    current_time: Timestamp,
-    frame_buffer: &'a mut OutgoingFrameBuffer,
+    pub connection_context: &'a MockConnectionContext,
+    pub current_time: Timestamp,
+    pub frame_buffer: &'a mut OutgoingFrameBuffer,
 }
 
 impl<'a> MockWriteContext<'a> {
