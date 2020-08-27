@@ -6,7 +6,7 @@ use crate::{
     timer::VirtualTimer,
 };
 use core::{cmp::max, time::Duration};
-use s2n_quic_core::{packet::number::PacketNumberSpace, recovery::RTTEstimator, time::Timestamp};
+use s2n_quic_core::{packet::number::PacketNumberSpace, path::Path, time::Timestamp};
 
 pub struct LossDetectionTimer {
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.3
@@ -64,23 +64,21 @@ impl LossDetectionTimer {
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.8
-    //#
     fn get_pto_time_and_space(
         &self,
-        rtt_estimator: &RTTEstimator,
+        path: Path,
         loss_detection_info: impl ExactSizeIterator<Item = LossDetectionInfo>,
-        peer_completed_address_validation: bool,
         has_handshake_keys: bool,
         is_handshake_complete: bool,
         now: Timestamp,
     ) -> Option<(PacketNumberSpace, Timestamp)> {
         let backoff = 2_u32.pow(self.pto_count);
-        let duration = (rtt_estimator.smoothed_rtt()
-            + max(4 * rtt_estimator.rttvar(), K_GRANULARITY))
+        let duration = (path.rtt_estimator.smoothed_rtt()
+            + max(4 * path.rtt_estimator.rttvar(), K_GRANULARITY))
             * backoff;
         // Arm PTO from now when there are no inflight packets.
         if loss_detection_info.len() == 0 {
-            assert!(!peer_completed_address_validation);
+            assert!(!path.is_validated());
             if has_handshake_keys {
                 return Some((PacketNumberSpace::Handshake, now + duration));
             } else {
@@ -118,10 +116,7 @@ impl LossDetectionTimer {
     //# QUIC loss detection uses a single timer for all timeout loss detection.
     pub fn set_loss_detection_timer(
         &mut self,
-        //TODO: use Path struct
-        rtt_estimator: &RTTEstimator,
-        peer_completed_address_validation: bool,
-        at_anti_amplification_limit: bool,
+        path: Path,
         has_handshake_keys: bool,
         is_handshake_complete: bool,
         now: Timestamp,
@@ -137,13 +132,13 @@ impl LossDetectionTimer {
             return;
         }
 
-        if at_anti_amplification_limit {
+        if path.at_amplification_limit() {
             // The server's timer is not set if nothing can be sent.
             self.timer.cancel();
             return;
         }
 
-        if loss_detection_info.len() == 0 && peer_completed_address_validation {
+        if loss_detection_info.len() == 0 && path.is_validated() {
             // There is nothing to detect lost, so no timer is set.
             // However, the client needs to arm the timer if the
             // server might be blocked by the anti-amplification limit.
@@ -153,9 +148,8 @@ impl LossDetectionTimer {
 
         // Determine which PN space to arm PTO for.
         if let Some((_, pto_time)) = self.get_pto_time_and_space(
-            rtt_estimator,
+            path,
             loss_detection_info,
-            peer_completed_address_validation,
             has_handshake_keys,
             is_handshake_complete,
             now,
@@ -168,10 +162,8 @@ impl LossDetectionTimer {
     //# When the loss detection timer expires, the timer's mode determines the action to be performed.
     pub fn on_loss_detection_timeout(
         &mut self,
+        path: Path,
         loss_detection_info: impl ExactSizeIterator<Item = LossDetectionInfo> + Copy,
-        rtt_estimator: &RTTEstimator,
-        peer_completed_address_validation: bool,
-        at_anti_amplification_limit: bool,
         mut recovery_manager: RecoveryManager,
         has_handshake_keys: bool,
         is_handshake_complete: bool,
@@ -184,17 +176,15 @@ impl LossDetectionTimer {
         {
             // Time threshold loss Detection
             let lost_packets = recovery_manager.detect_and_remove_lost_packets(
-                rtt_estimator.latest_rtt(),
-                rtt_estimator.smoothed_rtt(),
+                path.rtt_estimator.latest_rtt(),
+                path.rtt_estimator.smoothed_rtt(),
                 now,
                 &mut Some(earliest_loss_time),
             );
             assert!(!lost_packets.is_empty());
             // TODO: congestion_controller.on_packets_lost(lost_packets)
             self.set_loss_detection_timer(
-                rtt_estimator,
-                peer_completed_address_validation,
-                at_anti_amplification_limit,
+                path,
                 has_handshake_keys,
                 is_handshake_complete,
                 now,
@@ -214,9 +204,7 @@ impl LossDetectionTimer {
 
         self.pto_count += 1;
         self.set_loss_detection_timer(
-            rtt_estimator,
-            peer_completed_address_validation,
-            at_anti_amplification_limit,
+            path,
             has_handshake_keys,
             is_handshake_complete,
             now,
