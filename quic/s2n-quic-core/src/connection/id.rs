@@ -73,6 +73,12 @@ impl core::fmt::Debug for ConnectionId {
 }
 
 impl ConnectionId {
+    /// An empty connection ID
+    pub const EMPTY: Self = Self {
+        bytes: [0; MAX_CONNECTION_ID_LEN],
+        len: 0,
+    };
+
     /// Creates a `ConnectionId` from a byte array.
     ///
     /// If the passed byte array exceeds the maximum allowed length for
