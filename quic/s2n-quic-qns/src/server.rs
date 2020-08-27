@@ -4,7 +4,7 @@ use crate::{
 };
 use bytes::Bytes;
 use s2n_quic_core::{stream::StreamType, transport::parameters};
-use s2n_quic_rustls::rustls;
+use s2n_quic_rustls as rustls;
 use std::{io, path::PathBuf};
 use structopt::StructOpt;
 
@@ -103,7 +103,7 @@ impl Interop {
         let socket = self.bind()?;
         Ok(Endpoint::new(
             socket,
-            create_rustls_config(
+            create_rustls_server(
                 self.certificate()?,
                 self.private_key()?,
                 &self.alpn_protocols,
@@ -153,25 +153,16 @@ fn create_server_params() -> parameters::ServerTransportParameters {
 }
 
 /// Create the TLS configuration we are using for the QUIC endpoint
-fn create_rustls_config(
+fn create_rustls_server(
     certificate: Vec<u8>,
     private_key: Vec<u8>,
     alpn_protocols: &[String],
-) -> rustls::ServerConfig {
-    let mut config = rustls::ServerConfig::new(rustls::NoClientAuth::new());
-    config.alpn_protocols.extend(
-        alpn_protocols
-            .iter()
-            .map(String::from)
-            .map(String::into_bytes),
-    );
-    config.versions = s2n_quic_rustls::PROTOCOL_VERSIONS.to_vec();
-    config.ciphersuites = s2n_quic_rustls::CIPHERSUITES.to_vec();
-
-    let cert = vec![rustls::Certificate(certificate)];
-
-    let key = rustls::PrivateKey(private_key);
-
-    config.set_single_cert(cert, key).unwrap();
-    config
+) -> rustls::Server {
+    rustls::Server::builder()
+        .with_certificate(&certificate, &private_key)
+        .expect("invalid certificate")
+        .with_alpn_protocols(alpn_protocols.iter().map(String::as_bytes))
+        .expect("invalid alpn")
+        .build()
+        .expect("invalid server")
 }
