@@ -39,7 +39,7 @@ pub(crate) use application_transmission::ApplicationTransmission;
 pub(crate) use crypto_stream::CryptoStream;
 pub(crate) use early_transmission::EarlyTransmission;
 pub(crate) use handshake::HandshakeSpace;
-#[allow(unused)]
+#[allow(unused)] // TODO remove this after integrated
 pub(crate) use handshake_status::HandshakeStatus;
 pub(crate) use initial::InitialSpace;
 pub(crate) use session_context::SessionContext;
