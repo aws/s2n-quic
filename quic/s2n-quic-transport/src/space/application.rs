@@ -320,7 +320,7 @@ impl<Config: ConnectionConfig> PacketSpace for ApplicationSpace<Config> {
         _datagram: &DatagramInfo,
         frame: HandshakeDone,
     ) -> Result<(), TransportError> {
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.20
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#19.20
         //# A server MUST
         //# treat receipt of a HANDSHAKE_DONE frame as a connection error of type
         //# PROTOCOL_VIOLATION.
