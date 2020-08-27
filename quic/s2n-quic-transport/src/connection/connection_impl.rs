@@ -119,17 +119,15 @@ impl<ConfigType: ConnectionConfig> ConnectionImpl<ConfigType> {
         datagram: &DatagramInfo,
     ) -> Result<(), TransportError> {
         let space_manager = &mut shared_state.space_manager;
-
-        let had_application_space = space_manager.application().is_some();
         space_manager.poll_crypto(&self.config, datagram.timestamp)?;
 
-        if !had_application_space && space_manager.application().is_some() {
+        if matches!(self.state, ConnectionState::Handshaking)
+            && space_manager.application().is_some()
+        {
             // Move into the HandshakeCompleted state. This will signal the
             // necessary interest to hand over the connection to the application.
             self.accept_state = AcceptState::HandshakeCompleted;
             // Move the connection into the active state.
-            // TODO: Can we get here while the connection was already closed?
-            // Probably not, because we drop crypto keys while closing
             self.state = ConnectionState::Active;
 
             // Since we now have all transport parameters, we start the idle timer

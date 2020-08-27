@@ -2,7 +2,10 @@ use crate::{
     connection::{ConnectionConfig, ConnectionInterests, ConnectionTransmissionContext},
     frame_exchange_interests::FrameExchangeInterestProvider,
     processed_packet::ProcessedPacket,
-    space::{rx_packet_numbers::AckManager, ApplicationTransmission, PacketSpace, TxPacketNumbers},
+    space::{
+        rx_packet_numbers::AckManager, ApplicationTransmission, HandshakeStatus, PacketSpace,
+        TxPacketNumbers,
+    },
     stream::AbstractStreamManager,
 };
 use s2n_codec::EncoderBuffer;
@@ -38,6 +41,8 @@ pub struct ApplicationSpace<Config: ConnectionConfig> {
     /// The crypto suite for application data
     /// TODO: What about ZeroRtt?
     pub crypto: <Config::TLSSession as CryptoSuite>::OneRTTCrypto,
+    /// Records if the handshake is pending or done, which is communicated to the peer
+    pub handshake_status: HandshakeStatus,
     processed_packet_numbers: SlidingWindow,
 }
 
@@ -55,6 +60,7 @@ impl<Config: ConnectionConfig> ApplicationSpace<Config> {
             spin_bit: SpinBit::Zero,
             stream_manager,
             crypto,
+            handshake_status: HandshakeStatus::default(),
             processed_packet_numbers: SlidingWindow::default(),
         }
     }
@@ -103,13 +109,14 @@ impl<Config: ConnectionConfig> ApplicationSpace<Config> {
         // TODO: Will default() prevent finalization, since it might set finalization to false?
         ConnectionInterests::default()
             + self.ack_manager.frame_exchange_interests()
+            + self.handshake_status.frame_exchange_interests()
             + self.stream_manager.interests()
     }
 
     /// Signals the handshake is done
     pub fn on_handshake_done(&mut self) {
         if Config::ENDPOINT_TYPE.is_server() {
-            // TODO notify handshake_status
+            self.handshake_status.on_handshake_done();
         }
     }
 
@@ -147,6 +154,7 @@ impl<Config: ConnectionConfig> ApplicationSpace<Config> {
             ApplicationTransmission {
                 ack_manager: &mut self.ack_manager,
                 context,
+                handshake_status: &mut self.handshake_status,
                 packet_number,
                 stream_manager: &mut self.stream_manager,
                 tx_packet_numbers: &mut self.tx_packet_numbers,
@@ -186,6 +194,7 @@ impl<Config: ConnectionConfig> PacketSpace for ApplicationSpace<Config> {
             let ack_set = start..=end;
 
             self.tx_packet_numbers.on_packet_ack(datagram, &ack_set)?;
+            self.handshake_status.on_packet_ack(&ack_set);
             self.stream_manager.on_packet_ack(&ack_set);
             self.ack_manager.on_packet_ack(datagram, &ack_set);
         }
@@ -331,7 +340,7 @@ impl<Config: ConnectionConfig> PacketSpace for ApplicationSpace<Config> {
                 .with_frame_type(frame.tag().into()));
         }
 
-        // TODO notify handshake_status
+        self.handshake_status.on_handshake_done_received();
 
         Ok(())
     }

@@ -91,7 +91,7 @@ impl<'a, ConnectionConfigType: ConnectionConfig> tx::Message
         };
 
         let encoder = if let Some(space) = space_manager.handshake_mut() {
-            match space.on_transmit(&self.context, encoder) {
+            let encoder = match space.on_transmit(&self.context, encoder) {
                 Ok(encoder) => {
                     //= https://tools.ietf.org/id/draft-ietf-quic-tls-27.txt#4.10.1
                     //# A client MUST discard Initial keys when it first sends a Handshake packet
@@ -114,7 +114,18 @@ impl<'a, ConnectionConfigType: ConnectionConfig> tx::Message
                     // move to the next packet space
                     encoder
                 }
+            };
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-tls-29#4.11.2
+            //# An endpoint MUST discard its handshake keys when the TLS handshake is
+            //# confirmed (Section 4.1.2).
+            if let Some(application_space) = space_manager.application() {
+                if application_space.handshake_status.is_confirmed() {
+                    space_manager.discard_handshake();
+                }
             }
+
+            encoder
         } else {
             encoder
         };
