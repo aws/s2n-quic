@@ -402,18 +402,6 @@ pub trait ConnectionTrait: Sized {
                         .map_err(on_error)?;
                 }
                 Frame::HandshakeDone(frame) => {
-                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.20
-                    //# This frame can only be sent by the server.  Servers MUST NOT send a
-                    //# HANDSHAKE_DONE frame before completing the handshake.  A server MUST
-                    //# treat receipt of a HANDSHAKE_DONE frame as a connection error of type
-                    //# PROTOCOL_VIOLATION.
-
-                    if Self::Config::ENDPOINT_TYPE.is_server() {
-                        return Err(TransportError::PROTOCOL_VIOLATION
-                            .with_reason("Clients MUST NOT send HANDSHAKE_DONE frames")
-                            .with_frame_type(frame.tag().into()));
-                    }
-
                     let on_error = with_frame_type!(frame);
                     processed_packet.on_processed_frame(&frame);
                     space

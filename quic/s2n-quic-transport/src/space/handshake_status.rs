@@ -1,5 +1,3 @@
-#![allow(unused)] // TODO remove this after integrated
-
 use crate::{
     contexts::{OnTransmitError, WriteContext},
     frame_exchange_interests::{FrameExchangeInterestProvider, FrameExchangeInterests},
