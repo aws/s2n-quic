@@ -1,9 +1,9 @@
 use crate::{
-    connection::{ConnectionInterests, ConnectionTransmissionContext},
+    connection::{ConnectionConfig, ConnectionInterests, ConnectionTransmissionContext},
     frame_exchange_interests::FrameExchangeInterestProvider,
     processed_packet::ProcessedPacket,
     space::{rx_packet_numbers::AckManager, ApplicationTransmission, PacketSpace, TxPacketNumbers},
-    stream::{AbstractStreamManager, StreamTrait},
+    stream::AbstractStreamManager,
 };
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
@@ -23,14 +23,13 @@ use s2n_quic_core::{
     transport::error::TransportError,
 };
 
-#[derive(Debug)]
-pub struct ApplicationSpace<StreamType: StreamTrait, Suite: CryptoSuite> {
+pub struct ApplicationSpace<Config: ConnectionConfig> {
     /// Transmission Packet numbers
     pub tx_packet_numbers: TxPacketNumbers,
     /// Ack manager
     pub ack_manager: AckManager,
     /// All streams that are managed through this connection
-    pub stream_manager: AbstractStreamManager<StreamType>,
+    pub stream_manager: AbstractStreamManager<Config::StreamType>,
     /// The current [`KeyPhase`]
     pub key_phase: KeyPhase,
     /// The current state of the Spin bit
@@ -38,15 +37,15 @@ pub struct ApplicationSpace<StreamType: StreamTrait, Suite: CryptoSuite> {
     pub spin_bit: SpinBit,
     /// The crypto suite for application data
     /// TODO: What about ZeroRtt?
-    pub crypto: Suite::OneRTTCrypto,
+    pub crypto: <Config::TLSSession as CryptoSuite>::OneRTTCrypto,
     processed_packet_numbers: SlidingWindow,
 }
 
-impl<StreamType: StreamTrait, Suite: CryptoSuite> ApplicationSpace<StreamType, Suite> {
+impl<Config: ConnectionConfig> ApplicationSpace<Config> {
     pub fn new(
-        crypto: Suite::OneRTTCrypto,
+        crypto: <Config::TLSSession as CryptoSuite>::OneRTTCrypto,
         now: Timestamp,
-        stream_manager: AbstractStreamManager<StreamType>,
+        stream_manager: AbstractStreamManager<Config::StreamType>,
         ack_manager: AckManager,
     ) -> Self {
         Self {
@@ -107,6 +106,13 @@ impl<StreamType: StreamTrait, Suite: CryptoSuite> ApplicationSpace<StreamType, S
             + self.stream_manager.interests()
     }
 
+    /// Signals the handshake is done
+    pub fn on_handshake_done(&mut self) {
+        if Config::ENDPOINT_TYPE.is_server() {
+            // TODO notify handshake_status
+        }
+    }
+
     /// Returns all of the component timers
     pub fn timers(&self) -> impl Iterator<Item = &Timestamp> {
         self.ack_manager.timers()
@@ -132,8 +138,8 @@ impl<StreamType: StreamTrait, Suite: CryptoSuite> ApplicationSpace<StreamType, S
         context: &'a ConnectionTransmissionContext,
         packet_number: PacketNumber,
     ) -> (
-        &'a Suite::OneRTTCrypto,
-        ApplicationTransmission<'a, StreamType>,
+        &'a <Config::TLSSession as CryptoSuite>::OneRTTCrypto,
+        ApplicationTransmission<'a, Config::StreamType>,
     ) {
         // TODO: What about ZeroRTTCrypto?
         (
@@ -149,9 +155,7 @@ impl<StreamType: StreamTrait, Suite: CryptoSuite> ApplicationSpace<StreamType, S
     }
 }
 
-impl<StreamType: StreamTrait, Suite: CryptoSuite> PacketSpace
-    for ApplicationSpace<StreamType, Suite>
-{
+impl<Config: ConnectionConfig> PacketSpace for ApplicationSpace<Config> {
     const INVALID_FRAME_ERROR: &'static str = "invalid frame in application space";
 
     fn handle_crypto_frame(
@@ -316,8 +320,19 @@ impl<StreamType: StreamTrait, Suite: CryptoSuite> PacketSpace
         _datagram: &DatagramInfo,
         frame: HandshakeDone,
     ) -> Result<(), TransportError> {
-        // TODO
-        eprintln!("UNIMPLEMENTED APPLICATION FRAME {:?}", frame);
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#19.20
+        //# A server MUST
+        //# treat receipt of a HANDSHAKE_DONE frame as a connection error of type
+        //# PROTOCOL_VIOLATION.
+
+        if Config::ENDPOINT_TYPE.is_server() {
+            return Err(TransportError::PROTOCOL_VIOLATION
+                .with_reason("Clients MUST NOT send HANDSHAKE_DONE frames")
+                .with_frame_type(frame.tag().into()));
+        }
+
+        // TODO notify handshake_status
+
         Ok(())
     }
 

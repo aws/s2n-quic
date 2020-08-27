@@ -1,5 +1,5 @@
 use crate::{
-    connection::ConnectionTransmissionContext,
+    connection::{ConnectionConfig, ConnectionTransmissionContext},
     frame_exchange_interests::{FrameExchangeInterestProvider, FrameExchangeInterests},
     processed_packet::ProcessedPacket,
     space::{
@@ -21,17 +21,20 @@ use s2n_quic_core::{
     transport::error::TransportError,
 };
 
-#[derive(Debug)]
-pub struct HandshakeSpace<Suite: CryptoSuite> {
+pub struct HandshakeSpace<Config: ConnectionConfig> {
     pub ack_manager: AckManager,
-    pub crypto: Suite::HandshakeCrypto,
+    pub crypto: <Config::TLSSession as CryptoSuite>::HandshakeCrypto,
     pub crypto_stream: CryptoStream,
     pub tx_packet_numbers: TxPacketNumbers,
     processed_packet_numbers: SlidingWindow,
 }
 
-impl<Suite: CryptoSuite> HandshakeSpace<Suite> {
-    pub fn new(crypto: Suite::HandshakeCrypto, now: Timestamp, ack_manager: AckManager) -> Self {
+impl<Config: ConnectionConfig> HandshakeSpace<Config> {
+    pub fn new(
+        crypto: <Config::TLSSession as CryptoSuite>::HandshakeCrypto,
+        now: Timestamp,
+        ack_manager: AckManager,
+    ) -> Self {
         Self {
             ack_manager,
             crypto,
@@ -103,7 +106,10 @@ impl<Suite: CryptoSuite> HandshakeSpace<Suite> {
         &'a mut self,
         context: &'a ConnectionTransmissionContext,
         packet_number: PacketNumber,
-    ) -> (&'a Suite::HandshakeCrypto, EarlyTransmission<'a>) {
+    ) -> (
+        &'a <Config::TLSSession as CryptoSuite>::HandshakeCrypto,
+        EarlyTransmission<'a>,
+    ) {
         (
             &self.crypto,
             EarlyTransmission {
@@ -117,7 +123,7 @@ impl<Suite: CryptoSuite> HandshakeSpace<Suite> {
     }
 }
 
-impl<Suite: CryptoSuite> FrameExchangeInterestProvider for HandshakeSpace<Suite> {
+impl<Config: ConnectionConfig> FrameExchangeInterestProvider for HandshakeSpace<Config> {
     fn frame_exchange_interests(&self) -> FrameExchangeInterests {
         FrameExchangeInterests::default()
             + self.ack_manager.frame_exchange_interests()
@@ -130,7 +136,7 @@ impl<Suite: CryptoSuite> FrameExchangeInterestProvider for HandshakeSpace<Suite>
 //# PING, PADDING, or ACK frames.  Handshake packets MAY contain
 //# CONNECTION_CLOSE frames.  Endpoints MUST treat receipt of Handshake
 //# packets with other frames as a connection error.
-impl<Suite: CryptoSuite> PacketSpace for HandshakeSpace<Suite> {
+impl<Config: ConnectionConfig> PacketSpace for HandshakeSpace<Config> {
     const INVALID_FRAME_ERROR: &'static str = "invalid frame in handshake space";
 
     fn handle_crypto_frame(
