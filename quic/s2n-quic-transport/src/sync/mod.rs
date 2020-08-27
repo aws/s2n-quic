@@ -58,30 +58,18 @@ impl<T> DeliveryState<T> {
 
     /// Returns `true` if the delivery of the value had been cancelled
     pub fn is_cancelled(&self) -> bool {
-        if let DeliveryState::Cancelled(_) = self {
-            true
-        } else {
-            false
-        }
+        matches!(self, Self::Cancelled(_))
     }
 
     /// Returns `true` if the delivery of a value is requested
     pub fn is_requested(&self) -> bool {
-        if let DeliveryState::Requested(_) = self {
-            true
-        } else {
-            false
-        }
+        matches!(self, Self::Requested(_))
     }
 
     /// Returns `true` if the delivery is current in progress.
     /// A packet has been sent, but no acknowledgement has been retrieved so far.
     pub fn is_inflight(&self) -> bool {
-        if let DeliveryState::InFlight(_) = self {
-            true
-        } else {
-            false
-        }
+        matches!(self, Self::InFlight(_))
     }
 }
 

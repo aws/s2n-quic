@@ -20,36 +20,33 @@ pub struct OnceSync<T, S> {
     writer: S,
 }
 
-impl<T: Copy + Clone + Eq + PartialEq, S: ValueToFrameWriter<T>> OnceSync<T, S> {
-    pub fn new() -> Self {
-        OnceSync {
+impl<T, S: Default> Default for OnceSync<T, S> {
+    fn default() -> Self {
+        Self {
             delivery: DeliveryState::NotRequested,
             writer: S::default(),
         }
+    }
+}
+
+impl<T: Copy + Clone + Eq + PartialEq, S: ValueToFrameWriter<T>> OnceSync<T, S> {
+    /// Creates a new OnceSync
+    pub fn new() -> Self {
+        Self::default()
     }
 
     /// Returns `true` if the payload had been delivered to the peer and had
     /// been acknowledged by the peer.
     pub fn is_delivered(&self) -> bool {
-        if let DeliveryState::Delivered(_) = self.delivery {
-            true
-        } else {
-            false
-        }
+        matches!(self.delivery, DeliveryState::Delivered(_))
     }
 
     /// Returns `true` if the synchronization has been cancelled
     pub fn is_cancelled(&self) -> bool {
-        if let DeliveryState::Cancelled(_) = self.delivery {
-            true
-        } else {
-            false
-        }
+        matches!(self.delivery, DeliveryState::Cancelled(_))
     }
 
     /// Requested delivery of the given value.
-    /// Returns `true` if delivery had not bee previously requested, and `false`
-    /// otherwise.
     pub fn request_delivery(&mut self, value: T) {
         if let DeliveryState::NotRequested = self.delivery {
             self.delivery = DeliveryState::Requested(value);
