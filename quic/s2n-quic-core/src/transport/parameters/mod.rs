@@ -16,36 +16,7 @@ use s2n_codec::{
     DecoderBufferResult, DecoderError, DecoderValue, DecoderValueMut, Encoder, EncoderValue,
 };
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#7.3
-//# During connection establishment, both endpoints make authenticated
-//# declarations of their transport parameters.  These declarations are
-//# made unilaterally by each endpoint.  Endpoints are required to comply
-//# with the restrictions implied by these parameters; the description of
-//# each parameter includes rules for its handling.
-//#
-//# The encoding of the transport parameters is detailed in Section 18.
-//#
-//# QUIC includes the encoded transport parameters in the cryptographic
-//# handshake.  Once the handshake completes, the transport parameters
-//# declared by the peer are available.  Each endpoint validates the
-//# value provided by its peer.
-//#
-//# Definitions for each of the defined transport parameters are included
-//# in Section 18.2.
-//#
-//# An endpoint MUST treat receipt of a transport parameter with an
-//# invalid value as a connection error of type
-//# TRANSPORT_PARAMETER_ERROR.
-//#
-//# An endpoint MUST NOT send a parameter more than once in a given
-//# transport parameters extension.  An endpoint SHOULD treat receipt of
-//# duplicate transport parameters as a connection error of type
-//# TRANSPORT_PARAMETER_ERROR.
-//#
-//# A server MUST include the original_connection_id transport parameter
-//# (Section 18.2) if it sent a Retry packet to enable validation of the
-//# Retry, as described in Section 17.2.5.
-
+/// Trait for an transport parameter value
 pub trait TransportParameter: Sized {
     /// The ID or tag for the TransportParameter
     const ID: TransportParameterID;
@@ -68,6 +39,7 @@ pub trait TransportParameter: Sized {
     fn default_value() -> Self;
 }
 
+/// Trait for validating transport parameter values
 pub trait TransportParameterValidator: Sized {
     /// Validates that the transport parameter is in a valid state
     fn validate(self) -> Result<Self, DecoderError> {
@@ -75,7 +47,7 @@ pub trait TransportParameterValidator: Sized {
     }
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#7.3.1
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#7.4.1
 //# Both endpoints store the value of the server transport parameters
 //# from a connection and apply them to any 0-RTT packets that are sent
 //# in subsequent connections to that peer, except for transport
@@ -85,21 +57,18 @@ pub trait TransportParameterValidator: Sized {
 //# completes, the client uses the transport parameters established in
 //# the handshake.
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#7.3.1
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#7.4.1
+//# *  active_connection_id_limit
 //# *  initial_max_data
-//#
 //# *  initial_max_stream_data_bidi_local
-//#
 //# *  initial_max_stream_data_bidi_remote
-//#
 //# *  initial_max_stream_data_uni
-//#
 //# *  initial_max_streams_bidi
-//#
 //# *  initial_max_streams_uni
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub struct ZeroRTTParameters {
+    pub active_connection_id_limit: VarInt,
     pub initial_max_data: VarInt,
     pub initial_max_stream_data_bidi_local: VarInt,
     pub initial_max_stream_data_bidi_remote: VarInt,
@@ -108,12 +77,23 @@ pub struct ZeroRTTParameters {
     pub initial_max_streams_uni: VarInt,
 }
 
-impl<OriginalConnectionID, StatelessResetToken, PreferredAddress>
-    TransportParameters<OriginalConnectionID, StatelessResetToken, PreferredAddress>
+impl<
+        OriginalDestinationConnectionId,
+        StatelessResetToken,
+        PreferredAddress,
+        RetrySourceConnectionId,
+    >
+    TransportParameters<
+        OriginalDestinationConnectionId,
+        StatelessResetToken,
+        PreferredAddress,
+        RetrySourceConnectionId,
+    >
 {
     /// Returns the ZeroRTTParameters to be saved between connections
     pub fn zero_rtt_parameters(&self) -> ZeroRTTParameters {
         let Self {
+            active_connection_id_limit,
             initial_max_data,
             initial_max_stream_data_bidi_local,
             initial_max_stream_data_bidi_remote,
@@ -123,6 +103,7 @@ impl<OriginalConnectionID, StatelessResetToken, PreferredAddress>
             ..
         } = self;
         ZeroRTTParameters {
+            active_connection_id_limit: **active_connection_id_limit,
             initial_max_data: **initial_max_data,
             initial_max_stream_data_bidi_local: **initial_max_stream_data_bidi_local,
             initial_max_stream_data_bidi_remote: **initial_max_stream_data_bidi_remote,
@@ -133,23 +114,16 @@ impl<OriginalConnectionID, StatelessResetToken, PreferredAddress>
     }
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#18
-//# The "extension_data" field of the quic_transport_parameters extension
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#18
+//# The extension_data field of the quic_transport_parameters extension
 //# defined in [QUIC-TLS] contains the QUIC transport parameters.  They
 //# are encoded as a sequence of transport parameters, as shown in
-//# Figure 16:
+//# Figure 19:
 //#
-//#  0                   1                   2                   3
-//#  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# |                  Transport Parameter 1 (*)                  ...
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# |                  Transport Parameter 2 (*)                  ...
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//#                                ...
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# |                  Transport Parameter N (*)                  ...
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//# Transport Parameters {
+//#   Transport Parameter (..) ...,
+//# }
+//#                Figure 19: Sequence of Transport Parameters
 
 decoder_value!(
     impl<'a> ClientTransportParameters {
@@ -173,24 +147,17 @@ decoder_value!(
     }
 );
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#18
-//# Each transport parameter is encoded as an (identifier, length, value)
-//# tuple, as shown in Figure 17:
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#18
+//# Transport Parameter {
+//#   Transport Parameter ID (i),
+//#   Transport Parameter Length (i),
+//#   Transport Parameter Value (..),
+//# }
 //#
-//#  0                   1                   2                   3
-//#  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# |                 Transport Parameter ID (i)                  ...
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# |               Transport Parameter Length (i)                ...
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# |                Transport Parameter Value (*)                ...
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//#                Figure 20: Transport Parameter Encoding
 //#
-//#                Figure 17: Transport Parameter Encoding
-//#
-//# The Transport Param Length field contains the length of the Transport
-//# Parameter Value field.
+//# The Transport Parameter Length field contains the length of the
+//# Transport Parameter Value field.
 //#
 //# QUIC encodes transport parameters into a sequence of bytes, which are
 //# then included in the cryptographic handshake.
@@ -330,13 +297,13 @@ macro_rules! transport_parameter {
     };
 }
 
-/// Implements a server-only transport parameter
-macro_rules! server_transport_parameter {
-    ($ty:ty, $tag:expr) => {
+/// Implements an optional transport parameter
+macro_rules! optional_transport_parameter {
+    ($ty:ty) => {
         impl TransportParameter for Option<$ty> {
             type CodecValue = $ty;
 
-            const ID: TransportParameterID = TransportParameterID::from_u8($tag);
+            const ID: TransportParameterID = <$ty as TransportParameter>::ID;
 
             fn from_codec_value(value: Self::CodecValue) -> Self {
                 Some(value)
@@ -363,20 +330,47 @@ macro_rules! server_transport_parameter {
     };
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#18.2
-//# original_connection_id (0x00):  The value of the Destination
-//#    Connection ID field from the first Initial packet sent by the
-//#    client.  This transport parameter is only sent by a server.  This
-//#    is the same value sent in the "Original Destination Connection ID"
-//#    field of a Retry packet (see Section 17.2.5).  A server MUST
-//#    include the original_connection_id transport parameter if it sent
-//#    a Retry packet.
+macro_rules! connection_id_parameter {
+    ($name:ident, $tag:expr) => {
+        transport_parameter!($name(ConnectionId), $tag, ConnectionId::EMPTY);
 
-server_transport_parameter!(ConnectionId, 0x00);
+        // The inner connection_id handles validation
+        impl TransportParameterValidator for $name {}
 
-impl TransportParameterValidator for ConnectionId {}
+        impl TryFrom<&[u8]> for $name {
+            type Error = crate::connection::TryFromSliceError;
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#18.2
+            fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+                Ok(Self(ConnectionId::try_from(value)?))
+            }
+        }
+
+        decoder_value!(
+            impl<'a> $name {
+                fn decode(buffer: Buffer) -> Result<Self> {
+                    let (connection_id, buffer) = buffer.decode()?;
+                    Ok((Self(connection_id), buffer))
+                }
+            }
+        );
+
+        impl EncoderValue for $name {
+            fn encode<E: Encoder>(&self, encoder: &mut E) {
+                self.0.encode(encoder)
+            }
+        }
+    };
+}
+
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#18.2
+//# original_destination_connection_id (0x00): The value of the
+//#    Destination Connection ID field from the first Initial packet sent
+//#    by the client; see Section 7.3.  This transport parameter is only
+//#    sent by a server.
+
+connection_id_parameter!(OriginalDestinationConnectionId, 0x00);
+
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#18.2
 //# max_idle_timeout (0x01):  The max idle timeout is a value in
 //#    milliseconds that is encoded as an integer; see (Section 10.2).
 //#    Idle timeout is disabled when both endpoints omit this transport
@@ -413,7 +407,7 @@ impl Into<Duration> for MaxIdleTimeout {
     }
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#18.2
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#18.2
 //# stateless_reset_token (0x02):  A stateless reset token is used in
 //#    verifying a stateless reset; see Section 10.4.  This parameter is
 //#    a sequence of 16 bytes.  This transport parameter MUST NOT be sent
@@ -422,22 +416,46 @@ impl Into<Duration> for MaxIdleTimeout {
 //#    (Section 10.4) for the connection ID negotiated during the
 //#    handshake.
 
-server_transport_parameter!(StatelessResetToken, 0x02);
+optional_transport_parameter!(StatelessResetToken);
+
+impl TransportParameter for StatelessResetToken {
+    type CodecValue = Self;
+
+    const ID: TransportParameterID = TransportParameterID::from_u8(0x02);
+
+    fn from_codec_value(value: Self) -> Self {
+        value
+    }
+
+    fn try_into_codec_value(&self) -> Option<&Self> {
+        Some(self)
+    }
+
+    fn default_value() -> Self {
+        Self::ZEROED
+    }
+}
 
 impl TransportParameterValidator for StatelessResetToken {}
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#18.2
-//# max_packet_size (0x03):  The maximum packet size parameter is an
-//#    integer value that limits the size of packets that the endpoint is
-//#    willing to receive.  This indicates that packets larger than this
-//#    limit will be dropped.  The default for this parameter is the
-//#    maximum permitted UDP payload of 65527.  Values below 1200 are
-//#    invalid.  This limit only applies to protected packets
-//#    (Section 12.1).
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#18.2
+//# max_udp_payload_size (0x03):  The maximum UDP payload size parameter
+//#    is an integer value that limits the size of UDP payloads that the
+//#    endpoint is willing to receive.  UDP packets with payloads larger
+//#    than this limit are not likely to be processed by the receiver.
+//#
+//#    The default for this parameter is the maximum permitted UDP
+//#    payload of 65527.  Values below 1200 are invalid.
+//#
+//#    This limit does act as an additional constraint on datagram size
+//#    in the same way as the path MTU, but it is a property of the
+//#    endpoint and not the path; see Section 14.  It is expected that
+//#    this is the space an endpoint dedicates to holding incoming
+//#    packets.
 
-transport_parameter!(MaxPacketSize(VarInt), 0x03, VarInt::from_u16(65527));
+transport_parameter!(MaxUdpPayloadSize(VarInt), 0x03, VarInt::from_u16(65527));
 
-impl TransportParameterValidator for MaxPacketSize {
+impl TransportParameterValidator for MaxUdpPayloadSize {
     fn validate(self) -> Result<Self, DecoderError> {
         decoder_invariant!(
             (1200..=65527).contains(&*self.0),
@@ -447,7 +465,7 @@ impl TransportParameterValidator for MaxPacketSize {
     }
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#18.2
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#18.2
 //# initial_max_data (0x04):  The initial maximum data parameter is an
 //#    integer value that contains the initial value for the maximum
 //#    amount of data that can be sent on the connection.  This is
@@ -458,7 +476,7 @@ transport_parameter!(InitialMaxData(VarInt), 0x04);
 
 impl TransportParameterValidator for InitialMaxData {}
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#18.2
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#18.2
 //# initial_max_stream_data_bidi_local (0x05):  This parameter is an
 //#    integer value specifying the initial flow control limit for
 //#    locally-initiated bidirectional streams.  This limit applies to
@@ -473,7 +491,7 @@ transport_parameter!(InitialMaxStreamDataBidiLocal(VarInt), 0x05);
 
 impl TransportParameterValidator for InitialMaxStreamDataBidiLocal {}
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#18.2
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#18.2
 //# initial_max_stream_data_bidi_remote (0x06):  This parameter is an
 //#    integer value specifying the initial flow control limit for peer-
 //#    initiated bidirectional streams.  This limit applies to newly
@@ -487,7 +505,7 @@ transport_parameter!(InitialMaxStreamDataBidiRemote(VarInt), 0x06);
 
 impl TransportParameterValidator for InitialMaxStreamDataBidiRemote {}
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#18.2
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#18.2
 //# initial_max_stream_data_uni (0x07):  This parameter is an integer
 //#    value specifying the initial flow control limit for unidirectional
 //#    streams.  This limit applies to newly created unidirectional
@@ -501,7 +519,7 @@ transport_parameter!(InitialMaxStreamDataUni(VarInt), 0x07);
 
 impl TransportParameterValidator for InitialMaxStreamDataUni {}
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#18.2
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#18.2
 //# initial_max_streams_bidi (0x08):  The initial maximum bidirectional
 //#    streams parameter is an integer value that contains the initial
 //#    maximum number of bidirectional streams the peer may initiate.  If
@@ -514,7 +532,7 @@ transport_parameter!(InitialMaxStreamsBidi(VarInt), 0x08);
 
 impl TransportParameterValidator for InitialMaxStreamsBidi {}
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#18.2
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#18.2
 //# initial_max_streams_uni (0x09):  The initial maximum unidirectional
 //#    streams parameter is an integer value that contains the initial
 //#    maximum number of unidirectional streams the peer may initiate.
@@ -527,7 +545,7 @@ transport_parameter!(InitialMaxStreamsUni(VarInt), 0x09);
 
 impl TransportParameterValidator for InitialMaxStreamsUni {}
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#18.2
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#18.2
 //# ack_delay_exponent (0x0a):  The ACK delay exponent is an integer
 //#    value indicating an exponent used to decode the ACK Delay field in
 //#    the ACK frame (Section 19.3).  If this value is absent, a default
@@ -543,7 +561,7 @@ impl TransportParameterValidator for AckDelayExponent {
     }
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#18.2
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#18.2
 //# max_ack_delay (0x0b):  The maximum ACK delay is an integer value
 //#    indicating the maximum amount of time in milliseconds by which the
 //#    endpoint will delay sending acknowledgments.  This value SHOULD
@@ -603,16 +621,18 @@ pub struct AckSettings {
     pub ack_delay_exponent: u8,
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.3
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#19.3
 //# A variable-length integer representing the time delta in
 //# microseconds between when this ACK was sent and when the largest
 //# acknowledged packet, as indicated in the Largest Acknowledged
-//# field, was received by this peer. The value of the ACK Delay
+//# field, was received by this peer.  The value of the ACK Delay
 //# field is scaled by multiplying the encoded value by 2 to the power
-//# of the value of the "ack_delay_exponent" transport parameter set
-//# by the sender of the ACK frame (see Section 18.2).  Scaling in
-//# this fashion allows for a larger range of values with a shorter
-//# encoding at the cost of lower resolution.
+//# of the value of the ack_delay_exponent transport parameter set by
+//# the sender of the ACK frame; see Section 18.2.  Scaling in this
+//# fashion allows for a larger range of values with a shorter
+//# encoding at the cost of lower resolution.  Because the receiver
+//# doesn't use the ACK Delay for Initial and Handshake packets, a
+//# sender SHOULD send a value of 0.
 
 impl AckSettings {
     /// Decodes the peer's `Ack Delay` field
@@ -665,14 +685,11 @@ mod ack_settings_tests {
     }
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#18.2
-//# disable_active_migration (0x0c):  The disable active migration
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#18.2
+//# disable_active_migration (0x0c): The disable active migration
 //#    transport parameter is included if the endpoint does not support
-//#    active connection migration (Section 9).  Peers of an endpoint
-//#    that sets this transport parameter MUST NOT send any packets,
-//#    including probing packets (Section 9.1), from a local address or
-//#    port other than that used to perform the handshake.  This
-//#    parameter is a zero-length value.
+//#    active connection migration (Section 9) on the address being used
+//#    during the handshake.
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum MigrationSupport {
@@ -710,18 +727,32 @@ impl TransportParameter for MigrationSupport {
 
 impl TransportParameterValidator for MigrationSupport {}
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#18.2
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#18.2
 //# preferred_address (0x0d):  The server's preferred address is used to
 //#    effect a change in server address at the end of the handshake, as
 //#    described in Section 9.6.  The format of this transport parameter
-//#    is shown in Figure 18.  This transport parameter is only sent by a
+//#    is shown in Figure 21.  This transport parameter is only sent by a
 //#    server.  Servers MAY choose to only send a preferred address of
 //#    one address family by sending an all-zero address and port
 //#    (0.0.0.0:0 or ::.0) for the other family.  IP addresses are
-//#    encoded in network byte order.  The CID Length field contains the
-//#    length of the Connection ID field.
+//#    encoded in network byte order.
 
-server_transport_parameter!(PreferredAddress, 0x0d);
+optional_transport_parameter!(PreferredAddress);
+
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#18.2
+//# Preferred Address {
+//#   IPv4 Address (32),
+//#   IPv4 Port (16),
+//#   IPv6 Address (128),
+//#   IPv6 Port (16),
+//#   CID Length (8),
+//#   Connection ID (..),
+//#   Stateless Reset Token (128),
+//# }
+//#
+//#                  Figure 21: Preferred Address format
+
+type CIDLength = u8;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PreferredAddress {
@@ -745,6 +776,29 @@ impl Unspecified for PreferredAddress {
     }
 }
 
+impl TransportParameter for PreferredAddress {
+    type CodecValue = Self;
+
+    const ID: TransportParameterID = TransportParameterID::from_u8(0x0d);
+
+    fn from_codec_value(value: Self) -> Self {
+        value
+    }
+
+    fn try_into_codec_value(&self) -> Option<&Self> {
+        Some(self)
+    }
+
+    fn default_value() -> Self {
+        Self {
+            ipv4_address: None,
+            ipv6_address: None,
+            connection_id: ConnectionId::EMPTY,
+            stateless_reset_token: StatelessResetToken::ZEROED,
+        }
+    }
+}
+
 impl TransportParameterValidator for PreferredAddress {
     fn validate(self) -> Result<Self, DecoderError> {
         decoder_invariant!(
@@ -754,41 +808,6 @@ impl TransportParameterValidator for PreferredAddress {
         Ok(self)
     }
 }
-
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#18.2
-//#  0                   1                   2                   3
-//#  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# |                       IPv4 Address (32)                       |
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# |         IPv4 Port (16)        |
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# |                                                               |
-//# +                                                               +
-//# |                                                               |
-//# +                      IPv6 Address (128)                       +
-//# |                                                               |
-//# +                                                               +
-//# |                                                               |
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# |         IPv6 Port (16)        |
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# | CID Length (8)|
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# |                      Connection ID (*)                      ...
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# |                                                               |
-//# +                                                               +
-//# |                                                               |
-//# +                   Stateless Reset Token (128)                 +
-//# |                                                               |
-//# +                                                               +
-//# |                                                               |
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//#
-//#                  Figure 17: Preferred Address format
-
-type CIDLength = u8;
 
 decoder_value!(
     impl<'a> PreferredAddress {
@@ -828,18 +847,20 @@ impl EncoderValue for PreferredAddress {
     }
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#18.2
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#18.2
 //# active_connection_id_limit (0x0e):  The active connection ID limit is
 //#    an integer value specifying the maximum number of connection IDs
 //#    from the peer that an endpoint is willing to store.  This value
 //#    includes the connection ID received during the handshake, that
 //#    received in the preferred_address transport parameter, and those
-//#    received in NEW_CONNECTION_ID frames.  Unless a zero-length
-//#    connection ID is being used, the value of the
-//#    active_connection_id_limit parameter MUST be no less than 2.  If
-//#    this transport parameter is absent, a default of 2 is assumed.
-//#    When a zero-length connection ID is being used, the
-//#    active_connection_id_limit parameter MUST NOT be sent.
+//#    received in NEW_CONNECTION_ID frames.  The value of the
+//#    active_connection_id_limit parameter MUST be at least 2.  An
+//#    endpoint that receives a value less than 2 MUST close the
+//#    connection with an error of type TRANSPORT_PARAMETER_ERROR.  If
+//#    this transport parameter is absent, a default of 2 is assumed.  If
+//#    an endpoint issues a zero-length connection ID, it will never send
+//#    a NEW_CONNECTION_ID frame and therefore ignores the
+//#    active_connection_id_limit value received from its peer.
 
 transport_parameter!(ActiveConnectionIdLimit(VarInt), 0x0e, VarInt::from_u8(2));
 
@@ -860,7 +881,22 @@ impl ActiveConnectionIdLimit {
     }
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#18.2
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#18.2
+//# initial_source_connection_id (0x0f):  The value that the endpoint
+//#    included in the Source Connection ID field of the first Initial
+//#    packet it sends for the connection; see Section 7.3.
+
+connection_id_parameter!(InitialSourceConnectionId, 0x0f);
+
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#18.2
+//# retry_source_connection_id (0x10):  The value that the server
+//#    included in the Source Connection ID field of a Retry packet; see
+//#    Section 7.3.  This transport parameter is only sent by a server.
+
+connection_id_parameter!(RetrySourceConnectionId, 0x10);
+optional_transport_parameter!(RetrySourceConnectionId);
+
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#18.2
 //# If present, transport parameters that set initial flow control limits
 //# (initial_max_stream_data_bidi_local,
 //# initial_max_stream_data_bidi_remote, and initial_max_stream_data_uni)
@@ -900,8 +936,18 @@ impl InitialStreamLimits {
     }
 }
 
-impl<OriginalConnectionID, StatelessResetToken, PreferredAddress>
-    TransportParameters<OriginalConnectionID, StatelessResetToken, PreferredAddress>
+impl<
+        OriginalDestinationConnectionId,
+        StatelessResetToken,
+        PreferredAddress,
+        RetrySourceConnectionId,
+    >
+    TransportParameters<
+        OriginalDestinationConnectionId,
+        StatelessResetToken,
+        PreferredAddress,
+        RetrySourceConnectionId,
+    >
 {
     /// Returns the flow control limits from a set of TransportParameters
     pub fn flow_control_limits(&self) -> InitialFlowControlLimits {
@@ -948,34 +994,36 @@ impl<OriginalConnectionID, StatelessResetToken, PreferredAddress>
     }
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#18.2
-//# A client MUST NOT include server-only transport parameters
-//# (original_connection_id, stateless_reset_token, or
-//# preferred_address).  A server MUST treat receipt of any of these
-//# transport parameters as a connection error of type
-//# TRANSPORT_PARAMETER_ERROR.
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#18.2
+//# A client MUST NOT include any server-only transport parameter:
+//# original_destination_connection_id, preferred_address,
+//# retry_source_connection_id, or stateless_reset_token.  A server MUST
+//# treat receipt of any of these transport parameters as a connection
+//# error of type TRANSPORT_PARAMETER_ERROR.
 
 mod disabled_parameter;
 pub use disabled_parameter::DisabledParameter;
 
 /// Specific TransportParameters sent by the client endpoint
 pub type ClientTransportParameters = TransportParameters<
-    DisabledParameter<ConnectionId>,
+    DisabledParameter<OriginalDestinationConnectionId>,
     DisabledParameter<StatelessResetToken>,
     DisabledParameter<PreferredAddress>,
+    DisabledParameter<RetrySourceConnectionId>,
 >;
 
 /// Specific TransportParameters sent by the server endpoint
 pub type ServerTransportParameters = TransportParameters<
-    Option<ConnectionId>,
+    OriginalDestinationConnectionId,
     Option<StatelessResetToken>,
     Option<PreferredAddress>,
+    Option<RetrySourceConnectionId>,
 >;
 
 macro_rules! impl_transport_parameters {
     (
         pub struct TransportParameters <
-        $($server_param:ident),* >
+        $($server_param:ident),* $(,)? >
         { $($field:ident : $field_ty:ident),* $(,)? }
     ) => {
         #[derive(Clone, Copy, Debug, PartialEq)]
@@ -1042,12 +1090,7 @@ macro_rules! impl_transport_parameters {
                     buffer = match tag {
                         $(
                             tag if tag == $field_ty::ID => {
-                                //= https://tools.ietf.org/id/draft-ietf-quic-transport-25.txt#18.2
-                                //# A client MUST NOT include server-only transport parameters
-                                //# (original_connection_id, stateless_reset_token, or
-                                //# preferred_address).  A server MUST treat receipt of any of these
-                                //# transport parameters as a connection error of type
-                                //# TRANSPORT_PARAMETER_ERROR.
+                                // ensure the field is enabled in this context
                                 s2n_codec::decoder_invariant!(
                                     $field_ty::ENABLED,
                                     concat!(stringify!($field), " is not allowed in this context")
@@ -1064,7 +1107,7 @@ macro_rules! impl_transport_parameters {
                             }
                         )*
                         _ => {
-                            //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#7.3.2
+                            //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#7.4.2
                             //# New transport parameters can be used to negotiate new protocol
                             //# behavior.  An endpoint MUST ignore transport parameters that it does
                             //# not support.  Absence of a transport parameter therefore disables any
@@ -1072,7 +1115,7 @@ macro_rules! impl_transport_parameters {
                             //# described in Section 18.1, some identifiers are reserved in order to
                             //# exercise this requirement.
 
-                            //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#18.1
+                            //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#18.1
                             //# Transport parameters with an identifier of the form "31 * N + 27" for
                             //# integer values of N are reserved to exercise the requirement that
                             //# unknown transport parameters be ignored.  These transport parameters
@@ -1093,9 +1136,14 @@ macro_rules! impl_transport_parameters {
 }
 
 impl_transport_parameters!(
-    pub struct TransportParameters<OriginalConnectionID, StatelessResetToken, PreferredAddress> {
+    pub struct TransportParameters<
+        OriginalDestinationConnectionId,
+        StatelessResetToken,
+        PreferredAddress,
+        RetrySourceConnectionId,
+    > {
         max_idle_timeout: MaxIdleTimeout,
-        max_packet_size: MaxPacketSize,
+        max_udp_payload_size: MaxUdpPayloadSize,
         initial_max_data: InitialMaxData,
         initial_max_stream_data_bidi_local: InitialMaxStreamDataBidiLocal,
         initial_max_stream_data_bidi_remote: InitialMaxStreamDataBidiRemote,
@@ -1106,9 +1154,11 @@ impl_transport_parameters!(
         max_ack_delay: MaxAckDelay,
         migration_support: MigrationSupport,
         active_connection_id_limit: ActiveConnectionIdLimit,
-        original_connection_id: OriginalConnectionID,
+        original_destination_connection_id: OriginalDestinationConnectionId,
         stateless_reset_token: StatelessResetToken,
         preferred_address: PreferredAddress,
+        initial_source_connection_id: InitialSourceConnectionId,
+        retry_source_connection_id: RetrySourceConnectionId,
     }
 );
 
@@ -1143,14 +1193,13 @@ mod snapshot_tests {
         default_transport_parameter_test!(ServerTransportParameters);
     }
 
-    #[test]
-    fn server_snapshot_test() {
+    fn server_transport_parameters() -> ServerTransportParameters {
         // pick a value that isn't the default for any of the params
         let integer_value = VarInt::from_u8(42);
 
-        let value = ServerTransportParameters {
+        ServerTransportParameters {
             max_idle_timeout: integer_value.try_into().unwrap(),
-            max_packet_size: MaxPacketSize::new(1500u16).unwrap(),
+            max_udp_payload_size: MaxUdpPayloadSize::new(1500u16).unwrap(),
             initial_max_data: integer_value.try_into().unwrap(),
             initial_max_stream_data_bidi_local: integer_value.try_into().unwrap(),
             initial_max_stream_data_bidi_remote: integer_value.try_into().unwrap(),
@@ -1161,7 +1210,7 @@ mod snapshot_tests {
             max_ack_delay: integer_value.try_into().unwrap(),
             migration_support: MigrationSupport::Disabled,
             active_connection_id_limit: integer_value.try_into().unwrap(),
-            original_connection_id: Some([1, 2, 3][..].try_into().unwrap()),
+            original_destination_connection_id: [1, 2, 3][..].try_into().unwrap(),
             stateless_reset_token: Some([2; 16].into()),
             preferred_address: Some(PreferredAddress {
                 ipv4_address: Some(SocketAddressV4::new([127, 0, 0, 1], 1337)),
@@ -1169,8 +1218,14 @@ mod snapshot_tests {
                 connection_id: [4, 5, 6, 7][..].try_into().unwrap(),
                 stateless_reset_token: [1; 16].into(),
             }),
-        };
+            initial_source_connection_id: [1, 2, 3][..].try_into().unwrap(),
+            retry_source_connection_id: Some([1, 2, 3][..].try_into().unwrap()),
+        }
+    }
 
+    #[test]
+    fn server_snapshot_test() {
+        let value = server_transport_parameters();
         let encoded_output = assert_codec_round_trip_value!(ServerTransportParameters, value);
 
         #[cfg(not(miri))] // snapshot tests don't work on miri
@@ -1179,14 +1234,13 @@ mod snapshot_tests {
         let _ = encoded_output;
     }
 
-    #[test]
-    fn client_snapshot_test() {
+    fn client_transport_paramters() -> ClientTransportParameters {
         // pick a value that isn't the default for any of the params
         let integer_value = VarInt::from_u8(42);
 
-        let value = ClientTransportParameters {
+        ClientTransportParameters {
             max_idle_timeout: integer_value.try_into().unwrap(),
-            max_packet_size: MaxPacketSize::new(1500u16).unwrap(),
+            max_udp_payload_size: MaxUdpPayloadSize::new(1500u16).unwrap(),
             initial_max_data: integer_value.try_into().unwrap(),
             initial_max_stream_data_bidi_local: integer_value.try_into().unwrap(),
             initial_max_stream_data_bidi_remote: integer_value.try_into().unwrap(),
@@ -1197,11 +1251,17 @@ mod snapshot_tests {
             max_ack_delay: integer_value.try_into().unwrap(),
             migration_support: MigrationSupport::Disabled,
             active_connection_id_limit: integer_value.try_into().unwrap(),
-            original_connection_id: Default::default(),
+            original_destination_connection_id: Default::default(),
             stateless_reset_token: Default::default(),
             preferred_address: Default::default(),
-        };
+            initial_source_connection_id: [1, 2, 3][..].try_into().unwrap(),
+            retry_source_connection_id: Default::default(),
+        }
+    }
 
+    #[test]
+    fn client_snapshot_test() {
+        let value = client_transport_paramters();
         let encoded_output = assert_codec_round_trip_value!(ClientTransportParameters, value);
 
         #[cfg(not(miri))] // snapshot tests don't work on miri
@@ -1214,26 +1274,7 @@ mod snapshot_tests {
     fn ignore_unknown_parameter() {
         use s2n_codec::EncoderBuffer;
 
-        // pick a value that isn't the default for any of the params
-        let integer_value = VarInt::from_u8(42);
-
-        let value = ClientTransportParameters {
-            max_idle_timeout: integer_value.try_into().unwrap(),
-            max_packet_size: MaxPacketSize::new(1500u16).unwrap(),
-            initial_max_data: integer_value.try_into().unwrap(),
-            initial_max_stream_data_bidi_local: integer_value.try_into().unwrap(),
-            initial_max_stream_data_bidi_remote: integer_value.try_into().unwrap(),
-            initial_max_stream_data_uni: integer_value.try_into().unwrap(),
-            initial_max_streams_bidi: integer_value.try_into().unwrap(),
-            initial_max_streams_uni: integer_value.try_into().unwrap(),
-            ack_delay_exponent: 2u8.try_into().unwrap(),
-            max_ack_delay: integer_value.try_into().unwrap(),
-            migration_support: MigrationSupport::Disabled,
-            active_connection_id_limit: integer_value.try_into().unwrap(),
-            original_connection_id: Default::default(),
-            stateless_reset_token: Default::default(),
-            preferred_address: Default::default(),
-        };
+        let value = client_transport_paramters();
 
         // Reserved parameters have tags of the form 31 * N + 27
         // We inject one at the end

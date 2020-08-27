@@ -11,14 +11,11 @@ impl<T> Default for DisabledParameter<T> {
     }
 }
 
-impl<T> TransportParameter for DisabledParameter<T>
-where
-    Option<T>: TransportParameter,
-{
+impl<T: TransportParameter> TransportParameter for DisabledParameter<T> {
     type CodecValue = ();
 
     const ENABLED: bool = false;
-    const ID: TransportParameterID = <Option<T>>::ID;
+    const ID: TransportParameterID = T::ID;
 
     fn from_codec_value(_value: Self::CodecValue) -> Self {
         Self(Default::default())

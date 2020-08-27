@@ -138,6 +138,11 @@ const STATELESS_RESET_TOKEN_LEN: usize = 128 / 8;
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct StatelessResetToken([u8; STATELESS_RESET_TOKEN_LEN]);
 
+impl StatelessResetToken {
+    /// A zeroed out stateless reset token
+    pub const ZEROED: Self = Self([0; STATELESS_RESET_TOKEN_LEN]);
+}
+
 impl From<[u8; STATELESS_RESET_TOKEN_LEN]> for StatelessResetToken {
     fn from(bytes: [u8; STATELESS_RESET_TOKEN_LEN]) -> Self {
         Self(bytes)

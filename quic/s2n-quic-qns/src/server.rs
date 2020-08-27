@@ -3,9 +3,9 @@ use crate::{
     socket::Socket,
 };
 use bytes::Bytes;
-use s2n_quic_core::{stream::StreamType, transport::parameters, varint::VarInt};
+use s2n_quic_core::{stream::StreamType, transport::parameters};
 use s2n_quic_rustls::rustls;
-use std::{convert::TryInto, io, path::PathBuf};
+use std::{io, path::PathBuf};
 use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
@@ -149,23 +149,7 @@ const PRIVATE_KEY: &[u8] = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/
 
 /// The transport parameters we are using for our QUIC endpoint
 fn create_server_params() -> parameters::ServerTransportParameters {
-    parameters::ServerTransportParameters {
-        max_idle_timeout: parameters::MaxIdleTimeout::default(),
-        max_packet_size: parameters::MaxPacketSize::default(),
-        initial_max_data: VarInt::from_u32(1024 * 1024).try_into().unwrap(),
-        initial_max_stream_data_bidi_local: VarInt::from_u32(64 * 1024).try_into().unwrap(),
-        initial_max_stream_data_bidi_remote: VarInt::from_u32(64 * 1024).try_into().unwrap(),
-        initial_max_stream_data_uni: VarInt::from_u32(64 * 1024).try_into().unwrap(),
-        initial_max_streams_bidi: VarInt::from_u32(100).try_into().unwrap(),
-        initial_max_streams_uni: VarInt::from_u32(100).try_into().unwrap(),
-        ack_delay_exponent: parameters::AckDelayExponent::default(),
-        max_ack_delay: parameters::MaxAckDelay::default(),
-        migration_support: parameters::MigrationSupport::Disabled,
-        active_connection_id_limit: parameters::ActiveConnectionIdLimit::default(),
-        original_connection_id: None,
-        stateless_reset_token: None,
-        preferred_address: None,
-    }
+    parameters::ServerTransportParameters::default()
 }
 
 /// Create the TLS configuration we are using for the QUIC endpoint
