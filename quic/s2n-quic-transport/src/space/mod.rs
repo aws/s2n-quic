@@ -1,5 +1,5 @@
 use crate::{
-    connection::{ConnectionConfig, ConnectionInterests},
+    connection::{self, ConnectionInterests},
     frame_exchange_interests::FrameExchangeInterestProvider,
     processed_packet::ProcessedPacket,
     space::rx_packet_numbers::{AckManager, DEFAULT_ACK_RANGES_LIMIT, EARLY_ACK_SETTINGS},
@@ -44,7 +44,7 @@ pub(crate) use initial::InitialSpace;
 pub(crate) use session_context::SessionContext;
 pub(crate) use tx_packet_numbers::TxPacketNumbers;
 
-pub struct PacketSpaceManager<ConnectionConfigType: ConnectionConfig> {
+pub struct PacketSpaceManager<ConnectionConfigType: connection::Config> {
     session: Option<ConnectionConfigType::TLSSession>,
     initial: Option<Box<InitialSpace<ConnectionConfigType>>>,
     handshake: Option<Box<HandshakeSpace<ConnectionConfigType>>>,
@@ -74,7 +74,7 @@ macro_rules! packet_space_api {
     };
 }
 
-impl<ConnectionConfigType: ConnectionConfig> PacketSpaceManager<ConnectionConfigType> {
+impl<ConnectionConfigType: connection::Config> PacketSpaceManager<ConnectionConfigType> {
     packet_space_api!(
         InitialSpace<ConnectionConfigType>,
         initial,
@@ -248,7 +248,7 @@ pub trait PacketSpaceHandler<'a, Packet> {
     ) -> Option<(&mut Self::Space, PacketNumber, DecoderBufferMut<'a>)>;
 }
 
-impl<'a, Config: ConnectionConfig> PacketSpaceHandler<'a, CleartextInitial<'a>>
+impl<'a, Config: connection::Config> PacketSpaceHandler<'a, CleartextInitial<'a>>
     for PacketSpaceManager<Config>
 {
     type Space = InitialSpace<Config>;
@@ -261,7 +261,7 @@ impl<'a, Config: ConnectionConfig> PacketSpaceHandler<'a, CleartextInitial<'a>>
     }
 }
 
-impl<'a, Config: ConnectionConfig> PacketSpaceHandler<'a, CleartextHandshake<'a>>
+impl<'a, Config: connection::Config> PacketSpaceHandler<'a, CleartextHandshake<'a>>
     for PacketSpaceManager<Config>
 {
     type Space = HandshakeSpace<Config>;
@@ -274,7 +274,7 @@ impl<'a, Config: ConnectionConfig> PacketSpaceHandler<'a, CleartextHandshake<'a>
     }
 }
 
-impl<'a, Config: ConnectionConfig> PacketSpaceHandler<'a, CleartextShort<'a>>
+impl<'a, Config: connection::Config> PacketSpaceHandler<'a, CleartextShort<'a>>
     for PacketSpaceManager<Config>
 {
     type Space = ApplicationSpace<Config>;

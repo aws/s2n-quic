@@ -61,18 +61,18 @@ const MAX_CONNECTION_ID_LEN: usize = 20;
 
 /// Uniquely identifies a QUIC connection between 2 peers
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ConnectionId {
+pub struct ID {
     bytes: [u8; MAX_CONNECTION_ID_LEN],
     len: u8,
 }
 
-impl core::fmt::Debug for ConnectionId {
+impl core::fmt::Debug for ID {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "ConnectionId({:?})", self.as_bytes())
     }
 }
 
-impl ConnectionId {
+impl ID {
     /// An empty connection ID
     pub const EMPTY: Self = Self {
         bytes: [0; MAX_CONNECTION_ID_LEN],
@@ -84,7 +84,7 @@ impl ConnectionId {
     /// If the passed byte array exceeds the maximum allowed length for
     /// Connection IDs (20 bytes in QUIC v1) `None` will be returned.
     /// All other input values are valid.
-    pub fn try_from_bytes(bytes: &[u8]) -> Option<ConnectionId> {
+    pub fn try_from_bytes(bytes: &[u8]) -> Option<ID> {
         Self::try_from(bytes).ok()
     }
 
@@ -104,15 +104,15 @@ impl ConnectionId {
 }
 
 #[derive(Debug)]
-pub struct TryFromSliceError(());
+pub struct Error(());
 
-impl From<TryFromSliceError> for TransportError {
-    fn from(_: TryFromSliceError) -> TransportError {
+impl From<Error> for TransportError {
+    fn from(_: Error) -> TransportError {
         TransportError::PROTOCOL_VIOLATION.with_reason("invalid connection id")
     }
 }
 
-impl From<[u8; MAX_CONNECTION_ID_LEN]> for ConnectionId {
+impl From<[u8; MAX_CONNECTION_ID_LEN]> for ID {
     fn from(bytes: [u8; MAX_CONNECTION_ID_LEN]) -> Self {
         Self {
             bytes,
@@ -121,13 +121,13 @@ impl From<[u8; MAX_CONNECTION_ID_LEN]> for ConnectionId {
     }
 }
 
-impl TryFrom<&[u8]> for ConnectionId {
-    type Error = TryFromSliceError;
+impl TryFrom<&[u8]> for ID {
+    type Error = Error;
 
     fn try_from(slice: &[u8]) -> Result<Self, Self::Error> {
         let len = slice.len();
         if len > MAX_CONNECTION_ID_LEN {
-            return Err(TryFromSliceError(()));
+            return Err(Error(()));
         }
         let mut bytes = [0; MAX_CONNECTION_ID_LEN];
         bytes[..len].copy_from_slice(slice);
@@ -138,19 +138,19 @@ impl TryFrom<&[u8]> for ConnectionId {
     }
 }
 
-impl AsRef<[u8]> for ConnectionId {
+impl AsRef<[u8]> for ID {
     fn as_ref(&self) -> &[u8] {
         &self.bytes[0..self.len as usize]
     }
 }
 
 decoder_value!(
-    impl<'a> ConnectionId {
+    impl<'a> ID {
         fn decode(buffer: Buffer) -> Result<Self> {
             let len = buffer.len();
             let (value, buffer) = buffer.decode_slice(len)?;
             let value: &[u8] = value.into_less_safe_slice();
-            let connection_id = ConnectionId::try_from(value).map_err(|_| {
+            let connection_id = ID::try_from(value).map_err(|_| {
                 s2n_codec::DecoderError::UnexpectedBytes(len - MAX_CONNECTION_ID_LEN)
             })?;
 
@@ -159,7 +159,7 @@ decoder_value!(
     }
 );
 
-impl EncoderValue for ConnectionId {
+impl EncoderValue for ID {
     fn encode<E: Encoder>(&self, encoder: &mut E) {
         self.as_ref().encode(encoder)
     }
@@ -195,7 +195,7 @@ impl Validator for usize {
 /// A generator for a connection ID format
 pub trait Generator {
     /// Generates a connection ID with an optional validity duration
-    fn generate(&mut self) -> (ConnectionId, Option<core::time::Duration>);
+    fn generate(&mut self) -> (ID, Option<core::time::Duration>);
 }
 
 #[cfg(test)]
@@ -204,16 +204,16 @@ mod tests {
 
     #[test]
     fn create_connection_id() {
-        let connection_id = ConnectionId::try_from_bytes(b"My Connection 123").unwrap();
+        let connection_id = ID::try_from_bytes(b"My Connection 123").unwrap();
         assert_eq!(b"My Connection 123", connection_id.as_bytes());
     }
 
     #[test]
     fn exceed_max_connection_id_length() {
         let connection_id_bytes = [0u8; MAX_CONNECTION_ID_LEN];
-        assert!(ConnectionId::try_from_bytes(&connection_id_bytes).is_some());
+        assert!(ID::try_from_bytes(&connection_id_bytes).is_some());
 
         let connection_id_bytes = [0u8; MAX_CONNECTION_ID_LEN + 1];
-        assert!(ConnectionId::try_from_bytes(&connection_id_bytes).is_none());
+        assert!(ID::try_from_bytes(&connection_id_bytes).is_none());
     }
 }

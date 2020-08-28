@@ -1,11 +1,10 @@
 use crate::{
-    connection::{ConnectionConfig, SharedConnectionState},
+    connection::{self, SharedConnectionState},
     contexts::ConnectionContext,
 };
 use core::time::Duration;
 use s2n_codec::{Encoder, EncoderBuffer};
 use s2n_quic_core::{
-    connection::ConnectionId,
     endpoint::EndpointType,
     inet::{ExplicitCongestionNotification, SocketAddress},
     io::tx,
@@ -16,8 +15,8 @@ use s2n_quic_core::{
 #[derive(Clone, Copy, Debug)]
 pub struct ConnectionTransmissionContext {
     pub quic_version: u32,
-    pub source_connection_id: ConnectionId,
-    pub destination_connection_id: ConnectionId,
+    pub source_connection_id: connection::ID,
+    pub destination_connection_id: connection::ID,
     pub timestamp: Timestamp,
     pub local_endpoint_type: EndpointType,
     pub remote_address: SocketAddress,
@@ -29,17 +28,17 @@ impl ConnectionContext for ConnectionTransmissionContext {
         self.local_endpoint_type
     }
 
-    fn connection_id(&self) -> &ConnectionId {
+    fn connection_id(&self) -> &connection::ID {
         &self.source_connection_id
     }
 }
 
-pub struct ConnectionTransmission<'a, ConnectionConfigType: ConnectionConfig> {
+pub struct ConnectionTransmission<'a, ConnectionConfigType: connection::Config> {
     pub context: ConnectionTransmissionContext,
     pub shared_state: &'a mut SharedConnectionState<ConnectionConfigType>,
 }
 
-impl<'a, ConnectionConfigType: ConnectionConfig> tx::Message
+impl<'a, ConnectionConfigType: connection::Config> tx::Message
     for ConnectionTransmission<'a, ConnectionConfigType>
 {
     fn remote_address(&mut self) -> SocketAddress {

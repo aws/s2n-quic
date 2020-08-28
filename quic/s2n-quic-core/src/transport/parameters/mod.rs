@@ -1,5 +1,5 @@
 use crate::{
-    connection::ConnectionId,
+    connection,
     endpoint::EndpointType,
     inet::{SocketAddressV4, SocketAddressV6, Unspecified},
     stateless_reset_token::StatelessResetToken,
@@ -332,16 +332,16 @@ macro_rules! optional_transport_parameter {
 
 macro_rules! connection_id_parameter {
     ($name:ident, $tag:expr) => {
-        transport_parameter!($name(ConnectionId), $tag, ConnectionId::EMPTY);
+        transport_parameter!($name(connection::ID), $tag, connection::ID::EMPTY);
 
         // The inner connection_id handles validation
         impl TransportParameterValidator for $name {}
 
         impl TryFrom<&[u8]> for $name {
-            type Error = crate::connection::TryFromSliceError;
+            type Error = crate::connection::id::Error;
 
             fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-                Ok(Self(ConnectionId::try_from(value)?))
+                Ok(Self(connection::ID::try_from(value)?))
             }
         }
 
@@ -758,7 +758,7 @@ type CIDLength = u8;
 pub struct PreferredAddress {
     pub ipv4_address: Option<SocketAddressV4>,
     pub ipv6_address: Option<SocketAddressV6>,
-    pub connection_id: crate::connection::ConnectionId,
+    pub connection_id: crate::connection::ID,
     pub stateless_reset_token: crate::stateless_reset_token::StatelessResetToken,
 }
 
@@ -793,7 +793,7 @@ impl TransportParameter for PreferredAddress {
         Self {
             ipv4_address: None,
             ipv6_address: None,
-            connection_id: ConnectionId::EMPTY,
+            connection_id: connection::ID::EMPTY,
             stateless_reset_token: StatelessResetToken::ZEROED,
         }
     }

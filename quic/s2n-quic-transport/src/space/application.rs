@@ -1,5 +1,5 @@
 use crate::{
-    connection::{ConnectionConfig, ConnectionInterests, ConnectionTransmissionContext},
+    connection::{self, ConnectionInterests, ConnectionTransmissionContext},
     frame_exchange_interests::FrameExchangeInterestProvider,
     processed_packet::ProcessedPacket,
     space::{
@@ -26,13 +26,13 @@ use s2n_quic_core::{
     transport::error::TransportError,
 };
 
-pub struct ApplicationSpace<Config: ConnectionConfig> {
+pub struct ApplicationSpace<Config: connection::Config> {
     /// Transmission Packet numbers
     pub tx_packet_numbers: TxPacketNumbers,
     /// Ack manager
     pub ack_manager: AckManager,
     /// All streams that are managed through this connection
-    pub stream_manager: AbstractStreamManager<Config::StreamType>,
+    pub stream_manager: AbstractStreamManager<Config::Stream>,
     /// The current [`KeyPhase`]
     pub key_phase: KeyPhase,
     /// The current state of the Spin bit
@@ -46,11 +46,11 @@ pub struct ApplicationSpace<Config: ConnectionConfig> {
     processed_packet_numbers: SlidingWindow,
 }
 
-impl<Config: ConnectionConfig> ApplicationSpace<Config> {
+impl<Config: connection::Config> ApplicationSpace<Config> {
     pub fn new(
         crypto: <Config::TLSSession as CryptoSuite>::OneRTTCrypto,
         now: Timestamp,
-        stream_manager: AbstractStreamManager<Config::StreamType>,
+        stream_manager: AbstractStreamManager<Config::Stream>,
         ack_manager: AckManager,
     ) -> Self {
         Self {
@@ -146,7 +146,7 @@ impl<Config: ConnectionConfig> ApplicationSpace<Config> {
         packet_number: PacketNumber,
     ) -> (
         &'a <Config::TLSSession as CryptoSuite>::OneRTTCrypto,
-        ApplicationTransmission<'a, Config::StreamType>,
+        ApplicationTransmission<'a, Config::Stream>,
     ) {
         // TODO: What about ZeroRTTCrypto?
         (
@@ -163,7 +163,7 @@ impl<Config: ConnectionConfig> ApplicationSpace<Config> {
     }
 }
 
-impl<Config: ConnectionConfig> PacketSpace for ApplicationSpace<Config> {
+impl<Config: connection::Config> PacketSpace for ApplicationSpace<Config> {
     const INVALID_FRAME_ERROR: &'static str = "invalid frame in application space";
 
     fn handle_crypto_frame(

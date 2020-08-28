@@ -8,8 +8,8 @@
 
 use crate::{
     connection::{
-        Connection, ConnectionInterests, ConnectionTrait, InternalConnectionId,
-        SharedConnectionState, SynchronizedSharedConnectionState,
+        Connection, ConnectionInterests, InternalConnectionId, SharedConnectionState,
+        SynchronizedSharedConnectionState, Trait as ConnectionTrait,
     },
     unbounded_channel,
 };

@@ -2,17 +2,16 @@
 
 use crate::{
     connection::{
-        ConnectionCloseReason, ConnectionConfig, ConnectionIdMapperRegistration,
-        ConnectionInterests, ConnectionParameters, ConnectionTimerEntry, ConnectionTimers,
-        ConnectionTrait, ConnectionTransmission, ConnectionTransmissionContext,
-        InternalConnectionId, SharedConnectionState,
+        self, CloseReason as ConnectionCloseReason, ConnectionIdMapperRegistration,
+        ConnectionInterests, ConnectionTimerEntry, ConnectionTimers, ConnectionTransmission,
+        ConnectionTransmissionContext, InternalConnectionId, Parameters as ConnectionParameters,
+        SharedConnectionState,
     },
     contexts::ConnectionOnTransmitError,
 };
 use core::time::Duration;
 use s2n_quic_core::{
     application::ApplicationErrorExt,
-    connection::ConnectionId,
     inet::{DatagramInfo, SocketAddress},
     io::tx,
     packet::{
@@ -86,7 +85,7 @@ impl<'a> From<ConnectionCloseReason<'a>> for ConnectionState {
     }
 }
 
-pub struct ConnectionImpl<ConfigType: ConnectionConfig> {
+pub struct ConnectionImpl<ConfigType: connection::Config> {
     /// The configuration of this connection
     config: ConfigType,
     /// The [`Connection`]s internal identifier
@@ -99,9 +98,9 @@ pub struct ConnectionImpl<ConfigType: ConnectionConfig> {
     /// The timer entry in the endpoint timer list
     timer_entry: ConnectionTimerEntry,
     /// The last utilized remote Connection ID
-    peer_connection_id: ConnectionId,
+    peer_connection_id: connection::ID,
     /// The last utilized local Connection ID
-    local_connection_id: ConnectionId,
+    local_connection_id: connection::ID,
     /// The peers socket address
     peer_socket_address: SocketAddress,
     /// The QUIC protocol version which is used for this particular connection
@@ -112,7 +111,7 @@ pub struct ConnectionImpl<ConfigType: ConnectionConfig> {
     state: ConnectionState,
 }
 
-impl<ConfigType: ConnectionConfig> ConnectionImpl<ConfigType> {
+impl<ConfigType: connection::Config> ConnectionImpl<ConfigType> {
     fn update_crypto_state(
         &mut self,
         shared_state: &mut SharedConnectionState<ConfigType>,
@@ -189,7 +188,7 @@ macro_rules! packet_validator {
     };
 }
 
-impl<ConfigType: ConnectionConfig> ConnectionTrait for ConnectionImpl<ConfigType> {
+impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<ConfigType> {
     /// Static configuration of a connection
     type Config = ConfigType;
 
