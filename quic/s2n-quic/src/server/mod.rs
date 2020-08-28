@@ -66,12 +66,12 @@ impl Server {
     /// # Examples
     ///
     /// ```rust,no_run
-    /// # use std::error::Error;
+    /// # use std::{error::Error, path::Path};
     /// # use s2n_quic::Server;
     /// #
     /// # fn main() -> Result<(), Box<dyn Error>> {
     /// let server = Server::builder()
-    ///     .with_tls("./certs/key.pem")?
+    ///     .with_tls((Path::new("./certs/cert.pem"), Path::new("./certs/key.pem")))?
     ///     .with_io("127.0.0.1:443")?
     ///     .build()?;
     /// #
