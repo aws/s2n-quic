@@ -165,6 +165,39 @@ impl EncoderValue for ConnectionId {
     }
 }
 
+/// Format for connection IDs
+pub trait Format: Validator + Generator {}
+
+/// Implement Format for all types that implement the required subtraits
+impl<T: Validator + Generator> Format for T {}
+
+/// A validator for a connection ID format
+pub trait Validator {
+    /// Validates a connection ID from a buffer
+    ///
+    /// Implementations should handle situations where the buffer will include extra
+    /// data after the connection ID.
+    ///
+    /// Returns the length of the connection id if successful, otherwise `None` is returned.
+    fn validate(&self, buffer: &[u8]) -> Option<usize>;
+}
+
+impl Validator for usize {
+    fn validate(&self, buffer: &[u8]) -> Option<usize> {
+        if buffer.len() >= *self {
+            Some(*self)
+        } else {
+            None
+        }
+    }
+}
+
+/// A generator for a connection ID format
+pub trait Generator {
+    /// Generates a connection ID with an optional validity duration
+    fn generate(&mut self) -> (ConnectionId, Option<core::time::Duration>);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

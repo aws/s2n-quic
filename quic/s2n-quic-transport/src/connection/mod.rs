@@ -8,7 +8,6 @@ use s2n_quic_core::{
     endpoint,
     frame::ConnectionClose,
     inet::SocketAddress,
-    packet::DestinationConnectionIDDecoder,
     stream::StreamError,
     time::Timestamp,
     transport::{
@@ -42,6 +41,8 @@ pub(crate) use transmission::{ConnectionTransmission, ConnectionTransmissionCont
 
 pub use api::Connection;
 pub use connection_impl::ConnectionImpl;
+/// re-export core
+pub use s2n_quic_core::connection::*;
 
 /// Stores configuration parameters for a connection which might be shared
 /// between multiple connections of the same type.
@@ -50,8 +51,6 @@ pub trait ConnectionConfig: 'static + Send {
     type StreamType: StreamTrait;
     /// Session type
     type TLSSession: tls::Session;
-    /// The type which is used for decoding destination connection IDs
-    type DestinationConnectionIDDecoderType: DestinationConnectionIDDecoder;
 
     const ENDPOINT_TYPE: endpoint::EndpointType;
 
@@ -62,8 +61,6 @@ pub trait ConnectionConfig: 'static + Send {
     /// Returns the limits for this connection that are not defined through
     /// transport parameters
     fn connection_limits(&self) -> &ConnectionLimits;
-    /// Returns the destination connection ID decoder for this connection
-    fn destination_connnection_id_decoder(&self) -> Self::DestinationConnectionIDDecoderType;
 }
 
 /// Parameters which are passed to a Connection.

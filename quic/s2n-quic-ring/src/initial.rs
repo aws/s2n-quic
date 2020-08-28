@@ -180,7 +180,7 @@ mod tests {
         on_decrypt: F,
     ) -> O {
         let decoder = DecoderBufferMut::new(&mut protected_packet);
-        let (packet, _) = ProtectedPacket::decode(decoder, 20).unwrap();
+        let (packet, _) = ProtectedPacket::decode(decoder, &20).unwrap();
 
         let packet = match packet {
             ProtectedPacket::Initial(initial) => initial,
