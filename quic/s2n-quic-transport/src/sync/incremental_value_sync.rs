@@ -52,11 +52,7 @@ impl<
 
     /// Returns `true` if the synchronization has been cancelled
     pub fn is_cancelled(&self) -> bool {
-        if let DeliveryState::Cancelled(_) = self.delivery {
-            true
-        } else {
-            false
-        }
+        matches!(self.delivery, DeliveryState::Cancelled(_))
     }
 
     /// Sets the new value that needs to get synchronized to the peer.

@@ -18,7 +18,7 @@ env:
   SCCACHE_IDLE_TIMEOUT: 0
   # Pin the nightly toolchain to prevent breakage.
   # This should be occasionally updated.
-  RUST_NIGHTLY_TOOLCHAIN: nightly-2020-07-11
+  RUST_NIGHTLY_TOOLCHAIN: nightly-2020-08-25
 
 jobs:
   env:

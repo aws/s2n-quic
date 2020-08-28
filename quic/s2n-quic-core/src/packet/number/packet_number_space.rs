@@ -27,28 +27,19 @@ impl PacketNumberSpace {
     /// Returns `true` if the `PacketNumberSpace` is set to `Initial`
     #[inline]
     pub fn is_initial(self) -> bool {
-        match self {
-            Self::Initial => true,
-            _ => false,
-        }
+        matches!(self, Self::Initial)
     }
 
     /// Returns `true` if the `PacketNumberSpace` is set to `Handshake`
     #[inline]
     pub fn is_handshake(self) -> bool {
-        match self {
-            Self::Handshake => true,
-            _ => false,
-        }
+        matches!(self, Self::Handshake)
     }
 
     /// Returns `true` if the `PacketNumberSpace` is set to `ApplicationData`
     #[inline]
     pub fn is_application_data(self) -> bool {
-        match self {
-            Self::ApplicationData => true,
-            _ => false,
-        }
+        matches!(self, Self::ApplicationData)
     }
 
     /// Create a new `PacketNumber` for the given `PacketNumberSpace`
