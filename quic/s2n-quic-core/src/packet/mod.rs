@@ -3,11 +3,6 @@ use s2n_codec::{
     DecoderBufferResult, DecoderError,
 };
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-23.txt#17
-//# All numeric values are encoded in network byte order (that is, big-
-//# endian) and all field sizes are in bits.  Hexadecimal notation is
-//# used for describing the value of fields.
-
 pub(crate) type Tag = u8;
 
 #[macro_use]
