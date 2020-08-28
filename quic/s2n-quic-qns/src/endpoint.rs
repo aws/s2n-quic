@@ -12,7 +12,7 @@ use s2n_quic_core::{
     transport::parameters,
 };
 use s2n_quic_platform::time;
-use s2n_quic_rustls::{rustls, RustlsServerEndpoint, RustlsServerSession};
+use s2n_quic_rustls as rustls;
 use s2n_quic_transport::{
     acceptor::Acceptor,
     connection::{Connection, ConnectionConfig, ConnectionImpl, ConnectionLimits},
@@ -63,7 +63,7 @@ pub struct InteropConnectionConfig {
 impl ConnectionConfig for InteropConnectionConfig {
     type DestinationConnectionIDDecoderType = usize;
     type StreamType = StreamImpl;
-    type TLSSession = RustlsServerSession;
+    type TLSSession = rustls::server::Session;
 
     const ENDPOINT_TYPE: EndpointType = EndpointType::Server;
 
@@ -94,7 +94,7 @@ impl EndpointConfig for InteropEndpointConfig {
     type ConnectionConfigType = InteropConnectionConfig;
     type ConnectionIdGeneratorType = LocalConnectionIdGenerator;
     type ConnectionType = ConnectionImpl<Self::ConnectionConfigType>;
-    type TLSEndpointType = RustlsServerEndpoint;
+    type TLSEndpointType = rustls::server::Server;
 
     fn create_connection_config(&mut self) -> Self::ConnectionConfigType {
         InteropConnectionConfig {
@@ -115,15 +115,13 @@ pub struct Endpoint {
 impl Endpoint {
     pub fn new(
         socket: Socket,
-        tls_config: rustls::ServerConfig,
+        tls_endpoint: rustls::Server,
         transport_parameters: parameters::ServerTransportParameters,
     ) -> Self {
         let endpoint_config = InteropEndpointConfig {
             local_flow_control_limits: transport_parameters.flow_control_limits(),
             local_ack_settings: transport_parameters.ack_settings(),
         };
-
-        let tls_endpoint = RustlsServerEndpoint::new(tls_config);
 
         let connection_id_generator = LocalConnectionIdGenerator::new();
         let (endpoint, acceptor) =
