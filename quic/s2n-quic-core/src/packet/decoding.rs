@@ -1,4 +1,5 @@
 use crate::{
+    connection,
     crypto::ProtectedPayload,
     packet::{
         long::{
@@ -6,7 +7,7 @@ use crate::{
             DestinationConnectionIDLen, SourceConnectionIDLen, Version,
         },
         number::ProtectedPacketNumber,
-        DestinationConnectionIDDecoder, Tag,
+        Tag,
     },
     varint::VarInt,
 };
@@ -51,13 +52,18 @@ impl<'a> HeaderDecoder<'a> {
         Ok(destination_connection_id)
     }
 
-    pub fn decode_short_destination_connection_id<'b, DCID: DestinationConnectionIDDecoder>(
+    pub fn decode_short_destination_connection_id<'b, Validator: connection::id::Validator>(
         &mut self,
         buffer: &DecoderBufferMut<'b>,
-        destination_connection_id_decoder: DCID,
+        connection_id_validator: &Validator,
     ) -> Result<CheckedRange, DecoderError> {
-        let (destination_connection_id_len, _) =
-            destination_connection_id_decoder.len(self.peek.peek())?;
+        let destination_connection_id_len = if let Some(len) =
+            connection_id_validator.validate(self.peek.peek().into_less_safe_slice())
+        {
+            len
+        } else {
+            return Err(DecoderError::InvariantViolation("invalid connection id"));
+        };
 
         let (destination_connection_id, peek) = self
             .peek

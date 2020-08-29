@@ -1,11 +1,7 @@
 //! Configuration parameters for `Endpoint`s
 
-use crate::connection::{ConnectionConfig, ConnectionTrait};
-use core::time::Duration;
-use s2n_quic_core::{
-    connection::ConnectionId, crypto::tls, endpoint::EndpointType,
-    packet::DestinationConnectionIDDecoder,
-};
+use crate::connection::{self, ConnectionConfig, ConnectionTrait};
+use s2n_quic_core::{crypto::tls, endpoint::EndpointType};
 
 /// Configuration paramters for a QUIC endpoint
 pub trait EndpointConfig {
@@ -19,7 +15,7 @@ pub trait EndpointConfig {
     /// The connections type
     type ConnectionType: ConnectionTrait<Config = Self::ConnectionConfigType>;
     /// The type of the generator of new connection IDs
-    type ConnectionIdGeneratorType: ConnectionIdGenerator<DestinationConnectionIDDecoderType = <Self::ConnectionConfigType as ConnectionConfig>::DestinationConnectionIDDecoderType>;
+    type ConnectionIdFormat: connection::id::Format;
 
     /// The type of the local endpoint
     const ENDPOINT_TYPE: EndpointType =
@@ -27,16 +23,7 @@ pub trait EndpointConfig {
 
     /// Obtain the configuration for the next connection to be handled
     fn create_connection_config(&mut self) -> Self::ConnectionConfigType;
-}
 
-/// Generates connection IDs for incoming connections
-pub trait ConnectionIdGenerator {
-    /// The type which is used to decode connection IDs
-    type DestinationConnectionIDDecoderType: DestinationConnectionIDDecoder;
-
-    /// Generates a local connection ID for a new connection
-    fn generate_connection_id(&mut self) -> (ConnectionId, Option<Duration>);
-
-    /// Returns a connection id decoder for cononections created by this generator
-    fn destination_connection_id_decoder(&self) -> Self::DestinationConnectionIDDecoderType;
+    /// Returns the connection ID format for the endpoint
+    fn connection_id_format(&mut self) -> &mut Self::ConnectionIdFormat;
 }

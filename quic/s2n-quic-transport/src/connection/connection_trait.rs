@@ -2,9 +2,9 @@
 
 use crate::{
     connection::{
-        connection_interests::ConnectionInterests, internal_connection_id::InternalConnectionId,
-        shared_state::SharedConnectionState, ConnectionCloseReason, ConnectionConfig,
-        ConnectionParameters,
+        self, connection_interests::ConnectionInterests,
+        internal_connection_id::InternalConnectionId, shared_state::SharedConnectionState,
+        ConnectionCloseReason, ConnectionConfig, ConnectionParameters,
     },
     contexts::ConnectionOnTransmitError,
     processed_packet::ProcessedPacket,
@@ -189,21 +189,26 @@ pub trait ConnectionTrait: Sized {
         }
     }
 
-    fn handle_first_and_remaining_packets(
+    fn handle_first_and_remaining_packets<Validator: connection::id::Validator>(
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         first_packet: ProtectedPacket,
         original_connection_id: ConnectionId,
+        connection_id_validator: &Validator,
         payload: DecoderBufferMut,
     ) -> Result<(), ()> {
         if let Err(err) = self.handle_packet(shared_state, datagram, first_packet) {
             self.handle_transport_error(shared_state, datagram, err);
             return Err(());
         }
-        if let Err(err) =
-            self.handle_remaining_packets(shared_state, datagram, original_connection_id, payload)
-        {
+        if let Err(err) = self.handle_remaining_packets(
+            shared_state,
+            datagram,
+            original_connection_id,
+            connection_id_validator,
+            payload,
+        ) {
             self.handle_transport_error(shared_state, datagram, err);
             return Err(());
         }
@@ -212,18 +217,16 @@ pub trait ConnectionTrait: Sized {
 
     /// This is called to handle the remaining and yet undecoded packets inside
     /// a datagram.
-    fn handle_remaining_packets(
+    fn handle_remaining_packets<Validator: connection::id::Validator>(
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         original_connection_id: ConnectionId,
+        connection_id_validator: &Validator,
         mut payload: DecoderBufferMut,
     ) -> Result<(), TransportError> {
-        let destination_connnection_id_decoder = self.config().destination_connnection_id_decoder();
-
         while !payload.is_empty() {
-            let (packet, remaining) =
-                ProtectedPacket::decode(payload, destination_connnection_id_decoder)?;
+            let (packet, remaining) = ProtectedPacket::decode(payload, connection_id_validator)?;
             payload = remaining;
 
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#12.2

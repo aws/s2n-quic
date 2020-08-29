@@ -22,7 +22,7 @@ use s2n_quic_core::{
 };
 
 mod config;
-pub use config::{ConnectionIdGenerator, EndpointConfig};
+pub use config::EndpointConfig;
 
 mod initial;
 
@@ -36,8 +36,6 @@ pub struct Endpoint<ConfigType: EndpointConfig> {
     connection_id_generator: InternalConnectionIdGenerator,
     /// Maps from external to internal connection IDs
     connection_id_mapper: ConnectionIdMapper,
-    /// Generates local connection IDs
-    local_connection_id_generator: ConfigType::ConnectionIdGeneratorType,
     /// Manages timers for connections
     timer_manager: TimerManager<InternalConnectionId>,
     /// Manages TLS sessions
@@ -58,11 +56,7 @@ unsafe impl<ConfigType: EndpointConfig> Send for Endpoint<ConfigType> {}
 
 impl<ConfigType: EndpointConfig> Endpoint<ConfigType> {
     /// Creates a new QUIC endpoint using the given configuration
-    pub fn new(
-        config: ConfigType,
-        connection_id_generator: ConfigType::ConnectionIdGeneratorType,
-        tls_endpoint: ConfigType::TLSEndpointType,
-    ) -> (Self, Acceptor) {
+    pub fn new(config: ConfigType, tls_endpoint: ConfigType::TLSEndpointType) -> (Self, Acceptor) {
         let (connection_sender, connection_receiver) = unbounded_channel::channel();
         let acceptor = Acceptor::new(connection_receiver);
 
@@ -71,7 +65,6 @@ impl<ConfigType: EndpointConfig> Endpoint<ConfigType> {
             connections: ConnectionContainer::new(connection_sender),
             connection_id_generator: InternalConnectionIdGenerator::new(),
             connection_id_mapper: ConnectionIdMapper::new(),
-            local_connection_id_generator: connection_id_generator,
             timer_manager: TimerManager::new(),
             tls_endpoint,
             wakeup_queue: WakeupQueue::new(),
@@ -107,14 +100,12 @@ impl<ConfigType: EndpointConfig> Endpoint<ConfigType> {
     /// Ingests a single datagram
     fn receive_datagram(&mut self, datagram: &DatagramInfo, payload: &mut [u8]) {
         // Obtain the connection ID decoder from the generator that we are using.
-        let destination_connection_id_decoder = self
-            .local_connection_id_generator
-            .destination_connection_id_decoder();
+        let connection_id_format = self.config.connection_id_format();
 
         // Try to decode the first packet in the datagram
         let buffer = DecoderBufferMut::new(payload);
         let (packet, remaining) = if let Ok((packet, remaining)) =
-            ProtectedPacket::decode(buffer, destination_connection_id_decoder)
+            ProtectedPacket::decode(buffer, connection_id_format)
         {
             (packet, remaining)
         } else {
@@ -142,6 +133,7 @@ impl<ConfigType: EndpointConfig> Endpoint<ConfigType> {
                         datagram,
                         packet,
                         connection_id,
+                        connection_id_format,
                         remaining,
                     ) {
                         eprintln!("Packet handling error: {:?}", e);

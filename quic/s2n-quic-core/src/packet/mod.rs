@@ -1,7 +1,5 @@
-use s2n_codec::{
-    decoder_invariant, DecoderBuffer, DecoderBufferMut, DecoderBufferMutResult,
-    DecoderBufferResult, DecoderError,
-};
+use crate::connection;
+use s2n_codec::{decoder_invariant, DecoderBufferMut, DecoderBufferMutResult, DecoderError};
 
 pub(crate) type Tag = u8;
 
@@ -35,17 +33,6 @@ use zero_rtt::ProtectedZeroRTT;
 
 pub type RemainingBuffer<'a> = Option<DecoderBufferMut<'a>>;
 
-pub trait DestinationConnectionIDDecoder: Copy {
-    fn len(self, buffer: DecoderBuffer) -> DecoderBufferResult<usize>;
-}
-
-impl DestinationConnectionIDDecoder for usize {
-    #[inline]
-    fn len(self, buffer: DecoderBuffer) -> DecoderBufferResult<usize> {
-        Ok((self, buffer))
-    }
-}
-
 #[derive(Debug)]
 pub enum ProtectedPacket<'a> {
     Short(ProtectedShort<'a>),
@@ -57,11 +44,11 @@ pub enum ProtectedPacket<'a> {
 }
 
 impl<'a> ProtectedPacket<'a> {
-    pub fn decode<DCID: DestinationConnectionIDDecoder>(
+    pub fn decode<Validator: connection::id::Validator>(
         buffer: DecoderBufferMut<'a>,
-        destination_connection_id_decoder: DCID,
+        connection_id_validator: &Validator,
     ) -> DecoderBufferMutResult<'a, Self> {
-        BasicPacketDecoder.decode_packet(buffer, destination_connection_id_decoder)
+        BasicPacketDecoder.decode_packet(buffer, connection_id_validator)
     }
 
     /// Returns the packets destination connection ID
@@ -170,10 +157,10 @@ pub trait PacketDecoder<'a> {
         packet: ProtectedRetry<'a>,
     ) -> Result<Self::Output, Self::Error>;
 
-    fn decode_packet<DCID: DestinationConnectionIDDecoder>(
+    fn decode_packet<Validator: connection::id::Validator>(
         &mut self,
         buffer: DecoderBufferMut<'a>,
-        destination_connection_id_decoder: DCID,
+        connection_id_validator: &Validator,
     ) -> Result<(Self::Output, DecoderBufferMut<'a>), Self::Error> {
         let peek = buffer.peek();
 
@@ -203,7 +190,7 @@ pub trait PacketDecoder<'a> {
         match tag >> 4 {
             short_tag!() => {
                 let (packet, buffer) =
-                    short::ProtectedShort::decode(tag, buffer, destination_connection_id_decoder)?;
+                    short::ProtectedShort::decode(tag, buffer, connection_id_validator)?;
                 let output = self.handle_short_packet(packet)?;
                 Ok((output, buffer))
             }
@@ -238,7 +225,7 @@ mod snapshots {
                     |buffer| {
                         crate::packet::ProtectedPacket::decode(
                             buffer,
-                            long::DESTINATION_CONNECTION_ID_MAX_LEN,
+                            &long::DESTINATION_CONNECTION_ID_MAX_LEN,
                         )
                         .unwrap()
                     }
