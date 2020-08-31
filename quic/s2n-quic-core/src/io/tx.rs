@@ -1,8 +1,8 @@
 use crate::inet::{ExplicitCongestionNotification, SocketAddress};
-use core::{fmt, time::Duration};
+use core::{fmt, marker::PhantomData, time::Duration};
 
 /// A structure capable of queueing and transmitting messages
-pub trait Tx<'a> {
+pub trait Tx<'a>: Sized {
     type Queue: Queue;
     type Error: fmt::Display;
 
@@ -26,9 +26,44 @@ pub trait Tx<'a> {
         self.len() == 0
     }
 
-    /// Transmits messages from the queue and returns the number
-    /// of messages sent.
-    fn transmit(&mut self) -> Result<usize, Self::Error>;
+    /// Returns a future that transmits messages from the queue and returns the number of messages
+    /// sent.
+    fn transmit(&mut self) -> Transmit<'a, '_, Self> {
+        Transmit {
+            tx: self,
+            l: PhantomData,
+        }
+    }
+
+    /// Polls transmitting messages from the queue and returns the number of messages sent.
+    fn poll_transmit(
+        &mut self,
+        cx: &mut core::task::Context<'_>,
+    ) -> core::task::Poll<Result<usize, Self::Error>>;
+}
+
+#[pin_project::pin_project]
+pub struct Transmit<'a, 't, T: Tx<'a>> {
+    #[pin]
+    tx: &'t mut T,
+    l: PhantomData<&'a ()>,
+}
+
+impl<'a, 't, T: Tx<'a>> core::future::Future for Transmit<'a, 't, T> {
+    type Output = Result<usize, T::Error>;
+
+    fn poll(
+        self: core::pin::Pin<&mut Self>,
+        cx: &mut core::task::Context<'_>,
+    ) -> core::task::Poll<Self::Output> {
+        let tx = &mut self.project().tx;
+
+        if tx.is_empty() {
+            return core::task::Poll::Ready(Ok(0));
+        }
+
+        tx.poll_transmit(cx)
+    }
 }
 
 /// A first-in, first-out queue of messages to be transmitted

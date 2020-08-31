@@ -1,8 +1,8 @@
 use crate::inet::{ExplicitCongestionNotification, SocketAddress};
-use core::fmt;
+use core::{fmt, marker::PhantomData};
 
 /// A structure capable of queueing and receiving messages
-pub trait Rx<'a> {
+pub trait Rx<'a>: Sized {
     type Queue: Queue;
     type Error: fmt::Display;
 
@@ -17,9 +17,38 @@ pub trait Rx<'a> {
         self.len() == 0
     }
 
-    /// Receives messages into the queue and returns the number
-    /// of messages received.
-    fn receive(&mut self) -> Result<usize, Self::Error>;
+    /// Returns a future that receives messages into the queue and returns the number of messages
+    /// received.
+    fn receive(&mut self) -> Receive<'a, '_, Self> {
+        Receive {
+            rx: self,
+            l: PhantomData,
+        }
+    }
+
+    /// Polls receiving messages into the queue and returns the number of messages received.
+    fn poll_receive(
+        &mut self,
+        cx: &mut core::task::Context<'_>,
+    ) -> core::task::Poll<Result<usize, Self::Error>>;
+}
+
+#[pin_project::pin_project]
+pub struct Receive<'a, 'r, R: Rx<'a>> {
+    #[pin]
+    rx: &'r mut R,
+    l: PhantomData<&'a ()>,
+}
+
+impl<'a, 'r, R: Rx<'a>> core::future::Future for Receive<'a, 'r, R> {
+    type Output = Result<usize, R::Error>;
+
+    fn poll(
+        self: core::pin::Pin<&mut Self>,
+        cx: &mut core::task::Context<'_>,
+    ) -> core::task::Poll<Self::Output> {
+        self.project().rx.poll_receive(cx)
+    }
 }
 
 /// A first-in, first-out queue of messages to be received

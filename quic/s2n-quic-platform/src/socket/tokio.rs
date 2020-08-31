@@ -1,4 +1,8 @@
-use core::convert::{TryFrom, TryInto};
+use core::{
+    convert::{TryFrom, TryInto},
+    task::{Context, Poll},
+};
+use futures::ready;
 use mio::net::UdpSocket as MioSocket;
 use s2n_quic_core::inet::SocketAddress;
 use socket2::Socket as Socket2;
@@ -30,6 +34,46 @@ impl TryFrom<Socket2> for Socket {
     }
 }
 
+impl crate::socket::Socket for Socket {
+    type Error = io::Error;
+
+    fn poll_receive<F: FnOnce(&mut Self) -> Result<V, Self::Error>, V>(
+        &mut self,
+        cx: &mut Context<'_>,
+        f: F,
+    ) -> Poll<Result<V, Self::Error>> {
+        let ready = mio::Ready::readable();
+
+        ready!(self.0.poll_read_ready(cx, ready))?;
+
+        match f(self) {
+            Ok(count) => Poll::Ready(Ok(count)),
+            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                self.0.clear_read_ready(cx, ready)?;
+                Poll::Pending
+            }
+            Err(e) => Poll::Ready(Err(e)),
+        }
+    }
+
+    fn poll_transmit<F: FnOnce(&mut Self) -> Result<V, Self::Error>, V>(
+        &mut self,
+        cx: &mut Context<'_>,
+        f: F,
+    ) -> Poll<Result<V, Self::Error>> {
+        ready!(self.0.poll_write_ready(cx))?;
+
+        match f(self) {
+            Ok(count) => Poll::Ready(Ok(count)),
+            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                self.0.clear_write_ready(cx)?;
+                Poll::Pending
+            }
+            Err(e) => Poll::Ready(Err(e)),
+        }
+    }
+}
+
 impl crate::socket::Simple for Socket {
     type Error = io::Error;
 
@@ -52,77 +96,5 @@ impl_socket2_builder!(Builder);
 impl Builder {
     pub fn build(self) -> io::Result<Socket> {
         Socket::try_from(self.socket)
-    }
-}
-
-#[cfg(feature = "futures")]
-pub(crate) mod sync {
-    use super::Socket;
-    use core::ops::Deref;
-    use futures::future::poll_fn;
-    use s2n_quic_core::io::{rx::Rx, tx::Tx};
-    use std::io;
-
-    pub async fn receive<'a, R: Rx<'a, Error = io::Error> + Deref<Target = Socket>>(
-        rx: &mut R,
-    ) -> io::Result<usize> {
-        poll_fn(|cx| super::poll::receive(rx, cx)).await
-    }
-
-    pub async fn transmit<'a, T: Tx<'a, Error = io::Error> + Deref<Target = Socket>>(
-        tx: &mut T,
-    ) -> io::Result<usize> {
-        poll_fn(|cx| super::poll::transmit(tx, cx)).await
-    }
-}
-
-#[cfg(feature = "futures")]
-pub(crate) mod poll {
-    use super::Socket;
-    use core::{
-        ops::Deref,
-        task::{Context, Poll},
-    };
-    use futures::ready;
-    use mio::Ready;
-    use s2n_quic_core::io::{rx::Rx, tx::Tx};
-    use std::io;
-
-    pub fn receive<'a, R: Rx<'a, Error = io::Error> + Deref<Target = Socket>>(
-        rx: &mut R,
-        cx: &mut Context<'_>,
-    ) -> Poll<io::Result<usize>> {
-        let ready = Ready::readable();
-
-        ready!(rx.deref().0.poll_read_ready(cx, ready))?;
-
-        match rx.receive() {
-            Ok(count) => Poll::Ready(Ok(count)),
-            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                rx.deref().0.clear_read_ready(cx, ready)?;
-                Poll::Pending
-            }
-            Err(e) => Poll::Ready(Err(e)),
-        }
-    }
-
-    pub fn transmit<'a, T: Tx<'a, Error = io::Error> + Deref<Target = Socket>>(
-        tx: &mut T,
-        cx: &mut Context<'_>,
-    ) -> Poll<io::Result<usize>> {
-        if tx.is_empty() {
-            return Poll::Ready(Ok(0));
-        }
-
-        ready!(tx.deref().0.poll_write_ready(cx))?;
-
-        match tx.transmit() {
-            Ok(count) => Poll::Ready(Ok(count)),
-            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                tx.deref().0.clear_write_ready(cx)?;
-                Poll::Pending
-            }
-            Err(e) => Poll::Ready(Err(e)),
-        }
     }
 }

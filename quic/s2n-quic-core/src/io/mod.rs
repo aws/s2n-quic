@@ -1,3 +1,5 @@
+use core::task::{Context, Poll};
+
 pub mod rx;
 pub mod tx;
 
@@ -20,8 +22,8 @@ impl<'a, Rx: rx::Rx<'a>, Tx> rx::Rx<'a> for Pair<Rx, Tx> {
         self.rx.len()
     }
 
-    fn receive(&mut self) -> Result<usize, Self::Error> {
-        self.rx.receive()
+    fn poll_receive(&mut self, cx: &mut Context<'_>) -> Poll<Result<usize, Self::Error>> {
+        self.rx.poll_receive(cx)
     }
 }
 
@@ -37,7 +39,7 @@ impl<'a, Rx, Tx: tx::Tx<'a>> tx::Tx<'a> for Pair<Rx, Tx> {
         self.tx.len()
     }
 
-    fn transmit(&mut self) -> Result<usize, Self::Error> {
-        self.tx.transmit()
+    fn poll_transmit(&mut self, cx: &mut Context<'_>) -> Poll<Result<usize, Self::Error>> {
+        self.tx.poll_transmit(cx)
     }
 }
