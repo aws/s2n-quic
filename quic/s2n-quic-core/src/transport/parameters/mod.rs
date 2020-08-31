@@ -621,6 +621,15 @@ pub struct AckSettings {
     pub ack_delay_exponent: u8,
 }
 
+impl Default for AckSettings {
+    fn default() -> Self {
+        Self {
+            max_ack_delay: MaxAckDelay::default_value().into(),
+            ack_delay_exponent: *AckDelayExponent::default_value(),
+        }
+    }
+}
+
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#19.3
 //# A variable-length integer representing the time delta in
 //# microseconds between when this ACK was sent and when the largest
