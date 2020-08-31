@@ -4,7 +4,7 @@ use crate::{
     connection::{
         self, connection_interests::ConnectionInterests,
         internal_connection_id::InternalConnectionId, shared_state::SharedConnectionState,
-        ConnectionCloseReason, ConnectionConfig, ConnectionParameters,
+        CloseReason as ConnectionCloseReason, Parameters as ConnectionParameters,
     },
     contexts::ConnectionOnTransmitError,
     processed_packet::ProcessedPacket,
@@ -12,7 +12,6 @@ use crate::{
 };
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
-    connection::ConnectionId,
     frame::{Frame, FrameMut},
     inet::DatagramInfo,
     io::tx,
@@ -33,7 +32,7 @@ use s2n_quic_core::{
 /// A trait which represents an internally used `Connection`
 pub trait ConnectionTrait: Sized {
     /// Static configuration of a connection
-    type Config: ConnectionConfig;
+    type Config: connection::Config;
 
     /// Creates a new `Connection` instance with the given configuration
     fn new(parameters: ConnectionParameters<Self::Config>) -> Self;
@@ -194,7 +193,7 @@ pub trait ConnectionTrait: Sized {
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         first_packet: ProtectedPacket,
-        original_connection_id: ConnectionId,
+        original_connection_id: connection::Id,
         connection_id_validator: &Validator,
         payload: DecoderBufferMut,
     ) -> Result<(), ()> {
@@ -221,7 +220,7 @@ pub trait ConnectionTrait: Sized {
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
-        original_connection_id: ConnectionId,
+        original_connection_id: connection::Id,
         connection_id_validator: &Validator,
         mut payload: DecoderBufferMut,
     ) -> Result<(), TransportError> {

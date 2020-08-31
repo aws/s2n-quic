@@ -3,13 +3,13 @@
 use crate::connection::InternalConnectionId;
 use alloc::rc::Rc;
 use core::cell::RefCell;
-use s2n_quic_core::connection::ConnectionId;
+use s2n_quic_core::connection;
 use smallvec::SmallVec;
 use std::collections::hash_map::{Entry, HashMap};
 
 struct ConnectionIdMapperState {
     /// Maps from external to internal connection IDs
-    connection_map: HashMap<ConnectionId, InternalConnectionId>,
+    connection_map: HashMap<connection::Id, InternalConnectionId>,
 }
 
 impl ConnectionIdMapperState {
@@ -21,7 +21,7 @@ impl ConnectionIdMapperState {
 
     fn try_insert(
         &mut self,
-        external_id: &ConnectionId,
+        external_id: &connection::Id,
         internal_id: InternalConnectionId,
     ) -> Result<(), ()> {
         let entry = self.connection_map.entry(*external_id);
@@ -53,7 +53,7 @@ impl ConnectionIdMapper {
     /// connection ID.
     pub fn lookup_internal_connection_id(
         &self,
-        connection_id: &ConnectionId,
+        connection_id: &connection::Id,
     ) -> Option<InternalConnectionId> {
         let guard = self.state.borrow();
         guard.connection_map.get(connection_id).map(Clone::clone)
@@ -86,7 +86,7 @@ pub struct ConnectionIdMapperRegistration {
     /// The shared state between mapper and registration
     state: Rc<RefCell<ConnectionIdMapperState>>,
     /// The connection IDs which are currently registered at the ConnectionIdMapper
-    registered_ids: SmallVec<[ConnectionId; NR_STATIC_REGISTRABLE_IDS]>,
+    registered_ids: SmallVec<[connection::Id; NR_STATIC_REGISTRABLE_IDS]>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -118,7 +118,7 @@ impl ConnectionIdMapperRegistration {
     /// by a different internal connection.
     pub fn register_connection_id(
         &mut self,
-        id: &ConnectionId,
+        id: &connection::Id,
     ) -> Result<(), ConnectionIdMapperRegistrationError> {
         if self.registered_ids.contains(&id) {
             // Nothing to do
@@ -145,7 +145,7 @@ impl ConnectionIdMapperRegistration {
     }
 
     /// Unregisters a connection ID at the mapper
-    pub fn ungister_connection_id(&mut self, id: &ConnectionId) {
+    pub fn ungister_connection_id(&mut self, id: &connection::Id) {
         let registration_index = match self.registered_ids.iter().position(|iter_id| iter_id == id)
         {
             Some(index) => index,
@@ -179,10 +179,10 @@ mod tests {
         let mut reg1 = mapper.create_registration(id1);
         let mut reg2 = mapper.create_registration(id2);
 
-        let ext_id_1 = ConnectionId::try_from_bytes(b"id1").unwrap();
-        let ext_id_2 = ConnectionId::try_from_bytes(b"id2").unwrap();
-        let ext_id_3 = ConnectionId::try_from_bytes(b"id3").unwrap();
-        let ext_id_4 = ConnectionId::try_from_bytes(b"id4").unwrap();
+        let ext_id_1 = connection::Id::try_from_bytes(b"id1").unwrap();
+        let ext_id_2 = connection::Id::try_from_bytes(b"id2").unwrap();
+        let ext_id_3 = connection::Id::try_from_bytes(b"id3").unwrap();
+        let ext_id_4 = connection::Id::try_from_bytes(b"id4").unwrap();
 
         assert!(mapper.lookup_internal_connection_id(&ext_id_1).is_none());
         assert!(reg1.register_connection_id(&ext_id_1).is_ok());

@@ -1,5 +1,5 @@
 use crate::{
-    connection::{ConnectionConfig, ConnectionTransmissionContext},
+    connection::{self, ConnectionTransmissionContext},
     frame_exchange_interests::{FrameExchangeInterestProvider, FrameExchangeInterests},
     processed_packet::ProcessedPacket,
     space::{
@@ -21,7 +21,7 @@ use s2n_quic_core::{
     transport::error::TransportError,
 };
 
-pub struct InitialSpace<Config: ConnectionConfig> {
+pub struct InitialSpace<Config: connection::Config> {
     pub ack_manager: AckManager,
     pub crypto: <Config::TLSSession as CryptoSuite>::InitialCrypto,
     pub crypto_stream: CryptoStream,
@@ -29,7 +29,7 @@ pub struct InitialSpace<Config: ConnectionConfig> {
     processed_packet_numbers: SlidingWindow,
 }
 
-impl<Config: ConnectionConfig> InitialSpace<Config> {
+impl<Config: connection::Config> InitialSpace<Config> {
     pub fn new(
         crypto: <Config::TLSSession as CryptoSuite>::InitialCrypto,
         now: Timestamp,
@@ -125,7 +125,7 @@ impl<Config: ConnectionConfig> InitialSpace<Config> {
     }
 }
 
-impl<Config: ConnectionConfig> FrameExchangeInterestProvider for InitialSpace<Config> {
+impl<Config: connection::Config> FrameExchangeInterestProvider for InitialSpace<Config> {
     fn frame_exchange_interests(&self) -> FrameExchangeInterests {
         FrameExchangeInterests::default()
             + self.ack_manager.frame_exchange_interests()
@@ -140,7 +140,7 @@ impl<Config: ConnectionConfig> FrameExchangeInterestProvider for InitialSpace<Co
 //# endpoint that receives an Initial packet containing other frames can
 //# either discard the packet as spurious or treat it as a connection
 //# error.
-impl<Config: ConnectionConfig> PacketSpace for InitialSpace<Config> {
+impl<Config: connection::Config> PacketSpace for InitialSpace<Config> {
     const INVALID_FRAME_ERROR: &'static str = "invalid frame in initial space";
 
     fn handle_crypto_frame(

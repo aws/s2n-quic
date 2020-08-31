@@ -2,4 +2,4 @@ mod error;
 pub mod id;
 
 pub use error::*;
-pub use id::*;
+pub use id::Id;

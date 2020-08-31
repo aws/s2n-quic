@@ -1,23 +1,19 @@
 use crate::{
-    connection::{
-        id::Generator as _, ConnectionConfig, ConnectionParameters, ConnectionTrait,
-        SynchronizedSharedConnectionState,
-    },
-    endpoint::{Endpoint, EndpointConfig},
+    connection::{self, id::Generator as _, SynchronizedSharedConnectionState, Trait as _},
+    endpoint,
     space::PacketSpaceManager,
 };
 use alloc::sync::Arc;
 use core::{convert::TryInto, time::Duration};
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
-    connection::ConnectionId,
     crypto::{tls::Endpoint as TLSEndpoint, CryptoSuite, InitialCrypto},
     inet::DatagramInfo,
     packet::initial::ProtectedInitial,
     transport::{error::TransportError, parameters::ServerTransportParameters},
 };
 
-impl<ConfigType: EndpointConfig> Endpoint<ConfigType> {
+impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
     pub(super) fn handle_initial_packet(
         &mut self,
         datagram: &DatagramInfo,
@@ -25,7 +21,7 @@ impl<ConfigType: EndpointConfig> Endpoint<ConfigType> {
         remaining: DecoderBufferMut,
     ) -> Result<(), TransportError> {
         debug_assert!(
-            ConfigType::ENDPOINT_TYPE.is_server(),
+            Config::ENDPOINT_TYPE.is_server(),
             "only servers can accept new initial connections"
         );
 
@@ -38,7 +34,7 @@ impl<ConfigType: EndpointConfig> Endpoint<ConfigType> {
             return Err(TransportError::PROTOCOL_VIOLATION.with_reason("packet too small"));
         }
 
-        let destination_connection_id: ConnectionId =
+        let destination_connection_id: connection::Id =
             packet.destination_connection_id().try_into()?;
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#7.2
@@ -52,13 +48,13 @@ impl<ConfigType: EndpointConfig> Endpoint<ConfigType> {
                 .with_reason("destination connection id too short"));
         }
 
-        let source_connection_id: ConnectionId = packet.source_connection_id().try_into()?;
+        let source_connection_id: connection::Id = packet.source_connection_id().try_into()?;
 
         // TODO check if we're busy
         // TODO check the version number
 
         let initial_crypto =
-            <<ConfigType::ConnectionConfigType as ConnectionConfig>::TLSSession as CryptoSuite>::InitialCrypto::new_server(
+            <<Config::ConnectionConfig as connection::Config>::TLSSession as CryptoSuite>::InitialCrypto::new_server(
                 destination_connection_id.as_bytes(),
             );
 
@@ -72,9 +68,11 @@ impl<ConfigType: EndpointConfig> Endpoint<ConfigType> {
         // TODO store the expiration of the connection ID
         let (local_connection_id, _connection_id_expiration) =
             self.config.connection_id_format().generate();
+
         let mut connection_id_mapper_registration = self
             .connection_id_mapper
             .create_registration(internal_connection_id);
+
         connection_id_mapper_registration
             .register_connection_id(&local_connection_id)
             .expect("can register connection ID");
@@ -92,11 +90,14 @@ impl<ConfigType: EndpointConfig> Endpoint<ConfigType> {
         // TODO pass connection_ids for authentication
         let transport_parameters = ServerTransportParameters::default();
 
-        let tls_session = self.tls_endpoint.new_server_session(&transport_parameters);
+        let tls_session = self
+            .config
+            .tls_endpoint()
+            .new_server_session(&transport_parameters);
 
         let connection_config = self.config.create_connection_config();
 
-        let connection_parameters = ConnectionParameters {
+        let connection_parameters = connection::Parameters {
             connection_config,
             internal_connection_id,
             connection_id_mapper_registration,
@@ -116,8 +117,7 @@ impl<ConfigType: EndpointConfig> Endpoint<ConfigType> {
             wakeup_handle,
         ));
 
-        let mut connection =
-            <ConfigType as EndpointConfig>::ConnectionType::new(connection_parameters);
+        let mut connection = <Config as endpoint::Config>::Connection::new(connection_parameters);
 
         // The scope is needed in order to lock the shared state only for a certain duration.
         // It needs to be unlocked when wee insert the connection in our map

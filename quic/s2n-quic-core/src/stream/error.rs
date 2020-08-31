@@ -1,6 +1,6 @@
 use crate::{
     application::{ApplicationErrorCode, ApplicationErrorExt},
-    connection::ConnectionError,
+    connection,
     frame::ConnectionClose,
     transport::error::TransportError,
 };
@@ -26,7 +26,7 @@ pub enum StreamError {
     /// Stream.
     MaxStreamDataSizeExceeded,
     /// The Stream was reset due to a Connection Error
-    ConnectionError(ConnectionError),
+    ConnectionError(connection::Error),
     /// All Stream IDs for Streams on a given connection had been exhausted
     StreamIdExhausted,
     /// The stream is not readable
@@ -45,8 +45,8 @@ impl ApplicationErrorExt for StreamError {
     }
 }
 
-impl From<ConnectionError> for StreamError {
-    fn from(error: ConnectionError) -> Self {
+impl From<connection::Error> for StreamError {
+    fn from(error: connection::Error) -> Self {
         Self::ConnectionError(error)
     }
 }

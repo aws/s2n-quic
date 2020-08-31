@@ -2,7 +2,7 @@ use crate::contexts::{ConnectionContext, WriteContext};
 use alloc::collections::VecDeque;
 use s2n_codec::{encoder::EncoderBuffer, DecoderBufferMut};
 use s2n_quic_core::{
-    connection::ConnectionId,
+    connection,
     endpoint::EndpointType,
     frame::{
         ack_elicitation::{AckElicitable, AckElicitation},
@@ -17,14 +17,14 @@ use s2n_quic_core::{
 #[derive(Clone, Debug)]
 pub struct MockConnectionContext {
     pub local_endpoint_type: EndpointType,
-    connection_id: ConnectionId,
+    connection_id: connection::Id,
 }
 
 impl MockConnectionContext {
     pub fn new(local_endpoint_type: EndpointType) -> MockConnectionContext {
         MockConnectionContext {
             local_endpoint_type,
-            connection_id: ConnectionId::try_from_bytes(&[]).unwrap(),
+            connection_id: connection::Id::try_from_bytes(&[]).unwrap(),
         }
     }
 }
@@ -34,7 +34,7 @@ impl ConnectionContext for MockConnectionContext {
         self.local_endpoint_type
     }
 
-    fn connection_id(&self) -> &ConnectionId {
+    fn connection_id(&self) -> &connection::Id {
         &self.connection_id
     }
 }

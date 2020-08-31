@@ -1,4 +1,4 @@
-use super::{TransportParameter, TransportParameterID, TransportParameterValidator};
+use super::{TransportParameter, TransportParameterId, TransportParameterValidator};
 use core::marker::PhantomData;
 
 /// Struct for marking a field as disabled for a given endpoint type
@@ -15,7 +15,7 @@ impl<T: TransportParameter> TransportParameter for DisabledParameter<T> {
     type CodecValue = ();
 
     const ENABLED: bool = false;
-    const ID: TransportParameterID = T::ID;
+    const ID: TransportParameterId = T::ID;
 
     fn from_codec_value(_value: Self::CodecValue) -> Self {
         Self(Default::default())

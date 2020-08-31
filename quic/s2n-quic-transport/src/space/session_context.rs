@@ -1,5 +1,5 @@
 use crate::{
-    connection::ConnectionConfig,
+    connection,
     space::{
         rx_packet_numbers::{AckManager, DEFAULT_ACK_RANGES_LIMIT, EARLY_ACK_SETTINGS},
         ApplicationSpace, HandshakeSpace, InitialSpace,
@@ -15,7 +15,7 @@ use s2n_quic_core::{
     transport::parameters::ClientTransportParameters,
 };
 
-pub struct SessionContext<'a, ConnectionConfigType: ConnectionConfig> {
+pub struct SessionContext<'a, ConnectionConfigType: connection::Config> {
     pub now: Timestamp,
     pub connection_config: &'a ConnectionConfigType,
     pub initial: &'a mut Option<Box<InitialSpace<ConnectionConfigType>>>,
@@ -25,7 +25,7 @@ pub struct SessionContext<'a, ConnectionConfigType: ConnectionConfig> {
         &'a mut Option<Box<<ConnectionConfigType::TLSSession as CryptoSuite>::ZeroRTTCrypto>>,
 }
 
-impl<'a, ConnectionConfigType: ConnectionConfig> tls::Context<ConnectionConfigType::TLSSession>
+impl<'a, ConnectionConfigType: connection::Config> tls::Context<ConnectionConfigType::TLSSession>
     for SessionContext<'a, ConnectionConfigType>
 {
     fn on_handshake_keys(

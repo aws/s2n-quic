@@ -1,6 +1,6 @@
 //! This module contains the Path implementation
 
-use crate::{connection::ConnectionId, inet::SocketAddress, recovery::RTTEstimator};
+use crate::{connection, inet::SocketAddress, recovery::RTTEstimator};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum State {
@@ -20,9 +20,9 @@ pub struct Path {
     /// The peer's socket address
     pub peer_socket_address: SocketAddress,
     /// The connection id of the peer
-    pub source_connection_id: ConnectionId,
+    pub source_connection_id: connection::Id,
     /// The the connection id the peer wanted to access
-    pub destination_connection_id: ConnectionId,
+    pub destination_connection_id: connection::Id,
     /// The path owns the roundtrip between peers
     pub rtt_estimator: RTTEstimator,
     /// Tracks whether this path has passed Address or Path validation
@@ -35,9 +35,9 @@ pub struct Path {
 /// validated or pending validation.
 impl Path {
     pub fn new(
-        destination_connection_id: ConnectionId,
+        destination_connection_id: connection::Id,
         peer_socket_address: SocketAddress,
-        source_connection_id: ConnectionId,
+        source_connection_id: connection::Id,
         rtt_estimator: RTTEstimator,
     ) -> Self {
         Path {
@@ -109,9 +109,9 @@ mod tests {
     #[test]
     fn amplification_limit_test() {
         let mut path = Path::new(
-            ConnectionId::try_from_bytes(&[]).unwrap(),
+            connection::Id::try_from_bytes(&[]).unwrap(),
             SocketAddress::default(),
-            ConnectionId::try_from_bytes(&[]).unwrap(),
+            connection::Id::try_from_bytes(&[]).unwrap(),
             RTTEstimator::new(Duration::from_millis(30)),
         );
 
@@ -134,9 +134,9 @@ mod tests {
     fn mtu_test() {
         // TODO this would work better as a fuzz test
         let mut path = Path::new(
-            ConnectionId::try_from_bytes(&[]).unwrap(),
+            connection::Id::try_from_bytes(&[]).unwrap(),
             SocketAddress::default(),
-            ConnectionId::try_from_bytes(&[]).unwrap(),
+            connection::Id::try_from_bytes(&[]).unwrap(),
             RTTEstimator::new(Duration::from_millis(30)),
         );
 

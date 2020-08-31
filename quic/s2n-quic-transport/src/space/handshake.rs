@@ -1,5 +1,5 @@
 use crate::{
-    connection::{ConnectionConfig, ConnectionTransmissionContext},
+    connection::{self, ConnectionTransmissionContext},
     frame_exchange_interests::{FrameExchangeInterestProvider, FrameExchangeInterests},
     processed_packet::ProcessedPacket,
     space::{
@@ -21,7 +21,7 @@ use s2n_quic_core::{
     transport::error::TransportError,
 };
 
-pub struct HandshakeSpace<Config: ConnectionConfig> {
+pub struct HandshakeSpace<Config: connection::Config> {
     pub ack_manager: AckManager,
     pub crypto: <Config::TLSSession as CryptoSuite>::HandshakeCrypto,
     pub crypto_stream: CryptoStream,
@@ -29,7 +29,7 @@ pub struct HandshakeSpace<Config: ConnectionConfig> {
     processed_packet_numbers: SlidingWindow,
 }
 
-impl<Config: ConnectionConfig> HandshakeSpace<Config> {
+impl<Config: connection::Config> HandshakeSpace<Config> {
     pub fn new(
         crypto: <Config::TLSSession as CryptoSuite>::HandshakeCrypto,
         now: Timestamp,
@@ -123,7 +123,7 @@ impl<Config: ConnectionConfig> HandshakeSpace<Config> {
     }
 }
 
-impl<Config: ConnectionConfig> FrameExchangeInterestProvider for HandshakeSpace<Config> {
+impl<Config: connection::Config> FrameExchangeInterestProvider for HandshakeSpace<Config> {
     fn frame_exchange_interests(&self) -> FrameExchangeInterests {
         FrameExchangeInterests::default()
             + self.ack_manager.frame_exchange_interests()
@@ -136,7 +136,7 @@ impl<Config: ConnectionConfig> FrameExchangeInterestProvider for HandshakeSpace<
 //# PING, PADDING, or ACK frames.  Handshake packets MAY contain
 //# CONNECTION_CLOSE frames.  Endpoints MUST treat receipt of Handshake
 //# packets with other frames as a connection error.
-impl<Config: ConnectionConfig> PacketSpace for HandshakeSpace<Config> {
+impl<Config: connection::Config> PacketSpace for HandshakeSpace<Config> {
     const INVALID_FRAME_ERROR: &'static str = "invalid frame in handshake space";
 
     fn handle_crypto_frame(

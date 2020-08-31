@@ -4,7 +4,7 @@
 use crate::{connection::InternalConnectionId, wakeup_queue::WakeupHandle};
 use s2n_codec::encoder::EncoderValue;
 use s2n_quic_core::{
-    connection::ConnectionId,
+    connection,
     endpoint::EndpointType,
     frame::ack_elicitation::{AckElicitable, AckElicitation},
     packet::number::PacketNumber,
@@ -17,7 +17,7 @@ pub trait ConnectionContext {
     /// Returns the local endpoint type (client or server)
     fn local_endpoint_type(&self) -> EndpointType;
     /// The ID of the connection (TODO: This can change - should it be the current ID?)
-    fn connection_id(&self) -> &ConnectionId;
+    fn connection_id(&self) -> &connection::Id;
 }
 
 /// Context information that is passed to `on_transmit` calls on Streams
