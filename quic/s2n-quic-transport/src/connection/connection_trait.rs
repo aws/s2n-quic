@@ -193,7 +193,7 @@ pub trait ConnectionTrait: Sized {
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         first_packet: ProtectedPacket,
-        original_connection_id: connection::ID,
+        original_connection_id: connection::Id,
         connection_id_validator: &Validator,
         payload: DecoderBufferMut,
     ) -> Result<(), ()> {
@@ -220,7 +220,7 @@ pub trait ConnectionTrait: Sized {
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
-        original_connection_id: connection::ID,
+        original_connection_id: connection::Id,
         connection_id_validator: &Validator,
         mut payload: DecoderBufferMut,
     ) -> Result<(), TransportError> {

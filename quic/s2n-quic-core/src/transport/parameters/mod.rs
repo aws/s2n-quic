@@ -19,7 +19,7 @@ use s2n_codec::{
 /// Trait for an transport parameter value
 pub trait TransportParameter: Sized {
     /// The ID or tag for the TransportParameter
-    const ID: TransportParameterID;
+    const ID: TransportParameterId;
 
     /// Enables/disables the TransportParameter in a certain context
     const ENABLED: bool = true;
@@ -162,7 +162,7 @@ decoder_value!(
 //# QUIC encodes transport parameters into a sequence of bytes, which are
 //# then included in the cryptographic handshake.
 
-type TransportParameterID = VarInt;
+type TransportParameterId = VarInt;
 type TransportParameterLength = VarInt;
 
 /// Utility struct for encoding and decoding transport parameters
@@ -256,7 +256,7 @@ macro_rules! transport_parameter {
         impl TransportParameter for $name {
             type CodecValue = $encodable_type;
 
-            const ID: TransportParameterID = TransportParameterID::from_u8($tag);
+            const ID: TransportParameterId = TransportParameterId::from_u8($tag);
 
             fn from_codec_value(value: Self::CodecValue) -> Self {
                 Self(value)
@@ -303,7 +303,7 @@ macro_rules! optional_transport_parameter {
         impl TransportParameter for Option<$ty> {
             type CodecValue = $ty;
 
-            const ID: TransportParameterID = <$ty as TransportParameter>::ID;
+            const ID: TransportParameterId = <$ty as TransportParameter>::ID;
 
             fn from_codec_value(value: Self::CodecValue) -> Self {
                 Some(value)
@@ -332,7 +332,7 @@ macro_rules! optional_transport_parameter {
 
 macro_rules! connection_id_parameter {
     ($name:ident, $tag:expr) => {
-        transport_parameter!($name(connection::ID), $tag, connection::ID::EMPTY);
+        transport_parameter!($name(connection::Id), $tag, connection::Id::EMPTY);
 
         // The inner connection_id handles validation
         impl TransportParameterValidator for $name {}
@@ -341,7 +341,7 @@ macro_rules! connection_id_parameter {
             type Error = crate::connection::id::Error;
 
             fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-                Ok(Self(connection::ID::try_from(value)?))
+                Ok(Self(connection::Id::try_from(value)?))
             }
         }
 
@@ -421,7 +421,7 @@ optional_transport_parameter!(StatelessResetToken);
 impl TransportParameter for StatelessResetToken {
     type CodecValue = Self;
 
-    const ID: TransportParameterID = TransportParameterID::from_u8(0x02);
+    const ID: TransportParameterId = TransportParameterId::from_u8(0x02);
 
     fn from_codec_value(value: Self) -> Self {
         value
@@ -706,7 +706,7 @@ impl Default for MigrationSupport {
 impl TransportParameter for MigrationSupport {
     type CodecValue = ();
 
-    const ID: TransportParameterID = TransportParameterID::from_u8(0x0c);
+    const ID: TransportParameterId = TransportParameterId::from_u8(0x0c);
 
     fn from_codec_value(_value: ()) -> Self {
         MigrationSupport::Disabled
@@ -758,7 +758,7 @@ type CIDLength = u8;
 pub struct PreferredAddress {
     pub ipv4_address: Option<SocketAddressV4>,
     pub ipv6_address: Option<SocketAddressV6>,
-    pub connection_id: crate::connection::ID,
+    pub connection_id: crate::connection::Id,
     pub stateless_reset_token: crate::stateless_reset_token::StatelessResetToken,
 }
 
@@ -779,7 +779,7 @@ impl Unspecified for PreferredAddress {
 impl TransportParameter for PreferredAddress {
     type CodecValue = Self;
 
-    const ID: TransportParameterID = TransportParameterID::from_u8(0x0d);
+    const ID: TransportParameterId = TransportParameterId::from_u8(0x0d);
 
     fn from_codec_value(value: Self) -> Self {
         value
@@ -793,7 +793,7 @@ impl TransportParameter for PreferredAddress {
         Self {
             ipv4_address: None,
             ipv6_address: None,
-            connection_id: connection::ID::EMPTY,
+            connection_id: connection::Id::EMPTY,
             stateless_reset_token: StatelessResetToken::ZEROED,
         }
     }
@@ -1085,7 +1085,7 @@ macro_rules! impl_transport_parameters {
                 let mut used_fields = UsedFields::default();
 
                 while !buffer.is_empty() {
-                    let (tag, inner_buffer) = buffer.decode::<TransportParameterID>()?;
+                    let (tag, inner_buffer) = buffer.decode::<TransportParameterId>()?;
 
                     buffer = match tag {
                         $(
@@ -1283,7 +1283,7 @@ mod snapshot_tests {
 
         encoder.encode(&value);
 
-        let id1: TransportParameterID = VarInt::from_u16(31 * 2 + 27);
+        let id1: TransportParameterId = VarInt::from_u16(31 * 2 + 27);
         encoder.encode(&id1);
         encoder.encode_with_len_prefix::<TransportParameterLength, _>(&());
 

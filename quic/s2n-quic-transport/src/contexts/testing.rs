@@ -17,14 +17,14 @@ use s2n_quic_core::{
 #[derive(Clone, Debug)]
 pub struct MockConnectionContext {
     pub local_endpoint_type: EndpointType,
-    connection_id: connection::ID,
+    connection_id: connection::Id,
 }
 
 impl MockConnectionContext {
     pub fn new(local_endpoint_type: EndpointType) -> MockConnectionContext {
         MockConnectionContext {
             local_endpoint_type,
-            connection_id: connection::ID::try_from_bytes(&[]).unwrap(),
+            connection_id: connection::Id::try_from_bytes(&[]).unwrap(),
         }
     }
 }
@@ -34,7 +34,7 @@ impl ConnectionContext for MockConnectionContext {
         self.local_endpoint_type
     }
 
-    fn connection_id(&self) -> &connection::ID {
+    fn connection_id(&self) -> &connection::Id {
         &self.connection_id
     }
 }

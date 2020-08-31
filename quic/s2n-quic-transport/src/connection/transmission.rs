@@ -15,8 +15,8 @@ use s2n_quic_core::{
 #[derive(Clone, Copy, Debug)]
 pub struct ConnectionTransmissionContext {
     pub quic_version: u32,
-    pub source_connection_id: connection::ID,
-    pub destination_connection_id: connection::ID,
+    pub source_connection_id: connection::Id,
+    pub destination_connection_id: connection::Id,
     pub timestamp: Timestamp,
     pub local_endpoint_type: EndpointType,
     pub remote_address: SocketAddress,
@@ -28,7 +28,7 @@ impl ConnectionContext for ConnectionTransmissionContext {
         self.local_endpoint_type
     }
 
-    fn connection_id(&self) -> &connection::ID {
+    fn connection_id(&self) -> &connection::Id {
         &self.source_connection_id
     }
 }

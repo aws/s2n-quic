@@ -368,7 +368,7 @@ impl<S: StreamTrait> StreamManagerState<S> {
 /// `ConnectionContext` is now covereec by different functionality.
 struct StreamManagerConnectionContext {
     local_endpoint_type: EndpointType,
-    connection_id: connection::ID,
+    connection_id: connection::Id,
 }
 
 impl StreamManagerConnectionContext {
@@ -378,7 +378,7 @@ impl StreamManagerConnectionContext {
         // anywhere. It either needs to get fixed or removed.
         Self {
             local_endpoint_type,
-            connection_id: connection::ID::try_from_bytes(&[]).unwrap(),
+            connection_id: connection::Id::try_from_bytes(&[]).unwrap(),
         }
     }
 }
@@ -388,7 +388,7 @@ impl ConnectionContext for StreamManagerConnectionContext {
         self.local_endpoint_type
     }
 
-    fn connection_id(&self) -> &connection::ID {
+    fn connection_id(&self) -> &connection::Id {
         &self.connection_id
     }
 }

@@ -98,9 +98,9 @@ pub struct ConnectionImpl<ConfigType: connection::Config> {
     /// The timer entry in the endpoint timer list
     timer_entry: ConnectionTimerEntry,
     /// The last utilized remote Connection ID
-    peer_connection_id: connection::ID,
+    peer_connection_id: connection::Id,
     /// The last utilized local Connection ID
-    local_connection_id: connection::ID,
+    local_connection_id: connection::Id,
     /// The peers socket address
     peer_socket_address: SocketAddress,
     /// The QUIC protocol version which is used for this particular connection

@@ -34,7 +34,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             return Err(TransportError::PROTOCOL_VIOLATION.with_reason("packet too small"));
         }
 
-        let destination_connection_id: connection::ID =
+        let destination_connection_id: connection::Id =
             packet.destination_connection_id().try_into()?;
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#7.2
@@ -48,7 +48,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                 .with_reason("destination connection id too short"));
         }
 
-        let source_connection_id: connection::ID = packet.source_connection_id().try_into()?;
+        let source_connection_id: connection::Id = packet.source_connection_id().try_into()?;
 
         // TODO check if we're busy
         // TODO check the version number

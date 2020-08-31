@@ -111,7 +111,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             return;
         };
 
-        let connection_id = match connection::ID::try_from_bytes(packet.destination_connection_id())
+        let connection_id = match connection::Id::try_from_bytes(packet.destination_connection_id())
         {
             Some(connection_id) => connection_id,
             None => return, // Ignore the datagram

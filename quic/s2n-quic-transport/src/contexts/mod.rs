@@ -17,7 +17,7 @@ pub trait ConnectionContext {
     /// Returns the local endpoint type (client or server)
     fn local_endpoint_type(&self) -> EndpointType;
     /// The ID of the connection (TODO: This can change - should it be the current ID?)
-    fn connection_id(&self) -> &connection::ID;
+    fn connection_id(&self) -> &connection::Id;
 }
 
 /// Context information that is passed to `on_transmit` calls on Streams
