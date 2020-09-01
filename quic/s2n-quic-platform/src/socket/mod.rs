@@ -12,6 +12,25 @@ pub mod tokio;
 
 use s2n_quic_core::inet::SocketAddress;
 
+/// Socket interface for polling readiness on receiving and transmitting
+pub trait Socket {
+    type Error;
+
+    /// Polls readiness for receiving from the socket
+    fn poll_receive<F: FnOnce(&mut Self) -> Result<V, Self::Error>, V>(
+        &mut self,
+        cx: &mut core::task::Context<'_>,
+        f: F,
+    ) -> core::task::Poll<Result<V, Self::Error>>;
+
+    /// Polls readiness for transmitting from the socket
+    fn poll_transmit<F: FnOnce(&mut Self) -> Result<V, Self::Error>, V>(
+        &mut self,
+        cx: &mut core::task::Context<'_>,
+        f: F,
+    ) -> core::task::Poll<Result<V, Self::Error>>;
+}
+
 /// Socket interface for sending simple messages with an address and payload
 pub trait Simple {
     type Error;
