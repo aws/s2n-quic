@@ -66,8 +66,8 @@ impl LossDetectionTimer {
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.8
     fn get_pto_time_and_space(
         &self,
-        path: Path,
-        loss_detection_info: impl ExactSizeIterator<Item = LossDetectionInfo>,
+        path: &Path,
+        loss_detection_info: impl Iterator<Item = LossDetectionInfo> + Clone,
         has_handshake_keys: bool,
         is_handshake_complete: bool,
         now: Timestamp,
@@ -77,7 +77,7 @@ impl LossDetectionTimer {
             + max(4 * path.rtt_estimator.rttvar(), K_GRANULARITY))
             * backoff;
         // Arm PTO from now when there are no inflight packets.
-        if loss_detection_info.len() == 0 {
+        if loss_detection_info.clone().next().is_none() {
             assert!(!path.is_validated());
             if has_handshake_keys {
                 return Some((PacketNumberSpace::Handshake, now + duration));
@@ -116,14 +116,14 @@ impl LossDetectionTimer {
     //# QUIC loss detection uses a single timer for all timeout loss detection.
     pub fn set_loss_detection_timer(
         &mut self,
-        path: Path,
+        path: &Path,
         has_handshake_keys: bool,
         is_handshake_complete: bool,
         now: Timestamp,
-        loss_detection_info: impl ExactSizeIterator<Item = LossDetectionInfo> + Copy,
+        loss_detection_info: impl Iterator<Item = LossDetectionInfo> + Clone,
     ) {
         if let Some(earliest_loss_time) =
-            LossDetectionTimer::get_loss_time_and_space(loss_detection_info)
+            LossDetectionTimer::get_loss_time_and_space(loss_detection_info.clone())
                 .map(|l| l.loss_time)
                 .flatten()
         {
@@ -138,7 +138,7 @@ impl LossDetectionTimer {
             return;
         }
 
-        if loss_detection_info.len() == 0 && path.is_validated() {
+        if loss_detection_info.clone().next().is_none() && path.is_validated() {
             // There is nothing to detect lost, so no timer is set.
             // However, the client needs to arm the timer if the
             // server might be blocked by the anti-amplification limit.
@@ -162,15 +162,15 @@ impl LossDetectionTimer {
     //# When the loss detection timer expires, the timer's mode determines the action to be performed.
     pub fn on_loss_detection_timeout(
         &mut self,
-        path: Path,
-        loss_detection_info: impl ExactSizeIterator<Item = LossDetectionInfo> + Copy,
-        mut recovery_manager: RecoveryManager,
+        path: &Path,
+        loss_detection_info: impl Iterator<Item = LossDetectionInfo> + Clone,
+        recovery_manager: &mut RecoveryManager,
         has_handshake_keys: bool,
         is_handshake_complete: bool,
         now: Timestamp,
     ) {
         if let Some(earliest_loss_time) =
-            LossDetectionTimer::get_loss_time_and_space(loss_detection_info)
+            LossDetectionTimer::get_loss_time_and_space(loss_detection_info.clone())
                 .map(|l| l.loss_time)
                 .flatten()
         {
