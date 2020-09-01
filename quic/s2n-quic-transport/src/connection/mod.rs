@@ -54,12 +54,12 @@ pub trait Config: 'static + Send {
     const ENDPOINT_TYPE: endpoint::EndpointType;
 
     /// Our initial flow control limits as advertised in transport parameters.
-    fn local_flow_control_limits(&self) -> &InitialFlowControlLimits;
+    fn local_flow_control_limits(&self) -> InitialFlowControlLimits;
     /// Our ack settings as advertised in transport parameters.
-    fn local_ack_settings(&self) -> &AckSettings;
+    fn local_ack_settings(&self) -> AckSettings;
     /// Returns the limits for this connection that are not defined through
     /// transport parameters
-    fn connection_limits(&self) -> &Limits;
+    fn connection_limits(&self) -> Limits;
 }
 
 /// Parameters which are passed to a Connection.

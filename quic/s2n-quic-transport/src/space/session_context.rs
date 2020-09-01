@@ -92,19 +92,20 @@ impl<'a, ConnectionConfigType: connection::Config> tls::Context<ConnectionConfig
             );
         }
 
-        let peer_limits = peer_parameters.flow_control_limits();
-        let local_flow_control_limits = *self.connection_config.local_flow_control_limits();
+        let peer_flow_control_limits = peer_parameters.flow_control_limits();
+        let local_flow_control_limits = self.connection_config.local_flow_control_limits();
+        let connection_limits = self.connection_config.connection_limits();
 
         let stream_manager = AbstractStreamManager::new(
-            self.connection_config.connection_limits(),
+            &connection_limits,
             ConnectionConfigType::ENDPOINT_TYPE,
             local_flow_control_limits,
-            peer_limits,
+            peer_flow_control_limits,
         );
 
         // TODO ack interval limit configurable
         let ack_interval_limit = DEFAULT_ACK_RANGES_LIMIT;
-        let ack_settings = *self.connection_config.local_ack_settings();
+        let ack_settings = self.connection_config.local_ack_settings();
         let ack_manager = AckManager::new(
             PacketNumberSpace::ApplicationData,
             ack_settings,
