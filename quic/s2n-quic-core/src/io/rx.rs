@@ -33,10 +33,11 @@ pub trait Rx<'a>: Sized {
     ) -> core::task::Poll<Result<usize, Self::Error>>;
 }
 
-#[pin_project::pin_project]
+/// A Future for receiving data
 pub struct Receive<'a, 'r, R: Rx<'a>> {
-    #[pin]
+    /// Reference to the Rx implementation
     rx: &'r mut R,
+    /// Stores the lifetime for the Rx trait parameter
     l: PhantomData<&'a ()>,
 }
 
@@ -44,10 +45,10 @@ impl<'a, 'r, R: Rx<'a>> core::future::Future for Receive<'a, 'r, R> {
     type Output = Result<usize, R::Error>;
 
     fn poll(
-        self: core::pin::Pin<&mut Self>,
+        mut self: core::pin::Pin<&mut Self>,
         cx: &mut core::task::Context<'_>,
     ) -> core::task::Poll<Self::Output> {
-        self.project().rx.poll_receive(cx)
+        self.rx.poll_receive(cx)
     }
 }
 

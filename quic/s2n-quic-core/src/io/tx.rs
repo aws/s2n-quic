@@ -42,10 +42,11 @@ pub trait Tx<'a>: Sized {
     ) -> core::task::Poll<Result<usize, Self::Error>>;
 }
 
-#[pin_project::pin_project]
+/// A Future for transmitting data
 pub struct Transmit<'a, 't, T: Tx<'a>> {
-    #[pin]
+    /// Reference to the Tx implementation
     tx: &'t mut T,
+    /// Stores the lifetime for the Tx trait parameter
     l: PhantomData<&'a ()>,
 }
 
@@ -53,10 +54,10 @@ impl<'a, 't, T: Tx<'a>> core::future::Future for Transmit<'a, 't, T> {
     type Output = Result<usize, T::Error>;
 
     fn poll(
-        self: core::pin::Pin<&mut Self>,
+        mut self: core::pin::Pin<&mut Self>,
         cx: &mut core::task::Context<'_>,
     ) -> core::task::Poll<Self::Output> {
-        let tx = &mut self.project().tx;
+        let tx = &mut self.tx;
 
         if tx.is_empty() {
             return core::task::Poll::Ready(Ok(0));
