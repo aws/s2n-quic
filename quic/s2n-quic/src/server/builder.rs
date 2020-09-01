@@ -171,9 +171,10 @@ impl<Providers: ServerProviders> Builder<Providers> {
         /// # use std::error::Error;
         /// use s2n_quic::{Server, provider::runtime};
         /// #
-        /// # fn main() -> Result<(), Box<dyn Error>> {
+        /// # #[tokio::main]
+        /// # async fn main() -> Result<(), Box<dyn Error>> {
         /// let server = Server::builder()
-        ///     .with_runtime(runtime::Tokio::default())?
+        ///     .with_runtime(tokio::runtime::Handle::current())?
         ///     .build()?;
         /// #
         /// #    Ok(())
