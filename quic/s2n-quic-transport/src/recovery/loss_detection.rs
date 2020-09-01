@@ -216,8 +216,11 @@ impl LossDetectionTimer {
 #[cfg(test)]
 mod test {
     use crate::recovery::{LossDetectionInfo, LossDetectionTimer};
-    use core::time::Duration;
-    use s2n_quic_core::packet::number::PacketNumberSpace;
+    use core::{iter, time::Duration};
+    use s2n_quic_core::{
+        connection::ConnectionId, inet::SocketAddress, packet::number::PacketNumberSpace,
+        path::Path, recovery::RTTEstimator,
+    };
 
     #[test]
     fn get_loss_time_and_space() {
@@ -247,5 +250,34 @@ mod test {
         loss_detection_timer.pto_count = 100;
         loss_detection_timer.reset_pto_count();
         assert_eq!(0, loss_detection_timer.pto_count);
+    }
+
+    #[test]
+    fn time_threshold_loss_detection() {
+        let now = s2n_quic_platform::time::now();
+        let mut loss_detection_timer = LossDetectionTimer::new(Duration::default());
+        let mut loss_detection_info = LossDetectionInfo::new(PacketNumberSpace::Initial);
+        let loss_time = now + Duration::from_millis(10);
+        loss_detection_info.loss_time = Some(loss_time);
+
+        let path = Path::new(
+            ConnectionId::try_from_bytes(&[]).unwrap(),
+            SocketAddress::default(),
+            ConnectionId::try_from_bytes(&[]).unwrap(),
+            RTTEstimator::new(Duration::default()),
+        );
+
+        assert!(!loss_detection_timer.timer.is_armed());
+
+        loss_detection_timer.set_loss_detection_timer(
+            &path,
+            false,
+            false,
+            now,
+            iter::once(loss_detection_info),
+        );
+
+        assert!(loss_detection_timer.timer.is_armed());
+        assert_eq!(Some(&loss_time), loss_detection_timer.timer.iter().next());
     }
 }
