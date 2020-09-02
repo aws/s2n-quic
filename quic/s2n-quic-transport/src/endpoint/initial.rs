@@ -87,8 +87,25 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             .create_wakeup_handle(internal_connection_id);
 
         // TODO initialize transport parameters from provider values
-        // TODO pass connection_ids for authentication
-        let transport_parameters = ServerTransportParameters::default();
+        let mut transport_parameters = ServerTransportParameters::default();
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#7.3
+        //# A server includes the Destination Connection ID field from the first
+        //# Initial packet it received from the client in the
+        //# original_destination_connection_id transport parameter
+        transport_parameters.original_destination_connection_id = destination_connection_id
+            .try_into()
+            .expect("connection ID already validated");
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#7.3
+        //# Each endpoint includes the value of the Source Connection ID field
+        //# from the first Initial packet it sent in the
+        //# initial_source_connection_id transport parameter
+        transport_parameters.initial_source_connection_id = local_connection_id
+            .try_into()
+            .expect("connection ID already validated");
+
+        // TODO send retry_source_connection_id
 
         let tls_session = self
             .config

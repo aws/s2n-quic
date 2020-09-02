@@ -92,6 +92,10 @@ impl<'a, ConnectionConfigType: connection::Config> tls::Context<ConnectionConfig
             );
         }
 
+        // TODO authenticate initial_source_connection_id
+        // TODO authenticate original_destination_connection_id
+        // https://tools.ietf.org/html/draft-ietf-quic-transport-29#section-7.3
+
         let peer_flow_control_limits = peer_parameters.flow_control_limits();
         let local_flow_control_limits = self.connection_config.local_flow_control_limits();
         let connection_limits = self.connection_config.connection_limits();
