@@ -212,6 +212,14 @@ impl<Cfg: Config> Endpoint<Cfg> {
         }
     }
 
+    /// Returns a future that handles wakeup events
+    pub fn pending_wakeups(&mut self, timestamp: Timestamp) -> PendingWakeups<Cfg> {
+        PendingWakeups {
+            endpoint: self,
+            timestamp,
+        }
+    }
+
     /// Handles all wakeup events.
     /// This should be called in every eventloop iteration.
     /// Returns the number of wakeups which have occurred and had been handled.
@@ -246,5 +254,23 @@ impl<Cfg: Config> Endpoint<Cfg> {
     /// should be called next time.
     pub fn next_timer_expiration(&self) -> Option<Timestamp> {
         self.timer_manager.next_expiration()
+    }
+}
+
+/// A future for handling wakeup events on an endpoint
+pub struct PendingWakeups<'a, Cfg: Config> {
+    endpoint: &'a mut Endpoint<Cfg>,
+    timestamp: Timestamp,
+}
+
+impl<'a, Cfg: Config> core::future::Future for PendingWakeups<'a, Cfg> {
+    type Output = usize;
+
+    fn poll(
+        mut self: core::pin::Pin<&mut Self>,
+        cx: &mut core::task::Context<'_>,
+    ) -> core::task::Poll<Self::Output> {
+        let timestamp = self.timestamp;
+        self.endpoint.poll_pending_wakeups(cx, timestamp)
     }
 }
