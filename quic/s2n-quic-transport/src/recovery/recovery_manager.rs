@@ -1,17 +1,20 @@
 // TODO: Remove when used
 #![allow(dead_code)]
 
-use crate::recovery::{SentPacketInfo, SentPackets};
+use crate::recovery::{LossDetectionInfo, SentPacketInfo, SentPackets};
 use core::{cmp::max, time::Duration};
 use s2n_quic_core::{
     frame::{ack::ECNCounts, ack_elicitation::AckElicitation},
     inet::DatagramInfo,
-    packet::number::{PacketNumber, PacketNumberRange},
+    packet::number::{PacketNumber, PacketNumberRange, PacketNumberSpace},
+    path::Path,
     recovery::RTTEstimator,
     time::Timestamp,
 };
 
+#[derive(Debug)]
 pub struct RecoveryManager {
+    pn_space: PacketNumberSpace,
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.3
     //# The maximum amount of time by which the receiver intends to delay acknowledgments for packets
     //# in the ApplicationData packet number space. The actual ack_delay in a received ACK frame may
@@ -46,13 +49,18 @@ type SentPacket = (PacketNumber, SentPacketInfo);
 
 impl RecoveryManager {
     /// Constructs a new `RecoveryManager`
-    pub fn new(max_ack_delay: Duration) -> Self {
+    pub fn new(pn_space: PacketNumberSpace, max_ack_delay: Duration) -> Self {
         Self {
+            pn_space,
             max_ack_delay,
             largest_acked_packet: None,
             sent_packets: SentPackets::default(),
             newly_acked: false,
         }
+    }
+
+    pub fn loss_time(&self) -> Option<Timestamp> {
+        //TODO
     }
 
     #[allow(clippy::collapsible_if)]
@@ -150,14 +158,14 @@ impl RecoveryManager {
         &mut self,
         receive_time: Timestamp,
         rtt_estimator: &RTTEstimator,
-        loss_time: &mut Option<Timestamp>,
+        loss_detection_info: &mut LossDetectionInfo,
     ) -> bool {
         if self.newly_acked {
             let lost_packets = self.detect_and_remove_lost_packets(
                 rtt_estimator.latest_rtt(),
                 rtt_estimator.smoothed_rtt(),
                 receive_time,
-                loss_time,
+                loss_detection_info,
             );
             if !lost_packets.is_empty() {
                 // TODO: self.congestion_controller.on_packets_lost(lost_packets)
@@ -179,9 +187,9 @@ impl RecoveryManager {
         latest_rtt: Duration,
         smoothed_rtt: Duration,
         now: Timestamp,
-        loss_time: &mut Option<Timestamp>,
+        loss_detection_info: &mut LossDetectionInfo,
     ) -> Vec<PacketNumber> {
-        *loss_time = None;
+        loss_detection_info.loss_time = None;
         let loss_delay = self.calculate_loss_delay(latest_rtt, smoothed_rtt);
 
         // Packets sent before this time are deemed lost.
@@ -215,7 +223,7 @@ impl RecoveryManager {
                     lost_packets.push(*unacked_packet_number)
                 }
             } else {
-                *loss_time = Some(unacked_sent_info.time_sent + loss_delay);
+                loss_detection_info.loss_time = Some(unacked_sent_info.time_sent + loss_delay);
                 // assuming sent_packets is ordered by packet number and sent time, all remaining
                 // packets will have a larger packet number and sent time, and are thus not lost.
                 break;
@@ -227,6 +235,31 @@ impl RecoveryManager {
         }
 
         lost_packets
+    }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.8
+    pub fn probe_timeout(&self, path: &Path, now: Timestamp) -> Option<Timestamp> {
+        let backoff = 2_u32.pow(self.pto_count);
+        let duration = (path.rtt_estimator.smoothed_rtt()
+            + max(4 * path.rtt_estimator.rttvar(), K_GRANULARITY))
+            * backoff;
+        // Arm PTO from now when there are no inflight packets.
+        if self.sent_packets.iter().next().is_none() {
+            assert!(!path.is_validated());
+            return Some(now + duration);
+        }
+
+        let mut timeout = self
+            .time_of_last_ack_eliciting_packet
+            .expect("ack eliciting packets must have been sent")
+            + duration;
+
+        // Include max_ack_delay and backoff for ApplicationData.
+        if self.pn_space.is_application_data() {
+            timeout += self.max_ack_delay * backoff;
+        }
+
+        Some(timeout)
     }
 
     fn calculate_loss_delay(&self, latest_rtt: Duration, smoothed_rtt: Duration) -> Duration {
@@ -379,7 +412,11 @@ mod test {
         assert_eq!(rtt_estimator.latest_rtt(), Duration::from_millis(500));
 
         assert!(recovery_manager.newly_acked);
-        recovery_manager.on_ack_received_finish(ack_receive_time, &rtt_estimator, &mut None);
+        recovery_manager.on_ack_received_finish(
+            ack_receive_time,
+            &rtt_estimator,
+            &mut LossDetectionInfo::new(pn_space),
+        );
         assert!(!recovery_manager.newly_acked);
     }
 
@@ -461,7 +498,7 @@ mod test {
             rtt_estimator.latest_rtt(),
             rtt_estimator.smoothed_rtt(),
             now,
-            loss_time,
+            &mut LossDetectionInfo::new(pn_space),
         );
         let sent_packets = &recovery_manager.sent_packets;
         assert!(lost_packets.contains(&old_packet_time_sent));

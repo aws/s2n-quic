@@ -2,6 +2,7 @@ use crate::{
     connection::{ConnectionInterests, ConnectionTransmissionContext},
     frame_exchange_interests::FrameExchangeInterestProvider,
     processed_packet::ProcessedPacket,
+    recovery::RecoveryManager,
     space::{rx_packet_numbers::AckManager, ApplicationTransmission, PacketSpace, TxPacketNumbers},
     stream::{AbstractStreamManager, StreamTrait},
 };
@@ -19,6 +20,7 @@ use s2n_quic_core::{
         number::{PacketNumber, PacketNumberSpace, SlidingWindow, SlidingWindowError},
         short::{KeyPhase, Short, SpinBit},
     },
+    path::Path,
     time::Timestamp,
     transport::error::TransportError,
 };
@@ -40,6 +42,7 @@ pub struct ApplicationSpace<StreamType: StreamTrait, Suite: CryptoSuite> {
     /// TODO: What about ZeroRtt?
     pub crypto: Suite::OneRTTCrypto,
     processed_packet_numbers: SlidingWindow,
+    recovery_manager: RecoveryManager,
 }
 
 impl<StreamType: StreamTrait, Suite: CryptoSuite> ApplicationSpace<StreamType, Suite> {
@@ -49,6 +52,7 @@ impl<StreamType: StreamTrait, Suite: CryptoSuite> ApplicationSpace<StreamType, S
         stream_manager: AbstractStreamManager<StreamType>,
         ack_manager: AckManager,
     ) -> Self {
+        let max_ack_delay = ack_manager.ack_settings.max_ack_delay;
         Self {
             tx_packet_numbers: TxPacketNumbers::new(PacketNumberSpace::ApplicationData, now),
             ack_manager,
@@ -57,6 +61,10 @@ impl<StreamType: StreamTrait, Suite: CryptoSuite> ApplicationSpace<StreamType, S
             stream_manager,
             crypto,
             processed_packet_numbers: SlidingWindow::default(),
+            recovery_manager: RecoveryManager::new(
+                PacketNumberSpace::ApplicationData,
+                max_ack_delay,
+            ),
         }
     }
 
@@ -120,6 +128,14 @@ impl<StreamType: StreamTrait, Suite: CryptoSuite> ApplicationSpace<StreamType, S
     /// Returns the Packet Number to be used when decoding incoming packets
     pub fn packet_number_decoder(&self) -> PacketNumber {
         self.ack_manager.largest_received_packet_number_acked()
+    }
+
+    pub fn loss_time(&self) -> Option<Timestamp> {
+        self.recovery_manager.loss_time()
+    }
+
+    pub fn probe_timeout(&self, path: &Path, now: Timestamp) -> Option<Timestamp> {
+        self.recovery_manager.probe_timeout(path, now)
     }
 
     /// Returns the Packet Number to be used when encoding outgoing packets

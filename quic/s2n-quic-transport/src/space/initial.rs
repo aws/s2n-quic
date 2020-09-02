@@ -2,6 +2,7 @@ use crate::{
     connection::ConnectionTransmissionContext,
     frame_exchange_interests::{FrameExchangeInterestProvider, FrameExchangeInterests},
     processed_packet::ProcessedPacket,
+    recovery::RecoveryManager,
     space::{
         rx_packet_numbers::AckManager, CryptoStream, EarlyTransmission, PacketSpace,
         TxPacketNumbers,
@@ -17,6 +18,7 @@ use s2n_quic_core::{
         initial::Initial,
         number::{PacketNumber, PacketNumberSpace, SlidingWindow, SlidingWindowError},
     },
+    path::Path,
     time::Timestamp,
     transport::error::TransportError,
 };
@@ -28,16 +30,19 @@ pub struct InitialSpace<Suite: CryptoSuite> {
     pub crypto_stream: CryptoStream,
     pub tx_packet_numbers: TxPacketNumbers,
     processed_packet_numbers: SlidingWindow,
+    recovery_manager: RecoveryManager,
 }
 
 impl<Suite: CryptoSuite> InitialSpace<Suite> {
     pub fn new(crypto: Suite::InitialCrypto, now: Timestamp, ack_manager: AckManager) -> Self {
+        let max_ack_delay = ack_manager.ack_settings.max_ack_delay;
         Self {
             ack_manager,
             crypto,
             crypto_stream: CryptoStream::new(),
             tx_packet_numbers: TxPacketNumbers::new(PacketNumberSpace::Initial, now),
             processed_packet_numbers: SlidingWindow::default(),
+            recovery_manager: RecoveryManager::new(PacketNumberSpace::Initial, max_ack_delay),
         }
     }
 
@@ -116,6 +121,14 @@ impl<Suite: CryptoSuite> InitialSpace<Suite> {
                 tx_packet_numbers: &mut self.tx_packet_numbers,
             },
         )
+    }
+
+    pub fn loss_time(&self) -> Option<Timestamp> {
+        self.recovery_manager.loss_time()
+    }
+
+    pub fn probe_timeout(&self, path: &Path, now: Timestamp) -> Option<Timestamp> {
+        self.recovery_manager.probe_timeout(path, now)
     }
 }
 
