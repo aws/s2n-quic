@@ -1,20 +1,26 @@
 /// Provides synchronization support for an endpoint
 pub trait Provider {
-    // TODO
+    type Sync: 'static + Send;
+    type Error: core::fmt::Display;
+
+    fn start(self) -> Result<Self::Sync, Self::Error>;
 }
 
-#[derive(Debug, Default)]
-pub struct Default {
-    // TODO
-}
-
-impl Provider for Default {}
-
-#[derive(Debug, Default)]
-pub struct Mutex {
-    // TODO
-}
-
-impl Provider for Mutex {}
+pub use default::Provider as Default;
 
 impl_provider_utils!();
+
+pub mod default {
+    #[derive(Debug, Default)]
+    pub struct Provider;
+
+    impl super::Provider for Provider {
+        type Sync = (); // TODO
+        type Error = core::convert::Infallible;
+
+        fn start(self) -> Result<Self::Sync, Self::Error> {
+            // TODO
+            Ok(())
+        }
+    }
+}

@@ -3,15 +3,15 @@ use s2n_quic_core::crypto;
 
 /// Provides TLS support for an endpoint
 pub trait Provider {
-    type Server: crypto::tls::Endpoint;
-    type Client: crypto::tls::Endpoint;
-    type Error;
+    type Server: 'static + crypto::tls::Endpoint;
+    type Client: 'static + crypto::tls::Endpoint;
+    type Error: core::fmt::Display;
 
     /// Creates a server endpoint for the given provider
-    fn server(self) -> Result<Self::Server, Self::Error>;
+    fn start_server(self) -> Result<Self::Server, Self::Error>;
 
     /// Creates a client endpoint for the given provider
-    fn client(self) -> Result<Self::Client, Self::Error>;
+    fn start_client(self) -> Result<Self::Client, Self::Error>;
 }
 
 impl_provider_utils!();
@@ -35,11 +35,11 @@ impl Provider for Default {
     type Client = default::Client;
     type Error = core::convert::Infallible;
 
-    fn server(self) -> Result<Self::Server, Self::Error> {
+    fn start_server(self) -> Result<Self::Server, Self::Error> {
         Ok(Self::Server::default())
     }
 
-    fn client(self) -> Result<Self::Client, Self::Error> {
+    fn start_client(self) -> Result<Self::Client, Self::Error> {
         Ok(Self::Client::default())
     }
 }
@@ -49,7 +49,7 @@ impl Provider for (&std::path::Path, &std::path::Path) {
     type Client = <Default as Provider>::Client;
     type Error = Box<dyn std::error::Error>;
 
-    fn server(self) -> Result<Self::Server, Self::Error> {
+    fn start_server(self) -> Result<Self::Server, Self::Error> {
         let cert = std::fs::read(self.0)?;
         let key = std::fs::read(self.1)?;
 
@@ -60,7 +60,7 @@ impl Provider for (&std::path::Path, &std::path::Path) {
         Ok(server)
     }
 
-    fn client(self) -> Result<Self::Client, Self::Error> {
+    fn start_client(self) -> Result<Self::Client, Self::Error> {
         Ok(default::Client::default())
     }
 }
@@ -74,11 +74,11 @@ pub mod rustls {
         type Client = Client;
         type Error = TLSError;
 
-        fn server(self) -> Result<Self::Server, Self::Error> {
+        fn start_server(self) -> Result<Self::Server, Self::Error> {
             Ok(self)
         }
 
-        fn client(self) -> Result<Self::Client, Self::Error> {
+        fn start_client(self) -> Result<Self::Client, Self::Error> {
             panic!("cannot create a client from a server");
         }
     }
@@ -88,11 +88,11 @@ pub mod rustls {
         type Client = Self;
         type Error = TLSError;
 
-        fn server(self) -> Result<Self::Server, Self::Error> {
+        fn start_server(self) -> Result<Self::Server, Self::Error> {
             panic!("cannot create a server from a client");
         }
 
-        fn client(self) -> Result<Self::Client, Self::Error> {
+        fn start_client(self) -> Result<Self::Client, Self::Error> {
             Ok(self)
         }
     }

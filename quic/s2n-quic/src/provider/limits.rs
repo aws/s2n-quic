@@ -1,32 +1,26 @@
-use core::{convert::Infallible, time::Duration};
-
 /// Provides limits support for an endpoint
 pub trait Provider {
-    // TODO
+    type Limits: 'static + Send;
+    type Error: core::fmt::Display;
+
+    fn start(self) -> Result<Self::Limits, Self::Error>;
 }
 
-#[derive(Debug, Default)]
-pub struct Default {
-    // TODO
-}
-
-impl Provider for Default {}
-
-#[derive(Debug, Default)]
-pub struct Builder {
-    // TODO
-    limits: Default,
-}
-
-impl Builder {
-    pub fn with_max_idle_time(self, duration: Duration) -> Result<Self, Infallible> {
-        let _ = duration;
-        Ok(self)
-    }
-
-    pub fn build(self) -> Result<Default, Infallible> {
-        Ok(self.limits)
-    }
-}
+pub use default::Provider as Default;
 
 impl_provider_utils!();
+
+pub mod default {
+    #[derive(Debug, Default)]
+    pub struct Provider;
+
+    impl super::Provider for Provider {
+        type Limits = (); // TODO
+        type Error = core::convert::Infallible;
+
+        fn start(self) -> Result<Self::Limits, Self::Error> {
+            // TODO
+            Ok(())
+        }
+    }
+}
