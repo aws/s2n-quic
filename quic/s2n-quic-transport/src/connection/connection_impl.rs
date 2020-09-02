@@ -193,7 +193,7 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
     fn new(parameters: ConnectionParameters<Self::Config>) -> Self {
         // The path manager always starts with a single path containing the known peer and local
         // connetion ids.
-        let path_manager: PathManager = PathManager::new();
+        let path_manager: PathManager = PathManager::default();
 
         Self {
             config: parameters.connection_config,
@@ -422,7 +422,10 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
             // was known or not, this function is called. So we can verify whether this is a new
             // connection's initial packet, or an existing connection being migrated to a new
             // endpoint.
-            if self.path_manager.is_new_path(&datagram.remote_address, &connection::Id::try_from_bytes(packet.destination_connection_id).unwrap()) {
+            if self.path_manager.is_new_path(
+                &datagram.remote_address,
+                &connection::Id::try_from_bytes(packet.destination_connection_id).unwrap(),
+            ) {
                 if self.state == ConnectionState::Handshaking {
                     //= https://tools.ietf.org/html/draft-ietf-quic-transport-29#section-9
                     //# The design of QUIC relies on endpoints retaining a stable address

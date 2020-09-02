@@ -1,10 +1,6 @@
 //! This module contains the PathManager implementation
 
-use crate::{
-    connection::self,
-    inet::SocketAddress,
-    path::Path
-};
+use crate::{connection, inet::SocketAddress, path::Path};
 use smallvec::SmallVec;
 
 /// The amount of Paths that can be maintained without using the heap
@@ -23,14 +19,16 @@ pub struct PathManager {
     active: usize,
 }
 
-impl PathManager {
-    pub fn new() -> Self {
+impl Default for PathManager {
+    fn default() -> Self {
         Self {
             paths: SmallVec::new(),
             active: 0,
         }
     }
+}
 
+impl PathManager {
     /// Return the active path
     pub fn get_active_path(&self) -> &Path {
         &self.paths[self.active].0
@@ -47,13 +45,15 @@ impl PathManager {
         peer_address: &SocketAddress,
         destination_connection_id: &connection::Id,
     ) -> bool {
-        match self.paths.iter().position(|path| {
+        let result = match self.paths.iter().position(|path| {
             path.0.peer_socket_address == *peer_address
                 && path.0.destination_connection_id == *destination_connection_id
         }) {
-            Some(_) => return false,
-            None => return true,
+            Some(_) => false,
+            None => true,
         };
+
+        result
     }
 
     /// Returns the Path for the connection id if the PathManager knows about it
@@ -62,13 +62,15 @@ impl PathManager {
         peer_address: &SocketAddress,
         destination_connection_id: &connection::Id,
     ) -> Option<&Path> {
-        match self.paths.iter().position(|path| {
+        let opt = match self.paths.iter().position(|path| {
             path.0.peer_socket_address == *peer_address
                 && path.0.destination_connection_id == *destination_connection_id
         }) {
-            Some(path_index) => return Some(&self.paths[path_index].0),
-            None => return None,
+            Some(path_index) => Some(&self.paths[path_index].0),
+            None => None,
         };
+
+        opt
     }
 
     /// Returns the Path for the connection id if the PathManager knows about it
@@ -77,13 +79,15 @@ impl PathManager {
         peer_address: &SocketAddress,
         destination_connection_id: &connection::Id,
     ) -> Option<&mut Path> {
-        match self.paths.iter().position(|path| {
+        let opt = match self.paths.iter().position(|path| {
             path.0.peer_socket_address == *peer_address
                 && path.0.destination_connection_id == *destination_connection_id
         }) {
-            Some(path_index) => return Some(&mut self.paths[path_index].0),
-            None => return None,
+            Some(path_index) => Some(&mut self.paths[path_index].0),
+            None => None,
         };
+
+        opt
     }
 
     /// Add a new path to the PathManager
@@ -142,7 +146,6 @@ mod tests {
 
     #[test]
     fn get_path_by_address_test() {
-        let mut manager = PathManager::new();
         let first_conn_id = connection::Id::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
         let second_conn_id = connection::Id::try_from_bytes(&[5, 4, 3, 2, 1, 0]).unwrap();
         let unused_conn_id = connection::Id::try_from_bytes(&[2, 4, 6, 8, 10, 12]).unwrap();
@@ -159,6 +162,7 @@ mod tests {
             RTTEstimator::new(Duration::from_millis(30)),
         );
 
+        let mut manager = PathManager::default();
         manager.add_new_path(first_path);
         manager.add_new_path(second_path);
 
@@ -187,7 +191,7 @@ mod tests {
         );
         let response = [0u8; 32];
 
-        let mut manager = PathManager::new();
+        let mut manager = PathManager::default();
         manager.add_new_path(first_path);
         {
             let first_path = manager
@@ -219,7 +223,7 @@ mod tests {
             RTTEstimator::new(Duration::from_millis(30)),
         );
 
-        let mut manager = PathManager::new();
+        let mut manager = PathManager::default();
         manager.add_new_path(first_path);
         assert_eq!(
             manager.is_new_path(&SocketAddress::default(), &first_conn_id),
