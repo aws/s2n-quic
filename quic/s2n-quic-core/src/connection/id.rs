@@ -57,12 +57,12 @@ use s2n_codec::{decoder_value, Encoder, EncoderValue};
 //# (Section 19.15).
 
 /// The maximum size of a connection ID. In QUIC v1, this is 20 bytes.
-const MAX_CONNECTION_ID_LEN: usize = 20;
+pub const MAX_LEN: usize = 20;
 
 /// Uniquely identifies a QUIC connection between 2 peers
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Id {
-    bytes: [u8; MAX_CONNECTION_ID_LEN],
+    bytes: [u8; MAX_LEN],
     len: u8,
 }
 
@@ -75,7 +75,7 @@ impl core::fmt::Debug for Id {
 impl Id {
     /// An empty connection ID
     pub const EMPTY: Self = Self {
-        bytes: [0; MAX_CONNECTION_ID_LEN],
+        bytes: [0; MAX_LEN],
         len: 0,
     };
 
@@ -104,7 +104,7 @@ impl Id {
 }
 
 #[derive(Debug)]
-pub struct Error(());
+pub struct Error;
 
 impl From<Error> for TransportError {
     fn from(_: Error) -> TransportError {
@@ -112,11 +112,11 @@ impl From<Error> for TransportError {
     }
 }
 
-impl From<[u8; MAX_CONNECTION_ID_LEN]> for Id {
-    fn from(bytes: [u8; MAX_CONNECTION_ID_LEN]) -> Self {
+impl From<[u8; MAX_LEN]> for Id {
+    fn from(bytes: [u8; MAX_LEN]) -> Self {
         Self {
             bytes,
-            len: MAX_CONNECTION_ID_LEN as u8,
+            len: MAX_LEN as u8,
         }
     }
 }
@@ -126,10 +126,10 @@ impl TryFrom<&[u8]> for Id {
 
     fn try_from(slice: &[u8]) -> Result<Self, Self::Error> {
         let len = slice.len();
-        if len > MAX_CONNECTION_ID_LEN {
-            return Err(Error(()));
+        if len > MAX_LEN {
+            return Err(Error);
         }
-        let mut bytes = [0; MAX_CONNECTION_ID_LEN];
+        let mut bytes = [0; MAX_LEN];
         bytes[..len].copy_from_slice(slice);
         Ok(Self {
             bytes,
@@ -150,9 +150,8 @@ decoder_value!(
             let len = buffer.len();
             let (value, buffer) = buffer.decode_slice(len)?;
             let value: &[u8] = value.into_less_safe_slice();
-            let connection_id = Id::try_from(value).map_err(|_| {
-                s2n_codec::DecoderError::UnexpectedBytes(len - MAX_CONNECTION_ID_LEN)
-            })?;
+            let connection_id = Id::try_from(value)
+                .map_err(|_| s2n_codec::DecoderError::UnexpectedBytes(len - MAX_LEN))?;
 
             Ok((connection_id, buffer))
         }
@@ -210,10 +209,10 @@ mod tests {
 
     #[test]
     fn exceed_max_connection_id_length() {
-        let connection_id_bytes = [0u8; MAX_CONNECTION_ID_LEN];
+        let connection_id_bytes = [0u8; MAX_LEN];
         assert!(Id::try_from_bytes(&connection_id_bytes).is_some());
 
-        let connection_id_bytes = [0u8; MAX_CONNECTION_ID_LEN + 1];
+        let connection_id_bytes = [0u8; MAX_LEN + 1];
         assert!(Id::try_from_bytes(&connection_id_bytes).is_none());
     }
 }
