@@ -208,7 +208,7 @@ impl<Providers: ServerProviders> Builder<Providers> {
         ///
         /// ```rust,no_run
         /// # use std::error::Error;
-        /// use s2n_quic::{Server, provider::io::default as io};
+        /// use s2n_quic::{Server, provider::io::platform as io};
         /// #
         /// # fn main() -> Result<(), Box<dyn Error>> {
         /// let addr = "127.0.0.1:443";
@@ -220,10 +220,10 @@ impl<Providers: ServerProviders> Builder<Providers> {
         ///
         /// let rx = io::Rx::new(io::Buffer::default(), socket.try_clone()?);
         /// let tx = io::Tx::new(io::Buffer::default(), socket);
-        /// let pair = io::Pair { rx, tx };
+        /// let duplex = io::Duplex { rx, tx };
         ///
         /// let server = Server::builder()
-        ///     .with_io(pair)?
+        ///     .with_io(duplex)?
         ///     .build()?;
         /// #
         /// #    Ok(())

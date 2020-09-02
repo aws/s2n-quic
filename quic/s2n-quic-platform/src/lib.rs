@@ -19,6 +19,6 @@ pub mod default {
     pub type Buffer = buffer::Buffer;
     pub type Rx = io::rx::Rx<buffer::Buffer, socket::Socket>;
     pub type Tx = io::tx::Tx<buffer::Buffer, socket::Socket>;
-    pub type Pair = s2n_quic_core::io::Pair<Rx, Tx>;
+    pub type Duplex = s2n_quic_core::io::Duplex<Rx, Tx>;
     pub type Socket = socket::Socket;
 }

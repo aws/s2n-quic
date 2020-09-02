@@ -5,12 +5,12 @@ pub mod tx;
 
 /// A pair of Rx and Tx IO implementations
 #[derive(Debug)]
-pub struct Pair<Rx, Tx> {
+pub struct Duplex<Rx, Tx> {
     pub rx: Rx,
     pub tx: Tx,
 }
 
-impl<'a, Rx: rx::Rx<'a>, Tx> rx::Rx<'a> for Pair<Rx, Tx> {
+impl<'a, Rx: rx::Rx<'a>, Tx> rx::Rx<'a> for Duplex<Rx, Tx> {
     type Queue = Rx::Queue;
     type Error = Rx::Error;
 
@@ -27,7 +27,7 @@ impl<'a, Rx: rx::Rx<'a>, Tx> rx::Rx<'a> for Pair<Rx, Tx> {
     }
 }
 
-impl<'a, Rx, Tx: tx::Tx<'a>> tx::Tx<'a> for Pair<Rx, Tx> {
+impl<'a, Rx, Tx: tx::Tx<'a>> tx::Tx<'a> for Duplex<Rx, Tx> {
     type Queue = Tx::Queue;
     type Error = Tx::Error;
 
