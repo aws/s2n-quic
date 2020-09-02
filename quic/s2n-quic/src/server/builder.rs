@@ -48,7 +48,7 @@ impl<Providers: ServerProviders> Builder<Providers> {
         ///
         /// Sets the congestion controller to `Reno` with the default configuration.
         ///
-        /// ```rust
+        /// ```rust,ignore
         /// # use std::error::Error;
         /// use s2n_quic::{Server, provider::congestion_controller};
         /// #
@@ -100,11 +100,7 @@ impl<Providers: ServerProviders> Builder<Providers> {
         /// #
         /// # fn main() -> Result<(), Box<dyn Error>> {
         /// let server = Server::builder()
-        ///     .with_limits(
-        ///         limits::Builder::default()
-        ///             .with_max_idle_time(Duration::from_secs(30))?
-        ///             .build()?
-        ///     )?
+        ///     .with_limits(limits::Default::default())?
         ///     .build()?;
         /// #
         /// #    Ok(())
@@ -240,7 +236,7 @@ impl<Providers: ServerProviders> Builder<Providers> {
         ///
         /// Uses [`std::sync::Mutex`] to perform synchronization.
         ///
-        /// ```rust
+        /// ```rust,ignore
         /// # use std::{error::Error, time::Duration};
         /// use s2n_quic::{Server, provider::sync};
         /// #
