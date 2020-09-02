@@ -185,7 +185,13 @@ impl<C: ConnectionTrait> InterestLists<C> {
                 mutable_connection.mark_as_accepted();
             }
 
-            accept_queue.send(Connection::new(node.shared_state.clone()));
+            // TODO shutdown endpoint if we can't send connections
+            if accept_queue
+                .send(Connection::new(node.shared_state.clone()))
+                .is_err()
+            {
+                return;
+            }
         }
 
         if interests.finalization != node.done_connections_link.is_linked() {
