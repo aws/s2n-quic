@@ -4,6 +4,11 @@ pub mod rx;
 pub mod tx;
 
 /// A pair of Rx and Tx IO implementations
+///
+/// From https://en.wikipedia.org/wiki/Duplex_(telecommunications):
+///
+/// > A duplex communication system is a point-to-point system composed of two or more
+/// > connected parties or devices that can communicate with one another in both directions.
 #[derive(Debug)]
 pub struct Duplex<Rx, Tx> {
     pub rx: Rx,
