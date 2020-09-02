@@ -53,6 +53,3 @@ pub use server::Server;
 mod extensions;
 #[cfg(feature = "protocol-extensions")]
 pub use extensions::Extensions;
-
-#[cfg(feature = "tokio")]
-pub(crate) mod tokio;
