@@ -37,22 +37,12 @@ jobs:
         id: implementations
         working-directory: quic-interop-runner
         run: |
-          PROGRAM="
-          import json
-          from implementations import IMPLEMENTATIONS
-
-          def filter(targets):
-            implementations = [
-              key for (key, value) in IMPLEMENTATIONS.items() if value.get('role') in targets
-            ]
-            implementations.sort()
-            return json.dumps(implementations)
-
-          # role: 0 == 'client', 1 == 'server', 2 == both
-          print(f'::set-output name=clients::{filter([0,2])}')
-          print(f'::set-output name=servers::{filter([1,2])}')"
-
-          echo -e "$PROGRAM" | python3
+          CLIENTS=$(cat implementations.json | jq -c '[. | to_entries[] | select(.value.role == "both" or .value.role == "client") | .key] | sort')
+          echo "Clients: $CLIENTS"
+          SERVERS=$(cat implementations.json | jq -c '[. | to_entries[] | select(.value.role == "both" or .value.role == "server") | .key] | sort')
+          echo "Servers: $SERVERS"
+          echo "::set-output name=clients::$CLIENTS"
+          echo "::set-output name=servers::$SERVERS"
 
   build:
     runs-on: ubuntu-latest
@@ -137,12 +127,15 @@ jobs:
           repository: marten-seemann/quic-interop-runner
           path: quic-interop-runner
 
-      - name: Patch implementations.py
+      - name: Patch implementations.json
         working-directory: quic-interop-runner
         run: |
+          mv implementations.json implementations.old.json
           # Append our implementation
-          echo -e '\nIMPLEMENTATIONS["s2n-quic"] = {"url": "awslabs/s2n-quic-qns:latest", "role": 1}' >> implementations.py
-          cat implementations.py
+          cat implementations.old.json \
+            | jq '. + {"s2n-quic": {"url": "awslabs/s2n-quic-qns:latest", "role": "server"}}' \
+            > implementations.json
+          cat implementations.json
 
       - name: Run docker pull
         working-directory: quic-interop-runner
@@ -150,11 +143,8 @@ jobs:
           docker pull martenseemann/quic-network-simulator:latest
           docker pull martenseemann/quic-interop-iperf-endpoint:latest
 
-          PROGRAM="
-          from implementations import IMPLEMENTATIONS
-          print(IMPLEMENTATIONS.get('${{ matrix.client }}').get('url'))"
-
-          docker pull $(echo -e "$PROGRAM" | python3)
+          URL=$(cat implementations.json | jq --raw-output '."${{ matrix.client }}".url')
+          docker pull $URL
 
       - uses: actions/setup-python@v2
         with:
