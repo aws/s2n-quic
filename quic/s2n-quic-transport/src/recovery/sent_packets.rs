@@ -46,6 +46,11 @@ impl SentPackets {
     pub fn iter(&self) -> Iter<'_, PacketNumber, SentPacketInfo> {
         self.sent_packets.iter()
     }
+
+    /// Returns true if there are no pending sent packets
+    pub fn is_empty(&self) -> bool {
+        self.sent_packets.is_empty()
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -132,6 +137,17 @@ mod test {
 
         // Removing a packet that was already removed doesn't panic
         assert_eq!(None, sent_packets.remove(packet_number));
+    }
+
+    #[test]
+    fn empty() {
+        let mut sent_packets = SentPackets::default();
+        assert!(sent_packets.is_empty());
+
+        let packet_number = PacketNumberSpace::Initial.new_packet_number(VarInt::from_u8(1));
+        let sent_packet = SentPacketInfo::new(false, 0, s2n_quic_platform::time::now());
+        sent_packets.insert(packet_number, sent_packet);
+        assert!(!sent_packets.is_empty());
     }
 
     #[test]

@@ -127,8 +127,17 @@ impl<Suite: CryptoSuite> InitialSpace<Suite> {
         self.recovery_manager.loss_time()
     }
 
-    pub fn probe_timeout(&self, path: &Path, now: Timestamp) -> Option<Timestamp> {
-        self.recovery_manager.probe_timeout(path, now)
+    pub fn probe_timeout(&self, path: &Path, pto_count: u32, now: Timestamp) -> Option<Timestamp> {
+        self.recovery_manager.probe_timeout(path, pto_count, now)
+    }
+
+    pub fn bytes_in_flight(&self) -> u64 {
+        //TODO: self.congestion_controller.bytes_in_flight()
+        0
+    }
+
+    pub fn on_loss_time_timeout(&mut self, path: &Path, now: Timestamp) {
+        self.recovery_manager.on_loss_time_timeout(path, now)
     }
 }
 

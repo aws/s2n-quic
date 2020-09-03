@@ -1,7 +1,7 @@
 // TODO: Remove when used
 #![allow(dead_code)]
 
-use crate::recovery::{LossDetectionInfo, SentPacketInfo, SentPackets};
+use crate::recovery::{SentPacketInfo, SentPackets};
 use core::{cmp::max, time::Duration};
 use s2n_quic_core::{
     frame::{ack::ECNCounts, ack_elicitation::AckElicitation},
@@ -34,6 +34,10 @@ pub struct RecoveryManager {
     // by `on_ack_received_finish` to determine what additional actions to take after processing an
     // ack frame. Calling `on_ack_received_finish` resets this to false.
     newly_acked: bool,
+
+    loss_time: Option<Timestamp>,
+
+    time_of_last_ack_eliciting_packet: Option<Timestamp>,
 }
 
 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.2
@@ -56,11 +60,13 @@ impl RecoveryManager {
             largest_acked_packet: None,
             sent_packets: SentPackets::default(),
             newly_acked: false,
+            loss_time: None,
+            time_of_last_ack_eliciting_packet: None,
         }
     }
 
     pub fn loss_time(&self) -> Option<Timestamp> {
-        //TODO
+        self.loss_time
     }
 
     #[allow(clippy::collapsible_if)]
@@ -73,7 +79,6 @@ impl RecoveryManager {
         in_flight: bool,
         sent_bytes: u64,
         time_sent: Timestamp,
-        time_of_last_ack_eliciting_packet: &mut Option<Timestamp>,
     ) {
         if ack_elicitation.is_ack_eliciting() {
             self.sent_packets.insert(
@@ -84,9 +89,9 @@ impl RecoveryManager {
 
         if in_flight {
             if ack_elicitation.is_ack_eliciting() {
-                *time_of_last_ack_eliciting_packet = Some(time_sent);
+                self.time_of_last_ack_eliciting_packet = Some(time_sent);
             }
-            // TODO: self.congestion_controller.on_packet_sent_cc(sent_bytes)
+            // TODO: path.congestion_controller.on_packet_sent_cc(sent_bytes)
             // The loss detection timer is set after packets are sent in ConnectionImpl.on_transmit.
             // This differs from the pseudo-code in Appendix A.5, which sets the timer after every
             // packet, in order to reduce multiple calls to the loss detection timer.
@@ -140,11 +145,11 @@ impl RecoveryManager {
 
             // Process ECN information if present.
             if ecn_counts.is_some() {
-                // TODO: self.congestion_controller.process_ecn(ecn_counts, largest_newly_acked, largest_acked.space())
+                // TODO: path.congestion_controller.process_ecn(ecn_counts, largest_newly_acked, largest_acked.space())
             }
         };
 
-        // TODO: self.congestion_controller.on_packets_acked(self.sent_packets.range(acked_packets));
+        // TODO: path.congestion_controller.on_packets_acked(self.sent_packets.range(acked_packets));
 
         for packet_number in acked_packets {
             self.sent_packets.remove(packet_number);
@@ -158,17 +163,15 @@ impl RecoveryManager {
         &mut self,
         receive_time: Timestamp,
         rtt_estimator: &RTTEstimator,
-        loss_detection_info: &mut LossDetectionInfo,
     ) -> bool {
         if self.newly_acked {
             let lost_packets = self.detect_and_remove_lost_packets(
                 rtt_estimator.latest_rtt(),
                 rtt_estimator.smoothed_rtt(),
                 receive_time,
-                loss_detection_info,
             );
             if !lost_packets.is_empty() {
-                // TODO: self.congestion_controller.on_packets_lost(lost_packets)
+                // TODO: path.congestion_controller.on_packets_lost(lost_packets)
             }
 
             // TODO: Add comment about where pto_count is reset and loss_detection_timer is set
@@ -187,9 +190,8 @@ impl RecoveryManager {
         latest_rtt: Duration,
         smoothed_rtt: Duration,
         now: Timestamp,
-        loss_detection_info: &mut LossDetectionInfo,
     ) -> Vec<PacketNumber> {
-        loss_detection_info.loss_time = None;
+        self.loss_time = None;
         let loss_delay = self.calculate_loss_delay(latest_rtt, smoothed_rtt);
 
         // Packets sent before this time are deemed lost.
@@ -223,7 +225,7 @@ impl RecoveryManager {
                     lost_packets.push(*unacked_packet_number)
                 }
             } else {
-                loss_detection_info.loss_time = Some(unacked_sent_info.time_sent + loss_delay);
+                self.loss_time = Some(unacked_sent_info.time_sent + loss_delay);
                 // assuming sent_packets is ordered by packet number and sent time, all remaining
                 // packets will have a larger packet number and sent time, and are thus not lost.
                 break;
@@ -238,13 +240,13 @@ impl RecoveryManager {
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.8
-    pub fn probe_timeout(&self, path: &Path, now: Timestamp) -> Option<Timestamp> {
-        let backoff = 2_u32.pow(self.pto_count);
+    pub fn probe_timeout(&self, path: &Path, pto_count: u32, now: Timestamp) -> Option<Timestamp> {
+        let backoff = 2_u32.pow(pto_count);
         let duration = (path.rtt_estimator.smoothed_rtt()
             + max(4 * path.rtt_estimator.rttvar(), K_GRANULARITY))
             * backoff;
         // Arm PTO from now when there are no inflight packets.
-        if self.sent_packets.iter().next().is_none() {
+        if self.sent_packets.is_empty() {
             assert!(!path.is_validated());
             return Some(now + duration);
         }
@@ -260,6 +262,19 @@ impl RecoveryManager {
         }
 
         Some(timeout)
+    }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.9
+    //# When the loss detection timer expires, the timer's mode determines the action to be performed.
+    pub fn on_loss_time_timeout(&mut self, path: &Path, now: Timestamp) {
+        // Time threshold loss Detection
+        let lost_packets = self.detect_and_remove_lost_packets(
+            path.rtt_estimator.latest_rtt(),
+            path.rtt_estimator.smoothed_rtt(),
+            now,
+        );
+        assert!(!lost_packets.is_empty());
+        // TODO: path.congestion_controller.on_packets_lost(lost_packets)
     }
 
     fn calculate_loss_delay(&self, latest_rtt: Duration, smoothed_rtt: Duration) -> Duration {
@@ -283,7 +298,7 @@ mod test {
     #[test]
     fn on_packet_sent() {
         let pn_space = PacketNumberSpace::ApplicationData;
-        let mut recovery_manager = RecoveryManager::new(Duration::from_millis(100));
+        let mut recovery_manager = RecoveryManager::new(pn_space, Duration::from_millis(100));
         let mut time_sent = s2n_quic_platform::time::now();
 
         for i in 1..=10 {
@@ -303,7 +318,6 @@ mod test {
                 in_flight,
                 sent_bytes,
                 time_sent,
-                &mut time_of_last_ack_eliciting_packet,
             );
 
             if ack_elicitation == AckElicitation::Eliciting {
@@ -330,7 +344,7 @@ mod test {
     fn on_ack_received() {
         let pn_space = PacketNumberSpace::ApplicationData;
         let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
-        let mut recovery_manager = RecoveryManager::new(Duration::from_millis(100));
+        let mut recovery_manager = RecoveryManager::new(pn_space, Duration::from_millis(100));
 
         let packets = PacketNumberRange::new(
             pn_space.new_packet_number(VarInt::from_u8(1)),
@@ -338,7 +352,6 @@ mod test {
         );
 
         let time_sent = s2n_quic_platform::time::now() + Duration::from_secs(10);
-        let mut time_of_last_ack_eliciting_packet = None;
 
         for packet in packets {
             recovery_manager.on_packet_sent(
@@ -347,7 +360,6 @@ mod test {
                 true,
                 128,
                 time_sent,
-                &mut time_of_last_ack_eliciting_packet,
             );
         }
 
@@ -412,11 +424,7 @@ mod test {
         assert_eq!(rtt_estimator.latest_rtt(), Duration::from_millis(500));
 
         assert!(recovery_manager.newly_acked);
-        recovery_manager.on_ack_received_finish(
-            ack_receive_time,
-            &rtt_estimator,
-            &mut LossDetectionInfo::new(pn_space),
-        );
+        recovery_manager.on_ack_received_finish(ack_receive_time, &rtt_estimator);
         assert!(!recovery_manager.newly_acked);
     }
 
@@ -426,13 +434,12 @@ mod test {
         let pn_space = PacketNumberSpace::ApplicationData;
         let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
 
-        let mut recovery_manager = RecoveryManager::new(Duration::from_millis(100));
+        let mut recovery_manager = RecoveryManager::new(pn_space, Duration::from_millis(100));
 
         recovery_manager.largest_acked_packet =
             Some(pn_space.new_packet_number(VarInt::from_u8(10)));
 
         let mut time_sent = s2n_quic_platform::time::now();
-        let mut time_of_last_ack_eliciting_packet = None;
 
         // Send a packet that was sent too long ago (lost)
         let old_packet_time_sent = pn_space.new_packet_number(VarInt::from_u8(8));
@@ -442,7 +449,6 @@ mod test {
             true,
             1,
             time_sent,
-            &mut time_of_last_ack_eliciting_packet,
         );
 
         time_sent += Duration::from_secs(10);
@@ -456,19 +462,11 @@ mod test {
             true,
             1,
             time_sent,
-            &mut time_of_last_ack_eliciting_packet,
         );
 
         // Send a packet that is less than the largest acked but not lost
         let not_lost = pn_space.new_packet_number(VarInt::from_u8(9));
-        recovery_manager.on_packet_sent(
-            not_lost,
-            AckElicitation::Eliciting,
-            true,
-            1,
-            time_sent,
-            &mut time_of_last_ack_eliciting_packet,
-        );
+        recovery_manager.on_packet_sent(not_lost, AckElicitation::Eliciting, true, 1, time_sent);
 
         // Send a packet larger than the largest acked (not lost)
         let larger_than_largest = recovery_manager
@@ -482,7 +480,6 @@ mod test {
             true,
             1,
             time_sent,
-            &mut time_of_last_ack_eliciting_packet,
         );
 
         rtt_estimator.update_rtt(
@@ -498,7 +495,6 @@ mod test {
             rtt_estimator.latest_rtt(),
             rtt_estimator.smoothed_rtt(),
             now,
-            &mut LossDetectionInfo::new(pn_space),
         );
         let sent_packets = &recovery_manager.sent_packets;
         assert!(lost_packets.contains(&old_packet_time_sent));

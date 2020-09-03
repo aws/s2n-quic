@@ -33,6 +33,7 @@ mod rx_packet_numbers;
 mod session_context;
 mod tx_packet_numbers;
 
+use crate::timer::VirtualTimer;
 pub(crate) use application::ApplicationSpace;
 pub(crate) use application_transmission::ApplicationTransmission;
 pub(crate) use crypto_stream::CryptoStream;
@@ -54,6 +55,9 @@ pub struct PacketSpaceManager<ConnectionConfigType: ConnectionConfig> {
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.3
     //# The number of times a PTO has been sent without receiving an ack.
     pto_count: u32,
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.3
+    //# Multi-modal timer used for loss detection.
+    loss_detection_timer: VirtualTimer,
 }
 
 macro_rules! packet_space_api {
@@ -123,6 +127,7 @@ impl<ConnectionConfigType: ConnectionConfig> PacketSpaceManager<ConnectionConfig
             application: None,
             zero_rtt_crypto: None,
             pto_count: 0,
+            loss_detection_timer: VirtualTimer::default(),
         }
     }
 
@@ -193,7 +198,7 @@ impl<ConnectionConfigType: ConnectionConfig> PacketSpaceManager<ConnectionConfig
     }
 
     /// Gets the earliest loss time
-    pub fn loss_time(&self) -> Option<Timestamp> {
+    fn loss_time(&self) -> Option<Timestamp> {
         core::iter::empty()
             .chain(self.initial.iter().flat_map(|space| space.loss_time()))
             .chain(self.handshake.iter().flat_map(|space| space.loss_time()))
@@ -202,24 +207,63 @@ impl<ConnectionConfigType: ConnectionConfig> PacketSpaceManager<ConnectionConfig
     }
 
     /// Gets the earliest probe timeout
-    pub fn probe_timeout(&self, path: &Path, now: Timestamp) -> Option<Timestamp> {
+    fn probe_timeout(&self, path: &Path, now: Timestamp) -> Option<Timestamp> {
         core::iter::empty()
             .chain(
                 self.initial
                     .iter()
-                    .flat_map(|space| space.probe_timeout(path, now)),
+                    .flat_map(|space| space.probe_timeout(path, self.pto_count, now)),
             )
             .chain(
                 self.handshake
                     .iter()
-                    .flat_map(|space| space.probe_timeout(path, now)),
+                    .flat_map(|space| space.probe_timeout(path, self.pto_count, now)),
             )
             .chain(
                 self.application
                     .iter()
-                    .flat_map(|space| space.probe_timeout(path, now)),
+                    .flat_map(|space| space.probe_timeout(path, self.pto_count, now)),
             )
             .min()
+    }
+
+    /// Gets the total number of bytes in flight
+    /// TODO: should this get bytes_in_flight from path.congestion_controller.bytes_in_flight?
+    fn bytes_in_flight(&self) -> u64 {
+        core::iter::empty()
+            .chain(self.initial.iter().map(|space| space.bytes_in_flight()))
+            .chain(self.handshake.iter().map(|space| space.bytes_in_flight()))
+            .chain(self.application.iter().map(|space| space.bytes_in_flight()))
+            .sum::<u64>()
+    }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.8
+    //# QUIC loss detection uses a single timer for all timeout loss detection.
+    pub fn set_loss_detection_timer(&mut self, path: &Path, now: Timestamp) {
+        if let Some(earliest_loss_time) = self.loss_time() {
+            // Time threshold loss detection.
+            self.loss_detection_timer.set(earliest_loss_time);
+            return;
+        }
+
+        if path.at_amplification_limit() {
+            // The server's timer is not set if nothing can be sent.
+            self.loss_detection_timer.cancel();
+            return;
+        }
+
+        if self.bytes_in_flight() == 0 && path.is_validated() {
+            // There is nothing to detect lost, so no timer is set.
+            // However, the client needs to arm the timer if the
+            // server might be blocked by the anti-amplification limit.
+            self.loss_detection_timer.cancel();
+            return;
+        }
+
+        // Determine which PN space to arm PTO for.
+        if let Some(pto_time) = self.probe_timeout(path, now) {
+            self.loss_detection_timer.set(pto_time);
+        }
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.9
@@ -227,26 +271,21 @@ impl<ConnectionConfigType: ConnectionConfig> PacketSpaceManager<ConnectionConfig
     pub fn on_loss_detection_timeout(&mut self, path: &Path, now: Timestamp) {
         if let Some(earliest_loss_time) = self.loss_time() {
             // Time threshold loss Detection
-            let lost_packets = recovery_manager.detect_and_remove_lost_packets(
-                path.rtt_estimator.latest_rtt(),
-                path.rtt_estimator.smoothed_rtt(),
-                now,
-                &mut Some(earliest_loss_time),
-            );
-            assert!(!lost_packets.is_empty());
-            // TODO: congestion_controller.on_packets_lost(lost_packets)
+            // TODO: get the packet space with the earliest loss time and call
+            //       on_loss_time_timeout on that packet space
             self.set_loss_detection_timer(path, now);
             return;
         }
 
-        // if congestion_controller.bytes_in_flight() > 0 {
-        // PTO. Send new data if available, else retransmit old data.
-        // If neither is available, send a single PING frame.
-        // _, pn_space = loss_detection_timer.get_pto_time_and_space();
-        // send_one_or_two_ack_eliciting_packets(pn_space)
-        // else {
-        // TODO: implement client
-        // }
+        // TODO:
+        if self.bytes_in_flight() > 0 {
+            // PTO. Send new data if available, else retransmit old data.
+            // If neither is available, send a single PING frame.
+            // _, pn_space = self.probe_timeout();
+            // send_one_or_two_ack_eliciting_packets(pn_space)
+        } else {
+            // TODO: implement client
+        }
 
         self.pto_count += 1;
         self.set_loss_detection_timer(path, now);
