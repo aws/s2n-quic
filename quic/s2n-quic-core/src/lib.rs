@@ -10,7 +10,6 @@ pub mod inet;
 pub mod io;
 pub mod packet;
 pub mod path;
-pub mod path_manager;
 pub mod recovery;
 pub mod stateless_reset_token;
 pub mod stream;

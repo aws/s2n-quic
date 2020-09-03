@@ -1,25 +1,22 @@
-//! This module contains the PathManager implementation
+//! This module contains the Manager implementation
 
-use crate::{connection, inet::SocketAddress, path::Path};
+use s2n_quic_core::{connection, inet::SocketAddress, path::Path};
 use smallvec::SmallVec;
 
 /// The amount of Paths that can be maintained without using the heap
 const STATIC_DEFAULT_PATHS: usize = 5;
 
-/// Track challenge data for a particular path
-struct PathSecretTuple(Path, [u8; 32]);
-
 /// The PathManager handles paths for a specific connection.
 /// It will handle path validation operations, and track the active path for a connection.
-pub struct PathManager {
+pub struct Manager {
     /// Path array
-    paths: SmallVec<[PathSecretTuple; STATIC_DEFAULT_PATHS]>,
+    paths: SmallVec<[Path; STATIC_DEFAULT_PATHS]>,
 
     /// Index to the active path
     active: usize,
 }
 
-impl Default for PathManager {
+impl Default for Manager {
     fn default() -> Self {
         Self {
             paths: SmallVec::new(),
@@ -28,15 +25,15 @@ impl Default for PathManager {
     }
 }
 
-impl PathManager {
+impl Manager {
     /// Return the active path
-    pub fn get_active_path(&self) -> &Path {
-        &self.paths[self.active].0
+    pub fn active_path(&self) -> &Path {
+        &self.paths[self.active]
     }
 
     /// Return a mutable reference to the active path
-    pub fn get_active_path_mut(&mut self) -> &mut Path {
-        &mut self.paths[self.active].0
+    pub fn active_path_mut(&mut self) -> &mut Path {
+        &mut self.paths[self.active]
     }
 
     /// Returns whether the socket address belongs to the current peer or an in progress peer
@@ -48,23 +45,24 @@ impl PathManager {
         self.paths
             .iter()
             .position(|path| {
-                path.0.peer_socket_address == *peer_address
-                    && path.0.destination_connection_id == *destination_connection_id
+                path.peer_socket_address == *peer_address
+                    && path.destination_connection_id == *destination_connection_id
             })
             .is_none()
     }
 
     /// Returns the Path for the connection id if the PathManager knows about it
-    pub fn get_path_by_address(
+    pub fn path(
         &self,
         peer_address: &SocketAddress,
         destination_connection_id: &connection::Id,
     ) -> Option<&Path> {
-        let opt = match self.paths.iter().position(|path| {
-            path.0.peer_socket_address == *peer_address
-                && path.0.destination_connection_id == *destination_connection_id
-        }) {
-            Some(path_index) => Some(&self.paths[path_index].0),
+        let opt = match self
+            .paths
+            .iter()
+            .position(|path| self.matching_path(&path, peer_address, destination_connection_id))
+        {
+            Some(path_index) => Some(&self.paths[path_index]),
             None => None,
         };
 
@@ -72,15 +70,17 @@ impl PathManager {
     }
 
     /// Returns the Path for the connection id if the PathManager knows about it
-    pub fn get_path_address_mut(
+    pub fn path_mut(
         &mut self,
         peer_address: &SocketAddress,
         destination_connection_id: &connection::Id,
     ) -> Option<&mut Path> {
-        let opt = match self.paths.iter().position(|path_secret| {
-            self.matching_path(&path_secret.0, peer_address, destination_connection_id)
-        }) {
-            Some(path_index) => Some(&mut self.paths[path_index].0),
+        let opt = match self
+            .paths
+            .iter()
+            .position(|path| self.matching_path(&path, peer_address, destination_connection_id))
+        {
+            Some(path_index) => Some(&mut self.paths[path_index]),
             None => None,
         };
 
@@ -88,8 +88,8 @@ impl PathManager {
     }
 
     /// Add a new path to the PathManager
-    pub fn add_new_path(&mut self, path: Path) {
-        self.paths.push(PathSecretTuple(path, [0u8; 32]));
+    pub fn insert(&mut self, path: Path) {
+        self.paths.push(path);
     }
 
     /// Called when a PATH_CHALLENGE frame is received
@@ -108,11 +108,15 @@ impl PathManager {
         destination_connection_id: &connection::Id,
         response: &[u8],
     ) {
-        if let Some(path_index) = self.paths.iter().position(|path_secret| {
-            self.matching_path(&path_secret.0, peer_address, destination_connection_id)
-        }) {
-            if response == self.paths[path_index].1 {
-                self.paths[path_index].0.on_validated();
+        if let Some(path_index) = self
+            .paths
+            .iter()
+            .position(|path| self.matching_path(&path, peer_address, destination_connection_id))
+        {
+            if let Some(expected_response) = self.paths[path_index].challenge {
+                if expected_response == response {
+                    self.paths[path_index].on_validated();
+                }
             }
         };
     }
@@ -144,8 +148,8 @@ impl PathManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::recovery::RTTEstimator;
     use core::time::Duration;
+    use s2n_quic_core::recovery::RTTEstimator;
 
     #[test]
     fn get_path_by_address_test() {
@@ -165,20 +169,20 @@ mod tests {
             RTTEstimator::new(Duration::from_millis(30)),
         );
 
-        let mut manager = PathManager::default();
-        manager.add_new_path(first_path);
-        manager.add_new_path(second_path);
+        let mut manager = Manager::default();
+        manager.insert(first_path);
+        manager.insert(second_path);
 
         let first_match = manager
-            .get_path_by_address(&SocketAddress::default(), &first_conn_id)
+            .path(&SocketAddress::default(), &first_conn_id)
             .unwrap();
         let second_match = manager
-            .get_path_by_address(&SocketAddress::default(), &second_conn_id)
+            .path(&SocketAddress::default(), &second_conn_id)
             .unwrap();
         assert_eq!(first_match, &first_path);
         assert_eq!(second_match, &second_path);
         assert_eq!(
-            manager.get_path_by_address(&SocketAddress::default(), &unused_conn_id),
+            manager.path(&SocketAddress::default(), &unused_conn_id),
             None
         );
     }
@@ -186,30 +190,30 @@ mod tests {
     #[test]
     fn path_validate_test() {
         let first_conn_id = connection::Id::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
-        let first_path = Path::new(
+        let mut first_path = Path::new(
             first_conn_id,
             SocketAddress::default(),
             first_conn_id,
             RTTEstimator::new(Duration::from_millis(30)),
         );
-        let response = [0u8; 32];
+        first_path.challenge = Some([0u8; 32]);
 
-        let mut manager = PathManager::default();
-        manager.add_new_path(first_path);
+        let mut manager = Manager::default();
+        manager.insert(first_path);
         {
             let first_path = manager
-                .get_path_by_address(&first_path.peer_socket_address, &first_conn_id)
+                .path(&first_path.peer_socket_address, &first_conn_id)
                 .unwrap();
             assert_eq!(first_path.is_validated(), false);
         }
         manager.on_path_response(
             &first_path.peer_socket_address,
             &first_path.destination_connection_id,
-            &response,
+            &first_path.challenge.unwrap(),
         );
         {
             let first_path = manager
-                .get_path_by_address(&first_path.peer_socket_address, &first_conn_id)
+                .path(&first_path.peer_socket_address, &first_conn_id)
                 .unwrap();
             assert_eq!(first_path.is_validated(), true);
         }
@@ -226,8 +230,8 @@ mod tests {
             RTTEstimator::new(Duration::from_millis(30)),
         );
 
-        let mut manager = PathManager::default();
-        manager.add_new_path(first_path);
+        let mut manager = Manager::default();
+        manager.insert(first_path);
         assert_eq!(
             manager.is_new_path(&SocketAddress::default(), &first_conn_id),
             false

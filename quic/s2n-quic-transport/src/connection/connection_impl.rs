@@ -8,6 +8,7 @@ use crate::{
         SharedConnectionState,
     },
     contexts::ConnectionOnTransmitError,
+    path::Manager,
 };
 use core::time::Duration;
 use s2n_quic_core::{
@@ -22,7 +23,6 @@ use s2n_quic_core::{
         version_negotiation::ProtectedVersionNegotiation,
         zero_rtt::ProtectedZeroRTT,
     },
-    path_manager::PathManager,
     time::Timestamp,
     transport::error::TransportError,
 };
@@ -105,7 +105,7 @@ pub struct ConnectionImpl<ConfigType: connection::Config> {
     /// The current state of the connection
     state: ConnectionState,
     /// Manage the paths that the connection could use
-    path_manager: PathManager,
+    path_manager: Manager,
 }
 
 impl<ConfigType: connection::Config> ConnectionImpl<ConfigType> {
@@ -193,7 +193,7 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
     fn new(parameters: ConnectionParameters<Self::Config>) -> Self {
         // The path manager always starts with a single path containing the known peer and local
         // connetion ids.
-        let path_manager: PathManager = PathManager::default();
+        let path_manager: Manager = Manager::default();
 
         Self {
             config: parameters.connection_config,
@@ -284,7 +284,7 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
                             quic_version: self.quic_version,
                             timestamp,
                             local_endpoint_type: Self::Config::ENDPOINT_TYPE,
-                            path: self.path_manager.get_active_path_mut(),
+                            path: self.path_manager.active_path_mut(),
                             ecn,
                         },
                         shared_state,
@@ -401,7 +401,7 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
         datagram: &DatagramInfo,
     ) -> Result<(), TransportError> {
         self.path_manager
-            .get_active_path_mut()
+            .active_path_mut()
             .on_bytes_received(datagram.payload_len as u32);
         Ok(())
     }
