@@ -13,7 +13,7 @@ use s2n_quic_core::{
 };
 
 #[derive(Debug)]
-pub struct RecoveryManager {
+pub struct Manager {
     pn_space: PacketNumberSpace,
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.3
     //# The maximum amount of time by which the receiver intends to delay acknowledgments for packets
@@ -51,8 +51,8 @@ pub(crate) const K_GRANULARITY: Duration = Duration::from_millis(1);
 
 type SentPacket = (PacketNumber, SentPacketInfo);
 
-impl RecoveryManager {
-    /// Constructs a new `RecoveryManager`
+impl Manager {
+    /// Constructs a new `recovery::Manager`
     pub fn new(pn_space: PacketNumberSpace, max_ack_delay: Duration) -> Self {
         Self {
             pn_space,
@@ -298,7 +298,7 @@ mod test {
     #[test]
     fn on_packet_sent() {
         let pn_space = PacketNumberSpace::ApplicationData;
-        let mut recovery_manager = RecoveryManager::new(pn_space, Duration::from_millis(100));
+        let mut recovery_manager = Manager::new(pn_space, Duration::from_millis(100));
         let mut time_sent = s2n_quic_platform::time::now();
 
         for i in 1..=10 {
@@ -346,7 +346,7 @@ mod test {
     fn on_ack_received() {
         let pn_space = PacketNumberSpace::ApplicationData;
         let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
-        let mut recovery_manager = RecoveryManager::new(pn_space, Duration::from_millis(100));
+        let mut recovery_manager = Manager::new(pn_space, Duration::from_millis(100));
 
         let packets = PacketNumberRange::new(
             pn_space.new_packet_number(VarInt::from_u8(1)),
@@ -436,7 +436,7 @@ mod test {
         let pn_space = PacketNumberSpace::ApplicationData;
         let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
 
-        let mut recovery_manager = RecoveryManager::new(pn_space, Duration::from_millis(100));
+        let mut recovery_manager = Manager::new(pn_space, Duration::from_millis(100));
 
         recovery_manager.largest_acked_packet =
             Some(pn_space.new_packet_number(VarInt::from_u8(10)));

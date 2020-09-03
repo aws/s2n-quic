@@ -2,7 +2,7 @@ use crate::{
     connection::{self, ConnectionInterests, ConnectionTransmissionContext},
     frame_exchange_interests::FrameExchangeInterestProvider,
     processed_packet::ProcessedPacket,
-    recovery::RecoveryManager,
+    recovery,
     space::{
         rx_packet_numbers::AckManager, ApplicationTransmission, HandshakeStatus, PacketSpace,
         TxPacketNumbers,
@@ -46,7 +46,7 @@ pub struct ApplicationSpace<Config: connection::Config> {
     /// Records if the handshake is pending or done, which is communicated to the peer
     pub handshake_status: HandshakeStatus,
     processed_packet_numbers: SlidingWindow,
-    recovery_manager: RecoveryManager,
+    recovery_manager: recovery::Manager,
 }
 
 impl<Config: connection::Config> ApplicationSpace<Config> {
@@ -66,7 +66,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
             crypto,
             handshake_status: HandshakeStatus::default(),
             processed_packet_numbers: SlidingWindow::default(),
-            recovery_manager: RecoveryManager::new(
+            recovery_manager: recovery::Manager::new(
                 PacketNumberSpace::ApplicationData,
                 max_ack_delay,
             ),

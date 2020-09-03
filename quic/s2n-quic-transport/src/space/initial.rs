@@ -2,7 +2,7 @@ use crate::{
     connection::{self, ConnectionTransmissionContext},
     frame_exchange_interests::{FrameExchangeInterestProvider, FrameExchangeInterests},
     processed_packet::ProcessedPacket,
-    recovery::RecoveryManager,
+    recovery,
     space::{
         rx_packet_numbers::AckManager, CryptoStream, EarlyTransmission, PacketSpace,
         TxPacketNumbers,
@@ -29,7 +29,7 @@ pub struct InitialSpace<Config: connection::Config> {
     pub crypto_stream: CryptoStream,
     pub tx_packet_numbers: TxPacketNumbers,
     processed_packet_numbers: SlidingWindow,
-    recovery_manager: RecoveryManager,
+    recovery_manager: recovery::Manager,
 }
 
 impl<Config: connection::Config> InitialSpace<Config> {
@@ -45,7 +45,7 @@ impl<Config: connection::Config> InitialSpace<Config> {
             crypto_stream: CryptoStream::new(),
             tx_packet_numbers: TxPacketNumbers::new(PacketNumberSpace::Initial, now),
             processed_packet_numbers: SlidingWindow::default(),
-            recovery_manager: RecoveryManager::new(PacketNumberSpace::Initial, max_ack_delay),
+            recovery_manager: recovery::Manager::new(PacketNumberSpace::Initial, max_ack_delay),
         }
     }
 
