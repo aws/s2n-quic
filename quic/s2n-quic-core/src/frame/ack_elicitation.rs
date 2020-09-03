@@ -21,10 +21,7 @@ impl Default for AckElicitation {
 impl AckElicitation {
     /// Returns true if the `AckElicitation` is set to `Eliciting`
     pub fn is_ack_eliciting(self) -> bool {
-        match self {
-            Self::Eliciting => true,
-            _ => false,
-        }
+        matches!(self, Self::Eliciting)
     }
 }
 

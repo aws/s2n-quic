@@ -2,7 +2,7 @@ use crate::{
     connection::ConnectionTransmissionContext,
     contexts::WriteContext,
     frame_exchange_interests::{FrameExchangeInterestProvider, FrameExchangeInterests},
-    space::{rx_packet_numbers::AckManager, TxPacketNumbers},
+    space::{rx_packet_numbers::AckManager, HandshakeStatus, TxPacketNumbers},
     stream::{AbstractStreamManager, StreamTrait},
 };
 use s2n_codec::{Encoder, EncoderBuffer, EncoderValue};
@@ -18,6 +18,7 @@ use s2n_quic_core::{
 pub struct ApplicationTransmission<'a, StreamType: StreamTrait> {
     pub ack_manager: &'a mut AckManager,
     pub context: &'a ConnectionTransmissionContext,
+    pub handshake_status: &'a mut HandshakeStatus,
     pub packet_number: PacketNumber,
     pub stream_manager: &'a mut AbstractStreamManager<StreamType>,
     pub tx_packet_numbers: &'a mut TxPacketNumbers,
@@ -54,6 +55,7 @@ impl<'a, StreamType: StreamTrait> PacketPayloadEncoder for ApplicationTransmissi
         let did_send_ack = self.ack_manager.on_transmit(&mut context);
 
         // TODO: Handle errors
+        let _ = self.handshake_status.on_transmit(&mut context);
         let _ = self.stream_manager.on_transmit(&mut context);
 
         if did_send_ack {
@@ -129,5 +131,6 @@ impl<'a, StreamType: StreamTrait> FrameExchangeInterestProvider
             transmission: self.stream_manager.interests().transmission,
             ..Default::default()
         } + self.ack_manager.frame_exchange_interests()
+            + self.handshake_status.frame_exchange_interests()
     }
 }

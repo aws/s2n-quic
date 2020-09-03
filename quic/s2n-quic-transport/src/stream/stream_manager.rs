@@ -1,7 +1,7 @@
 //! `StreamManager` manages the lifecycle of all `Stream`s inside a `Connection`
 
 use crate::{
-    connection::ConnectionLimits,
+    connection::Limits as ConnectionLimits,
     contexts::{ConnectionApiCallContext, ConnectionContext, OnTransmitError, WriteContext},
     stream::{
         incoming_connection_flow_controller::IncomingConnectionFlowController,
@@ -17,7 +17,7 @@ use core::task::{Context, Poll, Waker};
 use s2n_quic_core::{
     ack_set::AckSet,
     application::ApplicationErrorCode,
-    connection::ConnectionId,
+    connection,
     endpoint::EndpointType,
     frame::{
         stream::StreamRef, DataBlocked, MaxData, MaxStreamData, MaxStreams, ResetStream,
@@ -368,7 +368,7 @@ impl<S: StreamTrait> StreamManagerState<S> {
 /// `ConnectionContext` is now covereec by different functionality.
 struct StreamManagerConnectionContext {
     local_endpoint_type: EndpointType,
-    connection_id: ConnectionId,
+    connection_id: connection::Id,
 }
 
 impl StreamManagerConnectionContext {
@@ -378,7 +378,7 @@ impl StreamManagerConnectionContext {
         // anywhere. It either needs to get fixed or removed.
         Self {
             local_endpoint_type,
-            connection_id: ConnectionId::try_from_bytes(&[]).unwrap(),
+            connection_id: connection::Id::try_from_bytes(&[]).unwrap(),
         }
     }
 }
@@ -388,7 +388,7 @@ impl ConnectionContext for StreamManagerConnectionContext {
         self.local_endpoint_type
     }
 
-    fn connection_id(&self) -> &ConnectionId {
+    fn connection_id(&self) -> &connection::Id {
         &self.connection_id
     }
 }

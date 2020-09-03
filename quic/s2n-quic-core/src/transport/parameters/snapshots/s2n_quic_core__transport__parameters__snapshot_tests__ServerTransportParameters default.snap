@@ -8,7 +8,7 @@ TransportParameters {
             0,
         ),
     ),
-    max_packet_size: MaxPacketSize(
+    max_udp_payload_size: MaxUdpPayloadSize(
         VarInt(
             65527,
         ),
@@ -57,7 +57,13 @@ TransportParameters {
             2,
         ),
     ),
-    original_connection_id: None,
+    original_destination_connection_id: OriginalDestinationConnectionId(
+        ConnectionId([]),
+    ),
     stateless_reset_token: None,
     preferred_address: None,
+    initial_source_connection_id: InitialSourceConnectionId(
+        ConnectionId([]),
+    ),
+    retry_source_connection_id: None,
 }

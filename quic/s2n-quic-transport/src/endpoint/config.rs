@@ -1,42 +1,32 @@
 //! Configuration parameters for `Endpoint`s
 
-use crate::connection::{ConnectionConfig, ConnectionTrait};
-use core::time::Duration;
-use s2n_quic_core::{
-    connection::ConnectionId, crypto::tls::TLSEndpoint, endpoint::EndpointType,
-    packet::DestinationConnectionIDDecoder,
-};
+use crate::connection;
+use s2n_quic_core::{crypto::tls, endpoint::EndpointType};
 
 /// Configuration paramters for a QUIC endpoint
-pub trait EndpointConfig {
+pub trait Config {
     /// The type of connection configurations for connections managed by the
     /// endpoint.
-    type ConnectionConfigType: ConnectionConfig;
+    type ConnectionConfig: connection::Config;
     /// The type of the TLS endpoint which is utilized
-    type TLSEndpointType: TLSEndpoint<
-        Session = <Self::ConnectionConfigType as ConnectionConfig>::TLSSession,
+    type TLSEndpoint: tls::Endpoint<
+        Session = <Self::ConnectionConfig as connection::Config>::TLSSession,
     >;
     /// The connections type
-    type ConnectionType: ConnectionTrait<Config = Self::ConnectionConfigType>;
-    /// The type of the generator of new connection IDs
-    type ConnectionIdGeneratorType: ConnectionIdGenerator<DestinationConnectionIDDecoderType = <Self::ConnectionConfigType as ConnectionConfig>::DestinationConnectionIDDecoderType>;
+    type Connection: connection::Trait<Config = Self::ConnectionConfig>;
+    /// The connection ID format
+    type ConnectionIdFormat: connection::id::Format;
 
     /// The type of the local endpoint
     const ENDPOINT_TYPE: EndpointType =
-        <Self::ConnectionConfigType as ConnectionConfig>::ENDPOINT_TYPE;
+        <Self::ConnectionConfig as connection::Config>::ENDPOINT_TYPE;
 
     /// Obtain the configuration for the next connection to be handled
-    fn create_connection_config(&mut self) -> Self::ConnectionConfigType;
-}
+    fn create_connection_config(&mut self) -> Self::ConnectionConfig;
 
-/// Generates connection IDs for incoming connections
-pub trait ConnectionIdGenerator {
-    /// The type which is used to decode connection IDs
-    type DestinationConnectionIDDecoderType: DestinationConnectionIDDecoder;
+    /// Returns the tls endpoint value
+    fn tls_endpoint(&mut self) -> &mut Self::TLSEndpoint;
 
-    /// Generates a local connection ID for a new connection
-    fn generate_connection_id(&mut self) -> (ConnectionId, Option<Duration>);
-
-    /// Returns a connection id decoder for cononections created by this generator
-    fn destination_connection_id_decoder(&self) -> Self::DestinationConnectionIDDecoderType;
+    /// Returns the connection ID format for the endpoint
+    fn connection_id_format(&mut self) -> &mut Self::ConnectionIdFormat;
 }

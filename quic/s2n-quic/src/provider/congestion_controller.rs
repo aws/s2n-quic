@@ -1,23 +1,26 @@
 /// Provides congestion controller support for an endpoint
 pub trait Provider {
-    // TODO
+    type CongestionController: 'static + Send;
+    type Error: core::fmt::Display;
+
+    fn start(self) -> Result<Self::CongestionController, Self::Error>;
 }
 
-#[derive(Debug, Default)]
-pub struct Default {
-    // TODO
-}
-
-impl Provider for Default {}
-
-#[derive(Default, Debug)]
-pub struct Cubic {}
-
-impl Provider for Cubic {}
-
-#[derive(Default, Debug)]
-pub struct Reno {}
-
-impl Provider for Reno {}
+pub use default::Provider as Default;
 
 impl_provider_utils!();
+
+pub mod default {
+    #[derive(Debug, Default)]
+    pub struct Provider;
+
+    impl super::Provider for Provider {
+        type CongestionController = (); // TODO
+        type Error = core::convert::Infallible;
+
+        fn start(self) -> Result<Self::CongestionController, Self::Error> {
+            // TODO
+            Ok(())
+        }
+    }
+}

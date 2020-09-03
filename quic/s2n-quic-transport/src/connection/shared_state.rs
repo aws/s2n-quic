@@ -2,7 +2,7 @@
 //! and the internal Connection representation
 
 use crate::{
-    connection::{ConnectionApi, ConnectionApiProvider, ConnectionConfig, InternalConnectionId},
+    connection::{self, ConnectionApi, ConnectionApiProvider, InternalConnectionId},
     contexts::ConnectionApiCallContext,
     space::PacketSpaceManager,
     stream::{AbstractStreamManager, Stream, StreamError},
@@ -18,11 +18,11 @@ use std::sync::{Mutex, MutexGuard};
 
 /// A synchronized version of all connection state which is shared between
 /// the QUIC packet thread and application threads
-pub struct SynchronizedSharedConnectionState<ConnectionConfigType: ConnectionConfig> {
+pub struct SynchronizedSharedConnectionState<ConnectionConfigType: connection::Config> {
     inner: Mutex<SharedConnectionState<ConnectionConfigType>>,
 }
 
-impl<ConnectionConfigType: ConnectionConfig>
+impl<ConnectionConfigType: connection::Config>
     SynchronizedSharedConnectionState<ConnectionConfigType>
 {
     /// Creates a new shared state for the Connection
@@ -51,7 +51,7 @@ impl<ConnectionConfigType: ConnectionConfig>
     where
         F: FnOnce(
             StreamId,
-            &mut AbstractStreamManager<ConnectionConfigType::StreamType>,
+            &mut AbstractStreamManager<ConnectionConfigType::Stream>,
             &mut ConnectionApiCallContext,
         ) -> R,
     {
@@ -71,12 +71,12 @@ impl<ConnectionConfigType: ConnectionConfig>
 
 /// Contains all connection state which is shared between the QUIC packet thread
 /// and application threads
-pub struct SharedConnectionState<ConnectionConfigType: ConnectionConfig> {
+pub struct SharedConnectionState<ConnectionConfigType: connection::Config> {
     pub space_manager: PacketSpaceManager<ConnectionConfigType>,
     pub wakeup_handle: WakeupHandle<InternalConnectionId>,
 }
 
-impl<ConnectionConfigType: ConnectionConfig> SharedConnectionState<ConnectionConfigType> {
+impl<ConnectionConfigType: connection::Config> SharedConnectionState<ConnectionConfigType> {
     /// Creates a new shared state for the Connection
     pub fn new(
         space_manager: PacketSpaceManager<ConnectionConfigType>,
@@ -89,7 +89,7 @@ impl<ConnectionConfigType: ConnectionConfig> SharedConnectionState<ConnectionCon
     }
 }
 
-impl<ConnectionConfigType: ConnectionConfig> ConnectionApiProvider
+impl<ConnectionConfigType: connection::Config> ConnectionApiProvider
     for SynchronizedSharedConnectionState<ConnectionConfigType>
 {
     fn poll_pop(

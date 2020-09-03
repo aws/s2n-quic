@@ -2,17 +2,16 @@
 
 use crate::{
     connection::{
-        ConnectionCloseReason, ConnectionConfig, ConnectionIdMapperRegistration,
-        ConnectionInterests, ConnectionParameters, ConnectionTimerEntry, ConnectionTimers,
-        ConnectionTrait, ConnectionTransmission, ConnectionTransmissionContext,
-        InternalConnectionId, SharedConnectionState,
+        self, CloseReason as ConnectionCloseReason, ConnectionIdMapperRegistration,
+        ConnectionInterests, ConnectionTimerEntry, ConnectionTimers, ConnectionTransmission,
+        ConnectionTransmissionContext, InternalConnectionId, Parameters as ConnectionParameters,
+        SharedConnectionState,
     },
     contexts::ConnectionOnTransmitError,
 };
 use core::time::Duration;
 use s2n_quic_core::{
     application::ApplicationErrorExt,
-    connection::ConnectionId,
     inet::{DatagramInfo, SocketAddress},
     io::tx,
     packet::{
@@ -50,10 +49,10 @@ enum ConnectionState {
     /// The connection is active
     Active,
     /// The connection is closing, as described in
-    /// https://tools.ietf.org/id/draft-ietf-quic-transport-25.txt#10.1
+    /// https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#10.1
     Closing,
     /// The connection is draining, as described in
-    /// https://tools.ietf.org/id/draft-ietf-quic-transport-25.txt#10.1
+    /// https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#10.1
     Draining,
     /// The connection was drained, and is in its terminal state.
     /// The connection will be removed from the endpoint when it reached this state.
@@ -86,7 +85,7 @@ impl<'a> From<ConnectionCloseReason<'a>> for ConnectionState {
     }
 }
 
-pub struct ConnectionImpl<ConfigType: ConnectionConfig> {
+pub struct ConnectionImpl<ConfigType: connection::Config> {
     /// The configuration of this connection
     config: ConfigType,
     /// The [`Connection`]s internal identifier
@@ -99,9 +98,9 @@ pub struct ConnectionImpl<ConfigType: ConnectionConfig> {
     /// The timer entry in the endpoint timer list
     timer_entry: ConnectionTimerEntry,
     /// The last utilized remote Connection ID
-    peer_connection_id: ConnectionId,
+    peer_connection_id: connection::Id,
     /// The last utilized local Connection ID
-    local_connection_id: ConnectionId,
+    local_connection_id: connection::Id,
     /// The peers socket address
     peer_socket_address: SocketAddress,
     /// The QUIC protocol version which is used for this particular connection
@@ -112,24 +111,22 @@ pub struct ConnectionImpl<ConfigType: ConnectionConfig> {
     state: ConnectionState,
 }
 
-impl<ConfigType: ConnectionConfig> ConnectionImpl<ConfigType> {
+impl<ConfigType: connection::Config> ConnectionImpl<ConfigType> {
     fn update_crypto_state(
         &mut self,
         shared_state: &mut SharedConnectionState<ConfigType>,
         datagram: &DatagramInfo,
     ) -> Result<(), TransportError> {
         let space_manager = &mut shared_state.space_manager;
-
-        let had_application_space = space_manager.application().is_some();
         space_manager.poll_crypto(&self.config, datagram.timestamp)?;
 
-        if !had_application_space && space_manager.application().is_some() {
+        if matches!(self.state, ConnectionState::Handshaking)
+            && space_manager.application().is_some()
+        {
             // Move into the HandshakeCompleted state. This will signal the
             // necessary interest to hand over the connection to the application.
             self.accept_state = AcceptState::HandshakeCompleted;
             // Move the connection into the active state.
-            // TODO: Can we get here while the connection was already closed?
-            // Probably not, because we drop crypto keys while closing
             self.state = ConnectionState::Active;
 
             // Since we now have all transport parameters, we start the idle timer
@@ -191,7 +188,7 @@ macro_rules! packet_validator {
     };
 }
 
-impl<ConfigType: ConnectionConfig> ConnectionTrait for ConnectionImpl<ConfigType> {
+impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<ConfigType> {
     /// Static configuration of a connection
     type Config = ConfigType;
 
@@ -223,7 +220,7 @@ impl<ConfigType: ConnectionConfig> ConnectionTrait for ConnectionImpl<ConfigType
     }
 
     /// Initiates closing the connection as described in
-    /// https://tools.ietf.org/id/draft-ietf-quic-transport-25.txt#10
+    /// https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#10
     ///
     /// This method can be called for any of the close reasons:
     /// - Idle timeout
@@ -245,7 +242,7 @@ impl<ConfigType: ConnectionConfig> ConnectionTrait for ConnectionImpl<ConfigType
         // TODO: Rember close reason
         // TODO: Build a CONNECTION_CLOSE frame based on the keys that are available
         // at the moment. We need to use the highest set of available keys as
-        // described in https://tools.ietf.org/id/draft-ietf-quic-transport-25.txt#10.3
+        // described in https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#10.3
 
         // We are not interested in this timer anymore
         // TODO: There might be more such timers need to get added in the future

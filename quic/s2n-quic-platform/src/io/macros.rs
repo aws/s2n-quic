@@ -33,24 +33,6 @@ macro_rules! impl_io {
     };
 }
 
-macro_rules! impl_io_tokio {
-    ($name:ident, $call:ident) => {
-        #[cfg(all(feature = "futures", feature = "tokio"))]
-        impl<Buffer: $crate::buffer::Buffer> $name<Buffer, $crate::socket::tokio::Socket> {
-            pub async fn sync(&mut self) -> ::std::io::Result<usize> {
-                $crate::socket::tokio::sync::$call(self).await
-            }
-
-            pub fn poll(
-                &mut self,
-                cx: &mut ::core::task::Context<'_>,
-            ) -> ::core::task::Poll<::std::io::Result<usize>> {
-                $crate::socket::tokio::poll::$call(self, cx)
-            }
-        }
-    };
-}
-
 #[cfg(test)]
 macro_rules! impl_io_rx_tests {
     () => {
@@ -90,7 +72,7 @@ macro_rules! impl_io_rx_tests {
                     client.send_to(&message[..], server_addr).await.unwrap();
                 }
 
-                server.sync().await.unwrap();
+                server.receive().await.unwrap();
 
                 let mut queue = server.queue();
                 let len = queue.len();
@@ -173,7 +155,7 @@ macro_rules! impl_io_tx_tests {
                     queue.push((server_addr.into(), &message[..])).unwrap();
                 }
 
-                client.sync().await.unwrap();
+                client.transmit().await.unwrap();
 
                 while let Ok(res) =
                     timeout(Duration::from_millis(10), server.recv_from(&mut buffer)).await

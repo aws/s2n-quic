@@ -1,4 +1,5 @@
 use crate::{
+    connection,
     crypto::{CryptoError, EncryptedPayload, HeaderCrypto, OneRTTCrypto, ProtectedPayload},
     packet::{
         decoding::HeaderDecoder,
@@ -7,7 +8,7 @@ use crate::{
             PacketNumber, PacketNumberLen, PacketNumberSpace, ProtectedPacketNumber,
             TruncatedPacketNumber,
         },
-        DestinationConnectionIDDecoder, Tag,
+        Tag,
     },
 };
 use s2n_codec::{CheckedRange, DecoderBufferMut, DecoderBufferMutResult, Encoder, EncoderValue};
@@ -166,10 +167,10 @@ pub type CleartextShort<'a> = Short<&'a [u8], KeyPhase, PacketNumber, DecoderBuf
 
 impl<'a> ProtectedShort<'a> {
     #[inline]
-    pub(crate) fn decode<DCID: DestinationConnectionIDDecoder>(
+    pub(crate) fn decode<Validator: connection::id::Validator>(
         tag: Tag,
         buffer: DecoderBufferMut<'a>,
-        destination_connection_id_decoder: DCID,
+        destination_connection_id_decoder: &Validator,
     ) -> DecoderBufferMutResult<'a, ProtectedShort<'a>> {
         let mut decoder = HeaderDecoder::new_short(&buffer);
 

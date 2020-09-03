@@ -22,7 +22,7 @@ fn decoding(c: &mut Criterion) {
                         });
 
                         let buffer = DecoderBufferMut::new(&mut data);
-                        let _ = black_box(ProtectedPacket::decode(buffer, 20).unwrap());
+                        let _ = black_box(ProtectedPacket::decode(buffer, &20).unwrap());
                     })
                 })
                 .throughput(Throughput::Bytes(test.len() as u64)),

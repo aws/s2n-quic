@@ -8,7 +8,7 @@ mod handle;
 pub use acceptor::*;
 pub use handle::*;
 pub use metric::Metric;
-pub use s2n_quic_core::connection::ConnectionError as Error;
+pub use s2n_quic_core::connection::Error;
 
 pub type Result<T> = core::result::Result<T, Error>;
 

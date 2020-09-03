@@ -1,11 +1,10 @@
 use crate::{
-    connection::{ConnectionConfig, SharedConnectionState},
+    connection::{self, SharedConnectionState},
     contexts::ConnectionContext,
 };
 use core::time::Duration;
 use s2n_codec::{Encoder, EncoderBuffer};
 use s2n_quic_core::{
-    connection::ConnectionId,
     endpoint::EndpointType,
     inet::{ExplicitCongestionNotification, SocketAddress},
     io::tx,
@@ -16,8 +15,8 @@ use s2n_quic_core::{
 #[derive(Clone, Copy, Debug)]
 pub struct ConnectionTransmissionContext {
     pub quic_version: u32,
-    pub source_connection_id: ConnectionId,
-    pub destination_connection_id: ConnectionId,
+    pub source_connection_id: connection::Id,
+    pub destination_connection_id: connection::Id,
     pub timestamp: Timestamp,
     pub local_endpoint_type: EndpointType,
     pub remote_address: SocketAddress,
@@ -29,17 +28,17 @@ impl ConnectionContext for ConnectionTransmissionContext {
         self.local_endpoint_type
     }
 
-    fn connection_id(&self) -> &ConnectionId {
+    fn connection_id(&self) -> &connection::Id {
         &self.source_connection_id
     }
 }
 
-pub struct ConnectionTransmission<'a, ConnectionConfigType: ConnectionConfig> {
+pub struct ConnectionTransmission<'a, ConnectionConfigType: connection::Config> {
     pub context: ConnectionTransmissionContext,
     pub shared_state: &'a mut SharedConnectionState<ConnectionConfigType>,
 }
 
-impl<'a, ConnectionConfigType: ConnectionConfig> tx::Message
+impl<'a, ConnectionConfigType: connection::Config> tx::Message
     for ConnectionTransmission<'a, ConnectionConfigType>
 {
     fn remote_address(&mut self) -> SocketAddress {
@@ -91,7 +90,7 @@ impl<'a, ConnectionConfigType: ConnectionConfig> tx::Message
         };
 
         let encoder = if let Some(space) = space_manager.handshake_mut() {
-            match space.on_transmit(&self.context, encoder) {
+            let encoder = match space.on_transmit(&self.context, encoder) {
                 Ok(encoder) => {
                     //= https://tools.ietf.org/id/draft-ietf-quic-tls-27.txt#4.10.1
                     //# A client MUST discard Initial keys when it first sends a Handshake packet
@@ -114,7 +113,18 @@ impl<'a, ConnectionConfigType: ConnectionConfig> tx::Message
                     // move to the next packet space
                     encoder
                 }
+            };
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-tls-29#4.11.2
+            //# An endpoint MUST discard its handshake keys when the TLS handshake is
+            //# confirmed (Section 4.1.2).
+            if let Some(application_space) = space_manager.application() {
+                if application_space.handshake_status.is_confirmed() {
+                    space_manager.discard_handshake();
+                }
             }
+
+            encoder
         } else {
             encoder
         };

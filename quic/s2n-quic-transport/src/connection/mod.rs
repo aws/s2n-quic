@@ -3,12 +3,10 @@
 use crate::stream::{StreamLimits, StreamTrait};
 use s2n_quic_core::{
     application::ApplicationErrorCode,
-    connection::{ConnectionError, ConnectionId},
-    crypto::tls::TLSSession,
-    endpoint::EndpointType,
+    crypto::tls,
+    endpoint,
     frame::ConnectionClose,
     inet::SocketAddress,
-    packet::DestinationConnectionIDDecoder,
     stream::StreamError,
     time::Timestamp,
     transport::{
@@ -35,43 +33,40 @@ pub(crate) use connection_container::{ConnectionContainer, ConnectionContainerIt
 pub(crate) use connection_id_mapper::{ConnectionIdMapper, ConnectionIdMapperRegistration};
 pub(crate) use connection_interests::ConnectionInterests;
 pub(crate) use connection_timers::{ConnectionTimerEntry, ConnectionTimers};
-pub(crate) use connection_trait::ConnectionTrait;
+pub(crate) use connection_trait::ConnectionTrait as Trait;
 pub(crate) use internal_connection_id::{InternalConnectionId, InternalConnectionIdGenerator};
 pub(crate) use shared_state::{SharedConnectionState, SynchronizedSharedConnectionState};
 pub(crate) use transmission::{ConnectionTransmission, ConnectionTransmissionContext};
 
 pub use api::Connection;
-pub use connection_impl::ConnectionImpl;
+pub use connection_impl::ConnectionImpl as Implementation;
+/// re-export core
+pub use s2n_quic_core::connection::*;
 
 /// Stores configuration parameters for a connection which might be shared
 /// between multiple connections of the same type.
-pub trait ConnectionConfig: 'static + Send {
+pub trait Config: 'static + Send {
     /// The type of the Streams which are managed by the `Connection`
-    type StreamType: StreamTrait;
+    type Stream: StreamTrait;
     /// Session type
-    type TLSSession: TLSSession;
-    /// The type which is used for decoding destination connection IDs
-    type DestinationConnectionIDDecoderType: DestinationConnectionIDDecoder;
+    type TLSSession: tls::Session;
 
-    /// The type of the local endpoint
-    const ENDPOINT_TYPE: EndpointType;
+    const ENDPOINT_TYPE: endpoint::EndpointType;
 
     /// Our initial flow control limits as advertised in transport parameters.
-    fn local_flow_control_limits(&self) -> &InitialFlowControlLimits;
+    fn local_flow_control_limits(&self) -> InitialFlowControlLimits;
     /// Our ack settings as advertised in transport parameters.
-    fn local_ack_settings(&self) -> &AckSettings;
+    fn local_ack_settings(&self) -> AckSettings;
     /// Returns the limits for this connection that are not defined through
     /// transport parameters
-    fn connection_limits(&self) -> &ConnectionLimits;
-    /// Returns the destination connection ID decoder for this connection
-    fn destination_connnection_id_decoder(&self) -> Self::DestinationConnectionIDDecoderType;
+    fn connection_limits(&self) -> Limits;
 }
 
 /// Parameters which are passed to a Connection.
 /// These are unique per created connection.
-pub struct ConnectionParameters<ConfigType: ConnectionConfig> {
+pub struct Parameters<Cfg: Config> {
     /// The connections shared configuration
-    pub connection_config: ConfigType,
+    pub connection_config: Cfg,
     /// The [`Connection`]s internal identifier
     pub internal_connection_id: InternalConnectionId,
     /// The connection ID mapper registration which should be utilized by the connection
@@ -79,9 +74,9 @@ pub struct ConnectionParameters<ConfigType: ConnectionConfig> {
     /// The per-connection timer
     pub timer: ConnectionTimerEntry,
     /// The last utilized remote Connection ID
-    pub peer_connection_id: ConnectionId,
+    pub peer_connection_id: Id,
     /// The last utilized local Connection ID
-    pub local_connection_id: ConnectionId,
+    pub local_connection_id: Id,
     /// The peers socket address
     pub peer_socket_address: SocketAddress,
     /// The time the connection is being created
@@ -92,7 +87,7 @@ pub struct ConnectionParameters<ConfigType: ConnectionConfig> {
 
 /// Enumerates reasons for closing a connection
 #[derive(Clone, Copy, Debug)]
-pub enum ConnectionCloseReason<'a> {
+pub enum CloseReason<'a> {
     /// The connection gets closed because the idle timer expired
     IdleTimerExpired,
     /// The connection closed because the peer requested it through a
@@ -105,10 +100,10 @@ pub enum ConnectionCloseReason<'a> {
     LocalObservedTransportErrror(TransportError),
 }
 
-impl<'a> Into<ConnectionError> for ConnectionCloseReason<'a> {
-    fn into(self) -> ConnectionError {
+impl<'a> Into<Error> for CloseReason<'a> {
+    fn into(self) -> Error {
         match self {
-            Self::IdleTimerExpired => ConnectionError::IdleTimerExpired,
+            Self::IdleTimerExpired => Error::IdleTimerExpired,
             Self::PeerImmediateClose(error) => error.into(),
             Self::LocalImmediateClose(error) => error.into(),
             Self::LocalObservedTransportErrror(error) => error.into(),
@@ -116,9 +111,9 @@ impl<'a> Into<ConnectionError> for ConnectionCloseReason<'a> {
     }
 }
 
-impl<'a> Into<StreamError> for ConnectionCloseReason<'a> {
+impl<'a> Into<StreamError> for CloseReason<'a> {
     fn into(self) -> StreamError {
-        let error: ConnectionError = self.into();
+        let error: Error = self.into();
         error.into()
     }
 }
@@ -126,7 +121,7 @@ impl<'a> Into<StreamError> for ConnectionCloseReason<'a> {
 /// Per-connection limits
 #[derive(Debug, Copy, Clone, Default, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct ConnectionLimits {
+pub struct Limits {
     /// The limits for streams on this connection
     pub stream_limits: StreamLimits,
 

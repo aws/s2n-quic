@@ -8,7 +8,7 @@ use core::task::{Context, Poll};
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     application::ApplicationErrorCode,
-    connection::ConnectionError,
+    connection,
     endpoint::EndpointType,
     frame::{Frame, MaxData, MaxStreamData, StopSending},
     packet::number::PacketNumber,
@@ -2146,7 +2146,7 @@ fn reset_does_not_cause_an_action_if_stream_is_already_reset() {
                 let mut events = StreamEvents::new();
                 test_env
                     .stream
-                    .on_internal_reset(ConnectionError::Unspecified.into(), &mut events);
+                    .on_internal_reset(connection::Error::Unspecified.into(), &mut events);
                 assert!(events.write_wake.is_none());
             } else {
                 execute_instructions(&mut test_env, &[Instruction::Reset(reset_error_code, true)]);
@@ -2206,7 +2206,7 @@ fn reset_does_not_cause_an_action_if_stream_is_finished_and_acknowledged() {
                 let mut events = StreamEvents::new();
                 test_env
                     .stream
-                    .on_internal_reset(ConnectionError::Unspecified.into(), &mut events);
+                    .on_internal_reset(connection::Error::Unspecified.into(), &mut events);
                 assert!(events.write_wake.is_none());
             } else {
                 execute_instructions(&mut test_env, &[Instruction::Reset(reset_error_code, true)]);
@@ -2288,7 +2288,7 @@ fn resetting_the_stream_does_does_trigger_a_reset_frame_and_reset_errors() {
                     let mut events = StreamEvents::new();
                     test_env
                         .stream
-                        .on_internal_reset(ConnectionError::Unspecified.into(), &mut events);
+                        .on_internal_reset(connection::Error::Unspecified.into(), &mut events);
                     assert!(events.write_wake.is_some());
 
                     // No RESET frame should be transitted due to an internal reset
@@ -2300,7 +2300,7 @@ fn resetting_the_stream_does_does_trigger_a_reset_frame_and_reset_errors() {
                         ],
                     );
 
-                    ConnectionError::Unspecified.into()
+                    connection::Error::Unspecified.into()
                 }
                 ResetReason::ApplicationReset => {
                     // The reset should lead to an outgoing packet
@@ -2424,7 +2424,7 @@ fn stream_does_not_try_to_acquire_connection_flow_control_credits_after_reset() 
                     let mut events = StreamEvents::new();
                     test_env
                         .stream
-                        .on_internal_reset(ConnectionError::Unspecified.into(), &mut events);
+                        .on_internal_reset(connection::Error::Unspecified.into(), &mut events);
                     assert!(events.write_wake.is_some());
 
                     // No RESET frame should be transitted due to an internal reset
@@ -2436,7 +2436,7 @@ fn stream_does_not_try_to_acquire_connection_flow_control_credits_after_reset() 
                         ],
                     );
 
-                    ConnectionError::Unspecified.into()
+                    connection::Error::Unspecified.into()
                 }
                 ResetReason::ApplicationReset => {
                     // The reset should lead to an outgoing packet

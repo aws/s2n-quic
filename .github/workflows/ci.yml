@@ -18,7 +18,7 @@ env:
   SCCACHE_IDLE_TIMEOUT: 0
   # Pin the nightly toolchain to prevent breakage.
   # This should be occasionally updated.
-  RUST_NIGHTLY_TOOLCHAIN: nightly-2020-07-11
+  RUST_NIGHTLY_TOOLCHAIN: nightly-2020-08-25
 
 jobs:
   env:
@@ -463,7 +463,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --no-fail-fast --workspace --exclude s2n-quic-rustls --exclude s2n-quic-qns --all-features
+          args: --no-fail-fast --workspace --exclude s2n-quic-qns --all-features
         env:
           # From https://github.com/mozilla/grcov#example-how-to-generate-gcda-files-for-a-rust-project
           RUSTFLAGS: -Zprofile -Ccodegen-units=1 -Copt-level=0 -Clink-dead-code -Coverflow-checks=off -Zpanic_abort_tests

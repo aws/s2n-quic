@@ -248,7 +248,7 @@ impl TransportError {
     }
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-23.txt#20.1
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#20.1
 //# Application protocol error codes are 62-bit unsigned integers, but
 //# the management of application error codes is left to application
 //# protocols.  Application protocol error codes are used for the

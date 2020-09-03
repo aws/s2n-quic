@@ -1,38 +1,19 @@
 use crate::{
-    connection::{
-        ConnectionConfig, ConnectionParameters, ConnectionTrait, SynchronizedSharedConnectionState,
-    },
-    endpoint::{ConnectionIdGenerator, Endpoint, EndpointConfig},
+    connection::{self, id::Generator as _, SynchronizedSharedConnectionState, Trait as _},
+    endpoint,
     space::PacketSpaceManager,
 };
 use alloc::sync::Arc;
 use core::{convert::TryInto, time::Duration};
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
-    connection::ConnectionId,
-    crypto::{tls::TLSEndpoint, CryptoSuite, InitialCrypto},
+    crypto::{tls::Endpoint as TLSEndpoint, CryptoSuite, InitialCrypto},
     inet::DatagramInfo,
     packet::initial::ProtectedInitial,
-    transport::error::TransportError,
+    transport::{error::TransportError, parameters::ServerTransportParameters},
 };
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#14
-//# A client MUST expand the payload of all UDP datagrams carrying
-//# Initial packets to at least 1200 bytes, by adding PADDING frames to
-//# the Initial packet or by coalescing the Initial packet (see
-//# Section 12.2).
-
-const MINIMUM_INITIAL_PACKET_LEN: usize = 1200;
-
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#7.2
-//# When an Initial packet is sent by a client that has not previously
-//# received an Initial or Retry packet from the server, it populates the
-//# Destination Connection ID field with an unpredictable value.  This
-//# MUST be at least 8 bytes in length.
-
-const DESTINATION_CONNECTION_ID_MIN_LEN: usize = 8;
-
-impl<ConfigType: EndpointConfig> Endpoint<ConfigType> {
+impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
     pub(super) fn handle_initial_packet(
         &mut self,
         datagram: &DatagramInfo,
@@ -40,32 +21,40 @@ impl<ConfigType: EndpointConfig> Endpoint<ConfigType> {
         remaining: DecoderBufferMut,
     ) -> Result<(), TransportError> {
         debug_assert!(
-            ConfigType::ENDPOINT_TYPE.is_server(),
+            Config::ENDPOINT_TYPE.is_server(),
             "only servers can accept new initial connections"
         );
 
-        // TODO: Validate version
-        // TODO: Check that the connection ID is at least 8 byte
-        // But maybe we really would need to do this before or inside parsing
-        if datagram.payload_len < MINIMUM_INITIAL_PACKET_LEN {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#14.1
+        //# A client MUST expand the payload of all UDP datagrams carrying
+        //# Initial packets to at least the smallest allowed maximum packet size
+        //# (1200 bytes) by adding PADDING frames to the Initial packet or by
+        //# coalescing the Initial packet
+        if datagram.payload_len < 1200 {
             return Err(TransportError::PROTOCOL_VIOLATION.with_reason("packet too small"));
         }
 
-        let destination_connection_id: ConnectionId =
+        let destination_connection_id: connection::Id =
             packet.destination_connection_id().try_into()?;
 
-        if destination_connection_id.len() < DESTINATION_CONNECTION_ID_MIN_LEN {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#7.2
+        //# When an Initial packet is sent by a client that has not previously
+        //# received an Initial or Retry packet from the server, the client
+        //# populates the Destination Connection ID field with an unpredictable
+        //# value.  This Destination Connection ID MUST be at least 8 bytes in
+        //# length.
+        if destination_connection_id.len() < 8 {
             return Err(TransportError::PROTOCOL_VIOLATION
                 .with_reason("destination connection id too short"));
         }
 
-        let source_connection_id: ConnectionId = packet.source_connection_id().try_into()?;
+        let source_connection_id: connection::Id = packet.source_connection_id().try_into()?;
 
         // TODO check if we're busy
         // TODO check the version number
 
         let initial_crypto =
-            <<ConfigType::ConnectionConfigType as ConnectionConfig>::TLSSession as CryptoSuite>::InitialCrypto::new_server(
+            <<Config::ConnectionConfig as connection::Config>::TLSSession as CryptoSuite>::InitialCrypto::new_server(
                 destination_connection_id.as_bytes(),
             );
 
@@ -76,11 +65,14 @@ impl<ConfigType: EndpointConfig> Endpoint<ConfigType> {
         // TODO handle token with stateless retry
 
         let internal_connection_id = self.connection_id_generator.generate_id();
+        // TODO store the expiration of the connection ID
         let (local_connection_id, _connection_id_expiration) =
-            self.local_connection_id_generator.generate_connection_id();
+            self.config.connection_id_format().generate();
+
         let mut connection_id_mapper_registration = self
             .connection_id_mapper
             .create_registration(internal_connection_id);
+
         connection_id_mapper_registration
             .register_connection_id(&local_connection_id)
             .expect("can register connection ID");
@@ -88,17 +80,41 @@ impl<ConfigType: EndpointConfig> Endpoint<ConfigType> {
         let timer = self.timer_manager.create_timer(
             internal_connection_id,
             datagram.timestamp + Duration::from_secs(3600),
-        ); // TODO: Fixme
+        ); // TODO: make it so we don't arm for a given time and immediately change it
 
         let wakeup_handle = self
             .wakeup_queue
             .create_wakeup_handle(internal_connection_id);
 
-        let tls_session = self.tls_endpoint.new_server_session();
+        // TODO initialize transport parameters from provider values
+        let mut transport_parameters = ServerTransportParameters::default();
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#7.3
+        //# A server includes the Destination Connection ID field from the first
+        //# Initial packet it received from the client in the
+        //# original_destination_connection_id transport parameter
+        transport_parameters.original_destination_connection_id = destination_connection_id
+            .try_into()
+            .expect("connection ID already validated");
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#7.3
+        //# Each endpoint includes the value of the Source Connection ID field
+        //# from the first Initial packet it sent in the
+        //# initial_source_connection_id transport parameter
+        transport_parameters.initial_source_connection_id = local_connection_id
+            .try_into()
+            .expect("connection ID already validated");
+
+        // TODO send retry_source_connection_id
+
+        let tls_session = self
+            .config
+            .tls_endpoint()
+            .new_server_session(&transport_parameters);
 
         let connection_config = self.config.create_connection_config();
 
-        let connection_parameters = ConnectionParameters {
+        let connection_parameters = connection::Parameters {
             connection_config,
             internal_connection_id,
             connection_id_mapper_registration,
@@ -118,8 +134,7 @@ impl<ConfigType: EndpointConfig> Endpoint<ConfigType> {
             wakeup_handle,
         ));
 
-        let mut connection =
-            <ConfigType as EndpointConfig>::ConnectionType::new(connection_parameters);
+        let mut connection = <Config as endpoint::Config>::Connection::new(connection_parameters);
 
         // The scope is needed in order to lock the shared state only for a certain duration.
         // It needs to be unlocked when wee insert the connection in our map
@@ -132,6 +147,7 @@ impl<ConfigType: EndpointConfig> Endpoint<ConfigType> {
                 locked_shared_state,
                 datagram,
                 destination_connection_id,
+                self.config.connection_id_format(),
                 remaining,
             )?;
         }

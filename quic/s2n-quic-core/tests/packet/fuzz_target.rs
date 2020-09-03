@@ -17,7 +17,7 @@ fn main() {
         let mut decoder_buffer = DecoderBufferMut::new(&mut data);
         let mut encoder_buffer = EncoderBuffer::new(&mut encoder_data);
 
-        while let Ok((packet, remaining)) = ProtectedPacket::decode(decoder_buffer, 20) {
+        while let Ok((packet, remaining)) = ProtectedPacket::decode(decoder_buffer, &20) {
             if let Ok(cleartext_packet) = decrypt_packet(packet) {
                 encoder_buffer = encode_packet(cleartext_packet, encoder_buffer);
             }

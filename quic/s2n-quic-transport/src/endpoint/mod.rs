@@ -3,8 +3,8 @@
 use crate::{
     acceptor::Acceptor,
     connection::{
-        ConnectionContainer, ConnectionContainerIterationResult, ConnectionIdMapper,
-        ConnectionTrait, InternalConnectionId, InternalConnectionIdGenerator,
+        self, ConnectionContainer, ConnectionContainerIterationResult, ConnectionIdMapper,
+        InternalConnectionId, InternalConnectionIdGenerator, Trait as _,
     },
     timer::TimerManager,
     unbounded_channel,
@@ -14,7 +14,6 @@ use alloc::collections::VecDeque;
 use core::task::{Context, Poll};
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
-    connection::ConnectionId,
     inet::DatagramInfo,
     io::{rx, tx},
     packet::ProtectedPacket,
@@ -22,26 +21,24 @@ use s2n_quic_core::{
 };
 
 mod config;
-pub use config::{ConnectionIdGenerator, EndpointConfig};
-
 mod initial;
 
+pub use config::Config;
+/// re-export core
+pub use s2n_quic_core::endpoint::*;
+
 /// A QUIC `Endpoint`
-pub struct Endpoint<ConfigType: EndpointConfig> {
+pub struct Endpoint<Cfg: Config> {
     /// Configuration parameters for the endpoint
-    config: ConfigType,
+    config: Cfg,
     /// Contains all active connections
-    connections: ConnectionContainer<ConfigType::ConnectionType>,
+    connections: ConnectionContainer<Cfg::Connection>,
     /// Creates internal IDs for new connections
     connection_id_generator: InternalConnectionIdGenerator,
     /// Maps from external to internal connection IDs
     connection_id_mapper: ConnectionIdMapper,
-    /// Generates local connection IDs
-    local_connection_id_generator: ConfigType::ConnectionIdGeneratorType,
     /// Manages timers for connections
     timer_manager: TimerManager<InternalConnectionId>,
-    /// Manages TLS sessions
-    tls_endpoint: ConfigType::TLSEndpointType,
     /// Allows to wakeup the endpoint task which might be blocked on waiting for packets
     /// from application tasks (which e.g. enqueued new data to send).
     wakeup_queue: WakeupQueue<InternalConnectionId>,
@@ -54,15 +51,11 @@ pub struct Endpoint<ConfigType: EndpointConfig> {
 // Safety: The endpoint is marked as `!Send`, because the struct contains `Rc`s.
 // However those `Rcs` are only referenced by other objects within the `Endpoint`
 // and which also get moved.
-unsafe impl<ConfigType: EndpointConfig> Send for Endpoint<ConfigType> {}
+unsafe impl<Cfg: Config> Send for Endpoint<Cfg> {}
 
-impl<ConfigType: EndpointConfig> Endpoint<ConfigType> {
+impl<Cfg: Config> Endpoint<Cfg> {
     /// Creates a new QUIC endpoint using the given configuration
-    pub fn new(
-        config: ConfigType,
-        connection_id_generator: ConfigType::ConnectionIdGeneratorType,
-        tls_endpoint: ConfigType::TLSEndpointType,
-    ) -> (Self, Acceptor) {
+    pub fn new(config: Cfg) -> (Self, Acceptor) {
         let (connection_sender, connection_receiver) = unbounded_channel::channel();
         let acceptor = Acceptor::new(connection_receiver);
 
@@ -71,9 +64,7 @@ impl<ConfigType: EndpointConfig> Endpoint<ConfigType> {
             connections: ConnectionContainer::new(connection_sender),
             connection_id_generator: InternalConnectionIdGenerator::new(),
             connection_id_mapper: ConnectionIdMapper::new(),
-            local_connection_id_generator: connection_id_generator,
             timer_manager: TimerManager::new(),
-            tls_endpoint,
             wakeup_queue: WakeupQueue::new(),
             dequeued_wakeups: VecDeque::new(),
         };
@@ -106,15 +97,12 @@ impl<ConfigType: EndpointConfig> Endpoint<ConfigType> {
 
     /// Ingests a single datagram
     fn receive_datagram(&mut self, datagram: &DatagramInfo, payload: &mut [u8]) {
-        // Obtain the connection ID decoder from the generator that we are using.
-        let destination_connection_id_decoder = self
-            .local_connection_id_generator
-            .destination_connection_id_decoder();
+        let connection_id_format = self.config.connection_id_format();
 
         // Try to decode the first packet in the datagram
         let buffer = DecoderBufferMut::new(payload);
         let (packet, remaining) = if let Ok((packet, remaining)) =
-            ProtectedPacket::decode(buffer, destination_connection_id_decoder)
+            ProtectedPacket::decode(buffer, connection_id_format)
         {
             (packet, remaining)
         } else {
@@ -123,7 +111,8 @@ impl<ConfigType: EndpointConfig> Endpoint<ConfigType> {
             return;
         };
 
-        let connection_id = match ConnectionId::try_from_bytes(packet.destination_connection_id()) {
+        let connection_id = match connection::Id::try_from_bytes(packet.destination_connection_id())
+        {
             Some(connection_id) => connection_id,
             None => return, // Ignore the datagram
         };
@@ -142,6 +131,7 @@ impl<ConfigType: EndpointConfig> Endpoint<ConfigType> {
                         datagram,
                         packet,
                         connection_id,
+                        connection_id_format,
                         remaining,
                     ) {
                         eprintln!("Packet handling error: {:?}", e);
@@ -159,7 +149,7 @@ impl<ConfigType: EndpointConfig> Endpoint<ConfigType> {
             return;
         }
 
-        if ConfigType::ENDPOINT_TYPE.is_server() {
+        if Cfg::ENDPOINT_TYPE.is_server() {
             match packet {
                 ProtectedPacket::Initial(packet) => {
                     if let Err(err) = self.handle_initial_packet(datagram, packet, remaining) {
@@ -222,6 +212,14 @@ impl<ConfigType: EndpointConfig> Endpoint<ConfigType> {
         }
     }
 
+    /// Returns a future that handles wakeup events
+    pub fn pending_wakeups(&mut self, timestamp: Timestamp) -> PendingWakeups<Cfg> {
+        PendingWakeups {
+            endpoint: self,
+            timestamp,
+        }
+    }
+
     /// Handles all wakeup events.
     /// This should be called in every eventloop iteration.
     /// Returns the number of wakeups which have occurred and had been handled.
@@ -256,5 +254,23 @@ impl<ConfigType: EndpointConfig> Endpoint<ConfigType> {
     /// should be called next time.
     pub fn next_timer_expiration(&self) -> Option<Timestamp> {
         self.timer_manager.next_expiration()
+    }
+}
+
+/// A future for handling wakeup events on an endpoint
+pub struct PendingWakeups<'a, Cfg: Config> {
+    endpoint: &'a mut Endpoint<Cfg>,
+    timestamp: Timestamp,
+}
+
+impl<'a, Cfg: Config> core::future::Future for PendingWakeups<'a, Cfg> {
+    type Output = usize;
+
+    fn poll(
+        mut self: core::pin::Pin<&mut Self>,
+        cx: &mut core::task::Context<'_>,
+    ) -> core::task::Poll<Self::Output> {
+        let timestamp = self.timestamp;
+        self.endpoint.poll_pending_wakeups(cx, timestamp)
     }
 }

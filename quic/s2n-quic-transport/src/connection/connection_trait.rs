@@ -2,9 +2,9 @@
 
 use crate::{
     connection::{
-        connection_interests::ConnectionInterests, internal_connection_id::InternalConnectionId,
-        shared_state::SharedConnectionState, ConnectionCloseReason, ConnectionConfig,
-        ConnectionParameters,
+        self, connection_interests::ConnectionInterests,
+        internal_connection_id::InternalConnectionId, shared_state::SharedConnectionState,
+        CloseReason as ConnectionCloseReason, Parameters as ConnectionParameters,
     },
     contexts::ConnectionOnTransmitError,
     processed_packet::ProcessedPacket,
@@ -12,7 +12,6 @@ use crate::{
 };
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
-    connection::ConnectionId,
     frame::{Frame, FrameMut},
     inet::DatagramInfo,
     io::tx,
@@ -33,7 +32,7 @@ use s2n_quic_core::{
 /// A trait which represents an internally used `Connection`
 pub trait ConnectionTrait: Sized {
     /// Static configuration of a connection
-    type Config: ConnectionConfig;
+    type Config: connection::Config;
 
     /// Creates a new `Connection` instance with the given configuration
     fn new(parameters: ConnectionParameters<Self::Config>) -> Self;
@@ -45,7 +44,7 @@ pub trait ConnectionTrait: Sized {
     fn internal_connection_id(&self) -> InternalConnectionId;
 
     /// Initiates closing the connection as described in
-    /// https://tools.ietf.org/id/draft-ietf-quic-transport-25.txt#10
+    /// https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#10
     ///
     /// This method can be called for any of the close reasons:
     /// - Idle timeout
@@ -189,21 +188,26 @@ pub trait ConnectionTrait: Sized {
         }
     }
 
-    fn handle_first_and_remaining_packets(
+    fn handle_first_and_remaining_packets<Validator: connection::id::Validator>(
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         first_packet: ProtectedPacket,
-        original_connection_id: ConnectionId,
+        original_connection_id: connection::Id,
+        connection_id_validator: &Validator,
         payload: DecoderBufferMut,
     ) -> Result<(), ()> {
         if let Err(err) = self.handle_packet(shared_state, datagram, first_packet) {
             self.handle_transport_error(shared_state, datagram, err);
             return Err(());
         }
-        if let Err(err) =
-            self.handle_remaining_packets(shared_state, datagram, original_connection_id, payload)
-        {
+        if let Err(err) = self.handle_remaining_packets(
+            shared_state,
+            datagram,
+            original_connection_id,
+            connection_id_validator,
+            payload,
+        ) {
             self.handle_transport_error(shared_state, datagram, err);
             return Err(());
         }
@@ -212,18 +216,16 @@ pub trait ConnectionTrait: Sized {
 
     /// This is called to handle the remaining and yet undecoded packets inside
     /// a datagram.
-    fn handle_remaining_packets(
+    fn handle_remaining_packets<Validator: connection::id::Validator>(
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
-        original_connection_id: ConnectionId,
+        original_connection_id: connection::Id,
+        connection_id_validator: &Validator,
         mut payload: DecoderBufferMut,
     ) -> Result<(), TransportError> {
-        let destination_connnection_id_decoder = self.config().destination_connnection_id_decoder();
-
         while !payload.is_empty() {
-            let (packet, remaining) =
-                ProtectedPacket::decode(payload, destination_connnection_id_decoder)?;
+            let (packet, remaining) = ProtectedPacket::decode(payload, connection_id_validator)?;
             payload = remaining;
 
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#12.2
@@ -402,18 +404,6 @@ pub trait ConnectionTrait: Sized {
                         .map_err(on_error)?;
                 }
                 Frame::HandshakeDone(frame) => {
-                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.20
-                    //# This frame can only be sent by the server.  Servers MUST NOT send a
-                    //# HANDSHAKE_DONE frame before completing the handshake.  A server MUST
-                    //# treat receipt of a HANDSHAKE_DONE frame as a connection error of type
-                    //# PROTOCOL_VIOLATION.
-
-                    if Self::Config::ENDPOINT_TYPE.is_server() {
-                        return Err(TransportError::PROTOCOL_VIOLATION
-                            .with_reason("Clients MUST NOT send HANDSHAKE_DONE frames")
-                            .with_frame_type(frame.tag().into()));
-                    }
-
                     let on_error = with_frame_type!(frame);
                     processed_packet.on_processed_frame(&frame);
                     space

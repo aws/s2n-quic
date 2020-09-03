@@ -4,14 +4,13 @@ An implementation of the IETF QUIC protocol
 ### Server Example
 
 ```rust,no_run
-use std::error::Error;
-use std::net::UdpSocket;
+use std::{error::Error, path::Path};
 use s2n_quic::Server;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let mut server = Server::builder()
-        .with_tls("./certs/key.pem")?
+        .with_tls((Path::new("./certs/cert.pem"), Path::new("./certs/key.pem")))?
         .with_io("127.0.0.1:443")?
         .build()?;
 
@@ -54,6 +53,3 @@ pub use server::Server;
 mod extensions;
 #[cfg(feature = "protocol-extensions")]
 pub use extensions::Extensions;
-
-#[cfg(feature = "tokio")]
-pub(crate) mod tokio;

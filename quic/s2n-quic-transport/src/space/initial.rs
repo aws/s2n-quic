@@ -1,5 +1,5 @@
 use crate::{
-    connection::ConnectionTransmissionContext,
+    connection::{self, ConnectionTransmissionContext},
     frame_exchange_interests::{FrameExchangeInterestProvider, FrameExchangeInterests},
     processed_packet::ProcessedPacket,
     recovery::RecoveryManager,
@@ -23,18 +23,21 @@ use s2n_quic_core::{
     transport::error::TransportError,
 };
 
-#[derive(Debug)]
-pub struct InitialSpace<Suite: CryptoSuite> {
+pub struct InitialSpace<Config: connection::Config> {
     pub ack_manager: AckManager,
-    pub crypto: Suite::InitialCrypto,
+    pub crypto: <Config::TLSSession as CryptoSuite>::InitialCrypto,
     pub crypto_stream: CryptoStream,
     pub tx_packet_numbers: TxPacketNumbers,
     processed_packet_numbers: SlidingWindow,
     recovery_manager: RecoveryManager,
 }
 
-impl<Suite: CryptoSuite> InitialSpace<Suite> {
-    pub fn new(crypto: Suite::InitialCrypto, now: Timestamp, ack_manager: AckManager) -> Self {
+impl<Config: connection::Config> InitialSpace<Config> {
+    pub fn new(
+        crypto: <Config::TLSSession as CryptoSuite>::InitialCrypto,
+        now: Timestamp,
+        ack_manager: AckManager,
+    ) -> Self {
         let max_ack_delay = ack_manager.ack_settings.max_ack_delay;
         Self {
             ack_manager,
@@ -110,7 +113,10 @@ impl<Suite: CryptoSuite> InitialSpace<Suite> {
         &'a mut self,
         context: &'a ConnectionTransmissionContext,
         packet_number: PacketNumber,
-    ) -> (&'a Suite::InitialCrypto, EarlyTransmission<'a>) {
+    ) -> (
+        &'a <Config::TLSSession as CryptoSuite>::InitialCrypto,
+        EarlyTransmission<'a>,
+    ) {
         (
             &self.crypto,
             EarlyTransmission {
@@ -141,7 +147,7 @@ impl<Suite: CryptoSuite> InitialSpace<Suite> {
     }
 }
 
-impl<Suite: CryptoSuite> FrameExchangeInterestProvider for InitialSpace<Suite> {
+impl<Config: connection::Config> FrameExchangeInterestProvider for InitialSpace<Config> {
     fn frame_exchange_interests(&self) -> FrameExchangeInterests {
         FrameExchangeInterests::default()
             + self.ack_manager.frame_exchange_interests()
@@ -156,7 +162,7 @@ impl<Suite: CryptoSuite> FrameExchangeInterestProvider for InitialSpace<Suite> {
 //# endpoint that receives an Initial packet containing other frames can
 //# either discard the packet as spurious or treat it as a connection
 //# error.
-impl<Suite: CryptoSuite> PacketSpace for InitialSpace<Suite> {
+impl<Config: connection::Config> PacketSpace for InitialSpace<Config> {
     const INVALID_FRAME_ERROR: &'static str = "invalid frame in initial space";
 
     fn handle_crypto_frame(

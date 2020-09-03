@@ -1,10 +1,13 @@
 use crate::{
-    connection::{ConnectionInterests, ConnectionTransmissionContext},
+    connection::{self, ConnectionInterests, ConnectionTransmissionContext},
     frame_exchange_interests::FrameExchangeInterestProvider,
     processed_packet::ProcessedPacket,
     recovery::RecoveryManager,
-    space::{rx_packet_numbers::AckManager, ApplicationTransmission, PacketSpace, TxPacketNumbers},
-    stream::{AbstractStreamManager, StreamTrait},
+    space::{
+        rx_packet_numbers::AckManager, ApplicationTransmission, HandshakeStatus, PacketSpace,
+        TxPacketNumbers,
+    },
+    stream::AbstractStreamManager,
 };
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
@@ -25,14 +28,13 @@ use s2n_quic_core::{
     transport::error::TransportError,
 };
 
-#[derive(Debug)]
-pub struct ApplicationSpace<StreamType: StreamTrait, Suite: CryptoSuite> {
+pub struct ApplicationSpace<Config: connection::Config> {
     /// Transmission Packet numbers
     pub tx_packet_numbers: TxPacketNumbers,
     /// Ack manager
     pub ack_manager: AckManager,
     /// All streams that are managed through this connection
-    pub stream_manager: AbstractStreamManager<StreamType>,
+    pub stream_manager: AbstractStreamManager<Config::Stream>,
     /// The current [`KeyPhase`]
     pub key_phase: KeyPhase,
     /// The current state of the Spin bit
@@ -40,16 +42,18 @@ pub struct ApplicationSpace<StreamType: StreamTrait, Suite: CryptoSuite> {
     pub spin_bit: SpinBit,
     /// The crypto suite for application data
     /// TODO: What about ZeroRtt?
-    pub crypto: Suite::OneRTTCrypto,
+    pub crypto: <Config::TLSSession as CryptoSuite>::OneRTTCrypto,
+    /// Records if the handshake is pending or done, which is communicated to the peer
+    pub handshake_status: HandshakeStatus,
     processed_packet_numbers: SlidingWindow,
     recovery_manager: RecoveryManager,
 }
 
-impl<StreamType: StreamTrait, Suite: CryptoSuite> ApplicationSpace<StreamType, Suite> {
+impl<Config: connection::Config> ApplicationSpace<Config> {
     pub fn new(
-        crypto: Suite::OneRTTCrypto,
+        crypto: <Config::TLSSession as CryptoSuite>::OneRTTCrypto,
         now: Timestamp,
-        stream_manager: AbstractStreamManager<StreamType>,
+        stream_manager: AbstractStreamManager<Config::Stream>,
         ack_manager: AckManager,
     ) -> Self {
         let max_ack_delay = ack_manager.ack_settings.max_ack_delay;
@@ -60,6 +64,7 @@ impl<StreamType: StreamTrait, Suite: CryptoSuite> ApplicationSpace<StreamType, S
             spin_bit: SpinBit::Zero,
             stream_manager,
             crypto,
+            handshake_status: HandshakeStatus::default(),
             processed_packet_numbers: SlidingWindow::default(),
             recovery_manager: RecoveryManager::new(
                 PacketNumberSpace::ApplicationData,
@@ -112,7 +117,15 @@ impl<StreamType: StreamTrait, Suite: CryptoSuite> ApplicationSpace<StreamType, S
         // TODO: Will default() prevent finalization, since it might set finalization to false?
         ConnectionInterests::default()
             + self.ack_manager.frame_exchange_interests()
+            + self.handshake_status.frame_exchange_interests()
             + self.stream_manager.interests()
+    }
+
+    /// Signals the handshake is done
+    pub fn on_handshake_done(&mut self) {
+        if Config::ENDPOINT_TYPE.is_server() {
+            self.handshake_status.on_handshake_done();
+        }
     }
 
     /// Returns all of the component timers
@@ -160,8 +173,8 @@ impl<StreamType: StreamTrait, Suite: CryptoSuite> ApplicationSpace<StreamType, S
         context: &'a ConnectionTransmissionContext,
         packet_number: PacketNumber,
     ) -> (
-        &'a Suite::OneRTTCrypto,
-        ApplicationTransmission<'a, StreamType>,
+        &'a <Config::TLSSession as CryptoSuite>::OneRTTCrypto,
+        ApplicationTransmission<'a, Config::Stream>,
     ) {
         // TODO: What about ZeroRTTCrypto?
         (
@@ -169,6 +182,7 @@ impl<StreamType: StreamTrait, Suite: CryptoSuite> ApplicationSpace<StreamType, S
             ApplicationTransmission {
                 ack_manager: &mut self.ack_manager,
                 context,
+                handshake_status: &mut self.handshake_status,
                 packet_number,
                 stream_manager: &mut self.stream_manager,
                 tx_packet_numbers: &mut self.tx_packet_numbers,
@@ -177,9 +191,7 @@ impl<StreamType: StreamTrait, Suite: CryptoSuite> ApplicationSpace<StreamType, S
     }
 }
 
-impl<StreamType: StreamTrait, Suite: CryptoSuite> PacketSpace
-    for ApplicationSpace<StreamType, Suite>
-{
+impl<Config: connection::Config> PacketSpace for ApplicationSpace<Config> {
     const INVALID_FRAME_ERROR: &'static str = "invalid frame in application space";
 
     fn handle_crypto_frame(
@@ -210,6 +222,7 @@ impl<StreamType: StreamTrait, Suite: CryptoSuite> PacketSpace
             let ack_set = start..=end;
 
             self.tx_packet_numbers.on_packet_ack(datagram, &ack_set)?;
+            self.handshake_status.on_packet_ack(&ack_set);
             self.stream_manager.on_packet_ack(&ack_set);
             self.ack_manager.on_packet_ack(datagram, &ack_set);
         }
@@ -344,8 +357,19 @@ impl<StreamType: StreamTrait, Suite: CryptoSuite> PacketSpace
         _datagram: &DatagramInfo,
         frame: HandshakeDone,
     ) -> Result<(), TransportError> {
-        // TODO
-        eprintln!("UNIMPLEMENTED APPLICATION FRAME {:?}", frame);
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#19.20
+        //# A server MUST
+        //# treat receipt of a HANDSHAKE_DONE frame as a connection error of type
+        //# PROTOCOL_VIOLATION.
+
+        if Config::ENDPOINT_TYPE.is_server() {
+            return Err(TransportError::PROTOCOL_VIOLATION
+                .with_reason("Clients MUST NOT send HANDSHAKE_DONE frames")
+                .with_frame_type(frame.tag().into()));
+        }
+
+        self.handshake_status.on_handshake_done_received();
+
         Ok(())
     }
 

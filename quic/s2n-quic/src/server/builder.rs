@@ -48,7 +48,7 @@ impl<Providers: ServerProviders> Builder<Providers> {
         ///
         /// Sets the congestion controller to `Reno` with the default configuration.
         ///
-        /// ```rust
+        /// ```rust,ignore
         /// # use std::error::Error;
         /// use s2n_quic::{Server, provider::congestion_controller};
         /// #
@@ -100,11 +100,7 @@ impl<Providers: ServerProviders> Builder<Providers> {
         /// #
         /// # fn main() -> Result<(), Box<dyn Error>> {
         /// let server = Server::builder()
-        ///     .with_limits(
-        ///         limits::Builder::default()
-        ///             .with_max_idle_time(Duration::from_secs(30))?
-        ///             .build()?
-        ///     )?
+        ///     .with_limits(limits::Default::default())?
         ///     .build()?;
         /// #
         /// #    Ok(())
@@ -171,9 +167,10 @@ impl<Providers: ServerProviders> Builder<Providers> {
         /// # use std::error::Error;
         /// use s2n_quic::{Server, provider::runtime};
         /// #
-        /// # fn main() -> Result<(), Box<dyn Error>> {
+        /// # #[tokio::main]
+        /// # async fn main() -> Result<(), Box<dyn Error>> {
         /// let server = Server::builder()
-        ///     .with_runtime(runtime::Tokio::default())?
+        ///     .with_runtime(tokio::runtime::Handle::current())?
         ///     .build()?;
         /// #
         /// #    Ok(())
@@ -207,7 +204,7 @@ impl<Providers: ServerProviders> Builder<Providers> {
         ///
         /// ```rust,no_run
         /// # use std::error::Error;
-        /// use s2n_quic::{Server, provider::io::default as io};
+        /// use s2n_quic::{Server, provider::io::platform as io};
         /// #
         /// # fn main() -> Result<(), Box<dyn Error>> {
         /// let addr = "127.0.0.1:443";
@@ -219,10 +216,10 @@ impl<Providers: ServerProviders> Builder<Providers> {
         ///
         /// let rx = io::Rx::new(io::Buffer::default(), socket.try_clone()?);
         /// let tx = io::Tx::new(io::Buffer::default(), socket);
-        /// let pair = io::Pair { rx, tx };
+        /// let duplex = io::Duplex { rx, tx };
         ///
         /// let server = Server::builder()
-        ///     .with_io(pair)?
+        ///     .with_io(duplex)?
         ///     .build()?;
         /// #
         /// #    Ok(())
@@ -239,7 +236,7 @@ impl<Providers: ServerProviders> Builder<Providers> {
         ///
         /// Uses [`std::sync::Mutex`] to perform synchronization.
         ///
-        /// ```rust
+        /// ```rust,ignore
         /// # use std::{error::Error, time::Duration};
         /// use s2n_quic::{Server, provider::sync};
         /// #
@@ -264,12 +261,12 @@ impl<Providers: ServerProviders> Builder<Providers> {
         /// path to the private key.
         ///
         /// ```rust
-        /// # use std::error::Error;
+        /// # use std::{error::Error, path::Path};
         /// # use s2n_quic::Server;
         /// #
         /// # fn main() -> Result<(), Box<dyn Error>> {
         /// let server = Server::builder()
-        ///     .with_tls("./certs/key.pem")?
+        ///     .with_tls((Path::new("./certs/cert.pem"), Path::new("./certs/key.pem")))?
         ///     .build()?;
         /// #
         /// #    Ok(())
@@ -279,12 +276,12 @@ impl<Providers: ServerProviders> Builder<Providers> {
         /// Sets the TLS provider to a TLS server builder
         ///
         /// ```rust,ignore
-        /// # use std::error::Error;
+        /// # use std::{error::Error, path::Path};
         /// # use s2n_quic::Server;
         /// #
         /// # fn main() -> Result<(), Box<dyn Error>> {
         /// let tls = s2n::tls::Server::builder()
-        ///     .with_certificate("./certs/key.pem")?
+        ///     .with_certificate(Path::new("./certs/cert.pem"), Path::new("./certs/key.pem"))?
         ///     .with_security_policy(s2n::tls::security_policy::S2N_20190802)?;
         ///
         /// let server = Server::builder()
@@ -303,12 +300,12 @@ impl<Providers: ServerProviders> Builder<Providers> {
     /// # Examples
     ///
     /// ```rust,no_run
-    /// # use std::error::Error;
+    /// # use std::{error::Error, path::Path};
     /// # use s2n_quic::Server;
     /// #
     /// # fn main() -> Result<(), Box<dyn Error>> {
     /// let server = Server::builder()
-    ///     .with_tls("./certs/key.pem")?
+    ///     .with_tls((Path::new("./certs/cert.pem"), Path::new("./certs/key.pem")))?
     ///     .with_io("127.0.0.1:443")?
     ///     .build()?;
     /// #

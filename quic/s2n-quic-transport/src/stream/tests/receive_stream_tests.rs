@@ -5,7 +5,7 @@ use crate::{
 };
 use s2n_quic_core::{
     application::ApplicationErrorCode,
-    connection::ConnectionError,
+    connection,
     endpoint::EndpointType,
     frame::{Frame, MaxData, MaxStreamData, ResetStream, StopSending},
     stream::StreamType,
@@ -393,7 +393,7 @@ fn receive_fin_twice_at_different_positions() {
         events = StreamEvents::new();
         test_env
             .stream
-            .on_internal_reset(ConnectionError::Unspecified.into(), &mut events);
+            .on_internal_reset(connection::Error::Unspecified.into(), &mut events);
         assert_eq!(1, events.waker_count());
 
         test_env.assert_pop_error();
@@ -576,7 +576,7 @@ fn exceed_stream_flow_control_window() {
     events = StreamEvents::new();
     test_env
         .stream
-        .on_internal_reset(ConnectionError::Unspecified.into(), &mut events);
+        .on_internal_reset(connection::Error::Unspecified.into(), &mut events);
 
     assert_eq!(stream_interests(&[]), test_env.stream.interests());
     test_env.assert_pop_error();
@@ -618,7 +618,7 @@ fn exceed_connection_flow_control_window() {
     events = StreamEvents::new();
     test_env
         .stream
-        .on_internal_reset(ConnectionError::Unspecified.into(), &mut events);
+        .on_internal_reset(connection::Error::Unspecified.into(), &mut events);
 
     assert_eq!(stream_interests(&[]), test_env.stream.interests());
     test_env.assert_pop_error();

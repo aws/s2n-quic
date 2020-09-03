@@ -33,20 +33,12 @@ impl Default for AckTransmissionState {
 impl AckTransmissionState {
     /// Returns `true` if the state is set to `Active`
     pub fn is_active(&self) -> bool {
-        if let Self::Active { .. } = self {
-            true
-        } else {
-            false
-        }
+        matches!(self, Self::Active { .. })
     }
 
     /// Returns `true` if ACK frames should be transmitted, either actively or passively
     pub fn should_transmit(&self) -> bool {
-        if let Self::Disabled = self {
-            false
-        } else {
-            true
-        }
+        !matches!(self, Self::Disabled)
     }
 
     /// Transitions the transmission to active if there are pending retransmissions
