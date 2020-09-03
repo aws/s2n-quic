@@ -425,15 +425,14 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
             if self.path_manager.is_new_path(
                 &datagram.remote_address,
                 &connection::Id::try_from_bytes(packet.destination_connection_id).unwrap(),
-            ) {
-                if self.state == ConnectionState::Handshaking {
-                    //= https://tools.ietf.org/html/draft-ietf-quic-transport-29#section-9
-                    //# The design of QUIC relies on endpoints retaining a stable address
-                    //# for the duration of the handshake.  An endpoint MUST NOT initiate
-                    //# connection migration before the handshake is confirmed, as defined
-                    //# in section 4.1.2 of [QUIC-TLS].
-                    return Err(TransportError::PROTOCOL_VIOLATION);
-                }
+            ) && self.state == ConnectionState::Handshaking
+            {
+                //= https://tools.ietf.org/html/draft-ietf-quic-transport-29#section-9
+                //# The design of QUIC relies on endpoints retaining a stable address
+                //# for the duration of the handshake.  An endpoint MUST NOT initiate
+                //# connection migration before the handshake is confirmed, as defined
+                //# in section 4.1.2 of [QUIC-TLS].
+                return Err(TransportError::PROTOCOL_VIOLATION);
             }
 
             // The path is already known

@@ -45,15 +45,13 @@ impl PathManager {
         peer_address: &SocketAddress,
         destination_connection_id: &connection::Id,
     ) -> bool {
-        let result = match self.paths.iter().position(|path| {
-            path.0.peer_socket_address == *peer_address
-                && path.0.destination_connection_id == *destination_connection_id
-        }) {
-            Some(_) => false,
-            None => true,
-        };
-
-        result
+        self.paths
+            .iter()
+            .position(|path| {
+                path.0.peer_socket_address == *peer_address
+                    && path.0.destination_connection_id == *destination_connection_id
+            })
+            .is_none()
     }
 
     /// Returns the Path for the connection id if the PathManager knows about it
@@ -79,9 +77,8 @@ impl PathManager {
         peer_address: &SocketAddress,
         destination_connection_id: &connection::Id,
     ) -> Option<&mut Path> {
-        let opt = match self.paths.iter().position(|path| {
-            path.0.peer_socket_address == *peer_address
-                && path.0.destination_connection_id == *destination_connection_id
+        let opt = match self.paths.iter().position(|path_secret| {
+            self.matching_path(&path_secret.0, peer_address, destination_connection_id)
         }) {
             Some(path_index) => Some(&mut self.paths[path_index].0),
             None => None,
@@ -111,16 +108,12 @@ impl PathManager {
         destination_connection_id: &connection::Id,
         response: &[u8],
     ) {
-        match self.paths.iter().position(|path| {
-            path.0.peer_socket_address == *peer_address
-                && path.0.destination_connection_id == *destination_connection_id
+        if let Some(path_index) = self.paths.iter().position(|path_secret| {
+            self.matching_path(&path_secret.0, peer_address, destination_connection_id)
         }) {
-            Some(path_index) => {
-                if response == self.paths[path_index].1 {
-                    self.paths[path_index].0.on_validated();
-                }
+            if response == self.paths[path_index].1 {
+                self.paths[path_index].0.on_validated();
             }
-            None => (),
         };
     }
 
@@ -136,6 +129,16 @@ impl PathManager {
     pub fn on_connection_id_retire(&self, _connenction_id: &connection::Id) {}
 
     pub fn on_connection_id_new(&self, _connection_id: &connection::Id) {}
+
+    fn matching_path(
+        &self,
+        path: &Path,
+        peer_address: &SocketAddress,
+        destination_connection_id: &connection::Id,
+    ) -> bool {
+        path.peer_socket_address == *peer_address
+            && path.destination_connection_id == *destination_connection_id
+    }
 }
 
 #[cfg(test)]
