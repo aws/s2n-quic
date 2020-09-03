@@ -273,7 +273,7 @@ impl<ConnectionConfigType: connection::Config> PacketSpaceManager<ConnectionConf
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.9
     //# When the loss detection timer expires, the timer's mode determines the action to be performed.
     pub fn on_loss_detection_timeout(&mut self, path: &Path, now: Timestamp) {
-        if let Some(earliest_loss_time) = self.loss_time() {
+        if let Some(_earliest_loss_time) = self.loss_time() {
             // Time threshold loss Detection
             // TODO: get the packet space with the earliest loss time and call
             //       on_loss_time_timeout on that packet space

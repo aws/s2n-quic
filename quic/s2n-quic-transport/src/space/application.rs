@@ -151,7 +151,8 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         let handshake_confirmed = self.handshake_status.is_confirmed();
         self.recovery_manager
             .probe_timeout(path, pto_count, now)
-            .filter(handshake_confirmed)
+            // Skip ApplicationData until handshake complete.
+            .filter(|_| handshake_confirmed)
     }
 
     pub fn bytes_in_flight(&self) -> u64 {

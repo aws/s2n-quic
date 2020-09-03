@@ -310,7 +310,6 @@ mod test {
             };
             let in_flight = i % 3 == 0;
             let sent_bytes = (2 * i) as u64;
-            let mut time_of_last_ack_eliciting_packet = None;
 
             recovery_manager.on_packet_sent(
                 sent_packet,
@@ -327,7 +326,10 @@ mod test {
                 assert_eq!(actual_sent_packet.in_flight, in_flight);
                 assert_eq!(actual_sent_packet.time_sent, time_sent);
                 if in_flight {
-                    assert_eq!(Some(time_sent), time_of_last_ack_eliciting_packet);
+                    assert_eq!(
+                        Some(time_sent),
+                        recovery_manager.time_of_last_ack_eliciting_packet
+                    );
                 }
             } else {
                 assert!(recovery_manager.sent_packets.get(sent_packet).is_none());
