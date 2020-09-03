@@ -427,7 +427,7 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
                 &connection::Id::try_from_bytes(packet.destination_connection_id).unwrap(),
             ) && self.state == ConnectionState::Handshaking
             {
-                //= https://tools.ietf.org/html/draft-ietf-quic-transport-29#section-9
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-29#9
                 //# The design of QUIC relies on endpoints retaining a stable address
                 //# for the duration of the handshake.  An endpoint MUST NOT initiate
                 //# connection migration before the handshake is confirmed, as defined
