@@ -2,6 +2,7 @@ use crate::{
     connection::{self, ConnectionInterests},
     frame_exchange_interests::FrameExchangeInterestProvider,
     processed_packet::ProcessedPacket,
+    recovery,
     space::rx_packet_numbers::{AckManager, DEFAULT_ACK_RANGES_LIMIT, EARLY_ACK_SETTINGS},
 };
 use s2n_codec::DecoderBufferMut;
@@ -19,6 +20,7 @@ use s2n_quic_core::{
         number::{PacketNumber, PacketNumberSpace},
         short::CleartextShort,
     },
+    path::Path,
     time::Timestamp,
     transport::error::TransportError,
 };
@@ -34,7 +36,6 @@ mod rx_packet_numbers;
 mod session_context;
 mod tx_packet_numbers;
 
-use crate::timer::VirtualTimer;
 pub(crate) use application::ApplicationSpace;
 pub(crate) use application_transmission::ApplicationTransmission;
 pub(crate) use crypto_stream::CryptoStream;
@@ -42,7 +43,6 @@ pub(crate) use early_transmission::EarlyTransmission;
 pub(crate) use handshake::HandshakeSpace;
 pub(crate) use handshake_status::HandshakeStatus;
 pub(crate) use initial::InitialSpace;
-use s2n_quic_core::path::Path;
 pub(crate) use session_context::SessionContext;
 pub(crate) use tx_packet_numbers::TxPacketNumbers;
 
@@ -52,12 +52,7 @@ pub struct PacketSpaceManager<ConnectionConfigType: connection::Config> {
     handshake: Option<Box<HandshakeSpace<ConnectionConfigType>>>,
     application: Option<Box<ApplicationSpace<ConnectionConfigType>>>,
     zero_rtt_crypto: Option<Box<<ConnectionConfigType::TLSSession as CryptoSuite>::ZeroRTTCrypto>>,
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.3
-    //# The number of times a PTO has been sent without receiving an ack.
-    pto_count: u32,
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.3
-    //# Multi-modal timer used for loss detection.
-    loss_detection_timer: VirtualTimer,
+    pto_backoff: u32,
 }
 
 macro_rules! packet_space_api {
@@ -76,6 +71,12 @@ macro_rules! packet_space_api {
 
         $(
             pub fn $discard(&mut self) {
+                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#6.2.1
+                //# When Initial or Handshake keys are discarded, the PTO and loss
+                //# detection timers MUST be reset, because discarding keys indicates
+                //# forward progress and the loss detection timer might have been set for
+                //# a now discarded packet number space.
+                self.pto_backoff = 1;
                 self.$get = None;
             }
         )?
@@ -130,8 +131,7 @@ impl<ConnectionConfigType: connection::Config> PacketSpaceManager<ConnectionConf
             handshake: None,
             application: None,
             zero_rtt_crypto: None,
-            pto_count: 0,
-            loss_detection_timer: VirtualTimer::default(),
+            pto_backoff: 1,
         }
     }
 
@@ -189,51 +189,27 @@ impl<ConnectionConfigType: connection::Config> PacketSpaceManager<ConnectionConf
     }
 
     /// Called when the connection timer expired
-    pub fn on_timeout(&mut self, timestamp: Timestamp) {
+    pub fn on_timeout(&mut self, timestamp: Timestamp) -> recovery::LossInfo {
+        let mut loss_info = recovery::LossInfo::default();
+
         if let Some(space) = self.initial_mut() {
-            space.on_timeout(timestamp);
+            loss_info += space.on_timeout(timestamp);
         }
+
         if let Some(space) = self.handshake_mut() {
-            space.on_timeout(timestamp);
+            loss_info += space.on_timeout(timestamp);
         }
+
         if let Some(space) = self.application_mut() {
-            space.on_timeout(timestamp);
+            loss_info += space.on_timeout(timestamp);
         }
-    }
 
-    /// Gets the earliest loss time
-    fn loss_time(&self) -> Option<Timestamp> {
-        core::iter::empty()
-            .chain(self.initial.iter().flat_map(|space| space.loss_time()))
-            .chain(self.handshake.iter().flat_map(|space| space.loss_time()))
-            .chain(self.application.iter().flat_map(|space| space.loss_time()))
-            .min()
-    }
-
-    /// Gets the earliest probe timeout
-    fn probe_timeout(&self, path: &Path, now: Timestamp) -> Option<Timestamp> {
-        core::iter::empty()
-            .chain(
-                self.initial
-                    .iter()
-                    .flat_map(|space| space.probe_timeout(path, self.pto_count, now)),
-            )
-            .chain(
-                self.handshake
-                    .iter()
-                    .flat_map(|space| space.probe_timeout(path, self.pto_count, now)),
-            )
-            .chain(
-                self.application
-                    .iter()
-                    .flat_map(|space| space.probe_timeout(path, self.pto_count, now)),
-            )
-            .min()
+        loss_info
     }
 
     /// Gets the total number of bytes in flight
     /// TODO: should this get bytes_in_flight from path.congestion_controller.bytes_in_flight?
-    fn bytes_in_flight(&self) -> u64 {
+    pub fn bytes_in_flight(&self) -> u64 {
         core::iter::empty()
             .chain(self.initial.iter().map(|space| space.bytes_in_flight()))
             .chain(self.handshake.iter().map(|space| space.bytes_in_flight()))
@@ -241,58 +217,33 @@ impl<ConnectionConfigType: connection::Config> PacketSpaceManager<ConnectionConf
             .sum::<u64>()
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.8
-    //# QUIC loss detection uses a single timer for all timeout loss detection.
-    pub fn set_loss_detection_timer(&mut self, path: &Path, now: Timestamp) {
-        if let Some(earliest_loss_time) = self.loss_time() {
-            // Time threshold loss detection.
-            self.loss_detection_timer.set(earliest_loss_time);
-            return;
+    pub fn on_loss_info(&mut self, loss_info: &recovery::LossInfo) {
+        if loss_info.pto_expired {
+            self.pto_backoff *= 2;
         }
 
-        if path.at_amplification_limit() {
-            // The server's timer is not set if nothing can be sent.
-            self.loss_detection_timer.cancel();
-            return;
-        }
-
-        if self.bytes_in_flight() == 0 && path.is_validated() {
-            // There is nothing to detect lost, so no timer is set.
-            // However, the client needs to arm the timer if the
-            // server might be blocked by the anti-amplification limit.
-            self.loss_detection_timer.cancel();
-            return;
-        }
-
-        // Determine which PN space to arm PTO for.
-        if let Some(pto_time) = self.probe_timeout(path, now) {
-            self.loss_detection_timer.set(pto_time);
+        if loss_info.pto_reset {
+            self.pto_backoff = 1;
         }
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.9
-    //# When the loss detection timer expires, the timer's mode determines the action to be performed.
-    pub fn on_loss_detection_timeout(&mut self, path: &Path, now: Timestamp) {
-        if let Some(_earliest_loss_time) = self.loss_time() {
-            // Time threshold loss Detection
-            // TODO: get the packet space with the earliest loss time and call
-            //       on_loss_time_timeout on that packet space
-            self.set_loss_detection_timer(path, now);
-            return;
+    pub fn on_packets_sent(&mut self, path: &Path, timestamp: Timestamp) {
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#6.2.1
+        //# When a PTO timer expires, the PTO backoff MUST be increased,
+        //# resulting in the PTO period being set to twice its current value.
+        let pto_backoff = self.pto_backoff;
+
+        if let Some(space) = self.initial_mut() {
+            space.on_packets_sent(path, pto_backoff, timestamp);
         }
 
-        // TODO:
-        if self.bytes_in_flight() > 0 {
-            // PTO. Send new data if available, else retransmit old data.
-            // If neither is available, send a single PING frame.
-            // _, pn_space = self.probe_timeout();
-            // send_one_or_two_ack_eliciting_packets(pn_space)
-        } else {
-            // TODO: implement client
+        if let Some(space) = self.handshake_mut() {
+            space.on_packets_sent(path, pto_backoff, timestamp);
         }
 
-        self.pto_count += 1;
-        self.set_loss_detection_timer(path, now);
+        if let Some(space) = self.application_mut() {
+            space.on_packets_sent(path, pto_backoff, timestamp);
+        }
     }
 }
 
@@ -319,7 +270,9 @@ pub trait PacketSpace {
         &mut self,
         datagram: &DatagramInfo,
         frame: Ack<A>,
-    ) -> Result<(), TransportError>;
+        path: &mut Path,
+        pto_backoff: u32,
+    ) -> Result<crate::recovery::LossInfo, TransportError>;
 
     default_frame_handler!(handle_stream_frame, StreamRef);
     default_frame_handler!(handle_data_blocked_frame, DataBlocked);
@@ -343,13 +296,17 @@ pub trait PacketSpace {
     ) -> Result<(), TransportError>;
 }
 
+pub struct Handler<'payload, 'space, Space: PacketSpace> {
+    pub space: &'space mut Space,
+    pub packet_number: PacketNumber,
+    pub payload: DecoderBufferMut<'payload>,
+    pub pto_backoff: u32,
+}
+
 pub trait PacketSpaceHandler<'a, Packet> {
     type Space: PacketSpace;
 
-    fn space_for_packet(
-        &mut self,
-        packet: Packet,
-    ) -> Option<(&mut Self::Space, PacketNumber, DecoderBufferMut<'a>)>;
+    fn space_for_packet(&mut self, packet: Packet) -> Option<Handler<'a, '_, Self::Space>>;
 }
 
 impl<'a, Config: connection::Config> PacketSpaceHandler<'a, CleartextInitial<'a>>
@@ -360,8 +317,13 @@ impl<'a, Config: connection::Config> PacketSpaceHandler<'a, CleartextInitial<'a>
     fn space_for_packet(
         &mut self,
         packet: CleartextInitial<'a>,
-    ) -> Option<(&mut Self::Space, PacketNumber, DecoderBufferMut<'a>)> {
-        Some((self.initial_mut()?, packet.packet_number, packet.payload))
+    ) -> Option<Handler<'a, '_, Self::Space>> {
+        Some(Handler {
+            pto_backoff: self.pto_backoff,
+            space: self.initial_mut()?,
+            packet_number: packet.packet_number,
+            payload: packet.payload,
+        })
     }
 }
 
@@ -373,8 +335,13 @@ impl<'a, Config: connection::Config> PacketSpaceHandler<'a, CleartextHandshake<'
     fn space_for_packet(
         &mut self,
         packet: CleartextHandshake<'a>,
-    ) -> Option<(&mut Self::Space, PacketNumber, DecoderBufferMut<'a>)> {
-        Some((self.handshake_mut()?, packet.packet_number, packet.payload))
+    ) -> Option<Handler<'a, '_, Self::Space>> {
+        Some(Handler {
+            pto_backoff: self.pto_backoff,
+            space: self.handshake_mut()?,
+            packet_number: packet.packet_number,
+            payload: packet.payload,
+        })
     }
 }
 
@@ -386,11 +353,12 @@ impl<'a, Config: connection::Config> PacketSpaceHandler<'a, CleartextShort<'a>>
     fn space_for_packet(
         &mut self,
         packet: CleartextShort<'a>,
-    ) -> Option<(&mut Self::Space, PacketNumber, DecoderBufferMut<'a>)> {
-        Some((
-            self.application_mut()?,
-            packet.packet_number,
-            packet.payload,
-        ))
+    ) -> Option<Handler<'a, '_, Self::Space>> {
+        Some(Handler {
+            pto_backoff: self.pto_backoff,
+            space: self.application_mut()?,
+            packet_number: packet.packet_number,
+            payload: packet.payload,
+        })
     }
 }

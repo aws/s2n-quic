@@ -8,7 +8,8 @@ use crate::{
     },
     contexts::ConnectionOnTransmitError,
     processed_packet::ProcessedPacket,
-    space::{PacketSpace, PacketSpaceHandler, PacketSpaceManager},
+    recovery,
+    space::{self, PacketSpace, PacketSpaceHandler, PacketSpaceManager},
 };
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
@@ -248,17 +249,31 @@ pub trait ConnectionTrait: Sized {
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         packet: Packet,
-    ) -> Result<(), TransportError>
+    ) -> Result<recovery::LossInfo, TransportError>
     where
         PacketSpaceManager<Self::Config>: PacketSpaceHandler<'a, Packet>,
     {
-        let (space, packet_number, mut payload) =
-            if let Some(result) = shared_state.space_manager.space_for_packet(packet) {
-                result
-            } else {
-                // Packet space is not available, drop the packet
-                return Ok(());
-            };
+        let mut loss_info = recovery::LossInfo::default();
+
+        let space::Handler {
+            space,
+            packet_number,
+            mut payload,
+            pto_backoff,
+        } = if let Some(result) = shared_state.space_manager.space_for_packet(packet) {
+            result
+        } else {
+            // Packet space is not available, drop the packet
+            return Ok(loss_info);
+        };
+
+        // TODO get from path manager
+        let mut path = s2n_quic_core::path::Path::new(
+            connection::Id::EMPTY,
+            datagram.remote_address,
+            connection::Id::EMPTY,
+            s2n_quic_core::recovery::RTTEstimator::new(Default::default()),
+        );
 
         let mut processed_packet = ProcessedPacket::new(packet_number, datagram);
 
@@ -295,7 +310,10 @@ pub trait ConnectionTrait: Sized {
                 Frame::Ack(frame) => {
                     let on_error = with_frame_type!(frame);
                     processed_packet.on_processed_frame(&frame);
-                    space.handle_ack_frame(datagram, frame).map_err(on_error)?;
+
+                    loss_info += space
+                        .handle_ack_frame(datagram, frame, &mut path, pto_backoff)
+                        .map_err(on_error)?;
                 }
                 Frame::ConnectionClose(frame) => {
                     self.close(
@@ -303,7 +321,7 @@ pub trait ConnectionTrait: Sized {
                         ConnectionCloseReason::PeerImmediateClose(frame),
                         datagram.timestamp,
                     );
-                    return Ok(());
+                    return Ok(loss_info);
                 }
                 Frame::Stream(frame) => {
                     let on_error = with_frame_type!(frame);
@@ -428,6 +446,6 @@ pub trait ConnectionTrait: Sized {
 
         space.on_processed_packet(processed_packet)?;
 
-        Ok(())
+        Ok(loss_info)
     }
 }

@@ -6,7 +6,10 @@ use s2n_codec::encoder::EncoderValue;
 use s2n_quic_core::{
     connection,
     endpoint::EndpointType,
-    frame::ack_elicitation::{AckElicitable, AckElicitation},
+    frame::{
+        ack_elicitation::{AckElicitable, AckElicitation},
+        congestion_controlled::CongestionControlled,
+    },
     packet::number::PacketNumber,
     time::Timestamp,
 };
@@ -33,7 +36,7 @@ pub trait WriteContext {
 
     /// Attempt to write a frame. If this was successful the number of the packet
     /// that will be used to send the frame will be returned.
-    fn write_frame<Frame: EncoderValue + AckElicitable>(
+    fn write_frame<Frame: EncoderValue + AckElicitable + CongestionControlled>(
         &mut self,
         frame: &Frame,
     ) -> Option<PacketNumber>;

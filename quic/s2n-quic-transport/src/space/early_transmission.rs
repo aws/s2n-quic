@@ -2,12 +2,14 @@ use crate::{
     connection::ConnectionTransmissionContext,
     contexts::WriteContext,
     frame_exchange_interests::{FrameExchangeInterestProvider, FrameExchangeInterests},
+    recovery,
     space::{rx_packet_numbers::AckManager, CryptoStream, TxPacketNumbers},
 };
 use s2n_codec::{Encoder, EncoderBuffer, EncoderValue};
 use s2n_quic_core::{
     frame::{
         ack_elicitation::{AckElicitable, AckElicitation},
+        congestion_controlled::CongestionControlled,
         Padding,
     },
     packet::{encoding::PacketPayloadEncoder, number::PacketNumber},
@@ -19,6 +21,7 @@ pub struct EarlyTransmission<'a> {
     pub context: &'a ConnectionTransmissionContext,
     pub crypto_stream: &'a mut CryptoStream,
     pub packet_number: PacketNumber,
+    pub recovery_manager: &'a mut recovery::Manager,
     pub tx_packet_numbers: &'a mut TxPacketNumbers,
 }
 
@@ -32,7 +35,7 @@ impl<'a> PacketPayloadEncoder for EarlyTransmission<'a> {
         }
     }
 
-    fn encode(&mut self, buffer: &mut EncoderBuffer, minimum_len: usize) {
+    fn encode(&mut self, buffer: &mut EncoderBuffer, minimum_len: usize, overhead_len: usize) {
         debug_assert!(
             buffer.is_empty(),
             "the implementation assumes an empty buffer"
@@ -43,11 +46,13 @@ impl<'a> PacketPayloadEncoder for EarlyTransmission<'a> {
             buffer,
             context: self.context,
             packet_number: self.packet_number,
+            is_congestion_controlled: false,
         };
 
         let did_send_ack = self.ack_manager.on_transmit(&mut context);
 
         let _ = self.crypto_stream.tx.on_transmit((), &mut context);
+        self.recovery_manager.on_transmit(&mut context);
 
         if did_send_ack {
             // inform the ack manager the packet is populated
@@ -56,14 +61,22 @@ impl<'a> PacketPayloadEncoder for EarlyTransmission<'a> {
 
         // TODO add required padding if client
 
-        if !buffer.is_empty() {
+        if !context.buffer.is_empty() {
             // Add padding up to minimum_len
-            let length = minimum_len.saturating_sub(buffer.len());
+            let length = minimum_len.saturating_sub(context.buffer.len());
             if length > 0 {
-                buffer.encode(&Padding { length });
+                context.buffer.encode(&Padding { length });
             }
 
             self.tx_packet_numbers.on_transmit(self.packet_number);
+
+            self.recovery_manager.on_packet_sent(
+                context.packet_number,
+                context.ack_elicitation,
+                context.is_congestion_controlled,
+                overhead_len + context.buffer.len(),
+                context.current_time(),
+            )
         }
     }
 }
@@ -73,6 +86,7 @@ pub struct EarlyTransmissionContext<'a, 'b> {
     buffer: &'a mut EncoderBuffer<'b>,
     context: &'a ConnectionTransmissionContext,
     packet_number: PacketNumber,
+    is_congestion_controlled: bool,
 }
 
 impl<'a, 'b> WriteContext for EarlyTransmissionContext<'a, 'b> {
@@ -86,7 +100,7 @@ impl<'a, 'b> WriteContext for EarlyTransmissionContext<'a, 'b> {
         &self.context
     }
 
-    fn write_frame<Frame: EncoderValue + AckElicitable>(
+    fn write_frame<Frame: EncoderValue + AckElicitable + CongestionControlled>(
         &mut self,
         frame: &Frame,
     ) -> Option<PacketNumber> {
@@ -95,6 +109,7 @@ impl<'a, 'b> WriteContext for EarlyTransmissionContext<'a, 'b> {
         }
         self.buffer.encode(frame);
         self.ack_elicitation |= frame.ack_elicitation();
+        self.is_congestion_controlled |= frame.is_congestion_controlled();
         Some(self.packet_number)
     }
 

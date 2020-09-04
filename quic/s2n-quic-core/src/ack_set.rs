@@ -1,6 +1,6 @@
 //! A set of acknowledgments
 
-use crate::packet::number::PacketNumber;
+use crate::packet::number::{PacketNumber, PacketNumberRange};
 use core::ops::RangeInclusive;
 
 /// A set of Acknowledgments
@@ -45,5 +45,19 @@ impl AckSet for RangeInclusive<PacketNumber> {
 
     fn largest(&self) -> PacketNumber {
         *self.end()
+    }
+}
+
+impl AckSet for PacketNumberRange {
+    fn contains(&self, packet_number: PacketNumber) -> bool {
+        PacketNumberRange::contains(self, packet_number)
+    }
+
+    fn smallest(&self) -> PacketNumber {
+        self.start()
+    }
+
+    fn largest(&self) -> PacketNumber {
+        self.end()
     }
 }

@@ -8,6 +8,7 @@ use crate::{
         SharedConnectionState,
     },
     contexts::ConnectionOnTransmitError,
+    recovery,
 };
 use core::time::Duration;
 use s2n_quic_core::{
@@ -154,6 +155,16 @@ impl<ConfigType: connection::Config> ConnectionImpl<ConfigType> {
             .peer_idle_timer
             .set(timestamp + self.get_idle_timer_duration())
     }
+
+    fn on_loss_info(
+        &mut self,
+        shared_state: &mut SharedConnectionState<ConfigType>,
+        loss_info: recovery::LossInfo,
+    ) {
+        shared_state.space_manager.on_loss_info(&loss_info);
+
+        // TODO pass recovery information to congestion controller
+    }
 }
 
 /// Creates a closure which unprotects and decrypts packets for a given space.
@@ -277,6 +288,7 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
 
         match self.state {
             ConnectionState::Handshaking | ConnectionState::Active => {
+                // TODO pull these from somewhere
                 let ecn = Default::default();
 
                 while queue
@@ -310,6 +322,14 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
         if count == 0 {
             Err(ConnectionOnTransmitError::NoDatagram)
         } else {
+            // TODO get from path manager
+            let path = s2n_quic_core::path::Path::new(
+                connection::Id::EMPTY,
+                Default::default(),
+                connection::Id::EMPTY,
+                s2n_quic_core::recovery::RTTEstimator::new(Default::default()),
+            );
+            shared_state.space_manager.on_packets_sent(&path, timestamp);
             Ok(())
         }
     }
@@ -346,7 +366,9 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
             }
         }
 
-        shared_state.space_manager.on_timeout(timestamp);
+        let loss_info = shared_state.space_manager.on_timeout(timestamp);
+
+        self.on_loss_info(shared_state, loss_info);
     }
 
     /// Updates the per-connection timer based on individual component timers.
@@ -429,7 +451,9 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
         datagram: &DatagramInfo,
         packet: CleartextInitial,
     ) -> Result<(), TransportError> {
-        self.handle_cleartext_packet(shared_state, datagram, packet)?;
+        let loss_info = self.handle_cleartext_packet(shared_state, datagram, packet)?;
+
+        self.on_loss_info(shared_state, loss_info);
 
         // try to move the crypto state machine forward
         self.update_crypto_state(shared_state, datagram)?;
@@ -449,7 +473,9 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
             .handshake_mut()
             .and_then(packet_validator!(packet))
         {
-            self.handle_cleartext_packet(shared_state, datagram, packet)?;
+            let loss_info = self.handle_cleartext_packet(shared_state, datagram, packet)?;
+
+            self.on_loss_info(shared_state, loss_info);
 
             //= https://tools.ietf.org/id/draft-ietf-quic-tls-27.txt#4.10.1
             //# A server MUST discard Initial keys when it first successfully
@@ -483,7 +509,9 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
             .application_mut()
             .and_then(packet_validator!(packet))
         {
-            self.handle_cleartext_packet(shared_state, datagram, packet)?;
+            let loss_info = self.handle_cleartext_packet(shared_state, datagram, packet)?;
+
+            self.on_loss_info(shared_state, loss_info);
 
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#10.2
             //# An endpoint restarts its idle timer when a packet from its peer is

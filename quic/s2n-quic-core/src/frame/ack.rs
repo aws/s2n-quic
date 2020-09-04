@@ -101,8 +101,16 @@ impl<AckRanges> Ack<AckRanges> {
 }
 
 impl<A: AckRanges> Ack<A> {
+    pub fn ack_delay(&self) -> core::time::Duration {
+        core::time::Duration::from_micros(self.ack_delay.as_u64())
+    }
+
     pub fn ack_ranges(&self) -> A::Iter {
         self.ack_ranges.ack_ranges()
+    }
+
+    pub fn largest_acknowledged(&self) -> VarInt {
+        self.ack_ranges.largest_acknowledged()
     }
 }
 

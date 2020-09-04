@@ -1,20 +1,26 @@
 // TODO: Remove when used
 #![allow(dead_code)]
 
-use crate::recovery::{SentPacketInfo, SentPackets};
+use crate::{
+    contexts::WriteContext,
+    frame_exchange_interests::{FrameExchangeInterestProvider, FrameExchangeInterests},
+    recovery::{SentPacketInfo, SentPackets},
+    timer::VirtualTimer,
+};
 use core::{cmp::max, time::Duration};
 use s2n_quic_core::{
-    frame::{ack::ECNCounts, ack_elicitation::AckElicitation},
+    endpoint::EndpointType,
+    frame::{self, ack::ECNCounts, ack_elicitation::AckElicitation},
     inet::DatagramInfo,
     packet::number::{PacketNumber, PacketNumberRange, PacketNumberSpace},
     path::Path,
     recovery::RTTEstimator,
     time::Timestamp,
+    transport::error::TransportError,
 };
 
 #[derive(Debug)]
 pub struct Manager {
-    pn_space: PacketNumberSpace,
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.3
     //# The maximum amount of time by which the receiver intends to delay acknowledgments for packets
     //# in the ApplicationData packet number space. The actual ack_delay in a received ACK frame may
@@ -35,7 +41,12 @@ pub struct Manager {
     // ack frame. Calling `on_ack_received_finish` resets this to false.
     newly_acked: bool,
 
-    loss_time: Option<Timestamp>,
+    loss_timer: VirtualTimer,
+    time_threshold: Duration,
+
+    pto: Pto,
+
+    bytes_in_flight: u64,
 
     time_of_last_ack_eliciting_packet: Option<Timestamp>,
 }
@@ -45,31 +56,238 @@ pub struct Manager {
 //# The value recommended in Section 6.1.1 is 3.
 const K_PACKET_THRESHOLD: u64 = 3;
 
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.2
-//# Timer granularity. This is a system-dependent value, and Section 6.1.2 recommends a value of 1ms.
+fn apply_k_time_threshold(duration: Duration) -> Duration {
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#6.1.2
+    //# The RECOMMENDED time threshold (kTimeThreshold), expressed as a
+    //# round-trip time multiplier, is 9/8.
+    duration * 9 / 8
+}
+
+//= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#6.1.2
+//# The RECOMMENDED value of the
+//# timer granularity (kGranularity) is 1ms.
 pub(crate) const K_GRANULARITY: Duration = Duration::from_millis(1);
 
 type SentPacket = (PacketNumber, SentPacketInfo);
 
+#[must_use = "Ignoring loss information would lead to permanent data loss"]
+#[derive(Copy, Clone, Default)]
+pub struct LossInfo {
+    /// Lost bytes in flight
+    pub bytes_in_flight: u64,
+
+    /// A PTO timer expired
+    pub pto_expired: bool,
+
+    /// The PTO count should be reset
+    pub pto_reset: bool,
+}
+
+impl core::ops::Add for LossInfo {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self {
+        Self {
+            bytes_in_flight: self.bytes_in_flight + rhs.bytes_in_flight,
+            pto_expired: self.pto_expired || rhs.pto_expired,
+            pto_reset: self.pto_reset || rhs.pto_reset,
+        }
+    }
+}
+
+impl core::ops::AddAssign for LossInfo {
+    fn add_assign(&mut self, rhs: Self) {
+        *self = *self + rhs;
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct Pto {
+    timer: VirtualTimer,
+    state: PtoState,
+    max_ack_delay: Duration,
+}
+
+#[derive(Debug)]
+enum PtoState {
+    Idle,
+    RequiresTransmission(u8),
+}
+
+impl Default for PtoState {
+    fn default() -> Self {
+        Self::Idle
+    }
+}
+
+impl Pto {
+    pub fn new(max_ack_delay: Duration) -> Self {
+        Self {
+            max_ack_delay,
+            ..Self::default()
+        }
+    }
+
+    pub fn timers(&self) -> impl Iterator<Item = &Timestamp> {
+        self.timer.iter()
+    }
+
+    pub fn on_timeout(&mut self, timestamp: Timestamp) -> bool {
+        if self.timer.poll_expiration(timestamp).is_ready() {
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#6.2.4
+            //# When a PTO timer expires, a sender MUST send at least one ack-
+            //# eliciting packet in the packet number space as a probe
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#6.2.4
+            //# An endpoint MAY send up to two full-
+            //# sized datagrams containing ack-eliciting packets
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#6.2.4
+            //# Sending two packets on PTO
+            //# expiration increases resilience to packet drops, thus reducing the
+            //# probability of consecutive PTO events.
+
+            self.state = PtoState::RequiresTransmission(2);
+
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Queries the component for any outgoing frames that need to get sent
+    pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
+        match self.state {
+            PtoState::RequiresTransmission(0) => self.state = PtoState::Idle,
+            PtoState::RequiresTransmission(remaining) => {
+                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#6.2.4
+                //# When there is no data to send, the sender SHOULD send
+                //# a PING or other ack-eliciting frame in a single packet, re-arming the
+                //# PTO timer.
+                debug_assert!(
+                    !context.ack_elicitation().is_ack_eliciting(),
+                    "PTO timer should only be armed when there is no pending ack-eliciting packets"
+                );
+
+                if context.write_frame(&frame::Ping).is_some() {
+                    let remaining = remaining - 1;
+                    self.state = if remaining == 0 {
+                        PtoState::Idle
+                    } else {
+                        PtoState::RequiresTransmission(remaining)
+                    };
+                }
+            }
+            _ => {}
+        }
+    }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#6.2.1
+    //# A sender recomputes and may need to reset its PTO timer every time an
+    //# ack-eliciting packet is sent or acknowledged, when the handshake is
+    //# confirmed, or when Initial or Handshake keys are discarded.
+    pub fn update(
+        &mut self,
+        path: &Path,
+        backoff: u32,
+        time_of_last_ack_eliciting_packet: Timestamp,
+    ) {
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#6.2.2.1
+        //# If no additional data can be sent, the server's PTO timer MUST NOT be
+        //# armed until datagrams have been received from the client
+        if path.at_amplification_limit() {
+            self.timer.cancel();
+            return;
+        }
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#6.2.1
+        //# When an ack-eliciting packet is transmitted, the sender schedules a
+        //# timer for the PTO period as follows:
+        //#
+        //# PTO = smoothed_rtt + max(4*rttvar, kGranularity) + max_ack_delay
+
+        let mut pto = path.rtt_estimator.smoothed_rtt();
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#6.2.1
+        //# The PTO value MUST be set to at least kGranularity, to avoid the
+        //# timer expiring immediately.
+        pto += max(4 * path.rtt_estimator.rttvar(), K_GRANULARITY);
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#6.2.1
+        //# When the PTO is armed for Initial or Handshake packet number spaces,
+        //# the max_ack_delay is 0
+        pto += self.max_ack_delay;
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#6.2.1
+        //# Even when there are ack-
+        //# eliciting packets in-flight in multiple packet number spaces, the
+        //# exponential increase in probe timeout occurs across all spaces to
+        //# prevent excess load on the network.  For example, a timeout in the
+        //# Initial packet number space doubles the length of the timeout in the
+        //# Handshake packet number space.
+        pto *= backoff;
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#6.2.1
+        //# The PTO period is the amount of time that a sender ought to wait for
+        //# an acknowledgement of a sent packet.
+        self.timer.set(time_of_last_ack_eliciting_packet + pto);
+    }
+}
+
+impl FrameExchangeInterestProvider for Pto {
+    fn frame_exchange_interests(&self) -> FrameExchangeInterests {
+        // TODO put a fast ack on interests
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#6.2.4
+        //# If the sender wants to elicit a faster acknowledgement on PTO, it can
+        //# skip a packet number to eliminate the ack delay.
+
+        FrameExchangeInterests {
+            delivery_notifications: false,
+            transmission: matches!(self.state, PtoState::RequiresTransmission(_)),
+        }
+    }
+}
+
 impl Manager {
     /// Constructs a new `recovery::Manager`
-    pub fn new(pn_space: PacketNumberSpace, max_ack_delay: Duration) -> Self {
+    pub fn new(max_ack_delay: Duration) -> Self {
         Self {
-            pn_space,
             max_ack_delay,
             largest_acked_packet: None,
             sent_packets: SentPackets::default(),
             newly_acked: false,
-            loss_time: None,
+            loss_timer: VirtualTimer::default(),
+            pto: Pto::new(max_ack_delay),
+            time_threshold: Duration::from_secs(0),
+            bytes_in_flight: 0,
             time_of_last_ack_eliciting_packet: None,
         }
     }
 
-    pub fn loss_time(&self) -> Option<Timestamp> {
-        self.loss_time
+    pub fn timers(&self) -> impl Iterator<Item = &Timestamp> {
+        core::iter::empty()
+            .chain(self.pto.timers())
+            .chain(self.loss_timer.iter())
     }
 
-    #[allow(clippy::collapsible_if)]
+    pub fn on_timeout<Ctx: Context>(
+        &mut self,
+        timestamp: Timestamp,
+        context: &mut Ctx,
+    ) -> LossInfo {
+        let mut loss_info = if self.loss_timer.poll_expiration(timestamp).is_ready() {
+            self.detect_and_remove_lost_packets(timestamp, |packet_number_range| {
+                context.on_packet_loss(&packet_number_range);
+            })
+        } else {
+            Default::default()
+        };
+
+        loss_info.pto_expired = self.pto.on_timeout(timestamp);
+
+        loss_info
+    }
+
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.5
     //# After a packet is sent, information about the packet is stored.
     pub fn on_packet_sent(
@@ -77,13 +295,13 @@ impl Manager {
         packet_number: PacketNumber,
         ack_elicitation: AckElicitation,
         in_flight: bool,
-        sent_bytes: u64,
+        sent_bytes: usize,
         time_sent: Timestamp,
     ) {
         if ack_elicitation.is_ack_eliciting() {
             self.sent_packets.insert(
                 packet_number,
-                SentPacketInfo::new(in_flight, sent_bytes, time_sent),
+                SentPacketInfo::new(in_flight, sent_bytes as u64, time_sent),
             );
         }
 
@@ -91,29 +309,110 @@ impl Manager {
             if ack_elicitation.is_ack_eliciting() {
                 self.time_of_last_ack_eliciting_packet = Some(time_sent);
             }
-            // TODO: path.congestion_controller.on_packet_sent_cc(sent_bytes)
-            // The loss detection timer is set after packets are sent in ConnectionImpl.on_transmit.
-            // This differs from the pseudo-code in Appendix A.5, which sets the timer after every
-            // packet, in order to reduce multiple calls to the loss detection timer.
+            self.bytes_in_flight += sent_bytes as u64;
         }
     }
 
-    // TODO: does this belong here?
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.6
-    //# When a server is blocked by anti-amplification limits, receiving a datagram unblocks it,
-    //# even if none of the packets in the datagram are successfully processed. In such a case,
-    //# the PTO timer will need to be re-armed
-    pub fn on_datagram_received(_datagram: DatagramInfo, at_anti_amplification_limit: bool) {
-        // If this datagram unblocks the server, arm the
-        // PTO timer to avoid deadlock.
-        if at_anti_amplification_limit {
-            // TODO self.loss_detection_timer.set()
+    pub fn update(&mut self, path: &Path, pto_backoff: u32, now: Timestamp) {
+        self.update_time_threshold(&path.rtt_estimator);
+        // TODO only update PTO if none if flight
+    }
+
+    /// Queries the component for any outgoing frames that need to get sent
+    pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
+        self.pto.on_transmit(context)
+    }
+
+    pub fn bytes_in_flight(&self) -> u64 {
+        self.bytes_in_flight
+    }
+
+    pub fn on_ack_frame<A: frame::ack::AckRanges, Ctx: Context>(
+        &mut self,
+        datagram: &DatagramInfo,
+        frame: frame::Ack<A>,
+        path: &mut Path,
+        backoff: u32,
+        context: &mut Ctx,
+    ) -> Result<LossInfo, TransportError> {
+        let mut loss_info = LossInfo::default();
+        let mut has_any_newly_acked = false;
+        let largest_acked = frame.largest_acknowledged();
+        let largest_acked = Ctx::SPACE.new_packet_number(largest_acked);
+        let ack_delay = frame.ack_delay();
+        let ecn_counts = frame.ecn_counts;
+
+        for ack_range in frame.ack_ranges() {
+            let (start, end) = ack_range.into_inner();
+
+            let start = Ctx::SPACE.new_packet_number(start);
+            let end = Ctx::SPACE.new_packet_number(end);
+
+            let packet_number_range = PacketNumberRange::new(start, end);
+
+            context.validate_packet_ack(datagram, &packet_number_range)?;
+
+            let has_newly_acked = self.on_packet_ack(
+                packet_number_range,
+                largest_acked,
+                ack_delay,
+                ecn_counts,
+                datagram.timestamp,
+                &mut path.rtt_estimator,
+            );
+
+            // notify components of packets that are newly acked
+            if has_newly_acked {
+                context.on_new_packet_ack(datagram, &packet_number_range);
+            }
+            context.on_packet_ack(datagram, &packet_number_range);
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#6.2.1
+            //# The PTO backoff factor is reset when an acknowledgement is received,
+            //# except in the following case.  A server might take longer to respond
+            //# to packets during the handshake than otherwise.  To protect such a
+            //# server from repeated client probes, the PTO backoff is not reset at a
+            //# client that is not yet certain that the server has finished
+            //# validating the client's address.  That is, a client does not reset
+            //# the PTO backoff factor on receiving acknowledgements until it
+            //# receives a HANDSHAKE_DONE frame or an acknowledgement for one of its
+            //# Handshake or 1-RTT packets.
+
+            loss_info.pto_reset |= has_newly_acked
+                && match Ctx::ENDPOINT_TYPE {
+                    EndpointType::Server => true,
+                    EndpointType::Client => {
+                        Ctx::SPACE.is_handshake()
+                            || Ctx::SPACE.is_application_data()
+                            || context.is_handshake_confirmed()
+                    }
+                };
+
+            has_any_newly_acked |= has_newly_acked;
         }
+
+        if has_any_newly_acked {
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#6.2.1
+            //# A sender recomputes and may need to reset its PTO timer every time an
+            //# ack-eliciting packet is sent or acknowledged,
+            self.update(&path, backoff, datagram.timestamp);
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#6.2.2
+            //# Once a later packet within the same packet number space has been
+            //# acknowledged, an endpoint SHOULD declare an earlier packet lost if it
+            //# was sent a threshold amount of time in the past.
+            loss_info +=
+                self.detect_and_remove_lost_packets(datagram.timestamp, |packet_number_range| {
+                    context.on_packet_loss(&packet_number_range);
+                });
+        }
+
+        Ok(loss_info)
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.7
     //# When an ACK frame is received, it may newly acknowledge any number of packets.
-    pub fn on_ack_received(
+    fn on_packet_ack(
         &mut self,
         acked_packets: PacketNumberRange,
         largest_acked: PacketNumber,
@@ -121,15 +420,14 @@ impl Manager {
         ecn_counts: Option<ECNCounts>,
         receive_time: Timestamp,
         rtt_estimator: &mut RTTEstimator,
-    ) {
+    ) -> bool {
         let largest_newly_acked = if let Some(last) = self.sent_packets.range(acked_packets).last()
         {
             // There are newly acked packets, so set newly_acked to true for use in on_ack_received_finish
-            self.newly_acked = true;
             last
         } else {
             // Nothing to do if there are no newly acked packets.
-            return;
+            return false;
         };
 
         self.largest_acked_packet = Some(
@@ -154,57 +452,31 @@ impl Manager {
         for packet_number in acked_packets {
             self.sent_packets.remove(packet_number);
         }
-    }
 
-    /// Finishes processing an ack frame. This should be called after on_ack_received has
-    /// been called for each range of packets being acknowledged in the ack frame. Returns
-    /// true if any packets were newly acknowledged.
-    pub fn on_ack_received_finish(
-        &mut self,
-        receive_time: Timestamp,
-        rtt_estimator: &RTTEstimator,
-    ) -> bool {
-        if self.newly_acked {
-            let lost_packets = self.detect_and_remove_lost_packets(
-                rtt_estimator.latest_rtt(),
-                rtt_estimator.smoothed_rtt(),
-                receive_time,
-            );
-            if !lost_packets.is_empty() {
-                // TODO: path.congestion_controller.on_packets_lost(lost_packets)
-            }
-
-            // TODO: Add comment about where pto_count is reset and loss_detection_timer is set
-            self.newly_acked = false;
-            return true;
-        }
-        false
+        true
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.10
     //# DetectAndRemoveLostPackets is called every time an ACK is received or the time threshold
     //# loss detection timer expires. This function operates on the sent_packets for that packet
     //# number space and returns a list of packets newly detected as lost.
-    pub fn detect_and_remove_lost_packets(
+    fn detect_and_remove_lost_packets<OnLoss: FnMut(PacketNumberRange)>(
         &mut self,
-        latest_rtt: Duration,
-        smoothed_rtt: Duration,
         now: Timestamp,
-    ) -> Vec<PacketNumber> {
-        self.loss_time = None;
-        let loss_delay = self.calculate_loss_delay(latest_rtt, smoothed_rtt);
-
+        mut on_loss: OnLoss,
+    ) -> LossInfo {
         // Packets sent before this time are deemed lost.
-        let lost_send_time = now - loss_delay;
+        let lost_send_time = now - self.time_threshold;
 
         // TODO: Investigate a more efficient mechanism for managing sent_packets
         //       See https://github.com/awslabs/s2n-quic/issues/69
         let mut sent_packets_to_remove = Vec::new();
 
+        let loss_info = LossInfo::default();
+
         let largest_acked_packet = &self
             .largest_acked_packet
             .expect("This function is only called after an ack has been received");
-        let mut lost_packets = Vec::new();
 
         for (unacked_packet_number, unacked_sent_info) in self.sent_packets.iter() {
             if unacked_packet_number > largest_acked_packet {
@@ -222,10 +494,12 @@ impl Manager {
                 sent_packets_to_remove.push(*unacked_packet_number);
 
                 if unacked_sent_info.in_flight {
-                    lost_packets.push(*unacked_packet_number)
+                    // TODO merge contiguous packet numbers
+                    let range =
+                        PacketNumberRange::new(*unacked_packet_number, *unacked_packet_number);
+                    on_loss(range);
                 }
             } else {
-                self.loss_time = Some(unacked_sent_info.time_sent + loss_delay);
                 // assuming sent_packets is ordered by packet number and sent time, all remaining
                 // packets will have a larger packet number and sent time, and are thus not lost.
                 break;
@@ -236,55 +510,52 @@ impl Manager {
             self.sent_packets.remove(packet_number);
         }
 
-        lost_packets
+        loss_info
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.8
-    pub fn probe_timeout(&self, path: &Path, pto_count: u32, now: Timestamp) -> Option<Timestamp> {
-        let backoff = 2_u32.pow(pto_count);
-        let duration = (path.rtt_estimator.smoothed_rtt()
-            + max(4 * path.rtt_estimator.rttvar(), K_GRANULARITY))
-            * backoff;
-        // Arm PTO from now when there are no inflight packets.
-        if self.sent_packets.is_empty() {
-            assert!(!path.is_validated());
-            return Some(now + duration);
-        }
+    fn update_time_threshold(&mut self, rtt_estimator: &RTTEstimator) {
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#6.1.2
+        //# The time threshold is:
+        //#
+        //# max(kTimeThreshold * max(smoothed_rtt, latest_rtt), kGranularity)
 
-        let mut timeout = self
-            .time_of_last_ack_eliciting_packet
-            .expect("ack eliciting packets must have been sent")
-            + duration;
+        let mut time_threshold = max(rtt_estimator.smoothed_rtt(), rtt_estimator.latest_rtt());
 
-        // Include max_ack_delay and backoff for ApplicationData.
-        if self.pn_space.is_application_data() {
-            timeout += self.max_ack_delay * backoff;
-        }
+        time_threshold = apply_k_time_threshold(time_threshold);
 
-        Some(timeout)
+        self.time_threshold = max(time_threshold, K_GRANULARITY);
+    }
+}
+
+pub trait Context {
+    const SPACE: PacketNumberSpace;
+    const ENDPOINT_TYPE: EndpointType;
+
+    fn is_handshake_confirmed(&self) -> bool {
+        false
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.9
-    //# When the loss detection timer expires, the timer's mode determines the action to be performed.
-    pub fn on_loss_time_timeout(&mut self, path: &Path, now: Timestamp) {
-        // Time threshold loss Detection
-        let lost_packets = self.detect_and_remove_lost_packets(
-            path.rtt_estimator.latest_rtt(),
-            path.rtt_estimator.smoothed_rtt(),
-            now,
-        );
-        assert!(!lost_packets.is_empty());
-        // TODO: path.congestion_controller.on_packets_lost(lost_packets)
-    }
+    fn validate_packet_ack(
+        &mut self,
+        datagram: &DatagramInfo,
+        packet_number_range: &PacketNumberRange,
+    ) -> Result<(), TransportError>;
 
-    fn calculate_loss_delay(&self, latest_rtt: Duration, smoothed_rtt: Duration) -> Duration {
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.2
-        // 9/8 is the K_TIME_THRESHOLD, the maximum reordering in time
-        // before time threshold loss detection considers a packet lost.
-        let loss_delay = max(latest_rtt, smoothed_rtt) * 9 / 8;
+    fn on_new_packet_ack(
+        &mut self,
+        datagram: &DatagramInfo,
+        packet_number_range: &PacketNumberRange,
+    );
+    fn on_packet_ack(&mut self, datagram: &DatagramInfo, packet_number_range: &PacketNumberRange);
+    fn on_packet_loss(&mut self, packet_number_range: &PacketNumberRange);
+}
 
-        // Minimum time of K_GRANULARITY before packets are deemed lost.
-        max(loss_delay, K_GRANULARITY)
+impl FrameExchangeInterestProvider for Manager {
+    fn frame_exchange_interests(&self) -> FrameExchangeInterests {
+        FrameExchangeInterests {
+            delivery_notifications: !self.sent_packets.is_empty(),
+            transmission: false,
+        } + self.pto.frame_exchange_interests()
     }
 }
 
