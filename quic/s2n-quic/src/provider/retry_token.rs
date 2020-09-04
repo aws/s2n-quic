@@ -1,9 +1,6 @@
-/// Provides retry token support for an endpoint
-use s2n_quic_core::{
-    connection::ConnectionId,
-    inet::SocketAddress,
-};
 use core::time::Duration;
+/// Provides retry token support for an endpoint
+use s2n_quic_core::{connection, inet::SocketAddress};
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#8.1.1
 //#   A token sent in a NEW_TOKEN frames or a Retry packet MUST be
@@ -24,24 +21,31 @@ pub trait Provider {
     fn generate_new_token(
         &mut self,
         peer_address: &SocketAddress,
-        destination_connection_id: &ConnectionId,
-        source_connection_id: &ConnectionId,
-        output_buffer: &mut [u8]) -> (usize, Duration);
+        destination_connection_id: &connection::Id,
+        source_connection_id: &connection::Id,
+        output_buffer: &mut [u8],
+    ) -> (usize, Duration);
 
     /// Called when a token is needed for a Retry Packet.
     fn generate_retry_token(
         &mut self,
         peer_address: &SocketAddress,
-        destination_connection_id: &ConnectionId,
-        source_connection_id: &ConnectionId,
-        output_buffer: &mut [u8]) -> (usize, Duration);
+        destination_connection_id: &connection::Id,
+        source_connection_id: &connection::Id,
+        output_buffer: &mut [u8],
+    ) -> (usize, Duration);
 
     /// Called to validate a token.
-    fn is_token_valid(&mut self, peer_address: &SocketAddress, destination_connection_id: &ConnectionId, source_connection_id: &ConnectionId, token: &[u8]) -> bool;
+    fn is_token_valid(
+        &mut self,
+        peer_address: &SocketAddress,
+        destination_connection_id: &connection::Id,
+        source_connection_id: &connection::Id,
+        token: &[u8],
+    ) -> bool;
 
     /// Called to return the hash of a token for de-duplication purposes
     fn get_token_hash(&self, token: &[u8]) -> &[u8];
-}
 
     fn start(self) -> Result<Self::RetryToken, Self::Error>;
 }
@@ -51,6 +55,9 @@ pub use default::Provider as Default;
 impl_provider_utils!();
 
 pub mod default {
+    use core::time::Duration;
+    use s2n_quic_core::{connection, inet::SocketAddress};
+
     #[derive(Debug, Default)]
     pub struct Provider;
 
@@ -58,19 +65,39 @@ pub mod default {
         type RetryToken = (); // TODO
         type Error = core::convert::Infallible;
 
+        fn generate_new_token(
+            &mut self,
+            peer_address: &SocketAddress,
+            destination_connection_id: &connection::Id,
+            source_connection_id: &connection::Id,
+            output_buffer: &mut [u8],
+        ) -> (usize, Duration) {
+            (0, Duration::from_millis(0))
+        }
+
+        /// Called when a token is needed for a Retry Packet.
+        fn generate_retry_token(
+            &mut self,
+            peer_address: &SocketAddress,
+            destination_connection_id: &connection::Id,
+            source_connection_id: &connection::Id,
+            output_buffer: &mut [u8],
+        ) -> (usize, Duration) {
+            (0, Duration::from_millis(0))
+        }
+
+        /// Called to validate a token.
         fn start(self) -> Result<Self::RetryToken, Self::Error> {
             // TODO
             Ok(())
         }
-
-impl Provider for Default {
-
+    }
 }
 
 impl_provider_utils!();
 
 #[cfg(test)]
-mod token_tests {
+mod tests {
     use super::*;
     use s2n_codec::{DecoderBufferMut, EncoderBuffer};
 

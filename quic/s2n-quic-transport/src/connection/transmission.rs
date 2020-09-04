@@ -158,7 +158,6 @@ impl<'a, ConnectionConfigType: connection::Config> tx::Message
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -229,9 +228,8 @@ mod tests {
         let mut handle1 = queue.create_wakeup_handle(internal_connection_id);
         let state = SharedConnectionState::new(space_manager, handle1);
         let trans = ConnectionTransmission {
-            context: context,
+            context,
             shared_state: &mut state,
         };
-
     }
 }

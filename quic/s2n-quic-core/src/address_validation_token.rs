@@ -1,9 +1,13 @@
 //! Defines the Address Validation token
 
 use crate::inet::{SocketAddressV4, SocketAddressV6, Unspecified};
-use core::mem::size_of;
 use s2n_codec::{decoder_value, DecoderBuffer, DecoderError, Encoder, EncoderValue};
 
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#8.1.1
+//#   A token sent in a NEW_TOKEN frames or a Retry packet MUST be
+//#   constructed in a way that allows the server to identify how it was
+//#   provided to a client.  These tokens are carried in the same field,
+//#   but require different handling from servers.
 #[derive(Debug, PartialEq)]
 pub enum TokenType {
     RetryToken,
@@ -43,16 +47,24 @@ const MAX_ADDRESS_VALIDATION_TOKEN_LEN: usize = 512;
 pub struct AddressValidationToken {
     bytes: [u8; MAX_ADDRESS_VALIDATION_TOKEN_LEN],
     len: u16,
+
+    version: u8,
+    master_key_id: u8,
+    key_id: u8,
+    token_type: TokenType,
+    nonce: [u8; 32],
+    hmac: [u8; 32],
 }
 
-impl AddressValidationToken {
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#8.1.1
-    //#   A token sent in a NEW_TOKEN frames or a Retry packet MUST be
-    //#   constructed in a way that allows the server to identify how it was
-    //#   provided to a client.  These tokens are carried in the same field,
-    //#   but require different handling from servers.
-    pub fn get_token_type(&self) -> TokenType {}
+impl AddressValidationToken {
+    pub fn version(&self) -> u8 {
+        self.version
+    }
+
+    pub fn master_key_id(&self) -> u8 {
+        self.master_key_id 
+    }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#21.2
     //#   An attacker might be able to receive an address validation token
@@ -60,13 +72,24 @@ impl AddressValidationToken {
     //#   acquire that token.
     //#   Servers SHOULD provide mitigations for this attack by limiting the
     //#   usage and lifetime of address validation tokens
-    pub fn get_key_id(&self) -> u8 {}
+    pub fn key_id(&self) -> u8 { 
+        self.key_id
+    }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#8.1.1
+    //#   A token sent in a NEW_TOKEN frames or a Retry packet MUST be
+    //#   constructed in a way that allows the server to identify how it was
+    //#   provided to a client.  These tokens are carried in the same field,
+    //#   but require different handling from servers.
+    pub fn token_type(&self) -> TokenType {
+        TokenType::NewToken
+    }
 
     //= https://tools.ietf.org/html/draft-ietf-quic-transport-29.txt#8.1.3
     //#   An address validation token MUST be difficult to guess.  Including a
     //#   large enough random value in the token would be sufficient, but this
     //#   depends on the server remembering the value it sends to clients.
-    pub fn get_nonce(&self) -> u8 {}
+    pub fn nonce(&self) -> &[u8] { &self.nonce }
 
     //= https://tools.ietf.org/html/draft-ietf-quic-transport-29.txt#8.1.3
     //#   A token-based scheme allows the server to offload any state
@@ -76,10 +99,8 @@ impl AddressValidationToken {
     //#   protection, malicious clients could generate or guess values for
     //#   tokens that would be accepted by the server.  Only the server
     //#   requires access to the integrity protection key for tokens.
-    pub fn get_hmac(&self) -> u8 {}
-}
+    pub fn hmac(&self) -> &[u8] { &self.hmac }
 
-impl AddressValidationToken {
     //= https://tools.ietf.org/html/draft-ietf-quic-transport-29.txt#8.1.3
     //#   When a server receives an Initial packet with an address validation
     //#   token, it MUST attempt to validate the token, unless it has already
@@ -89,24 +110,31 @@ impl AddressValidationToken {
     }
 }
 
+const VERSION_MASK: u8 = 0x03;
+const MKID_MASK: u8 = 0x00;
+
+const VERSION_SHIFT: u8 = 0;
+const MKID_SHIFT: u8 = 2;
+const KID_SHIFT: u8 = 4;
+const TOKEN_TYPE_SHIFT: u8 = 8;
+
 impl<'a> EncoderValue for AddressValidationToken {
     fn encode<E: Encoder>(&self, buffer: &mut E) {
-        buffer.encode(&self.token_type);
-        if let Some(ip) = self.ipv4_peer_address.as_ref() {
-            buffer.encode(ip);
-        } else {
-            buffer.write_repeated(size_of::<SocketAddressV4>(), 0);
-        }
+        let mut token_buf = 0u8;
+        let decoder = DecoderBufferMut::new(&mut token_buf);
+        let (decoded_token, _) = decoder.decode::<TokenType>().unwrap();
 
-        if let Some(ip) = self.ipv6_peer_address.as_ref() {
-            buffer.encode(ip);
-        } else {
-            buffer.write_repeated(size_of::<SocketAddressV6>(), 0);
-        }
-
-        buffer.encode(&self.lifetime);
-        buffer.encode(&self.nonce.as_ref());
-        buffer.encode(&self.mac.as_ref());
+        let first_byte = 
+            (self.version() << VERSION_SHIFT) & 
+            (self.master_key_id() << MKID_SHIFT) & 
+            (self.key_id() << KID_SHIFT) &
+            (self.token_type() << TOKEN_TYPE_SHIFT);
+        buffer.encode(&first_byte);
+        buffer.encode(&self.master_key_id());
+        buffer.encode(&self.key_id());
+        buffer.encode(&self.token_type());
+        buffer.encode(&self.nonce().as_ref());
+        buffer.encode(&self.hmac().as_ref());
     }
 }
 
