@@ -8,21 +8,13 @@ const STATIC_DEFAULT_PATHS: usize = 5;
 
 /// The PathManager handles paths for a specific connection.
 /// It will handle path validation operations, and track the active path for a connection.
+#[derive(Default)]
 pub struct Manager {
     /// Path array
     paths: SmallVec<[Path; STATIC_DEFAULT_PATHS]>,
 
     /// Index to the active path
     active: usize,
-}
-
-impl Default for Manager {
-    fn default() -> Self {
-        Self {
-            paths: SmallVec::new(),
-            active: 0,
-        }
-    }
 }
 
 impl Manager {
@@ -42,13 +34,7 @@ impl Manager {
         peer_address: &SocketAddress,
         destination_connection_id: &connection::Id,
     ) -> bool {
-        self.paths
-            .iter()
-            .position(|path| {
-                path.peer_socket_address == *peer_address
-                    && path.destination_connection_id == *destination_connection_id
-            })
-            .is_none()
+        self.path(peer_address, destination_connection_id).is_none()
     }
 
     /// Returns the Path for the connection id if the PathManager knows about it
@@ -57,16 +43,15 @@ impl Manager {
         peer_address: &SocketAddress,
         destination_connection_id: &connection::Id,
     ) -> Option<&Path> {
-        let opt = match self
+        if let Some(path_index) = self
             .paths
             .iter()
             .position(|path| self.matching_path(&path, peer_address, destination_connection_id))
         {
-            Some(path_index) => Some(&self.paths[path_index]),
-            None => None,
-        };
+            return Some(&self.paths[path_index]);
+        }
 
-        opt
+        None
     }
 
     /// Returns the Path for the connection id if the PathManager knows about it
@@ -75,16 +60,15 @@ impl Manager {
         peer_address: &SocketAddress,
         destination_connection_id: &connection::Id,
     ) -> Option<&mut Path> {
-        let opt = match self
+        if let Some(path_index) = self
             .paths
             .iter()
             .position(|path| self.matching_path(&path, peer_address, destination_connection_id))
         {
-            Some(path_index) => Some(&mut self.paths[path_index]),
-            None => None,
-        };
+            return Some(&mut self.paths[path_index]);
+        }
 
-        opt
+        None
     }
 
     /// Add a new path to the PathManager
@@ -92,33 +76,42 @@ impl Manager {
         self.paths.push(path);
     }
 
-    /// Called when a PATH_CHALLENGE frame is received
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29#8.4
+    //# On receiving a PATH_CHALLENGE frame, an endpoint MUST respond
+    //# immediately by echoing the data contained in the PATH_CHALLENGE frame
+    //# in a PATH_RESPONSE frame.
     pub fn on_path_challenge(
         &mut self,
         _peer_address: &SocketAddress,
         _destination_connection_id: &connection::Id,
         _challenge: &[u8],
     ) {
+        // TODO  this may be a no-op here. Perhaps the frame handler does the work.
     }
 
-    /// Called when a PATH_RESPONSE frame is received
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29#8.5
+    //# A new address is considered valid when a PATH_RESPONSE frame is
+    //# received that contains the data that was sent in a previous
+    //# PATH_CHALLENGE.
     pub fn on_path_response(
         &mut self,
         peer_address: &SocketAddress,
         destination_connection_id: &connection::Id,
         response: &[u8],
     ) {
-        if let Some(path_index) = self
-            .paths
-            .iter()
-            .position(|path| self.matching_path(&path, peer_address, destination_connection_id))
-        {
-            if let Some(expected_response) = self.paths[path_index].challenge {
+        if let Some(path) = self.path_mut(peer_address, destination_connection_id) {
+            // We may have received a duplicate packet, only call the on_validated handler
+            // one time.
+            if path.is_validated() {
+                return;
+            }
+
+            if let Some(expected_response) = path.challenge {
                 if expected_response == response {
-                    self.paths[path_index].on_validated();
+                    path.on_validated();
                 }
             }
-        };
+        }
     }
 
     /// Called when a token is received that was issued in a Retry packet
@@ -130,7 +123,12 @@ impl Manager {
     /// Start the validation process for a path
     pub fn validate_path(&self, _path: Path) {}
 
-    pub fn on_connection_id_retire(&self, _connenction_id: &connection::Id) {}
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29#10.4
+    //# Tokens are invalidated when their associated connection ID is retired via a
+    //# RETIRE_CONNECTION_ID frame (Section 19.16).
+    pub fn on_connection_id_retire(&self, _connenction_id: &connection::Id) {
+        // TODO invalidate any tokens issued under this connection id
+    }
 
     pub fn on_connection_id_new(&self, _connection_id: &connection::Id) {}
 
