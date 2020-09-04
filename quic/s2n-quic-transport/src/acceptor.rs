@@ -17,7 +17,8 @@ impl Acceptor {
     /// Polls for incoming connections and returns them.
     ///
     /// The method will return
-    /// - `Poll::Ready(connection)` if a connection was accepted.
+    /// - `Poll::Ready(Some(connection))` if a connection was accepted.
+    /// - `Poll::Ready(None)` if the acceptor is closed.
     /// - `Poll::Pending` if no new connection was accepted yet.
     ///   In this case the caller must retry polling as soon as a client
     ///   establishes a connection.
@@ -25,7 +26,11 @@ impl Acceptor {
     ///   the method will save the [`Waker`] which is provided as part of the
     ///   [`Context`] parameter, and notify it as soon as retrying
     ///   the method will yield a different result.
-    pub fn poll_accept(&mut self, context: &Context) -> Poll<Connection> {
-        self.receiver.poll_next(context)
+    pub fn poll_accept(&mut self, context: &Context) -> Poll<Option<Connection>> {
+        match self.receiver.poll_next(context) {
+            Poll::Ready(Ok(connection)) => Poll::Ready(Some(connection)),
+            Poll::Ready(Err(_)) => Poll::Ready(None),
+            Poll::Pending => Poll::Pending,
+        }
     }
 }
