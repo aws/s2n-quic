@@ -19,6 +19,7 @@ pub struct ConnectionTransmissionContext<'a> {
     pub timestamp: Timestamp,
     pub local_endpoint_type: EndpointType,
     pub path: &'a mut Path,
+    pub source_connection_id: &'a connection::Id,
     pub ecn: ExplicitCongestionNotification,
 }
 
@@ -28,7 +29,7 @@ impl<'a> ConnectionContext for ConnectionTransmissionContext<'a> {
     }
 
     fn connection_id(&self) -> &connection::Id {
-        &self.path.source_connection_id
+        &self.path.peer_connection_id
     }
 }
 
@@ -64,6 +65,9 @@ impl<'a, ConnectionConfigType: connection::Config> tx::Message
         let shared_state = &mut self.shared_state;
         let space_manager = &mut shared_state.space_manager;
         let mtu = self.context.path.clamp_mtu(buffer.len());
+        if mtu == 0 {
+            return 0;
+        }
         let buffer = &mut buffer[..mtu];
 
         let encoder = EncoderBuffer::new(buffer);
@@ -149,8 +153,6 @@ impl<'a, ConnectionConfigType: connection::Config> tx::Message
             encoder
         };
 
-        let sent_bytes = initial_capacity - encoder.capacity();
-        self.context.path.on_bytes_transmitted(sent_bytes as u32);
-        sent_bytes
+        initial_capacity - encoder.capacity()
     }
 }

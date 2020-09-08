@@ -9,6 +9,7 @@ use crate::{
     },
     contexts::ConnectionOnTransmitError,
     path::Manager,
+    space::EARLY_ACK_SETTINGS,
 };
 use core::time::Duration;
 use s2n_quic_core::{
@@ -23,6 +24,8 @@ use s2n_quic_core::{
         version_negotiation::ProtectedVersionNegotiation,
         zero_rtt::ProtectedZeroRTT,
     },
+    path::Path,
+    recovery::RTTEstimator,
     time::Timestamp,
     transport::error::TransportError,
 };
@@ -91,6 +94,8 @@ pub struct ConnectionImpl<ConfigType: connection::Config> {
     config: ConfigType,
     /// The [`Connection`]s internal identifier
     internal_connection_id: InternalConnectionId,
+    /// The connection ID to send packets from
+    local_connection_id: connection::Id,
     /// The connection ID mapper registration which should be utilized by the connection
     #[allow(dead_code)] // TODO: temporary supression until connections support ID registration
     connection_id_mapper_registration: ConnectionIdMapperRegistration,
@@ -192,12 +197,19 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
     /// Creates a new `Connection` instance with the given configuration
     fn new(parameters: ConnectionParameters<Self::Config>) -> Self {
         // The path manager always starts with a single path containing the known peer and local
-        // connetion ids.
-        let path_manager: Manager = Manager::default();
+        // connection ids.
+        let rtt_estimator = RTTEstimator::new(EARLY_ACK_SETTINGS.max_ack_delay);
+        let initial_path = Path::new(
+            parameters.peer_socket_address,
+            parameters.peer_connection_id,
+            rtt_estimator,
+        );
+        let path_manager = Manager::new(initial_path);
 
         Self {
             config: parameters.connection_config,
             internal_connection_id: parameters.internal_connection_id,
+            local_connection_id: parameters.local_connection_id,
             connection_id_mapper_registration: parameters.connection_id_mapper_registration,
             timers: Default::default(),
             timer_entry: parameters.timer,
@@ -278,21 +290,30 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
             ConnectionState::Handshaking | ConnectionState::Active => {
                 let ecn = Default::default();
 
-                while queue
-                    .push(ConnectionTransmission {
-                        context: ConnectionTransmissionContext {
-                            quic_version: self.quic_version,
-                            timestamp,
-                            local_endpoint_type: Self::Config::ENDPOINT_TYPE,
-                            path: self.path_manager.active_path_mut(),
-                            ecn,
-                        },
-                        shared_state,
-                    })
-                    .is_ok()
-                {
+                let active_path = self.path_manager.active_path_mut();
+
+                while let Ok(bytes_transmitted) = queue.push(ConnectionTransmission {
+                    context: ConnectionTransmissionContext {
+                        quic_version: self.quic_version,
+                        timestamp,
+                        local_endpoint_type: Self::Config::ENDPOINT_TYPE,
+                        path: active_path,
+                        source_connection_id: &self.local_connection_id,
+                        ecn,
+                    },
+                    shared_state,
+                }) {
                     count += 1;
+                    active_path.on_bytes_transmitted(bytes_transmitted);
                 }
+                // TODO  leave the psuedo in comment, TODO send this stuff
+                // for path in path_manager.pending_paths() {
+                // queue.push(path transmission context)
+                // need shared_state, look at application_transmission for examples
+                //  prob_path(path) // for mtu discovery or path
+                //  if not validated, send challenge_frame;
+                //  }
+                //  TODO send probe for MTU changes
             }
             ConnectionState::Closing => {
                 // We are only allowed to send CONNECTION_CLOSE frames in this
@@ -397,12 +418,18 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
     // Packet handling
     fn on_datagram_received(
         &mut self,
-        _shared_state: &mut SharedConnectionState<Self::Config>,
+        shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
+        peer_connection_id: &connection::Id,
     ) -> Result<(), TransportError> {
-        self.path_manager
-            .active_path_mut()
-            .on_bytes_received(datagram.payload_len as u32);
+        let is_handshake_confirmed = shared_state.space_manager.is_handshake_confirmed();
+
+        self.path_manager.on_datagram_received(
+            datagram,
+            peer_connection_id,
+            is_handshake_confirmed,
+        );
+
         Ok(())
     }
 
@@ -418,15 +445,6 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
             .initial_mut()
             .and_then(packet_validator!(packet))
         {
-            if self.path_manager.is_new_path(&datagram.remote_address) {
-                //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#9
-                //# The design of QUIC relies on endpoints retaining a stable address
-                //# for the duration of the handshake.  An endpoint MUST NOT initiate
-                //# connection migration before the handshake is confirmed, as defined
-                //# in section 4.1.2 of [QUIC-TLS].
-                return Err(TransportError::PROTOCOL_VIOLATION);
-            }
-
             self.handle_cleartext_initial_packet(shared_state, datagram, packet)?;
 
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#10.2

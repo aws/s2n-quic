@@ -92,7 +92,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         let (crypto, payload) = self.transmission(context, packet_number);
 
         let packet = Short {
-            destination_connection_id: context.path.destination_connection_id.as_ref(),
+            destination_connection_id: context.path.peer_connection_id.as_ref(),
             spin_bit,
             key_phase,
             packet_number,

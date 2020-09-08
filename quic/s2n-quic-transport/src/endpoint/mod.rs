@@ -126,13 +126,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
             let is_ok = self
                 .connections
                 .with_connection(internal_id, |conn, shared_state| {
-                    // TODO If this is a new SocketAddress, then the PathManager should begin
-                    // path validation. If this is the very first packet, then we may send a retry to
-                    // validate the address.
-                    // if conn.path_manager.is_new_peer(&datagram.remote_address) {
-                    //    // conn.validate_path(&connection_id, &datagram.remote_address, &connection_id)
-                    //}
-
                     if let Err(e) = conn.handle_first_and_remaining_packets(
                         shared_state,
                         datagram,

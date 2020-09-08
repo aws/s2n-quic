@@ -56,16 +56,16 @@ impl Path {
     }
 
     /// Called when bytes have been transmitted on this path
-    pub fn on_bytes_transmitted(&mut self, bytes: u32) {
+    pub fn on_bytes_transmitted(&mut self, bytes: usize) {
         if let State::Pending { tx_bytes, .. } = &mut self.state {
-            *tx_bytes += bytes;
+            *tx_bytes += bytes as u32;
         }
     }
 
     /// Called when bytes have been received on this path
-    pub fn on_bytes_received(&mut self, bytes: u32) {
+    pub fn on_bytes_received(&mut self, bytes: usize) {
         if let State::Pending { rx_bytes, .. } = &mut self.state {
-            *rx_bytes += bytes;
+            *rx_bytes += bytes as u32;
         }
     }
 

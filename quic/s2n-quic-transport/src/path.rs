@@ -1,6 +1,12 @@
 //! This module contains the Manager implementation
 
-use s2n_quic_core::{connection, inet::SocketAddress, path::Path};
+use crate::space::EARLY_ACK_SETTINGS;
+use s2n_quic_core::{
+    connection,
+    inet::{DatagramInfo, SocketAddress},
+    path::Path,
+    recovery::RTTEstimator,
+};
 use smallvec::SmallVec;
 
 /// The amount of Paths that can be maintained without using the heap
@@ -8,7 +14,6 @@ const INLINE_PATH_LEN: usize = 5;
 
 /// The PathManager handles paths for a specific connection.
 /// It will handle path validation operations, and track the active path for a connection.
-#[derive(Default)]
 pub struct Manager {
     /// Path array
     paths: SmallVec<[Path; INLINE_PATH_LEN]>,
@@ -18,6 +23,13 @@ pub struct Manager {
 }
 
 impl Manager {
+    pub fn new(initial_path: Path) -> Self {
+        Manager {
+            paths: SmallVec::from_elem(initial_path, INLINE_PATH_LEN),
+            active: 0,
+        }
+    }
+
     /// Return the active path
     pub fn active_path(&self) -> &Path {
         &self.paths[self.active]
@@ -26,11 +38,6 @@ impl Manager {
     /// Return a mutable reference to the active path
     pub fn active_path_mut(&mut self) -> &mut Path {
         &mut self.paths[self.active]
-    }
-
-    /// Returns whether the socket address belongs to the current peer or an in progress peer
-    pub fn is_new_path(&self, peer_address: &SocketAddress) -> bool {
-        self.path(peer_address).is_none()
     }
 
     /// Returns the Path for the connection id if the PathManager knows about it
@@ -47,9 +54,31 @@ impl Manager {
             .find(|path| *peer_address == path.peer_socket_address)
     }
 
-    /// Add a new path to the PathManager
-    pub fn insert(&mut self, path: Path) {
-        self.paths.push(path);
+    /// Called when a datagram is received on a connection
+    pub fn on_datagram_received(
+        &mut self,
+        datagram: &DatagramInfo,
+        peer_connection_id: &connection::Id,
+        is_handshake_confirmed: bool,
+    ) {
+        if let Some(path) = self.path_mut(&datagram.remote_address) {
+            path.on_bytes_received(datagram.payload_len);
+            return;
+        }
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#9
+        //# The design of QUIC relies on endpoints retaining a stable address
+        //# for the duration of the handshake.  An endpoint MUST NOT initiate
+        //# connection migration before the handshake is confirmed, as defined
+        //# in section 4.1.2 of [QUIC-TLS].
+        if is_handshake_confirmed {
+            let path = Path::new(
+                datagram.remote_address,
+                *peer_connection_id,
+                RTTEstimator::new(EARLY_ACK_SETTINGS.max_ack_delay),
+            );
+            self.paths.push(path);
+        }
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#8.4
@@ -105,45 +134,47 @@ impl Manager {
     }
 
     pub fn on_connection_id_new(&self, _connection_id: &connection::Id) {}
+
+    pub fn on_packet_received(&mut self) {}
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use core::time::Duration;
-    use s2n_quic_core::recovery::RTTEstimator;
+    use s2n_quic_core::{
+        inet::{DatagramInfo, ExplicitCongestionNotification},
+        recovery::RTTEstimator,
+        time::Timestamp,
+    };
     use std::net::SocketAddr;
 
     #[test]
     fn get_path_by_address_test() {
         let conn_id = connection::Id::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
-        let inserted_path = Path::new(
-            conn_id,
+        let first_path = Path::new(
             SocketAddress::default(),
             conn_id,
             RTTEstimator::new(Duration::from_millis(30)),
         );
 
-        let mut manager = Manager::default();
-        manager.insert(inserted_path);
+        let manager = Manager::new(first_path);
 
         let matched_path = manager.path(&SocketAddress::default()).unwrap();
-        assert_eq!(matched_path, &inserted_path);
+        assert_eq!(matched_path, &first_path);
     }
 
     #[test]
     fn path_validate_test() {
         let first_conn_id = connection::Id::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
         let mut first_path = Path::new(
-            first_conn_id,
             SocketAddress::default(),
             first_conn_id,
             RTTEstimator::new(Duration::from_millis(30)),
         );
         first_path.challenge = Some([0u8; 8]);
 
-        let mut manager = Manager::default();
-        manager.insert(first_path);
+        let mut manager = Manager::new(first_path);
         {
             let first_path = manager.path(&first_path.peer_socket_address).unwrap();
             assert_eq!(first_path.is_validated(), false);
@@ -161,17 +192,25 @@ mod tests {
     fn new_peer_test() {
         let first_conn_id = connection::Id::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
         let first_path = Path::new(
-            first_conn_id,
             SocketAddress::default(),
             first_conn_id,
             RTTEstimator::new(Duration::from_millis(30)),
         );
+        let mut manager = Manager::new(first_path);
+        let new_addr: SocketAddr = "127.0.0.1:80".parse().unwrap();
+        let new_addr = SocketAddress::from(new_addr);
 
-        let mut manager = Manager::default();
-        manager.insert(first_path);
-        assert_eq!(manager.is_new_path(&SocketAddress::default()), false);
+        assert_eq!(manager.path(&SocketAddress::default()).is_some(), true);
+        assert_eq!(manager.path(&new_addr), None);
 
-        let addr: SocketAddr = "127.0.0.1:80".parse().unwrap();
-        assert_eq!(manager.is_new_path(&addr.into()), true);
+        let datagram = DatagramInfo {
+            timestamp: unsafe { Timestamp::from_duration(Duration::from_millis(30)) },
+            remote_address: new_addr,
+            payload_len: 0,
+            ecn: ExplicitCongestionNotification::default(),
+        };
+
+        manager.on_datagram_received(&datagram, &first_conn_id, true);
+        assert_eq!(manager.path(&new_addr).is_some(), true);
     }
 }

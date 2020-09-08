@@ -140,12 +140,12 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         // It needs to be unlocked when wee insert the connection in our map
         {
             let locked_shared_state = &mut *shared_state.lock();
+            let peer_connection_id =
+                connection::Id::try_from_bytes(packet.source_connection_id).unwrap();
 
             connection.handle_cleartext_initial_packet(locked_shared_state, datagram, packet)?;
 
-            if let Err(e) = connection.on_datagram_received(locked_shared_state, datagram) {
-                eprintln!("Datagram handle error: {:?}", e);
-            }
+            connection.on_datagram_received(locked_shared_state, datagram, &peer_connection_id)?;
 
             connection.handle_remaining_packets(
                 locked_shared_state,

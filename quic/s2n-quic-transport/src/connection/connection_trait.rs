@@ -161,6 +161,7 @@ pub trait ConnectionTrait: Sized {
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
+        peer_connection_id: &connection::Id,
     ) -> Result<(), TransportError>;
 
     /// Returns the Connections interests
@@ -204,8 +205,11 @@ pub trait ConnectionTrait: Sized {
         connection_id_validator: &Validator,
         payload: DecoderBufferMut,
     ) -> Result<(), ()> {
-        if let Err(e) = self.on_datagram_received(shared_state, datagram) {
-            eprintln!("Datagram handle error: {:?}", e);
+        if self
+            .on_datagram_received(shared_state, datagram, &original_connection_id)
+            .is_err()
+        {
+            return Err(());
         }
 
         if let Err(err) = self.handle_packet(shared_state, datagram, first_packet) {

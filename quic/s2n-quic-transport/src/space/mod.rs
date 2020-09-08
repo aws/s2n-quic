@@ -2,7 +2,7 @@ use crate::{
     connection::{self, ConnectionInterests},
     frame_exchange_interests::FrameExchangeInterestProvider,
     processed_packet::ProcessedPacket,
-    space::rx_packet_numbers::{AckManager, DEFAULT_ACK_RANGES_LIMIT, EARLY_ACK_SETTINGS},
+    space::rx_packet_numbers::{AckManager, DEFAULT_ACK_RANGES_LIMIT},
 };
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
@@ -41,6 +41,7 @@ pub(crate) use early_transmission::EarlyTransmission;
 pub(crate) use handshake::HandshakeSpace;
 pub(crate) use handshake_status::HandshakeStatus;
 pub(crate) use initial::InitialSpace;
+pub(crate) use rx_packet_numbers::EARLY_ACK_SETTINGS;
 pub(crate) use session_context::SessionContext;
 pub(crate) use tx_packet_numbers::TxPacketNumbers;
 
@@ -189,6 +190,12 @@ impl<ConnectionConfigType: connection::Config> PacketSpaceManager<ConnectionConf
         if let Some(space) = self.application_mut() {
             space.on_timeout(timestamp);
         }
+    }
+
+    pub fn is_handshake_confirmed(&self) -> bool {
+        self.application()
+            .map(|space| space.handshake_status.is_confirmed())
+            .unwrap_or(false)
     }
 }
 
