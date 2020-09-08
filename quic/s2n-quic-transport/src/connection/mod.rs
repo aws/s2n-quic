@@ -129,27 +129,3 @@ pub struct Limits {
     // temporary field to supress clippy::trivially_copy_pass_by_ref warnings
     _padding: u64,
 }
-
-/// Maintain metrics for each connection
-#[allow(dead_code)]
-#[derive(Copy, Clone)]
-pub struct ConnectionMetrics {
-    bytes_sent: usize,
-    bytes_recv: usize,
-}
-
-#[allow(dead_code)]
-impl ConnectionMetrics {
-    fn inc_bytes_recv(&mut self, bytes: usize) {
-        self.bytes_recv += bytes
-    }
-}
-
-impl Default for ConnectionMetrics {
-    fn default() -> Self {
-        ConnectionMetrics {
-            bytes_sent: 0,
-            bytes_recv: 0,
-        }
-    }
-}

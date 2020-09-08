@@ -143,6 +143,10 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
 
             connection.handle_cleartext_initial_packet(locked_shared_state, datagram, packet)?;
 
+            if let Err(e) = connection.on_datagram_received(locked_shared_state, datagram) {
+                eprintln!("Datagram handle error: {:?}", e);
+            }
+
             connection.handle_remaining_packets(
                 locked_shared_state,
                 datagram,

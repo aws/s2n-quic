@@ -1,6 +1,11 @@
 //! This module contains the Path implementation
 
-use crate::{connection, inet::SocketAddress, recovery::RTTEstimator};
+use crate::{
+    connection,
+    frame::path_challenge,
+    inet::SocketAddress,
+    recovery::RTTEstimator
+};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum State {
@@ -14,12 +19,6 @@ pub enum State {
 //# packet size of 1200 bytes, it MUST immediately cease sending QUIC
 //# packets
 const MINIMUM_MTU: u16 = 1200;
-
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#8.3
-//# The endpoint MUST use unpredictable data in every PATH_CHALLENGE
-//# frame so that it can associate the peer's response with the
-//# corresponding PATH_CHALLENGE.
-const CHALLENGE_DATA_SIZE: usize = 32;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Path {
@@ -37,7 +36,7 @@ pub struct Path {
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#8.3
     //# To initiate path validation, an endpoint sends a PATH_CHALLENGE frame
     //# containing a random payload on the path to be validated.
-    pub challenge: Option<[u8; CHALLENGE_DATA_SIZE]>,
+    pub challenge: Option<[u8; path_challenge::DATA_LEN]>,
 }
 
 /// A Path holds the local and peer socket addresses, connection ids, and state. It can be

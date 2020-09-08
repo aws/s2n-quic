@@ -156,7 +156,7 @@ pub trait ConnectionTrait: Sized {
         transport_error: TransportError,
     );
 
-    /// Handles metrics associated with this datagram
+    /// Notifies a connection it has received a datagram from a peer
     fn on_datagram_received(
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
@@ -204,10 +204,15 @@ pub trait ConnectionTrait: Sized {
         connection_id_validator: &Validator,
         payload: DecoderBufferMut,
     ) -> Result<(), ()> {
+        if let Err(e) = self.on_datagram_received(shared_state, datagram) {
+            eprintln!("Datagram handle error: {:?}", e);
+        }
+
         if let Err(err) = self.handle_packet(shared_state, datagram, first_packet) {
             self.handle_transport_error(shared_state, datagram, err);
             return Err(());
         }
+
         if let Err(err) = self.handle_remaining_packets(
             shared_state,
             datagram,

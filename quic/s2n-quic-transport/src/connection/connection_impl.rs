@@ -418,16 +418,8 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
             .initial_mut()
             .and_then(packet_validator!(packet))
         {
-            // We get here from transport::endpoint::receive_datagram. Whether the connection
-            // was known or not, this function is called. So we can verify whether this is a new
-            // connection's initial packet, or an existing connection being migrated to a new
-            // endpoint.
-            if self.path_manager.is_new_path(
-                &datagram.remote_address,
-                &connection::Id::try_from_bytes(packet.destination_connection_id).unwrap(),
-            ) && self.state == ConnectionState::Handshaking
-            {
-                //= https://tools.ietf.org/id/draft-ietf-quic-transport-29#9
+            if self.path_manager.is_new_path(&datagram.remote_address) {
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#9
                 //# The design of QUIC relies on endpoints retaining a stable address
                 //# for the duration of the handshake.  An endpoint MUST NOT initiate
                 //# connection migration before the handshake is confirmed, as defined
@@ -435,7 +427,6 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
                 return Err(TransportError::PROTOCOL_VIOLATION);
             }
 
-            // The path is already known
             self.handle_cleartext_initial_packet(shared_state, datagram, packet)?;
 
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#10.2

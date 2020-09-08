@@ -133,10 +133,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     //    // conn.validate_path(&connection_id, &datagram.remote_address, &connection_id)
                     //}
 
-                    if let Err(e) = conn.on_datagram_received(shared_state, datagram) {
-                        eprintln!("Datagram handle error: {:?}", e);
-                    }
-
                     if let Err(e) = conn.handle_first_and_remaining_packets(
                         shared_state,
                         datagram,

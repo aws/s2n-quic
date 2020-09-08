@@ -4,14 +4,14 @@ use s2n_quic_core::{connection, inet::SocketAddress, path::Path};
 use smallvec::SmallVec;
 
 /// The amount of Paths that can be maintained without using the heap
-const STATIC_DEFAULT_PATHS: usize = 5;
+const INLINE_PATH_LEN: usize = 5;
 
 /// The PathManager handles paths for a specific connection.
 /// It will handle path validation operations, and track the active path for a connection.
 #[derive(Default)]
 pub struct Manager {
     /// Path array
-    paths: SmallVec<[Path; STATIC_DEFAULT_PATHS]>,
+    paths: SmallVec<[Path; INLINE_PATH_LEN]>,
 
     /// Index to the active path
     active: usize,
@@ -32,43 +32,30 @@ impl Manager {
     pub fn is_new_path(
         &self,
         peer_address: &SocketAddress,
-        destination_connection_id: &connection::Id,
     ) -> bool {
-        self.path(peer_address, destination_connection_id).is_none()
+        self.path(peer_address).is_none()
     }
 
     /// Returns the Path for the connection id if the PathManager knows about it
     pub fn path(
         &self,
         peer_address: &SocketAddress,
-        destination_connection_id: &connection::Id,
     ) -> Option<&Path> {
-        if let Some(path_index) = self
+        self
             .paths
             .iter()
-            .position(|path| self.matching_path(&path, peer_address, destination_connection_id))
-        {
-            return Some(&self.paths[path_index]);
-        }
-
-        None
+            .find(|path| *peer_address == path.peer_socket_address)
     }
 
     /// Returns the Path for the connection id if the PathManager knows about it
     pub fn path_mut(
         &mut self,
         peer_address: &SocketAddress,
-        destination_connection_id: &connection::Id,
     ) -> Option<&mut Path> {
-        if let Some(path_index) = self
+        self
             .paths
-            .iter()
-            .position(|path| self.matching_path(&path, peer_address, destination_connection_id))
-        {
-            return Some(&mut self.paths[path_index]);
-        }
-
-        None
+            .iter_mut()
+            .find(|path| *peer_address == path.peer_socket_address)
     }
 
     /// Add a new path to the PathManager
@@ -76,30 +63,28 @@ impl Manager {
         self.paths.push(path);
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29#8.4
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#8.4
     //# On receiving a PATH_CHALLENGE frame, an endpoint MUST respond
     //# immediately by echoing the data contained in the PATH_CHALLENGE frame
     //# in a PATH_RESPONSE frame.
     pub fn on_path_challenge(
         &mut self,
         _peer_address: &SocketAddress,
-        _destination_connection_id: &connection::Id,
-        _challenge: &[u8],
+        _challenge: s2n_quic_core::frame::PathChallenge,
     ) {
         // TODO  this may be a no-op here. Perhaps the frame handler does the work.
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29#8.5
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#8.5
     //# A new address is considered valid when a PATH_RESPONSE frame is
     //# received that contains the data that was sent in a previous
     //# PATH_CHALLENGE.
     pub fn on_path_response(
         &mut self,
         peer_address: &SocketAddress,
-        destination_connection_id: &connection::Id,
-        response: &[u8],
+        response: s2n_quic_core::frame::PathResponse,
     ) {
-        if let Some(path) = self.path_mut(peer_address, destination_connection_id) {
+        if let Some(path) = self.path_mut(peer_address) {
             // We may have received a duplicate packet, only call the on_validated handler
             // one time.
             if path.is_validated() {
@@ -107,7 +92,7 @@ impl Manager {
             }
 
             if let Some(expected_response) = path.challenge {
-                if expected_response == response {
+                if &expected_response == response.data {
                     path.on_validated();
                 }
             }
@@ -131,16 +116,6 @@ impl Manager {
     }
 
     pub fn on_connection_id_new(&self, _connection_id: &connection::Id) {}
-
-    fn matching_path(
-        &self,
-        path: &Path,
-        peer_address: &SocketAddress,
-        destination_connection_id: &connection::Id,
-    ) -> bool {
-        path.peer_socket_address == *peer_address
-            && path.destination_connection_id == *destination_connection_id
-    }
 }
 
 #[cfg(test)]
@@ -148,41 +123,25 @@ mod tests {
     use super::*;
     use core::time::Duration;
     use s2n_quic_core::recovery::RTTEstimator;
+    use std::net::SocketAddr;
 
     #[test]
     fn get_path_by_address_test() {
-        let first_conn_id = connection::Id::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
-        let second_conn_id = connection::Id::try_from_bytes(&[5, 4, 3, 2, 1, 0]).unwrap();
-        let unused_conn_id = connection::Id::try_from_bytes(&[2, 4, 6, 8, 10, 12]).unwrap();
-        let first_path = Path::new(
-            first_conn_id,
+        let conn_id = connection::Id::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
+        let inserted_path = Path::new(
+            conn_id,
             SocketAddress::default(),
-            first_conn_id,
-            RTTEstimator::new(Duration::from_millis(30)),
-        );
-        let second_path = Path::new(
-            second_conn_id,
-            SocketAddress::default(),
-            second_conn_id,
+            conn_id,
             RTTEstimator::new(Duration::from_millis(30)),
         );
 
         let mut manager = Manager::default();
-        manager.insert(first_path);
-        manager.insert(second_path);
+        manager.insert(inserted_path);
 
-        let first_match = manager
-            .path(&SocketAddress::default(), &first_conn_id)
+        let matched_path = manager
+            .path(&SocketAddress::default())
             .unwrap();
-        let second_match = manager
-            .path(&SocketAddress::default(), &second_conn_id)
-            .unwrap();
-        assert_eq!(first_match, &first_path);
-        assert_eq!(second_match, &second_path);
-        assert_eq!(
-            manager.path(&SocketAddress::default(), &unused_conn_id),
-            None
-        );
+        assert_eq!(matched_path, &inserted_path);
     }
 
     #[test]
@@ -194,24 +153,25 @@ mod tests {
             first_conn_id,
             RTTEstimator::new(Duration::from_millis(30)),
         );
-        first_path.challenge = Some([0u8; 32]);
+        first_path.challenge = Some([0u8; 8]);
 
         let mut manager = Manager::default();
         manager.insert(first_path);
         {
             let first_path = manager
-                .path(&first_path.peer_socket_address, &first_conn_id)
+                .path(&first_path.peer_socket_address)
                 .unwrap();
             assert_eq!(first_path.is_validated(), false);
         }
+
+        let frame = s2n_quic_core::frame::PathResponse { data: &[0u8; 8] };
         manager.on_path_response(
             &first_path.peer_socket_address,
-            &first_path.destination_connection_id,
-            &first_path.challenge.unwrap(),
+            frame,
         );
         {
             let first_path = manager
-                .path(&first_path.peer_socket_address, &first_conn_id)
+                .path(&first_path.peer_socket_address)
                 .unwrap();
             assert_eq!(first_path.is_validated(), true);
         }
@@ -220,7 +180,6 @@ mod tests {
     #[test]
     fn new_peer_test() {
         let first_conn_id = connection::Id::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
-        let new_conn_id = connection::Id::try_from_bytes(&[5, 4, 3, 2, 1, 0]).unwrap();
         let first_path = Path::new(
             first_conn_id,
             SocketAddress::default(),
@@ -231,11 +190,13 @@ mod tests {
         let mut manager = Manager::default();
         manager.insert(first_path);
         assert_eq!(
-            manager.is_new_path(&SocketAddress::default(), &first_conn_id),
+            manager.is_new_path(&SocketAddress::default()),
             false
         );
+
+        let addr: SocketAddr = "127.0.0.1:80".parse().unwrap();
         assert_eq!(
-            manager.is_new_path(&SocketAddress::default(), &new_conn_id),
+            manager.is_new_path(&addr.into()),
             true
         );
     }
