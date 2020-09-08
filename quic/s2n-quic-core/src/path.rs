@@ -1,11 +1,6 @@
 //! This module contains the Path implementation
 
-use crate::{
-    connection,
-    frame::path_challenge,
-    inet::SocketAddress,
-    recovery::RTTEstimator
-};
+use crate::{connection, frame::path_challenge, inet::SocketAddress, recovery::RTTEstimator};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum State {

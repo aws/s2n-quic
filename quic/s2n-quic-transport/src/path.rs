@@ -29,31 +29,20 @@ impl Manager {
     }
 
     /// Returns whether the socket address belongs to the current peer or an in progress peer
-    pub fn is_new_path(
-        &self,
-        peer_address: &SocketAddress,
-    ) -> bool {
+    pub fn is_new_path(&self, peer_address: &SocketAddress) -> bool {
         self.path(peer_address).is_none()
     }
 
     /// Returns the Path for the connection id if the PathManager knows about it
-    pub fn path(
-        &self,
-        peer_address: &SocketAddress,
-    ) -> Option<&Path> {
-        self
-            .paths
+    pub fn path(&self, peer_address: &SocketAddress) -> Option<&Path> {
+        self.paths
             .iter()
             .find(|path| *peer_address == path.peer_socket_address)
     }
 
     /// Returns the Path for the connection id if the PathManager knows about it
-    pub fn path_mut(
-        &mut self,
-        peer_address: &SocketAddress,
-    ) -> Option<&mut Path> {
-        self
-            .paths
+    pub fn path_mut(&mut self, peer_address: &SocketAddress) -> Option<&mut Path> {
+        self.paths
             .iter_mut()
             .find(|path| *peer_address == path.peer_socket_address)
     }
@@ -138,9 +127,7 @@ mod tests {
         let mut manager = Manager::default();
         manager.insert(inserted_path);
 
-        let matched_path = manager
-            .path(&SocketAddress::default())
-            .unwrap();
+        let matched_path = manager.path(&SocketAddress::default()).unwrap();
         assert_eq!(matched_path, &inserted_path);
     }
 
@@ -158,21 +145,14 @@ mod tests {
         let mut manager = Manager::default();
         manager.insert(first_path);
         {
-            let first_path = manager
-                .path(&first_path.peer_socket_address)
-                .unwrap();
+            let first_path = manager.path(&first_path.peer_socket_address).unwrap();
             assert_eq!(first_path.is_validated(), false);
         }
 
         let frame = s2n_quic_core::frame::PathResponse { data: &[0u8; 8] };
-        manager.on_path_response(
-            &first_path.peer_socket_address,
-            frame,
-        );
+        manager.on_path_response(&first_path.peer_socket_address, frame);
         {
-            let first_path = manager
-                .path(&first_path.peer_socket_address)
-                .unwrap();
+            let first_path = manager.path(&first_path.peer_socket_address).unwrap();
             assert_eq!(first_path.is_validated(), true);
         }
     }
@@ -189,15 +169,9 @@ mod tests {
 
         let mut manager = Manager::default();
         manager.insert(first_path);
-        assert_eq!(
-            manager.is_new_path(&SocketAddress::default()),
-            false
-        );
+        assert_eq!(manager.is_new_path(&SocketAddress::default()), false);
 
         let addr: SocketAddr = "127.0.0.1:80".parse().unwrap();
-        assert_eq!(
-            manager.is_new_path(&addr.into()),
-            true
-        );
+        assert_eq!(manager.is_new_path(&addr.into()), true);
     }
 }
