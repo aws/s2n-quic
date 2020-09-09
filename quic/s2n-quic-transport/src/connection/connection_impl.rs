@@ -424,13 +424,8 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
     ) -> Result<(), TransportError> {
         let is_handshake_confirmed = shared_state.space_manager.is_handshake_confirmed();
 
-        self.path_manager.on_datagram_received(
-            datagram,
-            peer_connection_id,
-            is_handshake_confirmed,
-        );
-
-        Ok(())
+        self.path_manager
+            .on_datagram_received(datagram, peer_connection_id, is_handshake_confirmed)
     }
 
     /// Is called when a initial packet had been received

@@ -6,6 +6,7 @@ use s2n_quic_core::{
     inet::{DatagramInfo, SocketAddress},
     path::Path,
     recovery::RTTEstimator,
+    transport::error::TransportError,
 };
 use smallvec::SmallVec;
 
@@ -60,10 +61,10 @@ impl Manager {
         datagram: &DatagramInfo,
         peer_connection_id: &connection::Id,
         is_handshake_confirmed: bool,
-    ) {
+    ) -> Result<(), TransportError> {
         if let Some(path) = self.path_mut(&datagram.remote_address) {
             path.on_bytes_received(datagram.payload_len);
-            return;
+            return Ok(());
         }
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#9
@@ -78,7 +79,10 @@ impl Manager {
                 RTTEstimator::new(EARLY_ACK_SETTINGS.max_ack_delay),
             );
             self.paths.push(path);
+            return Ok(());
         }
+
+        Err(TransportError::PROTOCOL_VIOLATION)
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#8.4
@@ -210,7 +214,25 @@ mod tests {
             ecn: ExplicitCongestionNotification::default(),
         };
 
-        manager.on_datagram_received(&datagram, &first_conn_id, true);
+        manager
+            .on_datagram_received(&datagram, &first_conn_id, true)
+            .unwrap();
         assert_eq!(manager.path(&new_addr).is_some(), true);
+
+        let new_addr: SocketAddr = "127.0.0.1:443".parse().unwrap();
+        let new_addr = SocketAddress::from(new_addr);
+        let datagram = DatagramInfo {
+            timestamp: unsafe { Timestamp::from_duration(Duration::from_millis(30)) },
+            remote_address: new_addr,
+            payload_len: 0,
+            ecn: ExplicitCongestionNotification::default(),
+        };
+
+        assert_eq!(
+            manager
+                .on_datagram_received(&datagram, &first_conn_id, false)
+                .is_err(),
+            true
+        );
     }
 }
