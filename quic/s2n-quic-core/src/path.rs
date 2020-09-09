@@ -1,6 +1,6 @@
 //! This module contains the Path implementation
 
-use crate::{connection, inet::SocketAddress, recovery::RTTEstimator};
+use crate::{connection, frame::path_challenge, inet::SocketAddress, recovery::RTTEstimator};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum State {
@@ -15,7 +15,7 @@ pub enum State {
 //# packets
 const MINIMUM_MTU: u16 = 1200;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Path {
     /// The peer's socket address
     pub peer_socket_address: SocketAddress,
@@ -27,6 +27,11 @@ pub struct Path {
     state: State,
     /// Maximum transmission unit of the path
     mtu: u16,
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#8.3
+    //# To initiate path validation, an endpoint sends a PATH_CHALLENGE frame
+    //# containing a random payload on the path to be validated.
+    pub challenge: Option<[u8; path_challenge::DATA_LEN]>,
 }
 
 /// A Path holds the local and peer socket addresses, connection ids, and state. It can be
@@ -46,20 +51,21 @@ impl Path {
                 rx_bytes: 0,
             },
             mtu: MINIMUM_MTU,
+            challenge: None,
         }
     }
 
     /// Called when bytes have been transmitted on this path
-    pub fn on_bytes_transmitted(&mut self, bytes: u32) {
+    pub fn on_bytes_transmitted(&mut self, bytes: usize) {
         if let State::Pending { tx_bytes, .. } = &mut self.state {
-            *tx_bytes += bytes;
+            *tx_bytes += bytes as u32;
         }
     }
 
     /// Called when bytes have been received on this path
-    pub fn on_bytes_received(&mut self, bytes: u32) {
+    pub fn on_bytes_received(&mut self, bytes: usize) {
         if let State::Pending { rx_bytes, .. } = &mut self.state {
-            *rx_bytes += bytes;
+            *rx_bytes += bytes as u32;
         }
     }
 

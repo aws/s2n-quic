@@ -9,32 +9,32 @@ use s2n_quic_core::{
     inet::{ExplicitCongestionNotification, SocketAddress},
     io::tx,
     packet::encoding::PacketEncodingError,
+    path::Path,
     time::Timestamp,
 };
 
-#[derive(Clone, Copy, Debug)]
-pub struct ConnectionTransmissionContext {
+#[derive(Debug)]
+pub struct ConnectionTransmissionContext<'a> {
     pub quic_version: u32,
-    pub source_connection_id: connection::Id,
-    pub destination_connection_id: connection::Id,
     pub timestamp: Timestamp,
     pub local_endpoint_type: EndpointType,
-    pub remote_address: SocketAddress,
+    pub path: &'a mut Path,
+    pub source_connection_id: &'a connection::Id,
     pub ecn: ExplicitCongestionNotification,
 }
 
-impl ConnectionContext for ConnectionTransmissionContext {
+impl<'a> ConnectionContext for ConnectionTransmissionContext<'a> {
     fn local_endpoint_type(&self) -> EndpointType {
         self.local_endpoint_type
     }
 
     fn connection_id(&self) -> &connection::Id {
-        &self.source_connection_id
+        &self.path.peer_connection_id
     }
 }
 
 pub struct ConnectionTransmission<'a, ConnectionConfigType: connection::Config> {
-    pub context: ConnectionTransmissionContext,
+    pub context: ConnectionTransmissionContext<'a>,
     pub shared_state: &'a mut SharedConnectionState<ConnectionConfigType>,
 }
 
@@ -42,7 +42,7 @@ impl<'a, ConnectionConfigType: connection::Config> tx::Message
     for ConnectionTransmission<'a, ConnectionConfigType>
 {
     fn remote_address(&mut self) -> SocketAddress {
-        self.context.remote_address
+        self.context.path.peer_socket_address
     }
 
     fn ecn(&mut self) -> ExplicitCongestionNotification {
@@ -60,14 +60,18 @@ impl<'a, ConnectionConfigType: connection::Config> tx::Message
     }
 
     fn write_payload(&mut self, buffer: &mut [u8]) -> usize {
-        // TODO trim off based on path MTU
         // TODO trim off based on congestion controller
-
-        let encoder = EncoderBuffer::new(buffer);
-        let initial_capacity = encoder.capacity();
 
         let shared_state = &mut self.shared_state;
         let space_manager = &mut shared_state.space_manager;
+        let mtu = self.context.path.clamp_mtu(buffer.len());
+        if mtu == 0 {
+            return 0;
+        }
+        let buffer = &mut buffer[..mtu];
+
+        let encoder = EncoderBuffer::new(buffer);
+        let initial_capacity = encoder.capacity();
 
         let encoder = if let Some(space) = space_manager.initial_mut() {
             match space.on_transmit(&self.context, encoder) {

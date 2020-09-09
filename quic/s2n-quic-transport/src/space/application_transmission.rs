@@ -17,7 +17,7 @@ use s2n_quic_core::{
 
 pub struct ApplicationTransmission<'a, StreamType: StreamTrait> {
     pub ack_manager: &'a mut AckManager,
-    pub context: &'a ConnectionTransmissionContext,
+    pub context: &'a ConnectionTransmissionContext<'a>,
     pub handshake_status: &'a mut HandshakeStatus,
     pub packet_number: PacketNumber,
     pub stream_manager: &'a mut AbstractStreamManager<StreamType>,
@@ -78,12 +78,12 @@ impl<'a, StreamType: StreamTrait> PacketPayloadEncoder for ApplicationTransmissi
 pub struct ApplicationTransmissionContext<'a, 'b> {
     ack_elicitation: AckElicitation,
     buffer: &'a mut EncoderBuffer<'b>,
-    context: &'a ConnectionTransmissionContext,
+    context: &'a ConnectionTransmissionContext<'a>,
     packet_number: PacketNumber,
 }
 
 impl<'a, 'b> WriteContext for ApplicationTransmissionContext<'a, 'b> {
-    type ConnectionContext = ConnectionTransmissionContext;
+    type ConnectionContext = ConnectionTransmissionContext<'a>;
 
     fn current_time(&self) -> Timestamp {
         self.context.timestamp

@@ -1,0 +1,238 @@
+//! This module contains the Manager implementation
+
+use crate::space::EARLY_ACK_SETTINGS;
+use s2n_quic_core::{
+    connection,
+    inet::{DatagramInfo, SocketAddress},
+    path::Path,
+    recovery::RTTEstimator,
+    transport::error::TransportError,
+};
+use smallvec::SmallVec;
+
+/// The amount of Paths that can be maintained without using the heap
+const INLINE_PATH_LEN: usize = 5;
+
+/// The PathManager handles paths for a specific connection.
+/// It will handle path validation operations, and track the active path for a connection.
+pub struct Manager {
+    /// Path array
+    paths: SmallVec<[Path; INLINE_PATH_LEN]>,
+
+    /// Index to the active path
+    active: usize,
+}
+
+impl Manager {
+    pub fn new(initial_path: Path) -> Self {
+        Manager {
+            paths: SmallVec::from_elem(initial_path, INLINE_PATH_LEN),
+            active: 0,
+        }
+    }
+
+    /// Return the active path
+    pub fn active_path(&self) -> &Path {
+        &self.paths[self.active]
+    }
+
+    /// Return a mutable reference to the active path
+    pub fn active_path_mut(&mut self) -> &mut Path {
+        &mut self.paths[self.active]
+    }
+
+    /// Returns the Path for the connection id if the PathManager knows about it
+    pub fn path(&self, peer_address: &SocketAddress) -> Option<&Path> {
+        self.paths
+            .iter()
+            .find(|path| *peer_address == path.peer_socket_address)
+    }
+
+    /// Returns the Path for the connection id if the PathManager knows about it
+    pub fn path_mut(&mut self, peer_address: &SocketAddress) -> Option<&mut Path> {
+        self.paths
+            .iter_mut()
+            .find(|path| *peer_address == path.peer_socket_address)
+    }
+
+    /// Called when a datagram is received on a connection
+    pub fn on_datagram_received(
+        &mut self,
+        datagram: &DatagramInfo,
+        peer_connection_id: &connection::Id,
+        is_handshake_confirmed: bool,
+    ) -> Result<(), TransportError> {
+        if let Some(path) = self.path_mut(&datagram.remote_address) {
+            path.on_bytes_received(datagram.payload_len);
+            return Ok(());
+        }
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#9
+        //# The design of QUIC relies on endpoints retaining a stable address
+        //# for the duration of the handshake.  An endpoint MUST NOT initiate
+        //# connection migration before the handshake is confirmed, as defined
+        //# in section 4.1.2 of [QUIC-TLS].
+        if is_handshake_confirmed {
+            let path = Path::new(
+                datagram.remote_address,
+                *peer_connection_id,
+                RTTEstimator::new(EARLY_ACK_SETTINGS.max_ack_delay),
+            );
+            self.paths.push(path);
+            return Ok(());
+        }
+
+        Err(TransportError::PROTOCOL_VIOLATION)
+    }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#8.4
+    //# On receiving a PATH_CHALLENGE frame, an endpoint MUST respond
+    //# immediately by echoing the data contained in the PATH_CHALLENGE frame
+    //# in a PATH_RESPONSE frame.
+    pub fn on_path_challenge(
+        &mut self,
+        _peer_address: &SocketAddress,
+        _challenge: s2n_quic_core::frame::PathChallenge,
+    ) {
+        // TODO  this may be a no-op here. Perhaps the frame handler does the work.
+    }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#8.5
+    //# A new address is considered valid when a PATH_RESPONSE frame is
+    //# received that contains the data that was sent in a previous
+    //# PATH_CHALLENGE.
+    pub fn on_path_response(
+        &mut self,
+        peer_address: &SocketAddress,
+        response: s2n_quic_core::frame::PathResponse,
+    ) {
+        if let Some(path) = self.path_mut(peer_address) {
+            // We may have received a duplicate packet, only call the on_validated handler
+            // one time.
+            if path.is_validated() {
+                return;
+            }
+
+            if let Some(expected_response) = path.challenge {
+                if &expected_response == response.data {
+                    path.on_validated();
+                }
+            }
+        }
+    }
+
+    /// Called when a token is received that was issued in a Retry packet
+    pub fn on_retry_token(&self, _peer_address: &SocketAddress, _token: &[u8]) {}
+
+    /// Called when a token is received that was issued in a NEW_TOKEN frame
+    pub fn on_new_token(&self, _peer_address: &SocketAddress, _token: &[u8]) {}
+
+    /// Start the validation process for a path
+    pub fn validate_path(&self, _path: Path) {}
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29#10.4
+    //# Tokens are invalidated when their associated connection ID is retired via a
+    //# RETIRE_CONNECTION_ID frame (Section 19.16).
+    pub fn on_connection_id_retire(&self, _connenction_id: &connection::Id) {
+        // TODO invalidate any tokens issued under this connection id
+    }
+
+    pub fn on_connection_id_new(&self, _connection_id: &connection::Id) {}
+
+    pub fn on_packet_received(&mut self) {}
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use core::time::Duration;
+    use s2n_quic_core::{
+        inet::{DatagramInfo, ExplicitCongestionNotification},
+        recovery::RTTEstimator,
+        time::Timestamp,
+    };
+    use std::net::SocketAddr;
+
+    #[test]
+    fn get_path_by_address_test() {
+        let conn_id = connection::Id::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
+        let first_path = Path::new(
+            SocketAddress::default(),
+            conn_id,
+            RTTEstimator::new(Duration::from_millis(30)),
+        );
+
+        let manager = Manager::new(first_path);
+
+        let matched_path = manager.path(&SocketAddress::default()).unwrap();
+        assert_eq!(matched_path, &first_path);
+    }
+
+    #[test]
+    fn path_validate_test() {
+        let first_conn_id = connection::Id::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
+        let mut first_path = Path::new(
+            SocketAddress::default(),
+            first_conn_id,
+            RTTEstimator::new(Duration::from_millis(30)),
+        );
+        first_path.challenge = Some([0u8; 8]);
+
+        let mut manager = Manager::new(first_path);
+        {
+            let first_path = manager.path(&first_path.peer_socket_address).unwrap();
+            assert_eq!(first_path.is_validated(), false);
+        }
+
+        let frame = s2n_quic_core::frame::PathResponse { data: &[0u8; 8] };
+        manager.on_path_response(&first_path.peer_socket_address, frame);
+        {
+            let first_path = manager.path(&first_path.peer_socket_address).unwrap();
+            assert_eq!(first_path.is_validated(), true);
+        }
+    }
+
+    #[test]
+    fn new_peer_test() {
+        let first_conn_id = connection::Id::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
+        let first_path = Path::new(
+            SocketAddress::default(),
+            first_conn_id,
+            RTTEstimator::new(Duration::from_millis(30)),
+        );
+        let mut manager = Manager::new(first_path);
+        let new_addr: SocketAddr = "127.0.0.1:80".parse().unwrap();
+        let new_addr = SocketAddress::from(new_addr);
+
+        assert_eq!(manager.path(&SocketAddress::default()).is_some(), true);
+        assert_eq!(manager.path(&new_addr), None);
+
+        let datagram = DatagramInfo {
+            timestamp: unsafe { Timestamp::from_duration(Duration::from_millis(30)) },
+            remote_address: new_addr,
+            payload_len: 0,
+            ecn: ExplicitCongestionNotification::default(),
+        };
+
+        manager
+            .on_datagram_received(&datagram, &first_conn_id, true)
+            .unwrap();
+        assert_eq!(manager.path(&new_addr).is_some(), true);
+
+        let new_addr: SocketAddr = "127.0.0.1:443".parse().unwrap();
+        let new_addr = SocketAddress::from(new_addr);
+        let datagram = DatagramInfo {
+            timestamp: unsafe { Timestamp::from_duration(Duration::from_millis(30)) },
+            remote_address: new_addr,
+            payload_len: 0,
+            ecn: ExplicitCongestionNotification::default(),
+        };
+
+        assert_eq!(
+            manager
+                .on_datagram_received(&datagram, &first_conn_id, false)
+                .is_err(),
+            true
+        );
+    }
+}

@@ -20,6 +20,7 @@ mod wakeup_queue;
 pub mod acceptor;
 pub mod connection;
 pub mod endpoint;
+pub mod path;
 pub mod stream;
 
 ///////////////// From here on everything is temporary
