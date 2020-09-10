@@ -3,7 +3,7 @@ use crate::{
     frame_exchange_interests::FrameExchangeInterestProvider,
     processed_packet::ProcessedPacket,
     recovery,
-    space::rx_packet_numbers::{AckManager, DEFAULT_ACK_RANGES_LIMIT, EARLY_ACK_SETTINGS},
+    space::rx_packet_numbers::{AckManager, DEFAULT_ACK_RANGES_LIMIT},
 };
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{

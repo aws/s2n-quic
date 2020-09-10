@@ -285,7 +285,6 @@ pub trait ConnectionTrait: Sized {
 
         // TODO get from path manager
         let mut path = s2n_quic_core::path::Path::new(
-            connection::Id::EMPTY,
             datagram.remote_address,
             connection::Id::EMPTY,
             s2n_quic_core::recovery::RTTEstimator::new(Default::default()),

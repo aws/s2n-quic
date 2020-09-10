@@ -111,7 +111,7 @@ pub struct ConnectionImpl<ConfigType: connection::Config> {
     /// The current state of the connection
     state: ConnectionState,
     /// Manage the paths that the connection could use
-    path_manager: path::Manager,
+    path_manager: Manager,
 }
 
 impl<ConfigType: connection::Config> ConnectionImpl<ConfigType> {
@@ -215,7 +215,7 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
             parameters.peer_connection_id,
             rtt_estimator,
         );
-        let path_manager = path::Manager::new(initial_path);
+        let path_manager = Manager::new(initial_path);
 
         Self {
             config: parameters.connection_config,
@@ -340,14 +340,9 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
         if count == 0 {
             Err(ConnectionOnTransmitError::NoDatagram)
         } else {
-            // TODO get from path manager
-            let path = s2n_quic_core::path::Path::new(
-                connection::Id::EMPTY,
-                Default::default(),
-                connection::Id::EMPTY,
-                s2n_quic_core::recovery::RTTEstimator::new(Default::default()),
-            );
-            shared_state.space_manager.on_packets_sent(&path, timestamp);
+            shared_state
+                .space_manager
+                .on_packets_sent(self.path_manager.active_path(), timestamp);
             Ok(())
         }
     }
