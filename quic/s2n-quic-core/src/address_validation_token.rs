@@ -1,7 +1,6 @@
 //! Defines the Address Validation token
 
-use crate::inet::{SocketAddressV4, SocketAddressV6, Unspecified};
-use s2n_codec::{decoder_value, DecoderBuffer, DecoderError, Encoder, EncoderValue};
+use s2n_codec::{decoder_value, DecoderBuffer, DecoderBufferMut, DecoderError, Encoder, EncoderValue};
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#8.1.1
 //#   A token sent in a NEW_TOKEN frames or a Retry packet MUST be
@@ -36,8 +35,6 @@ decoder_value!(
     }
 );
 
-pub trait AddressValidation {}
-
 /// Maximum size of an address validation token
 const MAX_ADDRESS_VALIDATION_TOKEN_LEN: usize = 512;
 
@@ -45,9 +42,6 @@ const MAX_ADDRESS_VALIDATION_TOKEN_LEN: usize = 512;
 //#   There is no need for a single well-defined format for the token
 //#   because the server that generates the token also consumes it.
 pub struct AddressValidationToken {
-    bytes: [u8; MAX_ADDRESS_VALIDATION_TOKEN_LEN],
-    len: u16,
-
     version: u8,
     master_key_id: u8,
     key_id: u8,
@@ -116,11 +110,11 @@ const MKID_MASK: u8 = 0x00;
 const VERSION_SHIFT: u8 = 0;
 const MKID_SHIFT: u8 = 2;
 const KID_SHIFT: u8 = 4;
-const TOKEN_TYPE_SHIFT: u8 = 8;
+const TOKEN_TYPE_SHIFT: u8 = 5;
 
 impl<'a> EncoderValue for AddressValidationToken {
     fn encode<E: Encoder>(&self, buffer: &mut E) {
-        let mut token_buf = 0u8;
+        let mut token_buf = [0; 1];
         let decoder = DecoderBufferMut::new(&mut token_buf);
         let (decoded_token, _) = decoder.decode::<TokenType>().unwrap();
 
@@ -128,13 +122,13 @@ impl<'a> EncoderValue for AddressValidationToken {
             (self.version() << VERSION_SHIFT) & 
             (self.master_key_id() << MKID_SHIFT) & 
             (self.key_id() << KID_SHIFT) &
-            (self.token_type() << TOKEN_TYPE_SHIFT);
+            ((self.token_type() as u8) << TOKEN_TYPE_SHIFT);
         buffer.encode(&first_byte);
         buffer.encode(&self.master_key_id());
         buffer.encode(&self.key_id());
         buffer.encode(&self.token_type());
-        buffer.encode(&self.nonce().as_ref());
-        buffer.encode(&self.hmac().as_ref());
+        buffer.encode(&self.nonce());
+        buffer.encode(&self.hmac());
     }
 }
 
@@ -150,27 +144,25 @@ decoder_value!(
     impl<'a> AddressValidationToken {
         fn decode(buffer: Buffer) -> Result<Self> {
             let (token_type, buffer) = buffer.decode::<TokenType>()?;
-            let (ipv4_peer_address, buffer) = buffer.decode::<SocketAddressV4>()?;
-            let ipv4_peer_address = ipv4_peer_address.filter_unspecified();
-            let (ipv6_peer_address, buffer) = buffer.decode::<SocketAddressV6>()?;
-            let ipv6_peer_address = ipv6_peer_address.filter_unspecified();
-            let (lifetime, buffer) = buffer.decode::<u64>()?;
             let (nonce_slice, buffer) = buffer.decode_slice(16)?;
             let nonce_slice: &[u8] = nonce_slice.into_less_safe_slice();
-            let mut nonce: [u8; 16] = [0; 16];
-            nonce[..16].copy_from_slice(nonce_slice);
+            let mut nonce: [u8; 32] = [0; 32];
+            nonce[..32].copy_from_slice(nonce_slice);
             let (mac_slice, buffer) = buffer.decode_slice(32)?;
             let mac_slice: &[u8] = mac_slice.into_less_safe_slice();
-            let mut mac: [u8; 32] = [0; 32];
-            mac[..32].copy_from_slice(mac_slice);
+            let mut hmac: [u8; 32] = [0; 32];
+            hmac[..32].copy_from_slice(mac_slice);
 
+            let master_key_id = 0;
+            let key_id = 0;
+            let version = 0;
             let token = Self {
+                version,
+                master_key_id,
+                key_id,
                 token_type,
-                ipv4_peer_address,
-                ipv6_peer_address,
-                lifetime,
                 nonce,
-                mac,
+                hmac,
             };
 
             Ok((token, buffer))
@@ -185,15 +177,15 @@ mod token_tests {
 
     #[test]
     fn test_encoding() {
-        let nonce: [u8; 16] = [1; 16];
-        let mac: [u8; 32] = [2; 32];
+        let nonce: [u8; 32] = [1; 32];
+        let hmac: [u8; 32] = [2; 32];
         let token = AddressValidationToken {
+            version: 0,
+            master_key_id: 0,
+            key_id: 0,
             token_type: TokenType::NewToken,
-            ipv4_peer_address: Some(SocketAddressV4::new([127, 0, 0, 1], 80).into()),
-            ipv6_peer_address: None,
-            lifetime: 0,
             nonce,
-            mac,
+            hmac,
         };
 
         let mut b = vec![0; 128];
@@ -205,9 +197,6 @@ mod token_tests {
 
         assert_eq!(token.token_type, decoded_token.token_type);
         assert_eq!(token.nonce, decoded_token.nonce);
-        assert_eq!(token.mac, decoded_token.mac);
-        assert_eq!(token.lifetime, decoded_token.lifetime);
-        assert_eq!(token.ipv4_peer_address, decoded_token.ipv4_peer_address);
-        assert_eq!(token.ipv6_peer_address, decoded_token.ipv6_peer_address);
+        assert_eq!(token.hmac, decoded_token.hmac);
     }
 }

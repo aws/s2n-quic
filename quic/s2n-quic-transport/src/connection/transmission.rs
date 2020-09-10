@@ -21,7 +21,6 @@ pub struct ConnectionTransmissionContext<'a> {
     pub path: &'a mut Path,
     pub source_connection_id: &'a connection::Id,
     pub ecn: ExplicitCongestionNotification,
-    pub send_limits: ConnectionSendLimits,
 }
 
 impl<'a> ConnectionContext for ConnectionTransmissionContext<'a> {
@@ -155,81 +154,5 @@ impl<'a, ConnectionConfigType: connection::Config> tx::Message
         };
 
         initial_capacity - encoder.capacity()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::{
-        connection::{ConnectionImpl, InternalConnectionIdGenerator},
-        endpoint::{ConnectionIdGenerator, EndpointConfig},
-        space::PacketSpaceManager,
-        wakeup_queue::WakeupQueue,
-    };
-    use s2n_quic_core::endpoint::EndpointType;
-
-    /// A primitive connection ID generator for testing purposes.
-    struct LocalConnectionIdGenerator {
-        next_id: u64,
-    }
-
-    impl LocalConnectionIdGenerator {
-        fn new() -> Self {
-            Self { next_id: 1 }
-        }
-    }
-
-    impl ConnectionIdGenerator for LocalConnectionIdGenerator {
-        fn generate_connection_id(&mut self) -> ConnectionId {
-            self.next_id += 1;
-            let bytes = self.next_id.to_be_bytes();
-            ConnectionId::try_from_bytes(&bytes).unwrap()
-        }
-    }
-
-    struct TestConfig {}
-    impl EndpointConfig for TestConfig {
-        type ConnectionConfigType = TestConfig;
-        type ConnectionIdGeneratorType = LocalConnectionIdGenerator;
-        type ConnectionType = ConnectionImpl<Self::ConnectionConfigType>;
-        type TLSEndpointType = RustlsServerEndpoint;
-
-        fn create_connection_config(&mut self) -> Self::ConnectionConfigType {
-            TestConfig {}
-        }
-    }
-
-    #[test]
-    fn test_byte_counting() {
-        let connection_id = ConnectionId::try_from_bytes(&"0000000000000000".as_ref()).unwrap();
-        let context = ConnectionTransmissionContext {
-            quic_version: 0,
-            destination_connection_id: connection_id,
-            source_connection_id: connection_id,
-            timestamp: unsafe { Timestamp::from_duration(Duration::from_millis(100)) },
-            local_endpoint_type: EndpointType::Server,
-            remote_address: Default::default(),
-            ecn: Default::default(),
-            send_limits: Default::default(),
-        };
-
-        let space_manager = PacketSpaceManager::<T> {
-            session: None,
-            initial: None,
-            handshake: None,
-            application: None,
-            zero_rtt_crypto: None,
-        };
-
-        let generator = InternalConnectionIdGenerator::new();
-        let internal_connection_id = generator.generate_id();
-        let mut queue = WakeupQueue::new();
-        let mut handle1 = queue.create_wakeup_handle(internal_connection_id);
-        let state = SharedConnectionState::new(space_manager, handle1);
-        let trans = ConnectionTransmission {
-            context,
-            shared_state: &mut state,
-        };
     }
 }

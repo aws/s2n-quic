@@ -1,20 +1,9 @@
+/// Provides address validation token support for an endpoint
+use s2n_quic_core::{address_validation_token::{AddressValidationToken, TokenType}, connection, inet::SocketAddress};
 use core::time::Duration;
-/// Provides retry token support for an endpoint
-use s2n_quic_core::{connection, inet::SocketAddress};
-
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#8.1.1
-//#   A token sent in a NEW_TOKEN frames or a Retry packet MUST be
-//#   constructed in a way that allows the server to identify how it was
-//#   provided to a client.  These tokens are carried in the same field,
-//#   but require different handling from servers.
-#[derive(Debug, PartialEq)]
-pub enum TokenType {
-    RetryToken,
-    NewToken,
-}
 
 pub trait Provider {
-    type RetryToken: 'static + Send;
+    type AddressValidationToken: 'static + Send;
     type Error: core::fmt::Display;
 
     /// Called when a token is needed for a NEW_TOKEN frame.
@@ -47,7 +36,7 @@ pub trait Provider {
     /// Called to return the hash of a token for de-duplication purposes
     fn get_token_hash(&self, token: &[u8]) -> &[u8];
 
-    fn start(self) -> Result<Self::RetryToken, Self::Error>;
+    fn start(self) -> Result<Self::AddressValidationToken, Self::Error>;
 }
 
 pub use default::Provider as Default;
@@ -62,7 +51,7 @@ pub mod default {
     pub struct Provider;
 
     impl super::Provider for Provider {
-        type RetryToken = (); // TODO
+        type AddressValidationToken = (); // TODO
         type Error = core::convert::Infallible;
 
         fn generate_new_token(
@@ -87,7 +76,7 @@ pub mod default {
         }
 
         /// Called to validate a token.
-        fn start(self) -> Result<Self::RetryToken, Self::Error> {
+        fn start(self) -> Result<Self::AddressValidationToken, Self::Error> {
             // TODO
             Ok(())
         }
@@ -103,18 +92,18 @@ mod tests {
 
     #[test]
     fn test_encoding() {
-        let peer_address = SocketAddressV4::new([127, 0, 0, 1], 80).into();
-        let dcid = ConnectionId::default();
-        let scid = ConnectionId::default();
+        let connection_id_bytes = [0u8; MAX_LEN];
+        let dcid = connection::Id::try_from_bytes(&connection_id_bytes);
+        let scid = connection::Id::try_from_bytes(&connection_id_bytes);
         let mut token_buffer = vec![0; MAX_ADDRESS_VALIDATION_TOKEN_LEN];
 
-        let nonce: [u8; 16] = [1; 16];
+        let nonce: [u8; 32] = [1; 32];
         let mac: [u8; 32] = [2; 32];
-        let token = Default {
+        let token = AddressValidationToken {
+            version: 0,
+            master_key_id: 0,
+            key_id: 0,
             token_type: TokenType::NewToken,
-            ipv4_peer_address: Some(SocketAddressV4::new([127, 0, 0, 1], 80).into()),
-            ipv6_peer_address: None,
-            lifetime: 0,
             nonce,
             mac,
         };
@@ -127,9 +116,6 @@ mod tests {
 
         assert_eq!(token.token_type, decoded_token.token_type);
         assert_eq!(token.nonce, decoded_token.nonce);
-        assert_eq!(token.mac, decoded_token.mac);
-        assert_eq!(token.lifetime, decoded_token.lifetime);
-        assert_eq!(token.ipv4_peer_address, decoded_token.ipv4_peer_address);
-        assert_eq!(token.ipv6_peer_address, decoded_token.ipv6_peer_address);
+        assert_eq!(token.hmac, decoded_token.mac);
     }
 }
