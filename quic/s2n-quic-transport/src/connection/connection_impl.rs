@@ -8,12 +8,14 @@ use crate::{
         SharedConnectionState,
     },
     contexts::ConnectionOnTransmitError,
+    path::Manager,
     recovery,
+    space::EARLY_ACK_SETTINGS,
 };
 use core::time::Duration;
 use s2n_quic_core::{
     application::ApplicationErrorExt,
-    inet::{DatagramInfo, SocketAddress},
+    inet::DatagramInfo,
     io::tx,
     packet::{
         handshake::ProtectedHandshake,
@@ -23,6 +25,8 @@ use s2n_quic_core::{
         version_negotiation::ProtectedVersionNegotiation,
         zero_rtt::ProtectedZeroRTT,
     },
+    path::Path,
+    recovery::RTTEstimator,
     time::Timestamp,
     transport::error::TransportError,
 };
@@ -91,6 +95,8 @@ pub struct ConnectionImpl<ConfigType: connection::Config> {
     config: ConfigType,
     /// The [`Connection`]s internal identifier
     internal_connection_id: InternalConnectionId,
+    /// The connection ID to send packets from
+    local_connection_id: connection::Id,
     /// The connection ID mapper registration which should be utilized by the connection
     #[allow(dead_code)] // TODO: temporary supression until connections support ID registration
     connection_id_mapper_registration: ConnectionIdMapperRegistration,
@@ -98,18 +104,14 @@ pub struct ConnectionImpl<ConfigType: connection::Config> {
     timers: ConnectionTimers,
     /// The timer entry in the endpoint timer list
     timer_entry: ConnectionTimerEntry,
-    /// The last utilized remote Connection ID
-    peer_connection_id: connection::Id,
-    /// The last utilized local Connection ID
-    local_connection_id: connection::Id,
-    /// The peers socket address
-    peer_socket_address: SocketAddress,
     /// The QUIC protocol version which is used for this particular connection
     quic_version: u32,
     /// Describes whether the connection is known to be accepted by the application
     accept_state: AcceptState,
     /// The current state of the connection
     state: ConnectionState,
+    /// Manage the paths that the connection could use
+    path_manager: path::Manager,
 }
 
 impl<ConfigType: connection::Config> ConnectionImpl<ConfigType> {
@@ -205,18 +207,27 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
 
     /// Creates a new `Connection` instance with the given configuration
     fn new(parameters: ConnectionParameters<Self::Config>) -> Self {
+        // The path manager always starts with a single path containing the known peer and local
+        // connection ids.
+        let rtt_estimator = RTTEstimator::new(EARLY_ACK_SETTINGS.max_ack_delay);
+        let initial_path = Path::new(
+            parameters.peer_socket_address,
+            parameters.peer_connection_id,
+            rtt_estimator,
+        );
+        let path_manager = path::Manager::new(initial_path);
+
         Self {
             config: parameters.connection_config,
             internal_connection_id: parameters.internal_connection_id,
+            local_connection_id: parameters.local_connection_id,
             connection_id_mapper_registration: parameters.connection_id_mapper_registration,
             timers: Default::default(),
             timer_entry: parameters.timer,
-            peer_connection_id: parameters.peer_connection_id,
-            local_connection_id: parameters.local_connection_id,
-            peer_socket_address: parameters.peer_socket_address,
             quic_version: parameters.quic_version,
             accept_state: AcceptState::Handshaking,
             state: ConnectionState::Handshaking,
+            path_manager,
         }
     }
 
@@ -291,23 +302,30 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
                 // TODO pull these from somewhere
                 let ecn = Default::default();
 
-                while queue
-                    .push(ConnectionTransmission {
-                        context: ConnectionTransmissionContext {
-                            quic_version: self.quic_version,
-                            destination_connection_id: self.peer_connection_id,
-                            source_connection_id: self.local_connection_id,
-                            timestamp,
-                            local_endpoint_type: Self::Config::ENDPOINT_TYPE,
-                            remote_address: self.peer_socket_address,
-                            ecn,
-                        },
-                        shared_state,
-                    })
-                    .is_ok()
-                {
+                let active_path = self.path_manager.active_path_mut();
+
+                while let Ok(bytes_transmitted) = queue.push(ConnectionTransmission {
+                    context: ConnectionTransmissionContext {
+                        quic_version: self.quic_version,
+                        timestamp,
+                        local_endpoint_type: Self::Config::ENDPOINT_TYPE,
+                        path: active_path,
+                        source_connection_id: &self.local_connection_id,
+                        ecn,
+                    },
+                    shared_state,
+                }) {
                     count += 1;
+                    active_path.on_bytes_transmitted(bytes_transmitted);
                 }
+                // TODO  leave the psuedo in comment, TODO send this stuff
+                // for path in path_manager.pending_paths() {
+                // queue.push(path transmission context)
+                // need shared_state, look at application_transmission for examples
+                //  prob_path(path) // for mtu discovery or path
+                //  if not validated, send challenge_frame;
+                //  }
+                //  TODO send probe for MTU changes
             }
             ConnectionState::Closing => {
                 // We are only allowed to send CONNECTION_CLOSE frames in this
@@ -420,6 +438,17 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
     }
 
     // Packet handling
+    fn on_datagram_received(
+        &mut self,
+        shared_state: &mut SharedConnectionState<Self::Config>,
+        datagram: &DatagramInfo,
+        peer_connection_id: &connection::Id,
+    ) -> Result<(), TransportError> {
+        let is_handshake_confirmed = shared_state.space_manager.is_handshake_confirmed();
+
+        self.path_manager
+            .on_datagram_received(datagram, peer_connection_id, is_handshake_confirmed)
+    }
 
     /// Is called when a initial packet had been received
     fn handle_initial_packet(

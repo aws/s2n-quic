@@ -143,6 +143,12 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
 
             connection.handle_cleartext_initial_packet(locked_shared_state, datagram, packet)?;
 
+            connection.on_datagram_received(
+                locked_shared_state,
+                datagram,
+                &source_connection_id,
+            )?;
+
             connection.handle_remaining_packets(
                 locked_shared_state,
                 datagram,

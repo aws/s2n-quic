@@ -1,6 +1,6 @@
 //! This module contains the Path implementation
 
-use crate::{connection, inet::SocketAddress, recovery::RTTEstimator};
+use crate::{connection, frame::path_challenge, inet::SocketAddress, recovery::RTTEstimator};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum State {
@@ -15,55 +15,57 @@ pub enum State {
 //# packets
 const MINIMUM_MTU: u16 = 1200;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Path {
     /// The peer's socket address
     pub peer_socket_address: SocketAddress,
     /// The connection id of the peer
-    pub source_connection_id: connection::Id,
-    /// The the connection id the peer wanted to access
-    pub destination_connection_id: connection::Id,
+    pub peer_connection_id: connection::Id,
     /// The path owns the roundtrip between peers
     pub rtt_estimator: RTTEstimator,
     /// Tracks whether this path has passed Address or Path validation
     state: State,
     /// Maximum transmission unit of the path
     mtu: u16,
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#8.3
+    //# To initiate path validation, an endpoint sends a PATH_CHALLENGE frame
+    //# containing a random payload on the path to be validated.
+    pub challenge: Option<[u8; path_challenge::DATA_LEN]>,
 }
 
 /// A Path holds the local and peer socket addresses, connection ids, and state. It can be
 /// validated or pending validation.
 impl Path {
     pub fn new(
-        destination_connection_id: connection::Id,
         peer_socket_address: SocketAddress,
-        source_connection_id: connection::Id,
+        peer_connection_id: connection::Id,
         rtt_estimator: RTTEstimator,
     ) -> Self {
         Path {
             peer_socket_address,
-            source_connection_id,
-            destination_connection_id,
+            peer_connection_id,
             rtt_estimator,
             state: State::Pending {
                 tx_bytes: 0,
                 rx_bytes: 0,
             },
             mtu: MINIMUM_MTU,
+            challenge: None,
         }
     }
 
     /// Called when bytes have been transmitted on this path
-    pub fn on_bytes_transmitted(&mut self, bytes: u32) {
+    pub fn on_bytes_transmitted(&mut self, bytes: usize) {
         if let State::Pending { tx_bytes, .. } = &mut self.state {
-            *tx_bytes += bytes;
+            *tx_bytes += bytes as u32;
         }
     }
 
     /// Called when bytes have been received on this path
-    pub fn on_bytes_received(&mut self, bytes: u32) {
+    pub fn on_bytes_received(&mut self, bytes: usize) {
         if let State::Pending { rx_bytes, .. } = &mut self.state {
-            *rx_bytes += bytes;
+            *rx_bytes += bytes as u32;
         }
     }
 
@@ -109,7 +111,6 @@ mod tests {
     #[test]
     fn amplification_limit_test() {
         let mut path = Path::new(
-            connection::Id::try_from_bytes(&[]).unwrap(),
             SocketAddress::default(),
             connection::Id::try_from_bytes(&[]).unwrap(),
             RTTEstimator::new(Duration::from_millis(30)),
@@ -134,7 +135,6 @@ mod tests {
     fn mtu_test() {
         // TODO this would work better as a fuzz test
         let mut path = Path::new(
-            connection::Id::try_from_bytes(&[]).unwrap(),
             SocketAddress::default(),
             connection::Id::try_from_bytes(&[]).unwrap(),
             RTTEstimator::new(Duration::from_millis(30)),

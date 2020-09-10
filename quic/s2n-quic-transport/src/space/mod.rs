@@ -43,6 +43,7 @@ pub(crate) use early_transmission::EarlyTransmission;
 pub(crate) use handshake::HandshakeSpace;
 pub(crate) use handshake_status::HandshakeStatus;
 pub(crate) use initial::InitialSpace;
+pub(crate) use rx_packet_numbers::EARLY_ACK_SETTINGS;
 pub(crate) use session_context::SessionContext;
 pub(crate) use tx_packet_numbers::TxPacketNumbers;
 
@@ -244,6 +245,12 @@ impl<ConnectionConfigType: connection::Config> PacketSpaceManager<ConnectionConf
         if let Some(space) = self.application_mut() {
             space.on_packets_sent(path, pto_backoff, timestamp);
         }
+    }
+
+    pub fn is_handshake_confirmed(&self) -> bool {
+        self.application()
+            .map(|space| space.handshake_status.is_confirmed())
+            .unwrap_or(false)
     }
 }
 

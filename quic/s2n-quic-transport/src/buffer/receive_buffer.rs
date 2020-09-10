@@ -590,11 +590,30 @@ impl StreamReceiveBuffer {
 
     /// Pops a buffer from the front of the receive queue if available
     pub fn pop(&mut self) -> Option<BytesMut> {
+        self.pop_transform(|buffer| Some(buffer.split()))
+    }
+
+    /// Pops a buffer from the front of the receive queue as long as the `transform` function returns a
+    /// buffer.
+    pub fn pop_transform<F: Fn(&mut BytesMut) -> Option<BytesMut>>(
+        &mut self,
+        transform: F,
+    ) -> Option<BytesMut> {
         if let SlotState::Received(buffer) = self.slots.front_mut()? {
-            let buf = core::mem::replace(buffer, BytesMut::new());
-            self.start_offset += buf.len() as u64;
-            self.slots.pop_front();
-            Some(buf)
+            let out = transform(buffer)?;
+
+            // remove an empty buffer if its capacity is getting low
+            if buffer.is_empty() && buffer.capacity() <= MIN_STREAM_RECEIVE_BUFFER_ALLOCATION_SIZE {
+                self.slots.pop_front();
+            }
+
+            // filter out empty buffers
+            if out.is_empty() {
+                return None;
+            }
+
+            self.start_offset += out.len() as u64;
+            Some(out)
         } else {
             None
         }

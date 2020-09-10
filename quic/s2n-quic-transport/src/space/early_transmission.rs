@@ -18,7 +18,7 @@ use s2n_quic_core::{
 
 pub struct EarlyTransmission<'a> {
     pub ack_manager: &'a mut AckManager,
-    pub context: &'a ConnectionTransmissionContext,
+    pub context: &'a ConnectionTransmissionContext<'a>,
     pub crypto_stream: &'a mut CryptoStream,
     pub packet_number: PacketNumber,
     pub recovery_manager: &'a mut recovery::Manager,
@@ -84,13 +84,13 @@ impl<'a> PacketPayloadEncoder for EarlyTransmission<'a> {
 pub struct EarlyTransmissionContext<'a, 'b> {
     ack_elicitation: AckElicitation,
     buffer: &'a mut EncoderBuffer<'b>,
-    context: &'a ConnectionTransmissionContext,
+    context: &'a ConnectionTransmissionContext<'a>,
     packet_number: PacketNumber,
     is_congestion_controlled: bool,
 }
 
 impl<'a, 'b> WriteContext for EarlyTransmissionContext<'a, 'b> {
-    type ConnectionContext = ConnectionTransmissionContext;
+    type ConnectionContext = ConnectionTransmissionContext<'a>;
 
     fn current_time(&self) -> Timestamp {
         self.context.timestamp
