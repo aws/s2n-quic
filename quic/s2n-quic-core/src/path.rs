@@ -95,41 +95,12 @@ impl Path {
             }
         }
     }
-
-    /// Returns whether this path is blocked from transmitting more data
-    pub fn at_amplification_limit(&self) -> bool {
-        let mtu = self.mtu as usize;
-        self.clamp_mtu(mtu) < mtu
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use core::time::Duration;
-
-    #[test]
-    fn amplification_limit_test() {
-        let mut path = Path::new(
-            SocketAddress::default(),
-            connection::Id::try_from_bytes(&[]).unwrap(),
-            RTTEstimator::new(Duration::from_millis(30)),
-        );
-
-        // Verify we enforce the amplification limit if we can't send
-        // at least 1 minimum sized packet
-        path.on_bytes_received(1200);
-        path.on_bytes_transmitted((1200 * 2) + 1);
-        assert_eq!(path.at_amplification_limit(), true);
-
-        path.on_bytes_received(1200);
-        assert_eq!(path.at_amplification_limit(), false);
-
-        path.on_validated();
-        path.on_bytes_transmitted(24);
-        // Validated paths should always be able to transmit
-        assert_eq!(path.at_amplification_limit(), false);
-    }
 
     #[test]
     fn mtu_test() {
