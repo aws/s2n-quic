@@ -460,24 +460,6 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
         packet: CleartextInitial,
     ) -> Result<(), TransportError> {
         if let Some(space) = shared_state.space_manager.initial_mut() {
-            //= https://tools.ietf.org/html/draft-ietf-quic-transport-29.txt#8.1
-            //# A server might wish to validate the client address before starting
-            //# the cryptographic handshake.  QUIC uses a token in the Initial packet
-            //# to provide address validation prior to completing the handshake.
-            //# this token is delivered to the client during connection establishment
-            //# with a Retry packet (see Section 8.1.2) or in a previous connection
-            //# using the NEW_TOKEN frame (see Section 8.1.3).
-            if packet.token.is_empty() {
-                // TODO if the packet does not contain a token, then send a RETRY packet
-                // If the packet did contain a token, and that token was invalid, then we should not
-                // have gotten here.
-            }
-
-            let token: AddressValidationToken = packet.token.into();
-            if !token.validate() {
-                // TODO handle invalid token
-            }
-
             if let Some(close) = space.handle_cleartext_payload(
                 packet.packet_number,
                 packet.payload,
