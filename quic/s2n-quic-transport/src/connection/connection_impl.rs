@@ -8,8 +8,8 @@ use crate::{
         SharedConnectionState,
     },
     contexts::ConnectionOnTransmitError,
-    path::Manager,
-    space::EARLY_ACK_SETTINGS,
+    path,
+    space::{PacketSpace, EARLY_ACK_SETTINGS},
 };
 use core::time::Duration;
 use s2n_quic_core::{
@@ -24,7 +24,6 @@ use s2n_quic_core::{
         version_negotiation::ProtectedVersionNegotiation,
         zero_rtt::ProtectedZeroRTT,
     },
-    path::Path,
     recovery::RTTEstimator,
     time::Timestamp,
     transport::error::TransportError,
@@ -110,7 +109,7 @@ pub struct ConnectionImpl<ConfigType: connection::Config> {
     /// The current state of the connection
     state: ConnectionState,
     /// Manage the paths that the connection could use
-    path_manager: Manager,
+    path_manager: path::Manager,
 }
 
 impl<ConfigType: connection::Config> ConnectionImpl<ConfigType> {
@@ -185,7 +184,7 @@ macro_rules! packet_validator {
 
             let packet = packet.decrypt(crypto).ok()?;
 
-            Some(packet)
+            Some((packet, space))
         }
     };
 }
@@ -199,12 +198,12 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
         // The path manager always starts with a single path containing the known peer and local
         // connection ids.
         let rtt_estimator = RTTEstimator::new(EARLY_ACK_SETTINGS.max_ack_delay);
-        let initial_path = Path::new(
+        let initial_path = path::Path::new(
             parameters.peer_socket_address,
             parameters.peer_connection_id,
             rtt_estimator,
         );
-        let path_manager = Manager::new(initial_path);
+        let path_manager = path::Manager::new(initial_path);
 
         Self {
             config: parameters.connection_config,
@@ -290,7 +289,7 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
             ConnectionState::Handshaking | ConnectionState::Active => {
                 let ecn = Default::default();
 
-                let active_path = self.path_manager.active_path_mut();
+                let (_path_id, active_path) = self.path_manager.active_path_mut();
 
                 while let Ok(bytes_transmitted) = queue.push(ConnectionTransmission {
                     context: ConnectionTransmissionContext {
@@ -421,7 +420,7 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         peer_connection_id: &connection::Id,
-    ) -> Result<(), TransportError> {
+    ) -> Result<path::Id, TransportError> {
         let is_handshake_confirmed = shared_state.space_manager.is_handshake_confirmed();
 
         self.path_manager
@@ -433,14 +432,15 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
+        path_id: path::Id,
         packet: ProtectedInitial,
     ) -> Result<(), TransportError> {
-        if let Some(packet) = shared_state
+        if let Some((packet, _space)) = shared_state
             .space_manager
             .initial_mut()
             .and_then(packet_validator!(packet))
         {
-            self.handle_cleartext_initial_packet(shared_state, datagram, packet)?;
+            self.handle_cleartext_initial_packet(shared_state, datagram, path_id, packet)?;
 
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#10.2
             //# An endpoint restarts its idle timer when a packet from its peer is
@@ -456,12 +456,27 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
+        path_id: path::Id,
         packet: CleartextInitial,
     ) -> Result<(), TransportError> {
-        self.handle_cleartext_packet(shared_state, datagram, packet)?;
+        if let Some(space) = shared_state.space_manager.initial_mut() {
+            if let Some(close) = space.handle_cleartext_payload(
+                packet.packet_number,
+                packet.payload,
+                datagram,
+                &mut self.path_manager[path_id],
+            )? {
+                self.close(
+                    shared_state,
+                    ConnectionCloseReason::PeerImmediateClose(close),
+                    datagram.timestamp,
+                );
+                return Ok(());
+            }
 
-        // try to move the crypto state machine forward
-        self.update_crypto_state(shared_state, datagram)?;
+            // try to move the crypto state machine forward
+            self.update_crypto_state(shared_state, datagram)?;
+        }
 
         Ok(())
     }
@@ -471,14 +486,27 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
+        path_id: path::Id,
         packet: ProtectedHandshake,
     ) -> Result<(), TransportError> {
-        if let Some(packet) = shared_state
+        if let Some((packet, space)) = shared_state
             .space_manager
             .handshake_mut()
             .and_then(packet_validator!(packet))
         {
-            self.handle_cleartext_packet(shared_state, datagram, packet)?;
+            if let Some(close) = space.handle_cleartext_payload(
+                packet.packet_number,
+                packet.payload,
+                datagram,
+                &mut self.path_manager[path_id],
+            )? {
+                self.close(
+                    shared_state,
+                    ConnectionCloseReason::PeerImmediateClose(close),
+                    datagram.timestamp,
+                );
+                return Ok(());
+            }
 
             //= https://tools.ietf.org/id/draft-ietf-quic-tls-27.txt#4.10.1
             //# A server MUST discard Initial keys when it first successfully
@@ -505,14 +533,27 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
+        path_id: path::Id,
         packet: ProtectedShort,
     ) -> Result<(), TransportError> {
-        if let Some(packet) = shared_state
+        if let Some((packet, space)) = shared_state
             .space_manager
             .application_mut()
             .and_then(packet_validator!(packet))
         {
-            self.handle_cleartext_packet(shared_state, datagram, packet)?;
+            if let Some(close) = space.handle_cleartext_payload(
+                packet.packet_number,
+                packet.payload,
+                datagram,
+                &mut self.path_manager[path_id],
+            )? {
+                self.close(
+                    shared_state,
+                    ConnectionCloseReason::PeerImmediateClose(close),
+                    datagram.timestamp,
+                );
+                return Ok(());
+            }
 
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#10.2
             //# An endpoint restarts its idle timer when a packet from its peer is
@@ -531,6 +572,7 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
         &mut self,
         _shared_state: &mut SharedConnectionState<Self::Config>,
         _datagram: &DatagramInfo,
+        _path_id: path::Id,
         _packet: ProtectedVersionNegotiation,
     ) -> Result<(), TransportError> {
         // TODO
@@ -542,6 +584,7 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
         &mut self,
         _shared_state: &mut SharedConnectionState<Self::Config>,
         _datagram: &DatagramInfo,
+        _path_id: path::Id,
         _packet: ProtectedZeroRTT,
     ) -> Result<(), TransportError> {
         // TODO
@@ -553,6 +596,7 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
         &mut self,
         _shared_state: &mut SharedConnectionState<Self::Config>,
         _datagram: &DatagramInfo,
+        _path_id: path::Id,
         _packet: ProtectedRetry,
     ) -> Result<(), TransportError> {
         // TODO

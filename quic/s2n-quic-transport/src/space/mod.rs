@@ -8,17 +8,14 @@ use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     crypto::{tls::Session as TLSSession, CryptoSuite},
     frame::{
-        ack::AckRanges, crypto::CryptoRef, stream::StreamRef, Ack, DataBlocked, HandshakeDone,
-        MaxData, MaxStreamData, MaxStreams, NewConnectionID, NewToken, PathChallenge, PathResponse,
-        ResetStream, RetireConnectionID, StopSending, StreamDataBlocked, StreamsBlocked,
+        self, ack::AckRanges, crypto::CryptoRef, stream::StreamRef, Ack, DataBlocked,
+        HandshakeDone, MaxData, MaxStreamData, MaxStreams, NewConnectionID, NewToken,
+        PathChallenge, PathResponse, ResetStream, RetireConnectionID, StopSending,
+        StreamDataBlocked, StreamsBlocked,
     },
     inet::DatagramInfo,
-    packet::{
-        handshake::CleartextHandshake,
-        initial::CleartextInitial,
-        number::{PacketNumber, PacketNumberSpace},
-        short::CleartextShort,
-    },
+    packet::number::{PacketNumber, PacketNumberSpace},
+    path::Path,
     time::Timestamp,
     transport::error::TransportError,
 };
@@ -201,7 +198,12 @@ impl<ConnectionConfigType: connection::Config> PacketSpaceManager<ConnectionConf
 
 macro_rules! default_frame_handler {
     ($name:ident, $frame:ty) => {
-        fn $name(&mut self, _datagram: &DatagramInfo, frame: $frame) -> Result<(), TransportError> {
+        fn $name(
+            &mut self,
+            frame: $frame,
+            _datagram: &DatagramInfo,
+            _path: &mut Path,
+        ) -> Result<(), TransportError> {
             Err(TransportError::PROTOCOL_VIOLATION
                 .with_reason(Self::INVALID_FRAME_ERROR)
                 .with_frame_type(frame.tag().into()))
@@ -214,14 +216,16 @@ pub trait PacketSpace {
 
     fn handle_crypto_frame(
         &mut self,
-        datagram: &DatagramInfo,
         frame: CryptoRef,
+        datagram: &DatagramInfo,
+        path: &mut Path,
     ) -> Result<(), TransportError>;
 
     fn handle_ack_frame<A: AckRanges>(
         &mut self,
-        datagram: &DatagramInfo,
         frame: Ack<A>,
+        datagram: &DatagramInfo,
+        path: &mut Path,
     ) -> Result<(), TransportError>;
 
     default_frame_handler!(handle_stream_frame, StreamRef);
@@ -244,56 +248,167 @@ pub trait PacketSpace {
         &mut self,
         processed_packet: ProcessedPacket,
     ) -> Result<(), TransportError>;
-}
 
-pub trait PacketSpaceHandler<'a, Packet> {
-    type Space: PacketSpace;
-
-    fn space_for_packet(
+    fn handle_cleartext_payload<'a>(
         &mut self,
-        packet: Packet,
-    ) -> Option<(&mut Self::Space, PacketNumber, DecoderBufferMut<'a>)>;
-}
+        packet_number: PacketNumber,
+        mut payload: DecoderBufferMut<'a>,
+        datagram: &DatagramInfo,
+        path: &mut Path,
+    ) -> Result<Option<frame::ConnectionClose<'a>>, TransportError> {
+        use s2n_quic_core::{
+            frame::{Frame, FrameMut},
+            varint::VarInt,
+        };
 
-impl<'a, Config: connection::Config> PacketSpaceHandler<'a, CleartextInitial<'a>>
-    for PacketSpaceManager<Config>
-{
-    type Space = InitialSpace<Config>;
+        let mut processed_packet = ProcessedPacket::new(packet_number, datagram);
 
-    fn space_for_packet(
-        &mut self,
-        packet: CleartextInitial<'a>,
-    ) -> Option<(&mut Self::Space, PacketNumber, DecoderBufferMut<'a>)> {
-        Some((self.initial_mut()?, packet.packet_number, packet.payload))
-    }
-}
+        macro_rules! with_frame_type {
+            ($frame:ident) => {{
+                let frame_type = $frame.tag();
+                move |err: TransportError| err.with_frame_type(VarInt::from_u8(frame_type))
+            }};
+        }
 
-impl<'a, Config: connection::Config> PacketSpaceHandler<'a, CleartextHandshake<'a>>
-    for PacketSpaceManager<Config>
-{
-    type Space = HandshakeSpace<Config>;
+        while !payload.is_empty() {
+            let (frame, remaining) = payload.decode::<FrameMut>()?;
 
-    fn space_for_packet(
-        &mut self,
-        packet: CleartextHandshake<'a>,
-    ) -> Option<(&mut Self::Space, PacketNumber, DecoderBufferMut<'a>)> {
-        Some((self.handshake_mut()?, packet.packet_number, packet.payload))
-    }
-}
+            match frame {
+                Frame::Padding(frame) => {
+                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.1
+                    //# A PADDING frame has no content.  That is, a PADDING frame consists of
+                    //# the single byte that identifies the frame as a PADDING frame.
+                    processed_packet.on_processed_frame(&frame);
+                }
+                Frame::Ping(frame) => {
+                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.2
+                    //# The receiver of a PING frame simply needs to acknowledge the packet
+                    //# containing this frame.
+                    processed_packet.on_processed_frame(&frame);
+                }
+                Frame::Crypto(frame) => {
+                    let on_error = with_frame_type!(frame);
+                    processed_packet.on_processed_frame(&frame);
+                    self.handle_crypto_frame(frame.into(), datagram, path)
+                        .map_err(on_error)?;
+                }
+                Frame::Ack(frame) => {
+                    let on_error = with_frame_type!(frame);
+                    processed_packet.on_processed_frame(&frame);
+                    self.handle_ack_frame(frame, datagram, path)
+                        .map_err(on_error)?;
+                }
+                Frame::ConnectionClose(frame) => {
+                    return Ok(Some(frame));
+                }
+                Frame::Stream(frame) => {
+                    let on_error = with_frame_type!(frame);
+                    processed_packet.on_processed_frame(&frame);
+                    self.handle_stream_frame(frame.into(), datagram, path)
+                        .map_err(on_error)?;
+                }
+                Frame::DataBlocked(frame) => {
+                    let on_error = with_frame_type!(frame);
+                    processed_packet.on_processed_frame(&frame);
+                    self.handle_data_blocked_frame(frame, datagram, path)
+                        .map_err(on_error)?;
+                }
+                Frame::MaxData(frame) => {
+                    let on_error = with_frame_type!(frame);
+                    processed_packet.on_processed_frame(&frame);
+                    self.handle_max_data_frame(frame, datagram, path)
+                        .map_err(on_error)?;
+                }
+                Frame::MaxStreamData(frame) => {
+                    let on_error = with_frame_type!(frame);
+                    processed_packet.on_processed_frame(&frame);
+                    self.handle_max_stream_data_frame(frame, datagram, path)
+                        .map_err(on_error)?;
+                }
+                Frame::MaxStreams(frame) => {
+                    let on_error = with_frame_type!(frame);
+                    processed_packet.on_processed_frame(&frame);
+                    self.handle_max_streams_frame(frame, datagram, path)
+                        .map_err(on_error)?;
+                }
+                Frame::ResetStream(frame) => {
+                    let on_error = with_frame_type!(frame);
+                    processed_packet.on_processed_frame(&frame);
+                    self.handle_reset_stream_frame(frame, datagram, path)
+                        .map_err(on_error)?;
+                }
+                Frame::StopSending(frame) => {
+                    let on_error = with_frame_type!(frame);
+                    processed_packet.on_processed_frame(&frame);
+                    self.handle_stop_sending_frame(frame, datagram, path)
+                        .map_err(on_error)?;
+                }
+                Frame::StreamDataBlocked(frame) => {
+                    let on_error = with_frame_type!(frame);
+                    processed_packet.on_processed_frame(&frame);
+                    self.handle_stream_data_blocked_frame(frame, datagram, path)
+                        .map_err(on_error)?;
+                }
+                Frame::StreamsBlocked(frame) => {
+                    let on_error = with_frame_type!(frame);
+                    processed_packet.on_processed_frame(&frame);
+                    self.handle_streams_blocked_frame(frame, datagram, path)
+                        .map_err(on_error)?;
+                }
+                Frame::NewToken(frame) => {
+                    let on_error = with_frame_type!(frame);
+                    processed_packet.on_processed_frame(&frame);
+                    self.handle_new_token_frame(frame, datagram, path)
+                        .map_err(on_error)?;
+                }
+                Frame::NewConnectionID(frame) => {
+                    let on_error = with_frame_type!(frame);
+                    processed_packet.on_processed_frame(&frame);
+                    self.handle_new_connection_id_frame(frame, datagram, path)
+                        .map_err(on_error)?;
+                }
+                Frame::RetireConnectionID(frame) => {
+                    let on_error = with_frame_type!(frame);
+                    processed_packet.on_processed_frame(&frame);
+                    self.handle_retire_connection_id_frame(frame, datagram, path)
+                        .map_err(on_error)?;
+                }
+                Frame::PathChallenge(frame) => {
+                    let on_error = with_frame_type!(frame);
+                    processed_packet.on_processed_frame(&frame);
+                    self.handle_path_challenge_frame(frame, datagram, path)
+                        .map_err(on_error)?;
+                }
+                Frame::PathResponse(frame) => {
+                    let on_error = with_frame_type!(frame);
+                    processed_packet.on_processed_frame(&frame);
+                    self.handle_path_response_frame(frame, datagram, path)
+                        .map_err(on_error)?;
+                }
+                Frame::HandshakeDone(frame) => {
+                    let on_error = with_frame_type!(frame);
+                    processed_packet.on_processed_frame(&frame);
+                    self.handle_handshake_done_frame(frame, datagram, path)
+                        .map_err(on_error)?;
+                }
+            }
 
-impl<'a, Config: connection::Config> PacketSpaceHandler<'a, CleartextShort<'a>>
-    for PacketSpaceManager<Config>
-{
-    type Space = ApplicationSpace<Config>;
+            payload = remaining;
+        }
 
-    fn space_for_packet(
-        &mut self,
-        packet: CleartextShort<'a>,
-    ) -> Option<(&mut Self::Space, PacketNumber, DecoderBufferMut<'a>)> {
-        Some((
-            self.application_mut()?,
-            packet.packet_number,
-            packet.payload,
-        ))
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#13.1
+        //# A packet MUST NOT be acknowledged until packet protection has been
+        //# successfully removed and all frames contained in the packet have been
+        //# processed.  For STREAM frames, this means the data has been enqueued
+        //# in preparation to be received by the application protocol, but it
+        //# does not require that data is delivered and consumed.
+        //#
+        //# Once the packet has been fully processed, a receiver acknowledges
+        //# receipt by sending one or more ACK frames containing the packet
+        //# number of the received packet.
+
+        self.on_processed_packet(processed_packet)?;
+
+        Ok(None)
     }
 }
