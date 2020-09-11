@@ -1,7 +1,6 @@
 #![cfg_attr(not(any(test, feature = "std")), no_std)]
 
 pub mod ack_set;
-pub mod address_validation_token;
 pub mod application;
 pub mod connection;
 pub mod crypto;
