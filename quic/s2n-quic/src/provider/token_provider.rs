@@ -67,7 +67,7 @@ pub mod default {
             master_key_id: 0x01,
             key_id: 0x01,
             token_type: address_validation::TokenType::NewToken,
-            nonce: nonce,
+            nonce,
             hmac: [0; 32],
         }
     }
@@ -76,7 +76,8 @@ pub mod default {
         _peer_address: &SocketAddress,
         _destination_connection_id: &connection::Id,
         _source_connection_id: &connection::Id,
-        _token: &mut address_validation::Token) {
+        _token: &mut address_validation::Token,
+    ) {
         // TODO sign the token
     }
 
@@ -94,7 +95,12 @@ pub mod default {
             let mut token = generate_unsigned_token();
             token.token_type = address_validation::TokenType::NewToken;
 
-            sign_token(peer_address, destination_connection_id, source_connection_id, &mut token);
+            sign_token(
+                peer_address,
+                destination_connection_id,
+                source_connection_id,
+                &mut token,
+            );
 
             let mut encoder = EncoderBuffer::new(&mut output_buffer);
             token.encode(&mut encoder);
@@ -112,7 +118,12 @@ pub mod default {
             let mut token = generate_unsigned_token();
             token.token_type = address_validation::TokenType::NewToken;
 
-            sign_token(peer_address, destination_connection_id, source_connection_id, &mut token);
+            sign_token(
+                peer_address,
+                destination_connection_id,
+                source_connection_id,
+                &mut token,
+            );
 
             let mut encoder = EncoderBuffer::new(&mut output_buffer);
             token.encode(&mut encoder);
@@ -156,16 +167,22 @@ mod tests {
         let mut buf = [0u8; 512];
         let mut provider = default::Provider::default();
 
-        let (_size, _lifetime) = provider.generate_new_token(peer_address, connection_id, connection_id, &mut buf);
+        let (_size, _lifetime) =
+            provider.generate_new_token(peer_address, connection_id, connection_id, &mut buf);
         let decoder = DecoderBufferMut::new(&mut buf);
         let (decoded_token, _) = decoder.decode::<address_validation::Token>().unwrap();
-        assert_eq!(*decoded_token.token_type(), address_validation::TokenType::NewToken);
+        assert_eq!(
+            *decoded_token.token_type(),
+            address_validation::TokenType::NewToken
+        );
 
-        let (_size, _lifetime) = provider.generate_retry_token(peer_address, connection_id, connection_id, &mut buf);
+        let (_size, _lifetime) =
+            provider.generate_retry_token(peer_address, connection_id, connection_id, &mut buf);
         let decoder = DecoderBufferMut::new(&mut buf);
         let (decoded_token, _) = decoder.decode::<address_validation::Token>().unwrap();
-        assert_eq!(*decoded_token.token_type(), address_validation::TokenType::NewToken);
-
+        assert_eq!(
+            *decoded_token.token_type(),
+            address_validation::TokenType::NewToken
+        );
     }
-
 }

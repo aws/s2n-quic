@@ -87,7 +87,7 @@ impl Token {
     }
 
     pub fn master_key_id(&self) -> u8 {
-        self.master_key_id 
+        self.master_key_id
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#21.2
@@ -96,7 +96,7 @@ impl Token {
     //#   acquire that token.
     //#   Servers SHOULD provide mitigations for this attack by limiting the
     //#   usage and lifetime of address validation tokens
-    pub fn key_id(&self) -> u8 { 
+    pub fn key_id(&self) -> u8 {
         self.key_id
     }
 
@@ -106,14 +106,16 @@ impl Token {
     //#   provided to a client.  These tokens are carried in the same field,
     //#   but require different handling from servers.
     pub fn token_type(&self) -> &TokenType {
-        &self.token_type 
+        &self.token_type
     }
 
     //= https://tools.ietf.org/html/draft-ietf-quic-transport-29.txt#8.1.3
     //#   An address validation token MUST be difficult to guess.  Including a
     //#   large enough random value in the token would be sufficient, but this
     //#   depends on the server remembering the value it sends to clients.
-    pub fn nonce(&self) -> &[u8] { &self.nonce }
+    pub fn nonce(&self) -> &[u8] {
+        &self.nonce
+    }
 
     //= https://tools.ietf.org/html/draft-ietf-quic-transport-29.txt#8.1.3
     //#   A token-based scheme allows the server to offload any state
@@ -123,7 +125,9 @@ impl Token {
     //#   protection, malicious clients could generate or guess values for
     //#   tokens that would be accepted by the server.  Only the server
     //#   requires access to the integrity protection key for tokens.
-    pub fn hmac(&self) -> &[u8] { &self.hmac }
+    pub fn hmac(&self) -> &[u8] {
+        &self.hmac
+    }
 
     //= https://tools.ietf.org/html/draft-ietf-quic-transport-29.txt#8.1.3
     //#   When a server receives an Initial packet with an address validation
@@ -156,11 +160,10 @@ impl<'a> EncoderValue for Token {
             TokenType::NewToken => 1,
         };
 
-        let first_byte = 
-            (self.version() << VERSION_SHIFT) | 
-            (self.master_key_id() << MKID_SHIFT) | 
-            (self.key_id() << KID_SHIFT);
-        let mut nonce = self.nonce()[0]; 
+        let first_byte = (self.version() << VERSION_SHIFT)
+            | (self.master_key_id() << MKID_SHIFT)
+            | (self.key_id() << KID_SHIFT);
+        let mut nonce = self.nonce()[0];
         nonce |= token_type << TOKEN_TYPE_SHIFT;
         let la = &self.nonce()[1..];
         buffer.encode(&first_byte);
@@ -193,7 +196,7 @@ decoder_value!(
 
             let token_type = (nonce[0] & TOKEN_TYPE_MASK) >> TOKEN_TYPE_SHIFT;
             let token_type = TokenType::try_from(token_type).unwrap();
-            nonce[0] = nonce[0] & !TOKEN_TYPE_MASK;
+            nonce[0] &= !TOKEN_TYPE_MASK;
 
             let (hmac_slice, buffer) = buffer.decode_slice(32)?;
             let hmac_slice: &[u8] = hmac_slice.into_less_safe_slice();
@@ -213,7 +216,6 @@ decoder_value!(
         }
     }
 );
-
 
 #[cfg(test)]
 mod tests {
