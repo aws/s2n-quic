@@ -7,7 +7,7 @@ pub mod connection_id;
 pub mod io;
 pub mod limits;
 pub mod log;
-pub mod retry_token;
+pub mod token_provider;
 pub mod runtime;
 pub mod sync;
 pub mod tls;

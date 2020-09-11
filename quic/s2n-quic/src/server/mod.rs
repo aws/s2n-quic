@@ -24,7 +24,7 @@ impl_providers_state! {
         connection_id: ConnectionID,
         limits: Limits,
         log: Log,
-        retry_token: RetryToken,
+        token_provider: TokenProvider,
         runtime: Runtime,
         io: IO,
         sync: Sync,

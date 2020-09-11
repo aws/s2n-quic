@@ -34,23 +34,23 @@ use zero_rtt::ProtectedZeroRTT;
 pub type RemainingBuffer<'a> = Option<DecoderBufferMut<'a>>;
 
 pub trait DestinationConnectionIDDecoder: Copy {
-    fn len(self, buffer: DecoderBuffer) -> DecoderBufferResult<usize>;
+    fn len(self, buffer: DecoderBufferMut) -> DecoderBufferMutResult<usize>;
 }
 
 impl DestinationConnectionIDDecoder for usize {
     #[inline]
-    fn len(self, buffer: DecoderBuffer) -> DecoderBufferResult<usize> {
+    fn len(self, buffer: DecoderBufferMut) -> DecoderBufferMutResult<usize> {
         Ok((self, buffer))
     }
 }
 
 pub trait TokenDecoder: Copy {
-    fn len(self, buffer: DecoderBuffer) -> DecoderBufferResult<usize>;
+    fn len(self, buffer: DecoderBufferMut) -> DecoderBufferMutResult<usize>;
 }
 
 impl TokenDecoder for usize {
     #[inline]
-    fn len(self, buffer: DecoderBuffer) -> DecoderBufferResult<usize> {
+    fn len(self, buffer: DecoderBufferMut) -> DecoderBufferMutResult<usize> {
         Ok((self, buffer))
     }
 }

@@ -45,6 +45,8 @@ pub mod connection;
 pub mod server;
 pub mod stream;
 
+pub(crate) mod address_validation;
+
 pub use connection::Connection;
 pub use s2n_quic_core::application::ApplicationErrorCode;
 pub use server::Server;

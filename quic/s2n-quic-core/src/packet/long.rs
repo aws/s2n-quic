@@ -125,11 +125,6 @@ pub(crate) fn validate_source_connection_id_len(len: usize) -> Result<(), Decode
     Ok(())
 }
 
-pub(crate) fn validate_token(_range: &CheckedRange) -> Result<(), DecoderError> {
-    // TODO validate the data is correct
-    Ok(())
-}
-
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-22.txt#17.2
 //# In this version of QUIC, the following packet types with the long
 //# header are defined:
