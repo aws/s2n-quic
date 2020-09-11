@@ -483,12 +483,12 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
                 packet.payload,
                 datagram,
                 &mut self.path_manager[path_id],
-                )? {
+            )? {
                 self.close(
                     shared_state,
                     ConnectionCloseReason::PeerImmediateClose(close),
                     datagram.timestamp,
-                    );
+                );
                 return Ok(());
             }
 
