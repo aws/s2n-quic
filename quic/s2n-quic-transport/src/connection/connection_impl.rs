@@ -289,7 +289,7 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
             ConnectionState::Handshaking | ConnectionState::Active => {
                 let ecn = Default::default();
 
-                let (_index, active_path) = self.path_manager.active_path_mut();
+                let (_path_id, active_path) = self.path_manager.active_path_mut();
 
                 while let Ok(bytes_transmitted) = queue.push(ConnectionTransmission {
                     context: ConnectionTransmissionContext {

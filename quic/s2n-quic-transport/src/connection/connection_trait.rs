@@ -210,6 +210,8 @@ pub trait ConnectionTrait: Sized {
         connection_id_validator: &Validator,
         payload: DecoderBufferMut,
     ) -> Result<(), ()> {
+        // The path `Id` needs to be passed around instead of the path to get around `&mut self` and
+        // `&mut self.path_manager` being borrowed at the same time
         let path_id = self
             .on_datagram_received(shared_state, datagram, &original_connection_id)
             .map_err(|_| ())?;

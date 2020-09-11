@@ -35,34 +35,34 @@ impl Manager {
 
     /// Return the active path
     pub fn active_path(&self) -> (Id, &Path) {
-        let index = Id(self.active);
+        let id = Id(self.active);
         let path = &self.paths[self.active];
-        (index, path)
+        (id, path)
     }
 
     /// Return a mutable reference to the active path
     pub fn active_path_mut(&mut self) -> (Id, &mut Path) {
-        let index = Id(self.active);
+        let id = Id(self.active);
         let path = &mut self.paths[self.active];
-        (index, path)
+        (id, path)
     }
 
-    /// Returns the Path for the connection id if the PathManager knows about it
+    /// Returns the Path for the provided address if the PathManager knows about it
     pub fn path(&self, peer_address: &SocketAddress) -> Option<(Id, &Path)> {
         self.paths
             .iter()
             .enumerate()
-            .find(|(_index, path)| *peer_address == path.peer_socket_address)
-            .map(|(index, path)| (Id(index), path))
+            .find(|(_id, path)| *peer_address == path.peer_socket_address)
+            .map(|(id, path)| (Id(id), path))
     }
 
-    /// Returns the Path for the connection id if the PathManager knows about it
+    /// Returns the Path for the provided address if the PathManager knows about it
     pub fn path_mut(&mut self, peer_address: &SocketAddress) -> Option<(Id, &mut Path)> {
         self.paths
             .iter_mut()
             .enumerate()
-            .find(|(_index, path)| *peer_address == path.peer_socket_address)
-            .map(|(index, path)| (Id(index), path))
+            .find(|(_id, path)| *peer_address == path.peer_socket_address)
+            .map(|(id, path)| (Id(id), path))
     }
 
     /// Called when a datagram is received on a connection
@@ -72,9 +72,9 @@ impl Manager {
         peer_connection_id: &connection::Id,
         is_handshake_confirmed: bool,
     ) -> Result<Id, TransportError> {
-        if let Some((index, path)) = self.path_mut(&datagram.remote_address) {
+        if let Some((id, path)) = self.path_mut(&datagram.remote_address) {
             path.on_bytes_received(datagram.payload_len);
-            return Ok(index);
+            return Ok(id);
         }
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#9
@@ -88,9 +88,9 @@ impl Manager {
                 *peer_connection_id,
                 RTTEstimator::new(EARLY_ACK_SETTINGS.max_ack_delay),
             );
-            let index = Id(self.paths.len());
+            let id = Id(self.paths.len());
             self.paths.push(path);
-            return Ok(index);
+            return Ok(id);
         }
 
         Err(TransportError::PROTOCOL_VIOLATION)
@@ -117,7 +117,7 @@ impl Manager {
         peer_address: &SocketAddress,
         response: s2n_quic_core::frame::PathResponse,
     ) {
-        if let Some((_index, path)) = self.path_mut(peer_address) {
+        if let Some((_id, path)) = self.path_mut(peer_address) {
             // We may have received a duplicate packet, only call the on_validated handler
             // one time.
             if path.is_validated() {
@@ -193,7 +193,7 @@ mod tests {
 
         let manager = Manager::new(first_path);
 
-        let (_index, matched_path) = manager.path(&SocketAddress::default()).unwrap();
+        let (_id, matched_path) = manager.path(&SocketAddress::default()).unwrap();
         assert_eq!(matched_path, &first_path);
     }
 
@@ -209,14 +209,14 @@ mod tests {
 
         let mut manager = Manager::new(first_path);
         {
-            let (_index, first_path) = manager.path(&first_path.peer_socket_address).unwrap();
+            let (_id, first_path) = manager.path(&first_path.peer_socket_address).unwrap();
             assert_eq!(first_path.is_validated(), false);
         }
 
         let frame = s2n_quic_core::frame::PathResponse { data: &[0u8; 8] };
         manager.on_path_response(&first_path.peer_socket_address, frame);
         {
-            let (_index, first_path) = manager.path(&first_path.peer_socket_address).unwrap();
+            let (_id, first_path) = manager.path(&first_path.peer_socket_address).unwrap();
             assert_eq!(first_path.is_validated(), true);
         }
     }
