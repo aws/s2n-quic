@@ -248,8 +248,9 @@ impl<Config: connection::Config> PacketSpace for ApplicationSpace<Config> {
 
     fn handle_crypto_frame(
         &mut self,
-        _datagram: &DatagramInfo,
         frame: CryptoRef,
+        _datagram: &DatagramInfo,
+        _path: &mut Path,
     ) -> Result<(), TransportError> {
         Err(TransportError::INTERNAL_ERROR
             .with_reason("crypto frames are not currently supported in application space")
@@ -258,8 +259,8 @@ impl<Config: connection::Config> PacketSpace for ApplicationSpace<Config> {
 
     fn handle_ack_frame<A: AckRanges>(
         &mut self,
-        datagram: &DatagramInfo,
         frame: Ack<A>,
+        datagram: &DatagramInfo,
         path: &mut Path,
         pto_backoff: u32,
     ) -> Result<recovery::LossInfo, TransportError> {
@@ -269,80 +270,90 @@ impl<Config: connection::Config> PacketSpace for ApplicationSpace<Config> {
 
     fn handle_stream_frame(
         &mut self,
-        _datagram: &DatagramInfo,
         frame: StreamRef,
+        _datagram: &DatagramInfo,
+        _path: &mut Path,
     ) -> Result<(), TransportError> {
         self.stream_manager.on_data(&frame)
     }
 
     fn handle_data_blocked_frame(
         &mut self,
-        _datagram: &DatagramInfo,
         frame: DataBlocked,
+        _datagram: &DatagramInfo,
+        _path: &mut Path,
     ) -> Result<(), TransportError> {
         self.stream_manager.on_data_blocked(frame)
     }
 
     fn handle_max_data_frame(
         &mut self,
-        _datagram: &DatagramInfo,
         frame: MaxData,
+        _datagram: &DatagramInfo,
+        _path: &mut Path,
     ) -> Result<(), TransportError> {
         self.stream_manager.on_max_data(frame)
     }
 
     fn handle_max_stream_data_frame(
         &mut self,
-        _datagram: &DatagramInfo,
         frame: MaxStreamData,
+        _datagram: &DatagramInfo,
+        _path: &mut Path,
     ) -> Result<(), TransportError> {
         self.stream_manager.on_max_stream_data(&frame)
     }
 
     fn handle_max_streams_frame(
         &mut self,
-        _datagram: &DatagramInfo,
         frame: MaxStreams,
+        _datagram: &DatagramInfo,
+        _path: &mut Path,
     ) -> Result<(), TransportError> {
         self.stream_manager.on_max_streams(&frame)
     }
 
     fn handle_reset_stream_frame(
         &mut self,
-        _datagram: &DatagramInfo,
         frame: ResetStream,
+        _datagram: &DatagramInfo,
+        _path: &mut Path,
     ) -> Result<(), TransportError> {
         self.stream_manager.on_reset_stream(&frame)
     }
 
     fn handle_stop_sending_frame(
         &mut self,
-        _datagram: &DatagramInfo,
         frame: StopSending,
+        _datagram: &DatagramInfo,
+        _path: &mut Path,
     ) -> Result<(), TransportError> {
         self.stream_manager.on_stop_sending(&frame)
     }
 
     fn handle_stream_data_blocked_frame(
         &mut self,
-        _datagram: &DatagramInfo,
         frame: StreamDataBlocked,
+        _datagram: &DatagramInfo,
+        _path: &mut Path,
     ) -> Result<(), TransportError> {
         self.stream_manager.on_stream_data_blocked(&frame)
     }
 
     fn handle_streams_blocked_frame(
         &mut self,
-        _datagram: &DatagramInfo,
         frame: StreamsBlocked,
+        _datagram: &DatagramInfo,
+        _path: &mut Path,
     ) -> Result<(), TransportError> {
         self.stream_manager.on_streams_blocked(&frame)
     }
 
     fn handle_new_token_frame(
         &mut self,
-        _datagram: &DatagramInfo,
         frame: NewToken,
+        _datagram: &DatagramInfo,
+        _path: &mut Path,
     ) -> Result<(), TransportError> {
         // TODO
         eprintln!("UNIMPLEMENTED APPLICATION FRAME {:?}", frame);
@@ -351,8 +362,9 @@ impl<Config: connection::Config> PacketSpace for ApplicationSpace<Config> {
 
     fn handle_new_connection_id_frame(
         &mut self,
-        _datagram: &DatagramInfo,
         frame: NewConnectionID,
+        _datagram: &DatagramInfo,
+        _path: &mut Path,
     ) -> Result<(), TransportError> {
         // TODO
         eprintln!("UNIMPLEMENTED APPLICATION FRAME {:?}", frame);
@@ -361,8 +373,9 @@ impl<Config: connection::Config> PacketSpace for ApplicationSpace<Config> {
 
     fn handle_retire_connection_id_frame(
         &mut self,
-        _datagram: &DatagramInfo,
         frame: RetireConnectionID,
+        _datagram: &DatagramInfo,
+        _path: &mut Path,
     ) -> Result<(), TransportError> {
         // TODO
         eprintln!("UNIMPLEMENTED APPLICATION FRAME {:?}", frame);
@@ -371,8 +384,9 @@ impl<Config: connection::Config> PacketSpace for ApplicationSpace<Config> {
 
     fn handle_path_challenge_frame(
         &mut self,
-        _datagram: &DatagramInfo,
         frame: PathChallenge,
+        _datagram: &DatagramInfo,
+        _path: &mut Path,
     ) -> Result<(), TransportError> {
         // TODO
         eprintln!("UNIMPLEMENTED APPLICATION FRAME {:?}", frame);
@@ -381,8 +395,9 @@ impl<Config: connection::Config> PacketSpace for ApplicationSpace<Config> {
 
     fn handle_path_response_frame(
         &mut self,
-        _datagram: &DatagramInfo,
         frame: PathResponse,
+        _datagram: &DatagramInfo,
+        _path: &mut Path,
     ) -> Result<(), TransportError> {
         // TODO map this frame to a Path
         eprintln!("UNIMPLEMENTED APPLICATION FRAME {:?}", frame);
@@ -391,8 +406,9 @@ impl<Config: connection::Config> PacketSpace for ApplicationSpace<Config> {
 
     fn handle_handshake_done_frame(
         &mut self,
-        _datagram: &DatagramInfo,
         frame: HandshakeDone,
+        _datagram: &DatagramInfo,
+        _path: &mut Path,
     ) -> Result<(), TransportError> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#19.20
         //# A server MUST

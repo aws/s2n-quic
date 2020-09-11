@@ -223,8 +223,9 @@ impl<Config: connection::Config> PacketSpace for InitialSpace<Config> {
 
     fn handle_crypto_frame(
         &mut self,
-        _datagram: &DatagramInfo,
         frame: CryptoRef,
+        _datagram: &DatagramInfo,
+        _path: &mut Path,
     ) -> Result<(), TransportError> {
         self.crypto_stream.on_crypto_frame(frame)?;
 
@@ -233,8 +234,8 @@ impl<Config: connection::Config> PacketSpace for InitialSpace<Config> {
 
     fn handle_ack_frame<A: AckRanges>(
         &mut self,
-        datagram: &DatagramInfo,
         frame: Ack<A>,
+        datagram: &DatagramInfo,
         path: &mut Path,
         pto_backoff: u32,
     ) -> Result<recovery::LossInfo, TransportError> {
