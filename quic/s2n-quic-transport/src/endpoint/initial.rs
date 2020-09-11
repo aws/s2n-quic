@@ -141,17 +141,23 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         {
             let locked_shared_state = &mut *shared_state.lock();
 
-            connection.handle_cleartext_initial_packet(locked_shared_state, datagram, packet)?;
-
-            connection.on_datagram_received(
+            let path_index = connection.on_datagram_received(
                 locked_shared_state,
                 datagram,
                 &source_connection_id,
             )?;
 
+            connection.handle_cleartext_initial_packet(
+                locked_shared_state,
+                datagram,
+                path_index,
+                packet,
+            )?;
+
             connection.handle_remaining_packets(
                 locked_shared_state,
                 datagram,
+                path_index,
                 destination_connection_id,
                 self.config.connection_id_format(),
                 remaining,

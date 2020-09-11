@@ -7,12 +7,10 @@ use crate::{
         CloseReason as ConnectionCloseReason, Parameters as ConnectionParameters,
     },
     contexts::ConnectionOnTransmitError,
-    processed_packet::ProcessedPacket,
-    space::{PacketSpace, PacketSpaceHandler, PacketSpaceManager},
+    path,
 };
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
-    frame::{Frame, FrameMut},
     inet::DatagramInfo,
     io::tx,
     packet::{
@@ -26,7 +24,6 @@ use s2n_quic_core::{
     },
     time::Timestamp,
     transport::error::TransportError,
-    varint::VarInt,
 };
 
 /// A trait which represents an internally used `Connection`
@@ -97,6 +94,7 @@ pub trait ConnectionTrait: Sized {
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
+        path_id: path::Id,
         packet: ProtectedHandshake,
     ) -> Result<(), TransportError>;
 
@@ -105,6 +103,7 @@ pub trait ConnectionTrait: Sized {
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
+        path_id: path::Id,
         packet: ProtectedInitial,
     ) -> Result<(), TransportError>;
 
@@ -113,6 +112,7 @@ pub trait ConnectionTrait: Sized {
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
+        path_id: path::Id,
         packet: CleartextInitial,
     ) -> Result<(), TransportError>;
 
@@ -121,6 +121,7 @@ pub trait ConnectionTrait: Sized {
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
+        path_id: path::Id,
         packet: ProtectedShort,
     ) -> Result<(), TransportError>;
 
@@ -129,6 +130,7 @@ pub trait ConnectionTrait: Sized {
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
+        path_id: path::Id,
         packet: ProtectedVersionNegotiation,
     ) -> Result<(), TransportError>;
 
@@ -137,6 +139,7 @@ pub trait ConnectionTrait: Sized {
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
+        path_id: path::Id,
         packet: ProtectedZeroRTT,
     ) -> Result<(), TransportError>;
 
@@ -145,6 +148,7 @@ pub trait ConnectionTrait: Sized {
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
+        path_id: path::Id,
         packet: ProtectedRetry,
     ) -> Result<(), TransportError>;
 
@@ -162,7 +166,7 @@ pub trait ConnectionTrait: Sized {
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         peer_connection_id: &connection::Id,
-    ) -> Result<(), TransportError>;
+    ) -> Result<path::Id, TransportError>;
 
     /// Returns the Connections interests
     fn interests(&self, shared_state: &SharedConnectionState<Self::Config>) -> ConnectionInterests;
@@ -172,26 +176,27 @@ pub trait ConnectionTrait: Sized {
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
+        path_id: path::Id,
         packet: ProtectedPacket,
     ) -> Result<(), TransportError> {
         match packet {
             ProtectedPacket::Short(packet) => {
-                self.handle_short_packet(shared_state, datagram, packet)
+                self.handle_short_packet(shared_state, datagram, path_id, packet)
             }
             ProtectedPacket::VersionNegotiation(packet) => {
-                self.handle_version_negotiation_packet(shared_state, datagram, packet)
+                self.handle_version_negotiation_packet(shared_state, datagram, path_id, packet)
             }
             ProtectedPacket::Initial(packet) => {
-                self.handle_initial_packet(shared_state, datagram, packet)
+                self.handle_initial_packet(shared_state, datagram, path_id, packet)
             }
             ProtectedPacket::ZeroRTT(packet) => {
-                self.handle_zero_rtt_packet(shared_state, datagram, packet)
+                self.handle_zero_rtt_packet(shared_state, datagram, path_id, packet)
             }
             ProtectedPacket::Handshake(packet) => {
-                self.handle_handshake_packet(shared_state, datagram, packet)
+                self.handle_handshake_packet(shared_state, datagram, path_id, packet)
             }
             ProtectedPacket::Retry(packet) => {
-                self.handle_retry_packet(shared_state, datagram, packet)
+                self.handle_retry_packet(shared_state, datagram, path_id, packet)
             }
         }
     }
@@ -205,14 +210,11 @@ pub trait ConnectionTrait: Sized {
         connection_id_validator: &Validator,
         payload: DecoderBufferMut,
     ) -> Result<(), ()> {
-        if self
+        let path_id = self
             .on_datagram_received(shared_state, datagram, &original_connection_id)
-            .is_err()
-        {
-            return Err(());
-        }
+            .map_err(|_| ())?;
 
-        if let Err(err) = self.handle_packet(shared_state, datagram, first_packet) {
+        if let Err(err) = self.handle_packet(shared_state, datagram, path_id, first_packet) {
             self.handle_transport_error(shared_state, datagram, err);
             return Err(());
         }
@@ -220,6 +222,7 @@ pub trait ConnectionTrait: Sized {
         if let Err(err) = self.handle_remaining_packets(
             shared_state,
             datagram,
+            path_id,
             original_connection_id,
             connection_id_validator,
             payload,
@@ -236,6 +239,7 @@ pub trait ConnectionTrait: Sized {
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
+        path_id: path::Id,
         original_connection_id: connection::Id,
         connection_id_validator: &Validator,
         mut payload: DecoderBufferMut,
@@ -253,196 +257,8 @@ pub trait ConnectionTrait: Sized {
                 break;
             }
 
-            self.handle_packet(shared_state, datagram, packet)?;
+            self.handle_packet(shared_state, datagram, path_id, packet)?;
         }
-
-        Ok(())
-    }
-
-    fn handle_cleartext_packet<'a, Packet>(
-        &mut self,
-        shared_state: &mut SharedConnectionState<Self::Config>,
-        datagram: &DatagramInfo,
-        packet: Packet,
-    ) -> Result<(), TransportError>
-    where
-        PacketSpaceManager<Self::Config>: PacketSpaceHandler<'a, Packet>,
-    {
-        let (space, packet_number, mut payload) =
-            if let Some(result) = shared_state.space_manager.space_for_packet(packet) {
-                result
-            } else {
-                // Packet space is not available, drop the packet
-                return Ok(());
-            };
-
-        let mut processed_packet = ProcessedPacket::new(packet_number, datagram);
-
-        macro_rules! with_frame_type {
-            ($frame:ident) => {{
-                let frame_type = $frame.tag();
-                move |err: TransportError| err.with_frame_type(VarInt::from_u8(frame_type))
-            }};
-        }
-
-        while !payload.is_empty() {
-            let (frame, remaining) = payload.decode::<FrameMut>()?;
-
-            match frame {
-                Frame::Padding(frame) => {
-                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.1
-                    //# A PADDING frame has no content.  That is, a PADDING frame consists of
-                    //# the single byte that identifies the frame as a PADDING frame.
-                    processed_packet.on_processed_frame(&frame);
-                }
-                Frame::Ping(frame) => {
-                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.2
-                    //# The receiver of a PING frame simply needs to acknowledge the packet
-                    //# containing this frame.
-                    processed_packet.on_processed_frame(&frame);
-                }
-                Frame::Crypto(frame) => {
-                    let on_error = with_frame_type!(frame);
-                    processed_packet.on_processed_frame(&frame);
-                    space
-                        .handle_crypto_frame(datagram, frame.into())
-                        .map_err(on_error)?;
-                }
-                Frame::Ack(frame) => {
-                    let on_error = with_frame_type!(frame);
-                    processed_packet.on_processed_frame(&frame);
-                    space.handle_ack_frame(datagram, frame).map_err(on_error)?;
-                }
-                Frame::ConnectionClose(frame) => {
-                    self.close(
-                        shared_state,
-                        ConnectionCloseReason::PeerImmediateClose(frame),
-                        datagram.timestamp,
-                    );
-                    return Ok(());
-                }
-                Frame::Stream(frame) => {
-                    let on_error = with_frame_type!(frame);
-                    processed_packet.on_processed_frame(&frame);
-                    space
-                        .handle_stream_frame(datagram, frame.into())
-                        .map_err(on_error)?;
-                }
-                Frame::DataBlocked(frame) => {
-                    let on_error = with_frame_type!(frame);
-                    processed_packet.on_processed_frame(&frame);
-                    space
-                        .handle_data_blocked_frame(datagram, frame)
-                        .map_err(on_error)?;
-                }
-                Frame::MaxData(frame) => {
-                    let on_error = with_frame_type!(frame);
-                    processed_packet.on_processed_frame(&frame);
-                    space
-                        .handle_max_data_frame(datagram, frame)
-                        .map_err(on_error)?;
-                }
-                Frame::MaxStreamData(frame) => {
-                    let on_error = with_frame_type!(frame);
-                    processed_packet.on_processed_frame(&frame);
-                    space
-                        .handle_max_stream_data_frame(datagram, frame)
-                        .map_err(on_error)?;
-                }
-                Frame::MaxStreams(frame) => {
-                    let on_error = with_frame_type!(frame);
-                    processed_packet.on_processed_frame(&frame);
-                    space
-                        .handle_max_streams_frame(datagram, frame)
-                        .map_err(on_error)?;
-                }
-                Frame::ResetStream(frame) => {
-                    let on_error = with_frame_type!(frame);
-                    processed_packet.on_processed_frame(&frame);
-                    space
-                        .handle_reset_stream_frame(datagram, frame)
-                        .map_err(on_error)?;
-                }
-                Frame::StopSending(frame) => {
-                    let on_error = with_frame_type!(frame);
-                    processed_packet.on_processed_frame(&frame);
-                    space
-                        .handle_stop_sending_frame(datagram, frame)
-                        .map_err(on_error)?;
-                }
-                Frame::StreamDataBlocked(frame) => {
-                    let on_error = with_frame_type!(frame);
-                    processed_packet.on_processed_frame(&frame);
-                    space
-                        .handle_stream_data_blocked_frame(datagram, frame)
-                        .map_err(on_error)?;
-                }
-                Frame::StreamsBlocked(frame) => {
-                    let on_error = with_frame_type!(frame);
-                    processed_packet.on_processed_frame(&frame);
-                    space
-                        .handle_streams_blocked_frame(datagram, frame)
-                        .map_err(on_error)?;
-                }
-                Frame::NewToken(frame) => {
-                    let on_error = with_frame_type!(frame);
-                    processed_packet.on_processed_frame(&frame);
-                    space
-                        .handle_new_token_frame(datagram, frame)
-                        .map_err(on_error)?;
-                }
-                Frame::NewConnectionID(frame) => {
-                    let on_error = with_frame_type!(frame);
-                    processed_packet.on_processed_frame(&frame);
-                    space
-                        .handle_new_connection_id_frame(datagram, frame)
-                        .map_err(on_error)?;
-                }
-                Frame::RetireConnectionID(frame) => {
-                    let on_error = with_frame_type!(frame);
-                    processed_packet.on_processed_frame(&frame);
-                    space
-                        .handle_retire_connection_id_frame(datagram, frame)
-                        .map_err(on_error)?;
-                }
-                Frame::PathChallenge(frame) => {
-                    let on_error = with_frame_type!(frame);
-                    processed_packet.on_processed_frame(&frame);
-                    space
-                        .handle_path_challenge_frame(datagram, frame)
-                        .map_err(on_error)?;
-                }
-                Frame::PathResponse(frame) => {
-                    let on_error = with_frame_type!(frame);
-                    processed_packet.on_processed_frame(&frame);
-                    space
-                        .handle_path_response_frame(datagram, frame)
-                        .map_err(on_error)?;
-                }
-                Frame::HandshakeDone(frame) => {
-                    let on_error = with_frame_type!(frame);
-                    processed_packet.on_processed_frame(&frame);
-                    space
-                        .handle_handshake_done_frame(datagram, frame)
-                        .map_err(on_error)?;
-                }
-            }
-
-            payload = remaining;
-        }
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#13.1
-        //# A packet MUST NOT be acknowledged until packet protection has been
-        //# successfully removed and all frames contained in the packet have been
-        //# processed.  For STREAM frames, this means the data has been enqueued
-        //# in preparation to be received by the application protocol, but it
-        //# does not require that data is delivered and consumed.
-        //#
-        //# Once the packet has been fully processed, a receiver acknowledges
-        //# receipt by sending one or more ACK frames containing the packet
-        //# number of the received packet.
-
-        space.on_processed_packet(processed_packet)?;
 
         Ok(())
     }

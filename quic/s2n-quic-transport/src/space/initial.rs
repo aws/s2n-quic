@@ -17,6 +17,7 @@ use s2n_quic_core::{
         initial::Initial,
         number::{PacketNumber, PacketNumberSpace, SlidingWindow, SlidingWindowError},
     },
+    path::Path,
     time::Timestamp,
     transport::error::TransportError,
 };
@@ -145,8 +146,9 @@ impl<Config: connection::Config> PacketSpace for InitialSpace<Config> {
 
     fn handle_crypto_frame(
         &mut self,
-        _datagram: &DatagramInfo,
         frame: CryptoRef,
+        _datagram: &DatagramInfo,
+        _path: &mut Path,
     ) -> Result<(), TransportError> {
         self.crypto_stream.on_crypto_frame(frame)?;
 
@@ -155,8 +157,9 @@ impl<Config: connection::Config> PacketSpace for InitialSpace<Config> {
 
     fn handle_ack_frame<A: AckRanges>(
         &mut self,
-        datagram: &DatagramInfo,
         frame: Ack<A>,
+        datagram: &DatagramInfo,
+        _path: &mut Path,
     ) -> Result<(), TransportError> {
         // TODO process ack delay
         // TODO process ECN

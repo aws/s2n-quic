@@ -4,11 +4,13 @@ use crate::space::EARLY_ACK_SETTINGS;
 use s2n_quic_core::{
     connection,
     inet::{DatagramInfo, SocketAddress},
-    path::Path,
     recovery::RTTEstimator,
     transport::error::TransportError,
 };
 use smallvec::SmallVec;
+
+/// re-export core
+pub use s2n_quic_core::path::*;
 
 /// The amount of Paths that can be maintained without using the heap
 const INLINE_PATH_LEN: usize = 5;
@@ -32,27 +34,35 @@ impl Manager {
     }
 
     /// Return the active path
-    pub fn active_path(&self) -> &Path {
-        &self.paths[self.active]
+    pub fn active_path(&self) -> (Id, &Path) {
+        let index = Id(self.active);
+        let path = &self.paths[self.active];
+        (index, path)
     }
 
     /// Return a mutable reference to the active path
-    pub fn active_path_mut(&mut self) -> &mut Path {
-        &mut self.paths[self.active]
+    pub fn active_path_mut(&mut self) -> (Id, &mut Path) {
+        let index = Id(self.active);
+        let path = &mut self.paths[self.active];
+        (index, path)
     }
 
     /// Returns the Path for the connection id if the PathManager knows about it
-    pub fn path(&self, peer_address: &SocketAddress) -> Option<&Path> {
+    pub fn path(&self, peer_address: &SocketAddress) -> Option<(Id, &Path)> {
         self.paths
             .iter()
-            .find(|path| *peer_address == path.peer_socket_address)
+            .enumerate()
+            .find(|(_index, path)| *peer_address == path.peer_socket_address)
+            .map(|(index, path)| (Id(index), path))
     }
 
     /// Returns the Path for the connection id if the PathManager knows about it
-    pub fn path_mut(&mut self, peer_address: &SocketAddress) -> Option<&mut Path> {
+    pub fn path_mut(&mut self, peer_address: &SocketAddress) -> Option<(Id, &mut Path)> {
         self.paths
             .iter_mut()
-            .find(|path| *peer_address == path.peer_socket_address)
+            .enumerate()
+            .find(|(_index, path)| *peer_address == path.peer_socket_address)
+            .map(|(index, path)| (Id(index), path))
     }
 
     /// Called when a datagram is received on a connection
@@ -61,10 +71,10 @@ impl Manager {
         datagram: &DatagramInfo,
         peer_connection_id: &connection::Id,
         is_handshake_confirmed: bool,
-    ) -> Result<(), TransportError> {
-        if let Some(path) = self.path_mut(&datagram.remote_address) {
+    ) -> Result<Id, TransportError> {
+        if let Some((index, path)) = self.path_mut(&datagram.remote_address) {
             path.on_bytes_received(datagram.payload_len);
-            return Ok(());
+            return Ok(index);
         }
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#9
@@ -78,8 +88,9 @@ impl Manager {
                 *peer_connection_id,
                 RTTEstimator::new(EARLY_ACK_SETTINGS.max_ack_delay),
             );
+            let index = Id(self.paths.len());
             self.paths.push(path);
-            return Ok(());
+            return Ok(index);
         }
 
         Err(TransportError::PROTOCOL_VIOLATION)
@@ -106,7 +117,7 @@ impl Manager {
         peer_address: &SocketAddress,
         response: s2n_quic_core::frame::PathResponse,
     ) {
-        if let Some(path) = self.path_mut(peer_address) {
+        if let Some((_index, path)) = self.path_mut(peer_address) {
             // We may have received a duplicate packet, only call the on_validated handler
             // one time.
             if path.is_validated() {
@@ -142,6 +153,24 @@ impl Manager {
     pub fn on_packet_received(&mut self) {}
 }
 
+/// Internal Id of a path in the manager
+#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord, Hash)]
+pub struct Id(usize);
+
+impl core::ops::Index<Id> for Manager {
+    type Output = Path;
+
+    fn index(&self, id: Id) -> &Self::Output {
+        &self.paths[id.0]
+    }
+}
+
+impl core::ops::IndexMut<Id> for Manager {
+    fn index_mut(&mut self, id: Id) -> &mut Self::Output {
+        &mut self.paths[id.0]
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -164,7 +193,7 @@ mod tests {
 
         let manager = Manager::new(first_path);
 
-        let matched_path = manager.path(&SocketAddress::default()).unwrap();
+        let (_index, matched_path) = manager.path(&SocketAddress::default()).unwrap();
         assert_eq!(matched_path, &first_path);
     }
 
@@ -180,14 +209,14 @@ mod tests {
 
         let mut manager = Manager::new(first_path);
         {
-            let first_path = manager.path(&first_path.peer_socket_address).unwrap();
+            let (_index, first_path) = manager.path(&first_path.peer_socket_address).unwrap();
             assert_eq!(first_path.is_validated(), false);
         }
 
         let frame = s2n_quic_core::frame::PathResponse { data: &[0u8; 8] };
         manager.on_path_response(&first_path.peer_socket_address, frame);
         {
-            let first_path = manager.path(&first_path.peer_socket_address).unwrap();
+            let (_index, first_path) = manager.path(&first_path.peer_socket_address).unwrap();
             assert_eq!(first_path.is_validated(), true);
         }
     }
