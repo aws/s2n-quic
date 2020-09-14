@@ -11,6 +11,7 @@ use s2n_codec::{DecoderBuffer, DecoderValue};
 use s2n_quic_core::{
     crypto::{tls, CryptoError, CryptoSuite},
     packet::number::PacketNumberSpace,
+    path::Path,
     time::Timestamp,
     transport::parameters::ClientTransportParameters,
 };
@@ -18,6 +19,8 @@ use s2n_quic_core::{
 pub struct SessionContext<'a, ConnectionConfigType: connection::Config> {
     pub now: Timestamp,
     pub connection_config: &'a ConnectionConfigType,
+    pub path: &'a Path,
+    pub pto_backoff: u32,
     pub initial: &'a mut Option<Box<InitialSpace<ConnectionConfigType>>>,
     pub handshake: &'a mut Option<Box<HandshakeSpace<ConnectionConfigType>>>,
     pub application: &'a mut Option<Box<ApplicationSpace<ConnectionConfigType>>>,
@@ -128,7 +131,7 @@ impl<'a, ConnectionConfigType: connection::Config> tls::Context<ConnectionConfig
 
     fn on_handshake_done(&mut self) -> Result<(), CryptoError> {
         if let Some(application) = self.application.as_mut() {
-            application.on_handshake_done();
+            application.on_handshake_done(&self.path, self.pto_backoff, self.now);
             Ok(())
         } else {
             Err(CryptoError::INTERNAL_ERROR

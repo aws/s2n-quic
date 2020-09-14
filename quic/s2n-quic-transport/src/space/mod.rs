@@ -135,6 +135,7 @@ impl<ConnectionConfigType: connection::Config> PacketSpaceManager<ConnectionConf
     pub fn poll_crypto(
         &mut self,
         connection_config: &ConnectionConfigType,
+        path: &Path,
         now: Timestamp,
     ) -> Result<(), TransportError> {
         if let Some(session) = self.session.as_mut() {
@@ -144,6 +145,8 @@ impl<ConnectionConfigType: connection::Config> PacketSpaceManager<ConnectionConf
                 handshake: &mut self.handshake,
                 application: &mut self.application,
                 zero_rtt_crypto: &mut self.zero_rtt_crypto,
+                path,
+                pto_backoff: self.pto_backoff,
                 connection_config,
             };
 
@@ -241,17 +244,18 @@ impl<ConnectionConfigType: connection::Config> PacketSpaceManager<ConnectionConf
 
     pub fn on_packets_sent(&mut self, path: &Path, timestamp: Timestamp) {
         let pto_backoff = self.pto_backoff;
+        let is_handshake_confirmed = self.is_handshake_confirmed();
 
         if let Some(space) = self.initial_mut() {
-            space.on_packets_sent(path, pto_backoff, timestamp);
+            space.on_packets_sent(path, pto_backoff, timestamp, is_handshake_confirmed);
         }
 
         if let Some(space) = self.handshake_mut() {
-            space.on_packets_sent(path, pto_backoff, timestamp);
+            space.on_packets_sent(path, pto_backoff, timestamp, is_handshake_confirmed);
         }
 
         if let Some(space) = self.application_mut() {
-            space.on_packets_sent(path, pto_backoff, timestamp);
+            space.on_packets_sent(path, pto_backoff, timestamp, is_handshake_confirmed);
         }
     }
 

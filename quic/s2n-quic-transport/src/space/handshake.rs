@@ -93,7 +93,9 @@ impl<Config: connection::Config> HandshakeSpace<Config> {
 
     /// Returns all of the component timers
     pub fn timers(&self) -> impl Iterator<Item = &Timestamp> {
-        self.ack_manager.timers()
+        core::iter::empty()
+            .chain(self.ack_manager.timers())
+            .chain(self.recovery_manager.timers())
     }
 
     /// Called when the connection timer expired
@@ -104,8 +106,20 @@ impl<Config: connection::Config> HandshakeSpace<Config> {
         recovery_manager.on_timeout(timestamp, &mut context)
     }
 
-    pub fn on_packets_sent(&mut self, path: &Path, pto_backoff: u32, timestamp: Timestamp) {
-        self.recovery_manager.update(path, pto_backoff, timestamp)
+    pub fn on_packets_sent(
+        &mut self,
+        path: &Path,
+        pto_backoff: u32,
+        timestamp: Timestamp,
+        is_handshake_confirmed: bool,
+    ) {
+        self.recovery_manager.update(
+            path,
+            pto_backoff,
+            timestamp,
+            PacketNumberSpace::Handshake,
+            is_handshake_confirmed,
+        )
     }
 
     /// Returns the Packet Number to be used when decoding incoming packets
@@ -175,6 +189,10 @@ struct RecoveryContext<'a, Config> {
 impl<'a, Config: connection::Config> recovery::Context for RecoveryContext<'a, Config> {
     const SPACE: PacketNumberSpace = PacketNumberSpace::Handshake;
     const ENDPOINT_TYPE: EndpointType = Config::ENDPOINT_TYPE;
+
+    fn is_handshake_confirmed(&self) -> bool {
+        panic!("Handshake status is not currently available in the handshake space")
+    }
 
     fn validate_packet_ack(
         &mut self,

@@ -86,6 +86,12 @@ pub struct LossInfo {
     pub pto_reset: bool,
 }
 
+impl LossInfo {
+    pub fn should_update(&self) -> bool {
+        self.bytes_in_flight > 0 || self.pto_expired || self.pto_reset
+    }
+}
+
 impl core::ops::Add for LossInfo {
     type Output = Self;
 
@@ -138,31 +144,27 @@ impl Pto {
     /// Called when a timeout has occurred. Returns true if the PTO timer had expired.
     pub fn on_timeout(&mut self, bytes_in_flight: u64, timestamp: Timestamp) -> bool {
         if self.timer.poll_expiration(timestamp).is_ready() {
-            if bytes_in_flight > 0 {
-                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#6.2.4
-                //# When a PTO timer expires, a sender MUST send at least one ack-
-                //# eliciting packet in the packet number space as a probe
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#6.2.4
+            //# When a PTO timer expires, a sender MUST send at least one ack-
+            //# eliciting packet in the packet number space as a probe
 
-                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#6.2.4
-                //# An endpoint MAY send up to two full-
-                //# sized datagrams containing ack-eliciting packets
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.2.1
+            //# Since the server could be blocked until more datagrams are received
+            //# from the client, it is the client's responsibility to send packets to
+            //# unblock the server until it is certain that the server has finished
+            //# its address validation
+            let transmission_count = if bytes_in_flight > 0 { 2 } else { 1 };
 
-                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#6.2.4
-                //# Sending two packets on PTO
-                //# expiration increases resilience to packet drops, thus reducing the
-                //# probability of consecutive PTO events.
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#6.2.4
+            //# An endpoint MAY send up to two full-
+            //# sized datagrams containing ack-eliciting packets
 
-                self.state = PtoState::RequiresTransmission(2);
-            } else {
-                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.2.1
-                //# the client MUST set the probe timer if the client has not received an
-                //# acknowledgement for one of its Handshake packets and the handshake is
-                //# not confirmed (see Section 4.1.2 of [QUIC-TLS]), even if there are no
-                //# packets in flight. When the PTO fires, the client MUST send a
-                //# Handshake packet if it has Handshake keys, otherwise it MUST send an
-                //# Initial packet in a UDP datagram of at least 1200 bytes.
-            }
-            //TODO: Do we need a new state here for RequiresHandshakePacket/RequiresPaddedInitialPacket
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#6.2.4
+            //# Sending two packets on PTO
+            //# expiration increases resilience to packet drops, thus reducing the
+            //# probability of consecutive PTO events.
+
+            self.state = PtoState::RequiresTransmission(transmission_count);
             true
         } else {
             false
@@ -178,13 +180,9 @@ impl Pto {
                 //# When there is no data to send, the sender SHOULD send
                 //# a PING or other ack-eliciting frame in a single packet, re-arming the
                 //# PTO timer.
-                //TODO: This doesn't seem correct
-                debug_assert!(
-                    !context.ack_elicitation().is_ack_eliciting(),
-                    "PTO timer should only be armed when there is no pending ack-eliciting packets"
-                );
-
-                if context.write_frame(&frame::Ping).is_some() {
+                if context.ack_elicitation().is_ack_eliciting()
+                    || context.write_frame(&frame::Ping).is_some()
+                {
                     let remaining = remaining - 1;
                     self.state = if remaining == 0 {
                         PtoState::Idle
@@ -193,15 +191,18 @@ impl Pto {
                     };
                 }
 
-                //TODO:
                 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.2.1
                 //# When the PTO fires, the client MUST send a Handshake packet if it has Handshake
                 //# keys, otherwise it MUST send an Initial packet in a UDP datagram of at least
                 //# 1200 bytes.
-                // if (has Handshake keys):
-                //       SendOneAckElicitingHandshakePacket()
-                //     else:
-                //       SendOneAckElicitingPaddedInitialPacket()
+
+                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#A.9
+                // Client sends an anti-deadlock packet: Initial is padded
+                // to earn more anti-amplification credit,
+                // a Handshake packet proves address ownership.
+
+                // The early transmission will automatically ensure all initial packets sent by the
+                // client are padded to 1200 bytes
             }
             _ => {}
         }
@@ -282,10 +283,14 @@ impl Manager {
     }
 
     pub fn timers(&self) -> impl Iterator<Item = &Timestamp> {
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
+        //# The probe timer MUST NOT be set if the time threshold (Section 6.1.2)
+        //# loss detection timer is set.  The time threshold loss detection timer
+        //# is expected to both expire earlier than the PTO and be less likely to
+        //# spuriously retransmit data.
+
         core::iter::empty()
             .chain(self.pto.timers())
-            // Only return the pto timer if the loss timer is not armed since only one
-            // timer should be used at a time.
             .filter(move |_| !self.loss_timer.is_armed())
             .chain(self.loss_timer.iter())
     }
@@ -295,15 +300,17 @@ impl Manager {
         timestamp: Timestamp,
         context: &mut Ctx,
     ) -> LossInfo {
-        let mut loss_info = if self.loss_timer.poll_expiration(timestamp).is_ready() {
-            self.detect_and_remove_lost_packets(timestamp, |packet_number_range| {
-                context.on_packet_loss(&packet_number_range);
-            })
-        } else {
-            Default::default()
-        };
+        let mut loss_info = LossInfo::default();
 
-        loss_info.pto_expired = self.pto.on_timeout(self.bytes_in_flight, timestamp);
+        if self.loss_timer.is_armed() {
+            if self.loss_timer.poll_expiration(timestamp).is_ready() {
+                loss_info = self.detect_and_remove_lost_packets(timestamp, |packet_number_range| {
+                    context.on_packet_loss(&packet_number_range);
+                })
+            }
+        } else {
+            loss_info.pto_expired = self.pto.on_timeout(self.bytes_in_flight, timestamp);
+        }
 
         loss_info
     }
@@ -334,7 +341,14 @@ impl Manager {
     }
 
     /// Updates the time threshold used by the loss timer and sets the PTO timer
-    pub fn update(&mut self, path: &Path, pto_backoff: u32, now: Timestamp) {
+    pub fn update(
+        &mut self,
+        path: &Path,
+        pto_backoff: u32,
+        now: Timestamp,
+        space: PacketNumberSpace,
+        is_handshake_confirmed: bool,
+    ) {
         self.update_time_threshold(&path.rtt_estimator);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#6.2.2.1
@@ -365,7 +379,14 @@ impl Manager {
                 .expect("sent_packets is non-empty, so there must be an ack eliciting packet")
         };
 
-        self.pto.update(path, pto_backoff, pto_base_timestamp);
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#6.2.1
+        //# An endpoint MUST NOT set its PTO timer for the application data
+        //# packet number space until the handshake is confirmed.
+        if space.is_application_data() && !is_handshake_confirmed {
+            self.pto.timer.cancel();
+        } else {
+            self.pto.update(path, pto_backoff, pto_base_timestamp);
+        }
     }
 
     /// Queries the component for any outgoing frames that need to get sent
@@ -438,7 +459,13 @@ impl Manager {
             //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#6.2.1
             //# A sender recomputes and may need to reset its PTO timer every time an
             //# ack-eliciting packet is sent or acknowledged,
-            self.update(&path, backoff, datagram.timestamp);
+            self.update(
+                &path,
+                backoff,
+                datagram.timestamp,
+                Ctx::SPACE,
+                Ctx::SPACE.is_application_data() && context.is_handshake_confirmed(),
+            );
 
             //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#6.2.2
             //# Once a later packet within the same packet number space has been
@@ -552,6 +579,14 @@ impl Manager {
                 //# be declared lost, then a timer SHOULD be set for the remaining time.
                 self.loss_timer
                     .set(unacked_sent_info.time_sent + self.time_threshold);
+
+                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
+                //# The probe timer MUST NOT be set if the time threshold (Section 6.1.2)
+                //# loss detection timer is set.  The time threshold loss detection timer
+                //# is expected to both expire earlier than the PTO and be less likely to
+                //# spuriously retransmit data.
+                self.pto.cancel();
+
                 // assuming sent_packets is ordered by packet number and sent time, all remaining
                 // packets will have a larger packet number and sent time, and are thus not lost.
                 break;
@@ -583,9 +618,7 @@ pub trait Context {
     const SPACE: PacketNumberSpace;
     const ENDPOINT_TYPE: EndpointType;
 
-    fn is_handshake_confirmed(&self) -> bool {
-        false
-    }
+    fn is_handshake_confirmed(&self) -> bool;
 
     fn validate_packet_ack(
         &mut self,

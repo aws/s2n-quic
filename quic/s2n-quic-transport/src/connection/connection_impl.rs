@@ -119,7 +119,8 @@ impl<ConfigType: connection::Config> ConnectionImpl<ConfigType> {
         datagram: &DatagramInfo,
     ) -> Result<(), TransportError> {
         let space_manager = &mut shared_state.space_manager;
-        space_manager.poll_crypto(&self.config, datagram.timestamp)?;
+        let (_, path) = self.path_manager.active_path();
+        space_manager.poll_crypto(&self.config, path, datagram.timestamp)?;
 
         if matches!(self.state, ConnectionState::Handshaking)
             && space_manager.application().is_some()
@@ -163,11 +164,17 @@ impl<ConfigType: connection::Config> ConnectionImpl<ConfigType> {
         path_id: path::Id,
         timestamp: Timestamp,
     ) {
-        shared_state
-            .space_manager
-            .on_loss_info(&loss_info, &self.path_manager[path_id], timestamp);
+        // This function is called regardless if there was a loss event or not.
+        // Ensure there was before updating.
+        if loss_info.should_update() {
+            shared_state.space_manager.on_loss_info(
+                &loss_info,
+                &self.path_manager[path_id],
+                timestamp,
+            );
 
-        // TODO pass recovery information to congestion controller
+            // TODO pass recovery information to congestion controller
+        }
     }
 }
 
