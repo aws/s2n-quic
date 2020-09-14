@@ -264,6 +264,7 @@ impl<Config: connection::Config> PacketSpace for ApplicationSpace<Config> {
         path: &mut Path,
         pto_backoff: u32,
     ) -> Result<recovery::LossInfo, TransportError> {
+        path.on_peer_validated();
         let (recovery_manager, mut context) = self.recovery();
         recovery_manager.on_ack_frame(datagram, frame, path, pto_backoff, &mut context)
     }
@@ -407,8 +408,9 @@ impl<Config: connection::Config> PacketSpace for ApplicationSpace<Config> {
     fn handle_handshake_done_frame(
         &mut self,
         frame: HandshakeDone,
-        _datagram: &DatagramInfo,
-        _path: &mut Path,
+        datagram: &DatagramInfo,
+        path: &mut Path,
+        pto_backoff: u32,
     ) -> Result<(), TransportError> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#19.20
         //# A server MUST
@@ -422,6 +424,13 @@ impl<Config: connection::Config> PacketSpace for ApplicationSpace<Config> {
         }
 
         self.handshake_status.on_handshake_done_received();
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#6.2.1
+        //# A sender SHOULD restart its PTO timer every time an ack-eliciting
+        //# packet is sent or acknowledged, when the handshake is confirmed
+        //# (Section 4.1.2 of [QUIC-TLS])
+        self.recovery_manager
+            .update(path, pto_backoff, datagram.timestamp);
 
         Ok(())
     }

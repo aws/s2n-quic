@@ -2,7 +2,7 @@
 //# Similar to TCP, packets containing only ACK frames do not count
 //# towards bytes in flight and are not congestion controlled.
 
-/// Trait to retrieve the AckElicitation for a given value
+/// Trait to retrieve CongestionControlled for a given value
 pub trait CongestionControlled {
     #[inline]
     fn is_congestion_controlled(&self) -> bool {

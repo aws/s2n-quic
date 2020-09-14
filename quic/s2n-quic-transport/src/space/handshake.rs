@@ -230,6 +230,7 @@ impl<Config: connection::Config> PacketSpace for HandshakeSpace<Config> {
         path: &mut Path,
         pto_backoff: u32,
     ) -> Result<recovery::LossInfo, TransportError> {
+        path.on_peer_validated();
         let (recovery_manager, mut context) = self.recovery();
         recovery_manager.on_ack_frame(datagram, frame, path, pto_backoff, &mut context)
     }

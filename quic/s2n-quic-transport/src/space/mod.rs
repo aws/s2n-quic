@@ -214,7 +214,15 @@ impl<ConnectionConfigType: connection::Config> PacketSpaceManager<ConnectionConf
             .sum::<u64>()
     }
 
-    pub fn on_loss_info(&mut self, loss_info: &recovery::LossInfo) {
+    pub fn on_loss_info(
+        &mut self,
+        loss_info: &recovery::LossInfo,
+        path: &Path,
+        timestamp: Timestamp,
+    ) {
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#6.2.1
+        //# When a PTO timer expires, the PTO backoff MUST be increased,
+        //# resulting in the PTO period being set to twice its current value.
         if loss_info.pto_expired {
             self.pto_backoff *= 2;
         }
@@ -222,6 +230,9 @@ impl<ConnectionConfigType: connection::Config> PacketSpaceManager<ConnectionConf
         if loss_info.pto_reset {
             self.pto_backoff = 1;
         }
+
+        // TODO: Rename on_packet_sent to update_recovery?
+        self.on_packets_sent(path, timestamp);
     }
 
     pub fn pto_backoff(&self) -> u32 {
@@ -229,9 +240,6 @@ impl<ConnectionConfigType: connection::Config> PacketSpaceManager<ConnectionConf
     }
 
     pub fn on_packets_sent(&mut self, path: &Path, timestamp: Timestamp) {
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#6.2.1
-        //# When a PTO timer expires, the PTO backoff MUST be increased,
-        //# resulting in the PTO period being set to twice its current value.
         let pto_backoff = self.pto_backoff;
 
         if let Some(space) = self.initial_mut() {
@@ -287,6 +295,18 @@ pub trait PacketSpace {
         pto_backoff: u32,
     ) -> Result<recovery::LossInfo, TransportError>;
 
+    fn handle_handshake_done_frame(
+        &mut self,
+        frame: HandshakeDone,
+        _datagram: &DatagramInfo,
+        _path: &mut Path,
+        _pto_backoff: u32,
+    ) -> Result<(), TransportError> {
+        Err(TransportError::PROTOCOL_VIOLATION
+            .with_reason(Self::INVALID_FRAME_ERROR)
+            .with_frame_type(frame.tag().into()))
+    }
+
     default_frame_handler!(handle_stream_frame, StreamRef);
     default_frame_handler!(handle_data_blocked_frame, DataBlocked);
     default_frame_handler!(handle_max_data_frame, MaxData);
@@ -301,7 +321,6 @@ pub trait PacketSpace {
     default_frame_handler!(handle_retire_connection_id_frame, RetireConnectionID);
     default_frame_handler!(handle_path_challenge_frame, PathChallenge);
     default_frame_handler!(handle_path_response_frame, PathResponse);
-    default_frame_handler!(handle_handshake_done_frame, HandshakeDone);
 
     fn on_processed_packet(
         &mut self,
@@ -451,7 +470,7 @@ pub trait PacketSpace {
                 Frame::HandshakeDone(frame) => {
                     let on_error = with_frame_type!(frame);
                     processed_packet.on_processed_frame(&frame);
-                    self.handle_handshake_done_frame(frame, datagram, path)
+                    self.handle_handshake_done_frame(frame, datagram, path, pto_backoff)
                         .map_err(on_error)?;
                 }
             }
