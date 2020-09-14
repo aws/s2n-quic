@@ -38,7 +38,7 @@ pub trait Provider {
     ) -> bool;
 
     /// Called to return the hash of a token for de-duplication purposes
-    fn get_token_hash(&self, token: &[u8]) -> &[u8];
+    fn hash_token(&self, token: &[u8]) -> &[u8];
 
     fn start(self) -> Result<Self::Token, Self::Error>;
 }
@@ -51,8 +51,17 @@ pub mod default {
     use s2n_codec::{EncoderBuffer, EncoderValue};
     use s2n_quic_core::{connection, inet::SocketAddress};
 
+    const KEY_SPACE: u64 = 16;
+
     #[derive(Debug, Default)]
     pub struct Provider;
+
+    #[derive(Debug, Default)]
+    pub struct MasterKey {
+        pub epoch: u64,
+        pub time_windows: u64,
+        pub material: [u8; 32],
+    }
 
     fn random_bytes(output_buffer: &mut [u8]) {
         output_buffer.copy_from_slice(&[1; 32])
@@ -79,6 +88,27 @@ pub mod default {
         _token: &mut address_validation::Token,
     ) {
         // TODO sign the token
+    }
+
+    fn master_key(_master_key_id: u8) -> MasterKey {
+        // TODO return actual key material that has been retrieved from an external source
+        MasterKey {
+            epoch: unsafe { s2n_quic_platform::time::now().as_duration().as_millis() as u64 },
+            time_windows: 0,
+            material: [0; 32],
+        }
+    }
+
+    fn key_time_window(_master_key: &MasterKey) -> u8 {
+        // NOTE: Using s2n-quic-platform::time assumes that keys are generated and compared on the
+        // same server.
+        let now = s2n_quic_platform::time::now();
+        let epoch = Duration::from_millis(_master_key.epoch);
+        let time_since_epoch = now.checked_sub(epoch).unwrap();
+        let windows = (unsafe { time_since_epoch.as_duration().as_millis() as u64 })
+            / _master_key.time_windows;
+
+        (windows % KEY_SPACE) as u8
     }
 
     impl super::Provider for Provider {
@@ -116,7 +146,7 @@ pub mod default {
             mut output_buffer: &mut [u8],
         ) -> (usize, Duration) {
             let mut token = generate_unsigned_token();
-            token.token_type = address_validation::TokenType::NewToken;
+            token.token_type = address_validation::TokenType::RetryToken;
 
             sign_token(
                 peer_address,
@@ -140,7 +170,7 @@ pub mod default {
             false
         }
 
-        fn get_token_hash(&self, _token: &[u8]) -> &[u8] {
+        fn hash_token(&self, _token: &[u8]) -> &[u8] {
             &[0; 32]
         }
 
@@ -182,7 +212,7 @@ mod tests {
         let (decoded_token, _) = decoder.decode::<address_validation::Token>().unwrap();
         assert_eq!(
             *decoded_token.token_type(),
-            address_validation::TokenType::NewToken
+            address_validation::TokenType::RetryToken
         );
     }
 }
