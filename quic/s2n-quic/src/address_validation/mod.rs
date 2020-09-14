@@ -67,6 +67,7 @@ decoder_value!(
 );
 
 /// Maximum size of an address validation token
+#[allow(dead_code)]
 const MAX_ADDRESS_VALIDATION_TOKEN_LEN: usize = 512;
 
 //= https://tools.ietf.org/html/draft-ietf-quic-transport-29.txt#8.1.4
@@ -133,6 +134,7 @@ impl Token {
     //#   When a server receives an Initial packet with an address validation
     //#   token, it MUST attempt to validate the token, unless it has already
     //#   completed address validation.
+    #[allow(dead_code)]
     pub fn validate(&self) -> bool {
         true
     }

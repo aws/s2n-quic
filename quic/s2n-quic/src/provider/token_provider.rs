@@ -3,13 +3,12 @@
 //! Customers will use the default Provider to generate and verify address validation tokens. This
 //! means the actual token does not need to be exposed.
 
+use crate::address_validation;
 use core::time::Duration;
+use s2n_codec::{EncoderBuffer, EncoderValue};
 use s2n_quic_core::{connection, inet::SocketAddress};
 
 pub trait Provider {
-    type Token: 'static + Send;
-    type Error: core::fmt::Display;
-
     /// Called when a token is needed for a NEW_TOKEN frame.
     fn generate_new_token(
         &mut self,
@@ -39,37 +38,29 @@ pub trait Provider {
 
     /// Called to return the hash of a token for de-duplication purposes
     fn hash_token(&self, token: &[u8]) -> &[u8];
-
-    fn start(self) -> Result<Self::Token, Self::Error>;
 }
 
-pub use default::Provider as Default;
+#[derive(Debug, Default)]
+struct MasterKey {
+    pub epoch: u64,
+    pub time_windows: u64,
+    pub material: [u8; 32],
+}
 
-pub mod default {
-    use crate::address_validation;
-    use core::time::Duration;
-    use s2n_codec::{EncoderBuffer, EncoderValue};
-    use s2n_quic_core::{connection, inet::SocketAddress};
+#[derive(Debug, Default)]
+pub struct Default;
 
-    const KEY_SPACE: u64 = 16;
+#[allow(dead_code)]
+const KEY_SPACE: u64 = 16;
 
-    #[derive(Debug, Default)]
-    pub struct Provider;
-
-    #[derive(Debug, Default)]
-    pub struct MasterKey {
-        pub epoch: u64,
-        pub time_windows: u64,
-        pub material: [u8; 32],
-    }
-
-    fn random_bytes(output_buffer: &mut [u8]) {
+impl Default {
+    fn random_bytes(&self, output_buffer: &mut [u8]) {
         output_buffer.copy_from_slice(&[1; 32])
     }
 
-    fn generate_unsigned_token() -> address_validation::Token {
+    fn generate_unsigned_token(&self) -> address_validation::Token {
         let mut nonce = [0u8; address_validation::NONCE_LEN];
-        random_bytes(&mut nonce);
+        self.random_bytes(&mut nonce);
 
         address_validation::Token {
             version: address_validation::TOKEN_VERSION,
@@ -82,6 +73,7 @@ pub mod default {
     }
 
     fn sign_token(
+        &self,
         _peer_address: &SocketAddress,
         _destination_connection_id: &connection::Id,
         _source_connection_id: &connection::Id,
@@ -90,7 +82,8 @@ pub mod default {
         // TODO sign the token
     }
 
-    fn master_key(_master_key_id: u8) -> MasterKey {
+    #[allow(dead_code)]
+    fn master_key(&self, _master_key_id: u8) -> MasterKey {
         // TODO return actual key material that has been retrieved from an external source
         MasterKey {
             epoch: unsafe { s2n_quic_platform::time::now().as_duration().as_millis() as u64 },
@@ -99,86 +92,78 @@ pub mod default {
         }
     }
 
-    fn key_time_window(_master_key: &MasterKey) -> u8 {
+    #[allow(dead_code)]
+    fn key_time_window(&self, master_key: &MasterKey) -> u8 {
         // NOTE: Using s2n-quic-platform::time assumes that keys are generated and compared on the
         // same server.
         let now = s2n_quic_platform::time::now();
-        let epoch = Duration::from_millis(_master_key.epoch);
+        let epoch = Duration::from_millis(master_key.epoch);
         let time_since_epoch = now.checked_sub(epoch).unwrap();
         let windows = (unsafe { time_since_epoch.as_duration().as_millis() as u64 })
-            / _master_key.time_windows;
+            / master_key.time_windows;
 
         (windows % KEY_SPACE) as u8
     }
+}
 
-    impl super::Provider for Provider {
-        type Token = (); // TODO
-        type Error = core::convert::Infallible;
+impl Provider for Default {
+    fn generate_new_token(
+        &mut self,
+        peer_address: &SocketAddress,
+        destination_connection_id: &connection::Id,
+        source_connection_id: &connection::Id,
+        mut output_buffer: &mut [u8],
+    ) -> (usize, Duration) {
+        let mut token = self.generate_unsigned_token();
+        token.token_type = address_validation::TokenType::NewToken;
 
-        fn generate_new_token(
-            &mut self,
-            peer_address: &SocketAddress,
-            destination_connection_id: &connection::Id,
-            source_connection_id: &connection::Id,
-            mut output_buffer: &mut [u8],
-        ) -> (usize, Duration) {
-            let mut token = generate_unsigned_token();
-            token.token_type = address_validation::TokenType::NewToken;
+        self.sign_token(
+            peer_address,
+            destination_connection_id,
+            source_connection_id,
+            &mut token,
+        );
 
-            sign_token(
-                peer_address,
-                destination_connection_id,
-                source_connection_id,
-                &mut token,
-            );
+        let mut encoder = EncoderBuffer::new(&mut output_buffer);
+        token.encode(&mut encoder);
+        (token.encoding_size(), Duration::from_millis(0))
+    }
 
-            let mut encoder = EncoderBuffer::new(&mut output_buffer);
-            token.encode(&mut encoder);
-            (token.encoding_size(), Duration::from_millis(0))
-        }
+    /// Called when a token is needed for a Retry Packet.
+    fn generate_retry_token(
+        &mut self,
+        peer_address: &SocketAddress,
+        destination_connection_id: &connection::Id,
+        source_connection_id: &connection::Id,
+        mut output_buffer: &mut [u8],
+    ) -> (usize, Duration) {
+        let mut token = self.generate_unsigned_token();
+        token.token_type = address_validation::TokenType::RetryToken;
 
-        /// Called when a token is needed for a Retry Packet.
-        fn generate_retry_token(
-            &mut self,
-            peer_address: &SocketAddress,
-            destination_connection_id: &connection::Id,
-            source_connection_id: &connection::Id,
-            mut output_buffer: &mut [u8],
-        ) -> (usize, Duration) {
-            let mut token = generate_unsigned_token();
-            token.token_type = address_validation::TokenType::RetryToken;
+        self.sign_token(
+            peer_address,
+            destination_connection_id,
+            source_connection_id,
+            &mut token,
+        );
 
-            sign_token(
-                peer_address,
-                destination_connection_id,
-                source_connection_id,
-                &mut token,
-            );
+        let mut encoder = EncoderBuffer::new(&mut output_buffer);
+        token.encode(&mut encoder);
+        (token.encoding_size(), Duration::from_millis(0))
+    }
 
-            let mut encoder = EncoderBuffer::new(&mut output_buffer);
-            token.encode(&mut encoder);
-            (token.encoding_size(), Duration::from_millis(0))
-        }
+    fn is_token_valid(
+        &mut self,
+        _peer_address: &SocketAddress,
+        _destination_connection_id: &connection::Id,
+        _source_connection_id: &connection::Id,
+        _token: &[u8],
+    ) -> bool {
+        false
+    }
 
-        fn is_token_valid(
-            &mut self,
-            _peer_address: &SocketAddress,
-            _destination_connection_id: &connection::Id,
-            _source_connection_id: &connection::Id,
-            _token: &[u8],
-        ) -> bool {
-            false
-        }
-
-        fn hash_token(&self, _token: &[u8]) -> &[u8] {
-            &[0; 32]
-        }
-
-        /// Called to validate a token.
-        fn start(self) -> Result<Self::Token, Self::Error> {
-            // TODO
-            Ok(())
-        }
+    fn hash_token(&self, _token: &[u8]) -> &[u8] {
+        &[0; 32]
     }
 }
 
@@ -195,7 +180,7 @@ mod tests {
         let peer_address = &SocketAddress::default();
         let connection_id = &connection::Id::try_from_bytes(&[]).unwrap();
         let mut buf = [0u8; 512];
-        let mut provider = default::Provider::default();
+        let mut provider = Default::default();
 
         let (_size, _lifetime) =
             provider.generate_new_token(peer_address, connection_id, connection_id, &mut buf);
@@ -214,5 +199,15 @@ mod tests {
             *decoded_token.token_type(),
             address_validation::TokenType::RetryToken
         );
+    }
+
+    #[test]
+    fn test_key_windows() {
+        let provider = Default::default();
+        let master_key = MasterKey {
+            epoch: unsafe { s2n_quic_platform::time::now().as_duration().as_millis() as u64 },
+            time_windows: 0,
+            material: [0; 32],
+        };
     }
 }
