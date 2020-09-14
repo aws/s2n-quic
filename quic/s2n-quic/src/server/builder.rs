@@ -152,8 +152,8 @@ impl<Providers: ServerProviders> Builder<Providers> {
         /// #    Ok(())
         /// # }
         /// ```
-        with_token_provider,
-        token_provider
+        with_token,
+        token
     );
 
     impl_provider_method!(

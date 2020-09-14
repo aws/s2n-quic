@@ -10,4 +10,4 @@ pub mod log;
 pub mod runtime;
 pub mod sync;
 pub mod tls;
-pub mod token_provider;
+pub mod token;
