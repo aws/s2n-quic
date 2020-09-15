@@ -181,20 +181,29 @@ impl StreamReceiveBuffer {
     /// This equals the amount of data that is stored in contiguous fashion at
     /// the start of the buffer.
     pub fn len(&self) -> usize {
-        let mut result = 0;
-        for slot in &self.slots {
-            if let SlotState::Received(b) = slot {
-                result += b.len();
-            } else {
-                break; // We are only checking contiguous ready slots
-            }
-        }
-        result
+        self.report().0
     }
 
     /// Returns true if no bytes are available for reading
     pub fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+
+    /// Returns the number of bytes and chunks available for consumption
+    #[inline]
+    pub fn report(&self) -> (usize, usize) {
+        let mut bytes = 0;
+        let mut chunks = 0;
+        for slot in &self.slots {
+            if let SlotState::Received(b) = slot {
+                bytes += b.len();
+                chunks += 1;
+            } else {
+                // only report contiguous ready slots
+                break;
+            }
+        }
+        (bytes, chunks)
     }
 
     /// Allocates a buffer of the configured buffer size.
