@@ -35,6 +35,7 @@ pub trait Format {
     fn hash_token(&self, token: &[u8]) -> &[u8];
 }
 
+#[derive(Debug, Eq, PartialEq)]
 pub enum Source {
     RetryPacket,
     NewTokenFrame,

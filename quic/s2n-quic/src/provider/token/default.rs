@@ -9,10 +9,10 @@
 //!
 //! The first 8 bits of the token represent the version, token type, key id, time window ID.
 //!
-//! +----------+------------+--------+----------------+
+//! +----------+--------------+--------+----------------+
 //! |  Version | Token Source | Key ID | Time Window ID |
-//! +----------+------------+--------+----------------+
-//!      1           1          2           4
+//! +----------+--------------+--------+----------------+
+//!      1           1            2           4
 //!
 //! The next 248 bits are the nonce. The last 256 bits are the HMAC.
 //!
@@ -60,9 +60,9 @@ impl Format {
     fn generate_token(
         &mut self,
         source: Source,
-        peer_address: &SocketAddress,
-        destination_connection_id: &connection::Id,
-        source_connection_id: &connection::Id,
+        _peer_address: &SocketAddress,
+        _destination_connection_id: &connection::Id,
+        _source_connection_id: &connection::Id,
         output_buffer: &mut [u8],
     ) -> Option<Duration> {
         let buffer = DecoderBufferMut::new(output_buffer);
@@ -81,20 +81,21 @@ impl Format {
 
         SystemRandom::new().fill(&mut token.nonce[..]).ok()?;
 
+        // Sign the token, then write to the buffer
         todo!()
     }
 
     fn validate_retry_token(
         &mut self,
-        peer_address: &SocketAddress,
-        destination_connection_id: &connection::Id,
-        source_connection_id: &connection::Id,
-        token: &Token,
+        _peer_address: &SocketAddress,
+        _destination_connection_id: &connection::Id,
+        _source_connection_id: &connection::Id,
+        _token: &Token,
     ) -> Option<()> {
         todo!()
     }
 
-    fn validate_new_token(&mut self, peer_address: &SocketAddress, token: &Token) -> Option<()> {
+    fn validate_new_token(&mut self, _peer_address: &SocketAddress, _token: &Token) -> Option<()> {
         todo!()
     }
 }
@@ -169,13 +170,17 @@ impl super::Format for Format {
     }
 
     fn hash_token(&self, _token: &[u8]) -> &[u8] {
-        &[0; 32]
+        todo!()
     }
 }
 
+#[allow(dead_code)]
 const KEY_SPACE: usize = 4;
+
+#[allow(dead_code)]
 const TIME_WINDOW_SPACE: usize = 16;
 
+#[allow(dead_code)]
 struct KeyStore {
     current_key_id: u8,
     current_time_window_id: u8,
@@ -187,33 +192,36 @@ struct KeyStore {
 #[repr(C)]
 pub struct Header(u8);
 
-pub const TOKEN_VERSION: u8 = 0x01;
+pub const TOKEN_VERSION: u8 = 0x00;
 
-const VERSION_MASK: u8 = 0x03;
-const MKID_MASK: u8 = 0x0c;
-const KID_MASK: u8 = 0xf0;
-const TOKEN_TYPE_MASK: u8 = 0x80;
+const VERSION_MASK: u8 = 0x80;
+const TOKEN_SOURCE_MASK: u8 = 0x40;
+const KID_MASK: u8 = 0x30;
+const TIME_WINDOW_MASK: u8 = 0x0f;
 
 const VERSION_SHIFT: u8 = 7;
-const MKID_SHIFT: u8 = 2;
+const TOKEN_SOURCE_SHIFT: u8 = 6;
 const KID_SHIFT: u8 = 4;
-const TOKEN_TYPE_SHIFT: u8 = 7;
+const TIME_WINDOW_SHIFT: u8 = 0;
 
 impl Header {
     pub fn version(&self) -> u8 {
-        todo!()
+        (self.0 & VERSION_MASK) >> VERSION_SHIFT
     }
 
     pub fn set_version(&mut self, version: u8) {
-        todo!()
+        self.0 |= version << VERSION_SHIFT
     }
 
+    // Version is not settable. It may be required to handle multiple versions in-flight, but only
+    // the latest version should be used when generating headers.
+
     pub fn key_id(&self) -> u8 {
-        todo!()
+        (self.0 & KID_MASK) >> KID_SHIFT
     }
 
     pub fn set_key_id(&mut self, key_id: u8) {
-        todo!()
+        self.0 |= key_id << KID_SHIFT
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#21.2
@@ -223,11 +231,11 @@ impl Header {
     //#   Servers SHOULD provide mitigations for this attack by limiting the
     //#   usage and lifetime of address validation tokens
     pub fn time_window_id(&self) -> u8 {
-        todo!()
+        (self.0 & TIME_WINDOW_MASK) >> TIME_WINDOW_SHIFT
     }
 
     pub fn set_time_window_id(&mut self, id: u8) {
-        todo!()
+        self.0 |= id << TIME_WINDOW_SHIFT
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#8.1.1
@@ -236,11 +244,18 @@ impl Header {
     //#   provided to a client.  These tokens are carried in the same field,
     //#   but require different handling from servers.
     pub fn token_source(&self) -> Source {
-        todo!()
+        match (self.0 & TOKEN_SOURCE_MASK) >> TOKEN_SOURCE_SHIFT {
+            0 => Source::NewTokenFrame,
+            1 => Source::RetryPacket,
+            _ => Source::NewTokenFrame,
+        }
     }
 
     pub fn set_token_source(&mut self, source: Source) {
-        todo!()
+        match source {
+            Source::NewTokenFrame => self.0 |= 0 << TOKEN_SOURCE_SHIFT,
+            Source::RetryPacket => self.0 |= 1 << TOKEN_SOURCE_SHIFT,
+        }
     }
 }
 
@@ -312,4 +327,29 @@ struct DerivedKey {
     header: Header,
     key: ring::hmac::Key,
     is_valid: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_header() {
+        // Fuzz for an exhaustive test of the header
+        let header = Header(0xac);
+        assert_eq!(header.version(), 0x01);
+        assert_eq!(header.token_source(), Source::NewTokenFrame);
+        assert_eq!(header.key_id(), 0x02);
+        assert_eq!(header.time_window_id(), 0x0c);
+
+        let mut header = Header(0);
+        header.set_key_id(0x03);
+        header.set_time_window_id(0x0a);
+        header.set_token_source(Source::RetryPacket);
+
+        assert_eq!(header.version(), TOKEN_VERSION);
+        assert_eq!(header.key_id(), 0x03);
+        assert_eq!(header.time_window_id(), 0x0a);
+        assert_eq!(header.token_source(), Source::RetryPacket);
+    }
 }
