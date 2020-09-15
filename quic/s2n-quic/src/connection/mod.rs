@@ -1,3 +1,6 @@
+use core::fmt;
+use s2n_quic_transport::connection::Connection as Inner;
+
 pub mod metric;
 
 #[macro_use]
@@ -12,9 +15,12 @@ pub use s2n_quic_core::connection::Error;
 
 pub type Result<T> = core::result::Result<T, Error>;
 
-#[derive(Clone, Debug)]
-pub struct Connection {
-    // TODO
+pub struct Connection(Inner);
+
+impl fmt::Debug for Connection {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.0.fmt(f)
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -28,6 +34,10 @@ pub enum HandshakeStatus {
 }
 
 impl Connection {
+    pub(crate) const fn new(inner: Inner) -> Self {
+        Self(inner)
+    }
+
     impl_acceptor_api!(|handle, call| call!(handle));
     impl_handle_api!(|handle, call| call!(handle));
 

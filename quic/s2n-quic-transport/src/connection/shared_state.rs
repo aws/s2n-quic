@@ -142,9 +142,9 @@ impl<ConnectionConfigType: connection::Config> ConnectionApiProvider
     fn poll_accept(
         &self,
         arc_self: &ConnectionApi,
-        stream_type: StreamType,
+        stream_type: Option<StreamType>,
         context: &Context,
-    ) -> Poll<Result<Stream, StreamError>> {
+    ) -> Poll<Result<(Stream, StreamType), StreamError>> {
         let mut shared_state = self.lock();
 
         let stream_manager = &mut shared_state
@@ -153,16 +153,33 @@ impl<ConnectionConfigType: connection::Config> ConnectionApiProvider
             .expect("Application space must be available on active connections")
             .stream_manager;
 
-        let poll_result = stream_manager.poll_accept(stream_type, context);
+        macro_rules! poll_accept {
+            ($stream_type:expr) => {
+                match stream_manager.poll_accept($stream_type, context) {
+                    Poll::Pending => {}
+                    Poll::Ready(Err(e)) => return Poll::Ready(Err(e)),
+                    Poll::Ready(Ok(internal_id)) => {
+                        // Unlock the Mutex
+                        drop(shared_state);
 
-        // Unlock the Mutex
-        drop(shared_state);
+                        let stream = Stream::new(arc_self.clone(), internal_id);
 
-        match poll_result {
-            Poll::Pending => Poll::Pending,
-            Poll::Ready(Err(e)) => Poll::Ready(Err(e)),
-            Poll::Ready(Ok(internal_id)) => {
-                Poll::Ready(Ok(Stream::new(arc_self.clone(), internal_id)))
+                        return Poll::Ready(Ok((stream, $stream_type)));
+                    }
+                }
+            };
+        }
+
+        match stream_type {
+            None => {
+                // Poll either type
+                poll_accept!(StreamType::Unidirectional);
+                poll_accept!(StreamType::Bidirectional);
+                Poll::Pending
+            }
+            Some(stream_type) => {
+                poll_accept!(stream_type);
+                Poll::Pending
             }
         }
     }
