@@ -107,8 +107,9 @@ pub mod random {
     impl Generator for Format {
         fn generate(&mut self) -> (connection::Id, Option<Duration>) {
             let mut id = [0u8; connection::id::MAX_LEN];
-            rand::thread_rng().fill_bytes(&mut id[..self.len]);
-            let id = id.try_into().expect("length already checked");
+            let id = &mut id[..self.len];
+            rand::thread_rng().fill_bytes(id);
+            let id = (&id[..]).try_into().expect("length already checked");
             (id, None)
         }
     }
@@ -130,6 +131,7 @@ pub mod random {
 
             let (id, _) = format.generate();
             assert_eq!(format.validate(id.as_ref()), Some(len));
+            assert_eq!(id.len(), len);
         }
     }
 }
