@@ -165,8 +165,8 @@ impl<ConfigType: connection::Config> ConnectionImpl<ConfigType> {
         timestamp: Timestamp,
     ) {
         // This function is called regardless if there was a loss event or not.
-        // Ensure there was before updating.
-        if loss_info.should_update() {
+        // Only propagate on_loss_info if necessary.
+        if loss_info.updated_required() {
             shared_state.space_manager.on_loss_info(
                 &loss_info,
                 &self.path_manager[path_id],
@@ -353,7 +353,7 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
         } else {
             shared_state
                 .space_manager
-                .on_packets_sent(active_path, timestamp);
+                .update_recovery(active_path, timestamp);
             Ok(())
         }
     }

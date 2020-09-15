@@ -49,7 +49,7 @@ impl<Config: connection::Config> HandshakeSpace<Config> {
             crypto_stream: CryptoStream::new(),
             tx_packet_numbers: TxPacketNumbers::new(PacketNumberSpace::Handshake, now),
             processed_packet_numbers: SlidingWindow::default(),
-            recovery_manager: recovery::Manager::new(max_ack_delay),
+            recovery_manager: recovery::Manager::new(PacketNumberSpace::Handshake, max_ack_delay),
         }
     }
 
@@ -106,20 +106,15 @@ impl<Config: connection::Config> HandshakeSpace<Config> {
         recovery_manager.on_timeout(timestamp, &mut context)
     }
 
-    pub fn on_packets_sent(
+    pub fn update_recovery(
         &mut self,
         path: &Path,
         pto_backoff: u32,
         timestamp: Timestamp,
         is_handshake_confirmed: bool,
     ) {
-        self.recovery_manager.update(
-            path,
-            pto_backoff,
-            timestamp,
-            PacketNumberSpace::Handshake,
-            is_handshake_confirmed,
-        )
+        self.recovery_manager
+            .update(path, pto_backoff, timestamp, is_handshake_confirmed)
     }
 
     /// Returns the Packet Number to be used when decoding incoming packets
@@ -187,12 +182,7 @@ struct RecoveryContext<'a, Config> {
 }
 
 impl<'a, Config: connection::Config> recovery::Context for RecoveryContext<'a, Config> {
-    const SPACE: PacketNumberSpace = PacketNumberSpace::Handshake;
     const ENDPOINT_TYPE: EndpointType = Config::ENDPOINT_TYPE;
-
-    fn is_handshake_confirmed(&self) -> bool {
-        panic!("Handshake status is not currently available in the handshake space")
-    }
 
     fn validate_packet_ack(
         &mut self,

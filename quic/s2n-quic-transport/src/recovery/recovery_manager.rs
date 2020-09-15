@@ -5,12 +5,13 @@ use crate::{
     contexts::WriteContext,
     frame_exchange_interests::{FrameExchangeInterestProvider, FrameExchangeInterests},
     recovery::{SentPacketInfo, SentPackets},
+    space::INITIAL_PTO_BACKOFF,
     timer::VirtualTimer,
 };
 use core::{cmp::max, time::Duration};
 use s2n_quic_core::{
     endpoint::EndpointType,
-    frame::{self, ack::ECNCounts, ack_elicitation::AckElicitation},
+    frame::{self, ack_elicitation::AckElicitation},
     inet::DatagramInfo,
     packet::number::{PacketNumber, PacketNumberRange, PacketNumberSpace},
     path::Path,
@@ -21,6 +22,9 @@ use s2n_quic_core::{
 
 #[derive(Debug)]
 pub struct Manager {
+    // The packet space for this recovery manager
+    space: PacketNumberSpace,
+
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.3
     //# The maximum amount of time by which the receiver intends to delay acknowledgments for packets
     //# in the ApplicationData packet number space. The actual ack_delay in a received ACK frame may
@@ -87,11 +91,14 @@ pub struct LossInfo {
 }
 
 impl LossInfo {
-    pub fn should_update(&self) -> bool {
+    /// The recovery manager requires updating if a PTO expired/needs to be reset, or
+    /// loss packets were detected.
+    pub fn updated_required(&self) -> bool {
         self.bytes_in_flight > 0 || self.pto_expired || self.pto_reset
     }
 }
 
+#[allow(clippy::suspicious_arithmetic_impl)]
 impl core::ops::Add for LossInfo {
     type Output = Self;
 
@@ -268,8 +275,9 @@ impl FrameExchangeInterestProvider for Pto {
 
 impl Manager {
     /// Constructs a new `recovery::Manager`
-    pub fn new(max_ack_delay: Duration) -> Self {
+    pub fn new(space: PacketNumberSpace, max_ack_delay: Duration) -> Self {
         Self {
+            space,
             max_ack_delay,
             largest_acked_packet: None,
             sent_packets: SentPackets::default(),
@@ -346,7 +354,6 @@ impl Manager {
         path: &Path,
         pto_backoff: u32,
         now: Timestamp,
-        space: PacketNumberSpace,
         is_handshake_confirmed: bool,
     ) {
         self.update_time_threshold(&path.rtt_estimator);
@@ -382,7 +389,7 @@ impl Manager {
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#6.2.1
         //# An endpoint MUST NOT set its PTO timer for the application data
         //# packet number space until the handshake is confirmed.
-        if space.is_application_data() && !is_handshake_confirmed {
+        if self.space.is_application_data() && !is_handshake_confirmed {
             self.pto.timer.cancel();
         } else {
             self.pto.update(path, pto_backoff, pto_base_timestamp);
@@ -407,37 +414,78 @@ impl Manager {
         backoff: u32,
         context: &mut Ctx,
     ) -> Result<LossInfo, TransportError> {
-        let mut loss_info = LossInfo::default();
-        let mut has_any_newly_acked = false;
-        let largest_acked = frame.largest_acknowledged();
-        let largest_acked = Ctx::SPACE.new_packet_number(largest_acked);
-        let ack_delay = frame.ack_delay();
-        let ecn_counts = frame.ecn_counts;
+        let mut has_newly_acked = false;
+        let largest_acked_in_frame = self.space.new_packet_number(frame.largest_acknowledged());
+
+        // Update the largest acked packet if the largest packet acked in this frame is larger
+        self.largest_acked_packet = Some(
+            self.largest_acked_packet
+                .map_or(largest_acked_in_frame, |pn| pn.max(largest_acked_in_frame)),
+        );
 
         for ack_range in frame.ack_ranges() {
             let (start, end) = ack_range.into_inner();
 
-            let start = Ctx::SPACE.new_packet_number(start);
-            let end = Ctx::SPACE.new_packet_number(end);
-
-            let packet_number_range = PacketNumberRange::new(start, end);
-
-            context.validate_packet_ack(datagram, &packet_number_range)?;
-
-            let has_newly_acked = self.on_packet_ack(
-                packet_number_range,
-                largest_acked,
-                ack_delay,
-                ecn_counts,
-                datagram.timestamp,
-                &mut path.rtt_estimator,
+            let acked_packets = PacketNumberRange::new(
+                self.space.new_packet_number(start),
+                self.space.new_packet_number(end),
             );
+
+            context.validate_packet_ack(datagram, &acked_packets)?;
+            context.on_packet_ack(datagram, &acked_packets);
+
+            if let Some((largest_newly_acked, largest_newly_acked_info)) =
+                self.sent_packets.range(acked_packets).last()
+            {
+                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#5.1
+                //# An RTT sample is generated using only the largest acknowledged packet in the
+                //# received ACK frame. This is because a peer reports acknowledgment delays for
+                //# only the largest acknowledged packet in an ACK frame.
+                if *largest_newly_acked == largest_acked_in_frame {
+                    let latest_rtt = datagram.timestamp - largest_newly_acked_info.time_sent;
+                    path.rtt_estimator.update_rtt(
+                        frame.ack_delay(),
+                        latest_rtt,
+                        largest_newly_acked.space(),
+                    );
+                }
+            } else {
+                // Nothing to do if there are no newly acked packets.
+                continue;
+            };
+
+            // TODO: path.congestion_controller.on_packets_acked(self.sent_packets.range(acked_packets));
+
+            for packet_number in acked_packets {
+                if let Some(acked_packet_info) = self.sent_packets.remove(packet_number) {
+                    self.bytes_in_flight -= acked_packet_info.sent_bytes;
+                }
+            }
 
             // notify components of packets that are newly acked
             if has_newly_acked {
                 context.on_new_packet_ack(datagram, &packet_number_range);
             }
-            context.on_packet_ack(datagram, &packet_number_range);
+
+            has_newly_acked = true;
+        }
+
+        let mut loss_info = LossInfo::default();
+
+        if has_newly_acked {
+            // Process ECN information if present.
+            if frame.ecn_counts.is_some() {
+                // TODO: path.congestion_controller.process_ecn(ecn_counts, largest_newly_acked, largest_newly_acked_packet.space())
+            }
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#6.2.2
+            //# Once a later packet within the same packet number space has been
+            //# acknowledged, an endpoint SHOULD declare an earlier packet lost if it
+            //# was sent a threshold amount of time in the past.
+            loss_info =
+                self.detect_and_remove_lost_packets(datagram.timestamp, |packet_number_range| {
+                    context.on_packet_loss(&packet_number_range);
+                });
 
             //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#6.2.1
             //# The PTO backoff factor is reset when an acknowledgement is received,
@@ -449,81 +497,27 @@ impl Manager {
             //# the PTO backoff factor on receiving acknowledgements until it
             //# receives a HANDSHAKE_DONE frame or an acknowledgement for one of its
             //# Handshake or 1-RTT packets.
+            loss_info.pto_reset = path.is_peer_validated();
 
-            loss_info.pto_reset |= has_newly_acked && path.is_peer_validated();
+            // If there is a pending pto reset, use the initial pto_backoff when updating the PTO timer
+            let pto_backoff = if loss_info.pto_reset {
+                INITIAL_PTO_BACKOFF
+            } else {
+                backoff
+            };
 
-            has_any_newly_acked |= has_newly_acked;
-        }
-
-        if has_any_newly_acked {
             //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#6.2.1
             //# A sender recomputes and may need to reset its PTO timer every time an
             //# ack-eliciting packet is sent or acknowledged,
             self.update(
                 &path,
-                backoff,
+                pto_backoff,
                 datagram.timestamp,
-                Ctx::SPACE,
-                Ctx::SPACE.is_application_data() && context.is_handshake_confirmed(),
+                self.space.is_application_data() && context.is_handshake_confirmed(),
             );
-
-            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#6.2.2
-            //# Once a later packet within the same packet number space has been
-            //# acknowledged, an endpoint SHOULD declare an earlier packet lost if it
-            //# was sent a threshold amount of time in the past.
-            loss_info +=
-                self.detect_and_remove_lost_packets(datagram.timestamp, |packet_number_range| {
-                    context.on_packet_loss(&packet_number_range);
-                });
         }
 
         Ok(loss_info)
-    }
-
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.7
-    //# When an ACK frame is received, it may newly acknowledge any number of packets.
-    fn on_packet_ack(
-        &mut self,
-        acked_packets: PacketNumberRange,
-        largest_acked: PacketNumber,
-        ack_delay: Duration,
-        ecn_counts: Option<ECNCounts>,
-        receive_time: Timestamp,
-        rtt_estimator: &mut RTTEstimator,
-    ) -> bool {
-        let largest_newly_acked = if let Some(last) = self.sent_packets.range(acked_packets).last()
-        {
-            // There are newly acked packets, so set newly_acked to true for use in on_ack_received_finish
-            last
-        } else {
-            // Nothing to do if there are no newly acked packets.
-            return false;
-        };
-
-        self.largest_acked_packet = Some(
-            self.largest_acked_packet
-                .map_or(*largest_newly_acked.0, |pn| pn.max(*largest_newly_acked.0)),
-        );
-
-        // If the largest acknowledged is newly acked and
-        // at least one ack-eliciting was newly acked, update the RTT.
-        if *largest_newly_acked.0 == largest_acked {
-            let latest_rtt = receive_time - largest_newly_acked.1.time_sent;
-            rtt_estimator.update_rtt(ack_delay, latest_rtt, largest_acked.space());
-
-            // Process ECN information if present.
-            if ecn_counts.is_some() {
-                // TODO: path.congestion_controller.process_ecn(ecn_counts, largest_newly_acked, largest_acked.space())
-            }
-        };
-
-        // TODO: path.congestion_controller.on_packets_acked(self.sent_packets.range(acked_packets));
-
-        for packet_number in acked_packets {
-            self.sent_packets.remove(packet_number);
-        }
-
-        true
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.10
@@ -615,10 +609,11 @@ impl Manager {
 }
 
 pub trait Context {
-    const SPACE: PacketNumberSpace;
     const ENDPOINT_TYPE: EndpointType;
 
-    fn is_handshake_confirmed(&self) -> bool;
+    fn is_handshake_confirmed(&self) -> bool {
+        panic!("Handshake status is not currently available in this packet space")
+    }
 
     fn validate_packet_ack(
         &mut self,
@@ -665,7 +660,7 @@ mod test {
                 AckElicitation::NonEliciting
             };
             let in_flight = i % 3 == 0;
-            let sent_bytes = (2 * i) as u64;
+            let sent_bytes = (2 * i) as usize;
 
             recovery_manager.on_packet_sent(
                 sent_packet,
@@ -678,7 +673,7 @@ mod test {
             if ack_elicitation == AckElicitation::Eliciting {
                 assert!(recovery_manager.sent_packets.get(sent_packet).is_some());
                 let actual_sent_packet = recovery_manager.sent_packets.get(sent_packet).unwrap();
-                assert_eq!(actual_sent_packet.sent_bytes, sent_bytes);
+                assert_eq!(actual_sent_packet.sent_bytes, sent_bytes as u64);
                 assert_eq!(actual_sent_packet.in_flight, in_flight);
                 assert_eq!(actual_sent_packet.time_sent, time_sent);
                 if in_flight {
@@ -699,7 +694,7 @@ mod test {
 
     #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.7")]
     #[test]
-    fn on_ack_received() {
+    fn on_ack_frame() {
         let pn_space = PacketNumberSpace::ApplicationData;
         let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
         let mut recovery_manager = Manager::new(pn_space, Duration::from_millis(100));
@@ -730,7 +725,7 @@ mod test {
             pn_space.new_packet_number(VarInt::from_u8(7)),
         );
 
-        recovery_manager.on_ack_received(
+        recovery_manager.on_packet_ack(
             acked_packets,
             pn_space.new_packet_number(VarInt::from_u8(9)),
             Duration::from_millis(10),
@@ -769,7 +764,7 @@ mod test {
             pn_space.new_packet_number(VarInt::from_u8(9)),
         );
 
-        recovery_manager.on_ack_received(
+        recovery_manager.on_packet_ack(
             acked_packets,
             pn_space.new_packet_number(VarInt::from_u8(9)),
             Duration::from_millis(10),
@@ -782,7 +777,22 @@ mod test {
         assert_eq!(rtt_estimator.latest_rtt(), Duration::from_millis(500));
 
         assert!(recovery_manager.newly_acked);
-        recovery_manager.on_ack_received_finish(ack_receive_time, &rtt_estimator);
+
+        let datagram = DatagramInfo {
+            timestamp: ack_receive_time,
+            remote_address: Default::default(),
+            payload_len: 0,
+            ecn: Default::default(),
+        };
+        let frame = frame::Ack {
+            ack_delay: VarInt::from_u8(10),
+            ack_ranges: (),
+            ecn_counts: None,
+        };
+        let mut path = Path::new(Default::default(), Default::default(), rtt_estimator, true);
+
+        recovery_manager.on_ack_frame(&datagram, frame, &mut path, 1, context);
+
         assert!(!recovery_manager.newly_acked);
     }
 

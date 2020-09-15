@@ -43,6 +43,8 @@ pub(crate) use rx_packet_numbers::EARLY_ACK_SETTINGS;
 pub(crate) use session_context::SessionContext;
 pub(crate) use tx_packet_numbers::TxPacketNumbers;
 
+pub const INITIAL_PTO_BACKOFF: u32 = 1;
+
 pub struct PacketSpaceManager<ConnectionConfigType: connection::Config> {
     session: Option<ConnectionConfigType::TLSSession>,
     initial: Option<Box<InitialSpace<ConnectionConfigType>>>,
@@ -128,7 +130,7 @@ impl<ConnectionConfigType: connection::Config> PacketSpaceManager<ConnectionConf
             handshake: None,
             application: None,
             zero_rtt_crypto: None,
-            pto_backoff: 1,
+            pto_backoff: INITIAL_PTO_BACKOFF,
         }
     }
 
@@ -234,28 +236,27 @@ impl<ConnectionConfigType: connection::Config> PacketSpaceManager<ConnectionConf
             self.pto_backoff = 1;
         }
 
-        // TODO: Rename on_packet_sent to update_recovery?
-        self.on_packets_sent(path, timestamp);
+        self.update_recovery(path, timestamp);
     }
 
     pub fn pto_backoff(&self) -> u32 {
         self.pto_backoff
     }
 
-    pub fn on_packets_sent(&mut self, path: &Path, timestamp: Timestamp) {
+    pub fn update_recovery(&mut self, path: &Path, timestamp: Timestamp) {
         let pto_backoff = self.pto_backoff;
         let is_handshake_confirmed = self.is_handshake_confirmed();
 
         if let Some(space) = self.initial_mut() {
-            space.on_packets_sent(path, pto_backoff, timestamp, is_handshake_confirmed);
+            space.update_recovery(path, pto_backoff, timestamp, is_handshake_confirmed);
         }
 
         if let Some(space) = self.handshake_mut() {
-            space.on_packets_sent(path, pto_backoff, timestamp, is_handshake_confirmed);
+            space.update_recovery(path, pto_backoff, timestamp, is_handshake_confirmed);
         }
 
         if let Some(space) = self.application_mut() {
-            space.on_packets_sent(path, pto_backoff, timestamp, is_handshake_confirmed);
+            space.update_recovery(path, pto_backoff, timestamp, is_handshake_confirmed);
         }
     }
 

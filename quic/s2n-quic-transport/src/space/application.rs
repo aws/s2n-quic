@@ -69,7 +69,10 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
             crypto,
             handshake_status: HandshakeStatus::default(),
             processed_packet_numbers: SlidingWindow::default(),
-            recovery_manager: recovery::Manager::new(max_ack_delay),
+            recovery_manager: recovery::Manager::new(
+                PacketNumberSpace::ApplicationData,
+                max_ack_delay,
+            ),
         }
     }
 
@@ -128,13 +131,8 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
             self.handshake_status.on_handshake_done();
         }
 
-        self.recovery_manager.update(
-            path,
-            pto_backoff,
-            timestamp,
-            PacketNumberSpace::ApplicationData,
-            true,
-        )
+        self.recovery_manager
+            .update(path, pto_backoff, timestamp, true)
     }
 
     /// Returns all of the component timers
@@ -152,20 +150,15 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         recovery_manager.on_timeout(timestamp, &mut context)
     }
 
-    pub fn on_packets_sent(
+    pub fn update_recovery(
         &mut self,
         path: &Path,
         pto_backoff: u32,
         timestamp: Timestamp,
         is_handshake_confirmed: bool,
     ) {
-        self.recovery_manager.update(
-            path,
-            pto_backoff,
-            timestamp,
-            PacketNumberSpace::ApplicationData,
-            is_handshake_confirmed,
-        )
+        self.recovery_manager
+            .update(path, pto_backoff, timestamp, is_handshake_confirmed)
     }
 
     /// Returns the Packet Number to be used when decoding incoming packets
@@ -226,7 +219,6 @@ struct RecoveryContext<'a, Config: connection::Config> {
 }
 
 impl<'a, Config: connection::Config> recovery::Context for RecoveryContext<'a, Config> {
-    const SPACE: PacketNumberSpace = PacketNumberSpace::ApplicationData;
     const ENDPOINT_TYPE: EndpointType = Config::ENDPOINT_TYPE;
 
     fn is_handshake_confirmed(&self) -> bool {
@@ -449,13 +441,8 @@ impl<Config: connection::Config> PacketSpace for ApplicationSpace<Config> {
         //# A sender SHOULD restart its PTO timer every time an ack-eliciting
         //# packet is sent or acknowledged, when the handshake is confirmed
         //# (Section 4.1.2 of [QUIC-TLS])
-        self.recovery_manager.update(
-            path,
-            pto_backoff,
-            datagram.timestamp,
-            PacketNumberSpace::ApplicationData,
-            true,
-        );
+        self.recovery_manager
+            .update(path, pto_backoff, datagram.timestamp, true);
 
         Ok(())
     }
