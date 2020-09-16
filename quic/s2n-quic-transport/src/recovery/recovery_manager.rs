@@ -224,8 +224,8 @@ impl Pto {
         let mut pto_period = path.rtt_estimator.smoothed_rtt();
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
-        //# The PTO period MUST be set to at least kGranularity, to avoid the
-        //# timer expiring immediately.
+        //# The PTO period MUST be at least kGranularity, to avoid the timer
+        //# expiring immediately.
         pto_period += max(4 * path.rtt_estimator.rttvar(), K_GRANULARITY);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#6.2.1
@@ -380,7 +380,7 @@ impl Manager {
                 .expect("sent_packets is non-empty, so there must be an ack eliciting packet")
         };
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#6.2.1
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
         //# An endpoint MUST NOT set its PTO timer for the application data
         //# packet number space until the handshake is confirmed.
         if self.space.is_application_data() && !is_handshake_confirmed {
@@ -470,7 +470,7 @@ impl Manager {
                 // TODO: path.congestion_controller.process_ecn(ecn_counts, largest_newly_acked, largest_newly_acked_packet.space())
             }
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#6.2.2
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.1.2
             //# Once a later packet within the same packet number space has been
             //# acknowledged, an endpoint SHOULD declare an earlier packet lost if it
             //# was sent a threshold amount of time in the past.

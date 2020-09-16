@@ -70,7 +70,7 @@ macro_rules! packet_space_api {
 
         $(
             pub fn $discard(&mut self) {
-                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#6.2.1
+                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.2
                 //# When Initial or Handshake keys are discarded, the PTO and loss
                 //# detection timers MUST be reset, because discarding keys indicates
                 //# forward progress and the loss detection timer might have been set for

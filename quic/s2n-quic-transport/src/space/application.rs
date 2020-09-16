@@ -437,10 +437,11 @@ impl<Config: connection::Config> PacketSpace for ApplicationSpace<Config> {
 
         self.handshake_status.on_handshake_done_received();
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#6.2.1
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
         //# A sender SHOULD restart its PTO timer every time an ack-eliciting
         //# packet is sent or acknowledged, when the handshake is confirmed
-        //# (Section 4.1.2 of [QUIC-TLS])
+        //# (Section 4.1.2 of [QUIC-TLS]), or when Initial or Handshake keys are
+        //# discarded (Section 9 of [QUIC-TLS]).
         self.recovery_manager
             .update(path, pto_backoff, datagram.timestamp, true);
 
