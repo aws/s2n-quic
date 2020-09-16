@@ -833,51 +833,6 @@ mod test {
         assert_eq!(loss_info.bytes_in_flight, (packet_bytes * 3) as u64);
     }
 
-    #[derive(Default)]
-    struct MockContext {
-        validate_packet_ack_count: u8,
-        on_new_packet_ack_count: u8,
-        on_packet_ack_count: u8,
-        on_packet_loss_count: u8,
-    }
-
-    impl recovery::Context for MockContext {
-        const ENDPOINT_TYPE: EndpointType = EndpointType::Client;
-
-        fn is_handshake_confirmed(&self) -> bool {
-            true
-        }
-
-        fn validate_packet_ack(
-            &mut self,
-            _datagram: &DatagramInfo,
-            _packet_number_range: &PacketNumberRange,
-        ) -> Result<(), TransportError> {
-            self.validate_packet_ack_count += 1;
-            Ok(())
-        }
-
-        fn on_new_packet_ack(
-            &mut self,
-            _datagram: &DatagramInfo,
-            _packet_number_range: &PacketNumberRange,
-        ) {
-            self.on_new_packet_ack_count += 1;
-        }
-
-        fn on_packet_ack(
-            &mut self,
-            _datagram: &DatagramInfo,
-            _packet_number_range: &PacketNumberRange,
-        ) {
-            self.on_packet_ack_count += 1;
-        }
-
-        fn on_packet_loss(&mut self, _packet_number_range: &PacketNumberRange) {
-            self.on_packet_loss_count += 1;
-        }
-    }
-
     #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.10")]
     #[test]
     fn detect_and_remove_lost_packets() {
@@ -969,5 +924,50 @@ mod test {
             Some(&expected_loss_time),
             recovery_manager.loss_timer.iter().next()
         );
+    }
+
+    #[derive(Default)]
+    struct MockContext {
+        validate_packet_ack_count: u8,
+        on_new_packet_ack_count: u8,
+        on_packet_ack_count: u8,
+        on_packet_loss_count: u8,
+    }
+
+    impl recovery::Context for MockContext {
+        const ENDPOINT_TYPE: EndpointType = EndpointType::Client;
+
+        fn is_handshake_confirmed(&self) -> bool {
+            true
+        }
+
+        fn validate_packet_ack(
+            &mut self,
+            _datagram: &DatagramInfo,
+            _packet_number_range: &PacketNumberRange,
+        ) -> Result<(), TransportError> {
+            self.validate_packet_ack_count += 1;
+            Ok(())
+        }
+
+        fn on_new_packet_ack(
+            &mut self,
+            _datagram: &DatagramInfo,
+            _packet_number_range: &PacketNumberRange,
+        ) {
+            self.on_new_packet_ack_count += 1;
+        }
+
+        fn on_packet_ack(
+            &mut self,
+            _datagram: &DatagramInfo,
+            _packet_number_range: &PacketNumberRange,
+        ) {
+            self.on_packet_ack_count += 1;
+        }
+
+        fn on_packet_loss(&mut self, _packet_number_range: &PacketNumberRange) {
+            self.on_packet_loss_count += 1;
+        }
     }
 }
