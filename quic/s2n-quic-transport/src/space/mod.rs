@@ -28,7 +28,7 @@ mod early_transmission;
 mod handshake;
 mod handshake_status;
 mod initial;
-mod rx_packet_numbers;
+pub(crate) mod rx_packet_numbers;
 mod session_context;
 mod tx_packet_numbers;
 

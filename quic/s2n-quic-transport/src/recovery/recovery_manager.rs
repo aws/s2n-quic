@@ -40,11 +40,6 @@ pub struct Manager {
     //  These are packets that are pending acknowledgement.
     sent_packets: SentPackets,
 
-    // True if calls to `on_ack_received` resulted in new packets being acknowledged. This is used
-    // by `on_ack_received_finish` to determine what additional actions to take after processing an
-    // ack frame. Calling `on_ack_received_finish` resets this to false.
-    newly_acked: bool,
-
     loss_timer: VirtualTimer,
     time_threshold: Duration,
 
@@ -281,7 +276,6 @@ impl Manager {
             max_ack_delay,
             largest_acked_packet: None,
             sent_packets: SentPackets::default(),
-            newly_acked: false,
             loss_timer: VirtualTimer::default(),
             pto: Pto::new(max_ack_delay),
             time_threshold: Duration::from_secs(0),
@@ -463,9 +457,7 @@ impl Manager {
             }
 
             // notify components of packets that are newly acked
-            if has_newly_acked {
-                context.on_new_packet_ack(datagram, &packet_number_range);
-            }
+            context.on_new_packet_ack(datagram, &acked_packets);
 
             has_newly_acked = true;
         }
@@ -539,7 +531,7 @@ impl Manager {
         //       See https://github.com/awslabs/s2n-quic/issues/69
         let mut sent_packets_to_remove = Vec::new();
 
-        let loss_info = LossInfo::default();
+        let mut loss_info = LossInfo::default();
 
         let largest_acked_packet = &self
             .largest_acked_packet
@@ -560,6 +552,8 @@ impl Manager {
                     >= K_PACKET_THRESHOLD
             {
                 sent_packets_to_remove.push(*unacked_packet_number);
+
+                loss_info.bytes_in_flight += unacked_sent_info.sent_bytes;
 
                 if unacked_sent_info.in_flight {
                     // TODO merge contiguous packet numbers
@@ -642,8 +636,10 @@ impl FrameExchangeInterestProvider for Manager {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::{recovery, space::rx_packet_numbers::ack_ranges::AckRanges};
     use core::time::Duration;
-    use s2n_quic_core::{packet::number::PacketNumberSpace, varint::VarInt};
+    use s2n_quic_core::{connection, packet::number::PacketNumberSpace, varint::VarInt};
+    use std::collections::HashSet;
 
     #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.5")]
     #[test]
@@ -696,8 +692,9 @@ mod test {
     #[test]
     fn on_ack_frame() {
         let pn_space = PacketNumberSpace::ApplicationData;
-        let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
+        let rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
         let mut recovery_manager = Manager::new(pn_space, Duration::from_millis(100));
+        let packet_bytes = 128;
 
         let packets = PacketNumberRange::new(
             pn_space.new_packet_number(VarInt::from_u8(1)),
@@ -711,72 +708,20 @@ mod test {
                 packet,
                 AckElicitation::Eliciting,
                 true,
-                128,
+                packet_bytes,
                 time_sent,
             );
         }
 
         assert_eq!(recovery_manager.sent_packets.iter().count(), 10);
 
+        // Ack packets 1 to 3
+        let acked_packets = PacketNumberRange::new(
+            pn_space.new_packet_number(VarInt::from_u8(1)),
+            pn_space.new_packet_number(VarInt::from_u8(3)),
+        );
+
         let ack_receive_time = time_sent + Duration::from_millis(500);
-
-        let acked_packets = PacketNumberRange::new(
-            pn_space.new_packet_number(VarInt::from_u8(4)),
-            pn_space.new_packet_number(VarInt::from_u8(7)),
-        );
-
-        recovery_manager.on_packet_ack(
-            acked_packets,
-            pn_space.new_packet_number(VarInt::from_u8(9)),
-            Duration::from_millis(10),
-            None,
-            ack_receive_time,
-            &mut rtt_estimator,
-        );
-
-        // The largest packet wasn't part of this call so the RTT is not updated
-        assert_eq!(rtt_estimator.latest_rtt(), Duration::from_millis(0));
-
-        assert_eq!(recovery_manager.sent_packets.iter().count(), 6);
-        for packet in acked_packets {
-            assert!(recovery_manager.sent_packets.get(packet).is_none());
-        }
-        assert_eq!(
-            recovery_manager.largest_acked_packet,
-            Some(acked_packets.end())
-        );
-
-        // Acknowledging already acked packets does nothing
-        recovery_manager.on_ack_received(
-            PacketNumberRange::new(
-                pn_space.new_packet_number(VarInt::from_u8(4)),
-                pn_space.new_packet_number(VarInt::from_u8(7)),
-            ),
-            pn_space.new_packet_number(VarInt::from_u8(9)),
-            Duration::from_millis(10),
-            None,
-            ack_receive_time,
-            &mut rtt_estimator,
-        );
-
-        let acked_packets = PacketNumberRange::new(
-            pn_space.new_packet_number(VarInt::from_u8(8)),
-            pn_space.new_packet_number(VarInt::from_u8(9)),
-        );
-
-        recovery_manager.on_packet_ack(
-            acked_packets,
-            pn_space.new_packet_number(VarInt::from_u8(9)),
-            Duration::from_millis(10),
-            None,
-            ack_receive_time,
-            &mut rtt_estimator,
-        );
-
-        // Now the largest packet number has been acked so the RTT is updated
-        assert_eq!(rtt_estimator.latest_rtt(), Duration::from_millis(500));
-
-        assert!(recovery_manager.newly_acked);
 
         let datagram = DatagramInfo {
             timestamp: ack_receive_time,
@@ -784,16 +729,153 @@ mod test {
             payload_len: 0,
             ecn: Default::default(),
         };
+
+        let mut ack_range = AckRanges::new(acked_packets.count());
+
+        for acked_packet in acked_packets {
+            ack_range.insert_packet_number(acked_packet);
+        }
+
         let frame = frame::Ack {
             ack_delay: VarInt::from_u8(10),
-            ack_ranges: (),
+            ack_ranges: (&ack_range),
             ecn_counts: None,
         };
-        let mut path = Path::new(Default::default(), Default::default(), rtt_estimator, true);
+        let mut path = Path::new(
+            Default::default(),
+            connection::Id::EMPTY,
+            rtt_estimator,
+            true,
+        );
 
-        recovery_manager.on_ack_frame(&datagram, frame, &mut path, 1, context);
+        let mut context = MockContext::default();
+        let result = recovery_manager.on_ack_frame(&datagram, frame, &mut path, 1, &mut context);
 
-        assert!(!recovery_manager.newly_acked);
+        assert_eq!(result.unwrap().bytes_in_flight, 0);
+        assert_eq!(recovery_manager.sent_packets.iter().count(), 7);
+        for packet in acked_packets {
+            assert!(recovery_manager.sent_packets.get(packet).is_none());
+        }
+        assert_eq!(
+            recovery_manager.largest_acked_packet,
+            Some(acked_packets.end())
+        );
+        assert_eq!(context.on_packet_ack_count, 1);
+        assert_eq!(context.on_new_packet_ack_count, 1);
+        assert_eq!(context.validate_packet_ack_count, 1);
+        assert_eq!(context.on_packet_loss_count, 0);
+
+        // Now the largest packet number has been acked so the RTT is updated
+        assert_eq!(path.rtt_estimator.latest_rtt(), Duration::from_millis(500));
+
+        let ack_receive_time = ack_receive_time + Duration::from_secs(1);
+
+        let datagram = DatagramInfo {
+            timestamp: ack_receive_time,
+            remote_address: Default::default(),
+            payload_len: 0,
+            ecn: Default::default(),
+        };
+
+        // Acknowledging already acked packets
+        let frame = frame::Ack {
+            ack_delay: VarInt::from_u8(10),
+            ack_ranges: (&ack_range),
+            ecn_counts: None,
+        };
+        let result = recovery_manager.on_ack_frame(&datagram, frame, &mut path, 1, &mut context);
+
+        // Acknowledging already acked packets does not call on_new_packet_ack or change RTT
+        assert_eq!(result.unwrap().bytes_in_flight, 0);
+        assert_eq!(context.on_packet_ack_count, 2);
+        assert_eq!(context.on_new_packet_ack_count, 1);
+        assert_eq!(context.validate_packet_ack_count, 2);
+        assert_eq!(context.on_packet_loss_count, 0);
+
+        assert_eq!(path.rtt_estimator.latest_rtt(), Duration::from_millis(500));
+
+        // Ack packets 7 to 9 (4 - 6 will be considered lost)
+        let acked_packets = PacketNumberRange::new(
+            pn_space.new_packet_number(VarInt::from_u8(7)),
+            pn_space.new_packet_number(VarInt::from_u8(9)),
+        );
+
+        let ack_receive_time = ack_receive_time + Duration::from_secs(1);
+
+        let datagram = DatagramInfo {
+            timestamp: ack_receive_time,
+            remote_address: Default::default(),
+            payload_len: 0,
+            ecn: Default::default(),
+        };
+
+        let mut ack_range = AckRanges::new(acked_packets.count());
+
+        for acked_packet in acked_packets {
+            ack_range.insert_packet_number(acked_packet);
+        }
+
+        let frame = frame::Ack {
+            ack_delay: VarInt::from_u8(10),
+            ack_ranges: (&ack_range),
+            ecn_counts: None,
+        };
+        let result = recovery_manager.on_ack_frame(&datagram, frame, &mut path, 1, &mut context);
+
+        assert_eq!(context.on_packet_ack_count, 3);
+        assert_eq!(context.on_new_packet_ack_count, 2);
+        assert_eq!(context.validate_packet_ack_count, 3);
+        assert_eq!(context.on_packet_loss_count, 3);
+
+        assert_eq!(path.rtt_estimator.latest_rtt(), Duration::from_millis(2500));
+
+        let loss_info = result.expect("loss info should exist");
+        assert_eq!(loss_info.bytes_in_flight, (packet_bytes * 3) as u64);
+    }
+
+    #[derive(Default)]
+    struct MockContext {
+        validate_packet_ack_count: u8,
+        on_new_packet_ack_count: u8,
+        on_packet_ack_count: u8,
+        on_packet_loss_count: u8,
+    }
+
+    impl recovery::Context for MockContext {
+        const ENDPOINT_TYPE: EndpointType = EndpointType::Client;
+
+        fn is_handshake_confirmed(&self) -> bool {
+            true
+        }
+
+        fn validate_packet_ack(
+            &mut self,
+            _datagram: &DatagramInfo,
+            _packet_number_range: &PacketNumberRange,
+        ) -> Result<(), TransportError> {
+            self.validate_packet_ack_count += 1;
+            Ok(())
+        }
+
+        fn on_new_packet_ack(
+            &mut self,
+            _datagram: &DatagramInfo,
+            _packet_number_range: &PacketNumberRange,
+        ) {
+            self.on_new_packet_ack_count += 1;
+        }
+
+        fn on_packet_ack(
+            &mut self,
+            _datagram: &DatagramInfo,
+            _packet_number_range: &PacketNumberRange,
+        ) {
+            self.on_packet_ack_count += 1;
+        }
+
+        fn on_packet_loss(&mut self, _packet_number_range: &PacketNumberRange) {
+            self.on_packet_loss_count += 1;
+        }
     }
 
     #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.10")]
@@ -819,6 +901,7 @@ mod test {
             time_sent,
         );
 
+        recovery_manager.time_threshold = Duration::from_secs(9);
         time_sent += Duration::from_secs(10);
 
         //Send a packet with a packet number K_PACKET_THRESHOLD away from the largest (lost)
@@ -857,13 +940,15 @@ mod test {
         );
 
         let now = time_sent;
-        let loss_time = &mut None;
+        let mut lost_packets: HashSet<PacketNumber> = HashSet::default();
 
-        let lost_packets = recovery_manager.detect_and_remove_lost_packets(
-            rtt_estimator.latest_rtt(),
-            rtt_estimator.smoothed_rtt(),
-            now,
-        );
+        let loss_info = recovery_manager.detect_and_remove_lost_packets(now, |packet_range| {
+            lost_packets.insert(packet_range.start());
+        });
+
+        // Two packets lost, each size 1 byte
+        assert_eq!(loss_info.bytes_in_flight, 2);
+
         let sent_packets = &recovery_manager.sent_packets;
         assert!(lost_packets.contains(&old_packet_time_sent));
         assert!(sent_packets.get(old_packet_time_sent).is_none());
@@ -877,10 +962,12 @@ mod test {
         assert!(!lost_packets.contains(&not_lost));
         assert!(sent_packets.get(not_lost).is_some());
 
-        let expected_loss_time = Some(
-            sent_packets.get(not_lost).unwrap().time_sent + rtt_estimator.latest_rtt() * 9 / 8,
+        let expected_loss_time =
+            sent_packets.get(not_lost).unwrap().time_sent + recovery_manager.time_threshold;
+        assert!(recovery_manager.loss_timer.is_armed());
+        assert_eq!(
+            Some(&expected_loss_time),
+            recovery_manager.loss_timer.iter().next()
         );
-        assert!(loss_time.is_some());
-        assert_eq!(expected_loss_time, *loss_time);
     }
 }
