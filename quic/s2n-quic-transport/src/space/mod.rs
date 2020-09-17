@@ -225,7 +225,7 @@ impl<ConnectionConfigType: connection::Config> PacketSpaceManager<ConnectionConf
         path: &Path,
         timestamp: Timestamp,
     ) {
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#6.2.1
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
         //# When a PTO timer expires, the PTO backoff MUST be increased,
         //# resulting in the PTO period being set to twice its current value.
         if loss_info.pto_expired {
