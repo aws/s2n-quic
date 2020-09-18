@@ -65,7 +65,7 @@ pub struct Manager {
     //# overhead.  Packets only containing ACK frames do not count towards
     //# bytes_in_flight to ensure congestion control does not impede
     //# congestion feedback.
-    bytes_in_flight: u64,
+    bytes_in_flight: usize,
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#A.3
     //# The time the most recent ack-eliciting packet was sent.
@@ -95,7 +95,7 @@ fn apply_k_time_threshold(duration: Duration) -> Duration {
 #[derive(Copy, Clone, Default)]
 pub struct LossInfo {
     /// Lost bytes in flight
-    pub bytes_in_flight: u64,
+    pub bytes_in_flight: usize,
 
     /// A PTO timer expired
     pub pto_expired: bool,
@@ -193,7 +193,7 @@ impl Manager {
         if ack_elicitation.is_ack_eliciting() {
             self.sent_packets.insert(
                 packet_number,
-                SentPacketInfo::new(in_flight, sent_bytes as u64, time_sent),
+                SentPacketInfo::new(in_flight, sent_bytes, time_sent),
             );
         }
 
@@ -201,7 +201,7 @@ impl Manager {
             if ack_elicitation.is_ack_eliciting() {
                 self.time_of_last_ack_eliciting_packet = Some(time_sent);
             }
-            self.bytes_in_flight += sent_bytes as u64;
+            self.bytes_in_flight += sent_bytes;
         }
     }
 
@@ -259,7 +259,7 @@ impl Manager {
     }
 
     /// Gets the number of bytes currently in flight
-    pub fn bytes_in_flight(&self) -> u64 {
+    pub fn bytes_in_flight(&self) -> usize {
         self.bytes_in_flight
     }
 
@@ -530,7 +530,7 @@ impl Pto {
     }
 
     /// Called when a timeout has occurred. Returns true if the PTO timer had expired.
-    pub fn on_timeout(&mut self, bytes_in_flight: u64, timestamp: Timestamp) -> bool {
+    pub fn on_timeout(&mut self, bytes_in_flight: usize, timestamp: Timestamp) -> bool {
         if self.timer.poll_expiration(timestamp).is_ready() {
             //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.4
             //# When a PTO timer expires, a sender MUST send at least one ack-
@@ -698,7 +698,7 @@ mod test {
             if ack_elicitation == AckElicitation::Eliciting {
                 assert!(manager.sent_packets.get(sent_packet).is_some());
                 let actual_sent_packet = manager.sent_packets.get(sent_packet).unwrap();
-                assert_eq!(actual_sent_packet.sent_bytes, sent_bytes as u64);
+                assert_eq!(actual_sent_packet.sent_bytes, sent_bytes);
                 assert_eq!(actual_sent_packet.in_flight, in_flight);
                 assert_eq!(actual_sent_packet.time_sent, time_sent);
                 if in_flight {
@@ -778,7 +778,7 @@ mod test {
         let ack_receive_time = ack_receive_time + Duration::from_secs(1);
         let (result, context) = ack_packets(7..=9, ack_receive_time, &mut path, &mut manager);
 
-        assert_eq!(result.unwrap().bytes_in_flight, (packet_bytes * 3) as u64);
+        assert_eq!(result.unwrap().bytes_in_flight, (packet_bytes * 3));
         assert!(result.unwrap().pto_reset);
         assert_eq!(context.on_packet_ack_count, 1);
         assert_eq!(context.on_new_packet_ack_count, 1);

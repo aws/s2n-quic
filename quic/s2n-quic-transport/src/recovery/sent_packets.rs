@@ -59,13 +59,13 @@ pub struct SentPacketInfo {
     pub in_flight: bool,
     /// The number of bytes sent in the packet, not including UDP or IP overhead,
     /// but including QUIC framing overhead
-    pub sent_bytes: u64,
+    pub sent_bytes: usize,
     /// The time the packet was sent
     pub time_sent: Timestamp,
 }
 
 impl SentPacketInfo {
-    pub fn new(in_flight: bool, sent_bytes: u64, time_sent: Timestamp) -> Self {
+    pub fn new(in_flight: bool, sent_bytes: usize, time_sent: Timestamp) -> Self {
         SentPacketInfo {
             in_flight,
             sent_bytes,

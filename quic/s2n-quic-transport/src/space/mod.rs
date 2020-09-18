@@ -210,13 +210,12 @@ impl<ConnectionConfigType: connection::Config> PacketSpaceManager<ConnectionConf
     }
 
     /// Gets the total number of bytes in flight
-    /// TODO: should this get bytes_in_flight from path.congestion_controller.bytes_in_flight?
-    pub fn bytes_in_flight(&self) -> u64 {
+    pub fn bytes_in_flight(&self) -> usize {
         core::iter::empty()
             .chain(self.initial.iter().map(|space| space.bytes_in_flight()))
             .chain(self.handshake.iter().map(|space| space.bytes_in_flight()))
             .chain(self.application.iter().map(|space| space.bytes_in_flight()))
-            .sum::<u64>()
+            .sum::<usize>()
     }
 
     pub fn on_loss_info(

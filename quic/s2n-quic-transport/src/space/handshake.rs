@@ -127,7 +127,7 @@ impl<Config: connection::Config> HandshakeSpace<Config> {
         self.tx_packet_numbers.largest_sent_packet_number_acked()
     }
 
-    pub fn bytes_in_flight(&self) -> u64 {
+    pub fn bytes_in_flight(&self) -> usize {
         self.recovery_manager.bytes_in_flight()
     }
 

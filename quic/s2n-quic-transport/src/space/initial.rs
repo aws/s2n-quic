@@ -124,7 +124,7 @@ impl<Config: connection::Config> InitialSpace<Config> {
         self.ack_manager.largest_received_packet_number_acked()
     }
 
-    pub fn bytes_in_flight(&self) -> u64 {
+    pub fn bytes_in_flight(&self) -> usize {
         self.recovery_manager.bytes_in_flight()
     }
 
