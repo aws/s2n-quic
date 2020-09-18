@@ -1,6 +1,3 @@
-// TODO: Remove when used
-#![allow(dead_code)]
-
 use crate::{
     contexts::WriteContext,
     frame_exchange_interests::{FrameExchangeInterestProvider, FrameExchangeInterests},
@@ -43,13 +40,35 @@ pub struct Manager {
     //  These are packets that are pending acknowledgement.
     sent_packets: SentPackets,
 
+    // Timer set when packets may be declared lost at a time in the future
     loss_timer: VirtualTimer,
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.1.2
+    //# Once a later packet within the same packet number space has been
+    //# acknowledged, an endpoint SHOULD declare an earlier packet lost if it
+    //# was sent a threshold amount of time in the past.
     time_threshold: Duration,
 
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2
+    //# A Probe Timeout (PTO) triggers sending one or two probe datagrams
+    //# when ack-eliciting packets are not acknowledged within the expected
+    //# period of time or the server may not have validated the client's
+    //# address.  A PTO enables a connection to recover from loss of tail
+    //# packets or acknowledgements.
     pto: Pto,
 
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#B.2
+    //# The sum of the size in bytes of all sent packets
+    //# that contain at least one ack-eliciting or PADDING frame, and have
+    //# not been acknowledged or declared lost.  The size does not include
+    //# IP or UDP overhead, but does include the QUIC header and AEAD
+    //# overhead.  Packets only containing ACK frames do not count towards
+    //# bytes_in_flight to ensure congestion control does not impede
+    //# congestion feedback.
     bytes_in_flight: u64,
 
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#A.3
+    //# The time the most recent ack-eliciting packet was sent.
     time_of_last_ack_eliciting_packet: Option<Timestamp>,
 }
 
@@ -61,19 +80,16 @@ pub struct Manager {
 //# [RFC5681].
 const K_PACKET_THRESHOLD: u64 = 3;
 
+//= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.1.2
+//# The RECOMMENDED value of the timer granularity (kGranularity) is 1ms.
+pub(crate) const K_GRANULARITY: Duration = Duration::from_millis(1);
+
 fn apply_k_time_threshold(duration: Duration) -> Duration {
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.1.2
     //# The RECOMMENDED time threshold (kTimeThreshold), expressed as a
     //# round-trip time multiplier, is 9/8.
     duration * 9 / 8
 }
-
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.1.2
-//# The RECOMMENDED value of the
-//# timer granularity (kGranularity) is 1ms.
-pub(crate) const K_GRANULARITY: Duration = Duration::from_millis(1);
-
-type SentPacket = (PacketNumber, SentPacketInfo);
 
 #[must_use = "Ignoring loss information would lead to permanent data loss"]
 #[derive(Copy, Clone, Default)]
@@ -112,165 +128,6 @@ impl core::ops::Add for LossInfo {
 impl core::ops::AddAssign for LossInfo {
     fn add_assign(&mut self, rhs: Self) {
         *self = *self + rhs;
-    }
-}
-
-#[derive(Debug, Default)]
-pub struct Pto {
-    timer: VirtualTimer,
-    state: PtoState,
-    max_ack_delay: Duration,
-}
-
-#[derive(Debug, PartialEq)]
-enum PtoState {
-    Idle,
-    RequiresTransmission(u8),
-}
-
-impl Default for PtoState {
-    fn default() -> Self {
-        Self::Idle
-    }
-}
-
-impl Pto {
-    pub fn new(max_ack_delay: Duration) -> Self {
-        Self {
-            max_ack_delay,
-            ..Self::default()
-        }
-    }
-
-    pub fn timers(&self) -> impl Iterator<Item = &Timestamp> {
-        self.timer.iter()
-    }
-
-    /// Called when a timeout has occurred. Returns true if the PTO timer had expired.
-    pub fn on_timeout(&mut self, bytes_in_flight: u64, timestamp: Timestamp) -> bool {
-        if self.timer.poll_expiration(timestamp).is_ready() {
-            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.4
-            //# When a PTO timer expires, a sender MUST send at least one ack-
-            //# eliciting packet in the packet number space as a probe
-
-            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.2.1
-            //# Since the server could be blocked until more datagrams are received
-            //# from the client, it is the client's responsibility to send packets to
-            //# unblock the server until it is certain that the server has finished
-            //# its address validation
-            let transmission_count = if bytes_in_flight > 0 { 2 } else { 1 };
-
-            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.4
-            //# An endpoint MAY send up to two full-
-            //# sized datagrams containing ack-eliciting packets
-
-            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.4
-            //# Sending two packets on PTO
-            //# expiration increases resilience to packet drops, thus reducing the
-            //# probability of consecutive PTO events.
-
-            self.state = PtoState::RequiresTransmission(transmission_count);
-            true
-        } else {
-            false
-        }
-    }
-
-    /// Queries the component for any outgoing frames that need to get sent
-    pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
-        match self.state {
-            PtoState::RequiresTransmission(0) => self.state = PtoState::Idle,
-            PtoState::RequiresTransmission(remaining) => {
-                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.4
-                //# When there is no data to send, the sender SHOULD send
-                //# a PING or other ack-eliciting frame in a single packet, re-arming the
-                //# PTO timer.
-                if context.ack_elicitation().is_ack_eliciting()
-                    || context.write_frame(&frame::Ping).is_some()
-                {
-                    let remaining = remaining - 1;
-                    self.state = if remaining == 0 {
-                        PtoState::Idle
-                    } else {
-                        PtoState::RequiresTransmission(remaining)
-                    };
-                }
-
-                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.2.1
-                //# When the PTO fires, the client MUST send a Handshake packet if it has Handshake
-                //# keys, otherwise it MUST send an Initial packet in a UDP datagram of at least
-                //# 1200 bytes.
-
-                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#A.9
-                // Client sends an anti-deadlock packet: Initial is padded
-                // to earn more anti-amplification credit,
-                // a Handshake packet proves address ownership.
-
-                // The early transmission will automatically ensure all initial packets sent by the
-                // client are padded to 1200 bytes
-            }
-            _ => {}
-        }
-    }
-
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
-    //# A sender SHOULD restart its PTO timer every time an ack-eliciting
-    //# packet is sent or acknowledged, when the handshake is confirmed
-    //# (Section 4.1.2 of [QUIC-TLS]), or when Initial or Handshake keys are
-    //# discarded (Section 9 of [QUIC-TLS]).
-    pub fn update(&mut self, path: &Path, backoff: u32, base_timestamp: Timestamp) {
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
-        //# When an ack-eliciting packet is transmitted, the sender schedules a
-        //# timer for the PTO period as follows:
-        //#
-        //# PTO = smoothed_rtt + max(4*rttvar, kGranularity) + max_ack_delay
-
-        let mut pto_period = path.rtt_estimator.smoothed_rtt();
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
-        //# The PTO period MUST be at least kGranularity, to avoid the timer
-        //# expiring immediately.
-        pto_period += max(4 * path.rtt_estimator.rttvar(), K_GRANULARITY);
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
-        //# When the PTO is armed for Initial or Handshake packet number spaces,
-        //# the max_ack_delay in the PTO period computation is set to 0, since
-        //# the peer is expected to not delay these packets intentionally; see
-        //# 13.2.1 of [QUIC-TRANSPORT].
-        pto_period += self.max_ack_delay;
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
-        //# Even when there are ack-
-        //# eliciting packets in-flight in multiple packet number spaces, the
-        //# exponential increase in probe timeout occurs across all spaces to
-        //# prevent excess load on the network.  For example, a timeout in the
-        //# Initial packet number space doubles the length of the timeout in the
-        //# Handshake packet number space.
-        pto_period *= backoff;
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
-        //# The PTO period is the amount of time that a sender ought to wait for
-        //# an acknowledgement of a sent packet.
-        self.timer.set(base_timestamp + pto_period);
-    }
-
-    /// Cancels the PTO timer
-    pub fn cancel(&mut self) {
-        self.timer.cancel();
-    }
-}
-
-impl FrameExchangeInterestProvider for Pto {
-    fn frame_exchange_interests(&self) -> FrameExchangeInterests {
-        // TODO put a fast ack on interests
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.4
-        //# If the sender wants to elicit a faster acknowledgement on PTO, it can
-        //# skip a packet number to eliminate the acknowledgment delay.
-
-        FrameExchangeInterests {
-            delivery_notifications: false,
-            transmission: matches!(self.state, PtoState::RequiresTransmission(_)),
-        }
     }
 }
 
@@ -390,7 +247,7 @@ impl Manager {
         //# An endpoint MUST NOT set its PTO timer for the application data
         //# packet number space until the handshake is confirmed.
         if self.space.is_application_data() && !is_handshake_confirmed {
-            self.pto.timer.cancel();
+            self.pto.cancel();
         } else {
             self.pto.update(path, pto_backoff, pto_base_timestamp);
         }
@@ -638,13 +495,175 @@ impl FrameExchangeInterestProvider for Manager {
     }
 }
 
+/// Manages the probe time out calculation and probe packet transmission
+#[derive(Debug, Default)]
+struct Pto {
+    timer: VirtualTimer,
+    state: PtoState,
+    max_ack_delay: Duration,
+}
+
+#[derive(Debug, PartialEq)]
+enum PtoState {
+    Idle,
+    RequiresTransmission(u8),
+}
+
+impl Default for PtoState {
+    fn default() -> Self {
+        Self::Idle
+    }
+}
+
+impl Pto {
+    /// Constructs a new `Pto` with the given `max_ack_delay`
+    pub fn new(max_ack_delay: Duration) -> Self {
+        Self {
+            max_ack_delay,
+            ..Self::default()
+        }
+    }
+
+    /// Returns an iterator containing the probe timeout timestamp
+    pub fn timers(&self) -> impl Iterator<Item = &Timestamp> {
+        self.timer.iter()
+    }
+
+    /// Called when a timeout has occurred. Returns true if the PTO timer had expired.
+    pub fn on_timeout(&mut self, bytes_in_flight: u64, timestamp: Timestamp) -> bool {
+        if self.timer.poll_expiration(timestamp).is_ready() {
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.4
+            //# When a PTO timer expires, a sender MUST send at least one ack-
+            //# eliciting packet in the packet number space as a probe
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.2.1
+            //# Since the server could be blocked until more datagrams are received
+            //# from the client, it is the client's responsibility to send packets to
+            //# unblock the server until it is certain that the server has finished
+            //# its address validation
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.4
+            //# An endpoint MAY send up to two full-
+            //# sized datagrams containing ack-eliciting packets
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.4
+            //# Sending two packets on PTO
+            //# expiration increases resilience to packet drops, thus reducing the
+            //# probability of consecutive PTO events.
+            let transmission_count = if bytes_in_flight > 0 { 2 } else { 1 };
+
+            self.state = PtoState::RequiresTransmission(transmission_count);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Queries the component for any outgoing frames that need to get sent
+    pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
+        match self.state {
+            PtoState::RequiresTransmission(0) => self.state = PtoState::Idle,
+            PtoState::RequiresTransmission(remaining) => {
+                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.4
+                //# When there is no data to send, the sender SHOULD send
+                //# a PING or other ack-eliciting frame in a single packet, re-arming the
+                //# PTO timer.
+
+                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.2.1
+                //# When the PTO fires, the client MUST send a Handshake packet if it has Handshake
+                //# keys, otherwise it MUST send an Initial packet in a UDP datagram of at least
+                //# 1200 bytes.
+
+                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#A.9
+                // Client sends an anti-deadlock packet: Initial is padded
+                // to earn more anti-amplification credit,
+                // a Handshake packet proves address ownership.
+
+                // The early transmission will automatically ensure all initial packets sent by the
+                // client are padded to 1200 bytes
+                if context.ack_elicitation().is_ack_eliciting()
+                    || context.write_frame(&frame::Ping).is_some()
+                {
+                    let remaining = remaining - 1;
+                    self.state = if remaining == 0 {
+                        PtoState::Idle
+                    } else {
+                        PtoState::RequiresTransmission(remaining)
+                    };
+                }
+            }
+            _ => {}
+        }
+    }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
+    //# A sender SHOULD restart its PTO timer every time an ack-eliciting
+    //# packet is sent or acknowledged, when the handshake is confirmed
+    //# (Section 4.1.2 of [QUIC-TLS]), or when Initial or Handshake keys are
+    //# discarded (Section 9 of [QUIC-TLS]).
+    pub fn update(&mut self, path: &Path, backoff: u32, base_timestamp: Timestamp) {
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
+        //# When an ack-eliciting packet is transmitted, the sender schedules a
+        //# timer for the PTO period as follows:
+        //#
+        //# PTO = smoothed_rtt + max(4*rttvar, kGranularity) + max_ack_delay
+
+        let mut pto_period = path.rtt_estimator.smoothed_rtt();
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
+        //# The PTO period MUST be at least kGranularity, to avoid the timer
+        //# expiring immediately.
+        pto_period += max(4 * path.rtt_estimator.rttvar(), K_GRANULARITY);
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
+        //# When the PTO is armed for Initial or Handshake packet number spaces,
+        //# the max_ack_delay in the PTO period computation is set to 0, since
+        //# the peer is expected to not delay these packets intentionally; see
+        //# 13.2.1 of [QUIC-TRANSPORT].
+        pto_period += self.max_ack_delay;
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
+        //# Even when there are ack-
+        //# eliciting packets in-flight in multiple packet number spaces, the
+        //# exponential increase in probe timeout occurs across all spaces to
+        //# prevent excess load on the network.  For example, a timeout in the
+        //# Initial packet number space doubles the length of the timeout in the
+        //# Handshake packet number space.
+        pto_period *= backoff;
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
+        //# The PTO period is the amount of time that a sender ought to wait for
+        //# an acknowledgement of a sent packet.
+        self.timer.set(base_timestamp + pto_period);
+    }
+
+    /// Cancels the PTO timer
+    pub fn cancel(&mut self) {
+        self.timer.cancel();
+    }
+}
+
+impl FrameExchangeInterestProvider for Pto {
+    fn frame_exchange_interests(&self) -> FrameExchangeInterests {
+        // TODO put a fast ack on interests
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.4
+        //# If the sender wants to elicit a faster acknowledgement on PTO, it can
+        //# skip a packet number to eliminate the acknowledgment delay.
+
+        FrameExchangeInterests {
+            delivery_notifications: false,
+            transmission: matches!(self.state, PtoState::RequiresTransmission(_)),
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
     use crate::{
         contexts::testing::{MockConnectionContext, MockWriteContext, OutgoingFrameBuffer},
         recovery,
-        recovery::recovery_manager::PtoState::RequiresTransmission,
+        recovery::manager::PtoState::RequiresTransmission,
         space::rx_packet_numbers::ack_ranges::AckRanges,
     };
     use core::{ops::RangeInclusive, time::Duration};
@@ -654,12 +673,12 @@ mod test {
     #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#A.5")]
     #[test]
     fn on_packet_sent() {
-        let pn_space = PacketNumberSpace::ApplicationData;
-        let mut manager = Manager::new(pn_space, Duration::from_millis(100));
+        let space = PacketNumberSpace::ApplicationData;
+        let mut manager = Manager::new(space, Duration::from_millis(100));
         let mut time_sent = s2n_quic_platform::time::now();
 
         for i in 1..=10 {
-            let sent_packet = pn_space.new_packet_number(VarInt::from_u8(i));
+            let sent_packet = space.new_packet_number(VarInt::from_u8(i));
             let ack_elicitation = if i % 2 == 0 {
                 AckElicitation::Eliciting
             } else {
@@ -698,9 +717,9 @@ mod test {
     #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#A.7")]
     #[test]
     fn on_ack_frame() {
-        let pn_space = PacketNumberSpace::ApplicationData;
+        let space = PacketNumberSpace::ApplicationData;
         let rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
-        let mut manager = Manager::new(pn_space, Duration::from_millis(100));
+        let mut manager = Manager::new(space, Duration::from_millis(100));
         let packet_bytes = 128;
 
         let time_sent = s2n_quic_platform::time::now() + Duration::from_secs(10);
@@ -708,7 +727,7 @@ mod test {
         // Send packets 1 to 10
         for i in 1..=10 {
             manager.on_packet_sent(
-                pn_space.new_packet_number(VarInt::from_u8(i)),
+                space.new_packet_number(VarInt::from_u8(i)),
                 AckElicitation::Eliciting,
                 true,
                 packet_bytes,
@@ -734,7 +753,7 @@ mod test {
         assert_eq!(manager.sent_packets.iter().count(), 7);
         assert_eq!(
             manager.largest_acked_packet,
-            Some(pn_space.new_packet_number(VarInt::from_u8(3)))
+            Some(space.new_packet_number(VarInt::from_u8(3)))
         );
         assert_eq!(context.on_packet_ack_count, 1);
         assert_eq!(context.on_new_packet_ack_count, 1);
@@ -787,16 +806,16 @@ mod test {
     #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#A.10")]
     #[test]
     fn detect_and_remove_lost_packets() {
-        let pn_space = PacketNumberSpace::ApplicationData;
+        let space = PacketNumberSpace::ApplicationData;
         let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
-        let mut manager = Manager::new(pn_space, Duration::from_millis(100));
+        let mut manager = Manager::new(space, Duration::from_millis(100));
 
-        manager.largest_acked_packet = Some(pn_space.new_packet_number(VarInt::from_u8(10)));
+        manager.largest_acked_packet = Some(space.new_packet_number(VarInt::from_u8(10)));
 
         let mut time_sent = s2n_quic_platform::time::now();
 
         // Send a packet that was sent too long ago (lost)
-        let old_packet_time_sent = pn_space.new_packet_number(VarInt::from_u8(8));
+        let old_packet_time_sent = space.new_packet_number(VarInt::from_u8(8));
         manager.on_packet_sent(
             old_packet_time_sent,
             AckElicitation::Eliciting,
@@ -810,7 +829,7 @@ mod test {
 
         //Send a packet with a packet number K_PACKET_THRESHOLD away from the largest (lost)
         let old_packet_packet_number =
-            pn_space.new_packet_number(VarInt::new(10 - K_PACKET_THRESHOLD).unwrap());
+            space.new_packet_number(VarInt::new(10 - K_PACKET_THRESHOLD).unwrap());
         manager.on_packet_sent(
             old_packet_packet_number,
             AckElicitation::Eliciting,
@@ -820,7 +839,7 @@ mod test {
         );
 
         // Send a packet that is less than the largest acked but not lost
-        let not_lost = pn_space.new_packet_number(VarInt::from_u8(9));
+        let not_lost = space.new_packet_number(VarInt::from_u8(9));
         manager.on_packet_sent(not_lost, AckElicitation::Eliciting, true, 1, time_sent);
 
         // Send a packet larger than the largest acked (not lost)
@@ -833,11 +852,7 @@ mod test {
             time_sent,
         );
 
-        rtt_estimator.update_rtt(
-            Duration::from_millis(10),
-            Duration::from_millis(150),
-            pn_space,
-        );
+        rtt_estimator.update_rtt(Duration::from_millis(10), Duration::from_millis(150), space);
 
         let now = time_sent;
         let mut lost_packets: HashSet<PacketNumber> = HashSet::default();
@@ -871,9 +886,9 @@ mod test {
     #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1")]
     #[test]
     fn update() {
-        let pn_space = PacketNumberSpace::ApplicationData;
+        let space = PacketNumberSpace::ApplicationData;
         let rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
-        let mut manager = Manager::new(pn_space, Duration::from_millis(10));
+        let mut manager = Manager::new(space, Duration::from_millis(10));
         let now = s2n_quic_platform::time::now() + Duration::from_secs(10);
         let pto_backoff = 2;
         let is_handshake_confirmed = true;
@@ -885,16 +900,10 @@ mod test {
             false,
         );
 
-        path.rtt_estimator.update_rtt(
-            Duration::from_millis(0),
-            Duration::from_millis(500),
-            pn_space,
-        );
-        path.rtt_estimator.update_rtt(
-            Duration::from_millis(0),
-            Duration::from_millis(1000),
-            pn_space,
-        );
+        path.rtt_estimator
+            .update_rtt(Duration::from_millis(0), Duration::from_millis(500), space);
+        path.rtt_estimator
+            .update_rtt(Duration::from_millis(0), Duration::from_millis(1000), space);
         // The path will be at the anti-amplification limit
         path.on_bytes_transmitted((1200 * 2) + 1);
         // Arm the PTO so we can verify it is cancelled
@@ -943,7 +952,7 @@ mod test {
 
         // Send a packet to validate behavior when sent_packets is not empty
         manager.on_packet_sent(
-            pn_space.new_packet_number(VarInt::from_u8(1)),
+            space.new_packet_number(VarInt::from_u8(1)),
             AckElicitation::Eliciting,
             true,
             1,
@@ -953,11 +962,8 @@ mod test {
         let expected_pto_base_timestamp = now - Duration::from_secs(5);
         manager.time_of_last_ack_eliciting_packet = Some(expected_pto_base_timestamp);
         // This will update the smoother_rtt to 2000, and rtt_var to 1000
-        path.rtt_estimator.update_rtt(
-            Duration::from_millis(0),
-            Duration::from_millis(2000),
-            pn_space,
-        );
+        path.rtt_estimator
+            .update_rtt(Duration::from_millis(0), Duration::from_millis(2000), space);
         manager.update(&path, pto_backoff, now, is_handshake_confirmed);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
@@ -977,10 +983,10 @@ mod test {
     #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1")]
     #[test]
     fn on_timeout() {
-        let pn_space = PacketNumberSpace::ApplicationData;
-        let mut manager = Manager::new(pn_space, Duration::from_millis(10));
+        let space = PacketNumberSpace::ApplicationData;
+        let mut manager = Manager::new(space, Duration::from_millis(10));
         let now = s2n_quic_platform::time::now() + Duration::from_secs(10);
-        manager.largest_acked_packet = Some(pn_space.new_packet_number(VarInt::from_u8(10)));
+        manager.largest_acked_packet = Some(space.new_packet_number(VarInt::from_u8(10)));
 
         let mut context = MockContext::default();
 
@@ -993,7 +999,7 @@ mod test {
 
         // Send a packet that will be considered lost
         manager.on_packet_sent(
-            pn_space.new_packet_number(VarInt::from_u8(1)),
+            space.new_packet_number(VarInt::from_u8(1)),
             AckElicitation::Eliciting,
             true,
             1,
@@ -1035,8 +1041,8 @@ mod test {
 
     #[test]
     fn timers() {
-        let pn_space = PacketNumberSpace::ApplicationData;
-        let mut manager = Manager::new(pn_space, Duration::from_millis(10));
+        let space = PacketNumberSpace::ApplicationData;
+        let mut manager = Manager::new(space, Duration::from_millis(10));
         let loss_time = s2n_quic_platform::time::now() + Duration::from_secs(5);
         let pto_time = s2n_quic_platform::time::now() + Duration::from_secs(10);
 
@@ -1063,8 +1069,8 @@ mod test {
 
     #[test]
     fn bytes_in_flight() {
-        let pn_space = PacketNumberSpace::ApplicationData;
-        let mut manager = Manager::new(pn_space, Duration::from_millis(10));
+        let space = PacketNumberSpace::ApplicationData;
+        let mut manager = Manager::new(space, Duration::from_millis(10));
         manager.bytes_in_flight = 20;
 
         assert_eq!(manager.bytes_in_flight(), 20);
@@ -1072,8 +1078,8 @@ mod test {
 
     #[test]
     fn on_transmit() {
-        let pn_space = PacketNumberSpace::ApplicationData;
-        let mut manager = Manager::new(pn_space, Duration::from_millis(10));
+        let space = PacketNumberSpace::ApplicationData;
+        let mut manager = Manager::new(space, Duration::from_millis(10));
         let connection_context = MockConnectionContext::new(EndpointType::Client);
         let mut frame_buffer = OutgoingFrameBuffer::new();
         let mut context = MockWriteContext::new(
