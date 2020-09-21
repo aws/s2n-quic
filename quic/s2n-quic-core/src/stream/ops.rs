@@ -30,17 +30,17 @@ use core::task::Poll;
 
 /// A request made on a stream
 #[derive(Default, Debug)]
-pub struct Request<'a, Chunk> {
+pub struct Request<'a> {
     /// The `tx` options of the request
-    pub tx: Option<tx::Request<'a, Chunk>>,
+    pub tx: Option<tx::Request<'a>>,
 
     /// The `rx` options of the request
-    pub rx: Option<rx::Request<'a, Chunk>>,
+    pub rx: Option<rx::Request<'a>>,
 }
 
-impl<'a, Chunk> Request<'a, Chunk> {
+impl<'a> Request<'a> {
     /// Requests a slice of chunks to be sent on the tx stream
-    pub fn send(&mut self, chunks: &'a mut [Chunk]) -> &mut Self {
+    pub fn send(&mut self, chunks: &'a mut [bytes::Bytes]) -> &mut Self {
         self.tx_mut().chunks = Some(chunks);
         self
     }
@@ -64,7 +64,7 @@ impl<'a, Chunk> Request<'a, Chunk> {
     }
 
     /// Requests data on the rx stream to be received into the provided slice of chunks
-    pub fn receive(&mut self, chunks: &'a mut [Chunk]) -> &mut Self {
+    pub fn receive(&mut self, chunks: &'a mut [bytes::Bytes]) -> &mut Self {
         self.rx_mut().chunks = Some(chunks);
         self
     }
@@ -111,7 +111,7 @@ impl<'a, Chunk> Request<'a, Chunk> {
     }
 
     /// Lazily creates and returns the `tx` request
-    fn tx_mut(&mut self) -> &mut tx::Request<'a, Chunk> {
+    fn tx_mut(&mut self) -> &mut tx::Request<'a> {
         if self.tx.is_none() {
             self.tx = Some(Default::default());
         }
@@ -119,7 +119,7 @@ impl<'a, Chunk> Request<'a, Chunk> {
     }
 
     /// Lazily creates and returns the `rx` request
-    fn rx_mut(&mut self) -> &mut rx::Request<'a, Chunk> {
+    fn rx_mut(&mut self) -> &mut rx::Request<'a> {
         if self.rx.is_none() {
             self.rx = Some(Default::default());
         }
@@ -160,14 +160,14 @@ pub mod tx {
     use super::*;
 
     /// A request on a `tx` stream
-    #[derive(Debug)]
-    pub struct Request<'a, Chunk> {
+    #[derive(Default, Debug)]
+    pub struct Request<'a> {
         /// Optionally transmit chunks onto the stream
         ///
         /// The chunks will be replaced with empty buffers as they are stored in the transmission
         /// buffer. The response will indicate how many chunks and bytes were consumed from
         /// this slice.
-        pub chunks: Option<&'a mut [Chunk]>,
+        pub chunks: Option<&'a mut [bytes::Bytes]>,
 
         /// Optionally reset the stream with an error
         pub reset: Option<ApplicationErrorCode>,
@@ -177,17 +177,6 @@ pub mod tx {
 
         /// Marks the tx stream as finished (e.g. no more data will be sent)
         pub finish: bool,
-    }
-
-    impl<'a, Chunk> Default for Request<'a, Chunk> {
-        fn default() -> Self {
-            Self {
-                chunks: None,
-                reset: None,
-                flush: false,
-                finish: false,
-            }
-        }
     }
 
     /// The result of a tx request
@@ -226,13 +215,13 @@ pub mod rx {
 
     /// A request on a `tx` stream
     #[derive(Debug)]
-    pub struct Request<'a, Chunk> {
+    pub struct Request<'a> {
         /// Optionally receive chunks from the stream
         ///
         /// At least one of the provided chunks should be empty, as it will be replaced by the
         /// received data from the stream. The response will indicate how many chunks and
         /// bytes were consumed from the stream into the provided slice.
-        pub chunks: Option<&'a mut [Chunk]>,
+        pub chunks: Option<&'a mut [bytes::Bytes]>,
 
         /// Sets the low watermark for the rx stream
         ///
@@ -253,7 +242,7 @@ pub mod rx {
         pub stop_sending: Option<ApplicationErrorCode>,
     }
 
-    impl<'a, Chunk> Default for Request<'a, Chunk> {
+    impl<'a> Default for Request<'a> {
         fn default() -> Self {
             Self {
                 chunks: None,
@@ -384,8 +373,11 @@ mod tests {
     #[test]
     fn request_builder_test() {
         let mut request = Request::default();
-        let mut send_chunks = [1, 2];
-        let mut receive_chunks = [3, 4];
+        let mut send_chunks = [bytes::Bytes::from_static(&[1])];
+        let mut receive_chunks = [
+            bytes::Bytes::from_static(&[2]),
+            bytes::Bytes::from_static(&[3]),
+        ];
 
         request
             .send(&mut send_chunks)
@@ -400,19 +392,21 @@ mod tests {
             request,
             Request {
                 tx: Some(tx::Request {
-                    chunks: Some(&mut [1, 2]),
+                    chunks: Some(tx_chunks),
                     finish: true,
                     flush: true,
                     reset: Some(reset),
                 }),
                 rx: Some(rx::Request {
-                    chunks: Some(&mut [3, 4]),
+                    chunks: Some(rx_chunks),
                     low_watermark: 5,
                     high_watermark: 10,
                     stop_sending: Some(stop_sending)
                 })
             } if reset == ApplicationErrorCode::new(1).unwrap()
               && stop_sending == ApplicationErrorCode::new(2).unwrap()
+              && tx_chunks.len() == 1
+              && rx_chunks.len() == 2
         ));
     }
 
