@@ -5,6 +5,7 @@ use alloc::collections::{
     btree_map::{Iter, Range},
     BTreeMap,
 };
+use core::convert::TryInto;
 use s2n_quic_core::{
     packet::number::{PacketNumber, PacketNumberRange},
     time::Timestamp,
@@ -59,7 +60,7 @@ pub struct SentPacketInfo {
     pub in_flight: bool,
     /// The number of bytes sent in the packet, not including UDP or IP overhead,
     /// but including QUIC framing overhead
-    pub sent_bytes: usize,
+    pub sent_bytes: u16,
     /// The time the packet was sent
     pub time_sent: Timestamp,
 }
@@ -68,7 +69,9 @@ impl SentPacketInfo {
     pub fn new(in_flight: bool, sent_bytes: usize, time_sent: Timestamp) -> Self {
         SentPacketInfo {
             in_flight,
-            sent_bytes,
+            sent_bytes: sent_bytes
+                .try_into()
+                .expect("sent_bytes exceeds max UDP payload size"),
             time_sent,
         }
     }
@@ -81,6 +84,16 @@ mod test {
         packet::number::{PacketNumberRange, PacketNumberSpace},
         varint::VarInt,
     };
+
+    #[test]
+    #[should_panic]
+    fn too_large_packet() {
+        SentPacketInfo::new(
+            false,
+            (u16::max_value() + 1) as usize,
+            s2n_quic_platform::time::now(),
+        );
+    }
 
     #[test]
     fn insert_get_range() {

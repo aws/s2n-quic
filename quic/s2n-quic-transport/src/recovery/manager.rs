@@ -315,7 +315,7 @@ impl Manager {
 
             for packet_number in acked_packets {
                 if let Some(acked_packet_info) = self.sent_packets.remove(packet_number) {
-                    self.bytes_in_flight -= acked_packet_info.sent_bytes;
+                    self.bytes_in_flight -= acked_packet_info.sent_bytes as usize;
                 }
             }
 
@@ -415,7 +415,7 @@ impl Manager {
             {
                 sent_packets_to_remove.push(*unacked_packet_number);
 
-                loss_info.bytes_in_flight += unacked_sent_info.sent_bytes;
+                loss_info.bytes_in_flight += unacked_sent_info.sent_bytes as usize;
 
                 if unacked_sent_info.in_flight {
                     // TODO merge contiguous packet numbers
@@ -685,13 +685,13 @@ mod test {
                 AckElicitation::NonEliciting
             };
             let in_flight = i % 3 == 0;
-            let sent_bytes = (2 * i) as usize;
+            let sent_bytes = (2 * i) as u16;
 
             manager.on_packet_sent(
                 sent_packet,
                 ack_elicitation,
                 in_flight,
-                sent_bytes,
+                sent_bytes as usize,
                 time_sent,
             );
 
@@ -778,7 +778,7 @@ mod test {
         let ack_receive_time = ack_receive_time + Duration::from_secs(1);
         let (result, context) = ack_packets(7..=9, ack_receive_time, &mut path, &mut manager);
 
-        assert_eq!(result.unwrap().bytes_in_flight, (packet_bytes * 3));
+        assert_eq!(result.unwrap().bytes_in_flight, (packet_bytes * 3) as usize);
         assert!(result.unwrap().pto_reset);
         assert_eq!(context.on_packet_ack_count, 1);
         assert_eq!(context.on_new_packet_ack_count, 1);

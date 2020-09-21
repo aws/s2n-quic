@@ -75,7 +75,7 @@ macro_rules! packet_space_api {
                 //# detection timers MUST be reset, because discarding keys indicates
                 //# forward progress and the loss detection timer might have been set for
                 //# a now discarded packet number space.
-                self.pto_backoff = 1;
+                self.pto_backoff = INITIAL_PTO_BACKOFF;
                 self.$get = None;
             }
         )?
@@ -232,7 +232,7 @@ impl<ConnectionConfigType: connection::Config> PacketSpaceManager<ConnectionConf
         }
 
         if loss_info.pto_reset {
-            self.pto_backoff = 1;
+            self.pto_backoff = INITIAL_PTO_BACKOFF;
         }
 
         self.update_recovery(path, timestamp);
