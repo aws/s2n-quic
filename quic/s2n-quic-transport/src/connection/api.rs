@@ -4,13 +4,23 @@ use crate::{
     connection::ConnectionApi,
     stream::{Stream, StreamError},
 };
-use core::task::{Context, Poll};
+use core::{
+    fmt,
+    task::{Context, Poll},
+};
 use s2n_quic_core::{application::ApplicationErrorCode, stream::StreamType};
 
 /// A QUIC connection
 pub struct Connection {
     /// The shared state, which contains the connections actual state
     shared_state: ConnectionApi,
+}
+
+impl fmt::Debug for Connection {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // TODO print interesting virtual fields
+        f.debug_struct("Connection").finish()
+    }
 }
 
 impl Drop for Connection {
@@ -38,9 +48,9 @@ impl Connection {
     ///   as soon as retrying the method will yield a different result.
     pub fn poll_accept(
         &mut self,
-        stream_type: StreamType,
+        stream_type: Option<StreamType>,
         context: &Context,
-    ) -> Poll<Result<Stream, StreamError>> {
+    ) -> Poll<Result<(Stream, StreamType), StreamError>> {
         self.shared_state
             .poll_accept(&self.shared_state, stream_type, context)
     }

@@ -25,7 +25,7 @@ impl<Providers: ServerProviders> Builder<Providers> {
         ///
         /// # Examples
         ///
-        /// ```rust
+        /// ```rust,no_run
         /// # use std::error::Error;
         /// use s2n_quic::{Server, provider::clock};
         /// #
@@ -94,7 +94,7 @@ impl<Providers: ServerProviders> Builder<Providers> {
         ///
         /// Sets the max idle time, while inheriting the remaining default limits
         ///
-        /// ```rust
+        /// ```rust,no_run
         /// # use std::{error::Error, time::Duration};
         /// use s2n_quic::{Server, provider::limits};
         /// #
@@ -163,7 +163,7 @@ impl<Providers: ServerProviders> Builder<Providers> {
         ///
         /// Uses the tokio runtime.
         ///
-        /// ```rust
+        /// ```rust,no_run
         /// # use std::error::Error;
         /// use s2n_quic::{Server, provider::runtime};
         /// #
@@ -260,7 +260,7 @@ impl<Providers: ServerProviders> Builder<Providers> {
         /// The default TLS provider and configuration will be used with the
         /// path to the private key.
         ///
-        /// ```rust
+        /// ```rust,no_run
         /// # use std::{error::Error, path::Path};
         /// # use s2n_quic::Server;
         /// #
@@ -317,6 +317,7 @@ impl<Providers: ServerProviders> Builder<Providers> {
 
         // TODO spawn endpoint with providers and return handle
 
-        Ok(Server {})
+        #[allow(unreachable_code)]
+        Ok(Server { acceptor: todo!() })
     }
 }
