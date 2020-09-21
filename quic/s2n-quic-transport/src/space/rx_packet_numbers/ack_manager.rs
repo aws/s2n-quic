@@ -48,7 +48,7 @@ pub struct AckManager {
     pub(super) ack_ranges: AckRanges,
 
     /// Peer's AckSettings from the transport parameters
-    ack_settings: AckSettings,
+    pub ack_settings: AckSettings,
 
     /// The largest packet number that we've acked - used for pn decoding
     largest_received_packet_number_acked: PacketNumber,

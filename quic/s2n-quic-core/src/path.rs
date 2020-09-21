@@ -32,6 +32,9 @@ pub struct Path {
     //# To initiate path validation, an endpoint sends a PATH_CHALLENGE frame
     //# containing a random payload on the path to be validated.
     pub challenge: Option<[u8; path_challenge::DATA_LEN]>,
+
+    /// True if the path has been validated by the peer
+    peer_validated: bool,
 }
 
 /// A Path holds the local and peer socket addresses, connection ids, and state. It can be
@@ -41,6 +44,7 @@ impl Path {
         peer_socket_address: SocketAddress,
         peer_connection_id: connection::Id,
         rtt_estimator: RTTEstimator,
+        peer_validated: bool,
     ) -> Self {
         Path {
             peer_socket_address,
@@ -52,6 +56,7 @@ impl Path {
             },
             mtu: MINIMUM_MTU,
             challenge: None,
+            peer_validated,
         }
     }
 
@@ -77,6 +82,16 @@ impl Path {
     /// Returns whether this path has passed address validation
     pub fn is_validated(&self) -> bool {
         self.state == State::Validated
+    }
+
+    /// Marks the path as peer validated
+    pub fn on_peer_validated(&mut self) {
+        self.peer_validated = true;
+    }
+
+    /// Returns whether this path has been validated by the peer
+    pub fn is_peer_validated(&self) -> bool {
+        self.peer_validated
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#8.1
@@ -114,6 +129,7 @@ mod tests {
             SocketAddress::default(),
             connection::Id::try_from_bytes(&[]).unwrap(),
             RTTEstimator::new(Duration::from_millis(30)),
+            true,
         );
 
         // Verify we enforce the amplification limit if we can't send
@@ -138,6 +154,7 @@ mod tests {
             SocketAddress::default(),
             connection::Id::try_from_bytes(&[]).unwrap(),
             RTTEstimator::new(Duration::from_millis(30)),
+            true,
         );
 
         path.on_bytes_received(3);
@@ -161,5 +178,21 @@ mod tests {
         path.on_validated();
         // Validated paths should always be able to transmit
         assert_eq!(path.clamp_mtu(4), 4);
+    }
+
+    #[test]
+    fn peer_validated_test() {
+        let mut path = Path::new(
+            SocketAddress::default(),
+            connection::Id::try_from_bytes(&[]).unwrap(),
+            RTTEstimator::new(Duration::from_millis(30)),
+            false,
+        );
+
+        assert!(!path.is_peer_validated());
+
+        path.on_peer_validated();
+
+        assert!(path.is_peer_validated());
     }
 }

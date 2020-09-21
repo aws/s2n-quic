@@ -87,6 +87,7 @@ impl Manager {
                 datagram.remote_address,
                 *peer_connection_id,
                 RTTEstimator::new(EARLY_ACK_SETTINGS.max_ack_delay),
+                true,
             );
             let id = Id(self.paths.len());
             self.paths.push(path);
@@ -189,6 +190,7 @@ mod tests {
             SocketAddress::default(),
             conn_id,
             RTTEstimator::new(Duration::from_millis(30)),
+            false,
         );
 
         let manager = Manager::new(first_path);
@@ -204,6 +206,7 @@ mod tests {
             SocketAddress::default(),
             first_conn_id,
             RTTEstimator::new(Duration::from_millis(30)),
+            false,
         );
         first_path.challenge = Some([0u8; 8]);
 
@@ -228,6 +231,7 @@ mod tests {
             SocketAddress::default(),
             first_conn_id,
             RTTEstimator::new(Duration::from_millis(30)),
+            false,
         );
         let mut manager = Manager::new(first_path);
         let new_addr: SocketAddr = "127.0.0.1:80".parse().unwrap();

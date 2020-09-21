@@ -2,20 +2,25 @@ use crate::{
     connection::{self, ConnectionTransmissionContext},
     frame_exchange_interests::{FrameExchangeInterestProvider, FrameExchangeInterests},
     processed_packet::ProcessedPacket,
+    recovery,
     space::{
         rx_packet_numbers::AckManager, CryptoStream, EarlyTransmission, PacketSpace,
         TxPacketNumbers,
     },
 };
+use core::marker::PhantomData;
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
     crypto::CryptoSuite,
+    endpoint::EndpointType,
     frame::{ack::AckRanges, crypto::CryptoRef, Ack},
     inet::DatagramInfo,
     packet::{
         encoding::{PacketEncoder, PacketEncodingError},
         initial::Initial,
-        number::{PacketNumber, PacketNumberSpace, SlidingWindow, SlidingWindowError},
+        number::{
+            PacketNumber, PacketNumberRange, PacketNumberSpace, SlidingWindow, SlidingWindowError,
+        },
     },
     path::Path,
     time::Timestamp,
@@ -28,6 +33,7 @@ pub struct InitialSpace<Config: connection::Config> {
     pub crypto_stream: CryptoStream,
     pub tx_packet_numbers: TxPacketNumbers,
     processed_packet_numbers: SlidingWindow,
+    recovery_manager: recovery::Manager,
 }
 
 impl<Config: connection::Config> InitialSpace<Config> {
@@ -36,12 +42,14 @@ impl<Config: connection::Config> InitialSpace<Config> {
         now: Timestamp,
         ack_manager: AckManager,
     ) -> Self {
+        let max_ack_delay = ack_manager.ack_settings.max_ack_delay;
         Self {
             ack_manager,
             crypto,
             crypto_stream: CryptoStream::new(),
             tx_packet_numbers: TxPacketNumbers::new(PacketNumberSpace::Initial, now),
             processed_packet_numbers: SlidingWindow::default(),
+            recovery_manager: recovery::Manager::new(PacketNumberSpace::Initial, max_ack_delay),
         }
     }
 
@@ -87,17 +95,37 @@ impl<Config: connection::Config> InitialSpace<Config> {
 
     /// Returns all of the component timers
     pub fn timers(&self) -> impl Iterator<Item = &Timestamp> {
-        self.ack_manager.timers()
+        core::iter::empty()
+            .chain(self.ack_manager.timers())
+            .chain(self.recovery_manager.timers())
     }
 
     /// Called when the connection timer expired
-    pub fn on_timeout(&mut self, timestamp: Timestamp) {
+    pub fn on_timeout(&mut self, timestamp: Timestamp) -> recovery::LossInfo {
         self.ack_manager.on_timeout(timestamp);
+
+        let (recovery_manager, mut context) = self.recovery();
+        recovery_manager.on_timeout(timestamp, &mut context)
+    }
+
+    pub fn update_recovery(
+        &mut self,
+        path: &Path,
+        pto_backoff: u32,
+        timestamp: Timestamp,
+        is_handshake_confirmed: bool,
+    ) {
+        self.recovery_manager
+            .update(path, pto_backoff, timestamp, is_handshake_confirmed)
     }
 
     /// Returns the Packet Number to be used when decoding incoming packets
     pub fn packet_number_decoder(&self) -> PacketNumber {
         self.ack_manager.largest_received_packet_number_acked()
+    }
+
+    pub fn bytes_in_flight(&self) -> usize {
+        self.recovery_manager.bytes_in_flight()
     }
 
     /// Returns the Packet Number to be used when encoding outgoing packets
@@ -120,7 +148,20 @@ impl<Config: connection::Config> InitialSpace<Config> {
                 crypto_stream: &mut self.crypto_stream,
                 context,
                 packet_number,
+                recovery_manager: &mut self.recovery_manager,
                 tx_packet_numbers: &mut self.tx_packet_numbers,
+            },
+        )
+    }
+
+    fn recovery(&mut self) -> (&mut recovery::Manager, RecoveryContext<Config>) {
+        (
+            &mut self.recovery_manager,
+            RecoveryContext {
+                ack_manager: &mut self.ack_manager,
+                crypto_stream: &mut self.crypto_stream,
+                tx_packet_numbers: &mut self.tx_packet_numbers,
+                config: PhantomData,
             },
         )
     }
@@ -131,6 +172,45 @@ impl<Config: connection::Config> FrameExchangeInterestProvider for InitialSpace<
         FrameExchangeInterests::default()
             + self.ack_manager.frame_exchange_interests()
             + self.crypto_stream.frame_exchange_interests()
+            + self.recovery_manager.frame_exchange_interests()
+    }
+}
+
+struct RecoveryContext<'a, Config> {
+    ack_manager: &'a mut AckManager,
+    crypto_stream: &'a mut CryptoStream,
+    tx_packet_numbers: &'a mut TxPacketNumbers,
+    config: PhantomData<Config>,
+}
+
+impl<'a, Config: connection::Config> recovery::Context for RecoveryContext<'a, Config> {
+    const ENDPOINT_TYPE: EndpointType = Config::ENDPOINT_TYPE;
+
+    fn validate_packet_ack(
+        &mut self,
+        datagram: &DatagramInfo,
+        packet_number_range: &PacketNumberRange,
+    ) -> Result<(), TransportError> {
+        self.tx_packet_numbers
+            .on_packet_ack(datagram, packet_number_range)
+    }
+
+    fn on_new_packet_ack(
+        &mut self,
+        _datagram: &DatagramInfo,
+        packet_number_range: &PacketNumberRange,
+    ) {
+        self.crypto_stream.on_packet_ack(packet_number_range);
+    }
+
+    fn on_packet_ack(&mut self, datagram: &DatagramInfo, packet_number_range: &PacketNumberRange) {
+        self.ack_manager
+            .on_packet_ack(datagram, packet_number_range);
+    }
+
+    fn on_packet_loss(&mut self, packet_number_range: &PacketNumberRange) {
+        self.crypto_stream.on_packet_loss(packet_number_range);
+        self.ack_manager.on_packet_loss(packet_number_range);
     }
 }
 
@@ -159,26 +239,11 @@ impl<Config: connection::Config> PacketSpace for InitialSpace<Config> {
         &mut self,
         frame: Ack<A>,
         datagram: &DatagramInfo,
-        _path: &mut Path,
-    ) -> Result<(), TransportError> {
-        // TODO process ack delay
-        // TODO process ECN
-
-        for ack_range in frame.ack_ranges() {
-            let (start, end) = ack_range.into_inner();
-
-            let pn_space = PacketNumberSpace::Initial;
-            let start = pn_space.new_packet_number(start);
-            let end = pn_space.new_packet_number(end);
-
-            let ack_set = start..=end;
-
-            self.tx_packet_numbers.on_packet_ack(datagram, &ack_set)?;
-            self.crypto_stream.on_packet_ack(&ack_set);
-            self.ack_manager.on_packet_ack(datagram, &ack_set);
-        }
-
-        Ok(())
+        path: &mut Path,
+        pto_backoff: u32,
+    ) -> Result<recovery::LossInfo, TransportError> {
+        let (recovery_manager, mut context) = self.recovery();
+        recovery_manager.on_ack_frame(datagram, frame, path, pto_backoff, &mut context)
     }
 
     fn on_processed_packet(

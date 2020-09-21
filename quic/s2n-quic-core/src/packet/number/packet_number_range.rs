@@ -19,6 +19,11 @@ impl PacketNumberRange {
         }
     }
 
+    /// Returns true if the range contains the given packet number
+    pub fn contains(&self, packet_number: PacketNumber) -> bool {
+        self.start <= packet_number && packet_number <= self.end
+    }
+
     /// Returns the lower bound of the range (inclusive).
     pub fn start(&self) -> PacketNumber {
         self.start

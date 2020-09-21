@@ -2,6 +2,7 @@ use crate::{
     connection::{self, ConnectionInterests},
     frame_exchange_interests::FrameExchangeInterestProvider,
     processed_packet::ProcessedPacket,
+    recovery,
     space::rx_packet_numbers::{AckManager, DEFAULT_ACK_RANGES_LIMIT},
 };
 use s2n_codec::DecoderBufferMut;
@@ -27,7 +28,7 @@ mod early_transmission;
 mod handshake;
 mod handshake_status;
 mod initial;
-mod rx_packet_numbers;
+pub(crate) mod rx_packet_numbers;
 mod session_context;
 mod tx_packet_numbers;
 
@@ -42,12 +43,15 @@ pub(crate) use rx_packet_numbers::EARLY_ACK_SETTINGS;
 pub(crate) use session_context::SessionContext;
 pub(crate) use tx_packet_numbers::TxPacketNumbers;
 
+pub const INITIAL_PTO_BACKOFF: u32 = 1;
+
 pub struct PacketSpaceManager<ConnectionConfigType: connection::Config> {
     session: Option<ConnectionConfigType::TLSSession>,
     initial: Option<Box<InitialSpace<ConnectionConfigType>>>,
     handshake: Option<Box<HandshakeSpace<ConnectionConfigType>>>,
     application: Option<Box<ApplicationSpace<ConnectionConfigType>>>,
     zero_rtt_crypto: Option<Box<<ConnectionConfigType::TLSSession as CryptoSuite>::ZeroRTTCrypto>>,
+    pto_backoff: u32,
 }
 
 macro_rules! packet_space_api {
@@ -66,6 +70,12 @@ macro_rules! packet_space_api {
 
         $(
             pub fn $discard(&mut self) {
+                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.2
+                //# When Initial or Handshake keys are discarded, the PTO and loss
+                //# detection timers MUST be reset, because discarding keys indicates
+                //# forward progress and the loss detection timer might have been set for
+                //# a now discarded packet number space.
+                self.pto_backoff = INITIAL_PTO_BACKOFF;
                 self.$get = None;
             }
         )?
@@ -120,12 +130,14 @@ impl<ConnectionConfigType: connection::Config> PacketSpaceManager<ConnectionConf
             handshake: None,
             application: None,
             zero_rtt_crypto: None,
+            pto_backoff: INITIAL_PTO_BACKOFF,
         }
     }
 
     pub fn poll_crypto(
         &mut self,
         connection_config: &ConnectionConfigType,
+        path: &Path,
         now: Timestamp,
     ) -> Result<(), TransportError> {
         if let Some(session) = self.session.as_mut() {
@@ -135,6 +147,8 @@ impl<ConnectionConfigType: connection::Config> PacketSpaceManager<ConnectionConf
                 handshake: &mut self.handshake,
                 application: &mut self.application,
                 zero_rtt_crypto: &mut self.zero_rtt_crypto,
+                path,
+                pto_backoff: self.pto_backoff,
                 connection_config,
             };
 
@@ -177,15 +191,71 @@ impl<ConnectionConfigType: connection::Config> PacketSpaceManager<ConnectionConf
     }
 
     /// Called when the connection timer expired
-    pub fn on_timeout(&mut self, timestamp: Timestamp) {
+    pub fn on_timeout(&mut self, timestamp: Timestamp) -> recovery::LossInfo {
+        let mut loss_info = recovery::LossInfo::default();
+
         if let Some(space) = self.initial_mut() {
-            space.on_timeout(timestamp);
+            loss_info += space.on_timeout(timestamp);
         }
+
         if let Some(space) = self.handshake_mut() {
-            space.on_timeout(timestamp);
+            loss_info += space.on_timeout(timestamp);
         }
+
         if let Some(space) = self.application_mut() {
-            space.on_timeout(timestamp);
+            loss_info += space.on_timeout(timestamp);
+        }
+
+        loss_info
+    }
+
+    /// Gets the total number of bytes in flight
+    pub fn bytes_in_flight(&self) -> usize {
+        core::iter::empty()
+            .chain(self.initial.iter().map(|space| space.bytes_in_flight()))
+            .chain(self.handshake.iter().map(|space| space.bytes_in_flight()))
+            .chain(self.application.iter().map(|space| space.bytes_in_flight()))
+            .sum::<usize>()
+    }
+
+    pub fn on_loss_info(
+        &mut self,
+        loss_info: &recovery::LossInfo,
+        path: &Path,
+        timestamp: Timestamp,
+    ) {
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
+        //# When a PTO timer expires, the PTO backoff MUST be increased,
+        //# resulting in the PTO period being set to twice its current value.
+        if loss_info.pto_expired {
+            self.pto_backoff *= 2;
+        }
+
+        if loss_info.pto_reset {
+            self.pto_backoff = INITIAL_PTO_BACKOFF;
+        }
+
+        self.update_recovery(path, timestamp);
+    }
+
+    pub fn pto_backoff(&self) -> u32 {
+        self.pto_backoff
+    }
+
+    pub fn update_recovery(&mut self, path: &Path, timestamp: Timestamp) {
+        let pto_backoff = self.pto_backoff;
+        let is_handshake_confirmed = self.is_handshake_confirmed();
+
+        if let Some(space) = self.initial_mut() {
+            space.update_recovery(path, pto_backoff, timestamp, is_handshake_confirmed);
+        }
+
+        if let Some(space) = self.handshake_mut() {
+            space.update_recovery(path, pto_backoff, timestamp, is_handshake_confirmed);
+        }
+
+        if let Some(space) = self.application_mut() {
+            space.update_recovery(path, pto_backoff, timestamp, is_handshake_confirmed);
         }
     }
 
@@ -226,7 +296,20 @@ pub trait PacketSpace {
         frame: Ack<A>,
         datagram: &DatagramInfo,
         path: &mut Path,
-    ) -> Result<(), TransportError>;
+        pto_backoff: u32,
+    ) -> Result<recovery::LossInfo, TransportError>;
+
+    fn handle_handshake_done_frame(
+        &mut self,
+        frame: HandshakeDone,
+        _datagram: &DatagramInfo,
+        _path: &mut Path,
+        _pto_backoff: u32,
+    ) -> Result<(), TransportError> {
+        Err(TransportError::PROTOCOL_VIOLATION
+            .with_reason(Self::INVALID_FRAME_ERROR)
+            .with_frame_type(frame.tag().into()))
+    }
 
     default_frame_handler!(handle_stream_frame, StreamRef);
     default_frame_handler!(handle_data_blocked_frame, DataBlocked);
@@ -242,7 +325,6 @@ pub trait PacketSpace {
     default_frame_handler!(handle_retire_connection_id_frame, RetireConnectionID);
     default_frame_handler!(handle_path_challenge_frame, PathChallenge);
     default_frame_handler!(handle_path_response_frame, PathResponse);
-    default_frame_handler!(handle_handshake_done_frame, HandshakeDone);
 
     fn on_processed_packet(
         &mut self,
@@ -255,7 +337,10 @@ pub trait PacketSpace {
         mut payload: DecoderBufferMut<'a>,
         datagram: &DatagramInfo,
         path: &mut Path,
-    ) -> Result<Option<frame::ConnectionClose<'a>>, TransportError> {
+        pto_backoff: u32,
+    ) -> Result<(recovery::LossInfo, Option<frame::ConnectionClose<'a>>), TransportError> {
+        let mut loss_info = recovery::LossInfo::default();
+
         use s2n_quic_core::{
             frame::{Frame, FrameMut},
             varint::VarInt,
@@ -295,11 +380,12 @@ pub trait PacketSpace {
                 Frame::Ack(frame) => {
                     let on_error = with_frame_type!(frame);
                     processed_packet.on_processed_frame(&frame);
-                    self.handle_ack_frame(frame, datagram, path)
+                    loss_info += self
+                        .handle_ack_frame(frame, datagram, path, pto_backoff)
                         .map_err(on_error)?;
                 }
                 Frame::ConnectionClose(frame) => {
-                    return Ok(Some(frame));
+                    return Ok((loss_info, Some(frame)));
                 }
                 Frame::Stream(frame) => {
                     let on_error = with_frame_type!(frame);
@@ -388,7 +474,7 @@ pub trait PacketSpace {
                 Frame::HandshakeDone(frame) => {
                     let on_error = with_frame_type!(frame);
                     processed_packet.on_processed_frame(&frame);
-                    self.handle_handshake_done_frame(frame, datagram, path)
+                    self.handle_handshake_done_frame(frame, datagram, path, pto_backoff)
                         .map_err(on_error)?;
                 }
             }
@@ -409,6 +495,6 @@ pub trait PacketSpace {
 
         self.on_processed_packet(processed_packet)?;
 
-        Ok(None)
+        Ok((loss_info, None))
     }
 }

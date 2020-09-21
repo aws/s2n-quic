@@ -5,6 +5,7 @@ use alloc::collections::{
     btree_map::{Iter, Range},
     BTreeMap,
 };
+use core::convert::TryInto;
 use s2n_quic_core::{
     packet::number::{PacketNumber, PacketNumberRange},
     time::Timestamp,
@@ -46,6 +47,11 @@ impl SentPackets {
     pub fn iter(&self) -> Iter<'_, PacketNumber, SentPacketInfo> {
         self.sent_packets.iter()
     }
+
+    /// Returns true if there are no pending sent packets
+    pub fn is_empty(&self) -> bool {
+        self.sent_packets.is_empty()
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -54,16 +60,18 @@ pub struct SentPacketInfo {
     pub in_flight: bool,
     /// The number of bytes sent in the packet, not including UDP or IP overhead,
     /// but including QUIC framing overhead
-    pub sent_bytes: u64,
+    pub sent_bytes: u16,
     /// The time the packet was sent
     pub time_sent: Timestamp,
 }
 
 impl SentPacketInfo {
-    pub fn new(in_flight: bool, sent_bytes: u64, time_sent: Timestamp) -> Self {
+    pub fn new(in_flight: bool, sent_bytes: usize, time_sent: Timestamp) -> Self {
         SentPacketInfo {
             in_flight,
-            sent_bytes,
+            sent_bytes: sent_bytes
+                .try_into()
+                .expect("sent_bytes exceeds max UDP payload size"),
             time_sent,
         }
     }
@@ -76,6 +84,16 @@ mod test {
         packet::number::{PacketNumberRange, PacketNumberSpace},
         varint::VarInt,
     };
+
+    #[test]
+    #[should_panic]
+    fn too_large_packet() {
+        SentPacketInfo::new(
+            false,
+            (u16::max_value() + 1) as usize,
+            s2n_quic_platform::time::now(),
+        );
+    }
 
     #[test]
     fn insert_get_range() {
@@ -132,6 +150,17 @@ mod test {
 
         // Removing a packet that was already removed doesn't panic
         assert_eq!(None, sent_packets.remove(packet_number));
+    }
+
+    #[test]
+    fn empty() {
+        let mut sent_packets = SentPackets::default();
+        assert!(sent_packets.is_empty());
+
+        let packet_number = PacketNumberSpace::Initial.new_packet_number(VarInt::from_u8(1));
+        let sent_packet = SentPacketInfo::new(false, 0, s2n_quic_platform::time::now());
+        sent_packets.insert(packet_number, sent_packet);
+        assert!(!sent_packets.is_empty());
     }
 
     #[test]

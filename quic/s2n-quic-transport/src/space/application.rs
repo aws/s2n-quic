@@ -2,6 +2,7 @@ use crate::{
     connection::{self, ConnectionInterests, ConnectionTransmissionContext},
     frame_exchange_interests::FrameExchangeInterestProvider,
     processed_packet::ProcessedPacket,
+    recovery,
     space::{
         rx_packet_numbers::AckManager, ApplicationTransmission, HandshakeStatus, PacketSpace,
         TxPacketNumbers,
@@ -11,6 +12,7 @@ use crate::{
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
     crypto::CryptoSuite,
+    endpoint::EndpointType,
     frame::{
         ack::AckRanges, crypto::CryptoRef, stream::StreamRef, Ack, DataBlocked, HandshakeDone,
         MaxData, MaxStreamData, MaxStreams, NewConnectionID, NewToken, PathChallenge, PathResponse,
@@ -19,7 +21,9 @@ use s2n_quic_core::{
     inet::DatagramInfo,
     packet::{
         encoding::{PacketEncoder, PacketEncodingError},
-        number::{PacketNumber, PacketNumberSpace, SlidingWindow, SlidingWindowError},
+        number::{
+            PacketNumber, PacketNumberRange, PacketNumberSpace, SlidingWindow, SlidingWindowError,
+        },
         short::{KeyPhase, Short, SpinBit},
     },
     path::Path,
@@ -45,6 +49,7 @@ pub struct ApplicationSpace<Config: connection::Config> {
     /// Records if the handshake is pending or done, which is communicated to the peer
     pub handshake_status: HandshakeStatus,
     processed_packet_numbers: SlidingWindow,
+    recovery_manager: recovery::Manager,
 }
 
 impl<Config: connection::Config> ApplicationSpace<Config> {
@@ -54,6 +59,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         stream_manager: AbstractStreamManager<Config::Stream>,
         ack_manager: AckManager,
     ) -> Self {
+        let max_ack_delay = ack_manager.ack_settings.max_ack_delay;
         Self {
             tx_packet_numbers: TxPacketNumbers::new(PacketNumberSpace::ApplicationData, now),
             ack_manager,
@@ -63,6 +69,10 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
             crypto,
             handshake_status: HandshakeStatus::default(),
             processed_packet_numbers: SlidingWindow::default(),
+            recovery_manager: recovery::Manager::new(
+                PacketNumberSpace::ApplicationData,
+                max_ack_delay,
+            ),
         }
     }
 
@@ -112,28 +122,52 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
             + self.ack_manager.frame_exchange_interests()
             + self.handshake_status.frame_exchange_interests()
             + self.stream_manager.interests()
+            + self.recovery_manager.frame_exchange_interests()
     }
 
     /// Signals the handshake is done
-    pub fn on_handshake_done(&mut self) {
+    pub fn on_handshake_done(&mut self, path: &Path, pto_backoff: u32, timestamp: Timestamp) {
         if Config::ENDPOINT_TYPE.is_server() {
             self.handshake_status.on_handshake_done();
         }
+
+        self.recovery_manager
+            .update(path, pto_backoff, timestamp, true)
     }
 
     /// Returns all of the component timers
     pub fn timers(&self) -> impl Iterator<Item = &Timestamp> {
-        self.ack_manager.timers()
+        core::iter::empty()
+            .chain(self.ack_manager.timers())
+            .chain(self.recovery_manager.timers())
     }
 
     /// Called when the connection timer expired
-    pub fn on_timeout(&mut self, timestamp: Timestamp) {
+    pub fn on_timeout(&mut self, timestamp: Timestamp) -> recovery::LossInfo {
         self.ack_manager.on_timeout(timestamp);
+
+        let (recovery_manager, mut context) = self.recovery();
+        recovery_manager.on_timeout(timestamp, &mut context)
+    }
+
+    pub fn update_recovery(
+        &mut self,
+        path: &Path,
+        pto_backoff: u32,
+        timestamp: Timestamp,
+        is_handshake_confirmed: bool,
+    ) {
+        self.recovery_manager
+            .update(path, pto_backoff, timestamp, is_handshake_confirmed)
     }
 
     /// Returns the Packet Number to be used when decoding incoming packets
     pub fn packet_number_decoder(&self) -> PacketNumber {
         self.ack_manager.largest_received_packet_number_acked()
+    }
+
+    pub fn bytes_in_flight(&self) -> usize {
+        self.recovery_manager.bytes_in_flight()
     }
 
     /// Returns the Packet Number to be used when encoding outgoing packets
@@ -157,10 +191,67 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
                 context,
                 handshake_status: &mut self.handshake_status,
                 packet_number,
+                recovery_manager: &mut self.recovery_manager,
                 stream_manager: &mut self.stream_manager,
                 tx_packet_numbers: &mut self.tx_packet_numbers,
             },
         )
+    }
+
+    fn recovery(&mut self) -> (&mut recovery::Manager, RecoveryContext<Config>) {
+        (
+            &mut self.recovery_manager,
+            RecoveryContext {
+                ack_manager: &mut self.ack_manager,
+                handshake_status: &mut self.handshake_status,
+                stream_manager: &mut self.stream_manager,
+                tx_packet_numbers: &mut self.tx_packet_numbers,
+            },
+        )
+    }
+}
+
+struct RecoveryContext<'a, Config: connection::Config> {
+    ack_manager: &'a mut AckManager,
+    handshake_status: &'a mut HandshakeStatus,
+    stream_manager: &'a mut AbstractStreamManager<Config::Stream>,
+    tx_packet_numbers: &'a mut TxPacketNumbers,
+}
+
+impl<'a, Config: connection::Config> recovery::Context for RecoveryContext<'a, Config> {
+    const ENDPOINT_TYPE: EndpointType = Config::ENDPOINT_TYPE;
+
+    fn is_handshake_confirmed(&self) -> bool {
+        self.handshake_status.is_confirmed()
+    }
+
+    fn validate_packet_ack(
+        &mut self,
+        datagram: &DatagramInfo,
+        packet_number_range: &PacketNumberRange,
+    ) -> Result<(), TransportError> {
+        self.tx_packet_numbers
+            .on_packet_ack(datagram, packet_number_range)
+    }
+
+    fn on_new_packet_ack(
+        &mut self,
+        _datagram: &DatagramInfo,
+        packet_number_range: &PacketNumberRange,
+    ) {
+        self.handshake_status.on_packet_ack(packet_number_range);
+        self.stream_manager.on_packet_ack(packet_number_range);
+    }
+
+    fn on_packet_ack(&mut self, datagram: &DatagramInfo, packet_number_range: &PacketNumberRange) {
+        self.ack_manager
+            .on_packet_ack(datagram, packet_number_range);
+    }
+
+    fn on_packet_loss(&mut self, packet_number_range: &PacketNumberRange) {
+        self.handshake_status.on_packet_loss(packet_number_range);
+        self.stream_manager.on_packet_loss(packet_number_range);
+        self.ack_manager.on_packet_loss(packet_number_range);
     }
 }
 
@@ -182,27 +273,12 @@ impl<Config: connection::Config> PacketSpace for ApplicationSpace<Config> {
         &mut self,
         frame: Ack<A>,
         datagram: &DatagramInfo,
-        _path: &mut Path,
-    ) -> Result<(), TransportError> {
-        // TODO process ack delay
-        // TODO process ECN
-
-        for ack_range in frame.ack_ranges() {
-            let (start, end) = ack_range.into_inner();
-
-            let pn_space = PacketNumberSpace::ApplicationData;
-            let start = pn_space.new_packet_number(start);
-            let end = pn_space.new_packet_number(end);
-
-            let ack_set = start..=end;
-
-            self.tx_packet_numbers.on_packet_ack(datagram, &ack_set)?;
-            self.handshake_status.on_packet_ack(&ack_set);
-            self.stream_manager.on_packet_ack(&ack_set);
-            self.ack_manager.on_packet_ack(datagram, &ack_set);
-        }
-
-        Ok(())
+        path: &mut Path,
+        pto_backoff: u32,
+    ) -> Result<recovery::LossInfo, TransportError> {
+        path.on_peer_validated();
+        let (recovery_manager, mut context) = self.recovery();
+        recovery_manager.on_ack_frame(datagram, frame, path, pto_backoff, &mut context)
     }
 
     fn handle_stream_frame(
@@ -344,8 +420,9 @@ impl<Config: connection::Config> PacketSpace for ApplicationSpace<Config> {
     fn handle_handshake_done_frame(
         &mut self,
         frame: HandshakeDone,
-        _datagram: &DatagramInfo,
-        _path: &mut Path,
+        datagram: &DatagramInfo,
+        path: &mut Path,
+        pto_backoff: u32,
     ) -> Result<(), TransportError> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#19.20
         //# A server MUST
@@ -359,6 +436,14 @@ impl<Config: connection::Config> PacketSpace for ApplicationSpace<Config> {
         }
 
         self.handshake_status.on_handshake_done_received();
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
+        //# A sender SHOULD restart its PTO timer every time an ack-eliciting
+        //# packet is sent or acknowledged, when the handshake is confirmed
+        //# (Section 4.1.2 of [QUIC-TLS]), or when Initial or Handshake keys are
+        //# discarded (Section 9 of [QUIC-TLS]).
+        self.recovery_manager
+            .update(path, pto_backoff, datagram.timestamp, true);
 
         Ok(())
     }

@@ -8,7 +8,7 @@ use crate::{
         SharedConnectionState,
     },
     contexts::ConnectionOnTransmitError,
-    path,
+    path, recovery,
     space::{PacketSpace, EARLY_ACK_SETTINGS},
 };
 use core::time::Duration;
@@ -119,7 +119,8 @@ impl<ConfigType: connection::Config> ConnectionImpl<ConfigType> {
         datagram: &DatagramInfo,
     ) -> Result<(), TransportError> {
         let space_manager = &mut shared_state.space_manager;
-        space_manager.poll_crypto(&self.config, datagram.timestamp)?;
+        let (_, path) = self.path_manager.active_path();
+        space_manager.poll_crypto(&self.config, path, datagram.timestamp)?;
 
         if matches!(self.state, ConnectionState::Handshaking)
             && space_manager.application().is_some()
@@ -154,6 +155,26 @@ impl<ConfigType: connection::Config> ConnectionImpl<ConfigType> {
         self.timers
             .peer_idle_timer
             .set(timestamp + self.get_idle_timer_duration())
+    }
+
+    fn on_loss_info(
+        &mut self,
+        shared_state: &mut SharedConnectionState<ConfigType>,
+        loss_info: recovery::LossInfo,
+        path_id: path::Id,
+        timestamp: Timestamp,
+    ) {
+        // This function is called regardless if there was a loss event or not.
+        // Only propagate on_loss_info if necessary.
+        if loss_info.updated_required() {
+            shared_state.space_manager.on_loss_info(
+                &loss_info,
+                &self.path_manager[path_id],
+                timestamp,
+            );
+
+            // TODO pass recovery information to congestion controller
+        }
     }
 }
 
@@ -198,10 +219,13 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
         // The path manager always starts with a single path containing the known peer and local
         // connection ids.
         let rtt_estimator = RTTEstimator::new(EARLY_ACK_SETTINGS.max_ack_delay);
+        // Assume clients validate the server's address implicitly.
+        let peer_validated = Self::Config::ENDPOINT_TYPE.is_server();
         let initial_path = path::Path::new(
             parameters.peer_socket_address,
             parameters.peer_connection_id,
             rtt_estimator,
+            peer_validated,
         );
         let path_manager = path::Manager::new(initial_path);
 
@@ -284,12 +308,12 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
         timestamp: Timestamp,
     ) -> Result<(), ConnectionOnTransmitError> {
         let mut count = 0;
+        let (_path_id, active_path) = self.path_manager.active_path_mut();
 
         match self.state {
             ConnectionState::Handshaking | ConnectionState::Active => {
+                // TODO pull these from somewhere
                 let ecn = Default::default();
-
-                let (_path_id, active_path) = self.path_manager.active_path_mut();
 
                 while let Ok(bytes_transmitted) = queue.push(ConnectionTransmission {
                     context: ConnectionTransmissionContext {
@@ -327,6 +351,9 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
         if count == 0 {
             Err(ConnectionOnTransmitError::NoDatagram)
         } else {
+            shared_state
+                .space_manager
+                .update_recovery(active_path, timestamp);
             Ok(())
         }
     }
@@ -363,7 +390,14 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
             }
         }
 
-        shared_state.space_manager.on_timeout(timestamp);
+        let loss_info = shared_state.space_manager.on_timeout(timestamp);
+
+        self.on_loss_info(
+            shared_state,
+            loss_info,
+            self.path_manager.active_path().0,
+            timestamp,
+        );
     }
 
     /// Updates the per-connection timer based on individual component timers.
@@ -459,13 +493,17 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
         path_id: path::Id,
         packet: CleartextInitial,
     ) -> Result<(), TransportError> {
+        let pto_backoff = shared_state.space_manager.pto_backoff();
         if let Some(space) = shared_state.space_manager.initial_mut() {
-            if let Some(close) = space.handle_cleartext_payload(
+            let (loss_info, close) = space.handle_cleartext_payload(
                 packet.packet_number,
                 packet.payload,
                 datagram,
                 &mut self.path_manager[path_id],
-            )? {
+                pto_backoff,
+            )?;
+
+            if let Some(close) = close {
                 self.close(
                     shared_state,
                     ConnectionCloseReason::PeerImmediateClose(close),
@@ -473,6 +511,8 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
                 );
                 return Ok(());
             }
+
+            self.on_loss_info(shared_state, loss_info, path_id, datagram.timestamp);
 
             // try to move the crypto state machine forward
             self.update_crypto_state(shared_state, datagram)?;
@@ -489,17 +529,22 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
         path_id: path::Id,
         packet: ProtectedHandshake,
     ) -> Result<(), TransportError> {
+        let pto_backoff = shared_state.space_manager.pto_backoff();
+
         if let Some((packet, space)) = shared_state
             .space_manager
             .handshake_mut()
             .and_then(packet_validator!(packet))
         {
-            if let Some(close) = space.handle_cleartext_payload(
+            let (loss_info, close) = space.handle_cleartext_payload(
                 packet.packet_number,
                 packet.payload,
                 datagram,
                 &mut self.path_manager[path_id],
-            )? {
+                pto_backoff,
+            )?;
+
+            if let Some(close) = close {
                 self.close(
                     shared_state,
                     ConnectionCloseReason::PeerImmediateClose(close),
@@ -507,6 +552,8 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
                 );
                 return Ok(());
             }
+
+            self.on_loss_info(shared_state, loss_info, path_id, datagram.timestamp);
 
             //= https://tools.ietf.org/id/draft-ietf-quic-tls-27.txt#4.10.1
             //# A server MUST discard Initial keys when it first successfully
@@ -536,17 +583,22 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
         path_id: path::Id,
         packet: ProtectedShort,
     ) -> Result<(), TransportError> {
+        let pto_backoff = shared_state.space_manager.pto_backoff();
+
         if let Some((packet, space)) = shared_state
             .space_manager
             .application_mut()
             .and_then(packet_validator!(packet))
         {
-            if let Some(close) = space.handle_cleartext_payload(
+            let (loss_info, close) = space.handle_cleartext_payload(
                 packet.packet_number,
                 packet.payload,
                 datagram,
                 &mut self.path_manager[path_id],
-            )? {
+                pto_backoff,
+            )?;
+
+            if let Some(close) = close {
                 self.close(
                     shared_state,
                     ConnectionCloseReason::PeerImmediateClose(close),
@@ -554,6 +606,8 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
                 );
                 return Ok(());
             }
+
+            self.on_loss_info(shared_state, loss_info, path_id, datagram.timestamp);
 
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#10.2
             //# An endpoint restarts its idle timer when a packet from its peer is
