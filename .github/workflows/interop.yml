@@ -44,9 +44,8 @@ jobs:
             | jq -c '[. | to_entries[] | select(.value.role == "both" or .value.role == "server") | {"client": "s2n-quic", "server": .key}] | sort'
           )
           echo "Servers: $SERVERS"
-          # TODO add clients when s2n-quic supports at least one test
           # TODO add servers when s2n-quic adds support for client mode
-          MATRIX=$(echo "[]" | jq -c '{"include": . | flatten}')
+          MATRIX=$(echo "[$CLIENTS]" | jq -c '{"include": . | flatten}')
           echo "Matrix: $MATRIX"
           echo "::set-output name=matrix::$MATRIX"
 
