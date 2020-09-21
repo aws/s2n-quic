@@ -16,33 +16,39 @@ env:
   SCCACHE_CACHE_SIZE: 300M
   SCCACHE_DIR: ${{ github.workspace }}/.sccache
   SCCACHE_IDLE_TIMEOUT: 0
+  # This kept breaking builds so we're pinning for now. We should do our best to keep
+  # up with the changes, though.
+  INTEROP_RUNNER_REF: d84aa4f4c8375ea294c7032cebce8034eaf01d24
 
 jobs:
   env:
     runs-on: ubuntu-latest
     outputs:
-      clients: ${{ steps.implementations.outputs.clients }}
-      servers: ${{ steps.implementations.outputs.servers }}
+      matrix: ${{ steps.implementations.outputs.matrix }}
     steps:
       - uses: actions/checkout@v2
         with:
           repository: marten-seemann/quic-interop-runner
+          ref: ${{ env.INTEROP_RUNNER_REF }}
           path: quic-interop-runner
-
-      - uses: actions/setup-python@v2
-        with:
-          python-version: 3.8
 
       - name: Define implementations
         id: implementations
         working-directory: quic-interop-runner
         run: |
-          CLIENTS=$(cat implementations.json | jq -c '[. | to_entries[] | select(.value.role == "both" or .value.role == "client") | .key] | sort')
+          CLIENTS=$(cat implementations.json \
+            | jq -c '[. | to_entries[] | select(.value.role == "both" or .value.role == "client") | {"client": .key, "server": "s2n-quic"}] | sort'
+          )
           echo "Clients: $CLIENTS"
-          SERVERS=$(cat implementations.json | jq -c '[. | to_entries[] | select(.value.role == "both" or .value.role == "server") | .key] | sort')
+          SERVERS=$(cat implementations.json \
+            | jq -c '[. | to_entries[] | select(.value.role == "both" or .value.role == "server") | {"client": "s2n-quic", "server": .key}] | sort'
+          )
           echo "Servers: $SERVERS"
-          echo "::set-output name=clients::$CLIENTS"
-          echo "::set-output name=servers::$SERVERS"
+          # TODO add clients when s2n-quic supports at least one test
+          # TODO add servers when s2n-quic adds support for client mode
+          MATRIX=$(echo "[]" | jq -c '{"include": . | flatten}')
+          echo "Matrix: $MATRIX"
+          echo "::set-output name=matrix::$MATRIX"
 
   build:
     runs-on: ubuntu-latest
@@ -93,38 +99,41 @@ jobs:
         env:
           RUSTC_WRAPPER: sccache
 
+      - name: Prepare artifact
+        run: |
+          mkdir -p s2n-quic-qns
+          cp target/release/s2n-quic-qns s2n-quic-qns/
+          cp qns/Dockerfile s2n-quic-qns/
+          cp qns/run_endpoint.sh s2n-quic-qns/
+
       - uses: actions/upload-artifact@v2
         with:
           name: s2n-quic-qns
-          path: target/release/s2n-quic-qns
+          path: s2n-quic-qns/
 
       - name: Stop sccache
         run: sccache --stop-server
 
-  server:
+  interop:
     runs-on: ubuntu-latest
     needs: [env, build]
     strategy:
-      matrix:
-        client: ${{ fromJson(needs.env.outputs.clients) }}
+      matrix: ${{ fromJson(needs.env.outputs.matrix) }}
     steps:
-      - uses: actions/checkout@v2
-        with:
-          path: s2n-quic
-
       - uses: actions/download-artifact@v2
         with:
           name: s2n-quic-qns
-          path: s2n-quic/qns/
+          path: s2n-quic-qns/
 
       - name: Run docker build
-        working-directory: s2n-quic/qns
+        working-directory: s2n-quic-qns
         run: |
           docker build . --file Dockerfile --tag awslabs/s2n-quic-qns
  
       - uses: actions/checkout@v2
         with:
           repository: marten-seemann/quic-interop-runner
+          ref: ${{ env.INTEROP_RUNNER_REF }}
           path: quic-interop-runner
 
       - name: Patch implementations.json
@@ -133,7 +142,7 @@ jobs:
           mv implementations.json implementations.old.json
           # Append our implementation
           cat implementations.old.json \
-            | jq '. + {"s2n-quic": {"url": "awslabs/s2n-quic-qns:latest", "role": "server"}}' \
+            | jq '. + {"s2n-quic": {"image": "awslabs/s2n-quic-qns:latest", "url": "https://github.com/awslabs/s2n-quic", "role": "both"}}' \
             > implementations.json
           cat implementations.json
 
@@ -142,9 +151,6 @@ jobs:
         run: |
           docker pull martenseemann/quic-network-simulator:latest
           docker pull martenseemann/quic-interop-iperf-endpoint:latest
-
-          URL=$(cat implementations.json | jq --raw-output '."${{ matrix.client }}".url')
-          docker pull $URL
 
       - uses: actions/setup-python@v2
         with:
@@ -158,12 +164,21 @@ jobs:
           python3 -m pip install --upgrade pip
           pip3 install -r requirements.txt
 
+      - name: Generate certificates
+        working-directory: quic-interop-runner
+        run: ./certs.sh
+
       - name: Run quic-interop-server
         working-directory: quic-interop-runner
         run: |
           mkdir -p results
-          python3 run.py --client ${{ matrix.client }} --server s2n-quic --json results/results.json --debug
+          python3 run.py --client ${{ matrix.client }} --server ${{ matrix.server }} --json results/results.json --debug | true
+
+      - name: Prepare artifacts
+        working-directory: quic-interop-runner
+        run: |
           ls -al
+          mv certs results | true
           mv logs* results | true
           # clean up invalid path characters
           find results -name '*:*' | while read from; do
@@ -173,5 +188,5 @@ jobs:
 
       - uses: actions/upload-artifact@v2
         with:
-          name: interop-with-${{ matrix.client }}-client
+          name: interop-${{ matrix.client }}-client-${{ matrix.server }}-server
           path: quic-interop-runner/results/
