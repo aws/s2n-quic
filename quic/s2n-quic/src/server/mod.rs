@@ -2,7 +2,11 @@ use crate::{
     connection::{self, Connection},
     provider::*,
 };
-use core::task::{Context, Poll};
+use core::{
+    fmt,
+    task::{Context, Poll},
+};
+use s2n_quic_transport::acceptor::Acceptor;
 
 mod builder;
 pub mod metric;
@@ -11,9 +15,16 @@ pub use builder::*;
 pub use metric::Metric;
 
 /// A QUIC server endpoint, capable of accepting connections
-#[derive(Debug)]
 pub struct Server {
-    // TODO
+    acceptor: Acceptor,
+}
+
+impl fmt::Debug for Server {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Server")
+            .field("local_addr", &self.local_addr().ok())
+            .finish()
+    }
 }
 
 impl_providers_state! {
@@ -98,16 +109,16 @@ impl Server {
     /// let mut server = Server::bind("127.0.0.1:443")?;
     ///
     /// match server.accept().await {
-    ///     Ok(connection) => {
+    ///     Some(connection) => {
     ///         println!("new connection: {:?}", connection.remote_addr());
     ///     }
-    ///     Err(e) => println!("connection failed: {:?}", e),
+    ///     None => println!("server closed"),
     /// }
     /// #    Ok(())
     /// # }
     /// ```
-    pub async fn accept(&mut self) -> connection::Result<Connection> {
-        todo!()
+    pub async fn accept(&mut self) -> Option<Connection> {
+        futures::future::poll_fn(|cx| self.poll_accept(cx)).await
     }
 
     /// TODO
@@ -117,9 +128,12 @@ impl Server {
     /// ```rust
     /// // TODO
     /// ```
-    pub fn poll_accept(&mut self, cx: &mut Context) -> Poll<connection::Result<Connection>> {
-        let _ = cx;
-        todo!()
+    pub fn poll_accept(&mut self, cx: &mut Context) -> Poll<Option<Connection>> {
+        match self.acceptor.poll_accept(cx) {
+            Poll::Ready(Some(connection)) => Poll::Ready(Some(Connection::new(connection))),
+            Poll::Ready(None) => Poll::Ready(None),
+            Poll::Pending => Poll::Pending,
+        }
     }
 
     /// Returns the local address that this listener is bound to.
@@ -159,13 +173,12 @@ impl Server {
 }
 
 impl futures::stream::Stream for Server {
-    type Item = connection::Result<Connection>;
+    type Item = Connection;
 
     fn poll_next(
-        self: core::pin::Pin<&mut Self>,
+        mut self: core::pin::Pin<&mut Self>,
         cx: &mut core::task::Context<'_>,
     ) -> core::task::Poll<Option<Self::Item>> {
-        let _ = cx;
-        todo!()
+        self.poll_accept(cx)
     }
 }

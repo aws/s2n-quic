@@ -14,7 +14,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .with_io("127.0.0.1:443")?
         .build()?;
 
-    while let Ok(mut connection) = server.accept().await {
+    while let Some(mut connection) = server.accept().await {
         // spawn a new task for the connection
         tokio::spawn(async move {
             eprintln!("Connection accepted from {:?}", connection.remote_addr());

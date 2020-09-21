@@ -18,6 +18,7 @@ futures = { version = "0.3", default-features = false }
 rand = { version = "0.7", optional = true }
 s2n-quic-core = { version = "0.1", path = "../s2n-quic-core", default-features = false }
 s2n-quic-platform = { version = "0.1", path = "../s2n-quic-platform", default-features = false }
+s2n-quic-transport = { version = "0.1", path = "../s2n-quic-transport", default-features = false }
 s2n-quic-rustls = { version = "0.1", path = "../s2n-quic-rustls", optional = true }
 thiserror = { version = "1.0", optional = true }
 tokio = { version = "0.2", optional = true, features = ["rt-core", "time", "udp"] }

@@ -26,7 +26,7 @@ impl Interop {
 
         let mut server = self.server()?;
 
-        while let Ok(connection) = server.accept().await {
+        while let Some(connection) = server.accept().await {
             println!("Accepted a QUIC connection!");
 
             // spawn a task per connection
