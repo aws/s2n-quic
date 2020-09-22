@@ -90,7 +90,7 @@ mod test {
     fn too_large_packet() {
         SentPacketInfo::new(
             false,
-            (u16::max_value() + 1) as usize,
+            u16::max_value() as usize + 1,
             s2n_quic_platform::time::now(),
         );
     }
