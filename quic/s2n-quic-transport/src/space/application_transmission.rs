@@ -1,10 +1,10 @@
 use crate::{
-    connection::ConnectionTransmissionContext,
+    connection::{self, ConnectionTransmissionContext},
     contexts::WriteContext,
     frame_exchange_interests::{FrameExchangeInterestProvider, FrameExchangeInterests},
     recovery,
     space::{rx_packet_numbers::AckManager, HandshakeStatus, TxPacketNumbers},
-    stream::{AbstractStreamManager, StreamTrait},
+    stream::AbstractStreamManager,
 };
 use s2n_codec::{Encoder, EncoderBuffer, EncoderValue};
 use s2n_quic_core::{
@@ -17,17 +17,17 @@ use s2n_quic_core::{
     time::Timestamp,
 };
 
-pub struct ApplicationTransmission<'a, StreamType: StreamTrait> {
+pub struct ApplicationTransmission<'a, Config: connection::Config> {
     pub ack_manager: &'a mut AckManager,
-    pub context: &'a ConnectionTransmissionContext<'a>,
+    pub context: &'a ConnectionTransmissionContext<'a, Config>,
     pub handshake_status: &'a mut HandshakeStatus,
     pub packet_number: PacketNumber,
     pub recovery_manager: &'a mut recovery::Manager,
-    pub stream_manager: &'a mut AbstractStreamManager<StreamType>,
+    pub stream_manager: &'a mut AbstractStreamManager<Config::Stream>,
     pub tx_packet_numbers: &'a mut TxPacketNumbers,
 }
 
-impl<'a, StreamType: StreamTrait> PacketPayloadEncoder for ApplicationTransmission<'a, StreamType> {
+impl<'a, Config: connection::Config> PacketPayloadEncoder for ApplicationTransmission<'a, Config> {
     fn encoding_size_hint<E: Encoder>(&mut self, _encoder: &E, minimum_len: usize) -> usize {
         // TODO ask the stream manager. We need to return something that assures that
         // - either Padding gets written
@@ -88,16 +88,18 @@ impl<'a, StreamType: StreamTrait> PacketPayloadEncoder for ApplicationTransmissi
     }
 }
 
-pub struct ApplicationTransmissionContext<'a, 'b> {
+pub struct ApplicationTransmissionContext<'a, 'b, Config: connection::Config> {
     ack_elicitation: AckElicitation,
     buffer: &'a mut EncoderBuffer<'b>,
-    context: &'a ConnectionTransmissionContext<'a>,
+    context: &'a ConnectionTransmissionContext<'a, Config>,
     packet_number: PacketNumber,
     is_congestion_controlled: bool,
 }
 
-impl<'a, 'b> WriteContext for ApplicationTransmissionContext<'a, 'b> {
-    type ConnectionContext = ConnectionTransmissionContext<'a>;
+impl<'a, 'b, Config: connection::Config> WriteContext
+    for ApplicationTransmissionContext<'a, 'b, Config>
+{
+    type ConnectionContext = ConnectionTransmissionContext<'a, Config>;
 
     fn current_time(&self) -> Timestamp {
         self.context.timestamp
@@ -139,8 +141,8 @@ impl<'a, 'b> WriteContext for ApplicationTransmissionContext<'a, 'b> {
     }
 }
 
-impl<'a, StreamType: StreamTrait> FrameExchangeInterestProvider
-    for ApplicationTransmission<'a, StreamType>
+impl<'a, Config: connection::Config> FrameExchangeInterestProvider
+    for ApplicationTransmission<'a, Config>
 {
     fn frame_exchange_interests(&self) -> FrameExchangeInterests {
         FrameExchangeInterests {

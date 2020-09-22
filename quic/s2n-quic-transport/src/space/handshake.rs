@@ -70,7 +70,7 @@ impl<Config: connection::Config> HandshakeSpace<Config> {
 
     pub fn on_transmit<'a>(
         &mut self,
-        context: &ConnectionTransmissionContext,
+        context: &ConnectionTransmissionContext<Config>,
         buffer: EncoderBuffer<'a>,
     ) -> Result<EncoderBuffer<'a>, PacketEncodingError<'a>> {
         let packet_number = self.tx_packet_numbers.next();
@@ -108,7 +108,7 @@ impl<Config: connection::Config> HandshakeSpace<Config> {
 
     pub fn update_recovery(
         &mut self,
-        path: &Path,
+        path: &Path<Config::CongestionController>,
         pto_backoff: u32,
         timestamp: Timestamp,
         is_handshake_confirmed: bool,
@@ -133,11 +133,11 @@ impl<Config: connection::Config> HandshakeSpace<Config> {
 
     fn transmission<'a>(
         &'a mut self,
-        context: &'a ConnectionTransmissionContext,
+        context: &'a ConnectionTransmissionContext<Config>,
         packet_number: PacketNumber,
     ) -> (
         &'a <Config::TLSSession as CryptoSuite>::HandshakeCrypto,
-        EarlyTransmission<'a>,
+        EarlyTransmission<'a, Config>,
     ) {
         (
             &self.crypto,
@@ -217,14 +217,14 @@ impl<'a, Config: connection::Config> recovery::Context for RecoveryContext<'a, C
 //# PING, PADDING, or ACK frames.  Handshake packets MAY contain
 //# CONNECTION_CLOSE frames.  Endpoints MUST treat receipt of Handshake
 //# packets with other frames as a connection error.
-impl<Config: connection::Config> PacketSpace for HandshakeSpace<Config> {
+impl<Config: connection::Config> PacketSpace<Config> for HandshakeSpace<Config> {
     const INVALID_FRAME_ERROR: &'static str = "invalid frame in handshake space";
 
     fn handle_crypto_frame(
         &mut self,
         frame: CryptoRef,
         _datagram: &DatagramInfo,
-        _path: &mut Path,
+        _path: &mut Path<Config::CongestionController>,
     ) -> Result<(), TransportError> {
         self.crypto_stream.on_crypto_frame(frame)?;
 
@@ -235,7 +235,7 @@ impl<Config: connection::Config> PacketSpace for HandshakeSpace<Config> {
         &mut self,
         frame: Ack<A>,
         datagram: &DatagramInfo,
-        path: &mut Path,
+        path: &mut Path<Config::CongestionController>,
         pto_backoff: u32,
     ) -> Result<recovery::LossInfo, TransportError> {
         path.on_peer_validated();

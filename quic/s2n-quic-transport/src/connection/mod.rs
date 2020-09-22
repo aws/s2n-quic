@@ -7,6 +7,7 @@ use s2n_quic_core::{
     endpoint,
     frame::ConnectionClose,
     inet::SocketAddress,
+    recovery::CongestionController,
     stream::StreamError,
     time::Timestamp,
     transport::{
@@ -46,6 +47,8 @@ pub use s2n_quic_core::connection::*;
 /// Stores configuration parameters for a connection which might be shared
 /// between multiple connections of the same type.
 pub trait Config: 'static + Send {
+    /// The congestion controller used for the connection
+    type CongestionController: CongestionController;
     /// The type of the Streams which are managed by the `Connection`
     type Stream: StreamTrait;
     /// Session type
@@ -60,6 +63,11 @@ pub trait Config: 'static + Send {
     /// Returns the limits for this connection that are not defined through
     /// transport parameters
     fn connection_limits(&self) -> Limits;
+    /// Returns a new congestion controller for the path
+    fn new_congestion_controller(
+        &mut self,
+        remote_address: &SocketAddress,
+    ) -> Self::CongestionController;
 }
 
 /// Parameters which are passed to a Connection.

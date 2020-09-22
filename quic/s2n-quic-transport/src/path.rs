@@ -4,7 +4,7 @@ use crate::space::EARLY_ACK_SETTINGS;
 use s2n_quic_core::{
     connection,
     inet::{DatagramInfo, SocketAddress},
-    recovery::RTTEstimator,
+    recovery::{CongestionController, RTTEstimator},
     transport::error::TransportError,
 };
 use smallvec::SmallVec;
@@ -17,16 +17,16 @@ const INLINE_PATH_LEN: usize = 5;
 
 /// The PathManager handles paths for a specific connection.
 /// It will handle path validation operations, and track the active path for a connection.
-pub struct Manager {
+pub struct Manager<CC: CongestionController> {
     /// Path array
-    paths: SmallVec<[Path; INLINE_PATH_LEN]>,
+    paths: SmallVec<[Path<CC>; INLINE_PATH_LEN]>,
 
     /// Index to the active path
     active: usize,
 }
 
-impl Manager {
-    pub fn new(initial_path: Path) -> Self {
+impl<CC: CongestionController> Manager<CC> {
+    pub fn new(initial_path: Path<CC>) -> Self {
         Manager {
             paths: SmallVec::from_elem(initial_path, INLINE_PATH_LEN),
             active: 0,
@@ -34,21 +34,21 @@ impl Manager {
     }
 
     /// Return the active path
-    pub fn active_path(&self) -> (Id, &Path) {
+    pub fn active_path(&self) -> (Id, &Path<CC>) {
         let id = Id(self.active);
         let path = &self.paths[self.active];
         (id, path)
     }
 
     /// Return a mutable reference to the active path
-    pub fn active_path_mut(&mut self) -> (Id, &mut Path) {
+    pub fn active_path_mut(&mut self) -> (Id, &mut Path<CC>) {
         let id = Id(self.active);
         let path = &mut self.paths[self.active];
         (id, path)
     }
 
     /// Returns the Path for the provided address if the PathManager knows about it
-    pub fn path(&self, peer_address: &SocketAddress) -> Option<(Id, &Path)> {
+    pub fn path(&self, peer_address: &SocketAddress) -> Option<(Id, &Path<CC>)> {
         self.paths
             .iter()
             .enumerate()
@@ -57,7 +57,7 @@ impl Manager {
     }
 
     /// Returns the Path for the provided address if the PathManager knows about it
-    pub fn path_mut(&mut self, peer_address: &SocketAddress) -> Option<(Id, &mut Path)> {
+    pub fn path_mut(&mut self, peer_address: &SocketAddress) -> Option<(Id, &mut Path<CC>)> {
         self.paths
             .iter_mut()
             .enumerate()
@@ -66,11 +66,12 @@ impl Manager {
     }
 
     /// Called when a datagram is received on a connection
-    pub fn on_datagram_received(
+    pub fn on_datagram_received<NewCC: FnOnce(&SocketAddress) -> CC>(
         &mut self,
         datagram: &DatagramInfo,
         peer_connection_id: &connection::Id,
         is_handshake_confirmed: bool,
+        new_congestion_controller: NewCC,
     ) -> Result<Id, TransportError> {
         if let Some((id, path)) = self.path_mut(&datagram.remote_address) {
             path.on_bytes_received(datagram.payload_len);
@@ -87,6 +88,7 @@ impl Manager {
                 datagram.remote_address,
                 *peer_connection_id,
                 RTTEstimator::new(EARLY_ACK_SETTINGS.max_ack_delay),
+                new_congestion_controller(&datagram.remote_address),
                 true,
             );
             let id = Id(self.paths.len());
@@ -140,7 +142,7 @@ impl Manager {
     pub fn on_new_token(&self, _peer_address: &SocketAddress, _token: &[u8]) {}
 
     /// Start the validation process for a path
-    pub fn validate_path(&self, _path: Path) {}
+    pub fn validate_path(&self, _path: Path<CC>) {}
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-29#10.4
     //# Tokens are invalidated when their associated connection ID is retired via a
@@ -158,15 +160,15 @@ impl Manager {
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord, Hash)]
 pub struct Id(usize);
 
-impl core::ops::Index<Id> for Manager {
-    type Output = Path;
+impl<CC: CongestionController> core::ops::Index<Id> for Manager<CC> {
+    type Output = Path<CC>;
 
     fn index(&self, id: Id) -> &Self::Output {
         &self.paths[id.0]
     }
 }
 
-impl core::ops::IndexMut<Id> for Manager {
+impl<CC: CongestionController> core::ops::IndexMut<Id> for Manager<CC> {
     fn index_mut(&mut self, id: Id) -> &mut Self::Output {
         &mut self.paths[id.0]
     }
@@ -178,7 +180,7 @@ mod tests {
     use core::time::Duration;
     use s2n_quic_core::{
         inet::{DatagramInfo, ExplicitCongestionNotification},
-        recovery::RTTEstimator,
+        recovery::{testing::MockCC, RTTEstimator},
         time::Timestamp,
     };
     use std::net::SocketAddr;
@@ -190,6 +192,7 @@ mod tests {
             SocketAddress::default(),
             conn_id,
             RTTEstimator::new(Duration::from_millis(30)),
+            MockCC::default(),
             false,
         );
 
@@ -206,6 +209,7 @@ mod tests {
             SocketAddress::default(),
             first_conn_id,
             RTTEstimator::new(Duration::from_millis(30)),
+            MockCC::default(),
             false,
         );
         first_path.challenge = Some([0u8; 8]);
@@ -231,6 +235,7 @@ mod tests {
             SocketAddress::default(),
             first_conn_id,
             RTTEstimator::new(Duration::from_millis(30)),
+            MockCC::default(),
             false,
         );
         let mut manager = Manager::new(first_path);
@@ -248,7 +253,7 @@ mod tests {
         };
 
         manager
-            .on_datagram_received(&datagram, &first_conn_id, true)
+            .on_datagram_received(&datagram, &first_conn_id, true, |_| MockCC::default())
             .unwrap();
         assert_eq!(manager.path(&new_addr).is_some(), true);
 
@@ -263,7 +268,7 @@ mod tests {
 
         assert_eq!(
             manager
-                .on_datagram_received(&datagram, &first_conn_id, false)
+                .on_datagram_received(&datagram, &first_conn_id, false, |_| MockCC::default())
                 .is_err(),
             true
         );
