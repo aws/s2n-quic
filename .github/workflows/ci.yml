@@ -18,7 +18,7 @@ env:
   SCCACHE_IDLE_TIMEOUT: 0
   # Pin the nightly toolchain to prevent breakage.
   # This should be occasionally updated.
-  RUST_NIGHTLY_TOOLCHAIN: nightly-2020-08-25
+  RUST_NIGHTLY_TOOLCHAIN: nightly-2020-11-09
 
 jobs:
   env:
@@ -268,6 +268,8 @@ jobs:
         run: cd ${{ matrix.crate }} && cargo miri test
         env:
           RUSTC_WRAPPER: sccache
+          # needed to read corpus files from filesystem
+          MIRIFLAGS: -Zmiri-disable-isolation
 
       - name: Stop sccache
         run: sccache --stop-server
