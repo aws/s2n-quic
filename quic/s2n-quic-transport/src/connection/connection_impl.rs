@@ -88,9 +88,9 @@ impl<'a> From<ConnectionCloseReason<'a>> for ConnectionState {
     }
 }
 
-pub struct ConnectionImpl<ConfigType: connection::Config> {
+pub struct ConnectionImpl<Config: connection::Config> {
     /// The configuration of this connection
-    config: ConfigType,
+    config: Config,
     /// The [`Connection`]s internal identifier
     internal_connection_id: InternalConnectionId,
     /// The connection ID to send packets from
@@ -109,7 +109,7 @@ pub struct ConnectionImpl<ConfigType: connection::Config> {
     /// The current state of the connection
     state: ConnectionState,
     /// Manage the paths that the connection could use
-    path_manager: path::Manager,
+    path_manager: path::Manager<Config::CongestionController>,
 }
 
 impl<ConfigType: connection::Config> ConnectionImpl<ConfigType> {
@@ -210,12 +210,12 @@ macro_rules! packet_validator {
     };
 }
 
-impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<ConfigType> {
+impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
     /// Static configuration of a connection
-    type Config = ConfigType;
+    type Config = Config;
 
     /// Creates a new `Connection` instance with the given configuration
-    fn new(parameters: ConnectionParameters<Self::Config>) -> Self {
+    fn new(mut parameters: ConnectionParameters<Self::Config>) -> Self {
         // The path manager always starts with a single path containing the known peer and local
         // connection ids.
         let rtt_estimator = RTTEstimator::new(EARLY_ACK_SETTINGS.max_ack_delay);
@@ -225,6 +225,9 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
             parameters.peer_socket_address,
             parameters.peer_connection_id,
             rtt_estimator,
+            parameters
+                .connection_config
+                .new_congestion_controller(&parameters.peer_socket_address),
             peer_validated,
         );
         let path_manager = path::Manager::new(initial_path);
@@ -319,7 +322,6 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
                     context: ConnectionTransmissionContext {
                         quic_version: self.quic_version,
                         timestamp,
-                        local_endpoint_type: Self::Config::ENDPOINT_TYPE,
                         path: active_path,
                         source_connection_id: &self.local_connection_id,
                         ecn,
@@ -456,9 +458,14 @@ impl<ConfigType: connection::Config> connection::Trait for ConnectionImpl<Config
         peer_connection_id: &connection::Id,
     ) -> Result<path::Id, TransportError> {
         let is_handshake_confirmed = shared_state.space_manager.is_handshake_confirmed();
+        let config = &mut self.config;
 
-        self.path_manager
-            .on_datagram_received(datagram, peer_connection_id, is_handshake_confirmed)
+        self.path_manager.on_datagram_received(
+            datagram,
+            peer_connection_id,
+            is_handshake_confirmed,
+            |addr| config.new_congestion_controller(addr),
+        )
     }
 
     /// Is called when a initial packet had been received

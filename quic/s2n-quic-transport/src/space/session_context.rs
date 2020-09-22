@@ -16,24 +16,23 @@ use s2n_quic_core::{
     transport::parameters::ClientTransportParameters,
 };
 
-pub struct SessionContext<'a, ConnectionConfigType: connection::Config> {
+pub struct SessionContext<'a, Config: connection::Config> {
     pub now: Timestamp,
-    pub connection_config: &'a ConnectionConfigType,
-    pub path: &'a Path,
+    pub connection_config: &'a Config,
+    pub path: &'a Path<Config::CongestionController>,
     pub pto_backoff: u32,
-    pub initial: &'a mut Option<Box<InitialSpace<ConnectionConfigType>>>,
-    pub handshake: &'a mut Option<Box<HandshakeSpace<ConnectionConfigType>>>,
-    pub application: &'a mut Option<Box<ApplicationSpace<ConnectionConfigType>>>,
-    pub zero_rtt_crypto:
-        &'a mut Option<Box<<ConnectionConfigType::TLSSession as CryptoSuite>::ZeroRTTCrypto>>,
+    pub initial: &'a mut Option<Box<InitialSpace<Config>>>,
+    pub handshake: &'a mut Option<Box<HandshakeSpace<Config>>>,
+    pub application: &'a mut Option<Box<ApplicationSpace<Config>>>,
+    pub zero_rtt_crypto: &'a mut Option<Box<<Config::TLSSession as CryptoSuite>::ZeroRTTCrypto>>,
 }
 
-impl<'a, ConnectionConfigType: connection::Config> tls::Context<ConnectionConfigType::TLSSession>
-    for SessionContext<'a, ConnectionConfigType>
+impl<'a, Config: connection::Config> tls::Context<Config::TLSSession>
+    for SessionContext<'a, Config>
 {
     fn on_handshake_keys(
         &mut self,
-        keys: <ConnectionConfigType::TLSSession as CryptoSuite>::HandshakeCrypto,
+        keys: <Config::TLSSession as CryptoSuite>::HandshakeCrypto,
     ) -> Result<(), CryptoError> {
         if self.handshake.is_some() {
             return Err(CryptoError::INTERNAL_ERROR
@@ -53,7 +52,7 @@ impl<'a, ConnectionConfigType: connection::Config> tls::Context<ConnectionConfig
 
     fn on_zero_rtt_keys(
         &mut self,
-        keys: <ConnectionConfigType::TLSSession as CryptoSuite>::ZeroRTTCrypto,
+        keys: <Config::TLSSession as CryptoSuite>::ZeroRTTCrypto,
         _application_parameters: tls::ApplicationParameters,
     ) -> Result<(), CryptoError> {
         if self.zero_rtt_crypto.is_some() {
@@ -69,7 +68,7 @@ impl<'a, ConnectionConfigType: connection::Config> tls::Context<ConnectionConfig
 
     fn on_one_rtt_keys(
         &mut self,
-        keys: <ConnectionConfigType::TLSSession as CryptoSuite>::OneRTTCrypto,
+        keys: <Config::TLSSession as CryptoSuite>::OneRTTCrypto,
         application_parameters: tls::ApplicationParameters,
     ) -> Result<(), CryptoError> {
         if self.application.is_some() {
@@ -105,7 +104,7 @@ impl<'a, ConnectionConfigType: connection::Config> tls::Context<ConnectionConfig
 
         let stream_manager = AbstractStreamManager::new(
             &connection_limits,
-            ConnectionConfigType::ENDPOINT_TYPE,
+            Config::ENDPOINT_TYPE,
             local_flow_control_limits,
             peer_flow_control_limits,
         );

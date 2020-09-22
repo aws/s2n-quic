@@ -14,18 +14,19 @@ use s2n_quic_core::{
 };
 
 #[derive(Debug)]
-pub struct ConnectionTransmissionContext<'a> {
+pub struct ConnectionTransmissionContext<'a, Config: connection::Config> {
     pub quic_version: u32,
     pub timestamp: Timestamp,
-    pub local_endpoint_type: EndpointType,
-    pub path: &'a mut Path,
+    pub path: &'a mut Path<Config::CongestionController>,
     pub source_connection_id: &'a connection::Id,
     pub ecn: ExplicitCongestionNotification,
 }
 
-impl<'a> ConnectionContext for ConnectionTransmissionContext<'a> {
+impl<'a, Config: connection::Config> ConnectionContext
+    for ConnectionTransmissionContext<'a, Config>
+{
     fn local_endpoint_type(&self) -> EndpointType {
-        self.local_endpoint_type
+        Config::ENDPOINT_TYPE
     }
 
     fn connection_id(&self) -> &connection::Id {
@@ -33,14 +34,12 @@ impl<'a> ConnectionContext for ConnectionTransmissionContext<'a> {
     }
 }
 
-pub struct ConnectionTransmission<'a, ConnectionConfigType: connection::Config> {
-    pub context: ConnectionTransmissionContext<'a>,
-    pub shared_state: &'a mut SharedConnectionState<ConnectionConfigType>,
+pub struct ConnectionTransmission<'a, Config: connection::Config> {
+    pub context: ConnectionTransmissionContext<'a, Config>,
+    pub shared_state: &'a mut SharedConnectionState<Config>,
 }
 
-impl<'a, ConnectionConfigType: connection::Config> tx::Message
-    for ConnectionTransmission<'a, ConnectionConfigType>
-{
+impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, Config> {
     fn remote_address(&mut self) -> SocketAddress {
         self.context.path.peer_socket_address
     }
@@ -99,7 +98,7 @@ impl<'a, ConnectionConfigType: connection::Config> tx::Message
                     //= https://tools.ietf.org/id/draft-ietf-quic-tls-27.txt#4.10.1
                     //# A client MUST discard Initial keys when it first sends a Handshake packet
 
-                    if ConnectionConfigType::ENDPOINT_TYPE.is_client() {
+                    if Config::ENDPOINT_TYPE.is_client() {
                         space_manager.discard_initial();
                     }
 

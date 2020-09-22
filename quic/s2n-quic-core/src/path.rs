@@ -1,6 +1,11 @@
 //! This module contains the Path implementation
 
-use crate::{connection, frame::path_challenge, inet::SocketAddress, recovery::RTTEstimator};
+use crate::{
+    connection,
+    frame::path_challenge,
+    inet::SocketAddress,
+    recovery::{CongestionController, RTTEstimator},
+};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum State {
@@ -16,13 +21,15 @@ pub enum State {
 const MINIMUM_MTU: u16 = 1200;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Path {
+pub struct Path<CC: CongestionController> {
     /// The peer's socket address
     pub peer_socket_address: SocketAddress,
     /// The connection id of the peer
     pub peer_connection_id: connection::Id,
     /// The path owns the roundtrip between peers
     pub rtt_estimator: RTTEstimator,
+    /// The congestion controller for the path
+    pub congestion_controller: CC,
     /// Tracks whether this path has passed Address or Path validation
     state: State,
     /// Maximum transmission unit of the path
@@ -39,17 +46,19 @@ pub struct Path {
 
 /// A Path holds the local and peer socket addresses, connection ids, and state. It can be
 /// validated or pending validation.
-impl Path {
+impl<CC: CongestionController> Path<CC> {
     pub fn new(
         peer_socket_address: SocketAddress,
         peer_connection_id: connection::Id,
         rtt_estimator: RTTEstimator,
+        congestion_controller: CC,
         peer_validated: bool,
     ) -> Self {
         Path {
             peer_socket_address,
             peer_connection_id,
             rtt_estimator,
+            congestion_controller,
             state: State::Pending {
                 tx_bytes: 0,
                 rx_bytes: 0,
@@ -121,6 +130,7 @@ impl Path {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::recovery::testing::MockCC;
     use core::time::Duration;
 
     #[test]
@@ -129,6 +139,7 @@ mod tests {
             SocketAddress::default(),
             connection::Id::try_from_bytes(&[]).unwrap(),
             RTTEstimator::new(Duration::from_millis(30)),
+            MockCC::default(),
             true,
         );
 
@@ -154,6 +165,7 @@ mod tests {
             SocketAddress::default(),
             connection::Id::try_from_bytes(&[]).unwrap(),
             RTTEstimator::new(Duration::from_millis(30)),
+            MockCC::default(),
             true,
         );
 
@@ -186,6 +198,7 @@ mod tests {
             SocketAddress::default(),
             connection::Id::try_from_bytes(&[]).unwrap(),
             RTTEstimator::new(Duration::from_millis(30)),
+            MockCC::default(),
             false,
         );
 

@@ -82,30 +82,19 @@ macro_rules! packet_space_api {
     };
 }
 
-impl<ConnectionConfigType: connection::Config> PacketSpaceManager<ConnectionConfigType> {
-    packet_space_api!(
-        InitialSpace<ConnectionConfigType>,
-        initial,
-        initial_mut,
-        discard_initial
-    );
+impl<Config: connection::Config> PacketSpaceManager<Config> {
+    packet_space_api!(InitialSpace<Config>, initial, initial_mut, discard_initial);
 
     packet_space_api!(
-        HandshakeSpace<ConnectionConfigType>,
+        HandshakeSpace<Config>,
         handshake,
         handshake_mut,
         discard_handshake
     );
 
-    packet_space_api!(
-        ApplicationSpace<ConnectionConfigType>,
-        application,
-        application_mut
-    );
+    packet_space_api!(ApplicationSpace<Config>, application, application_mut);
 
-    pub fn zero_rtt_crypto(
-        &self,
-    ) -> Option<&<ConnectionConfigType::TLSSession as CryptoSuite>::ZeroRTTCrypto> {
+    pub fn zero_rtt_crypto(&self) -> Option<&<Config::TLSSession as CryptoSuite>::ZeroRTTCrypto> {
         self.zero_rtt_crypto.as_ref().map(Box::as_ref)
     }
 
@@ -114,8 +103,8 @@ impl<ConnectionConfigType: connection::Config> PacketSpaceManager<ConnectionConf
     }
 
     pub fn new(
-        session: ConnectionConfigType::TLSSession,
-        initial: <ConnectionConfigType::TLSSession as CryptoSuite>::InitialCrypto,
+        session: Config::TLSSession,
+        initial: <Config::TLSSession as CryptoSuite>::InitialCrypto,
         now: Timestamp,
     ) -> Self {
         let ack_manager = AckManager::new(
@@ -136,12 +125,12 @@ impl<ConnectionConfigType: connection::Config> PacketSpaceManager<ConnectionConf
 
     pub fn poll_crypto(
         &mut self,
-        connection_config: &ConnectionConfigType,
-        path: &Path,
+        connection_config: &Config,
+        path: &Path<Config::CongestionController>,
         now: Timestamp,
     ) -> Result<(), TransportError> {
         if let Some(session) = self.session.as_mut() {
-            let mut context: SessionContext<ConnectionConfigType> = SessionContext {
+            let mut context: SessionContext<Config> = SessionContext {
                 now,
                 initial: &mut self.initial,
                 handshake: &mut self.handshake,
@@ -221,7 +210,7 @@ impl<ConnectionConfigType: connection::Config> PacketSpaceManager<ConnectionConf
     pub fn on_loss_info(
         &mut self,
         loss_info: &recovery::LossInfo,
-        path: &Path,
+        path: &Path<Config::CongestionController>,
         timestamp: Timestamp,
     ) {
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
@@ -242,7 +231,11 @@ impl<ConnectionConfigType: connection::Config> PacketSpaceManager<ConnectionConf
         self.pto_backoff
     }
 
-    pub fn update_recovery(&mut self, path: &Path, timestamp: Timestamp) {
+    pub fn update_recovery(
+        &mut self,
+        path: &Path<Config::CongestionController>,
+        timestamp: Timestamp,
+    ) {
         let pto_backoff = self.pto_backoff;
         let is_handshake_confirmed = self.is_handshake_confirmed();
 
@@ -272,7 +265,7 @@ macro_rules! default_frame_handler {
             &mut self,
             frame: $frame,
             _datagram: &DatagramInfo,
-            _path: &mut Path,
+            _path: &mut Path<Config::CongestionController>,
         ) -> Result<(), TransportError> {
             Err(TransportError::PROTOCOL_VIOLATION
                 .with_reason(Self::INVALID_FRAME_ERROR)
@@ -281,21 +274,21 @@ macro_rules! default_frame_handler {
     };
 }
 
-pub trait PacketSpace {
+pub trait PacketSpace<Config: connection::Config> {
     const INVALID_FRAME_ERROR: &'static str;
 
     fn handle_crypto_frame(
         &mut self,
         frame: CryptoRef,
         datagram: &DatagramInfo,
-        path: &mut Path,
+        path: &mut Path<Config::CongestionController>,
     ) -> Result<(), TransportError>;
 
     fn handle_ack_frame<A: AckRanges>(
         &mut self,
         frame: Ack<A>,
         datagram: &DatagramInfo,
-        path: &mut Path,
+        path: &mut Path<Config::CongestionController>,
         pto_backoff: u32,
     ) -> Result<recovery::LossInfo, TransportError>;
 
@@ -303,7 +296,7 @@ pub trait PacketSpace {
         &mut self,
         frame: HandshakeDone,
         _datagram: &DatagramInfo,
-        _path: &mut Path,
+        _path: &mut Path<Config::CongestionController>,
         _pto_backoff: u32,
     ) -> Result<(), TransportError> {
         Err(TransportError::PROTOCOL_VIOLATION
@@ -336,7 +329,7 @@ pub trait PacketSpace {
         packet_number: PacketNumber,
         mut payload: DecoderBufferMut<'a>,
         datagram: &DatagramInfo,
-        path: &mut Path,
+        path: &mut Path<Config::CongestionController>,
         pto_backoff: u32,
     ) -> Result<(recovery::LossInfo, Option<frame::ConnectionClose<'a>>), TransportError> {
         let mut loss_info = recovery::LossInfo::default();

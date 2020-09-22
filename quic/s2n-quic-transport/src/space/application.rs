@@ -93,7 +93,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
 
     pub fn on_transmit<'a>(
         &mut self,
-        context: &ConnectionTransmissionContext,
+        context: &ConnectionTransmissionContext<Config>,
         buffer: EncoderBuffer<'a>,
     ) -> Result<EncoderBuffer<'a>, PacketEncodingError<'a>> {
         let packet_number = self.tx_packet_numbers.next();
@@ -126,7 +126,12 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
     }
 
     /// Signals the handshake is done
-    pub fn on_handshake_done(&mut self, path: &Path, pto_backoff: u32, timestamp: Timestamp) {
+    pub fn on_handshake_done(
+        &mut self,
+        path: &Path<Config::CongestionController>,
+        pto_backoff: u32,
+        timestamp: Timestamp,
+    ) {
         if Config::ENDPOINT_TYPE.is_server() {
             self.handshake_status.on_handshake_done();
         }
@@ -152,7 +157,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
 
     pub fn update_recovery(
         &mut self,
-        path: &Path,
+        path: &Path<Config::CongestionController>,
         pto_backoff: u32,
         timestamp: Timestamp,
         is_handshake_confirmed: bool,
@@ -177,11 +182,11 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
 
     fn transmission<'a>(
         &'a mut self,
-        context: &'a ConnectionTransmissionContext,
+        context: &'a ConnectionTransmissionContext<Config>,
         packet_number: PacketNumber,
     ) -> (
         &'a <Config::TLSSession as CryptoSuite>::OneRTTCrypto,
-        ApplicationTransmission<'a, Config::Stream>,
+        ApplicationTransmission<'a, Config>,
     ) {
         // TODO: What about ZeroRTTCrypto?
         (
@@ -255,14 +260,14 @@ impl<'a, Config: connection::Config> recovery::Context for RecoveryContext<'a, C
     }
 }
 
-impl<Config: connection::Config> PacketSpace for ApplicationSpace<Config> {
+impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config> {
     const INVALID_FRAME_ERROR: &'static str = "invalid frame in application space";
 
     fn handle_crypto_frame(
         &mut self,
         frame: CryptoRef,
         _datagram: &DatagramInfo,
-        _path: &mut Path,
+        _path: &mut Path<Config::CongestionController>,
     ) -> Result<(), TransportError> {
         Err(TransportError::INTERNAL_ERROR
             .with_reason("crypto frames are not currently supported in application space")
@@ -273,7 +278,7 @@ impl<Config: connection::Config> PacketSpace for ApplicationSpace<Config> {
         &mut self,
         frame: Ack<A>,
         datagram: &DatagramInfo,
-        path: &mut Path,
+        path: &mut Path<Config::CongestionController>,
         pto_backoff: u32,
     ) -> Result<recovery::LossInfo, TransportError> {
         path.on_peer_validated();
@@ -285,7 +290,7 @@ impl<Config: connection::Config> PacketSpace for ApplicationSpace<Config> {
         &mut self,
         frame: StreamRef,
         _datagram: &DatagramInfo,
-        _path: &mut Path,
+        _path: &mut Path<Config::CongestionController>,
     ) -> Result<(), TransportError> {
         self.stream_manager.on_data(&frame)
     }
@@ -294,7 +299,7 @@ impl<Config: connection::Config> PacketSpace for ApplicationSpace<Config> {
         &mut self,
         frame: DataBlocked,
         _datagram: &DatagramInfo,
-        _path: &mut Path,
+        _path: &mut Path<Config::CongestionController>,
     ) -> Result<(), TransportError> {
         self.stream_manager.on_data_blocked(frame)
     }
@@ -303,7 +308,7 @@ impl<Config: connection::Config> PacketSpace for ApplicationSpace<Config> {
         &mut self,
         frame: MaxData,
         _datagram: &DatagramInfo,
-        _path: &mut Path,
+        _path: &mut Path<Config::CongestionController>,
     ) -> Result<(), TransportError> {
         self.stream_manager.on_max_data(frame)
     }
@@ -312,7 +317,7 @@ impl<Config: connection::Config> PacketSpace for ApplicationSpace<Config> {
         &mut self,
         frame: MaxStreamData,
         _datagram: &DatagramInfo,
-        _path: &mut Path,
+        _path: &mut Path<Config::CongestionController>,
     ) -> Result<(), TransportError> {
         self.stream_manager.on_max_stream_data(&frame)
     }
@@ -321,7 +326,7 @@ impl<Config: connection::Config> PacketSpace for ApplicationSpace<Config> {
         &mut self,
         frame: MaxStreams,
         _datagram: &DatagramInfo,
-        _path: &mut Path,
+        _path: &mut Path<Config::CongestionController>,
     ) -> Result<(), TransportError> {
         self.stream_manager.on_max_streams(&frame)
     }
@@ -330,7 +335,7 @@ impl<Config: connection::Config> PacketSpace for ApplicationSpace<Config> {
         &mut self,
         frame: ResetStream,
         _datagram: &DatagramInfo,
-        _path: &mut Path,
+        _path: &mut Path<Config::CongestionController>,
     ) -> Result<(), TransportError> {
         self.stream_manager.on_reset_stream(&frame)
     }
@@ -339,7 +344,7 @@ impl<Config: connection::Config> PacketSpace for ApplicationSpace<Config> {
         &mut self,
         frame: StopSending,
         _datagram: &DatagramInfo,
-        _path: &mut Path,
+        _path: &mut Path<Config::CongestionController>,
     ) -> Result<(), TransportError> {
         self.stream_manager.on_stop_sending(&frame)
     }
@@ -348,7 +353,7 @@ impl<Config: connection::Config> PacketSpace for ApplicationSpace<Config> {
         &mut self,
         frame: StreamDataBlocked,
         _datagram: &DatagramInfo,
-        _path: &mut Path,
+        _path: &mut Path<Config::CongestionController>,
     ) -> Result<(), TransportError> {
         self.stream_manager.on_stream_data_blocked(&frame)
     }
@@ -357,7 +362,7 @@ impl<Config: connection::Config> PacketSpace for ApplicationSpace<Config> {
         &mut self,
         frame: StreamsBlocked,
         _datagram: &DatagramInfo,
-        _path: &mut Path,
+        _path: &mut Path<Config::CongestionController>,
     ) -> Result<(), TransportError> {
         self.stream_manager.on_streams_blocked(&frame)
     }
@@ -366,7 +371,7 @@ impl<Config: connection::Config> PacketSpace for ApplicationSpace<Config> {
         &mut self,
         frame: NewToken,
         _datagram: &DatagramInfo,
-        _path: &mut Path,
+        _path: &mut Path<Config::CongestionController>,
     ) -> Result<(), TransportError> {
         // TODO
         eprintln!("UNIMPLEMENTED APPLICATION FRAME {:?}", frame);
@@ -377,7 +382,7 @@ impl<Config: connection::Config> PacketSpace for ApplicationSpace<Config> {
         &mut self,
         frame: NewConnectionID,
         _datagram: &DatagramInfo,
-        _path: &mut Path,
+        _path: &mut Path<Config::CongestionController>,
     ) -> Result<(), TransportError> {
         // TODO
         eprintln!("UNIMPLEMENTED APPLICATION FRAME {:?}", frame);
@@ -388,7 +393,7 @@ impl<Config: connection::Config> PacketSpace for ApplicationSpace<Config> {
         &mut self,
         frame: RetireConnectionID,
         _datagram: &DatagramInfo,
-        _path: &mut Path,
+        _path: &mut Path<Config::CongestionController>,
     ) -> Result<(), TransportError> {
         // TODO
         eprintln!("UNIMPLEMENTED APPLICATION FRAME {:?}", frame);
@@ -399,7 +404,7 @@ impl<Config: connection::Config> PacketSpace for ApplicationSpace<Config> {
         &mut self,
         frame: PathChallenge,
         _datagram: &DatagramInfo,
-        _path: &mut Path,
+        _path: &mut Path<Config::CongestionController>,
     ) -> Result<(), TransportError> {
         // TODO
         eprintln!("UNIMPLEMENTED APPLICATION FRAME {:?}", frame);
@@ -410,7 +415,7 @@ impl<Config: connection::Config> PacketSpace for ApplicationSpace<Config> {
         &mut self,
         frame: PathResponse,
         _datagram: &DatagramInfo,
-        _path: &mut Path,
+        _path: &mut Path<Config::CongestionController>,
     ) -> Result<(), TransportError> {
         // TODO map this frame to a Path
         eprintln!("UNIMPLEMENTED APPLICATION FRAME {:?}", frame);
@@ -421,7 +426,7 @@ impl<Config: connection::Config> PacketSpace for ApplicationSpace<Config> {
         &mut self,
         frame: HandshakeDone,
         datagram: &DatagramInfo,
-        path: &mut Path,
+        path: &mut Path<Config::CongestionController>,
         pto_backoff: u32,
     ) -> Result<(), TransportError> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#19.20

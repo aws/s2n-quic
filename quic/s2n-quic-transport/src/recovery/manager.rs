@@ -12,7 +12,7 @@ use s2n_quic_core::{
     inet::DatagramInfo,
     packet::number::{PacketNumber, PacketNumberRange, PacketNumberSpace},
     path::Path,
-    recovery::RTTEstimator,
+    recovery::{CongestionController, RTTEstimator},
     time::Timestamp,
     transport::error::TransportError,
 };
@@ -206,9 +206,9 @@ impl Manager {
     }
 
     /// Updates the time threshold used by the loss timer and sets the PTO timer
-    pub fn update(
+    pub fn update<CC: CongestionController>(
         &mut self,
-        path: &Path,
+        path: &Path<CC>,
         pto_backoff: u32,
         now: Timestamp,
         is_handshake_confirmed: bool,
@@ -263,11 +263,11 @@ impl Manager {
         self.bytes_in_flight
     }
 
-    pub fn on_ack_frame<A: frame::ack::AckRanges, Ctx: Context>(
+    pub fn on_ack_frame<A: frame::ack::AckRanges, CC: CongestionController, Ctx: Context>(
         &mut self,
         datagram: &DatagramInfo,
         frame: frame::Ack<A>,
-        path: &mut Path,
+        path: &mut Path<CC>,
         backoff: u32,
         context: &mut Ctx,
     ) -> Result<LossInfo, TransportError> {
@@ -601,7 +601,12 @@ impl Pto {
     //# packet is sent or acknowledged, when the handshake is confirmed
     //# (Section 4.1.2 of [QUIC-TLS]), or when Initial or Handshake keys are
     //# discarded (Section 9 of [QUIC-TLS]).
-    pub fn update(&mut self, path: &Path, backoff: u32, base_timestamp: Timestamp) {
+    pub fn update<CC: CongestionController>(
+        &mut self,
+        path: &Path<CC>,
+        backoff: u32,
+        base_timestamp: Timestamp,
+    ) {
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
         //# When an ack-eliciting packet is transmitted, the sender schedules a
         //# timer for the PTO period as follows:
@@ -667,7 +672,9 @@ mod test {
         space::rx_packet_numbers::ack_ranges::AckRanges,
     };
     use core::{ops::RangeInclusive, time::Duration};
-    use s2n_quic_core::{connection, packet::number::PacketNumberSpace, varint::VarInt};
+    use s2n_quic_core::{
+        connection, packet::number::PacketNumberSpace, recovery::testing::MockCC, varint::VarInt,
+    };
     use std::collections::HashSet;
 
     #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#A.5")]
@@ -741,6 +748,7 @@ mod test {
             Default::default(),
             connection::Id::EMPTY,
             rtt_estimator,
+            MockCC::default(),
             true,
         );
 
@@ -791,6 +799,7 @@ mod test {
             Default::default(),
             connection::Id::EMPTY,
             rtt_estimator,
+            MockCC::default(),
             false,
         );
         let ack_receive_time = ack_receive_time + Duration::from_millis(500);
@@ -897,6 +906,7 @@ mod test {
             Default::default(),
             connection::Id::EMPTY,
             rtt_estimator,
+            MockCC::default(),
             false,
         );
 
@@ -934,6 +944,7 @@ mod test {
             Default::default(),
             connection::Id::EMPTY,
             rtt_estimator,
+            MockCC::default(),
             false,
         );
         path.on_validated();
@@ -1117,10 +1128,10 @@ mod test {
     }
 
     // Helper function that will call on_ack_frame with the given packet numbers
-    fn ack_packets(
+    fn ack_packets<CC: CongestionController>(
         range: RangeInclusive<u8>,
         ack_receive_time: Timestamp,
-        path: &mut Path,
+        path: &mut Path<CC>,
         manager: &mut Manager,
     ) -> (Result<LossInfo, TransportError>, MockContext) {
         // Ack packets 1 to 3

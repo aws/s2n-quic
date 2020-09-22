@@ -70,7 +70,7 @@ impl<Config: connection::Config> InitialSpace<Config> {
 
     pub fn on_transmit<'a>(
         &mut self,
-        context: &ConnectionTransmissionContext,
+        context: &ConnectionTransmissionContext<Config>,
         buffer: EncoderBuffer<'a>,
     ) -> Result<EncoderBuffer<'a>, PacketEncodingError<'a>> {
         let token = &[][..]; // TODO
@@ -110,7 +110,7 @@ impl<Config: connection::Config> InitialSpace<Config> {
 
     pub fn update_recovery(
         &mut self,
-        path: &Path,
+        path: &Path<Config::CongestionController>,
         pto_backoff: u32,
         timestamp: Timestamp,
         is_handshake_confirmed: bool,
@@ -135,11 +135,11 @@ impl<Config: connection::Config> InitialSpace<Config> {
 
     fn transmission<'a>(
         &'a mut self,
-        context: &'a ConnectionTransmissionContext,
+        context: &'a ConnectionTransmissionContext<Config>,
         packet_number: PacketNumber,
     ) -> (
         &'a <Config::TLSSession as CryptoSuite>::InitialCrypto,
-        EarlyTransmission<'a>,
+        EarlyTransmission<'a, Config>,
     ) {
         (
             &self.crypto,
@@ -221,14 +221,14 @@ impl<'a, Config: connection::Config> recovery::Context for RecoveryContext<'a, C
 //# endpoint that receives an Initial packet containing other frames can
 //# either discard the packet as spurious or treat it as a connection
 //# error.
-impl<Config: connection::Config> PacketSpace for InitialSpace<Config> {
+impl<Config: connection::Config> PacketSpace<Config> for InitialSpace<Config> {
     const INVALID_FRAME_ERROR: &'static str = "invalid frame in initial space";
 
     fn handle_crypto_frame(
         &mut self,
         frame: CryptoRef,
         _datagram: &DatagramInfo,
-        _path: &mut Path,
+        _path: &mut Path<Config::CongestionController>,
     ) -> Result<(), TransportError> {
         self.crypto_stream.on_crypto_frame(frame)?;
 
@@ -239,7 +239,7 @@ impl<Config: connection::Config> PacketSpace for InitialSpace<Config> {
         &mut self,
         frame: Ack<A>,
         datagram: &DatagramInfo,
-        path: &mut Path,
+        path: &mut Path<Config::CongestionController>,
         pto_backoff: u32,
     ) -> Result<recovery::LossInfo, TransportError> {
         let (recovery_manager, mut context) = self.recovery();

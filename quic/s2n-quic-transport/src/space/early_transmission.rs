@@ -1,5 +1,5 @@
 use crate::{
-    connection::ConnectionTransmissionContext,
+    connection::{self, ConnectionTransmissionContext},
     contexts::WriteContext,
     frame_exchange_interests::{FrameExchangeInterestProvider, FrameExchangeInterests},
     recovery,
@@ -16,16 +16,16 @@ use s2n_quic_core::{
     time::Timestamp,
 };
 
-pub struct EarlyTransmission<'a> {
+pub struct EarlyTransmission<'a, Config: connection::Config> {
     pub ack_manager: &'a mut AckManager,
-    pub context: &'a ConnectionTransmissionContext<'a>,
+    pub context: &'a ConnectionTransmissionContext<'a, Config>,
     pub crypto_stream: &'a mut CryptoStream,
     pub packet_number: PacketNumber,
     pub recovery_manager: &'a mut recovery::Manager,
     pub tx_packet_numbers: &'a mut TxPacketNumbers,
 }
 
-impl<'a> PacketPayloadEncoder for EarlyTransmission<'a> {
+impl<'a, Config: connection::Config> PacketPayloadEncoder for EarlyTransmission<'a, Config> {
     fn encoding_size_hint<E: Encoder>(&mut self, _encoder: &E, minimum_len: usize) -> usize {
         // TODO return the minimum length required to encode a crypto frame + a certain amount of data
         if self.frame_exchange_interests().transmission {
@@ -81,16 +81,16 @@ impl<'a> PacketPayloadEncoder for EarlyTransmission<'a> {
     }
 }
 
-pub struct EarlyTransmissionContext<'a, 'b> {
+pub struct EarlyTransmissionContext<'a, 'b, Config: connection::Config> {
     ack_elicitation: AckElicitation,
     buffer: &'a mut EncoderBuffer<'b>,
-    context: &'a ConnectionTransmissionContext<'a>,
+    context: &'a ConnectionTransmissionContext<'a, Config>,
     packet_number: PacketNumber,
     is_congestion_controlled: bool,
 }
 
-impl<'a, 'b> WriteContext for EarlyTransmissionContext<'a, 'b> {
-    type ConnectionContext = ConnectionTransmissionContext<'a>;
+impl<'a, 'b, Config: connection::Config> WriteContext for EarlyTransmissionContext<'a, 'b, Config> {
+    type ConnectionContext = ConnectionTransmissionContext<'a, Config>;
 
     fn current_time(&self) -> Timestamp {
         self.context.timestamp
@@ -131,7 +131,9 @@ impl<'a, 'b> WriteContext for EarlyTransmissionContext<'a, 'b> {
     }
 }
 
-impl<'a> FrameExchangeInterestProvider for EarlyTransmission<'a> {
+impl<'a, Config: connection::Config> FrameExchangeInterestProvider
+    for EarlyTransmission<'a, Config>
+{
     fn frame_exchange_interests(&self) -> FrameExchangeInterests {
         FrameExchangeInterests::default()
             + self.ack_manager.frame_exchange_interests()
