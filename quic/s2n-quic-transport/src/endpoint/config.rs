@@ -38,6 +38,6 @@ pub struct Context<'a, Cfg: Config> {
     /// The connection id format associated with the endpoint config
     pub connection_id_format: &'a mut Cfg::ConnectionIdFormat,
 
-    /// Ths TLS endpoint associated with the endpoint config
+    /// The TLS endpoint associated with the endpoint config
     pub tls: &'a mut Cfg::TLSEndpoint,
 }
