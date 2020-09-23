@@ -29,7 +29,7 @@ pub struct Provider {
     new_tokens: bool,
     new_token_validate_port: bool,
     retry_tokens: bool,
-    // key_updater: Box<dyn KeyUpdater>,
+    //key_updater: Box<dyn KeyUpdater>,
 }
 
 pub trait KeyUpdater: 'static + Send {
@@ -46,6 +46,7 @@ impl super::Provider for Provider {
             new_tokens: self.new_tokens,
             new_token_validate_port: self.new_token_validate_port,
             retry_tokens: self.retry_tokens,
+            //key_updater: self.key_updater,
         })
     }
 }
@@ -60,6 +61,8 @@ pub struct Format {
 
     /// Support tokens from Retry Requests
     retry_tokens: bool,
+    // Key updater
+    // key_updater: Box<dyn KeyUpdater>,
 }
 
 impl Format {
@@ -184,36 +187,74 @@ impl super::FormatTrait for Format {
     }
 }
 
+// Number of primary keys they KeyStore can hold.
+// If the caller wants to rotate every six hours, 4 keys will allow a day of keys without having to
+// contact a remote server.
 #[allow(dead_code)]
 const KEY_SPACE: usize = 4;
 
+// Number of derived keys from each primary key.
+// If the caller rotates keys every 6 hours, 360 time windows allows keys to rotate every minute.
 #[allow(dead_code)]
-const TIME_WINDOW_SPACE: usize = 16;
+const TIME_WINDOW_SPACE: usize = 360;
 
-// The KeyStore distributes derived keys to callers. The callers are responsible for verifying the
-// validity of those keys.
-#[allow(dead_code)]
+// The KeyStore allows setting primary keys into KEY_SPACE slots. When a key is set in a slot,
+// TIME_WINDOW_SPACE keys will be derived from the primary key. This allows the key store to be
+// synchronized with remote hosts while having very short lived keys.
+#[derive(Debug)]
 struct KeyStore {
-    // current_key_id: u8,
-    current_time_window_id: u8,
-    // keys: [Key; KEY_SPACE],
-    key: Key,
+    current_key_id: u16,
+    current_time_window_id: u16,
+    keys: [Key; KEY_SPACE],
     derived_keys: [DerivedKey; TIME_WINDOW_SPACE],
 }
 
+impl Default for KeyStore {
+    fn default() -> Self {
+        Self {
+            current_key_id: 0,
+            current_time_window_id: 0,
+            keys: [Key::default(); KEY_SPACE],
+            derived_keys: [DerivedKey::default(); TIME_WINDOW_SPACE],
+        }
+    }
+}
+
 impl KeyStore {
-    /// Generate the primary key used to derive time window keys
-    fn generate_key(&mut self) {
+    fn generate_key(&self) -> Key {
+        // NOTE: This shouldn't be here. This should call the key updater. The key updater will
+        // either call a customer callback to get a key, or generate a key. This is just to assist
+        // with testing during development.
+        Key::generate(Duration::from_millis(5000), Duration::from_millis(5000))
+    }
+
+    fn derive_keys(&mut self, _key: &Key, _key_id: u16) {
         todo!();
     }
 
-    /// Returns derived key for a time window
-    fn key(&self, time_window_id: u8) -> &DerivedKey {
-        &self.derived_keys[time_window_id as usize]
+    /// Returns the key to be used for signing
+    fn active_key(&mut self) -> &DerivedKey {
+        let primary_key = &self.keys[self.current_key_id as usize];
+
+        // If the primary key is invalid, we have to derive all the keys for the time windows
+        if !primary_key.is_valid() {
+            let key = self.generate_key();
+            self.keys[self.current_key_id as usize] = key;
+            self.derive_keys(&key, self.current_key_id);
+        }
+
+        let key_index = (self.current_key_id * self.current_time_window_id) as usize;
+        &self.derived_keys[key_index]
     }
 
-    /// Derives a new set of keys given a Key and key id
-    fn set_key(&mut self, _derived_key: &DerivedKey, _key_id: u8, _time_window_id: u8) {
+    /// Returns derived key for a time window
+    fn key(&self, key_id: u8, time_window_id: u8) -> &DerivedKey {
+        &self.derived_keys[(key_id * time_window_id) as usize]
+    }
+
+    /// Sets a primary key in a given slot, and derives a new set of keys for each time window
+    fn set_key(&mut self, _key: &Key, _key_id: u8) {
+        // Derive a key for each time window
         todo!();
     }
 }
@@ -341,7 +382,7 @@ use std::time::SystemTime;
 
 pub type Secret = [u8; 32];
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 struct Key {
     /// The epoch from which time windows are derived
     epoch: SystemTime,
@@ -355,34 +396,68 @@ struct Key {
     secret: Secret,
 }
 
-impl Key {
-    /// Generate a new key
-    fn generate(valid_duration: Duration) -> Self {
-        let rng = SystemRandom::new();
-        let secret = ring::rand::generate(&rng).unwrap().expose();
+impl Default for Key {
+    fn default() -> Self {
         let now = SystemTime::now();
+        let secret: Secret = [0; 32];
 
-        Key {
+        Self {
             epoch: now,
             start_time: now,
             active_duration: Duration::from_millis(0),
-            valid_duration,
+            valid_duration: Duration::from_millis(0),
             secret,
         }
     }
 }
 
+impl Key {
+    /// Generate a new key with active and valid durations.
+    /// NOTE: These durations must correlate with the KeyStore KEY_SPACE or there could be a period
+    /// where the key is not valid, but the next key has not been rotated in.
+    fn generate(active_duration: Duration, valid_duration: Duration) -> Self {
+        let rng = SystemRandom::new();
+        let now = SystemTime::now();
+        let secret = ring::rand::generate(&rng).unwrap().expose();
+
+        Self {
+            epoch: now,
+            start_time: now,
+            active_duration,
+            valid_duration,
+            secret,
+        }
+    }
+
+    fn is_valid(&self) -> bool {
+        self.start_time + self.valid_duration > SystemTime::now()
+    }
+}
+
+/*
 struct DerivedKeyHeader {
     version: u8,
     key_id: u8,
     time_window_id: u8,
 }
+*/
 
+#[derive(Copy, Clone, Debug)]
 struct DerivedKey {
-    header: DerivedKeyHeader,
+    //header: DerivedKeyHeader,
     key: Secret,
     start_time: SystemTime,
     active_duration: Duration,
+}
+
+impl Default for DerivedKey {
+    fn default() -> Self {
+        Self {
+            key: [0; 32],
+            start_time: SystemTime::now(),
+            active_duration: Duration::from_millis(0),
+        }
+    }
 }
 
 impl DerivedKey {
@@ -397,6 +472,10 @@ impl DerivedKey {
 
     fn verify(&self, signature: &[u8], data: &[u8]) -> bool {
         todo!();
+    }
+
+    fn is_valid(&self) -> bool {
+        self.start_time + self.active_duration < SystemTime::now()
     }
 }
 
@@ -426,22 +505,33 @@ mod tests {
     }
 
     #[test]
+    fn test_key_store_default_keys_invalid() {
+        let mut store = KeyStore::default();
+
+        // Active key should generate keys in the default store
+        let key = store.active_key();
+        assert_eq!(key.is_valid(), true);
+    }
+
+    #[test]
     fn test_token_sign() {
         let conn_id = &connection::Id::try_from_bytes(&[]).unwrap();
         let address = &SocketAddress::default();
         let mut token_buf = [0u8; 128];
-        let format = Format::default();
-        let token = format.generate_retry_token(address, conn_id, conn_id, &mut token_buf);
-        let key = ring::hmac::Key::generate(ring::hmac::HMAC_SHA256, &SystemRandom::new()).unwrap();
+        let mut format = Format::default();
+        let _token = &mut format.generate_retry_token(address, conn_id, conn_id, &mut token_buf);
+        let _key =
+            ring::hmac::Key::generate(ring::hmac::HMAC_SHA256, &SystemRandom::new()).unwrap();
 
+        /*
+        let secret = ring::rand::generate(&rng).unwrap().expose();
         let derived_key = DerivedKey {
-            header: Header(0),
-            key,
-            is_valid: true,
+            key: key.expose().unwrap(),
         };
 
         println!("{:?}", token);
         format.sign_token(&mut token_buf, key);
         println!("{:?}", token);
+        */
     }
 }
