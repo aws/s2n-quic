@@ -8,6 +8,7 @@ use crate::{
     },
     contexts::ConnectionOnTransmitError,
     path,
+    recovery::congestion_controller,
 };
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
@@ -161,11 +162,16 @@ pub trait ConnectionTrait: Sized {
     );
 
     /// Notifies a connection it has received a datagram from a peer
-    fn on_datagram_received(
+    fn on_datagram_received<
+        CC: congestion_controller::Endpoint<
+            CongestionController = <Self::Config as connection::Config>::CongestionController,
+        >,
+    >(
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         peer_connection_id: &connection::Id,
+        congestion_controller_endpoint: &mut CC,
     ) -> Result<path::Id, TransportError>;
 
     /// Returns the Connections interests
@@ -199,40 +205,6 @@ pub trait ConnectionTrait: Sized {
                 self.handle_retry_packet(shared_state, datagram, path_id, packet)
             }
         }
-    }
-
-    fn handle_first_and_remaining_packets<Validator: connection::id::Validator>(
-        &mut self,
-        shared_state: &mut SharedConnectionState<Self::Config>,
-        datagram: &DatagramInfo,
-        first_packet: ProtectedPacket,
-        original_connection_id: connection::Id,
-        connection_id_validator: &Validator,
-        payload: DecoderBufferMut,
-    ) -> Result<(), ()> {
-        // The path `Id` needs to be passed around instead of the path to get around `&mut self` and
-        // `&mut self.path_manager` being borrowed at the same time
-        let path_id = self
-            .on_datagram_received(shared_state, datagram, &original_connection_id)
-            .map_err(|_| ())?;
-
-        if let Err(err) = self.handle_packet(shared_state, datagram, path_id, first_packet) {
-            self.handle_transport_error(shared_state, datagram, err);
-            return Err(());
-        }
-
-        if let Err(err) = self.handle_remaining_packets(
-            shared_state,
-            datagram,
-            path_id,
-            original_connection_id,
-            connection_id_validator,
-            payload,
-        ) {
-            self.handle_transport_error(shared_state, datagram, err);
-            return Err(());
-        }
-        Ok(())
     }
 
     /// This is called to handle the remaining and yet undecoded packets inside

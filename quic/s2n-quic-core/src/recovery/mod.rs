@@ -1,5 +1,5 @@
-mod congestion_controller;
+pub mod congestion_controller;
 mod rtt_estimator;
 
-pub use congestion_controller::*;
+pub use congestion_controller::CongestionController;
 pub use rtt_estimator::*;

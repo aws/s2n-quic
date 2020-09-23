@@ -130,7 +130,7 @@ impl<CC: CongestionController> Path<CC> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::recovery::testing::MockCC;
+    use crate::recovery::congestion_controller::testing::MockCC;
     use core::time::Duration;
 
     #[test]

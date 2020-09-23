@@ -1,6 +1,7 @@
 use crate::{
     connection::{self, id::Generator as _, SynchronizedSharedConnectionState, Trait as _},
     endpoint,
+    recovery::congestion_controller::{self, Endpoint as _},
     space::PacketSpaceManager,
 };
 use alloc::sync::Arc;
@@ -65,9 +66,12 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         // TODO handle token with stateless retry
 
         let internal_connection_id = self.connection_id_generator.generate_id();
+
+        let endpoint_context = self.config.context();
+
         // TODO store the expiration of the connection ID
         let (local_connection_id, _connection_id_expiration) =
-            self.config.connection_id_format().generate();
+            endpoint_context.connection_id_format.generate();
 
         let mut connection_id_mapper_registration = self
             .connection_id_mapper
@@ -107,10 +111,14 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
 
         // TODO send retry_source_connection_id
 
-        let tls_session = self
-            .config
-            .tls_endpoint()
+        let tls_session = endpoint_context
+            .tls
             .new_server_session(&transport_parameters);
+
+        let path_info = congestion_controller::PathInfo::new(&datagram.remote_address);
+        let congestion_controller = endpoint_context
+            .congestion_controller
+            .new_congestion_controller(path_info);
 
         let connection_config = self.config.create_connection_config();
 
@@ -122,6 +130,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             peer_connection_id: source_connection_id,
             local_connection_id,
             peer_socket_address: datagram.remote_address,
+            congestion_controller,
             timestamp: datagram.timestamp,
             quic_version: packet.version,
         };
@@ -141,10 +150,13 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         {
             let locked_shared_state = &mut *shared_state.lock();
 
+            let endpoint_context = self.config.context();
+
             let path_id = connection.on_datagram_received(
                 locked_shared_state,
                 datagram,
                 &source_connection_id,
+                endpoint_context.congestion_controller,
             )?;
 
             connection.handle_cleartext_initial_packet(
@@ -159,7 +171,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                 datagram,
                 path_id,
                 destination_connection_id,
-                self.config.connection_id_format(),
+                endpoint_context.connection_id_format,
                 remaining,
             )?;
         }

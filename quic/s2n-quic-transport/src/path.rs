@@ -66,7 +66,7 @@ impl<CC: CongestionController> Manager<CC> {
     }
 
     /// Called when a datagram is received on a connection
-    pub fn on_datagram_received<NewCC: FnOnce(&SocketAddress) -> CC>(
+    pub fn on_datagram_received<NewCC: FnOnce() -> CC>(
         &mut self,
         datagram: &DatagramInfo,
         peer_connection_id: &connection::Id,
@@ -88,7 +88,7 @@ impl<CC: CongestionController> Manager<CC> {
                 datagram.remote_address,
                 *peer_connection_id,
                 RTTEstimator::new(EARLY_ACK_SETTINGS.max_ack_delay),
-                new_congestion_controller(&datagram.remote_address),
+                new_congestion_controller(),
                 true,
             );
             let id = Id(self.paths.len());
@@ -180,7 +180,7 @@ mod tests {
     use core::time::Duration;
     use s2n_quic_core::{
         inet::{DatagramInfo, ExplicitCongestionNotification},
-        recovery::{testing::MockCC, RTTEstimator},
+        recovery::{congestion_controller::testing::MockCC, RTTEstimator},
         time::Timestamp,
     };
     use std::net::SocketAddr;
@@ -253,7 +253,7 @@ mod tests {
         };
 
         manager
-            .on_datagram_received(&datagram, &first_conn_id, true, |_| MockCC::default())
+            .on_datagram_received(&datagram, &first_conn_id, true, MockCC::default)
             .unwrap();
         assert_eq!(manager.path(&new_addr).is_some(), true);
 
@@ -268,7 +268,7 @@ mod tests {
 
         assert_eq!(
             manager
-                .on_datagram_received(&datagram, &first_conn_id, false, |_| MockCC::default())
+                .on_datagram_received(&datagram, &first_conn_id, false, MockCC::default)
                 .is_err(),
             true
         );

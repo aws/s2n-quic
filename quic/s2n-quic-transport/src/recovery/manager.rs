@@ -673,7 +673,8 @@ mod test {
     };
     use core::{ops::RangeInclusive, time::Duration};
     use s2n_quic_core::{
-        connection, packet::number::PacketNumberSpace, recovery::testing::MockCC, varint::VarInt,
+        connection, packet::number::PacketNumberSpace,
+        recovery::congestion_controller::testing::MockCC, varint::VarInt,
     };
     use std::collections::HashSet;
 

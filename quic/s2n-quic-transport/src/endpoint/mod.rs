@@ -11,7 +11,7 @@ use crate::{
     wakeup_queue::WakeupQueue,
 };
 use alloc::collections::VecDeque;
-use core::task::{Context, Poll};
+use core::task::{self, Poll};
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     inet::DatagramInfo,
@@ -23,7 +23,7 @@ use s2n_quic_core::{
 mod config;
 mod initial;
 
-pub use config::Config;
+pub use config::{Config, Context};
 /// re-export core
 pub use s2n_quic_core::endpoint::*;
 
@@ -97,12 +97,12 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
     /// Ingests a single datagram
     fn receive_datagram(&mut self, datagram: &DatagramInfo, payload: &mut [u8]) {
-        let connection_id_format = self.config.connection_id_format();
+        let endpoint_context = self.config.context();
 
         // Try to decode the first packet in the datagram
         let buffer = DecoderBufferMut::new(payload);
         let (packet, remaining) = if let Ok((packet, remaining)) =
-            ProtectedPacket::decode(buffer, connection_id_format)
+            ProtectedPacket::decode(buffer, endpoint_context.connection_id_format)
         {
             (packet, remaining)
         } else {
@@ -126,16 +126,35 @@ impl<Cfg: Config> Endpoint<Cfg> {
             let is_ok = self
                 .connections
                 .with_connection(internal_id, |conn, shared_state| {
-                    if let Err(e) = conn.handle_first_and_remaining_packets(
+                    // The path `Id` needs to be passed around instead of the path to get around `&mut self` and
+                    // `&mut self.path_manager` being borrowed at the same time
+                    let path_id = conn
+                        .on_datagram_received(
+                            shared_state,
+                            datagram,
+                            &connection_id,
+                            endpoint_context.congestion_controller,
+                        )
+                        .map_err(|_| ())?;
+
+                    if let Err(err) = conn.handle_packet(shared_state, datagram, path_id, packet) {
+                        conn.handle_transport_error(shared_state, datagram, err);
+                        return Err(());
+                    }
+
+                    if let Err(err) = conn.handle_remaining_packets(
                         shared_state,
                         datagram,
-                        packet,
+                        path_id,
                         connection_id,
-                        connection_id_format,
+                        endpoint_context.connection_id_format,
                         remaining,
                     ) {
-                        eprintln!("Packet handling error: {:?}", e);
+                        conn.handle_transport_error(shared_state, datagram, err);
+                        return Err(());
                     }
+
+                    Ok(())
                 })
                 .is_some();
 
@@ -225,7 +244,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
     /// Returns the number of wakeups which have occurred and had been handled.
     pub fn poll_pending_wakeups(
         &mut self,
-        context: &'_ Context,
+        context: &'_ task::Context,
         timestamp: Timestamp,
     ) -> Poll<usize> {
         // The mem::replace is needed to work around a limitation which does not allow us to pass
