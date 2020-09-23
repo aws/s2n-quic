@@ -1,7 +1,7 @@
 use crate::{connection, inet::SocketAddress};
 use core::time::Duration;
 
-pub trait Format {
+pub trait FormatTrait {
     const TOKEN_LEN: usize = 40;
 
     /// Called when a token is needed for a NEW_TOKEN frame.

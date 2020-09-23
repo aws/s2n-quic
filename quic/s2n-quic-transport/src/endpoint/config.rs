@@ -16,7 +16,7 @@ pub trait Config {
     type Connection: connection::Trait<Config = Self::ConnectionConfig>;
     /// The connection ID format
     type ConnectionIdFormat: connection::id::Format;
-    type TokenFormat: s2n_quic_core::token::Format;
+    type TokenFormat: s2n_quic_core::token::FormatTrait;
 
     /// The type of the local endpoint
     const ENDPOINT_TYPE: EndpointType =

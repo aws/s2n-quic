@@ -41,6 +41,7 @@ impl super::Provider for Provider {
     type Error = core::convert::Infallible;
 
     fn start(self) -> Result<Self::Format, Self::Error> {
+        // Start timer to update key
         Ok(Format {
             new_tokens: self.new_tokens,
             new_token_validate_port: self.new_token_validate_port,
@@ -51,8 +52,13 @@ impl super::Provider for Provider {
 
 #[derive(Debug, Default)]
 pub struct Format {
+    /// Support tokens in NEW_TOKEN frames
     new_tokens: bool,
+
+    /// Validate source port from NEW_TOKEN frames
     new_token_validate_port: bool,
+
+    /// Support tokens from Retry Requests
     retry_tokens: bool,
 }
 
@@ -85,6 +91,10 @@ impl Format {
         todo!()
     }
 
+    fn sign_token(&self, _token: &mut [u8], _key: &DerivedKey) {
+        todo!();
+    }
+
     fn validate_retry_token(
         &mut self,
         _peer_address: &SocketAddress,
@@ -100,7 +110,7 @@ impl Format {
     }
 }
 
-impl super::Format for Format {
+impl super::FormatTrait for Format {
     const TOKEN_LEN: usize = size_of::<Token>();
 
     fn generate_new_token(
@@ -180,12 +190,32 @@ const KEY_SPACE: usize = 4;
 #[allow(dead_code)]
 const TIME_WINDOW_SPACE: usize = 16;
 
+// The KeyStore distributes derived keys to callers. The callers are responsible for verifying the
+// validity of those keys.
 #[allow(dead_code)]
 struct KeyStore {
-    current_key_id: u8,
+    // current_key_id: u8,
     current_time_window_id: u8,
-    keys: [Key; KEY_SPACE],
-    derived_keys: [DerivedKey; KEY_SPACE * TIME_WINDOW_SPACE],
+    // keys: [Key; KEY_SPACE],
+    key: Key,
+    derived_keys: [DerivedKey; TIME_WINDOW_SPACE],
+}
+
+impl KeyStore {
+    /// Generate the primary key used to derive time window keys
+    fn generate_key(&mut self) {
+        todo!();
+    }
+
+    /// Returns derived key for a time window
+    fn key(&self, time_window_id: u8) -> &DerivedKey {
+        &self.derived_keys[time_window_id as usize]
+    }
+
+    /// Derives a new set of keys given a Key and key id
+    fn set_key(&mut self, _derived_key: &DerivedKey, _key_id: u8, _time_window_id: u8) {
+        todo!();
+    }
 }
 
 #[derive(Clone, Copy, Debug, FromBytes, AsBytes, Unaligned)]
@@ -315,23 +345,65 @@ pub type Secret = [u8; 32];
 struct Key {
     /// The epoch from which time windows are derived
     epoch: SystemTime,
-    /// The time window in seconds for which the key id is valid
-    time_window: u64,
+    /// Start time
     start_time: SystemTime,
+    /// Length of window in which this key is active
     active_duration: Duration,
+    /// Total duration this key will be accepted
     valid_duration: Duration,
+    /// Key material
     secret: Secret,
 }
 
+impl Key {
+    /// Generate a new key
+    fn generate(valid_duration: Duration) -> Self {
+        let rng = SystemRandom::new();
+        let secret = ring::rand::generate(&rng).unwrap().expose();
+        let now = SystemTime::now();
+
+        Key {
+            epoch: now,
+            start_time: now,
+            active_duration: Duration::from_millis(0),
+            valid_duration,
+            secret,
+        }
+    }
+}
+
+struct DerivedKeyHeader {
+    version: u8,
+    key_id: u8,
+    time_window_id: u8,
+}
+
 struct DerivedKey {
-    header: Header,
-    key: ring::hmac::Key,
-    is_valid: bool,
+    header: DerivedKeyHeader,
+    key: Secret,
+    start_time: SystemTime,
+    active_duration: Duration,
+}
+
+impl DerivedKey {
+    /// Using the main key and a time window, derive the key that can be used for this period.
+    fn generate(key: Key, time_window_id: u8) -> Self {
+        todo!();
+    }
+
+    fn sign(&self, data: &[u8]) -> &[u8] {
+        todo!();
+    }
+
+    fn verify(&self, signature: &[u8], data: &[u8]) -> bool {
+        todo!();
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use s2n_quic_core::{inet::SocketAddress, token::FormatTrait};
 
     #[test]
     fn test_header() {
@@ -351,5 +423,25 @@ mod tests {
         assert_eq!(header.key_id(), 0x03);
         assert_eq!(header.time_window_id(), 0x0a);
         assert_eq!(header.token_source(), Source::RetryPacket);
+    }
+
+    #[test]
+    fn test_token_sign() {
+        let conn_id = &connection::Id::try_from_bytes(&[]).unwrap();
+        let address = &SocketAddress::default();
+        let mut token_buf = [0u8; 128];
+        let format = Format::default();
+        let token = format.generate_retry_token(address, conn_id, conn_id, &mut token_buf);
+        let key = ring::hmac::Key::generate(ring::hmac::HMAC_SHA256, &SystemRandom::new()).unwrap();
+
+        let derived_key = DerivedKey {
+            header: Header(0),
+            key,
+            is_valid: true,
+        };
+
+        println!("{:?}", token);
+        format.sign_token(&mut token_buf, key);
+        println!("{:?}", token);
     }
 }

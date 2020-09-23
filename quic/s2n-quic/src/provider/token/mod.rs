@@ -4,10 +4,10 @@
 //! means the actual token does not need to be exposed.
 
 use cfg_if::cfg_if;
-pub use s2n_quic_core::token::Format;
+pub use s2n_quic_core::token::FormatTrait;
 
 pub trait Provider: 'static {
-    type Format: 'static + Format;
+    type Format: 'static + FormatTrait;
     type Error: core::fmt::Display;
 
     fn start(self) -> Result<Self::Format, Self::Error>;
