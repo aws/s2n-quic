@@ -253,7 +253,7 @@ mod tests {
         };
 
         manager
-            .on_datagram_received(&datagram, &first_conn_id, true, || MockCC::default())
+            .on_datagram_received(&datagram, &first_conn_id, true, MockCC::default)
             .unwrap();
         assert_eq!(manager.path(&new_addr).is_some(), true);
 
@@ -268,7 +268,7 @@ mod tests {
 
         assert_eq!(
             manager
-                .on_datagram_received(&datagram, &first_conn_id, false, || MockCC::default())
+                .on_datagram_received(&datagram, &first_conn_id, false, MockCC::default)
                 .is_err(),
             true
         );
