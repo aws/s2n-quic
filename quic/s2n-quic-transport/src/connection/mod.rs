@@ -63,11 +63,6 @@ pub trait Config: 'static + Send {
     /// Returns the limits for this connection that are not defined through
     /// transport parameters
     fn connection_limits(&self) -> Limits;
-    /// Returns a new congestion controller for the path
-    fn new_congestion_controller(
-        &mut self,
-        remote_address: &SocketAddress,
-    ) -> Self::CongestionController;
 }
 
 /// Parameters which are passed to a Connection.
@@ -87,6 +82,8 @@ pub struct Parameters<Cfg: Config> {
     pub local_connection_id: Id,
     /// The peers socket address
     pub peer_socket_address: SocketAddress,
+    /// The initial congestion controller for the connection
+    pub congestion_controller: Cfg::CongestionController,
     /// The time the connection is being created
     pub timestamp: Timestamp,
     /// The QUIC protocol version which is used for this particular connection

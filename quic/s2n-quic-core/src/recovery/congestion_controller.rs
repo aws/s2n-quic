@@ -1,4 +1,28 @@
-pub trait CongestionController: Clone {
+use crate::inet::SocketAddress;
+
+pub trait Endpoint: 'static {
+    type CongestionController: CongestionController;
+
+    fn new_congestion_controller(&mut self, path_info: PathInfo) -> Self::CongestionController;
+}
+
+#[derive(Debug)]
+#[non_exhaustive]
+pub struct PathInfo<'a> {
+    pub remote_address: &'a SocketAddress,
+    pub alpn: Option<&'a [u8]>,
+}
+
+impl<'a> PathInfo<'a> {
+    pub fn new(remote_address: &'a SocketAddress) -> Self {
+        Self {
+            remote_address,
+            alpn: None,
+        }
+    }
+}
+
+pub trait CongestionController: 'static + Clone + Send {
     // TODO implement callbacks
 }
 
