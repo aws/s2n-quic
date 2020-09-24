@@ -213,7 +213,7 @@ pub mod tx {
 pub mod rx {
     use super::*;
 
-    /// A request on a `tx` stream
+    /// A request on a `rx` stream
     #[derive(Debug)]
     pub struct Request<'a> {
         /// Optionally receive chunks from the stream
