@@ -15,6 +15,8 @@ pub enum Error {
     ConnectionClosed(ApplicationErrorCode),
     /// The connection was closed because the connection's idle timer expired
     IdleTimerExpired,
+    /// All Stream IDs for Streams on a given connection had been exhausted
+    StreamIdExhausted,
     /// The connection was closed due to an unspecified reason
     Unspecified,
 }

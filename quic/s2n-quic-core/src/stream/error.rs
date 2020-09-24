@@ -27,8 +27,6 @@ pub enum StreamError {
     MaxStreamDataSizeExceeded,
     /// The Stream was reset due to a Connection Error
     ConnectionError(connection::Error),
-    /// All Stream IDs for Streams on a given connection had been exhausted
-    StreamIdExhausted,
     /// The stream is not readable
     NonReadable,
     /// The stream is not writable

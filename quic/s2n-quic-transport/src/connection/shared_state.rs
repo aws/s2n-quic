@@ -144,7 +144,7 @@ impl<ConnectionConfigType: connection::Config> ConnectionApiProvider
         arc_self: &ConnectionApi,
         stream_type: Option<StreamType>,
         context: &Context,
-    ) -> Poll<Result<(Stream, StreamType), StreamError>> {
+    ) -> Poll<Result<(Stream, StreamType), connection::Error>> {
         let mut shared_state = self.lock();
 
         let stream_manager = &mut shared_state

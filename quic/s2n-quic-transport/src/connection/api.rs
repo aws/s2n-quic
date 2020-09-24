@@ -1,8 +1,8 @@
 //! Defines the public QUIC connection API
 
 use crate::{
-    connection::ConnectionApi,
-    stream::{Stream, StreamError},
+    connection::{self, ConnectionApi},
+    stream::Stream,
 };
 use core::{
     fmt,
@@ -50,7 +50,7 @@ impl Connection {
         &mut self,
         stream_type: Option<StreamType>,
         context: &Context,
-    ) -> Poll<Result<(Stream, StreamType), StreamError>> {
+    ) -> Poll<Result<(Stream, StreamType), connection::Error>> {
         self.shared_state
             .poll_accept(&self.shared_state, stream_type, context)
     }

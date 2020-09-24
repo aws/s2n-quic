@@ -477,7 +477,7 @@ fn opens_locally_initiated_streams() {
                 .get_mut(*local_ep_type, *stream_type) = None;
 
             assert_eq!(
-                (Err(StreamError::StreamIdExhausted)),
+                (Err(connection::Error::StreamIdExhausted)),
                 manager.open(*stream_type)
             );
         }
@@ -679,7 +679,7 @@ fn accept_returns_remotely_initiated_stream() {
                 *manager.inner.accept_state.next_stream_mut(*stream_type) = None;
 
                 assert_eq!(
-                    Poll::Ready(Err(StreamError::StreamIdExhausted)),
+                    Poll::Ready(Err(connection::Error::StreamIdExhausted)),
                     manager.poll_accept(*stream_type, &Context::from_waker(&accept_waker))
                 );
             }
