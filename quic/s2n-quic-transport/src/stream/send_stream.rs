@@ -685,7 +685,7 @@ impl SendStream {
                 if self.data_sender.state() != DataSenderState::Sending {
                     // The user tries to write, even though they previously closed
                     // the stream.
-                    return Poll::Ready(Err(StreamError::WriterAfterFinish));
+                    return Poll::Ready(Err(StreamError::SendAfterFinish));
                 }
 
                 // 0byte writes are always possible, because we don't have to
