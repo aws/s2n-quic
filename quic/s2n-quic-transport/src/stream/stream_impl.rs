@@ -1,5 +1,5 @@
 use crate::{
-    contexts::{ConnectionContext, OnTransmitError, WriteContext},
+    contexts::{OnTransmitError, WriteContext},
     stream::{
         incoming_connection_flow_controller::IncomingConnectionFlowController,
         outgoing_connection_flow_controller::OutgoingConnectionFlowController,
@@ -10,14 +10,12 @@ use crate::{
         StreamError,
     },
 };
-use bytes::Bytes;
-use core::task::{Context, Poll};
+use core::task::Context;
 use s2n_quic_core::{
     ack_set::AckSet,
-    application::ApplicationErrorCode,
     endpoint::EndpointType,
     frame::{stream::StreamRef, MaxStreamData, ResetStream, StopSending, StreamDataBlocked},
-    stream::StreamId,
+    stream::{ops, StreamId},
     transport::error::TransportError,
     varint::VarInt,
 };
@@ -110,36 +108,11 @@ pub trait StreamTrait: StreamInterestProvider {
 
     // These functions are called from the client API
 
-    fn poll_pop<C: ConnectionContext>(
+    fn poll_request(
         &mut self,
-        connection_context: &C,
-        context: &Context,
-    ) -> Poll<Result<Option<Bytes>, StreamError>>;
-
-    fn stop_sending<C: ConnectionContext>(
-        &mut self,
-        error_code: ApplicationErrorCode,
-        connection_context: &C,
-    ) -> Result<(), StreamError>;
-
-    fn poll_push<C: ConnectionContext>(
-        &mut self,
-        connection_context: &C,
-        data: Bytes,
-        context: &Context,
-    ) -> Poll<Result<(), StreamError>>;
-
-    fn poll_finish<C: ConnectionContext>(
-        &mut self,
-        connection_context: &C,
-        context: &Context,
-    ) -> Poll<Result<(), StreamError>>;
-
-    fn reset<C: ConnectionContext>(
-        &mut self,
-        connection_context: &C,
-        error_code: ApplicationErrorCode,
-    ) -> Result<(), StreamError>;
+        request: &mut ops::Request,
+        context: Option<&Context>,
+    ) -> Result<ops::Response, StreamError>;
 }
 
 /// The implementation of a `Stream`.
@@ -251,47 +224,19 @@ impl StreamTrait for StreamImpl {
 
     // These functions are called from the client API
 
-    fn poll_pop<C: ConnectionContext>(
+    fn poll_request(
         &mut self,
-        connection_context: &C,
-        context: &Context,
-    ) -> Poll<Result<Option<Bytes>, StreamError>> {
-        self.receive_stream.poll_pop(connection_context, context)
-    }
-
-    fn stop_sending<C: ConnectionContext>(
-        &mut self,
-        error_code: ApplicationErrorCode,
-        connection_context: &C,
-    ) -> Result<(), StreamError> {
-        self.receive_stream
-            .stop_sending(error_code, connection_context)
-    }
-
-    fn poll_push<C: ConnectionContext>(
-        &mut self,
-        connection_context: &C,
-        data: Bytes,
-        context: &Context,
-    ) -> Poll<Result<(), StreamError>> {
-        self.send_stream
-            .poll_push(connection_context, data, context)
-    }
-
-    fn poll_finish<C: ConnectionContext>(
-        &mut self,
-        connection_context: &C,
-        context: &Context,
-    ) -> Poll<Result<(), StreamError>> {
-        self.send_stream.poll_finish(connection_context, context)
-    }
-
-    fn reset<C: ConnectionContext>(
-        &mut self,
-        connection_context: &C,
-        error_code: ApplicationErrorCode,
-    ) -> Result<(), StreamError> {
-        self.send_stream.reset(connection_context, error_code)
+        request: &mut ops::Request,
+        context: Option<&Context>,
+    ) -> Result<ops::Response, StreamError> {
+        let mut response = ops::Response::default();
+        if let Some(rx) = request.rx.as_mut() {
+            response.rx = Some(self.receive_stream.poll_request(rx, context)?);
+        }
+        if let Some(tx) = request.tx.as_mut() {
+            response.tx = Some(self.send_stream.poll_request(tx, context)?);
+        }
+        Ok(response)
     }
 }
 

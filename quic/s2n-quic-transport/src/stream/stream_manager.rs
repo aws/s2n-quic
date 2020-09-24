@@ -12,18 +12,16 @@ use crate::{
         StreamError, StreamLimits, StreamTrait,
     },
 };
-use bytes::Bytes;
 use core::task::{Context, Poll, Waker};
 use s2n_quic_core::{
     ack_set::AckSet,
-    application::ApplicationErrorCode,
     connection,
     endpoint::EndpointType,
     frame::{
         stream::StreamRef, DataBlocked, MaxData, MaxStreamData, MaxStreams, ResetStream,
         StopSending, StreamDataBlocked, StreamsBlocked,
     },
-    stream::{StreamId, StreamType},
+    stream::{ops, StreamId, StreamType},
     transport::{error::TransportError, parameters::InitialFlowControlLimits},
     varint::VarInt,
 };
@@ -775,74 +773,18 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         result
     }
 
-    pub fn poll_pop(
+    pub fn poll_request(
         &mut self,
         stream_id: StreamId,
         api_call_context: &mut ConnectionApiCallContext,
-        context: &Context,
-    ) -> Poll<Result<Option<Bytes>, StreamError>> {
-        self.perform_api_call(
-            stream_id,
-            Poll::Ready(Err(StreamError::InvalidStream)),
-            api_call_context,
-            |stream, connection_context| stream.poll_pop(connection_context, context),
-        )
-    }
-
-    pub fn stop_sending(
-        &mut self,
-        stream_id: StreamId,
-        api_call_context: &mut ConnectionApiCallContext,
-        error_code: ApplicationErrorCode,
-    ) -> Result<(), StreamError> {
+        request: &mut ops::Request,
+        context: Option<&Context>,
+    ) -> Result<ops::Response, StreamError> {
         self.perform_api_call(
             stream_id,
             Err(StreamError::InvalidStream),
             api_call_context,
-            |stream, connection_context| stream.stop_sending(error_code, connection_context),
-        )
-    }
-
-    pub fn poll_push(
-        &mut self,
-        stream_id: StreamId,
-        api_call_context: &mut ConnectionApiCallContext,
-        data: Bytes,
-        context: &Context,
-    ) -> Poll<Result<(), StreamError>> {
-        self.perform_api_call(
-            stream_id,
-            Poll::Ready(Err(StreamError::InvalidStream)),
-            api_call_context,
-            |stream, connection_context| stream.poll_push(connection_context, data, context),
-        )
-    }
-
-    pub fn poll_finish(
-        &mut self,
-        stream_id: StreamId,
-        api_call_context: &mut ConnectionApiCallContext,
-        context: &Context,
-    ) -> Poll<Result<(), StreamError>> {
-        self.perform_api_call(
-            stream_id,
-            Poll::Ready(Err(StreamError::InvalidStream)),
-            api_call_context,
-            |stream, connection_context| stream.poll_finish(connection_context, context),
-        )
-    }
-
-    pub fn reset(
-        &mut self,
-        stream_id: StreamId,
-        api_call_context: &mut ConnectionApiCallContext,
-        error_code: ApplicationErrorCode,
-    ) -> Result<(), StreamError> {
-        self.perform_api_call(
-            stream_id,
-            Err(StreamError::InvalidStream),
-            api_call_context,
-            |stream, connection_context| stream.reset(connection_context, error_code),
+            |stream, _connection_context| stream.poll_request(request, context),
         )
     }
 }

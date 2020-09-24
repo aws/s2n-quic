@@ -1479,11 +1479,7 @@ fn stop_sending_will_trigger_a_stop_sending_frame() {
             assert_eq!(stream_interests(&[]), test_env.stream.interests());
 
             assert!(test_env
-                .stream
-                .stop_sending(
-                    ApplicationErrorCode::new(0x1234_5678).unwrap(),
-                    &test_env.connection_context
-                )
+                .stop_sending(ApplicationErrorCode::new(0x1234_5678).unwrap())
                 .is_ok());
             assert_eq!(stream_interests(&["tx"]), test_env.stream.interests());
 
@@ -1523,21 +1519,13 @@ fn do_not_retransmit_stop_sending_if_requested_twice() {
             test_env.assert_write_frames(0);
 
             assert!(test_env
-                .stream
-                .stop_sending(
-                    ApplicationErrorCode::new(0x1234_5678).unwrap(),
-                    &test_env.connection_context
-                )
+                .stop_sending(ApplicationErrorCode::new(0x1234_5678).unwrap())
                 .is_ok());
             assert_eq!(stream_interests(&["tx"]), test_env.stream.interests());
 
             if *resend_before_write {
                 assert!(test_env
-                    .stream
-                    .stop_sending(
-                        ApplicationErrorCode::new(0x4321_5678).unwrap(),
-                        &test_env.connection_context
-                    )
+                    .stop_sending(ApplicationErrorCode::new(0x4321_5678).unwrap())
                     .is_ok());
                 assert_eq!(stream_interests(&["tx"]), test_env.stream.interests());
             }
@@ -1564,11 +1552,7 @@ fn do_not_retransmit_stop_sending_if_requested_twice() {
             }
 
             assert!(test_env
-                .stream
-                .stop_sending(
-                    ApplicationErrorCode::new(0x1234_5678).unwrap(),
-                    &test_env.connection_context
-                )
+                .stop_sending(ApplicationErrorCode::new(0x1234_5678).unwrap())
                 .is_ok());
 
             // Nothing new to write
@@ -1597,11 +1581,7 @@ fn stop_sending_is_ignored_if_stream_is_already_reset() {
     assert_eq!(stream_interests(&[]), test_env.stream.interests());
 
     assert!(test_env
-        .stream
-        .stop_sending(
-            ApplicationErrorCode::new(0x1234_5678).unwrap(),
-            &test_env.connection_context
-        )
+        .stop_sending(ApplicationErrorCode::new(0x1234_5678).unwrap())
         .is_ok());
     assert_eq!(stream_interests(&[]), test_env.stream.interests());
 
@@ -1613,11 +1593,7 @@ fn stop_sending_is_cancelled_if_stream_is_reset_after_having_been_initiated() {
     let mut test_env = setup_receive_only_test_env();
 
     assert!(test_env
-        .stream
-        .stop_sending(
-            ApplicationErrorCode::new(0x1234_5678).unwrap(),
-            &test_env.connection_context
-        )
+        .stop_sending(ApplicationErrorCode::new(0x1234_5678).unwrap())
         .is_ok());
     assert_eq!(stream_interests(&["tx"]), test_env.stream.interests());
 
@@ -1654,11 +1630,7 @@ fn stop_sending_is_ignored_if_stream_has_already_received_all_data() {
     assert_eq!(stream_interests(&[]), test_env.stream.interests());
 
     assert!(test_env
-        .stream
-        .stop_sending(
-            ApplicationErrorCode::new(0x1234_5678).unwrap(),
-            &test_env.connection_context
-        )
+        .stop_sending(ApplicationErrorCode::new(0x1234_5678).unwrap())
         .is_ok());
     assert_eq!(stream_interests(&[]), test_env.stream.interests());
 
@@ -1680,11 +1652,7 @@ fn stop_sending_can_be_sent_if_size_is_known_but_data_is_still_missing() {
             .is_ok());
 
         assert!(test_env
-            .stream
-            .stop_sending(
-                ApplicationErrorCode::new(0x1234_5678).unwrap(),
-                &test_env.connection_context
-            )
+            .stop_sending(ApplicationErrorCode::new(0x1234_5678).unwrap())
             .is_ok());
         assert_eq!(stream_interests(&["tx"]), test_env.stream.interests());
 
@@ -1730,11 +1698,7 @@ fn stop_sending_is_aborted_if_stream_receives_all_data() {
     let mut test_env = setup_receive_only_test_env();
 
     assert!(test_env
-        .stream
-        .stop_sending(
-            ApplicationErrorCode::new(0x1234_5678).unwrap(),
-            &test_env.connection_context
-        )
+        .stop_sending(ApplicationErrorCode::new(0x1234_5678).unwrap())
         .is_ok());
     assert_eq!(stream_interests(&["tx"]), test_env.stream.interests());
 
@@ -1761,11 +1725,7 @@ fn stop_sending_is_aborted_if_stream_receives_all_data_with_data_after_fin() {
     let mut test_env = setup_receive_only_test_env();
 
     assert!(test_env
-        .stream
-        .stop_sending(
-            ApplicationErrorCode::new(0x1234_5678).unwrap(),
-            &test_env.connection_context
-        )
+        .stop_sending(ApplicationErrorCode::new(0x1234_5678).unwrap())
         .is_ok());
     assert_eq!(stream_interests(&["tx"]), test_env.stream.interests());
 
@@ -1828,11 +1788,7 @@ fn stop_sending_is_ignored_if_stream_has_received_or_consumed_all_data() {
         assert_eq!(expected_interests, test_env.stream.interests());
 
         assert!(test_env
-            .stream
-            .stop_sending(
-                ApplicationErrorCode::new(0x1234_5678).unwrap(),
-                &test_env.connection_context
-            )
+            .stop_sending(ApplicationErrorCode::new(0x1234_5678).unwrap())
             .is_ok());
         assert_eq!(expected_interests, test_env.stream.interests());
 
@@ -1846,11 +1802,7 @@ fn stop_sending_frames_are_retransmitted_on_loss() {
     test_env.assert_write_frames(0);
 
     assert!(test_env
-        .stream
-        .stop_sending(
-            ApplicationErrorCode::new(0x1234_5678).unwrap(),
-            &test_env.connection_context
-        )
+        .stop_sending(ApplicationErrorCode::new(0x1234_5678).unwrap())
         .is_ok());
     assert_eq!(stream_interests(&["tx"]), test_env.stream.interests());
 

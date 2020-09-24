@@ -1,6 +1,6 @@
 use crate::{
     buffer::{StreamReceiveBuffer, StreamReceiveBufferError},
-    contexts::{ConnectionContext, OnTransmitError, WriteContext},
+    contexts::{OnTransmitError, WriteContext},
     frame_exchange_interests::FrameExchangeInterestProvider,
     stream::{
         incoming_connection_flow_controller::IncomingConnectionFlowController,
@@ -10,14 +10,16 @@ use crate::{
     },
     sync::{IncrementalValueSync, OnceSync, ValueToFrameWriter},
 };
-use bytes::Bytes;
-use core::task::{Context, Poll, Waker};
+use core::{
+    convert::TryFrom,
+    task::{Context, Waker},
+};
 use s2n_quic_core::{
     ack_set::AckSet,
     application::ApplicationErrorCode,
     frame::{stream::StreamRef, MaxStreamData, ResetStream, StopSending, StreamDataBlocked},
     packet::number::PacketNumber,
-    stream::StreamId,
+    stream::{ops, StreamId},
     transport::error::TransportError,
     varint::VarInt,
 };
@@ -337,8 +339,9 @@ pub struct ReceiveStream {
     pub(super) flow_controller: ReceiveStreamFlowController,
     /// Synchronizes the `STOP_SENDING` flag towards the peer.
     pub(super) stop_sending_sync: OnceSync<ApplicationErrorCode, StopSendingToFrameWriter>,
-    /// The handle of a task that is currently waiting on new incoming data.
-    pub(super) read_waiter: Option<Waker>,
+    /// The handle of a task that is currently waiting on new incoming data, along with the low
+    /// watermark value.
+    pub(super) read_waiter: Option<(Waker, usize)>,
     /// Whether the final state had already been observed by the application
     final_state_observed: bool,
 }
@@ -433,8 +436,8 @@ impl ReceiveStream {
                         .acquire_window_up_to(data_end, frame.tag().into())?;
                 }
 
-                let was_empty = self.receive_buffer.is_empty();
-                let mut was_closed = false;
+                let mut should_wake = false;
+
                 self.receive_buffer
                     .write_at(frame.offset, frame.data)
                     .map_err(|error| {
@@ -454,6 +457,17 @@ impl ReceiveStream {
                         .with_reason("data reception error")
                         .with_frame_type(frame.tag().into())
                     })?;
+
+                // wake the waiter if the buffer has data and the len has crossed the watermark
+                if !self.receive_buffer.is_empty()
+                    && self
+                        .read_waiter
+                        .as_ref()
+                        .map(|w| w.1 <= self.receive_buffer.len())
+                        .unwrap_or(false)
+                {
+                    should_wake = true;
+                }
 
                 if frame.is_fin && total_size.is_none() {
                     // Store the total size
@@ -485,6 +499,10 @@ impl ReceiveStream {
                     // outstanding data.
                     if self.receive_buffer.total_received_len() == total_size {
                         self.stop_sending_sync.stop_sync();
+
+                        // wake the waiter, even if we didn't cross the watermark, since the stream
+                        // is finished at this point
+                        should_wake = true;
                     }
 
                     // If the frame with the FIN contained no new data all
@@ -499,12 +517,12 @@ impl ReceiveStream {
                         // If there was no waiter we won't wake up anything. Therefore
                         // this will not lead to an unnecessary wakeup in the case there
                         // is still oustanding buffered data.
-                        was_closed = true;
+                        should_wake = true;
                     }
                 }
 
-                if was_empty && (was_closed || !self.receive_buffer.is_empty()) {
-                    if let Some(waker) = self.read_waiter.take() {
+                if should_wake {
+                    if let Some((waker, _low_watermark)) = self.read_waiter.take() {
                         events.store_read_waker(waker);
                     }
                 }
@@ -529,9 +547,14 @@ impl ReceiveStream {
     /// This method gets called when a stream gets reset due to a reason that is
     /// not related to a frame. E.g. due to a connection failure.
     pub fn on_internal_reset(&mut self, error: StreamError, events: &mut StreamEvents) {
-        let reset_result = self.init_reset(error, None, None, events);
+        let reset_result = self.init_reset(error, None, None);
         // Internal results should never fail
         debug_assert!(reset_result.is_ok());
+
+        // Return the waker to wake up potential users of the stream
+        if let Some((waker, _low_watermark)) = self.read_waiter.take() {
+            events.store_read_waker(waker);
+        }
     }
 
     /// This is called when a `RESET_STREAM` frame had been received for
@@ -542,7 +565,17 @@ impl ReceiveStream {
         events: &mut StreamEvents,
     ) -> Result<(), TransportError> {
         let error = StreamError::StreamReset(frame.application_error_code.into());
-        self.init_reset(error, Some(frame.final_size), Some(frame.tag()), events)
+        self.init_reset(error, Some(frame.final_size), Some(frame.tag()))?;
+
+        // We don't have to send `STOP_SENDING` anymore since the stream was reset by the peer
+        self.stop_sending_sync.stop_sync();
+
+        // Return the waker to wake up potential users of the stream
+        if let Some((waker, _low_watermark)) = self.read_waiter.take() {
+            events.store_read_waker(waker);
+        }
+
+        Ok(())
     }
 
     /// Starts the reset procedure if the Stream has not been in a RESET state
@@ -552,7 +585,6 @@ impl ReceiveStream {
         error: StreamError,
         actual_size: Option<VarInt>,
         frame_tag: Option<u8>,
-        events: &mut StreamEvents,
     ) -> Result<(), TransportError> {
         // Reset logic is only executed if the stream is neither reset nor if all
         // data had been already received.
@@ -605,8 +637,6 @@ impl ReceiveStream {
         // If the stream was reset by the peer we don't actually have to retransmit
         // outgoing flow control window anymore.
         self.flow_controller.stop_sync();
-        // We also don't have to send `STOP_SENDING` anymore
-        self.stop_sending_sync.stop_sync();
 
         // Reset the stream receive buffer
         self.receive_buffer.reset();
@@ -622,11 +652,6 @@ impl ReceiveStream {
         self.flow_controller.release_outstanding_window();
 
         self.state = ReceiveStreamState::Reset(error);
-
-        // Return the waker to wake up potential users of the stream
-        if let Some(waker) = self.read_waiter.take() {
-            events.store_read_waker(waker);
-        }
 
         Ok(())
     }
@@ -662,83 +687,136 @@ impl ReceiveStream {
 
     // These functions are called from the client API
 
-    pub fn poll_pop<C: ConnectionContext>(
+    pub fn poll_request(
         &mut self,
-        _connection_context: &C,
-        context: &Context,
-    ) -> Poll<Result<Option<Bytes>, StreamError>> {
+        request: &mut ops::rx::Request,
+        context: Option<&Context>,
+    ) -> Result<ops::rx::Response, StreamError> {
+        let mut response = ops::rx::Response::default();
+
+        if let Some(error_code) = request.stop_sending {
+            self.stop_sending_sync.request_delivery(error_code);
+            self.read_waiter = None;
+            response.is_final = true;
+            response.is_stopped = true;
+
+            return Ok(response);
+        }
+
         // Do some state checks here. Only read data when the client is still
         // allowed to read (not reset).
 
-        match self.state {
+        let total_size = match self.state {
             ReceiveStreamState::Reset(error) => {
                 // The reset is now known to have been read by the client.
                 self.final_state_observed = true;
-                Poll::Ready(Err(error))
+                return Err(error);
             }
             ReceiveStreamState::DataRead => {
                 // All stream data had been received and all buffered data was
                 // already consumed
                 self.final_state_observed = true;
-                Poll::Ready(Ok(None))
+                response.is_final = true;
+                return Ok(response);
             }
-            ReceiveStreamState::Receiving(total_size) => {
-                match self.receive_buffer.pop() {
+            ReceiveStreamState::Receiving(total_size) => total_size,
+        };
+
+        // inform callers that the stream will not increase beyond its current size
+        response.is_final = total_size.is_some();
+        let low_watermark = &mut request.low_watermark;
+        let high_watermark = &mut request.high_watermark;
+
+        if let Some(chunks) = request.chunks.as_mut() {
+            while response.chunks.consumed < chunks.len() {
+                // make sure the placeholder chunk is empty. If it's not, it could lead to
+                // replacing a chunk that was received in a previous request
+                if let Some(len) =
+                    Some(chunks[response.chunks.consumed].len()).filter(|len| *len > 0)
+                {
+                    response.chunks.consumed += 1;
+                    response.bytes.consumed += len;
+                    continue;
+                }
+
+                match self.receive_buffer.pop_transform(|buffer| {
+                    // make sure the buffer doesn't exceed the high watermark
+                    let desired_len = (*high_watermark).min(buffer.len());
+                    // split off the buffer if the clamped size is ok
+                    if desired_len > 0 {
+                        Some(buffer.split_to(desired_len))
+                    } else {
+                        None
+                    }
+                }) {
                     Some(data) => {
+                        let data_len = data.len();
                         // Release the flow control window for the consumed chunk
-                        self.flow_controller
-                            .release_window(VarInt::new(data.len() as u64).unwrap());
+                        self.flow_controller.release_window(
+                            VarInt::try_from(data_len)
+                                .expect("chunk len should always be less than maximum VarInt"),
+                        );
+                        *low_watermark = (*low_watermark).saturating_sub(data_len);
+                        *high_watermark = (*high_watermark).saturating_sub(data_len);
+
+                        // replace the placeholder with the actual data
+                        let placeholder = core::mem::replace(
+                            &mut chunks[response.chunks.consumed],
+                            data.freeze(),
+                        );
+                        debug_assert!(
+                            placeholder.is_empty(),
+                            "the placeholder should never contain data"
+                        );
+
+                        response.bytes.consumed += data_len;
+                        response.chunks.consumed += 1;
 
                         // Check for the end of stream and transition to
                         // [`ReceiveStreamState::DataRead`] if necessary.
-                        match total_size {
-                            Some(total_size)
-                                if total_size == self.receive_buffer.consumed_len() =>
-                            {
-                                // By the time we enter the final state all synchronization
-                                // should have been cancelled.
-                                debug_assert!(self.stop_sending_sync.is_cancelled());
-                                debug_assert!(self.flow_controller.read_window_sync.is_cancelled());
-                                // The client has consumed all data. The stream
-                                // is thereby finished.
-                                self.state = ReceiveStreamState::DataRead;
-                                // We clear the receive buffer, to free up any buffer
-                                // space which had been allocated but not used
-                                self.receive_buffer.reset();
-                            }
-                            _ => {
-                                // We either don't know the total size yet, or
-                                // there is still outstanding data to read
-                            }
+                        if total_size
+                            .map(|total_size| total_size == self.receive_buffer.consumed_len())
+                            .unwrap_or(false)
+                        {
+                            // By the time we enter the final state all synchronization
+                            // should have been cancelled.
+                            debug_assert!(self.stop_sending_sync.is_cancelled());
+                            debug_assert!(self.flow_controller.read_window_sync.is_cancelled());
+                            // The client has consumed all data. The stream
+                            // is thereby finished.
+                            self.state = ReceiveStreamState::DataRead;
+                            // We clear the receive buffer, to free up any buffer
+                            // space which had been allocated but not used
+                            self.receive_buffer.reset();
+                            break;
                         }
-
-                        Poll::Ready(Ok(Some(data.freeze())))
                     }
                     None => {
-                        // Store the waker, in order to be able to wakeup the client when
-                        // data arrives later.
-                        self.read_waiter = Some(context.waker().clone());
-                        Poll::Pending
+                        if let Some(context) = context
+                            // only store the waker if we're not sending a STOP_SENDING
+                            .filter(|_| request.stop_sending.is_none())
+                            // only store the waker if we didn't receive anything or didn't zero
+                            // out the low watermark
+                            .filter(|_| response.chunks.consumed == 0 || request.low_watermark > 0)
+                        {
+                            // Store the waker, in order to be able to wakeup the client when
+                            // data arrives later.
+                            self.read_waiter =
+                                Some((context.waker().clone(), request.low_watermark));
+                            response.will_wake = true;
+                        }
+
+                        break;
                     }
                 }
             }
         }
-    }
 
-    pub fn stop_sending<C: ConnectionContext>(
-        &mut self,
-        error_code: ApplicationErrorCode,
-        _connection_context: &C,
-    ) -> Result<(), StreamError> {
-        // If `STOP_SENDING` had already been requested before, then there is
-        // nothing to do. If the `Stream` is already reset or all data had been
-        // retrieved then we also don't need to do anything. This happens
-        // automatically, since we cancelled delivery of `STOP_SENDING` for those
-        // Otherwise request delivery.
-        // This logic is all handled by [`OnceSync`]
-        self.stop_sending_sync.request_delivery(error_code);
+        let (bytes, chunks) = self.receive_buffer.report();
+        response.bytes.available = bytes;
+        response.chunks.available = chunks;
 
-        Ok(())
+        Ok(response)
     }
 }
 

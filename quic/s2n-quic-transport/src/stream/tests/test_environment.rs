@@ -19,7 +19,7 @@ use s2n_quic_core::{
     endpoint::EndpointType,
     frame::{Frame, ResetStream},
     packet::number::{PacketNumber, PacketNumberSpace},
-    stream::{StreamId, StreamType},
+    stream::{ops, StreamError, StreamId, StreamType},
     time::Timestamp,
     varint::VarInt,
 };
@@ -102,42 +102,26 @@ impl TestEnvironment {
 
     /// Asserts that the given byte array can be read from the stream
     pub fn assert_receive_data(&mut self, data: &'static [u8]) {
-        let poll_context = Context::from_waker(&self.waker);
         assert_eq!(
             Poll::Ready(Ok(Some(Bytes::from_static(data)))),
-            self.stream
-                .poll_pop(&self.connection_context, &poll_context)
+            self.poll_pop()
         );
     }
 
     /// Asserts that no data is available for reading and that the stream
     /// has not yet finished
     pub fn assert_no_read_data(&mut self) {
-        let poll_context = Context::from_waker(&self.waker);
-        assert_eq!(
-            Poll::Pending,
-            self.stream
-                .poll_pop(&self.connection_context, &poll_context)
-        );
+        assert_eq!(Poll::Pending, self.poll_pop());
     }
 
     /// Asserts that the stream has reached end of stream
     pub fn assert_end_of_stream(&mut self) {
-        let poll_context = Context::from_waker(&self.waker);
-        assert_eq!(
-            Poll::Ready(Ok(None)),
-            self.stream
-                .poll_pop(&self.connection_context, &poll_context)
-        );
+        assert_eq!(Poll::Ready(Ok(None)), self.poll_pop());
     }
 
     /// Asserts that the returns an error when pop is called
     pub fn assert_pop_error(&mut self) {
-        let poll_context = Context::from_waker(&self.waker);
-
-        let poll_result = self
-            .stream
-            .poll_pop(&self.connection_context, &poll_context);
+        let poll_result = self.poll_pop();
 
         match poll_result {
             Poll::Ready(Err(_)) => {}
@@ -167,11 +151,8 @@ impl TestEnvironment {
     /// Consumes all currently available data from the stream
     pub fn consume_all_data(&mut self) -> usize {
         let mut result = 0;
-        let poll_context = Context::from_waker(&self.waker);
         loop {
-            let poll_result = self
-                .stream
-                .poll_pop(&self.connection_context, &poll_context);
+            let poll_result = self.poll_pop();
 
             match poll_result {
                 Poll::Pending => break, // Consumed all data
@@ -307,6 +288,99 @@ impl TestEnvironment {
             .on_packet_loss(&packet_number);
         let mut events = StreamEvents::new();
         self.stream.on_packet_loss(&packet_number, &mut events);
+    }
+
+    pub fn poll_push(&mut self, chunk: Bytes) -> Poll<Result<(), StreamError>> {
+        let len = chunk.len();
+        let result = self
+            .stream
+            .poll_request(
+                ops::Request::default().send(&mut [chunk]),
+                Some(&Context::from_waker(&self.waker)),
+            )?
+            .into_poll();
+
+        match result {
+            Poll::Pending => Poll::Pending,
+            Poll::Ready(ops::Response {
+                tx:
+                    Some(ops::tx::Response {
+                        bytes: ops::Bytes { consumed, .. },
+                        chunks: ops::Chunks { consumed: 1, .. },
+                        will_wake: false,
+                        is_finished: false,
+                    }),
+                rx: None,
+            }) if consumed == len => Poll::Ready(Ok(())),
+            Poll::Ready(response) => panic!("unexpected response {:#?}", response),
+        }
+    }
+
+    pub fn poll_finish(&mut self) -> Poll<Result<(), StreamError>> {
+        let result = self
+            .stream
+            .poll_request(
+                ops::Request::default().finish().flush(),
+                Some(&Context::from_waker(&self.waker)),
+            )?
+            .into_poll();
+
+        match result {
+            Poll::Pending => Poll::Pending,
+            Poll::Ready(ops::Response {
+                tx:
+                    Some(ops::tx::Response {
+                        bytes:
+                            ops::Bytes {
+                                consumed: 0,
+                                available: 0,
+                            },
+                        chunks:
+                            ops::Chunks {
+                                consumed: 0,
+                                available: 0,
+                            },
+                        will_wake: false,
+                        is_finished: true,
+                    }),
+                rx: None,
+            }) => Poll::Ready(Ok(())),
+            Poll::Ready(response) => panic!("unexpected response {:?}", response),
+        }
+    }
+
+    pub fn poll_pop(&mut self) -> Poll<Result<Option<Bytes>, StreamError>> {
+        let mut chunks = [Bytes::new()];
+        match self
+            .stream
+            .poll_request(
+                ops::Request::default().receive(&mut chunks),
+                Some(&Context::from_waker(&self.waker)),
+            )?
+            .into_poll()
+        {
+            Poll::Pending => Poll::Pending,
+            Poll::Ready(response) => {
+                let chunk = if response.rx().expect("invalid response").chunks.consumed == 1 {
+                    Some(core::mem::replace(&mut chunks[0], Bytes::new()))
+                } else {
+                    None
+                };
+                Poll::Ready(Ok(chunk))
+            }
+        }
+    }
+
+    pub fn reset(&mut self, error_code: ApplicationErrorCode) -> Result<(), StreamError> {
+        self.stream
+            .poll_request(ops::Request::default().reset(error_code), None)?;
+        Ok(())
+    }
+
+    pub fn stop_sending(&mut self, error_code: ApplicationErrorCode) -> Result<(), StreamError> {
+        self.stream
+            .poll_request(ops::Request::default().stop_sending(error_code), None)?;
+        Ok(())
     }
 }
 
