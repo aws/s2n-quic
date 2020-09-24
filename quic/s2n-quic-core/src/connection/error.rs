@@ -82,7 +82,9 @@ impl From<Error> for std::io::ErrorKind {
         use std::io::ErrorKind;
         match error {
             Error::Closed => ErrorKind::ConnectionAborted,
-            // TODO check if it's a connection refused and return that
+            Error::Transport(code) if code == TransportError::CONNECTION_REFUSED.code.as_u64() => {
+                ErrorKind::ConnectionRefused
+            }
             Error::Transport(_) => ErrorKind::ConnectionReset,
             Error::Application(_) => ErrorKind::ConnectionReset,
             Error::IdleTimerExpired => ErrorKind::TimedOut,
