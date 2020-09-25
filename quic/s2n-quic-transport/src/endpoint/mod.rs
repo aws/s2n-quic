@@ -108,14 +108,21 @@ impl<Cfg: Config> Endpoint<Cfg> {
         } else {
             // Packet is not decodable. Skip it.
             // TODO: Potentially add a metric
+            dbg!("invalid packet received");
             return;
         };
 
         let connection_id = match connection::Id::try_from_bytes(packet.destination_connection_id())
         {
             Some(connection_id) => connection_id,
-            None => return, // Ignore the datagram
+            None => {
+                // Ignore the datagram
+                dbg!("packet with invalid connection ID received");
+                return;
+            }
         };
+
+        // TODO validate the connection ID before looking up the connection in the map
 
         // Try to lookup the internal connection ID and dispatch the packet
         // to the Connection
@@ -198,6 +205,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
         _destination_connection_id: &[u8],
     ) {
         // TODO: Implement me
+        dbg!("stateless reset triggered");
     }
 
     /// Queries the endpoint for outgoing datagrams
