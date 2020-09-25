@@ -223,20 +223,17 @@ impl Header {
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#21.2
-    //#   An attacker might be able to receive an address validation token
-    //#   (Section 8) from a server and then release the IP address it used to
-    //#   acquire that token.
-    //#   Servers SHOULD provide mitigations for this attack by limiting the
-    //#   usage and lifetime of address validation tokens
+    //# Servers SHOULD provide mitigations for this attack by limiting the
+    //# usage and lifetime of address validation tokens
     pub fn time_window_id(&self) -> u8 {
         (self.0 & TIME_WINDOW_MASK) >> TIME_WINDOW_SHIFT
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#8.1.1
-    //#   A token sent in a NEW_TOKEN frames or a Retry packet MUST be
-    //#   constructed in a way that allows the server to identify how it was
-    //#   provided to a client.  These tokens are carried in the same field,
-    //#   but require different handling from servers.
+    //# A token sent in a NEW_TOKEN frames or a Retry packet MUST be
+    //# constructed in a way that allows the server to identify how it was
+    //# provided to a client.  These tokens are carried in the same field,
+    //# but require different handling from servers.
     pub fn token_source(&self) -> Source {
         match (self.0 & TOKEN_SOURCE_MASK) >> TOKEN_SOURCE_SHIFT {
             0 => Source::NewTokenFrame,
@@ -246,7 +243,7 @@ impl Header {
     }
 }
 
-//= https://tools.ietf.org/html/draft-ietf-quic-transport-29.txt#8.1.4
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#8.1.4
 //#   There is no need for a single well-defined format for the token
 //#   because the server that generates the token also consumes it.
 #[derive(Copy, Clone, Debug, FromBytes, AsBytes, Unaligned)]
@@ -264,30 +261,30 @@ impl Token {
         self.header
     }
 
-    //= https://tools.ietf.org/html/draft-ietf-quic-transport-29.txt#8.1.3
-    //#   An address validation token MUST be difficult to guess.  Including a
-    //#   large enough random value in the token would be sufficient, but this
-    //#   depends on the server remembering the value it sends to clients.
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#8.1.4
+    //# An address validation token MUST be difficult to guess.  Including a
+    //# large enough random value in the token would be sufficient, but this
+    //# depends on the server remembering the value it sends to clients.
     pub fn nonce(&self) -> &[u8] {
         &self.nonce
     }
 
-    //= https://tools.ietf.org/html/draft-ietf-quic-transport-29.txt#8.1.3
-    //#   A token-based scheme allows the server to offload any state
-    //#   associated with validation to the client.  For this design to work,
-    //#   the token MUST be covered by integrity protection against
-    //#   modification or falsification by clients.  Without integrity
-    //#   protection, malicious clients could generate or guess values for
-    //#   tokens that would be accepted by the server.  Only the server
-    //#   requires access to the integrity protection key for tokens.
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#8.1.4
+    //# A token-based scheme allows the server to offload any state
+    //# associated with validation to the client.  For this design to work,
+    //# the token MUST be covered by integrity protection against
+    //# modification or falsification by clients.  Without integrity
+    //# protection, malicious clients could generate or guess values for
+    //# tokens that would be accepted by the server.  Only the server
+    //# requires access to the integrity protection key for tokens.
     pub fn hmac(&self) -> &[u8] {
         &self.hmac
     }
 
-    //= https://tools.ietf.org/html/draft-ietf-quic-transport-29.txt#8.1.3
-    //#   When a server receives an Initial packet with an address validation
-    //#   token, it MUST attempt to validate the token, unless it has already
-    //#   completed address validation.
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#8.1.3
+    //# When a server receives an Initial packet with an address validation
+    //# token, it MUST attempt to validate the token, unless it has already
+    //# completed address validation.
     #[allow(dead_code)]
     pub fn validate(&self) -> bool {
         true
