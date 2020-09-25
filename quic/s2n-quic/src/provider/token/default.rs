@@ -36,7 +36,7 @@ impl super::Provider for Provider {
     type Error = core::convert::Infallible;
 
     fn start(self) -> Result<Self::Format, Self::Error> {
-        // Start timer to update key
+        // TODO: Start timer to update key
         Ok(Format {
             new_tokens: self.new_tokens,
             new_token_validate_port: self.new_token_validate_port,
@@ -83,7 +83,7 @@ impl Format {
         SystemRandom::new().fill(&mut token.nonce[..]).ok()?;
 
         // Sign the token, then write to the buffer
-        todo!()
+        todo!("Sign the token")
     }
 
     #[allow(dead_code)]
@@ -175,8 +175,12 @@ impl super::Format for Format {
         }
     }
 
-    fn hash_token(&self, _token: &[u8]) -> &[u8] {
-        todo!()
+    fn token_hash<'a>(&self, token: &'a [u8]) -> &'a [u8] {
+        let buffer = DecoderBuffer::new(token);
+        let (token, _) = buffer
+            .decode::<&Token>()
+            .expect("Provided output buffer did not match TOKEN_LEN");
+        &token.hmac[..]
     }
 }
 
@@ -297,18 +301,19 @@ mod tests {
 
     #[test]
     fn test_header() {
-        // Fuzz for an exhaustive test of the header
-        let header = Header(0xac);
-        assert_eq!(header.version(), 0x01);
-        assert_eq!(header.token_source(), Source::NewTokenFrame);
-        assert_eq!(header.key_id(), 0x02);
-        assert_eq!(header.time_window_id(), 0x0c);
-
-        let header = Header::new(0x03, 0x0a, Source::RetryPacket);
-
-        assert_eq!(header.version(), TOKEN_VERSION);
-        assert_eq!(header.key_id(), 0x03);
-        assert_eq!(header.time_window_id(), 0x0a);
-        assert_eq!(header.token_source(), Source::RetryPacket);
+        // Test all combinations of values to create a header and verify the header returns the
+        // expected values.
+        for key_id in 0..2 {
+            for time_window_id in 0..4 {
+                for source in &[Source::NewTokenFrame, Source::RetryPacket] {
+                    let header = Header::new(key_id, time_window_id, *source);
+                    // The version should always be the constant TOKEN_VERSION
+                    assert_eq!(header.version(), TOKEN_VERSION);
+                    assert_eq!(header.key_id(), key_id);
+                    assert_eq!(header.time_window_id(), time_window_id);
+                    assert_eq!(header.token_source(), *source);
+                }
+            }
+        }
     }
 }

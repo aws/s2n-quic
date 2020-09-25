@@ -32,10 +32,10 @@ pub trait Format {
     ) -> Option<Source>;
 
     /// Called to return the hash of a token for de-duplication purposes
-    fn hash_token(&self, token: &[u8]) -> &[u8];
+    fn token_hash<'a>(&self, token: &'a [u8]) -> &'a [u8];
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Source {
     RetryPacket,
     NewTokenFrame,
