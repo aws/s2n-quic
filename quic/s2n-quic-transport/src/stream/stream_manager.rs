@@ -180,7 +180,7 @@ pub struct StreamManagerState<S> {
     initial_peer_limits: InitialFlowControlLimits,
     /// If the `StreamManager` was closed, this contains the error which was
     /// passed to the `close()` call
-    close_reason: Option<StreamError>,
+    close_reason: Option<connection::Error>,
     /// All state for accepting remotely initiated connections
     pub(super) accept_state: AcceptState,
     /// Limits for the Stream manager. Since only Stream limits are utilized at
@@ -327,7 +327,7 @@ impl<S: StreamTrait> StreamManagerState<S> {
         Ok(())
     }
 
-    fn close(&mut self, error: StreamError) {
+    fn close(&mut self, error: connection::Error) {
         if self.close_reason.is_some() {
             return;
         }
@@ -337,7 +337,7 @@ impl<S: StreamTrait> StreamManagerState<S> {
             // We have to wake inside the lock, since `StreamEvent`s has no capacity
             // to carry wakers in another iteration
             let mut events = StreamEvents::new();
-            stream.on_internal_reset(error, &mut events);
+            stream.on_internal_reset(error.into(), &mut events);
             events.wake_all();
         });
 
@@ -452,7 +452,7 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         &mut self,
         stream_type: StreamType,
         context: &Context,
-    ) -> Poll<Result<StreamId, StreamError>> {
+    ) -> Poll<Result<StreamId, connection::Error>> {
         // Clear a stored Waker
         *self.inner.accept_state.waker_mut(stream_type) = None;
 
@@ -461,7 +461,7 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
             if let Some(next_id_to_accept) = self.inner.accept_state.next_stream_id(stream_type) {
                 next_id_to_accept
             } else {
-                return Poll::Ready(Err(StreamError::StreamIdExhausted));
+                return Poll::Ready(Err(connection::Error::StreamIdExhausted));
             };
 
         // If the connection was closed we still allow the application to accept
@@ -488,7 +488,7 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
     }
 
     /// Opens the next outgoing stream of a certain type
-    pub fn open(&mut self, stream_type: StreamType) -> Result<StreamId, StreamError> {
+    pub fn open(&mut self, stream_type: StreamType) -> Result<StreamId, connection::Error> {
         // If StreamManager was closed, return the error
         if let Some(error) = self.inner.close_reason {
             return Err(error);
@@ -503,7 +503,7 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         {
             next_id
         } else {
-            return Err(StreamError::StreamIdExhausted);
+            return Err(connection::Error::StreamIdExhausted);
         };
 
         // TODO: Check if we can open this Stream according to MAX_STREAMS and
@@ -556,13 +556,13 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
     /// given error. The current implementation of [`StreamManager`] will still
     /// allow to forward frames to the contained Streams as well as to query them
     /// for data. However new Streams can not be created.
-    pub fn close(&mut self, error: StreamError) {
+    pub fn close(&mut self, error: connection::Error) {
         self.inner.close(error);
     }
 
     /// If the `StreamManager` is closed, this returns the error which which was
     /// used to close it.
-    pub fn close_reason(&self) -> Option<StreamError> {
+    pub fn close_reason(&self) -> Option<connection::Error> {
         self.inner.close_reason
     }
 

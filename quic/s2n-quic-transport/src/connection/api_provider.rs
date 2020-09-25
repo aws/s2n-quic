@@ -1,7 +1,10 @@
 //! Defines the trait for types which provide the public Connection and Stream API
 //! via dynamic dispatch
 
-use crate::stream::{Stream, StreamError};
+use crate::{
+    connection,
+    stream::{Stream, StreamError},
+};
 use alloc::sync::Arc;
 use bytes::Bytes;
 use core::task::{Context, Poll};
@@ -48,7 +51,7 @@ pub(crate) trait ConnectionApiProvider: Sync + Send {
         arc_self: &Arc<dyn ConnectionApiProvider>,
         stream_type: Option<StreamType>,
         context: &Context,
-    ) -> Poll<Result<(Stream, StreamType), StreamError>>;
+    ) -> Poll<Result<(Stream, StreamType), connection::Error>>;
 
     fn close_connection(&self, error_code: ApplicationErrorCode);
 }

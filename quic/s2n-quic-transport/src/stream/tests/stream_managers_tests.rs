@@ -477,7 +477,7 @@ fn opens_locally_initiated_streams() {
                 .get_mut(*local_ep_type, *stream_type) = None;
 
             assert_eq!(
-                (Err(StreamError::StreamIdExhausted)),
+                (Err(connection::Error::StreamIdExhausted)),
                 manager.open(*stream_type)
             );
         }
@@ -488,9 +488,9 @@ fn opens_locally_initiated_streams() {
 fn open_returns_error_after_close() {
     let mut manager = create_stream_manager(EndpointType::Server);
 
-    manager.close(connection::Error::Unspecified.into());
+    manager.close(connection::Error::Unspecified);
     assert_eq!(
-        Err(connection::Error::Unspecified.into()),
+        Err(connection::Error::Unspecified),
         manager.open(StreamType::Bidirectional)
     )
 }
@@ -679,7 +679,7 @@ fn accept_returns_remotely_initiated_stream() {
                 *manager.inner.accept_state.next_stream_mut(*stream_type) = None;
 
                 assert_eq!(
-                    Poll::Ready(Err(StreamError::StreamIdExhausted)),
+                    Poll::Ready(Err(connection::Error::StreamIdExhausted)),
                     manager.poll_accept(*stream_type, &Context::from_waker(&accept_waker))
                 );
             }
@@ -714,7 +714,7 @@ fn accept_returns_opened_streams_even_if_stream_manager_was_closed() {
 
                 // Close the StreamManager
                 // This should still allow us to accept Streams
-                manager.close(connection::Error::Unspecified.into());
+                manager.close(connection::Error::Unspecified);
 
                 for n in 0..STREAMS_TO_OPEN {
                     let stream_id = StreamId::nth(*initiator_type, *stream_type, n).unwrap();
@@ -726,7 +726,7 @@ fn accept_returns_opened_streams_even_if_stream_manager_was_closed() {
 
                 // Now the error should be visible
                 assert_eq!(
-                    Poll::Ready(Err(connection::Error::Unspecified.into())),
+                    Poll::Ready(Err(connection::Error::Unspecified)),
                     manager.poll_accept(*stream_type, &Context::from_waker(&accept_waker))
                 );
             }
@@ -755,12 +755,12 @@ fn closing_stream_manager_wakes_blocked_accepts() {
 
                 // Close the StreamManager
                 // This should wake up the accept call
-                manager.close(connection::Error::Unspecified.into());
+                manager.close(connection::Error::Unspecified);
                 assert_eq!(accept_wake_counter, 1);
 
                 // Now the error should be visible
                 assert_eq!(
-                    Poll::Ready(Err(connection::Error::Unspecified.into())),
+                    Poll::Ready(Err(connection::Error::Unspecified)),
                     manager.poll_accept(*stream_type, &Context::from_waker(&accept_waker))
                 );
             }

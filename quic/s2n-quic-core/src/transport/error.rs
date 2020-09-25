@@ -85,13 +85,19 @@ impl fmt::Debug for TransportError {
     }
 }
 
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-30.txt#19.19
+//# A value of 0 (equivalent to the mention
+//# of the PADDING frame) is used when the frame type is unknown.
+const UNKNOWN_FRAME_TYPE: u32 = 0;
+
 /// Internal convenience macro for defining standard error codes
 macro_rules! impl_errors {
-    ($($(#[doc = $doc:expr])* $name:ident = $code:expr),* $(,)?) => {
+    ($($(#[doc = $doc:expr])* $name:ident = $code:literal $(.with_frame_type($frame:expr))?),* $(,)?) => {
         impl TransportError {
             $(
                 $(#[doc = $doc])*
-                pub const $name: Self = Self::new(VarInt::from_u32($code));
+                pub const $name: Self = Self::new(VarInt::from_u32($code))
+                    $( .with_frame_type(VarInt::from_u32($frame)) )?;
             )*
 
             pub fn description(&self) -> Option<&'static str> {
@@ -123,28 +129,28 @@ impl_errors! {
     /// An endpoint uses this with CONNECTION_CLOSE to
     /// signal that the connection is being closed abruptly in the absence
     /// of any error
-    NO_ERROR = 0x0,
+    NO_ERROR = 0x0.with_frame_type(UNKNOWN_FRAME_TYPE),
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#20
     //# INTERNAL_ERROR (0x1):  The endpoint encountered an internal error and
     //#    cannot continue with the connection.
     /// The endpoint encountered an internal error
     /// and cannot continue with the connection.
-    INTERNAL_ERROR = 0x1,
+    INTERNAL_ERROR = 0x1.with_frame_type(UNKNOWN_FRAME_TYPE),
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#20
     //# CONNECTION_REFUSED (0x2):  The server refused to accept a new
     //#  connection.
     /// The server refused to accept a new
     ///  connection.
-    CONNECTION_REFUSED = 0x2,
+    CONNECTION_REFUSED = 0x2.with_frame_type(UNKNOWN_FRAME_TYPE),
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#20
     //# FLOW_CONTROL_ERROR (0x3):  An endpoint received more data than it
     //#    permitted in its advertised data limits; see Section 4.
     /// An endpoint received more data than it
     /// permitted in its advertised data limits.
-    FLOW_CONTROL_ERROR = 0x3,
+    FLOW_CONTROL_ERROR = 0x3.with_frame_type(UNKNOWN_FRAME_TYPE),
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#20
     //# STREAM_LIMIT_ERROR (0x4):  An endpoint received a frame for a stream
@@ -153,14 +159,14 @@ impl_errors! {
     /// An endpoint received a frame for a stream
     /// identifier that exceeded its advertised stream limit for the
     /// corresponding stream type.
-    STREAM_LIMIT_ERROR = 0x4,
+    STREAM_LIMIT_ERROR = 0x4.with_frame_type(UNKNOWN_FRAME_TYPE),
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#20
     //# STREAM_STATE_ERROR (0x5):  An endpoint received a frame for a stream
     //#    that was not in a state that permitted that frame; see Section 3.
     /// An endpoint received a frame for a stream
     /// that was not in a state that permitted that frame.
-    STREAM_STATE_ERROR = 0x5,
+    STREAM_STATE_ERROR = 0x5.with_frame_type(UNKNOWN_FRAME_TYPE),
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#20
     //# FINAL_SIZE_ERROR (0x6):  An endpoint received a STREAM frame
@@ -173,7 +179,7 @@ impl_errors! {
     /// An endpoint received a STREAM frame
     /// containing data that exceeded the previously established final
     /// size.
-    FINAL_SIZE_ERROR = 0x6,
+    FINAL_SIZE_ERROR = 0x6.with_frame_type(UNKNOWN_FRAME_TYPE),
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#20
     //# FRAME_ENCODING_ERROR (0x7):  An endpoint received a frame that was
@@ -182,7 +188,7 @@ impl_errors! {
     //#    of the packet could carry.
     /// An endpoint received a frame that was
     /// badly formatted.
-    FRAME_ENCODING_ERROR = 0x7,
+    FRAME_ENCODING_ERROR = 0x7.with_frame_type(UNKNOWN_FRAME_TYPE),
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#20
     //# TRANSPORT_PARAMETER_ERROR (0x8):  An endpoint received transport
@@ -191,7 +197,7 @@ impl_errors! {
     //#    forbidden, or is otherwise in error.
     /// An endpoint received transport
     /// parameters that were badly formatted.
-    TRANSPORT_PARAMETER_ERROR = 0x8,
+    TRANSPORT_PARAMETER_ERROR = 0x8.with_frame_type(UNKNOWN_FRAME_TYPE),
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#20
     //# CONNECTION_ID_LIMIT_ERROR (0x9):  The number of connection IDs
@@ -200,7 +206,7 @@ impl_errors! {
     /// The number of connection IDs
     /// provided by the peer exceeds the advertised
     /// active_connection_id_limit.
-    CONNECTION_ID_LIMIT_ERROR = 0x9,
+    CONNECTION_ID_LIMIT_ERROR = 0x9.with_frame_type(UNKNOWN_FRAME_TYPE),
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#20
     //# PROTOCOL_VIOLATION (0xA):  An endpoint detected an error with
@@ -209,14 +215,14 @@ impl_errors! {
     /// An endpoint detected an error with
     /// protocol compliance that was not covered by more specific error
     /// codes.
-    PROTOCOL_VIOLATION = 0xA,
+    PROTOCOL_VIOLATION = 0xA.with_frame_type(UNKNOWN_FRAME_TYPE),
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#20
     //# INVALID_TOKEN (0xB):  A server received a Retry Token in a client
     //#    Initial that is invalid.
     /// A server received a Retry Token in a client
     /// Initial that is invalid.
-    INVALID_TOKEN = 0xB,
+    INVALID_TOKEN = 0xB.with_frame_type(UNKNOWN_FRAME_TYPE),
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#20
     //# APPLICATION_ERROR (0xC):  The application or application protocol
@@ -230,7 +236,7 @@ impl_errors! {
     //#    CRYPTO frames than it can buffer.
     /// An endpoint has received more data in
     /// CRYPTO frames than it can buffer.
-    CRYPTO_BUFFER_EXCEEDED = 0xD,
+    CRYPTO_BUFFER_EXCEEDED = 0xD.with_frame_type(UNKNOWN_FRAME_TYPE),
 }
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#20
@@ -245,6 +251,7 @@ impl TransportError {
     /// Creates a crypto-level `TransportError` from a TLS alert code.
     pub const fn crypto_error(code: u8) -> Self {
         Self::new(VarInt::from_u16(0x100 | (code as u16)))
+            .with_frame_type(VarInt::from_u32(UNKNOWN_FRAME_TYPE))
     }
 }
 
