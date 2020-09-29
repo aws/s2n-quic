@@ -436,8 +436,6 @@ impl ReceiveStream {
                         .acquire_window_up_to(data_end, frame.tag().into())?;
                 }
 
-                let mut should_wake = false;
-
                 self.receive_buffer
                     .write_at(frame.offset, frame.data)
                     .map_err(|error| {
@@ -459,15 +457,37 @@ impl ReceiveStream {
                     })?;
 
                 // wake the waiter if the buffer has data and the len has crossed the watermark
-                if !self.receive_buffer.is_empty()
-                    && self
-                        .read_waiter
-                        .as_ref()
-                        .map(|w| w.1 <= self.receive_buffer.len())
-                        .unwrap_or(false)
-                {
-                    should_wake = true;
-                }
+                let mut should_wake = self
+                    .read_waiter
+                    .as_ref()
+                    .filter(|_| {
+                        // ensure the buffer has at least 1 byte available
+                        !self.receive_buffer.is_empty()
+                    })
+                    .map(|(_, watermark)| {
+                        // Take the minimum of 80% of the current receive window
+                        //
+                        // As we approach the receive window we want to wake the waiter a bit early
+                        // to ensure the application has enough time to read the data and release
+                        // additional credits for the peer to send more data. 80% may need to be
+                        // modifed as additional test are performed.
+                        const PERCENT_WINDOW: usize = 80;
+
+                        // compute the denominator of the window fraction by figuring how many
+                        // times it'll go into 100.
+                        const DENOM: usize = 100 / (100 - PERCENT_WINDOW);
+
+                        // TODO is this the right way to compute it?
+                        let window = self.flow_controller.acquired_connection_window
+                            - self.flow_controller.released_connection_window;
+
+                        let window = <VarInt as core::convert::TryInto<_>>::try_into(window)
+                            .unwrap_or(core::usize::MAX);
+
+                        (*watermark).min(window.saturating_sub(window / DENOM))
+                    })
+                    .map(|watermark| watermark <= self.receive_buffer.len())
+                    .unwrap_or(false);
 
                 if frame.is_fin && total_size.is_none() {
                     // Store the total size
