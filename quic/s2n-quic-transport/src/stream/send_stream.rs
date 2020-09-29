@@ -584,20 +584,17 @@ impl SendStream {
 
         if let SendStreamState::Sending = self.state {
             match self.data_sender.state() {
+                DataSenderState::Sending if should_flush => {
+                    // In this state, the application wanted to ensure the peer has received
+                    // all of the data in the stream before continuing (flushed the stream).
+                    should_wake = self.data_sender.enqueued_len() == 0 && self.can_push();
+                }
                 DataSenderState::Sending => {
-                    if should_flush {
-                        // In this state, the application wanted to ensure the peer has received
-                        // all of the data in the stream before continuing (flushed the stream).
-                        should_wake = self.data_sender.enqueued_len() == 0 && self.can_push();
-                        dbg!(should_wake);
-                    } else {
-                        // In this state we have to wake up the user if the they can
-                        // queue more data for transmission. This is possible if
-                        // acknowledging packets removed them from the send queue and
-                        // we got additional space in the send queue.
-                        should_wake = self.can_push();
-                        dbg!(should_wake);
-                    }
+                    // In this state we have to wake up the user if the they can
+                    // queue more data for transmission. This is possible if
+                    // acknowledging packets removed them from the send queue and
+                    // we got additional space in the send queue.
+                    should_wake = self.can_push();
                 }
                 DataSenderState::FinishAcknowledged => {
                     // If we have already sent a fin and just waiting for it to be
@@ -607,11 +604,8 @@ impl SendStream {
                     // In this state we also wake up the application,
                     // since the finish operation has been confirmed.
                     should_wake = true;
-                    dbg!(should_wake);
                 }
-                _ => {
-                    // continue
-                }
+                _ => {}
             }
         }
 
@@ -624,7 +618,6 @@ impl SendStream {
 
                 // notify the waiter if it wanted to flush the reset
                 should_wake = should_flush;
-                dbg!(should_wake);
             }
         }
 

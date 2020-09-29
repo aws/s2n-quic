@@ -228,7 +228,7 @@ impl<
         self.total_acknowledged + VarInt::from_u32(self.enqueued)
     }
 
-    /// Returns the amount of bytes that are currently enqueued for writing on
+    /// Returns the amount of bytes that are currently enqueued for sending on
     /// this Stream.
     pub fn enqueued_len(&self) -> usize {
         self.enqueued as usize
