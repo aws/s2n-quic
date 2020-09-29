@@ -316,6 +316,19 @@ impl ReceiveStreamFlowController {
         self.read_window_sync.stop_sync();
     }
 
+    /// Returns the low watermark for the current state of the flow controller
+    fn watermark(&self) -> usize {
+        // As we approach the flow controller window we want to wake the waiter a bit early
+        // to ensure the application has enough time to read the data and release
+        // additional credits for the peer to send more data. 50% may need to be
+        // modifed as additional test are performed. It also may be a good idea to make this
+        // configurable in the future.
+
+        let watermark = self.desired_flow_control_window / 2;
+
+        usize::try_from(watermark).unwrap_or(core::usize::MAX)
+    }
+
     /// Returns the MAX_STREAM_DATA window that is currently synchronized
     /// towards the peer.
     #[cfg(test)]
@@ -460,33 +473,22 @@ impl ReceiveStream {
                 let mut should_wake = self
                     .read_waiter
                     .as_ref()
-                    .filter(|_| {
-                        // ensure the buffer has at least 1 byte available
-                        !self.receive_buffer.is_empty()
+                    .map(|(_, low_watermark)| {
+                        let len = self.receive_buffer.len();
+
+                        // make sure we have at least 1 byte available for reading
+                        if len == 0 {
+                            return false;
+                        }
+
+                        let watermark = (*low_watermark)
+                            // don't let the application-provided watermark exceed the flow
+                            // controller watermark
+                            .min(self.flow_controller.watermark());
+
+                        // ensure the buffer has at least the watermark
+                        len >= watermark
                     })
-                    .map(|(_, watermark)| {
-                        // Take the minimum of 80% of the current receive window
-                        //
-                        // As we approach the receive window we want to wake the waiter a bit early
-                        // to ensure the application has enough time to read the data and release
-                        // additional credits for the peer to send more data. 80% may need to be
-                        // modifed as additional test are performed.
-                        const PERCENT_WINDOW: usize = 80;
-
-                        // compute the denominator of the window fraction by figuring how many
-                        // times it'll go into 100.
-                        const DENOM: usize = 100 / (100 - PERCENT_WINDOW);
-
-                        // TODO is this the right way to compute it?
-                        let window = self.flow_controller.acquired_connection_window
-                            - self.flow_controller.released_connection_window;
-
-                        let window = <VarInt as core::convert::TryInto<_>>::try_into(window)
-                            .unwrap_or(core::usize::MAX);
-
-                        (*watermark).min(window.saturating_sub(window / DENOM))
-                    })
-                    .map(|watermark| watermark <= self.receive_buffer.len())
                     .unwrap_or(false);
 
                 if frame.is_fin && total_size.is_none() {
