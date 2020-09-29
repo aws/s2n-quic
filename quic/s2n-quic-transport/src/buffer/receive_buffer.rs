@@ -599,17 +599,29 @@ impl StreamReceiveBuffer {
 
     /// Pops a buffer from the front of the receive queue if available
     pub fn pop(&mut self) -> Option<BytesMut> {
-        self.pop_transform(|buffer| Some(buffer.split()))
+        self.pop_transform(|buffer| buffer.split())
+    }
+
+    /// Pops a buffer from the front of the receive queue, who's length is always guaranteed to be
+    /// less than the provided `watermark`.
+    pub fn pop_watermarked(&mut self, watermark: usize) -> Option<BytesMut> {
+        self.pop_transform(|buffer| {
+            // make sure the buffer doesn't exceed the watermark
+            //
+            // note: `split_to` performs special checks on `amount == 0` and `amount == len` so the
+            // refcount doesn't needlessly increase
+            buffer.split_to(watermark.min(buffer.len()))
+        })
     }
 
     /// Pops a buffer from the front of the receive queue as long as the `transform` function returns a
-    /// buffer.
-    pub fn pop_transform<F: Fn(&mut BytesMut) -> Option<BytesMut>>(
+    /// non-empty buffer.
+    fn pop_transform<F: Fn(&mut BytesMut) -> BytesMut>(
         &mut self,
         transform: F,
     ) -> Option<BytesMut> {
         if let SlotState::Received(buffer) = self.slots.front_mut()? {
-            let out = transform(buffer)?;
+            let out = transform(buffer);
 
             // remove an empty buffer if its capacity is getting low
             if buffer.is_empty() && buffer.capacity() <= MIN_STREAM_RECEIVE_BUFFER_ALLOCATION_SIZE {

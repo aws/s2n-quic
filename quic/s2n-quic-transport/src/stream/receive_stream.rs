@@ -511,13 +511,6 @@ impl ReceiveStream {
                     if frame.is_fin && self.receive_buffer.consumed_len() == total_size {
                         self.receive_buffer.reset();
                         self.state = ReceiveStreamState::DataRead;
-
-                        // Wakes up any readers that might currently be blocked on
-                        // the stream.
-                        // If there was no waiter we won't wake up anything. Therefore
-                        // this will not lead to an unnecessary wakeup in the case there
-                        // is still oustanding buffered data.
-                        should_wake = true;
                     }
                 }
 
@@ -739,16 +732,7 @@ impl ReceiveStream {
                     continue;
                 }
 
-                match self.receive_buffer.pop_transform(|buffer| {
-                    // make sure the buffer doesn't exceed the high watermark
-                    let desired_len = (*high_watermark).min(buffer.len());
-                    // split off the buffer if the clamped size is ok
-                    if desired_len > 0 {
-                        Some(buffer.split_to(desired_len))
-                    } else {
-                        None
-                    }
-                }) {
+                match self.receive_buffer.pop_watermarked(*high_watermark) {
                     Some(data) => {
                         let data_len = data.len();
                         // Release the flow control window for the consumed chunk
@@ -774,21 +758,20 @@ impl ReceiveStream {
 
                         // Check for the end of stream and transition to
                         // [`ReceiveStreamState::DataRead`] if necessary.
-                        if total_size
-                            .map(|total_size| total_size == self.receive_buffer.consumed_len())
-                            .unwrap_or(false)
-                        {
-                            // By the time we enter the final state all synchronization
-                            // should have been cancelled.
-                            debug_assert!(self.stop_sending_sync.is_cancelled());
-                            debug_assert!(self.flow_controller.read_window_sync.is_cancelled());
-                            // The client has consumed all data. The stream
-                            // is thereby finished.
-                            self.state = ReceiveStreamState::DataRead;
-                            // We clear the receive buffer, to free up any buffer
-                            // space which had been allocated but not used
-                            self.receive_buffer.reset();
-                            break;
+                        if let Some(total_size) = total_size {
+                            if total_size == self.receive_buffer.consumed_len() {
+                                // By the time we enter the final state all synchronization
+                                // should have been cancelled.
+                                debug_assert!(self.stop_sending_sync.is_cancelled());
+                                debug_assert!(self.flow_controller.read_window_sync.is_cancelled());
+                                // The client has consumed all data. The stream
+                                // is thereby finished.
+                                self.state = ReceiveStreamState::DataRead;
+                                // We clear the receive buffer, to free up any buffer
+                                // space which had been allocated but not used
+                                self.receive_buffer.reset();
+                                break;
+                            }
                         }
                     }
                     None => {
