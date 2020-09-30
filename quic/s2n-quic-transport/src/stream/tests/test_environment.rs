@@ -290,6 +290,21 @@ impl TestEnvironment {
         self.stream.on_packet_loss(&packet_number, &mut events);
     }
 
+    pub fn poll_request(
+        &mut self,
+        request: &mut ops::Request,
+    ) -> Poll<Result<ops::Response, StreamError>> {
+        let result = self
+            .stream
+            .poll_request(request, Some(&Context::from_waker(&self.waker)))?
+            .into_poll();
+
+        match result {
+            Poll::Pending => Poll::Pending,
+            Poll::Ready(response) => Poll::Ready(Ok(response)),
+        }
+    }
+
     pub fn poll_push(&mut self, chunk: Bytes) -> Poll<Result<(), StreamError>> {
         let len = chunk.len();
         let result = self

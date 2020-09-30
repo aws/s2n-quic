@@ -35,6 +35,11 @@ pub enum StreamError {
     ///
     /// This is caused by trying to send data before polling readiness
     SendingBlocked,
+    /// The stream was provided a non-empty placeholder buffer for receiving data.
+    ///
+    /// The application should ensure only empty buffers are provided to receive calls,
+    /// otherwise it can lead to data loss on the stream.
+    NonEmptyOutput,
 }
 
 impl ApplicationErrorExt for StreamError {
@@ -92,6 +97,7 @@ impl From<StreamError> for std::io::ErrorKind {
             StreamError::NonReadable => ErrorKind::Other,
             StreamError::NonWritable => ErrorKind::Other,
             StreamError::SendingBlocked => ErrorKind::WouldBlock,
+            StreamError::NonEmptyOutput => ErrorKind::InvalidInput,
         }
     }
 }

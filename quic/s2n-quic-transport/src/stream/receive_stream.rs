@@ -743,17 +743,16 @@ impl ReceiveStream {
         let high_watermark = &mut request.high_watermark;
 
         if let Some(chunks) = request.chunks.as_mut() {
-            while response.chunks.consumed < chunks.len() {
-                // make sure the placeholder chunk is empty. If it's not, it could lead to
-                // replacing a chunk that was received in a previous request
-                if let Some(len) =
-                    Some(chunks[response.chunks.consumed].len()).filter(|len| *len > 0)
-                {
-                    response.chunks.consumed += 1;
-                    response.bytes.consumed += len;
-                    continue;
-                }
+            // Make sure all of the placeholder chunks are empty. If it's not, it could lead to
+            // replacing a chunk that was received in a previous request.
+            //
+            // We iterate over all of the chunks to make sure we don't do a partial write and
+            // return an error (which would result in losing data).
+            if chunks.iter().any(|chunk| !chunk.is_empty()) {
+                return Err(StreamError::NonEmptyOutput);
+            }
 
+            while response.chunks.consumed < chunks.len() {
                 match self.receive_buffer.pop_watermarked(*high_watermark) {
                     Some(data) => {
                         let data_len = data.len();

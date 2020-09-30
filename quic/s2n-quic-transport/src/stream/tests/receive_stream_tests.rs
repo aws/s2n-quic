@@ -3,12 +3,14 @@ use crate::{
     frame_exchange_interests::FrameExchangeInterestProvider,
     stream::{stream_interests::StreamInterestProvider, StreamEvents, StreamTrait},
 };
+use bytes::Bytes;
+use core::task::Poll;
 use s2n_quic_core::{
     application::ApplicationErrorCode,
     connection,
     endpoint::EndpointType,
     frame::{Frame, MaxData, MaxStreamData, ResetStream, StopSending},
-    stream::StreamType,
+    stream::{ops, StreamError, StreamType},
     varint::VarInt,
 };
 
@@ -1850,4 +1852,32 @@ fn stop_sending_frames_are_retransmitted_on_loss() {
     test_env.ack_packet(packet_nr_2, ExpectWakeup(Some(false)));
     assert_eq!(stream_interests(&[]), test_env.stream.interests());
     test_env.assert_write_frames(0);
+}
+
+#[test]
+fn receiving_into_non_empty_buffers_returns_an_error() {
+    let mut test_env = setup_receive_only_test_env();
+    test_env.assert_write_frames(0);
+
+    test_env.feed_data(VarInt::from_u8(0), 32);
+
+    assert_eq!(
+        Poll::Ready(Err(StreamError::NonEmptyOutput)),
+        test_env.poll_request(ops::Request::default().receive(&mut [Bytes::from(&[1][..])])),
+        "an non-empty buffer did not return an error",
+    );
+
+    assert_eq!(
+        Poll::Ready(Err(StreamError::NonEmptyOutput)),
+        test_env.poll_request(
+            ops::Request::default().receive(&mut [Bytes::new(), Bytes::from(&[1][..])])
+        ),
+        "not all buffers were scanned for contents"
+    );
+
+    assert_eq!(
+        test_env.consume_all_data(),
+        32,
+        "data should not be lost when returning an error"
+    );
 }
