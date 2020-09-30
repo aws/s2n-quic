@@ -1,4 +1,4 @@
-use crate::inet::SocketAddress;
+use crate::{inet::SocketAddress, time::Timestamp};
 
 pub trait Endpoint: 'static {
     type CongestionController: CongestionController;
@@ -23,7 +23,11 @@ impl<'a> PathInfo<'a> {
 }
 
 pub trait CongestionController: 'static + Clone + Send {
-    // TODO implement callbacks
+    fn on_packet_acked(&self, time_sent: Timestamp, sent_bytes: usize);
+
+    fn on_packets_lost(&self, loss_info: LossInfo);
+
+    fn process_ecn(&self, time_sent: Timestamp);
 }
 
 #[cfg(any(test, feature = "testing"))]
@@ -37,6 +41,17 @@ pub mod testing {
     }
 
     impl CongestionController for MockCC {
+        fn on_packet_acked(&self, time_sent: Timestamp, sent_bytes: usize) {
+            unimplemented!()
+        }
+
+        fn on_packets_lost(&self, loss_info: _) {
+            unimplemented!()
+        }
+
+        fn process_ecn(&self, time_sent: Timestamp) {
+            unimplemented!()
+        }
         // TODO implement callbacks
     }
 }

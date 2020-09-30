@@ -70,6 +70,8 @@ pub struct Manager {
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#A.3
     //# The time the most recent ack-eliciting packet was sent.
     time_of_last_ack_eliciting_packet: Option<Timestamp>,
+
+    ecn_ce_counter: usize,
 }
 
 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.1.1
@@ -144,6 +146,7 @@ impl Manager {
             time_threshold: Duration::from_secs(0),
             bytes_in_flight: 0,
             time_of_last_ack_eliciting_packet: None,
+            ecn_ce_counter: 0,
         }
     }
 
@@ -305,17 +308,28 @@ impl Manager {
                         latest_rtt,
                         largest_newly_acked.space(),
                     );
+
+                    // Process ECN information if present.
+                    if let Some(ecn_counts) = frame.ecn_counts {
+                        if ecn_counts.ce_count > self.ecn_ce_counter {
+                            self.ecn_ce_counter = ecn_counts.ce_count.to_usize();
+                            path.congestion_controller
+                                .process_ecn(largest_newly_acked_info.time_sent);
+                        }
+                    }
                 }
             } else {
                 // Nothing to do if there are no newly acked packets.
                 continue;
             };
 
-            // TODO: path.congestion_controller.on_packets_acked(self.sent_packets.range(acked_packets));
-
             for packet_number in acked_packets {
                 if let Some(acked_packet_info) = self.sent_packets.remove(packet_number) {
                     self.bytes_in_flight -= acked_packet_info.sent_bytes as usize;
+                    path.congestion_controller.on_packet_acked(
+                        acked_packet_info.time_sent,
+                        acked_packet_info.sent_bytes as usize,
+                    );
                 }
             }
 
@@ -328,11 +342,6 @@ impl Manager {
         let mut loss_info = LossInfo::default();
 
         if has_newly_acked {
-            // Process ECN information if present.
-            if frame.ecn_counts.is_some() {
-                // TODO: path.congestion_controller.process_ecn(ecn_counts, largest_newly_acked, largest_newly_acked_packet.space())
-            }
-
             //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.1.2
             //# Once a later packet within the same packet number space has been
             //# acknowledged, an endpoint SHOULD declare an earlier packet lost if it
@@ -1170,7 +1179,7 @@ mod test {
         for packet in acked_packets {
             assert!(manager.sent_packets.get(packet).is_none());
         }
-
+        context.is_handshake_confirmed();
         (result, context)
     }
 
