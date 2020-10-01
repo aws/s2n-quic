@@ -382,7 +382,6 @@ impl Manager {
         Ok(loss_info)
     }
 
-    //noinspection RsExternalLinter
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#A.10
     //# DetectAndRemoveLostPackets is called every time an ACK is received or the time threshold
     //# loss detection timer expires. This function operates on the sent_packets for that packet
@@ -961,6 +960,9 @@ mod test {
         );
         let time_zero = s2n_quic_platform::time::now() + Duration::from_secs(10);
         manager.time_threshold = Duration::from_secs(3);
+        // The RFC doesn't mention it, but it is implied that the first RTT sample has already
+        // been received when this example begins, otherwise packet #2 would not be considered
+        // part of the persistent congestion period.
         manager.first_rtt_sample = Some(s2n_quic_platform::time::now());
 
         // t=0: Send packet #1 (app data)
@@ -988,11 +990,6 @@ mod test {
             &mut path,
             &mut manager,
         );
-
-        // assert_eq!(
-        //     manager.first_rtt_sample,
-        //     Some(time_zero + Duration::from_millis(1200))
-        // );
 
         // t=2-6: Send packets #3 - #7 (app data)
         for t in 2..=6 {
