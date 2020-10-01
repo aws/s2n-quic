@@ -192,11 +192,8 @@ pub mod tx {
         /// request may be polled again.
         pub will_wake: bool,
 
-        /// Indicates if the operation resulted in resetting the stream
-        pub is_reset: bool,
-
-        /// Indicates if the operation resulted ending the stream.
-        pub is_finished: bool,
+        /// Returns the current status of the stream
+        pub status: Status,
     }
 
     impl Response {
@@ -269,12 +266,8 @@ pub mod rx {
         /// request may be polled again.
         pub will_wake: bool,
 
-        /// Indicates that the stream's available bytes and chunks are not going to increase beyond
-        /// their reported size, as the stream has reached the end
-        pub is_final: bool,
-
-        /// Indicates that the request asked the peer to stop sending data.
-        pub is_stopped: bool,
+        /// Returns the current status of the stream
+        pub status: Status,
     }
 
     impl Response {
@@ -331,6 +324,78 @@ pub struct Chunks {
     /// In the case of `rx` operations, this is the number of additional chunks that can be received
     /// from the stream.
     pub available: usize,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum Status {
+    /// Indicates the stream is open and writable
+    Open,
+
+    /// Indicates the stream is finishing but still has data to be flushed
+    Finishing,
+
+    /// Indicates that the stream is finished and completely flushed
+    Finished,
+
+    /// Indicates that the stream has been reset locally but has not been acknowledged by the peer
+    Resetting,
+
+    /// Indicates that the stream was reset either by the peer or locally
+    Reset,
+}
+
+impl Default for Status {
+    fn default() -> Self {
+        Self::Open
+    }
+}
+
+macro_rules! impl_status {
+    (| $self:ident | $value:expr) => {
+        pub fn is_open(&self) -> bool {
+            matches!(self.status(), Status::Open)
+        }
+
+        pub fn is_finishing(&self) -> bool {
+            matches!(self.status(), Status::Finishing)
+        }
+
+        pub fn is_finished(&self) -> bool {
+            matches!(self.status(), Status::Finished)
+        }
+
+        pub fn is_resetting(&self) -> bool {
+            matches!(self.status(), Status::Resetting)
+        }
+
+        pub fn is_reset(&self) -> bool {
+            matches!(self.status(), Status::Reset)
+        }
+
+        pub fn is_closing(&self) -> bool {
+            self.is_finishing() || self.is_resetting()
+        }
+
+        pub fn is_closed(&self) -> bool {
+            self.is_finished() || self.is_reset()
+        }
+
+        const fn status(&$self) -> Status {
+            $value
+        }
+    };
+}
+
+impl Status {
+    impl_status!(|self| *self);
+}
+
+impl rx::Response {
+    impl_status!(|self| self.status);
+}
+
+impl tx::Response {
+    impl_status!(|self| self.status);
 }
 
 macro_rules! conversions {

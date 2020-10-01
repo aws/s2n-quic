@@ -148,7 +148,7 @@ macro_rules! rx_stream_apis {
                 "consumed exceeded the number of chunks provided"
             );
             // return if the stream is still open to receiving more data
-            let is_open = !(rx.chunks.available == 0 && rx.is_final);
+            let is_open = rx.status.is_open() || rx.status.is_finishing();
             Poll::Ready(Ok((consumed, is_open)))
         }
 
@@ -451,19 +451,11 @@ impl<'state, 'chunks> Request<'state, 'chunks> {
     pub fn poll(&mut self, context: Option<&Context>) -> Result<ops::Response, StreamError> {
         let response = self.state.poll_request(&mut self.request, context)?;
 
-        // don't reset after resetting or finishing the stream
-        if let Some(tx) = self.request.tx.as_ref() {
-            if tx.finish || tx.reset.is_some() {
-                *self.reset_on_drop = false;
-            }
-        }
-
-        // don't reset after stopping or finishing the stream
-        if let Some(rx) = response.rx() {
-            if rx.is_stopped || (rx.is_final && rx.chunks.available == 0) {
-                *self.reset_on_drop = false;
-            }
-        }
+        // don't reset after exiting the open status
+        *self.reset_on_drop = core::iter::empty()
+            .chain(response.rx().map(|rx| !rx.is_open()))
+            .chain(response.tx().map(|tx| !tx.is_open()))
+            .all(|is_final| is_final);
 
         Ok(response)
     }
@@ -490,16 +482,16 @@ impl<'state, 'chunks> TxRequest<'state, 'chunks> {
     tx_request_apis!();
 
     pub fn poll(&mut self, context: Option<&Context>) -> Result<ops::tx::Response, StreamError> {
-        let response = self.state.poll_request(&mut self.request, context)?;
+        let response = self
+            .state
+            .poll_request(&mut self.request, context)?
+            .tx
+            .expect("invalid response");
 
-        // don't reset after resetting or finishing the stream
-        if let Some(tx) = self.request.tx.as_ref() {
-            if tx.finish || tx.reset.is_some() {
-                *self.reset_on_drop = false;
-            }
-        }
+        // don't reset after exiting the open status
+        *self.reset_on_drop = !response.is_open();
 
-        Ok(response.tx.expect("invalid response"))
+        Ok(response)
     }
 }
 
@@ -530,10 +522,8 @@ impl<'state, 'chunks> RxRequest<'state, 'chunks> {
             .rx
             .expect("invalid response");
 
-        // don't reset after stopping or finishing the stream
-        if response.is_stopped || (response.is_final && response.chunks.available == 0) {
-            *self.reset_on_drop = false;
-        }
+        // don't reset after exiting the open status
+        *self.reset_on_drop = !response.is_open();
 
         Ok(response)
     }

@@ -716,8 +716,8 @@ impl SendStream {
                 StreamError::StreamReset(error_code),
             );
 
-            // mark the stream as reset
-            response.is_reset = true;
+            // mark the stream as resetting
+            response.status = ops::Status::Resetting;
 
             if request.flush && !matches!(self.state, SendStreamState::ResetAcknowledged(_)) {
                 // the request wanted to wait until the reset was ACKed to unblock
@@ -725,9 +725,11 @@ impl SendStream {
             } else {
                 // clear any previously registered waiters since the stream is now closed
                 self.write_waiter = None;
+            }
 
-                // mark the stream as finished
-                response.is_finished = true;
+            // Mark the stream as completely reset once it's been acknowledged
+            if matches!(self.state, SendStreamState::ResetAcknowledged(_)) {
+                response.status = ops::Status::Reset;
             }
 
             return Ok(response);
@@ -795,11 +797,12 @@ impl SendStream {
                     self.final_state_observed = true;
                     // clear any previously register waiters
                     self.write_waiter = None;
-                    response.is_finished = true;
+                    response.status = ops::Status::Finished;
                     return Ok(response);
                 }
                 _ => {
                     self.data_sender.finish();
+                    response.status = ops::Status::Finishing;
 
                     if request.flush {
                         // block the request until the peer has ACKed the last frame
@@ -807,7 +810,6 @@ impl SendStream {
                     } else {
                         // clear any previously registered waiters
                         self.write_waiter = None;
-                        response.is_finished = true;
                     }
                 }
             }

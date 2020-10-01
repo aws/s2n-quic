@@ -599,7 +599,7 @@ impl StreamReceiveBuffer {
 
     /// Pops a buffer from the front of the receive queue if available
     pub fn pop(&mut self) -> Option<BytesMut> {
-        self.pop_transform(|buffer| buffer.split())
+        self.pop_transform(|buffer| core::mem::replace(buffer, BytesMut::new()))
     }
 
     /// Pops a buffer from the front of the receive queue, who's length is always guaranteed to be
@@ -607,10 +607,14 @@ impl StreamReceiveBuffer {
     pub fn pop_watermarked(&mut self, watermark: usize) -> Option<BytesMut> {
         self.pop_transform(|buffer| {
             // make sure the buffer doesn't exceed the watermark
-            //
-            // note: `split_to` performs special checks on `amount == 0` and `amount == len` so the
-            // refcount doesn't needlessly increase
-            buffer.split_to(watermark.min(buffer.len()))
+            let watermark = watermark.min(buffer.len());
+
+            // if the watermark is 0 then don't needlessly increment refcounts
+            if watermark == 0 {
+                return BytesMut::new();
+            }
+
+            buffer.split_to(watermark)
         })
     }
 
@@ -620,11 +624,23 @@ impl StreamReceiveBuffer {
         &mut self,
         transform: F,
     ) -> Option<BytesMut> {
-        if let SlotState::Received(buffer) = self.slots.front_mut()? {
+        let slot = self.slots.front_mut()?;
+        if let SlotState::Received(buffer) = slot {
+            debug_assert!(
+                !buffer.is_empty(),
+                "a received buffer should never be empty"
+            );
+
             let out = transform(buffer);
 
-            // remove an empty buffer if its capacity is getting low
-            if buffer.is_empty() && buffer.capacity() <= MIN_STREAM_RECEIVE_BUFFER_ALLOCATION_SIZE {
+            if buffer.is_empty() {
+                debug_assert_eq!(
+                    buffer.capacity(),
+                    0,
+                    "buffers are always split from the allocated slot"
+                );
+
+                // remove empty buffers
                 self.slots.pop_front();
             }
 

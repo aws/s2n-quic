@@ -104,19 +104,28 @@ impl TestEnvironment {
     pub fn assert_receive_data(&mut self, data: &'static [u8]) {
         assert_eq!(
             Poll::Ready(Ok(Some(Bytes::from_static(data)))),
-            self.poll_pop()
+            self.poll_pop(),
+            "the stream should receive the correct bytes"
         );
     }
 
     /// Asserts that no data is available for reading and that the stream
     /// has not yet finished
     pub fn assert_no_read_data(&mut self) {
-        assert_eq!(Poll::Pending, self.poll_pop());
+        assert_eq!(
+            Poll::Pending,
+            self.poll_pop(),
+            "the stream should return Poll::Pending"
+        );
     }
 
     /// Asserts that the stream has reached end of stream
     pub fn assert_end_of_stream(&mut self) {
-        assert_eq!(Poll::Ready(Ok(None)), self.poll_pop());
+        assert_eq!(
+            Poll::Ready(Ok(None)),
+            self.poll_pop(),
+            "the stream should have finished receiving data"
+        );
     }
 
     /// Asserts that the returns an error when pop is called
@@ -494,15 +503,15 @@ mod snapshots {
                                 " request should yield a response"
                             ))
                         });
+
                         let original = request
                             .$ty
                             .as_ref()
                             .expect("original request should always match snapshot");
+
                         req.validate_response(original, res, context);
-                    } else {
-                        if let Ok(response) = response {
-                            assert_eq!(response.$ty, None)
-                        }
+                    } else if let Ok(response) = response {
+                        assert_eq!(response.$ty, None)
                     }
                 };
             }
@@ -549,7 +558,7 @@ mod snapshots {
                         );
                     }
 
-                    if response.is_finished {
+                    if response.is_finished() {
                         assert_eq!(
                             response.bytes.available, 0,
                             "a finished stream should never report available bytes"
@@ -575,17 +584,22 @@ mod snapshots {
                         Default::default(),
                         "resetting should always return empty chunks"
                     );
-                    assert!(
-                        response.is_reset,
-                        "resetting should always set the reset flag"
-                    );
 
                     if response.will_wake {
                         assert!(self.flush, "resetting should only wake on flush");
+                        assert!(
+                            response.is_resetting(),
+                            "resetting with flush should report a Resetting status"
+                        );
+                    } else if self.flush {
+                        assert!(
+                            response.is_reset(),
+                            "resetting should always set the finish flag"
+                        );
                     } else {
                         assert!(
-                            response.is_finished,
-                            "resetting should always set the finish flag"
+                            response.is_resetting() || response.is_reset(),
+                            "resetting with flush should report a Resetting status"
                         );
                     }
 
@@ -595,7 +609,7 @@ mod snapshots {
 
                 if let Ok(response) = response {
                     assert!(
-                        !response.is_reset,
+                        !response.is_reset() && !response.is_resetting(),
                         "is_reset should only be set on a reset request"
                     );
                 }
@@ -603,9 +617,8 @@ mod snapshots {
                 // the request is interested in push availability
                 if self.chunks.is_none() && !self.finish && !self.flush && context.is_some() {
                     if let Ok(response) = response {
-                        assert!(!response.is_reset, "availability queries should not reset");
                         assert!(
-                            !response.is_finished,
+                            !response.is_closing() && !response.is_closed(),
                             "availability queries should not finish"
                         );
                         assert_eq!(
@@ -706,24 +719,27 @@ mod snapshots {
                     if let Ok(response) = response {
                         if response.will_wake {
                             assert!(
+                                response.is_finishing(),
+                                "finished responses that will_wake should have a Finishing status"
+                            );
+                            assert!(
                                 response.chunks.consumed < self.chunks_len() || self.flush,
                                 concat!(
                                     "waker should only wake when not all of the provided chunks were consumed ",
                                     "or when a flush was requested",
                                 ),
                             );
+                        } else if self.flush {
+                            assert!(response.is_finished());
                         } else {
-                            assert!(
-                                response.is_finished,
-                                "finishing a stream should set the is_finished flag"
-                            );
+                            assert!(response.is_finishing() || response.is_finished());
                         }
                     }
                 }
 
                 if self.flush {
                     if let Ok(response) = response {
-                        if !response.will_wake && !response.is_finished {
+                        if !response.will_wake && !response.is_finished() {
                             assert_ne!(
                                 response.bytes.available, 0,
                                 "flushing should result in available bytes"
@@ -771,7 +787,125 @@ mod snapshots {
                 response: Result<&ops::rx::Response, &StreamError>,
                 context: Option<&Context>,
             ) {
-                // TODO
+                // general response consistency checks
+                if let Ok(response) = response {
+                    if response.will_wake {
+                        assert!(
+                            context.is_some(),
+                            "will_wake should only be set when a context was provided"
+                        );
+                    }
+
+                    if response.is_open() || response.is_finishing() {
+                        let has_request_chunks = self
+                            .chunks
+                            .as_ref()
+                            .filter(|chunks| !chunks.is_empty())
+                            .is_some();
+
+                        let mut should_wake = has_request_chunks && response.chunks.consumed == 0;
+                        should_wake |= request.low_watermark > response.bytes.consumed;
+                        should_wake &= context.is_some();
+
+                        assert_eq!(
+                            should_wake,
+                            response.will_wake,
+                            "will_wake should only be set when the stream is open and still needs to receive more data"
+                        );
+                    }
+
+                    if response.is_finishing() && context.is_some() && !response.will_wake {
+                        assert_ne!(
+                            response.bytes.available, 0,
+                            "a finishing stream should always report available bytes",
+                        );
+                        assert_ne!(
+                            response.chunks.available, 0,
+                            "a finishing stream should always report available chunks",
+                        );
+                    }
+
+                    if response.is_resetting() || response.is_closed() {
+                        assert!(!response.will_wake, "a closed stream should never wake");
+                        assert_eq!(
+                            response.bytes.available, 0,
+                            "a closed stream should never report available bytes"
+                        );
+                        assert_eq!(
+                            response.chunks.available, 0,
+                            "a closed stream should never report available chunks"
+                        );
+                    }
+
+                    assert_eq!(
+                        request.low_watermark,
+                        self.low_watermark.saturating_sub(response.bytes.consumed),
+                        "the low watermark should be lowered as data is consumed"
+                    );
+
+                    assert_eq!(
+                        request.high_watermark,
+                        self.high_watermark.saturating_sub(response.bytes.consumed),
+                        "the high watermark should be lowered as data is consumed"
+                    );
+
+                    assert!(
+                        self.high_watermark >= response.bytes.consumed,
+                        "the number of bytes consumed should not exceed the high watermark"
+                    );
+                }
+
+                if self.stop_sending.is_some() {
+                    let response = response.expect("stop_sending should never fail");
+                    assert!(response.is_reset(), "stop_sending should reset the stream");
+
+                    assert_eq!(
+                        response.bytes,
+                        Default::default(),
+                        "resetting should always return empty bytes"
+                    );
+                    assert_eq!(
+                        response.chunks,
+                        Default::default(),
+                        "resetting should always return empty chunks"
+                    );
+
+                    // none of the other checks apply so return early
+                    return;
+                }
+
+                if let Some(chunks) = self.chunks.as_ref() {
+                    // if any of the provided chunks are non-empty, it should return an error
+                    let should_error = chunks.iter().any(|chunk| !chunk.is_empty());
+
+                    if should_error {
+                        assert_eq!(response, Err(&StreamError::NonEmptyOutput));
+                        return;
+                    }
+
+                    if let Ok(response) = response {
+                        let mut iter = request.chunks.as_ref().unwrap().iter();
+
+                        // add up all of the actual bytes returned
+                        let mut actual_bytes = 0;
+                        for _ in 0..response.chunks.consumed {
+                            let chunk = iter.next().unwrap();
+                            actual_bytes += chunk.len();
+                        }
+
+                        assert_eq!(
+                            actual_bytes, response.bytes.consumed,
+                            "reported consumed bytes should reflect the output chunks"
+                        );
+
+                        for chunk in iter {
+                            assert!(
+                                chunk.is_empty(),
+                                "chunks beyond the reported consumed length should be empty"
+                            );
+                        }
+                    }
+                }
             }
         }
     }

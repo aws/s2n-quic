@@ -712,8 +712,10 @@ impl ReceiveStream {
         if let Some(error_code) = request.stop_sending {
             self.stop_sending_sync.request_delivery(error_code);
             self.read_waiter = None;
-            response.is_final = true;
-            response.is_stopped = true;
+
+            // Mark the stream as reset. Note that the request doesn't have a flush so there's
+            // currently no way to wait for the reset to be acknowledged.
+            response.status = ops::Status::Reset;
 
             return Ok(response);
         }
@@ -725,24 +727,27 @@ impl ReceiveStream {
             ReceiveStreamState::Reset(error) => {
                 // The reset is now known to have been read by the client.
                 self.final_state_observed = true;
+                self.read_waiter = None;
                 return Err(error);
             }
             ReceiveStreamState::DataRead => {
                 // All stream data had been received and all buffered data was
                 // already consumed
                 self.final_state_observed = true;
-                response.is_final = true;
+                self.read_waiter = None;
+                response.status = ops::Status::Finished;
                 return Ok(response);
             }
             ReceiveStreamState::Receiving(total_size) => total_size,
         };
 
-        // inform callers that the stream will not increase beyond its current size
-        response.is_final = total_size.is_some();
         let low_watermark = &mut request.low_watermark;
         let high_watermark = &mut request.high_watermark;
+        let mut has_request_chunks = false;
 
-        if let Some(chunks) = request.chunks.as_mut() {
+        if let Some(chunks) = request.chunks.as_mut().filter(|chunks| !chunks.is_empty()) {
+            has_request_chunks = true;
+
             // Make sure all of the placeholder chunks are empty. If it's not, it could lead to
             // replacing a chunk that was received in a previous request.
             //
@@ -753,72 +758,86 @@ impl ReceiveStream {
             }
 
             while response.chunks.consumed < chunks.len() {
-                match self.receive_buffer.pop_watermarked(*high_watermark) {
-                    Some(data) => {
-                        let data_len = data.len();
-                        // Release the flow control window for the consumed chunk
-                        self.flow_controller.release_window(
-                            VarInt::try_from(data_len)
-                                .expect("chunk len should always be less than maximum VarInt"),
-                        );
-                        *low_watermark = (*low_watermark).saturating_sub(data_len);
-                        *high_watermark = (*high_watermark).saturating_sub(data_len);
+                if let Some(data) = self.receive_buffer.pop_watermarked(*high_watermark) {
+                    let data_len = data.len();
+                    // Release the flow control window for the consumed chunk
+                    self.flow_controller.release_window(
+                        VarInt::try_from(data_len)
+                            .expect("chunk len should always be less than maximum VarInt"),
+                    );
+                    *low_watermark = (*low_watermark).saturating_sub(data_len);
+                    *high_watermark = (*high_watermark).saturating_sub(data_len);
 
-                        // replace the placeholder with the actual data
-                        let placeholder = core::mem::replace(
-                            &mut chunks[response.chunks.consumed],
-                            data.freeze(),
-                        );
-                        debug_assert!(
-                            placeholder.is_empty(),
-                            "the placeholder should never contain data"
-                        );
+                    // replace the placeholder with the actual data
+                    let placeholder =
+                        core::mem::replace(&mut chunks[response.chunks.consumed], data.freeze());
+                    debug_assert!(
+                        placeholder.is_empty(),
+                        "the placeholder should never contain data"
+                    );
 
-                        response.bytes.consumed += data_len;
-                        response.chunks.consumed += 1;
-
-                        // Check for the end of stream and transition to
-                        // [`ReceiveStreamState::DataRead`] if necessary.
-                        if let Some(total_size) = total_size {
-                            if total_size == self.receive_buffer.consumed_len() {
-                                // By the time we enter the final state all synchronization
-                                // should have been cancelled.
-                                debug_assert!(self.stop_sending_sync.is_cancelled());
-                                debug_assert!(self.flow_controller.read_window_sync.is_cancelled());
-                                // The client has consumed all data. The stream
-                                // is thereby finished.
-                                self.state = ReceiveStreamState::DataRead;
-                                // We clear the receive buffer, to free up any buffer
-                                // space which had been allocated but not used
-                                self.receive_buffer.reset();
-                                break;
-                            }
-                        }
-                    }
-                    None => {
-                        if let Some(context) = context
-                            // only store the waker if we're not sending a STOP_SENDING
-                            .filter(|_| request.stop_sending.is_none())
-                            // only store the waker if we didn't receive anything or didn't zero
-                            // out the low watermark
-                            .filter(|_| response.chunks.consumed == 0 || request.low_watermark > 0)
-                        {
-                            // Store the waker, in order to be able to wakeup the client when
-                            // data arrives later.
-                            self.read_waiter =
-                                Some((context.waker().clone(), request.low_watermark));
-                            response.will_wake = true;
-                        }
-
-                        break;
-                    }
+                    response.bytes.consumed += data_len;
+                    response.chunks.consumed += 1;
+                } else {
+                    break;
                 }
+            }
+        }
+
+        // Check for the end of stream and transition to
+        // [`ReceiveStreamState::DataRead`] if necessary.
+        if let Some(total_size) = total_size {
+            // inform callers that the stream will not increase beyond its current size
+            response.status = ops::Status::Finishing;
+
+            if total_size == self.receive_buffer.consumed_len() {
+                // By the time we enter the final state all synchronization
+                // should have been cancelled.
+                debug_assert!(self.stop_sending_sync.is_cancelled());
+                debug_assert!(self.flow_controller.read_window_sync.is_cancelled());
+                // The client has consumed all data. The stream
+                // is thereby finished.
+                self.state = ReceiveStreamState::DataRead;
+
+                // We clear the receive buffer, to free up any buffer
+                // space which had been allocated but not used
+                self.receive_buffer.reset();
+
+                // clear the waiter
+                self.read_waiter = None;
+
+                // mark the final state as observed if the request was vectorized
+                //
+                // Non-vectorized requests will need to perform another request to observe the
+                // final state
+                self.final_state_observed = request
+                    .chunks
+                    .as_ref()
+                    .map(|chunks| chunks.len() != 1)
+                    .unwrap_or(false);
+
+                // Indicate that all data has been read
+                response.status = ops::Status::Finished;
+
+                return Ok(response);
             }
         }
 
         let (bytes, chunks) = self.receive_buffer.report();
         response.bytes.available = bytes;
         response.chunks.available = chunks;
+
+        // store the waker if:
+        // * the request provided chunks and stream didn't produce any data; or
+        // * the low watermark exceeds the number of bytes
+        if (has_request_chunks && response.chunks.consumed == 0) || request.low_watermark > bytes {
+            if let Some(context) = context {
+                // Store the waker, in order to be able to wakeup the client when
+                // data arrives later.
+                self.read_waiter = Some((context.waker().clone(), request.low_watermark));
+                response.will_wake = true;
+            }
+        }
 
         Ok(response)
     }
