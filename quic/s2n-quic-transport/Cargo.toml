@@ -18,4 +18,5 @@ compliance = { path = "../../common/compliance/compliance" }
 futures-test = "0.3" # For testing Waker interactions
 insta = "0.16"
 s2n-codec = { path = "../../common/s2n-codec", features = ["testing"] }
+s2n-quic-core = { version = "0.1", path = "../s2n-quic-core", features = ["testing"] }
 s2n-quic-platform = { path = "../s2n-quic-platform", features = ["testing"] }

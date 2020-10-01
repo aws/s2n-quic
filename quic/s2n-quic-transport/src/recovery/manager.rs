@@ -12,7 +12,7 @@ use s2n_quic_core::{
     inet::DatagramInfo,
     packet::number::{PacketNumber, PacketNumberRange, PacketNumberSpace},
     path::Path,
-    recovery::{CongestionController, RTTEstimator},
+    recovery::{CongestionController, RTTEstimator, K_GRANULARITY},
     time::Timestamp,
     transport::error::TransportError,
 };
@@ -70,6 +70,10 @@ pub struct Manager {
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#A.3
     //# The time the most recent ack-eliciting packet was sent.
     time_of_last_ack_eliciting_packet: Option<Timestamp>,
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#B.2
+    //# The time that the first RTT sample was obtained.
+    first_rtt_sample: Option<Timestamp>,
 }
 
 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.1.1
@@ -79,10 +83,6 @@ pub struct Manager {
 //# implementations SHOULD NOT use a packet threshold less than 3; see
 //# [RFC5681].
 const K_PACKET_THRESHOLD: u64 = 3;
-
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.1.2
-//# The RECOMMENDED value of the timer granularity (kGranularity) is 1ms.
-pub(crate) const K_GRANULARITY: Duration = Duration::from_millis(1);
 
 fn apply_k_time_threshold(duration: Duration) -> Duration {
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.1.2
@@ -102,6 +102,8 @@ pub struct LossInfo {
 
     /// The PTO count should be reset
     pub pto_reset: bool,
+
+    pub persistent_congestion_period: Duration,
 }
 
 impl LossInfo {
@@ -121,6 +123,9 @@ impl core::ops::Add for LossInfo {
             bytes_in_flight: self.bytes_in_flight + rhs.bytes_in_flight,
             pto_expired: self.pto_expired || rhs.pto_expired,
             pto_reset: self.pto_reset || rhs.pto_reset,
+            persistent_congestion_period: self
+                .persistent_congestion_period
+                .max(rhs.persistent_congestion_period),
         }
     }
 }
@@ -144,6 +149,7 @@ impl Manager {
             time_threshold: Duration::from_secs(0),
             bytes_in_flight: 0,
             time_of_last_ack_eliciting_packet: None,
+            first_rtt_sample: None,
         }
     }
 
@@ -273,6 +279,7 @@ impl Manager {
     ) -> Result<LossInfo, TransportError> {
         let mut has_newly_acked = false;
         let largest_acked_in_frame = self.space.new_packet_number(frame.largest_acknowledged());
+        self.first_rtt_sample = self.first_rtt_sample.or(Some(datagram.timestamp));
 
         // Update the largest acked packet if the largest packet acked in this frame is larger
         self.largest_acked_packet = Some(
@@ -311,8 +318,6 @@ impl Manager {
                 continue;
             };
 
-            // TODO: path.congestion_controller.on_packets_acked(self.sent_packets.range(acked_packets));
-
             for packet_number in acked_packets {
                 if let Some(acked_packet_info) = self.sent_packets.remove(packet_number) {
                     self.bytes_in_flight -= acked_packet_info.sent_bytes as usize;
@@ -328,11 +333,6 @@ impl Manager {
         let mut loss_info = LossInfo::default();
 
         if has_newly_acked {
-            // Process ECN information if present.
-            if frame.ecn_counts.is_some() {
-                // TODO: path.congestion_controller.process_ecn(ecn_counts, largest_newly_acked, largest_newly_acked_packet.space())
-            }
-
             //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.1.2
             //# Once a later packet within the same packet number space has been
             //# acknowledged, an endpoint SHOULD declare an earlier packet lost if it
@@ -443,8 +443,38 @@ impl Manager {
             }
         }
 
+        let mut oldest_lost: Option<Timestamp> = None;
+        let mut newest_lost: Option<Timestamp> = None;
+
+        // Remove lost packets from sent packets and record the oldest and newest lost
+        // for use in calculating the persistent congestion period
         for packet_number in sent_packets_to_remove {
-            self.sent_packets.remove(packet_number);
+            if let Some(lost_packet_info) = self.sent_packets.remove(packet_number) {
+                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.6.3
+                //# The persistent congestion period SHOULD NOT start until there is at
+                //# least one RTT sample.  Before the first RTT sample, a sender arms its
+                //# PTO timer based on the initial RTT (Section 6.2.2), which could be
+                //# substantially larger than the actual RTT.  Requiring a prior RTT
+                //# sample prevents a sender from establishing persistent congestion with
+                //# potentially too few probes.
+                if self.first_rtt_sample.map_or(false, |first_rtt_timestamp| {
+                    lost_packet_info.time_sent > first_rtt_timestamp
+                }) {
+                    // Set oldest lost if it has not been set already
+                    oldest_lost = oldest_lost.or(Some(lost_packet_info.time_sent));
+                    // Set newest lost each time since the packets are ordered by sent time
+                    newest_lost = Some(lost_packet_info.time_sent);
+                }
+            }
+        }
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#7.6.3
+        //# The congestion period is calculated as the time between the oldest
+        //#  and newest lost packets
+        //TODO: Do we need to ensure the packets between these times are contiguous and all lost?
+        if let Some(oldest_lost_time) = oldest_lost {
+            loss_info.persistent_congestion_period =
+                newest_lost.expect("must exist if oldest exists") - oldest_lost_time
         }
 
         loss_info
@@ -893,6 +923,105 @@ mod test {
         assert_eq!(Some(&expected_loss_time), manager.loss_timer.iter().next());
     }
 
+    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.6.3")]
+    #[test]
+    fn persistent_congestion_2() {
+        let space = PacketNumberSpace::ApplicationData;
+        let rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
+        let mut manager = Manager::new(space, Duration::from_millis(100));
+        let mut path = Path::new(
+            Default::default(),
+            connection::Id::EMPTY,
+            rtt_estimator,
+            MockCC::default(),
+            true,
+        );
+        let time_zero = s2n_quic_platform::time::now() + Duration::from_secs(10);
+        manager.time_threshold = Duration::from_secs(3);
+        manager.first_rtt_sample = Some(s2n_quic_platform::time::now());
+
+        // t=0: Send packet #1 (app data)
+        manager.on_packet_sent(
+            space.new_packet_number(VarInt::from_u8(1)),
+            AckElicitation::Eliciting,
+            true,
+            1,
+            time_zero,
+        );
+
+        // t=1: Send packet #2 (app data)
+        manager.on_packet_sent(
+            space.new_packet_number(VarInt::from_u8(2)),
+            AckElicitation::Eliciting,
+            true,
+            1,
+            time_zero + Duration::from_secs(1),
+        );
+
+        // t=1.2: Recv acknowledgement of #1
+        let _ = ack_packets(
+            1..=1,
+            time_zero + Duration::from_millis(1200),
+            &mut path,
+            &mut manager,
+        );
+
+        // assert_eq!(
+        //     manager.first_rtt_sample,
+        //     Some(time_zero + Duration::from_millis(1200))
+        // );
+
+        // t=2-6: Send packets #3 - #7 (app data)
+        for t in 2..=6 {
+            manager.on_packet_sent(
+                space.new_packet_number(VarInt::from_u8(t + 1)),
+                AckElicitation::Eliciting,
+                true,
+                1,
+                time_zero + Duration::from_secs(t.into()),
+            );
+        }
+
+        // t=8: Send packet #8 (PTO 1)
+        manager.on_packet_sent(
+            space.new_packet_number(VarInt::from_u8(8)),
+            AckElicitation::Eliciting,
+            true,
+            1,
+            time_zero + Duration::from_secs(8),
+        );
+
+        // t=12: Send packet #9 (PTO 2)
+        manager.on_packet_sent(
+            space.new_packet_number(VarInt::from_u8(9)),
+            AckElicitation::Eliciting,
+            true,
+            1,
+            time_zero + Duration::from_secs(12),
+        );
+
+        // t=12.2: Recv acknowledgement of #9
+        let (result, context) = ack_packets(
+            9..=9,
+            time_zero + Duration::from_millis(12200),
+            &mut path,
+            &mut manager,
+        );
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.6.3
+        //# Packets 2 through 8 are declared lost when the acknowledgement for
+        //# packet 9 is received at t = 12.2.
+        assert_eq!(7, context.on_packet_loss_count);
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.6.3
+        //# The congestion period is calculated as the time between the oldest
+        //# and newest lost packets: 8 - 1 = 7.
+        assert_eq!(
+            Duration::from_secs(6),
+            result.unwrap().persistent_congestion_period
+        );
+    }
+
     #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1")]
     #[test]
     fn update() {
@@ -1135,7 +1264,6 @@ mod test {
         path: &mut Path<CC>,
         manager: &mut Manager,
     ) -> (Result<LossInfo, TransportError>, MockContext) {
-        // Ack packets 1 to 3
         let acked_packets = PacketNumberRange::new(
             manager
                 .space

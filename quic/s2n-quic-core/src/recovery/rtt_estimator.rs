@@ -1,11 +1,23 @@
 use crate::packet::number::PacketNumberSpace;
-use core::{cmp::min, time::Duration};
+use core::{
+    cmp::{max, min},
+    time::Duration,
+};
 
 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#6.2.2
 //# When no previous RTT is available, the initial RTT SHOULD be set to 333ms,
 //# resulting in a 1 second initial timeout, as recommended in [RFC6298].
 pub const DEFAULT_INITIAL_RTT: Duration = Duration::from_millis(333);
 const ZERO_DURATION: Duration = Duration::from_millis(0);
+
+//= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#6.1.2
+//# The RECOMMENDED value of the timer granularity (kGranularity) is 1ms.
+pub const K_GRANULARITY: Duration = Duration::from_millis(1);
+
+//= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.6.1
+//# The RECOMMENDED value for kPersistentCongestionThreshold is 3, which
+//# is approximately equivalent to two TLPs before an RTO in TCP.
+const K_PERSISTENT_CONGESTION_THRESHOLD: u32 = 3;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct RTTEstimator {
@@ -124,6 +136,27 @@ impl RTTEstimator {
         self.smoothed_rtt = 7 * self.smoothed_rtt / 8 + adjusted_rtt / 8;
         let rttvar_sample = abs_difference(self.smoothed_rtt, adjusted_rtt);
         self.rttvar = 3 * self.rttvar / 4 + rttvar_sample / 4;
+    }
+
+    /// Calculates the persistent congestion duration used for determining
+    /// if persistent congestion is being encountered.
+    pub fn persistent_congestion_duration(&self) -> Duration {
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.6.1
+        //# The persistent congestion duration is computed as follows:
+        //#
+        //# (smoothed_rtt + max(4*rttvar, kGranularity) + max_ack_delay) *
+        //#    kPersistentCongestionThreshold
+        //#
+        //# Unlike the PTO computation in Section 6.2, this duration includes the
+        //# max_ack_delay irrespective of the packet number spaces in which
+        //# losses are established.
+        //#
+        //# This duration allows a sender to send as many packets before
+        //# establishing persistent congestion, including some in response to PTO
+        //# expiration, as TCP does with Tail Loss Probes ([RACK]) and a
+        //# Retransmission Timeout ([RFC5681]).
+        (self.smoothed_rtt + max(4 * self.rttvar, K_GRANULARITY) + self.max_ack_delay)
+            * K_PERSISTENT_CONGESTION_THRESHOLD
     }
 }
 
@@ -277,6 +310,39 @@ mod test {
         assert_eq!(
             rtt_estimator.smoothed_rtt,
             7 * prev_smoothed_rtt / 8 + rtt_sample / 8
+        );
+    }
+
+    #[compliance::tests(
+    /// The persistent congestion duration is computed as follows:
+    /// 
+    /// (smoothed_rtt + max(4*rttvar, kGranularity) + max_ack_delay) *
+    ///    kPersistentCongestionThreshold
+    "https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.6.1")]
+    #[test]
+    fn persistent_congestion_duration() {
+        let max_ack_delay = Duration::from_millis(10);
+        let mut rtt_estimator = RTTEstimator::new(max_ack_delay);
+
+        rtt_estimator.smoothed_rtt = Duration::from_millis(100);
+        rtt_estimator.rttvar = Duration::from_millis(50);
+
+        // persistent congestion period =
+        // (smoothed_rtt + max(4*rttvar, kGranularity) + max_ack_delay) * kPersistentCongestionThreshold
+        // = (100 + max(4*50, 1) + 10) * 3 = 930
+        assert_eq!(
+            Duration::from_millis(930),
+            rtt_estimator.persistent_congestion_duration()
+        );
+
+        rtt_estimator.rttvar = Duration::from_millis(0);
+
+        // persistent congestion period =
+        // (smoothed_rtt + max(4*rttvar, kGranularity) + max_ack_delay) * kPersistentCongestionThreshold
+        // = (100 + max(0, 1) + 10) * 3 = 333
+        assert_eq!(
+            Duration::from_millis(333),
+            rtt_estimator.persistent_congestion_duration()
         );
     }
 }
