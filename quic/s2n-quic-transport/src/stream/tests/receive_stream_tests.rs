@@ -4,7 +4,7 @@ use crate::{
     stream::{stream_interests::StreamInterestProvider, StreamEvents, StreamTrait},
 };
 use bytes::Bytes;
-use core::task::Poll;
+use core::{convert::TryFrom, task::Poll};
 use s2n_quic_core::{
     application::ApplicationErrorCode,
     connection,
@@ -1855,16 +1855,55 @@ fn stop_sending_frames_are_retransmitted_on_loss() {
 }
 
 #[test]
+fn receive_multiple_chunks_test() {
+    let mut test_env = setup_receive_only_test_env();
+
+    // feed enough data to create multiple slots in the receive buffer
+    const AMOUNT: usize = 4000;
+
+    test_env.feed_data(VarInt::from_u8(0), AMOUNT);
+
+    assert_eq!(
+        test_env
+            .run_request(ops::Request::default().receive(&mut [Bytes::new(), Bytes::new()]))
+            .unwrap()
+            .rx
+            .unwrap()
+            .chunks
+            .consumed,
+        1,
+        "response should return 1 chunk with contiguous receive buffer"
+    );
+
+    test_env.feed_data(VarInt::try_from(AMOUNT).unwrap(), AMOUNT);
+
+    assert_eq!(
+        test_env
+            .run_request(ops::Request::default().receive(&mut [
+                Bytes::new(),
+                Bytes::new(),
+                Bytes::new()
+            ]))
+            .unwrap()
+            .rx
+            .unwrap()
+            .chunks
+            .consumed,
+        2,
+        "response should return 2 chunk with contiguous receive buffer"
+    );
+}
+
+#[test]
 fn receiving_into_non_empty_buffers_returns_an_error() {
     let mut test_env = setup_receive_only_test_env();
-    test_env.assert_write_frames(0);
 
     test_env.feed_data(VarInt::from_u8(0), 32);
 
     assert_eq!(
         Poll::Ready(Err(StreamError::NonEmptyOutput)),
         test_env.poll_request(ops::Request::default().receive(&mut [Bytes::from(&[1][..])])),
-        "an non-empty buffer did not return an error",
+        "non-empty buffers should return an error",
     );
 
     assert_eq!(
@@ -1872,7 +1911,7 @@ fn receiving_into_non_empty_buffers_returns_an_error() {
         test_env.poll_request(
             ops::Request::default().receive(&mut [Bytes::new(), Bytes::from(&[1][..])])
         ),
-        "not all buffers were scanned for contents"
+        "all buffers should be pre-scanned for contents"
     );
 
     assert_eq!(

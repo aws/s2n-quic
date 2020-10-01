@@ -716,8 +716,8 @@ impl SendStream {
                 StreamError::StreamReset(error_code),
             );
 
-            // mark the stream as finished
-            response.is_finished = true;
+            // mark the stream as reset
+            response.is_reset = true;
 
             if request.flush && !matches!(self.state, SendStreamState::ResetAcknowledged(_)) {
                 // the request wanted to wait until the reset was ACKed to unblock
@@ -725,6 +725,9 @@ impl SendStream {
             } else {
                 // clear any previously registered waiters since the stream is now closed
                 self.write_waiter = None;
+
+                // mark the stream as finished
+                response.is_finished = true;
             }
 
             return Ok(response);

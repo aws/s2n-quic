@@ -192,6 +192,9 @@ pub mod tx {
         /// request may be polled again.
         pub will_wake: bool,
 
+        /// Indicates if the operation resulted in resetting the stream
+        pub is_reset: bool,
+
         /// Indicates if the operation resulted ending the stream.
         pub is_finished: bool,
     }
