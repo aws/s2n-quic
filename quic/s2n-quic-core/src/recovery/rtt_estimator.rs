@@ -1,4 +1,4 @@
-use crate::packet::number::PacketNumberSpace;
+use crate::{packet::number::PacketNumberSpace, time::Timestamp};
 use core::{
     cmp::{max, min},
     time::Duration,
@@ -33,6 +33,8 @@ pub struct RTTEstimator {
     /// packets in the ApplicationData packet number space. The actual ack_delay in a received
     /// ACK frame may be larger due to late timers, reordering, or lost ACK frames.
     max_ack_delay: Duration,
+    /// The time that the first RTT sample was obtained
+    first_rtt_sample: Option<Timestamp>,
 }
 
 impl RTTEstimator {
@@ -57,6 +59,7 @@ impl RTTEstimator {
             smoothed_rtt,
             rttvar,
             max_ack_delay,
+            first_rtt_sample: None,
         }
     }
 
@@ -74,6 +77,11 @@ impl RTTEstimator {
     pub fn rttvar(&self) -> Duration {
         self.rttvar
     }
+
+    /// Gets the timestamp of the first RTT sample
+    pub fn first_rtt_sample(&self) -> Option<Timestamp> {
+        self.first_rtt_sample
+    }
 }
 
 impl RTTEstimator {
@@ -81,13 +89,15 @@ impl RTTEstimator {
         &mut self,
         mut ack_delay: Duration,
         rtt_sample: Duration,
+        timestamp: Timestamp,
         space: PacketNumberSpace,
     ) {
         self.latest_rtt = rtt_sample.max(Duration::from_millis(1));
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#5.2
         //# min_rtt is set to the latest_rtt on the first RTT sample,
-        if self.min_rtt == ZERO_DURATION {
+        if self.first_rtt_sample.is_none() {
+            self.first_rtt_sample = Some(timestamp);
             self.min_rtt = self.latest_rtt;
             self.smoothed_rtt = self.latest_rtt;
             self.rttvar = self.latest_rtt / 2;
@@ -173,7 +183,7 @@ mod test {
     use crate::{
         packet::number::PacketNumberSpace,
         recovery::{RTTEstimator, DEFAULT_INITIAL_RTT},
-        time::Duration,
+        time::{Clock, Duration, NoopClock},
     };
 
     /// Test the initial values before any RTT samples
@@ -191,13 +201,16 @@ mod test {
     #[test]
     fn zero_rtt_sample() {
         let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
+        let now = NoopClock.get_time();
         rtt_estimator.update_rtt(
             Duration::from_millis(10),
             Duration::from_millis(0),
+            now,
             PacketNumberSpace::ApplicationData,
         );
         assert_eq!(rtt_estimator.min_rtt, Duration::from_millis(1));
         assert_eq!(rtt_estimator.latest_rtt(), Duration::from_millis(1));
+        assert_eq!(rtt_estimator.first_rtt_sample(), Some(now));
     }
 
     #[compliance::tests(
@@ -207,20 +220,24 @@ mod test {
     #[test]
     fn max_ack_delay() {
         let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
+        let now = NoopClock.get_time();
         rtt_estimator.update_rtt(
             Duration::from_millis(0),
             Duration::from_millis(100),
+            now,
             PacketNumberSpace::ApplicationData,
         );
         rtt_estimator.update_rtt(
             Duration::from_millis(1000),
             Duration::from_millis(200),
+            now,
             PacketNumberSpace::ApplicationData,
         );
         assert_eq!(
             rtt_estimator.smoothed_rtt,
             7 * Duration::from_millis(100) / 8 + Duration::from_millis(200 - 10) / 8
         );
+        assert_eq!(rtt_estimator.first_rtt_sample(), Some(now));
     }
 
     /// Test several rounds of RTT updates
@@ -229,22 +246,31 @@ mod test {
     #[test]
     fn update_rtt() {
         let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
+        let now = NoopClock.get_time();
         let rtt_sample = Duration::from_millis(500);
+        assert!(rtt_estimator.first_rtt_sample.is_none());
         rtt_estimator.update_rtt(
             Duration::from_millis(10),
             rtt_sample,
+            now,
             PacketNumberSpace::ApplicationData,
         );
         assert_eq!(rtt_estimator.min_rtt, rtt_sample);
         assert_eq!(rtt_estimator.latest_rtt, rtt_sample);
         assert_eq!(rtt_estimator.smoothed_rtt, rtt_sample);
         assert_eq!(rtt_estimator.rttvar, rtt_sample / 2);
+        assert_eq!(rtt_estimator.first_rtt_sample, Some(now));
 
         let prev_smoothed_rtt = rtt_estimator.smoothed_rtt;
         let rtt_sample = Duration::from_millis(800);
         let ack_delay = Duration::from_millis(10);
 
-        rtt_estimator.update_rtt(ack_delay, rtt_sample, PacketNumberSpace::ApplicationData);
+        rtt_estimator.update_rtt(
+            ack_delay,
+            rtt_sample,
+            now + Duration::from_secs(1),
+            PacketNumberSpace::ApplicationData,
+        );
 
         let adjusted_rtt = rtt_sample - ack_delay;
 
@@ -254,13 +280,19 @@ mod test {
             rtt_estimator.smoothed_rtt,
             7 * prev_smoothed_rtt / 8 + adjusted_rtt / 8
         );
+        assert_eq!(rtt_estimator.first_rtt_sample, Some(now));
 
         // This rtt_sample is a new minimum, so the ack_delay is not used for adjustment
         let prev_smoothed_rtt = rtt_estimator.smoothed_rtt;
         let rtt_sample = Duration::from_millis(200);
         let ack_delay = Duration::from_millis(10);
 
-        rtt_estimator.update_rtt(ack_delay, rtt_sample, PacketNumberSpace::ApplicationData);
+        rtt_estimator.update_rtt(
+            ack_delay,
+            rtt_sample,
+            now + Duration::from_secs(2),
+            PacketNumberSpace::ApplicationData,
+        );
 
         assert_eq!(rtt_estimator.min_rtt, rtt_sample);
         assert_eq!(rtt_estimator.latest_rtt, rtt_sample);
@@ -268,6 +300,7 @@ mod test {
             rtt_estimator.smoothed_rtt,
             7 * prev_smoothed_rtt / 8 + rtt_sample / 8
         );
+        assert_eq!(rtt_estimator.first_rtt_sample, Some(now));
     }
 
     #[compliance::tests(
@@ -277,10 +310,12 @@ mod test {
     #[test]
     fn initial_and_handshake_space() {
         let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
+        let now = NoopClock.get_time();
         let rtt_sample = Duration::from_millis(500);
         rtt_estimator.update_rtt(
             Duration::from_millis(10),
             rtt_sample,
+            now,
             PacketNumberSpace::Initial,
         );
 
@@ -290,6 +325,7 @@ mod test {
         rtt_estimator.update_rtt(
             Duration::from_millis(100),
             rtt_sample,
+            now,
             PacketNumberSpace::Initial,
         );
 
@@ -304,6 +340,7 @@ mod test {
         rtt_estimator.update_rtt(
             Duration::from_millis(100),
             rtt_sample,
+            now,
             PacketNumberSpace::Handshake,
         );
 
