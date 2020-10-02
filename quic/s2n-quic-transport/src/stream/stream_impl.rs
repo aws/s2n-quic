@@ -1,7 +1,6 @@
 use crate::{
     contexts::{OnTransmitError, WriteContext},
     stream::{
-        contract,
         incoming_connection_flow_controller::IncomingConnectionFlowController,
         outgoing_connection_flow_controller::OutgoingConnectionFlowController,
         receive_stream::ReceiveStream,
@@ -249,7 +248,7 @@ impl StreamTrait for StreamImpl {
         context: Option<&Context>,
     ) -> Result<ops::Response, StreamError> {
         #[cfg(debug_assertions)]
-        let contract: contract::Request = (&*request).into();
+        let contract: crate::stream::contract::Request = (&*request).into();
 
         let result = self.poll_request_impl(request, context);
 

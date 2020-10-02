@@ -147,7 +147,14 @@ pub mod tx {
             }
 
             // the request is interested in push availability
-            if self.chunks.is_none() && !self.finish && !self.flush && context.is_some() {
+            if self
+                .chunks
+                .as_ref()
+                .map_or(true, |chunks| chunks.is_empty())
+                && !self.finish
+                && !self.flush
+                && context.is_some()
+            {
                 if let Ok(response) = response {
                     assert!(
                         !response.is_closing() && !response.is_closed(),
