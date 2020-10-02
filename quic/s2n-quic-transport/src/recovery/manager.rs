@@ -386,7 +386,6 @@ impl Manager {
     //# DetectAndRemoveLostPackets is called every time an ACK is received or the time threshold
     //# loss detection timer expires. This function operates on the sent_packets for that packet
     //# number space and returns a list of packets newly detected as lost.
-    #[allow(clippy::blocks_in_if_conditions)]
     fn detect_and_remove_lost_packets<OnLoss: FnMut(PacketNumberRange)>(
         &mut self,
         now: Timestamp,
@@ -445,9 +444,10 @@ impl Manager {
                 //#    two send times are declared lost;
                 // Check if this lost packet is contiguous with the previous lost packet
                 // in order to update the persistent congestion period.
-                if prev_packet.map_or(false, |(pn, _)| {
+                let is_contiguous = prev_packet.map_or(false, |(pn, _)| {
                     unacked_packet_number.checked_distance(*pn) == Some(1)
-                }) {
+                });
+                if is_contiguous {
                     // The previous lost packet was 1 less than this one, so it is contiguous.
                     // Add the difference in time to the current period.
                     persistent_congestion_period +=
