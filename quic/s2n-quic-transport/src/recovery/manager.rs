@@ -12,7 +12,7 @@ use s2n_quic_core::{
     inet::DatagramInfo,
     packet::number::{PacketNumber, PacketNumberRange, PacketNumberSpace},
     path::Path,
-    recovery::{CongestionController, RTTEstimator},
+    recovery::{CongestionController, RTTEstimator, K_GRANULARITY},
     time::Timestamp,
     transport::error::TransportError,
     varint::VarInt,
@@ -73,6 +73,10 @@ pub struct Manager {
     time_of_last_ack_eliciting_packet: Option<Timestamp>,
 
     ecn_ce_counter: VarInt,
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#B.2
+    //# The time that the first RTT sample was obtained.
+    first_rtt_sample: Option<Timestamp>,
 }
 
 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.1.1
@@ -82,10 +86,6 @@ pub struct Manager {
 //# implementations SHOULD NOT use a packet threshold less than 3; see
 //# [RFC5681].
 const K_PACKET_THRESHOLD: u64 = 3;
-
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.1.2
-//# The RECOMMENDED value of the timer granularity (kGranularity) is 1ms.
-pub(crate) const K_GRANULARITY: Duration = Duration::from_millis(1);
 
 fn apply_k_time_threshold(duration: Duration) -> Duration {
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.1.2
@@ -108,6 +108,7 @@ impl Manager {
             bytes_in_flight: 0,
             time_of_last_ack_eliciting_packet: None,
             ecn_ce_counter: VarInt::default(),
+            first_rtt_sample: None,
         }
     }
 
@@ -237,6 +238,7 @@ impl Manager {
     ) -> Result<LossInfo, TransportError> {
         let mut has_newly_acked = false;
         let largest_acked_in_frame = self.space.new_packet_number(frame.largest_acknowledged());
+        self.first_rtt_sample = self.first_rtt_sample.or(Some(datagram.timestamp));
 
         // Update the largest acked packet if the largest packet acked in this frame is larger
         self.largest_acked_packet = Some(
@@ -369,6 +371,9 @@ impl Manager {
             .largest_acked_packet
             .expect("This function is only called after an ack has been received");
 
+        let mut persistent_congestion_period = Duration::from_secs(0);
+        let mut prev_packet: Option<(&PacketNumber, Timestamp)> = None;
+
         for (unacked_packet_number, unacked_sent_info) in self.sent_packets.iter() {
             if unacked_packet_number > largest_acked_packet {
                 // sent_packets is ordered by packet number, so all remaining packets will be larger
@@ -393,6 +398,33 @@ impl Manager {
                         PacketNumberRange::new(*unacked_packet_number, *unacked_packet_number);
                     on_loss(range);
                 }
+
+                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.6.2
+                //# A sender establishes persistent congestion on receiving an
+                //# acknowledgement if at least two ack-eliciting packets are declared
+                //# lost, and:
+                //#
+                //# *  all packets, across all packet number spaces, sent between these
+                //#    two send times are declared lost;
+                // Check if this lost packet is contiguous with the previous lost packet
+                // in order to update the persistent congestion period.
+                let is_contiguous = prev_packet.map_or(false, |(pn, _)| {
+                    unacked_packet_number.checked_distance(*pn) == Some(1)
+                });
+                if is_contiguous {
+                    // The previous lost packet was 1 less than this one, so it is contiguous.
+                    // Add the difference in time to the current period.
+                    persistent_congestion_period +=
+                        unacked_sent_info.time_sent - prev_packet.expect("checked above").1;
+                    loss_info.persistent_congestion_period = max(
+                        loss_info.persistent_congestion_period,
+                        persistent_congestion_period,
+                    );
+                } else {
+                    // There was a gap in packet number or this is the beginning of the period.
+                    // Reset the current period to zero.
+                    persistent_congestion_period = Duration::from_secs(0);
+                }
             } else {
                 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.1.2
                 //# If packets sent prior to the largest acknowledged packet cannot yet
@@ -410,6 +442,20 @@ impl Manager {
                 // assuming sent_packets is ordered by packet number and sent time, all remaining
                 // packets will have a larger packet number and sent time, and are thus not lost.
                 break;
+            }
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.6.2
+            //# The persistent congestion period SHOULD NOT start until there is at
+            //# least one RTT sample.  Before the first RTT sample, a sender arms its
+            //# PTO timer based on the initial RTT (Section 6.2.2), which could be
+            //# substantially larger than the actual RTT.  Requiring a prior RTT
+            //# sample prevents a sender from establishing persistent congestion with
+            //# potentially too few probes.
+            if self
+                .first_rtt_sample
+                .map_or(false, |ts| unacked_sent_info.time_sent > ts)
+            {
+                prev_packet = Some((unacked_packet_number, unacked_sent_info.time_sent));
             }
         }
 
@@ -864,6 +910,208 @@ mod test {
         assert_eq!(Some(&expected_loss_time), manager.loss_timer.iter().next());
     }
 
+    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.6.3")]
+    #[test]
+    fn persistent_congestion() {
+        let space = PacketNumberSpace::ApplicationData;
+        let rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
+        let mut manager = Manager::new(space, Duration::from_millis(100));
+        let mut path = Path::new(
+            Default::default(),
+            connection::Id::EMPTY,
+            rtt_estimator,
+            MockCC::default(),
+            true,
+        );
+        let time_zero = s2n_quic_platform::time::now() + Duration::from_secs(10);
+        manager.time_threshold = Duration::from_secs(3);
+        // The RFC doesn't mention it, but it is implied that the first RTT sample has already
+        // been received when this example begins, otherwise packet #2 would not be considered
+        // part of the persistent congestion period.
+        manager.first_rtt_sample = Some(s2n_quic_platform::time::now());
+
+        // t=0: Send packet #1 (app data)
+        manager.on_packet_sent(
+            space.new_packet_number(VarInt::from_u8(1)),
+            AckElicitation::Eliciting,
+            true,
+            1,
+            time_zero,
+        );
+
+        // t=1: Send packet #2 (app data)
+        manager.on_packet_sent(
+            space.new_packet_number(VarInt::from_u8(2)),
+            AckElicitation::Eliciting,
+            true,
+            1,
+            time_zero + Duration::from_secs(1),
+        );
+
+        // t=1.2: Recv acknowledgement of #1
+        let _ = ack_packets(
+            1..=1,
+            time_zero + Duration::from_millis(1200),
+            &mut path,
+            &mut manager,
+        );
+
+        // t=2-6: Send packets #3 - #7 (app data)
+        for t in 2..=6 {
+            manager.on_packet_sent(
+                space.new_packet_number(VarInt::from_u8(t + 1)),
+                AckElicitation::Eliciting,
+                true,
+                1,
+                time_zero + Duration::from_secs(t.into()),
+            );
+        }
+
+        // t=8: Send packet #8 (PTO 1)
+        manager.on_packet_sent(
+            space.new_packet_number(VarInt::from_u8(8)),
+            AckElicitation::Eliciting,
+            true,
+            1,
+            time_zero + Duration::from_secs(8),
+        );
+
+        // t=12: Send packet #9 (PTO 2)
+        manager.on_packet_sent(
+            space.new_packet_number(VarInt::from_u8(9)),
+            AckElicitation::Eliciting,
+            true,
+            1,
+            time_zero + Duration::from_secs(12),
+        );
+
+        // t=12.2: Recv acknowledgement of #9
+        let (result, context) = ack_packets(
+            9..=9,
+            time_zero + Duration::from_millis(12200),
+            &mut path,
+            &mut manager,
+        );
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.6.3
+        //# Packets 2 through 8 are declared lost when the acknowledgement for
+        //# packet 9 is received at t = 12.2.
+        assert_eq!(7, context.on_packet_loss_count);
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.6.3
+        //# The congestion period is calculated as the time between the oldest
+        //# and newest lost packets: 8 - 1 = 7.
+        assert_eq!(
+            Duration::from_secs(7),
+            result.unwrap().persistent_congestion_period
+        );
+    }
+
+    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.6")]
+    #[test]
+    fn persistent_congestion_multiple_periods() {
+        let space = PacketNumberSpace::ApplicationData;
+        let rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
+        let mut manager = Manager::new(space, Duration::from_millis(100));
+        let mut path = Path::new(
+            Default::default(),
+            connection::Id::EMPTY,
+            rtt_estimator,
+            MockCC::default(),
+            true,
+        );
+        let time_zero = s2n_quic_platform::time::now() + Duration::from_secs(10);
+        manager.time_threshold = Duration::from_secs(3);
+
+        // t=0: Send packet #1 (app data)
+        manager.on_packet_sent(
+            space.new_packet_number(VarInt::from_u8(1)),
+            AckElicitation::Eliciting,
+            true,
+            1,
+            time_zero,
+        );
+
+        // t=1: Send packet #2 (app data)
+        manager.on_packet_sent(
+            space.new_packet_number(VarInt::from_u8(2)),
+            AckElicitation::Eliciting,
+            true,
+            1,
+            time_zero + Duration::from_secs(1),
+        );
+
+        // t=1.2: Recv acknowledgement of #1
+        let _ = ack_packets(
+            1..=1,
+            time_zero + Duration::from_millis(1200),
+            &mut path,
+            &mut manager,
+        );
+
+        assert_eq!(
+            manager.first_rtt_sample,
+            Some(time_zero + Duration::from_millis(1200))
+        );
+
+        // t=2-6: Send packets #3 - #7 (app data)
+        for t in 2..=6 {
+            manager.on_packet_sent(
+                space.new_packet_number(VarInt::from_u8(t + 1)),
+                AckElicitation::Eliciting,
+                true,
+                1,
+                time_zero + Duration::from_secs(t.into()),
+            );
+        }
+
+        // Skip packet #8, which ends one persistent congestion period.
+
+        // t=8: Send packet #9 (app data)
+        manager.on_packet_sent(
+            space.new_packet_number(VarInt::from_u8(9)),
+            AckElicitation::Eliciting,
+            true,
+            1,
+            time_zero + Duration::from_secs(8),
+        );
+
+        // t=16: Send packet #10 (app data)
+        manager.on_packet_sent(
+            space.new_packet_number(VarInt::from_u8(10)),
+            AckElicitation::Eliciting,
+            true,
+            1,
+            time_zero + Duration::from_secs(16),
+        );
+
+        // t=20: Send packet #11 (app data)
+        manager.on_packet_sent(
+            space.new_packet_number(VarInt::from_u8(11)),
+            AckElicitation::Eliciting,
+            true,
+            1,
+            time_zero + Duration::from_secs(20),
+        );
+
+        // t=20.2: Recv acknowledgement of #11
+        let (result, context) = ack_packets(
+            11..=11,
+            time_zero + Duration::from_millis(20200),
+            &mut path,
+            &mut manager,
+        );
+
+        // Packets 2 though 7 and 9-10 should be lost
+        assert_eq!(8, context.on_packet_loss_count);
+
+        // The largest contiguous period of lost packets is #9 (sent at t8) to #10 (sent at t16)
+        assert_eq!(
+            Duration::from_secs(8),
+            result.unwrap().persistent_congestion_period
+        );
+    }
+
     #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1")]
     #[test]
     fn update() {
@@ -1106,7 +1354,6 @@ mod test {
         path: &mut Path<CC>,
         manager: &mut Manager,
     ) -> (Result<LossInfo, TransportError>, MockContext) {
-        // Ack packets 1 to 3
         let acked_packets = PacketNumberRange::new(
             manager
                 .space
@@ -1141,7 +1388,7 @@ mod test {
         for packet in acked_packets {
             assert!(manager.sent_packets.get(packet).is_none());
         }
-        context.is_handshake_confirmed();
+
         (result, context)
     }
 

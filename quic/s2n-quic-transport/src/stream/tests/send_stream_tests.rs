@@ -43,7 +43,7 @@ fn remotely_initiated_unidirectional_stream_can_not_be_sent_to() {
         let poll_context = Context::from_waker(&test_env.waker);
         let data = Bytes::from_static(b"1");
         assert_eq!(
-            Poll::Ready(Err(StreamError::WriterAfterFinish)),
+            Poll::Ready(Err(StreamError::SendAfterFinish)),
             test_env
                 .stream
                 .poll_push(&test_env.connection_context, data, &poll_context)
@@ -1282,7 +1282,7 @@ fn push_data_after_finish_was_called() {
     );
 
     assert_eq!(
-        Poll::Ready(Err(StreamError::WriterAfterFinish)),
+        Poll::Ready(Err(StreamError::SendAfterFinish)),
         test_env.stream.poll_push(
             &test_env.connection_context,
             Bytes::from_static(b"1"),

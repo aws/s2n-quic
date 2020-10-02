@@ -20,19 +20,21 @@ pub enum StreamError {
     StreamReset(ApplicationErrorCode),
     /// A send attempt had been performed on a Stream after the Stream was
     /// already closed.
-    WriterAfterFinish,
+    SendAfterFinish,
     /// Data could not be written to a stream, because the maximum possible amount
     /// of data (2^62-1 bytes) had already been writtten to the
     /// Stream.
     MaxStreamDataSizeExceeded,
     /// The Stream was reset due to a Connection Error
     ConnectionError(connection::Error),
-    /// All Stream IDs for Streams on a given connection had been exhausted
-    StreamIdExhausted,
     /// The stream is not readable
     NonReadable,
     /// The stream is not writable
     NonWritable,
+    /// The stream is blocked on writing data
+    ///
+    /// This is caused by trying to send data before polling readiness
+    SendingBlocked,
 }
 
 impl ApplicationErrorExt for StreamError {
@@ -66,5 +68,30 @@ impl From<TransportError> for StreamError {
 impl<'a> From<ConnectionClose<'a>> for StreamError {
     fn from(error: ConnectionClose) -> Self {
         Self::ConnectionError(error.into())
+    }
+}
+
+#[cfg(feature = "std")]
+impl From<StreamError> for std::io::Error {
+    fn from(error: StreamError) -> Self {
+        let kind = error.into();
+        std::io::Error::new(kind, error)
+    }
+}
+
+#[cfg(feature = "std")]
+impl From<StreamError> for std::io::ErrorKind {
+    fn from(error: StreamError) -> Self {
+        use std::io::ErrorKind;
+        match error {
+            StreamError::InvalidStream => ErrorKind::NotFound,
+            StreamError::StreamReset(_) => ErrorKind::ConnectionReset,
+            StreamError::SendAfterFinish => ErrorKind::BrokenPipe,
+            StreamError::MaxStreamDataSizeExceeded => ErrorKind::Other,
+            StreamError::ConnectionError(error) => error.into(),
+            StreamError::NonReadable => ErrorKind::Other,
+            StreamError::NonWritable => ErrorKind::Other,
+            StreamError::SendingBlocked => ErrorKind::WouldBlock,
+        }
     }
 }

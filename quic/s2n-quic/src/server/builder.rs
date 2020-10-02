@@ -134,11 +134,11 @@ impl<Providers: ServerProviders> Builder<Providers> {
     );
 
     impl_provider_method!(
-        /// Sets the retry token provider for the [`Server`]
+        /// Sets the token provider for the [`Server`]
         ///
         /// # Examples
         ///
-        /// Sets a custom logger for the server
+        /// Sets a custom token provider for the server
         ///
         /// ```rust,ignore
         /// # use std::{error::Error, time::Duration};
@@ -146,14 +146,14 @@ impl<Providers: ServerProviders> Builder<Providers> {
         /// #
         /// # fn main() -> Result<(), Box<dyn Error>> {
         /// let server = Server::builder()
-        ///     .with_retry_token(MyRetryToken::new())?
+        ///     .with_token(MyTokenProvider::new())?
         ///     .build()?;
         /// #
         /// #    Ok(())
         /// # }
         /// ```
-        with_retry_token,
-        retry_token
+        with_token,
+        token
     );
 
     impl_provider_method!(

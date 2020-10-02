@@ -14,5 +14,6 @@ pub mod recovery;
 pub mod stateless_reset_token;
 pub mod stream;
 pub mod time;
+pub mod token;
 pub mod transport;
 pub mod varint;

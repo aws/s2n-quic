@@ -21,4 +21,4 @@ triple_accel = "0.3"
 url = "2"
 
 [dev-dependencies]
-insta = "0.16"
+insta = "1.0"
