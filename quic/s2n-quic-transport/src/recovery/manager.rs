@@ -222,6 +222,12 @@ impl Manager {
     ) {
         self.update_time_threshold(&path.rtt_estimator);
 
+        // Record the timestamp of the first rtt sample for use in
+        // determining persistent congestion
+        self.first_rtt_sample = self
+            .first_rtt_sample
+            .or_else(|| path.rtt_estimator.first_rtt_sample());
+
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.2.1
         //# If no additional data can be sent, the server's PTO timer MUST NOT be
         //# armed until datagrams have been received from the client
@@ -280,7 +286,6 @@ impl Manager {
     ) -> Result<LossInfo, TransportError> {
         let mut has_newly_acked = false;
         let largest_acked_in_frame = self.space.new_packet_number(frame.largest_acknowledged());
-        self.first_rtt_sample = self.first_rtt_sample.or(Some(datagram.timestamp));
 
         // Update the largest acked packet if the largest packet acked in this frame is larger
         self.largest_acked_packet = Some(
@@ -311,6 +316,7 @@ impl Manager {
                     path.rtt_estimator.update_rtt(
                         frame.ack_delay(),
                         latest_rtt,
+                        datagram.timestamp,
                         largest_newly_acked.space(),
                     );
                 }
@@ -871,6 +877,7 @@ mod test {
         let space = PacketNumberSpace::ApplicationData;
         let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
         let mut manager = Manager::new(space, Duration::from_millis(100));
+        let now = s2n_quic_platform::time::now();
 
         manager.largest_acked_packet = Some(space.new_packet_number(VarInt::from_u8(10)));
 
@@ -914,7 +921,12 @@ mod test {
             time_sent,
         );
 
-        rtt_estimator.update_rtt(Duration::from_millis(10), Duration::from_millis(150), space);
+        rtt_estimator.update_rtt(
+            Duration::from_millis(10),
+            Duration::from_millis(150),
+            now,
+            space,
+        );
 
         let now = time_sent;
         let mut lost_packets: HashSet<PacketNumber> = HashSet::default();
@@ -1165,10 +1177,18 @@ mod test {
             false,
         );
 
-        path.rtt_estimator
-            .update_rtt(Duration::from_millis(0), Duration::from_millis(500), space);
-        path.rtt_estimator
-            .update_rtt(Duration::from_millis(0), Duration::from_millis(1000), space);
+        path.rtt_estimator.update_rtt(
+            Duration::from_millis(0),
+            Duration::from_millis(500),
+            now,
+            space,
+        );
+        path.rtt_estimator.update_rtt(
+            Duration::from_millis(0),
+            Duration::from_millis(1000),
+            now,
+            space,
+        );
         // The path will be at the anti-amplification limit
         path.on_bytes_transmitted((1200 * 2) + 1);
         // Arm the PTO so we can verify it is cancelled
@@ -1228,8 +1248,12 @@ mod test {
         let expected_pto_base_timestamp = now - Duration::from_secs(5);
         manager.time_of_last_ack_eliciting_packet = Some(expected_pto_base_timestamp);
         // This will update the smoother_rtt to 2000, and rtt_var to 1000
-        path.rtt_estimator
-            .update_rtt(Duration::from_millis(0), Duration::from_millis(2000), space);
+        path.rtt_estimator.update_rtt(
+            Duration::from_millis(0),
+            Duration::from_millis(2000),
+            now,
+            space,
+        );
         manager.update(&path, pto_backoff, now, is_handshake_confirmed);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
