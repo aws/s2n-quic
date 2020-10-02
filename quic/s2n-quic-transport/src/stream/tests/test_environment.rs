@@ -154,6 +154,7 @@ impl TestEnvironment {
             );
             offset += VarInt::from_u32(to_write as u32);
             remaining -= to_write;
+            events.wake_all();
         }
     }
 
@@ -796,21 +797,14 @@ mod snapshots {
                         );
                     }
 
-                    if response.is_open() || response.is_finishing() {
-                        let has_request_chunks = self
-                            .chunks
-                            .as_ref()
-                            .filter(|chunks| !chunks.is_empty())
-                            .is_some();
-
-                        let mut should_wake = has_request_chunks && response.chunks.consumed == 0;
-                        should_wake |= request.low_watermark > response.bytes.consumed;
-                        should_wake &= context.is_some();
-
+                    if (response.is_open() || response.is_finishing()) && response.will_wake {
                         assert_eq!(
-                            should_wake,
-                            response.will_wake,
-                            "will_wake should only be set when the stream is open and still needs to receive more data"
+                            response.bytes.consumed, 0,
+                            "will_wake should only be set when nothing was consumed"
+                        );
+                        assert_eq!(
+                            response.chunks.consumed, 0,
+                            "will_wake should only be set when nothing was consumed"
                         );
                     }
 

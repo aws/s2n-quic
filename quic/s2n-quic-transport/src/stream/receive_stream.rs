@@ -713,6 +713,10 @@ impl ReceiveStream {
             self.stop_sending_sync.request_delivery(error_code);
             self.read_waiter = None;
 
+            // We clear the receive buffer, to free up any buffer
+            // space which had been allocated but not used
+            self.receive_buffer.reset();
+
             // Mark the stream as reset. Note that the request doesn't have a flush so there's
             // currently no way to wait for the reset to be acknowledged.
             response.status = ops::Status::Reset;
@@ -743,53 +747,58 @@ impl ReceiveStream {
 
         let low_watermark = &mut request.low_watermark;
         let high_watermark = &mut request.high_watermark;
-        let mut has_request_chunks = false;
+        let mut should_wake = false;
 
-        if let Some(chunks) = request.chunks.as_mut().filter(|chunks| !chunks.is_empty()) {
-            has_request_chunks = true;
+        // ensure the number of available bytes is at least the requested low watermark
+        if self.receive_buffer.len() >= self.flow_controller.watermark().min(*low_watermark) {
+            if let Some(chunks) = request.chunks.as_mut().filter(|chunks| !chunks.is_empty()) {
+                // Make sure all of the placeholder chunks are empty. If it's not, it could lead to
+                // replacing a chunk that was received in a previous request.
+                //
+                // We iterate over all of the chunks to make sure we don't do a partial write and
+                // return an error (which would result in losing data).
+                if chunks.iter().any(|chunk| !chunk.is_empty()) {
+                    return Err(StreamError::NonEmptyOutput);
+                }
 
-            // Make sure all of the placeholder chunks are empty. If it's not, it could lead to
-            // replacing a chunk that was received in a previous request.
-            //
-            // We iterate over all of the chunks to make sure we don't do a partial write and
-            // return an error (which would result in losing data).
-            if chunks.iter().any(|chunk| !chunk.is_empty()) {
-                return Err(StreamError::NonEmptyOutput);
-            }
+                while response.chunks.consumed < chunks.len() {
+                    if let Some(data) = self.receive_buffer.pop_watermarked(*high_watermark) {
+                        let data_len = data.len();
+                        // Release the flow control window for the consumed chunk
+                        self.flow_controller.release_window(
+                            VarInt::try_from(data_len)
+                                .expect("chunk len should always be less than maximum VarInt"),
+                        );
+                        *low_watermark = (*low_watermark).saturating_sub(data_len);
+                        *high_watermark = (*high_watermark).saturating_sub(data_len);
 
-            while response.chunks.consumed < chunks.len() {
-                if let Some(data) = self.receive_buffer.pop_watermarked(*high_watermark) {
-                    let data_len = data.len();
-                    // Release the flow control window for the consumed chunk
-                    self.flow_controller.release_window(
-                        VarInt::try_from(data_len)
-                            .expect("chunk len should always be less than maximum VarInt"),
-                    );
-                    *low_watermark = (*low_watermark).saturating_sub(data_len);
-                    *high_watermark = (*high_watermark).saturating_sub(data_len);
+                        // replace the placeholder with the actual data
+                        let placeholder = core::mem::replace(
+                            &mut chunks[response.chunks.consumed],
+                            data.freeze(),
+                        );
+                        debug_assert!(
+                            placeholder.is_empty(),
+                            "the placeholder should never contain data"
+                        );
 
-                    // replace the placeholder with the actual data
-                    let placeholder =
-                        core::mem::replace(&mut chunks[response.chunks.consumed], data.freeze());
-                    debug_assert!(
-                        placeholder.is_empty(),
-                        "the placeholder should never contain data"
-                    );
-
-                    response.bytes.consumed += data_len;
-                    response.chunks.consumed += 1;
-                } else {
-                    break;
+                        response.bytes.consumed += data_len;
+                        response.chunks.consumed += 1;
+                    } else {
+                        // wake the request if we didn't consume anything
+                        should_wake |= response.chunks.consumed == 0;
+                        break;
+                    }
                 }
             }
+        } else {
+            // notify when we have at least the requested watermark
+            should_wake = true;
         }
 
         // Check for the end of stream and transition to
         // [`ReceiveStreamState::DataRead`] if necessary.
         if let Some(total_size) = total_size {
-            // inform callers that the stream will not increase beyond its current size
-            response.status = ops::Status::Finishing;
-
             if total_size == self.receive_buffer.consumed_len() {
                 // By the time we enter the final state all synchronization
                 // should have been cancelled.
@@ -818,19 +827,17 @@ impl ReceiveStream {
 
                 // Indicate that all data has been read
                 response.status = ops::Status::Finished;
-
-                return Ok(response);
+            } else if total_size == self.receive_buffer.total_received_len() {
+                // inform callers that the stream will not increase beyond its current size
+                response.status = ops::Status::Finishing;
             }
         }
 
-        let (bytes, chunks) = self.receive_buffer.report();
-        response.bytes.available = bytes;
-        response.chunks.available = chunks;
+        let (available_bytes, available_chunks) = self.receive_buffer.report();
+        response.bytes.available = available_bytes;
+        response.chunks.available = available_chunks;
 
-        // store the waker if:
-        // * the request provided chunks and stream didn't produce any data; or
-        // * the low watermark exceeds the number of bytes
-        if (has_request_chunks && response.chunks.consumed == 0) || request.low_watermark > bytes {
+        if should_wake {
             if let Some(context) = context {
                 // Store the waker, in order to be able to wakeup the client when
                 // data arrives later.
