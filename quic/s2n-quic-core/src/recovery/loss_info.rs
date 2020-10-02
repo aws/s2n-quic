@@ -1,4 +1,4 @@
-use crate::time::Timestamp;
+use crate::time::{Duration, Timestamp};
 
 #[must_use = "Ignoring loss information would lead to permanent data loss"]
 #[derive(Copy, Clone, Default)]
@@ -11,6 +11,9 @@ pub struct LossInfo {
 
     /// The PTO count should be reset
     pub pto_reset: bool,
+
+    /// The longest period of persistent congestion
+    pub persistent_congestion_period: Duration,
 
     /// The time the lost packet with the largest packet number was sent
     pub largest_lost_packet_sent_time: Option<Timestamp>,
@@ -33,6 +36,9 @@ impl core::ops::Add for LossInfo {
             bytes_in_flight: self.bytes_in_flight + rhs.bytes_in_flight,
             pto_expired: self.pto_expired || rhs.pto_expired,
             pto_reset: self.pto_reset || rhs.pto_reset,
+            persistent_congestion_period: self
+                .persistent_congestion_period
+                .max(rhs.persistent_congestion_period),
             largest_lost_packet_sent_time: self
                 .largest_lost_packet_sent_time
                 .iter()

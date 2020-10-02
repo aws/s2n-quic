@@ -33,7 +33,7 @@ pub trait CongestionController: 'static + Clone + Send {
         now: Timestamp,
     );
 
-    fn on_congestion_event(&self, time_sent: Timestamp, now: Timestamp);
+    fn on_congestion_event(&mut self, time_sent: Timestamp, now: Timestamp);
 }
 
 #[cfg(any(test, feature = "testing"))]
@@ -60,7 +60,7 @@ pub mod testing {
             unimplemented!()
         }
 
-        fn on_congestion_event(&self, time_sent: Timestamp, now: Timestamp) {
+        fn on_congestion_event(&mut self, time_sent: Timestamp, now: Timestamp) {
             unimplemented!()
         }
         // TODO implement callbacks

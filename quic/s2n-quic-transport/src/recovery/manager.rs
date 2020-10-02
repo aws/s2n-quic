@@ -276,8 +276,10 @@ impl Manager {
                     if let Some(ecn_counts) = frame.ecn_counts {
                         if ecn_counts.ce_count > self.ecn_ce_counter {
                             self.ecn_ce_counter = ecn_counts.ce_count;
-                            path.congestion_controller
-                                .on_congestion_event(largest_newly_acked_info.time_sent);
+                            path.congestion_controller.on_congestion_event(
+                                largest_newly_acked_info.time_sent,
+                                datagram.timestamp,
+                            );
                         }
                     }
                 }
