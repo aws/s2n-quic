@@ -2,7 +2,6 @@ use crate::{
     connection::{self, ConnectionInterests},
     frame_exchange_interests::FrameExchangeInterestProvider,
     processed_packet::ProcessedPacket,
-    recovery,
     space::rx_packet_numbers::{AckManager, DEFAULT_ACK_RANGES_LIMIT},
 };
 use s2n_codec::DecoderBufferMut;
@@ -17,6 +16,7 @@ use s2n_quic_core::{
     inet::DatagramInfo,
     packet::number::{PacketNumber, PacketNumberSpace},
     path::Path,
+    recovery::loss_info::LossInfo,
     time::Timestamp,
     transport::error::TransportError,
 };
@@ -180,8 +180,8 @@ impl<Config: connection::Config> PacketSpaceManager<Config> {
     }
 
     /// Called when the connection timer expired
-    pub fn on_timeout(&mut self, timestamp: Timestamp) -> recovery::LossInfo {
-        let mut loss_info = recovery::LossInfo::default();
+    pub fn on_timeout(&mut self, timestamp: Timestamp) -> LossInfo {
+        let mut loss_info = LossInfo::default();
 
         if let Some(space) = self.initial_mut() {
             loss_info += space.on_timeout(timestamp);
@@ -209,7 +209,7 @@ impl<Config: connection::Config> PacketSpaceManager<Config> {
 
     pub fn on_loss_info(
         &mut self,
-        loss_info: &recovery::LossInfo,
+        loss_info: &LossInfo,
         path: &Path<Config::CongestionController>,
         timestamp: Timestamp,
     ) {
@@ -290,7 +290,7 @@ pub trait PacketSpace<Config: connection::Config> {
         datagram: &DatagramInfo,
         path: &mut Path<Config::CongestionController>,
         pto_backoff: u32,
-    ) -> Result<recovery::LossInfo, TransportError>;
+    ) -> Result<LossInfo, TransportError>;
 
     fn handle_handshake_done_frame(
         &mut self,
@@ -331,8 +331,8 @@ pub trait PacketSpace<Config: connection::Config> {
         datagram: &DatagramInfo,
         path: &mut Path<Config::CongestionController>,
         pto_backoff: u32,
-    ) -> Result<(recovery::LossInfo, Option<frame::ConnectionClose<'a>>), TransportError> {
-        let mut loss_info = recovery::LossInfo::default();
+    ) -> Result<(LossInfo, Option<frame::ConnectionClose<'a>>), TransportError> {
+        let mut loss_info = LossInfo::default();
 
         use s2n_quic_core::{
             frame::{Frame, FrameMut},

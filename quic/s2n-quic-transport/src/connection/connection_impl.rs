@@ -9,7 +9,7 @@ use crate::{
     },
     contexts::ConnectionOnTransmitError,
     path,
-    recovery::{self, congestion_controller, RTTEstimator},
+    recovery::{congestion_controller, RTTEstimator},
     space::{PacketSpace, EARLY_ACK_SETTINGS},
 };
 use core::time::Duration;
@@ -25,6 +25,7 @@ use s2n_quic_core::{
         version_negotiation::ProtectedVersionNegotiation,
         zero_rtt::ProtectedZeroRTT,
     },
+    recovery::loss_info::LossInfo,
     time::Timestamp,
     transport::error::TransportError,
 };
@@ -160,7 +161,7 @@ impl<ConfigType: connection::Config> ConnectionImpl<ConfigType> {
     fn on_loss_info(
         &mut self,
         shared_state: &mut SharedConnectionState<ConfigType>,
-        loss_info: recovery::LossInfo,
+        loss_info: LossInfo,
         path_id: path::Id,
         timestamp: Timestamp,
     ) {

@@ -27,6 +27,7 @@ use s2n_quic_core::{
         short::{KeyPhase, Short, SpinBit},
     },
     path::Path,
+    recovery::loss_info::LossInfo,
     time::Timestamp,
     transport::error::TransportError,
 };
@@ -148,7 +149,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
     }
 
     /// Called when the connection timer expired
-    pub fn on_timeout(&mut self, timestamp: Timestamp) -> recovery::LossInfo {
+    pub fn on_timeout(&mut self, timestamp: Timestamp) -> LossInfo {
         self.ack_manager.on_timeout(timestamp);
 
         let (recovery_manager, mut context) = self.recovery();
@@ -280,7 +281,7 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
         datagram: &DatagramInfo,
         path: &mut Path<Config::CongestionController>,
         pto_backoff: u32,
-    ) -> Result<recovery::LossInfo, TransportError> {
+    ) -> Result<LossInfo, TransportError> {
         path.on_peer_validated();
         let (recovery_manager, mut context) = self.recovery();
         recovery_manager.on_ack_frame(datagram, frame, path, pto_backoff, &mut context)

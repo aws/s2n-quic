@@ -1,4 +1,5 @@
-use crate::{inet::SocketAddress, time::Timestamp};
+use crate::{inet::SocketAddress, recovery::loss_info::LossInfo, time::Timestamp};
+use core::time::Duration;
 
 pub trait Endpoint: 'static {
     type CongestionController: CongestionController;
@@ -25,9 +26,14 @@ impl<'a> PathInfo<'a> {
 pub trait CongestionController: 'static + Clone + Send {
     fn on_packet_acked(&self, time_sent: Timestamp, sent_bytes: usize);
 
-    fn on_packets_lost(&self, loss_info: LossInfo);
+    fn on_packets_lost(
+        &self,
+        loss_info: LossInfo,
+        persistent_congestion_duration: Duration,
+        now: Timestamp,
+    );
 
-    fn process_ecn(&self, time_sent: Timestamp);
+    fn on_congestion_event(&self, time_sent: Timestamp, now: Timestamp);
 }
 
 #[cfg(any(test, feature = "testing"))]
@@ -45,11 +51,16 @@ pub mod testing {
             unimplemented!()
         }
 
-        fn on_packets_lost(&self, loss_info: _) {
+        fn on_packets_lost(
+            &self,
+            loss_info: LossInfo,
+            persistent_congestion_duration: Duration,
+            now: Timestamp,
+        ) {
             unimplemented!()
         }
 
-        fn process_ecn(&self, time_sent: Timestamp) {
+        fn on_congestion_event(&self, time_sent: Timestamp, now: Timestamp) {
             unimplemented!()
         }
         // TODO implement callbacks

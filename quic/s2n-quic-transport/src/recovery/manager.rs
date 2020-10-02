@@ -1,7 +1,7 @@
 use crate::{
     contexts::WriteContext,
     frame_exchange_interests::{FrameExchangeInterestProvider, FrameExchangeInterests},
-    recovery::{SentPacketInfo, SentPackets},
+    recovery::{loss_info::LossInfo, SentPacketInfo, SentPackets},
     space::INITIAL_PTO_BACKOFF,
     timer::VirtualTimer,
 };
@@ -15,6 +15,7 @@ use s2n_quic_core::{
     recovery::{CongestionController, RTTEstimator},
     time::Timestamp,
     transport::error::TransportError,
+    varint::VarInt,
 };
 
 #[derive(Debug)]
@@ -71,7 +72,7 @@ pub struct Manager {
     //# The time the most recent ack-eliciting packet was sent.
     time_of_last_ack_eliciting_packet: Option<Timestamp>,
 
-    ecn_ce_counter: usize,
+    ecn_ce_counter: VarInt,
 }
 
 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.1.1
@@ -93,46 +94,6 @@ fn apply_k_time_threshold(duration: Duration) -> Duration {
     duration * 9 / 8
 }
 
-#[must_use = "Ignoring loss information would lead to permanent data loss"]
-#[derive(Copy, Clone, Default)]
-pub struct LossInfo {
-    /// Lost bytes in flight
-    pub bytes_in_flight: usize,
-
-    /// A PTO timer expired
-    pub pto_expired: bool,
-
-    /// The PTO count should be reset
-    pub pto_reset: bool,
-}
-
-impl LossInfo {
-    /// The recovery manager requires updating if a PTO expired/needs to be reset, or
-    /// loss packets were detected.
-    pub fn updated_required(&self) -> bool {
-        self.bytes_in_flight > 0 || self.pto_expired || self.pto_reset
-    }
-}
-
-#[allow(clippy::suspicious_arithmetic_impl)]
-impl core::ops::Add for LossInfo {
-    type Output = Self;
-
-    fn add(self, rhs: Self) -> Self {
-        Self {
-            bytes_in_flight: self.bytes_in_flight + rhs.bytes_in_flight,
-            pto_expired: self.pto_expired || rhs.pto_expired,
-            pto_reset: self.pto_reset || rhs.pto_reset,
-        }
-    }
-}
-
-impl core::ops::AddAssign for LossInfo {
-    fn add_assign(&mut self, rhs: Self) {
-        *self = *self + rhs;
-    }
-}
-
 impl Manager {
     /// Constructs a new `recovery::Manager`
     pub fn new(space: PacketNumberSpace, max_ack_delay: Duration) -> Self {
@@ -146,7 +107,7 @@ impl Manager {
             time_threshold: Duration::from_secs(0),
             bytes_in_flight: 0,
             time_of_last_ack_eliciting_packet: None,
-            ecn_ce_counter: 0,
+            ecn_ce_counter: VarInt::default(),
         }
     }
 
@@ -312,9 +273,9 @@ impl Manager {
                     // Process ECN information if present.
                     if let Some(ecn_counts) = frame.ecn_counts {
                         if ecn_counts.ce_count > self.ecn_ce_counter {
-                            self.ecn_ce_counter = ecn_counts.ce_count.to_usize();
+                            self.ecn_ce_counter = ecn_counts.ce_count;
                             path.congestion_controller
-                                .process_ecn(largest_newly_acked_info.time_sent);
+                                .on_congestion_event(largest_newly_acked_info.time_sent);
                         }
                     }
                 }
@@ -454,6 +415,7 @@ impl Manager {
 
         for packet_number in sent_packets_to_remove {
             self.sent_packets.remove(packet_number);
+            // TODO: Update bytes_in_flight?
         }
 
         loss_info
