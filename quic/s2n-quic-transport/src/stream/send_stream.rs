@@ -579,7 +579,7 @@ impl SendStream {
     pub fn on_packet_ack<A: AckSet>(&mut self, ack_set: &A, events: &mut StreamEvents) {
         self.data_sender.on_packet_ack(ack_set);
 
-        let should_flush = self.write_waiter.as_ref().map(|w| w.1).unwrap_or(false);
+        let should_flush = self.write_waiter.as_ref().map_or(false, |w| w.1);
         let mut should_wake = false;
 
         if let SendStreamState::Sending = self.state {
@@ -703,7 +703,13 @@ impl SendStream {
                 // Store the waker, in order to be able to wakeup the caller
                 // when the sender state changes
                 if let Some(waker) = context.as_ref().map(|context| context.waker().clone()) {
-                    self.write_waiter = Some((waker, $should_flush));
+                    let should_flush = $should_flush || {
+                        // persist existing flush requests
+                        self.write_waiter
+                            .take()
+                            .map_or(false, |(_, should_flush)| should_flush)
+                    };
+                    self.write_waiter = Some((waker, should_flush));
                     response.will_wake = true;
                 }
             };
@@ -749,7 +755,7 @@ impl SendStream {
             }
         }
 
-        if let Some(chunks) = request.chunks.as_mut() {
+        if let Some(chunks) = request.chunks.as_mut().filter(|chunks| !chunks.is_empty()) {
             for chunk in chunks.iter_mut() {
                 // empty chunks are automatically consumed
                 if chunk.is_empty() {
@@ -773,8 +779,8 @@ impl SendStream {
                     .push(core::mem::replace(chunk, Bytes::new()));
             }
         } else if !request.finish && !request.flush && context.is_some() {
-            // if `chunks` are `None` and we're not ending or flushing the stream, the caller is only
-            // interested in notifications of state changes.
+            // if `chunks` are `None` or `Some(&[])` and we're not ending or flushing the stream,
+            // the caller is only interested in notifications of state changes.
 
             // test a potential push of 1 byte
             self.validate_push(1)?;

@@ -817,13 +817,11 @@ impl ReceiveStream {
 
                 // mark the final state as observed if the request was vectorized
                 //
-                // Non-vectorized requests will need to perform another request to observe the
-                // final state
-                self.final_state_observed = request
-                    .chunks
-                    .as_ref()
-                    .map(|chunks| chunks.len() != 1)
-                    .unwrap_or(false);
+                // Non-vectorized requests that consumed a chunk will need to perform another
+                // request to observe the final state
+                self.final_state_observed = request.chunks.as_ref().map_or(true, |chunks| {
+                    chunks.len() != 1 || response.chunks.consumed == 0
+                });
 
                 // Indicate that all data has been read
                 response.status = ops::Status::Finished;

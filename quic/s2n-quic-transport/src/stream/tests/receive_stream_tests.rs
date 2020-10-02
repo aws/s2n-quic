@@ -1865,7 +1865,10 @@ fn receive_multiple_chunks_test() {
 
     assert_eq!(
         test_env
-            .run_request(ops::Request::default().receive(&mut [Bytes::new(), Bytes::new()]))
+            .run_request(
+                ops::Request::default().receive(&mut [Bytes::new(), Bytes::new()]),
+                false
+            )
             .unwrap()
             .rx
             .unwrap()
@@ -1879,11 +1882,10 @@ fn receive_multiple_chunks_test() {
 
     assert_eq!(
         test_env
-            .run_request(ops::Request::default().receive(&mut [
-                Bytes::new(),
-                Bytes::new(),
-                Bytes::new()
-            ]))
+            .run_request(
+                ops::Request::default().receive(&mut [Bytes::new(), Bytes::new(), Bytes::new()]),
+                false
+            )
             .unwrap()
             .rx
             .unwrap()
@@ -1923,7 +1925,7 @@ fn receive_multiple_chunks_and_finishing_test() {
         .is_ok());
 
     assert_eq!(
-        test_env.run_request(ops::Request::default().receive(&mut [])),
+        test_env.run_request(ops::Request::default().receive(&mut []), false),
         Ok(ops::Response {
             rx: Some(ops::rx::Response {
                 bytes: ops::Bytes {
@@ -1943,11 +1945,10 @@ fn receive_multiple_chunks_and_finishing_test() {
     );
 
     assert_eq!(
-        test_env.run_request(ops::Request::default().receive(&mut [
-            Bytes::new(),
-            Bytes::new(),
-            Bytes::new()
-        ])),
+        test_env.run_request(
+            ops::Request::default().receive(&mut [Bytes::new(), Bytes::new(), Bytes::new()]),
+            false
+        ),
         Ok(ops::Response {
             rx: Some(ops::rx::Response {
                 bytes: ops::Bytes {

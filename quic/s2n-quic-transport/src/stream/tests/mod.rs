@@ -53,6 +53,16 @@ fn gen_pattern_test_data(offset: VarInt, len: usize) -> Vec<u8> {
     data
 }
 
+fn gen_pattern_test_chunks(mut offset: VarInt, lens: &[usize]) -> Vec<bytes::Bytes> {
+    lens.iter()
+        .map(|size| {
+            let data = bytes::Bytes::from(gen_pattern_test_data(offset, *size));
+            offset += *size;
+            data
+        })
+        .collect::<Vec<_>>()
+}
+
 // Tests in submodules
 mod receive_stream_tests;
 mod send_stream_tests;

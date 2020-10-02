@@ -1,6 +1,7 @@
 use crate::{
     contexts::{OnTransmitError, WriteContext},
     stream::{
+        contract,
         incoming_connection_flow_controller::IncomingConnectionFlowController,
         outgoing_connection_flow_controller::OutgoingConnectionFlowController,
         receive_stream::ReceiveStream,
@@ -126,6 +127,24 @@ pub struct StreamImpl {
     pub(super) send_stream: SendStream,
 }
 
+impl StreamImpl {
+    fn poll_request_impl(
+        &mut self,
+        request: &mut ops::Request,
+        context: Option<&Context>,
+    ) -> Result<ops::Response, StreamError> {
+        let mut response = ops::Response::default();
+        if let Some(rx) = request.rx.as_mut() {
+            response.rx = Some(self.receive_stream.poll_request(rx, context)?);
+        }
+        if let Some(tx) = request.tx.as_mut() {
+            response.tx = Some(self.send_stream.poll_request(tx, context)?);
+        }
+
+        Ok(response)
+    }
+}
+
 impl StreamTrait for StreamImpl {
     fn new(config: StreamConfig) -> StreamImpl {
         let receive_is_closed = config.stream_id.stream_type().is_unidirectional()
@@ -229,14 +248,15 @@ impl StreamTrait for StreamImpl {
         request: &mut ops::Request,
         context: Option<&Context>,
     ) -> Result<ops::Response, StreamError> {
-        let mut response = ops::Response::default();
-        if let Some(rx) = request.rx.as_mut() {
-            response.rx = Some(self.receive_stream.poll_request(rx, context)?);
-        }
-        if let Some(tx) = request.tx.as_mut() {
-            response.tx = Some(self.send_stream.poll_request(tx, context)?);
-        }
-        Ok(response)
+        #[cfg(debug_assertions)]
+        let contract: contract::Request = (&*request).into();
+
+        let result = self.poll_request_impl(request, context);
+
+        #[cfg(debug_assertions)]
+        contract.validate_response(request, result.as_ref(), context);
+
+        result
     }
 }
 

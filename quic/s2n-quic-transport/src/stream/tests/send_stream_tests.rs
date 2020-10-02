@@ -2471,3 +2471,256 @@ fn stream_reports_stream_size_based_on_acquired_connection_window() {
         ],
     );
 }
+
+#[test]
+fn resetting_a_stream_takes_priority() {
+    let error_code = ApplicationErrorCode::new(123).unwrap();
+
+    for sizes in [None, Some(&[10, 10, 10])].iter() {
+        for finish in [true, false].iter().cloned() {
+            for flush in [true, false].iter().cloned() {
+                for with_context in [true, false].iter().cloned() {
+                    let mut test_env = setup_send_only_test_env();
+
+                    let will_wake = with_context && flush;
+                    dbg!(sizes);
+                    dbg!(finish);
+                    dbg!(flush);
+                    dbg!(with_context);
+
+                    let mut request = ops::Request::default();
+
+                    request.reset(error_code);
+                    let mut chunks =
+                        sizes.map(|sizes| gen_pattern_test_chunks(VarInt::from_u8(0), sizes));
+
+                    if let Some(chunks) = chunks.as_deref_mut() {
+                        request.send(chunks);
+                    }
+
+                    if finish {
+                        request.finish();
+                    }
+
+                    if flush {
+                        request.flush();
+                    }
+
+                    assert_eq!(
+                        test_env.run_request(&mut request, with_context),
+                        Ok(ops::Response {
+                            tx: Some(ops::tx::Response {
+                                status: ops::Status::Resetting,
+                                will_wake,
+                                ..Default::default()
+                            }),
+                            rx: None,
+                        }),
+                    );
+
+                    execute_instructions(
+                        &mut test_env,
+                        &[
+                            Instruction::CheckInterests(stream_interests(&["tx"])),
+                            Instruction::CheckResetTx(error_code, pn(0), VarInt::from_u8(0)),
+                            Instruction::CheckInterests(stream_interests(&["ack"])),
+                            Instruction::AckPacket(pn(0), ExpectWakeup(Some(will_wake))),
+                        ],
+                    );
+
+                    assert_eq!(
+                        test_env.run_request(&mut request, with_context),
+                        Ok(ops::Response {
+                            tx: Some(ops::tx::Response {
+                                status: ops::Status::Reset,
+                                ..Default::default()
+                            }),
+                            rx: None,
+                        }),
+                    );
+
+                    execute_instructions(
+                        &mut test_env,
+                        &[Instruction::CheckInterests(stream_interests(&["fin"]))],
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn can_send_multiple_chunks() {
+    let max_send_buffer_size = 1500;
+    for sizes in [&[10, 10, 10][..], &[500, 500, 500], &[1000, 1000, 1000][..]].iter() {
+        for finish in [false, true].iter().cloned() {
+            for flush in [false, true].iter().cloned() {
+                for with_context in [false, true].iter().cloned() {
+                    let mut test_env_config = TestEnvironmentConfig::default();
+                    test_env_config.max_send_buffer_size = max_send_buffer_size;
+                    test_env_config.local_endpoint_type = EndpointType::Client;
+                    test_env_config.stream_id =
+                        StreamId::initial(EndpointType::Client, StreamType::Unidirectional);
+                    let mut test_env = setup_stream_test_env_with_config(test_env_config);
+                    let mut expected_buffer_size = max_send_buffer_size;
+
+                    dbg!(sizes);
+                    dbg!(finish);
+                    dbg!(flush);
+                    dbg!(with_context);
+
+                    let mut chunks = gen_pattern_test_chunks(VarInt::from_u8(0), sizes);
+
+                    let mut request = ops::Request::default();
+                    request.send(&mut chunks);
+
+                    if finish {
+                        request.finish();
+                    }
+
+                    if flush {
+                        request.flush();
+                    }
+
+                    let mut expected_consumed_bytes = 0;
+                    let mut expected_consumed_chunks = 0;
+                    for size in sizes.iter().cloned() {
+                        expected_consumed_bytes += size;
+                        expected_consumed_chunks += 1;
+                        if let Some(size) = expected_buffer_size.checked_sub(size) {
+                            expected_buffer_size = size;
+                        } else {
+                            expected_buffer_size = 0;
+                            break;
+                        }
+                    }
+                    let consumed_all = expected_consumed_chunks == sizes.len();
+
+                    // finishing the buffer should end the availability
+                    if finish {
+                        expected_buffer_size = 0;
+                    }
+
+                    let will_wake = with_context && (!consumed_all || flush);
+
+                    assert_eq!(
+                        test_env.run_request(&mut request, with_context),
+                        Ok(ops::Response {
+                            tx: Some(ops::tx::Response {
+                                bytes: ops::Bytes {
+                                    available: expected_buffer_size,
+                                    consumed: expected_consumed_bytes,
+                                },
+                                chunks: ops::Chunks {
+                                    available: expected_buffer_size,
+                                    consumed: expected_consumed_chunks,
+                                },
+                                status: if consumed_all && finish {
+                                    ops::Status::Finishing
+                                } else {
+                                    ops::Status::Open
+                                },
+                                will_wake,
+                            }),
+                            rx: None,
+                        }),
+                    );
+
+                    execute_instructions(
+                        &mut test_env,
+                        &[Instruction::CheckInterests(stream_interests(&["tx"]))],
+                    );
+
+                    let mut offset = VarInt::from_u8(0);
+                    for (idx, size, is_last) in sizes
+                        .iter()
+                        .take(expected_consumed_chunks)
+                        .cloned()
+                        .enumerate()
+                        .map(|(idx, size)| {
+                            let is_last = expected_consumed_chunks - idx == 1;
+                            (idx, size, is_last)
+                        })
+                    {
+                        let is_fin = finish && consumed_all && is_last;
+                        let should_wake = with_context
+                            && if flush && consumed_all {
+                                // if all of the chunks were consumed and we wanted to flush
+                                // it should only wake up on the last chunk
+                                is_last
+                            } else {
+                                // if not all of the chunks were consumed it should only wake
+                                // on the first chunk
+                                !consumed_all && idx == 0
+                            };
+                        execute_instructions(
+                            &mut test_env,
+                            &[
+                                Instruction::CheckDataTx(offset, size, is_fin, false, pn(idx)),
+                                Instruction::AckPacket(pn(idx), ExpectWakeup(Some(should_wake))),
+                            ],
+                        );
+                        offset += size;
+                    }
+
+                    execute_instructions(
+                        &mut test_env,
+                        &[Instruction::CheckInterests(stream_interests(&[]))],
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn can_query_stream_readiness() {
+    let max_send_buffer_size = 1500;
+    for size in [None, Some(1000usize), Some(2000)].iter().cloned() {
+        for with_context in [false, true].iter().cloned() {
+            let mut test_env_config = TestEnvironmentConfig::default();
+            test_env_config.max_send_buffer_size = max_send_buffer_size;
+            test_env_config.local_endpoint_type = EndpointType::Client;
+            test_env_config.stream_id =
+                StreamId::initial(EndpointType::Client, StreamType::Unidirectional);
+            let mut test_env = setup_stream_test_env_with_config(test_env_config);
+
+            dbg!(size);
+            dbg!(with_context);
+
+            let mut expected_buffer_size = max_send_buffer_size;
+
+            // potentially fill the buffer
+            if let Some(size) = size {
+                test_env
+                    .run_request(
+                        ops::Request::default()
+                            .send(&mut gen_pattern_test_chunks(VarInt::from_u8(0), &[size])),
+                        false,
+                    )
+                    .expect("request should succeed");
+
+                expected_buffer_size = expected_buffer_size.saturating_sub(size);
+            };
+
+            assert_eq!(
+                test_env.run_request(ops::Request::default().send(&mut []), with_context),
+                Ok(ops::Response {
+                    tx: Some(ops::tx::Response {
+                        bytes: ops::Bytes {
+                            available: expected_buffer_size,
+                            consumed: 0
+                        },
+                        chunks: ops::Chunks {
+                            available: expected_buffer_size,
+                            consumed: 0,
+                        },
+                        status: ops::Status::Open,
+                        will_wake: with_context && expected_buffer_size == 0,
+                    }),
+                    rx: None,
+                }),
+            );
+        }
+    }
+}
