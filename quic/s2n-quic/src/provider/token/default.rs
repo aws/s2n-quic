@@ -216,7 +216,7 @@ impl super::Format for Format {
             output_buffer,
         )?;
 
-        return Some(self.new_token_lifetime);
+        Some(self.new_token_lifetime)
     }
 
     /// Generate a signed token to be delivered in a Retry Packet
@@ -235,7 +235,7 @@ impl super::Format for Format {
             output_buffer,
         )?;
 
-        return Some(self.retry_token_lifetime);
+        Some(self.retry_token_lifetime)
     }
 
     fn validate_token(
