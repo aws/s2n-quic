@@ -4,7 +4,7 @@ use core::time::Duration;
 pub trait Format {
     const TOKEN_LEN: usize;
 
-    /// Called when a token is needed for a NEW_TOKEN frame.
+    /// Generate a signed token to be delivered in a NEW_TOKEN frame
     fn generate_new_token(
         &mut self,
         peer_address: &SocketAddress,
@@ -13,7 +13,7 @@ pub trait Format {
         output_buffer: &mut [u8],
     ) -> Option<Duration>;
 
-    /// Called when a token is needed for a Retry Packet.
+    /// Generate a signed token to be delivered in a Retry Packet
     fn generate_retry_token(
         &mut self,
         peer_address: &SocketAddress,
@@ -22,7 +22,8 @@ pub trait Format {
         output_buffer: &mut [u8],
     ) -> Option<Duration>;
 
-    /// Called to validate a token.
+    /// Return the source of a valid token.
+    /// If the token is invalid, the source is None.
     fn validate_token(
         &mut self,
         peer_address: &SocketAddress,

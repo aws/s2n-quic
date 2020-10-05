@@ -82,6 +82,22 @@ impl Timestamp {
     }
 }
 
+impl From<Timestamp> for [u8; 8] {
+    fn from(source: Timestamp) -> Self {
+        let x: u64 = source.0.into();
+        x.to_be_bytes()
+    }
+}
+
+impl From<[u8; 8]> for Timestamp {
+    fn from(source: [u8; 8]) -> Self {
+        let x = u64::from_be_bytes(source);
+        Self {
+            0: unsafe { NonZeroU64::new_unchecked(x) },
+        }
+    }
+}
+
 impl core::ops::Add<Duration> for Timestamp {
     type Output = Timestamp;
 

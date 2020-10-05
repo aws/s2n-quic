@@ -19,96 +19,177 @@
 //! ```
 
 use core::{mem::size_of, time::Duration};
-use ring::rand::{SecureRandom, SystemRandom};
+use ring::{
+    hmac,
+    rand::{SecureRandom, SystemRandom},
+};
 use s2n_codec::{DecoderBuffer, DecoderBufferMut};
 use s2n_quic_core::{connection, inet::SocketAddress, token::Source};
 use zerocopy::{AsBytes, FromBytes, Unaligned};
 
 #[derive(Debug, Default)]
+struct BaseKey {
+    // Material used to derive keys
+    key_material: [u8; 32],
+}
+
+impl BaseKey {
+    fn new(key_material: [u8; 32]) -> Self {
+        Self { key_material }
+    }
+}
+
+#[derive(Debug, Default)]
 pub struct Provider {
-    new_tokens: bool,
-    new_token_validate_port: bool,
-    retry_tokens: bool,
+    new_token_lifetime: Duration,
+    retry_token_lifetime: Duration,
 }
 
 impl super::Provider for Provider {
     type Format = Format;
     type Error = core::convert::Infallible;
 
-    fn start(self) -> Result<Self::Format, Self::Error> {
-        // TODO: Start timer to update key
+    fn update_key(&self) -> [u8; 32] {
+        let mut key_material = [0; 32];
+        SystemRandom::new().fill(&mut key_material[..]).unwrap();
+        key_material
+    }
+
+    fn start(&self) -> Result<Self::Format, Self::Error> {
+        // Generate a random key to sign and verify tokens
+        let key = BaseKey::new(self.update_key());
+
         Ok(Format {
-            new_tokens: self.new_tokens,
-            new_token_validate_port: self.new_token_validate_port,
-            retry_tokens: self.retry_tokens,
+            new_token_lifetime: self.new_token_lifetime,
+            retry_token_lifetime: self.retry_token_lifetime,
+            key,
         })
     }
 }
 
-pub struct DerivedKey();
-
-#[derive(Debug, Default)]
 pub struct Format {
     /// Support tokens in NEW_TOKEN frames
-    new_tokens: bool,
+    new_token_lifetime: Duration,
 
-    /// Validate source port from NEW_TOKEN frames
-    new_token_validate_port: bool,
+    /// Support tokens from Retry Packets
+    retry_token_lifetime: Duration,
 
-    /// Support tokens from Retry Requests
-    retry_tokens: bool,
+    /// Key used to derive signing keys
+    key: BaseKey,
 }
 
 impl Format {
     fn generate_token(
         &mut self,
         source: Source,
-        _peer_address: &SocketAddress,
-        _destination_connection_id: &connection::Id,
+        peer_address: &SocketAddress,
+        destination_connection_id: &connection::Id,
         _source_connection_id: &connection::Id,
         output_buffer: &mut [u8],
-    ) -> Option<Duration> {
+    ) -> Option<()> {
         let buffer = DecoderBufferMut::new(output_buffer);
         let (token, _) = buffer
             .decode::<&mut Token>()
             .expect("Provided output buffer did not match TOKEN_LEN");
 
-        // TODO
-        let current_key_id = 0;
-        let current_time_window_id = 0;
-        let header = Header::new(current_key_id, current_time_window_id, source);
+        let header = Header::new(source);
 
         token.header = header;
 
+        // Populate the nonce before signing
         SystemRandom::new().fill(&mut token.nonce[..]).ok()?;
 
-        // Sign the token, then write to the buffer
-        todo!("Sign the token")
+        token.timestamp = s2n_quic_platform::time::now().into();
+
+        let tag = self.tag(&token, &peer_address, &destination_connection_id);
+
+        token.hmac.copy_from_slice(tag.as_ref());
+
+        Some(())
     }
 
-    #[allow(dead_code)]
-    fn sign_token(&self, _token: &mut [u8], _key: &DerivedKey) {
-        todo!();
+    fn tag(
+        &self,
+        token: &Token,
+        peer_address: &SocketAddress,
+        conn_id: &connection::Id,
+    ) -> hmac::Tag {
+        let hmac_key = hmac::Key::new(hmac::HMAC_SHA256, &self.key.key_material);
+        let mut ctx = hmac::Context::with_key(&hmac_key);
+
+        ctx.update(&token.nonce);
+        ctx.update(&conn_id.as_bytes());
+        match peer_address {
+            SocketAddress::IPv4(addr) => ctx.update(addr.as_bytes()),
+            SocketAddress::IPv6(addr) => ctx.update(addr.as_bytes()),
+        };
+
+        ctx.update(&token.timestamp);
+
+        ctx.sign()
     }
 
     fn validate_retry_token(
         &mut self,
-        _peer_address: &SocketAddress,
-        _destination_connection_id: &connection::Id,
+        peer_address: &SocketAddress,
+        destination_connection_id: &connection::Id,
         _source_connection_id: &connection::Id,
-        _token: &Token,
-    ) -> Option<()> {
-        todo!()
+        token: &Token,
+    ) -> bool {
+        let tag = self.tag(&token, &peer_address, &destination_connection_id);
+        let valid_mac = token.hmac == tag.as_ref();
+
+        if self.retry_token_lifetime == Duration::from_millis(0) {
+            return valid_mac;
+        }
+
+        let allowed_age = s2n_quic_platform::time::now().checked_sub(self.retry_token_lifetime);
+        if allowed_age.is_none() {
+            return false;
+        }
+        let allowed_age = allowed_age.unwrap();
+
+        valid_mac && allowed_age < token.timestamp.into()
     }
 
-    fn validate_new_token(&mut self, _peer_address: &SocketAddress, _token: &Token) -> Option<()> {
-        todo!()
+    fn validate_new_token(
+        &mut self,
+        peer_address: &SocketAddress,
+        destination_connection_id: &connection::Id,
+        token: &Token,
+    ) -> bool {
+        let peer_address: SocketAddress = match peer_address {
+            SocketAddress::IPv4(mut addr) => {
+                addr.set_port(0);
+                SocketAddress::IPv4(addr)
+            }
+            SocketAddress::IPv6(mut addr) => {
+                addr.set_port(0);
+                SocketAddress::IPv6(addr)
+            }
+        };
+
+        let tag = self.tag(&token, &peer_address, &destination_connection_id);
+        let valid_mac = token.hmac == tag.as_ref();
+
+        if self.new_token_lifetime == Duration::from_millis(0) {
+            return valid_mac;
+        }
+
+        let allowed_age = s2n_quic_platform::time::now().checked_sub(self.new_token_lifetime);
+        if allowed_age.is_none() {
+            return false;
+        }
+        let allowed_age = allowed_age.unwrap();
+
+        valid_mac && allowed_age < token.timestamp.into()
     }
 }
 
 impl super::Format for Format {
     const TOKEN_LEN: usize = size_of::<Token>();
 
+    /// Generate a signed token to be delivered in a NEW_TOKEN frame
     fn generate_new_token(
         &mut self,
         peer_address: &SocketAddress,
@@ -116,16 +197,29 @@ impl super::Format for Format {
         source_connection_id: &connection::Id,
         output_buffer: &mut [u8],
     ) -> Option<Duration> {
+        let peer_address: SocketAddress = match peer_address {
+            SocketAddress::IPv4(mut addr) => {
+                addr.set_port(0);
+                SocketAddress::IPv4(addr)
+            }
+            SocketAddress::IPv6(mut addr) => {
+                addr.set_port(0);
+                SocketAddress::IPv6(addr)
+            }
+        };
+
         self.generate_token(
             Source::NewTokenFrame,
-            peer_address,
+            &peer_address,
             destination_connection_id,
             source_connection_id,
             output_buffer,
-        )
+        )?;
+
+        return Some(self.new_token_lifetime);
     }
 
-    /// Called when a token is needed for a Retry Packet.
+    /// Generate a signed token to be delivered in a Retry Packet
     fn generate_retry_token(
         &mut self,
         peer_address: &SocketAddress,
@@ -139,7 +233,9 @@ impl super::Format for Format {
             destination_connection_id,
             source_connection_id,
             output_buffer,
-        )
+        )?;
+
+        return Some(self.retry_token_lifetime);
     }
 
     fn validate_token(
@@ -160,17 +256,21 @@ impl super::Format for Format {
 
         match source {
             Source::RetryPacket => {
-                self.validate_retry_token(
+                if self.validate_retry_token(
                     peer_address,
                     destination_connection_id,
                     source_connection_id,
                     token,
-                )?;
-                Some(source)
+                ) {
+                    return Some(source);
+                }
+                None
             }
             Source::NewTokenFrame => {
-                self.validate_new_token(peer_address, token)?;
-                Some(source)
+                if self.validate_new_token(peer_address, destination_connection_id, token) {
+                    return Some(Source::NewTokenFrame);
+                }
+                None
             }
         }
     }
@@ -190,22 +290,16 @@ pub struct Header(u8);
 
 pub const TOKEN_VERSION: u8 = 0x00;
 
-const VERSION_MASK: u8 = 0x80;
-const TOKEN_SOURCE_MASK: u8 = 0x40;
-const KEY_ID_MASK: u8 = 0x30;
-const TIME_WINDOW_MASK: u8 = 0x0f;
-
 const VERSION_SHIFT: u8 = 7;
+const VERSION_MASK: u8 = 0x80;
+
 const TOKEN_SOURCE_SHIFT: u8 = 6;
-const KEY_ID_SHIFT: u8 = 4;
-const TIME_WINDOW_SHIFT: u8 = 0;
+const TOKEN_SOURCE_MASK: u8 = 0x40;
 
 impl Header {
-    pub fn new(key_id: u8, time_window_id: u8, source: Source) -> Header {
+    pub fn new(source: Source) -> Header {
         let mut header: u8 = 0;
         header |= TOKEN_VERSION << VERSION_SHIFT;
-        header |= key_id << KEY_ID_SHIFT;
-        header |= time_window_id << TIME_WINDOW_SHIFT;
         header |= match source {
             Source::NewTokenFrame => 0 << TOKEN_SOURCE_SHIFT,
             Source::RetryPacket => 1 << TOKEN_SOURCE_SHIFT,
@@ -216,17 +310,6 @@ impl Header {
 
     pub fn version(&self) -> u8 {
         (self.0 & VERSION_MASK) >> VERSION_SHIFT
-    }
-
-    pub fn key_id(&self) -> u8 {
-        (self.0 & KEY_ID_MASK) >> KEY_ID_SHIFT
-    }
-
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#21.2
-    //# Servers SHOULD provide mitigations for this attack by limiting the
-    //# usage and lifetime of address validation tokens
-    pub fn time_window_id(&self) -> u8 {
-        (self.0 & TIME_WINDOW_MASK) >> TIME_WINDOW_SHIFT
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#8.1.1
@@ -250,6 +333,11 @@ impl Header {
 #[repr(C)]
 pub struct Token {
     header: Header,
+
+    // NOTE This is not s2n_quic_core::time::Timestamp because that type doesn't implement the
+    // zerocopy traits
+    timestamp: [u8; 8],
+
     nonce: [u8; 32],
     hmac: [u8; 32],
 }
@@ -259,6 +347,10 @@ s2n_codec::zerocopy_value_codec!(Token);
 impl Token {
     pub fn header(&self) -> Header {
         self.header
+    }
+
+    pub fn timestamp(&self) -> &[u8] {
+        &self.timestamp
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#8.1.4
@@ -285,7 +377,6 @@ impl Token {
     //# When a server receives an Initial packet with an address validation
     //# token, it MUST attempt to validate the token, unless it has already
     //# completed address validation.
-    #[allow(dead_code)]
     pub fn validate(&self) -> bool {
         true
     }
@@ -294,23 +385,196 @@ impl Token {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use s2n_quic_core::token::Source;
+    use s2n_quic_core::{
+        inet::ipv4::SocketAddressV4,
+        token::{Format as FormatTrait, Source},
+    };
+    use s2n_quic_platform::time;
+    use std::sync::Arc;
 
     #[test]
     fn test_header() {
         // Test all combinations of values to create a header and verify the header returns the
         // expected values.
-        for key_id in 0..2 {
-            for time_window_id in 0..4 {
-                for source in &[Source::NewTokenFrame, Source::RetryPacket] {
-                    let header = Header::new(key_id, time_window_id, *source);
-                    // The version should always be the constant TOKEN_VERSION
-                    assert_eq!(header.version(), TOKEN_VERSION);
-                    assert_eq!(header.key_id(), key_id);
-                    assert_eq!(header.time_window_id(), time_window_id);
-                    assert_eq!(header.token_source(), *source);
-                }
-            }
+        for source in &[Source::NewTokenFrame, Source::RetryPacket] {
+            let header = Header::new(*source);
+            // The version should always be the constant TOKEN_VERSION
+            assert_eq!(header.version(), TOKEN_VERSION);
+            assert_eq!(header.token_source(), *source);
         }
+    }
+
+    #[test]
+    fn test_valid_new_token() {
+        let clock = Arc::new(time::testing::MockClock::new());
+        time::testing::set_local_clock(clock.clone());
+        clock.adjust_by(Duration::from_millis(10000));
+
+        let mut format = Format {
+            new_token_lifetime: Duration::from_millis(5000),
+            retry_token_lifetime: Duration::from_millis(1000),
+            key: BaseKey::new([0; 32]),
+        };
+
+        let conn_id = connection::Id::try_from_bytes(&[]).unwrap();
+        let mut addr: SocketAddressV4 = SocketAddressV4::new([127, 0, 0, 1], 80);
+        let mut buf = [0; size_of::<Token>()];
+
+        format
+            .generate_new_token(&addr.into(), &conn_id, &conn_id, &mut buf)
+            .unwrap();
+
+        // The NEW_FRAME tokens should not verify the source port
+        addr.set_port(443);
+
+        clock.adjust_by(Duration::from_millis(1000));
+        assert_eq!(
+            format
+                .validate_token(&addr.into(), &conn_id, &conn_id, &buf)
+                .is_some(),
+            true
+        );
+    }
+
+    #[test]
+    fn test_expired_new_token() {
+        let clock = Arc::new(time::testing::MockClock::new());
+        time::testing::set_local_clock(clock.clone());
+        clock.adjust_by(Duration::from_millis(10000));
+
+        let mut format = Format {
+            new_token_lifetime: Duration::from_millis(1000),
+            retry_token_lifetime: Duration::from_millis(5000),
+            key: BaseKey::new([0; 32]),
+        };
+
+        let conn_id = connection::Id::try_from_bytes(&[]).unwrap();
+        let addr = SocketAddress::default();
+        let mut buf = [0; size_of::<Token>()];
+
+        // New Frame token should be expired
+        format
+            .generate_new_token(&addr, &conn_id, &conn_id, &mut buf)
+            .unwrap();
+
+        clock.adjust_by(Duration::from_millis(1000));
+        assert_eq!(
+            format
+                .validate_token(&addr, &conn_id, &conn_id, &buf)
+                .is_none(),
+            true
+        );
+    }
+
+    #[test]
+    fn test_valid_retry_token() {
+        let clock = Arc::new(time::testing::MockClock::new());
+        time::testing::set_local_clock(clock.clone());
+        clock.adjust_by(Duration::from_millis(10000));
+
+        let mut format = Format {
+            new_token_lifetime: Duration::from_millis(1000),
+            retry_token_lifetime: Duration::from_millis(5000),
+            key: BaseKey::new([0; 32]),
+        };
+
+        let conn_id = connection::Id::try_from_bytes(&[]).unwrap();
+        let addr = SocketAddress::default();
+        let mut buf = [0; size_of::<Token>()];
+
+        format
+            .generate_retry_token(&addr, &conn_id, &conn_id, &mut buf)
+            .unwrap();
+
+        clock.adjust_by(Duration::from_millis(1000));
+        assert_eq!(
+            format
+                .validate_token(&addr, &conn_id, &conn_id, &buf)
+                .is_some(),
+            true
+        );
+    }
+
+    #[test]
+    fn test_expired_retry_token() {
+        let clock = Arc::new(time::testing::MockClock::new());
+        time::testing::set_local_clock(clock.clone());
+        clock.adjust_by(Duration::from_millis(10000));
+
+        let mut format = Format {
+            new_token_lifetime: Duration::from_millis(5000),
+            retry_token_lifetime: Duration::from_millis(1000),
+            key: BaseKey::new([0; 32]),
+        };
+
+        let conn_id = connection::Id::try_from_bytes(&[]).unwrap();
+        let addr = SocketAddress::default();
+        let mut buf = [0; size_of::<Token>()];
+        format
+            .generate_retry_token(&addr, &conn_id, &conn_id, &mut buf)
+            .unwrap();
+
+        clock.adjust_by(Duration::from_millis(1000));
+        assert_eq!(
+            format
+                .validate_token(&addr, &conn_id, &conn_id, &buf)
+                .is_none(),
+            true
+        );
+    }
+
+    #[test]
+    fn test_retry_validation_default_format() {
+        let mut format = Format {
+            new_token_lifetime: Duration::from_millis(0),
+            retry_token_lifetime: Duration::from_millis(0),
+            key: BaseKey::new([0; 32]),
+        };
+
+        let conn_id = connection::Id::try_from_bytes(&[]).unwrap();
+        let addr = SocketAddress::default();
+        let mut buf = [0; size_of::<Token>()];
+        format
+            .generate_retry_token(&addr, &conn_id, &conn_id, &mut buf)
+            .unwrap();
+
+        assert_eq!(
+            format
+                .validate_token(&addr, &conn_id, &conn_id, &buf)
+                .unwrap(),
+            Source::RetryPacket
+        );
+
+        let wrong_conn_id = connection::Id::try_from_bytes(&[0, 1, 2]).unwrap();
+        assert_eq!(
+            format
+                .validate_token(&addr, &wrong_conn_id, &conn_id, &buf)
+                .is_none(),
+            true
+        );
+    }
+
+    #[test]
+    fn test_new_frame_validation_default_format() {
+        let mut format = Format {
+            new_token_lifetime: Duration::from_millis(0),
+            retry_token_lifetime: Duration::from_millis(0),
+            key: BaseKey::new([0; 32]),
+        };
+
+        let conn_id = connection::Id::try_from_bytes(&[]).unwrap();
+        let addr = SocketAddress::default();
+        let mut buf = [0; size_of::<Token>()];
+
+        format
+            .generate_new_token(&addr, &conn_id, &conn_id, &mut buf)
+            .unwrap();
+
+        assert_eq!(
+            format
+                .validate_token(&addr, &conn_id, &conn_id, &buf)
+                .unwrap(),
+            Source::NewTokenFrame
+        );
     }
 }

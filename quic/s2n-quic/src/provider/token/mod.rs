@@ -10,7 +10,11 @@ pub trait Provider: 'static {
     type Format: 'static + Format;
     type Error: core::fmt::Display;
 
-    fn start(self) -> Result<Self::Format, Self::Error>;
+    /// Starts the token provider
+    fn start(&self) -> Result<Self::Format, Self::Error>;
+
+    /// Called to update the key used to sign and verify tokens
+    fn update_key(&self) -> [u8; 32];
 }
 
 cfg_if! {
