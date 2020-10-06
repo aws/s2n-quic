@@ -12,9 +12,6 @@ pub trait Provider: 'static {
 
     /// Starts the token provider
     fn start(&self) -> Result<Self::Format, Self::Error>;
-
-    /// Called to update the key used to sign and verify tokens
-    fn update_key(&self) -> [u8; 32];
 }
 
 cfg_if! {
