@@ -13,7 +13,7 @@ testing = ["std"] # Testing allows to overwrite the system time
 wipe = ["zeroize"]
 
 [dependencies]
-cfg-if = "0.1"
+cfg-if = "1.0"
 futures = { version = "0.3", optional = true }
 lazy_static = { version = "1.4", optional = true }
 mio = { version = "0.6", optional = true }
