@@ -1,22 +1,9 @@
-//! Defines the Address Validation Token
+//! Default provider for Address Validation tokens
 //!
-//! Address Validation Token layout
+//! The default provider will randomly generate a 256 bit key. This key will be used to sign and
+//! verify tokens. The key can be rotated at a duration set by the user.
 //!
-//! ```text
-//!
-//! The address validation token is 512 bytes long. This gives enough space for a SHA256 HMAC,
-//! a 248 bit nonce, and 8 bits of meta information about the token.
-//!
-//! The first 8 bits of the token represent the version, token type, key id, time window ID.
-//!
-//! +----------+--------------+--------+----------------+
-//! |  Version | Token Source | Key ID | Time Window ID |
-//! +----------+--------------+--------+----------------+
-//!      1           1            2           4
-//!
-//! The next 248 bits are the nonce. The last 256 bits are the HMAC.
-//!
-//! ```
+//! The default provider does not support tokens delivered in a NEW_TOKEN frame.
 
 use core::{mem::size_of, time::Duration};
 use ring::{
@@ -43,7 +30,12 @@ impl BaseKey {
 
 #[derive(Debug, Default)]
 pub struct Provider {
-    retry_token_lifetime: Duration,
+    /// Rotate the key periodically
+    key_rotation_period: Duration,
+
+    /// Send tokens in NEW_TOKEN frame. If this is true, the library will call `generate_new_token`
+    /// to provide tokens to client.
+    support_new_token: bool,
 }
 
 impl super::Provider for Provider {
@@ -54,12 +46,12 @@ impl super::Provider for Provider {
         // Subtract the lifetime from the current clock to force a key generation on the first
         // request
         let force_key_update = s2n_quic_platform::time::now()
-            .checked_sub(self.retry_token_lifetime)
+            .checked_sub(self.key_rotation_period)
             .unwrap();
 
         Ok(Format {
             last_update: force_key_update,
-            retry_token_lifetime: self.retry_token_lifetime,
+            key_rotation_period: self.key_rotation_period,
             key: BaseKey::new(&[0; digest::SHA256_OUTPUT_LEN]),
         })
     }
@@ -70,7 +62,7 @@ pub struct Format {
     last_update: s2n_quic_core::time::Timestamp,
 
     /// Support tokens from Retry Packets
-    retry_token_lifetime: Duration,
+    key_rotation_period: Duration,
 
     /// Key used to derive signing keys
     key: BaseKey,
@@ -86,11 +78,11 @@ impl Format {
     }
 
     fn update_key(&mut self) -> Option<()> {
-        if self.retry_token_lifetime == Duration::from_millis(0) {
+        if self.key_rotation_period == Duration::from_millis(0) {
             return None;
         }
 
-        if let Some(age) = s2n_quic_platform::time::now().checked_sub(self.retry_token_lifetime) {
+        if let Some(age) = s2n_quic_platform::time::now().checked_sub(self.key_rotation_period) {
             if age >= self.last_update {
                 self.key = self.generate_base_key()?;
                 self.last_update = s2n_quic_platform::time::now();
@@ -168,7 +160,7 @@ impl super::Format for Format {
         _destination_connection_id: &connection::Id,
         _source_connection_id: &connection::Id,
         _output_buffer: &mut [u8],
-    ) -> Option<Duration> {
+    ) -> Option<()> {
         None
     }
 
@@ -179,7 +171,7 @@ impl super::Format for Format {
         destination_connection_id: &connection::Id,
         source_connection_id: &connection::Id,
         output_buffer: &mut [u8],
-    ) -> Option<Duration> {
+    ) -> Option<()> {
         self.generate_token(
             Source::RetryPacket,
             peer_address,
@@ -188,7 +180,7 @@ impl super::Format for Format {
             output_buffer,
         )?;
 
-        Some(self.retry_token_lifetime)
+        Some(())
     }
 
     fn validate_token(
@@ -221,14 +213,6 @@ impl super::Format for Format {
             }
             Source::NewTokenFrame => None, // Not supported in the default provider
         }
-    }
-
-    fn token_hash<'a>(&self, token: &'a [u8]) -> &'a [u8] {
-        let buffer = DecoderBuffer::new(token);
-        let (token, _) = buffer
-            .decode::<&Token>()
-            .expect("Provided output buffer did not match TOKEN_LEN");
-        &token.hmac[..]
     }
 }
 
@@ -346,7 +330,7 @@ mod tests {
         time::testing::set_local_clock(clock.clone());
 
         let mut format = Format {
-            retry_token_lifetime: Duration::from_millis(5000),
+            key_rotation_period: Duration::from_millis(5000),
             key: BaseKey::new(&[0; 32]),
             last_update: time::now(),
         };
@@ -375,7 +359,7 @@ mod tests {
         time::testing::set_local_clock(clock.clone());
 
         let mut format = Format {
-            retry_token_lifetime: Duration::from_millis(1000),
+            key_rotation_period: Duration::from_millis(1000),
             key: BaseKey::new(&[0; 32]),
             last_update: time::now(),
         };
@@ -404,7 +388,7 @@ mod tests {
         clock.adjust_by(Duration::from_millis(10000));
 
         let mut format = Format {
-            retry_token_lifetime: Duration::from_millis(0),
+            key_rotation_period: Duration::from_millis(0),
             key: BaseKey::new(&[0; 32]),
             last_update: time::now(),
         };
