@@ -17,6 +17,7 @@ use s2n_quic_core::{
     transport::error::TransportError,
     varint::VarInt,
 };
+use smallvec::SmallVec;
 
 #[derive(Debug)]
 pub struct Manager {
@@ -86,6 +87,10 @@ pub struct Manager {
 //# implementations SHOULD NOT use a packet threshold less than 3; see
 //# [RFC5681].
 const K_PACKET_THRESHOLD: u64 = 3;
+
+/// Initial capacity of the SmallVec used for keeping track of packets
+/// acked in an ack frame
+const ACKED_PACKETS_INITIAL_CAPACITY: usize = 10;
 
 fn apply_k_time_threshold(duration: Duration) -> Duration {
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.1.2
@@ -236,8 +241,9 @@ impl Manager {
         backoff: u32,
         context: &mut Ctx,
     ) -> Result<LossInfo, TransportError> {
-        let mut has_newly_acked = false;
         let largest_acked_in_frame = self.space.new_packet_number(frame.largest_acknowledged());
+        let mut newly_acked_packets =
+            SmallVec::<[SentPacketInfo; ACKED_PACKETS_INITIAL_CAPACITY]>::new();
         self.first_rtt_sample = self.first_rtt_sample.or(Some(datagram.timestamp));
 
         // Update the largest acked packet if the largest packet acked in this frame is larger
@@ -245,6 +251,8 @@ impl Manager {
             self.largest_acked_packet
                 .map_or(largest_acked_in_frame, |pn| pn.max(largest_acked_in_frame)),
         );
+
+        let mut largest_newly_acked: Option<(PacketNumber, SentPacketInfo)> = None;
 
         for ack_range in frame.ack_ranges() {
             let (start, end) = ack_range.into_inner();
@@ -257,93 +265,115 @@ impl Manager {
             context.validate_packet_ack(datagram, &acked_packets)?;
             context.on_packet_ack(datagram, &acked_packets);
 
-            if let Some((largest_newly_acked, largest_newly_acked_info)) =
-                self.sent_packets.range(acked_packets).last()
-            {
-                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#5.1
-                //# An RTT sample is generated using only the largest acknowledged packet in the
-                //# received ACK frame. This is because a peer reports acknowledgment delays for
-                //# only the largest acknowledged packet in an ACK frame.
-                if *largest_newly_acked == largest_acked_in_frame {
-                    let latest_rtt = datagram.timestamp - largest_newly_acked_info.time_sent;
-                    path.rtt_estimator.update_rtt(
-                        frame.ack_delay(),
-                        latest_rtt,
-                        largest_newly_acked.space(),
-                    );
-
-                    // Process ECN information if present.
-                    if let Some(ecn_counts) = frame.ecn_counts {
-                        if ecn_counts.ce_count > self.ecn_ce_counter {
-                            self.ecn_ce_counter = ecn_counts.ce_count;
-                            path.congestion_controller.on_congestion_event(
-                                largest_newly_acked_info.time_sent,
-                                datagram.timestamp,
-                            );
-                        }
-                    }
-                }
-            } else {
-                // Nothing to do if there are no newly acked packets.
-                continue;
-            };
-
+            let mut new_packet_ack = false;
             for packet_number in acked_packets {
                 if let Some(acked_packet_info) = self.sent_packets.remove(packet_number) {
+                    newly_acked_packets.push(acked_packet_info);
                     self.bytes_in_flight -= acked_packet_info.sent_bytes as usize;
-                    path.congestion_controller.on_packet_acked(
-                        acked_packet_info.time_sent,
-                        acked_packet_info.sent_bytes as usize,
-                    );
+
+                    if largest_newly_acked.map_or(true, |(pn, _)| packet_number > pn) {
+                        largest_newly_acked = Some((packet_number, acked_packet_info));
+                    }
+
+                    new_packet_ack = true;
                 }
             }
 
-            // notify components of packets that are newly acked
-            context.on_new_packet_ack(datagram, &acked_packets);
-
-            has_newly_acked = true;
+            if new_packet_ack {
+                // notify components of packets that are newly acked
+                context.on_new_packet_ack(datagram, &acked_packets);
+            }
         }
 
-        let mut loss_info = LossInfo::default();
+        if largest_newly_acked.is_none() {
+            // Nothing to do if there are no newly acked packets.
+            return Ok(LossInfo::default());
+        }
 
-        if has_newly_acked {
-            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.1.2
-            //# Once a later packet within the same packet number space has been
-            //# acknowledged, an endpoint SHOULD declare an earlier packet lost if it
-            //# was sent a threshold amount of time in the past.
-            loss_info =
-                self.detect_and_remove_lost_packets(datagram.timestamp, |packet_number_range| {
-                    context.on_packet_loss(&packet_number_range);
-                });
+        let largest_newly_acked = largest_newly_acked.expect("There are newly acked packets");
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
-            //# The PTO backoff factor is reset when an acknowledgement is received,
-            //# except in the following case.  A server might take longer to respond
-            //# to packets during the handshake than otherwise.  To protect such a
-            //# server from repeated client probes, the PTO backoff is not reset at a
-            //# client that is not yet certain that the server has finished
-            //# validating the client's address.  That is, a client does not reset
-            //# the PTO backoff factor on receiving acknowledgements until the
-            //# handshake is confirmed; see Section 4.1.2 of [QUIC-TLS].
-            loss_info.pto_reset = path.is_peer_validated();
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#5.1
+        //# An RTT sample is generated using only the largest acknowledged packet in the
+        //# received ACK frame. This is because a peer reports acknowledgment delays for
+        //# only the largest acknowledged packet in an ACK frame.
+        if largest_newly_acked.0 == largest_acked_in_frame {
+            let latest_rtt = datagram.timestamp - largest_newly_acked.1.time_sent;
+            path.rtt_estimator.update_rtt(
+                frame.ack_delay(),
+                latest_rtt,
+                largest_acked_in_frame.space(),
+            );
 
-            // If there is a pending pto reset, use the initial pto_backoff when updating the PTO timer
-            let pto_backoff = if loss_info.pto_reset {
-                INITIAL_PTO_BACKOFF
-            } else {
-                backoff
-            };
+            // Update the congestion controller with the latest RTT estimate
+            path.congestion_controller
+                .on_rtt_update(&path.rtt_estimator);
+        }
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
-            //# A sender SHOULD restart its PTO timer every time an ack-eliciting
-            //# packet is sent or acknowledged,
-            self.update(
-                &path,
-                pto_backoff,
+        // Process ECN information if present.
+        if let Some(ecn_counts) = frame.ecn_counts {
+            if ecn_counts.ce_count > self.ecn_ce_counter {
+                self.ecn_ce_counter = ecn_counts.ce_count;
+                path.congestion_controller
+                    .on_congestion_event(datagram.timestamp);
+            }
+        }
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.1.2
+        //# Once a later packet within the same packet number space has been
+        //# acknowledged, an endpoint SHOULD declare an earlier packet lost if it
+        //# was sent a threshold amount of time in the past.
+        let mut loss_info =
+            self.detect_and_remove_lost_packets(datagram.timestamp, |packet_number_range| {
+                context.on_packet_loss(&packet_number_range);
+            });
+
+        if loss_info.bytes_in_flight > 0 {
+            path.congestion_controller.on_packets_lost(
+                loss_info,
+                path.rtt_estimator.persistent_congestion_duration(),
                 datagram.timestamp,
-                self.space.is_application_data() && context.is_handshake_confirmed(),
             );
         }
+
+        for acked_packet_info in newly_acked_packets {
+            path.congestion_controller.on_packet_ack(
+                // Use the sent time of the largest newly acked so the congestion
+                // controller exits recovery immediately if possible.
+                largest_newly_acked.1.time_sent,
+                acked_packet_info.sent_bytes as usize,
+                false, // TODO: is_limited https://github.com/awslabs/s2n-quic/issues/137
+                &path.rtt_estimator,
+                datagram.timestamp,
+            );
+        }
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
+        //# The PTO backoff factor is reset when an acknowledgement is received,
+        //# except in the following case.  A server might take longer to respond
+        //# to packets during the handshake than otherwise.  To protect such a
+        //# server from repeated client probes, the PTO backoff is not reset at a
+        //# client that is not yet certain that the server has finished
+        //# validating the client's address.  That is, a client does not reset
+        //# the PTO backoff factor on receiving acknowledgements until the
+        //# handshake is confirmed; see Section 4.1.2 of [QUIC-TLS].
+        loss_info.pto_reset = path.is_peer_validated();
+
+        // If there is a pending pto reset, use the initial pto_backoff when updating the PTO timer
+        let pto_backoff = if loss_info.pto_reset {
+            INITIAL_PTO_BACKOFF
+        } else {
+            backoff
+        };
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
+        //# A sender SHOULD restart its PTO timer every time an ack-eliciting
+        //# packet is sent or acknowledged,
+        self.update(
+            &path,
+            pto_backoff,
+            datagram.timestamp,
+            self.space.is_application_data() && context.is_handshake_confirmed(),
+        );
 
         Ok(loss_info)
     }
@@ -488,6 +518,17 @@ pub trait Context {
 
     fn is_handshake_confirmed(&self) -> bool {
         panic!("Handshake status is not currently available in this packet space")
+    }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.8
+    //# When bytes in flight is smaller than the congestion window and
+    //# sending is not pacing limited, the congestion window is under-
+    //# utilized.  When this occurs, the congestion window SHOULD NOT be
+    //# increased in either slow start or congestion avoidance.  This can
+    //# happen due to insufficient application data or flow control limits.
+    fn is_limited(&self) -> bool {
+        //TODO: https://github.com/awslabs/s2n-quic/issues/137
+        false
     }
 
     fn validate_packet_ack(

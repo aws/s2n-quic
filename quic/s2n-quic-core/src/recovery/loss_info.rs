@@ -1,4 +1,4 @@
-use crate::time::{Duration, Timestamp};
+use crate::time::Duration;
 
 #[must_use = "Ignoring loss information would lead to permanent data loss"]
 #[derive(Copy, Clone, Default)]
@@ -14,9 +14,6 @@ pub struct LossInfo {
 
     /// The longest period of persistent congestion
     pub persistent_congestion_period: Duration,
-
-    /// The time the lost packet with the largest packet number was sent
-    pub largest_lost_packet_sent_time: Option<Timestamp>,
 }
 
 impl LossInfo {
@@ -39,12 +36,6 @@ impl core::ops::Add for LossInfo {
             persistent_congestion_period: self
                 .persistent_congestion_period
                 .max(rhs.persistent_congestion_period),
-            largest_lost_packet_sent_time: self
-                .largest_lost_packet_sent_time
-                .iter()
-                .chain(rhs.largest_lost_packet_sent_time.iter())
-                .max()
-                .copied(),
         }
     }
 }

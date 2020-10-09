@@ -18,7 +18,7 @@ pub enum State {
 //# and remote IP addresses has fallen below the smallest allowed maximum
 //# packet size of 1200 bytes, it MUST immediately cease sending QUIC
 //# packets
-const MINIMUM_MTU: u16 = 1200;
+pub const MINIMUM_MTU: u16 = 1200;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Path<CC: CongestionController> {
