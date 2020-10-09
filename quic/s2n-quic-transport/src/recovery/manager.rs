@@ -500,8 +500,9 @@ impl Manager {
 
         for packet_number in sent_packets_to_remove {
             self.sent_packets.remove(packet_number);
-            // TODO: Update bytes_in_flight?
         }
+
+        self.bytes_in_flight -= loss_info.bytes_in_flight;
 
         loss_info
     }
@@ -937,6 +938,9 @@ mod test {
             space,
         );
 
+        // Four packets sent, each size 1 byte
+        assert_eq!(manager.bytes_in_flight, 4);
+
         let now = time_sent;
         let mut lost_packets: HashSet<PacketNumber> = HashSet::default();
 
@@ -946,6 +950,8 @@ mod test {
 
         // Two packets lost, each size 1 byte
         assert_eq!(loss_info.bytes_in_flight, 2);
+        // Two packets remaining
+        assert_eq!(manager.bytes_in_flight, 2);
 
         let sent_packets = &manager.sent_packets;
         assert!(lost_packets.contains(&old_packet_time_sent));
