@@ -214,6 +214,15 @@ impl super::Format for Format {
             Source::NewTokenFrame => None, // Not supported in the default provider
         }
     }
+
+    /// Called to return the hash of a token for de-duplication purposes
+    fn token_hash<'a>(&self, token: &'a [u8]) -> &'a [u8] {
+        let buffer = DecoderBuffer::new(token);
+        let (token, _) = buffer
+            .decode::<&Token>()
+            .expect("Provided output buffer did not match TOKEN_LEN");
+        &token.hmac[..]
+    }
 }
 
 #[derive(Clone, Copy, Debug, FromBytes, AsBytes, Unaligned)]
