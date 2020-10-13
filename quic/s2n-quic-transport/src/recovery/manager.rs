@@ -1,4 +1,5 @@
 use crate::{
+    connection::transmission,
     contexts::WriteContext,
     frame_exchange_interests::{FrameExchangeInterestProvider, FrameExchangeInterests},
     recovery::{loss_info::LossInfo, SentPacketInfo, SentPackets},
@@ -8,7 +9,7 @@ use crate::{
 use core::{cmp::max, time::Duration};
 use s2n_quic_core::{
     endpoint::EndpointType,
-    frame::{self, ack_elicitation::AckElicitation},
+    frame,
     inet::DatagramInfo,
     packet::number::{PacketNumber, PacketNumberRange, PacketNumberSpace},
     path::Path,
@@ -155,16 +156,20 @@ impl Manager {
     pub fn on_packet_sent<CC: CongestionController>(
         &mut self,
         packet_number: PacketNumber,
-        ack_elicitation: AckElicitation,
-        in_flight: bool,
-        sent_bytes: usize,
+        outcome: transmission::Outcome,
         time_sent: Timestamp,
         path: &mut Path<CC>,
     ) {
+        let transmission::Outcome {
+            ack_elicitation,
+            is_congestion_controlled: in_flight,
+            bytes_sent,
+        } = outcome;
+
         if ack_elicitation.is_ack_eliciting() {
             self.sent_packets.insert(
                 packet_number,
-                SentPacketInfo::new(in_flight, sent_bytes, time_sent),
+                SentPacketInfo::new(in_flight, bytes_sent, time_sent),
             );
         }
 
@@ -172,11 +177,11 @@ impl Manager {
             if ack_elicitation.is_ack_eliciting() {
                 self.time_of_last_ack_eliciting_packet = Some(time_sent);
             }
-            self.bytes_in_flight += sent_bytes;
+            self.bytes_in_flight += bytes_sent;
         }
 
         path.congestion_controller
-            .on_packet_sent(time_sent, sent_bytes);
+            .on_packet_sent(time_sent, bytes_sent);
     }
 
     /// Updates the time threshold used by the loss timer and sets the PTO timer

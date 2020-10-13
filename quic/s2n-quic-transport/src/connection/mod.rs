@@ -27,7 +27,7 @@ mod connection_trait;
 mod errors;
 mod internal_connection_id;
 mod shared_state;
-mod transmission;
+pub(crate) mod transmission;
 
 pub(crate) use api_provider::{ConnectionApi, ConnectionApiProvider};
 pub(crate) use connection_container::{ConnectionContainer, ConnectionContainerIterationResult};

@@ -1,5 +1,5 @@
 use crate::{
-    connection::{self, ConnectionTransmissionContext},
+    connection::{self, transmission, ConnectionTransmissionContext},
     frame_exchange_interests::{FrameExchangeInterestProvider, FrameExchangeInterests},
     processed_packet::ProcessedPacket,
     recovery,
@@ -71,12 +71,23 @@ impl<Config: connection::Config> HandshakeSpace<Config> {
 
     pub fn on_transmit<'a>(
         &mut self,
-        context: &ConnectionTransmissionContext<Config>,
+        context: &mut ConnectionTransmissionContext<Config>,
         buffer: EncoderBuffer<'a>,
     ) -> Result<EncoderBuffer<'a>, PacketEncodingError<'a>> {
         let packet_number = self.tx_packet_numbers.next();
         let packet_number_encoder = self.packet_number_encoder();
-        let (crypto, payload) = self.transmission(context, packet_number);
+
+        let mut outcome = transmission::Outcome::default();
+
+        let payload = EarlyTransmission {
+            ack_manager: &mut self.ack_manager,
+            crypto_stream: &mut self.crypto_stream,
+            context,
+            packet_number,
+            recovery_manager: &mut self.recovery_manager,
+            tx_packet_numbers: &mut self.tx_packet_numbers,
+            outcome: &mut outcome,
+        };
 
         let packet = Handshake {
             version: context.quic_version,
@@ -87,7 +98,14 @@ impl<Config: connection::Config> HandshakeSpace<Config> {
         };
 
         let (_protected_packet, buffer) =
-            packet.encode_packet(crypto, packet_number_encoder, buffer)?;
+            packet.encode_packet(&self.crypto, packet_number_encoder, buffer)?;
+
+        self.recovery_manager.on_packet_sent(
+            packet_number,
+            outcome,
+            context.timestamp,
+            context.path,
+        );
 
         Ok(buffer)
     }
@@ -130,27 +148,6 @@ impl<Config: connection::Config> HandshakeSpace<Config> {
 
     pub fn bytes_in_flight(&self) -> usize {
         self.recovery_manager.bytes_in_flight()
-    }
-
-    fn transmission<'a>(
-        &'a mut self,
-        context: &'a ConnectionTransmissionContext<Config>,
-        packet_number: PacketNumber,
-    ) -> (
-        &'a <Config::TLSSession as CryptoSuite>::HandshakeCrypto,
-        EarlyTransmission<'a, Config>,
-    ) {
-        (
-            &self.crypto,
-            EarlyTransmission {
-                ack_manager: &mut self.ack_manager,
-                crypto_stream: &mut self.crypto_stream,
-                context,
-                packet_number,
-                recovery_manager: &mut self.recovery_manager,
-                tx_packet_numbers: &mut self.tx_packet_numbers,
-            },
-        )
     }
 
     fn recovery(&mut self) -> (&mut recovery::Manager, RecoveryContext<Config>) {

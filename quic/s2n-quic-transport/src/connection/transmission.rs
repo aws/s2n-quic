@@ -6,6 +6,7 @@ use core::time::Duration;
 use s2n_codec::{Encoder, EncoderBuffer};
 use s2n_quic_core::{
     endpoint::EndpointType,
+    frame::ack_elicitation::AckElicitation,
     inet::{ExplicitCongestionNotification, SocketAddress},
     io::tx,
     packet::encoding::PacketEncodingError,
@@ -73,7 +74,7 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
         let initial_capacity = encoder.capacity();
 
         let encoder = if let Some(space) = space_manager.initial_mut() {
-            match space.on_transmit(&self.context, encoder) {
+            match space.on_transmit(&mut self.context, encoder) {
                 Ok(encoder) => encoder,
                 Err(PacketEncodingError::PacketNumberTruncationError(encoder)) => {
                     // TODO handle this
@@ -93,7 +94,7 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
         };
 
         let encoder = if let Some(space) = space_manager.handshake_mut() {
-            let encoder = match space.on_transmit(&self.context, encoder) {
+            let encoder = match space.on_transmit(&mut self.context, encoder) {
                 Ok(encoder) => {
                     //= https://tools.ietf.org/id/draft-ietf-quic-tls-27.txt#4.10.1
                     //# A client MUST discard Initial keys when it first sends a Handshake packet
@@ -133,7 +134,7 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
         };
 
         let encoder = if let Some(space) = space_manager.application_mut() {
-            match space.on_transmit(&self.context, encoder) {
+            match space.on_transmit(&mut self.context, encoder) {
                 Ok(encoder) => encoder,
                 Err(PacketEncodingError::PacketNumberTruncationError(encoder)) => {
                     // TODO handle this
@@ -154,4 +155,11 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
 
         initial_capacity - encoder.capacity()
     }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Outcome {
+    pub ack_elicitation: AckElicitation,
+    pub is_congestion_controlled: bool,
+    pub bytes_sent: usize,
 }

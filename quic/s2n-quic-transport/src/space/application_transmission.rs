@@ -1,5 +1,5 @@
 use crate::{
-    connection::{self, ConnectionTransmissionContext},
+    connection::{self, transmission, ConnectionTransmissionContext},
     contexts::WriteContext,
     frame_exchange_interests::{FrameExchangeInterestProvider, FrameExchangeInterests},
     recovery,
@@ -25,6 +25,7 @@ pub struct ApplicationTransmission<'a, Config: connection::Config> {
     pub recovery_manager: &'a mut recovery::Manager,
     pub stream_manager: &'a mut AbstractStreamManager<Config::Stream>,
     pub tx_packet_numbers: &'a mut TxPacketNumbers,
+    pub outcome: &'a mut transmission::Outcome,
 }
 
 impl<'a, Config: connection::Config> PacketPayloadEncoder for ApplicationTransmission<'a, Config> {
@@ -49,11 +50,10 @@ impl<'a, Config: connection::Config> PacketPayloadEncoder for ApplicationTransmi
         );
 
         let mut context = ApplicationTransmissionContext {
-            ack_elicitation: AckElicitation::default(),
+            outcome: self.outcome,
             buffer,
             context: self.context,
             packet_number: self.packet_number,
-            is_congestion_controlled: false,
         };
 
         let did_send_ack = self.ack_manager.on_transmit(&mut context);
@@ -76,25 +76,16 @@ impl<'a, Config: connection::Config> PacketPayloadEncoder for ApplicationTransmi
             }
 
             self.tx_packet_numbers.on_transmit(self.packet_number);
-
-            self.recovery_manager.on_packet_sent(
-                context.packet_number,
-                context.ack_elicitation,
-                context.is_congestion_controlled,
-                overhead_len + context.buffer.len(),
-                context.current_time(),
-                context.context.path,
-            )
+            self.outcome.bytes_sent = overhead_len + buffer.len();
         }
     }
 }
 
 pub struct ApplicationTransmissionContext<'a, 'b, Config: connection::Config> {
-    ack_elicitation: AckElicitation,
+    outcome: &'a mut transmission::Outcome,
     buffer: &'a mut EncoderBuffer<'b>,
     context: &'a ConnectionTransmissionContext<'a, Config>,
     packet_number: PacketNumber,
-    is_congestion_controlled: bool,
 }
 
 impl<'a, 'b, Config: connection::Config> WriteContext
@@ -118,14 +109,14 @@ impl<'a, 'b, Config: connection::Config> WriteContext
             return None;
         }
         self.buffer.encode(frame);
-        self.ack_elicitation |= frame.ack_elicitation();
-        self.is_congestion_controlled |= frame.is_congestion_controlled();
+        self.outcome.ack_elicitation |= frame.ack_elicitation();
+        self.outcome.is_congestion_controlled |= frame.is_congestion_controlled();
 
         Some(self.packet_number)
     }
 
     fn ack_elicitation(&self) -> AckElicitation {
-        self.ack_elicitation
+        self.outcome.ack_elicitation
     }
 
     fn packet_number(&self) -> PacketNumber {
