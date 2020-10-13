@@ -47,6 +47,15 @@ macro_rules! ready {
 
 macro_rules! tx_stream_apis {
     () => {
+        /// Enqueues a chunk of data for sending it towards the peer.
+        ///
+        /// The method will return:
+        /// - `Poll::Ready(Ok(()))` if the data was enqueued for sending. The provided `Bytes` will
+        ///   be replaced with an empty `Bytes`, in order to reduce needless ref count increases.
+        /// - `Poll::Ready(Err(stream_error))` if the data could not be sent, because the stream
+        ///   had previously entered an error state.
+        /// - `Poll::Pending` if the send buffer capacity is currently exhausted. In this case, the
+        ///   caller should retry sending after the `Waker` on the provided `Context` is notified.
         pub fn poll_send(
             &mut self,
             chunk: &mut Bytes,
@@ -62,6 +71,16 @@ macro_rules! tx_stream_apis {
                 .into()
         }
 
+        /// Enqueues a slice of chunks of data for sending it towards the peer.
+        ///
+        /// The method will return:
+        /// - `Poll::Ready(Ok(count))` if part of the slice was enqueued for sending. Any of the
+        ///   consumed `Bytes` will be replaced with an empty `Bytes`, in order to reduce needless
+        ///   ref count increases.
+        /// - `Poll::Ready(Err(stream_error))` if the data could not be sent, because the stream
+        ///   had previously entered an error state.
+        /// - `Poll::Pending` if the send buffer capacity is currently exhausted. In this case, the
+        ///   caller should retry sending after the `Waker` on the provided `Context` is notified.
         pub fn poll_send_vectored(
             &mut self,
             chunks: &mut [Bytes],
@@ -76,6 +95,15 @@ macro_rules! tx_stream_apis {
             Ok(response.tx().expect("invalid response").chunks.consumed).into()
         }
 
+        /// Polls send readiness for the given stream.
+        ///
+        /// The method will return:
+        /// - `Poll::Ready(Ok(available_bytes))` if the stream is ready to send data, where
+        ///   `available_bytes` is how many bytes the stream can currently accept.
+        /// - `Poll::Ready(Err(stream_error))` if the data could not be sent, because the stream
+        ///   had previously entered an error state.
+        /// - `Poll::Pending` if the send buffer capacity is currently exhausted. In this case, the
+        ///   caller should retry sending after the `Waker` on the provided `Context` is notified.
         pub fn poll_send_ready(&mut self, cx: &mut Context) -> Poll<Result<usize, StreamError>> {
             let response = ready!(self
                 .tx_request()?
@@ -85,6 +113,15 @@ macro_rules! tx_stream_apis {
             Ok(response.tx().expect("invalid response").bytes.available).into()
         }
 
+        /// Enqueues a chunk of data for sending it towards the peer.
+        ///
+        /// This method should only be called after calling `poll_send_ready` first, as the stream
+        /// may not have available send buffer capacity.
+        ///
+        /// The method will return:
+        /// - `Ok(())` if the data was enqueued for sending.
+        /// - `Err(stream_error)` if the data could not be sent, because the stream
+        ///   had previously entered an error state, or the stream was not ready to send data.
         pub fn send_data(&mut self, chunk: Bytes) -> Result<(), StreamError> {
             if chunk.is_empty() {
                 return Ok(());
@@ -96,14 +133,34 @@ macro_rules! tx_stream_apis {
             }
         }
 
+        /// Flushes the send buffer and waits for acknowledgement from the peer.
+        ///
+        /// The method will return:
+        /// - `Poll::Ready(Ok(()))` if the send buffer was completely flushed and acknowledged.
+        /// - `Poll::Ready(Err(stream_error))` if the stream could not be flushed, because the stream
+        ///   had previously entered an error state.
+        /// - `Poll::Pending` if the send buffer is still being flushed. In this case, the
+        ///   caller should retry sending after the `Waker` on the provided `Context` is notified.
         pub fn poll_flush(&mut self, cx: &mut Context) -> Poll<Result<(), StreamError>> {
             self.tx_request()?.flush().poll(Some(cx))?.into()
         }
 
+        /// Marks the stream as finished and flushes the send buffer.
+        ///
+        /// The method will return:
+        /// - `Poll::Ready(Ok(()))` if the stream was finished and the send buffer was completely
+        ///   flushed and acknowledged.
+        /// - `Poll::Ready(Err(stream_error))` if the stream could not be finished, because the stream
+        ///   had previously entered an error state.
+        /// - `Poll::Pending` if the stream is still being finished. In this case, the
+        ///   caller should retry sending after the `Waker` on the provided `Context` is notified.
         pub fn poll_finish(&mut self, cx: &mut Context) -> Poll<Result<(), StreamError>> {
             self.tx_request()?.finish().flush().poll(Some(cx))?.into()
         }
 
+        /// Initiates a `RESET` on the stream.
+        ///
+        /// This will close the stream and notify the peer of the provided `error_code`.
         pub fn reset(&mut self, error_code: ApplicationErrorCode) -> Result<(), StreamError> {
             self.tx_request()?.reset(error_code).poll(None)?;
             Ok(())
@@ -113,6 +170,15 @@ macro_rules! tx_stream_apis {
 
 macro_rules! rx_stream_apis {
     () => {
+        /// Receives a chunk of data from the stream.
+        ///
+        /// The method will return:
+        /// - `Poll::Ready(Ok(Some(Bytes)))` if the stream is open and data was available
+        /// - `Poll::Ready(Ok(None))` if the stream was finished and all of the data was consumed
+        /// - `Poll::Ready(Err(stream_error))` if the stream could not be read, because the stream
+        ///   had previously entered an error state.
+        /// - `Poll::Pending` if the stream is waiting to receive data from the peer. In this case, the
+        ///   caller should retry sending after the `Waker` on the provided `Context` is notified.
         pub fn poll_receive(
             &mut self,
             cx: &mut Context,
@@ -130,6 +196,17 @@ macro_rules! rx_stream_apis {
             .into()
         }
 
+        /// Receives a slice of chunks of data from the stream.
+        ///
+        /// The method will return:
+        /// - `Poll::Ready(Ok((len, is_open)))` if the stream received data into the slice,
+        ///   where `len` was the number of chunks received, and `is_open` indicating if the stream is
+        ///   still open. If `is_open == false`, future calls to `poll_receive_vectored` will
+        ///   always return `Poll::Ready(Ok((0, false)))`.
+        /// - `Poll::Ready(Err(stream_error))` if the stream could not be read, because the stream
+        ///   had previously entered an error state.
+        /// - `Poll::Pending` if the stream is waiting to receive data from the peer. In this case, the
+        ///   caller should retry sending after the `Waker` on the provided `Context` is notified.
         pub fn poll_receive_vectored(
             &mut self,
             chunks: &mut [Bytes],
@@ -152,6 +229,16 @@ macro_rules! rx_stream_apis {
             Poll::Ready(Ok((consumed, is_open)))
         }
 
+        /// Sends a `STOP_SENDING` message to the peer. This requests the peer to
+        /// finish the `Stream` as soon as possible by issuing a `RESET` with the
+        /// provided `error_code`.
+        ///
+        /// Since this is merely a request to the peer to `RESET` the `Stream`, the
+        /// `Stream` will not immediately be in a `RESET` state after issuing this
+        /// API call.
+        ///
+        /// If the `Stream` had been previously reset by the peer or if all data had
+        /// already been received the API call will not trigger any action.
         pub fn stop_sending(
             &mut self,
             error_code: ApplicationErrorCode,

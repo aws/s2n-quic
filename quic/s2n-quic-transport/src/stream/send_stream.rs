@@ -741,8 +741,8 @@ impl SendStream {
             return Ok(response);
         }
 
-        // Do some state checks here. Only read data when the client is still
-        // allowed to read (not reset).
+        // Do some state checks here. Only write data when the client is still
+        // allowed to write (not reset).
         match self.state {
             SendStreamState::ResetSent(error) | SendStreamState::ResetAcknowledged(error) => {
                 // The reset is now known to have been read by the client.

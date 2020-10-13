@@ -321,9 +321,10 @@ impl ReceiveStreamFlowController {
         // As we approach the flow controller window we want to wake the waiter a bit early
         // to ensure the application has enough time to read the data and release
         // additional credits for the peer to send more data. 50% may need to be
-        // modifed as additional test are performed. It also may be a good idea to make this
+        // modified as additional test are performed. It also may be a good idea to make this
         // configurable in the future.
 
+        // TODO possibly make this value configurable
         let watermark = self.desired_flow_control_window / 2;
 
         usize::try_from(watermark).unwrap_or(core::usize::MAX)

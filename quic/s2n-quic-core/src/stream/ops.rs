@@ -128,7 +128,7 @@ impl<'a> Request<'a> {
 }
 
 /// A response received after executing a request
-#[derive(Debug, Default, PartialEq)]
+#[derive(Debug, Default, PartialEq, Eq)]
 pub struct Response {
     /// The `tx` information of the response
     pub tx: Option<tx::Response>,
@@ -180,7 +180,7 @@ pub mod tx {
     }
 
     /// The result of a tx request
-    #[derive(Debug, Default, PartialEq)]
+    #[derive(Debug, PartialEq, Eq)]
     pub struct Response {
         /// Information about the bytes that were sent
         pub bytes: Bytes,
@@ -192,8 +192,19 @@ pub mod tx {
         /// request may be polled again.
         pub will_wake: bool,
 
-        /// Returns the current status of the stream
+        /// The current status of the stream
         pub status: Status,
+    }
+
+    impl Default for Response {
+        fn default() -> Self {
+            Self {
+                bytes: Bytes::default(),
+                chunks: Chunks::default(),
+                will_wake: false,
+                status: Status::Open,
+            }
+        }
     }
 
     impl Response {
@@ -254,7 +265,7 @@ pub mod rx {
     }
 
     /// The result of a pop operation
-    #[derive(Debug, Default, PartialEq)]
+    #[derive(Debug, PartialEq, Eq)]
     pub struct Response {
         /// Information about the bytes that were received
         pub bytes: Bytes,
@@ -266,8 +277,19 @@ pub mod rx {
         /// request may be polled again.
         pub will_wake: bool,
 
-        /// Returns the current status of the stream
+        /// The current status of the stream
         pub status: Status,
+    }
+
+    impl Default for Response {
+        fn default() -> Self {
+            Self {
+                bytes: Bytes::default(),
+                chunks: Chunks::default(),
+                will_wake: false,
+                status: Status::Open,
+            }
+        }
     }
 
     impl Response {
@@ -283,7 +305,7 @@ pub mod rx {
     }
 }
 
-#[derive(Debug, Default, PartialEq)]
+#[derive(Debug, Default, PartialEq, Eq)]
 pub struct Bytes {
     /// The number of bytes that were consumed by the operation.
     ///
@@ -304,7 +326,7 @@ pub struct Bytes {
     pub available: usize,
 }
 
-#[derive(Debug, Default, PartialEq)]
+#[derive(Debug, Default, PartialEq, Eq)]
 pub struct Chunks {
     /// The number of chunks that were consumed by the operation.
     ///
@@ -326,56 +348,57 @@ pub struct Chunks {
     pub available: usize,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Status {
-    /// Indicates the stream is open and writable
+    /// The stream is open and writable
     Open,
 
-    /// Indicates the stream is finishing but still has data to be flushed
+    /// The stream is finishing but still has data to be flushed
     Finishing,
 
-    /// Indicates that the stream is finished and completely flushed
+    /// The stream is finished and completely flushed
     Finished,
 
-    /// Indicates that the stream has been reset locally but has not been acknowledged by the peer
+    /// The stream has been reset locally but has not been acknowledged by the peer
     Resetting,
 
-    /// Indicates that the stream was reset either by the peer or locally
+    /// The stream was reset either by the peer or locally
     Reset,
-}
-
-impl Default for Status {
-    fn default() -> Self {
-        Self::Open
-    }
 }
 
 macro_rules! impl_status {
     (| $self:ident | $value:expr) => {
+        /// Returns `true` if the status is `Open`
         pub fn is_open(&self) -> bool {
             matches!(self.status(), Status::Open)
         }
 
+        /// Returns `true` if the status is `Finishing`
         pub fn is_finishing(&self) -> bool {
             matches!(self.status(), Status::Finishing)
         }
 
+        /// Returns `true` if the status is `Finished`
         pub fn is_finished(&self) -> bool {
             matches!(self.status(), Status::Finished)
         }
 
+        /// Returns `true` if the status is `Resetting`
         pub fn is_resetting(&self) -> bool {
             matches!(self.status(), Status::Resetting)
         }
 
+        /// Returns `true` if the status is `Reset`
         pub fn is_reset(&self) -> bool {
             matches!(self.status(), Status::Reset)
         }
 
+        /// Returns `true` if the status is `Finishing` or `Resetting`
         pub fn is_closing(&self) -> bool {
             self.is_finishing() || self.is_resetting()
         }
 
+        /// Returns `true` if the status is `Finished` or `Reset`
         pub fn is_closed(&self) -> bool {
             self.is_finished() || self.is_reset()
         }
