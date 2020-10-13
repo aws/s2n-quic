@@ -152,13 +152,14 @@ impl Manager {
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#A.5
     //# After a packet is sent, information about the packet is stored.
-    pub fn on_packet_sent(
+    pub fn on_packet_sent<CC: CongestionController>(
         &mut self,
         packet_number: PacketNumber,
         ack_elicitation: AckElicitation,
         in_flight: bool,
         sent_bytes: usize,
         time_sent: Timestamp,
+        path: &mut Path<CC>,
     ) {
         if ack_elicitation.is_ack_eliciting() {
             self.sent_packets.insert(
@@ -173,6 +174,9 @@ impl Manager {
             }
             self.bytes_in_flight += sent_bytes;
         }
+
+        path.congestion_controller
+            .on_packet_sent(time_sent, sent_bytes);
     }
 
     /// Updates the time threshold used by the loss timer and sets the PTO timer
@@ -752,6 +756,13 @@ mod test {
         let space = PacketNumberSpace::ApplicationData;
         let mut manager = Manager::new(space, Duration::from_millis(100));
         let mut time_sent = s2n_quic_platform::time::now();
+        let mut path = Path::new(
+            Default::default(),
+            connection::Id::EMPTY,
+            RTTEstimator::new(Duration::from_millis(10)),
+            MockCC::default(),
+            true,
+        );
 
         for i in 1..=10 {
             let sent_packet = space.new_packet_number(VarInt::from_u8(i));
@@ -769,6 +780,7 @@ mod test {
                 in_flight,
                 sent_bytes as usize,
                 time_sent,
+                &mut path,
             );
 
             if ack_elicitation == AckElicitation::Eliciting {
@@ -797,6 +809,13 @@ mod test {
         let rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
         let mut manager = Manager::new(space, Duration::from_millis(100));
         let packet_bytes = 128;
+        let mut path = Path::new(
+            Default::default(),
+            connection::Id::EMPTY,
+            rtt_estimator,
+            MockCC::default(),
+            true,
+        );
 
         let time_sent = s2n_quic_platform::time::now() + Duration::from_secs(10);
 
@@ -808,18 +827,11 @@ mod test {
                 true,
                 packet_bytes,
                 time_sent,
+                &mut path,
             );
         }
 
         assert_eq!(manager.sent_packets.iter().count(), 10);
-
-        let mut path = Path::new(
-            Default::default(),
-            connection::Id::EMPTY,
-            rtt_estimator,
-            MockCC::default(),
-            true,
-        );
 
         // Ack packets 1 to 3
         let ack_receive_time = time_sent + Duration::from_millis(500);
@@ -888,6 +900,13 @@ mod test {
         let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
         let mut manager = Manager::new(space, Duration::from_millis(100));
         let now = s2n_quic_platform::time::now();
+        let mut path = Path::new(
+            Default::default(),
+            connection::Id::EMPTY,
+            rtt_estimator,
+            MockCC::default(),
+            true,
+        );
 
         manager.largest_acked_packet = Some(space.new_packet_number(VarInt::from_u8(10)));
 
@@ -901,6 +920,7 @@ mod test {
             true,
             1,
             time_sent,
+            &mut path,
         );
 
         manager.time_threshold = Duration::from_secs(9);
@@ -915,11 +935,19 @@ mod test {
             true,
             1,
             time_sent,
+            &mut path,
         );
 
         // Send a packet that is less than the largest acked but not lost
         let not_lost = space.new_packet_number(VarInt::from_u8(9));
-        manager.on_packet_sent(not_lost, AckElicitation::Eliciting, true, 1, time_sent);
+        manager.on_packet_sent(
+            not_lost,
+            AckElicitation::Eliciting,
+            true,
+            1,
+            time_sent,
+            &mut path,
+        );
 
         // Send a packet larger than the largest acked (not lost)
         let larger_than_largest = manager.largest_acked_packet.unwrap().next().unwrap();
@@ -929,6 +957,7 @@ mod test {
             true,
             1,
             time_sent,
+            &mut path,
         );
 
         rtt_estimator.update_rtt(
@@ -999,6 +1028,7 @@ mod test {
             true,
             1,
             time_zero,
+            &mut path,
         );
 
         // t=1: Send packet #2 (app data)
@@ -1008,6 +1038,7 @@ mod test {
             true,
             1,
             time_zero + Duration::from_secs(1),
+            &mut path,
         );
 
         // t=1.2: Recv acknowledgement of #1
@@ -1026,6 +1057,7 @@ mod test {
                 true,
                 1,
                 time_zero + Duration::from_secs(t.into()),
+                &mut path,
             );
         }
 
@@ -1036,6 +1068,7 @@ mod test {
             true,
             1,
             time_zero + Duration::from_secs(8),
+            &mut path,
         );
 
         // t=12: Send packet #9 (PTO 2)
@@ -1045,6 +1078,7 @@ mod test {
             true,
             1,
             time_zero + Duration::from_secs(12),
+            &mut path,
         );
 
         // t=12.2: Recv acknowledgement of #9
@@ -1092,6 +1126,7 @@ mod test {
             true,
             1,
             time_zero,
+            &mut path,
         );
 
         // t=1: Send packet #2 (app data)
@@ -1101,6 +1136,7 @@ mod test {
             true,
             1,
             time_zero + Duration::from_secs(1),
+            &mut path,
         );
 
         // t=1.2: Recv acknowledgement of #1
@@ -1124,6 +1160,7 @@ mod test {
                 true,
                 1,
                 time_zero + Duration::from_secs(t.into()),
+                &mut path,
             );
         }
 
@@ -1136,6 +1173,7 @@ mod test {
             true,
             1,
             time_zero + Duration::from_secs(8),
+            &mut path,
         );
 
         // t=16: Send packet #10 (app data)
@@ -1145,6 +1183,7 @@ mod test {
             true,
             1,
             time_zero + Duration::from_secs(16),
+            &mut path,
         );
 
         // t=20: Send packet #11 (app data)
@@ -1154,6 +1193,7 @@ mod test {
             true,
             1,
             time_zero + Duration::from_secs(20),
+            &mut path,
         );
 
         // t=20.2: Recv acknowledgement of #11
@@ -1258,6 +1298,7 @@ mod test {
             true,
             1,
             now,
+            &mut path,
         );
 
         let expected_pto_base_timestamp = now - Duration::from_secs(5);
@@ -1294,6 +1335,13 @@ mod test {
         manager.largest_acked_packet = Some(space.new_packet_number(VarInt::from_u8(10)));
 
         let mut context = MockContext::default();
+        let mut path = Path::new(
+            Default::default(),
+            connection::Id::EMPTY,
+            RTTEstimator::new(Duration::from_millis(10)),
+            MockCC::default(),
+            false,
+        );
 
         // Loss timer is armed but not expired yet, nothing happens
         manager.loss_timer.set(now + Duration::from_secs(10));
@@ -1309,6 +1357,7 @@ mod test {
             true,
             1,
             now - Duration::from_secs(5),
+            &mut path,
         );
 
         // Loss timer is armed and expired, on_packet_loss is called

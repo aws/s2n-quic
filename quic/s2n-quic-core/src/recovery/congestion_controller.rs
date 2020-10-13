@@ -33,6 +33,8 @@ impl<'a> PathInfo<'a> {
 pub trait CongestionController: 'static + Clone + Send {
     fn congestion_window(&self) -> usize;
 
+    fn on_packet_sent(&mut self, time_sent: Timestamp, sent_bytes: usize);
+
     fn on_rtt_update(&mut self, rtt_estimator: &RTTEstimator);
 
     fn on_packet_ack(
@@ -72,6 +74,7 @@ pub mod testing {
         fn congestion_window(&self) -> usize {
             usize::max_value()
         }
+        fn on_packet_sent(&mut self, time_sent: Timestamp, sent_bytes: usize) {}
         fn on_rtt_update(&mut self, _rtt_estimator: &RTTEstimator) {}
 
         fn on_packet_ack(

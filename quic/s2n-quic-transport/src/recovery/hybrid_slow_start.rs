@@ -2,6 +2,7 @@ use core::{
     cmp::{max, min},
     time::Duration,
 };
+use s2n_quic_core::time::Timestamp;
 
 /// An implementation of the Hybrid Slow Start algorithm described in
 /// "Hybrid Slow Start for High-Bandwidth and Long-Distance Networks"
@@ -50,6 +51,10 @@ impl HybridSlowStart {
     /// Get the current slow start threshold
     pub fn threshold(&self) -> usize {
         self.threshold
+    }
+
+    pub(crate) fn on_packet_sent(&mut self, time_sent: Timestamp, sent_bytes: usize) {
+        //TODO
     }
 
     /// Called each time the round trip time estimate is
@@ -101,7 +106,7 @@ impl HybridSlowStart {
     /// congestion window is decreased to below the slow start threshold, a new
     /// hybrid slow start threshold can be found.
     pub fn on_congestion_event(&mut self, ssthresh: usize) {
-        self.threshold = min(self.threshold, max(self.low_ssthresh(), ssthresh));
+        self.threshold = max(self.low_ssthresh(), min(self.threshold, ssthresh));
         self.found = false;
     }
 

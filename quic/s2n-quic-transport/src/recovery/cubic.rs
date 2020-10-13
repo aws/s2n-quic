@@ -52,8 +52,12 @@ impl CongestionController for CubicCongestionController {
         self.congestion_window
     }
 
+    fn on_packet_sent(&mut self, time_sent: Timestamp, sent_bytes: usize) {
+        self.slow_start.on_packet_sent(time_sent, sent_bytes);
+    }
+
     fn on_rtt_update(&mut self, rtt_estimator: &RTTEstimator) {
-        // Update the Slow Start algorithm each time the RTT estimate is updated find
+        // Update the Slow Start algorithm each time the RTT estimate is updated to find
         // the slow start threshold. If the threshold has already been found, this is a no-op.
         self.slow_start
             .on_rtt_update(self.congestion_window, rtt_estimator.latest_rtt());

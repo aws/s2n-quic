@@ -76,6 +76,7 @@ impl<'a, Config: connection::Config> PacketPayloadEncoder for EarlyTransmission<
                 context.is_congestion_controlled,
                 overhead_len + context.buffer.len(),
                 context.current_time(),
+                context.context.path,
             )
         }
     }
