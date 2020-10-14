@@ -32,9 +32,6 @@ pub trait Format {
         source_connection_id: &connection::Id,
         token: &[u8],
     ) -> Option<Source>;
-
-    /// Called to return the hash of a token for de-duplication purposes
-    fn token_is_duplicate(&self, token: &[u8]) -> bool;
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

@@ -227,10 +227,6 @@ impl<Config: connection::Config> PacketSpaceManager<Config> {
         self.update_recovery(path, timestamp);
     }
 
-    pub fn retry_required(&self) -> bool {
-        false
-    }
-
     pub fn pto_backoff(&self) -> u32 {
         self.pto_backoff
     }

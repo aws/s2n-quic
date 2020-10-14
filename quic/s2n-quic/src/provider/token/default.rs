@@ -215,11 +215,6 @@ impl super::Format for Format {
             Source::NewTokenFrame => None, // Not supported in the default provider
         }
     }
-
-    /// Called to return the hash of a token for de-duplication purposes
-    fn token_is_duplicate(&self, _token: &[u8]) -> bool {
-        todo!()
-    }
 }
 
 #[derive(Clone, Copy, Debug, FromBytes, AsBytes, Unaligned)]
