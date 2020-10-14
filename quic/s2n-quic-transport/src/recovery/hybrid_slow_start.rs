@@ -11,12 +11,13 @@ use s2n_quic_core::time::Timestamp;
 /// this implementation are based on https://github.com/torvalds/linux/blob/net/ipv4/tcp_cubic.c
 #[derive(Clone)]
 pub struct HybridSlowStart {
-    found: bool,
-    sampling_cnt: usize,
+    sample_count: usize,
     last_min_rtt: Option<Duration>,
     cur_min_rtt: Option<Duration>,
     threshold: usize,
     max_datagram_size: usize,
+    time_of_last_packet: Option<Timestamp>,
+    rtt_round_end_time: Option<Timestamp>,
 }
 
 /// Minimum slow start threshold in multiples of the max_datagram_size.
@@ -34,10 +35,9 @@ const THRESHOLD_DIVIDEND: usize = 8;
 
 impl HybridSlowStart {
     /// Constructs a new `HybridSlowStart`
-    pub fn new(max_datagram_size: usize) -> Self {
+    pub(super) fn new(max_datagram_size: usize) -> Self {
         Self {
-            found: false,
-            sampling_cnt: 0,
+            sample_count: 0,
             last_min_rtt: None,
             cur_min_rtt: None,
             //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.3.1
@@ -45,16 +45,18 @@ impl HybridSlowStart {
             //# is initialized to an infinite value.
             threshold: usize::max_value(),
             max_datagram_size,
+            time_of_last_packet: None,
+            rtt_round_end_time: None,
         }
     }
 
     /// Get the current slow start threshold
-    pub fn threshold(&self) -> usize {
+    pub(super) fn threshold(&self) -> usize {
         self.threshold
     }
 
-    pub(crate) fn on_packet_sent(&mut self, time_sent: Timestamp, sent_bytes: usize) {
-        //TODO
+    pub(super) fn on_packet_sent(&mut self, time_sent: Timestamp) {
+        self.time_of_last_packet = Some(time_sent);
     }
 
     /// Called each time the round trip time estimate is
@@ -62,39 +64,53 @@ impl HybridSlowStart {
     /// a number of samples has increased since the last
     /// round of samples and if so will set the slow start
     /// threshold.
-    pub fn on_rtt_update(&mut self, cwnd: usize, rtt: Duration) {
-        if !self.found && cwnd <= self.threshold {
-            if self.sampling_cnt == 0 {
-                // Save the start of an RTT round
-                self.last_min_rtt = self.cur_min_rtt;
-                self.cur_min_rtt = Some(rtt);
-                self.sampling_cnt = N_SAMPLING;
-            } else {
-                // Samples the delay, saving the minimum
-                self.cur_min_rtt = Some(self.cur_min_rtt.map_or(rtt, |cur_rtt| cur_rtt.min(rtt)));
-                self.sampling_cnt -= 1;
-            }
+    pub(super) fn on_rtt_update(
+        &mut self,
+        congestion_window: usize,
+        time_sent: Timestamp,
+        rtt: Duration,
+    ) {
+        if congestion_window >= self.threshold {
+            // We are already out of slow start so nothing to do
+            return;
+        }
 
-            // The round is over
-            if let (0, Some(last_min_rtt), Some(cur_min_rtt)) =
-                (self.sampling_cnt, self.last_min_rtt, self.cur_min_rtt)
-            {
-                let n = Duration::from_nanos(
-                    (last_min_rtt.as_nanos() / THRESHOLD_DIVIDEND as u128) as u64,
-                );
-                // Clamp n to the min and max thresholds
-                let n = max(min(n, MAX_DELAY_THRESHOLD), MIN_DELAY_THRESHOLD);
-                // If the delay increase is over n
-                if cur_min_rtt >= last_min_rtt + n {
-                    self.found = true;
-                }
+        // An RTT round is over when a packet that was sent after the packet that
+        // started the RTT round (or the starting packet itself) is acknowledged
+        let rtt_round_is_over = self
+            .rtt_round_end_time
+            .map_or(true, |end_time| time_sent >= end_time);
 
-                if self.found && cwnd >= self.low_ssthresh() {
-                    self.threshold = cwnd;
-                } else {
-                    // The found threshold is too low, keep searching
-                    self.found = false;
-                }
+        if rtt_round_is_over {
+            // Start a new round and save the previous min RTT
+            self.last_min_rtt = self.cur_min_rtt;
+            self.cur_min_rtt = None;
+            self.sample_count = 0;
+            // End this round when packets sent after the current last packet
+            // start getting acknowledged.
+            self.rtt_round_end_time = self.time_of_last_packet;
+        }
+
+        if self.sample_count < N_SAMPLING {
+            // Samples the delay, saving the minimum
+            self.cur_min_rtt = Some(min(rtt, self.cur_min_rtt.unwrap_or(rtt)));
+            self.sample_count += 1;
+        }
+
+        // We've gathered enough samples and there have been at least 2 RTT rounds
+        // to compare, so check if the delay has increased between the rounds
+        if let (N_SAMPLING, Some(last_min_rtt), Some(cur_min_rtt)) =
+            (self.sample_count, self.last_min_rtt, self.cur_min_rtt)
+        {
+            let threshold =
+                Duration::from_nanos((last_min_rtt.as_nanos() / THRESHOLD_DIVIDEND as u128) as u64);
+            // Clamp n to the min and max thresholds
+            let threshold = max(min(threshold, MAX_DELAY_THRESHOLD), MIN_DELAY_THRESHOLD);
+            let delay_increase_is_over_threshold = cur_min_rtt >= last_min_rtt + threshold;
+            let congestion_window_is_above_minimum = congestion_window >= self.low_ssthresh();
+
+            if delay_increase_is_over_threshold && congestion_window_is_above_minimum {
+                self.threshold = congestion_window;
             }
         }
     }
@@ -102,12 +118,9 @@ impl HybridSlowStart {
     /// Called when a congestion event is experienced. Sets the
     /// slow start threshold to the minimum of the Hybrid Slow Start threshold
     /// and the given congestion window. This will ensure we exit slow start
-    /// early enough to avoid further congestion. Found is reset so if the
-    /// congestion window is decreased to below the slow start threshold, a new
-    /// hybrid slow start threshold can be found.
-    pub fn on_congestion_event(&mut self, ssthresh: usize) {
+    /// early enough to avoid further congestion.
+    pub(super) fn on_congestion_event(&mut self, ssthresh: usize) {
         self.threshold = max(self.low_ssthresh(), min(self.threshold, ssthresh));
-        self.found = false;
     }
 
     fn low_ssthresh(&self) -> usize {

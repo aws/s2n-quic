@@ -35,7 +35,7 @@ pub trait CongestionController: 'static + Clone + Send {
 
     fn on_packet_sent(&mut self, time_sent: Timestamp, sent_bytes: usize);
 
-    fn on_rtt_update(&mut self, rtt_estimator: &RTTEstimator);
+    fn on_rtt_update(&mut self, time_sent: Timestamp, rtt_estimator: &RTTEstimator);
 
     fn on_packet_ack(
         &mut self,
@@ -74,8 +74,8 @@ pub mod testing {
         fn congestion_window(&self) -> usize {
             usize::max_value()
         }
-        fn on_packet_sent(&mut self, time_sent: Timestamp, sent_bytes: usize) {}
-        fn on_rtt_update(&mut self, _rtt_estimator: &RTTEstimator) {}
+        fn on_packet_sent(&mut self, _time_sent: Timestamp, _sent_bytes: usize) {}
+        fn on_rtt_update(&mut self, _time_sent: Timestamp, _rtt_estimator: &RTTEstimator) {}
 
         fn on_packet_ack(
             &mut self,

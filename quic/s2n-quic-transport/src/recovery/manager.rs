@@ -322,7 +322,7 @@ impl Manager {
 
             // Update the congestion controller with the latest RTT estimate
             path.congestion_controller
-                .on_rtt_update(&path.rtt_estimator);
+                .on_rtt_update(largest_newly_acked.1.time_sent, &path.rtt_estimator);
         }
 
         // Process ECN information if present.
@@ -750,7 +750,7 @@ mod test {
     };
     use core::{ops::RangeInclusive, time::Duration};
     use s2n_quic_core::{
-        connection, packet::number::PacketNumberSpace,
+        connection, frame::ack_elicitation::AckElicitation, packet::number::PacketNumberSpace,
         recovery::congestion_controller::testing::MockCC, varint::VarInt,
     };
     use std::collections::HashSet;
@@ -776,25 +776,25 @@ mod test {
             } else {
                 AckElicitation::NonEliciting
             };
-            let in_flight = i % 3 == 0;
-            let sent_bytes = (2 * i) as u16;
 
-            manager.on_packet_sent(
-                sent_packet,
+            let outcome = transmission::Outcome {
                 ack_elicitation,
-                in_flight,
-                sent_bytes as usize,
-                time_sent,
-                &mut path,
-            );
+                is_congestion_controlled: i % 3 == 0,
+                bytes_sent: (2 * i) as usize,
+            };
+
+            manager.on_packet_sent(sent_packet, outcome, time_sent, &mut path);
 
             if ack_elicitation == AckElicitation::Eliciting {
                 assert!(manager.sent_packets.get(sent_packet).is_some());
                 let actual_sent_packet = manager.sent_packets.get(sent_packet).unwrap();
-                assert_eq!(actual_sent_packet.sent_bytes, sent_bytes);
-                assert_eq!(actual_sent_packet.in_flight, in_flight);
+                assert_eq!(actual_sent_packet.sent_bytes as usize, outcome.bytes_sent);
+                assert_eq!(
+                    actual_sent_packet.in_flight,
+                    outcome.is_congestion_controlled
+                );
                 assert_eq!(actual_sent_packet.time_sent, time_sent);
-                if in_flight {
+                if outcome.is_congestion_controlled {
                     assert_eq!(Some(time_sent), manager.time_of_last_ack_eliciting_packet);
                 }
             } else {
@@ -828,9 +828,11 @@ mod test {
         for i in 1..=10 {
             manager.on_packet_sent(
                 space.new_packet_number(VarInt::from_u8(i)),
-                AckElicitation::Eliciting,
-                true,
-                packet_bytes,
+                transmission::Outcome {
+                    ack_elicitation: AckElicitation::Eliciting,
+                    is_congestion_controlled: true,
+                    bytes_sent: packet_bytes,
+                },
                 time_sent,
                 &mut path,
             );
@@ -916,17 +918,15 @@ mod test {
         manager.largest_acked_packet = Some(space.new_packet_number(VarInt::from_u8(10)));
 
         let mut time_sent = s2n_quic_platform::time::now();
+        let outcome = transmission::Outcome {
+            ack_elicitation: AckElicitation::Eliciting,
+            is_congestion_controlled: true,
+            bytes_sent: 1,
+        };
 
         // Send a packet that was sent too long ago (lost)
         let old_packet_time_sent = space.new_packet_number(VarInt::from_u8(8));
-        manager.on_packet_sent(
-            old_packet_time_sent,
-            AckElicitation::Eliciting,
-            true,
-            1,
-            time_sent,
-            &mut path,
-        );
+        manager.on_packet_sent(old_packet_time_sent, outcome, time_sent, &mut path);
 
         manager.time_threshold = Duration::from_secs(9);
         time_sent += Duration::from_secs(10);
@@ -934,36 +934,15 @@ mod test {
         //Send a packet with a packet number K_PACKET_THRESHOLD away from the largest (lost)
         let old_packet_packet_number =
             space.new_packet_number(VarInt::new(10 - K_PACKET_THRESHOLD).unwrap());
-        manager.on_packet_sent(
-            old_packet_packet_number,
-            AckElicitation::Eliciting,
-            true,
-            1,
-            time_sent,
-            &mut path,
-        );
+        manager.on_packet_sent(old_packet_packet_number, outcome, time_sent, &mut path);
 
         // Send a packet that is less than the largest acked but not lost
         let not_lost = space.new_packet_number(VarInt::from_u8(9));
-        manager.on_packet_sent(
-            not_lost,
-            AckElicitation::Eliciting,
-            true,
-            1,
-            time_sent,
-            &mut path,
-        );
+        manager.on_packet_sent(not_lost, outcome, time_sent, &mut path);
 
         // Send a packet larger than the largest acked (not lost)
         let larger_than_largest = manager.largest_acked_packet.unwrap().next().unwrap();
-        manager.on_packet_sent(
-            larger_than_largest,
-            AckElicitation::Eliciting,
-            true,
-            1,
-            time_sent,
-            &mut path,
-        );
+        manager.on_packet_sent(larger_than_largest, outcome, time_sent, &mut path);
 
         rtt_estimator.update_rtt(
             Duration::from_millis(10),
@@ -1026,12 +1005,16 @@ mod test {
         // part of the persistent congestion period.
         manager.first_rtt_sample = Some(s2n_quic_platform::time::now());
 
+        let outcome = transmission::Outcome {
+            ack_elicitation: AckElicitation::Eliciting,
+            is_congestion_controlled: true,
+            bytes_sent: 1,
+        };
+
         // t=0: Send packet #1 (app data)
         manager.on_packet_sent(
             space.new_packet_number(VarInt::from_u8(1)),
-            AckElicitation::Eliciting,
-            true,
-            1,
+            outcome,
             time_zero,
             &mut path,
         );
@@ -1039,9 +1022,7 @@ mod test {
         // t=1: Send packet #2 (app data)
         manager.on_packet_sent(
             space.new_packet_number(VarInt::from_u8(2)),
-            AckElicitation::Eliciting,
-            true,
-            1,
+            outcome,
             time_zero + Duration::from_secs(1),
             &mut path,
         );
@@ -1058,9 +1039,7 @@ mod test {
         for t in 2..=6 {
             manager.on_packet_sent(
                 space.new_packet_number(VarInt::from_u8(t + 1)),
-                AckElicitation::Eliciting,
-                true,
-                1,
+                outcome,
                 time_zero + Duration::from_secs(t.into()),
                 &mut path,
             );
@@ -1069,9 +1048,7 @@ mod test {
         // t=8: Send packet #8 (PTO 1)
         manager.on_packet_sent(
             space.new_packet_number(VarInt::from_u8(8)),
-            AckElicitation::Eliciting,
-            true,
-            1,
+            outcome,
             time_zero + Duration::from_secs(8),
             &mut path,
         );
@@ -1079,9 +1056,7 @@ mod test {
         // t=12: Send packet #9 (PTO 2)
         manager.on_packet_sent(
             space.new_packet_number(VarInt::from_u8(9)),
-            AckElicitation::Eliciting,
-            true,
-            1,
+            outcome,
             time_zero + Duration::from_secs(12),
             &mut path,
         );
@@ -1124,12 +1099,16 @@ mod test {
         let time_zero = s2n_quic_platform::time::now() + Duration::from_secs(10);
         manager.time_threshold = Duration::from_secs(3);
 
+        let outcome = transmission::Outcome {
+            ack_elicitation: AckElicitation::Eliciting,
+            is_congestion_controlled: true,
+            bytes_sent: 1,
+        };
+
         // t=0: Send packet #1 (app data)
         manager.on_packet_sent(
             space.new_packet_number(VarInt::from_u8(1)),
-            AckElicitation::Eliciting,
-            true,
-            1,
+            outcome,
             time_zero,
             &mut path,
         );
@@ -1137,9 +1116,7 @@ mod test {
         // t=1: Send packet #2 (app data)
         manager.on_packet_sent(
             space.new_packet_number(VarInt::from_u8(2)),
-            AckElicitation::Eliciting,
-            true,
-            1,
+            outcome,
             time_zero + Duration::from_secs(1),
             &mut path,
         );
@@ -1161,9 +1138,7 @@ mod test {
         for t in 2..=6 {
             manager.on_packet_sent(
                 space.new_packet_number(VarInt::from_u8(t + 1)),
-                AckElicitation::Eliciting,
-                true,
-                1,
+                outcome,
                 time_zero + Duration::from_secs(t.into()),
                 &mut path,
             );
@@ -1174,9 +1149,7 @@ mod test {
         // t=8: Send packet #9 (app data)
         manager.on_packet_sent(
             space.new_packet_number(VarInt::from_u8(9)),
-            AckElicitation::Eliciting,
-            true,
-            1,
+            outcome,
             time_zero + Duration::from_secs(8),
             &mut path,
         );
@@ -1184,9 +1157,7 @@ mod test {
         // t=16: Send packet #10 (app data)
         manager.on_packet_sent(
             space.new_packet_number(VarInt::from_u8(10)),
-            AckElicitation::Eliciting,
-            true,
-            1,
+            outcome,
             time_zero + Duration::from_secs(16),
             &mut path,
         );
@@ -1194,9 +1165,7 @@ mod test {
         // t=20: Send packet #11 (app data)
         manager.on_packet_sent(
             space.new_packet_number(VarInt::from_u8(11)),
-            AckElicitation::Eliciting,
-            true,
-            1,
+            outcome,
             time_zero + Duration::from_secs(20),
             &mut path,
         );
@@ -1299,9 +1268,11 @@ mod test {
         // Send a packet to validate behavior when sent_packets is not empty
         manager.on_packet_sent(
             space.new_packet_number(VarInt::from_u8(1)),
-            AckElicitation::Eliciting,
-            true,
-            1,
+            transmission::Outcome {
+                ack_elicitation: AckElicitation::Eliciting,
+                is_congestion_controlled: true,
+                bytes_sent: 1,
+            },
             now,
             &mut path,
         );
@@ -1358,9 +1329,11 @@ mod test {
         // Send a packet that will be considered lost
         manager.on_packet_sent(
             space.new_packet_number(VarInt::from_u8(1)),
-            AckElicitation::Eliciting,
-            true,
-            1,
+            transmission::Outcome {
+                ack_elicitation: AckElicitation::Eliciting,
+                is_congestion_controlled: true,
+                bytes_sent: 1,
+            },
             now - Duration::from_secs(5),
             &mut path,
         );
