@@ -16,7 +16,7 @@ pub struct HybridSlowStart {
     cur_min_rtt: Option<Duration>,
     threshold: usize,
     max_datagram_size: usize,
-    time_of_last_packet: Option<Timestamp>,
+    time_of_last_sent_packet: Option<Timestamp>,
     rtt_round_end_time: Option<Timestamp>,
 }
 
@@ -34,7 +34,8 @@ const MAX_DELAY_THRESHOLD: Duration = Duration::from_millis(16);
 const THRESHOLD_DIVIDEND: usize = 8;
 
 impl HybridSlowStart {
-    /// Constructs a new `HybridSlowStart`
+    /// Constructs a new `HybridSlowStart`. `max_datagram_size` is used for determining
+    /// the minimum slow start threshold.
     pub(super) fn new(max_datagram_size: usize) -> Self {
         Self {
             sample_count: 0,
@@ -45,7 +46,7 @@ impl HybridSlowStart {
             //# is initialized to an infinite value.
             threshold: usize::max_value(),
             max_datagram_size,
-            time_of_last_packet: None,
+            time_of_last_sent_packet: None,
             rtt_round_end_time: None,
         }
     }
@@ -55,8 +56,10 @@ impl HybridSlowStart {
         self.threshold
     }
 
+    /// Called each time a packet is sent so the time of the last
+    /// sent packet may be tracked.
     pub(super) fn on_packet_sent(&mut self, time_sent: Timestamp) {
-        self.time_of_last_packet = Some(time_sent);
+        self.time_of_last_sent_packet = Some(time_sent);
     }
 
     /// Called each time the round trip time estimate is
@@ -86,16 +89,17 @@ impl HybridSlowStart {
             self.last_min_rtt = self.cur_min_rtt;
             self.cur_min_rtt = None;
             self.sample_count = 0;
-            // End this round when packets sent after the current last packet
+            // End this round when packets sent after the current last sent packet
             // start getting acknowledged.
-            self.rtt_round_end_time = self.time_of_last_packet;
+            self.rtt_round_end_time = self.time_of_last_sent_packet;
         }
 
         if self.sample_count < N_SAMPLING {
-            // Samples the delay, saving the minimum
+            // Sample the delay, saving the minimum
             self.cur_min_rtt = Some(min(rtt, self.cur_min_rtt.unwrap_or(rtt)));
-            self.sample_count += 1;
         }
+
+        self.sample_count += 1;
 
         // We've gathered enough samples and there have been at least 2 RTT rounds
         // to compare, so check if the delay has increased between the rounds
@@ -125,5 +129,176 @@ impl HybridSlowStart {
 
     fn low_ssthresh(&self) -> usize {
         LOW_SSTHRESH * self.max_datagram_size
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::recovery::hybrid_slow_start::HybridSlowStart;
+    use core::time::Duration;
+
+    #[test]
+    fn on_congestion_event() {
+        let mut slow_start = HybridSlowStart::new(10);
+        slow_start.threshold = 501;
+
+        // Setting a threshold lower than the current threshold
+        // will override the current threshold
+        slow_start.on_congestion_event(500);
+        assert_eq!(slow_start.threshold(), 500);
+
+        slow_start.threshold = 501;
+
+        // Setting a threshold higher than the current threshold
+        // keeps the current threshold intact
+        slow_start.on_congestion_event(502);
+        assert_eq!(slow_start.threshold(), 501);
+
+        slow_start.threshold = 501;
+
+        // Setting a threshold lower than low_ssthresh
+        // sets the threshold to low_ssthresh
+        slow_start.on_congestion_event(slow_start.low_ssthresh() - 1);
+        assert_eq!(slow_start.threshold(), slow_start.low_ssthresh());
+    }
+
+    #[test]
+    fn on_rtt_update_above_threshold() {
+        let mut slow_start = HybridSlowStart::new(10);
+        slow_start.threshold = 500;
+
+        assert_eq!(slow_start.sample_count, 0);
+        slow_start.on_rtt_update(750, s2n_quic_platform::time::now(), Duration::from_secs(1));
+
+        assert_eq!(slow_start.threshold, 500);
+        assert_eq!(slow_start.sample_count, 0);
+    }
+
+    #[test]
+    fn on_rtt_update() {
+        let mut slow_start = HybridSlowStart::new(10);
+
+        assert_eq!(slow_start.sample_count, 0);
+
+        let time_zero = s2n_quic_platform::time::now() + Duration::from_secs(10);
+
+        // -- Round 1 --
+
+        // t=0-9: Send packet #1-10
+        for i in 0..=9 {
+            slow_start.on_packet_sent(time_zero + Duration::from_millis(i));
+        }
+
+        // t=10: Acknowledge packets #1-7 all with RTT 200
+        for i in 0..=6 {
+            slow_start.on_rtt_update(
+                1000,
+                time_zero + Duration::from_millis(i),
+                Duration::from_millis(200),
+            );
+            assert_eq!(slow_start.cur_min_rtt, Some(Duration::from_millis(200)));
+        }
+
+        // This round will end when packet #10 is acknowledged
+        assert_eq!(
+            slow_start.rtt_round_end_time,
+            Some(time_zero + Duration::from_millis(9))
+        );
+
+        // t=11: Acknowledge packet #8 with RTT 100
+        slow_start.on_rtt_update(
+            1000,
+            time_zero + Duration::from_millis(7),
+            Duration::from_millis(100),
+        );
+
+        // The current minimum should now be 100
+        assert_eq!(slow_start.cur_min_rtt, Some(Duration::from_millis(100)));
+
+        // t=11: Acknowledge packet #9 with RTT 50
+        slow_start.on_rtt_update(
+            1000,
+            time_zero + Duration::from_millis(8),
+            Duration::from_millis(50),
+        );
+
+        // The current minimum is still 100 because we've already collected N_SAMPLING samples
+        assert_eq!(slow_start.cur_min_rtt, Some(Duration::from_millis(100)));
+
+        // -- Round 2 --
+
+        // t=20-29: Send packet #11-20
+        for i in 20..=29 {
+            slow_start.on_packet_sent(time_zero + Duration::from_millis(i));
+        }
+
+        // t=30: Acknowledge packet #10 with RTT 400, ending the first round and starting the second
+        slow_start.on_rtt_update(
+            1000,
+            time_zero + Duration::from_millis(9),
+            Duration::from_millis(400),
+        );
+
+        // The last minimum is saved in last_min_rtt
+        assert_eq!(slow_start.last_min_rtt, Some(Duration::from_millis(100)));
+        // The current minimum is now 400 because we've started a new round
+        assert_eq!(slow_start.cur_min_rtt, Some(Duration::from_millis(400)));
+        // This round will end when packet #20 is acknowledged
+        assert_eq!(
+            slow_start.rtt_round_end_time,
+            Some(time_zero + Duration::from_millis(29))
+        );
+
+        // t=31: Acknowledge packets #11-16 all with RTT 500
+        for i in 20..=25 {
+            slow_start.on_rtt_update(
+                1000,
+                time_zero + Duration::from_millis(i),
+                Duration::from_millis(500),
+            );
+            assert_eq!(slow_start.cur_min_rtt, Some(Duration::from_millis(400)));
+        }
+
+        // t=32: Acknowledge packet #17, the 8th sample in Round 2
+        slow_start.on_rtt_update(
+            2000,
+            time_zero + Duration::from_millis(27),
+            Duration::from_millis(112),
+        );
+
+        assert_eq!(slow_start.last_min_rtt, Some(Duration::from_millis(100)));
+        assert_eq!(slow_start.cur_min_rtt, Some(Duration::from_millis(112)));
+        // The last ack was the 8th sample, but since the min rtt increased below the threshold,
+        // the slow start threshold remains the same
+        assert_eq!(slow_start.threshold(), usize::max_value());
+
+        // -- Round 3 --
+
+        // t=40-49: Send packet #21-30
+        for i in 40..=49 {
+            slow_start.on_packet_sent(time_zero + Duration::from_millis(i));
+        }
+
+        // t=50: Acknowledge packets 21-27
+        for i in 40..=46 {
+            slow_start.on_rtt_update(
+                1000,
+                time_zero + Duration::from_millis(i),
+                Duration::from_millis(500),
+            );
+            assert_eq!(slow_start.cur_min_rtt, Some(Duration::from_millis(500)));
+        }
+        // t=51: Acknowledge packet 28, the 8th sample in Round 3
+        slow_start.on_rtt_update(
+            5000,
+            time_zero + Duration::from_millis(38),
+            Duration::from_millis(126),
+        );
+
+        assert_eq!(slow_start.last_min_rtt, Some(Duration::from_millis(112)));
+        assert_eq!(slow_start.cur_min_rtt, Some(Duration::from_millis(126)));
+        // The last ack was the 8th sample, and since the min rtt increased above the threshold,
+        // the slow start threshold was set to the current congestion window
+        assert_eq!(slow_start.threshold(), 5000);
     }
 }
