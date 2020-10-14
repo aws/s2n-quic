@@ -49,11 +49,17 @@ impl super::Provider for Provider {
             .checked_sub(self.key_rotation_period)
             .unwrap();
 
-        Ok(Format {
+        let format = Format {
             last_update: force_key_update,
             key_rotation_period: self.key_rotation_period,
-            key: BaseKey::new(&[0; digest::SHA256_OUTPUT_LEN]),
-        })
+            signing_key: 0,
+            keys: [
+                BaseKey::new(&[0; digest::SHA256_OUTPUT_LEN]),
+                BaseKey::new(&[1; digest::SHA256_OUTPUT_LEN]),
+            ],
+        };
+
+        Ok(format)
     }
 }
 
@@ -64,8 +70,11 @@ pub struct Format {
     /// Support tokens from Retry Packets
     key_rotation_period: Duration,
 
+    /// Which key is used to sign
+    signing_key: u8,
+
     /// Key used to derive signing keys
-    key: BaseKey,
+    keys: [BaseKey; 2],
 }
 
 impl Format {
@@ -77,14 +86,23 @@ impl Format {
         Some(BaseKey::new(&key_material))
     }
 
-    fn update_key(&mut self) -> Option<()> {
+    /// If the signing key should be rotated, switch signing key indexes and generate a new signing
+    /// key. This only needs to be done when signing a token.
+    fn update_signing_key(&mut self) -> Option<()> {
         if self.key_rotation_period == Duration::from_millis(0) {
             return None;
         }
 
         if let Some(age) = s2n_quic_platform::time::now().checked_sub(self.key_rotation_period) {
             if age >= self.last_update {
-                self.key = self.generate_base_key()?;
+                // If more that two rotation periods have passed, then both keys should be rotated
+                if let Some(other_age) = age.checked_sub(self.key_rotation_period) {
+                    if other_age >= self.last_update {
+                        self.keys[self.signing_key as usize] = self.generate_base_key()?;
+                    }
+                }
+                self.signing_key ^= 1;
+                self.keys[self.signing_key as usize] = self.generate_base_key()?;
                 self.last_update = s2n_quic_platform::time::now();
             }
         };
@@ -101,8 +119,8 @@ impl Format {
         destination_connection_id: &connection::Id,
         original_destination_connection_id: &connection::Id,
     ) -> hmac::Tag {
-        self.update_key();
-        let mut ctx = hmac::Context::with_key(&self.key.hmac_key);
+        let key = &self.keys[token.header.key_id() as usize].hmac_key;
+        let mut ctx = hmac::Context::with_key(key);
 
         ctx.update(&token.nonce);
         ctx.update(&destination_connection_id.as_bytes());
@@ -115,6 +133,7 @@ impl Format {
         ctx.sign()
     }
 
+    // Using the key id in the token, verify the token
     fn validate_retry_token(
         &mut self,
         peer_address: &SocketAddress,
@@ -122,6 +141,7 @@ impl Format {
         original_destination_connection_id: &connection::Id,
         token: &Token,
     ) -> bool {
+        self.update_signing_key();
         let tag = self.tag_retry_token(
             &token,
             &peer_address,
@@ -165,7 +185,8 @@ impl super::Format for Format {
             .decode::<&mut Token>()
             .expect("Provided output buffer did not match TOKEN_LEN");
 
-        let header = Header::new(Source::RetryPacket);
+        self.update_signing_key();
+        let header = Header::new(Source::RetryPacket, self.signing_key);
 
         token.header = header;
 
@@ -184,6 +205,10 @@ impl super::Format for Format {
         Some(())
     }
 
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#8.1.3
+    //# When a server receives an Initial packet with an address validation
+    //# token, it MUST attempt to validate the token, unless it has already
+    //# completed address validation.
     fn validate_token(
         &mut self,
         peer_address: &SocketAddress,
@@ -219,9 +244,9 @@ impl super::Format for Format {
 
 #[derive(Clone, Copy, Debug, FromBytes, AsBytes, Unaligned)]
 #[repr(C)]
-pub struct Header(u8);
+pub(crate) struct Header(u8);
 
-pub const TOKEN_VERSION: u8 = 0x00;
+const TOKEN_VERSION: u8 = 0x00;
 
 const VERSION_SHIFT: u8 = 7;
 const VERSION_MASK: u8 = 0x80;
@@ -229,8 +254,11 @@ const VERSION_MASK: u8 = 0x80;
 const TOKEN_SOURCE_SHIFT: u8 = 6;
 const TOKEN_SOURCE_MASK: u8 = 0x40;
 
+const KEY_ID_SHIFT: u8 = 5;
+const KEY_ID_MASK: u8 = 0x20;
+
 impl Header {
-    pub fn new(source: Source) -> Header {
+    fn new(source: Source, key_id: u8) -> Header {
         let mut header: u8 = 0;
         header |= TOKEN_VERSION << VERSION_SHIFT;
         header |= match source {
@@ -238,11 +266,18 @@ impl Header {
             Source::RetryPacket => 1 << TOKEN_SOURCE_SHIFT,
         };
 
+        // The key_id can only be 0 or 1
+        header |= (key_id & 0x01) << KEY_ID_SHIFT;
+
         Header(header)
     }
 
-    pub fn version(&self) -> u8 {
+    fn version(&self) -> u8 {
         (self.0 & VERSION_MASK) >> VERSION_SHIFT
+    }
+
+    fn key_id(&self) -> u8 {
+        (self.0 & KEY_ID_MASK) >> KEY_ID_SHIFT
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#8.1.1
@@ -250,7 +285,7 @@ impl Header {
     //# constructed in a way that allows the server to identify how it was
     //# provided to a client.  These tokens are carried in the same field,
     //# but require different handling from servers.
-    pub fn token_source(&self) -> Source {
+    fn token_source(&self) -> Source {
         match (self.0 & TOKEN_SOURCE_MASK) >> TOKEN_SOURCE_SHIFT {
             0 => Source::NewTokenFrame,
             1 => Source::RetryPacket,
@@ -264,26 +299,14 @@ impl Header {
 //#   because the server that generates the token also consumes it.
 #[derive(Copy, Clone, Debug, FromBytes, AsBytes, Unaligned)]
 #[repr(C)]
-pub struct Token {
+struct Token {
     header: Header,
-    nonce: [u8; 32],
-    hmac: [u8; 32],
-}
-
-s2n_codec::zerocopy_value_codec!(Token);
-
-impl Token {
-    pub fn header(&self) -> Header {
-        self.header
-    }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#8.1.4
     //# An address validation token MUST be difficult to guess.  Including a
     //# large enough random value in the token would be sufficient, but this
     //# depends on the server remembering the value it sends to clients.
-    pub fn nonce(&self) -> &[u8] {
-        &self.nonce
-    }
+    nonce: [u8; 32],
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#8.1.4
     //# A token-based scheme allows the server to offload any state
@@ -293,18 +316,10 @@ impl Token {
     //# protection, malicious clients could generate or guess values for
     //# tokens that would be accepted by the server.  Only the server
     //# requires access to the integrity protection key for tokens.
-    pub fn hmac(&self) -> &[u8] {
-        &self.hmac
-    }
-
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#8.1.3
-    //# When a server receives an Initial packet with an address validation
-    //# token, it MUST attempt to validate the token, unless it has already
-    //# completed address validation.
-    pub fn validate(&self) -> bool {
-        true
-    }
+    hmac: [u8; 32],
 }
+
+s2n_codec::zerocopy_value_codec!(Token);
 
 #[cfg(test)]
 mod tests {
@@ -318,7 +333,7 @@ mod tests {
         // Test all combinations of values to create a header and verify the header returns the
         // expected values.
         for source in &[Source::NewTokenFrame, Source::RetryPacket] {
-            let header = Header::new(*source);
+            let header = Header::new(*source, 0);
             // The version should always be the constant TOKEN_VERSION
             assert_eq!(header.version(), TOKEN_VERSION);
             assert_eq!(header.token_source(), *source);
@@ -332,8 +347,9 @@ mod tests {
 
         let mut format = Format {
             key_rotation_period: Duration::from_millis(5000),
-            key: BaseKey::new(&[0; 32]),
+            keys: [BaseKey::new(&[0; 32]), BaseKey::new(&[1; 32])],
             last_update: time::now(),
+            signing_key: 0,
         };
 
         clock.adjust_by(Duration::from_millis(10000));
@@ -355,14 +371,15 @@ mod tests {
     }
 
     #[test]
-    fn test_expired_retry_token() {
+    fn test_key_rotation() {
         let clock = Arc::new(time::testing::MockClock::new());
         time::testing::set_local_clock(clock.clone());
 
         let mut format = Format {
             key_rotation_period: Duration::from_millis(1000),
-            key: BaseKey::new(&[0; 32]),
+            keys: [BaseKey::new(&[0; 32]), BaseKey::new(&[1; 32])],
             last_update: time::now(),
+            signing_key: 0,
         };
 
         clock.adjust_by(Duration::from_millis(10000));
@@ -373,7 +390,48 @@ mod tests {
             .generate_retry_token(&addr, &conn_id, &conn_id, &mut buf)
             .unwrap();
 
+        // Validation should succeed because the key is still valid, even though it is not used for
+        // signing
         clock.adjust_by(Duration::from_millis(1000));
+        assert_eq!(
+            format
+                .validate_token(&addr, &conn_id, &conn_id, &buf)
+                .is_some(),
+            true
+        );
+
+        // Validation should fail because the signing key has been rotated.
+        clock.adjust_by(Duration::from_millis(1000));
+        assert_eq!(
+            format
+                .validate_token(&addr, &conn_id, &conn_id, &buf)
+                .is_none(),
+            true
+        );
+    }
+
+    #[test]
+    fn test_expired_retry_token() {
+        let clock = Arc::new(time::testing::MockClock::new());
+        time::testing::set_local_clock(clock.clone());
+
+        let mut format = Format {
+            key_rotation_period: Duration::from_millis(1000),
+            keys: [BaseKey::new(&[0; 32]), BaseKey::new(&[1; 32])],
+            last_update: time::now(),
+            signing_key: 0,
+        };
+
+        clock.adjust_by(Duration::from_millis(10000));
+        let conn_id = connection::Id::try_from_bytes(&[]).unwrap();
+        let addr = SocketAddress::default();
+        let mut buf = [0; size_of::<Token>()];
+        format
+            .generate_retry_token(&addr, &conn_id, &conn_id, &mut buf)
+            .unwrap();
+
+        // Validation should fail because multiple rotation periods have elapsed
+        clock.adjust_by(Duration::from_millis(2000));
         assert_eq!(
             format
                 .validate_token(&addr, &conn_id, &conn_id, &buf)
@@ -390,8 +448,9 @@ mod tests {
 
         let mut format = Format {
             key_rotation_period: Duration::from_millis(0),
-            key: BaseKey::new(&[0; 32]),
+            keys: [BaseKey::new(&[0; 32]), BaseKey::new(&[1; 32])],
             last_update: time::now(),
+            signing_key: 0,
         };
 
         let conn_id = connection::Id::try_from_bytes(&[]).unwrap();
