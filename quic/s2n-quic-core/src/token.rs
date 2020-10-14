@@ -18,7 +18,7 @@ pub trait Format {
         &mut self,
         peer_address: &SocketAddress,
         destination_connection_id: &connection::Id,
-        source_connection_id: &connection::Id,
+        original_destination_connection_id: &connection::Id,
         output_buffer: &mut [u8],
     ) -> Option<()>;
 
@@ -34,7 +34,7 @@ pub trait Format {
     ) -> Option<Source>;
 
     /// Called to return the hash of a token for de-duplication purposes
-    fn token_hash<'a>(&self, token: &'a [u8]) -> &'a [u8];
+    fn token_is_duplicate(&self, token: &[u8]) -> bool;
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

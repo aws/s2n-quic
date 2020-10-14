@@ -92,44 +92,21 @@ impl Format {
         Some(())
     }
 
-    fn generate_token(
-        &mut self,
-        source: Source,
-        peer_address: &SocketAddress,
-        destination_connection_id: &connection::Id,
-        _source_connection_id: &connection::Id,
-        output_buffer: &mut [u8],
-    ) -> Option<()> {
-        let buffer = DecoderBufferMut::new(output_buffer);
-        let (token, _) = buffer
-            .decode::<&mut Token>()
-            .expect("Provided output buffer did not match TOKEN_LEN");
-
-        let header = Header::new(source);
-
-        token.header = header;
-
-        // Populate the nonce before signing
-        SystemRandom::new().fill(&mut token.nonce[..]).ok()?;
-
-        let tag = self.tag(&token, &peer_address, &destination_connection_id);
-
-        token.hmac.copy_from_slice(tag.as_ref());
-
-        Some(())
-    }
-
-    fn tag(
+    // Retry Tokens need to include the original destination connection id from the transport
+    // parameters. This OCID is included in the tag.
+    fn tag_retry_token(
         &mut self,
         token: &Token,
         peer_address: &SocketAddress,
-        conn_id: &connection::Id,
+        destination_connection_id: &connection::Id,
+        original_destination_connection_id: &connection::Id,
     ) -> hmac::Tag {
         self.update_key();
         let mut ctx = hmac::Context::with_key(&self.key.hmac_key);
 
         ctx.update(&token.nonce);
-        ctx.update(&conn_id.as_bytes());
+        ctx.update(&destination_connection_id.as_bytes());
+        ctx.update(&original_destination_connection_id.as_bytes());
         match peer_address {
             SocketAddress::IPv4(addr) => ctx.update(addr.as_bytes()),
             SocketAddress::IPv6(addr) => ctx.update(addr.as_bytes()),
@@ -142,10 +119,15 @@ impl Format {
         &mut self,
         peer_address: &SocketAddress,
         destination_connection_id: &connection::Id,
-        _source_connection_id: &connection::Id,
+        original_destination_connection_id: &connection::Id,
         token: &Token,
     ) -> bool {
-        let tag = self.tag(&token, &peer_address, &destination_connection_id);
+        let tag = self.tag_retry_token(
+            &token,
+            &peer_address,
+            &destination_connection_id,
+            &original_destination_connection_id,
+        );
         ring::constant_time::verify_slices_are_equal(&token.hmac, &tag.as_ref()).is_ok()
     }
 }
@@ -153,7 +135,7 @@ impl Format {
 impl super::Format for Format {
     const TOKEN_LEN: usize = size_of::<Token>();
 
-    /// The default provider does not support NEW_FRAME tokens
+    /// The default provider does not support NEW_TOKEN frame tokens
     fn generate_new_token(
         &mut self,
         _peer_address: &SocketAddress,
@@ -164,21 +146,40 @@ impl super::Format for Format {
         None
     }
 
-    /// Generate a signed token to be delivered in a Retry Packet
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-30.txt#8.1.2
+    //# Requiring the server
+    //# to provide a different connection ID, along with the
+    //# original_destination_connection_id transport parameter defined in
+    //# Section 18.2, forces the server to demonstrate that it, or an entity
+    //# it cooperates with, received the original Initial packet from the
+    //# client.
     fn generate_retry_token(
         &mut self,
         peer_address: &SocketAddress,
         destination_connection_id: &connection::Id,
-        source_connection_id: &connection::Id,
+        original_destination_connection_id: &connection::Id,
         output_buffer: &mut [u8],
     ) -> Option<()> {
-        self.generate_token(
-            Source::RetryPacket,
-            peer_address,
-            destination_connection_id,
-            source_connection_id,
-            output_buffer,
-        )?;
+        let buffer = DecoderBufferMut::new(output_buffer);
+        let (token, _) = buffer
+            .decode::<&mut Token>()
+            .expect("Provided output buffer did not match TOKEN_LEN");
+
+        let header = Header::new(Source::RetryPacket);
+
+        token.header = header;
+
+        // Populate the nonce before signing
+        SystemRandom::new().fill(&mut token.nonce[..]).ok()?;
+
+        let tag = self.tag_retry_token(
+            &token,
+            &peer_address,
+            &destination_connection_id,
+            &original_destination_connection_id,
+        );
+
+        token.hmac.copy_from_slice(tag.as_ref());
 
         Some(())
     }
@@ -216,12 +217,8 @@ impl super::Format for Format {
     }
 
     /// Called to return the hash of a token for de-duplication purposes
-    fn token_hash<'a>(&self, token: &'a [u8]) -> &'a [u8] {
-        let buffer = DecoderBuffer::new(token);
-        let (token, _) = buffer
-            .decode::<&Token>()
-            .expect("Provided output buffer did not match TOKEN_LEN");
-        &token.hmac[..]
+    fn token_is_duplicate(&self, _token: &[u8]) -> bool {
+        todo!()
     }
 }
 
