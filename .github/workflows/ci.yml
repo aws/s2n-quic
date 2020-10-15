@@ -24,22 +24,18 @@ jobs:
   env:
     runs-on: ubuntu-latest
     outputs:
-      rust-versions: ${{ steps.rust-versions.outputs.value }}
-      msrv: ${{ steps.msrv.outputs.value }}
+      rust-versions: ${{ steps.definitions.outputs.versions }}
+      msrv: ${{ steps.definitions.outputs.msrv }}
     steps:
       - uses: actions/checkout@v2
-      - name: Define msrv
-        id: msrv
+      - name: Evaluate definitions
+        id: definitions
         run: |
           export MSRV=$(cat rust-toolchain | awk '{$1=$1};1')
-          echo "::set-env name=MSRV::$MSRV"
-          echo "::set-output name=value::$MSRV"
-      - name: Define rust-versions
-        id: rust-versions
-        run: |
+          echo "::set-output name=msrv::$MSRV"
           export RAW_VERSIONS="stable beta $RUST_NIGHTLY_TOOLCHAIN $MSRV"
           export VERSIONS=$(echo $RAW_VERSIONS | jq -scR 'rtrimstr("\n")|split(" ")|.')
-          echo "::set-output name=value::$VERSIONS"
+          echo "::set-output name=versions::$VERSIONS"
 
   rustfmt:
     runs-on: ubuntu-latest

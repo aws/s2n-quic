@@ -18,7 +18,9 @@ env:
   SCCACHE_IDLE_TIMEOUT: 0
   # This kept breaking builds so we're pinning for now. We should do our best to keep
   # up with the changes, though.
-  INTEROP_RUNNER_REF: d84aa4f4c8375ea294c7032cebce8034eaf01d24
+  INTEROP_RUNNER_REF: 0ea8c726b611b89a8b4b88055bbca0e78b402c54
+  NETWORK_SIMULATOR_REF: sha256:ac823d71fa280390de86737edc7eb89a1afdd7a261ee36ea12da89dc70ae8121
+  IPERF_ENDPOINT_REF: sha256:17112dfc557ea7aa002209229cc8d58dbc1d4f12c84161623aa6a975de85f14f
 
 jobs:
   env:
@@ -148,8 +150,8 @@ jobs:
       - name: Run docker pull
         working-directory: quic-interop-runner
         run: |
-          docker pull martenseemann/quic-network-simulator:latest
-          docker pull martenseemann/quic-interop-iperf-endpoint:latest
+          docker pull "martenseemann/quic-network-simulator@$NETWORK_SIMULATOR_REF"
+          docker pull "martenseemann/quic-interop-iperf-endpoint@$IPERF_ENDPOINT_REF"
 
       - uses: actions/setup-python@v2
         with:
@@ -163,24 +165,21 @@ jobs:
           python3 -m pip install --upgrade pip
           pip3 install -r requirements.txt
 
-      - name: Generate certificates
-        working-directory: quic-interop-runner
-        run: ./certs.sh
-
       - name: Run quic-interop-server
         working-directory: quic-interop-runner
         run: |
           mkdir -p results
-          python3 run.py --client ${{ matrix.client }} --server ${{ matrix.server }} --json results/results.json --debug | true
+          # enable IPv6 support
+          sudo modprobe ip6table_filter
+          python3 run.py --client ${{ matrix.client }} --server ${{ matrix.server }} --json results/results.json --debug --log-dir results/logs --save-files true
 
       - name: Prepare artifacts
         working-directory: quic-interop-runner
         run: |
-          ls -al
-          mv certs results | true
-          mv logs* results | true
+          ls -al results
           # clean up invalid path characters
           find results -name '*:*' | while read from; do
+            echo "Invalid filename: $from"
             to=$(echo $from | sed 's/:/_/g')
             mv $from $to
           done
