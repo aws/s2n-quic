@@ -25,8 +25,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     eprintln!("Stream opened from {:?}", stream.connection().remote_addr());
 
                     // echo any data back to the stream
-                    while let Ok(Some(data)) = stream.pop().await {
-                        stream.push(data).await.expect("stream should be open");
+                    while let Ok(Some(data)) = stream.receive().await {
+                        stream.send(data).await.expect("stream should be open");
                     }
                 });
             }
