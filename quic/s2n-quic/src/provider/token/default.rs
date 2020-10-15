@@ -149,8 +149,8 @@ impl Format {
         )?;
 
         match ring::constant_time::verify_slices_are_equal(&token.hmac, &tag.as_ref()) {
-            Ok(_) => return Some(()),
-            Err(_) => return None,
+            Ok(_) => Some(()),
+            Err(_) => None,
         }
     }
 }
@@ -452,7 +452,7 @@ mod tests {
     #[test]
     fn test_retry_validation_default_format() {
         let clock = Arc::new(time::testing::MockClock::new());
-        time::testing::set_local_clock(clock.clone());
+        time::testing::set_local_clock(clock);
 
         let mut format = Format {
             key_rotation_period: TEST_KEY_ROTATION_PERIOD,
