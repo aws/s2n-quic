@@ -236,7 +236,7 @@ impl super::Format for Format {
                     source_connection_id,
                     token,
                 )?;
-                return Some(source);
+                Some(source)
             }
             Source::NewTokenFrame => None, // Not supported in the default provider
         }
