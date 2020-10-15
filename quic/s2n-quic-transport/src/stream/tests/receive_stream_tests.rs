@@ -3,12 +3,14 @@ use crate::{
     frame_exchange_interests::FrameExchangeInterestProvider,
     stream::{stream_interests::StreamInterestProvider, StreamEvents, StreamTrait},
 };
+use bytes::Bytes;
+use core::{convert::TryFrom, task::Poll};
 use s2n_quic_core::{
     application::ApplicationErrorCode,
     connection,
     endpoint::EndpointType,
     frame::{Frame, MaxData, MaxStreamData, ResetStream, StopSending},
-    stream::StreamType,
+    stream::{ops, StreamError, StreamType},
     varint::VarInt,
 };
 
@@ -1479,11 +1481,7 @@ fn stop_sending_will_trigger_a_stop_sending_frame() {
             assert_eq!(stream_interests(&[]), test_env.stream.interests());
 
             assert!(test_env
-                .stream
-                .stop_sending(
-                    ApplicationErrorCode::new(0x1234_5678).unwrap(),
-                    &test_env.connection_context
-                )
+                .stop_sending(ApplicationErrorCode::new(0x1234_5678).unwrap())
                 .is_ok());
             assert_eq!(stream_interests(&["tx"]), test_env.stream.interests());
 
@@ -1523,21 +1521,13 @@ fn do_not_retransmit_stop_sending_if_requested_twice() {
             test_env.assert_write_frames(0);
 
             assert!(test_env
-                .stream
-                .stop_sending(
-                    ApplicationErrorCode::new(0x1234_5678).unwrap(),
-                    &test_env.connection_context
-                )
+                .stop_sending(ApplicationErrorCode::new(0x1234_5678).unwrap())
                 .is_ok());
             assert_eq!(stream_interests(&["tx"]), test_env.stream.interests());
 
             if *resend_before_write {
                 assert!(test_env
-                    .stream
-                    .stop_sending(
-                        ApplicationErrorCode::new(0x4321_5678).unwrap(),
-                        &test_env.connection_context
-                    )
+                    .stop_sending(ApplicationErrorCode::new(0x4321_5678).unwrap())
                     .is_ok());
                 assert_eq!(stream_interests(&["tx"]), test_env.stream.interests());
             }
@@ -1564,11 +1554,7 @@ fn do_not_retransmit_stop_sending_if_requested_twice() {
             }
 
             assert!(test_env
-                .stream
-                .stop_sending(
-                    ApplicationErrorCode::new(0x1234_5678).unwrap(),
-                    &test_env.connection_context
-                )
+                .stop_sending(ApplicationErrorCode::new(0x1234_5678).unwrap())
                 .is_ok());
 
             // Nothing new to write
@@ -1597,11 +1583,7 @@ fn stop_sending_is_ignored_if_stream_is_already_reset() {
     assert_eq!(stream_interests(&[]), test_env.stream.interests());
 
     assert!(test_env
-        .stream
-        .stop_sending(
-            ApplicationErrorCode::new(0x1234_5678).unwrap(),
-            &test_env.connection_context
-        )
+        .stop_sending(ApplicationErrorCode::new(0x1234_5678).unwrap())
         .is_ok());
     assert_eq!(stream_interests(&[]), test_env.stream.interests());
 
@@ -1613,11 +1595,7 @@ fn stop_sending_is_cancelled_if_stream_is_reset_after_having_been_initiated() {
     let mut test_env = setup_receive_only_test_env();
 
     assert!(test_env
-        .stream
-        .stop_sending(
-            ApplicationErrorCode::new(0x1234_5678).unwrap(),
-            &test_env.connection_context
-        )
+        .stop_sending(ApplicationErrorCode::new(0x1234_5678).unwrap())
         .is_ok());
     assert_eq!(stream_interests(&["tx"]), test_env.stream.interests());
 
@@ -1654,11 +1632,7 @@ fn stop_sending_is_ignored_if_stream_has_already_received_all_data() {
     assert_eq!(stream_interests(&[]), test_env.stream.interests());
 
     assert!(test_env
-        .stream
-        .stop_sending(
-            ApplicationErrorCode::new(0x1234_5678).unwrap(),
-            &test_env.connection_context
-        )
+        .stop_sending(ApplicationErrorCode::new(0x1234_5678).unwrap())
         .is_ok());
     assert_eq!(stream_interests(&[]), test_env.stream.interests());
 
@@ -1680,11 +1654,7 @@ fn stop_sending_can_be_sent_if_size_is_known_but_data_is_still_missing() {
             .is_ok());
 
         assert!(test_env
-            .stream
-            .stop_sending(
-                ApplicationErrorCode::new(0x1234_5678).unwrap(),
-                &test_env.connection_context
-            )
+            .stop_sending(ApplicationErrorCode::new(0x1234_5678).unwrap())
             .is_ok());
         assert_eq!(stream_interests(&["tx"]), test_env.stream.interests());
 
@@ -1730,11 +1700,7 @@ fn stop_sending_is_aborted_if_stream_receives_all_data() {
     let mut test_env = setup_receive_only_test_env();
 
     assert!(test_env
-        .stream
-        .stop_sending(
-            ApplicationErrorCode::new(0x1234_5678).unwrap(),
-            &test_env.connection_context
-        )
+        .stop_sending(ApplicationErrorCode::new(0x1234_5678).unwrap())
         .is_ok());
     assert_eq!(stream_interests(&["tx"]), test_env.stream.interests());
 
@@ -1761,11 +1727,7 @@ fn stop_sending_is_aborted_if_stream_receives_all_data_with_data_after_fin() {
     let mut test_env = setup_receive_only_test_env();
 
     assert!(test_env
-        .stream
-        .stop_sending(
-            ApplicationErrorCode::new(0x1234_5678).unwrap(),
-            &test_env.connection_context
-        )
+        .stop_sending(ApplicationErrorCode::new(0x1234_5678).unwrap())
         .is_ok());
     assert_eq!(stream_interests(&["tx"]), test_env.stream.interests());
 
@@ -1828,11 +1790,7 @@ fn stop_sending_is_ignored_if_stream_has_received_or_consumed_all_data() {
         assert_eq!(expected_interests, test_env.stream.interests());
 
         assert!(test_env
-            .stream
-            .stop_sending(
-                ApplicationErrorCode::new(0x1234_5678).unwrap(),
-                &test_env.connection_context
-            )
+            .stop_sending(ApplicationErrorCode::new(0x1234_5678).unwrap())
             .is_ok());
         assert_eq!(expected_interests, test_env.stream.interests());
 
@@ -1846,11 +1804,7 @@ fn stop_sending_frames_are_retransmitted_on_loss() {
     test_env.assert_write_frames(0);
 
     assert!(test_env
-        .stream
-        .stop_sending(
-            ApplicationErrorCode::new(0x1234_5678).unwrap(),
-            &test_env.connection_context
-        )
+        .stop_sending(ApplicationErrorCode::new(0x1234_5678).unwrap())
         .is_ok());
     assert_eq!(stream_interests(&["tx"]), test_env.stream.interests());
 
@@ -1898,4 +1852,312 @@ fn stop_sending_frames_are_retransmitted_on_loss() {
     test_env.ack_packet(packet_nr_2, ExpectWakeup(Some(false)));
     assert_eq!(stream_interests(&[]), test_env.stream.interests());
     test_env.assert_write_frames(0);
+}
+
+#[test]
+fn receive_multiple_chunks_test() {
+    let mut test_env = setup_receive_only_test_env();
+
+    // feed enough data to create multiple slots in the receive buffer
+    const AMOUNT: usize = 4000;
+
+    test_env.feed_data(VarInt::from_u8(0), AMOUNT);
+
+    assert_eq!(
+        test_env
+            .run_request(
+                ops::Request::default().receive(&mut [Bytes::new(), Bytes::new()]),
+                false
+            )
+            .unwrap()
+            .rx
+            .unwrap()
+            .chunks
+            .consumed,
+        1,
+        "response should return 1 chunk with contiguous receive buffer"
+    );
+
+    test_env.feed_data(VarInt::try_from(AMOUNT).unwrap(), AMOUNT);
+
+    assert_eq!(
+        test_env
+            .run_request(
+                ops::Request::default().receive(&mut [Bytes::new(), Bytes::new(), Bytes::new()]),
+                false
+            )
+            .unwrap()
+            .rx
+            .unwrap()
+            .chunks
+            .consumed,
+        2,
+        "response should return 2 chunk with contiguous receive buffer"
+    );
+}
+
+#[test]
+fn receive_multiple_chunks_and_finishing_test() {
+    let mut test_env = setup_receive_only_test_env();
+
+    // feed enough data to create multiple slots in the receive buffer
+    const AMOUNT: usize = 4000;
+
+    test_env.feed_data(VarInt::from_u8(0), AMOUNT);
+
+    assert!(
+        test_env.poll_pop().is_ready(),
+        "response should return 1 chunk with contiguous receive buffer"
+    );
+
+    test_env.feed_data(VarInt::try_from(AMOUNT).unwrap(), AMOUNT);
+    assert!(test_env
+        .stream
+        .on_data(
+            &stream_data(
+                test_env.stream.stream_id,
+                VarInt::try_from(AMOUNT * 2).unwrap(),
+                &[],
+                true
+            ),
+            &mut StreamEvents::new(),
+        )
+        .is_ok());
+
+    assert_eq!(
+        test_env.run_request(ops::Request::default().receive(&mut []), false),
+        Ok(ops::Response {
+            rx: Some(ops::rx::Response {
+                bytes: ops::Bytes {
+                    available: AMOUNT,
+                    consumed: 0,
+                },
+                chunks: ops::Chunks {
+                    available: 2,
+                    consumed: 0,
+                },
+                status: ops::Status::Finishing,
+                ..Default::default()
+            }),
+            ..Default::default()
+        }),
+        "response should indicate stream is finishing"
+    );
+
+    assert_eq!(
+        test_env.run_request(
+            ops::Request::default().receive(&mut [Bytes::new(), Bytes::new(), Bytes::new()]),
+            false
+        ),
+        Ok(ops::Response {
+            rx: Some(ops::rx::Response {
+                bytes: ops::Bytes {
+                    available: 0,
+                    consumed: AMOUNT,
+                },
+                chunks: ops::Chunks {
+                    available: 0,
+                    consumed: 2,
+                },
+                will_wake: false,
+                status: ops::Status::Finished,
+            }),
+            ..Default::default()
+        }),
+        "response should indicate stream is finished"
+    );
+}
+
+#[test]
+fn receive_low_watermark_test() {
+    let mut test_env = setup_receive_only_test_env();
+
+    assert_eq!(
+        test_env.poll_request(
+            ops::Request::default()
+                .receive(&mut [Bytes::new(), Bytes::new()])
+                .with_low_watermark(100)
+        ),
+        Poll::Pending,
+        "polling with a low watermark and empty buffer should return pending"
+    );
+
+    test_env.feed_data(VarInt::from_u8(0), 50);
+    assert_eq!(
+        test_env.wake_counter, 0,
+        "receiving data under the low watermark should not wake"
+    );
+
+    test_env.feed_data(VarInt::from_u8(50), 50);
+    assert_eq!(
+        test_env.wake_counter, 1,
+        "receiving data beyond the low watermark should wake"
+    );
+
+    assert_eq!(
+        test_env.poll_request(
+            ops::Request::default()
+                .receive(&mut [Bytes::new(), Bytes::new()])
+                .with_low_watermark(100)
+        ),
+        Poll::Ready(Ok(ops::Response {
+            rx: Some(ops::rx::Response {
+                bytes: ops::Bytes {
+                    available: 0,
+                    consumed: 100,
+                },
+                chunks: ops::Chunks {
+                    available: 0,
+                    consumed: 1,
+                },
+                will_wake: false,
+                status: ops::Status::Open,
+            }),
+            ..Default::default()
+        })),
+        "polling with a low watermark and empty buffer should return pending"
+    );
+}
+
+#[test]
+fn receive_low_watermark_with_data_test() {
+    let mut test_env = setup_receive_only_test_env();
+
+    test_env.feed_data(VarInt::from_u8(0), 50);
+    assert_eq!(
+        test_env.wake_counter, 0,
+        "receiving data under the low watermark should not wake"
+    );
+
+    assert_eq!(
+        test_env.poll_request(
+            ops::Request::default()
+                .receive(&mut [Bytes::new(), Bytes::new()])
+                .with_low_watermark(100)
+        ),
+        Poll::Pending,
+        "polling with a low watermark and partial buffer should return pending"
+    );
+
+    test_env.feed_data(VarInt::from_u8(50), 50);
+    assert_eq!(
+        test_env.wake_counter, 1,
+        "receiving data beyond the low watermark should wake"
+    );
+
+    assert_eq!(
+        test_env.poll_request(
+            ops::Request::default()
+                .receive(&mut [Bytes::new(), Bytes::new()])
+                .with_low_watermark(100)
+        ),
+        Poll::Ready(Ok(ops::Response {
+            rx: Some(ops::rx::Response {
+                bytes: ops::Bytes {
+                    available: 0,
+                    consumed: 100,
+                },
+                chunks: ops::Chunks {
+                    available: 0,
+                    consumed: 1,
+                },
+                will_wake: false,
+                status: ops::Status::Open,
+            }),
+            ..Default::default()
+        })),
+        "polling with a low watermark and full buffer should consume the chunks"
+    );
+}
+
+#[test]
+fn receive_high_watermark_test() {
+    let mut test_env = setup_receive_only_test_env();
+
+    assert_eq!(
+        test_env.poll_request(
+            ops::Request::default()
+                .receive(&mut [Bytes::new(), Bytes::new()])
+                .with_high_watermark(10)
+        ),
+        Poll::Pending,
+        "polling with a high watermark and empty buffer should return pending"
+    );
+
+    test_env.feed_data(VarInt::from_u8(0), 20);
+
+    assert_eq!(
+        test_env.poll_request(
+            ops::Request::default()
+                .receive(&mut [Bytes::new(), Bytes::new()])
+                .with_high_watermark(10)
+        ),
+        Poll::Ready(Ok(ops::Response {
+            rx: Some(ops::rx::Response {
+                bytes: ops::Bytes {
+                    available: 10,
+                    consumed: 10,
+                },
+                chunks: ops::Chunks {
+                    available: 1,
+                    consumed: 1,
+                },
+                will_wake: false,
+                status: ops::Status::Open,
+            }),
+            ..Default::default()
+        })),
+        "polling with a high watermark should return a partial chunk"
+    );
+
+    assert_eq!(
+        test_env.poll_request(
+            ops::Request::default()
+                .receive(&mut [Bytes::new(), Bytes::new()])
+                .with_high_watermark(15)
+        ),
+        Poll::Ready(Ok(ops::Response {
+            rx: Some(ops::rx::Response {
+                bytes: ops::Bytes {
+                    available: 0,
+                    consumed: 10,
+                },
+                chunks: ops::Chunks {
+                    available: 0,
+                    consumed: 1,
+                },
+                will_wake: false,
+                status: ops::Status::Open,
+            }),
+            ..Default::default()
+        })),
+        "polling with a higher watermark than available should return the rest"
+    );
+}
+
+#[test]
+fn receiving_into_non_empty_buffers_returns_an_error() {
+    let mut test_env = setup_receive_only_test_env();
+
+    test_env.feed_data(VarInt::from_u8(0), 32);
+
+    assert_eq!(
+        Poll::Ready(Err(StreamError::NonEmptyOutput)),
+        test_env.poll_request(ops::Request::default().receive(&mut [Bytes::from(&[1][..])])),
+        "non-empty buffers should return an error",
+    );
+
+    assert_eq!(
+        Poll::Ready(Err(StreamError::NonEmptyOutput)),
+        test_env.poll_request(
+            ops::Request::default().receive(&mut [Bytes::new(), Bytes::from(&[1][..])])
+        ),
+        "all buffers should be pre-scanned for contents"
+    );
+
+    assert_eq!(
+        test_env.consume_all_data(),
+        32,
+        "data should not be lost when returning an error"
+    );
 }

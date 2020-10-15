@@ -686,12 +686,12 @@ fn fail_to_push_out_of_bounds_data_with_long_buffer() {
 }
 
 #[test]
-fn pop_transform_test() {
+fn pop_watermarked_test() {
     let mut buffer = StreamReceiveBuffer::new();
 
     assert_eq!(
         None,
-        buffer.pop_transform(|buffer| Some(buffer.split())),
+        buffer.pop_watermarked(1),
         "an empty buffer should always return none"
     );
 
@@ -701,31 +701,31 @@ fn pop_transform_test() {
 
     assert_eq!(
         None,
-        buffer.pop_transform(|_| None),
-        "returning none should not pop the buffer"
+        buffer.pop_watermarked(0),
+        "A 0 sized watermark should not pop the buffer"
     );
 
     assert_eq!(
         Some(bytes::BytesMut::from(&[0, 1, 2][..])),
-        buffer.pop_transform(|buffer| Some(buffer.split_to(3))),
-        "the transform should be able to split off a piece of the buffer",
+        buffer.pop_watermarked(3),
+        "the watermark should split off a piece of the buffer",
+    );
+
+    assert_eq!(
+        Some(bytes::BytesMut::from(&[3][..])),
+        buffer.pop_watermarked(1),
+        "the watermark should split off another piece of the buffer",
+    );
+
+    assert_eq!(
+        Some(bytes::BytesMut::from(&[4, 5, 6, 7][..])),
+        buffer.pop_watermarked(100),
+        "popping with a high watermark should remove the remaining chunk",
     );
 
     assert_eq!(
         None,
-        buffer.pop_transform(|_buffer| Some(bytes::BytesMut::new())),
-        "popping an empty buffer should return None"
-    );
-
-    assert_eq!(
-        Some(bytes::BytesMut::from(&[3, 4, 5, 6, 7][..])),
-        buffer.pop_transform(|buffer| Some(buffer.split())),
-        "splitting the buffer should consume the entire thing",
-    );
-
-    assert_eq!(
-        None,
-        buffer.pop_transform(|buffer| Some(buffer.split())),
+        buffer.pop_watermarked(1),
         "the receive buffer should be empty after splitting"
     );
 }

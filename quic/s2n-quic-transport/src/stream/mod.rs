@@ -12,6 +12,9 @@ mod stream_impl;
 mod stream_interests;
 mod stream_manager;
 
+#[cfg(debug_assertions)]
+pub(crate) mod contract;
+
 pub use api::*;
 pub use limits::StreamLimits;
 pub use stream_events::StreamEvents;

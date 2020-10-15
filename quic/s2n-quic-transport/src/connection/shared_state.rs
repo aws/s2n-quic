@@ -8,11 +8,10 @@ use crate::{
     stream::{AbstractStreamManager, Stream, StreamError},
     wakeup_queue::WakeupHandle,
 };
-use bytes::Bytes;
 use core::task::{Context, Poll};
 use s2n_quic_core::{
     application::ApplicationErrorCode,
-    stream::{StreamId, StreamType},
+    stream::{ops, StreamId, StreamType},
 };
 use std::sync::{Mutex, MutexGuard};
 
@@ -92,50 +91,14 @@ impl<ConnectionConfigType: connection::Config> SharedConnectionState<ConnectionC
 impl<ConnectionConfigType: connection::Config> ConnectionApiProvider
     for SynchronizedSharedConnectionState<ConnectionConfigType>
 {
-    fn poll_pop(
+    fn poll_request(
         &self,
         stream_id: StreamId,
-        context: &Context,
-    ) -> Poll<Result<Option<Bytes>, StreamError>> {
+        request: &mut ops::Request,
+        context: Option<&Context>,
+    ) -> Result<ops::Response, StreamError> {
         self.perform_api_call(stream_id, |stream_id, api, api_call_context| {
-            api.poll_pop(stream_id, api_call_context, context)
-        })
-    }
-
-    fn stop_sending(
-        &self,
-        stream_id: StreamId,
-        error_code: ApplicationErrorCode,
-    ) -> Result<(), StreamError> {
-        self.perform_api_call(stream_id, |stream_id, api, api_call_context| {
-            api.stop_sending(stream_id, api_call_context, error_code)
-        })
-    }
-
-    fn poll_push(
-        &self,
-        stream_id: StreamId,
-        data: Bytes,
-        context: &Context,
-    ) -> Poll<Result<(), StreamError>> {
-        self.perform_api_call(stream_id, |stream_id, api, api_call_context| {
-            api.poll_push(stream_id, api_call_context, data, context)
-        })
-    }
-
-    fn poll_finish(&self, stream_id: StreamId, context: &Context) -> Poll<Result<(), StreamError>> {
-        self.perform_api_call(stream_id, |stream_id, api, api_call_context| {
-            api.poll_finish(stream_id, api_call_context, context)
-        })
-    }
-
-    fn reset(
-        &self,
-        stream_id: StreamId,
-        error_code: ApplicationErrorCode,
-    ) -> Result<(), StreamError> {
-        self.perform_api_call(stream_id, |stream_id, api, api_call_context| {
-            api.reset(stream_id, api_call_context, error_code)
+            api.poll_request(stream_id, api_call_context, request, context)
         })
     }
 
