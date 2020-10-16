@@ -20,6 +20,7 @@ struct BaseKey {
 
     // HMAC key for signing and verifying
     key: Option<(Timestamp, hmac::Key)>,
+    // TODO the key could keep track of signed tokens, to support preventing duplicates
 }
 
 impl BaseKey {
@@ -47,6 +48,8 @@ impl BaseKey {
 
         let expires_at = now.checked_add(self.active_duration)?;
 
+        // TODO in addition to generating new key material, clear out the filter used for detecting
+        // duplicates.
         let mut key_material = [0; digest::SHA256_OUTPUT_LEN];
         SystemRandom::new().fill(&mut key_material[..]).ok()?;
         let key = hmac::Key::new(hmac::HMAC_SHA256, &key_material);
@@ -57,12 +60,20 @@ impl BaseKey {
     }
 }
 
-const KEY_ROTATION_PERIOD: Duration = Duration::from_millis(1000);
+const DEFAULT_KEY_ROTATION_PERIOD: Duration = Duration::from_millis(1000);
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Provider {
     /// Rotate the key periodically
     key_rotation_period: Duration,
+}
+
+impl Default for Provider {
+    fn default() -> Self {
+        Self {
+            key_rotation_period: DEFAULT_KEY_ROTATION_PERIOD,
+        }
+    }
 }
 
 impl super::Provider for Provider {
@@ -73,12 +84,12 @@ impl super::Provider for Provider {
         // The keys must remain valid for two rotation periods or they will regenerate their
         // material and validation will fail.
         let format = Format {
-            key_rotation_period: KEY_ROTATION_PERIOD,
+            key_rotation_period: self.key_rotation_period,
             current_key_rotates_at: s2n_quic_platform::time::now(),
             current_key: 0,
             keys: [
-                BaseKey::new(KEY_ROTATION_PERIOD * 2),
-                BaseKey::new(KEY_ROTATION_PERIOD * 2),
+                BaseKey::new(self.key_rotation_period * 2),
+                BaseKey::new(self.key_rotation_period * 2),
             ],
         };
 
@@ -104,6 +115,7 @@ impl Format {
     fn current_key(&mut self) -> u8 {
         let now = s2n_quic_platform::time::now();
         if now > self.current_key_rotates_at {
+            // TODO either clear the duplicate filter here, or implement in the BaseKey logic
             self.current_key ^= 1;
             self.current_key_rotates_at = now + self.key_rotation_period;
         }
@@ -140,18 +152,16 @@ impl Format {
         original_destination_connection_id: &connection::Id,
         token: &Token,
     ) -> Option<()> {
-        println!("Validate using {:?}", token.header.key_id());
         let tag = self.tag_retry_token(
-            &token,
-            &peer_address,
-            &destination_connection_id,
-            &original_destination_connection_id,
+            token,
+            peer_address,
+            destination_connection_id,
+            original_destination_connection_id,
         )?;
 
-        match ring::constant_time::verify_slices_are_equal(&token.hmac, &tag.as_ref()) {
-            Ok(_) => Some(()),
-            Err(_) => None,
-        }
+        // TODO check filter for duplicate tokens
+
+        ring::constant_time::verify_slices_are_equal(&token.hmac, &tag.as_ref()).ok()
     }
 }
 
@@ -188,7 +198,6 @@ impl super::Format for Format {
             .decode::<&mut Token>()
             .expect("Provided output buffer did not match TOKEN_LEN");
 
-        println!("Generate using {:?}", self.current_key());
         let header = Header::new(Source::RetryPacket, self.current_key());
 
         token.header = header;
@@ -197,10 +206,10 @@ impl super::Format for Format {
         SystemRandom::new().fill(&mut token.nonce[..]).ok()?;
 
         let tag = self.tag_retry_token(
-            &token,
-            &peer_address,
-            &destination_connection_id,
-            &original_destination_connection_id,
+            token,
+            peer_address,
+            destination_connection_id,
+            original_destination_connection_id,
         )?;
 
         token.hmac.copy_from_slice(tag.as_ref());
@@ -268,6 +277,7 @@ impl Header {
         };
 
         // The key_id can only be 0 or 1
+        debug_assert!(key_id <= 1);
         header |= (key_id & 0x01) << KEY_ID_SHIFT;
 
         Header(header)
@@ -336,10 +346,13 @@ mod tests {
         // Test all combinations of values to create a header and verify the header returns the
         // expected values.
         for source in &[Source::NewTokenFrame, Source::RetryPacket] {
-            let header = Header::new(*source, 0);
-            // The version should always be the constant TOKEN_VERSION
-            assert_eq!(header.version(), TOKEN_VERSION);
-            assert_eq!(header.token_source(), *source);
+            for key_id in [0, 1].iter().cloned() {
+                let header = Header::new(*source, key_id);
+                // The version should always be the constant TOKEN_VERSION
+                assert_eq!(header.version(), TOKEN_VERSION);
+                assert_eq!(header.token_source(), *source);
+                assert_eq!(header.key_id(), key_id);
+            }
         }
     }
 
@@ -358,7 +371,7 @@ mod tests {
             current_key: 0,
         };
 
-        let conn_id = connection::Id::try_from_bytes(&[]).unwrap();
+        let conn_id = connection::Id::EMPTY;
         let addr = SocketAddress::default();
         let mut buf = [0; size_of::<Token>()];
 
@@ -390,7 +403,7 @@ mod tests {
             current_key: 0,
         };
 
-        let conn_id = connection::Id::try_from_bytes(&[]).unwrap();
+        let conn_id = connection::Id::EMPTY;
         let addr = SocketAddress::default();
         let mut buf = [0; size_of::<Token>()];
         format
@@ -432,7 +445,7 @@ mod tests {
             current_key: 0,
         };
 
-        let conn_id = connection::Id::try_from_bytes(&[]).unwrap();
+        let conn_id = connection::Id::EMPTY;
         let addr = SocketAddress::default();
         let mut buf = [0; size_of::<Token>()];
         format
@@ -464,7 +477,7 @@ mod tests {
             current_key: 0,
         };
 
-        let conn_id = connection::Id::try_from_bytes(&[]).unwrap();
+        let conn_id = connection::Id::EMPTY;
         let addr = SocketAddress::default();
         let mut buf = [0; size_of::<Token>()];
         format
