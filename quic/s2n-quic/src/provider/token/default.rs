@@ -80,7 +80,7 @@ impl super::Provider for Provider {
     type Format = Format;
     type Error = core::convert::Infallible;
 
-    fn start(&self) -> Result<Self::Format, Self::Error> {
+    fn start(self) -> Result<Self::Format, Self::Error> {
         // The keys must remain valid for two rotation periods or they will regenerate their
         // material and validation will fail.
         let format = Format {
@@ -473,10 +473,8 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            format
-                .validate_token(&addr, &conn_id, &conn_id, &buf)
-                .unwrap(),
-            Source::RetryPacket
+            format.validate_token(&addr, &conn_id, &conn_id, &buf),
+            Some(Source::RetryPacket)
         );
 
         let wrong_conn_id = connection::Id::try_from_bytes(&[0, 1, 2]).unwrap();

@@ -11,7 +11,7 @@ pub trait Provider: 'static {
     type Error: core::fmt::Display;
 
     /// Starts the token provider
-    fn start(&self) -> Result<Self::Format, Self::Error>;
+    fn start(self) -> Result<Self::Format, Self::Error>;
 }
 
 cfg_if! {
