@@ -373,19 +373,16 @@ mod tests {
 
         let conn_id = connection::Id::EMPTY;
         let addr = SocketAddress::default();
-        let mut buf = [0; size_of::<Token>()];
+        let mut buf = [0; Format::TOKEN_LEN];
 
         format
             .generate_retry_token(&addr, &conn_id, &conn_id, &mut buf)
             .unwrap();
 
         clock.adjust_by(TEST_KEY_ROTATION_PERIOD);
-        assert_eq!(
-            format
-                .validate_token(&addr, &conn_id, &conn_id, &buf)
-                .is_some(),
-            true
-        );
+        assert!(format
+            .validate_token(&addr, &conn_id, &conn_id, &buf)
+            .is_some());
     }
 
     #[test]
@@ -405,7 +402,7 @@ mod tests {
 
         let conn_id = connection::Id::EMPTY;
         let addr = SocketAddress::default();
-        let mut buf = [0; size_of::<Token>()];
+        let mut buf = [0; Format::TOKEN_LEN];
         format
             .generate_retry_token(&addr, &conn_id, &conn_id, &mut buf)
             .unwrap();
@@ -413,21 +410,15 @@ mod tests {
         // Validation should succeed because the signing key is still valid, even
         // though it has been rotated from the current signing key
         clock.adjust_by(TEST_KEY_ROTATION_PERIOD);
-        assert_eq!(
-            format
-                .validate_token(&addr, &conn_id, &conn_id, &buf)
-                .is_some(),
-            true
-        );
+        assert!(format
+            .validate_token(&addr, &conn_id, &conn_id, &buf)
+            .is_some());
 
         // Validation should fail because the key used for signing has been regenerated
         clock.adjust_by(TEST_KEY_ROTATION_PERIOD);
-        assert_eq!(
-            format
-                .validate_token(&addr, &conn_id, &conn_id, &buf)
-                .is_none(),
-            true
-        );
+        assert!(format
+            .validate_token(&addr, &conn_id, &conn_id, &buf)
+            .is_none());
     }
 
     #[test]
@@ -447,19 +438,16 @@ mod tests {
 
         let conn_id = connection::Id::EMPTY;
         let addr = SocketAddress::default();
-        let mut buf = [0; size_of::<Token>()];
+        let mut buf = [0; Format::TOKEN_LEN];
         format
             .generate_retry_token(&addr, &conn_id, &conn_id, &mut buf)
             .unwrap();
 
         // Validation should fail because multiple rotation periods have elapsed
         clock.adjust_by(TEST_KEY_ROTATION_PERIOD * 2);
-        assert_eq!(
-            format
-                .validate_token(&addr, &conn_id, &conn_id, &buf)
-                .is_none(),
-            true
-        );
+        assert!(format
+            .validate_token(&addr, &conn_id, &conn_id, &buf)
+            .is_none());
     }
 
     #[test]
@@ -479,7 +467,7 @@ mod tests {
 
         let conn_id = connection::Id::EMPTY;
         let addr = SocketAddress::default();
-        let mut buf = [0; size_of::<Token>()];
+        let mut buf = [0; Format::TOKEN_LEN];
         format
             .generate_retry_token(&addr, &conn_id, &conn_id, &mut buf)
             .unwrap();
@@ -492,11 +480,8 @@ mod tests {
         );
 
         let wrong_conn_id = connection::Id::try_from_bytes(&[0, 1, 2]).unwrap();
-        assert_eq!(
-            format
-                .validate_token(&addr, &wrong_conn_id, &conn_id, &buf)
-                .is_none(),
-            true
-        );
+        assert!(format
+            .validate_token(&addr, &wrong_conn_id, &conn_id, &buf)
+            .is_none());
     }
 }
