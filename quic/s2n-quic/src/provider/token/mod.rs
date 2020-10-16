@@ -10,6 +10,7 @@ pub trait Provider: 'static {
     type Format: 'static + Format;
     type Error: core::fmt::Display;
 
+    /// Starts the token provider
     fn start(self) -> Result<Self::Format, Self::Error>;
 }
 
