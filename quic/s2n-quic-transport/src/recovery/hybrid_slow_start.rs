@@ -14,7 +14,7 @@ pub struct HybridSlowStart {
     sample_count: usize,
     last_min_rtt: Option<Duration>,
     cur_min_rtt: Option<Duration>,
-    threshold: usize,
+    pub(super) threshold: usize,
     max_datagram_size: usize,
     time_of_last_sent_packet: Option<Timestamp>,
     rtt_round_end_time: Option<Timestamp>,
@@ -49,11 +49,6 @@ impl HybridSlowStart {
             time_of_last_sent_packet: None,
             rtt_round_end_time: None,
         }
-    }
-
-    /// Get the current slow start threshold
-    pub(super) fn threshold(&self) -> usize {
-        self.threshold
     }
 
     /// Called each time a packet is sent so the time of the last
@@ -145,21 +140,21 @@ mod test {
         // Setting a threshold lower than the current threshold
         // will override the current threshold
         slow_start.on_congestion_event(500);
-        assert_eq!(slow_start.threshold(), 500);
+        assert_eq!(slow_start.threshold, 500);
 
         slow_start.threshold = 501;
 
         // Setting a threshold higher than the current threshold
         // keeps the current threshold intact
         slow_start.on_congestion_event(502);
-        assert_eq!(slow_start.threshold(), 501);
+        assert_eq!(slow_start.threshold, 501);
 
         slow_start.threshold = 501;
 
         // Setting a threshold lower than low_ssthresh
         // sets the threshold to low_ssthresh
         slow_start.on_congestion_event(slow_start.low_ssthresh() - 1);
-        assert_eq!(slow_start.threshold(), slow_start.low_ssthresh());
+        assert_eq!(slow_start.threshold, slow_start.low_ssthresh());
     }
 
     #[test]
@@ -270,7 +265,7 @@ mod test {
         assert_eq!(slow_start.cur_min_rtt, Some(Duration::from_millis(112)));
         // The last ack was the 8th sample, but since the min rtt increased below the threshold,
         // the slow start threshold remains the same
-        assert_eq!(slow_start.threshold(), usize::max_value());
+        assert_eq!(slow_start.threshold, usize::max_value());
 
         // -- Round 3 --
 
@@ -299,6 +294,6 @@ mod test {
         assert_eq!(slow_start.cur_min_rtt, Some(Duration::from_millis(126)));
         // The last ack was the 8th sample, and since the min rtt increased above the threshold,
         // the slow start threshold was set to the current congestion window
-        assert_eq!(slow_start.threshold(), 5000);
+        assert_eq!(slow_start.threshold, 5000);
     }
 }

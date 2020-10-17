@@ -73,6 +73,11 @@ impl RTTEstimator {
         self.smoothed_rtt
     }
 
+    /// Gets the minimum round trip time
+    pub fn min_rtt(&self) -> Duration {
+        self.min_rtt
+    }
+
     /// Gets the variance in observed round trip time samples
     pub fn rttvar(&self) -> Duration {
         self.rttvar

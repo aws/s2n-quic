@@ -9,7 +9,7 @@ use crate::{
     },
     contexts::ConnectionOnTransmitError,
     path,
-    recovery::{congestion_controller, RTTEstimator},
+    recovery::{congestion_controller, CongestionController, RTTEstimator},
     space::{PacketSpace, EARLY_ACK_SETTINGS},
 };
 use core::time::Duration;
@@ -168,13 +168,19 @@ impl<ConfigType: connection::Config> ConnectionImpl<ConfigType> {
         // This function is called regardless if there was a loss event or not.
         // Only propagate on_loss_info if necessary.
         if loss_info.updated_required() {
-            shared_state.space_manager.on_loss_info(
-                &loss_info,
-                &self.path_manager[path_id],
-                timestamp,
-            );
+            let path = &mut self.path_manager[path_id];
 
-            // TODO pass recovery information to congestion controller
+            shared_state
+                .space_manager
+                .on_loss_info(&loss_info, path, timestamp);
+
+            if loss_info.bytes_in_flight > 0 {
+                path.congestion_controller.on_packets_lost(
+                    loss_info,
+                    path.rtt_estimator.persistent_congestion_duration(),
+                    timestamp,
+                )
+            }
         }
     }
 }
