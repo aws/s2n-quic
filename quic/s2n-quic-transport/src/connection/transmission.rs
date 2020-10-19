@@ -100,7 +100,7 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
                     //# A client MUST discard Initial keys when it first sends a Handshake packet
 
                     if Config::ENDPOINT_TYPE.is_client() {
-                        space_manager.discard_initial();
+                        space_manager.discard_initial(self.context.path);
                     }
 
                     encoder
@@ -124,7 +124,7 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
             //# confirmed (Section 4.1.2).
             if let Some(application_space) = space_manager.application() {
                 if application_space.handshake_status.is_confirmed() {
-                    space_manager.discard_handshake();
+                    space_manager.discard_handshake(self.context.path);
                 }
             }
 

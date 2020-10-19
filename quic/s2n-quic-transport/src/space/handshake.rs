@@ -125,6 +125,11 @@ impl<Config: connection::Config> HandshakeSpace<Config> {
         recovery_manager.on_timeout(timestamp, &mut context)
     }
 
+    /// Called before the Handshake packet space is discarded
+    pub fn on_discard(&mut self, path: &mut Path<Config::CongestionController>) {
+        self.recovery_manager.on_packet_number_space_discarded(path);
+    }
+
     pub fn update_recovery(
         &mut self,
         path: &Path<Config::CongestionController>,
@@ -144,10 +149,6 @@ impl<Config: connection::Config> HandshakeSpace<Config> {
     /// Returns the Packet Number to be used when encoding outgoing packets
     fn packet_number_encoder(&self) -> PacketNumber {
         self.tx_packet_numbers.largest_sent_packet_number_acked()
-    }
-
-    pub fn bytes_in_flight(&self) -> usize {
-        self.recovery_manager.bytes_in_flight()
     }
 
     fn recovery(&mut self) -> (&mut recovery::Manager, RecoveryContext<Config>) {

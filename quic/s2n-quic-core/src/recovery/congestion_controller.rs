@@ -33,15 +33,19 @@ impl<'a> PathInfo<'a> {
 pub trait CongestionController: 'static + Clone + Send {
     fn congestion_window(&self) -> usize;
 
-    fn on_packet_sent(&mut self, time_sent: Timestamp, sent_bytes: usize);
+    fn on_packet_sent(
+        &mut self,
+        time_sent: Timestamp,
+        sent_bytes: usize,
+        congestion_controlled: bool,
+    );
 
     fn on_rtt_update(&mut self, time_sent: Timestamp, rtt_estimator: &RTTEstimator);
 
     fn on_packet_ack(
         &mut self,
         time_sent: Timestamp,
-        sent_bytes: usize,
-        is_limited: bool,
+        bytes_sent: usize,
         rtt_estimator: &RTTEstimator,
         ack_receive_time: Timestamp,
     );
@@ -56,6 +60,8 @@ pub trait CongestionController: 'static + Clone + Send {
     fn on_congestion_event(&mut self, event_time: Timestamp);
 
     fn on_mtu_update(&mut self, max_data_size: usize);
+
+    fn on_packet_discarded(&mut self, bytes_sent: usize);
 }
 
 #[cfg(any(test, feature = "testing"))]
@@ -74,14 +80,19 @@ pub mod testing {
         fn congestion_window(&self) -> usize {
             usize::max_value()
         }
-        fn on_packet_sent(&mut self, _time_sent: Timestamp, _sent_bytes: usize) {}
+        fn on_packet_sent(
+            &mut self,
+            _time_sent: Timestamp,
+            _bytes_sent: usize,
+            _congestion_controlled: bool,
+        ) {
+        }
         fn on_rtt_update(&mut self, _time_sent: Timestamp, _rtt_estimator: &RTTEstimator) {}
 
         fn on_packet_ack(
             &mut self,
             _time_sent: Timestamp,
             _sent_bytes: usize,
-            _is_limited: bool,
             _rtt_estimator: &RTTEstimator,
             _ack_receive_time: Timestamp,
         ) {
@@ -98,5 +109,7 @@ pub mod testing {
         fn on_congestion_event(&mut self, _event_time: Timestamp) {}
 
         fn on_mtu_update(&mut self, _max_data_size: usize) {}
+
+        fn on_packet_discarded(&mut self, _bytes_sent: usize) {}
     }
 }

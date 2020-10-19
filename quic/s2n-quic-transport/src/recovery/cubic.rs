@@ -45,6 +45,15 @@ struct CubicCongestionController {
     max_datagram_size: usize,
     congestion_window: usize,
     state: State,
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#B.2
+    //# The sum of the size in bytes of all sent packets
+    //# that contain at least one ack-eliciting or PADDING frame, and have
+    //# not been acknowledged or declared lost.  The size does not include
+    //# IP or UDP overhead, but does include the QUIC header and AEAD
+    //# overhead.  Packets only containing ACK frames do not count towards
+    //# bytes_in_flight to ensure congestion control does not impede
+    //# congestion feedback.
+    bytes_in_flight: usize,
 }
 
 impl CongestionController for CubicCongestionController {
@@ -52,8 +61,17 @@ impl CongestionController for CubicCongestionController {
         self.congestion_window
     }
 
-    fn on_packet_sent(&mut self, time_sent: Timestamp, _sent_bytes: usize) {
+    fn on_packet_sent(
+        &mut self,
+        time_sent: Timestamp,
+        bytes_sent: usize,
+        congestion_controlled: bool,
+    ) {
         self.slow_start.on_packet_sent(time_sent);
+
+        if congestion_controlled {
+            self.bytes_in_flight += bytes_sent;
+        }
     }
 
     fn on_rtt_update(&mut self, time_sent: Timestamp, rtt_estimator: &RTTEstimator) {
@@ -70,11 +88,13 @@ impl CongestionController for CubicCongestionController {
         &mut self,
         time_sent: Timestamp,
         sent_bytes: usize,
-        is_limited: bool,
         rtt_estimator: &RTTEstimator,
         ack_receive_time: Timestamp,
     ) {
-        if is_limited {
+        let prev_bytes_in_flight = self.bytes_in_flight;
+        self.bytes_in_flight -= sent_bytes;
+
+        if prev_bytes_in_flight < self.congestion_window {
             //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.8
             //# When bytes in flight is smaller than the congestion window and
             //# sending is not pacing limited, the congestion window is under-
@@ -145,6 +165,7 @@ impl CongestionController for CubicCongestionController {
         persistent_congestion_duration: Duration,
         timestamp: Timestamp,
     ) {
+        self.bytes_in_flight -= loss_info.bytes_in_flight;
         self.on_congestion_event(timestamp);
 
         // Reset the congestion window if the loss of these
@@ -205,6 +226,16 @@ impl CongestionController for CubicCongestionController {
                 (self.congestion_window / old_max_datagram_size) * max_datagram_size;
         }
     }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#6.4
+    //# When packet protection keys are discarded (see Section 4.8 of
+    //# [QUIC-TLS]), all packets that were sent with those keys can no longer
+    //# be acknowledged because their acknowledgements cannot be processed
+    //# anymore.  The sender MUST discard all recovery state associated with
+    //# those packets and MUST remove them from the count of bytes in flight.
+    fn on_packet_discarded(&mut self, bytes_sent: usize) {
+        self.bytes_in_flight -= bytes_sent;
+    }
 }
 
 impl CubicCongestionController {
@@ -217,6 +248,7 @@ impl CubicCongestionController {
             max_datagram_size,
             congestion_window: CubicCongestionController::initial_window(max_datagram_size),
             state: State::SlowStart,
+            bytes_in_flight: 0,
         }
     }
 
@@ -527,7 +559,9 @@ mod test {
         cc.congestion_window = 100000;
 
         // Last sent packet time updated to t10
-        cc.on_packet_sent(now + Duration::from_secs(10), 1);
+        cc.on_packet_sent(now + Duration::from_secs(10), 1, true);
+
+        assert_eq!(cc.bytes_in_flight, 1);
 
         // Latest RTT is 100ms
         rtt_estimator.update_rtt(
@@ -549,7 +583,9 @@ mod test {
         );
 
         // Last sent packet time updated to t20
-        cc.on_packet_sent(now + Duration::from_secs(20), 1);
+        cc.on_packet_sent(now + Duration::from_secs(20), 1, true);
+
+        assert_eq!(cc.bytes_in_flight, 2);
 
         // Round two of Hystart
         for _i in 1..=8 {
@@ -557,6 +593,10 @@ mod test {
         }
 
         assert_eq!(cc.slow_start.threshold, 100000);
+
+        // Send a packet that is not congestion controlled
+        cc.on_packet_sent(now + Duration::from_secs(30), 1, false);
+        assert_eq!(cc.bytes_in_flight, 2);
     }
 
     #[test]
@@ -564,14 +604,19 @@ mod test {
         let mut cc = CubicCongestionController::new(1000);
         let now = s2n_quic_platform::time::now();
         cc.congestion_window = 100000;
+        cc.bytes_in_flight = 100000;
         cc.state = State::CongestionAvoidance(now);
 
+        let mut loss_info = LossInfo::default();
+        loss_info.bytes_in_flight = 100;
+
         cc.on_packets_lost(
-            LossInfo::default(),
+            loss_info,
             Duration::from_secs(5),
             now + Duration::from_secs(10),
         );
 
+        assert_eq!(cc.bytes_in_flight, 100000 - 100);
         assert_eq!(cc.state, State::Recovery(now + Duration::from_secs(10)));
         assert_eq!(cc.congestion_window(), (100000.0 * BETA_CUBIC) as usize);
         assert_eq!(cc.slow_start.threshold, (100000.0 * BETA_CUBIC) as usize);
@@ -635,19 +680,25 @@ mod test {
     }
 
     #[test]
+    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#6.4")]
+    fn on_packet_discarded() {
+        let mut cc = CubicCongestionController::new(5000);
+        cc.bytes_in_flight = 10000;
+
+        cc.on_packet_discarded(1000);
+
+        assert_eq!(cc.bytes_in_flight, 10000 - 1000);
+    }
+
+    #[test]
     #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.8")]
     fn on_packet_ack_limited() {
         let mut cc = CubicCongestionController::new(5000);
         let now = s2n_quic_platform::time::now();
         cc.congestion_window = 100000;
+        cc.bytes_in_flight = 10000;
 
-        cc.on_packet_ack(
-            now,
-            1,
-            true,
-            &RTTEstimator::new(Duration::from_secs(0)),
-            now,
-        );
+        cc.on_packet_ack(now, 1, &RTTEstimator::new(Duration::from_secs(0)), now);
 
         assert_eq!(cc.congestion_window(), 100000);
     }
@@ -660,11 +711,11 @@ mod test {
 
         cc.cubic.update_w_max(25000);
         cc.state = Recovery(now);
+        cc.bytes_in_flight = 25000;
 
         cc.on_packet_ack(
             now + Duration::from_millis(1),
             1,
-            false,
             &RTTEstimator::new(Duration::from_secs(0)),
             now + Duration::from_millis(2),
         );
@@ -683,12 +734,12 @@ mod test {
 
         cc.state = SlowStart;
         cc.congestion_window = 10000;
+        cc.bytes_in_flight = 10000;
         cc.slow_start.threshold = 10050;
 
         cc.on_packet_ack(
             now,
             100,
-            false,
             &RTTEstimator::new(Duration::from_secs(0)),
             now + Duration::from_millis(2),
         );
@@ -708,11 +759,11 @@ mod test {
 
         cc.state = Recovery(now);
         cc.congestion_window = 10000;
+        cc.bytes_in_flight = 10000;
 
         cc.on_packet_ack(
             now,
             100,
-            false,
             &RTTEstimator::new(Duration::from_secs(0)),
             now + Duration::from_millis(2),
         );
@@ -730,9 +781,11 @@ mod test {
 
         cc.state = CongestionAvoidance(now + Duration::from_millis(3300));
         cc.congestion_window = 10000;
+        cc.bytes_in_flight = 10000;
         cc.cubic.update_w_max(10000);
 
         cc2.congestion_window = 10000;
+        cc2.bytes_in_flight = 10000;
         cc2.cubic.update_w_max(10000);
 
         let mut rtt_estimator = RTTEstimator::new(Duration::from_secs(0));
@@ -743,13 +796,7 @@ mod test {
             PacketNumberSpace::ApplicationData,
         );
 
-        cc.on_packet_ack(
-            now,
-            1000,
-            false,
-            &rtt_estimator,
-            now + Duration::from_millis(4750),
-        );
+        cc.on_packet_ack(now, 1000, &rtt_estimator, now + Duration::from_millis(4750));
 
         let t = Duration::from_millis(4750) - Duration::from_millis(3300);
         let rtt = rtt_estimator.min_rtt();

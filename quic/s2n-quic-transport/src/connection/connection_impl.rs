@@ -291,8 +291,12 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         self.timers.peer_idle_timer.cancel();
         self.state = close_reason.into();
 
-        shared_state.space_manager.discard_initial();
-        shared_state.space_manager.discard_handshake();
+        shared_state
+            .space_manager
+            .discard_initial(self.path_manager.active_path_mut().1);
+        shared_state
+            .space_manager
+            .discard_handshake(self.path_manager.active_path_mut().1);
         shared_state.space_manager.discard_zero_rtt_crypto();
         if let Some(application) = shared_state.space_manager.application_mut() {
             // Close all streams with the derived error
@@ -578,7 +582,9 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
             //# processes a Handshake packet.
 
             if Self::Config::ENDPOINT_TYPE.is_server() {
-                shared_state.space_manager.discard_initial();
+                shared_state
+                    .space_manager
+                    .discard_initial(self.path_manager.active_path_mut().1);
             }
 
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#10.2

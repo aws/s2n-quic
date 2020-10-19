@@ -69,13 +69,14 @@ macro_rules! packet_space_api {
         }
 
         $(
-            pub fn $discard(&mut self) {
+            pub fn $discard(&mut self, path: &mut Path<Config::CongestionController>) {
                 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.2
                 //# When Initial or Handshake keys are discarded, the PTO and loss
                 //# detection timers MUST be reset, because discarding keys indicates
                 //# forward progress and the loss detection timer might have been set for
                 //# a now discarded packet number space.
                 self.pto_backoff = INITIAL_PTO_BACKOFF;
+                self.$get_mut().iter_mut().for_each(|space| space.on_discard(path));
                 self.$get = None;
             }
         )?
@@ -196,15 +197,6 @@ impl<Config: connection::Config> PacketSpaceManager<Config> {
         }
 
         loss_info
-    }
-
-    /// Gets the total number of bytes in flight
-    pub fn bytes_in_flight(&self) -> usize {
-        core::iter::empty()
-            .chain(self.initial.iter().map(|space| space.bytes_in_flight()))
-            .chain(self.handshake.iter().map(|space| space.bytes_in_flight()))
-            .chain(self.application.iter().map(|space| space.bytes_in_flight()))
-            .sum::<usize>()
     }
 
     pub fn on_loss_info(

@@ -189,10 +189,6 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         self.ack_manager.largest_received_packet_number_acked()
     }
 
-    pub fn bytes_in_flight(&self) -> usize {
-        self.recovery_manager.bytes_in_flight()
-    }
-
     /// Returns the Packet Number to be used when encoding outgoing packets
     fn packet_number_encoder(&self) -> PacketNumber {
         self.tx_packet_numbers.largest_sent_packet_number_acked()

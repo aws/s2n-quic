@@ -60,16 +60,6 @@ pub struct Manager {
     //# packets or acknowledgements.
     pto: Pto,
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#B.2
-    //# The sum of the size in bytes of all sent packets
-    //# that contain at least one ack-eliciting or PADDING frame, and have
-    //# not been acknowledged or declared lost.  The size does not include
-    //# IP or UDP overhead, but does include the QUIC header and AEAD
-    //# overhead.  Packets only containing ACK frames do not count towards
-    //# bytes_in_flight to ensure congestion control does not impede
-    //# congestion feedback.
-    bytes_in_flight: usize,
-
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#A.3
     //# The time the most recent ack-eliciting packet was sent.
     time_of_last_ack_eliciting_packet: Option<Timestamp>,
@@ -111,7 +101,6 @@ impl Manager {
             loss_timer: VirtualTimer::default(),
             pto: Pto::new(max_ack_delay),
             time_threshold: Duration::from_secs(0),
-            bytes_in_flight: 0,
             time_of_last_ack_eliciting_packet: None,
             ecn_ce_counter: VarInt::default(),
             first_rtt_sample: None,
@@ -145,7 +134,9 @@ impl Manager {
                 })
             }
         } else {
-            loss_info.pto_expired = self.pto.on_timeout(self.bytes_in_flight, timestamp);
+            loss_info.pto_expired = self
+                .pto
+                .on_timeout(!self.sent_packets.is_empty(), timestamp);
         }
 
         loss_info
@@ -160,28 +151,26 @@ impl Manager {
         time_sent: Timestamp,
         path: &mut Path<CC>,
     ) {
-        let transmission::Outcome {
-            ack_elicitation,
-            is_congestion_controlled: in_flight,
-            bytes_sent,
-        } = outcome;
-
-        if ack_elicitation.is_ack_eliciting() {
+        if outcome.ack_elicitation.is_ack_eliciting() {
             self.sent_packets.insert(
                 packet_number,
-                SentPacketInfo::new(in_flight, bytes_sent, time_sent),
+                SentPacketInfo::new(
+                    outcome.is_congestion_controlled,
+                    outcome.bytes_sent,
+                    time_sent,
+                ),
             );
         }
 
-        if in_flight {
-            if ack_elicitation.is_ack_eliciting() {
-                self.time_of_last_ack_eliciting_packet = Some(time_sent);
-            }
-            self.bytes_in_flight += bytes_sent;
+        if outcome.is_congestion_controlled && outcome.ack_elicitation.is_ack_eliciting() {
+            self.time_of_last_ack_eliciting_packet = Some(time_sent);
         }
 
-        path.congestion_controller
-            .on_packet_sent(time_sent, bytes_sent);
+        path.congestion_controller.on_packet_sent(
+            time_sent,
+            outcome.bytes_sent,
+            outcome.is_congestion_controlled,
+        );
     }
 
     /// Updates the time threshold used by the loss timer and sets the PTO timer
@@ -243,11 +232,6 @@ impl Manager {
         self.pto.on_transmit(context)
     }
 
-    /// Gets the number of bytes currently in flight
-    pub fn bytes_in_flight(&self) -> usize {
-        self.bytes_in_flight
-    }
-
     pub fn on_ack_frame<A: frame::ack::AckRanges, CC: CongestionController, Ctx: Context>(
         &mut self,
         datagram: &DatagramInfo,
@@ -284,7 +268,6 @@ impl Manager {
             for packet_number in acked_packets {
                 if let Some(acked_packet_info) = self.sent_packets.remove(packet_number) {
                     newly_acked_packets.push(acked_packet_info);
-                    self.bytes_in_flight -= acked_packet_info.sent_bytes as usize;
 
                     if largest_newly_acked.map_or(true, |(pn, _)| packet_number > pn) {
                         largest_newly_acked = Some((packet_number, acked_packet_info));
@@ -357,7 +340,6 @@ impl Manager {
                 // controller exits recovery immediately if possible.
                 largest_newly_acked.1.time_sent,
                 acked_packet_info.sent_bytes as usize,
-                false, // TODO: is_limited https://github.com/awslabs/s2n-quic/issues/137
                 &path.rtt_estimator,
                 datagram.timestamp,
             );
@@ -392,6 +374,21 @@ impl Manager {
         );
 
         Ok(loss_info)
+    }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#B.9
+    //# When Initial or Handshake keys are discarded, packets from the
+    //# space are discarded and loss detection state is updated.
+    pub fn on_packet_number_space_discarded<CC: CongestionController>(
+        &mut self,
+        path: &mut Path<CC>,
+    ) {
+        assert_ne!(self.space, PacketNumberSpace::ApplicationData);
+        // Remove any unacknowledged packets from flight.
+        for (_, unacked_sent_info) in self.sent_packets.iter() {
+            path.congestion_controller
+                .on_packet_discarded(unacked_sent_info.sent_bytes as usize);
+        }
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#A.10
@@ -511,8 +508,6 @@ impl Manager {
             self.sent_packets.remove(packet_number);
         }
 
-        self.bytes_in_flight -= loss_info.bytes_in_flight;
-
         loss_info
     }
 
@@ -607,7 +602,7 @@ impl Pto {
     }
 
     /// Called when a timeout has occurred. Returns true if the PTO timer had expired.
-    pub fn on_timeout(&mut self, bytes_in_flight: usize, timestamp: Timestamp) -> bool {
+    pub fn on_timeout(&mut self, packets_in_flight: bool, timestamp: Timestamp) -> bool {
         if self.timer.poll_expiration(timestamp).is_ready() {
             //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.4
             //# When a PTO timer expires, a sender MUST send at least one ack-
@@ -627,7 +622,7 @@ impl Pto {
             //# Sending two packets on PTO
             //# expiration increases resilience to packet drops, thus reducing the
             //# probability of consecutive PTO events.
-            let transmission_count = if bytes_in_flight > 0 { 2 } else { 1 };
+            let transmission_count = if packets_in_flight { 2 } else { 1 };
 
             self.state = PtoState::RequiresTransmission(transmission_count);
             true
@@ -952,7 +947,12 @@ mod test {
         );
 
         // Four packets sent, each size 1 byte
-        assert_eq!(manager.bytes_in_flight, 4);
+        let bytes_in_flight: u16 = manager
+            .sent_packets
+            .iter()
+            .map(|(_, info)| info.sent_bytes)
+            .sum();
+        assert_eq!(bytes_in_flight, 4);
 
         let now = time_sent;
         let mut lost_packets: HashSet<PacketNumber> = HashSet::default();
@@ -964,7 +964,12 @@ mod test {
         // Two packets lost, each size 1 byte
         assert_eq!(loss_info.bytes_in_flight, 2);
         // Two packets remaining
-        assert_eq!(manager.bytes_in_flight, 2);
+        let bytes_in_flight: u16 = manager
+            .sent_packets
+            .iter()
+            .map(|(_, info)| info.sent_bytes)
+            .sum();
+        assert_eq!(bytes_in_flight, 2);
 
         let sent_packets = &manager.sent_packets;
         assert!(lost_packets.contains(&old_packet_time_sent));
@@ -1357,14 +1362,20 @@ mod test {
         assert!(!loss_info.pto_expired);
 
         // Loss timer is not armed, pto timer is expired without bytes in flight
-        manager.bytes_in_flight = 0;
         manager.pto.timer.set(now - Duration::from_secs(5));
         loss_info = manager.on_timeout(now, &mut context);
         assert!(loss_info.pto_expired);
         assert_eq!(manager.pto.state, RequiresTransmission(1));
 
         // Loss timer is not armed, pto timer is expired with bytes in flight
-        manager.bytes_in_flight = 1;
+        manager.sent_packets.insert(
+            space.new_packet_number(VarInt::from_u8(1)),
+            SentPacketInfo {
+                in_flight: true,
+                sent_bytes: 1,
+                time_sent: now,
+            },
+        );
         manager.pto.timer.set(now - Duration::from_secs(5));
         loss_info = manager.on_timeout(now, &mut context);
         assert!(loss_info.pto_expired);
@@ -1397,15 +1408,6 @@ mod test {
         manager.pto.timer.set(pto_time);
         assert_eq!(manager.timers().count(), 1);
         assert_eq!(manager.timers().next(), Some(&loss_time));
-    }
-
-    #[test]
-    fn bytes_in_flight() {
-        let space = PacketNumberSpace::ApplicationData;
-        let mut manager = Manager::new(space, Duration::from_millis(10));
-        manager.bytes_in_flight = 20;
-
-        assert_eq!(manager.bytes_in_flight(), 20);
     }
 
     #[test]

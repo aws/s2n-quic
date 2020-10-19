@@ -127,6 +127,11 @@ impl<Config: connection::Config> InitialSpace<Config> {
         recovery_manager.on_timeout(timestamp, &mut context)
     }
 
+    /// Called before the Initial packet space is discarded
+    pub fn on_discard(&mut self, path: &mut Path<Config::CongestionController>) {
+        self.recovery_manager.on_packet_number_space_discarded(path);
+    }
+
     pub fn update_recovery(
         &mut self,
         path: &Path<Config::CongestionController>,
@@ -141,10 +146,6 @@ impl<Config: connection::Config> InitialSpace<Config> {
     /// Returns the Packet Number to be used when decoding incoming packets
     pub fn packet_number_decoder(&self) -> PacketNumber {
         self.ack_manager.largest_received_packet_number_acked()
-    }
-
-    pub fn bytes_in_flight(&self) -> usize {
-        self.recovery_manager.bytes_in_flight()
     }
 
     /// Returns the Packet Number to be used when encoding outgoing packets
