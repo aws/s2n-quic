@@ -1,7 +1,4 @@
-use crate::{
-    connection::{self, Connection},
-    provider::*,
-};
+use crate::{connection::Connection, provider::*};
 use core::{
     fmt,
     task::{Context, Poll},
@@ -10,9 +7,11 @@ use s2n_quic_transport::acceptor::Acceptor;
 
 mod builder;
 pub mod metric;
+mod providers;
 
 pub use builder::*;
 pub use metric::Metric;
+pub use providers::*;
 
 /// A QUIC server endpoint, capable of accepting connections
 pub struct Server {
@@ -25,25 +24,6 @@ impl fmt::Debug for Server {
             .field("local_addr", &self.local_addr().ok())
             .finish()
     }
-}
-
-impl_providers_state! {
-    #[derive(Debug, Default)]
-    struct Providers {
-        clock: Clock,
-        congestion_controller: CongestionController,
-        connection_id: ConnectionID,
-        limits: Limits,
-        log: Log,
-        runtime: Runtime,
-        io: IO,
-        sync: Sync,
-        tls: Tls,
-        token: Token,
-    }
-
-    /// Opaque trait containing all of the configured providers
-    trait ServerProviders {}
 }
 
 impl Server {
@@ -61,14 +41,14 @@ impl Server {
     /// #    Ok(())
     /// # }
     /// ```
-    pub fn bind<T>(socket: T) -> Result<Server, T::Error>
+    pub fn bind<T>(socket: T) -> Result<Server, StartError>
     where
         T: io::TryInto,
     {
         let server = Self::builder()
-            .with_io(socket)?
-            .build()
-            .expect("The server could not be built");
+            .with_io(socket)
+            .map_err(StartError::new)?
+            .start()?;
         Ok(server)
     }
 
@@ -84,7 +64,7 @@ impl Server {
     /// let server = Server::builder()
     ///     .with_tls((Path::new("./certs/cert.pem"), Path::new("./certs/key.pem")))?
     ///     .with_io("127.0.0.1:443")?
-    ///     .build()?;
+    ///     .start()?;
     /// #
     /// #    Ok(())
     /// # }
@@ -157,17 +137,6 @@ impl Server {
     /// ```
     #[cfg(feature = "std")]
     pub fn local_addr(&self) -> Result<std::net::SocketAddr, std::io::Error> {
-        todo!()
-    }
-
-    /// Returns the current value of the given metric
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// // TODO
-    /// ```
-    pub fn query<Metric: self::Metric>(&self) -> connection::Result<Metric> {
         todo!()
     }
 }

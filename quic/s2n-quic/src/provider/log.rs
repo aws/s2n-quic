@@ -1,7 +1,7 @@
 /// Provides logging support for an endpoint
 pub trait Provider {
     type Log: 'static + Send;
-    type Error: core::fmt::Display;
+    type Error: 'static + core::fmt::Display;
 
     fn start(self) -> Result<Self::Log, Self::Error>;
 }

@@ -4,7 +4,7 @@ use core::{future::Future, time::Duration};
 /// Provides runtime support for an endpoint
 pub trait Provider {
     type Environment: Environment;
-    type Error: core::fmt::Display;
+    type Error: 'static + core::fmt::Display;
 
     /// Starts the runtime with the given future
     fn start<Start, Fut>(self, start: Start) -> Result<(), Self::Error>

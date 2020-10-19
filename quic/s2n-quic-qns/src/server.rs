@@ -81,7 +81,7 @@ impl Interop {
         let server = Server::builder()
             .with_io(("0.0.0.0", self.port))?
             .with_tls(tls)?
-            .build()?;
+            .start()?;
 
         eprintln!("Server listening on port {}", self.port);
 
