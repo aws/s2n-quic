@@ -90,8 +90,17 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             .wakeup_queue
             .create_wakeup_handle(internal_connection_id);
 
-        // TODO initialize transport parameters from provider values
         let mut transport_parameters = ServerTransportParameters::default();
+
+        // TODO initialize transport parameters from Limits provider values
+        let max = s2n_quic_core::varint::VarInt::from_u32(core::u32::MAX);
+        transport_parameters.initial_max_data = max.try_into().unwrap();
+        transport_parameters.initial_max_stream_data_bidi_local = max.try_into().unwrap();
+        transport_parameters.initial_max_stream_data_bidi_remote = max.try_into().unwrap();
+        transport_parameters.initial_max_stream_data_bidi_remote = max.try_into().unwrap();
+        transport_parameters.initial_max_stream_data_uni = max.try_into().unwrap();
+        transport_parameters.initial_max_streams_bidi = max.try_into().unwrap();
+        transport_parameters.initial_max_streams_uni = max.try_into().unwrap();
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#7.3
         //# A server includes the Destination Connection ID field from the first
