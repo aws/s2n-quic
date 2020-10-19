@@ -11,6 +11,7 @@ pub mod io;
 pub mod packet;
 pub mod path;
 pub mod recovery;
+pub mod slice;
 pub mod stateless_reset_token;
 pub mod stream;
 pub mod time;
