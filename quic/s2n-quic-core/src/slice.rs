@@ -3,12 +3,16 @@ use core::ops::{Deref, DerefMut};
 /// Copies vectored slices from one slice into another
 ///
 /// The number of copied items is limited by the minimum of the lengths of each of the slices.
-pub fn vectored_copy<A, B, T>(from: &[A], to: &mut [B])
+///
+/// Returns the number of bytes that were copied
+pub fn vectored_copy<A, B, T>(from: &[A], to: &mut [B]) -> usize
 where
     A: Deref<Target = [T]>,
     B: Deref<Target = [T]> + DerefMut,
     T: Copy,
 {
+    let mut count = 0;
+
     let mut from_index = 0;
     let mut from_offset = 0;
 
@@ -62,6 +66,7 @@ where
             // increment the offsets
             from_offset += len;
             to_offset += len;
+            count += len;
         }
 
         // check if the `from` is done
@@ -76,6 +81,8 @@ where
             to_offset = 0;
         }
     }
+
+    count
 }
 
 #[cfg(test)]
@@ -115,8 +122,8 @@ mod tests {
 
         for len in 0..6 {
             let mut to = vec![vec![0; 2]; len];
-            vectored_copy(&from, &mut to);
-
+            let copied_len = vectored_copy(&from, &mut to);
+            assert_eq!(copied_len, len * 2);
             assert_eq!(assert_eq_slices(&from, &to), len * 2);
         }
     }
