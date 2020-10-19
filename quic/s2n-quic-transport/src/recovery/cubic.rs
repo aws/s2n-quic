@@ -1,6 +1,6 @@
 use crate::recovery::{
-    congestion_controller::CongestionController, hybrid_slow_start::HybridSlowStart,
-    loss_info::LossInfo,
+    congestion_controller::CongestionController, cubic::State::*,
+    hybrid_slow_start::HybridSlowStart, loss_info::LossInfo,
 };
 use core::{
     cmp::{max, min},
@@ -54,6 +54,7 @@ struct CubicCongestionController {
     //# bytes_in_flight to ensure congestion control does not impede
     //# congestion feedback.
     bytes_in_flight: usize,
+    time_of_last_sent_packet: Option<Timestamp>,
 }
 
 impl CongestionController for CubicCongestionController {
@@ -72,11 +73,36 @@ impl CongestionController for CubicCongestionController {
         if congestion_controlled {
             self.bytes_in_flight += bytes_sent;
         }
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.8
+        //# When bytes in flight is smaller than the congestion window and
+        //# sending is not pacing limited, the congestion window is under-
+        //# utilized.
+        let under_utilized = self.bytes_in_flight < self.congestion_window;
+
+        if under_utilized {
+            if let CongestionAvoidance(ref mut avoidance_start_time) = self.state {
+                //= https://tools.ietf.org/rfc/rfc8312.txt#5.8
+                //# CUBIC does not raise its congestion window size if the flow is
+                //# currently limited by the application instead of the congestion
+                //# window.  In case of long periods when cwnd has not been updated due
+                //# to the application rate limit, such as idle periods, t in Eq. 1 MUST
+                //# NOT include these periods; otherwise, W_cubic(t) might be very high
+                //# after restarting from these periods.
+
+                // Since we are application limited, we shift the start time of CongestionAvoidance
+                // by the limited duration, to avoid including that duration in W_cubic(t).
+                let last_time_sent = self.time_of_last_sent_packet.unwrap_or(time_sent);
+                *avoidance_start_time += time_sent - last_time_sent;
+            }
+        }
+
+        self.time_of_last_sent_packet = Some(time_sent);
     }
 
     fn on_rtt_update(&mut self, time_sent: Timestamp, rtt_estimator: &RTTEstimator) {
-        // Update the Slow Start algorithm each time the RTT estimate is updated to find
-        // the slow start threshold. If the threshold has already been found, this is a no-op.
+        // Update the Slow Start algorithm each time the RTT
+        // estimate is updated to find the slow start threshold.
         self.slow_start.on_rtt_update(
             self.congestion_window,
             time_sent,
@@ -91,10 +117,10 @@ impl CongestionController for CubicCongestionController {
         rtt_estimator: &RTTEstimator,
         ack_receive_time: Timestamp,
     ) {
-        let prev_bytes_in_flight = self.bytes_in_flight;
+        let under_utilized = self.bytes_in_flight < self.congestion_window;
         self.bytes_in_flight -= sent_bytes;
 
-        if prev_bytes_in_flight < self.congestion_window {
+        if under_utilized {
             //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.8
             //# When bytes in flight is smaller than the congestion window and
             //# sending is not pacing limited, the congestion window is under-
@@ -115,7 +141,7 @@ impl CongestionController for CubicCongestionController {
         };
 
         match self.state {
-            State::SlowStart => {
+            SlowStart => {
                 // Slow start
                 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.3.1
                 //# While a sender is in slow start, the congestion window increases by
@@ -137,10 +163,10 @@ impl CongestionController for CubicCongestionController {
                     self.cubic.update_w_max(self.congestion_window);
                 }
             }
-            State::Recovery(_) => {
+            Recovery(_) => {
                 // Don't increase the congestion window while in recovery
             }
-            State::CongestionAvoidance(avoidance_start_time) => {
+            CongestionAvoidance(avoidance_start_time) => {
                 //= https://tools.ietf.org/rfc/rfc8312.txt#4.1
                 //# t is the elapsed time from the beginning of the current congestion avoidance
                 let t = ack_receive_time - avoidance_start_time;
@@ -249,6 +275,7 @@ impl CubicCongestionController {
             congestion_window: CubicCongestionController::initial_window(max_datagram_size),
             state: State::SlowStart,
             bytes_in_flight: 0,
+            time_of_last_sent_packet: None,
         }
     }
 
@@ -597,6 +624,34 @@ mod test {
         // Send a packet that is not congestion controlled
         cc.on_packet_sent(now + Duration::from_secs(30), 1, false);
         assert_eq!(cc.bytes_in_flight, 2);
+    }
+
+    #[test]
+    fn on_packet_sent_application_limited() {
+        let mut cc = CubicCongestionController::new(1000);
+        let now = s2n_quic_platform::time::now();
+
+        cc.congestion_window = 100000;
+        cc.bytes_in_flight = 99900;
+        cc.state = CongestionAvoidance(now);
+
+        cc.on_packet_sent(now + Duration::from_secs(10), 100, true);
+
+        assert_eq!(cc.bytes_in_flight, 100000);
+        assert_eq!(
+            cc.time_of_last_sent_packet,
+            Some(now + Duration::from_secs(10))
+        );
+        // Not application limited so the CongestionAvoidance start stays the same
+        assert_eq!(cc.state, CongestionAvoidance(now));
+
+        cc.bytes_in_flight = 99800;
+
+        cc.on_packet_sent(now + Duration::from_secs(25), 100, true);
+
+        // Application limited so the CongestionAvoidance start moves up by 15 seconds
+        // (time_of_last_sent_packet - time_sent)
+        assert_eq!(cc.state, CongestionAvoidance(now + Duration::from_secs(15)));
     }
 
     #[test]
