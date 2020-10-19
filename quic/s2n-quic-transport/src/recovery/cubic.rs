@@ -68,8 +68,6 @@ impl CongestionController for CubicCongestionController {
         bytes_sent: usize,
         congestion_controlled: bool,
     ) {
-        self.slow_start.on_packet_sent(time_sent);
-
         if congestion_controlled {
             self.bytes_in_flight += bytes_sent;
         }
@@ -106,6 +104,8 @@ impl CongestionController for CubicCongestionController {
         self.slow_start.on_rtt_update(
             self.congestion_window,
             time_sent,
+            self.time_of_last_sent_packet
+                .expect("At least one packet must be sent to update RTT"),
             rtt_estimator.latest_rtt(),
         );
     }

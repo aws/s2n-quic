@@ -51,12 +51,6 @@ impl HybridSlowStart {
         }
     }
 
-    /// Called each time a packet is sent so the time of the last
-    /// sent packet may be tracked.
-    pub(super) fn on_packet_sent(&mut self, time_sent: Timestamp) {
-        self.time_of_last_sent_packet = Some(time_sent);
-    }
-
     /// Called each time the round trip time estimate is
     /// updated. The algorithm detects if the min RTT over
     /// a number of samples has increased since the last
@@ -66,6 +60,7 @@ impl HybridSlowStart {
         &mut self,
         congestion_window: usize,
         time_sent: Timestamp,
+        time_of_last_sent_packet: Timestamp,
         rtt: Duration,
     ) {
         if congestion_window >= self.threshold {
@@ -86,7 +81,7 @@ impl HybridSlowStart {
             self.sample_count = 0;
             // End this round when packets sent after the current last sent packet
             // start getting acknowledged.
-            self.rtt_round_end_time = self.time_of_last_sent_packet;
+            self.rtt_round_end_time = Some(time_of_last_sent_packet);
         }
 
         if self.sample_count < N_SAMPLING {
@@ -160,10 +155,11 @@ mod test {
     #[test]
     fn on_rtt_update_above_threshold() {
         let mut slow_start = HybridSlowStart::new(10);
+        let time_zero = s2n_quic_platform::time::now();
         slow_start.threshold = 500;
 
         assert_eq!(slow_start.sample_count, 0);
-        slow_start.on_rtt_update(750, s2n_quic_platform::time::now(), Duration::from_secs(1));
+        slow_start.on_rtt_update(750, time_zero, time_zero, Duration::from_secs(1));
 
         assert_eq!(slow_start.threshold, 500);
         assert_eq!(slow_start.sample_count, 0);
@@ -180,15 +176,14 @@ mod test {
         // -- Round 1 --
 
         // t=0-9: Send packet #1-10
-        for i in 0..=9 {
-            slow_start.on_packet_sent(time_zero + Duration::from_millis(i));
-        }
+        let time_of_last_sent_packet = time_zero + Duration::from_millis(9);
 
         // t=10: Acknowledge packets #1-7 all with RTT 200
         for i in 0..=6 {
             slow_start.on_rtt_update(
                 1000,
                 time_zero + Duration::from_millis(i),
+                time_of_last_sent_packet,
                 Duration::from_millis(200),
             );
             assert_eq!(slow_start.cur_min_rtt, Some(Duration::from_millis(200)));
@@ -197,13 +192,14 @@ mod test {
         // This round will end when packet #10 is acknowledged
         assert_eq!(
             slow_start.rtt_round_end_time,
-            Some(time_zero + Duration::from_millis(9))
+            Some(time_of_last_sent_packet)
         );
 
         // t=11: Acknowledge packet #8 with RTT 100
         slow_start.on_rtt_update(
             1000,
             time_zero + Duration::from_millis(7),
+            time_of_last_sent_packet,
             Duration::from_millis(100),
         );
 
@@ -214,6 +210,7 @@ mod test {
         slow_start.on_rtt_update(
             1000,
             time_zero + Duration::from_millis(8),
+            time_of_last_sent_packet,
             Duration::from_millis(50),
         );
 
@@ -223,14 +220,13 @@ mod test {
         // -- Round 2 --
 
         // t=20-29: Send packet #11-20
-        for i in 20..=29 {
-            slow_start.on_packet_sent(time_zero + Duration::from_millis(i));
-        }
+        let time_of_last_sent_packet = time_zero + Duration::from_millis(29);
 
         // t=30: Acknowledge packet #10 with RTT 400, ending the first round and starting the second
         slow_start.on_rtt_update(
             1000,
             time_zero + Duration::from_millis(9),
+            time_of_last_sent_packet,
             Duration::from_millis(400),
         );
 
@@ -241,7 +237,7 @@ mod test {
         // This round will end when packet #20 is acknowledged
         assert_eq!(
             slow_start.rtt_round_end_time,
-            Some(time_zero + Duration::from_millis(29))
+            Some(time_of_last_sent_packet)
         );
 
         // t=31: Acknowledge packets #11-16 all with RTT 500
@@ -249,6 +245,7 @@ mod test {
             slow_start.on_rtt_update(
                 1000,
                 time_zero + Duration::from_millis(i),
+                time_of_last_sent_packet,
                 Duration::from_millis(500),
             );
             assert_eq!(slow_start.cur_min_rtt, Some(Duration::from_millis(400)));
@@ -258,6 +255,7 @@ mod test {
         slow_start.on_rtt_update(
             2000,
             time_zero + Duration::from_millis(27),
+            time_of_last_sent_packet,
             Duration::from_millis(112),
         );
 
@@ -270,15 +268,14 @@ mod test {
         // -- Round 3 --
 
         // t=40-49: Send packet #21-30
-        for i in 40..=49 {
-            slow_start.on_packet_sent(time_zero + Duration::from_millis(i));
-        }
+        let time_of_last_sent_packet = time_zero + Duration::from_millis(49);
 
         // t=50: Acknowledge packets 21-27
         for i in 40..=46 {
             slow_start.on_rtt_update(
                 1000,
                 time_zero + Duration::from_millis(i),
+                time_of_last_sent_packet,
                 Duration::from_millis(500),
             );
             assert_eq!(slow_start.cur_min_rtt, Some(Duration::from_millis(500)));
@@ -287,6 +284,7 @@ mod test {
         slow_start.on_rtt_update(
             5000,
             time_zero + Duration::from_millis(38),
+            time_of_last_sent_packet,
             Duration::from_millis(126),
         );
 
