@@ -743,7 +743,7 @@ mod test {
     use core::{ops::RangeInclusive, time::Duration};
     use s2n_quic_core::{
         connection, frame::ack_elicitation::AckElicitation, packet::number::PacketNumberSpace,
-        recovery::congestion_controller::testing::MockCC, varint::VarInt,
+        recovery::congestion_controller::testing::Unlimited, varint::VarInt,
     };
     use std::collections::HashSet;
 
@@ -757,7 +757,7 @@ mod test {
             Default::default(),
             connection::Id::EMPTY,
             RTTEstimator::new(Duration::from_millis(10)),
-            MockCC::default(),
+            Unlimited::default(),
             true,
         );
 
@@ -810,7 +810,7 @@ mod test {
             Default::default(),
             connection::Id::EMPTY,
             rtt_estimator,
-            MockCC::default(),
+            Unlimited::default(),
             true,
         );
 
@@ -879,7 +879,7 @@ mod test {
             Default::default(),
             connection::Id::EMPTY,
             rtt_estimator,
-            MockCC::default(),
+            Unlimited::default(),
             false,
         );
         let ack_receive_time = ack_receive_time + Duration::from_millis(500);
@@ -903,7 +903,7 @@ mod test {
             Default::default(),
             connection::Id::EMPTY,
             rtt_estimator,
-            MockCC::default(),
+            Unlimited::default(),
             true,
         );
 
@@ -997,7 +997,7 @@ mod test {
             Default::default(),
             connection::Id::EMPTY,
             rtt_estimator,
-            MockCC::default(),
+            Unlimited::default(),
             true,
         );
         let time_zero = s2n_quic_platform::time::now() + Duration::from_secs(10);
@@ -1095,7 +1095,7 @@ mod test {
             Default::default(),
             connection::Id::EMPTY,
             rtt_estimator,
-            MockCC::default(),
+            Unlimited::default(),
             true,
         );
         let time_zero = s2n_quic_platform::time::now() + Duration::from_secs(10);
@@ -1204,7 +1204,7 @@ mod test {
             Default::default(),
             connection::Id::EMPTY,
             rtt_estimator,
-            MockCC::default(),
+            Unlimited::default(),
             false,
         );
 
@@ -1250,7 +1250,7 @@ mod test {
             Default::default(),
             connection::Id::EMPTY,
             rtt_estimator,
-            MockCC::default(),
+            Unlimited::default(),
             false,
         );
         path.on_validated();
@@ -1317,7 +1317,7 @@ mod test {
             Default::default(),
             connection::Id::EMPTY,
             RTTEstimator::new(Duration::from_millis(10)),
-            MockCC::default(),
+            Unlimited::default(),
             false,
         );
 

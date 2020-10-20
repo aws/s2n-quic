@@ -43,8 +43,8 @@ enum State {
 struct CubicCongestionController {
     cubic: Cubic,
     slow_start: HybridSlowStart,
-    max_datagram_size: usize,
-    congestion_window: usize,
+    max_datagram_size: u16,
+    congestion_window: u32,
     state: State,
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#B.2
     //# The sum of the size in bytes of all sent packets
@@ -59,13 +59,13 @@ struct CubicCongestionController {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct BytesInFlight(usize);
+struct BytesInFlight(u32);
 
 // This implementation of subtraction for BytesInFlight will
 // panic if debug assertions are enabled, but will otherwise
 // saturate to zero to avoid overflowing and wrapping.
-impl SubAssign<usize> for BytesInFlight {
-    fn sub_assign(&mut self, rhs: usize) {
+impl SubAssign<u32> for BytesInFlight {
+    fn sub_assign(&mut self, rhs: u32) {
         if cfg!(debug_assertions) {
             self.0 -= rhs;
         } else {
@@ -74,19 +74,19 @@ impl SubAssign<usize> for BytesInFlight {
     }
 }
 
-impl AddAssign<usize> for BytesInFlight {
-    fn add_assign(&mut self, rhs: usize) {
+impl AddAssign<u32> for BytesInFlight {
+    fn add_assign(&mut self, rhs: u32) {
         self.0 = self.0 + rhs;
     }
 }
 
 impl CongestionController for CubicCongestionController {
-    fn congestion_window(&self) -> usize {
+    fn congestion_window(&self) -> u32 {
         self.congestion_window
     }
 
     fn on_packet_sent(&mut self, time_sent: Timestamp, bytes_sent: usize) {
-        self.bytes_in_flight += bytes_sent;
+        self.bytes_in_flight += bytes_sent as u32;
 
         if self.is_under_utilized() {
             if let CongestionAvoidance(ref mut avoidance_start_time) = self.state {
@@ -129,7 +129,7 @@ impl CongestionController for CubicCongestionController {
     ) {
         // Check if the congestion window is under utilized before updating bytes in flight
         let under_utilized = self.is_under_utilized();
-        self.bytes_in_flight -= sent_bytes;
+        self.bytes_in_flight -= sent_bytes as u32;
 
         if under_utilized {
             //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.8
@@ -159,7 +159,7 @@ impl CongestionController for CubicCongestionController {
                 //# the number of bytes acknowledged when each acknowledgment is
                 //# processed.  This results in exponential growth of the congestion
                 //# window.
-                self.congestion_window += sent_bytes;
+                self.congestion_window += sent_bytes as u32;
 
                 if self.congestion_window >= self.slow_start.threshold {
                     //= https://tools.ietf.org/rfc/rfc8312.txt#4.8
@@ -202,7 +202,7 @@ impl CongestionController for CubicCongestionController {
         persistent_congestion_threshold: Duration,
         timestamp: Timestamp,
     ) {
-        self.bytes_in_flight -= loss_info.bytes_in_flight;
+        self.bytes_in_flight -= loss_info.bytes_in_flight as u32;
         self.on_congestion_event(timestamp);
 
         // Reset the congestion window if the loss of these
@@ -251,7 +251,7 @@ impl CongestionController for CubicCongestionController {
     //# If the maximum datagram size is decreased in order to complete the
     //# handshake, the congestion window SHOULD be set to the new initial
     //# congestion window.
-    fn on_mtu_update(&mut self, max_datagram_size: usize) {
+    fn on_mtu_update(&mut self, max_datagram_size: u16) {
         let old_max_datagram_size = self.max_datagram_size;
         self.max_datagram_size = max_datagram_size;
         self.cubic.max_datagram_size = max_datagram_size;
@@ -260,7 +260,7 @@ impl CongestionController for CubicCongestionController {
             self.congestion_window = CubicCongestionController::initial_window(max_datagram_size);
         } else {
             self.congestion_window =
-                (self.congestion_window / old_max_datagram_size) * max_datagram_size;
+                (self.congestion_window / old_max_datagram_size as u32) * max_datagram_size as u32;
         }
     }
 
@@ -271,14 +271,14 @@ impl CongestionController for CubicCongestionController {
     //# anymore.  The sender MUST discard all recovery state associated with
     //# those packets and MUST remove them from the count of bytes in flight.
     fn on_packet_discarded(&mut self, bytes_sent: usize) {
-        self.bytes_in_flight -= bytes_sent;
+        self.bytes_in_flight -= bytes_sent as u32;
     }
 }
 
 impl CubicCongestionController {
     // TODO: Remove when used
     #[allow(dead_code)]
-    pub fn new(max_datagram_size: usize) -> Self {
+    pub fn new(max_datagram_size: u16) -> Self {
         Self {
             cubic: Cubic::new(max_datagram_size),
             slow_start: HybridSlowStart::new(max_datagram_size),
@@ -294,11 +294,11 @@ impl CubicCongestionController {
     //# Endpoints SHOULD use an initial congestion window of 10 times the
     //# maximum datagram size (max_datagram_size), limited to the larger
     //# of 14720 bytes or twice the maximum datagram size.
-    fn initial_window(max_datagram_size: usize) -> usize {
-        const INITIAL_WINDOW_LIMIT: usize = 14720;
+    fn initial_window(max_datagram_size: u16) -> u32 {
+        const INITIAL_WINDOW_LIMIT: u32 = 14720;
         min(
-            10 * max_datagram_size,
-            max(INITIAL_WINDOW_LIMIT, 2 * max_datagram_size),
+            10 * max_datagram_size as u32,
+            max(INITIAL_WINDOW_LIMIT, 2 * max_datagram_size as u32),
         )
     }
 
@@ -306,8 +306,8 @@ impl CubicCongestionController {
     //# The minimum congestion window is the smallest value the congestion
     //# window can decrease to as a response to loss, ECN-CE, or persistent
     //# congestion.  The RECOMMENDED value is 2 * max_datagram_size.
-    fn minimum_window(&self) -> usize {
-        2 * self.max_datagram_size
+    fn minimum_window(&self) -> u32 {
+        2 * self.max_datagram_size as u32
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.8
@@ -369,14 +369,17 @@ impl CubicCongestionController {
                 / self.congestion_window as f32;
             // Convert the increase rate to bytes and limit to half the acked bytes as the Linux
             // implementation of Cubic does.
-            let window_increment = min(self.packets_to_bytes(window_increase_rate), sent_bytes / 2);
+            let window_increment = min(
+                self.packets_to_bytes(window_increase_rate),
+                (sent_bytes / 2) as u32,
+            );
 
             self.congestion_window += window_increment;
         }
     }
 
-    fn packets_to_bytes(&self, cwnd: f32) -> usize {
-        (cwnd * self.max_datagram_size as f32) as usize
+    fn packets_to_bytes(&self, cwnd: f32) -> u32 {
+        (cwnd * self.max_datagram_size as f32) as u32
     }
 }
 
@@ -398,7 +401,7 @@ struct Cubic {
     w_last_max: f32,
     // k is the time until we expect to reach w_max
     k: Duration,
-    max_datagram_size: usize,
+    max_datagram_size: u16,
 }
 
 //= https://tools.ietf.org/rfc/rfc8312.txt#5.1
@@ -412,7 +415,7 @@ const C: f32 = 0.4;
 const BETA_CUBIC: f32 = 0.7;
 
 impl Cubic {
-    pub fn new(max_datagram_size: usize) -> Self {
+    pub fn new(max_datagram_size: u16) -> Self {
         Cubic {
             w_max: 0.0,
             w_last_max: 0.0,
@@ -461,9 +464,9 @@ impl Cubic {
     //#    ssthresh = max(ssthresh, 2);  // threshold is at least 2 MSS
     //#    cwnd = cwnd * beta_cubic;     // window reduction
     // This does not change the units of the congestion window
-    fn multiplicative_decrease(&mut self, cwnd: usize) -> usize {
+    fn multiplicative_decrease(&mut self, cwnd: u32) -> u32 {
         self.update_w_max(cwnd);
-        (cwnd as f32 * BETA_CUBIC) as usize
+        (cwnd as f32 * BETA_CUBIC) as u32
     }
 
     //= https://tools.ietf.org/rfc/rfc8312.txt#4.6
@@ -487,7 +490,7 @@ impl Cubic {
     //# for this flow to increase its congestion window because the reduced
     //# W_max forces the flow to have the plateau earlier.  This allows more
     //# time for the new flow to catch up to its congestion window size.
-    fn update_w_max(&mut self, cwnd: usize) {
+    fn update_w_max(&mut self, cwnd: u32) {
         self.w_max = cwnd as f32 / self.max_datagram_size as f32;
 
         if self.w_max < self.w_last_max {
@@ -530,7 +533,7 @@ mod test {
     #[compliance::tests("https://tools.ietf.org/rfc/rfc8312.txt#4.1")]
     fn w_cubic() {
         let max_datagram_size = 1200.0;
-        let mut cubic = Cubic::new(max_datagram_size as usize);
+        let mut cubic = Cubic::new(max_datagram_size as u16);
 
         cubic.update_w_max(2_764_800);
         assert_delta!(cubic.w_max, 2_764_800.0 / max_datagram_size, 0.001);
@@ -559,7 +562,7 @@ mod test {
     #[compliance::tests("https://tools.ietf.org/rfc/rfc8312.txt#4.6")]
     fn w_est() {
         let max_datagram_size = 1200.0;
-        let mut cubic = Cubic::new(max_datagram_size as usize);
+        let mut cubic = Cubic::new(max_datagram_size as u16);
         cubic.w_max = 100.0;
         let t = Duration::from_secs(6);
         let rtt = Duration::from_millis(300);
@@ -575,12 +578,12 @@ mod test {
     #[compliance::tests("https://tools.ietf.org/rfc/rfc8312.txt#4.5")]
     fn multiplicative_decrease() {
         let max_datagram_size = 1200.0;
-        let mut cubic = Cubic::new(max_datagram_size as usize);
+        let mut cubic = Cubic::new(max_datagram_size as u16);
         cubic.update_w_max(10000);
 
         assert_eq!(
             cubic.multiplicative_decrease(100_000),
-            (100_000.0 * BETA_CUBIC) as usize
+            (100_000.0 * BETA_CUBIC) as u32
         );
         // Window max was not less than the last max, so not fast convergence
         assert_delta!(cubic.w_last_max, cubic.w_max, 0.001);
@@ -588,7 +591,7 @@ mod test {
 
         assert_eq!(
             cubic.multiplicative_decrease(80000),
-            (80000.0 * BETA_CUBIC) as usize
+            (80000.0 * BETA_CUBIC) as u32
         );
         // Window max was less than the last max, so fast convergence applies
         assert_delta!(cubic.w_last_max, 80000.0 / max_datagram_size, 0.001);
@@ -702,8 +705,9 @@ mod test {
 
         assert_eq!(cc.bytes_in_flight.0, 100_000 - 100);
         assert_eq!(cc.state, Recovery(now + Duration::from_secs(10)));
-        assert_eq!(cc.congestion_window(), (100_000.0 * BETA_CUBIC) as usize);
-        assert_eq!(cc.slow_start.threshold, (100_000.0 * BETA_CUBIC) as usize);
+        assert_eq!(cc.congestion_window(), (100_000.0 * BETA_CUBIC) as u32);
+        assert_eq!(cc.slow_start.threshold, (100_000.0 * BETA_CUBIC) as u32);
+        assert_eq!(cc.slow_start.threshold, (100_000.0 * BETA_CUBIC) as u32);
     }
 
     #[test]
@@ -906,7 +910,7 @@ mod test {
         assert!(cc.cubic.w_cubic(t) < cc.cubic.w_est(t, rtt));
         assert_eq!(
             cc.congestion_window(),
-            (cc.cubic.w_est(t, rtt) * 5000.0) as usize
+            (cc.cubic.w_est(t, rtt) * 5000.0) as u32
         );
     }
 
@@ -914,7 +918,7 @@ mod test {
     #[compliance::tests("https://tools.ietf.org/rfc/rfc8312.txt#4.3")]
     fn on_packet_ack_congestion_avoidance_concave_region() {
         let max_datagram_size = 1200.0;
-        let mut cc = CubicCongestionController::new(max_datagram_size as usize);
+        let mut cc = CubicCongestionController::new(max_datagram_size as u16);
 
         cc.congestion_window = 2_400_000;
         cc.cubic.update_w_max(2_764_800);
@@ -941,7 +945,7 @@ mod test {
     #[compliance::tests("https://tools.ietf.org/rfc/rfc8312.txt#4.4")]
     fn on_packet_ack_congestion_avoidance_convex_region() {
         let max_datagram_size = 1200.0;
-        let mut cc = CubicCongestionController::new(max_datagram_size as usize);
+        let mut cc = CubicCongestionController::new(max_datagram_size as u16);
 
         cc.congestion_window = 3_600_000;
         cc.cubic.update_w_max(2_764_800);
@@ -967,7 +971,7 @@ mod test {
     #[test]
     fn on_packet_ack_congestion_avoidance_too_large_increase() {
         let max_datagram_size = 1200.0;
-        let mut cc = CubicCongestionController::new(max_datagram_size as usize);
+        let mut cc = CubicCongestionController::new(max_datagram_size as u16);
 
         cc.congestion_window = 3_600_000;
         cc.cubic.update_w_max(2_764_800);

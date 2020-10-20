@@ -130,7 +130,7 @@ impl<CC: CongestionController> Path<CC> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::recovery::congestion_controller::testing::MockCC;
+    use crate::recovery::congestion_controller::testing::Unlimited;
     use core::time::Duration;
 
     #[test]
@@ -139,7 +139,7 @@ mod tests {
             SocketAddress::default(),
             connection::Id::try_from_bytes(&[]).unwrap(),
             RTTEstimator::new(Duration::from_millis(30)),
-            MockCC::default(),
+            Unlimited::default(),
             true,
         );
 
@@ -165,7 +165,7 @@ mod tests {
             SocketAddress::default(),
             connection::Id::try_from_bytes(&[]).unwrap(),
             RTTEstimator::new(Duration::from_millis(30)),
-            MockCC::default(),
+            Unlimited::default(),
             true,
         );
 
@@ -198,7 +198,7 @@ mod tests {
             SocketAddress::default(),
             connection::Id::try_from_bytes(&[]).unwrap(),
             RTTEstimator::new(Duration::from_millis(30)),
-            MockCC::default(),
+            Unlimited::default(),
             false,
         );
 

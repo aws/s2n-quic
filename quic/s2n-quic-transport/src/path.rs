@@ -180,7 +180,7 @@ mod tests {
     use core::time::Duration;
     use s2n_quic_core::{
         inet::{DatagramInfo, ExplicitCongestionNotification},
-        recovery::{congestion_controller::testing::MockCC, RTTEstimator},
+        recovery::{congestion_controller::testing::Unlimited, RTTEstimator},
         time::Timestamp,
     };
     use std::net::SocketAddr;
@@ -192,7 +192,7 @@ mod tests {
             SocketAddress::default(),
             conn_id,
             RTTEstimator::new(Duration::from_millis(30)),
-            MockCC::default(),
+            Unlimited::default(),
             false,
         );
 
@@ -209,7 +209,7 @@ mod tests {
             SocketAddress::default(),
             first_conn_id,
             RTTEstimator::new(Duration::from_millis(30)),
-            MockCC::default(),
+            Unlimited::default(),
             false,
         );
         first_path.challenge = Some([0u8; 8]);
@@ -235,7 +235,7 @@ mod tests {
             SocketAddress::default(),
             first_conn_id,
             RTTEstimator::new(Duration::from_millis(30)),
-            MockCC::default(),
+            Unlimited::default(),
             false,
         );
         let mut manager = Manager::new(first_path);
@@ -253,7 +253,7 @@ mod tests {
         };
 
         manager
-            .on_datagram_received(&datagram, &first_conn_id, true, MockCC::default)
+            .on_datagram_received(&datagram, &first_conn_id, true, Unlimited::default)
             .unwrap();
         assert_eq!(manager.path(&new_addr).is_some(), true);
 
@@ -268,7 +268,7 @@ mod tests {
 
         assert_eq!(
             manager
-                .on_datagram_received(&datagram, &first_conn_id, false, MockCC::default)
+                .on_datagram_received(&datagram, &first_conn_id, false, Unlimited::default)
                 .is_err(),
             true
         );

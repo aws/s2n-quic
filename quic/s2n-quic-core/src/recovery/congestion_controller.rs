@@ -32,7 +32,7 @@ impl<'a> PathInfo<'a> {
 
 pub trait CongestionController: 'static + Clone + Send {
     /// Gets the current congestion window size in bytes
-    fn congestion_window(&self) -> usize;
+    fn congestion_window(&self) -> u32;
 
     /// Invoked whenever a congestion controlled packet is sent
     fn on_packet_sent(&mut self, time_sent: Timestamp, sent_bytes: usize);
@@ -63,7 +63,7 @@ pub trait CongestionController: 'static + Clone + Send {
     fn on_congestion_event(&mut self, event_time: Timestamp);
 
     /// Invoked when the path maximum transmission unit is updated.
-    fn on_mtu_update(&mut self, max_data_size: usize);
+    fn on_mtu_update(&mut self, max_data_size: u16);
 
     /// Invoked for each packet discarded when a packet number space is discarded.
     fn on_packet_discarded(&mut self, bytes_sent: usize);
@@ -75,15 +75,11 @@ pub mod testing {
     use crate::recovery::RTTEstimator;
 
     #[derive(Clone, Copy, Debug, Default, PartialEq)]
-    pub struct MockCC {
-        // TODO add fields
-        _todo: (),
-    }
+    pub struct Unlimited {}
 
-    impl CongestionController for MockCC {
-        // TODO implement callbacks
-        fn congestion_window(&self) -> usize {
-            usize::max_value()
+    impl CongestionController for Unlimited {
+        fn congestion_window(&self) -> u32 {
+            u32::max_value()
         }
         fn on_packet_sent(&mut self, _time_sent: Timestamp, _bytes_sent: usize) {}
         fn on_rtt_update(&mut self, _time_sent: Timestamp, _rtt_estimator: &RTTEstimator) {}
@@ -107,7 +103,7 @@ pub mod testing {
 
         fn on_congestion_event(&mut self, _event_time: Timestamp) {}
 
-        fn on_mtu_update(&mut self, _max_data_size: usize) {}
+        fn on_mtu_update(&mut self, _max_data_size: u16) {}
 
         fn on_packet_discarded(&mut self, _bytes_sent: usize) {}
     }

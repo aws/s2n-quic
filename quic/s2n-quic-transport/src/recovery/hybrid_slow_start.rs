@@ -14,15 +14,15 @@ pub struct HybridSlowStart {
     sample_count: usize,
     last_min_rtt: Option<Duration>,
     cur_min_rtt: Option<Duration>,
-    pub(super) threshold: usize,
-    max_datagram_size: usize,
+    pub(super) threshold: u32,
+    max_datagram_size: u16,
     time_of_last_sent_packet: Option<Timestamp>,
     rtt_round_end_time: Option<Timestamp>,
 }
 
 /// Minimum slow start threshold in multiples of the max_datagram_size.
 /// Defined as "hystart_low_window" in tcp_cubic.c
-const LOW_SSTHRESH: usize = 16;
+const LOW_SSTHRESH: u16 = 16;
 /// Number of samples required before determining the slow start threshold.
 /// Defined as "HYSTART_MIN_SAMPLES" in tcp_cubic.c
 const N_SAMPLING: usize = 8;
@@ -36,7 +36,7 @@ const THRESHOLD_DIVIDEND: usize = 8;
 impl HybridSlowStart {
     /// Constructs a new `HybridSlowStart`. `max_datagram_size` is used for determining
     /// the minimum slow start threshold.
-    pub(super) fn new(max_datagram_size: usize) -> Self {
+    pub(super) fn new(max_datagram_size: u16) -> Self {
         Self {
             sample_count: 0,
             last_min_rtt: None,
@@ -44,7 +44,7 @@ impl HybridSlowStart {
             //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.3.1
             //# A sender begins in slow start because the slow start threshold
             //# is initialized to an infinite value.
-            threshold: usize::max_value(),
+            threshold: u32::max_value(),
             max_datagram_size,
             time_of_last_sent_packet: None,
             rtt_round_end_time: None,
@@ -58,7 +58,7 @@ impl HybridSlowStart {
     /// threshold.
     pub(super) fn on_rtt_update(
         &mut self,
-        congestion_window: usize,
+        congestion_window: u32,
         time_sent: Timestamp,
         time_of_last_sent_packet: Timestamp,
         rtt: Duration,
@@ -113,12 +113,12 @@ impl HybridSlowStart {
     /// slow start threshold to the minimum of the Hybrid Slow Start threshold
     /// and the given congestion window. This will ensure we exit slow start
     /// early enough to avoid further congestion.
-    pub(super) fn on_congestion_event(&mut self, ssthresh: usize) {
+    pub(super) fn on_congestion_event(&mut self, ssthresh: u32) {
         self.threshold = max(self.low_ssthresh(), min(self.threshold, ssthresh));
     }
 
-    fn low_ssthresh(&self) -> usize {
-        LOW_SSTHRESH * self.max_datagram_size
+    fn low_ssthresh(&self) -> u32 {
+        (LOW_SSTHRESH * self.max_datagram_size) as u32
     }
 }
 
@@ -263,7 +263,7 @@ mod test {
         assert_eq!(slow_start.cur_min_rtt, Some(Duration::from_millis(112)));
         // The last ack was the 8th sample, but since the min rtt increased below the threshold,
         // the slow start threshold remains the same
-        assert_eq!(slow_start.threshold, usize::max_value());
+        assert_eq!(slow_start.threshold, u32::max_value());
 
         // -- Round 3 --
 
