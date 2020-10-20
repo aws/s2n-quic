@@ -76,7 +76,11 @@ impl SubAssign<u32> for BytesInFlight {
 
 impl AddAssign<u32> for BytesInFlight {
     fn add_assign(&mut self, rhs: u32) {
-        self.0 = self.0 + rhs;
+        if cfg!(debug_assertions) {
+            self.0 += rhs;
+        } else {
+            self.0 = self.0.saturating_add(rhs);
+        }
     }
 }
 
