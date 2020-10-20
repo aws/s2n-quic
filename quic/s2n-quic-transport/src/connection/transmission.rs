@@ -1,6 +1,7 @@
 use crate::{
     connection::{self, SharedConnectionState},
     contexts::ConnectionContext,
+    recovery::CongestionController,
 };
 use core::time::Duration;
 use s2n_codec::{Encoder, EncoderBuffer};
@@ -13,6 +14,7 @@ use s2n_quic_core::{
     path::Path,
     time::Timestamp,
 };
+use std::convert::TryInto;
 
 #[derive(Debug)]
 pub struct ConnectionTransmissionContext<'a, Config: connection::Config> {
@@ -60,11 +62,22 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
     }
 
     fn write_payload(&mut self, buffer: &mut [u8]) -> usize {
-        // TODO trim off based on congestion controller
-
         let shared_state = &mut self.shared_state;
         let space_manager = &mut shared_state.space_manager;
-        let mtu = self.context.path.clamp_mtu(buffer.len());
+        let available_congestion_window = self
+            .context
+            .path
+            .congestion_controller
+            .available_congestion_window()
+            .try_into()
+            .unwrap_or(usize::max_value());
+
+        let mtu = self
+            .context
+            .path
+            .clamp_mtu(buffer.len())
+            .min(available_congestion_window);
+
         if mtu == 0 {
             return 0;
         }

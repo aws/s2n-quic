@@ -101,6 +101,11 @@ impl CongestionController for CubicCongestionController {
         self.congestion_window
     }
 
+    fn available_congestion_window(&self) -> u32 {
+        self.congestion_window
+            .saturating_sub(self.bytes_in_flight.0)
+    }
+
     fn on_packet_sent(&mut self, time_sent: Timestamp, bytes_sent: usize) {
         self.bytes_in_flight += bytes_sent;
 
@@ -291,8 +296,6 @@ impl CongestionController for CubicCongestionController {
 }
 
 impl CubicCongestionController {
-    // TODO: Remove when used
-    #[allow(dead_code)]
     pub fn new(max_datagram_size: u16) -> Self {
         Self {
             cubic: Cubic::new(max_datagram_size),
@@ -626,6 +629,18 @@ mod test {
         cc.bytes_in_flight = BytesInFlight(1000);
 
         assert!(!cc.is_under_utilized());
+    }
+
+    #[test]
+    fn available_congestion_window() {
+        let mut cc = CubicCongestionController::new(1000);
+        cc.congestion_window = 1000;
+        cc.bytes_in_flight = BytesInFlight(100);
+
+        assert_eq!(cc.available_congestion_window(), 900);
+
+        cc.bytes_in_flight = BytesInFlight(2000);
+        assert_eq!(cc.available_congestion_window(), 0);
     }
 
     #[test]
