@@ -1,7 +1,7 @@
 //! Configuration parameters for `Endpoint`s
 
 use crate::connection;
-use s2n_quic_core::{crypto::tls, endpoint::EndpointType, recovery::congestion_controller};
+use s2n_quic_core::{crypto::tls, endpoint, recovery::congestion_controller};
 
 /// Configuration paramters for a QUIC endpoint
 pub trait Config: Sized {
@@ -19,10 +19,13 @@ pub trait Config: Sized {
     type Connection: connection::Trait<Config = Self::ConnectionConfig>;
     /// The connection ID format
     type ConnectionIdFormat: connection::id::Format;
+    /// The validation token format
     type TokenFormat: s2n_quic_core::token::Format;
+    /// The endpoint governor
+    type EndpointLimitFormat: endpoint::Format;
 
     /// The type of the local endpoint
-    const ENDPOINT_TYPE: EndpointType =
+    const ENDPOINT_TYPE: endpoint::EndpointType =
         <Self::ConnectionConfig as connection::Config>::ENDPOINT_TYPE;
 
     /// Obtain the configuration for the next connection to be handled
@@ -41,4 +44,7 @@ pub struct Context<'a, Cfg: Config> {
 
     /// The TLS endpoint associated with the endpoint config
     pub tls: &'a mut Cfg::TLSEndpoint,
+
+    /// The endpoint governor
+    pub governor: &'a mut Cfg::EndpointLimitFormat,
 }

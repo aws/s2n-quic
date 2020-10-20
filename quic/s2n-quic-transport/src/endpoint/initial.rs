@@ -1,6 +1,7 @@
 use crate::{
     connection::{self, id::Generator as _, SynchronizedSharedConnectionState, Trait as _},
     endpoint,
+    endpoint::Format,
     recovery::congestion_controller::{self, Endpoint as _},
     space::PacketSpaceManager,
 };
@@ -51,8 +52,28 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
 
         let source_connection_id: connection::Id = packet.source_connection_id().try_into()?;
 
-        // TODO check if we're busy
-        // TODO check the version number
+        let endpoint_context = self.config.context();
+
+        // Before allocating resources for a new connection, verify that can proceed.
+        let info = endpoint::ConnectionInfo::new(0, &datagram.remote_address);
+        match endpoint_context.governor.on_connection_attempt(&info) {
+            endpoint::Outcome::Allow => {
+                // No action
+            }
+            endpoint::Outcome::Retry { delay: _ } => {
+                //= https://tools.ietf.org/html/draft-ietf-quic-transport-31#section-8.1.3
+                //# A server can also use a Retry packet to defer the state and
+                //# processing costs of connection establishment.
+            }
+            endpoint::Outcome::Drop => {
+                // Stop processing
+            }
+            endpoint::Outcome::Close { delay: _ } => {
+                // Queue close packet
+            }
+        }
+
+        // TODO https://github.com/awslabs/s2n-quic/issues/159: Negotiate the version
 
         let initial_crypto =
             <<Config::ConnectionConfig as connection::Config>::TLSSession as CryptoSuite>::InitialCrypto::new_server(
@@ -66,8 +87,6 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         // TODO handle token with stateless retry
 
         let internal_connection_id = self.connection_id_generator.generate_id();
-
-        let endpoint_context = self.config.context();
 
         // TODO store the expiration of the connection ID
         let (local_connection_id, _connection_id_expiration) =

@@ -4,6 +4,7 @@ mod macros;
 pub mod clock;
 pub mod congestion_controller;
 pub mod connection_id;
+pub mod governor;
 pub mod io;
 pub mod limits;
 pub mod log;
