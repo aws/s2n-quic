@@ -328,7 +328,7 @@ impl Manager {
         if loss_info.bytes_in_flight > 0 {
             path.congestion_controller.on_packets_lost(
                 loss_info,
-                path.rtt_estimator.persistent_congestion_duration(),
+                path.rtt_estimator.persistent_congestion_threshold(),
                 datagram.timestamp,
             );
         }

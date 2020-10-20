@@ -4,6 +4,7 @@ use crate::recovery::{
 };
 use core::{
     cmp::{max, min},
+    ops::{AddAssign, SubAssign},
     time::Duration,
 };
 use s2n_quic_core::{recovery::RTTEstimator, time::Timestamp};
@@ -53,8 +54,30 @@ struct CubicCongestionController {
     //# overhead.  Packets only containing ACK frames do not count towards
     //# bytes_in_flight to ensure congestion control does not impede
     //# congestion feedback.
-    bytes_in_flight: usize,
+    bytes_in_flight: BytesInFlight,
     time_of_last_sent_packet: Option<Timestamp>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct BytesInFlight(usize);
+
+// This implementation of subtraction for BytesInFlight will
+// panic if debug assertions are enabled, but will otherwise
+// saturate to zero to avoid overflowing and wrapping.
+impl SubAssign<usize> for BytesInFlight {
+    fn sub_assign(&mut self, rhs: usize) {
+        if cfg!(debug_assertions) {
+            self.0 -= rhs;
+        } else {
+            self.0 = self.0.saturating_sub(rhs);
+        }
+    }
+}
+
+impl AddAssign<usize> for BytesInFlight {
+    fn add_assign(&mut self, rhs: usize) {
+        self.0 = self.0 + rhs;
+    }
 }
 
 impl CongestionController for CubicCongestionController {
@@ -65,13 +88,7 @@ impl CongestionController for CubicCongestionController {
     fn on_packet_sent(&mut self, time_sent: Timestamp, bytes_sent: usize) {
         self.bytes_in_flight += bytes_sent;
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.8
-        //# When bytes in flight is smaller than the congestion window and
-        //# sending is not pacing limited, the congestion window is under-
-        //# utilized.
-        let under_utilized = self.bytes_in_flight < self.congestion_window;
-
-        if under_utilized {
+        if self.is_under_utilized() {
             if let CongestionAvoidance(ref mut avoidance_start_time) = self.state {
                 //= https://tools.ietf.org/rfc/rfc8312.txt#5.8
                 //# CUBIC does not raise its congestion window size if the flow is
@@ -110,7 +127,8 @@ impl CongestionController for CubicCongestionController {
         rtt_estimator: &RTTEstimator,
         ack_receive_time: Timestamp,
     ) {
-        let under_utilized = self.bytes_in_flight < self.congestion_window;
+        // Check if the congestion window is under utilized before updating bytes in flight
+        let under_utilized = self.is_under_utilized();
         self.bytes_in_flight -= sent_bytes;
 
         if under_utilized {
@@ -181,7 +199,7 @@ impl CongestionController for CubicCongestionController {
     fn on_packets_lost(
         &mut self,
         loss_info: LossInfo,
-        persistent_congestion_duration: Duration,
+        persistent_congestion_threshold: Duration,
         timestamp: Timestamp,
     ) {
         self.bytes_in_flight -= loss_info.bytes_in_flight;
@@ -189,7 +207,7 @@ impl CongestionController for CubicCongestionController {
 
         // Reset the congestion window if the loss of these
         // packets indicates persistent congestion.
-        if loss_info.persistent_congestion_period > persistent_congestion_duration {
+        if loss_info.persistent_congestion_period > persistent_congestion_threshold {
             self.congestion_window = self.minimum_window();
             self.state = State::SlowStart;
         }
@@ -197,12 +215,12 @@ impl CongestionController for CubicCongestionController {
 
     fn on_congestion_event(&mut self, event_time: Timestamp) {
         // No reaction if already in a recovery period.
-        if let State::Recovery(_) = self.state {
+        if matches!(self.state, Recovery(_)) {
             return;
         }
 
         // Enter recovery period.
-        self.state = State::Recovery(event_time);
+        self.state = Recovery(event_time);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.3.2
         //# On entering a recovery period, a sender MUST set the slow start threshold
@@ -266,8 +284,8 @@ impl CubicCongestionController {
             slow_start: HybridSlowStart::new(max_datagram_size),
             max_datagram_size,
             congestion_window: CubicCongestionController::initial_window(max_datagram_size),
-            state: State::SlowStart,
-            bytes_in_flight: 0,
+            state: SlowStart,
+            bytes_in_flight: BytesInFlight(0),
             time_of_last_sent_packet: None,
         }
     }
@@ -290,6 +308,14 @@ impl CubicCongestionController {
     //# congestion.  The RECOMMENDED value is 2 * max_datagram_size.
     fn minimum_window(&self) -> usize {
         2 * self.max_datagram_size
+    }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.8
+    //# When bytes in flight is smaller than the congestion window and
+    //# sending is not pacing limited, the congestion window is under-
+    //# utilized.
+    fn is_under_utilized(&self) -> bool {
+        self.bytes_in_flight.0 < self.congestion_window
     }
 
     fn congestion_avoidance(&mut self, t: Duration, rtt: Duration, sent_bytes: usize) {
@@ -480,7 +506,7 @@ impl Cubic {
 mod test {
     use crate::recovery::{
         cubic::{
-            Cubic, CubicCongestionController, State,
+            BytesInFlight, Cubic, CubicCongestionController,
             State::{CongestionAvoidance, Recovery, SlowStart},
             BETA_CUBIC,
         },
@@ -506,8 +532,8 @@ mod test {
         let max_datagram_size = 1200.0;
         let mut cubic = Cubic::new(max_datagram_size as usize);
 
-        cubic.update_w_max(2764800);
-        assert_delta!(cubic.w_max, 2764800.0 / max_datagram_size, 0.001);
+        cubic.update_w_max(2_764_800);
+        assert_delta!(cubic.w_max, 2_764_800.0 / max_datagram_size, 0.001);
 
         let mut t = Duration::from_secs(0);
 
@@ -553,12 +579,12 @@ mod test {
         cubic.update_w_max(10000);
 
         assert_eq!(
-            cubic.multiplicative_decrease(100000),
-            (100000.0 * BETA_CUBIC) as usize
+            cubic.multiplicative_decrease(100_000),
+            (100_000.0 * BETA_CUBIC) as usize
         );
         // Window max was not less than the last max, so not fast convergence
         assert_delta!(cubic.w_last_max, cubic.w_max, 0.001);
-        assert_delta!(cubic.w_max, 100000.0 / max_datagram_size, 0.001);
+        assert_delta!(cubic.w_max, 100_000.0 / max_datagram_size, 0.001);
 
         assert_eq!(
             cubic.multiplicative_decrease(80000),
@@ -571,17 +597,31 @@ mod test {
     }
 
     #[test]
+    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.8")]
+    fn is_under_utilized() {
+        let mut cc = CubicCongestionController::new(1000);
+        cc.congestion_window = 1000;
+        cc.bytes_in_flight = BytesInFlight(100);
+
+        assert!(cc.is_under_utilized());
+
+        cc.bytes_in_flight = BytesInFlight(1000);
+
+        assert!(!cc.is_under_utilized());
+    }
+
+    #[test]
     fn on_packet_sent() {
         let mut cc = CubicCongestionController::new(1000);
         let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(0));
         let now = s2n_quic_platform::time::now();
 
-        cc.congestion_window = 100000;
+        cc.congestion_window = 100_000;
 
         // Last sent packet time updated to t10
         cc.on_packet_sent(now + Duration::from_secs(10), 1);
 
-        assert_eq!(cc.bytes_in_flight, 1);
+        assert_eq!(cc.bytes_in_flight.0, 1);
 
         // Latest RTT is 100ms
         rtt_estimator.update_rtt(
@@ -605,14 +645,14 @@ mod test {
         // Last sent packet time updated to t20
         cc.on_packet_sent(now + Duration::from_secs(20), 1);
 
-        assert_eq!(cc.bytes_in_flight, 2);
+        assert_eq!(cc.bytes_in_flight.0, 2);
 
         // Round two of Hystart
         for _i in 1..=8 {
             cc.on_rtt_update(now + Duration::from_secs(10), &rtt_estimator);
         }
 
-        assert_eq!(cc.slow_start.threshold, 100000);
+        assert_eq!(cc.slow_start.threshold, 100_000);
     }
 
     #[test]
@@ -620,13 +660,13 @@ mod test {
         let mut cc = CubicCongestionController::new(1000);
         let now = s2n_quic_platform::time::now();
 
-        cc.congestion_window = 100000;
-        cc.bytes_in_flight = 99900;
+        cc.congestion_window = 100_000;
+        cc.bytes_in_flight = BytesInFlight(99900);
         cc.state = CongestionAvoidance(now);
 
         cc.on_packet_sent(now + Duration::from_secs(10), 100);
 
-        assert_eq!(cc.bytes_in_flight, 100000);
+        assert_eq!(cc.bytes_in_flight.0, 100_000);
         assert_eq!(
             cc.time_of_last_sent_packet,
             Some(now + Duration::from_secs(10))
@@ -634,7 +674,7 @@ mod test {
         // Not application limited so the CongestionAvoidance start stays the same
         assert_eq!(cc.state, CongestionAvoidance(now));
 
-        cc.bytes_in_flight = 99800;
+        cc.bytes_in_flight = BytesInFlight(99800);
 
         cc.on_packet_sent(now + Duration::from_secs(25), 100);
 
@@ -647,9 +687,9 @@ mod test {
     fn on_packet_lost() {
         let mut cc = CubicCongestionController::new(1000);
         let now = s2n_quic_platform::time::now();
-        cc.congestion_window = 100000;
-        cc.bytes_in_flight = 100000;
-        cc.state = State::CongestionAvoidance(now);
+        cc.congestion_window = 100_000;
+        cc.bytes_in_flight = BytesInFlight(100_000);
+        cc.state = CongestionAvoidance(now);
 
         let mut loss_info = LossInfo::default();
         loss_info.bytes_in_flight = 100;
@@ -660,10 +700,10 @@ mod test {
             now + Duration::from_secs(10),
         );
 
-        assert_eq!(cc.bytes_in_flight, 100000 - 100);
-        assert_eq!(cc.state, State::Recovery(now + Duration::from_secs(10)));
-        assert_eq!(cc.congestion_window(), (100000.0 * BETA_CUBIC) as usize);
-        assert_eq!(cc.slow_start.threshold, (100000.0 * BETA_CUBIC) as usize);
+        assert_eq!(cc.bytes_in_flight.0, 100_000 - 100);
+        assert_eq!(cc.state, Recovery(now + Duration::from_secs(10)));
+        assert_eq!(cc.congestion_window(), (100_000.0 * BETA_CUBIC) as usize);
+        assert_eq!(cc.slow_start.threshold, (100_000.0 * BETA_CUBIC) as usize);
     }
 
     #[test]
@@ -671,7 +711,7 @@ mod test {
         let mut cc = CubicCongestionController::new(1000);
         let now = s2n_quic_platform::time::now();
         cc.congestion_window = 10000;
-        cc.state = State::Recovery(now);
+        cc.state = Recovery(now);
 
         cc.on_packets_lost(LossInfo::default(), Duration::from_secs(5), now);
 
@@ -684,14 +724,14 @@ mod test {
         let mut cc = CubicCongestionController::new(1000);
         let now = s2n_quic_platform::time::now();
         cc.congestion_window = 10000;
-        cc.state = State::Recovery(now);
+        cc.state = Recovery(now);
 
         let mut loss_info = LossInfo::default();
         loss_info.persistent_congestion_period = Duration::from_secs(10);
 
         cc.on_packets_lost(loss_info, Duration::from_secs(5), now);
 
-        assert_eq!(cc.state, State::SlowStart);
+        assert_eq!(cc.state, SlowStart);
         assert_eq!(cc.congestion_window(), cc.minimum_window());
     }
 
@@ -714,24 +754,24 @@ mod test {
     #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.2")]
     fn on_mtu_update_increase() {
         let mut cc = CubicCongestionController::new(5000);
-        cc.congestion_window = 100000;
+        cc.congestion_window = 100_000;
 
         cc.on_mtu_update(10000);
         assert_eq!(cc.max_datagram_size, 10000);
         assert_eq!(cc.cubic.max_datagram_size, 10000);
 
-        assert_eq!(cc.congestion_window(), 200000);
+        assert_eq!(cc.congestion_window(), 200_000);
     }
 
     #[test]
     #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#6.4")]
     fn on_packet_discarded() {
         let mut cc = CubicCongestionController::new(5000);
-        cc.bytes_in_flight = 10000;
+        cc.bytes_in_flight = BytesInFlight(10000);
 
         cc.on_packet_discarded(1000);
 
-        assert_eq!(cc.bytes_in_flight, 10000 - 1000);
+        assert_eq!(cc.bytes_in_flight.0, 10000 - 1000);
     }
 
     #[test]
@@ -739,12 +779,12 @@ mod test {
     fn on_packet_ack_limited() {
         let mut cc = CubicCongestionController::new(5000);
         let now = s2n_quic_platform::time::now();
-        cc.congestion_window = 100000;
-        cc.bytes_in_flight = 10000;
+        cc.congestion_window = 100_000;
+        cc.bytes_in_flight = BytesInFlight(10000);
 
         cc.on_packet_ack(now, 1, &RTTEstimator::new(Duration::from_secs(0)), now);
 
-        assert_eq!(cc.congestion_window(), 100000);
+        assert_eq!(cc.congestion_window(), 100_000);
     }
 
     #[test]
@@ -755,7 +795,7 @@ mod test {
 
         cc.cubic.update_w_max(25000);
         cc.state = Recovery(now);
-        cc.bytes_in_flight = 25000;
+        cc.bytes_in_flight = BytesInFlight(25000);
 
         cc.on_packet_ack(
             now + Duration::from_millis(1),
@@ -778,7 +818,7 @@ mod test {
 
         cc.state = SlowStart;
         cc.congestion_window = 10000;
-        cc.bytes_in_flight = 10000;
+        cc.bytes_in_flight = BytesInFlight(10000);
         cc.slow_start.threshold = 10050;
 
         cc.on_packet_ack(
@@ -803,7 +843,7 @@ mod test {
 
         cc.state = Recovery(now);
         cc.congestion_window = 10000;
-        cc.bytes_in_flight = 10000;
+        cc.bytes_in_flight = BytesInFlight(10000);
 
         cc.on_packet_ack(
             now,
@@ -825,11 +865,11 @@ mod test {
 
         cc.state = CongestionAvoidance(now + Duration::from_millis(3300));
         cc.congestion_window = 10000;
-        cc.bytes_in_flight = 10000;
+        cc.bytes_in_flight = BytesInFlight(10000);
         cc.cubic.update_w_max(10000);
 
         cc2.congestion_window = 10000;
-        cc2.bytes_in_flight = 10000;
+        cc2.bytes_in_flight = BytesInFlight(10000);
         cc2.cubic.update_w_max(10000);
 
         let mut rtt_estimator = RTTEstimator::new(Duration::from_secs(0));
@@ -876,8 +916,8 @@ mod test {
         let max_datagram_size = 1200.0;
         let mut cc = CubicCongestionController::new(max_datagram_size as usize);
 
-        cc.congestion_window = 2400000;
-        cc.cubic.update_w_max(2764800);
+        cc.congestion_window = 2_400_000;
+        cc.cubic.update_w_max(2_764_800);
 
         let t = Duration::from_millis(9800);
         let rtt = Duration::from_millis(200);
@@ -894,7 +934,7 @@ mod test {
         // cwnd = ((2300.8 - 2000)/2000 + 2000) * max_datagram_size
         // cwnd = 2400180.48
 
-        assert_eq!(cc.congestion_window(), 2400180);
+        assert_eq!(cc.congestion_window(), 2_400_180);
     }
 
     #[test]
@@ -903,8 +943,8 @@ mod test {
         let max_datagram_size = 1200.0;
         let mut cc = CubicCongestionController::new(max_datagram_size as usize);
 
-        cc.congestion_window = 3600000;
-        cc.cubic.update_w_max(2764800);
+        cc.congestion_window = 3_600_000;
+        cc.cubic.update_w_max(2_764_800);
 
         let t = Duration::from_millis(25800);
         let rtt = Duration::from_millis(200);
@@ -921,7 +961,7 @@ mod test {
         // cwnd = ((3401.6 - 3000)/3000 + 3000) * max_datagram_size
         // cwnd = 3600160.64
 
-        assert_eq!(cc.congestion_window(), 3600160);
+        assert_eq!(cc.congestion_window(), 3_600_160);
     }
 
     #[test]
@@ -929,15 +969,15 @@ mod test {
         let max_datagram_size = 1200.0;
         let mut cc = CubicCongestionController::new(max_datagram_size as usize);
 
-        cc.congestion_window = 3600000;
-        cc.cubic.update_w_max(2764800);
+        cc.congestion_window = 3_600_000;
+        cc.cubic.update_w_max(2_764_800);
 
-        let t = Duration::from_millis(125800);
+        let t = Duration::from_millis(125_800);
         let rtt = Duration::from_millis(200);
 
         cc.congestion_avoidance(t, rtt, 1000);
 
         assert!(cc.cubic.w_cubic(t) > cc.cubic.w_est(t, rtt));
-        assert_eq!(cc.congestion_window(), 3600000 + 1000 / 2);
+        assert_eq!(cc.congestion_window(), 3_600_000 + 1000 / 2);
     }
 }

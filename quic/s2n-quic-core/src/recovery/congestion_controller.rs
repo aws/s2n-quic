@@ -54,7 +54,7 @@ pub trait CongestionController: 'static + Clone + Send {
     fn on_packets_lost(
         &mut self,
         loss_info: LossInfo,
-        persistent_congestion_duration: Duration,
+        persistent_congestion_threshold: Duration,
         timestamp: Timestamp,
     );
 
@@ -100,7 +100,7 @@ pub mod testing {
         fn on_packets_lost(
             &mut self,
             _loss_info: LossInfo,
-            _persistent_congestion_duration: Duration,
+            _persistent_congestion_threshold: Duration,
             _timestamp: Timestamp,
         ) {
         }

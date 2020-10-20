@@ -153,9 +153,9 @@ impl RTTEstimator {
         self.rttvar = 3 * self.rttvar / 4 + rttvar_sample / 4;
     }
 
-    /// Calculates the persistent congestion duration used for determining
+    /// Calculates the persistent congestion threshold used for determining
     /// if persistent congestion is being encountered.
-    pub fn persistent_congestion_duration(&self) -> Duration {
+    pub fn persistent_congestion_threshold(&self) -> Duration {
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.6.1
         //# The persistent congestion duration is computed as follows:
         //#
@@ -374,7 +374,7 @@ mod test {
         // = (100 + max(4*50, 1) + 10) * 3 = 930
         assert_eq!(
             Duration::from_millis(930),
-            rtt_estimator.persistent_congestion_duration()
+            rtt_estimator.persistent_congestion_threshold()
         );
 
         rtt_estimator.rttvar = Duration::from_millis(0);
@@ -384,7 +384,7 @@ mod test {
         // = (100 + max(0, 1) + 10) * 3 = 333
         assert_eq!(
             Duration::from_millis(333),
-            rtt_estimator.persistent_congestion_duration()
+            rtt_estimator.persistent_congestion_threshold()
         );
     }
 }
