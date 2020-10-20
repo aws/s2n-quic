@@ -74,6 +74,12 @@ impl SubAssign<u32> for BytesInFlight {
     }
 }
 
+impl SubAssign<usize> for BytesInFlight {
+    fn sub_assign(&mut self, rhs: usize) {
+        self.sub_assign(rhs as u32);
+    }
+}
+
 impl AddAssign<u32> for BytesInFlight {
     fn add_assign(&mut self, rhs: u32) {
         if cfg!(debug_assertions) {
@@ -84,13 +90,19 @@ impl AddAssign<u32> for BytesInFlight {
     }
 }
 
+impl AddAssign<usize> for BytesInFlight {
+    fn add_assign(&mut self, rhs: usize) {
+        self.add_assign(rhs as u32);
+    }
+}
+
 impl CongestionController for CubicCongestionController {
     fn congestion_window(&self) -> u32 {
         self.congestion_window
     }
 
     fn on_packet_sent(&mut self, time_sent: Timestamp, bytes_sent: usize) {
-        self.bytes_in_flight += bytes_sent as u32;
+        self.bytes_in_flight += bytes_sent;
 
         if self.is_under_utilized() {
             if let CongestionAvoidance(ref mut avoidance_start_time) = self.state {
@@ -133,7 +145,7 @@ impl CongestionController for CubicCongestionController {
     ) {
         // Check if the congestion window is under utilized before updating bytes in flight
         let under_utilized = self.is_under_utilized();
-        self.bytes_in_flight -= sent_bytes as u32;
+        self.bytes_in_flight -= sent_bytes;
 
         if under_utilized {
             //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.8
@@ -205,7 +217,7 @@ impl CongestionController for CubicCongestionController {
         persistent_congestion_threshold: Duration,
         timestamp: Timestamp,
     ) {
-        self.bytes_in_flight -= loss_info.bytes_in_flight as u32;
+        self.bytes_in_flight -= loss_info.bytes_in_flight;
         self.on_congestion_event(timestamp);
 
         // Reset the congestion window if the loss of these
@@ -274,7 +286,7 @@ impl CongestionController for CubicCongestionController {
     //# anymore.  The sender MUST discard all recovery state associated with
     //# those packets and MUST remove them from the count of bytes in flight.
     fn on_packet_discarded(&mut self, bytes_sent: usize) {
-        self.bytes_in_flight -= bytes_sent as u32;
+        self.bytes_in_flight -= bytes_sent;
     }
 }
 
