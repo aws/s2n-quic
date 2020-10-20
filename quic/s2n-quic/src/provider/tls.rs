@@ -5,7 +5,7 @@ use s2n_quic_core::crypto;
 pub trait Provider {
     type Server: 'static + crypto::tls::Endpoint;
     type Client: 'static + crypto::tls::Endpoint;
-    type Error: core::fmt::Display;
+    type Error: 'static + core::fmt::Display;
 
     /// Creates a server endpoint for the given provider
     fn start_server(self) -> Result<Self::Server, Self::Error>;

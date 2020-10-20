@@ -3,7 +3,7 @@ macro_rules! impl_provider_utils {
         /// Converts a value into a `Provider`
         pub trait TryInto {
             type Provider: Provider;
-            type Error;
+            type Error: 'static + core::fmt::Display;
 
             fn try_into(self) -> Result<Self::Provider, Self::Error>;
         }

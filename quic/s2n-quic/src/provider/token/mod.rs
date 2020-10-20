@@ -8,7 +8,7 @@ pub use s2n_quic_core::token::Format;
 
 pub trait Provider: 'static {
     type Format: 'static + Format;
-    type Error: core::fmt::Display;
+    type Error: 'static + core::fmt::Display;
 
     /// Starts the token provider
     fn start(self) -> Result<Self::Format, Self::Error>;

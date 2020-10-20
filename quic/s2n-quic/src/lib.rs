@@ -12,7 +12,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let mut server = Server::builder()
         .with_tls((Path::new("./certs/cert.pem"), Path::new("./certs/key.pem")))?
         .with_io("127.0.0.1:443")?
-        .build()?;
+        .start()?;
 
     while let Some(mut connection) = server.accept().await {
         // spawn a new task for the connection
