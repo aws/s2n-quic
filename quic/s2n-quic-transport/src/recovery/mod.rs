@@ -5,6 +5,7 @@ mod cubic;
 mod hybrid_slow_start;
 mod manager;
 
+pub use cubic::*;
 pub use manager::*;
 
 /// re-export core

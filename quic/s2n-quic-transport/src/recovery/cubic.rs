@@ -40,7 +40,7 @@ enum State {
 /// as specified in https://tools.ietf.org/html/rfc8312. The Hybrid Slow Start algorithm
 /// is used for determining the slow start threshold.
 #[derive(Clone)]
-struct CubicCongestionController {
+pub struct CubicCongestionController {
     cubic: Cubic,
     slow_start: HybridSlowStart,
     max_datagram_size: u16,
