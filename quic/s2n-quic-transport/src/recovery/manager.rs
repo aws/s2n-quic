@@ -166,11 +166,10 @@ impl Manager {
             self.time_of_last_ack_eliciting_packet = Some(time_sent);
         }
 
-        path.congestion_controller.on_packet_sent(
-            time_sent,
-            outcome.bytes_sent,
-            outcome.is_congestion_controlled,
-        );
+        if outcome.is_congestion_controlled {
+            path.congestion_controller
+                .on_packet_sent(time_sent, outcome.bytes_sent);
+        }
     }
 
     /// Updates the time threshold used by the loss timer and sets the PTO timer
@@ -336,8 +335,6 @@ impl Manager {
 
         for acked_packet_info in newly_acked_packets {
             path.congestion_controller.on_packet_ack(
-                // Use the sent time of the largest newly acked so the congestion
-                // controller exits recovery immediately if possible.
                 largest_newly_acked.1.time_sent,
                 acked_packet_info.sent_bytes as usize,
                 &path.rtt_estimator,

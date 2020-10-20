@@ -31,25 +31,26 @@ impl<'a> PathInfo<'a> {
 }
 
 pub trait CongestionController: 'static + Clone + Send {
+    /// Gets the current congestion window size in bytes
     fn congestion_window(&self) -> usize;
 
-    fn on_packet_sent(
-        &mut self,
-        time_sent: Timestamp,
-        sent_bytes: usize,
-        congestion_controlled: bool,
-    );
+    /// Invoked whenever a congestion controlled packet is sent
+    fn on_packet_sent(&mut self, time_sent: Timestamp, sent_bytes: usize);
 
+    /// Invoked each time the round trip time is updated, which is whenever the
+    /// largest acknowledged packet in an ACK frame is newly acknowledged
     fn on_rtt_update(&mut self, time_sent: Timestamp, rtt_estimator: &RTTEstimator);
 
+    /// Invoked for each newly acknowledged packet
     fn on_packet_ack(
         &mut self,
-        time_sent: Timestamp,
+        largest_acked_time_sent: Timestamp,
         bytes_sent: usize,
         rtt_estimator: &RTTEstimator,
         ack_receive_time: Timestamp,
     );
 
+    /// Invoked when packets are declared lost
     fn on_packets_lost(
         &mut self,
         loss_info: LossInfo,
@@ -57,10 +58,14 @@ pub trait CongestionController: 'static + Clone + Send {
         timestamp: Timestamp,
     );
 
+    /// Invoked from on_packets_lost, but is also directly invoked when
+    /// the Explicit Congestion Notification counter increases.
     fn on_congestion_event(&mut self, event_time: Timestamp);
 
+    /// Invoked when the path maximum transmission unit is updated.
     fn on_mtu_update(&mut self, max_data_size: usize);
 
+    /// Invoked for each packet discarded when a packet number space is discarded.
     fn on_packet_discarded(&mut self, bytes_sent: usize);
 }
 
@@ -80,18 +85,12 @@ pub mod testing {
         fn congestion_window(&self) -> usize {
             usize::max_value()
         }
-        fn on_packet_sent(
-            &mut self,
-            _time_sent: Timestamp,
-            _bytes_sent: usize,
-            _congestion_controlled: bool,
-        ) {
-        }
+        fn on_packet_sent(&mut self, _time_sent: Timestamp, _bytes_sent: usize) {}
         fn on_rtt_update(&mut self, _time_sent: Timestamp, _rtt_estimator: &RTTEstimator) {}
 
         fn on_packet_ack(
             &mut self,
-            _time_sent: Timestamp,
+            _largest_acked_time_sent: Timestamp,
             _sent_bytes: usize,
             _rtt_estimator: &RTTEstimator,
             _ack_receive_time: Timestamp,

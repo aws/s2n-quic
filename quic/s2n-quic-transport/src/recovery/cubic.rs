@@ -62,15 +62,8 @@ impl CongestionController for CubicCongestionController {
         self.congestion_window
     }
 
-    fn on_packet_sent(
-        &mut self,
-        time_sent: Timestamp,
-        bytes_sent: usize,
-        congestion_controlled: bool,
-    ) {
-        if congestion_controlled {
-            self.bytes_in_flight += bytes_sent;
-        }
+    fn on_packet_sent(&mut self, time_sent: Timestamp, bytes_sent: usize) {
+        self.bytes_in_flight += bytes_sent;
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.8
         //# When bytes in flight is smaller than the congestion window and
@@ -112,7 +105,7 @@ impl CongestionController for CubicCongestionController {
 
     fn on_packet_ack(
         &mut self,
-        time_sent: Timestamp,
+        largest_acked_time_sent: Timestamp,
         sent_bytes: usize,
         rtt_estimator: &RTTEstimator,
         ack_receive_time: Timestamp,
@@ -132,7 +125,7 @@ impl CongestionController for CubicCongestionController {
 
         // Check if this ack causes the controller to exit recovery
         if let State::Recovery(recovery_start_time) = self.state {
-            if time_sent > recovery_start_time {
+            if largest_acked_time_sent > recovery_start_time {
                 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.3.2
                 //# A recovery period ends and the sender enters congestion avoidance
                 //# when a packet sent during the recovery period is acknowledged.
@@ -586,7 +579,7 @@ mod test {
         cc.congestion_window = 100000;
 
         // Last sent packet time updated to t10
-        cc.on_packet_sent(now + Duration::from_secs(10), 1, true);
+        cc.on_packet_sent(now + Duration::from_secs(10), 1);
 
         assert_eq!(cc.bytes_in_flight, 1);
 
@@ -610,7 +603,7 @@ mod test {
         );
 
         // Last sent packet time updated to t20
-        cc.on_packet_sent(now + Duration::from_secs(20), 1, true);
+        cc.on_packet_sent(now + Duration::from_secs(20), 1);
 
         assert_eq!(cc.bytes_in_flight, 2);
 
@@ -620,10 +613,6 @@ mod test {
         }
 
         assert_eq!(cc.slow_start.threshold, 100000);
-
-        // Send a packet that is not congestion controlled
-        cc.on_packet_sent(now + Duration::from_secs(30), 1, false);
-        assert_eq!(cc.bytes_in_flight, 2);
     }
 
     #[test]
@@ -635,7 +624,7 @@ mod test {
         cc.bytes_in_flight = 99900;
         cc.state = CongestionAvoidance(now);
 
-        cc.on_packet_sent(now + Duration::from_secs(10), 100, true);
+        cc.on_packet_sent(now + Duration::from_secs(10), 100);
 
         assert_eq!(cc.bytes_in_flight, 100000);
         assert_eq!(
@@ -647,7 +636,7 @@ mod test {
 
         cc.bytes_in_flight = 99800;
 
-        cc.on_packet_sent(now + Duration::from_secs(25), 100, true);
+        cc.on_packet_sent(now + Duration::from_secs(25), 100);
 
         // Application limited so the CongestionAvoidance start moves up by 15 seconds
         // (time_of_last_sent_packet - time_sent)
