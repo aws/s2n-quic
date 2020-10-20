@@ -24,10 +24,10 @@ s2n-quic-platform = { version = "0.1", path = "../s2n-quic-platform", default-fe
 s2n-quic-rustls = { version = "0.1", path = "../s2n-quic-rustls", optional = true }
 s2n-quic-transport = { version = "0.1", path = "../s2n-quic-transport", default-features = false }
 thiserror = { version = "1.0", optional = true }
-tokio = { version = "0.2", optional = true, features = ["rt-core", "time", "udp"] }
+tokio = { version = "0.3", optional = true, features = ["rt-core", "time", "udp"] }
 zerocopy = { version = "0.3", optional = true }
 
 [dev-dependencies]
 s2n-quic-core = { version = "0.1", path = "../s2n-quic-core", features = ["testing"] }
 s2n-quic-platform = { version = "0.1", path = "../s2n-quic-platform", features = ["testing"] }
-tokio = { version = "0.2", features = ["full"] }
+tokio = { version = "0.3", features = ["full"] }
