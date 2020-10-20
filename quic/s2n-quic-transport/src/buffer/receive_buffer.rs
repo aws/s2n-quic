@@ -599,20 +599,48 @@ impl StreamReceiveBuffer {
 
     /// Pops a buffer from the front of the receive queue if available
     pub fn pop(&mut self) -> Option<BytesMut> {
-        self.pop_transform(|buffer| Some(buffer.split()))
+        self.pop_transform(|buffer| core::mem::replace(buffer, BytesMut::new()))
+    }
+
+    /// Pops a buffer from the front of the receive queue, who's length is always guaranteed to be
+    /// less than the provided `watermark`.
+    pub fn pop_watermarked(&mut self, watermark: usize) -> Option<BytesMut> {
+        self.pop_transform(|buffer| {
+            // make sure the buffer doesn't exceed the watermark
+            let watermark = watermark.min(buffer.len());
+
+            // if the watermark is 0 then don't needlessly increment refcounts
+            if watermark == 0 {
+                return BytesMut::new();
+            }
+
+            buffer.split_to(watermark)
+        })
     }
 
     /// Pops a buffer from the front of the receive queue as long as the `transform` function returns a
-    /// buffer.
-    pub fn pop_transform<F: Fn(&mut BytesMut) -> Option<BytesMut>>(
+    /// non-empty buffer.
+    fn pop_transform<F: Fn(&mut BytesMut) -> BytesMut>(
         &mut self,
         transform: F,
     ) -> Option<BytesMut> {
-        if let SlotState::Received(buffer) = self.slots.front_mut()? {
-            let out = transform(buffer)?;
+        let slot = self.slots.front_mut()?;
+        if let SlotState::Received(buffer) = slot {
+            debug_assert!(
+                !buffer.is_empty(),
+                "a received buffer should never be empty"
+            );
 
-            // remove an empty buffer if its capacity is getting low
-            if buffer.is_empty() && buffer.capacity() <= MIN_STREAM_RECEIVE_BUFFER_ALLOCATION_SIZE {
+            let out = transform(buffer);
+
+            if buffer.is_empty() {
+                debug_assert_eq!(
+                    buffer.capacity(),
+                    0,
+                    "buffers are always split from the allocated slot"
+                );
+
+                // remove empty buffers
                 self.slots.pop_front();
             }
 

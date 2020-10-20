@@ -3,7 +3,7 @@
 use super::*;
 use crate::{
     connection::{InternalConnectionId, InternalConnectionIdGenerator, Limits as ConnectionLimits},
-    contexts::{ConnectionApiCallContext, ConnectionContext, OnTransmitError, WriteContext},
+    contexts::{ConnectionApiCallContext, OnTransmitError, WriteContext},
     stream::{
         stream_impl::StreamConfig,
         stream_interests::{StreamInterestProvider, StreamInterests},
@@ -25,7 +25,7 @@ use s2n_quic_core::{
         stream::StreamRef, MaxData, MaxStreamData, ResetStream, StopSending, Stream as StreamFrame,
         StreamDataBlocked,
     },
-    stream::{StreamId, StreamType},
+    stream::{ops, StreamId, StreamType},
     transport::parameters::{InitialFlowControlLimits, InitialStreamLimits},
     varint::VarInt,
 };
@@ -241,80 +241,50 @@ impl StreamTrait for MockStream {
         self.on_connection_window_available_retrieve_window -= Into::<u64>::into(acquired_window);
     }
 
-    fn poll_pop<C: ConnectionContext>(
+    fn poll_request(
         &mut self,
-        _connection_context: &C,
-        _context: &Context,
-    ) -> Poll<Result<Option<Bytes>, StreamError>> {
-        self.poll_pop_count += 1;
-        if self.api_call_requires_transmission {
-            self.on_transmit_try_write_frames = 1;
-        }
-        if let Some(err) = self.next_api_error {
-            return Poll::Ready(Err(err));
-        };
-        Poll::Ready(Ok(None))
-    }
+        request: &mut ops::Request,
+        _context: Option<&Context>,
+    ) -> Result<ops::Response, StreamError> {
+        let mut response = ops::Response::default();
 
-    fn stop_sending<C: ConnectionContext>(
-        &mut self,
-        _error_code: ApplicationErrorCode,
-        _connection_context: &C,
-    ) -> Result<(), StreamError> {
-        self.stop_sending_count += 1;
+        if let Some(tx) = request.tx.as_ref() {
+            if tx.chunks.is_some() {
+                self.poll_push_count += 1;
+            }
+
+            if tx.finish {
+                self.poll_finish_count += 1;
+            }
+
+            if tx.reset.is_some() {
+                self.reset_count += 1;
+            }
+
+            response.tx = Some(ops::tx::Response::default());
+        }
+
+        if let Some(rx) = request.rx.as_ref() {
+            if rx.chunks.is_some() {
+                self.poll_pop_count += 1;
+            }
+
+            if rx.stop_sending.is_some() {
+                self.stop_sending_count += 1;
+            }
+
+            response.rx = Some(ops::rx::Response::default());
+        }
+
         if self.api_call_requires_transmission {
             self.on_transmit_try_write_frames = 1;
         }
-        if let Some(err) = self.next_api_error {
+
+        if let Some(err) = self.next_api_error.take() {
             return Err(err);
-        };
-        Ok(())
-    }
-
-    fn poll_push<C: ConnectionContext>(
-        &mut self,
-        _connection_context: &C,
-        _data: Bytes,
-        _context: &Context,
-    ) -> Poll<Result<(), StreamError>> {
-        self.poll_push_count += 1;
-        if self.api_call_requires_transmission {
-            self.on_transmit_try_write_frames = 1;
         }
-        if let Some(err) = self.next_api_error {
-            return Poll::Ready(Err(err));
-        };
-        Poll::Ready(Ok(()))
-    }
 
-    fn poll_finish<C: ConnectionContext>(
-        &mut self,
-        _connection_context: &C,
-        _context: &Context,
-    ) -> Poll<Result<(), StreamError>> {
-        self.poll_finish_count += 1;
-        if self.api_call_requires_transmission {
-            self.on_transmit_try_write_frames = 1;
-        }
-        if let Some(err) = self.next_api_error {
-            return Poll::Ready(Err(err));
-        };
-        Poll::Ready(Ok(()))
-    }
-
-    fn reset<C: ConnectionContext>(
-        &mut self,
-        _connection_context: &C,
-        _error_code: ApplicationErrorCode,
-    ) -> Result<(), StreamError> {
-        self.reset_count += 1;
-        if self.api_call_requires_transmission {
-            self.on_transmit_try_write_frames = 1;
-        }
-        if let Some(err) = self.next_api_error {
-            return Err(err);
-        };
-        Ok(())
+        Ok(response)
     }
 }
 
@@ -522,10 +492,11 @@ fn returns_finalization_interest_after_last_stream_is_drained() {
 
     // The second stream is not yet interested in finalization
     assert!(manager
-        .reset(
+        .poll_request(
             stream_2,
             &mut ConnectionApiCallContext::from_wakeup_handle(&mut wakeup_handle),
-            error
+            ops::Request::default().reset(error),
+            None,
         )
         .is_ok());
     assert_eq!(1, manager.active_streams().len());
@@ -1691,14 +1662,14 @@ fn forwards_poll_pop() {
     let stream_1 = manager.open(StreamType::Bidirectional).unwrap();
 
     let ctx = Context::from_waker(&waker);
-    assert_eq!(
-        Poll::Ready(Ok(None)),
-        manager.poll_pop(
+    assert!(manager
+        .poll_request(
             stream_1,
             &mut ConnectionApiCallContext::from_wakeup_handle(&mut wakeup_handle),
-            &ctx
+            ops::Request::default().receive(&mut [Bytes::new()]),
+            Some(&ctx),
         )
-    );
+        .is_ok());
 
     // Check call count and error forwarding
     manager.with_asserted_stream(stream_1, |stream| {
@@ -1710,11 +1681,12 @@ fn forwards_poll_pop() {
     assert_eq!(EMPTY_STREAM_MANAGER_INTERESTS, manager.interests());
     assert_wakeups(&mut wakeup_queue, 0);
     assert_eq!(
-        Poll::Ready(Err(StreamError::MaxStreamDataSizeExceeded)),
-        manager.poll_pop(
+        Err(StreamError::MaxStreamDataSizeExceeded),
+        manager.poll_request(
             stream_1,
             &mut ConnectionApiCallContext::from_wakeup_handle(&mut wakeup_handle),
-            &ctx
+            ops::Request::default().receive(&mut [Bytes::new()]),
+            Some(&ctx)
         )
     );
     assert_eq!(TX_STREAM_MANAGER_INTEREST, manager.interests());
@@ -1722,11 +1694,12 @@ fn forwards_poll_pop() {
 
     // Check invalid stream ID
     assert_eq!(
-        Poll::Ready(Err(StreamError::InvalidStream)),
-        manager.poll_pop(
+        Err(StreamError::InvalidStream),
+        manager.poll_request(
             invalid_stream_id(EndpointType::Server),
             &mut ConnectionApiCallContext::from_wakeup_handle(&mut wakeup_handle),
-            &ctx
+            ops::Request::default().receive(&mut [Bytes::new()]),
+            Some(&ctx)
         )
     );
 }
@@ -1739,14 +1712,14 @@ fn forwards_stop_sending() {
     let stream_1 = manager.open(StreamType::Bidirectional).unwrap();
     let error = ApplicationErrorCode::new(0x123_456).unwrap();
 
-    assert_eq!(
-        Ok(()),
-        manager.stop_sending(
+    assert!(manager
+        .poll_request(
             stream_1,
             &mut ConnectionApiCallContext::from_wakeup_handle(&mut wakeup_handle),
-            error
+            ops::Request::default().stop_sending(error),
+            None,
         )
-    );
+        .is_ok());
 
     // Check call count and error forwarding
     manager.with_asserted_stream(stream_1, |stream| {
@@ -1759,10 +1732,11 @@ fn forwards_stop_sending() {
     assert_wakeups(&mut wakeup_queue, 0);
     assert_eq!(
         Err(StreamError::MaxStreamDataSizeExceeded),
-        manager.stop_sending(
+        manager.poll_request(
             stream_1,
             &mut ConnectionApiCallContext::from_wakeup_handle(&mut wakeup_handle),
-            error
+            ops::Request::default().stop_sending(error),
+            None,
         )
     );
     assert_eq!(TX_STREAM_MANAGER_INTEREST, manager.interests());
@@ -1771,10 +1745,11 @@ fn forwards_stop_sending() {
     // Check invalid stream ID
     assert_eq!(
         Err(StreamError::InvalidStream),
-        manager.stop_sending(
+        manager.poll_request(
             invalid_stream_id(EndpointType::Server),
             &mut ConnectionApiCallContext::from_wakeup_handle(&mut wakeup_handle),
-            error,
+            ops::Request::default().stop_sending(error),
+            None,
         )
     );
 }
@@ -1789,15 +1764,14 @@ fn forwards_poll_push() {
     let data = Bytes::from_static(b"1234");
 
     let ctx = Context::from_waker(&waker);
-    assert_eq!(
-        Poll::Ready(Ok(())),
-        manager.poll_push(
+    assert!(manager
+        .poll_request(
             stream_1,
             &mut ConnectionApiCallContext::from_wakeup_handle(&mut wakeup_handle),
-            data.clone(),
-            &ctx
+            ops::Request::default().send(&mut [data.clone()]),
+            Some(&ctx)
         )
-    );
+        .is_ok());
 
     // Check call count and error forwarding
     manager.with_asserted_stream(stream_1, |stream| {
@@ -1809,12 +1783,12 @@ fn forwards_poll_push() {
     assert_eq!(EMPTY_STREAM_MANAGER_INTERESTS, manager.interests());
     assert_wakeups(&mut wakeup_queue, 0);
     assert_eq!(
-        Poll::Ready(Err(StreamError::MaxStreamDataSizeExceeded)),
-        manager.poll_push(
+        Err(StreamError::MaxStreamDataSizeExceeded),
+        manager.poll_request(
             stream_1,
             &mut ConnectionApiCallContext::from_wakeup_handle(&mut wakeup_handle),
-            data.clone(),
-            &ctx
+            ops::Request::default().send(&mut [data.clone()]),
+            Some(&ctx)
         )
     );
     assert_eq!(TX_STREAM_MANAGER_INTEREST, manager.interests());
@@ -1822,12 +1796,12 @@ fn forwards_poll_push() {
 
     // Check invalid stream ID
     assert_eq!(
-        Poll::Ready(Err(StreamError::InvalidStream)),
-        manager.poll_push(
+        Err(StreamError::InvalidStream),
+        manager.poll_request(
             invalid_stream_id(EndpointType::Server),
             &mut ConnectionApiCallContext::from_wakeup_handle(&mut wakeup_handle),
-            data,
-            &ctx
+            ops::Request::default().send(&mut [data]),
+            Some(&ctx)
         )
     );
 }
@@ -1841,14 +1815,14 @@ fn forwards_poll_finish() {
     let stream_1 = manager.open(StreamType::Bidirectional).unwrap();
 
     let ctx = Context::from_waker(&waker);
-    assert_eq!(
-        Poll::Ready(Ok(())),
-        manager.poll_finish(
+    assert!(manager
+        .poll_request(
             stream_1,
             &mut ConnectionApiCallContext::from_wakeup_handle(&mut wakeup_handle),
-            &ctx
+            ops::Request::default().finish().flush(),
+            Some(&ctx)
         )
-    );
+        .is_ok());
 
     // Check call count and error forwarding
     manager.with_asserted_stream(stream_1, |stream| {
@@ -1860,11 +1834,12 @@ fn forwards_poll_finish() {
     assert_eq!(EMPTY_STREAM_MANAGER_INTERESTS, manager.interests());
     assert_wakeups(&mut wakeup_queue, 0);
     assert_eq!(
-        Poll::Ready(Err(StreamError::MaxStreamDataSizeExceeded)),
-        manager.poll_finish(
+        Err(StreamError::MaxStreamDataSizeExceeded),
+        manager.poll_request(
             stream_1,
             &mut ConnectionApiCallContext::from_wakeup_handle(&mut wakeup_handle),
-            &ctx
+            ops::Request::default().finish().flush(),
+            Some(&ctx)
         )
     );
     assert_eq!(TX_STREAM_MANAGER_INTEREST, manager.interests());
@@ -1872,11 +1847,12 @@ fn forwards_poll_finish() {
 
     // Check invalid stream ID
     assert_eq!(
-        Poll::Ready(Err(StreamError::InvalidStream)),
-        manager.poll_finish(
+        Err(StreamError::InvalidStream),
+        manager.poll_request(
             invalid_stream_id(EndpointType::Server),
             &mut ConnectionApiCallContext::from_wakeup_handle(&mut wakeup_handle),
-            &ctx
+            ops::Request::default().finish().flush(),
+            Some(&ctx)
         )
     );
 }
@@ -1889,14 +1865,14 @@ fn forwards_reset() {
     let stream_1 = manager.open(StreamType::Bidirectional).unwrap();
     let error = ApplicationErrorCode::new(0x123_456).unwrap();
 
-    assert_eq!(
-        Ok(()),
-        manager.reset(
+    assert!(manager
+        .poll_request(
             stream_1,
             &mut ConnectionApiCallContext::from_wakeup_handle(&mut wakeup_handle),
-            error
+            ops::Request::default().reset(error),
+            None,
         )
-    );
+        .is_ok());
 
     // Check call count and error forwarding
     manager.with_asserted_stream(stream_1, |stream| {
@@ -1909,10 +1885,11 @@ fn forwards_reset() {
     assert_wakeups(&mut wakeup_queue, 0);
     assert_eq!(
         Err(StreamError::MaxStreamDataSizeExceeded),
-        manager.reset(
+        manager.poll_request(
             stream_1,
             &mut ConnectionApiCallContext::from_wakeup_handle(&mut wakeup_handle),
-            error
+            ops::Request::default().reset(error),
+            None,
         )
     );
     assert_eq!(TX_STREAM_MANAGER_INTEREST, manager.interests());
@@ -1921,10 +1898,11 @@ fn forwards_reset() {
     // Check invalid stream ID
     assert_eq!(
         Err(StreamError::InvalidStream),
-        manager.reset(
+        manager.poll_request(
             invalid_stream_id(EndpointType::Server),
             &mut ConnectionApiCallContext::from_wakeup_handle(&mut wakeup_handle),
-            error
+            ops::Request::default().reset(error),
+            None,
         )
     );
 }

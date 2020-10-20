@@ -46,3 +46,15 @@ impl_splittable_stream_trait!(PeerStream, |stream| match stream {
     PeerStream::Bidirectional(stream) => stream.split(),
     PeerStream::Receive(stream) => stream.split(),
 });
+
+impl From<ReceiveStream> for PeerStream {
+    fn from(stream: ReceiveStream) -> Self {
+        Self::Receive(stream)
+    }
+}
+
+impl From<BidirectionalStream> for PeerStream {
+    fn from(stream: BidirectionalStream) -> Self {
+        Self::Bidirectional(stream)
+    }
+}

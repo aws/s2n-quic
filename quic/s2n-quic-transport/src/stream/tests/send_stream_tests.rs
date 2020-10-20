@@ -4,7 +4,7 @@ use crate::stream::{
     StreamError, StreamEvents, StreamTrait,
 };
 use bytes::Bytes;
-use core::task::{Context, Poll};
+use core::task::Poll;
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     application::ApplicationErrorCode,
@@ -12,7 +12,7 @@ use s2n_quic_core::{
     endpoint::EndpointType,
     frame::{Frame, MaxData, MaxStreamData, StopSending},
     packet::number::PacketNumber,
-    stream::StreamType,
+    stream::{ops, StreamType},
     varint::{VarInt, MAX_VARINT_VALUE},
 };
 
@@ -40,13 +40,10 @@ fn remotely_initiated_unidirectional_stream_can_not_be_sent_to() {
         test_env_config.local_endpoint_type = *local_endpoint_type;
         let mut test_env = setup_stream_test_env_with_config(test_env_config);
 
-        let poll_context = Context::from_waker(&test_env.waker);
         let data = Bytes::from_static(b"1");
         assert_eq!(
             Poll::Ready(Err(StreamError::SendAfterFinish)),
-            test_env
-                .stream
-                .poll_push(&test_env.connection_context, data, &poll_context)
+            test_env.poll_push(data),
         );
     }
 }
@@ -67,14 +64,8 @@ fn bidirectional_and_locally_initiated_unidirectional_streams_can_be_written_to(
                 test_env_config.local_endpoint_type = *local_endpoint_type;
                 let mut test_env = setup_stream_test_env_with_config(test_env_config);
 
-                let poll_context = Context::from_waker(&test_env.waker);
                 let data = Bytes::from_static(b"a");
-                assert_eq!(
-                    Poll::Ready(Ok(())),
-                    test_env
-                        .stream
-                        .poll_push(&test_env.connection_context, data, &poll_context)
-                );
+                assert_eq!(test_env.poll_push(data), Poll::Ready(Ok(())));
             }
         }
     }
@@ -119,35 +110,27 @@ fn execute_instructions(test_env: &mut TestEnvironment, instructions: &[Instruct
             Instruction::EnqueueData(offset, size, expect_success) => {
                 let data = Bytes::from(gen_pattern_test_data(*offset, *size));
 
-                let poll_context = Context::from_waker(&test_env.waker);
-                let poll_result = test_env.stream.poll_push(
-                    &test_env.connection_context,
-                    data.clone(),
-                    &poll_context,
-                );
+                let poll_result = test_env.poll_push(data);
 
                 if *expect_success {
-                    assert_eq!(Poll::Ready(Ok(())), poll_result);
+                    assert_eq!(poll_result, Poll::Ready(Ok(())));
                 } else {
-                    assert_eq!(Poll::Pending, poll_result);
+                    assert_eq!(poll_result, Poll::Pending);
                 }
             }
             Instruction::Finish(expect_success) => {
-                let poll_context = Context::from_waker(&test_env.waker);
-                let poll_result = test_env
-                    .stream
-                    .poll_finish(&test_env.connection_context, &poll_context);
+                let poll_result = test_env.poll_finish();
 
                 if *expect_success {
-                    assert_eq!(Poll::Ready(Ok(())), poll_result);
+                    assert_eq!(poll_result, Poll::Ready(Ok(())));
                 } else {
-                    assert_eq!(Poll::Pending, poll_result);
+                    assert_eq!(poll_result, Poll::Pending);
                 }
             }
             Instruction::Reset(error_code, expect_success) => {
                 let result = test_env
                     .stream
-                    .reset(&test_env.connection_context, *error_code);
+                    .poll_request(ops::Request::default().reset(*error_code), None);
 
                 assert_eq!(*expect_success, result.is_ok(), "Unexpected reset result");
             }
@@ -246,21 +229,10 @@ fn sent_data_gets_enqueued_as_frames() {
     let data2 = Bytes::from_static(b"456");
     let data3 = Bytes::from_static(b"789");
 
-    let poll_context = Context::from_waker(&test_env.waker);
-    assert_eq!(
-        Poll::Ready(Ok(())),
-        test_env
-            .stream
-            .poll_push(&test_env.connection_context, data1.clone(), &poll_context)
-    );
+    assert_eq!(test_env.poll_push(data1.clone()), Poll::Ready(Ok(())),);
     assert_eq!(stream_interests(&["tx"]), test_env.stream.interests());
 
-    assert_eq!(
-        Poll::Ready(Ok(())),
-        test_env
-            .stream
-            .poll_push(&test_env.connection_context, data2.clone(), &poll_context)
-    );
+    assert_eq!(test_env.poll_push(data2.clone()), Poll::Ready(Ok(())),);
     assert_eq!(stream_interests(&["tx"]), test_env.stream.interests());
 
     test_env.assert_write_frames(2);
@@ -288,13 +260,7 @@ fn sent_data_gets_enqueued_as_frames() {
     assert_eq!(stream_interests(&["ack"]), test_env.stream.interests());
     test_env.assert_write_frames(0);
 
-    let poll_context = Context::from_waker(&test_env.waker);
-    assert_eq!(
-        Poll::Ready(Ok(())),
-        test_env
-            .stream
-            .poll_push(&test_env.connection_context, data3.clone(), &poll_context)
-    );
+    assert_eq!(test_env.poll_push(data3.clone()), Poll::Ready(Ok(())),);
     assert_eq!(
         stream_interests(&["ack", "tx"]),
         test_env.stream.interests()
@@ -1156,14 +1122,9 @@ fn can_write_up_to_max_stream_size() {
         .flow_controller_mut()
         .set_max_stream_data(max_varint);
 
-    let poll_context = Context::from_waker(&test_env.waker);
     assert_eq!(
         Poll::Ready(Ok(())),
-        test_env.stream.poll_push(
-            &test_env.connection_context,
-            Bytes::from_static(b"a"),
-            &poll_context
-        )
+        test_env.poll_push(Bytes::from_static(b"a"))
     );
 }
 
@@ -1187,14 +1148,9 @@ fn can_not_write_more_data_than_maximum_stream_size() {
         .flow_controller_mut()
         .set_max_stream_data(max_varint);
 
-    let poll_context = Context::from_waker(&test_env.waker);
     assert_eq!(
         Poll::Ready(Err(StreamError::MaxStreamDataSizeExceeded)),
-        test_env.stream.poll_push(
-            &test_env.connection_context,
-            Bytes::from_static(b"aa"),
-            &poll_context
-        )
+        test_env.poll_push(Bytes::from_static(b"aa"))
     );
 
     // And this part checks what happens if are exactly at the limit before
@@ -1211,22 +1167,13 @@ fn can_not_write_more_data_than_maximum_stream_size() {
         .flow_controller_mut()
         .set_max_stream_data(max_varint);
 
-    let poll_context = Context::from_waker(&test_env.waker);
     assert_eq!(
         Poll::Ready(Ok(())),
-        test_env.stream.poll_push(
-            &test_env.connection_context,
-            Bytes::from_static(b"a"),
-            &poll_context
-        )
+        test_env.poll_push(Bytes::from_static(b"a"))
     );
     assert_eq!(
         Poll::Ready(Err(StreamError::MaxStreamDataSizeExceeded)),
-        test_env.stream.poll_push(
-            &test_env.connection_context,
-            Bytes::from_static(b"a"),
-            &poll_context
-        )
+        test_env.poll_push(Bytes::from_static(b"a"))
     );
 }
 
@@ -1257,14 +1204,9 @@ fn push_data_after_stream_is_reset_locally() {
             );
         }
 
-        let poll_context = Context::from_waker(&test_env.waker);
         assert_eq!(
             Poll::Ready(Err(StreamError::StreamReset(error_code))),
-            test_env.stream.poll_push(
-                &test_env.connection_context,
-                Bytes::from_static(b"1"),
-                &poll_context,
-            )
+            test_env.poll_push(Bytes::from_static(b"1"))
         );
     }
 }
@@ -1273,21 +1215,11 @@ fn push_data_after_stream_is_reset_locally() {
 fn push_data_after_finish_was_called() {
     let mut test_env = setup_send_only_test_env();
 
-    let poll_context = Context::from_waker(&test_env.waker);
-    assert_eq!(
-        Poll::Pending,
-        test_env
-            .stream
-            .poll_finish(&test_env.connection_context, &poll_context,)
-    );
+    assert_eq!(Poll::Pending, test_env.poll_finish());
 
     assert_eq!(
         Poll::Ready(Err(StreamError::SendAfterFinish)),
-        test_env.stream.poll_push(
-            &test_env.connection_context,
-            Bytes::from_static(b"1"),
-            &poll_context,
-        )
+        test_env.poll_push(Bytes::from_static(b"1"))
     );
 }
 
@@ -1316,14 +1248,9 @@ fn push_data_after_stream_is_reset_due_to_stop_sending() {
         // Poll two times.
         // The first call checks the branch where the user is not yet aware
         // about the reset.
-        let poll_context = Context::from_waker(&test_env.waker);
         assert_eq!(
             Poll::Ready(Err(StreamError::StreamReset(error_code))),
-            test_env.stream.poll_push(
-                &test_env.connection_context,
-                Bytes::from_static(b"1"),
-                &poll_context,
-            )
+            test_env.poll_push(Bytes::from_static(b"1"))
         );
 
         if *acknowledge_reset_early {
@@ -1338,14 +1265,9 @@ fn push_data_after_stream_is_reset_due_to_stop_sending() {
 
         // The second call checks whether the same result is delivered after the
         // user had been notified.
-        let poll_context = Context::from_waker(&test_env.waker);
         assert_eq!(
             Poll::Ready(Err(StreamError::StreamReset(error_code))),
-            test_env.stream.poll_push(
-                &test_env.connection_context,
-                Bytes::from_static(b"1"),
-                &poll_context,
-            )
+            test_env.poll_push(Bytes::from_static(b"1"))
         );
 
         assert_eq!(stream_interests(&["fin"]), test_env.stream.interests());
@@ -1799,10 +1721,7 @@ fn finish_after_stream_is_reset_locally() {
 
         let error_code = ApplicationErrorCode::new(5).unwrap();
 
-        assert!(test_env
-            .stream
-            .reset(&test_env.connection_context, error_code)
-            .is_ok());
+        assert!(test_env.reset(error_code).is_ok());
         assert_eq!(stream_interests(&["tx"]), test_env.stream.interests());
         test_env.assert_write_reset_frame(error_code, pn(0), VarInt::from_u32(0));
         assert_eq!(stream_interests(&["ack"]), test_env.stream.interests());
@@ -1812,12 +1731,9 @@ fn finish_after_stream_is_reset_locally() {
             assert_eq!(stream_interests(&["fin"]), test_env.stream.interests());
         }
 
-        let poll_context = Context::from_waker(&test_env.waker);
         assert_eq!(
             Poll::Ready(Err(StreamError::StreamReset(error_code))),
-            test_env
-                .stream
-                .poll_finish(&test_env.connection_context, &poll_context,)
+            test_env.poll_finish()
         );
 
         if !*acknowledge_reset_early {
@@ -1855,12 +1771,9 @@ fn finish_after_stream_is_reset_due_to_stop_sending() {
         // Poll two times.
         // The first call checks the branch where the user is not yet aware
         // about the reset.
-        let poll_context = Context::from_waker(&test_env.waker);
         assert_eq!(
             Poll::Ready(Err(StreamError::StreamReset(error_code))),
-            test_env
-                .stream
-                .poll_finish(&test_env.connection_context, &poll_context,)
+            test_env.poll_finish()
         );
 
         // Now that the user is aware the outstanding acknowledge can finalize
@@ -1874,12 +1787,9 @@ fn finish_after_stream_is_reset_due_to_stop_sending() {
 
         // The second call checks whether the same result is delivered after the
         // user had been notified.
-        let poll_context = Context::from_waker(&test_env.waker);
         assert_eq!(
             Poll::Ready(Err(StreamError::StreamReset(error_code))),
-            test_env
-                .stream
-                .poll_finish(&test_env.connection_context, &poll_context,)
+            test_env.poll_finish()
         );
 
         assert_eq!(stream_interests(&["fin"]), test_env.stream.interests());
@@ -1911,12 +1821,9 @@ fn stop_sending_while_waiting_for_fin_to_get_acknowledged_leads_to_a_reset() {
         ],
     );
 
-    let poll_context = Context::from_waker(&test_env.waker);
     assert_eq!(
         Poll::Ready(Err(StreamError::StreamReset(error_code))),
-        test_env
-            .stream
-            .poll_finish(&test_env.connection_context, &poll_context)
+        test_env.poll_finish()
     );
 
     execute_instructions(
@@ -1978,12 +1885,9 @@ fn stop_sending_while_sending_data_leads_to_a_reset() {
             ],
         );
 
-        let poll_context = Context::from_waker(&test_env.waker);
         assert_eq!(
             Poll::Ready(Err(StreamError::StreamReset(error_code))),
-            test_env
-                .stream
-                .poll_finish(&test_env.connection_context, &poll_context)
+            test_env.poll_finish()
         );
 
         execute_instructions(
@@ -2045,12 +1949,9 @@ fn stop_sending_does_not_cause_an_action_if_stream_is_already_reset() {
             ],
         );
 
-        let poll_context = Context::from_waker(&test_env.waker);
         assert_eq!(
             Poll::Ready(Err(StreamError::StreamReset(error_code))),
-            test_env
-                .stream
-                .poll_finish(&test_env.connection_context, &poll_context)
+            test_env.poll_finish()
         );
 
         execute_instructions(
@@ -2160,12 +2061,9 @@ fn reset_does_not_cause_an_action_if_stream_is_already_reset() {
             execute_instructions(&mut test_env, &[Instruction::CheckNoTx]);
 
             // Accessing the stream should lead to the original reset error
-            let poll_context = Context::from_waker(&test_env.waker);
             assert_eq!(
                 Poll::Ready(Err(StreamError::StreamReset(error_code))),
-                test_env
-                    .stream
-                    .poll_finish(&test_env.connection_context, &poll_context)
+                test_env.poll_finish()
             );
         }
     }
@@ -2341,13 +2239,7 @@ fn resetting_the_stream_does_does_trigger_a_reset_frame_and_reset_errors() {
             };
 
             // Accessing the stream should lead to the reset error
-            let poll_context = Context::from_waker(&test_env.waker);
-            assert_eq!(
-                Poll::Ready(Err(expected_error)),
-                test_env
-                    .stream
-                    .poll_finish(&test_env.connection_context, &poll_context)
-            );
+            assert_eq!(Poll::Ready(Err(expected_error)), test_env.poll_finish());
 
             if *reset_reason != ResetReason::InternalReset {
                 // If the Reset was not caused internally, it needs to get
@@ -2503,13 +2395,7 @@ fn stream_does_not_try_to_acquire_connection_flow_control_credits_after_reset() 
             );
 
             // Accessing the stream should lead to the reset error
-            let poll_context = Context::from_waker(&test_env.waker);
-            assert_eq!(
-                Poll::Ready(Err(expected_error)),
-                test_env
-                    .stream
-                    .poll_finish(&test_env.connection_context, &poll_context)
-            );
+            assert_eq!(Poll::Ready(Err(expected_error)), test_env.poll_finish());
 
             if *reset_reason != ResetReason::InternalReset {
                 // If the Reset was not caused internally, it needs to get
@@ -2584,4 +2470,257 @@ fn stream_reports_stream_size_based_on_acquired_connection_window() {
             Instruction::CheckInterests(stream_interests(&["ack"])),
         ],
     );
+}
+
+#[test]
+fn resetting_a_stream_takes_priority() {
+    let error_code = ApplicationErrorCode::new(123).unwrap();
+
+    for sizes in [None, Some(&[10, 10, 10])].iter() {
+        for finish in [true, false].iter().cloned() {
+            for flush in [true, false].iter().cloned() {
+                for with_context in [true, false].iter().cloned() {
+                    let mut test_env = setup_send_only_test_env();
+
+                    let will_wake = with_context && flush;
+                    dbg!(sizes);
+                    dbg!(finish);
+                    dbg!(flush);
+                    dbg!(with_context);
+
+                    let mut request = ops::Request::default();
+
+                    request.reset(error_code);
+                    let mut chunks =
+                        sizes.map(|sizes| gen_pattern_test_chunks(VarInt::from_u8(0), sizes));
+
+                    if let Some(chunks) = chunks.as_deref_mut() {
+                        request.send(chunks);
+                    }
+
+                    if finish {
+                        request.finish();
+                    }
+
+                    if flush {
+                        request.flush();
+                    }
+
+                    assert_eq!(
+                        test_env.run_request(&mut request, with_context),
+                        Ok(ops::Response {
+                            tx: Some(ops::tx::Response {
+                                status: ops::Status::Resetting,
+                                will_wake,
+                                ..Default::default()
+                            }),
+                            rx: None,
+                        }),
+                    );
+
+                    execute_instructions(
+                        &mut test_env,
+                        &[
+                            Instruction::CheckInterests(stream_interests(&["tx"])),
+                            Instruction::CheckResetTx(error_code, pn(0), VarInt::from_u8(0)),
+                            Instruction::CheckInterests(stream_interests(&["ack"])),
+                            Instruction::AckPacket(pn(0), ExpectWakeup(Some(will_wake))),
+                        ],
+                    );
+
+                    assert_eq!(
+                        test_env.run_request(&mut request, with_context),
+                        Ok(ops::Response {
+                            tx: Some(ops::tx::Response {
+                                status: ops::Status::Reset,
+                                ..Default::default()
+                            }),
+                            rx: None,
+                        }),
+                    );
+
+                    execute_instructions(
+                        &mut test_env,
+                        &[Instruction::CheckInterests(stream_interests(&["fin"]))],
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn can_send_multiple_chunks() {
+    let max_send_buffer_size = 1500;
+    for sizes in [&[10, 10, 10][..], &[500, 500, 500], &[1000, 1000, 1000][..]].iter() {
+        for finish in [false, true].iter().cloned() {
+            for flush in [false, true].iter().cloned() {
+                for with_context in [false, true].iter().cloned() {
+                    let mut test_env_config = TestEnvironmentConfig::default();
+                    test_env_config.max_send_buffer_size = max_send_buffer_size;
+                    test_env_config.local_endpoint_type = EndpointType::Client;
+                    test_env_config.stream_id =
+                        StreamId::initial(EndpointType::Client, StreamType::Unidirectional);
+                    let mut test_env = setup_stream_test_env_with_config(test_env_config);
+                    let mut expected_buffer_size = max_send_buffer_size;
+
+                    dbg!(sizes);
+                    dbg!(finish);
+                    dbg!(flush);
+                    dbg!(with_context);
+
+                    let mut chunks = gen_pattern_test_chunks(VarInt::from_u8(0), sizes);
+
+                    let mut request = ops::Request::default();
+                    request.send(&mut chunks);
+
+                    if finish {
+                        request.finish();
+                    }
+
+                    if flush {
+                        request.flush();
+                    }
+
+                    let mut expected_consumed_bytes = 0;
+                    let mut expected_consumed_chunks = 0;
+                    for size in sizes.iter().cloned() {
+                        expected_consumed_bytes += size;
+                        expected_consumed_chunks += 1;
+                        if let Some(size) = expected_buffer_size.checked_sub(size) {
+                            expected_buffer_size = size;
+                        } else {
+                            expected_buffer_size = 0;
+                            break;
+                        }
+                    }
+                    let consumed_all = expected_consumed_chunks == sizes.len();
+
+                    // finishing the buffer should end the availability
+                    if finish {
+                        expected_buffer_size = 0;
+                    }
+
+                    let will_wake = with_context && (!consumed_all || flush);
+
+                    assert_eq!(
+                        test_env.run_request(&mut request, with_context),
+                        Ok(ops::Response {
+                            tx: Some(ops::tx::Response {
+                                bytes: ops::Bytes {
+                                    available: expected_buffer_size,
+                                    consumed: expected_consumed_bytes,
+                                },
+                                chunks: ops::Chunks {
+                                    available: expected_buffer_size,
+                                    consumed: expected_consumed_chunks,
+                                },
+                                status: if consumed_all && finish {
+                                    ops::Status::Finishing
+                                } else {
+                                    ops::Status::Open
+                                },
+                                will_wake,
+                            }),
+                            rx: None,
+                        }),
+                    );
+
+                    execute_instructions(
+                        &mut test_env,
+                        &[Instruction::CheckInterests(stream_interests(&["tx"]))],
+                    );
+
+                    let mut offset = VarInt::from_u8(0);
+                    for (idx, size, is_last) in sizes
+                        .iter()
+                        .take(expected_consumed_chunks)
+                        .cloned()
+                        .enumerate()
+                        .map(|(idx, size)| {
+                            let is_last = expected_consumed_chunks - idx == 1;
+                            (idx, size, is_last)
+                        })
+                    {
+                        let is_fin = finish && consumed_all && is_last;
+                        let should_wake = with_context
+                            && if flush && consumed_all {
+                                // if all of the chunks were consumed and we wanted to flush
+                                // it should only wake up on the last chunk
+                                is_last
+                            } else {
+                                // if not all of the chunks were consumed it should only wake
+                                // on the first chunk
+                                !consumed_all && idx == 0
+                            };
+                        execute_instructions(
+                            &mut test_env,
+                            &[
+                                Instruction::CheckDataTx(offset, size, is_fin, false, pn(idx)),
+                                Instruction::AckPacket(pn(idx), ExpectWakeup(Some(should_wake))),
+                            ],
+                        );
+                        offset += size;
+                    }
+
+                    execute_instructions(
+                        &mut test_env,
+                        &[Instruction::CheckInterests(stream_interests(&[]))],
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn can_query_stream_readiness() {
+    let max_send_buffer_size = 1500;
+    for size in [None, Some(1000usize), Some(2000)].iter().cloned() {
+        for with_context in [false, true].iter().cloned() {
+            let mut test_env_config = TestEnvironmentConfig::default();
+            test_env_config.max_send_buffer_size = max_send_buffer_size;
+            test_env_config.local_endpoint_type = EndpointType::Client;
+            test_env_config.stream_id =
+                StreamId::initial(EndpointType::Client, StreamType::Unidirectional);
+            let mut test_env = setup_stream_test_env_with_config(test_env_config);
+
+            dbg!(size);
+            dbg!(with_context);
+
+            let mut expected_buffer_size = max_send_buffer_size;
+
+            // potentially fill the buffer
+            if let Some(size) = size {
+                test_env
+                    .run_request(
+                        ops::Request::default()
+                            .send(&mut gen_pattern_test_chunks(VarInt::from_u8(0), &[size])),
+                        false,
+                    )
+                    .expect("request should succeed");
+
+                expected_buffer_size = expected_buffer_size.saturating_sub(size);
+            };
+
+            assert_eq!(
+                test_env.run_request(ops::Request::default().send(&mut []), with_context),
+                Ok(ops::Response {
+                    tx: Some(ops::tx::Response {
+                        bytes: ops::Bytes {
+                            available: expected_buffer_size,
+                            consumed: 0
+                        },
+                        chunks: ops::Chunks {
+                            available: expected_buffer_size,
+                            consumed: 0,
+                        },
+                        status: ops::Status::Open,
+                        will_wake: with_context && expected_buffer_size == 0,
+                    }),
+                    rx: None,
+                }),
+            );
+        }
+    }
 }

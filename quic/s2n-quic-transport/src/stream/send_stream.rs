@@ -1,5 +1,5 @@
 use crate::{
-    contexts::{ConnectionContext, OnTransmitError, WriteContext},
+    contexts::{OnTransmitError, WriteContext},
     frame_exchange_interests::FrameExchangeInterestProvider,
     stream::{
         outgoing_connection_flow_controller::OutgoingConnectionFlowController,
@@ -13,13 +13,16 @@ use crate::{
     },
 };
 use bytes::Bytes;
-use core::task::{Context, Poll, Waker};
+use core::{
+    convert::TryFrom,
+    task::{Context, Waker},
+};
 use s2n_quic_core::{
     ack_set::AckSet,
     application::ApplicationErrorCode,
     frame::{stream::StreamRef, MaxPayloadSizeForFrame, MaxStreamData, ResetStream, StopSending},
     packet::number::PacketNumber,
-    stream::StreamId,
+    stream::{ops, StreamId},
     transport::error::TransportError,
     varint::VarInt,
 };
@@ -447,8 +450,11 @@ pub struct SendStream {
     /// Synchronizes sending a `RESET` to the receiver
     pub(super) reset_sync: OnceSync<OutgoingResetData, ResetStreamToFrameWriter>,
     /// The handle of a task that is currently waiting on new incoming data or
-    /// on waiting for the finalization process to complete
-    pub(super) write_waiter: Option<Waker>,
+    /// on waiting for the finalization process to complete.
+    ///
+    /// If the second value in the tuple is set to true, the stream should be flushed before waking
+    /// the waiter.
+    pub(super) write_waiter: Option<(Waker, bool)>,
     /// Whether the final state had already been observed by the application
     final_state_observed: bool,
 }
@@ -520,7 +526,7 @@ impl SendStream {
             if self.data_sender.available_buffer_space() > 0
                 && self.data_sender.state() == DataSenderState::Sending
             {
-                if let Some(waker) = self.write_waiter.take() {
+                if let Some((waker, _should_flush)) = self.write_waiter.take() {
                     events.store_write_waker(waker);
                 }
             }
@@ -561,7 +567,7 @@ impl SendStream {
         {
             // Return the waker to wake up potential users of the stream.
             // If the Stream got reset, then blocked writers need to get woken up.
-            if let Some(waker) = self.write_waiter.take() {
+            if let Some((waker, _should_flush)) = self.write_waiter.take() {
                 events.store_write_waker(waker);
             }
         }
@@ -573,27 +579,33 @@ impl SendStream {
     pub fn on_packet_ack<A: AckSet>(&mut self, ack_set: &A, events: &mut StreamEvents) {
         self.data_sender.on_packet_ack(ack_set);
 
+        let should_flush = self.write_waiter.as_ref().map_or(false, |w| w.1);
+        let mut should_wake = false;
+
         if let SendStreamState::Sending = self.state {
-            if self.data_sender.state() == DataSenderState::Sending {
-                // In this state we have to wake up the user if the they can
-                // queue more data for transmission. This is possible if
-                // acknowledging packets removed them from the send queue and
-                // we got additional space in the send queue.
-                if self.data_sender.available_buffer_space() > 0 {
-                    if let Some(waker) = self.write_waiter.take() {
-                        events.store_write_waker(waker);
-                    }
+            match self.data_sender.state() {
+                DataSenderState::Sending if should_flush => {
+                    // In this state, the application wanted to ensure the peer has received
+                    // all of the data in the stream before continuing (flushed the stream).
+                    should_wake = self.data_sender.enqueued_len() == 0 && self.can_push();
                 }
-            } else if self.data_sender.state() == DataSenderState::FinishAcknowledged {
-                // If we have already sent a fin and just waiting for it to be
-                // acknowledged, `on_packet_ack` might have moved us into the
-                // final state due.
-                //
-                // In this state we also wake up the application,
-                // since the finish operation has been confirmed.
-                if let Some(waker) = self.write_waiter.take() {
-                    events.store_write_waker(waker);
+                DataSenderState::Sending => {
+                    // In this state we have to wake up the user if the they can
+                    // queue more data for transmission. This is possible if
+                    // acknowledging packets removed them from the send queue and
+                    // we got additional space in the send queue.
+                    should_wake = self.can_push();
                 }
+                DataSenderState::FinishAcknowledged => {
+                    // If we have already sent a fin and just waiting for it to be
+                    // acknowledged, `on_packet_ack` might have moved us into the
+                    // final state due.
+                    //
+                    // In this state we also wake up the application,
+                    // since the finish operation has been confirmed.
+                    should_wake = true;
+                }
+                _ => {}
             }
         }
 
@@ -603,6 +615,15 @@ impl SendStream {
             if self.reset_sync.is_delivered() {
                 // A reset had been acknowledged. Enter the terminal state.
                 self.state = SendStreamState::ResetAcknowledged(error_code);
+
+                // notify the waiter if it wanted to flush the reset
+                should_wake = should_flush;
+            }
+        }
+
+        if should_wake {
+            if let Some((waker, _should_flush)) = self.write_waiter.take() {
+                events.store_write_waker(waker);
             }
         }
     }
@@ -633,7 +654,7 @@ impl SendStream {
         {
             // Return the waker to wake up potential users of the stream.
             // If the Stream got reset, then blocked writers need to get woken up.
-            if let Some(waker) = self.write_waiter.take() {
+            if let Some((waker, _should_flush)) = self.write_waiter.take() {
                 events.store_write_waker(waker);
             }
         }
@@ -659,75 +680,8 @@ impl SendStream {
     /// had been called before, or if the `Stream` was reset in between, the
     /// method will return a [`StreamError`].
     ///
-    /// TODO: `poll_push()` does not return the data on sending errors. Should it?
-    /// YES, it must. Otherwise the client can not really retry.
-    pub fn poll_push<C: ConnectionContext>(
-        &mut self,
-        _connection_context: &C,
-        data: Bytes,
-        context: &Context,
-    ) -> Poll<Result<(), StreamError>> {
-        // Do some state checks here. Only read data when the client is still
-        // allowed to read (not reset).
-
-        match self.state {
-            SendStreamState::ResetSent(error) => {
-                // The reset is now known to have been read by the client.
-                self.final_state_observed = true;
-                Poll::Ready(Err(error))
-            }
-            SendStreamState::ResetAcknowledged(error) => {
-                // The reset is now known to have been read by the client.
-                self.final_state_observed = true;
-                Poll::Ready(Err(error))
-            }
-            SendStreamState::Sending => {
-                if self.data_sender.state() != DataSenderState::Sending {
-                    // The user tries to write, even though they previously closed
-                    // the stream.
-                    return Poll::Ready(Err(StreamError::SendAfterFinish));
-                }
-
-                // 0byte writes are always possible, because we don't have to
-                // do anything.
-                if data.is_empty() {
-                    return Poll::Ready(Ok(()));
-                }
-
-                // We can never write more than the maximum possible send window
-                let data_size_varint = if let Ok(varint) = VarInt::new(data.len() as u64) {
-                    varint
-                } else {
-                    return Poll::Ready(Err(StreamError::MaxStreamDataSizeExceeded));
-                };
-                if self
-                    .data_sender
-                    .total_enqueued_len()
-                    .checked_add(data_size_varint)
-                    .is_none()
-                {
-                    return Poll::Ready(Err(StreamError::MaxStreamDataSizeExceeded));
-                }
-
-                // We accept the data if there is at least 1 byte of space
-                // available in the flow control window.
-                let available_space = self.data_sender.available_buffer_space();
-                if available_space < 1 {
-                    // Store the waker, in order to be able to wakeup the client
-                    // when new buffering capacity is available.
-                    self.write_waiter = Some(context.waker().clone());
-                    return Poll::Pending;
-                }
-
-                self.data_sender.push(data);
-
-                Poll::Ready(Ok(()))
-            }
-        }
-    }
-
-    /// Starts the finalization process of a `Stream` and queries for the progress
-    /// of it.
+    /// If the request was not able to consume all provided chunks, the optional context will be notified
+    /// when more space is available.
     ///
     /// The first call to [`finish()`] will start the finalization process. In this
     /// case the `FIN` flag for the `Stream` will be transmitted to the peer as
@@ -737,58 +691,173 @@ impl SendStream {
     ///
     /// If the `Stream` gets reset while waiting for acknowledgement of all
     /// outstanding data the method will return a [`StreamError`].
-    pub fn poll_finish<C: ConnectionContext>(
+    pub fn poll_request(
         &mut self,
-        _connection_context: &C,
-        context: &Context,
-    ) -> Poll<Result<(), StreamError>> {
-        match self.state {
-            SendStreamState::ResetSent(error) => {
-                // The reset is now known to have been read by the client.
-                self.final_state_observed = true;
-                Poll::Ready(Err(error))
+        request: &mut ops::tx::Request,
+        context: Option<&Context>,
+    ) -> Result<ops::tx::Response, StreamError> {
+        let mut response = ops::tx::Response::default();
+
+        macro_rules! store_waker {
+            ($should_flush:expr) => {
+                // Store the waker, in order to be able to wakeup the caller
+                // when the sender state changes
+                if let Some(waker) = context.as_ref().map(|context| context.waker().clone()) {
+                    let should_flush = $should_flush || {
+                        // persist existing flush requests
+                        self.write_waiter
+                            .take()
+                            .map_or(false, |(_, should_flush)| should_flush)
+                    };
+                    self.write_waiter = Some((waker, should_flush));
+                    response.will_wake = true;
+                }
+            };
+        }
+
+        if let Some(error_code) = request.reset {
+            // reset is a best effort operation so ignore the result
+            let _ = self.init_reset(
+                ResetSource::LocalApplication,
+                StreamError::StreamReset(error_code),
+            );
+
+            // mark the stream as resetting
+            response.status = ops::Status::Resetting;
+
+            if request.flush && !matches!(self.state, SendStreamState::ResetAcknowledged(_)) {
+                // the request wanted to wait until the reset was ACKed to unblock
+                store_waker!(true);
+            } else {
+                // clear any previously registered waiters since the stream is now closed
+                self.write_waiter = None;
             }
-            SendStreamState::ResetAcknowledged(error) => {
+
+            // Mark the stream as completely reset once it's been acknowledged
+            if matches!(self.state, SendStreamState::ResetAcknowledged(_)) {
+                response.status = ops::Status::Reset;
+            }
+
+            return Ok(response);
+        }
+
+        // Do some state checks here. Only write data when the client is still
+        // allowed to write (not reset).
+        match self.state {
+            SendStreamState::ResetSent(error) | SendStreamState::ResetAcknowledged(error) => {
                 // The reset is now known to have been read by the client.
                 self.final_state_observed = true;
-                Poll::Ready(Err(error))
+                self.write_waiter = None;
+                return Err(error);
             }
             SendStreamState::Sending => {
-                if self.data_sender.state() == DataSenderState::FinishAcknowledged {
+                // continue
+            }
+        }
+
+        if let Some(chunks) = request.chunks.as_mut().filter(|chunks| !chunks.is_empty()) {
+            for chunk in chunks.iter_mut() {
+                // empty chunks are automatically consumed
+                if chunk.is_empty() {
+                    response.chunks.consumed += 1;
+                    continue;
+                }
+
+                self.validate_push(chunk.len())?;
+
+                if !self.can_push() {
+                    store_waker!(false);
+
+                    // no more progress can be made on the operation
+                    return Ok(response);
+                }
+
+                response.bytes.consumed += chunk.len();
+                response.chunks.consumed += 1;
+
+                self.data_sender
+                    .push(core::mem::replace(chunk, Bytes::new()));
+            }
+        } else if !request.finish && !request.flush && context.is_some() {
+            // if `chunks` are `None` or `Some(&[])` and we're not ending or flushing the stream,
+            // the caller is only interested in notifications of state changes.
+
+            // test a potential push of 1 byte
+            self.validate_push(1)?;
+
+            // store the waker if we currently can't push
+            if !self.can_push() {
+                store_waker!(false);
+
+                return Ok(response);
+            }
+        }
+
+        if request.finish {
+            match self.data_sender.state() {
+                DataSenderState::FinishAcknowledged => {
                     // All packets incl. the one with the FIN flag had been acknowledged.
                     // => We are done with this stream!
                     // We just record here that the user actually has retrieved the
                     // information.
                     self.final_state_observed = true;
-                    return Poll::Ready(Ok(()));
+                    // clear any previously register waiters
+                    self.write_waiter = None;
+                    response.status = ops::Status::Finished;
+                    return Ok(response);
                 }
+                _ => {
+                    self.data_sender.finish();
+                    response.status = ops::Status::Finishing;
 
-                // Store the waker, in order to be able to wakeup the client
-                // when the finish gets acknowledged.
-                self.write_waiter = Some(context.waker().clone());
-
-                self.data_sender.finish();
-
-                Poll::Pending
+                    if request.flush {
+                        // block the request until the peer has ACKed the last frame
+                        store_waker!(true);
+                    } else {
+                        // clear any previously registered waiters
+                        self.write_waiter = None;
+                    }
+                }
             }
+        } else if request.flush && self.data_sender.enqueued_len() > 0 {
+            // notify callers once the buffer has been flushed
+            store_waker!(true);
         }
+
+        // inform the caller of the available space to send
+        if self.data_sender.state() == DataSenderState::Sending {
+            response.bytes.available = self.data_sender.available_buffer_space();
+            // assume chunks are 1 bytes
+            response.chunks.available = response.bytes.available;
+        }
+
+        Ok(response)
     }
 
-    /// Initiates a reset of the Stream from the application side
-    pub fn reset<C: ConnectionContext>(
-        &mut self,
-        _connection_context: &C,
-        error_code: ApplicationErrorCode,
-    ) -> Result<(), StreamError> {
-        // The result is not important in this case. Since the reset had been
-        // initiated by a user API call, we do not have to wake up another user
-        // API call (like `push` or `finish`).
-        let _init_reset_result = self.init_reset(
-            ResetSource::LocalApplication,
-            StreamError::StreamReset(error_code),
-        );
+    /// Returns true if the caller can push additional data
+    fn can_push(&self) -> bool {
+        // We accept the data if there is at least 1 byte of space
+        // available in the flow control window.
+        self.data_sender.available_buffer_space() > 0
+    }
 
-        Ok(())
+    /// Ensures a potential push operation would be valid
+    fn validate_push(&self, len: usize) -> Result<(), StreamError> {
+        // The user tries to write, even though they previously closed the stream.
+        if self.data_sender.state() != DataSenderState::Sending {
+            return Err(StreamError::SendAfterFinish);
+        }
+
+        let is_valid = VarInt::try_from(len)
+            .ok()
+            .and_then(|chunk_len| self.data_sender.total_enqueued_len().checked_add(chunk_len))
+            .is_some();
+
+        if is_valid {
+            Ok(())
+        } else {
+            Err(StreamError::MaxStreamDataSizeExceeded)
+        }
     }
 
     /// Starts the reset procedure if the Stream has not been in a RESET state

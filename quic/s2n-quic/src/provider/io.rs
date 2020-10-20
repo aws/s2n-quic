@@ -10,7 +10,7 @@ where
 {
     type Rx;
     type Tx;
-    type Error: core::fmt::Display;
+    type Error: 'static + core::fmt::Display;
 
     fn start(self) -> Result<Duplex<Self::Rx, Self::Tx>, Self::Error>;
 }

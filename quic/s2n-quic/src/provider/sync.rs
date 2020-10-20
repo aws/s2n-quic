@@ -1,7 +1,7 @@
 /// Provides synchronization support for an endpoint
 pub trait Provider {
     type Sync: 'static + Send;
-    type Error: core::fmt::Display;
+    type Error: 'static + core::fmt::Display;
 
     fn start(self) -> Result<Self::Sync, Self::Error>;
 }

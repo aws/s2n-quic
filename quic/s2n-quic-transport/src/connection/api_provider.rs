@@ -6,11 +6,10 @@ use crate::{
     stream::{Stream, StreamError},
 };
 use alloc::sync::Arc;
-use bytes::Bytes;
 use core::task::{Context, Poll};
 use s2n_quic_core::{
     application::ApplicationErrorCode,
-    stream::{StreamId, StreamType},
+    stream::{ops, StreamId, StreamType},
 };
 
 /// A dynamically dispatched connection API
@@ -19,32 +18,12 @@ pub(crate) type ConnectionApi = Arc<dyn ConnectionApiProvider>;
 /// The trait for types which provide the public Connection and Stream API via
 /// dynamic dispatch
 pub(crate) trait ConnectionApiProvider: Sync + Send {
-    fn poll_pop(
+    fn poll_request(
         &self,
         stream_id: StreamId,
-        context: &Context,
-    ) -> Poll<Result<Option<Bytes>, StreamError>>;
-
-    fn stop_sending(
-        &self,
-        stream_id: StreamId,
-        error_code: ApplicationErrorCode,
-    ) -> Result<(), StreamError>;
-
-    fn poll_push(
-        &self,
-        stream_id: StreamId,
-        data: Bytes,
-        context: &Context,
-    ) -> Poll<Result<(), StreamError>>;
-
-    fn poll_finish(&self, stream_id: StreamId, context: &Context) -> Poll<Result<(), StreamError>>;
-
-    fn reset(
-        &self,
-        stream_id: StreamId,
-        error_code: ApplicationErrorCode,
-    ) -> Result<(), StreamError>;
+        request: &mut ops::Request,
+        context: Option<&Context>,
+    ) -> Result<ops::Response, StreamError>;
 
     fn poll_accept(
         &self,

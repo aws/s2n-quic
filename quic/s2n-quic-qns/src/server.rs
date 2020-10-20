@@ -34,21 +34,29 @@ impl Interop {
         }
 
         async fn handle_connection(mut connection: Connection) {
-            while let Ok(stream) = connection.accept_bidirectional_stream().await {
-                // spawn a task per stream
-                tokio::spawn(async move {
-                    println!("Accepted a Stream");
+            loop {
+                match connection.accept_bidirectional_stream().await {
+                    Ok(stream) => {
+                        // spawn a task per stream
+                        tokio::spawn(async move {
+                            println!("Accepted a Stream");
 
-                    if let Err(err) = handle_stream(stream).await {
-                        eprintln!("Stream errror: {:?}", err)
+                            if let Err(err) = handle_stream(stream).await {
+                                eprintln!("Stream errror: {:?}", err)
+                            }
+                        });
                     }
-                });
+                    Err(err) => {
+                        eprintln!("error while accepting stream: {:?}", err);
+                        return;
+                    }
+                }
             }
         }
 
         async fn handle_stream(mut stream: BidirectionalStream) -> Result<()> {
             loop {
-                let data = match stream.pop().await? {
+                let data = match stream.receive().await? {
                     Some(data) => data,
                     None => {
                         eprintln!("End of Stream");
@@ -62,7 +70,7 @@ impl Interop {
 
                 // Send a response
                 let response = Bytes::from_static(b"HTTP/3 500 Work In Progress");
-                stream.push(response).await?;
+                stream.send(response).await?;
             }
         }
 
@@ -81,7 +89,7 @@ impl Interop {
         let server = Server::builder()
             .with_io(("0.0.0.0", self.port))?
             .with_tls(tls)?
-            .build()?;
+            .start()?;
 
         eprintln!("Server listening on port {}", self.port);
 

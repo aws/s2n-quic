@@ -11,6 +11,7 @@ use core::{
 use s2n_quic_core::{application::ApplicationErrorCode, stream::StreamType};
 
 /// A QUIC connection
+#[derive(Clone)]
 pub struct Connection {
     /// The shared state, which contains the connections actual state
     shared_state: ConnectionApi,

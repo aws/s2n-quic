@@ -1,7 +1,7 @@
 /// Provides limits support for an endpoint
 pub trait Provider {
     type Limits: 'static + Send;
-    type Error: core::fmt::Display;
+    type Error: 'static + core::fmt::Display;
 
     fn start(self) -> Result<Self::Limits, Self::Error>;
 }
