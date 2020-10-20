@@ -42,6 +42,8 @@ pub trait Context<Crypto: CryptoSuite> {
 
     fn can_send_application(&self) -> bool;
     fn send_application(&mut self, transmission: Bytes);
+
+    fn current_handshakes(&self) -> usize;
 }
 
 pub trait Endpoint: Sized {

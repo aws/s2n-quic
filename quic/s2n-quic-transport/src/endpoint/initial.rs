@@ -55,6 +55,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         let endpoint_context = self.config.context();
 
         // Before allocating resources for a new connection, verify that can proceed.
+        // NOTE: How do we access TLS handshakes in-flight from here (instead of 0)?
         let info = endpoint::ConnectionInfo::new(0, &datagram.remote_address);
         match endpoint_context.governor.on_connection_attempt(&info) {
             endpoint::Outcome::Allow => {

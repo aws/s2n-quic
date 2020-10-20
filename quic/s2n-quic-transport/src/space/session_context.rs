@@ -199,6 +199,11 @@ impl<'a, Config: connection::Config> tls::Context<Config::TLSSession>
             .push(transmission);
     }
 
+    fn current_handshakes(&self) -> usize {
+        // TODO https://github.com/awslabs/s2n-quic/issues/162: return the handshakes in-flight
+        0
+    }
+
     fn can_send_application(&self) -> bool {
         false
     }
