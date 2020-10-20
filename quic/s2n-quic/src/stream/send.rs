@@ -1,11 +1,11 @@
+use s2n_quic_transport::stream;
+
 /// A QUIC stream that is only allowed to send data.
 ///
 /// The [`SendStream`] implements the required send operations described in the
 /// [QUIC Transport RFC](https://tools.ietf.org/html/draft-ietf-quic-transport-28#section-2)
 #[derive(Debug)]
-pub struct SendStream {
-    // TODO
-}
+pub struct SendStream(stream::SendStream);
 
 macro_rules! impl_send_stream_api {
     (| $stream:ident, $dispatch:ident | $dispatch_body:expr) => {
@@ -16,13 +16,77 @@ macro_rules! impl_send_stream_api {
         /// ```rust
         /// // TODO
         /// ```
-        pub async fn push(&mut self, data: bytes::Bytes) -> $crate::stream::Result<()> {
+        pub async fn send(&mut self, mut data: bytes::Bytes) -> $crate::stream::Result<()> {
+            ::futures::future::poll_fn(|cx| self.poll_send(&mut data, cx)).await
+        }
+
+        /// Polls sending a slice of chunked data on the stream
+        ///
+        /// # Examples
+        ///
+        /// ```rust
+        /// // TODO
+        /// ```
+        pub fn poll_send(
+            &mut self,
+            chunk: &mut bytes::Bytes,
+            cx: &mut core::task::Context,
+        ) -> core::task::Poll<$crate::stream::Result<()>> {
             macro_rules! $dispatch {
                 () => {
-                    Err($crate::stream::Error::NonWritable)
+                    Err($crate::stream::Error::NonWritable).into()
                 };
                 ($variant: expr) => {
-                    futures::sink::SinkExt::send($variant, data).await
+                    $variant.poll_send(chunk, cx)
+                };
+            }
+
+            let $stream = self;
+            $dispatch_body
+        }
+
+        /// Pushes a slice of chunked data onto the stream.
+        ///
+        /// # Examples
+        ///
+        /// ```rust
+        /// // TODO
+        /// ```
+        pub async fn send_vectored(
+            &mut self,
+            chunks: &mut [bytes::Bytes],
+        ) -> $crate::stream::Result<()> {
+            let mut sent_chunks = 0;
+
+            ::futures::future::poll_fn(|cx| {
+                sent_chunks +=
+                    ::futures::ready!(self.poll_send_vectored(&mut chunks[sent_chunks..], cx))?;
+                if sent_chunks == chunks.len() {
+                    return Ok(()).into();
+                }
+                core::task::Poll::Pending
+            })
+            .await
+        }
+
+        /// Polls sending a slice of chunked data on the stream
+        ///
+        /// # Examples
+        ///
+        /// ```rust
+        /// // TODO
+        /// ```
+        pub fn poll_send_vectored(
+            &mut self,
+            chunks: &mut [bytes::Bytes],
+            cx: &mut core::task::Context,
+        ) -> core::task::Poll<$crate::stream::Result<usize>> {
+            macro_rules! $dispatch {
+                () => {
+                    Err($crate::stream::Error::NonWritable).into()
+                };
+                ($variant: expr) => {
+                    $variant.poll_send_vectored(chunks, cx)
                 };
             }
 
@@ -39,17 +103,26 @@ macro_rules! impl_send_stream_api {
         /// ```rust
         /// // TODO
         /// ```
-        pub fn poll_ready(
+        pub fn poll_send_ready(
             &mut self,
             cx: &mut core::task::Context,
-        ) -> core::task::Poll<$crate::stream::Result<()>> {
-            let _ = cx;
-            todo!()
+        ) -> core::task::Poll<$crate::stream::Result<usize>> {
+            macro_rules! $dispatch {
+                () => {
+                    Err($crate::stream::Error::NonWritable).into()
+                };
+                ($variant: expr) => {
+                    $variant.poll_send_ready(cx)
+                };
+            }
+
+            let $stream = self;
+            $dispatch_body
         }
 
         /// Sends data on the stream.
         ///
-        /// `Self::poll_ready` _must_ be called before calling this method.
+        /// `Self::poll_send_ready` _must_ be called before calling this method.
         ///
         /// # Examples
         ///
@@ -57,8 +130,52 @@ macro_rules! impl_send_stream_api {
         /// // TODO
         /// ```
         pub fn send_data(&mut self, data: bytes::Bytes) -> $crate::stream::Result<()> {
-            let _ = data;
-            todo!()
+            macro_rules! $dispatch {
+                () => {
+                    Err($crate::stream::Error::NonWritable)
+                };
+                ($variant: expr) => {
+                    $variant.send_data(data)
+                };
+            }
+
+            let $stream = self;
+            $dispatch_body
+        }
+
+        /// Flushes the stream and waits for the peer to receive all outstanding data
+        ///
+        /// # Examples
+        ///
+        /// ```rust
+        /// // TODO
+        /// ```
+        pub async fn flush(&mut self) -> $crate::stream::Result<()> {
+            ::futures::future::poll_fn(|cx| self.poll_flush(cx)).await
+        }
+
+        /// Polls flushing the stream and waits for the peer to receive all outstanding data
+        ///
+        /// # Examples
+        ///
+        /// ```rust
+        /// // TODO
+        /// ```
+        pub fn poll_flush(
+            &mut self,
+            cx: &mut core::task::Context,
+        ) -> core::task::Poll<$crate::stream::Result<()>> {
+            macro_rules! $dispatch {
+                () => {
+                    Err($crate::stream::Error::NonWritable).into()
+                };
+                ($variant: expr) => {
+                    $variant.poll_flush(cx)
+                };
+            }
+
+            let $stream = self;
+            $dispatch_body
         }
 
         /// Finishes and closes the stream.
@@ -69,17 +186,7 @@ macro_rules! impl_send_stream_api {
         /// // TODO
         /// ```
         pub async fn finish(&mut self) -> $crate::stream::Result<()> {
-            macro_rules! $dispatch {
-                () => {
-                    Err($crate::stream::Error::NonWritable)
-                };
-                ($variant: expr) => {
-                    futures::sink::SinkExt::close($variant).await
-                };
-            }
-
-            let $stream = self;
-            $dispatch_body
+            ::futures::future::poll_fn(|cx| self.poll_finish(cx)).await
         }
 
         /// Polls finishing and closing the stream.
@@ -93,8 +200,17 @@ macro_rules! impl_send_stream_api {
             &mut self,
             cx: &mut core::task::Context,
         ) -> core::task::Poll<$crate::stream::Result<()>> {
-            let _ = cx;
-            todo!()
+            macro_rules! $dispatch {
+                () => {
+                    Err($crate::stream::Error::NonWritable).into()
+                };
+                ($variant: expr) => {
+                    $variant.poll_finish(cx)
+                };
+            }
+
+            let $stream = self;
+            $dispatch_body
         }
 
         /// Initiates a `RESET` of the `Stream`
@@ -111,8 +227,17 @@ macro_rules! impl_send_stream_api {
             &mut self,
             error_code: $crate::ApplicationErrorCode,
         ) -> $crate::stream::Result<()> {
-            let _ = error_code;
-            todo!()
+            macro_rules! $dispatch {
+                () => {
+                    Err($crate::stream::Error::NonWritable)
+                };
+                ($variant: expr) => {
+                    $variant.reset(error_code)
+                };
+            }
+
+            let $stream = self;
+            $dispatch_body
         }
     };
 }
@@ -123,71 +248,101 @@ macro_rules! impl_send_stream_trait {
             type Error = $crate::stream::Error;
 
             fn poll_ready(
-                self: core::pin::Pin<&mut Self>,
+                mut self: core::pin::Pin<&mut Self>,
                 cx: &mut core::task::Context<'_>,
             ) -> core::task::Poll<$crate::stream::Result<()>> {
-                let _ = cx;
-                todo!()
+                futures::ready!(self.poll_send_ready(cx))?;
+                Ok(()).into()
             }
 
             fn start_send(
-                self: core::pin::Pin<&mut Self>,
-                cx: bytes::Bytes,
+                mut self: core::pin::Pin<&mut Self>,
+                data: bytes::Bytes,
             ) -> $crate::stream::Result<()> {
-                let _ = cx;
-                todo!()
+                self.send_data(data)
             }
 
             fn poll_flush(
-                self: core::pin::Pin<&mut Self>,
+                mut self: core::pin::Pin<&mut Self>,
                 cx: &mut core::task::Context<'_>,
             ) -> core::task::Poll<$crate::stream::Result<()>> {
-                let _ = cx;
-                todo!()
+                Self::poll_flush(&mut self, cx)
             }
 
             fn poll_close(
-                self: core::pin::Pin<&mut Self>,
+                mut self: core::pin::Pin<&mut Self>,
                 cx: &mut core::task::Context<'_>,
             ) -> core::task::Poll<$crate::stream::Result<()>> {
-                let _ = cx;
-                todo!()
+                self.poll_finish(cx)
             }
         }
 
         #[cfg(feature = "std")]
         impl futures::io::AsyncWrite for $name {
             fn poll_write(
-                self: core::pin::Pin<&mut Self>,
+                mut self: core::pin::Pin<&mut Self>,
                 cx: &mut core::task::Context<'_>,
                 buf: &[u8],
             ) -> core::task::Poll<std::io::Result<usize>> {
-                let _ = cx;
-                let _ = buf;
-                todo!()
+                if buf.is_empty() {
+                    return Ok(0).into();
+                }
+
+                let len = futures::ready!(self.poll_send_ready(cx))?;
+                let data = bytes::Bytes::copy_from_slice(&buf[..len]);
+                self.send_data(data)?;
+                Ok(len).into()
+            }
+
+            fn poll_write_vectored(
+                mut self: core::pin::Pin<&mut Self>,
+                cx: &mut core::task::Context<'_>,
+                bufs: &[futures::io::IoSlice],
+            ) -> core::task::Poll<std::io::Result<usize>> {
+                if bufs.is_empty() {
+                    return Ok(0).into();
+                }
+
+                let len = futures::ready!(self.poll_send_ready(cx))?;
+
+                let mut data = bytes::BytesMut::with_capacity(len);
+                for buf in bufs {
+                    // only copy what the window will allow
+                    let to_copy = buf.len().min(len - data.len());
+                    data.extend_from_slice(&buf[..to_copy]);
+
+                    // we're done filling the buffer
+                    if data.len() == len {
+                        break;
+                    }
+                }
+
+                self.send_data(data.freeze())?;
+
+                Ok(len).into()
             }
 
             fn poll_flush(
-                self: core::pin::Pin<&mut Self>,
+                mut self: core::pin::Pin<&mut Self>,
                 cx: &mut core::task::Context<'_>,
             ) -> core::task::Poll<std::io::Result<()>> {
-                let _ = cx;
-                todo!()
+                futures::ready!($name::poll_flush(&mut self, cx))?;
+                Ok(()).into()
             }
 
             fn poll_close(
-                self: core::pin::Pin<&mut Self>,
+                mut self: core::pin::Pin<&mut Self>,
                 cx: &mut core::task::Context<'_>,
             ) -> core::task::Poll<std::io::Result<()>> {
-                let _ = cx;
-                todo!()
+                futures::ready!($name::poll_finish(&mut self, cx))?;
+                Ok(()).into()
             }
         }
     };
 }
 
 impl SendStream {
-    impl_send_stream_api!(|stream, dispatch| dispatch!(stream));
+    impl_send_stream_api!(|stream, dispatch| dispatch!(stream.0));
 
     impl_splittable_stream_api!(|stream| (None, Some(stream)));
 
@@ -197,4 +352,4 @@ impl SendStream {
 }
 
 impl_splittable_stream_trait!(SendStream, |stream| (None, Some(stream)));
-impl_send_stream_trait!(SendStream, |stream, dispatch| dispatch!(stream));
+impl_send_stream_trait!(SendStream, |stream, dispatch| dispatch!(stream.0));

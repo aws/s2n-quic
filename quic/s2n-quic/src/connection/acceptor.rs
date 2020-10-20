@@ -1,4 +1,7 @@
-use crate::stream::{self, BidirectionalStream, PeerStream, ReceiveStream};
+use crate::{
+    connection,
+    stream::{BidirectionalStream, PeerStream, ReceiveStream},
+};
 
 macro_rules! impl_acceptor_api {
     (| $acceptor:ident, $dispatch:ident | $dispatch_body:expr) => {
@@ -9,8 +12,8 @@ macro_rules! impl_acceptor_api {
         /// ```rust
         /// // TODO
         /// ```
-        pub async fn accept(&mut self) -> $crate::stream::Result<$crate::stream::PeerStream> {
-            todo!()
+        pub async fn accept(&mut self) -> $crate::connection::Result<$crate::stream::PeerStream> {
+            futures::future::poll_fn(|cx| self.poll_accept(cx)).await
         }
 
         /// TODO
@@ -23,9 +26,15 @@ macro_rules! impl_acceptor_api {
         pub fn poll_accept(
             &mut self,
             cx: &mut core::task::Context,
-        ) -> core::task::Poll<$crate::stream::Result<$crate::stream::PeerStream>> {
-            let _ = cx;
-            todo!()
+        ) -> core::task::Poll<$crate::connection::Result<$crate::stream::PeerStream>> {
+            use s2n_quic_core::stream::StreamType;
+            use $crate::stream::{BidirectionalStream, ReceiveStream};
+
+            Ok(match futures::ready!(self.0.poll_accept(None, cx))? {
+                (stream, StreamType::Unidirectional) => ReceiveStream::new(stream).into(),
+                (stream, StreamType::Bidirectional) => BidirectionalStream::new(stream).into(),
+            })
+            .into()
         }
 
         /// TODO
@@ -37,8 +46,8 @@ macro_rules! impl_acceptor_api {
         /// ```
         pub async fn accept_bidirectional_stream(
             &mut self,
-        ) -> $crate::stream::Result<$crate::stream::BidirectionalStream> {
-            todo!()
+        ) -> $crate::connection::Result<$crate::stream::BidirectionalStream> {
+            futures::future::poll_fn(|cx| self.poll_accept_bidirectional_stream(cx)).await
         }
 
         /// TODO
@@ -51,9 +60,11 @@ macro_rules! impl_acceptor_api {
         pub fn poll_accept_bidirectional_stream(
             &mut self,
             cx: &mut core::task::Context,
-        ) -> core::task::Poll<$crate::stream::Result<$crate::stream::BidirectionalStream>> {
-            let _ = cx;
-            todo!()
+        ) -> core::task::Poll<$crate::connection::Result<$crate::stream::BidirectionalStream>> {
+            let (stream, _) = futures::ready!(self
+                .0
+                .poll_accept(Some(s2n_quic_core::stream::StreamType::Bidirectional), cx))?;
+            Ok($crate::stream::BidirectionalStream::new(stream)).into()
         }
 
         /// TODO
@@ -65,8 +76,8 @@ macro_rules! impl_acceptor_api {
         /// ```
         pub async fn accept_receive_stream(
             &mut self,
-        ) -> $crate::stream::Result<$crate::stream::ReceiveStream> {
-            todo!()
+        ) -> $crate::connection::Result<$crate::stream::ReceiveStream> {
+            futures::future::poll_fn(|cx| self.poll_accept_receive_stream(cx)).await
         }
 
         /// TODO
@@ -79,17 +90,17 @@ macro_rules! impl_acceptor_api {
         pub fn poll_accept_receive_stream(
             &mut self,
             cx: &mut core::task::Context,
-        ) -> core::task::Poll<$crate::stream::Result<$crate::stream::ReceiveStream>> {
-            let _ = cx;
-            todo!()
+        ) -> core::task::Poll<$crate::connection::Result<$crate::stream::ReceiveStream>> {
+            let (stream, _) = futures::ready!(self
+                .0
+                .poll_accept(Some(s2n_quic_core::stream::StreamType::Unidirectional), cx))?;
+            Ok($crate::stream::ReceiveStream::new(stream)).into()
         }
     };
 }
 
 #[derive(Debug)]
-pub struct StreamAcceptor {
-    // TODO
-}
+pub struct StreamAcceptor(s2n_quic_transport::connection::Connection);
 
 impl StreamAcceptor {
     impl_acceptor_api!(|acceptor, call| call!(acceptor));
@@ -107,14 +118,18 @@ impl StreamAcceptor {
 }
 
 impl futures::stream::Stream for StreamAcceptor {
-    type Item = stream::Result<PeerStream>;
+    type Item = connection::Result<PeerStream>;
 
     fn poll_next(
-        self: core::pin::Pin<&mut Self>,
+        mut self: core::pin::Pin<&mut Self>,
         cx: &mut core::task::Context<'_>,
     ) -> core::task::Poll<Option<Self::Item>> {
-        let _ = cx;
-        todo!()
+        match futures::ready!(self.poll_accept(cx)) {
+            Ok(stream) => Some(Ok(stream)),
+            Err(connection::Error::Closed) => None,
+            Err(err) => Some(Err(err)),
+        }
+        .into()
     }
 }
 
@@ -131,7 +146,7 @@ impl BidirectionalStreamAcceptor {
     /// ```rust
     /// // TODO
     /// ```
-    pub async fn accept(&mut self) -> stream::Result<BidirectionalStream> {
+    pub async fn accept(&mut self) -> connection::Result<BidirectionalStream> {
         todo!()
     }
 
@@ -145,14 +160,14 @@ impl BidirectionalStreamAcceptor {
     pub fn poll_accept(
         &mut self,
         cx: &mut core::task::Context,
-    ) -> core::task::Poll<crate::stream::Result<BidirectionalStream>> {
+    ) -> core::task::Poll<connection::Result<BidirectionalStream>> {
         let _ = cx;
         todo!()
     }
 }
 
 impl futures::stream::Stream for BidirectionalStreamAcceptor {
-    type Item = stream::Result<BidirectionalStream>;
+    type Item = connection::Result<BidirectionalStream>;
 
     fn poll_next(
         self: core::pin::Pin<&mut Self>,
@@ -176,7 +191,7 @@ impl ReceiveStreamAcceptor {
     /// ```rust
     /// // TODO
     /// ```
-    pub async fn accept(&mut self) -> stream::Result<ReceiveStream> {
+    pub async fn accept(&mut self) -> connection::Result<ReceiveStream> {
         todo!()
     }
 
@@ -190,14 +205,14 @@ impl ReceiveStreamAcceptor {
     pub fn poll_accept(
         &mut self,
         cx: &mut core::task::Context,
-    ) -> core::task::Poll<stream::Result<ReceiveStream>> {
+    ) -> core::task::Poll<connection::Result<ReceiveStream>> {
         let _ = cx;
         todo!()
     }
 }
 
 impl futures::stream::Stream for ReceiveStreamAcceptor {
-    type Item = stream::Result<ReceiveStream>;
+    type Item = connection::Result<ReceiveStream>;
 
     fn poll_next(
         self: core::pin::Pin<&mut Self>,
