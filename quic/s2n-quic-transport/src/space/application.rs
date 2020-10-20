@@ -1,5 +1,5 @@
 use crate::{
-    connection::{self, ConnectionInterests, ConnectionTransmissionContext},
+    connection::{self, transmission, ConnectionInterests, ConnectionTransmissionContext},
     frame_exchange_interests::FrameExchangeInterestProvider,
     processed_packet::ProcessedPacket,
     recovery,
@@ -27,6 +27,7 @@ use s2n_quic_core::{
         short::{KeyPhase, Short, SpinBit},
     },
     path::Path,
+    recovery::loss_info::LossInfo,
     time::Timestamp,
     transport::error::TransportError,
 };
@@ -93,25 +94,42 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
 
     pub fn on_transmit<'a>(
         &mut self,
-        context: &ConnectionTransmissionContext<Config>,
+        context: &mut ConnectionTransmissionContext<Config>,
         buffer: EncoderBuffer<'a>,
     ) -> Result<EncoderBuffer<'a>, PacketEncodingError<'a>> {
         let packet_number = self.tx_packet_numbers.next();
         let packet_number_encoder = self.packet_number_encoder();
-        let key_phase = self.key_phase;
-        let spin_bit = self.spin_bit;
-        let (crypto, payload) = self.transmission(context, packet_number);
+
+        let mut outcome = transmission::Outcome::default();
+
+        let payload = ApplicationTransmission {
+            ack_manager: &mut self.ack_manager,
+            context,
+            handshake_status: &mut self.handshake_status,
+            packet_number,
+            recovery_manager: &mut self.recovery_manager,
+            stream_manager: &mut self.stream_manager,
+            tx_packet_numbers: &mut self.tx_packet_numbers,
+            outcome: &mut outcome,
+        };
 
         let packet = Short {
             destination_connection_id: context.path.peer_connection_id.as_ref(),
-            spin_bit,
-            key_phase,
+            spin_bit: self.spin_bit,
+            key_phase: self.key_phase,
             packet_number,
             payload,
         };
 
         let (_protected_packet, buffer) =
-            packet.encode_packet(crypto, packet_number_encoder, buffer)?;
+            packet.encode_packet(&self.crypto, packet_number_encoder, buffer)?;
+
+        self.recovery_manager.on_packet_sent(
+            packet_number,
+            outcome,
+            context.timestamp,
+            context.path,
+        );
 
         Ok(buffer)
     }
@@ -148,7 +166,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
     }
 
     /// Called when the connection timer expired
-    pub fn on_timeout(&mut self, timestamp: Timestamp) -> recovery::LossInfo {
+    pub fn on_timeout(&mut self, timestamp: Timestamp) -> LossInfo {
         self.ack_manager.on_timeout(timestamp);
 
         let (recovery_manager, mut context) = self.recovery();
@@ -171,36 +189,9 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         self.ack_manager.largest_received_packet_number_acked()
     }
 
-    pub fn bytes_in_flight(&self) -> usize {
-        self.recovery_manager.bytes_in_flight()
-    }
-
     /// Returns the Packet Number to be used when encoding outgoing packets
     fn packet_number_encoder(&self) -> PacketNumber {
         self.tx_packet_numbers.largest_sent_packet_number_acked()
-    }
-
-    fn transmission<'a>(
-        &'a mut self,
-        context: &'a ConnectionTransmissionContext<Config>,
-        packet_number: PacketNumber,
-    ) -> (
-        &'a <Config::TLSSession as CryptoSuite>::OneRTTCrypto,
-        ApplicationTransmission<'a, Config>,
-    ) {
-        // TODO: What about ZeroRTTCrypto?
-        (
-            &self.crypto,
-            ApplicationTransmission {
-                ack_manager: &mut self.ack_manager,
-                context,
-                handshake_status: &mut self.handshake_status,
-                packet_number,
-                recovery_manager: &mut self.recovery_manager,
-                stream_manager: &mut self.stream_manager,
-                tx_packet_numbers: &mut self.tx_packet_numbers,
-            },
-        )
     }
 
     fn recovery(&mut self) -> (&mut recovery::Manager, RecoveryContext<Config>) {
@@ -280,7 +271,7 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
         datagram: &DatagramInfo,
         path: &mut Path<Config::CongestionController>,
         pto_backoff: u32,
-    ) -> Result<recovery::LossInfo, TransportError> {
+    ) -> Result<LossInfo, TransportError> {
         path.on_peer_validated();
         let (recovery_manager, mut context) = self.recovery();
         recovery_manager.on_ack_frame(datagram, frame, path, pto_backoff, &mut context)

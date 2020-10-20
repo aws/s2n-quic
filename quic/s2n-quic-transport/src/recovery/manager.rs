@@ -1,21 +1,24 @@
 use crate::{
+    connection::transmission,
     contexts::WriteContext,
     frame_exchange_interests::{FrameExchangeInterestProvider, FrameExchangeInterests},
-    recovery::{SentPacketInfo, SentPackets},
+    recovery::{loss_info::LossInfo, SentPacketInfo, SentPackets},
     space::INITIAL_PTO_BACKOFF,
     timer::VirtualTimer,
 };
 use core::{cmp::max, time::Duration};
 use s2n_quic_core::{
     endpoint::EndpointType,
-    frame::{self, ack_elicitation::AckElicitation},
+    frame,
     inet::DatagramInfo,
     packet::number::{PacketNumber, PacketNumberRange, PacketNumberSpace},
     path::Path,
     recovery::{CongestionController, RTTEstimator, K_GRANULARITY},
     time::Timestamp,
     transport::error::TransportError,
+    varint::VarInt,
 };
+use smallvec::SmallVec;
 
 #[derive(Debug)]
 pub struct Manager {
@@ -57,19 +60,11 @@ pub struct Manager {
     //# packets or acknowledgements.
     pto: Pto,
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#B.2
-    //# The sum of the size in bytes of all sent packets
-    //# that contain at least one ack-eliciting or PADDING frame, and have
-    //# not been acknowledged or declared lost.  The size does not include
-    //# IP or UDP overhead, but does include the QUIC header and AEAD
-    //# overhead.  Packets only containing ACK frames do not count towards
-    //# bytes_in_flight to ensure congestion control does not impede
-    //# congestion feedback.
-    bytes_in_flight: usize,
-
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#A.3
     //# The time the most recent ack-eliciting packet was sent.
     time_of_last_ack_eliciting_packet: Option<Timestamp>,
+
+    ecn_ce_counter: VarInt,
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#B.2
     //# The time that the first RTT sample was obtained.
@@ -84,57 +79,16 @@ pub struct Manager {
 //# [RFC5681].
 const K_PACKET_THRESHOLD: u64 = 3;
 
+/// Initial capacity of the SmallVec used for keeping track of packets
+/// acked in an ack frame
+// TODO: Determine if there is a more appropriate default
+const ACKED_PACKETS_INITIAL_CAPACITY: usize = 10;
+
 fn apply_k_time_threshold(duration: Duration) -> Duration {
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.1.2
     //# The RECOMMENDED time threshold (kTimeThreshold), expressed as a
     //# round-trip time multiplier, is 9/8.
     duration * 9 / 8
-}
-
-#[must_use = "Ignoring loss information would lead to permanent data loss"]
-#[derive(Copy, Clone, Default)]
-pub struct LossInfo {
-    /// Lost bytes in flight
-    pub bytes_in_flight: usize,
-
-    /// A PTO timer expired
-    pub pto_expired: bool,
-
-    /// The PTO count should be reset
-    pub pto_reset: bool,
-
-    /// The longest period of persistent congestion
-    pub persistent_congestion_period: Duration,
-}
-
-impl LossInfo {
-    /// The recovery manager requires updating if a PTO expired/needs to be reset, or
-    /// loss packets were detected.
-    pub fn updated_required(&self) -> bool {
-        self.bytes_in_flight > 0 || self.pto_expired || self.pto_reset
-    }
-}
-
-#[allow(clippy::suspicious_arithmetic_impl)]
-impl core::ops::Add for LossInfo {
-    type Output = Self;
-
-    fn add(self, rhs: Self) -> Self {
-        Self {
-            bytes_in_flight: self.bytes_in_flight + rhs.bytes_in_flight,
-            pto_expired: self.pto_expired || rhs.pto_expired,
-            pto_reset: self.pto_reset || rhs.pto_reset,
-            persistent_congestion_period: self
-                .persistent_congestion_period
-                .max(rhs.persistent_congestion_period),
-        }
-    }
-}
-
-impl core::ops::AddAssign for LossInfo {
-    fn add_assign(&mut self, rhs: Self) {
-        *self = *self + rhs;
-    }
 }
 
 impl Manager {
@@ -148,8 +102,8 @@ impl Manager {
             loss_timer: VirtualTimer::default(),
             pto: Pto::new(max_ack_delay),
             time_threshold: Duration::from_secs(0),
-            bytes_in_flight: 0,
             time_of_last_ack_eliciting_packet: None,
+            ecn_ce_counter: VarInt::default(),
             first_rtt_sample: None,
         }
     }
@@ -181,7 +135,9 @@ impl Manager {
                 })
             }
         } else {
-            loss_info.pto_expired = self.pto.on_timeout(self.bytes_in_flight, timestamp);
+            loss_info.pto_expired = self
+                .pto
+                .on_timeout(!self.sent_packets.is_empty(), timestamp);
         }
 
         loss_info
@@ -189,26 +145,31 @@ impl Manager {
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#A.5
     //# After a packet is sent, information about the packet is stored.
-    pub fn on_packet_sent(
+    pub fn on_packet_sent<CC: CongestionController>(
         &mut self,
         packet_number: PacketNumber,
-        ack_elicitation: AckElicitation,
-        in_flight: bool,
-        sent_bytes: usize,
+        outcome: transmission::Outcome,
         time_sent: Timestamp,
+        path: &mut Path<CC>,
     ) {
-        if ack_elicitation.is_ack_eliciting() {
+        if outcome.ack_elicitation.is_ack_eliciting() {
             self.sent_packets.insert(
                 packet_number,
-                SentPacketInfo::new(in_flight, sent_bytes, time_sent),
+                SentPacketInfo::new(
+                    outcome.is_congestion_controlled,
+                    outcome.bytes_sent,
+                    time_sent,
+                ),
             );
         }
 
-        if in_flight {
-            if ack_elicitation.is_ack_eliciting() {
-                self.time_of_last_ack_eliciting_packet = Some(time_sent);
-            }
-            self.bytes_in_flight += sent_bytes;
+        if outcome.is_congestion_controlled && outcome.ack_elicitation.is_ack_eliciting() {
+            self.time_of_last_ack_eliciting_packet = Some(time_sent);
+        }
+
+        if outcome.is_congestion_controlled {
+            path.congestion_controller
+                .on_packet_sent(time_sent, outcome.bytes_sent);
         }
     }
 
@@ -271,11 +232,6 @@ impl Manager {
         self.pto.on_transmit(context)
     }
 
-    /// Gets the number of bytes currently in flight
-    pub fn bytes_in_flight(&self) -> usize {
-        self.bytes_in_flight
-    }
-
     pub fn on_ack_frame<A: frame::ack::AckRanges, CC: CongestionController, Ctx: Context>(
         &mut self,
         datagram: &DatagramInfo,
@@ -284,14 +240,18 @@ impl Manager {
         backoff: u32,
         context: &mut Ctx,
     ) -> Result<LossInfo, TransportError> {
-        let mut has_newly_acked = false;
         let largest_acked_in_frame = self.space.new_packet_number(frame.largest_acknowledged());
+        let mut newly_acked_packets =
+            SmallVec::<[SentPacketInfo; ACKED_PACKETS_INITIAL_CAPACITY]>::new();
+        self.first_rtt_sample = self.first_rtt_sample.or(Some(datagram.timestamp));
 
         // Update the largest acked packet if the largest packet acked in this frame is larger
         self.largest_acked_packet = Some(
             self.largest_acked_packet
                 .map_or(largest_acked_in_frame, |pn| pn.max(largest_acked_in_frame)),
         );
+
+        let mut largest_newly_acked: Option<(PacketNumber, SentPacketInfo)> = None;
 
         for ack_range in frame.ack_ranges() {
             let (start, end) = ack_range.into_inner();
@@ -304,88 +264,132 @@ impl Manager {
             context.validate_packet_ack(datagram, &acked_packets)?;
             context.on_packet_ack(datagram, &acked_packets);
 
-            if let Some((largest_newly_acked, largest_newly_acked_info)) =
-                self.sent_packets.range(acked_packets).last()
-            {
-                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#5.1
-                //# An RTT sample is generated using only the largest acknowledged packet in the
-                //# received ACK frame. This is because a peer reports acknowledgment delays for
-                //# only the largest acknowledged packet in an ACK frame.
-                if *largest_newly_acked == largest_acked_in_frame {
-                    let latest_rtt = datagram.timestamp - largest_newly_acked_info.time_sent;
-                    path.rtt_estimator.update_rtt(
-                        frame.ack_delay(),
-                        latest_rtt,
-                        datagram.timestamp,
-                        largest_newly_acked.space(),
-                    );
-                }
-            } else {
-                // Nothing to do if there are no newly acked packets.
-                continue;
-            };
-
-            // TODO: path.congestion_controller.on_packets_acked(self.sent_packets.range(acked_packets));
-
+            let mut new_packet_ack = false;
             for packet_number in acked_packets {
                 if let Some(acked_packet_info) = self.sent_packets.remove(packet_number) {
-                    self.bytes_in_flight -= acked_packet_info.sent_bytes as usize;
+                    newly_acked_packets.push(acked_packet_info);
+
+                    if largest_newly_acked.map_or(true, |(pn, _)| packet_number > pn) {
+                        largest_newly_acked = Some((packet_number, acked_packet_info));
+                    }
+
+                    new_packet_ack = true;
                 }
             }
 
-            // notify components of packets that are newly acked
-            context.on_new_packet_ack(datagram, &acked_packets);
-
-            has_newly_acked = true;
+            if new_packet_ack {
+                // notify components of packets that are newly acked
+                context.on_new_packet_ack(datagram, &acked_packets);
+            }
         }
 
-        let mut loss_info = LossInfo::default();
+        if largest_newly_acked.is_none() {
+            // Nothing to do if there are no newly acked packets.
+            return Ok(LossInfo::default());
+        }
 
-        if has_newly_acked {
-            // Process ECN information if present.
-            if frame.ecn_counts.is_some() {
-                // TODO: path.congestion_controller.process_ecn(ecn_counts, largest_newly_acked, largest_newly_acked_packet.space())
-            }
+        let largest_newly_acked = largest_newly_acked.expect("There are newly acked packets");
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.1.2
-            //# Once a later packet within the same packet number space has been
-            //# acknowledged, an endpoint SHOULD declare an earlier packet lost if it
-            //# was sent a threshold amount of time in the past.
-            loss_info =
-                self.detect_and_remove_lost_packets(datagram.timestamp, |packet_number_range| {
-                    context.on_packet_loss(&packet_number_range);
-                });
-
-            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
-            //# The PTO backoff factor is reset when an acknowledgement is received,
-            //# except in the following case.  A server might take longer to respond
-            //# to packets during the handshake than otherwise.  To protect such a
-            //# server from repeated client probes, the PTO backoff is not reset at a
-            //# client that is not yet certain that the server has finished
-            //# validating the client's address.  That is, a client does not reset
-            //# the PTO backoff factor on receiving acknowledgements until the
-            //# handshake is confirmed; see Section 4.1.2 of [QUIC-TLS].
-            loss_info.pto_reset = path.is_peer_validated();
-
-            // If there is a pending pto reset, use the initial pto_backoff when updating the PTO timer
-            let pto_backoff = if loss_info.pto_reset {
-                INITIAL_PTO_BACKOFF
-            } else {
-                backoff
-            };
-
-            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
-            //# A sender SHOULD restart its PTO timer every time an ack-eliciting
-            //# packet is sent or acknowledged,
-            self.update(
-                &path,
-                pto_backoff,
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#5.1
+        //# An RTT sample is generated using only the largest acknowledged packet in the
+        //# received ACK frame. This is because a peer reports acknowledgment delays for
+        //# only the largest acknowledged packet in an ACK frame.
+        if largest_newly_acked.0 == largest_acked_in_frame {
+            let latest_rtt = datagram.timestamp - largest_newly_acked.1.time_sent;
+            path.rtt_estimator.update_rtt(
+                frame.ack_delay(),
+                latest_rtt,
                 datagram.timestamp,
-                self.space.is_application_data() && context.is_handshake_confirmed(),
+                largest_acked_in_frame.space(),
+            );
+
+            // Update the congestion controller with the latest RTT estimate
+            path.congestion_controller
+                .on_rtt_update(largest_newly_acked.1.time_sent, &path.rtt_estimator);
+        }
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.1
+        //# If a path has been validated to support ECN ([RFC3168], [RFC8311]),
+        //# QUIC treats a Congestion Experienced (CE) codepoint in the IP header
+        //# as a signal of congestion.
+        if let Some(ecn_counts) = frame.ecn_counts {
+            if ecn_counts.ce_count > self.ecn_ce_counter {
+                self.ecn_ce_counter = ecn_counts.ce_count;
+                path.congestion_controller
+                    .on_congestion_event(datagram.timestamp);
+            }
+        }
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.1.2
+        //# Once a later packet within the same packet number space has been
+        //# acknowledged, an endpoint SHOULD declare an earlier packet lost if it
+        //# was sent a threshold amount of time in the past.
+        let mut loss_info =
+            self.detect_and_remove_lost_packets(datagram.timestamp, |packet_number_range| {
+                context.on_packet_loss(&packet_number_range);
+            });
+
+        if loss_info.bytes_in_flight > 0 {
+            path.congestion_controller.on_packets_lost(
+                loss_info,
+                path.rtt_estimator.persistent_congestion_threshold(),
+                datagram.timestamp,
             );
         }
 
+        for acked_packet_info in newly_acked_packets {
+            path.congestion_controller.on_packet_ack(
+                largest_newly_acked.1.time_sent,
+                acked_packet_info.sent_bytes as usize,
+                &path.rtt_estimator,
+                datagram.timestamp,
+            );
+        }
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
+        //# The PTO backoff factor is reset when an acknowledgement is received,
+        //# except in the following case.  A server might take longer to respond
+        //# to packets during the handshake than otherwise.  To protect such a
+        //# server from repeated client probes, the PTO backoff is not reset at a
+        //# client that is not yet certain that the server has finished
+        //# validating the client's address.  That is, a client does not reset
+        //# the PTO backoff factor on receiving acknowledgements until the
+        //# handshake is confirmed; see Section 4.1.2 of [QUIC-TLS].
+        loss_info.pto_reset = path.is_peer_validated();
+
+        // If there is a pending pto reset, use the initial pto_backoff when updating the PTO timer
+        let pto_backoff = if loss_info.pto_reset {
+            INITIAL_PTO_BACKOFF
+        } else {
+            backoff
+        };
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
+        //# A sender SHOULD restart its PTO timer every time an ack-eliciting
+        //# packet is sent or acknowledged,
+        self.update(
+            &path,
+            pto_backoff,
+            datagram.timestamp,
+            self.space.is_application_data() && context.is_handshake_confirmed(),
+        );
+
         Ok(loss_info)
+    }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#B.9
+    //# When Initial or Handshake keys are discarded, packets from the
+    //# space are discarded and loss detection state is updated.
+    pub fn on_packet_number_space_discarded<CC: CongestionController>(
+        &mut self,
+        path: &mut Path<CC>,
+    ) {
+        debug_assert_ne!(self.space, PacketNumberSpace::ApplicationData);
+        // Remove any unacknowledged packets from flight.
+        for (_, unacked_sent_info) in self.sent_packets.iter() {
+            path.congestion_controller
+                .on_packet_discarded(unacked_sent_info.sent_bytes as usize);
+        }
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#A.10
@@ -529,6 +533,17 @@ pub trait Context {
         panic!("Handshake status is not currently available in this packet space")
     }
 
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.8
+    //# When bytes in flight is smaller than the congestion window and
+    //# sending is not pacing limited, the congestion window is under-
+    //# utilized.  When this occurs, the congestion window SHOULD NOT be
+    //# increased in either slow start or congestion avoidance.  This can
+    //# happen due to insufficient application data or flow control limits.
+    fn is_limited(&self) -> bool {
+        //TODO: https://github.com/awslabs/s2n-quic/issues/137
+        false
+    }
+
     fn validate_packet_ack(
         &mut self,
         datagram: &DatagramInfo,
@@ -588,7 +603,7 @@ impl Pto {
     }
 
     /// Called when a timeout has occurred. Returns true if the PTO timer had expired.
-    pub fn on_timeout(&mut self, bytes_in_flight: usize, timestamp: Timestamp) -> bool {
+    pub fn on_timeout(&mut self, packets_in_flight: bool, timestamp: Timestamp) -> bool {
         if self.timer.poll_expiration(timestamp).is_ready() {
             //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.4
             //# When a PTO timer expires, a sender MUST send at least one ack-
@@ -608,7 +623,7 @@ impl Pto {
             //# Sending two packets on PTO
             //# expiration increases resilience to packet drops, thus reducing the
             //# probability of consecutive PTO events.
-            let transmission_count = if bytes_in_flight > 0 { 2 } else { 1 };
+            let transmission_count = if packets_in_flight { 2 } else { 1 };
 
             self.state = PtoState::RequiresTransmission(transmission_count);
             true
@@ -731,8 +746,8 @@ mod test {
     };
     use core::{ops::RangeInclusive, time::Duration};
     use s2n_quic_core::{
-        connection, packet::number::PacketNumberSpace,
-        recovery::congestion_controller::testing::MockCC, varint::VarInt,
+        connection, frame::ack_elicitation::AckElicitation, packet::number::PacketNumberSpace,
+        recovery::congestion_controller::testing::Unlimited, varint::VarInt,
     };
     use std::collections::HashSet;
 
@@ -742,6 +757,13 @@ mod test {
         let space = PacketNumberSpace::ApplicationData;
         let mut manager = Manager::new(space, Duration::from_millis(100));
         let mut time_sent = s2n_quic_platform::time::now();
+        let mut path = Path::new(
+            Default::default(),
+            connection::Id::EMPTY,
+            RTTEstimator::new(Duration::from_millis(10)),
+            Unlimited::default(),
+            true,
+        );
 
         for i in 1..=10 {
             let sent_packet = space.new_packet_number(VarInt::from_u8(i));
@@ -750,24 +772,25 @@ mod test {
             } else {
                 AckElicitation::NonEliciting
             };
-            let in_flight = i % 3 == 0;
-            let sent_bytes = (2 * i) as u16;
 
-            manager.on_packet_sent(
-                sent_packet,
+            let outcome = transmission::Outcome {
                 ack_elicitation,
-                in_flight,
-                sent_bytes as usize,
-                time_sent,
-            );
+                is_congestion_controlled: i % 3 == 0,
+                bytes_sent: (2 * i) as usize,
+            };
+
+            manager.on_packet_sent(sent_packet, outcome, time_sent, &mut path);
 
             if ack_elicitation == AckElicitation::Eliciting {
                 assert!(manager.sent_packets.get(sent_packet).is_some());
                 let actual_sent_packet = manager.sent_packets.get(sent_packet).unwrap();
-                assert_eq!(actual_sent_packet.sent_bytes, sent_bytes);
-                assert_eq!(actual_sent_packet.in_flight, in_flight);
+                assert_eq!(actual_sent_packet.sent_bytes as usize, outcome.bytes_sent);
+                assert_eq!(
+                    actual_sent_packet.in_flight,
+                    outcome.is_congestion_controlled
+                );
                 assert_eq!(actual_sent_packet.time_sent, time_sent);
-                if in_flight {
+                if outcome.is_congestion_controlled {
                     assert_eq!(Some(time_sent), manager.time_of_last_ack_eliciting_packet);
                 }
             } else {
@@ -787,6 +810,13 @@ mod test {
         let rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
         let mut manager = Manager::new(space, Duration::from_millis(100));
         let packet_bytes = 128;
+        let mut path = Path::new(
+            Default::default(),
+            connection::Id::EMPTY,
+            rtt_estimator,
+            Unlimited::default(),
+            true,
+        );
 
         let time_sent = s2n_quic_platform::time::now() + Duration::from_secs(10);
 
@@ -794,22 +824,17 @@ mod test {
         for i in 1..=10 {
             manager.on_packet_sent(
                 space.new_packet_number(VarInt::from_u8(i)),
-                AckElicitation::Eliciting,
-                true,
-                packet_bytes,
+                transmission::Outcome {
+                    ack_elicitation: AckElicitation::Eliciting,
+                    is_congestion_controlled: true,
+                    bytes_sent: packet_bytes,
+                },
                 time_sent,
+                &mut path,
             );
         }
 
         assert_eq!(manager.sent_packets.iter().count(), 10);
-
-        let mut path = Path::new(
-            Default::default(),
-            connection::Id::EMPTY,
-            rtt_estimator,
-            MockCC::default(),
-            true,
-        );
 
         // Ack packets 1 to 3
         let ack_receive_time = time_sent + Duration::from_millis(500);
@@ -858,7 +883,7 @@ mod test {
             Default::default(),
             connection::Id::EMPTY,
             rtt_estimator,
-            MockCC::default(),
+            Unlimited::default(),
             false,
         );
         let ack_receive_time = ack_receive_time + Duration::from_millis(500);
@@ -878,20 +903,26 @@ mod test {
         let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
         let mut manager = Manager::new(space, Duration::from_millis(100));
         let now = s2n_quic_platform::time::now();
+        let mut path = Path::new(
+            Default::default(),
+            connection::Id::EMPTY,
+            rtt_estimator,
+            Unlimited::default(),
+            true,
+        );
 
         manager.largest_acked_packet = Some(space.new_packet_number(VarInt::from_u8(10)));
 
         let mut time_sent = s2n_quic_platform::time::now();
+        let outcome = transmission::Outcome {
+            ack_elicitation: AckElicitation::Eliciting,
+            is_congestion_controlled: true,
+            bytes_sent: 1,
+        };
 
         // Send a packet that was sent too long ago (lost)
         let old_packet_time_sent = space.new_packet_number(VarInt::from_u8(8));
-        manager.on_packet_sent(
-            old_packet_time_sent,
-            AckElicitation::Eliciting,
-            true,
-            1,
-            time_sent,
-        );
+        manager.on_packet_sent(old_packet_time_sent, outcome, time_sent, &mut path);
 
         manager.time_threshold = Duration::from_secs(9);
         time_sent += Duration::from_secs(10);
@@ -899,27 +930,15 @@ mod test {
         //Send a packet with a packet number K_PACKET_THRESHOLD away from the largest (lost)
         let old_packet_packet_number =
             space.new_packet_number(VarInt::new(10 - K_PACKET_THRESHOLD).unwrap());
-        manager.on_packet_sent(
-            old_packet_packet_number,
-            AckElicitation::Eliciting,
-            true,
-            1,
-            time_sent,
-        );
+        manager.on_packet_sent(old_packet_packet_number, outcome, time_sent, &mut path);
 
         // Send a packet that is less than the largest acked but not lost
         let not_lost = space.new_packet_number(VarInt::from_u8(9));
-        manager.on_packet_sent(not_lost, AckElicitation::Eliciting, true, 1, time_sent);
+        manager.on_packet_sent(not_lost, outcome, time_sent, &mut path);
 
         // Send a packet larger than the largest acked (not lost)
         let larger_than_largest = manager.largest_acked_packet.unwrap().next().unwrap();
-        manager.on_packet_sent(
-            larger_than_largest,
-            AckElicitation::Eliciting,
-            true,
-            1,
-            time_sent,
-        );
+        manager.on_packet_sent(larger_than_largest, outcome, time_sent, &mut path);
 
         rtt_estimator.update_rtt(
             Duration::from_millis(10),
@@ -927,6 +946,14 @@ mod test {
             now,
             space,
         );
+
+        // Four packets sent, each size 1 byte
+        let bytes_in_flight: u16 = manager
+            .sent_packets
+            .iter()
+            .map(|(_, info)| info.sent_bytes)
+            .sum();
+        assert_eq!(bytes_in_flight, 4);
 
         let now = time_sent;
         let mut lost_packets: HashSet<PacketNumber> = HashSet::default();
@@ -937,6 +964,13 @@ mod test {
 
         // Two packets lost, each size 1 byte
         assert_eq!(loss_info.bytes_in_flight, 2);
+        // Two packets remaining
+        let bytes_in_flight: u16 = manager
+            .sent_packets
+            .iter()
+            .map(|(_, info)| info.sent_bytes)
+            .sum();
+        assert_eq!(bytes_in_flight, 2);
 
         let sent_packets = &manager.sent_packets;
         assert!(lost_packets.contains(&old_packet_time_sent));
@@ -967,7 +1001,7 @@ mod test {
             Default::default(),
             connection::Id::EMPTY,
             rtt_estimator,
-            MockCC::default(),
+            Unlimited::default(),
             true,
         );
         let time_zero = s2n_quic_platform::time::now() + Duration::from_secs(10);
@@ -977,22 +1011,26 @@ mod test {
         // part of the persistent congestion period.
         manager.first_rtt_sample = Some(s2n_quic_platform::time::now());
 
+        let outcome = transmission::Outcome {
+            ack_elicitation: AckElicitation::Eliciting,
+            is_congestion_controlled: true,
+            bytes_sent: 1,
+        };
+
         // t=0: Send packet #1 (app data)
         manager.on_packet_sent(
             space.new_packet_number(VarInt::from_u8(1)),
-            AckElicitation::Eliciting,
-            true,
-            1,
+            outcome,
             time_zero,
+            &mut path,
         );
 
         // t=1: Send packet #2 (app data)
         manager.on_packet_sent(
             space.new_packet_number(VarInt::from_u8(2)),
-            AckElicitation::Eliciting,
-            true,
-            1,
+            outcome,
             time_zero + Duration::from_secs(1),
+            &mut path,
         );
 
         // t=1.2: Recv acknowledgement of #1
@@ -1007,29 +1045,26 @@ mod test {
         for t in 2..=6 {
             manager.on_packet_sent(
                 space.new_packet_number(VarInt::from_u8(t + 1)),
-                AckElicitation::Eliciting,
-                true,
-                1,
+                outcome,
                 time_zero + Duration::from_secs(t.into()),
+                &mut path,
             );
         }
 
         // t=8: Send packet #8 (PTO 1)
         manager.on_packet_sent(
             space.new_packet_number(VarInt::from_u8(8)),
-            AckElicitation::Eliciting,
-            true,
-            1,
+            outcome,
             time_zero + Duration::from_secs(8),
+            &mut path,
         );
 
         // t=12: Send packet #9 (PTO 2)
         manager.on_packet_sent(
             space.new_packet_number(VarInt::from_u8(9)),
-            AckElicitation::Eliciting,
-            true,
-            1,
+            outcome,
             time_zero + Duration::from_secs(12),
+            &mut path,
         );
 
         // t=12.2: Recv acknowledgement of #9
@@ -1064,28 +1099,32 @@ mod test {
             Default::default(),
             connection::Id::EMPTY,
             rtt_estimator,
-            MockCC::default(),
+            Unlimited::default(),
             true,
         );
         let time_zero = s2n_quic_platform::time::now() + Duration::from_secs(10);
         manager.time_threshold = Duration::from_secs(3);
 
+        let outcome = transmission::Outcome {
+            ack_elicitation: AckElicitation::Eliciting,
+            is_congestion_controlled: true,
+            bytes_sent: 1,
+        };
+
         // t=0: Send packet #1 (app data)
         manager.on_packet_sent(
             space.new_packet_number(VarInt::from_u8(1)),
-            AckElicitation::Eliciting,
-            true,
-            1,
+            outcome,
             time_zero,
+            &mut path,
         );
 
         // t=1: Send packet #2 (app data)
         manager.on_packet_sent(
             space.new_packet_number(VarInt::from_u8(2)),
-            AckElicitation::Eliciting,
-            true,
-            1,
+            outcome,
             time_zero + Duration::from_secs(1),
+            &mut path,
         );
 
         // t=1.2: Recv acknowledgement of #1
@@ -1105,10 +1144,9 @@ mod test {
         for t in 2..=6 {
             manager.on_packet_sent(
                 space.new_packet_number(VarInt::from_u8(t + 1)),
-                AckElicitation::Eliciting,
-                true,
-                1,
+                outcome,
                 time_zero + Duration::from_secs(t.into()),
+                &mut path,
             );
         }
 
@@ -1117,28 +1155,25 @@ mod test {
         // t=8: Send packet #9 (app data)
         manager.on_packet_sent(
             space.new_packet_number(VarInt::from_u8(9)),
-            AckElicitation::Eliciting,
-            true,
-            1,
+            outcome,
             time_zero + Duration::from_secs(8),
+            &mut path,
         );
 
         // t=16: Send packet #10 (app data)
         manager.on_packet_sent(
             space.new_packet_number(VarInt::from_u8(10)),
-            AckElicitation::Eliciting,
-            true,
-            1,
+            outcome,
             time_zero + Duration::from_secs(16),
+            &mut path,
         );
 
         // t=20: Send packet #11 (app data)
         manager.on_packet_sent(
             space.new_packet_number(VarInt::from_u8(11)),
-            AckElicitation::Eliciting,
-            true,
-            1,
+            outcome,
             time_zero + Duration::from_secs(20),
+            &mut path,
         );
 
         // t=20.2: Recv acknowledgement of #11
@@ -1173,7 +1208,7 @@ mod test {
             Default::default(),
             connection::Id::EMPTY,
             rtt_estimator,
-            MockCC::default(),
+            Unlimited::default(),
             false,
         );
 
@@ -1219,7 +1254,7 @@ mod test {
             Default::default(),
             connection::Id::EMPTY,
             rtt_estimator,
-            MockCC::default(),
+            Unlimited::default(),
             false,
         );
         path.on_validated();
@@ -1239,10 +1274,13 @@ mod test {
         // Send a packet to validate behavior when sent_packets is not empty
         manager.on_packet_sent(
             space.new_packet_number(VarInt::from_u8(1)),
-            AckElicitation::Eliciting,
-            true,
-            1,
+            transmission::Outcome {
+                ack_elicitation: AckElicitation::Eliciting,
+                is_congestion_controlled: true,
+                bytes_sent: 1,
+            },
             now,
+            &mut path,
         );
 
         let expected_pto_base_timestamp = now - Duration::from_secs(5);
@@ -1279,6 +1317,13 @@ mod test {
         manager.largest_acked_packet = Some(space.new_packet_number(VarInt::from_u8(10)));
 
         let mut context = MockContext::default();
+        let mut path = Path::new(
+            Default::default(),
+            connection::Id::EMPTY,
+            RTTEstimator::new(Duration::from_millis(10)),
+            Unlimited::default(),
+            false,
+        );
 
         // Loss timer is armed but not expired yet, nothing happens
         manager.loss_timer.set(now + Duration::from_secs(10));
@@ -1290,10 +1335,13 @@ mod test {
         // Send a packet that will be considered lost
         manager.on_packet_sent(
             space.new_packet_number(VarInt::from_u8(1)),
-            AckElicitation::Eliciting,
-            true,
-            1,
+            transmission::Outcome {
+                ack_elicitation: AckElicitation::Eliciting,
+                is_congestion_controlled: true,
+                bytes_sent: 1,
+            },
             now - Duration::from_secs(5),
+            &mut path,
         );
 
         // Loss timer is armed and expired, on_packet_loss is called
@@ -1315,14 +1363,20 @@ mod test {
         assert!(!loss_info.pto_expired);
 
         // Loss timer is not armed, pto timer is expired without bytes in flight
-        manager.bytes_in_flight = 0;
         manager.pto.timer.set(now - Duration::from_secs(5));
         loss_info = manager.on_timeout(now, &mut context);
         assert!(loss_info.pto_expired);
         assert_eq!(manager.pto.state, RequiresTransmission(1));
 
         // Loss timer is not armed, pto timer is expired with bytes in flight
-        manager.bytes_in_flight = 1;
+        manager.sent_packets.insert(
+            space.new_packet_number(VarInt::from_u8(1)),
+            SentPacketInfo {
+                in_flight: true,
+                sent_bytes: 1,
+                time_sent: now,
+            },
+        );
         manager.pto.timer.set(now - Duration::from_secs(5));
         loss_info = manager.on_timeout(now, &mut context);
         assert!(loss_info.pto_expired);
@@ -1355,15 +1409,6 @@ mod test {
         manager.pto.timer.set(pto_time);
         assert_eq!(manager.timers().count(), 1);
         assert_eq!(manager.timers().next(), Some(&loss_time));
-    }
-
-    #[test]
-    fn bytes_in_flight() {
-        let space = PacketNumberSpace::ApplicationData;
-        let mut manager = Manager::new(space, Duration::from_millis(10));
-        manager.bytes_in_flight = 20;
-
-        assert_eq!(manager.bytes_in_flight(), 20);
     }
 
     #[test]

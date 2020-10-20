@@ -2,7 +2,6 @@ use crate::{
     connection::{self, ConnectionInterests},
     frame_exchange_interests::FrameExchangeInterestProvider,
     processed_packet::ProcessedPacket,
-    recovery,
     space::rx_packet_numbers::{AckManager, DEFAULT_ACK_RANGES_LIMIT},
 };
 use s2n_codec::DecoderBufferMut;
@@ -17,6 +16,7 @@ use s2n_quic_core::{
     inet::DatagramInfo,
     packet::number::{PacketNumber, PacketNumberSpace},
     path::Path,
+    recovery::loss_info::LossInfo,
     time::Timestamp,
     transport::error::TransportError,
 };
@@ -69,14 +69,16 @@ macro_rules! packet_space_api {
         }
 
         $(
-            pub fn $discard(&mut self) {
+            pub fn $discard(&mut self, path: &mut Path<Config::CongestionController>) {
                 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.2
                 //# When Initial or Handshake keys are discarded, the PTO and loss
                 //# detection timers MUST be reset, because discarding keys indicates
                 //# forward progress and the loss detection timer might have been set for
                 //# a now discarded packet number space.
                 self.pto_backoff = INITIAL_PTO_BACKOFF;
-                self.$get = None;
+                if let Some(space) = self.$get_mut().take() {
+                    space.on_discard(path);
+                }
             }
         )?
     };
@@ -180,8 +182,8 @@ impl<Config: connection::Config> PacketSpaceManager<Config> {
     }
 
     /// Called when the connection timer expired
-    pub fn on_timeout(&mut self, timestamp: Timestamp) -> recovery::LossInfo {
-        let mut loss_info = recovery::LossInfo::default();
+    pub fn on_timeout(&mut self, timestamp: Timestamp) -> LossInfo {
+        let mut loss_info = LossInfo::default();
 
         if let Some(space) = self.initial_mut() {
             loss_info += space.on_timeout(timestamp);
@@ -198,18 +200,9 @@ impl<Config: connection::Config> PacketSpaceManager<Config> {
         loss_info
     }
 
-    /// Gets the total number of bytes in flight
-    pub fn bytes_in_flight(&self) -> usize {
-        core::iter::empty()
-            .chain(self.initial.iter().map(|space| space.bytes_in_flight()))
-            .chain(self.handshake.iter().map(|space| space.bytes_in_flight()))
-            .chain(self.application.iter().map(|space| space.bytes_in_flight()))
-            .sum::<usize>()
-    }
-
     pub fn on_loss_info(
         &mut self,
-        loss_info: &recovery::LossInfo,
+        loss_info: &LossInfo,
         path: &Path<Config::CongestionController>,
         timestamp: Timestamp,
     ) {
@@ -290,7 +283,7 @@ pub trait PacketSpace<Config: connection::Config> {
         datagram: &DatagramInfo,
         path: &mut Path<Config::CongestionController>,
         pto_backoff: u32,
-    ) -> Result<recovery::LossInfo, TransportError>;
+    ) -> Result<LossInfo, TransportError>;
 
     fn handle_handshake_done_frame(
         &mut self,
@@ -331,8 +324,8 @@ pub trait PacketSpace<Config: connection::Config> {
         datagram: &DatagramInfo,
         path: &mut Path<Config::CongestionController>,
         pto_backoff: u32,
-    ) -> Result<(recovery::LossInfo, Option<frame::ConnectionClose<'a>>), TransportError> {
-        let mut loss_info = recovery::LossInfo::default();
+    ) -> Result<(LossInfo, Option<frame::ConnectionClose<'a>>), TransportError> {
+        let mut loss_info = LossInfo::default();
 
         use s2n_quic_core::{
             frame::{Frame, FrameMut},

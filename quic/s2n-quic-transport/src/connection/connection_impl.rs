@@ -9,7 +9,7 @@ use crate::{
     },
     contexts::ConnectionOnTransmitError,
     path,
-    recovery::{self, congestion_controller, RTTEstimator},
+    recovery::{congestion_controller, CongestionController, RTTEstimator},
     space::{PacketSpace, EARLY_ACK_SETTINGS},
 };
 use core::time::Duration;
@@ -25,6 +25,7 @@ use s2n_quic_core::{
         version_negotiation::ProtectedVersionNegotiation,
         zero_rtt::ProtectedZeroRTT,
     },
+    recovery::loss_info::LossInfo,
     time::Timestamp,
     transport::error::TransportError,
 };
@@ -160,20 +161,26 @@ impl<ConfigType: connection::Config> ConnectionImpl<ConfigType> {
     fn on_loss_info(
         &mut self,
         shared_state: &mut SharedConnectionState<ConfigType>,
-        loss_info: recovery::LossInfo,
+        loss_info: LossInfo,
         path_id: path::Id,
         timestamp: Timestamp,
     ) {
         // This function is called regardless if there was a loss event or not.
         // Only propagate on_loss_info if necessary.
         if loss_info.updated_required() {
-            shared_state.space_manager.on_loss_info(
-                &loss_info,
-                &self.path_manager[path_id],
-                timestamp,
-            );
+            let path = &mut self.path_manager[path_id];
 
-            // TODO pass recovery information to congestion controller
+            shared_state
+                .space_manager
+                .on_loss_info(&loss_info, path, timestamp);
+
+            if loss_info.bytes_in_flight > 0 {
+                path.congestion_controller.on_packets_lost(
+                    loss_info,
+                    path.rtt_estimator.persistent_congestion_threshold(),
+                    timestamp,
+                )
+            }
         }
     }
 }
@@ -284,8 +291,12 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         self.timers.peer_idle_timer.cancel();
         self.state = close_reason.into();
 
-        shared_state.space_manager.discard_initial();
-        shared_state.space_manager.discard_handshake();
+        shared_state
+            .space_manager
+            .discard_initial(self.path_manager.active_path_mut().1);
+        shared_state
+            .space_manager
+            .discard_handshake(self.path_manager.active_path_mut().1);
         shared_state.space_manager.discard_zero_rtt_crypto();
         if let Some(application) = shared_state.space_manager.application_mut() {
             // Close all streams with the derived error
@@ -571,7 +582,9 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
             //# processes a Handshake packet.
 
             if Self::Config::ENDPOINT_TYPE.is_server() {
-                shared_state.space_manager.discard_initial();
+                shared_state
+                    .space_manager
+                    .discard_initial(self.path_manager.active_path_mut().1);
             }
 
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#10.2

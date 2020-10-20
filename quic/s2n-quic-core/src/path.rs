@@ -18,7 +18,7 @@ pub enum State {
 //# and remote IP addresses has fallen below the smallest allowed maximum
 //# packet size of 1200 bytes, it MUST immediately cease sending QUIC
 //# packets
-const MINIMUM_MTU: u16 = 1200;
+pub const MINIMUM_MTU: u16 = 1200;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Path<CC: CongestionController> {
@@ -130,7 +130,7 @@ impl<CC: CongestionController> Path<CC> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::recovery::congestion_controller::testing::MockCC;
+    use crate::recovery::congestion_controller::testing::Unlimited;
     use core::time::Duration;
 
     #[test]
@@ -139,7 +139,7 @@ mod tests {
             SocketAddress::default(),
             connection::Id::try_from_bytes(&[]).unwrap(),
             RTTEstimator::new(Duration::from_millis(30)),
-            MockCC::default(),
+            Unlimited::default(),
             true,
         );
 
@@ -165,7 +165,7 @@ mod tests {
             SocketAddress::default(),
             connection::Id::try_from_bytes(&[]).unwrap(),
             RTTEstimator::new(Duration::from_millis(30)),
-            MockCC::default(),
+            Unlimited::default(),
             true,
         );
 
@@ -198,7 +198,7 @@ mod tests {
             SocketAddress::default(),
             connection::Id::try_from_bytes(&[]).unwrap(),
             RTTEstimator::new(Duration::from_millis(30)),
-            MockCC::default(),
+            Unlimited::default(),
             false,
         );
 

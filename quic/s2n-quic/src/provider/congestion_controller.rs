@@ -2,6 +2,7 @@ pub use s2n_quic_core::{
     inet::SocketAddress,
     recovery::congestion_controller::{CongestionController, Endpoint, PathInfo},
 };
+pub use s2n_quic_transport::recovery::CubicCongestionController;
 
 /// Provides congestion controller support for an endpoint
 pub trait Provider {
@@ -16,6 +17,8 @@ pub use default::Provider as Default;
 impl_provider_utils!();
 
 pub mod default {
+    use s2n_quic_transport::recovery::CubicCongestionController;
+
     #[derive(Debug, Default)]
     pub struct Provider;
 
@@ -32,20 +35,13 @@ pub mod default {
     pub struct Endpoint {}
 
     impl super::Endpoint for Endpoint {
-        type CongestionController = CongestionController;
+        type CongestionController = CubicCongestionController;
 
         fn new_congestion_controller(
             &mut self,
-            _path_info: super::PathInfo,
+            path_info: super::PathInfo,
         ) -> Self::CongestionController {
-            CongestionController::default()
+            CubicCongestionController::new(path_info.max_datagram_size)
         }
-    }
-
-    #[derive(Clone, Debug, Default)]
-    pub struct CongestionController {}
-
-    impl super::CongestionController for CongestionController {
-        // TODO implement callbacks once defined
     }
 }
