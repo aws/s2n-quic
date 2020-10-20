@@ -1,7 +1,4 @@
-use core::{
-    cmp::{max, min},
-    time::Duration,
-};
+use core::time::Duration;
 use s2n_quic_core::time::Timestamp;
 
 /// An implementation of the Hybrid Slow Start algorithm described in
@@ -31,7 +28,7 @@ const MIN_DELAY_THRESHOLD: Duration = Duration::from_millis(4);
 /// Maximum increase in delay to consider. Defined as"HYSTART_DELAY_MAX" in tcp_cubic.c
 const MAX_DELAY_THRESHOLD: Duration = Duration::from_millis(16);
 /// Factor for dividing the RTT to determine the threshold. Defined in tcp_cubic.c (not a constant)
-const THRESHOLD_DIVIDEND: usize = 8;
+const THRESHOLD_DIVIDEND: u32 = 8;
 
 impl HybridSlowStart {
     /// Constructs a new `HybridSlowStart`. `max_datagram_size` is used for determining
@@ -86,7 +83,7 @@ impl HybridSlowStart {
 
         if self.sample_count < N_SAMPLING {
             // Sample the delay, saving the minimum
-            self.cur_min_rtt = Some(min(rtt, self.cur_min_rtt.unwrap_or(rtt)));
+            self.cur_min_rtt = Some(rtt.min(self.cur_min_rtt.unwrap_or(rtt)));
         }
 
         self.sample_count += 1;
@@ -96,10 +93,9 @@ impl HybridSlowStart {
         if let (N_SAMPLING, Some(last_min_rtt), Some(cur_min_rtt)) =
             (self.sample_count, self.last_min_rtt, self.cur_min_rtt)
         {
-            let threshold =
-                Duration::from_nanos((last_min_rtt.as_nanos() / THRESHOLD_DIVIDEND as u128) as u64);
+            let threshold = last_min_rtt / THRESHOLD_DIVIDEND;
             // Clamp n to the min and max thresholds
-            let threshold = max(min(threshold, MAX_DELAY_THRESHOLD), MIN_DELAY_THRESHOLD);
+            let threshold = threshold.min(MAX_DELAY_THRESHOLD).max(MIN_DELAY_THRESHOLD);
             let delay_increase_is_over_threshold = cur_min_rtt >= last_min_rtt + threshold;
             let congestion_window_is_above_minimum = congestion_window >= self.low_ssthresh();
 
@@ -114,7 +110,7 @@ impl HybridSlowStart {
     /// and the given congestion window. This will ensure we exit slow start
     /// early enough to avoid further congestion.
     pub(super) fn on_congestion_event(&mut self, ssthresh: u32) {
-        self.threshold = max(self.low_ssthresh(), min(self.threshold, ssthresh));
+        self.threshold = self.threshold.min(ssthresh).max(self.low_ssthresh());
     }
 
     fn low_ssthresh(&self) -> u32 {

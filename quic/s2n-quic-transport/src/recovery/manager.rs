@@ -81,6 +81,7 @@ const K_PACKET_THRESHOLD: u64 = 3;
 
 /// Initial capacity of the SmallVec used for keeping track of packets
 /// acked in an ack frame
+// TODO: Determine if there is a more appropriate default
 const ACKED_PACKETS_INITIAL_CAPACITY: usize = 10;
 
 fn apply_k_time_threshold(duration: Duration) -> Duration {
@@ -307,7 +308,10 @@ impl Manager {
                 .on_rtt_update(largest_newly_acked.1.time_sent, &path.rtt_estimator);
         }
 
-        // Process ECN information if present.
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.1
+        //# If a path has been validated to support ECN ([RFC3168], [RFC8311]),
+        //# QUIC treats a Congestion Experienced (CE) codepoint in the IP header
+        //# as a signal of congestion.
         if let Some(ecn_counts) = frame.ecn_counts {
             if ecn_counts.ce_count > self.ecn_ce_counter {
                 self.ecn_ce_counter = ecn_counts.ce_count;
@@ -380,7 +384,7 @@ impl Manager {
         &mut self,
         path: &mut Path<CC>,
     ) {
-        assert_ne!(self.space, PacketNumberSpace::ApplicationData);
+        debug_assert_ne!(self.space, PacketNumberSpace::ApplicationData);
         // Remove any unacknowledged packets from flight.
         for (_, unacked_sent_info) in self.sent_packets.iter() {
             path.congestion_controller

@@ -157,7 +157,6 @@ impl CongestionController for CubicCongestionController {
 
         match self.state {
             SlowStart => {
-                // Slow start
                 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.3.1
                 //# While a sender is in slow start, the congestion window increases by
                 //# the number of bytes acknowledged when each acknowledgment is
@@ -527,9 +526,7 @@ mod test {
 
     macro_rules! assert_delta {
         ($x:expr, $y:expr, $d:expr) => {
-            if !($x - $y < $d || $y - $x < $d) {
-                panic!();
-            }
+            assert!(($x - $y).abs() < $d);
         };
     }
 
@@ -539,6 +536,8 @@ mod test {
         let max_datagram_size = 1200.0;
         let mut cubic = Cubic::new(max_datagram_size as u16);
 
+        // 2_764_800 is used because it can be divided by 1200 and then have a cubic
+        // root result in an integer value.
         cubic.update_w_max(2_764_800);
         assert_delta!(cubic.w_max, 2_764_800.0 / max_datagram_size, 0.001);
 

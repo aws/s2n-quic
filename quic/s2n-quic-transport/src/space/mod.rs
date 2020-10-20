@@ -76,8 +76,9 @@ macro_rules! packet_space_api {
                 //# forward progress and the loss detection timer might have been set for
                 //# a now discarded packet number space.
                 self.pto_backoff = INITIAL_PTO_BACKOFF;
-                self.$get_mut().iter_mut().for_each(|space| space.on_discard(path));
-                self.$get = None;
+                if let Some(space) = self.$get_mut().take() {
+                    space.on_discard(path);
+                }
             }
         )?
     };
