@@ -75,15 +75,17 @@ impl<'a> ConnectionAttempt<'a> {
 
 /// This trait is used to determine the outcome of connection attempts on an endpoint. The
 /// implementor returns an Outcome based on the ConnectionAttempt, or other information that the
-/// implementor may have
-/// ```rust,no_run
-/// impl endpoint::Limits for MyEndpointLimits {
+/// implementor may have.
+///
+/// ```rust,ignore
+///  impl endpoint::Limits for MyEndpointLimits {
 ///     fn on_connection_attempt(&mut self, info: &ConnectionAttempt) -> Outcome {
 ///         if info.inflight_handshakes > my_server_limit {
 ///             return Outcome::Retry { delay: Duration::from_millis(current_backoff) }
 ///         }
 ///     }
-/// }
+///  }
+/// ```
 pub trait Limits {
     fn on_connection_attempt(&mut self, info: &ConnectionAttempt) -> Outcome;
 }
