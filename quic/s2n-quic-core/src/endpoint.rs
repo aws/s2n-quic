@@ -42,16 +42,16 @@ pub enum Outcome {
 #[non_exhaustive]
 pub struct ConnectionInfo<'a> {
     #[allow(dead_code)]
-    current_handshakes: usize,
+    inflight_handshakes: usize,
 
     #[allow(dead_code)]
     source_address: &'a SocketAddress,
 }
 
 impl<'a> ConnectionInfo<'a> {
-    pub fn new(current_handshakes: usize, source_address: &'a SocketAddress) -> Self {
+    pub fn new(inflight_handshakes: usize, source_address: &'a SocketAddress) -> Self {
         Self {
-            current_handshakes,
+            inflight_handshakes,
             source_address,
         }
     }
