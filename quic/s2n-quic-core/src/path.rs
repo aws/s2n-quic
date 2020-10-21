@@ -6,6 +6,7 @@ use crate::{
     inet::SocketAddress,
     recovery::{CongestionController, RTTEstimator},
 };
+use core::convert::TryInto;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum State {
@@ -107,7 +108,19 @@ impl<CC: CongestionController> Path<CC> {
     //# Prior to validating the client address, servers MUST NOT send more
     //# than three times as many bytes as the number of bytes they have
     //# received.
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7
+    //# An endpoint MUST NOT send a packet if it would cause bytes_in_flight
+    //# (see Appendix B.2) to be larger than the congestion window, unless
+    //# the packet is sent on a PTO timer expiration (see Section 6.2) or
+    //# when entering recovery (see Section 7.3.2).
     pub fn clamp_mtu(&self, requested_size: usize) -> usize {
+        let available_congestion_window = self
+            .congestion_controller
+            .available_congestion_window()
+            .try_into()
+            .unwrap_or(usize::max_value());
+
         match self.state {
             State::Validated => requested_size.min(self.mtu as usize),
             State::Pending { tx_bytes, rx_bytes } => {
@@ -118,6 +131,7 @@ impl<CC: CongestionController> Path<CC> {
                 requested_size.min(limit as usize).min(self.mtu as usize)
             }
         }
+        .min(available_congestion_window)
     }
 
     /// Returns whether this path is blocked from transmitting more data

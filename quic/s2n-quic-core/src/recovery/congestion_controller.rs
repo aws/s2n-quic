@@ -31,8 +31,9 @@ impl<'a> PathInfo<'a> {
 }
 
 pub trait CongestionController: 'static + Clone + Send {
-    /// Gets the current congestion window size in bytes
-    fn congestion_window(&self) -> u32;
+    /// Gets the numbers of bytes remaining in the congestion window
+    /// considering the current bytes in flight
+    fn available_congestion_window(&self) -> u32;
 
     /// Invoked whenever a congestion controlled packet is sent
     fn on_packet_sent(&mut self, time_sent: Timestamp, sent_bytes: usize);
@@ -78,7 +79,7 @@ pub mod testing {
     pub struct Unlimited {}
 
     impl CongestionController for Unlimited {
-        fn congestion_window(&self) -> u32 {
+        fn available_congestion_window(&self) -> u32 {
             u32::max_value()
         }
         fn on_packet_sent(&mut self, _time_sent: Timestamp, _bytes_sent: usize) {}

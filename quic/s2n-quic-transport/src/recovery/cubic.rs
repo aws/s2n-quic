@@ -97,8 +97,9 @@ impl AddAssign<usize> for BytesInFlight {
 }
 
 impl CongestionController for CubicCongestionController {
-    fn congestion_window(&self) -> u32 {
+    fn available_congestion_window(&self) -> u32 {
         self.congestion_window
+            .saturating_sub(self.bytes_in_flight.0)
     }
 
     fn on_packet_sent(&mut self, time_sent: Timestamp, bytes_sent: usize) {
@@ -291,8 +292,6 @@ impl CongestionController for CubicCongestionController {
 }
 
 impl CubicCongestionController {
-    // TODO: Remove when used
-    #[allow(dead_code)]
     pub fn new(max_datagram_size: u16) -> Self {
         Self {
             cubic: Cubic::new(max_datagram_size),
@@ -629,6 +628,18 @@ mod test {
     }
 
     #[test]
+    fn available_congestion_window() {
+        let mut cc = CubicCongestionController::new(1000);
+        cc.congestion_window = 1000;
+        cc.bytes_in_flight = BytesInFlight(100);
+
+        assert_eq!(cc.available_congestion_window(), 900);
+
+        cc.bytes_in_flight = BytesInFlight(2000);
+        assert_eq!(cc.available_congestion_window(), 0);
+    }
+
+    #[test]
     fn on_packet_sent() {
         let mut cc = CubicCongestionController::new(1000);
         let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(0));
@@ -720,7 +731,7 @@ mod test {
 
         assert_eq!(cc.bytes_in_flight.0, 100_000 - 100);
         assert_eq!(cc.state, Recovery(now + Duration::from_secs(10)));
-        assert_eq!(cc.congestion_window(), (100_000.0 * BETA_CUBIC) as u32);
+        assert_eq!(cc.congestion_window, (100_000.0 * BETA_CUBIC) as u32);
         assert_eq!(cc.slow_start.threshold, (100_000.0 * BETA_CUBIC) as u32);
         assert_eq!(cc.slow_start.threshold, (100_000.0 * BETA_CUBIC) as u32);
     }
@@ -735,7 +746,7 @@ mod test {
         cc.on_packets_lost(LossInfo::default(), Duration::from_secs(5), now);
 
         // No change to the congestion window
-        assert_eq!(cc.congestion_window(), 10000);
+        assert_eq!(cc.congestion_window, 10000);
     }
 
     #[test]
@@ -751,7 +762,7 @@ mod test {
         cc.on_packets_lost(loss_info, Duration::from_secs(5), now);
 
         assert_eq!(cc.state, SlowStart);
-        assert_eq!(cc.congestion_window(), cc.minimum_window());
+        assert_eq!(cc.congestion_window, cc.minimum_window());
     }
 
     #[test]
@@ -764,7 +775,7 @@ mod test {
         assert_eq!(cc.cubic.max_datagram_size, 5000);
 
         assert_eq!(
-            cc.congestion_window(),
+            cc.congestion_window,
             CubicCongestionController::initial_window(5000)
         );
     }
@@ -779,7 +790,7 @@ mod test {
         assert_eq!(cc.max_datagram_size, 10000);
         assert_eq!(cc.cubic.max_datagram_size, 10000);
 
-        assert_eq!(cc.congestion_window(), 200_000);
+        assert_eq!(cc.congestion_window, 200_000);
     }
 
     #[test]
@@ -803,7 +814,7 @@ mod test {
 
         cc.on_packet_ack(now, 1, &RTTEstimator::new(Duration::from_secs(0)), now);
 
-        assert_eq!(cc.congestion_window(), 100_000);
+        assert_eq!(cc.congestion_window, 100_000);
     }
 
     #[test]
@@ -847,7 +858,7 @@ mod test {
             now + Duration::from_millis(2),
         );
 
-        assert_eq!(cc.congestion_window(), 10100);
+        assert_eq!(cc.congestion_window, 10100);
         assert_eq!(cc.packets_to_bytes(cc.cubic.w_max), cc.congestion_window);
         assert_eq!(
             cc.state,
@@ -872,7 +883,7 @@ mod test {
         );
 
         // Congestion window stays the same in recovery
-        assert_eq!(cc.congestion_window(), 10000);
+        assert_eq!(cc.congestion_window, 10000);
         assert_eq!(cc.state, Recovery(now));
     }
 
@@ -906,7 +917,7 @@ mod test {
 
         cc2.congestion_avoidance(t, rtt, 1000);
 
-        assert_eq!(cc.congestion_window(), cc2.congestion_window());
+        assert_eq!(cc.congestion_window, cc2.congestion_window);
     }
 
     #[test]
@@ -924,7 +935,7 @@ mod test {
 
         assert!(cc.cubic.w_cubic(t) < cc.cubic.w_est(t, rtt));
         assert_eq!(
-            cc.congestion_window(),
+            cc.congestion_window,
             (cc.cubic.w_est(t, rtt) * 5000.0) as u32
         );
     }
@@ -953,7 +964,7 @@ mod test {
         // cwnd = ((2300.8 - 2000)/2000 + 2000) * max_datagram_size
         // cwnd = 2400180.48
 
-        assert_eq!(cc.congestion_window(), 2_400_180);
+        assert_eq!(cc.congestion_window, 2_400_180);
     }
 
     #[test]
@@ -980,7 +991,7 @@ mod test {
         // cwnd = ((3401.6 - 3000)/3000 + 3000) * max_datagram_size
         // cwnd = 3600160.64
 
-        assert_eq!(cc.congestion_window(), 3_600_160);
+        assert_eq!(cc.congestion_window, 3_600_160);
     }
 
     #[test]
@@ -997,6 +1008,6 @@ mod test {
         cc.congestion_avoidance(t, rtt, 1000);
 
         assert!(cc.cubic.w_cubic(t) > cc.cubic.w_est(t, rtt));
-        assert_eq!(cc.congestion_window(), 3_600_000 + 1000 / 2);
+        assert_eq!(cc.congestion_window, 3_600_000 + 1000 / 2);
     }
 }
