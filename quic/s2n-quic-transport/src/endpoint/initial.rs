@@ -56,6 +56,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
 
         // Before allocating resources for a new connection, verify that can proceed.
         // NOTE: How do we access TLS handshakes in-flight from here (instead of 0)?
+        // TODO https://github.com/awslabs/s2n-quic/issues/166
         let info = endpoint::ConnectionInfo::new(0, &datagram.remote_address);
         match endpoint_context.governor.on_connection_attempt(&info) {
             endpoint::Outcome::Allow => {
@@ -68,6 +69,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             }
             endpoint::Outcome::Drop => {
                 // Stop processing
+                return Ok(());
             }
             endpoint::Outcome::Close { delay: _ } => {
                 // Queue close packet
@@ -210,7 +212,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         // will also clean up all state which was already allocated for
         // the connection
         self.connections.insert_connection(connection, shared_state);
-        // TODO increment inflight handshakes
+        // TODO https://github.com/awslabs/s2n-quic/issues/162: increment inflight handshakes
         Ok(())
     }
 }
