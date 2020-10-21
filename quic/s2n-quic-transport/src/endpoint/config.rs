@@ -22,7 +22,7 @@ pub trait Config: Sized {
     /// The validation token format
     type TokenFormat: s2n_quic_core::token::Format;
     /// The endpoint limits
-    type EndpointLimitFormat: endpoint::LimitActions;
+    type EndpointLimits: endpoint::Limits;
 
     /// The type of the local endpoint
     const ENDPOINT_TYPE: endpoint::EndpointType =
@@ -46,5 +46,5 @@ pub struct Context<'a, Cfg: Config> {
     pub tls: &'a mut Cfg::TLSEndpoint,
 
     /// The endpoint limits
-    pub endpoint_limits: &'a mut Cfg::EndpointLimitFormat,
+    pub endpoint_limits: &'a mut Cfg::EndpointLimits,
 }

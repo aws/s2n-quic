@@ -1,10 +1,10 @@
 //! Default provider for the endpoint limits.
 //!
 
-use s2n_quic_core::endpoint::LimitActions;
+use s2n_quic_core::endpoint::Limits;
 
 pub trait Provider: 'static {
-    type Limits: 'static + LimitActions;
+    type Limits: 'static + Limits;
     type Error: core::fmt::Display;
 
     /// Starts the token provider
@@ -22,19 +22,22 @@ pub mod default {
     pub struct Provider;
 
     impl super::Provider for Provider {
-        type Limits = LimitActions;
+        type Limits = Limits;
         type Error = core::convert::Infallible;
 
         fn start(self) -> Result<Self::Limits, Self::Error> {
-            Ok(LimitActions::default())
+            Ok(Limits::default())
         }
     }
 
     #[derive(Clone, Copy, Default)]
-    pub struct LimitActions {}
+    pub struct Limits {}
 
-    impl super::LimitActions for LimitActions {
-        fn on_connection_attempt(&mut self, _info: &endpoint::ConnectionInfo) -> endpoint::Outcome {
+    impl super::Limits for Limits {
+        fn on_connection_attempt(
+            &mut self,
+            _info: &endpoint::ConnectionAttempt,
+        ) -> endpoint::Outcome {
             endpoint::Outcome::Allow
         }
     }

@@ -1,7 +1,7 @@
 use crate::{
     connection::{self, id::Generator as _, SynchronizedSharedConnectionState, Trait as _},
     endpoint,
-    endpoint::LimitActions,
+    endpoint::Limits,
     recovery::congestion_controller::{self, Endpoint as _},
     space::PacketSpaceManager,
 };
@@ -57,10 +57,10 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         // Before allocating resources for a new connection, verify that can proceed.
         // NOTE: How do we access TLS handshakes in-flight from here (instead of 0)?
         // TODO https://github.com/awslabs/s2n-quic/issues/166
-        let info = endpoint::ConnectionInfo::new(0, &datagram.remote_address);
+        let attempt = endpoint::ConnectionAttempt::new(0, &datagram.remote_address);
         match endpoint_context
             .endpoint_limits
-            .on_connection_attempt(&info)
+            .on_connection_attempt(&attempt)
         {
             endpoint::Outcome::Allow => {
                 // No action

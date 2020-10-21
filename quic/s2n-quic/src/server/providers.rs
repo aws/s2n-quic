@@ -1,7 +1,7 @@
 use super::*;
 use core::{marker::PhantomData, time::Duration};
 use futures::{select_biased, FutureExt};
-use s2n_quic_core::{crypto, endpoint::LimitActions, recovery, transport};
+use s2n_quic_core::{crypto, recovery, transport};
 use s2n_quic_transport::{acceptor::Acceptor, connection, endpoint, stream};
 
 impl_providers_state! {
@@ -178,7 +178,7 @@ impl<
 struct EndpointConfig<
     CongestionController,
     ConnectionID,
-    EndpointLimitFormat,
+    EndpointLimits,
     Limits,
     Log,
     Sync,
@@ -187,7 +187,7 @@ struct EndpointConfig<
 > {
     congestion_controller: CongestionController,
     connection_id: ConnectionID,
-    endpoint_limits: EndpointLimitFormat,
+    endpoint_limits: EndpointLimits,
     limits: Limits,
     log: Log,
     sync: Sync,
@@ -198,7 +198,7 @@ struct EndpointConfig<
 impl<
         CongestionController: congestion_controller::Endpoint,
         ConnectionID: connection::id::Format,
-        EndpointLimitFormat: LimitActions,
+        EndpointLimits: s2n_quic_core::endpoint::Limits,
         Limits,
         Log,
         Sync,
@@ -208,7 +208,7 @@ impl<
     for EndpointConfig<
         CongestionController,
         ConnectionID,
-        EndpointLimitFormat,
+        EndpointLimits,
         Limits,
         Log,
         Sync,
@@ -221,7 +221,7 @@ impl<
     type ConnectionIdFormat = ConnectionID;
     type Connection = connection::Implementation<Self::ConnectionConfig>;
     type CongestionControllerEndpoint = CongestionController;
-    type EndpointLimitFormat = EndpointLimitFormat;
+    type EndpointLimits = EndpointLimits;
     type TLSEndpoint = Tls;
     type TokenFormat = Token;
 
