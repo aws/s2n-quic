@@ -57,6 +57,6 @@ impl<'a> ConnectionInfo<'a> {
     }
 }
 
-pub trait Format {
+pub trait LimitActions {
     fn on_connection_attempt(&mut self, info: &ConnectionInfo) -> Outcome;
 }

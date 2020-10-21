@@ -1,14 +1,14 @@
-//! Default provider for the endpoint governor.
+//! Default provider for the endpoint limits.
 //!
 
-use s2n_quic_core::endpoint::Format;
+use s2n_quic_core::endpoint::LimitActions;
 
 pub trait Provider: 'static {
-    type Format: 'static + Format;
+    type Limits: 'static + LimitActions;
     type Error: core::fmt::Display;
 
     /// Starts the token provider
-    fn start(self) -> Result<Self::Format, Self::Error>;
+    fn start(self) -> Result<Self::Limits, Self::Error>;
 }
 
 pub use default::Provider as Default;
@@ -22,18 +22,18 @@ pub mod default {
     pub struct Provider;
 
     impl super::Provider for Provider {
-        type Format = Format;
+        type Limits = LimitActions;
         type Error = core::convert::Infallible;
 
-        fn start(self) -> Result<Self::Format, Self::Error> {
-            Ok(Format::default())
+        fn start(self) -> Result<Self::Limits, Self::Error> {
+            Ok(LimitActions::default())
         }
     }
 
     #[derive(Clone, Copy, Default)]
-    pub struct Format {}
+    pub struct LimitActions {}
 
-    impl super::Format for Format {
+    impl super::LimitActions for LimitActions {
         fn on_connection_attempt(&mut self, _info: &endpoint::ConnectionInfo) -> endpoint::Outcome {
             endpoint::Outcome::Allow
         }

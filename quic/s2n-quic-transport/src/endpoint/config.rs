@@ -21,8 +21,8 @@ pub trait Config: Sized {
     type ConnectionIdFormat: connection::id::Format;
     /// The validation token format
     type TokenFormat: s2n_quic_core::token::Format;
-    /// The endpoint governor
-    type EndpointLimitFormat: endpoint::Format;
+    /// The endpoint limits
+    type EndpointLimitFormat: endpoint::LimitActions;
 
     /// The type of the local endpoint
     const ENDPOINT_TYPE: endpoint::EndpointType =
@@ -45,6 +45,6 @@ pub struct Context<'a, Cfg: Config> {
     /// The TLS endpoint associated with the endpoint config
     pub tls: &'a mut Cfg::TLSEndpoint,
 
-    /// The endpoint governor
-    pub governor: &'a mut Cfg::EndpointLimitFormat,
+    /// The endpoint limits
+    pub endpoint_limits: &'a mut Cfg::EndpointLimitFormat,
 }

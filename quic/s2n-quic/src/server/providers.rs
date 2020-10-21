@@ -1,7 +1,7 @@
 use super::*;
 use core::{marker::PhantomData, time::Duration};
 use futures::{select_biased, FutureExt};
-use s2n_quic_core::{crypto, recovery, transport};
+use s2n_quic_core::{crypto, endpoint::LimitActions, recovery, transport};
 use s2n_quic_transport::{acceptor::Acceptor, connection, endpoint, stream};
 
 impl_providers_state! {
@@ -10,6 +10,7 @@ impl_providers_state! {
         clock: Clock,
         congestion_controller: CongestionController,
         connection_id: ConnectionID,
+        endpoint_limits: EndpointLimits,
         limits: Limits,
         log: Log,
         runtime: Runtime,
@@ -27,6 +28,7 @@ impl<
         Clock: clock::Provider,
         CongestionController: congestion_controller::Provider,
         ConnectionID: connection_id::Provider,
+        EndpointLimits: endpoint_limits::Provider,
         Limits: limits::Provider,
         Log: log::Provider,
         Runtime: runtime::Provider,
@@ -35,7 +37,19 @@ impl<
         Tls: tls::Provider,
         Token: token::Provider,
     >
-    Providers<Clock, CongestionController, ConnectionID, Limits, Log, Runtime, IO, Sync, Tls, Token>
+    Providers<
+        Clock,
+        CongestionController,
+        ConnectionID,
+        EndpointLimits,
+        Limits,
+        Log,
+        Runtime,
+        IO,
+        Sync,
+        Tls,
+        Token,
+    >
 {
     pub fn start(self) -> Result<Acceptor, StartError> {
         use crate::provider::runtime::Environment;
@@ -44,6 +58,7 @@ impl<
             clock,
             congestion_controller,
             connection_id,
+            endpoint_limits,
             limits,
             log,
             token,
@@ -56,6 +71,7 @@ impl<
         let clock = clock.start().map_err(StartError::new)?;
         let congestion_controller = congestion_controller.start().map_err(StartError::new)?;
         let connection_id = connection_id.start().map_err(StartError::new)?;
+        let endpoint_limits = endpoint_limits.start().map_err(StartError::new)?;
         let limits = limits.start().map_err(StartError::new)?;
         let log = log.start().map_err(StartError::new)?;
         let token = token.start().map_err(StartError::new)?;
@@ -70,6 +86,7 @@ impl<
         let endpoint_config = EndpointConfig {
             congestion_controller,
             connection_id,
+            endpoint_limits,
             limits,
             log,
             token,
@@ -158,9 +175,19 @@ impl<
 }
 
 #[allow(dead_code)] // don't warn on unused providers for now
-struct EndpointConfig<CongestionController, ConnectionID, Limits, Log, Sync, Tls, Token> {
+struct EndpointConfig<
+    CongestionController,
+    ConnectionID,
+    EndpointLimitFormat,
+    Limits,
+    Log,
+    Sync,
+    Tls,
+    Token,
+> {
     congestion_controller: CongestionController,
     connection_id: ConnectionID,
+    endpoint_limits: EndpointLimitFormat,
     limits: Limits,
     log: Log,
     sync: Sync,
@@ -171,19 +198,30 @@ struct EndpointConfig<CongestionController, ConnectionID, Limits, Log, Sync, Tls
 impl<
         CongestionController: congestion_controller::Endpoint,
         ConnectionID: connection::id::Format,
+        EndpointLimitFormat: LimitActions,
         Limits,
         Log,
         Sync,
         Tls: 'static + crypto::tls::Endpoint,
         Token: 'static + token::Format,
     > endpoint::Config
-    for EndpointConfig<CongestionController, ConnectionID, Limits, Log, Sync, Tls, Token>
+    for EndpointConfig<
+        CongestionController,
+        ConnectionID,
+        EndpointLimitFormat,
+        Limits,
+        Log,
+        Sync,
+        Tls,
+        Token,
+    >
 {
     type ConnectionConfig =
         ConnectionConfig<CongestionController::CongestionController, Tls::Session>;
     type ConnectionIdFormat = ConnectionID;
     type Connection = connection::Implementation<Self::ConnectionConfig>;
     type CongestionControllerEndpoint = CongestionController;
+    type EndpointLimitFormat = EndpointLimitFormat;
     type TLSEndpoint = Tls;
     type TokenFormat = Token;
 
@@ -199,6 +237,7 @@ impl<
             congestion_controller: &mut self.congestion_controller,
             connection_id_format: &mut self.connection_id,
             tls: &mut self.tls,
+            endpoint_limits: &mut self.endpoint_limits,
         }
     }
 }
