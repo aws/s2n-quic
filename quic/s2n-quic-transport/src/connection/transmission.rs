@@ -62,7 +62,16 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
     fn write_payload(&mut self, buffer: &mut [u8]) -> usize {
         let shared_state = &mut self.shared_state;
         let space_manager = &mut shared_state.space_manager;
-        let mtu = self.context.path.clamp_mtu(buffer.len());
+
+        let ignore_congestion_control = space_manager
+            .interests()
+            .frame_exchange
+            .ignore_congestion_control;
+
+        let mtu = self
+            .context
+            .path
+            .clamp_mtu(buffer.len(), ignore_congestion_control);
         if mtu == 0 {
             return 0;
         }

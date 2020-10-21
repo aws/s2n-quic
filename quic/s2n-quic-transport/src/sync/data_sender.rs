@@ -619,6 +619,7 @@ impl<F: OutgoingDataFlowController, S> FrameExchangeInterestProvider for DataSen
             delivery_notifications: self.chunks_inflight > 0,
             transmission: self.chunks_waiting_for_transmission > 0
                 && !self.flow_controller.is_blocked(),
+            ignore_congestion_control: false,
         }
     }
 }

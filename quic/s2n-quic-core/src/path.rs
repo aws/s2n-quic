@@ -114,14 +114,14 @@ impl<CC: CongestionController> Path<CC> {
     //# (see Appendix B.2) to be larger than the congestion window, unless
     //# the packet is sent on a PTO timer expiration (see Section 6.2) or
     //# when entering recovery (see Section 7.3.2).
-    pub fn clamp_mtu(&self, requested_size: usize) -> usize {
+    pub fn clamp_mtu(&self, requested_size: usize, ignore_congestion_control: bool) -> usize {
         let available_congestion_window = self
             .congestion_controller
             .available_congestion_window()
             .try_into()
             .unwrap_or(usize::max_value());
 
-        match self.state {
+        let mtu = match self.state {
             State::Validated => requested_size.min(self.mtu as usize),
             State::Pending { tx_bytes, rx_bytes } => {
                 let limit = rx_bytes
@@ -130,14 +130,19 @@ impl<CC: CongestionController> Path<CC> {
                     .unwrap_or(0);
                 requested_size.min(limit as usize).min(self.mtu as usize)
             }
+        };
+
+        if ignore_congestion_control {
+            mtu
+        } else {
+            mtu.min(available_congestion_window)
         }
-        .min(available_congestion_window)
     }
 
     /// Returns whether this path is blocked from transmitting more data
     pub fn at_amplification_limit(&self) -> bool {
         let mtu = self.mtu as usize;
-        self.clamp_mtu(mtu) < mtu
+        self.clamp_mtu(mtu, false) < mtu
     }
 }
 
@@ -187,23 +192,23 @@ mod tests {
         path.on_bytes_transmitted(8);
 
         // Verify we can transmit one more byte
-        assert_eq!(path.clamp_mtu(1), 1);
-        assert_eq!(path.clamp_mtu(10), 1);
+        assert_eq!(path.clamp_mtu(1, false), 1);
+        assert_eq!(path.clamp_mtu(10, false), 1);
 
         path.on_bytes_transmitted(1);
         // Verify we can't transmit any more bytes
-        assert_eq!(path.clamp_mtu(1), 0);
-        assert_eq!(path.clamp_mtu(10), 0);
+        assert_eq!(path.clamp_mtu(1, false), 0);
+        assert_eq!(path.clamp_mtu(10, false), 0);
 
         path.on_bytes_received(1);
         // Verify we can transmit up to 3 more bytes
-        assert_eq!(path.clamp_mtu(1), 1);
-        assert_eq!(path.clamp_mtu(2), 2);
-        assert_eq!(path.clamp_mtu(4), 3);
+        assert_eq!(path.clamp_mtu(1, false), 1);
+        assert_eq!(path.clamp_mtu(2, false), 2);
+        assert_eq!(path.clamp_mtu(4, false), 3);
 
         path.on_validated();
         // Validated paths should always be able to transmit
-        assert_eq!(path.clamp_mtu(4), 4);
+        assert_eq!(path.clamp_mtu(4, false), 4);
     }
 
     #[test]

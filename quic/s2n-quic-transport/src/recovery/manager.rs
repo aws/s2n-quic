@@ -564,6 +564,7 @@ impl FrameExchangeInterestProvider for Manager {
         FrameExchangeInterests {
             delivery_notifications: !self.sent_packets.is_empty(),
             transmission: false,
+            ignore_congestion_control: false,
         } + self.pto.frame_exchange_interests()
     }
 }
@@ -731,6 +732,9 @@ impl FrameExchangeInterestProvider for Pto {
         FrameExchangeInterests {
             delivery_notifications: false,
             transmission: matches!(self.state, PtoState::RequiresTransmission(_)),
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.5
+            //# Probe packets MUST NOT be blocked by the congestion controller.
+            ignore_congestion_control: matches!(self.state, PtoState::RequiresTransmission(_)),
         }
     }
 }

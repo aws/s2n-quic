@@ -72,6 +72,7 @@ impl ConnectionInterests {
             frame_exchange: FrameExchangeInterests {
                 transmission: self.frame_exchange.transmission || other.transmission,
                 delivery_notifications: self.frame_exchange.delivery_notifications,
+                ignore_congestion_control: self.frame_exchange.ignore_congestion_control,
             },
         }
     }
@@ -132,6 +133,7 @@ mod tests {
             frame_exchange: FrameExchangeInterests {
                 transmission: false,
                 delivery_notifications: true,
+                ignore_congestion_control: false,
             },
             accept: true,
             finalization: true,
@@ -141,6 +143,7 @@ mod tests {
             frame_exchange: FrameExchangeInterests {
                 transmission: true,
                 delivery_notifications: false,
+                ignore_congestion_control: false,
             },
             accept: false,
             finalization: false,
@@ -150,6 +153,7 @@ mod tests {
             frame_exchange: FrameExchangeInterests {
                 transmission: false,
                 delivery_notifications: false,
+                ignore_congestion_control: false,
             },
             accept: false,
             finalization: true,
@@ -160,6 +164,7 @@ mod tests {
                 frame_exchange: FrameExchangeInterests {
                     transmission: true,
                     delivery_notifications: true,
+                    ignore_congestion_control: false,
                 },
                 accept: true,
                 finalization: false,
@@ -172,6 +177,7 @@ mod tests {
                 frame_exchange: FrameExchangeInterests {
                     transmission: false,
                     delivery_notifications: true,
+                    ignore_congestion_control: false,
                 },
                 accept: true,
                 finalization: true,
@@ -184,6 +190,7 @@ mod tests {
                 frame_exchange: FrameExchangeInterests {
                     transmission: true,
                     delivery_notifications: false,
+                    ignore_congestion_control: false,
                 },
                 accept: false,
                 finalization: false,
@@ -198,6 +205,7 @@ mod tests {
             frame_exchange: FrameExchangeInterests {
                 transmission: false,
                 delivery_notifications: true,
+                ignore_congestion_control: false,
             },
             accept: true,
             finalization: false,
@@ -206,11 +214,13 @@ mod tests {
         let b = FrameExchangeInterests {
             transmission: true,
             delivery_notifications: false,
+            ignore_congestion_control: false,
         };
 
         let c = FrameExchangeInterests {
             transmission: false,
             delivery_notifications: false,
+            ignore_congestion_control: false,
         };
 
         assert_eq!(
@@ -218,6 +228,7 @@ mod tests {
                 frame_exchange: FrameExchangeInterests {
                     transmission: true,
                     delivery_notifications: true,
+                    ignore_congestion_control: false,
                 },
                 accept: true,
                 finalization: false,
@@ -230,6 +241,7 @@ mod tests {
                 frame_exchange: FrameExchangeInterests {
                     transmission: false,
                     delivery_notifications: true,
+                    ignore_congestion_control: false,
                 },
                 accept: true,
                 finalization: false,
@@ -244,6 +256,7 @@ mod tests {
             frame_exchange: FrameExchangeInterests {
                 transmission: false,
                 delivery_notifications: true,
+                ignore_congestion_control: false,
             },
             finalization: false,
             accept: true,
@@ -253,6 +266,7 @@ mod tests {
             frame_exchange: FrameExchangeInterests {
                 transmission: true,
                 delivery_notifications: false,
+                ignore_congestion_control: false,
             },
             finalization: true,
             accept: false,
@@ -273,6 +287,7 @@ mod tests {
                 frame_exchange: FrameExchangeInterests {
                     transmission: true,
                     delivery_notifications: true,
+                    ignore_congestion_control: false,
                 },
                 finalization: false,
                 accept: true,
@@ -285,6 +300,7 @@ mod tests {
                 frame_exchange: FrameExchangeInterests {
                     transmission: false,
                     delivery_notifications: true,
+                    ignore_congestion_control: false,
                 },
                 finalization: false,
                 accept: true,
@@ -297,6 +313,7 @@ mod tests {
                 frame_exchange: FrameExchangeInterests {
                     transmission: true,
                     delivery_notifications: false,
+                    ignore_congestion_control: false,
                 },
                 finalization: false,
                 accept: false,
@@ -309,6 +326,7 @@ mod tests {
                 frame_exchange: FrameExchangeInterests {
                     transmission: true,
                     delivery_notifications: false,
+                    ignore_congestion_control: false,
                 },
                 finalization: true,
                 accept: false,
