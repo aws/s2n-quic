@@ -1,6 +1,6 @@
 use crate::{
     connection::{self, id::Generator as _, SynchronizedSharedConnectionState, Trait as _},
-    endpoint,
+    endpoint::{self, Limits as _},
     recovery::congestion_controller::{self, Endpoint as _},
     space::PacketSpaceManager,
 };
@@ -9,7 +9,6 @@ use core::{convert::TryInto, time::Duration};
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     crypto::{tls::Endpoint as TLSEndpoint, CryptoSuite, InitialCrypto},
-    endpoint::{limits as EndpointLimits, Limits},
     inet::DatagramInfo,
     packet::initial::ProtectedInitial,
     transport::{error::TransportError, parameters::ServerTransportParameters},
@@ -65,16 +64,16 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             endpoint::limits::Outcome::Allow => {
                 // No action
             }
-            EndpointLimits::Outcome::Retry { delay: _ } => {
+            endpoint::limits::Outcome::Retry { delay: _ } => {
                 //= https://tools.ietf.org/html/draft-ietf-quic-transport-31#section-8.1.3
                 //# A server can also use a Retry packet to defer the state and
                 //# processing costs of connection establishment.
             }
-            EndpointLimits::Outcome::Drop => {
+            endpoint::limits::Outcome::Drop => {
                 // Stop processing
                 return Ok(());
             }
-            EndpointLimits::Outcome::Close { delay: _ } => {
+            endpoint::limits::Outcome::Close { delay: _ } => {
                 // Queue close packet
             }
         }
