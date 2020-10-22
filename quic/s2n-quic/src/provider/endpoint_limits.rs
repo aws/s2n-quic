@@ -1,7 +1,7 @@
 //! Default provider for the endpoint limits.
 //!
 
-use s2n_quic_core::endpoint::Limits;
+use s2n_quic_core::endpoint_limits::Limits;
 
 pub trait Provider: 'static {
     type Limits: 'static + Limits;
@@ -16,7 +16,7 @@ pub use default::Provider as Default;
 impl_provider_utils!();
 
 pub mod default {
-    use s2n_quic_core::endpoint;
+    use s2n_quic_core::endpoint_limits;
 
     #[derive(Debug, Default)]
     pub struct Provider;
@@ -36,9 +36,9 @@ pub mod default {
     impl super::Limits for Limits {
         fn on_connection_attempt(
             &mut self,
-            _info: &endpoint::ConnectionAttempt,
-        ) -> endpoint::Outcome {
-            endpoint::Outcome::Allow
+            _info: &endpoint_limits::ConnectionAttempt,
+        ) -> endpoint_limits::Outcome {
+            endpoint_limits::Outcome::Allow
         }
     }
 }

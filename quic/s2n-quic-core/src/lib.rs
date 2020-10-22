@@ -5,6 +5,7 @@ pub mod application;
 pub mod connection;
 pub mod crypto;
 pub mod endpoint;
+pub mod endpoint_limits;
 pub mod frame;
 pub mod inet;
 pub mod io;

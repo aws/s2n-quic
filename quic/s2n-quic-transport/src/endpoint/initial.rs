@@ -1,7 +1,6 @@
 use crate::{
     connection::{self, id::Generator as _, SynchronizedSharedConnectionState, Trait as _},
     endpoint,
-    endpoint::Limits,
     recovery::congestion_controller::{self, Endpoint as _},
     space::PacketSpaceManager,
 };
@@ -10,6 +9,7 @@ use core::{convert::TryInto, time::Duration};
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     crypto::{tls::Endpoint as TLSEndpoint, CryptoSuite, InitialCrypto},
+    endpoint_limits::{self, Limits},
     inet::DatagramInfo,
     packet::initial::ProtectedInitial,
     transport::{error::TransportError, parameters::ServerTransportParameters},
@@ -57,24 +57,24 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         // Before allocating resources for a new connection, verify that can proceed.
         // NOTE: How do we access TLS handshakes in-flight from here (instead of 0)?
         // TODO https://github.com/awslabs/s2n-quic/issues/166
-        let attempt = endpoint::ConnectionAttempt::new(0, &datagram.remote_address);
+        let attempt = endpoint_limits::ConnectionAttempt::new(0, &datagram.remote_address);
         match endpoint_context
             .endpoint_limits
             .on_connection_attempt(&attempt)
         {
-            endpoint::Outcome::Allow => {
+            endpoint_limits::Outcome::Allow => {
                 // No action
             }
-            endpoint::Outcome::Retry { delay: _ } => {
+            endpoint_limits::Outcome::Retry { delay: _ } => {
                 //= https://tools.ietf.org/html/draft-ietf-quic-transport-31#section-8.1.3
                 //# A server can also use a Retry packet to defer the state and
                 //# processing costs of connection establishment.
             }
-            endpoint::Outcome::Drop => {
+            endpoint_limits::Outcome::Drop => {
                 // Stop processing
                 return Ok(());
             }
-            endpoint::Outcome::Close { delay: _ } => {
+            endpoint_limits::Outcome::Close { delay: _ } => {
                 // Queue close packet
             }
         }

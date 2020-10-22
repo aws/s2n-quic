@@ -1,7 +1,7 @@
 //! Configuration parameters for `Endpoint`s
 
 use crate::connection;
-use s2n_quic_core::{crypto::tls, endpoint, recovery::congestion_controller};
+use s2n_quic_core::{crypto::tls, endpoint, endpoint_limits, recovery::congestion_controller};
 
 /// Configuration paramters for a QUIC endpoint
 pub trait Config: Sized {
@@ -22,7 +22,7 @@ pub trait Config: Sized {
     /// The validation token format
     type TokenFormat: s2n_quic_core::token::Format;
     /// The endpoint limits
-    type EndpointLimits: endpoint::Limits;
+    type EndpointLimits: endpoint_limits::Limits;
 
     /// The type of the local endpoint
     const ENDPOINT_TYPE: endpoint::EndpointType =
