@@ -10,8 +10,6 @@ pub struct FrameExchangeInterests {
     pub delivery_notifications: bool,
     /// Is `true` if the component is interested in transmitting outgoing data
     pub transmission: bool,
-    /// Is `true` if the frame must be transmitted regardless of congestion control window limits
-    pub ignore_congestion_control: bool,
 }
 
 impl FrameExchangeInterests {
@@ -26,8 +24,6 @@ impl FrameExchangeInterests {
         FrameExchangeInterests {
             delivery_notifications: self.delivery_notifications || other.delivery_notifications,
             transmission: self.transmission || other.transmission,
-            ignore_congestion_control: self.ignore_congestion_control
-                || other.ignore_congestion_control,
         }
     }
 }

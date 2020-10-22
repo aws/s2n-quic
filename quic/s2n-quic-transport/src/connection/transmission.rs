@@ -1,6 +1,7 @@
 use crate::{
     connection::{self, SharedConnectionState},
     contexts::ConnectionContext,
+    recovery::CongestionController,
 };
 use core::time::Duration;
 use s2n_codec::{Encoder, EncoderBuffer};
@@ -63,10 +64,17 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
         let shared_state = &mut self.shared_state;
         let space_manager = &mut shared_state.space_manager;
 
-        let ignore_congestion_control = space_manager
-            .interests()
-            .frame_exchange
-            .ignore_congestion_control;
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7
+        //# An endpoint MUST NOT send a packet if it would cause bytes_in_flight
+        //# (see Appendix B.2) to be larger than the congestion window, unless
+        //# the packet is sent on a PTO timer expiration (see Section 6.2) or
+        //# when entering recovery (see Section 7.3.2).
+        let ignore_congestion_control = space_manager.requires_probe()
+            || self
+                .context
+                .path
+                .congestion_controller
+                .requires_fast_retransmission();
 
         let mtu = self
             .context

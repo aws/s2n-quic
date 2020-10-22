@@ -181,7 +181,6 @@ impl<
         FrameExchangeInterests {
             transmission: self.delivery.is_requested(),
             delivery_notifications: self.delivery.is_inflight(),
-            ignore_congestion_control: false,
         }
     }
 }

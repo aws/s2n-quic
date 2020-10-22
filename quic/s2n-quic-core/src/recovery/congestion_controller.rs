@@ -35,6 +35,11 @@ pub trait CongestionController: 'static + Clone + Send {
     /// considering the current bytes in flight
     fn available_congestion_window(&self) -> u32;
 
+    /// Returns `true` if the current state of the congestion controller
+    /// requires a packet to be transmitted without respecting the
+    /// available congestion window
+    fn requires_fast_retransmission(&self) -> bool;
+
     /// Invoked whenever a congestion controlled packet is sent
     fn on_packet_sent(&mut self, time_sent: Timestamp, sent_bytes: usize);
 
@@ -82,6 +87,11 @@ pub mod testing {
         fn available_congestion_window(&self) -> u32 {
             u32::max_value()
         }
+
+        fn requires_fast_retransmission(&self) -> bool {
+            false
+        }
+
         fn on_packet_sent(&mut self, _time_sent: Timestamp, _bytes_sent: usize) {}
         fn on_rtt_update(&mut self, _time_sent: Timestamp, _rtt_estimator: &RTTEstimator) {}
 

@@ -148,6 +148,12 @@ impl<Config: connection::Config> InitialSpace<Config> {
         self.ack_manager.largest_received_packet_number_acked()
     }
 
+    /// Returns `true` if the recovery manager for this packet space requires a probe
+    /// packet to be sent.
+    pub fn requires_probe(&self) -> bool {
+        self.recovery_manager.requires_probe()
+    }
+
     /// Returns the Packet Number to be used when encoding outgoing packets
     fn packet_number_encoder(&self) -> PacketNumber {
         self.tx_packet_numbers.largest_sent_packet_number_acked()

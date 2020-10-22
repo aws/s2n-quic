@@ -250,6 +250,15 @@ impl<Config: connection::Config> PacketSpaceManager<Config> {
             .map(|space| space.handshake_status.is_confirmed())
             .unwrap_or(false)
     }
+
+    /// Returns `true` if any packet spaces requires a probe packet to be sent.
+    pub fn requires_probe(&self) -> bool {
+        core::iter::empty()
+            .chain(self.initial.iter().map(|space| space.requires_probe()))
+            .chain(self.handshake.iter().map(|space| space.requires_probe()))
+            .chain(self.application.iter().map(|space| space.requires_probe()))
+            .any(|requires_probe| requires_probe)
+    }
 }
 
 macro_rules! default_frame_handler {

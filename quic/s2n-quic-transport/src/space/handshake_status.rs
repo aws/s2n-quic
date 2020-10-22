@@ -132,7 +132,6 @@ impl FrameExchangeInterestProvider for HandshakeStatus {
         FrameExchangeInterests {
             delivery_notifications: matches!(self, Self::InFlight { .. }),
             transmission: matches!(self, Self::RequiresTransmission),
-            ignore_congestion_control: false,
         }
     }
 }
@@ -175,7 +174,6 @@ mod tests {
             FrameExchangeInterests {
                 delivery_notifications: false,
                 transmission: true,
-                ignore_congestion_control: false,
             },
             "status should express interest in deliver after handshake done"
         );
@@ -186,7 +184,6 @@ mod tests {
             FrameExchangeInterests {
                 delivery_notifications: false,
                 transmission: true,
-                ignore_congestion_control: false,
             },
             "status should accept duplicate calls to handshake_done"
         );

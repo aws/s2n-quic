@@ -377,6 +377,11 @@ impl Manager {
         Ok(loss_info)
     }
 
+    /// Returns `true` if the recovery manager requires a probe packet to be sent.
+    pub fn requires_probe(&self) -> bool {
+        matches!(self.pto.state, PtoState::RequiresTransmission(_))
+    }
+
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#B.9
     //# When Initial or Handshake keys are discarded, packets from the
     //# space are discarded and loss detection state is updated.
@@ -564,7 +569,6 @@ impl FrameExchangeInterestProvider for Manager {
         FrameExchangeInterests {
             delivery_notifications: !self.sent_packets.is_empty(),
             transmission: false,
-            ignore_congestion_control: false,
         } + self.pto.frame_exchange_interests()
     }
 }
@@ -732,9 +736,6 @@ impl FrameExchangeInterestProvider for Pto {
         FrameExchangeInterests {
             delivery_notifications: false,
             transmission: matches!(self.state, PtoState::RequiresTransmission(_)),
-            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.5
-            //# Probe packets MUST NOT be blocked by the congestion controller.
-            ignore_congestion_control: matches!(self.state, PtoState::RequiresTransmission(_)),
         }
     }
 }
@@ -1498,6 +1499,18 @@ mod test {
         }
 
         (result, context)
+    }
+
+    #[test]
+    fn requires_probe() {
+        let space = PacketNumberSpace::ApplicationData;
+        let mut manager = Manager::new(space, Duration::from_millis(10));
+
+        manager.pto.state = PtoState::RequiresTransmission(2);
+        assert!(manager.requires_probe());
+
+        manager.pto.state = PtoState::Idle;
+        assert!(!manager.requires_probe());
     }
 
     #[derive(Default)]
