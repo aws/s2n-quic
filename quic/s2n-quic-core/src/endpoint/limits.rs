@@ -25,13 +25,11 @@ pub enum Outcome {
 #[derive(Debug)]
 pub struct ConnectionAttempt<'a> {
     /// Number of handshakes the have begun but not completed
-    #[allow(dead_code)]
-    inflight_handshakes: usize,
+    pub inflight_handshakes: usize,
 
     /// The unverified address of the connecting peer
     /// This address comes from the datagram
-    #[allow(dead_code)]
-    source_address: &'a SocketAddress,
+    pub source_address: &'a SocketAddress,
 }
 
 impl<'a> ConnectionAttempt<'a> {
@@ -41,4 +39,28 @@ impl<'a> ConnectionAttempt<'a> {
             source_address,
         }
     }
+}
+
+pub trait Limits {
+    /// This trait is used to determine the outcome of connection attempts on an endpoint. The
+    /// implementor returns an Outcome based on the ConnectionAttempt, or other information that the
+    /// implementor may have.
+    ///
+    /// ```rust
+    /// use s2n_quic_core::endpoint::limits::{Limits, ConnectionAttempt, Outcome};
+    /// # struct MyEndpointLimits {
+    /// #    handshake_limit: usize,
+    /// #    backoff: core::time::Duration,
+    /// # }
+    ///  impl Limits for MyEndpointLimits {
+    ///     fn on_connection_attempt(&mut self, info: &ConnectionAttempt) -> Outcome {
+    ///         if info.inflight_handshakes > self.handshake_limit {
+    ///             Outcome::Retry { delay: self.backoff }
+    ///         } else {
+    ///             Outcome::Allow
+    ///         }
+    ///     }
+    ///  }
+    /// ```
+    fn on_connection_attempt(&mut self, info: &ConnectionAttempt) -> Outcome;
 }
