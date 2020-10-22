@@ -9,7 +9,7 @@ use core::{convert::TryInto, time::Duration};
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     crypto::{tls::Endpoint as TLSEndpoint, CryptoSuite, InitialCrypto},
-    endpoint_limits::{self, Limits},
+    endpoint::{limits as EndpointLimits, Limits},
     inet::DatagramInfo,
     packet::initial::ProtectedInitial,
     transport::{error::TransportError, parameters::ServerTransportParameters},
@@ -57,24 +57,24 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         // Before allocating resources for a new connection, verify that can proceed.
         // NOTE: How do we access TLS handshakes in-flight from here (instead of 0)?
         // TODO https://github.com/awslabs/s2n-quic/issues/166
-        let attempt = endpoint_limits::ConnectionAttempt::new(0, &datagram.remote_address);
+        let attempt = endpoint::limits::ConnectionAttempt::new(0, &datagram.remote_address);
         match endpoint_context
             .endpoint_limits
             .on_connection_attempt(&attempt)
         {
-            endpoint_limits::Outcome::Allow => {
+            endpoint::limits::Outcome::Allow => {
                 // No action
             }
-            endpoint_limits::Outcome::Retry { delay: _ } => {
+            EndpointLimits::Outcome::Retry { delay: _ } => {
                 //= https://tools.ietf.org/html/draft-ietf-quic-transport-31#section-8.1.3
                 //# A server can also use a Retry packet to defer the state and
                 //# processing costs of connection establishment.
             }
-            endpoint_limits::Outcome::Drop => {
+            EndpointLimits::Outcome::Drop => {
                 // Stop processing
                 return Ok(());
             }
-            endpoint_limits::Outcome::Close { delay: _ } => {
+            EndpointLimits::Outcome::Close { delay: _ } => {
                 // Queue close packet
             }
         }

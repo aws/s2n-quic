@@ -198,7 +198,7 @@ struct EndpointConfig<
 impl<
         CongestionController: congestion_controller::Endpoint,
         ConnectionID: connection::id::Format,
-        EndpointLimits: s2n_quic_core::endpoint_limits::Limits,
+        EndpointLimits: s2n_quic_core::endpoint::Limits,
         Limits,
         Log,
         Sync,
