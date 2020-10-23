@@ -2,7 +2,10 @@
 
 use super::*;
 use crate::{
-    connection::{InternalConnectionId, InternalConnectionIdGenerator, Limits as ConnectionLimits},
+    connection::{
+        finalization::Provider, InternalConnectionId, InternalConnectionIdGenerator,
+        Limits as ConnectionLimits,
+    },
     contexts::{ConnectionApiCallContext, OnTransmitError, WriteContext},
     stream::{
         stream_impl::StreamConfig,
@@ -10,7 +13,7 @@ use crate::{
         AbstractStreamManager, StreamError, StreamEvents, StreamLimits, StreamTrait,
     },
     transmission,
-    transmission::interest::Provider,
+    transmission::interest::Provider as TransmissionInterestProvider,
     wakeup_queue::{WakeupHandle, WakeupQueue},
 };
 use alloc::collections::VecDeque;
@@ -470,10 +473,10 @@ fn returns_finalization_interest_after_last_stream_is_drained() {
     assert_eq!(1, manager.active_streams().len());
     let stream_2 = manager.open(StreamType::Bidirectional).unwrap();
     assert_eq!(2, manager.active_streams().len());
-    assert_eq!(false, manager.interests().finalization);
+    assert!(manager.finalization_status().is_idle());
 
     manager.close(ApplicationErrorCode::UNKNOWN.into());
-    assert_eq!(false, manager.interests().finalization);
+    assert!(manager.finalization_status().is_draining());
 
     let error = ApplicationErrorCode::new(0).unwrap();
 
@@ -483,7 +486,7 @@ fn returns_finalization_interest_after_last_stream_is_drained() {
         stream.interests.finalization = true;
     });
     assert_eq!(1, manager.active_streams().len());
-    assert_eq!(false, manager.interests().finalization);
+    assert!(manager.finalization_status().is_draining());
 
     // The second stream is not yet interested in finalization
     assert!(manager
@@ -495,14 +498,14 @@ fn returns_finalization_interest_after_last_stream_is_drained() {
         )
         .is_ok());
     assert_eq!(1, manager.active_streams().len());
-    assert_eq!(false, manager.interests().finalization);
+    assert!(manager.finalization_status().is_draining());
 
     // Let the last stream return the finalization interest
     manager.with_asserted_stream(stream_2, |stream| {
         stream.interests.finalization = true;
     });
     assert_eq!(0, manager.active_streams().len());
-    assert_eq!(true, manager.interests().finalization);
+    assert!(manager.finalization_status().is_final());
 }
 
 #[test]
