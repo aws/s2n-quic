@@ -56,6 +56,13 @@ impl AckElicitingTransmissionSet {
 
         None
     }
+
+    /// Returns `true` if there are no pending ack-eliciting transmissions
+    /// Only used by tests
+    #[cfg(test)]
+    pub fn is_empty(&self) -> bool {
+        self.stable.is_none() && self.latest.is_none()
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd)]
