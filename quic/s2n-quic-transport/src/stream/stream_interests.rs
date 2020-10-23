@@ -1,6 +1,6 @@
 //! A collection of a all the interactions a `Stream` is interested in
 
-use crate::frame_exchange_interests::FrameExchangeInterests;
+use crate::transmission;
 
 /// A collection of a all the interactions a `Stream` is interested in
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
@@ -11,8 +11,8 @@ pub struct StreamInterests {
     /// Is `true` if the `Stream` has entered it's final state and
     /// can therefore be removed from the `Stream` map.
     pub finalization: bool,
-    /// Frame exchange related interests
-    pub frame_exchange: FrameExchangeInterests,
+    pub delivery_notifications: bool,
+    pub transmission: transmission::Interest,
 }
 
 impl StreamInterests {
@@ -33,22 +33,22 @@ impl StreamInterests {
             connection_flow_control_credits: self.connection_flow_control_credits
                 || other.connection_flow_control_credits,
             finalization: self.finalization && other.finalization,
-            frame_exchange: self.frame_exchange.merge(other.frame_exchange),
+            delivery_notifications: self.delivery_notifications || other.delivery_notifications,
+            transmission: self.transmission + other.transmission,
         }
     }
 
-    /// Merges `FrameExchangeInterests` into `StreamInterest`s
+    /// Merges `transmission::Interest` into `StreamInterest`s
     ///
     /// If at least one `StreamInterests` instance is interested in a certain
     /// interaction, the interest will be set on the returned `StreamInterests`
     /// instance.
     ///
     /// Thereby the operation performs a field-wise logical `OR`
-    pub fn merge_frame_exchange_interests(self, other: FrameExchangeInterests) -> StreamInterests {
+    pub fn merge_transmission_interest(self, other: transmission::Interest) -> StreamInterests {
         StreamInterests {
-            connection_flow_control_credits: self.connection_flow_control_credits,
-            finalization: self.finalization,
-            frame_exchange: self.frame_exchange.merge(other),
+            transmission: self.transmission + other,
+            ..self
         }
     }
 }
@@ -64,11 +64,11 @@ impl core::ops::Add for StreamInterests {
     }
 }
 
-impl core::ops::Add<FrameExchangeInterests> for StreamInterests {
+impl core::ops::Add<transmission::Interest> for StreamInterests {
     type Output = Self;
 
-    fn add(self, rhs: FrameExchangeInterests) -> Self::Output {
-        self.merge_frame_exchange_interests(rhs)
+    fn add(self, rhs: transmission::Interest) -> Self::Output {
+        self.merge_transmission_interest(rhs)
     }
 }
 
@@ -78,9 +78,9 @@ impl core::ops::AddAssign for StreamInterests {
     }
 }
 
-impl core::ops::AddAssign<FrameExchangeInterests> for StreamInterests {
-    fn add_assign(&mut self, rhs: FrameExchangeInterests) {
-        *self = self.merge_frame_exchange_interests(rhs);
+impl core::ops::AddAssign<transmission::Interest> for StreamInterests {
+    fn add_assign(&mut self, rhs: transmission::Interest) {
+        *self = self.merge_transmission_interest(rhs);
     }
 }
 

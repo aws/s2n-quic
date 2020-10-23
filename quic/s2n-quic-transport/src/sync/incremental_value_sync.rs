@@ -2,8 +2,8 @@
 
 use crate::{
     contexts::{OnTransmitError, WriteContext},
-    frame_exchange_interests::{FrameExchangeInterestProvider, FrameExchangeInterests},
     sync::{DeliveryState, InFlightDelivery, InflightPacketInfo, ValueToFrameWriter},
+    transmission,
 };
 use s2n_quic_core::{ack_set::AckSet, stream::StreamId};
 
@@ -52,7 +52,13 @@ impl<
 
     /// Returns `true` if the synchronization has been cancelled
     pub fn is_cancelled(&self) -> bool {
-        matches!(self.delivery, DeliveryState::Cancelled(_))
+        self.delivery.is_cancelled()
+    }
+
+    /// Returns `true` if the delivery is current in progress.
+    /// A packet has been sent, but no acknowledgement has been retrieved so far.
+    pub fn is_inflight(&self) -> bool {
+        self.delivery.is_inflight()
     }
 
     /// Sets the new value that needs to get synchronized to the peer.
@@ -135,7 +141,7 @@ impl<
         // This will trigger resending it.
         if let DeliveryState::InFlight(in_flight) = self.delivery {
             if ack_set.contains(in_flight.packet.packet_nr) {
-                self.delivery = DeliveryState::Requested(self.latest_value);
+                self.delivery = DeliveryState::Lost(self.latest_value);
             }
         }
     }
@@ -146,7 +152,11 @@ impl<
         stream_id: StreamId,
         context: &mut W,
     ) -> Result<(), OnTransmitError> {
-        if let DeliveryState::Requested(_value) = self.delivery {
+        if self
+            .delivery
+            .try_transmit(context.transmission_constraint())
+            .is_some()
+        {
             // We grab the latest value here, even if an older one had been
             // requested for delivery. That makes sure we always transmit the
             // highest available value to the peer.
@@ -172,15 +182,8 @@ impl<
     }
 }
 
-impl<
-        T: Copy + Clone + Eq + PartialEq + PartialOrd + core::ops::Sub<Output = T>,
-        S: ValueToFrameWriter<T>,
-    > FrameExchangeInterestProvider for IncrementalValueSync<T, S>
-{
-    fn frame_exchange_interests(&self) -> FrameExchangeInterests {
-        FrameExchangeInterests {
-            transmission: self.delivery.is_requested(),
-            delivery_notifications: self.delivery.is_inflight(),
-        }
+impl<T, S> transmission::interest::Provider for IncrementalValueSync<T, S> {
+    fn transmission_interest(&self) -> transmission::Interest {
+        self.delivery.transmission_interest()
     }
 }

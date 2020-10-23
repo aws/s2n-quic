@@ -4,7 +4,10 @@
 // Silence the clippy warning that shows up when using the intrusive adapter
 #![allow(clippy::unneeded_field_pattern, clippy::useless_transmute)]
 
-use crate::stream::{stream_impl::StreamTrait, stream_interests::StreamInterests};
+use crate::{
+    stream::{stream_impl::StreamTrait, stream_interests::StreamInterests},
+    transmission,
+};
 use alloc::rc::Rc;
 use core::{cell::RefCell, ops::Deref};
 use intrusive_collections::{
@@ -26,6 +29,12 @@ intrusive_adapter!(WaitingForFrameDeliveryAdapter<S> = Rc<StreamNode<S>>: Stream
 // `waiting_for_transmission` streams
 intrusive_adapter!(WaitingForTransmissionAdapter<S> = Rc<StreamNode<S>>: StreamNode<S> {
     waiting_for_transmission_link: LinkedListLink
+});
+
+// Intrusive list adapter for managing the list of
+// `waiting_for_retransmission` streams
+intrusive_adapter!(WaitingForRetransmissionAdapter<S> = Rc<StreamNode<S>>: StreamNode<S> {
+    waiting_for_retransmission_link: LinkedListLink
 });
 
 // Intrusive list adapter for managing the list of
@@ -54,6 +63,8 @@ struct StreamNode<S> {
     waiting_for_frame_delivery_link: LinkedListLink,
     /// Allows the Stream to be part of the `waiting_for_transmission` collection
     waiting_for_transmission_link: LinkedListLink,
+    /// Allows the Stream to be part of the `waiting_for_transmission` collection
+    waiting_for_retransmission_link: LinkedListLink,
     /// Allows the Stream to be part of the `waiting_for_connection_flow_control_credits` collection
     waiting_for_connection_flow_control_credits_link: LinkedListLink,
 }
@@ -67,6 +78,7 @@ impl<S> StreamNode<S> {
             done_streams_link: LinkedListLink::new(),
             waiting_for_frame_delivery_link: LinkedListLink::new(),
             waiting_for_transmission_link: LinkedListLink::new(),
+            waiting_for_retransmission_link: LinkedListLink::new(),
             waiting_for_connection_flow_control_credits_link: LinkedListLink::new(),
         }
     }
@@ -110,6 +122,8 @@ struct InterestLists<S> {
     waiting_for_frame_delivery: LinkedList<WaitingForFrameDeliveryAdapter<S>>,
     /// Streams which need to transmit data
     waiting_for_transmission: LinkedList<WaitingForTransmissionAdapter<S>>,
+    /// Streams which need to transmit data
+    waiting_for_retransmission: LinkedList<WaitingForRetransmissionAdapter<S>>,
     /// Streams which are blocked on transmission due to waiting on the
     /// connection flow control window to increase
     waiting_for_connection_flow_control_credits:
@@ -122,6 +136,7 @@ impl<S: StreamTrait> InterestLists<S> {
             done_streams: LinkedList::new(DoneStreamsAdapter::new()),
             waiting_for_frame_delivery: LinkedList::new(WaitingForFrameDeliveryAdapter::new()),
             waiting_for_transmission: LinkedList::new(WaitingForTransmissionAdapter::new()),
+            waiting_for_retransmission: LinkedList::new(WaitingForRetransmissionAdapter::new()),
             waiting_for_connection_flow_control_credits: LinkedList::new(
                 WaitingForConnectionFlowControlCreditsAdapter::new(),
             ),
@@ -158,14 +173,19 @@ impl<S: StreamTrait> InterestLists<S> {
         }
 
         sync_interests!(
-            interests.frame_exchange.delivery_notifications,
+            interests.delivery_notifications,
             waiting_for_frame_delivery_link,
             waiting_for_frame_delivery
         );
         sync_interests!(
-            interests.frame_exchange.transmission,
+            matches!(interests.transmission, transmission::Interest::NewData),
             waiting_for_transmission_link,
             waiting_for_transmission
+        );
+        sync_interests!(
+            matches!(interests.transmission, transmission::Interest::LostData),
+            waiting_for_retransmission_link,
+            waiting_for_retransmission
         );
         sync_interests!(
             interests.connection_flow_control_credits,
@@ -286,19 +306,9 @@ impl<S: StreamTrait> StreamContainer<S> {
         self.nr_active_streams += 1;
     }
 
-    /// Returns the amount of streams which are tracked by the `StreamContainer`
-    pub fn nr_active_streams(&self) -> usize {
-        self.nr_active_streams
-    }
-
     /// Returns true if the container contains a Stream with the given ID
     pub fn contains(&self, stream_id: StreamId) -> bool {
         !self.stream_map.find(&stream_id).is_null()
-    }
-
-    /// Returns true if the list of `Stream`s which want to transmit data is empty
-    pub fn is_transmission_list_empty(&self) -> bool {
-        self.interest_lists.waiting_for_transmission.is_empty()
     }
 
     /// Looks up the `Stream` with the given ID and executes the provided function
@@ -378,6 +388,7 @@ impl<S: StreamTrait> StreamContainer<S> {
 
             remove_stream_from_list!(waiting_for_frame_delivery, waiting_for_frame_delivery_link);
             remove_stream_from_list!(waiting_for_transmission, waiting_for_transmission_link);
+            remove_stream_from_list!(waiting_for_retransmission, waiting_for_retransmission_link);
             remove_stream_from_list!(
                 waiting_for_connection_flow_control_credits,
                 waiting_for_connection_flow_control_credits_link
@@ -427,6 +438,20 @@ impl<S: StreamTrait> StreamContainer<S> {
         );
     }
 
+    /// Iterates over all `Stream`s which are waiting for retransmission,
+    /// and executes the given function on each `Stream`
+    pub fn iterate_retransmission_list<F>(&mut self, mut func: F)
+    where
+        F: FnMut(&mut S) -> StreamContainerIterationResult,
+    {
+        iterate_interruptible!(
+            self,
+            waiting_for_retransmission,
+            waiting_for_retransmission_link,
+            func
+        );
+    }
+
     /// Iterates over all `Stream`s which are part of this container, and executes
     /// the given function on each `Stream`
     pub fn iterate_streams<F>(&mut self, mut func: F)
@@ -456,6 +481,18 @@ impl<S: StreamTrait> StreamContainer<S> {
         // Cleanup all `done` streams after we finished interacting with all
         // of them.
         self.finalize_done_streams();
+    }
+}
+
+impl<S: StreamTrait> transmission::interest::Provider for StreamContainer<S> {
+    fn transmission_interest(&self) -> transmission::Interest {
+        if !self.interest_lists.waiting_for_retransmission.is_empty() {
+            transmission::Interest::LostData
+        } else if !self.interest_lists.waiting_for_transmission.is_empty() {
+            transmission::Interest::NewData
+        } else {
+            transmission::Interest::None
+        }
     }
 }
 

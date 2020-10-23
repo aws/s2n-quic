@@ -1,10 +1,9 @@
 use crate::{
-    connection::transmission,
     contexts::WriteContext,
-    frame_exchange_interests::{FrameExchangeInterestProvider, FrameExchangeInterests},
     recovery::{loss_info::LossInfo, SentPacketInfo, SentPackets},
     space::INITIAL_PTO_BACKOFF,
     timer::VirtualTimer,
+    transmission,
 };
 use core::{cmp::max, time::Duration};
 use s2n_quic_core::{
@@ -564,12 +563,9 @@ pub trait Context {
     fn on_packet_loss(&mut self, packet_number_range: &PacketNumberRange);
 }
 
-impl FrameExchangeInterestProvider for Manager {
-    fn frame_exchange_interests(&self) -> FrameExchangeInterests {
-        FrameExchangeInterests {
-            delivery_notifications: !self.sent_packets.is_empty(),
-            transmission: false,
-        } + self.pto.frame_exchange_interests()
+impl transmission::interest::Provider for Manager {
+    fn transmission_interest(&self) -> transmission::Interest {
+        self.pto.transmission_interest()
     }
 }
 
@@ -726,16 +722,17 @@ impl Pto {
     }
 }
 
-impl FrameExchangeInterestProvider for Pto {
-    fn frame_exchange_interests(&self) -> FrameExchangeInterests {
+impl transmission::interest::Provider for Pto {
+    fn transmission_interest(&self) -> transmission::Interest {
         // TODO put a fast ack on interests
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.4
         //# If the sender wants to elicit a faster acknowledgement on PTO, it can
         //# skip a packet number to eliminate the acknowledgment delay.
 
-        FrameExchangeInterests {
-            delivery_notifications: false,
-            transmission: matches!(self.state, PtoState::RequiresTransmission(_)),
+        if matches!(self.state, PtoState::RequiresTransmission(_)) {
+            transmission::Interest::Forced
+        } else {
+            transmission::Interest::None
         }
     }
 }

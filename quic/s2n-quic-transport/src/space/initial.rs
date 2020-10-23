@@ -1,12 +1,9 @@
 use crate::{
-    connection::{self, transmission, ConnectionTransmissionContext},
-    frame_exchange_interests::{FrameExchangeInterestProvider, FrameExchangeInterests},
+    connection::{self, ConnectionTransmissionContext},
     processed_packet::ProcessedPacket,
     recovery,
-    space::{
-        rx_packet_numbers::AckManager, CryptoStream, EarlyTransmission, PacketSpace,
-        TxPacketNumbers,
-    },
+    space::{rx_packet_numbers::AckManager, CryptoStream, PacketSpace, TxPacketNumbers},
+    transmission,
 };
 use core::marker::PhantomData;
 use s2n_codec::EncoderBuffer;
@@ -72,15 +69,26 @@ impl<Config: connection::Config> InitialSpace<Config> {
     pub fn on_transmit<'a>(
         &mut self,
         context: &mut ConnectionTransmissionContext<Config>,
+        transmission_constraint: transmission::Constraint,
         buffer: EncoderBuffer<'a>,
     ) -> Result<EncoderBuffer<'a>, PacketEncodingError<'a>> {
         let token = &[][..]; // TODO
-        let packet_number = self.tx_packet_numbers.next();
+        let mut packet_number = self.tx_packet_numbers.next();
+
+        if self.recovery_manager.requires_probe() {
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#6.2.4
+            //# If the sender wants to elicit a faster acknowledgement on PTO, it can
+            //# skip a packet number to eliminate the acknowledgment delay.
+
+            // TODO does it hurt persistent congestion detection?
+            packet_number = self.tx_packet_numbers.next();
+        }
+
         let packet_number_encoder = self.packet_number_encoder();
 
         let mut outcome = transmission::Outcome::default();
 
-        let payload = EarlyTransmission {
+        let payload = transmission::early::Transmission {
             ack_manager: &mut self.ack_manager,
             crypto_stream: &mut self.crypto_stream,
             context,
@@ -88,6 +96,7 @@ impl<Config: connection::Config> InitialSpace<Config> {
             recovery_manager: &mut self.recovery_manager,
             tx_packet_numbers: &mut self.tx_packet_numbers,
             outcome: &mut outcome,
+            transmission_constraint,
         };
 
         let packet = Initial {
@@ -134,6 +143,7 @@ impl<Config: connection::Config> InitialSpace<Config> {
 
     pub fn update_recovery(
         &mut self,
+
         path: &Path<Config::CongestionController>,
         pto_backoff: u32,
         timestamp: Timestamp,
@@ -143,15 +153,13 @@ impl<Config: connection::Config> InitialSpace<Config> {
             .update(path, pto_backoff, timestamp, is_handshake_confirmed)
     }
 
+    pub fn requires_probe(&self) -> bool {
+        self.recovery_manager.requires_probe()
+    }
+
     /// Returns the Packet Number to be used when decoding incoming packets
     pub fn packet_number_decoder(&self) -> PacketNumber {
         self.ack_manager.largest_received_packet_number_acked()
-    }
-
-    /// Returns `true` if the recovery manager for this packet space requires a probe
-    /// packet to be sent.
-    pub fn requires_probe(&self) -> bool {
-        self.recovery_manager.requires_probe()
     }
 
     /// Returns the Packet Number to be used when encoding outgoing packets
@@ -172,12 +180,12 @@ impl<Config: connection::Config> InitialSpace<Config> {
     }
 }
 
-impl<Config: connection::Config> FrameExchangeInterestProvider for InitialSpace<Config> {
-    fn frame_exchange_interests(&self) -> FrameExchangeInterests {
-        FrameExchangeInterests::default()
-            + self.ack_manager.frame_exchange_interests()
-            + self.crypto_stream.frame_exchange_interests()
-            + self.recovery_manager.frame_exchange_interests()
+impl<Config: connection::Config> transmission::interest::Provider for InitialSpace<Config> {
+    fn transmission_interest(&self) -> transmission::Interest {
+        transmission::Interest::default()
+            + self.ack_manager.transmission_interest()
+            + self.crypto_stream.transmission_interest()
+            + self.recovery_manager.transmission_interest()
     }
 }
 

@@ -1,13 +1,12 @@
 use crate::{
     connection::{self, SharedConnectionState},
     contexts::ConnectionContext,
-    recovery::CongestionController,
+    transmission,
 };
 use core::time::Duration;
 use s2n_codec::{Encoder, EncoderBuffer};
 use s2n_quic_core::{
     endpoint::EndpointType,
-    frame::ack_elicitation::AckElicitation,
     inet::{ExplicitCongestionNotification, SocketAddress},
     io::tx,
     packet::encoding::PacketEncodingError,
@@ -69,27 +68,30 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
         //# (see Appendix B.2) to be larger than the congestion window, unless
         //# the packet is sent on a PTO timer expiration (see Section 6.2) or
         //# when entering recovery (see Section 7.3.2).
-        let ignore_congestion_control = space_manager.requires_probe()
-            || self
-                .context
-                .path
-                .congestion_controller
-                .requires_fast_retransmission();
 
-        let mtu = self
-            .context
-            .path
-            .clamp_mtu(buffer.len(), ignore_congestion_control);
-        if mtu == 0 {
-            return 0;
-        }
+        let mtu = self.context.path.clamp_mtu(buffer.len());
+        debug_assert_ne!(
+            mtu, 0,
+            "the amplification limit should be checked before trying to transmit"
+        );
+
         let buffer = &mut buffer[..mtu];
 
         let encoder = EncoderBuffer::new(buffer);
         let initial_capacity = encoder.capacity();
 
+        let mut transmission_constraint = self.context.path.transmission_constraint();
+
+        if space_manager.requires_probe() {
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#6.2.4
+            //# When the PTO timer expires, an ack-eliciting packet MUST be sent.  An
+            //# endpoint SHOULD include new data in this packet.  Previously sent
+            //# data MAY be sent if no new data can be sent.
+            transmission_constraint = transmission::Constraint::None;
+        }
+
         let encoder = if let Some(space) = space_manager.initial_mut() {
-            match space.on_transmit(&mut self.context, encoder) {
+            match space.on_transmit(&mut self.context, transmission_constraint, encoder) {
                 Ok(encoder) => encoder,
                 Err(PacketEncodingError::PacketNumberTruncationError(encoder)) => {
                     // TODO handle this
@@ -109,30 +111,31 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
         };
 
         let encoder = if let Some(space) = space_manager.handshake_mut() {
-            let encoder = match space.on_transmit(&mut self.context, encoder) {
-                Ok(encoder) => {
-                    //= https://tools.ietf.org/id/draft-ietf-quic-tls-27.txt#4.10.1
-                    //# A client MUST discard Initial keys when it first sends a Handshake packet
+            let encoder =
+                match space.on_transmit(&mut self.context, transmission_constraint, encoder) {
+                    Ok(encoder) => {
+                        //= https://tools.ietf.org/id/draft-ietf-quic-tls-27.txt#4.10.1
+                        //# A client MUST discard Initial keys when it first sends a Handshake packet
 
-                    if Config::ENDPOINT_TYPE.is_client() {
-                        space_manager.discard_initial(self.context.path);
+                        if Config::ENDPOINT_TYPE.is_client() {
+                            space_manager.discard_initial(self.context.path);
+                        }
+
+                        encoder
                     }
-
-                    encoder
-                }
-                Err(PacketEncodingError::PacketNumberTruncationError(encoder)) => {
-                    // TODO handle this
-                    encoder
-                }
-                Err(PacketEncodingError::InsufficientSpace(encoder)) => {
-                    // move to the next packet space
-                    encoder
-                }
-                Err(PacketEncodingError::EmptyPayload(encoder)) => {
-                    // move to the next packet space
-                    encoder
-                }
-            };
+                    Err(PacketEncodingError::PacketNumberTruncationError(encoder)) => {
+                        // TODO handle this
+                        encoder
+                    }
+                    Err(PacketEncodingError::InsufficientSpace(encoder)) => {
+                        // move to the next packet space
+                        encoder
+                    }
+                    Err(PacketEncodingError::EmptyPayload(encoder)) => {
+                        // move to the next packet space
+                        encoder
+                    }
+                };
 
             //= https://tools.ietf.org/id/draft-ietf-quic-tls-29#4.11.2
             //# An endpoint MUST discard its handshake keys when the TLS handshake is
@@ -149,7 +152,7 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
         };
 
         let encoder = if let Some(space) = space_manager.application_mut() {
-            match space.on_transmit(&mut self.context, encoder) {
+            match space.on_transmit(&mut self.context, transmission_constraint, encoder) {
                 Ok(encoder) => encoder,
                 Err(PacketEncodingError::PacketNumberTruncationError(encoder)) => {
                     // TODO handle this
@@ -170,11 +173,4 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
 
         initial_capacity - encoder.capacity()
     }
-}
-
-#[derive(Clone, Copy, Debug, Default)]
-pub struct Outcome {
-    pub ack_elicitation: AckElicitation,
-    pub is_congestion_controlled: bool,
-    pub bytes_sent: usize,
 }

@@ -1,7 +1,4 @@
-use crate::{
-    frame_exchange_interests::{FrameExchangeInterestProvider, FrameExchangeInterests},
-    space::rx_packet_numbers::ack_ranges::AckRanges,
-};
+use crate::{space::rx_packet_numbers::ack_ranges::AckRanges, transmission};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum AckTransmissionState {
@@ -124,13 +121,12 @@ impl AckTransmissionState {
     }
 }
 
-impl FrameExchangeInterestProvider for AckTransmissionState {
-    fn frame_exchange_interests(&self) -> FrameExchangeInterests {
-        // frames are actively transmitted only in the active state
-        let transmission = self.is_active();
-        FrameExchangeInterests {
-            transmission,
-            ..Default::default()
+impl transmission::interest::Provider for AckTransmissionState {
+    fn transmission_interest(&self) -> transmission::Interest {
+        if self.is_active() {
+            transmission::Interest::Forced
+        } else {
+            transmission::Interest::None
         }
     }
 }

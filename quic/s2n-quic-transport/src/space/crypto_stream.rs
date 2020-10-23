@@ -1,8 +1,8 @@
 use crate::{
     buffer::StreamReceiveBuffer,
     contexts::WriteContext,
-    frame_exchange_interests::{FrameExchangeInterestProvider, FrameExchangeInterests},
     sync::{ChunkToFrameWriter, DataSender, OutgoingDataFlowController},
+    transmission,
 };
 use s2n_quic_core::{
     ack_set::AckSet,
@@ -124,8 +124,8 @@ impl CryptoStream {
     }
 }
 
-impl FrameExchangeInterestProvider for CryptoStream {
-    fn frame_exchange_interests(&self) -> FrameExchangeInterests {
-        self.tx.frame_exchange_interests()
+impl transmission::interest::Provider for CryptoStream {
+    fn transmission_interest(&self) -> transmission::Interest {
+        self.tx.transmission_interest()
     }
 }

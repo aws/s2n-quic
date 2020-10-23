@@ -1,8 +1,6 @@
 //! `ConnectionContainer` is a container for all Connections. It manages the permanent
 //! map of all active Connections, as well as a variety of dynamic Connection lists.
 
-// TODO: Remove as soon as used
-#![allow(dead_code)]
 // Silence the clippy warning that shows up when using the intrusive adapter
 #![allow(clippy::unneeded_field_pattern, clippy::useless_transmute)]
 
@@ -22,11 +20,6 @@ use intrusive_collections::{
 // Intrusive list adapter for managing the list of `done` connections
 intrusive_adapter!(DoneConnectionsAdapter<C> = Rc<ConnectionNode<C>>: ConnectionNode<C> {
     done_connections_link: LinkedListLink
-} where C: ConnectionTrait);
-
-// Intrusive list adapter for managing the list of `waiting_for_frame_delivery` connections
-intrusive_adapter!(WaitingForFrameDeliveryAdapter<C> = Rc<ConnectionNode<C>>: ConnectionNode<C> {
-    waiting_for_frame_delivery_link: LinkedListLink
 } where C: ConnectionTrait);
 
 // Intrusive list adapter for managing the list of
@@ -53,10 +46,9 @@ struct ConnectionNode<C: ConnectionTrait> {
     tree_link: RBTreeLink,
     /// Allows the Connection to be part of the `done_connections` collection
     done_connections_link: LinkedListLink,
+    #[allow(dead_code)] // TODO do we still need this?
     /// Allows the Connection to be part of the `accepted_connections` collection
     accepted_connections_link: LinkedListLink,
-    /// Allows the Connection to be part of the `waiting_for_frame_delivery` collection
-    waiting_for_frame_delivery_link: LinkedListLink,
     /// Allows the Connection to be part of the `waiting_for_transmission` collection
     waiting_for_transmission_link: LinkedListLink,
 }
@@ -73,7 +65,6 @@ impl<C: ConnectionTrait> ConnectionNode<C> {
             tree_link: RBTreeLink::new(),
             accepted_connections_link: LinkedListLink::new(),
             done_connections_link: LinkedListLink::new(),
-            waiting_for_frame_delivery_link: LinkedListLink::new(),
             waiting_for_transmission_link: LinkedListLink::new(),
         }
     }
@@ -115,9 +106,6 @@ unsafe fn connnection_node_rc_from_ref<C: ConnectionTrait>(
 struct InterestLists<C: ConnectionTrait> {
     /// Connections which have been finalized
     done_connections: LinkedList<DoneConnectionsAdapter<C>>,
-    /// Connections which are waiting for packet acknowledgements and
-    /// packet loss notifications
-    waiting_for_frame_delivery: LinkedList<WaitingForFrameDeliveryAdapter<C>>,
     /// Connections which need to transmit data
     waiting_for_transmission: LinkedList<WaitingForTransmissionAdapter<C>>,
 }
@@ -126,7 +114,6 @@ impl<C: ConnectionTrait> InterestLists<C> {
     fn new() -> Self {
         Self {
             done_connections: LinkedList::new(DoneConnectionsAdapter::new()),
-            waiting_for_frame_delivery: LinkedList::new(WaitingForFrameDeliveryAdapter::new()),
             waiting_for_transmission: LinkedList::new(WaitingForTransmissionAdapter::new()),
         }
     }
@@ -166,12 +153,7 @@ impl<C: ConnectionTrait> InterestLists<C> {
         }
 
         sync_interests!(
-            interests.frame_exchange.delivery_notifications,
-            waiting_for_frame_delivery_link,
-            waiting_for_frame_delivery
-        );
-        sync_interests!(
-            interests.frame_exchange.transmission,
+            interests.transmission,
             waiting_for_transmission_link,
             waiting_for_transmission
         );
@@ -222,29 +204,6 @@ pub struct ConnectionContainer<C: ConnectionTrait> {
     interest_lists: InterestLists<C>,
     /// The synchronized queue of accepted connections
     accept_queue: unbounded_channel::Sender<Connection>,
-}
-
-macro_rules! iterate_uninterruptible {
-    ($sel:ident, $list_name:tt, $link_name:ident, $func:ident) => {
-        for connection in $sel.interest_lists.$list_name.take() {
-            debug_assert!(!connection.$link_name.is_linked());
-
-            let interests = {
-                let mut mut_connection = connection.inner.borrow_mut();
-                let shared_state = &mut *connection.shared_state.lock();
-
-                $func(&mut *mut_connection, shared_state);
-                mut_connection.update_connection_timer(shared_state);
-                mut_connection.interests(shared_state)
-            };
-
-            // Update the interests outside of the per-connection Mutex
-            $sel.interest_lists
-                .update_interests(&mut $sel.accept_queue, &connection, interests);
-        }
-
-        $sel.finalize_done_connections();
-    };
 }
 
 macro_rules! iterate_interruptible {
@@ -317,16 +276,6 @@ impl<C: ConnectionTrait> ConnectionContainer<C> {
         self.interest_lists
             .update_interests(&mut self.accept_queue, &new_connection, interests);
         self.connection_map.insert(new_connection);
-    }
-
-    /// Returns true if the container contains a Connection with the given ID
-    pub fn contains(&self, connection_id: InternalConnectionId) -> bool {
-        !self.connection_map.find(&connection_id).is_null()
-    }
-
-    /// Returns true if the list of `Connection`s which want to transmit data is empty
-    pub fn is_transmission_list_empty(&self) -> bool {
-        self.interest_lists.waiting_for_transmission.is_empty()
     }
 
     /// Looks up the `Connection` with the given ID and executes the provided function
@@ -415,26 +364,8 @@ impl<C: ConnectionTrait> ConnectionContainer<C> {
                 };
             }
 
-            remove_connection_from_list!(
-                waiting_for_frame_delivery,
-                waiting_for_frame_delivery_link
-            );
             remove_connection_from_list!(waiting_for_transmission, waiting_for_transmission_link);
         }
-    }
-
-    /// Iterates over all `Connection`s which are waiting for frame delivery,
-    /// and executes the given function on each `Connection`
-    pub fn iterate_frame_delivery_list<F>(&mut self, mut func: F)
-    where
-        F: FnMut(&mut C, &mut SharedConnectionState<C::Config>),
-    {
-        iterate_uninterruptible!(
-            self,
-            waiting_for_frame_delivery,
-            waiting_for_frame_delivery_link,
-            func
-        );
     }
 
     /// Iterates over all `Connection`s which are waiting for transmission,
@@ -452,45 +383,6 @@ impl<C: ConnectionTrait> ConnectionContainer<C> {
             waiting_for_transmission_link,
             func
         );
-    }
-
-    /// Iterates over all `Connection`s which are part of this container, and executes
-    /// the given function on each `Connection`
-    pub fn iterate_connections<F>(&mut self, mut func: F)
-    where
-        F: FnMut(&mut C, &mut SharedConnectionState<C::Config>),
-    {
-        // Note: We can not use iterate_uninterruptible here, because that
-        // iteration will extract nodes from the list but not automatically insert
-        // all Nodes back into the main interest list. `connection_map` is not
-        // populated by the interest maps.
-
-        for connection in self.connection_map.iter() {
-            debug_assert!(connection.tree_link.is_linked());
-
-            let interests = {
-                let mut mut_connection = connection.inner.borrow_mut();
-                let shared_state = &mut *connection.shared_state.lock();
-
-                func(&mut *mut_connection, shared_state);
-                mut_connection.update_connection_timer(shared_state);
-                mut_connection.interests(shared_state)
-            };
-
-            // Update the interest lists with unlocked Mutex
-            // Safety: The connection reference is obtained from the RBTree, which
-            // stores it's nodes as `Rc`
-            let connection_node_rc = unsafe { connnection_node_rc_from_ref(connection) };
-            self.interest_lists.update_interests(
-                &mut self.accept_queue,
-                &connection_node_rc,
-                interests,
-            );
-        }
-
-        // Cleanup all `done` connections after we finished interacting with all
-        // of them.
-        self.finalize_done_connections();
     }
 }
 

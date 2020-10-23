@@ -2,8 +2,8 @@
 
 use crate::{
     contexts::{OnTransmitError, WriteContext},
-    frame_exchange_interests::{FrameExchangeInterestProvider, FrameExchangeInterests},
     sync::{IncrementalValueSync, ValueToFrameWriter},
+    transmission,
 };
 use alloc::rc::Rc;
 use core::cell::RefCell;
@@ -182,11 +182,8 @@ impl IncomingConnectionFlowController {
     }
 }
 
-impl FrameExchangeInterestProvider for IncomingConnectionFlowController {
-    fn frame_exchange_interests(&self) -> FrameExchangeInterests {
-        self.inner
-            .borrow()
-            .read_window_sync
-            .frame_exchange_interests()
+impl transmission::interest::Provider for IncomingConnectionFlowController {
+    fn transmission_interest(&self) -> transmission::Interest {
+        self.inner.borrow().read_window_sync.transmission_interest()
     }
 }

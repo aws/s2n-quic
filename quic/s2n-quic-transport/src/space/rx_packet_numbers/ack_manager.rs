@@ -1,6 +1,5 @@
 use crate::{
     contexts::WriteContext,
-    frame_exchange_interests::{FrameExchangeInterestProvider, FrameExchangeInterests},
     processed_packet::ProcessedPacket,
     space::rx_packet_numbers::{
         ack_eliciting_transmission::{AckElicitingTransmission, AckElicitingTransmissionSet},
@@ -8,6 +7,7 @@ use crate::{
         ack_transmission_state::AckTransmissionState,
     },
     timer::VirtualTimer,
+    transmission,
 };
 use core::time::Duration;
 use s2n_quic_core::{
@@ -98,6 +98,8 @@ impl AckManager {
         if !self.transmission_state.should_transmit() {
             return false;
         }
+
+        // ACKs can be written regardless of current `transmission::Constraint`
 
         let ack_delay = self.ack_delay(context.current_time());
         // TODO retrieve ECN counts from current path
@@ -325,10 +327,9 @@ impl AckManager {
     }
 }
 
-impl FrameExchangeInterestProvider for AckManager {
-    fn frame_exchange_interests(&self) -> FrameExchangeInterests {
-        self.transmission_state.frame_exchange_interests()
-            + self.ack_eliciting_transmissions.frame_exchange_interests()
+impl transmission::interest::Provider for AckManager {
+    fn transmission_interest(&self) -> transmission::Interest {
+        self.transmission_state.transmission_interest()
     }
 }
 

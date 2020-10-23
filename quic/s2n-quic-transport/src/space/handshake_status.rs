@@ -1,6 +1,6 @@
 use crate::{
     contexts::{OnTransmitError, WriteContext},
-    frame_exchange_interests::{FrameExchangeInterestProvider, FrameExchangeInterests},
+    transmission,
 };
 use s2n_quic_core::{ack_set::AckSet, frame::HandshakeDone, packet::number::PacketNumber};
 
@@ -13,6 +13,10 @@ pub enum HandshakeStatus {
     /// The HANDSHAKE_DONE frame has been requested to be delivered. This state is only possible
     /// on the server.
     RequiresTransmission,
+
+    /// A previous HANDSHAKE_DONE frame had been sent and lost and we need to send another. This
+    /// state is only possible on the server.
+    RequiresRetransmission,
 
     /// The HANDSHAKE_DONE frame has been transmitted and is pending acknowledgement.
     ///
@@ -93,15 +97,24 @@ impl HandshakeStatus {
 
             // Force retransmission
             if ack_set.contains(*latest) {
-                *self = Self::RequiresTransmission;
+                *self = Self::RequiresRetransmission;
             }
         }
     }
 
     /// Queries the component for any outgoing frames that need to get sent
     pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) -> Result<(), OnTransmitError> {
+        let constraint = context.transmission_constraint();
         match self {
-            Self::RequiresTransmission => {
+            Self::RequiresTransmission if constraint.can_transmit() => {
+                if let Some(packet_number) = context.write_frame(&HandshakeDone) {
+                    *self = Self::InFlight {
+                        stable: packet_number,
+                        latest: packet_number,
+                    }
+                }
+            }
+            Self::RequiresRetransmission if constraint.can_retransmit() => {
                 if let Some(packet_number) = context.write_frame(&HandshakeDone) {
                     *self = Self::InFlight {
                         stable: packet_number,
@@ -110,7 +123,7 @@ impl HandshakeStatus {
                 }
             }
             // passively write HANDSHAKE_DONE frames while waiting for an ACK
-            Self::InFlight { latest, .. } => {
+            Self::InFlight { latest, .. } if constraint.can_transmit() => {
                 if let Some(packet_number) = context.write_frame(&HandshakeDone) {
                     *latest = packet_number;
                 }
@@ -127,11 +140,12 @@ impl HandshakeStatus {
     }
 }
 
-impl FrameExchangeInterestProvider for HandshakeStatus {
-    fn frame_exchange_interests(&self) -> FrameExchangeInterests {
-        FrameExchangeInterests {
-            delivery_notifications: matches!(self, Self::InFlight { .. }),
-            transmission: matches!(self, Self::RequiresTransmission),
+impl transmission::interest::Provider for HandshakeStatus {
+    fn transmission_interest(&self) -> transmission::Interest {
+        match self {
+            Self::RequiresTransmission => transmission::Interest::NewData,
+            Self::RequiresRetransmission => transmission::Interest::LostData,
+            _ => transmission::Interest::None,
         }
     }
 }
@@ -155,7 +169,7 @@ mod tests {
         assert!(!status.is_confirmed());
         assert_eq!(
             status.frame_exchange_interests(),
-            FrameExchangeInterests::default(),
+            transmission::Interest::default(),
             "status should not express interest in default state"
         );
 
@@ -170,11 +184,8 @@ mod tests {
         assert!(status.is_confirmed());
 
         assert_eq!(
-            status.frame_exchange_interests(),
-            FrameExchangeInterests {
-                delivery_notifications: false,
-                transmission: true,
-            },
+            status.transmission_interest(),
+            transmission::Interest::NewData,
             "status should express interest in deliver after handshake done"
         );
 

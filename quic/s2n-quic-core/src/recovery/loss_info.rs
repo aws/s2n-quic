@@ -45,3 +45,15 @@ impl core::ops::AddAssign for LossInfo {
         *self = *self + rhs;
     }
 }
+
+impl core::iter::Sum for LossInfo {
+    fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
+        let mut loss_info = Self::default();
+
+        for item in iter {
+            loss_info += item;
+        }
+
+        loss_info
+    }
+}

@@ -19,7 +19,7 @@ pub use api::*;
 pub use limits::StreamLimits;
 pub use stream_events::StreamEvents;
 pub use stream_impl::{StreamImpl, StreamTrait};
-pub use stream_manager::{AbstractStreamManager, StreamManagerInterests};
+pub use stream_manager::AbstractStreamManager;
 
 pub type StreamManager = AbstractStreamManager<StreamImpl>;
 

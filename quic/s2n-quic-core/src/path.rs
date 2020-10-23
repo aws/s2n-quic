@@ -5,8 +5,8 @@ use crate::{
     frame::path_challenge,
     inet::SocketAddress,
     recovery::{CongestionController, RTTEstimator},
+    transmission,
 };
-use core::convert::TryInto;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum State {
@@ -114,14 +114,8 @@ impl<CC: CongestionController> Path<CC> {
     //# (see Appendix B.2) to be larger than the congestion window, unless
     //# the packet is sent on a PTO timer expiration (see Section 6.2) or
     //# when entering recovery (see Section 7.3.2).
-    pub fn clamp_mtu(&self, requested_size: usize, ignore_congestion_control: bool) -> usize {
-        let available_congestion_window = self
-            .congestion_controller
-            .available_congestion_window()
-            .try_into()
-            .unwrap_or(usize::max_value());
-
-        let mtu = match self.state {
+    pub fn clamp_mtu(&self, requested_size: usize) -> usize {
+        match self.state {
             State::Validated => requested_size.min(self.mtu as usize),
             State::Pending { tx_bytes, rx_bytes } => {
                 let limit = rx_bytes
@@ -130,19 +124,25 @@ impl<CC: CongestionController> Path<CC> {
                     .unwrap_or(0);
                 requested_size.min(limit as usize).min(self.mtu as usize)
             }
-        };
+        }
+    }
 
-        if ignore_congestion_control {
-            mtu
+    pub fn transmission_constraint(&self) -> transmission::Constraint {
+        if self.at_amplification_limit() {
+            transmission::Constraint::AmplificationLimited
+        } else if self.congestion_controller.requires_fast_retransmission() {
+            transmission::Constraint::FastRetransmission
+        } else if self.congestion_controller.available_congestion_window() < (self.mtu as u32) {
+            transmission::Constraint::CongestionLimited
         } else {
-            mtu.min(available_congestion_window)
+            transmission::Constraint::None
         }
     }
 
     /// Returns whether this path is blocked from transmitting more data
     pub fn at_amplification_limit(&self) -> bool {
         let mtu = self.mtu as usize;
-        self.clamp_mtu(mtu, false) < mtu
+        self.clamp_mtu(mtu) < mtu
     }
 }
 

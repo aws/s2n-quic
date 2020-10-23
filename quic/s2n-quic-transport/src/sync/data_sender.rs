@@ -1,6 +1,6 @@
 use crate::{
     contexts::{OnTransmitError, WriteContext},
-    frame_exchange_interests::{FrameExchangeInterestProvider, FrameExchangeInterests},
+    transmission,
 };
 use alloc::collections::VecDeque;
 use bytes::{Buf, Bytes};
@@ -90,10 +90,22 @@ struct ChunkDescriptor {
 enum ChunkTransmissionState {
     /// The data had been enqueued, but is not currently being transmitted
     Enqueued,
+    /// The data had been transmitted, but was lost and needs to be retransmitted
+    Lost,
     /// The data had been transmitted, but not yet acknowledged by the peer.
     InFlight(PacketNumber),
     /// The data had been acknowledged
     Acknowledged,
+}
+
+impl ChunkTransmissionState {
+    fn can_transmit(&self, constraint: transmission::Constraint) -> bool {
+        match self {
+            Self::Enqueued if constraint.can_transmit() => true,
+            Self::Lost if constraint.can_retransmit() => true,
+            _ => false,
+        }
+    }
 }
 
 /// Enumerates states of the [`DataSender`]
@@ -132,6 +144,8 @@ pub struct DataSender<FlowControllerType, ChunkToFrameWriterType> {
     acknowledged: u32,
     /// The number of chunks which are enqueued and not currently transmitted
     chunks_waiting_for_transmission: u32,
+    /// The number of chunks which are currently lost not currently retransmitted
+    chunks_waiting_for_retransmission: u32,
     /// The total amount of bytes which have been transmitted AND acknowledged.
     /// This is equivalent to the offset at the beginning of our send queue.
     total_acknowledged: VarInt,
@@ -175,6 +189,7 @@ impl<
             chunks_inflight: 0,
             acknowledged: 0,
             chunks_waiting_for_transmission: 0,
+            chunks_waiting_for_retransmission: 0,
             total_acknowledged: VarInt::from_u8(0),
             flow_controller,
             max_buffer_capacity,
@@ -220,6 +235,8 @@ impl<
         self.chunks_inflight = 0;
         self.acknowledged = 0;
         self.chunks_waiting_for_transmission = 0;
+        self.chunks_waiting_for_retransmission = 0;
+        self.ensure_counter_consistency();
     }
 
     /// Returns the amount of bytes that have ever been enqueued for writing on
@@ -237,6 +254,11 @@ impl<
     /// Returns the state of the sender
     pub fn state(&self) -> DataSenderState {
         self.state
+    }
+
+    /// Returns `true` if the delivery is current in progress.
+    pub fn is_inflight(&self) -> bool {
+        self.chunks_inflight > 0
     }
 
     /// Overwrites the amount of total received and acknowledged bytes.
@@ -306,6 +328,7 @@ impl<
             offset,
             fin: false,
         });
+        self.ensure_counter_consistency();
     }
 
     /// Starts the finalization process of a `Stream` by enqueuing a `FIN` frame.
@@ -334,6 +357,7 @@ impl<
             fin: true,
         });
         self.chunks_waiting_for_transmission += 1;
+        self.ensure_counter_consistency();
     }
 
     /// This method gets called when a packet delivery got acknowledged
@@ -360,6 +384,7 @@ impl<
         }
 
         if !check_released {
+            self.ensure_counter_consistency();
             return;
         }
 
@@ -404,6 +429,8 @@ impl<
             self.state = DataSenderState::FinishAcknowledged;
             self.flow_controller_mut().finish();
         }
+
+        self.ensure_counter_consistency();
     }
 
     /// This method gets called when a packet loss is reported
@@ -426,9 +453,9 @@ impl<
                     // This will also only work if the chunks are derived from the
                     // same `Bytes` buffer or if we later on implement sending
                     // chunks from multiple `Bytes` buffers for a single chunk.
-                    chunk.state = ChunkTransmissionState::Enqueued;
+                    chunk.state = ChunkTransmissionState::Lost;
                     self.chunks_inflight -= 1;
-                    self.chunks_waiting_for_transmission += 1;
+                    self.chunks_waiting_for_retransmission += 1;
 
                     // Since a packet needs to get retransmitted, we are
                     // no longer blocked on waiting for flow control windows
@@ -446,6 +473,8 @@ impl<
                 }
             }
         }
+
+        self.ensure_counter_consistency();
     }
 
     /// Returns the content of the byte buffer which starts at a given
@@ -487,7 +516,7 @@ impl<
         while chunk_index < self.tracking.len() {
             let chunk = &mut self.tracking[chunk_index];
 
-            if let ChunkTransmissionState::Enqueued = chunk.state {
+            if chunk.state.can_transmit(context.transmission_constraint()) {
                 // We are not allowed to write more than the flow control window.
                 // However it is possible that more data gets enqueued. In order
                 // to make sure we do not violate flow control, chunks are truncated
@@ -587,6 +616,7 @@ impl<
                     .ok_or(OnTransmitError::CouldNotWriteFrame)?;
 
                 self.chunks_inflight += 1;
+                let prev_state = chunk.state;
                 chunk.state = ChunkTransmissionState::InFlight(packet_nr);
 
                 if send_size != chunk.len {
@@ -596,11 +626,13 @@ impl<
                     let new_range = ChunkDescriptor {
                         offset: chunk.offset + VarInt::from_u32(send_size),
                         len: chunk.len - send_size,
-                        state: ChunkTransmissionState::Enqueued,
+                        state: prev_state,
                         fin: chunk.fin,
                     };
                     chunk.len = send_size;
                     self.tracking.insert(chunk_index + 1, new_range);
+                } else if prev_state == ChunkTransmissionState::Lost {
+                    self.chunks_waiting_for_retransmission -= 1;
                 } else {
                     self.chunks_waiting_for_transmission -= 1;
                 }
@@ -609,16 +641,45 @@ impl<
             chunk_index += 1;
         }
 
+        self.ensure_counter_consistency();
+
         Ok(())
+    }
+
+    /// Ensures all of the counters are accurate with the actual tracking chunks state
+    #[inline]
+    fn ensure_counter_consistency(&self) {
+        if cfg!(debug_assertions) {
+            let mut actual_enqueued = 0;
+            let mut actual_lost = 0;
+            let mut actual_inflight = 0;
+            let mut actual_acknowledged = 0;
+
+            for chunk in self.tracking.iter() {
+                match chunk.state {
+                    ChunkTransmissionState::Enqueued => actual_enqueued += 1,
+                    ChunkTransmissionState::Lost => actual_lost += 1,
+                    ChunkTransmissionState::InFlight(_) => actual_inflight += 1,
+                    ChunkTransmissionState::Acknowledged => actual_acknowledged += 1,
+                }
+            }
+
+            assert_eq!(self.chunks_waiting_for_transmission, actual_enqueued);
+            assert_eq!(self.chunks_waiting_for_retransmission, actual_lost);
+            assert_eq!(self.chunks_inflight, actual_inflight);
+            assert_eq!(self.acknowledged, actual_acknowledged);
+        }
     }
 }
 
-impl<F: OutgoingDataFlowController, S> FrameExchangeInterestProvider for DataSender<F, S> {
-    fn frame_exchange_interests(&self) -> FrameExchangeInterests {
-        FrameExchangeInterests {
-            delivery_notifications: self.chunks_inflight > 0,
-            transmission: self.chunks_waiting_for_transmission > 0
-                && !self.flow_controller.is_blocked(),
+impl<F: OutgoingDataFlowController, S> transmission::interest::Provider for DataSender<F, S> {
+    fn transmission_interest(&self) -> transmission::Interest {
+        if self.chunks_waiting_for_retransmission > 0 {
+            transmission::Interest::LostData
+        } else if self.chunks_waiting_for_transmission > 0 && !self.flow_controller.is_blocked() {
+            transmission::Interest::NewData
+        } else {
+            transmission::Interest::None
         }
     }
 }

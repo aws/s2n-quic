@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use crate::space::rx_packet_numbers::ack_eliciting_transmission::AckElicitingTransmission;
 use s2n_quic_core::{
     packet::number::{PacketNumber, PacketNumberSpace},
