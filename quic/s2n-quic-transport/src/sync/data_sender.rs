@@ -660,7 +660,7 @@ impl<
                     ChunkTransmissionState::Enqueued => actual_enqueued += 1,
                     ChunkTransmissionState::Lost => actual_lost += 1,
                     ChunkTransmissionState::InFlight(_) => actual_inflight += 1,
-                    ChunkTransmissionState::Acknowledged => actual_acknowledged += 1,
+                    ChunkTransmissionState::Acknowledged => actual_acknowledged += chunk.len,
                 }
             }
 

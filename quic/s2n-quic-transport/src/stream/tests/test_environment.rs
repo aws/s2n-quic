@@ -48,7 +48,7 @@ pub fn stream_interests(interests: &[&str]) -> StreamInterests {
         match *interest {
             "ack" => result.delivery_notifications = true,
             "tx" => result.transmission = transmission::Interest::NewData,
-            // TODO: Add LostData, Forced transmission interests
+            "lost" => result.transmission = transmission::Interest::LostData,
             "fin" => result.finalization = true,
             "cf" => result.connection_flow_control_credits = true,
             other => unreachable!("Unsupported interest {}", other),
@@ -66,7 +66,7 @@ pub fn transmission_interests(interests: &[&str]) -> transmission::Interest {
     for interest in interests {
         match *interest {
             "tx" => result = transmission::Interest::NewData,
-            // TODO: Add LostData, Forced transmission interests
+            "lost" => result = transmission::Interest::LostData,
             other => unreachable!("Unsupported interest {}", other),
         }
     }
