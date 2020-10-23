@@ -33,7 +33,7 @@ impl Interest {
             // transmit lost data when we're either not limited or we want to do a fast
             // retransmission to try to recover
             (Interest::LostData, Constraint::None) => true,
-            (Interest::LostData, Constraint::FastRetransmission) => true,
+            (Interest::LostData, Constraint::RetransmissionOnly) => true,
             (Interest::LostData, _) => false,
 
             // new data may only be transmitted when we're not limited

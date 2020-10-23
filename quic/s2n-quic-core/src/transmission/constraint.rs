@@ -1,8 +1,8 @@
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Constraint {
     AmplificationLimited,
     CongestionLimited,
-    FastRetransmission,
+    RetransmissionOnly,
     None,
 }
 
@@ -15,8 +15,8 @@ impl Constraint {
         matches!(self, Self::CongestionLimited)
     }
 
-    pub fn is_fast_retransmission(self) -> bool {
-        matches!(self, Self::FastRetransmission)
+    pub fn is_retransmission_only(self) -> bool {
+        matches!(self, Self::RetransmissionOnly)
     }
 
     pub fn is_none(self) -> bool {
@@ -28,6 +28,6 @@ impl Constraint {
     }
 
     pub fn can_retransmit(self) -> bool {
-        self.is_none() || self.is_fast_retransmission()
+        self.is_none() || self.is_retransmission_only()
     }
 }

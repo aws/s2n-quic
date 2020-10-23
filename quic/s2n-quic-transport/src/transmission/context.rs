@@ -52,7 +52,7 @@ impl<'a, 'b, Config: connection::Config> WriteContext for Context<'a, 'b, Config
                 transmission::Constraint::CongestionLimited => {
                     assert!(!frame.is_congestion_controlled());
                 }
-                transmission::Constraint::FastRetransmission => {}
+                transmission::Constraint::RetransmissionOnly => {}
                 transmission::Constraint::None => {}
             }
         }
@@ -79,5 +79,57 @@ impl<'a, 'b, Config: connection::Config> WriteContext for Context<'a, 'b, Config
         } else {
             Ok(cap)
         }
+    }
+}
+
+// Overrides a context's transmission constraint to allow only retransmissions to be written to
+// packets
+pub struct RetransmissionContext<'a, C: WriteContext> {
+    context: &'a mut C,
+}
+
+impl<'a, C: WriteContext> RetransmissionContext<'a, C> {
+    pub fn new(context: &'a mut C) -> Self {
+        Self { context }
+    }
+}
+
+impl<'a, C: WriteContext> WriteContext for RetransmissionContext<'a, C> {
+    type ConnectionContext = C::ConnectionContext;
+
+    fn current_time(&self) -> Timestamp {
+        self.context.current_time()
+    }
+
+    fn connection_context(&self) -> &Self::ConnectionContext {
+        self.context.connection_context()
+    }
+
+    fn transmission_constraint(&self) -> transmission::Constraint {
+        debug_assert!(
+            self.context.transmission_constraint().can_retransmit(),
+            "retransmission ability should be checked before using RetransmissionContext"
+        );
+
+        transmission::Constraint::RetransmissionOnly
+    }
+
+    fn write_frame<Frame: EncoderValue + AckElicitable + CongestionControlled>(
+        &mut self,
+        frame: &Frame,
+    ) -> Option<PacketNumber> {
+        self.context.write_frame(frame)
+    }
+
+    fn ack_elicitation(&self) -> AckElicitation {
+        self.context.ack_elicitation()
+    }
+
+    fn packet_number(&self) -> PacketNumber {
+        self.context.packet_number()
+    }
+
+    fn reserve_minimum_space_for_frame(&mut self, min_size: usize) -> Result<usize, ()> {
+        self.context.reserve_minimum_space_for_frame(min_size)
     }
 }

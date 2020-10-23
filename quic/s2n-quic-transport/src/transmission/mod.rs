@@ -1,4 +1,4 @@
-mod context;
+pub mod context;
 use context::Context;
 
 pub mod application;

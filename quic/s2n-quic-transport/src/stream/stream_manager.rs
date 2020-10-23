@@ -563,11 +563,15 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         let mut transmit_result = Ok(());
 
         if context.transmission_constraint().can_retransmit() {
+            // ensure components only retransmit in this phase
+            let mut retransmission_context =
+                transmission::context::RetransmissionContext::new(context);
+
             // Prioritize retransmitting lost data
             self.inner
                 .streams
                 .iterate_retransmission_list(|stream: &mut S| {
-                    transmit_result = stream.on_transmit(context);
+                    transmit_result = stream.on_transmit(&mut retransmission_context);
                     if transmit_result.is_err() {
                         StreamContainerIterationResult::BreakAndInsertAtBack
                     } else {

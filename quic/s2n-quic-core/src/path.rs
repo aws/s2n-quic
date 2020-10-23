@@ -131,7 +131,7 @@ impl<CC: CongestionController> Path<CC> {
         if self.at_amplification_limit() {
             transmission::Constraint::AmplificationLimited
         } else if self.congestion_controller.requires_fast_retransmission() {
-            transmission::Constraint::FastRetransmission
+            transmission::Constraint::RetransmissionOnly
         } else if self.congestion_controller.available_congestion_window() < (self.mtu as u32) {
             transmission::Constraint::CongestionLimited
         } else {
