@@ -1,9 +1,9 @@
 use super::{generator::gen_ack_settings, Packet, TestEnvironment};
 use crate::{
     contexts::WriteContext,
-    frame_exchange_interests::FrameExchangeInterestProvider,
     processed_packet::ProcessedPacket,
     space::rx_packet_numbers::{ack_manager::AckManager, ack_ranges::DEFAULT_ACK_RANGES_LIMIT},
+    transmission::interest::Provider,
 };
 use bolero::generator::*;
 use s2n_quic_core::{
@@ -82,7 +82,7 @@ impl Endpoint {
         self.env.current_time = now;
         self.ack_manager.on_timeout(now);
 
-        if !self.ack_manager.frame_exchange_interests().transmission {
+        if self.ack_manager.transmission_interest().is_none() {
             return None;
         }
 
