@@ -192,23 +192,23 @@ mod tests {
         path.on_bytes_transmitted(8);
 
         // Verify we can transmit one more byte
-        assert_eq!(path.clamp_mtu(1, false), 1);
-        assert_eq!(path.clamp_mtu(10, false), 1);
+        assert_eq!(path.clamp_mtu(1), 1);
+        assert_eq!(path.clamp_mtu(10), 1);
 
         path.on_bytes_transmitted(1);
         // Verify we can't transmit any more bytes
-        assert_eq!(path.clamp_mtu(1, false), 0);
-        assert_eq!(path.clamp_mtu(10, false), 0);
+        assert_eq!(path.clamp_mtu(1), 0);
+        assert_eq!(path.clamp_mtu(10), 0);
 
         path.on_bytes_received(1);
         // Verify we can transmit up to 3 more bytes
-        assert_eq!(path.clamp_mtu(1, false), 1);
-        assert_eq!(path.clamp_mtu(2, false), 2);
-        assert_eq!(path.clamp_mtu(4, false), 3);
+        assert_eq!(path.clamp_mtu(1), 1);
+        assert_eq!(path.clamp_mtu(2), 2);
+        assert_eq!(path.clamp_mtu(4), 3);
 
         path.on_validated();
         // Validated paths should always be able to transmit
-        assert_eq!(path.clamp_mtu(4, false), 4);
+        assert_eq!(path.clamp_mtu(4), 4);
     }
 
     #[test]
