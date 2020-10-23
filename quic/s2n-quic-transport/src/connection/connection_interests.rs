@@ -58,38 +58,26 @@ mod tests {
     #[test]
     fn test_merge_connection_interests() {
         let a = ConnectionInterests {
-            frame_exchange: FrameExchangeInterests {
-                transmission: false,
-                delivery_notifications: true,
-            },
+            transmission: false,
             accept: true,
             finalization: true,
         };
 
         let b = ConnectionInterests {
-            frame_exchange: FrameExchangeInterests {
-                transmission: true,
-                delivery_notifications: false,
-            },
+            transmission: true,
             accept: false,
             finalization: false,
         };
 
         let c = ConnectionInterests {
-            frame_exchange: FrameExchangeInterests {
-                transmission: false,
-                delivery_notifications: false,
-            },
+            transmission: false,
             accept: false,
             finalization: true,
         };
 
         assert_eq!(
             ConnectionInterests {
-                frame_exchange: FrameExchangeInterests {
-                    transmission: true,
-                    delivery_notifications: true,
-                },
+                transmission: true,
                 accept: true,
                 finalization: false,
             },
@@ -98,10 +86,7 @@ mod tests {
 
         assert_eq!(
             ConnectionInterests {
-                frame_exchange: FrameExchangeInterests {
-                    transmission: false,
-                    delivery_notifications: true,
-                },
+                transmission: false,
                 accept: true,
                 finalization: true,
             },
@@ -110,139 +95,11 @@ mod tests {
 
         assert_eq!(
             ConnectionInterests {
-                frame_exchange: FrameExchangeInterests {
-                    transmission: true,
-                    delivery_notifications: false,
-                },
+                transmission: true,
                 accept: false,
                 finalization: false,
             },
             b + c
-        );
-    }
-
-    #[test]
-    fn test_merge_frame_exchange_interests() {
-        let a = ConnectionInterests {
-            frame_exchange: FrameExchangeInterests {
-                transmission: false,
-                delivery_notifications: true,
-            },
-            accept: true,
-            finalization: false,
-        };
-
-        let b = FrameExchangeInterests {
-            transmission: true,
-            delivery_notifications: false,
-        };
-
-        let c = FrameExchangeInterests {
-            transmission: false,
-            delivery_notifications: false,
-        };
-
-        assert_eq!(
-            ConnectionInterests {
-                frame_exchange: FrameExchangeInterests {
-                    transmission: true,
-                    delivery_notifications: true,
-                },
-                accept: true,
-                finalization: false,
-            },
-            a.merge_frame_exchange_interests(b)
-        );
-
-        assert_eq!(
-            ConnectionInterests {
-                frame_exchange: FrameExchangeInterests {
-                    transmission: false,
-                    delivery_notifications: true,
-                },
-                accept: true,
-                finalization: false,
-            },
-            a.merge_frame_exchange_interests(c)
-        );
-    }
-
-    #[test]
-    fn test_merge_stream_manager_interests() {
-        let a = ConnectionInterests {
-            frame_exchange: FrameExchangeInterests {
-                transmission: false,
-                delivery_notifications: true,
-            },
-            finalization: false,
-            accept: true,
-        };
-
-        let b = ConnectionInterests {
-            frame_exchange: FrameExchangeInterests {
-                transmission: true,
-                delivery_notifications: false,
-            },
-            finalization: true,
-            accept: false,
-        };
-
-        let s1 = StreamManagerInterests {
-            transmission: true,
-            finalization: false,
-        };
-
-        let s2 = StreamManagerInterests {
-            transmission: false,
-            finalization: true,
-        };
-
-        assert_eq!(
-            ConnectionInterests {
-                frame_exchange: FrameExchangeInterests {
-                    transmission: true,
-                    delivery_notifications: true,
-                },
-                finalization: false,
-                accept: true,
-            },
-            a.merge_stream_manager_interests(s1)
-        );
-
-        assert_eq!(
-            ConnectionInterests {
-                frame_exchange: FrameExchangeInterests {
-                    transmission: false,
-                    delivery_notifications: true,
-                },
-                finalization: false,
-                accept: true,
-            },
-            a.merge_stream_manager_interests(s2)
-        );
-
-        assert_eq!(
-            ConnectionInterests {
-                frame_exchange: FrameExchangeInterests {
-                    transmission: true,
-                    delivery_notifications: false,
-                },
-                finalization: false,
-                accept: false,
-            },
-            b.merge_stream_manager_interests(s1)
-        );
-
-        assert_eq!(
-            ConnectionInterests {
-                frame_exchange: FrameExchangeInterests {
-                    transmission: true,
-                    delivery_notifications: false,
-                },
-                finalization: true,
-                accept: false,
-            },
-            b.merge_stream_manager_interests(s2)
         );
     }
 }
