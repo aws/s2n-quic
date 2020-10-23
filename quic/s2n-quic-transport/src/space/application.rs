@@ -103,7 +103,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
             //# skip a packet number to eliminate the acknowledgment delay.
 
             // TODO does it hurt persistent congestion detection?
-            packet_number = self.tx_packet_numbers.next();
+            packet_number = packet_number.next().unwrap();
         }
 
         let packet_number_encoder = self.packet_number_encoder();

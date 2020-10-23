@@ -81,7 +81,7 @@ impl<Config: connection::Config> HandshakeSpace<Config> {
 
             // TODO does it hurt persistent congestion detection, which relies on contiguous packet
             // numbers
-            packet_number = self.tx_packet_numbers.next();
+            packet_number = packet_number.next().unwrap();
         }
 
         let packet_number_encoder = self.packet_number_encoder();

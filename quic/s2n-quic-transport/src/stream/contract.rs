@@ -75,6 +75,7 @@ pub mod tx {
     }
 
     impl Request {
+        #[allow(clippy::cognitive_complexity)]
         pub fn validate_response(
             &self,
             request: &ops::tx::Request,
@@ -335,6 +336,7 @@ pub mod rx {
     }
 
     impl Request {
+        #[allow(clippy::cognitive_complexity)]
         pub fn validate_response(
             &self,
             request: &ops::rx::Request,

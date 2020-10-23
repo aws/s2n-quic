@@ -80,20 +80,20 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
         let encoder = EncoderBuffer::new(buffer);
         let initial_capacity = encoder.capacity();
 
-        let mut transmission_constraint = self.context.path.transmission_constraint();
-
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
         //# In addition to sending data in the packet number space for which the
         //# timer expired, the sender SHOULD send ack-eliciting packets from
         //# other packet number spaces with in-flight data, coalescing packets if
         //# possible.
-        if space_manager.requires_probe() {
+        let transmission_constraint = if space_manager.requires_probe() {
             //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
             //# When the PTO timer expires, an ack-eliciting packet MUST be sent.  An
             //# endpoint SHOULD include new data in this packet.  Previously sent
             //# data MAY be sent if no new data can be sent.
-            transmission_constraint = transmission::Constraint::None;
-        }
+            transmission::Constraint::None
+        } else {
+            self.context.path.transmission_constraint()
+        };
 
         let encoder = if let Some(space) = space_manager.initial_mut() {
             match space.on_transmit(&mut self.context, transmission_constraint, encoder) {
