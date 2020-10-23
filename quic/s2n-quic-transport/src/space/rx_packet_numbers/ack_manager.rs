@@ -99,7 +99,10 @@ impl AckManager {
             return false;
         }
 
-        // ACKs can be written regardless of current `transmission::Constraint`
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7
+        //# packets containing only ACK frames do not count
+        //# towards bytes in flight and are not congestion controlled.
+        let _ = context.transmission_constraint(); // ignored
 
         let ack_delay = self.ack_delay(context.current_time());
         // TODO retrieve ECN counts from current path
@@ -139,7 +142,9 @@ impl AckManager {
             const ACK_ELICITATION_INTERVAL: u8 = 4;
 
             // check the timer and make sure we can still write a Ping frame before removing it
-            if self.transmissions_since_elicitation >= ACK_ELICITATION_INTERVAL
+            if (context.transmission_constraint().can_transmit()
+                || context.transmission_constraint().can_retransmit())
+                && self.transmissions_since_elicitation >= ACK_ELICITATION_INTERVAL
                 && context.write_frame(&Ping).is_some()
             {
                 is_ack_eliciting = true;
