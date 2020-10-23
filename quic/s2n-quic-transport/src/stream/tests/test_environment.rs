@@ -3,13 +3,13 @@ use super::{
     OutgoingFrameBuffer,
 };
 use crate::{
-    frame_exchange_interests::FrameExchangeInterests,
     stream::{
         incoming_connection_flow_controller::IncomingConnectionFlowController,
         outgoing_connection_flow_controller::OutgoingConnectionFlowController,
         stream_impl::StreamConfig, stream_interests::StreamInterests, StreamEvents, StreamImpl,
         StreamTrait,
     },
+    transmission,
 };
 use bytes::Bytes;
 use core::task::{Context, Poll, Waker};
@@ -38,16 +38,17 @@ pub fn pn(nr: usize) -> PacketNumber {
 /// Creates Stream Interests from an array of strings
 ///
 /// The following interests are supported:
-/// - ack => frame_exchange.delivery_notifications
-/// - tx => frame_exchange.transmission
+/// - ack => delivery_notifications
+/// - tx => transmission::Interest::NewData
 /// - fin => finalization
 /// - cf => connection_flow_control_credits
 pub fn stream_interests(interests: &[&str]) -> StreamInterests {
     let mut result = StreamInterests::default();
     for interest in interests {
         match *interest {
-            "ack" => result.frame_exchange.delivery_notifications = true,
-            "tx" => result.frame_exchange.transmission = true,
+            "ack" => result.delivery_notifications = true,
+            "tx" => result.transmission = transmission::Interest::NewData,
+            // TODO: Add LostData, Forced transmission interests
             "fin" => result.finalization = true,
             "cf" => result.connection_flow_control_credits = true,
             other => unreachable!("Unsupported interest {}", other),
@@ -56,17 +57,16 @@ pub fn stream_interests(interests: &[&str]) -> StreamInterests {
     result
 }
 
-/// Creates Stream Interests from an array of strings
+/// Creates Transmission Interests from an array of strings
 ///
 /// The following interests are supported:
-/// - ack => frame_exchange.delivery_notifications
-/// - tx => frame_exchange.transmission
-pub fn frame_exchange_interests(interests: &[&str]) -> FrameExchangeInterests {
-    let mut result = FrameExchangeInterests::default();
+/// - tx => transmission::Interest::NewData
+pub fn transmission_interests(interests: &[&str]) -> transmission::Interest {
+    let mut result = transmission::Interest::default();
     for interest in interests {
         match *interest {
-            "ack" => result.delivery_notifications = true,
-            "tx" => result.transmission = true,
+            "tx" => result.transmission = transmission::Interest::NewData,
+            // TODO: Add LostData, Forced transmission interests
             other => unreachable!("Unsupported interest {}", other),
         }
     }

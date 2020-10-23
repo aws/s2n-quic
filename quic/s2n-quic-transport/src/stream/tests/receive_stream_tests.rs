@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
-    frame_exchange_interests::FrameExchangeInterestProvider,
     stream::{stream_interests::StreamInterestProvider, StreamEvents, StreamTrait},
+    transmission::interest::Provider,
 };
 use bytes::Bytes;
 use core::{convert::TryFrom, task::Poll};
@@ -706,20 +706,20 @@ fn receiving_data_will_lead_to_a_connection_flow_control_window_update() {
     );
     assert_eq!(stream_interests(&[]), test_env.stream.interests());
     assert_eq!(
-        frame_exchange_interests(&[]),
+        transmission_interests(&[]),
         test_env
             .rx_connection_flow_controller
-            .frame_exchange_interests()
+            .transmission_interest()
     );
 
     // And drain the data
     assert_eq!(old_window as usize, test_env.consume_all_data());
     assert_eq!(stream_interests(&[]), test_env.stream.interests());
     assert_eq!(
-        frame_exchange_interests(&["tx"]),
+        transmission_interests(&["tx"]),
         test_env
             .rx_connection_flow_controller
-            .frame_exchange_interests()
+            .transmission_interest()
     );
 
     assert_eq!(
@@ -759,23 +759,23 @@ fn receiving_data_will_lead_to_a_connection_flow_control_window_update() {
     );
 
     // Nothing new to write
-    assert_eq!(stream_interests(&[]), test_env.stream.interests());
     assert_eq!(
-        frame_exchange_interests(&["ack"]),
+        transmission_interests(&[]),
         test_env
             .rx_connection_flow_controller
-            .frame_exchange_interests()
+            .transmission_interest()
     );
+    assert_eq!(stream_interests(&["ack"]), test_env.stream.interests());
     test_env.assert_write_frames(0);
 
     // Acknowledge the MaxData frame
     test_env.ack_packet(sent_frame.packet_nr, ExpectWakeup(Some(false)));
     assert_eq!(stream_interests(&[]), test_env.stream.interests());
     assert_eq!(
-        frame_exchange_interests(&[]),
+        transmission_interests(&[]),
         test_env
             .rx_connection_flow_controller
-            .frame_exchange_interests()
+            .transmission_interest()
     );
 }
 
@@ -1029,10 +1029,10 @@ fn connection_flow_control_window_update_is_only_sent_when_minimum_data_size_is_
     );
     assert_eq!(stream_interests(&[]), test_env.stream.interests());
     assert_eq!(
-        frame_exchange_interests(&[]),
+        transmission_interests(&[]),
         test_env
             .rx_connection_flow_controller
-            .frame_exchange_interests()
+            .transmission_interest()
     );
 
     let expected_window = absolute_treshold as u64 - 1;
@@ -1049,10 +1049,10 @@ fn connection_flow_control_window_update_is_only_sent_when_minimum_data_size_is_
     test_env.assert_write_frames(0);
     assert_eq!(stream_interests(&[]), test_env.stream.interests());
     assert_eq!(
-        frame_exchange_interests(&[]),
+        transmission_interests(&[]),
         test_env
             .rx_connection_flow_controller
-            .frame_exchange_interests()
+            .transmission_interest()
     );
 
     // Send and consume one more byte to go over the absolute treshold
@@ -1071,10 +1071,10 @@ fn connection_flow_control_window_update_is_only_sent_when_minimum_data_size_is_
         )
     );
     assert_eq!(
-        frame_exchange_interests(&["tx"]),
+        transmission_interests(&["tx"]),
         test_env
             .rx_connection_flow_controller
-            .frame_exchange_interests()
+            .transmission_interest()
     );
 
     // We expect to have sent a MaxData frame
@@ -1086,12 +1086,7 @@ fn connection_flow_control_window_update_is_only_sent_when_minimum_data_size_is_
         }),
         sent_frame.as_frame()
     );
-    assert_eq!(
-        frame_exchange_interests(&["ack"]),
-        test_env
-            .rx_connection_flow_controller
-            .frame_exchange_interests()
-    );
+    assert_eq!(stream_interests(&["ack"]), test_env.stream.interests());
 
     // Nothing new to write
     test_env.assert_write_frames(0);
@@ -1215,10 +1210,10 @@ fn if_connection_flow_control_window_is_increased_enough_multiple_frames_are_emi
     );
     assert_eq!(stream_interests(&[]), test_env.stream.interests());
     assert_eq!(
-        frame_exchange_interests(&["tx"]),
+        transmission_interests(&["tx"]),
         test_env
             .rx_connection_flow_controller
-            .frame_exchange_interests()
+            .transmission_interest()
     );
 
     // We expect to have sent a MaxData frame
@@ -1232,12 +1227,7 @@ fn if_connection_flow_control_window_is_increased_enough_multiple_frames_are_emi
     );
 
     assert_eq!(stream_interests(&[]), test_env.stream.interests());
-    assert_eq!(
-        frame_exchange_interests(&["ack"]),
-        test_env
-            .rx_connection_flow_controller
-            .frame_exchange_interests()
-    );
+    assert_eq!(stream_interests(&["ack"]), test_env.stream.interests());
     test_env.assert_write_frames(0);
 
     // Feed right before next treshold and drain data
@@ -1246,13 +1236,7 @@ fn if_connection_flow_control_window_is_increased_enough_multiple_frames_are_emi
         relative_treshold - 1,
     );
     assert_eq!(relative_treshold - 1, test_env.consume_all_data());
-    assert_eq!(stream_interests(&[]), test_env.stream.interests());
-    assert_eq!(
-        frame_exchange_interests(&["ack"]),
-        test_env
-            .rx_connection_flow_controller
-            .frame_exchange_interests()
-    );
+    assert_eq!(stream_interests(&["ack"]), test_env.stream.interests());
     test_env.assert_write_frames(0);
 
     // Feed up to the next treshold and drain data
@@ -1263,10 +1247,10 @@ fn if_connection_flow_control_window_is_increased_enough_multiple_frames_are_emi
     assert_eq!(1, test_env.consume_all_data());
     assert_eq!(stream_interests(&[]), test_env.stream.interests());
     assert_eq!(
-        frame_exchange_interests(&["tx"]),
+        transmission_interests(&["tx"]),
         test_env
             .rx_connection_flow_controller
-            .frame_exchange_interests()
+            .transmission_interest()
     );
 
     // We expect to have sent a MaxStreamData frame
@@ -1279,30 +1263,19 @@ fn if_connection_flow_control_window_is_increased_enough_multiple_frames_are_emi
         sent_frame.as_frame()
     );
 
-    assert_eq!(
-        frame_exchange_interests(&["ack"]),
-        test_env
-            .rx_connection_flow_controller
-            .frame_exchange_interests()
-    );
+    assert_eq!(stream_interests(&["ack"]), test_env.stream.interests());
     test_env.assert_write_frames(0);
 
     // The acknowledgement of the first frame is now no longer interesting
     test_env.ack_packet(pn(0), ExpectWakeup(Some(false)));
-    assert_eq!(stream_interests(&[]), test_env.stream.interests());
-    assert_eq!(
-        frame_exchange_interests(&["ack"]),
-        test_env
-            .rx_connection_flow_controller
-            .frame_exchange_interests()
-    );
+    assert_eq!(stream_interests(&["ack"]), test_env.stream.interests());
     test_env.ack_packet(pn(1), ExpectWakeup(Some(false)));
     assert_eq!(stream_interests(&[]), test_env.stream.interests());
     assert_eq!(
-        frame_exchange_interests(&[]),
+        transmission_interests(&[]),
         test_env
             .rx_connection_flow_controller
-            .frame_exchange_interests()
+            .transmission_interest()
     );
 }
 

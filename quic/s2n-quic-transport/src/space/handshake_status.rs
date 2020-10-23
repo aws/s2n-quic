@@ -153,7 +153,7 @@ impl transmission::interest::Provider for HandshakeStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::contexts::testing::*;
+    use crate::{contexts::testing::*, transmission::interest::Provider};
     use s2n_quic_core::endpoint::EndpointType;
     use s2n_quic_platform::time;
 
@@ -168,7 +168,7 @@ mod tests {
 
         assert!(!status.is_confirmed());
         assert_eq!(
-            status.frame_exchange_interests(),
+            status.transmission_interest(),
             transmission::Interest::default(),
             "status should not express interest in default state"
         );
@@ -191,11 +191,8 @@ mod tests {
 
         status.on_handshake_done();
         assert_eq!(
-            status.frame_exchange_interests(),
-            FrameExchangeInterests {
-                delivery_notifications: false,
-                transmission: true,
-            },
+            status.transmission_interest(),
+            transmission::Interest::NewData,
             "status should accept duplicate calls to handshake_done"
         );
 
@@ -264,8 +261,8 @@ mod tests {
         assert_eq!(status, HandshakeStatus::Confirmed);
 
         assert_eq!(
-            status.frame_exchange_interests(),
-            FrameExchangeInterests::default(),
+            status.transmission_interests(),
+            transmission::Interest::None,
             "status should not express interest after complete",
         );
 
@@ -288,8 +285,8 @@ mod tests {
         assert!(!status.is_confirmed());
 
         assert_eq!(
-            status.frame_exchange_interests(),
-            FrameExchangeInterests::default(),
+            status.transmission_interests(),
+            transmission::Interest::None,
             "status should not express interest in default state"
         );
 
@@ -305,8 +302,8 @@ mod tests {
         assert_eq!(status, HandshakeStatus::Confirmed);
 
         assert_eq!(
-            status.frame_exchange_interests(),
-            FrameExchangeInterests::default(),
+            status.transmission_interests(),
+            transmission::Interest::None,
             "status should not express interest after complete",
         );
 

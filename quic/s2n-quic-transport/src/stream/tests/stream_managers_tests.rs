@@ -7,9 +7,9 @@ use crate::{
     stream::{
         stream_impl::StreamConfig,
         stream_interests::{StreamInterestProvider, StreamInterests},
-        AbstractStreamManager, StreamError, StreamEvents, StreamLimits, StreamManagerInterests,
-        StreamTrait,
+        AbstractStreamManager, StreamError, StreamEvents, StreamLimits, StreamTrait,
     },
+    transmission,
     wakeup_queue::{WakeupHandle, WakeupQueue},
 };
 use alloc::collections::VecDeque;
@@ -287,16 +287,6 @@ impl StreamTrait for MockStream {
         Ok(response)
     }
 }
-
-const EMPTY_STREAM_MANAGER_INTERESTS: StreamManagerInterests = StreamManagerInterests {
-    transmission: false,
-    finalization: false,
-};
-
-const TX_STREAM_MANAGER_INTEREST: StreamManagerInterests = StreamManagerInterests {
-    transmission: true,
-    finalization: false,
-};
 
 fn create_default_initial_flow_control_limits() -> InitialFlowControlLimits {
     InitialFlowControlLimits {
@@ -1678,7 +1668,7 @@ fn forwards_poll_pop() {
         stream.api_call_requires_transmission = true;
     });
 
-    assert_eq!(EMPTY_STREAM_MANAGER_INTERESTS, manager.interests());
+    assert_eq!(transmission::Interest::None, manager.interests());
     assert_wakeups(&mut wakeup_queue, 0);
     assert_eq!(
         Err(StreamError::MaxStreamDataSizeExceeded),
@@ -1689,7 +1679,7 @@ fn forwards_poll_pop() {
             Some(&ctx)
         )
     );
-    assert_eq!(TX_STREAM_MANAGER_INTEREST, manager.interests());
+    assert_eq!(transmission::Interest::NewData, manager.interests());
     assert_wakeups(&mut wakeup_queue, 1);
 
     // Check invalid stream ID
@@ -1728,7 +1718,7 @@ fn forwards_stop_sending() {
         stream.api_call_requires_transmission = true;
     });
 
-    assert_eq!(EMPTY_STREAM_MANAGER_INTERESTS, manager.interests());
+    assert_eq!(transmission::Interest::None, manager.interests());
     assert_wakeups(&mut wakeup_queue, 0);
     assert_eq!(
         Err(StreamError::MaxStreamDataSizeExceeded),
@@ -1739,7 +1729,7 @@ fn forwards_stop_sending() {
             None,
         )
     );
-    assert_eq!(TX_STREAM_MANAGER_INTEREST, manager.interests());
+    assert_eq!(transmission::Interest::NewData, manager.interests());
     assert_wakeups(&mut wakeup_queue, 1);
 
     // Check invalid stream ID
@@ -1780,7 +1770,7 @@ fn forwards_poll_push() {
         stream.api_call_requires_transmission = true;
     });
 
-    assert_eq!(EMPTY_STREAM_MANAGER_INTERESTS, manager.interests());
+    assert_eq!(transmission::Interest::None, manager.interests());
     assert_wakeups(&mut wakeup_queue, 0);
     assert_eq!(
         Err(StreamError::MaxStreamDataSizeExceeded),
@@ -1791,7 +1781,7 @@ fn forwards_poll_push() {
             Some(&ctx)
         )
     );
-    assert_eq!(TX_STREAM_MANAGER_INTEREST, manager.interests());
+    assert_eq!(transmission::Interest::NewData, manager.interests());
     assert_wakeups(&mut wakeup_queue, 1);
 
     // Check invalid stream ID
@@ -1831,7 +1821,7 @@ fn forwards_poll_finish() {
         stream.api_call_requires_transmission = true;
     });
 
-    assert_eq!(EMPTY_STREAM_MANAGER_INTERESTS, manager.interests());
+    assert_eq!(transmission::Interest::None, manager.interests());
     assert_wakeups(&mut wakeup_queue, 0);
     assert_eq!(
         Err(StreamError::MaxStreamDataSizeExceeded),
@@ -1842,7 +1832,7 @@ fn forwards_poll_finish() {
             Some(&ctx)
         )
     );
-    assert_eq!(TX_STREAM_MANAGER_INTEREST, manager.interests());
+    assert_eq!(transmission::Interest::NewData, manager.interests());
     assert_wakeups(&mut wakeup_queue, 1);
 
     // Check invalid stream ID
@@ -1881,7 +1871,7 @@ fn forwards_reset() {
         stream.api_call_requires_transmission = true;
     });
 
-    assert_eq!(EMPTY_STREAM_MANAGER_INTERESTS, manager.interests());
+    assert_eq!(transmission::Interest::None, manager.interests());
     assert_wakeups(&mut wakeup_queue, 0);
     assert_eq!(
         Err(StreamError::MaxStreamDataSizeExceeded),
@@ -1892,7 +1882,7 @@ fn forwards_reset() {
             None,
         )
     );
-    assert_eq!(TX_STREAM_MANAGER_INTEREST, manager.interests());
+    assert_eq!(transmission::Interest::NewData, manager.interests());
     assert_wakeups(&mut wakeup_queue, 1);
 
     // Check invalid stream ID
