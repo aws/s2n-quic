@@ -1055,7 +1055,7 @@ fn connection_flow_control_window_update_is_only_sent_when_minimum_data_size_is_
             .transmission_interest()
     );
 
-    // Send and consume one more byte to go over the absolute treshold
+    // Send and consume one more byte to go over the absolute threshold
     test_env.feed_data(
         VarInt::from_u32(required_for_read_window_update as u32 - 1),
         1,
@@ -1332,7 +1332,7 @@ fn resend_flow_control_update_if_lost() {
 
     // Notify the stream about packet loss
     test_env.nack_packet(packet_nr);
-    assert_eq!(stream_interests(&["tx"]), test_env.stream.interests());
+    assert_eq!(stream_interests(&["lost"]), test_env.stream.interests());
 
     // We expect to have sent a MaxStreamData frame
     test_env.assert_write_frames(1);
@@ -1802,7 +1802,7 @@ fn stop_sending_frames_are_retransmitted_on_loss() {
     test_env.stream.on_packet_loss(&packet_nr, &mut events);
 
     // Expect a retransmission of StopSending
-    assert_eq!(stream_interests(&["tx"]), test_env.stream.interests());
+    assert_eq!(stream_interests(&["lost"]), test_env.stream.interests());
     test_env.assert_write_frames(1);
     let mut sent_frame = test_env.sent_frames.pop_front().expect("Frame is written");
     assert_eq!(
