@@ -1,7 +1,7 @@
 //! `StreamManager` manages the lifecycle of all `Stream`s inside a `Connection`
 
 use crate::{
-    connection::Limits as ConnectionLimits,
+    connection::{self, Limits as ConnectionLimits},
     contexts::{ConnectionApiCallContext, ConnectionContext, OnTransmitError, WriteContext},
     stream::{
         incoming_connection_flow_controller::IncomingConnectionFlowController,
@@ -16,7 +16,6 @@ use crate::{
 use core::task::{Context, Poll, Waker};
 use s2n_quic_core::{
     ack_set::AckSet,
-    connection,
     endpoint::EndpointType,
     frame::{
         stream::StreamRef, DataBlocked, MaxData, MaxStreamData, MaxStreams, ResetStream,
@@ -805,7 +804,17 @@ impl<S: StreamTrait> transmission::interest::Provider for AbstractStreamManager<
     }
 }
 
-// TODO finalization interest provider
+impl<S: StreamTrait> connection::finalization::Provider for AbstractStreamManager<S> {
+    fn finalization_status(&self) -> connection::finalization::Status {
+        if self.inner.close_reason.is_some() && self.inner.streams.nr_active_streams() == 0 {
+            connection::finalization::Status::Final
+        } else if self.inner.close_reason.is_some() && self.inner.streams.nr_active_streams() > 0 {
+            connection::finalization::Status::Draining
+        } else {
+            connection::finalization::Status::Idle
+        }
+    }
+}
 
 // These are methods that StreamManager only exposes for test purposes.
 //

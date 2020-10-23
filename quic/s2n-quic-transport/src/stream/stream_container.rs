@@ -306,6 +306,11 @@ impl<S: StreamTrait> StreamContainer<S> {
         self.nr_active_streams += 1;
     }
 
+    /// Returns the amount of streams which are tracked by the `StreamContainer`
+    pub fn nr_active_streams(&self) -> usize {
+        self.nr_active_streams
+    }
+
     /// Returns true if the container contains a Stream with the given ID
     pub fn contains(&self, stream_id: StreamId) -> bool {
         !self.stream_map.find(&stream_id).is_null()

@@ -63,12 +63,6 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
         let shared_state = &mut self.shared_state;
         let space_manager = &mut shared_state.space_manager;
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7
-        //# An endpoint MUST NOT send a packet if it would cause bytes_in_flight
-        //# (see Appendix B.2) to be larger than the congestion window, unless
-        //# the packet is sent on a PTO timer expiration (see Section 6.2) or
-        //# when entering recovery (see Section 7.3.2).
-
         let mtu = self.context.path.clamp_mtu(buffer.len());
         debug_assert_ne!(
             mtu, 0,
@@ -79,6 +73,12 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
 
         let encoder = EncoderBuffer::new(buffer);
         let initial_capacity = encoder.capacity();
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7
+        //# An endpoint MUST NOT send a packet if it would cause bytes_in_flight
+        //# (see Appendix B.2) to be larger than the congestion window, unless
+        //# the packet is sent on a PTO timer expiration (see Section 6.2) or
+        //# when entering recovery (see Section 7.3.2).
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
         //# In addition to sending data in the packet number space for which the

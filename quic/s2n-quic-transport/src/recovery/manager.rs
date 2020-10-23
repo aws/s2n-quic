@@ -724,11 +724,6 @@ impl Pto {
 
 impl transmission::interest::Provider for Pto {
     fn transmission_interest(&self) -> transmission::Interest {
-        // TODO put a fast ack on interests
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.4
-        //# If the sender wants to elicit a faster acknowledgement on PTO, it can
-        //# skip a packet number to eliminate the acknowledgment delay.
-
         if matches!(self.state, PtoState::RequiresTransmission(_)) {
             transmission::Interest::Forced
         } else {

@@ -223,6 +223,12 @@ impl<Config: connection::Config> transmission::interest::Provider for Applicatio
     }
 }
 
+impl<Config: connection::Config> connection::finalization::Provider for ApplicationSpace<Config> {
+    fn finalization_status(&self) -> connection::finalization::Status {
+        self.stream_manager.finalization_status()
+    }
+}
+
 struct RecoveryContext<'a, Config: connection::Config> {
     ack_manager: &'a mut AckManager,
     handshake_status: &'a mut HandshakeStatus,

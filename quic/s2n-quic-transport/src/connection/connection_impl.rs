@@ -737,14 +737,16 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                 }
 
                 interests.transmission = transmission.can_transmit(constraint);
-
-                // TODO finalization interests
             }
             ConnectionState::Closing => {
                 // TODO: Ask the Close Sender whether it needs to transmit
             }
             ConnectionState::Draining => {
+                use connection::finalization::Provider as _;
+
                 // This is a pure wait state. We do not want to transmit data here
+                interests.finalization =
+                    shared_state.space_manager.finalization_status().is_final();
             }
             ConnectionState::Finished => {
                 // Remove the connection from the endpoint

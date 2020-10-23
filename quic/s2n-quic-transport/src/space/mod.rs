@@ -263,6 +263,24 @@ impl<Config: connection::Config> transmission::interest::Provider for PacketSpac
     }
 }
 
+impl<Config: connection::Config> connection::finalization::Provider for PacketSpaceManager<Config> {
+    fn finalization_status(&self) -> connection::finalization::Status {
+        core::iter::empty()
+            .chain(self.initial.iter().map(|space| space.finalization_status()))
+            .chain(
+                self.handshake
+                    .iter()
+                    .map(|space| space.finalization_status()),
+            )
+            .chain(
+                self.application
+                    .iter()
+                    .map(|space| space.finalization_status()),
+            )
+            .sum()
+    }
+}
+
 macro_rules! default_frame_handler {
     ($name:ident, $frame:ty) => {
         fn $name(

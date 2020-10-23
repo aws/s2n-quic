@@ -187,6 +187,13 @@ impl<Config: connection::Config> transmission::interest::Provider for HandshakeS
     }
 }
 
+impl<Config: connection::Config> connection::finalization::Provider for HandshakeSpace<Config> {
+    fn finalization_status(&self) -> connection::finalization::Status {
+        // there's nothing in here that hold up finalizing a connection
+        connection::finalization::Status::Idle
+    }
+}
+
 struct RecoveryContext<'a, Config> {
     ack_manager: &'a mut AckManager,
     crypto_stream: &'a mut CryptoStream,

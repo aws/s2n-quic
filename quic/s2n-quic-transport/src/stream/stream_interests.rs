@@ -11,7 +11,10 @@ pub struct StreamInterests {
     /// Is `true` if the `Stream` has entered it's final state and
     /// can therefore be removed from the `Stream` map.
     pub finalization: bool,
+    /// Is `true` if the component is interested in packet acknowledge and
+    /// loss information
     pub delivery_notifications: bool,
+    /// Transmission interest for the component
     pub transmission: transmission::Interest,
 }
 
