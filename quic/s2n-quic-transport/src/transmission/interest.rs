@@ -44,6 +44,10 @@ impl Interest {
             (Interest::None, _) => false,
         }
     }
+
+    pub fn is_none(self) -> bool {
+        matches!(self, Interest::None)
+    }
 }
 
 impl core::ops::Add for Interest {

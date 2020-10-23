@@ -2054,10 +2054,7 @@ fn reset_does_not_cause_an_action_if_stream_is_already_reset() {
             }
 
             // The reset should not lead to an outgoing packet
-            assert_eq!(
-                false,
-                test_env.stream.interests().frame_exchange.transmission
-            );
+            assert!(test_env.stream.interests().transmission.is_none());
             execute_instructions(&mut test_env, &[Instruction::CheckNoTx]);
 
             // Accessing the stream should lead to the original reset error
@@ -2111,10 +2108,7 @@ fn reset_does_not_cause_an_action_if_stream_is_finished_and_acknowledged() {
             }
 
             // The reset should not lead to an outgoing packet
-            assert_eq!(
-                false,
-                test_env.stream.interests().frame_exchange.transmission
-            );
+            assert!(test_env.stream.interests().transmission.is_none());
             execute_instructions(&mut test_env, &[Instruction::CheckNoTx]);
 
             // Accessing the stream should still return the finished state

@@ -152,7 +152,7 @@ impl Endpoint {
 
     pub fn done(&mut self) {
         assert!(
-            !self.ack_manager.frame_exchange_interests().transmission,
+            self.ack_manager.transmission_interest().is_none(),
             "ack manager should be in a stable state"
         );
     }

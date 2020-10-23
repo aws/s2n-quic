@@ -65,7 +65,7 @@ pub fn transmission_interests(interests: &[&str]) -> transmission::Interest {
     let mut result = transmission::Interest::default();
     for interest in interests {
         match *interest {
-            "tx" => result.transmission = transmission::Interest::NewData,
+            "tx" => result = transmission::Interest::NewData,
             // TODO: Add LostData, Forced transmission interests
             other => unreachable!("Unsupported interest {}", other),
         }
@@ -451,5 +451,6 @@ pub fn setup_stream_test_env_with_config(config: TestEnvironmentConfig) -> TestE
         wake_counter,
         waker,
         current_time: s2n_quic_platform::time::now(),
+        transmission_constraint: config.transmission_constraint,
     }
 }

@@ -25,6 +25,7 @@ impl TestEnvironment {
             connection_context: MockConnectionContext::new(EndpointType::Server),
             sent_frames,
             current_time: s2n_quic_platform::time::now(),
+            transmission_constraint: transmission::Constraint::None,
         }
     }
 

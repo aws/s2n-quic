@@ -247,8 +247,9 @@ mod tests {
 
         status.on_packet_loss(&latest_packet_number);
 
-        assert!(
-            status.frame_exchange_interests().transmission,
+        assert_eq!(
+            status.transmission_interest(),
+            transmission::Interest::LostData,
             "transmission should be active on latest packet loss"
         );
 
@@ -264,9 +265,8 @@ mod tests {
 
         assert_eq!(status, HandshakeStatus::Confirmed);
 
-        assert_eq!(
-            status.transmission_interests(),
-            transmission::Interest::None,
+        assert!(
+            status.transmission_interest().is_none(),
             "status should not express interest after complete",
         );
 
@@ -292,9 +292,8 @@ mod tests {
 
         assert!(!status.is_confirmed());
 
-        assert_eq!(
-            status.transmission_interests(),
-            transmission::Interest::None,
+        assert!(
+            status.transmission_interest().is_none(),
             "status should not express interest in default state"
         );
 
@@ -309,9 +308,8 @@ mod tests {
 
         assert_eq!(status, HandshakeStatus::Confirmed);
 
-        assert_eq!(
-            status.transmission_interests(),
-            transmission::Interest::None,
+        assert!(
+            status.transmission_interest().is_none(),
             "status should not express interest after complete",
         );
 

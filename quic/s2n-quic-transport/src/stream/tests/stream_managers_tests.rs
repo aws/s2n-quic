@@ -10,6 +10,7 @@ use crate::{
         AbstractStreamManager, StreamError, StreamEvents, StreamLimits, StreamTrait,
     },
     transmission,
+    transmission::interest::Provider,
     wakeup_queue::{WakeupHandle, WakeupQueue},
 };
 use alloc::collections::VecDeque;
@@ -1881,7 +1882,7 @@ fn forwards_reset() {
         stream.api_call_requires_transmission = true;
     });
 
-    assert_eq!(transmission::Interest::None, manager.interests());
+    assert!(manager.transmission_interest().is_none());
     assert_wakeups(&mut wakeup_queue, 0);
     assert_eq!(
         Err(StreamError::MaxStreamDataSizeExceeded),
@@ -1892,7 +1893,10 @@ fn forwards_reset() {
             None,
         )
     );
-    assert_eq!(transmission::Interest::NewData, manager.interests());
+    assert_eq!(
+        transmission::Interest::NewData,
+        manager.transmission_interest()
+    );
     assert_wakeups(&mut wakeup_queue, 1);
 
     // Check invalid stream ID
