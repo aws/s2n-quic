@@ -1679,7 +1679,7 @@ fn forwards_poll_pop() {
         stream.api_call_requires_transmission = true;
     });
 
-    assert_eq!(transmission::Interest::None, manager.interests());
+    assert!(manager.transmission_interest().is_none());
     assert_wakeups(&mut wakeup_queue, 0);
     assert_eq!(
         Err(StreamError::MaxStreamDataSizeExceeded),
@@ -1690,7 +1690,10 @@ fn forwards_poll_pop() {
             Some(&ctx)
         )
     );
-    assert_eq!(transmission::Interest::NewData, manager.interests());
+    assert_eq!(
+        transmission::Interest::NewData,
+        manager.transmission_interest()
+    );
     assert_wakeups(&mut wakeup_queue, 1);
 
     // Check invalid stream ID
@@ -1729,7 +1732,7 @@ fn forwards_stop_sending() {
         stream.api_call_requires_transmission = true;
     });
 
-    assert_eq!(transmission::Interest::None, manager.interests());
+    assert!(manager.transmission_interest().is_none());
     assert_wakeups(&mut wakeup_queue, 0);
     assert_eq!(
         Err(StreamError::MaxStreamDataSizeExceeded),
@@ -1740,7 +1743,10 @@ fn forwards_stop_sending() {
             None,
         )
     );
-    assert_eq!(transmission::Interest::NewData, manager.interests());
+    assert_eq!(
+        transmission::Interest::NewData,
+        manager.transmission_interest()
+    );
     assert_wakeups(&mut wakeup_queue, 1);
 
     // Check invalid stream ID
@@ -1781,7 +1787,7 @@ fn forwards_poll_push() {
         stream.api_call_requires_transmission = true;
     });
 
-    assert_eq!(transmission::Interest::None, manager.interests());
+    assert!(manager.transmission_interest().is_none());
     assert_wakeups(&mut wakeup_queue, 0);
     assert_eq!(
         Err(StreamError::MaxStreamDataSizeExceeded),
@@ -1792,7 +1798,10 @@ fn forwards_poll_push() {
             Some(&ctx)
         )
     );
-    assert_eq!(transmission::Interest::NewData, manager.interests());
+    assert_eq!(
+        transmission::Interest::NewData,
+        manager.transmission_interest()
+    );
     assert_wakeups(&mut wakeup_queue, 1);
 
     // Check invalid stream ID
@@ -1832,7 +1841,7 @@ fn forwards_poll_finish() {
         stream.api_call_requires_transmission = true;
     });
 
-    assert_eq!(transmission::Interest::None, manager.interests());
+    assert!(manager.transmission_interest().is_none());
     assert_wakeups(&mut wakeup_queue, 0);
     assert_eq!(
         Err(StreamError::MaxStreamDataSizeExceeded),
@@ -1843,7 +1852,10 @@ fn forwards_poll_finish() {
             Some(&ctx)
         )
     );
-    assert_eq!(transmission::Interest::NewData, manager.interests());
+    assert_eq!(
+        transmission::Interest::NewData,
+        manager.transmission_interest()
+    );
     assert_wakeups(&mut wakeup_queue, 1);
 
     // Check invalid stream ID
