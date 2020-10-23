@@ -78,7 +78,11 @@ impl StreamInterestProvider for MockStream {
         let mut interests = self.interests;
         interests.connection_flow_control_credits =
             self.on_connection_window_available_retrieve_window > 0;
-        interests.frame_exchange.transmission = self.on_transmit_try_write_frames > 0;
+        if self.on_transmit_try_write_frames > 0 {
+            interests.transmission = transmission::Interest::NewData;
+        } else {
+            interests.transmission = transmission::Interest::None;
+        }
         interests
     }
 }
@@ -969,7 +973,7 @@ fn add_and_remove_streams_from_delivery_notification_window_lists() {
 
     for stream_id in &[stream_2, stream_1, stream_4] {
         manager.with_asserted_stream(*stream_id, |stream| {
-            stream.interests.frame_exchange.delivery_notifications = true;
+            stream.interests.delivery_notifications = true;
         });
     }
     assert_eq!(
@@ -978,7 +982,7 @@ fn add_and_remove_streams_from_delivery_notification_window_lists() {
     );
 
     manager.with_asserted_stream(stream_2, |stream| {
-        stream.interests.frame_exchange.delivery_notifications = false;
+        stream.interests.delivery_notifications = false;
     });
     assert_eq!(
         [stream_1, stream_4],
@@ -986,7 +990,7 @@ fn add_and_remove_streams_from_delivery_notification_window_lists() {
     );
 
     manager.with_asserted_stream(stream_4, |stream| {
-        stream.interests.frame_exchange.delivery_notifications = false;
+        stream.interests.delivery_notifications = false;
     });
     assert_eq!(
         [stream_1],
@@ -994,7 +998,7 @@ fn add_and_remove_streams_from_delivery_notification_window_lists() {
     );
 
     manager.with_asserted_stream(stream_1, |stream| {
-        stream.interests.frame_exchange.delivery_notifications = false;
+        stream.interests.delivery_notifications = false;
     });
     assert_eq!(
         true,
@@ -1020,7 +1024,7 @@ fn on_packet_ack_and_loss_is_forwarded_to_interested_streams() {
         let read_waker = read_waker.clone();
         let write_waker = write_waker.clone();
         manager.with_asserted_stream(*stream_id, |stream| {
-            stream.interests.frame_exchange.delivery_notifications = true;
+            stream.interests.delivery_notifications = true;
             stream.read_waker_to_return = Some(read_waker);
             stream.write_waker_to_return = Some(write_waker);
         });
@@ -1050,16 +1054,16 @@ fn on_packet_ack_and_loss_is_forwarded_to_interested_streams() {
     });
 
     manager.with_asserted_stream(stream_1, |stream| {
-        stream.interests.frame_exchange.delivery_notifications = false;
+        stream.interests.delivery_notifications = false;
     });
     manager.with_asserted_stream(stream_2, |stream| {
-        stream.interests.frame_exchange.delivery_notifications = false;
+        stream.interests.delivery_notifications = false;
     });
     manager.with_asserted_stream(stream_3, |stream| {
-        stream.interests.frame_exchange.delivery_notifications = true;
+        stream.interests.delivery_notifications = true;
     });
     manager.with_asserted_stream(stream_4, |stream| {
-        stream.interests.frame_exchange.delivery_notifications = false;
+        stream.interests.delivery_notifications = false;
     });
 
     manager.on_packet_ack(&pn(4));
@@ -1111,7 +1115,7 @@ fn close_is_forwarded_to_all_streams() {
     });
     manager.with_asserted_stream(stream_3, |stream| {
         stream.set_finalize_on_internal_reset = true;
-        stream.interests.frame_exchange.delivery_notifications = true;
+        stream.interests.delivery_notifications = true;
         stream.on_transmit_try_write_frames = 1;
     });
     manager.with_asserted_stream(stream_4, |stream| {
@@ -1229,6 +1233,7 @@ fn on_transmit_queries_streams_for_data() {
         &connection_context,
         s2n_quic_platform::time::now(),
         &mut frame_buffer,
+        transmission::Constraint::None,
     );
     assert!(manager.on_transmit(&mut write_context).is_ok());
 
@@ -1260,6 +1265,7 @@ fn on_transmit_queries_streams_for_data() {
         &connection_context,
         s2n_quic_platform::time::now(),
         &mut frame_buffer,
+        transmission::Constraint::None,
     );
 
     assert_eq!(
@@ -1293,6 +1299,7 @@ fn on_transmit_queries_streams_for_data() {
         &connection_context,
         s2n_quic_platform::time::now(),
         &mut frame_buffer,
+        transmission::Constraint::None,
     );
 
     assert_eq!(
@@ -1317,6 +1324,7 @@ fn on_transmit_queries_streams_for_data() {
         &connection_context,
         s2n_quic_platform::time::now(),
         &mut frame_buffer,
+        transmission::Constraint::None,
     );
 
     assert_eq!(
@@ -1341,6 +1349,7 @@ fn on_transmit_queries_streams_for_data() {
         &connection_context,
         s2n_quic_platform::time::now(),
         &mut frame_buffer,
+        transmission::Constraint::None,
     );
 
     assert_eq!(
@@ -1362,6 +1371,7 @@ fn on_transmit_queries_streams_for_data() {
         &connection_context,
         s2n_quic_platform::time::now(),
         &mut frame_buffer,
+        transmission::Constraint::None,
     );
 
     assert_eq!(Ok(()), manager.on_transmit(&mut write_context));

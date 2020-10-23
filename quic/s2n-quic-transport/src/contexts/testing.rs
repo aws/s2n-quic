@@ -10,6 +10,7 @@ use s2n_quic_core::{
     },
     packet::number::{PacketNumber, PacketNumberSpace},
     time::Timestamp,
+    transmission::Constraint,
     varint::VarInt,
 };
 
@@ -247,6 +248,7 @@ pub struct MockWriteContext<'a> {
     pub connection_context: &'a MockConnectionContext,
     pub current_time: Timestamp,
     pub frame_buffer: &'a mut OutgoingFrameBuffer,
+    pub transmission_constraint: Constraint,
 }
 
 impl<'a> MockWriteContext<'a> {
@@ -254,11 +256,13 @@ impl<'a> MockWriteContext<'a> {
         connection_context: &'a MockConnectionContext,
         current_time: Timestamp,
         frame_buffer: &'a mut OutgoingFrameBuffer,
+        transmission_constraint: Constraint,
     ) -> MockWriteContext<'a> {
         MockWriteContext {
             connection_context,
             current_time,
             frame_buffer,
+            transmission_constraint,
         }
     }
 }
@@ -272,6 +276,10 @@ impl<'a> WriteContext for MockWriteContext<'a> {
 
     fn connection_context(&self) -> &Self::ConnectionContext {
         self.connection_context
+    }
+
+    fn transmission_constraint(&self) -> Constraint {
+        self.transmission_constraint
     }
 
     fn write_frame<Frame: s2n_codec::EncoderValue + AckElicitable>(

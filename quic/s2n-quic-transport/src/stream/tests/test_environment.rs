@@ -84,6 +84,7 @@ pub struct TestEnvironment {
     pub wake_counter: AwokenCount,
     pub waker: Waker,
     pub current_time: Timestamp,
+    pub transmission_constraint: transmission::Constraint,
 }
 
 impl TestEnvironment {
@@ -186,6 +187,7 @@ impl TestEnvironment {
             &self.connection_context,
             self.current_time,
             &mut self.sent_frames,
+            self.transmission_constraint,
         );
         assert!(self
             .rx_connection_flow_controller
@@ -213,6 +215,7 @@ impl TestEnvironment {
             &self.connection_context,
             self.current_time,
             &mut self.sent_frames,
+            self.transmission_constraint,
         );
         assert!(self.stream.on_transmit(&mut write_ctx).is_ok());
         self.sent_frames.flush();
@@ -255,6 +258,7 @@ impl TestEnvironment {
             &self.connection_context,
             self.current_time,
             &mut self.sent_frames,
+            self.transmission_constraint,
         );
         assert!(self.stream.on_transmit(&mut write_ctx).is_ok());
         self.sent_frames.flush();
@@ -383,6 +387,7 @@ pub struct TestEnvironmentConfig {
     pub initial_connection_receive_window_size: u64,
     pub desired_connection_flow_control_window: u32,
     pub max_send_buffer_size: usize,
+    pub transmission_constraint: transmission::Constraint,
 }
 
 impl Default for TestEnvironmentConfig {
@@ -400,6 +405,7 @@ impl Default for TestEnvironmentConfig {
             desired_connection_flow_control_window:
                 TestEnvironment::DEFAULT_INITIAL_CONNECTION_RECEIVE_WINDOW as u32,
             max_send_buffer_size: TestEnvironment::DEFAULT_MAX_SEND_BUFFER_SIZE,
+            transmission_constraint: transmission::Constraint::None,
         }
     }
 }

@@ -1,11 +1,12 @@
 use crate::contexts::testing::{MockConnectionContext, MockWriteContext, OutgoingFrameBuffer};
-use s2n_quic_core::{endpoint::EndpointType, time::Timestamp};
+use s2n_quic_core::{endpoint::EndpointType, time::Timestamp, transmission};
 
 #[derive(Clone, Debug)]
 pub struct TestEnvironment {
     pub connection_context: MockConnectionContext,
     pub sent_frames: OutgoingFrameBuffer,
     pub current_time: Timestamp,
+    pub transmission_constraint: transmission::Constraint,
 }
 
 impl Default for TestEnvironment {
@@ -32,6 +33,7 @@ impl TestEnvironment {
             &self.connection_context,
             self.current_time,
             &mut self.sent_frames,
+            self.transmission_constraint,
         )
     }
 }

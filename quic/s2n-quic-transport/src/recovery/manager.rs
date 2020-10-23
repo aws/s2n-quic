@@ -1423,6 +1423,7 @@ mod test {
             &connection_context,
             s2n_quic_platform::time::now(),
             &mut frame_buffer,
+            transmission::Constraint::CongestionLimited, // Recovery manager ignores constraints
         );
 
         // Already idle

@@ -161,8 +161,12 @@ mod tests {
     fn server_test() {
         let connection_context = MockConnectionContext::new(EndpointType::Server);
         let mut frame_buffer = OutgoingFrameBuffer::new();
-        let mut context =
-            MockWriteContext::new(&connection_context, time::now(), &mut frame_buffer);
+        let mut context = MockWriteContext::new(
+            &connection_context,
+            time::now(),
+            &mut frame_buffer,
+            transmission::Constraint::None,
+        );
 
         let mut status = HandshakeStatus::default();
 
@@ -277,8 +281,12 @@ mod tests {
     fn client_test() {
         let connection_context = MockConnectionContext::new(EndpointType::Client);
         let mut frame_buffer = OutgoingFrameBuffer::new();
-        let mut context =
-            MockWriteContext::new(&connection_context, time::now(), &mut frame_buffer);
+        let mut context = MockWriteContext::new(
+            &connection_context,
+            time::now(),
+            &mut frame_buffer,
+            transmission::Constraint::None,
+        );
 
         let mut status = HandshakeStatus::default();
 
