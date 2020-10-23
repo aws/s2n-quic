@@ -1,3 +1,6 @@
+pub mod limits;
+pub use limits::Limits;
+
 /// Enumerates endpoint types
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum EndpointType {

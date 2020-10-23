@@ -1,6 +1,6 @@
 use crate::{
     connection::{self, id::Generator as _, SynchronizedSharedConnectionState, Trait as _},
-    endpoint,
+    endpoint::{self, Limits as _},
     recovery::congestion_controller::{self, Endpoint as _},
     space::PacketSpaceManager,
 };
@@ -51,8 +51,34 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
 
         let source_connection_id: connection::Id = packet.source_connection_id().try_into()?;
 
-        // TODO check if we're busy
-        // TODO check the version number
+        let endpoint_context = self.config.context();
+
+        // Before allocating resources for a new connection, verify that can proceed.
+        // NOTE: How do we access TLS handshakes in-flight from here (instead of 0)?
+        // TODO https://github.com/awslabs/s2n-quic/issues/166
+        let attempt = endpoint::limits::ConnectionAttempt::new(0, &datagram.remote_address);
+        match endpoint_context
+            .endpoint_limits
+            .on_connection_attempt(&attempt)
+        {
+            endpoint::limits::Outcome::Allow => {
+                // No action
+            }
+            endpoint::limits::Outcome::Retry { delay: _ } => {
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-31.txt#8.1.2
+                //# A server can also use a Retry packet to defer the state and
+                //# processing costs of connection establishment.
+            }
+            endpoint::limits::Outcome::Drop => {
+                // Stop processing
+                return Ok(());
+            }
+            endpoint::limits::Outcome::Close { delay: _ } => {
+                // Queue close packet
+            }
+        }
+
+        // TODO https://github.com/awslabs/s2n-quic/issues/159: Negotiate the version
 
         let initial_crypto =
             <<Config::ConnectionConfig as connection::Config>::TLSSession as CryptoSuite>::InitialCrypto::new_server(
@@ -66,8 +92,6 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         // TODO handle token with stateless retry
 
         let internal_connection_id = self.connection_id_generator.generate_id();
-
-        let endpoint_context = self.config.context();
 
         // TODO store the expiration of the connection ID
         let (local_connection_id, _connection_id_expiration) =
@@ -190,7 +214,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         // will also clean up all state which was already allocated for
         // the connection
         self.connections.insert_connection(connection, shared_state);
-        // TODO increment inflight handshakes
+        // TODO https://github.com/awslabs/s2n-quic/issues/162: increment inflight handshakes
         Ok(())
     }
 }
