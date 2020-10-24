@@ -73,6 +73,20 @@ pub const EARLY_ACK_SETTINGS: AckSettings = AckSettings {
     ack_delay_exponent: 0,
 };
 
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#13.2.4
+//# When the receiver is only sending non-ack-eliciting packets, it can
+//# bundle a PING or other small ack-eliciting frame with a fraction of
+//# them, such as once per round trip, to enable dropping unnecessary ACK
+//# ranges and any state for previously sent packets.
+
+// Originally, this was using a timer derived from RTT. However,
+// there were issues in certain simulations that led to endless looping.
+// Instead, we use a simple counter to elicit ACKs at a desired frequency.
+//
+// After running simulations, this seemed to be a good baseline
+// TODO experiment more with this
+const ACK_ELICITATION_INTERVAL: u8 = 4;
+
 impl AckManager {
     pub fn new(
         packet_space: PacketNumberSpace,
@@ -132,14 +146,6 @@ impl AckManager {
             //# bundle a PING or other small ack-eliciting frame with a fraction of
             //# them, such as once per round trip, to enable dropping unnecessary ACK
             //# ranges and any state for previously sent packets.
-
-            // Originally, this was using a timer derived from RTT. However,
-            // there were issues in certain simulations that led to endless looping.
-            // Instead, we use a simple counter to elicit ACKs at a desired frequency.
-            //
-            // After running simulations, this seemed to be a good baseline
-            // TODO experiment more with this
-            const ACK_ELICITATION_INTERVAL: u8 = 4;
 
             // check the timer and make sure we can still write a Ping frame before removing it
             if (context.transmission_constraint().can_transmit()
@@ -341,13 +347,76 @@ impl transmission::interest::Provider for AckManager {
 #[cfg(test)]
 mod tests {
     use super::{super::tests::*, *};
+    use crate::{
+        contexts::testing::{MockConnectionContext, MockWriteContext, OutgoingFrameBuffer},
+        endpoint::EndpointType,
+    };
     use core::{
         iter::{empty, once},
         mem::size_of,
         time::Duration,
     };
     use insta::assert_debug_snapshot;
-    use s2n_quic_core::transport::parameters::AckSettings;
+    use s2n_quic_core::{
+        frame::{ping, Frame},
+        transport::parameters::AckSettings,
+    };
+
+    #[test]
+    fn on_transmit_complete_transmission_constrained() {
+        let mut manager = AckManager::new(
+            PacketNumberSpace::ApplicationData,
+            AckSettings::default(),
+            1,
+        );
+        let connection_context = MockConnectionContext::new(EndpointType::Server);
+        let mut frame_buffer = OutgoingFrameBuffer::new();
+        let mut write_context = MockWriteContext::new(
+            &connection_context,
+            s2n_quic_platform::time::now(),
+            &mut frame_buffer,
+            transmission::Constraint::None,
+        );
+
+        manager.ack_ranges = AckRanges::default();
+        manager.ack_ranges.insert_packet_number(
+            PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u8(1)),
+        );
+        manager.transmission_state = AckTransmissionState::Active { retransmissions: 0 };
+        manager.transmissions_since_elicitation = ACK_ELICITATION_INTERVAL;
+
+        manager.on_transmit_complete(&mut write_context);
+
+        assert_eq!(
+            write_context
+                .frame_buffer
+                .pop_front()
+                .expect("Frame is written")
+                .as_frame(),
+            Frame::Ping(ping::Ping),
+            "Ping should be written when transmission is not constrained"
+        );
+
+        manager.transmission_state = AckTransmissionState::Active { retransmissions: 0 };
+        manager.transmissions_since_elicitation = ACK_ELICITATION_INTERVAL;
+        write_context.transmission_constraint = transmission::Constraint::CongestionLimited;
+
+        manager.on_transmit_complete(&mut write_context);
+        assert!(
+            write_context.frame_buffer.is_empty(),
+            "Ping should not be written when CongestionLimited"
+        );
+
+        manager.transmission_state = AckTransmissionState::Active { retransmissions: 0 };
+        manager.transmissions_since_elicitation = ACK_ELICITATION_INTERVAL;
+        write_context.transmission_constraint = transmission::Constraint::RetransmissionOnly;
+
+        manager.on_transmit_complete(&mut write_context);
+        assert!(
+            write_context.frame_buffer.is_empty(),
+            "Ping should not be written when RetransmissionOnly"
+        );
+    }
 
     #[test]
     fn size_of_snapshots() {
