@@ -765,7 +765,7 @@ fn receiving_data_will_lead_to_a_connection_flow_control_window_update() {
             .rx_connection_flow_controller
             .transmission_interest()
     );
-    assert_eq!(stream_interests(&["ack"]), test_env.stream.interests());
+    assert!(test_env.rx_connection_flow_controller.is_inflight());
     test_env.assert_write_frames(0);
 
     // Acknowledge the MaxData frame
@@ -777,6 +777,7 @@ fn receiving_data_will_lead_to_a_connection_flow_control_window_update() {
             .rx_connection_flow_controller
             .transmission_interest()
     );
+    assert!(!test_env.rx_connection_flow_controller.is_inflight());
 }
 
 #[test]
@@ -1086,7 +1087,7 @@ fn connection_flow_control_window_update_is_only_sent_when_minimum_data_size_is_
         }),
         sent_frame.as_frame()
     );
-    assert_eq!(stream_interests(&["ack"]), test_env.stream.interests());
+    assert!(test_env.rx_connection_flow_controller.is_inflight());
 
     // Nothing new to write
     test_env.assert_write_frames(0);
@@ -1227,7 +1228,7 @@ fn if_connection_flow_control_window_is_increased_enough_multiple_frames_are_emi
     );
 
     assert_eq!(stream_interests(&[]), test_env.stream.interests());
-    assert_eq!(stream_interests(&["ack"]), test_env.stream.interests());
+    assert!(test_env.rx_connection_flow_controller.is_inflight());
     test_env.assert_write_frames(0);
 
     // Feed right before next treshold and drain data
@@ -1236,7 +1237,7 @@ fn if_connection_flow_control_window_is_increased_enough_multiple_frames_are_emi
         relative_treshold - 1,
     );
     assert_eq!(relative_treshold - 1, test_env.consume_all_data());
-    assert_eq!(stream_interests(&["ack"]), test_env.stream.interests());
+    assert!(test_env.rx_connection_flow_controller.is_inflight());
     test_env.assert_write_frames(0);
 
     // Feed up to the next treshold and drain data
@@ -1263,12 +1264,12 @@ fn if_connection_flow_control_window_is_increased_enough_multiple_frames_are_emi
         sent_frame.as_frame()
     );
 
-    assert_eq!(stream_interests(&["ack"]), test_env.stream.interests());
+    assert!(test_env.rx_connection_flow_controller.is_inflight());
     test_env.assert_write_frames(0);
 
     // The acknowledgement of the first frame is now no longer interesting
     test_env.ack_packet(pn(0), ExpectWakeup(Some(false)));
-    assert_eq!(stream_interests(&["ack"]), test_env.stream.interests());
+    assert!(test_env.rx_connection_flow_controller.is_inflight());
     test_env.ack_packet(pn(1), ExpectWakeup(Some(false)));
     assert_eq!(stream_interests(&[]), test_env.stream.interests());
     assert_eq!(
@@ -1277,6 +1278,7 @@ fn if_connection_flow_control_window_is_increased_enough_multiple_frames_are_emi
             .rx_connection_flow_controller
             .transmission_interest()
     );
+    assert!(!test_env.rx_connection_flow_controller.is_inflight());
 }
 
 #[test]

@@ -180,6 +180,11 @@ impl IncomingConnectionFlowController {
     pub fn desired_flow_control_window(&self) -> u32 {
         self.inner.borrow().desired_flow_control_window
     }
+
+    #[cfg(test)]
+    pub fn is_inflight(&self) -> bool {
+        self.inner.borrow().read_window_sync.is_inflight()
+    }
 }
 
 impl transmission::interest::Provider for IncomingConnectionFlowController {
