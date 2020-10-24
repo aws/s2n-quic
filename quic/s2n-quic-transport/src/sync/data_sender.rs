@@ -339,7 +339,9 @@ impl<
         self.state = DataSenderState::Finishing;
 
         let offset = if let Some(last_chunk) = self.tracking.back_mut() {
-            if last_chunk.state == ChunkTransmissionState::Enqueued {
+            if last_chunk.state == ChunkTransmissionState::Enqueued
+                || last_chunk.state == ChunkTransmissionState::Lost
+            {
                 // The last chunk is currently not submitted we can piggyback
                 // the FIN flag on it
                 last_chunk.fin = true;
