@@ -89,10 +89,6 @@ impl Endpoint {
         self.transmit(AckElicitation::NonEliciting)
     }
 
-    pub fn next_tick(&self) -> Option<Timestamp> {
-        self.timers().min().cloned()
-    }
-
     pub fn timers(&self) -> impl Iterator<Item = &Timestamp> {
         self.ack_manager.timers()
     }
