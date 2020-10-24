@@ -200,6 +200,18 @@ mod tests {
             "status should accept duplicate calls to handshake_done"
         );
 
+        context.transmission_constraint = transmission::Constraint::CongestionLimited;
+        status.on_transmit(&mut context).unwrap();
+        assert!(status.is_confirmed());
+
+        assert_eq!(
+            status,
+            HandshakeStatus::RequiresTransmission,
+            "status should not transmit when congestion limited"
+        );
+
+        context.transmission_constraint = transmission::Constraint::None;
+
         status.on_transmit(&mut context).unwrap();
         assert!(status.is_confirmed());
 
@@ -216,6 +228,18 @@ mod tests {
                 latest: stable_packet_number
             }
         );
+
+        context.transmission_constraint = transmission::Constraint::RetransmissionOnly;
+
+        status.on_transmit(&mut context).unwrap();
+        assert!(status.is_confirmed());
+
+        assert!(
+            context.frame_buffer.is_empty(),
+            "status should not passively write frames when transmission constrained"
+        );
+
+        context.transmission_constraint = transmission::Constraint::None;
 
         status.on_transmit(&mut context).unwrap();
         assert!(status.is_confirmed());
@@ -252,6 +276,23 @@ mod tests {
             transmission::Interest::LostData,
             "transmission should be active on latest packet loss"
         );
+        assert_eq!(
+            status,
+            HandshakeStatus::RequiresRetransmission,
+            "status should force retransmission on loss"
+        );
+
+        context.transmission_constraint = transmission::Constraint::CongestionLimited;
+        status.on_transmit(&mut context).unwrap();
+        assert!(status.is_confirmed());
+
+        assert_eq!(
+            status,
+            HandshakeStatus::RequiresRetransmission,
+            "status should not transmit when congestion limited"
+        );
+
+        context.transmission_constraint = transmission::Constraint::RetransmissionOnly;
 
         status.on_transmit(&mut context).unwrap();
 
