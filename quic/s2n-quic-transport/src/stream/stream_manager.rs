@@ -886,4 +886,15 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         });
         results
     }
+
+    /// Returns the list of Stream IDs for Streams which are waiting for
+    /// retransmission.
+    pub fn streams_waiting_for_retransmission(&mut self) -> Vec<StreamId> {
+        let mut results = Vec::new();
+        self.inner.streams.iterate_retransmission_list(|stream| {
+            results.push(stream.stream_id());
+            StreamContainerIterationResult::Continue
+        });
+        results
+    }
 }

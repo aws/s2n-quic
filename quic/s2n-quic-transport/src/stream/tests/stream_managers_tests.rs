@@ -55,6 +55,7 @@ struct MockStream {
     on_stream_data_blocked_count: usize,
     on_stop_sending_count: usize,
     on_max_stream_data_count: usize,
+    lost_data: bool,
     set_finalize_on_internal_reset: bool,
     next_packet_error: Option<TransportError>,
     next_api_error: Option<StreamError>,
@@ -83,7 +84,11 @@ impl StreamInterestProvider for MockStream {
         interests.connection_flow_control_credits =
             self.on_connection_window_available_retrieve_window > 0;
         if self.on_transmit_try_write_frames > 0 {
-            interests.transmission = transmission::Interest::NewData;
+            if self.lost_data {
+                interests.transmission = transmission::Interest::LostData;
+            } else {
+                interests.transmission = transmission::Interest::NewData;
+            }
         } else {
             interests.transmission = transmission::Interest::None;
         }
@@ -112,6 +117,7 @@ impl StreamTrait for MockStream {
             on_max_stream_data_count: 0,
             on_transmit_count: 0,
             on_transmit_try_write_frames: 0,
+            lost_data: false,
             set_finalize_on_internal_reset: false,
             next_packet_error: None,
             next_api_error: None,
@@ -1193,6 +1199,50 @@ fn add_and_remove_streams_from_transmission_lists() {
 }
 
 #[test]
+fn add_and_remove_streams_from_retransmission_lists() {
+    let mut manager = create_stream_manager(EndpointType::Server);
+
+    // Create some open Streams with interests
+    let stream_1 = manager.open(StreamType::Bidirectional).unwrap();
+    let stream_2 = manager.open(StreamType::Unidirectional).unwrap();
+    let _stream_3 = manager.open(StreamType::Bidirectional).unwrap();
+    let stream_4 = manager.open(StreamType::Unidirectional).unwrap();
+
+    for stream_id in &[stream_2, stream_1, stream_4] {
+        manager.with_asserted_stream(*stream_id, |stream| {
+            stream.lost_data = true;
+            stream.on_transmit_try_write_frames = 1;
+        });
+    }
+
+    assert_eq!(
+        [stream_2, stream_1, stream_4],
+        *manager.streams_waiting_for_retransmission()
+    );
+
+    manager.with_asserted_stream(stream_2, |stream| {
+        stream.on_transmit_try_write_frames = 0;
+    });
+    assert_eq!(
+        [stream_1, stream_4],
+        *manager.streams_waiting_for_retransmission()
+    );
+
+    manager.with_asserted_stream(stream_4, |stream| {
+        stream.on_transmit_try_write_frames = 0;
+    });
+    assert_eq!([stream_1], *manager.streams_waiting_for_retransmission());
+
+    manager.with_asserted_stream(stream_1, |stream| {
+        stream.on_transmit_try_write_frames = 0;
+    });
+    assert_eq!(
+        true,
+        manager.streams_waiting_for_retransmission().is_empty()
+    );
+}
+
+#[test]
 fn on_transmit_queries_streams_for_data() {
     fn assert_stream_write_state(
         manager: &mut AbstractStreamManager<MockStream>,
@@ -1217,6 +1267,7 @@ fn on_transmit_queries_streams_for_data() {
     let stream_2 = manager.open(StreamType::Unidirectional).unwrap();
     let stream_3 = manager.open(StreamType::Bidirectional).unwrap();
     let stream_4 = manager.open(StreamType::Unidirectional).unwrap();
+    let stream_5 = manager.open(StreamType::Unidirectional).unwrap();
 
     manager.with_asserted_stream(stream_1, |stream| {
         stream.on_transmit_try_write_frames = 1;
@@ -1227,10 +1278,15 @@ fn on_transmit_queries_streams_for_data() {
     manager.with_asserted_stream(stream_4, |stream| {
         stream.on_transmit_try_write_frames = 1;
     });
+    manager.with_asserted_stream(stream_5, |stream| {
+        stream.on_transmit_try_write_frames = 1;
+        stream.lost_data = true;
+    });
     assert_eq!(
         [stream_1, stream_3, stream_4],
         *manager.streams_waiting_for_transmission()
     );
+    assert_eq!([stream_5], *manager.streams_waiting_for_retransmission());
 
     let connection_context = MockConnectionContext::new(EndpointType::Server);
     let mut write_context = MockWriteContext::new(
@@ -1239,6 +1295,29 @@ fn on_transmit_queries_streams_for_data() {
         &mut frame_buffer,
         transmission::Constraint::None,
     );
+
+    write_context.transmission_constraint = transmission::Constraint::CongestionLimited;
+
+    assert!(manager.on_transmit(&mut write_context).is_ok());
+    assert!(
+        write_context.frame_buffer.is_empty(),
+        "no frames are written when congestion limited"
+    );
+
+    write_context.transmission_constraint = transmission::Constraint::RetransmissionOnly;
+
+    assert!(manager.on_transmit(&mut write_context).is_ok());
+
+    // Only lost data may be written when constrained to retransmission only
+    assert_stream_write_state(&mut manager, stream_5, 1, 0);
+    assert_eq!(1, write_context.frame_buffer.len());
+    assert_eq!(
+        true,
+        manager.streams_waiting_for_retransmission().is_empty()
+    );
+
+    write_context.transmission_constraint = transmission::Constraint::None;
+
     assert!(manager.on_transmit(&mut write_context).is_ok());
 
     for stream_id in &[stream_1, stream_3, stream_4] {
@@ -1246,7 +1325,7 @@ fn on_transmit_queries_streams_for_data() {
     }
 
     // All streams have written a frame
-    assert_eq!(3, frame_buffer.len());
+    assert_eq!(4, frame_buffer.len());
     frame_buffer.clear();
     assert_eq!(true, manager.streams_waiting_for_transmission().is_empty());
 
