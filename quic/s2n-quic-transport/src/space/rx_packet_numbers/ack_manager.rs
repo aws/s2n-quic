@@ -146,7 +146,6 @@ impl AckManager {
             //# bundle a PING or other small ack-eliciting frame with a fraction of
             //# them, such as once per round trip, to enable dropping unnecessary ACK
             //# ranges and any state for previously sent packets.
-
             // check the timer and make sure we can still write a Ping frame before removing it
             if (context.transmission_constraint().can_transmit()
                 || context.transmission_constraint().can_retransmit())
@@ -399,6 +398,7 @@ mod tests {
 
         manager.transmission_state = AckTransmissionState::Active { retransmissions: 0 };
         manager.transmissions_since_elicitation = ACK_ELICITATION_INTERVAL;
+        write_context.frame_buffer.clear();
         write_context.transmission_constraint = transmission::Constraint::CongestionLimited;
 
         manager.on_transmit_complete(&mut write_context);
@@ -409,12 +409,18 @@ mod tests {
 
         manager.transmission_state = AckTransmissionState::Active { retransmissions: 0 };
         manager.transmissions_since_elicitation = ACK_ELICITATION_INTERVAL;
+        write_context.frame_buffer.clear();
         write_context.transmission_constraint = transmission::Constraint::RetransmissionOnly;
 
         manager.on_transmit_complete(&mut write_context);
-        assert!(
-            write_context.frame_buffer.is_empty(),
-            "Ping should not be written when RetransmissionOnly"
+        assert_eq!(
+            write_context
+                .frame_buffer
+                .pop_front()
+                .expect("Frame is written")
+                .as_frame(),
+            Frame::Ping(ping::Ping),
+            "Ping should be written when transmission is retransmission only"
         );
     }
 

@@ -79,8 +79,8 @@ impl<Config: connection::Config> HandshakeSpace<Config> {
             //# If the sender wants to elicit a faster acknowledgement on PTO, it can
             //# skip a packet number to eliminate the acknowledgment delay.
 
-            // TODO does it hurt persistent congestion detection, which relies on contiguous packet
-            // numbers
+            // TODO Does this interact negatively with persistent congestion detection, which
+            //      relies on consecutive packet numbers?
             packet_number = packet_number.next().unwrap();
         }
 

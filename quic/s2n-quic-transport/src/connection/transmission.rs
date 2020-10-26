@@ -74,7 +74,7 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
         let encoder = EncoderBuffer::new(buffer);
         let initial_capacity = encoder.capacity();
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7
         //# An endpoint MUST NOT send a packet if it would cause bytes_in_flight
         //# (see Appendix B.2) to be larger than the congestion window, unless
         //# the packet is sent on a PTO timer expiration (see Section 6.2) or

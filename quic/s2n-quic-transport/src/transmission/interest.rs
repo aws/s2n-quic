@@ -79,3 +79,39 @@ impl core::iter::Sum for Interest {
 pub trait Provider {
     fn transmission_interest(&self) -> Interest;
 }
+
+#[cfg(test)]
+mod test {
+    use crate::transmission::{
+        Constraint,
+        Constraint::*,
+        Interest::{None, *},
+    };
+
+    #[test]
+    fn can_transmit() {
+        // Amplification Limited
+        assert!(!None.can_transmit(AmplificationLimited));
+        assert!(!NewData.can_transmit(AmplificationLimited));
+        assert!(!LostData.can_transmit(AmplificationLimited));
+        assert!(!Forced.can_transmit(AmplificationLimited));
+
+        // Congestion Limited
+        assert!(!None.can_transmit(CongestionLimited));
+        assert!(!NewData.can_transmit(CongestionLimited));
+        assert!(!LostData.can_transmit(CongestionLimited));
+        assert!(Forced.can_transmit(CongestionLimited));
+
+        // Retransmission Only
+        assert!(!None.can_transmit(RetransmissionOnly));
+        assert!(!NewData.can_transmit(RetransmissionOnly));
+        assert!(LostData.can_transmit(RetransmissionOnly));
+        assert!(Forced.can_transmit(RetransmissionOnly));
+
+        // No Constraint
+        assert!(!None.can_transmit(Constraint::None));
+        assert!(NewData.can_transmit(Constraint::None));
+        assert!(LostData.can_transmit(Constraint::None));
+        assert!(Forced.can_transmit(Constraint::None));
+    }
+}

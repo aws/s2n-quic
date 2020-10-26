@@ -34,6 +34,7 @@ pub trait WriteContext {
     /// Returns a reference to the underlying connection
     fn connection_context(&self) -> &Self::ConnectionContext;
 
+    /// Returns the transmission constraint for the current packet
     fn transmission_constraint(&self) -> transmission::Constraint;
 
     /// Attempt to write a frame. If this was successful the number of the packet

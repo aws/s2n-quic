@@ -108,12 +108,6 @@ impl<CC: CongestionController> Path<CC> {
     //# Prior to validating the client address, servers MUST NOT send more
     //# than three times as many bytes as the number of bytes they have
     //# received.
-
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7
-    //# An endpoint MUST NOT send a packet if it would cause bytes_in_flight
-    //# (see Appendix B.2) to be larger than the congestion window, unless
-    //# the packet is sent on a PTO timer expiration (see Section 6.2) or
-    //# when entering recovery (see Section 7.3.2).
     pub fn clamp_mtu(&self, requested_size: usize) -> usize {
         match self.state {
             State::Validated => requested_size.min(self.mtu as usize),
@@ -129,10 +123,24 @@ impl<CC: CongestionController> Path<CC> {
 
     pub fn transmission_constraint(&self) -> transmission::Constraint {
         if self.at_amplification_limit() {
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1
+            //# Prior to validating the client address, servers MUST NOT send more
+            //# than three times as many bytes as the number of bytes they have
+            //# received.
             transmission::Constraint::AmplificationLimited
         } else if self.congestion_controller.requires_fast_retransmission() {
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.2
+            //# If the congestion window is reduced immediately, a
+            //# single packet can be sent prior to reduction.  This speeds up loss
+            //# recovery if the data in the lost packet is retransmitted and is
+            //# similar to TCP as described in Section 5 of [RFC6675].
             transmission::Constraint::RetransmissionOnly
         } else if self.congestion_controller.available_congestion_window() < (self.mtu as u32) {
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7
+            //# An endpoint MUST NOT send a packet if it would cause bytes_in_flight
+            //# (see Appendix B.2) to be larger than the congestion window, unless
+            //# the packet is sent on a PTO timer expiration (see Section 6.2) or
+            //# when entering recovery (see Section 7.3.2).
             transmission::Constraint::CongestionLimited
         } else {
             transmission::Constraint::None
