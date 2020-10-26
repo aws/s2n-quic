@@ -786,6 +786,10 @@ fn can_not_transmit_data_when_congestion_limited() {
     let test_config = &[
         Instruction::EnqueueData(VarInt::from_u32(0), 500, true),
         Instruction::CheckInterests(stream_interests(&["tx"])),
+        // Verify data is not transmitted
+        Instruction::CheckNoTx,
+        Instruction::Reset(ApplicationErrorCode::new(1).unwrap(), true),
+        // Verify reset is not synced
         Instruction::CheckNoTx,
     ];
 
@@ -829,6 +833,37 @@ fn only_lost_data_is_sent_when_constrained_to_retransmission_only() {
         Instruction::CheckNoTx,
         // Verify we still want to transmit the new data
         Instruction::CheckInterests(stream_interests(&["tx", "ack"])),
+    ];
+
+    test_env.transmission_constraint = transmission::Constraint::RetransmissionOnly;
+    execute_instructions(&mut test_env, test_config);
+}
+
+#[test]
+fn only_lost_reset_is_sent_when_constrained_to_retransmission_only() {
+    const MAX_PACKET_SIZE: usize = 1000;
+    let error_code = ApplicationErrorCode::new(1).unwrap();
+
+    let test_config = &[
+        // Send a reset that will be lost
+        Instruction::Reset(error_code, true),
+        Instruction::CheckResetTx(error_code, pn(0), VarInt::from_u32(0)),
+        Instruction::NackPacket(pn(0)),
+    ];
+
+    let test_env_config = TestEnvironmentConfig::default();
+    let mut test_env = setup_stream_test_env_with_config(test_env_config);
+    test_env
+        .sent_frames
+        .set_max_packet_size(Some(MAX_PACKET_SIZE));
+    execute_instructions(&mut test_env, test_config);
+
+    let test_config = &[
+        // Verify the lost reset was sent
+        Instruction::CheckResetTx(error_code, pn(1), VarInt::from_u32(0)),
+        // Verify a new reset cannot be sent
+        Instruction::Reset(error_code, true),
+        Instruction::CheckNoTx,
     ];
 
     test_env.transmission_constraint = transmission::Constraint::RetransmissionOnly;
