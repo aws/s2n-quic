@@ -13,6 +13,7 @@ use s2n_quic_core::{
     frame::{Frame, MaxData, MaxStreamData, StopSending},
     packet::number::PacketNumber,
     stream::{ops, StreamType},
+    transmission,
     varint::{VarInt, MAX_VARINT_VALUE},
 };
 
@@ -776,6 +777,62 @@ fn lost_data_is_retransmitted() {
 
         execute_instructions(&mut test_env, &test_config[..]);
     }
+}
+
+#[test]
+fn can_not_transmit_data_when_congestion_limited() {
+    const MAX_PACKET_SIZE: usize = 1000;
+
+    let test_config = &[
+        Instruction::EnqueueData(VarInt::from_u32(0), 500, true),
+        Instruction::CheckInterests(stream_interests(&["tx"])),
+        Instruction::CheckNoTx,
+    ];
+
+    let mut test_env_config = TestEnvironmentConfig::default();
+    test_env_config.transmission_constraint = transmission::Constraint::CongestionLimited;
+    let mut test_env = setup_stream_test_env_with_config(test_env_config);
+    test_env
+        .sent_frames
+        .set_max_packet_size(Some(MAX_PACKET_SIZE));
+
+    execute_instructions(&mut test_env, test_config);
+}
+
+#[test]
+fn only_lost_data_is_sent_when_constrained_to_retransmission_only() {
+    const MAX_PACKET_SIZE: usize = 1000;
+
+    let test_config = &[
+        // Send 800 bytes in a packet that will be lost
+        Instruction::EnqueueData(VarInt::from_u32(0), 800, true),
+        Instruction::CheckInterests(stream_interests(&["tx"])),
+        Instruction::CheckDataTx(VarInt::from_u32(0), 800, false, false, pn(0)),
+        Instruction::CheckInterests(stream_interests(&["ack"])),
+        Instruction::NackPacket(pn(0)),
+        Instruction::CheckInterests(stream_interests(&["lost"])),
+    ];
+
+    let test_env_config = TestEnvironmentConfig::default();
+    let mut test_env = setup_stream_test_env_with_config(test_env_config);
+    test_env
+        .sent_frames
+        .set_max_packet_size(Some(MAX_PACKET_SIZE));
+    execute_instructions(&mut test_env, test_config);
+
+    let test_config = &[
+        // Enqueue 900 bytes of new data
+        Instruction::EnqueueData(VarInt::from_u32(0), 900, true),
+        Instruction::CheckInterests(stream_interests(&["tx", "lost"])),
+        // Verify that only the lost data was sent
+        Instruction::CheckDataTx(VarInt::from_u32(0), 800, false, false, pn(1)),
+        Instruction::CheckNoTx,
+        // Verify we still want to transmit the new data
+        Instruction::CheckInterests(stream_interests(&["tx", "ack"])),
+    ];
+
+    test_env.transmission_constraint = transmission::Constraint::RetransmissionOnly;
+    execute_instructions(&mut test_env, test_config);
 }
 
 #[test]
