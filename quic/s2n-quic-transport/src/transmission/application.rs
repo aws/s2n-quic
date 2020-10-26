@@ -31,7 +31,7 @@ impl<'a, Config: connection::Config> PacketPayloadEncoder for Transmission<'a, C
         //   be the last frame) of sufficient size.
         // Note that we can not write a short `Stream` frame without length information and then
         // pad it.
-        if !matches!(self.transmission_interest(), transmission::Interest::None) {
+        if !self.transmission_interest().is_none() {
             minimum_len.max(1)
         } else {
             0

@@ -767,11 +767,8 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         // A wakeup is only triggered if the the transmission list is
         // now empty, but was previously not. The edge triggered behavior
         // minimizes the amount of necessary wakeups.
-        let require_wakeup = matches!(prev_transmission_interest, transmission::Interest::None)
-            && !matches!(
-                self.inner.streams.transmission_interest(),
-                transmission::Interest::None
-            );
+        let require_wakeup = prev_transmission_interest.is_none()
+            && !self.inner.streams.transmission_interest().is_none();
 
         // TODO: This currently wakes the connection task while inside the connection Mutex.
         // It will be better if we return the `Waker` instead and perform the wakeup afterwards.

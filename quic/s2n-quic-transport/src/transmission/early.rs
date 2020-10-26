@@ -24,7 +24,7 @@ pub struct Transmission<'a, Config: connection::Config> {
 impl<'a, Config: connection::Config> PacketPayloadEncoder for Transmission<'a, Config> {
     fn encoding_size_hint<E: Encoder>(&mut self, _encoder: &E, minimum_len: usize) -> usize {
         // TODO return the minimum length required to encode a crypto frame + a certain amount of data
-        if !matches!(self.transmission_interest(), transmission::Interest::None) {
+        if !self.transmission_interest().is_none() {
             minimum_len.max(1)
         } else {
             0
