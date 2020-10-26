@@ -2,14 +2,18 @@
 
 use super::*;
 use crate::{
-    connection::{InternalConnectionId, InternalConnectionIdGenerator, Limits as ConnectionLimits},
+    connection::{
+        finalization::Provider, InternalConnectionId, InternalConnectionIdGenerator,
+        Limits as ConnectionLimits,
+    },
     contexts::{ConnectionApiCallContext, OnTransmitError, WriteContext},
     stream::{
         stream_impl::StreamConfig,
         stream_interests::{StreamInterestProvider, StreamInterests},
-        AbstractStreamManager, StreamError, StreamEvents, StreamLimits, StreamManagerInterests,
-        StreamTrait,
+        AbstractStreamManager, StreamError, StreamEvents, StreamLimits, StreamTrait,
     },
+    transmission,
+    transmission::interest::Provider as TransmissionInterestProvider,
     wakeup_queue::{WakeupHandle, WakeupQueue},
 };
 use alloc::collections::VecDeque;
@@ -51,6 +55,7 @@ struct MockStream {
     on_stream_data_blocked_count: usize,
     on_stop_sending_count: usize,
     on_max_stream_data_count: usize,
+    lost_data: bool,
     set_finalize_on_internal_reset: bool,
     next_packet_error: Option<TransportError>,
     next_api_error: Option<StreamError>,
@@ -78,7 +83,15 @@ impl StreamInterestProvider for MockStream {
         let mut interests = self.interests;
         interests.connection_flow_control_credits =
             self.on_connection_window_available_retrieve_window > 0;
-        interests.frame_exchange.transmission = self.on_transmit_try_write_frames > 0;
+        if self.on_transmit_try_write_frames > 0 {
+            if self.lost_data {
+                interests.transmission = transmission::Interest::LostData;
+            } else {
+                interests.transmission = transmission::Interest::NewData;
+            }
+        } else {
+            interests.transmission = transmission::Interest::None;
+        }
         interests
     }
 }
@@ -104,6 +117,7 @@ impl StreamTrait for MockStream {
             on_max_stream_data_count: 0,
             on_transmit_count: 0,
             on_transmit_try_write_frames: 0,
+            lost_data: false,
             set_finalize_on_internal_reset: false,
             next_packet_error: None,
             next_api_error: None,
@@ -288,16 +302,6 @@ impl StreamTrait for MockStream {
     }
 }
 
-const EMPTY_STREAM_MANAGER_INTERESTS: StreamManagerInterests = StreamManagerInterests {
-    transmission: false,
-    finalization: false,
-};
-
-const TX_STREAM_MANAGER_INTEREST: StreamManagerInterests = StreamManagerInterests {
-    transmission: true,
-    finalization: false,
-};
-
 fn create_default_initial_flow_control_limits() -> InitialFlowControlLimits {
     InitialFlowControlLimits {
         stream_limits: InitialStreamLimits {
@@ -475,10 +479,10 @@ fn returns_finalization_interest_after_last_stream_is_drained() {
     assert_eq!(1, manager.active_streams().len());
     let stream_2 = manager.open(StreamType::Bidirectional).unwrap();
     assert_eq!(2, manager.active_streams().len());
-    assert_eq!(false, manager.interests().finalization);
+    assert!(manager.finalization_status().is_idle());
 
     manager.close(ApplicationErrorCode::UNKNOWN.into());
-    assert_eq!(false, manager.interests().finalization);
+    assert!(manager.finalization_status().is_draining());
 
     let error = ApplicationErrorCode::new(0).unwrap();
 
@@ -488,7 +492,7 @@ fn returns_finalization_interest_after_last_stream_is_drained() {
         stream.interests.finalization = true;
     });
     assert_eq!(1, manager.active_streams().len());
-    assert_eq!(false, manager.interests().finalization);
+    assert!(manager.finalization_status().is_draining());
 
     // The second stream is not yet interested in finalization
     assert!(manager
@@ -500,14 +504,14 @@ fn returns_finalization_interest_after_last_stream_is_drained() {
         )
         .is_ok());
     assert_eq!(1, manager.active_streams().len());
-    assert_eq!(false, manager.interests().finalization);
+    assert!(manager.finalization_status().is_draining());
 
     // Let the last stream return the finalization interest
     manager.with_asserted_stream(stream_2, |stream| {
         stream.interests.finalization = true;
     });
     assert_eq!(0, manager.active_streams().len());
-    assert_eq!(true, manager.interests().finalization);
+    assert!(manager.finalization_status().is_final());
 }
 
 #[test]
@@ -979,7 +983,7 @@ fn add_and_remove_streams_from_delivery_notification_window_lists() {
 
     for stream_id in &[stream_2, stream_1, stream_4] {
         manager.with_asserted_stream(*stream_id, |stream| {
-            stream.interests.frame_exchange.delivery_notifications = true;
+            stream.interests.delivery_notifications = true;
         });
     }
     assert_eq!(
@@ -988,7 +992,7 @@ fn add_and_remove_streams_from_delivery_notification_window_lists() {
     );
 
     manager.with_asserted_stream(stream_2, |stream| {
-        stream.interests.frame_exchange.delivery_notifications = false;
+        stream.interests.delivery_notifications = false;
     });
     assert_eq!(
         [stream_1, stream_4],
@@ -996,7 +1000,7 @@ fn add_and_remove_streams_from_delivery_notification_window_lists() {
     );
 
     manager.with_asserted_stream(stream_4, |stream| {
-        stream.interests.frame_exchange.delivery_notifications = false;
+        stream.interests.delivery_notifications = false;
     });
     assert_eq!(
         [stream_1],
@@ -1004,7 +1008,7 @@ fn add_and_remove_streams_from_delivery_notification_window_lists() {
     );
 
     manager.with_asserted_stream(stream_1, |stream| {
-        stream.interests.frame_exchange.delivery_notifications = false;
+        stream.interests.delivery_notifications = false;
     });
     assert_eq!(
         true,
@@ -1030,7 +1034,7 @@ fn on_packet_ack_and_loss_is_forwarded_to_interested_streams() {
         let read_waker = read_waker.clone();
         let write_waker = write_waker.clone();
         manager.with_asserted_stream(*stream_id, |stream| {
-            stream.interests.frame_exchange.delivery_notifications = true;
+            stream.interests.delivery_notifications = true;
             stream.read_waker_to_return = Some(read_waker);
             stream.write_waker_to_return = Some(write_waker);
         });
@@ -1060,16 +1064,16 @@ fn on_packet_ack_and_loss_is_forwarded_to_interested_streams() {
     });
 
     manager.with_asserted_stream(stream_1, |stream| {
-        stream.interests.frame_exchange.delivery_notifications = false;
+        stream.interests.delivery_notifications = false;
     });
     manager.with_asserted_stream(stream_2, |stream| {
-        stream.interests.frame_exchange.delivery_notifications = false;
+        stream.interests.delivery_notifications = false;
     });
     manager.with_asserted_stream(stream_3, |stream| {
-        stream.interests.frame_exchange.delivery_notifications = true;
+        stream.interests.delivery_notifications = true;
     });
     manager.with_asserted_stream(stream_4, |stream| {
-        stream.interests.frame_exchange.delivery_notifications = false;
+        stream.interests.delivery_notifications = false;
     });
 
     manager.on_packet_ack(&pn(4));
@@ -1121,7 +1125,7 @@ fn close_is_forwarded_to_all_streams() {
     });
     manager.with_asserted_stream(stream_3, |stream| {
         stream.set_finalize_on_internal_reset = true;
-        stream.interests.frame_exchange.delivery_notifications = true;
+        stream.interests.delivery_notifications = true;
         stream.on_transmit_try_write_frames = 1;
     });
     manager.with_asserted_stream(stream_4, |stream| {
@@ -1195,6 +1199,50 @@ fn add_and_remove_streams_from_transmission_lists() {
 }
 
 #[test]
+fn add_and_remove_streams_from_retransmission_lists() {
+    let mut manager = create_stream_manager(EndpointType::Server);
+
+    // Create some open Streams with interests
+    let stream_1 = manager.open(StreamType::Bidirectional).unwrap();
+    let stream_2 = manager.open(StreamType::Unidirectional).unwrap();
+    let _stream_3 = manager.open(StreamType::Bidirectional).unwrap();
+    let stream_4 = manager.open(StreamType::Unidirectional).unwrap();
+
+    for stream_id in &[stream_2, stream_1, stream_4] {
+        manager.with_asserted_stream(*stream_id, |stream| {
+            stream.lost_data = true;
+            stream.on_transmit_try_write_frames = 1;
+        });
+    }
+
+    assert_eq!(
+        [stream_2, stream_1, stream_4],
+        *manager.streams_waiting_for_retransmission()
+    );
+
+    manager.with_asserted_stream(stream_2, |stream| {
+        stream.on_transmit_try_write_frames = 0;
+    });
+    assert_eq!(
+        [stream_1, stream_4],
+        *manager.streams_waiting_for_retransmission()
+    );
+
+    manager.with_asserted_stream(stream_4, |stream| {
+        stream.on_transmit_try_write_frames = 0;
+    });
+    assert_eq!([stream_1], *manager.streams_waiting_for_retransmission());
+
+    manager.with_asserted_stream(stream_1, |stream| {
+        stream.on_transmit_try_write_frames = 0;
+    });
+    assert_eq!(
+        true,
+        manager.streams_waiting_for_retransmission().is_empty()
+    );
+}
+
+#[test]
 fn on_transmit_queries_streams_for_data() {
     fn assert_stream_write_state(
         manager: &mut AbstractStreamManager<MockStream>,
@@ -1219,6 +1267,7 @@ fn on_transmit_queries_streams_for_data() {
     let stream_2 = manager.open(StreamType::Unidirectional).unwrap();
     let stream_3 = manager.open(StreamType::Bidirectional).unwrap();
     let stream_4 = manager.open(StreamType::Unidirectional).unwrap();
+    let stream_5 = manager.open(StreamType::Unidirectional).unwrap();
 
     manager.with_asserted_stream(stream_1, |stream| {
         stream.on_transmit_try_write_frames = 1;
@@ -1229,17 +1278,46 @@ fn on_transmit_queries_streams_for_data() {
     manager.with_asserted_stream(stream_4, |stream| {
         stream.on_transmit_try_write_frames = 1;
     });
+    manager.with_asserted_stream(stream_5, |stream| {
+        stream.on_transmit_try_write_frames = 1;
+        stream.lost_data = true;
+    });
     assert_eq!(
         [stream_1, stream_3, stream_4],
         *manager.streams_waiting_for_transmission()
     );
+    assert_eq!([stream_5], *manager.streams_waiting_for_retransmission());
 
     let connection_context = MockConnectionContext::new(EndpointType::Server);
     let mut write_context = MockWriteContext::new(
         &connection_context,
         s2n_quic_platform::time::now(),
         &mut frame_buffer,
+        transmission::Constraint::None,
     );
+
+    write_context.transmission_constraint = transmission::Constraint::CongestionLimited;
+
+    assert!(manager.on_transmit(&mut write_context).is_ok());
+    assert!(
+        write_context.frame_buffer.is_empty(),
+        "no frames are written when congestion limited"
+    );
+
+    write_context.transmission_constraint = transmission::Constraint::RetransmissionOnly;
+
+    assert!(manager.on_transmit(&mut write_context).is_ok());
+
+    // Only lost data may be written when constrained to retransmission only
+    assert_stream_write_state(&mut manager, stream_5, 1, 0);
+    assert_eq!(1, write_context.frame_buffer.len());
+    assert_eq!(
+        true,
+        manager.streams_waiting_for_retransmission().is_empty()
+    );
+
+    write_context.transmission_constraint = transmission::Constraint::None;
+
     assert!(manager.on_transmit(&mut write_context).is_ok());
 
     for stream_id in &[stream_1, stream_3, stream_4] {
@@ -1247,7 +1325,7 @@ fn on_transmit_queries_streams_for_data() {
     }
 
     // All streams have written a frame
-    assert_eq!(3, frame_buffer.len());
+    assert_eq!(4, frame_buffer.len());
     frame_buffer.clear();
     assert_eq!(true, manager.streams_waiting_for_transmission().is_empty());
 
@@ -1270,6 +1348,7 @@ fn on_transmit_queries_streams_for_data() {
         &connection_context,
         s2n_quic_platform::time::now(),
         &mut frame_buffer,
+        transmission::Constraint::None,
     );
 
     assert_eq!(
@@ -1303,6 +1382,7 @@ fn on_transmit_queries_streams_for_data() {
         &connection_context,
         s2n_quic_platform::time::now(),
         &mut frame_buffer,
+        transmission::Constraint::None,
     );
 
     assert_eq!(
@@ -1327,6 +1407,7 @@ fn on_transmit_queries_streams_for_data() {
         &connection_context,
         s2n_quic_platform::time::now(),
         &mut frame_buffer,
+        transmission::Constraint::None,
     );
 
     assert_eq!(
@@ -1351,6 +1432,7 @@ fn on_transmit_queries_streams_for_data() {
         &connection_context,
         s2n_quic_platform::time::now(),
         &mut frame_buffer,
+        transmission::Constraint::None,
     );
 
     assert_eq!(
@@ -1372,6 +1454,7 @@ fn on_transmit_queries_streams_for_data() {
         &connection_context,
         s2n_quic_platform::time::now(),
         &mut frame_buffer,
+        transmission::Constraint::None,
     );
 
     assert_eq!(Ok(()), manager.on_transmit(&mut write_context));
@@ -1678,7 +1761,7 @@ fn forwards_poll_pop() {
         stream.api_call_requires_transmission = true;
     });
 
-    assert_eq!(EMPTY_STREAM_MANAGER_INTERESTS, manager.interests());
+    assert!(manager.transmission_interest().is_none());
     assert_wakeups(&mut wakeup_queue, 0);
     assert_eq!(
         Err(StreamError::MaxStreamDataSizeExceeded),
@@ -1689,7 +1772,10 @@ fn forwards_poll_pop() {
             Some(&ctx)
         )
     );
-    assert_eq!(TX_STREAM_MANAGER_INTEREST, manager.interests());
+    assert_eq!(
+        transmission::Interest::NewData,
+        manager.transmission_interest()
+    );
     assert_wakeups(&mut wakeup_queue, 1);
 
     // Check invalid stream ID
@@ -1728,7 +1814,7 @@ fn forwards_stop_sending() {
         stream.api_call_requires_transmission = true;
     });
 
-    assert_eq!(EMPTY_STREAM_MANAGER_INTERESTS, manager.interests());
+    assert!(manager.transmission_interest().is_none());
     assert_wakeups(&mut wakeup_queue, 0);
     assert_eq!(
         Err(StreamError::MaxStreamDataSizeExceeded),
@@ -1739,7 +1825,10 @@ fn forwards_stop_sending() {
             None,
         )
     );
-    assert_eq!(TX_STREAM_MANAGER_INTEREST, manager.interests());
+    assert_eq!(
+        transmission::Interest::NewData,
+        manager.transmission_interest()
+    );
     assert_wakeups(&mut wakeup_queue, 1);
 
     // Check invalid stream ID
@@ -1780,7 +1869,7 @@ fn forwards_poll_push() {
         stream.api_call_requires_transmission = true;
     });
 
-    assert_eq!(EMPTY_STREAM_MANAGER_INTERESTS, manager.interests());
+    assert!(manager.transmission_interest().is_none());
     assert_wakeups(&mut wakeup_queue, 0);
     assert_eq!(
         Err(StreamError::MaxStreamDataSizeExceeded),
@@ -1791,7 +1880,10 @@ fn forwards_poll_push() {
             Some(&ctx)
         )
     );
-    assert_eq!(TX_STREAM_MANAGER_INTEREST, manager.interests());
+    assert_eq!(
+        transmission::Interest::NewData,
+        manager.transmission_interest()
+    );
     assert_wakeups(&mut wakeup_queue, 1);
 
     // Check invalid stream ID
@@ -1831,7 +1923,7 @@ fn forwards_poll_finish() {
         stream.api_call_requires_transmission = true;
     });
 
-    assert_eq!(EMPTY_STREAM_MANAGER_INTERESTS, manager.interests());
+    assert!(manager.transmission_interest().is_none());
     assert_wakeups(&mut wakeup_queue, 0);
     assert_eq!(
         Err(StreamError::MaxStreamDataSizeExceeded),
@@ -1842,7 +1934,10 @@ fn forwards_poll_finish() {
             Some(&ctx)
         )
     );
-    assert_eq!(TX_STREAM_MANAGER_INTEREST, manager.interests());
+    assert_eq!(
+        transmission::Interest::NewData,
+        manager.transmission_interest()
+    );
     assert_wakeups(&mut wakeup_queue, 1);
 
     // Check invalid stream ID
@@ -1881,7 +1976,7 @@ fn forwards_reset() {
         stream.api_call_requires_transmission = true;
     });
 
-    assert_eq!(EMPTY_STREAM_MANAGER_INTERESTS, manager.interests());
+    assert!(manager.transmission_interest().is_none());
     assert_wakeups(&mut wakeup_queue, 0);
     assert_eq!(
         Err(StreamError::MaxStreamDataSizeExceeded),
@@ -1892,7 +1987,10 @@ fn forwards_reset() {
             None,
         )
     );
-    assert_eq!(TX_STREAM_MANAGER_INTEREST, manager.interests());
+    assert_eq!(
+        transmission::Interest::NewData,
+        manager.transmission_interest()
+    );
     assert_wakeups(&mut wakeup_queue, 1);
 
     // Check invalid stream ID

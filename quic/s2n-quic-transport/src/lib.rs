@@ -7,12 +7,12 @@ extern crate alloc;
 
 mod buffer;
 mod contexts;
-mod frame_exchange_interests;
 mod interval_set;
 mod processed_packet;
 mod space;
 mod sync;
 mod timer;
+mod transmission;
 mod unbounded_channel;
 mod wakeup_queue;
 
@@ -22,8 +22,3 @@ pub mod endpoint;
 pub mod path;
 pub mod recovery;
 pub mod stream;
-
-///////////////// From here on everything is temporary
-
-#[doc(hidden)]
-pub use stream::StreamManager; // To reduce compiler warnings

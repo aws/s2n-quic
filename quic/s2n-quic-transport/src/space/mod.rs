@@ -1,8 +1,8 @@
 use crate::{
-    connection::{self, ConnectionInterests},
-    frame_exchange_interests::FrameExchangeInterestProvider,
+    connection,
     processed_packet::ProcessedPacket,
     space::rx_packet_numbers::{AckManager, DEFAULT_ACK_RANGES_LIMIT},
+    transmission,
 };
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
@@ -22,9 +22,7 @@ use s2n_quic_core::{
 };
 
 mod application;
-mod application_transmission;
 mod crypto_stream;
-mod early_transmission;
 mod handshake;
 mod handshake_status;
 mod initial;
@@ -33,9 +31,7 @@ mod session_context;
 mod tx_packet_numbers;
 
 pub(crate) use application::ApplicationSpace;
-pub(crate) use application_transmission::ApplicationTransmission;
 pub(crate) use crypto_stream::CryptoStream;
-pub(crate) use early_transmission::EarlyTransmission;
 pub(crate) use handshake::HandshakeSpace;
 pub(crate) use handshake_status::HandshakeStatus;
 pub(crate) use initial::InitialSpace;
@@ -154,23 +150,6 @@ impl<Config: connection::Config> PacketSpaceManager<Config> {
         Ok(())
     }
 
-    pub fn interests(&self) -> ConnectionInterests {
-        // TODO: Will default() prevent finalization, since it might set finalization to false?
-        let mut interests = ConnectionInterests::default();
-
-        if let Some(space) = self.initial() {
-            interests += space.frame_exchange_interests();
-        }
-        if let Some(space) = self.handshake() {
-            interests += space.frame_exchange_interests();
-        }
-        if let Some(space) = self.application() {
-            interests += space.interests();
-        }
-
-        interests
-    }
-
     /// Returns all of the component timers
     pub fn timers(&self) -> impl Iterator<Item = &Timestamp> {
         // the spaces are `Option`s and can be iterated over, either returning
@@ -183,21 +162,23 @@ impl<Config: connection::Config> PacketSpaceManager<Config> {
 
     /// Called when the connection timer expired
     pub fn on_timeout(&mut self, timestamp: Timestamp) -> LossInfo {
-        let mut loss_info = LossInfo::default();
-
-        if let Some(space) = self.initial_mut() {
-            loss_info += space.on_timeout(timestamp);
-        }
-
-        if let Some(space) = self.handshake_mut() {
-            loss_info += space.on_timeout(timestamp);
-        }
-
-        if let Some(space) = self.application_mut() {
-            loss_info += space.on_timeout(timestamp);
-        }
-
-        loss_info
+        core::iter::empty()
+            .chain(
+                self.initial
+                    .iter_mut()
+                    .map(|space| space.on_timeout(timestamp)),
+            )
+            .chain(
+                self.handshake
+                    .iter_mut()
+                    .map(|space| space.on_timeout(timestamp)),
+            )
+            .chain(
+                self.application
+                    .iter_mut()
+                    .map(|space| space.on_timeout(timestamp)),
+            )
+            .sum()
     }
 
     pub fn on_loss_info(
@@ -245,10 +226,58 @@ impl<Config: connection::Config> PacketSpaceManager<Config> {
         }
     }
 
+    pub fn requires_probe(&self) -> bool {
+        core::iter::empty()
+            .chain(self.initial.iter().map(|space| space.requires_probe()))
+            .chain(self.handshake.iter().map(|space| space.requires_probe()))
+            .chain(self.application.iter().map(|space| space.requires_probe()))
+            .any(|requires_probe| requires_probe)
+    }
+
     pub fn is_handshake_confirmed(&self) -> bool {
         self.application()
             .map(|space| space.handshake_status.is_confirmed())
             .unwrap_or(false)
+    }
+}
+
+impl<Config: connection::Config> transmission::interest::Provider for PacketSpaceManager<Config> {
+    fn transmission_interest(&self) -> transmission::Interest {
+        core::iter::empty()
+            .chain(
+                self.initial
+                    .iter()
+                    .map(|space| space.transmission_interest()),
+            )
+            .chain(
+                self.handshake
+                    .iter()
+                    .map(|space| space.transmission_interest()),
+            )
+            .chain(
+                self.application
+                    .iter()
+                    .map(|space| space.transmission_interest()),
+            )
+            .sum()
+    }
+}
+
+impl<Config: connection::Config> connection::finalization::Provider for PacketSpaceManager<Config> {
+    fn finalization_status(&self) -> connection::finalization::Status {
+        core::iter::empty()
+            .chain(self.initial.iter().map(|space| space.finalization_status()))
+            .chain(
+                self.handshake
+                    .iter()
+                    .map(|space| space.finalization_status()),
+            )
+            .chain(
+                self.application
+                    .iter()
+                    .map(|space| space.finalization_status()),
+            )
+            .sum()
     }
 }
 

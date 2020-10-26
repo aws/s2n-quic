@@ -1,13 +1,10 @@
 use crate::{
-    connection::{self, transmission, ConnectionInterests, ConnectionTransmissionContext},
-    frame_exchange_interests::FrameExchangeInterestProvider,
+    connection::{self, ConnectionTransmissionContext},
     processed_packet::ProcessedPacket,
     recovery,
-    space::{
-        rx_packet_numbers::AckManager, ApplicationTransmission, HandshakeStatus, PacketSpace,
-        TxPacketNumbers,
-    },
+    space::{rx_packet_numbers::AckManager, HandshakeStatus, PacketSpace, TxPacketNumbers},
     stream::AbstractStreamManager,
+    transmission,
 };
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
@@ -95,14 +92,26 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
     pub fn on_transmit<'a>(
         &mut self,
         context: &mut ConnectionTransmissionContext<Config>,
+        transmission_constraint: transmission::Constraint,
         buffer: EncoderBuffer<'a>,
     ) -> Result<EncoderBuffer<'a>, PacketEncodingError<'a>> {
-        let packet_number = self.tx_packet_numbers.next();
+        let mut packet_number = self.tx_packet_numbers.next();
+
+        if self.recovery_manager.requires_probe() {
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#6.2.4
+            //# If the sender wants to elicit a faster acknowledgement on PTO, it can
+            //# skip a packet number to eliminate the acknowledgment delay.
+
+            // TODO Does this interact negatively with persistent congestion detection, which
+            //      relies on consecutive packet numbers?
+            packet_number = packet_number.next().unwrap();
+        }
+
         let packet_number_encoder = self.packet_number_encoder();
 
         let mut outcome = transmission::Outcome::default();
 
-        let payload = ApplicationTransmission {
+        let payload = transmission::application::Transmission {
             ack_manager: &mut self.ack_manager,
             context,
             handshake_status: &mut self.handshake_status,
@@ -111,6 +120,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
             stream_manager: &mut self.stream_manager,
             tx_packet_numbers: &mut self.tx_packet_numbers,
             outcome: &mut outcome,
+            transmission_constraint,
         };
 
         let packet = Short {
@@ -132,15 +142,6 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         );
 
         Ok(buffer)
-    }
-
-    pub fn interests(&self) -> ConnectionInterests {
-        // TODO: Will default() prevent finalization, since it might set finalization to false?
-        ConnectionInterests::default()
-            + self.ack_manager.frame_exchange_interests()
-            + self.handshake_status.frame_exchange_interests()
-            + self.stream_manager.interests()
-            + self.recovery_manager.frame_exchange_interests()
     }
 
     /// Signals the handshake is done
@@ -189,6 +190,12 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         self.ack_manager.largest_received_packet_number_acked()
     }
 
+    /// Returns `true` if the recovery manager for this packet space requires a probe
+    /// packet to be sent.
+    pub fn requires_probe(&self) -> bool {
+        self.recovery_manager.requires_probe()
+    }
+
     /// Returns the Packet Number to be used when encoding outgoing packets
     fn packet_number_encoder(&self) -> PacketNumber {
         self.tx_packet_numbers.largest_sent_packet_number_acked()
@@ -204,6 +211,22 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
                 tx_packet_numbers: &mut self.tx_packet_numbers,
             },
         )
+    }
+}
+
+impl<Config: connection::Config> transmission::interest::Provider for ApplicationSpace<Config> {
+    fn transmission_interest(&self) -> transmission::Interest {
+        transmission::Interest::default()
+            + self.ack_manager.transmission_interest()
+            + self.handshake_status.transmission_interest()
+            + self.stream_manager.transmission_interest()
+            + self.recovery_manager.transmission_interest()
+    }
+}
+
+impl<Config: connection::Config> connection::finalization::Provider for ApplicationSpace<Config> {
+    fn finalization_status(&self) -> connection::finalization::Status {
+        self.stream_manager.finalization_status()
     }
 }
 

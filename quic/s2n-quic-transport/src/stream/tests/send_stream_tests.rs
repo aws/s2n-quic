@@ -13,6 +13,7 @@ use s2n_quic_core::{
     frame::{Frame, MaxData, MaxStreamData, StopSending},
     packet::number::PacketNumber,
     stream::{ops, StreamType},
+    transmission,
     varint::{VarInt, MAX_VARINT_VALUE},
 };
 
@@ -89,7 +90,13 @@ enum Instruction {
     StopSending(ApplicationErrorCode, ExpectWakeup),
     /// Checks that a stream data frame with the given parameters had been
     /// transmitted.
-    CheckDataTx(VarInt, usize, bool, bool, PacketNumber),
+    CheckDataTx(
+        VarInt, // offset
+        usize,  // size
+        bool,   // eof
+        bool,   // is last frame
+        PacketNumber,
+    ),
     /// Checks whether a reset frame is transmitted
     CheckResetTx(ApplicationErrorCode, PacketNumber, VarInt),
     /// Checks whether a Stream is interested in the given interactions
@@ -696,7 +703,7 @@ fn lost_data_is_retransmitted() {
             // Declare the packet as lost.
             // We now expect a retransmission of those segments
             Instruction::NackPacket(pn(1)),
-            Instruction::CheckInterests(stream_interests(&["ack", "tx"])),
+            Instruction::CheckInterests(stream_interests(&["ack", "lost"])),
             Instruction::CheckDataTx(VarInt::from_u32(900), 700, false, false, pn(3)),
             Instruction::CheckDataTx(VarInt::from_u32(1600), 200, false, false, pn(3)),
             Instruction::CheckInterests(stream_interests(&["ack"])),
@@ -739,9 +746,9 @@ fn lost_data_is_retransmitted() {
             Instruction::CheckDataTx(VarInt::from_u32(4200), 100, false, false, pn(4)),
             // Packet 1 and Packet 3 get lost
             Instruction::NackPacket(pn(1)),
-            Instruction::CheckInterests(stream_interests(&["ack", "tx"])),
+            Instruction::CheckInterests(stream_interests(&["ack", "lost"])),
             Instruction::NackPacket(pn(3)),
-            Instruction::CheckInterests(stream_interests(&["ack", "tx"])),
+            Instruction::CheckInterests(stream_interests(&["ack", "lost"])),
             Instruction::CheckDataTx(VarInt::from_u32(986), 996, false, true, pn(5)),
             Instruction::CheckDataTx(VarInt::from_u32(2978), 222, false, false, pn(6)),
             Instruction::CheckDataTx(VarInt::from_u32(3200), 768, false, true, pn(6)),
@@ -773,6 +780,97 @@ fn lost_data_is_retransmitted() {
 }
 
 #[test]
+fn can_not_transmit_data_when_congestion_limited() {
+    const MAX_PACKET_SIZE: usize = 1000;
+
+    let test_config = &[
+        Instruction::EnqueueData(VarInt::from_u32(0), 500, true),
+        Instruction::CheckInterests(stream_interests(&["tx"])),
+        // Verify data is not transmitted
+        Instruction::CheckNoTx,
+        Instruction::Reset(ApplicationErrorCode::new(1).unwrap(), true),
+        // Verify reset is not synced
+        Instruction::CheckNoTx,
+    ];
+
+    let mut test_env_config = TestEnvironmentConfig::default();
+    test_env_config.transmission_constraint = transmission::Constraint::CongestionLimited;
+    let mut test_env = setup_stream_test_env_with_config(test_env_config);
+    test_env
+        .sent_frames
+        .set_max_packet_size(Some(MAX_PACKET_SIZE));
+
+    execute_instructions(&mut test_env, test_config);
+}
+
+#[test]
+fn only_lost_data_is_sent_when_constrained_to_retransmission_only() {
+    const MAX_PACKET_SIZE: usize = 1000;
+
+    let test_config = &[
+        // Send 800 bytes in a packet that will be lost
+        Instruction::EnqueueData(VarInt::from_u32(0), 800, true),
+        Instruction::CheckInterests(stream_interests(&["tx"])),
+        Instruction::CheckDataTx(VarInt::from_u32(0), 800, false, false, pn(0)),
+        Instruction::CheckInterests(stream_interests(&["ack"])),
+        Instruction::NackPacket(pn(0)),
+        Instruction::CheckInterests(stream_interests(&["lost"])),
+    ];
+
+    let test_env_config = TestEnvironmentConfig::default();
+    let mut test_env = setup_stream_test_env_with_config(test_env_config);
+    test_env
+        .sent_frames
+        .set_max_packet_size(Some(MAX_PACKET_SIZE));
+    execute_instructions(&mut test_env, test_config);
+
+    let test_config = &[
+        // Enqueue 900 bytes of new data
+        Instruction::EnqueueData(VarInt::from_u32(0), 900, true),
+        Instruction::CheckInterests(stream_interests(&["tx", "lost"])),
+        // Verify that only the lost data was sent
+        Instruction::CheckDataTx(VarInt::from_u32(0), 800, false, false, pn(1)),
+        Instruction::CheckNoTx,
+        // Verify we still want to transmit the new data
+        Instruction::CheckInterests(stream_interests(&["tx", "ack"])),
+    ];
+
+    test_env.transmission_constraint = transmission::Constraint::RetransmissionOnly;
+    execute_instructions(&mut test_env, test_config);
+}
+
+#[test]
+fn only_lost_reset_is_sent_when_constrained_to_retransmission_only() {
+    const MAX_PACKET_SIZE: usize = 1000;
+    let error_code = ApplicationErrorCode::new(1).unwrap();
+
+    let test_config = &[
+        // Send a reset that will be lost
+        Instruction::Reset(error_code, true),
+        Instruction::CheckResetTx(error_code, pn(0), VarInt::from_u32(0)),
+        Instruction::NackPacket(pn(0)),
+    ];
+
+    let test_env_config = TestEnvironmentConfig::default();
+    let mut test_env = setup_stream_test_env_with_config(test_env_config);
+    test_env
+        .sent_frames
+        .set_max_packet_size(Some(MAX_PACKET_SIZE));
+    execute_instructions(&mut test_env, test_config);
+
+    let test_config = &[
+        // Verify the lost reset was sent
+        Instruction::CheckResetTx(error_code, pn(1), VarInt::from_u32(0)),
+        // Verify a new reset cannot be sent
+        Instruction::Reset(error_code, true),
+        Instruction::CheckNoTx,
+    ];
+
+    test_env.transmission_constraint = transmission::Constraint::RetransmissionOnly;
+    execute_instructions(&mut test_env, test_config);
+}
+
+#[test]
 fn retransmitted_data_is_sent_in_same_packets_as_new_data() {
     const MAX_PACKET_SIZE: usize = 1000;
 
@@ -788,7 +886,7 @@ fn retransmitted_data_is_sent_in_same_packets_as_new_data() {
             Instruction::EnqueueData(VarInt::from_u32(500), 1000, true),
             Instruction::CheckInterests(stream_interests(&["ack", "tx"])),
             Instruction::NackPacket(pn(0)),
-            Instruction::CheckInterests(stream_interests(&["tx"])),
+            Instruction::CheckInterests(stream_interests(&["lost"])),
             // Transmit after packet loss had been announced.
             // The retransmit requires 504 bytes. 496 are left. 492 can be
             // used for content
@@ -821,9 +919,9 @@ fn retransmitted_data_is_sent_in_same_packets_as_new_data() {
             Instruction::CheckInterests(stream_interests(&["ack"])),
             Instruction::NackPacket(pn(0)),
             Instruction::NackPacket(pn(2)),
-            Instruction::CheckInterests(stream_interests(&["ack", "tx"])),
+            Instruction::CheckInterests(stream_interests(&["ack", "lost"])),
             Instruction::EnqueueData(VarInt::from_u32(2000), 10, true),
-            Instruction::CheckInterests(stream_interests(&["ack", "tx"])),
+            Instruction::CheckInterests(stream_interests(&["ack", "lost"])),
             // Retransmission of the first chunk requires 504 bytes. 496 left
             Instruction::CheckDataTx(VarInt::from_u32(0), 500, false, false, pn(3)),
             Instruction::CheckDataTx(VarInt::from_u32(1490), 492, false, true, pn(3)),
@@ -941,19 +1039,19 @@ fn blocked_on_stream_flow_control_does_not_prevent_retransmissions() {
         Instruction::CheckInterests(stream_interests(&["ack"])),
         // Nack packets. This should lead to retransmissions
         Instruction::NackPacket(pn(1)),
-        Instruction::CheckInterests(stream_interests(&["ack", "tx"])),
+        Instruction::CheckInterests(stream_interests(&["ack", "lost"])),
         Instruction::CheckDataTx(VarInt::from_u32(998), 996, false, true, pn(3)),
         Instruction::CheckInterests(stream_interests(&["ack"])),
         Instruction::AckPacket(pn(3), ExpectWakeup(Some(false))),
         Instruction::CheckInterests(stream_interests(&["ack"])),
         Instruction::NackPacket(pn(0)),
-        Instruction::CheckInterests(stream_interests(&["ack", "tx"])),
+        Instruction::CheckInterests(stream_interests(&["ack", "lost"])),
         Instruction::CheckDataTx(VarInt::from_u32(0), 998, false, true, pn(4)),
         Instruction::CheckInterests(stream_interests(&["ack"])),
         Instruction::AckPacket(pn(4), ExpectWakeup(Some(true))),
         Instruction::CheckInterests(stream_interests(&["ack"])),
         Instruction::NackPacket(pn(2)),
-        Instruction::CheckInterests(stream_interests(&["tx"])),
+        Instruction::CheckInterests(stream_interests(&["lost"])),
         Instruction::CheckDataTx(VarInt::from_u32(1994), 6, false, false, pn(5)),
         Instruction::CheckInterests(stream_interests(&["ack"])),
         Instruction::CheckNoTx,
@@ -1068,19 +1166,19 @@ fn blocked_on_connection_flow_control_does_not_prevent_retransmissions() {
         Instruction::CheckInterests(stream_interests(&["ack", "cf"])),
         // Nack packets. This should lead to retransmissions
         Instruction::NackPacket(pn(1)),
-        Instruction::CheckInterests(stream_interests(&["ack", "tx"])),
+        Instruction::CheckInterests(stream_interests(&["ack", "lost"])),
         Instruction::CheckDataTx(VarInt::from_u32(998), 996, false, true, pn(3)),
         Instruction::CheckInterests(stream_interests(&["ack", "cf"])),
         Instruction::AckPacket(pn(3), ExpectWakeup(Some(false))),
         Instruction::CheckInterests(stream_interests(&["ack", "cf"])),
         Instruction::NackPacket(pn(0)),
-        Instruction::CheckInterests(stream_interests(&["ack", "tx"])),
+        Instruction::CheckInterests(stream_interests(&["ack", "lost"])),
         Instruction::CheckDataTx(VarInt::from_u32(0), 998, false, true, pn(4)),
         Instruction::CheckInterests(stream_interests(&["ack", "cf"])),
         Instruction::AckPacket(pn(4), ExpectWakeup(Some(true))),
         Instruction::CheckInterests(stream_interests(&["ack", "cf"])),
         Instruction::NackPacket(pn(2)),
-        Instruction::CheckInterests(stream_interests(&["tx"])),
+        Instruction::CheckInterests(stream_interests(&["lost"])),
         Instruction::CheckDataTx(VarInt::from_u32(1994), 6, false, false, pn(5)),
         Instruction::CheckInterests(stream_interests(&["ack", "cf"])),
         Instruction::CheckNoTx,
@@ -1365,7 +1463,7 @@ fn adds_finish_packet_in_enqueued_packet() {
             Instruction::CheckDataTx(VarInt::from_u32(0), 500, false, false, pn(0)),
             Instruction::CheckInterests(stream_interests(&["ack"])),
             Instruction::NackPacket(pn(0)),
-            Instruction::CheckInterests(stream_interests(&["tx"])),
+            Instruction::CheckInterests(stream_interests(&["lost"])),
             Instruction::Finish(false),
             Instruction::CheckDataTx(VarInt::from_u32(0), 500, true, false, pn(1)),
             Instruction::CheckInterests(stream_interests(&["ack"])),
@@ -1465,7 +1563,7 @@ fn retransmit_fin_if_lost() {
             Instruction::CheckDataTx(VarInt::from_u32(0), 0, true, false, pn(0)),
             Instruction::CheckInterests(stream_interests(&["ack"])),
             Instruction::NackPacket(pn(0)),
-            Instruction::CheckInterests(stream_interests(&["tx"])),
+            Instruction::CheckInterests(stream_interests(&["lost"])),
             Instruction::CheckDataTx(VarInt::from_u32(0), 0, true, false, pn(1)),
             Instruction::CheckInterests(stream_interests(&["ack"])),
             Instruction::AckPacket(pn(1), ExpectWakeup(Some(true))),
@@ -1482,7 +1580,7 @@ fn retransmit_fin_if_lost() {
             Instruction::CheckDataTx(VarInt::from_u32(0), 500, true, false, pn(0)),
             Instruction::CheckInterests(stream_interests(&["ack"])),
             Instruction::NackPacket(pn(0)),
-            Instruction::CheckInterests(stream_interests(&["tx"])),
+            Instruction::CheckInterests(stream_interests(&["lost"])),
             Instruction::CheckDataTx(VarInt::from_u32(0), 500, true, false, pn(1)),
             Instruction::CheckInterests(stream_interests(&["ack"])),
             Instruction::AckPacket(pn(1), ExpectWakeup(Some(true))),
@@ -1506,9 +1604,9 @@ fn retransmit_fin_if_lost() {
             Instruction::AckPacket(pn(1), ExpectWakeup(Some(false))),
             Instruction::CheckInterests(stream_interests(&["ack"])),
             Instruction::NackPacket(pn(0)),
-            Instruction::CheckInterests(stream_interests(&["ack", "tx"])),
+            Instruction::CheckInterests(stream_interests(&["ack", "lost"])),
             Instruction::NackPacket(pn(2)),
-            Instruction::CheckInterests(stream_interests(&["tx"])),
+            Instruction::CheckInterests(stream_interests(&["lost"])),
             // The retransmitted chunks should all end up in one packet
             Instruction::CheckDataTx(VarInt::from_u32(0), 500, false, false, pn(3)),
             Instruction::CheckDataTx(VarInt::from_u32(750), 0, true, false, pn(3)),
@@ -2054,10 +2152,7 @@ fn reset_does_not_cause_an_action_if_stream_is_already_reset() {
             }
 
             // The reset should not lead to an outgoing packet
-            assert_eq!(
-                false,
-                test_env.stream.interests().frame_exchange.transmission
-            );
+            assert!(test_env.stream.interests().transmission.is_none());
             execute_instructions(&mut test_env, &[Instruction::CheckNoTx]);
 
             // Accessing the stream should lead to the original reset error
@@ -2111,10 +2206,7 @@ fn reset_does_not_cause_an_action_if_stream_is_finished_and_acknowledged() {
             }
 
             // The reset should not lead to an outgoing packet
-            assert_eq!(
-                false,
-                test_env.stream.interests().frame_exchange.transmission
-            );
+            assert!(test_env.stream.interests().transmission.is_none());
             execute_instructions(&mut test_env, &[Instruction::CheckNoTx]);
 
             // Accessing the stream should still return the finished state

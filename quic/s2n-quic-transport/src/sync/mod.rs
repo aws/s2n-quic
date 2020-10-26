@@ -1,6 +1,6 @@
 //! Tools for synchronizing data between peers
 
-use crate::contexts::WriteContext;
+use crate::{contexts::WriteContext, transmission};
 use s2n_quic_core::{packet::number::PacketNumber, stream::StreamId, time::Timestamp};
 
 /// Carries information about the packet in which a frame is transmitted
@@ -28,6 +28,8 @@ pub enum DeliveryState<T> {
     NotRequested,
     /// The delivery had been requested, but not yet started
     Requested(T),
+    /// The original delivery was lost and needs to be retransmitted
+    Lost(T),
     /// The delivery of the information has been requested and is in progress
     InFlight(InFlightDelivery<T>),
     /// The delivery of the information has succeeded
@@ -48,6 +50,7 @@ impl<T> DeliveryState<T> {
         *self = match old_state {
             DeliveryState::NotRequested => DeliveryState::Cancelled(None),
             DeliveryState::Requested(value)
+            | DeliveryState::Lost(value)
             | DeliveryState::Delivered(value)
             | DeliveryState::InFlight(InFlightDelivery { value, .. }) => {
                 DeliveryState::Cancelled(Some(value))
@@ -61,15 +64,35 @@ impl<T> DeliveryState<T> {
         matches!(self, Self::Cancelled(_))
     }
 
-    /// Returns `true` if the delivery of a value is requested
-    pub fn is_requested(&self) -> bool {
-        matches!(self, Self::Requested(_))
-    }
-
     /// Returns `true` if the delivery is current in progress.
     /// A packet has been sent, but no acknowledgement has been retrieved so far.
     pub fn is_inflight(&self) -> bool {
         matches!(self, Self::InFlight(_))
+    }
+
+    /// Returns `true` if the payload had been delivered to the peer and had
+    /// been acknowledged by the peer.
+    pub fn is_delivered(&self) -> bool {
+        matches!(self, Self::Delivered(_))
+    }
+
+    /// Tries to transmit the delivery with the given transmission constraint
+    pub fn try_transmit(&self, constraint: transmission::Constraint) -> Option<&T> {
+        match self {
+            DeliveryState::Requested(value) if constraint.can_transmit() => Some(value),
+            DeliveryState::Lost(value) if constraint.can_retransmit() => Some(value),
+            _ => None,
+        }
+    }
+}
+
+impl<T> transmission::interest::Provider for DeliveryState<T> {
+    fn transmission_interest(&self) -> transmission::Interest {
+        match self {
+            Self::Requested(_) => transmission::Interest::NewData,
+            Self::Lost(_) => transmission::Interest::LostData,
+            _ => transmission::Interest::None,
+        }
     }
 }
 

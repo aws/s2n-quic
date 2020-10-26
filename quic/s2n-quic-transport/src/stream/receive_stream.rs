@@ -1,7 +1,6 @@
 use crate::{
     buffer::{StreamReceiveBuffer, StreamReceiveBufferError},
     contexts::{OnTransmitError, WriteContext},
-    frame_exchange_interests::FrameExchangeInterestProvider,
     stream::{
         incoming_connection_flow_controller::IncomingConnectionFlowController,
         stream_events::StreamEvents,
@@ -9,6 +8,7 @@ use crate::{
         StreamError,
     },
     sync::{IncrementalValueSync, OnceSync, ValueToFrameWriter},
+    transmission::interest::Provider as _,
 };
 use core::{
     convert::TryFrom,
@@ -851,16 +851,20 @@ impl ReceiveStream {
 
 impl StreamInterestProvider for ReceiveStream {
     fn interests(&self) -> StreamInterests {
-        let frame_exchange_interests = self.stop_sending_sync.frame_exchange_interests()
+        let delivery_notifications = self.stop_sending_sync.is_inflight()
+            || self.flow_controller.read_window_sync.is_inflight();
+
+        let transmission = self.stop_sending_sync.transmission_interest()
             + self
                 .flow_controller
                 .read_window_sync
-                .frame_exchange_interests();
+                .transmission_interest();
 
         StreamInterests {
             connection_flow_control_credits: false,
             finalization: self.final_state_observed,
-            frame_exchange: frame_exchange_interests,
+            delivery_notifications,
+            transmission,
         }
     }
 }

@@ -1,10 +1,9 @@
 use crate::{
-    connection::transmission,
     contexts::WriteContext,
-    frame_exchange_interests::{FrameExchangeInterestProvider, FrameExchangeInterests},
     recovery::{loss_info::LossInfo, SentPacketInfo, SentPackets},
     space::INITIAL_PTO_BACKOFF,
     timer::VirtualTimer,
+    transmission,
 };
 use core::{cmp::max, time::Duration};
 use s2n_quic_core::{
@@ -377,6 +376,11 @@ impl Manager {
         Ok(loss_info)
     }
 
+    /// Returns `true` if the recovery manager requires a probe packet to be sent.
+    pub fn requires_probe(&self) -> bool {
+        matches!(self.pto.state, PtoState::RequiresTransmission(_))
+    }
+
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#B.9
     //# When Initial or Handshake keys are discarded, packets from the
     //# space are discarded and loss detection state is updated.
@@ -559,12 +563,9 @@ pub trait Context {
     fn on_packet_loss(&mut self, packet_number_range: &PacketNumberRange);
 }
 
-impl FrameExchangeInterestProvider for Manager {
-    fn frame_exchange_interests(&self) -> FrameExchangeInterests {
-        FrameExchangeInterests {
-            delivery_notifications: !self.sent_packets.is_empty(),
-            transmission: false,
-        } + self.pto.frame_exchange_interests()
+impl transmission::interest::Provider for Manager {
+    fn transmission_interest(&self) -> transmission::Interest {
+        self.pto.transmission_interest()
     }
 }
 
@@ -721,16 +722,12 @@ impl Pto {
     }
 }
 
-impl FrameExchangeInterestProvider for Pto {
-    fn frame_exchange_interests(&self) -> FrameExchangeInterests {
-        // TODO put a fast ack on interests
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.4
-        //# If the sender wants to elicit a faster acknowledgement on PTO, it can
-        //# skip a packet number to eliminate the acknowledgment delay.
-
-        FrameExchangeInterests {
-            delivery_notifications: false,
-            transmission: matches!(self.state, PtoState::RequiresTransmission(_)),
+impl transmission::interest::Provider for Pto {
+    fn transmission_interest(&self) -> transmission::Interest {
+        if matches!(self.state, PtoState::RequiresTransmission(_)) {
+            transmission::Interest::Forced
+        } else {
+            transmission::Interest::None
         }
     }
 }
@@ -1421,6 +1418,7 @@ mod test {
             &connection_context,
             s2n_quic_platform::time::now(),
             &mut frame_buffer,
+            transmission::Constraint::CongestionLimited, // Recovery manager ignores constraints
         );
 
         // Already idle
@@ -1494,6 +1492,18 @@ mod test {
         }
 
         (result, context)
+    }
+
+    #[test]
+    fn requires_probe() {
+        let space = PacketNumberSpace::ApplicationData;
+        let mut manager = Manager::new(space, Duration::from_millis(10));
+
+        manager.pto.state = PtoState::RequiresTransmission(2);
+        assert!(manager.requires_probe());
+
+        manager.pto.state = PtoState::Idle;
+        assert!(!manager.requires_probe());
     }
 
     #[derive(Default)]

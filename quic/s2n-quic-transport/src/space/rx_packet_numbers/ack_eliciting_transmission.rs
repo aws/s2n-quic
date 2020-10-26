@@ -1,4 +1,3 @@
-use crate::frame_exchange_interests::{FrameExchangeInterestProvider, FrameExchangeInterests};
 use core::ops::RangeInclusive;
 use s2n_quic_core::{ack_set::AckSet, packet::number::PacketNumber};
 
@@ -59,19 +58,10 @@ impl AckElicitingTransmissionSet {
     }
 
     /// Returns `true` if there are no pending ack-eliciting transmissions
+    /// Only used by tests
+    #[cfg(test)]
     pub fn is_empty(&self) -> bool {
         self.stable.is_none() && self.latest.is_none()
-    }
-}
-
-impl FrameExchangeInterestProvider for AckElicitingTransmissionSet {
-    fn frame_exchange_interests(&self) -> FrameExchangeInterests {
-        // only subscribe to notifications if there's pending transmissions
-        let delivery_notifications = !self.is_empty();
-        FrameExchangeInterests {
-            delivery_notifications,
-            ..Default::default()
-        }
     }
 }
 

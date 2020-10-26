@@ -1,6 +1,8 @@
 use crate::recovery::{
-    congestion_controller::CongestionController, cubic::State::*,
-    hybrid_slow_start::HybridSlowStart, loss_info::LossInfo,
+    congestion_controller::CongestionController,
+    cubic::{FastRetransmission::*, State::*},
+    hybrid_slow_start::HybridSlowStart,
+    loss_info::LossInfo,
 };
 use core::{
     cmp::{max, min},
@@ -32,8 +34,19 @@ use s2n_quic_core::{recovery::RTTEstimator, time::Timestamp};
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum State {
     SlowStart,
-    Recovery(Timestamp),
+    Recovery(Timestamp, FastRetransmission),
     CongestionAvoidance(Timestamp),
+}
+
+//= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.3.2
+//# If the congestion window is reduced immediately, a
+//# single packet can be sent prior to reduction.  This speeds up loss
+//# recovery if the data in the lost packet is retransmitted and is
+//# similar to TCP as described in Section 5 of [RFC6675].
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum FastRetransmission {
+    Idle,
+    RequiresTransmission,
 }
 
 /// A congestion controller that implements "CUBIC for Fast Long-Distance Networks"
@@ -102,6 +115,10 @@ impl CongestionController for CubicCongestionController {
             .saturating_sub(self.bytes_in_flight.0)
     }
 
+    fn requires_fast_retransmission(&self) -> bool {
+        matches!(self.state, Recovery(_, RequiresTransmission))
+    }
+
     fn on_packet_sent(&mut self, time_sent: Timestamp, bytes_sent: usize) {
         self.bytes_in_flight += bytes_sent;
 
@@ -120,6 +137,12 @@ impl CongestionController for CubicCongestionController {
                 let last_time_sent = self.time_of_last_sent_packet.unwrap_or(time_sent);
                 *avoidance_start_time += time_sent - last_time_sent;
             }
+        }
+
+        if let Recovery(recovery_start_time, RequiresTransmission) = self.state {
+            // A packet has been sent since we entered recovery (fast retransmission)
+            // so flip the state back to idle.
+            self.state = Recovery(recovery_start_time, Idle);
         }
 
         self.time_of_last_sent_packet = Some(time_sent);
@@ -159,7 +182,7 @@ impl CongestionController for CubicCongestionController {
         }
 
         // Check if this ack causes the controller to exit recovery
-        if let State::Recovery(recovery_start_time) = self.state {
+        if let State::Recovery(recovery_start_time, _) = self.state {
             if largest_acked_time_sent > recovery_start_time {
                 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.3.2
                 //# A recovery period ends and the sender enters congestion avoidance
@@ -190,7 +213,7 @@ impl CongestionController for CubicCongestionController {
                     self.cubic.update_w_max(self.congestion_window);
                 }
             }
-            Recovery(_) => {
+            Recovery(_, _) => {
                 // Don't increase the congestion window while in recovery
             }
             CongestionAvoidance(avoidance_start_time) => {
@@ -231,12 +254,18 @@ impl CongestionController for CubicCongestionController {
 
     fn on_congestion_event(&mut self, event_time: Timestamp) {
         // No reaction if already in a recovery period.
-        if matches!(self.state, Recovery(_)) {
+        if matches!(self.state, Recovery(_, _)) {
             return;
         }
 
         // Enter recovery period.
-        self.state = Recovery(event_time);
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.3.2
+        //# If the congestion window is reduced immediately, a
+        //# single packet can be sent prior to reduction.  This speeds up loss
+        //# recovery if the data in the lost packet is retransmitted and is
+        //# similar to TCP as described in Section 5 of [RFC6675].
+        self.state = Recovery(event_time, RequiresTransmission);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.3.2
         //# On entering a recovery period, a sender MUST set the slow start threshold
@@ -252,13 +281,6 @@ impl CongestionController for CubicCongestionController {
         self.congestion_window = self.cubic.multiplicative_decrease(self.congestion_window);
         // Update Hybrid Slow Start with the decreased congestion window.
         self.slow_start.on_congestion_event(self.congestion_window);
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.3.2
-        //# If the congestion window is reduced immediately, a
-        //# single packet can be sent prior to reduction.  This speeds up loss
-        //# recovery if the data in the lost packet is retransmitted and is
-        //# similar to TCP as described in Section 5 of [RFC6675].
-        // TODO: https://github.com/awslabs/s2n-quic/issues/138
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.2
@@ -524,6 +546,7 @@ mod test {
     use crate::recovery::{
         cubic::{
             BytesInFlight, Cubic, CubicCongestionController,
+            FastRetransmission::{Idle, RequiresTransmission},
             State::{CongestionAvoidance, Recovery, SlowStart},
             BETA_CUBIC,
         },
@@ -713,6 +736,20 @@ mod test {
     }
 
     #[test]
+    fn on_packet_sent_fast_retransmission() {
+        let mut cc = CubicCongestionController::new(1000);
+        let now = s2n_quic_platform::time::now();
+
+        cc.congestion_window = 100_000;
+        cc.bytes_in_flight = BytesInFlight(99900);
+        cc.state = Recovery(now, RequiresTransmission);
+
+        cc.on_packet_sent(now + Duration::from_secs(10), 100);
+
+        assert_eq!(cc.state, Recovery(now, Idle));
+    }
+
+    #[test]
     fn on_packet_lost() {
         let mut cc = CubicCongestionController::new(1000);
         let now = s2n_quic_platform::time::now();
@@ -730,7 +767,10 @@ mod test {
         );
 
         assert_eq!(cc.bytes_in_flight.0, 100_000 - 100);
-        assert_eq!(cc.state, Recovery(now + Duration::from_secs(10)));
+        assert_eq!(
+            cc.state,
+            Recovery(now + Duration::from_secs(10), RequiresTransmission)
+        );
         assert_eq!(cc.congestion_window, (100_000.0 * BETA_CUBIC) as u32);
         assert_eq!(cc.slow_start.threshold, (100_000.0 * BETA_CUBIC) as u32);
         assert_eq!(cc.slow_start.threshold, (100_000.0 * BETA_CUBIC) as u32);
@@ -741,7 +781,7 @@ mod test {
         let mut cc = CubicCongestionController::new(1000);
         let now = s2n_quic_platform::time::now();
         cc.congestion_window = 10000;
-        cc.state = Recovery(now);
+        cc.state = Recovery(now, Idle);
 
         cc.on_packets_lost(LossInfo::default(), Duration::from_secs(5), now);
 
@@ -754,7 +794,7 @@ mod test {
         let mut cc = CubicCongestionController::new(1000);
         let now = s2n_quic_platform::time::now();
         cc.congestion_window = 10000;
-        cc.state = Recovery(now);
+        cc.state = Recovery(now, Idle);
 
         let mut loss_info = LossInfo::default();
         loss_info.persistent_congestion_period = Duration::from_secs(10);
@@ -824,7 +864,7 @@ mod test {
         let now = s2n_quic_platform::time::now();
 
         cc.cubic.update_w_max(25000);
-        cc.state = Recovery(now);
+        cc.state = Recovery(now, Idle);
         cc.bytes_in_flight = BytesInFlight(25000);
 
         cc.on_packet_ack(
@@ -871,7 +911,7 @@ mod test {
         let mut cc = CubicCongestionController::new(5000);
         let now = s2n_quic_platform::time::now();
 
-        cc.state = Recovery(now);
+        cc.state = Recovery(now, Idle);
         cc.congestion_window = 10000;
         cc.bytes_in_flight = BytesInFlight(10000);
 
@@ -884,7 +924,7 @@ mod test {
 
         // Congestion window stays the same in recovery
         assert_eq!(cc.congestion_window, 10000);
-        assert_eq!(cc.state, Recovery(now));
+        assert_eq!(cc.state, Recovery(now, Idle));
     }
 
     #[test]

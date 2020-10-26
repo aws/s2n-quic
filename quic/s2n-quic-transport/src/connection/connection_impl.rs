@@ -11,6 +11,7 @@ use crate::{
     path,
     recovery::{congestion_controller, CongestionController, RTTEstimator},
     space::{PacketSpace, EARLY_ACK_SETTINGS},
+    transmission,
 };
 use core::time::Duration;
 use s2n_quic_core::{
@@ -327,6 +328,11 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                 // TODO pull these from somewhere
                 let ecn = Default::default();
 
+                debug_assert!(
+                    !active_path.at_amplification_limit(),
+                    "connection should not express transmission interest if amplification limited"
+                );
+
                 while let Ok(bytes_transmitted) = queue.push(ConnectionTransmission {
                     context: ConnectionTransmissionContext {
                         quic_version: self.quic_version,
@@ -339,6 +345,10 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                 }) {
                     count += 1;
                     active_path.on_bytes_transmitted(bytes_transmitted);
+
+                    if active_path.at_amplification_limit() {
+                        break;
+                    }
                 }
                 // TODO  leave the psuedo in comment, TODO send this stuff
                 // for path in path_manager.pending_paths() {
@@ -711,13 +721,32 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
 
         match self.state {
             ConnectionState::Active | ConnectionState::Handshaking => {
-                interests += shared_state.space_manager.interests();
+                use transmission::{interest::Provider as _, Interest};
+
+                let mut transmission = Interest::default();
+
+                // TODO ask path manager if it wants to transmit for path probes
+                // transmission += self.path_manager.transmission_interest();
+
+                let (_, path) = self.path_manager.active_path();
+                let constraint = path.transmission_constraint();
+
+                // don't iterate over everything if we can't send anyway
+                if !constraint.is_amplification_limited() {
+                    transmission += shared_state.space_manager.transmission_interest();
+                }
+
+                interests.transmission = transmission.can_transmit(constraint);
             }
             ConnectionState::Closing => {
                 // TODO: Ask the Close Sender whether it needs to transmit
             }
             ConnectionState::Draining => {
+                use connection::finalization::Provider as _;
+
                 // This is a pure wait state. We do not want to transmit data here
+                interests.finalization =
+                    shared_state.space_manager.finalization_status().is_final();
             }
             ConnectionState::Finished => {
                 // Remove the connection from the endpoint

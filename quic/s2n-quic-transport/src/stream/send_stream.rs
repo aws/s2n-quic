@@ -1,6 +1,5 @@
 use crate::{
     contexts::{OnTransmitError, WriteContext},
-    frame_exchange_interests::FrameExchangeInterestProvider,
     stream::{
         outgoing_connection_flow_controller::OutgoingConnectionFlowController,
         stream_events::StreamEvents,
@@ -11,6 +10,7 @@ use crate::{
         ChunkToFrameWriter, DataSender, DataSenderState, OnceSync, OutgoingDataFlowController,
         ValueToFrameWriter,
     },
+    transmission::interest::Provider as _,
 };
 use bytes::Bytes;
 use core::{
@@ -944,11 +944,17 @@ impl StreamInterestProvider for SendStream {
         let connection_flow_control_credits = self.data_sender.flow_controller().state()
             == StreamFlowControllerState::BlockedOnConnectionWindow;
 
+        let delivery_notifications =
+            self.data_sender.is_inflight() || self.reset_sync.is_inflight();
+
+        let transmission =
+            self.data_sender.transmission_interest() + self.reset_sync.transmission_interest();
+
         StreamInterests {
             finalization,
             connection_flow_control_credits,
-            frame_exchange: self.data_sender.frame_exchange_interests()
-                + self.reset_sync.frame_exchange_interests(),
+            delivery_notifications,
+            transmission,
         }
     }
 }

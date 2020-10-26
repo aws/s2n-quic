@@ -1,12 +1,9 @@
 use crate::{
-    connection::{self, transmission, ConnectionTransmissionContext},
-    frame_exchange_interests::{FrameExchangeInterestProvider, FrameExchangeInterests},
+    connection::{self, ConnectionTransmissionContext},
     processed_packet::ProcessedPacket,
     recovery,
-    space::{
-        rx_packet_numbers::AckManager, CryptoStream, EarlyTransmission, PacketSpace,
-        TxPacketNumbers,
-    },
+    space::{rx_packet_numbers::AckManager, CryptoStream, PacketSpace, TxPacketNumbers},
+    transmission,
 };
 use core::marker::PhantomData;
 use s2n_codec::EncoderBuffer;
@@ -72,14 +69,26 @@ impl<Config: connection::Config> HandshakeSpace<Config> {
     pub fn on_transmit<'a>(
         &mut self,
         context: &mut ConnectionTransmissionContext<Config>,
+        transmission_constraint: transmission::Constraint,
         buffer: EncoderBuffer<'a>,
     ) -> Result<EncoderBuffer<'a>, PacketEncodingError<'a>> {
-        let packet_number = self.tx_packet_numbers.next();
+        let mut packet_number = self.tx_packet_numbers.next();
+
+        if self.recovery_manager.requires_probe() {
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#6.2.4
+            //# If the sender wants to elicit a faster acknowledgement on PTO, it can
+            //# skip a packet number to eliminate the acknowledgment delay.
+
+            // TODO Does this interact negatively with persistent congestion detection, which
+            //      relies on consecutive packet numbers?
+            packet_number = packet_number.next().unwrap();
+        }
+
         let packet_number_encoder = self.packet_number_encoder();
 
         let mut outcome = transmission::Outcome::default();
 
-        let payload = EarlyTransmission {
+        let payload = transmission::early::Transmission {
             ack_manager: &mut self.ack_manager,
             crypto_stream: &mut self.crypto_stream,
             context,
@@ -87,6 +96,7 @@ impl<Config: connection::Config> HandshakeSpace<Config> {
             recovery_manager: &mut self.recovery_manager,
             tx_packet_numbers: &mut self.tx_packet_numbers,
             outcome: &mut outcome,
+            transmission_constraint,
         };
 
         let packet = Handshake {
@@ -130,6 +140,10 @@ impl<Config: connection::Config> HandshakeSpace<Config> {
         self.recovery_manager.on_packet_number_space_discarded(path);
     }
 
+    pub fn requires_probe(&self) -> bool {
+        self.recovery_manager.requires_probe()
+    }
+
     pub fn update_recovery(
         &mut self,
         path: &Path<Config::CongestionController>,
@@ -164,12 +178,19 @@ impl<Config: connection::Config> HandshakeSpace<Config> {
     }
 }
 
-impl<Config: connection::Config> FrameExchangeInterestProvider for HandshakeSpace<Config> {
-    fn frame_exchange_interests(&self) -> FrameExchangeInterests {
-        FrameExchangeInterests::default()
-            + self.ack_manager.frame_exchange_interests()
-            + self.crypto_stream.frame_exchange_interests()
-            + self.recovery_manager.frame_exchange_interests()
+impl<Config: connection::Config> transmission::interest::Provider for HandshakeSpace<Config> {
+    fn transmission_interest(&self) -> transmission::Interest {
+        transmission::Interest::default()
+            + self.ack_manager.transmission_interest()
+            + self.crypto_stream.transmission_interest()
+            + self.recovery_manager.transmission_interest()
+    }
+}
+
+impl<Config: connection::Config> connection::finalization::Provider for HandshakeSpace<Config> {
+    fn finalization_status(&self) -> connection::finalization::Status {
+        // there's nothing in here that hold up finalizing a connection
+        connection::finalization::Status::Idle
     }
 }
 

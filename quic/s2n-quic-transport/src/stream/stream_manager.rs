@@ -1,7 +1,7 @@
 //! `StreamManager` manages the lifecycle of all `Stream`s inside a `Connection`
 
 use crate::{
-    connection::Limits as ConnectionLimits,
+    connection::{self, Limits as ConnectionLimits},
     contexts::{ConnectionApiCallContext, ConnectionContext, OnTransmitError, WriteContext},
     stream::{
         incoming_connection_flow_controller::IncomingConnectionFlowController,
@@ -11,11 +11,11 @@ use crate::{
         stream_impl::StreamConfig,
         StreamError, StreamLimits, StreamTrait,
     },
+    transmission::{self, interest::Provider as _},
 };
 use core::task::{Context, Poll, Waker};
 use s2n_quic_core::{
     ack_set::AckSet,
-    connection,
     endpoint::EndpointType,
     frame::{
         stream::StreamRef, DataBlocked, MaxData, MaxStreamData, MaxStreams, ResetStream,
@@ -144,16 +144,6 @@ impl AcceptState {
             StreamType::Unidirectional => &mut self.next_uni_stream_to_accept,
         }
     }
-}
-
-/// A collection of interactions a [`StreamManager`] is interested in
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct StreamManagerInterests {
-    /// A Stream needs to transmit data
-    pub transmission: bool,
-    /// All Streams in the `StreamManager` have been finalized, so the
-    /// `StreamManager` can also be finalized
-    pub finalization: bool,
 }
 
 /// Manages all active `Stream`s inside a connection
@@ -436,15 +426,6 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         }
     }
 
-    /// Returns interests of the `StreamManager`
-    pub fn interests(&self) -> StreamManagerInterests {
-        StreamManagerInterests {
-            transmission: !self.inner.streams.is_transmission_list_empty(),
-            finalization: self.inner.close_reason.is_some()
-                && self.inner.streams.nr_active_streams() == 0,
-        }
-    }
-
     /// Accepts the next incoming stream of a given type
     pub fn poll_accept(
         &mut self,
@@ -570,24 +551,49 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
             .incoming_connection_flow_controller
             .on_transmit(context)?;
 
+        // Due to an error we could not transmit all data.
+        // We add streams which could not send data back into the
+        // waiting_for_transmission list, so that they will be queried again
+        // the next time transmission capacity is available.
+        // We actually add those Streams to the end of the list,
+        // since the earlier entries are from Streams which were not
+        // able to write all the desired data and added themselves as
+        // transmit interested again
         let mut transmit_result = Ok(());
 
-        self.inner.streams.iterate_transmission_list(|stream| {
-            transmit_result = stream.on_transmit(context);
-            if transmit_result.is_err() {
-                // Due to an error we could not transmit all data.
-                // We add streams which could not send data back into the
-                // waiting_for_transmission list, so that they will be queried again
-                // the next time transmission capacity is available.
-                // We actually add those Streams to the end of the list,
-                // since the earlier entries are from Streams which were not
-                // able to write all the desired data and added themselves as
-                // transmit interested again
-                StreamContainerIterationResult::BreakAndInsertAtBack
-            } else {
-                StreamContainerIterationResult::Continue
-            }
-        });
+        if context.transmission_constraint().can_retransmit() {
+            // ensure components only retransmit in this phase
+            let mut retransmission_context =
+                transmission::context::RetransmissionContext::new(context);
+
+            // Prioritize retransmitting lost data
+            self.inner
+                .streams
+                .iterate_retransmission_list(|stream: &mut S| {
+                    transmit_result = stream.on_transmit(&mut retransmission_context);
+                    if transmit_result.is_err() {
+                        StreamContainerIterationResult::BreakAndInsertAtBack
+                    } else {
+                        StreamContainerIterationResult::Continue
+                    }
+                });
+
+            // return if there were any errors
+            transmit_result?;
+        }
+
+        if context.transmission_constraint().can_transmit() {
+            self.inner
+                .streams
+                .iterate_transmission_list(|stream: &mut S| {
+                    transmit_result = stream.on_transmit(context);
+                    if transmit_result.is_err() {
+                        StreamContainerIterationResult::BreakAndInsertAtBack
+                    } else {
+                        StreamContainerIterationResult::Continue
+                    }
+                });
+        }
 
         // There is no `finalize_done_streams` here, since we do not expect to
         // perform an operation which brings us in a finalization state
@@ -747,7 +753,7 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
     where
         F: FnOnce(&mut S, &StreamManagerConnectionContext) -> R,
     {
-        let transmission_list_was_empty = self.inner.streams.is_transmission_list_empty();
+        let prev_transmission_interest = self.inner.streams.transmission_interest();
 
         let connection_context =
             StreamManagerConnectionContext::new(self.inner.local_endpoint_type);
@@ -761,8 +767,8 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         // A wakeup is only triggered if the the transmission list is
         // now empty, but was previously not. The edge triggered behavior
         // minimizes the amount of necessary wakeups.
-        let require_wakeup =
-            transmission_list_was_empty && !self.inner.streams.is_transmission_list_empty();
+        let require_wakeup = prev_transmission_interest.is_none()
+            && !self.inner.streams.transmission_interest().is_none();
 
         // TODO: This currently wakes the connection task while inside the connection Mutex.
         // It will be better if we return the `Waker` instead and perform the wakeup afterwards.
@@ -786,6 +792,24 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
             api_call_context,
             |stream, _connection_context| stream.poll_request(request, context),
         )
+    }
+}
+
+impl<S: StreamTrait> transmission::interest::Provider for AbstractStreamManager<S> {
+    fn transmission_interest(&self) -> transmission::Interest {
+        self.inner.streams.transmission_interest()
+    }
+}
+
+impl<S: StreamTrait> connection::finalization::Provider for AbstractStreamManager<S> {
+    fn finalization_status(&self) -> connection::finalization::Status {
+        if self.inner.close_reason.is_some() && self.inner.streams.nr_active_streams() == 0 {
+            connection::finalization::Status::Final
+        } else if self.inner.close_reason.is_some() && self.inner.streams.nr_active_streams() > 0 {
+            connection::finalization::Status::Draining
+        } else {
+            connection::finalization::Status::Idle
+        }
     }
 }
 
@@ -854,6 +878,17 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
     pub fn streams_waiting_for_transmission(&mut self) -> Vec<StreamId> {
         let mut results = Vec::new();
         self.inner.streams.iterate_transmission_list(|stream| {
+            results.push(stream.stream_id());
+            StreamContainerIterationResult::Continue
+        });
+        results
+    }
+
+    /// Returns the list of Stream IDs for Streams which are waiting for
+    /// retransmission.
+    pub fn streams_waiting_for_retransmission(&mut self) -> Vec<StreamId> {
+        let mut results = Vec::new();
+        self.inner.streams.iterate_retransmission_list(|stream| {
             results.push(stream.stream_id());
             StreamContainerIterationResult::Continue
         });

@@ -1,7 +1,7 @@
 //! Defines Context traits, which are passed to various lifecycle callbacks
 //! within the connection in order to collect data
 
-use crate::{connection::InternalConnectionId, wakeup_queue::WakeupHandle};
+use crate::{connection::InternalConnectionId, transmission, wakeup_queue::WakeupHandle};
 use s2n_codec::encoder::EncoderValue;
 use s2n_quic_core::{
     connection,
@@ -33,6 +33,9 @@ pub trait WriteContext {
 
     /// Returns a reference to the underlying connection
     fn connection_context(&self) -> &Self::ConnectionContext;
+
+    /// Returns the transmission constraint for the current packet
+    fn transmission_constraint(&self) -> transmission::Constraint;
 
     /// Attempt to write a frame. If this was successful the number of the packet
     /// that will be used to send the frame will be returned.
