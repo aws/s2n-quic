@@ -1,6 +1,7 @@
 use super::*;
 use crate::{
     stream::{stream_interests::StreamInterestProvider, StreamEvents, StreamTrait},
+    transmission,
     transmission::interest::Provider,
 };
 use bytes::Bytes;
@@ -1090,6 +1091,115 @@ fn connection_flow_control_window_update_is_only_sent_when_minimum_data_size_is_
     assert!(test_env.rx_connection_flow_controller.is_inflight());
 
     // Nothing new to write
+    test_env.assert_write_frames(0);
+}
+
+#[test]
+fn flow_control_window_update_is_not_sent_when_congestion_limited() {
+    let mut test_env = setup_receive_only_test_env();
+    test_env.transmission_constraint = transmission::Constraint::CongestionLimited;
+
+    assert_eq!(stream_interests(&[]), test_env.stream.interests());
+
+    // Completely fill the flow control window
+    test_env.feed_data(
+        VarInt::from_u32(0),
+        test_env
+            .stream
+            .receive_stream
+            .flow_controller
+            .current_stream_receive_window()
+            .as_u64() as usize,
+    );
+    assert_eq!(stream_interests(&[]), test_env.stream.interests());
+    // And drain the data
+    test_env.consume_all_data();
+    assert_eq!(stream_interests(&["tx"]), test_env.stream.interests());
+
+    // No MaxStreamData frame can be written
+    test_env.assert_write_frames(0);
+}
+
+#[test]
+fn only_lost_flow_control_update_is_sent_if_retransmission_only() {
+    let mut test_env = setup_receive_only_test_env();
+
+    let old_window: u64 = test_env
+        .stream
+        .receive_stream
+        .flow_controller
+        .current_stream_receive_window()
+        .into();
+
+    // Completely fill and drain the flow control window
+    test_env.feed_data(VarInt::from_u32(0), old_window as usize);
+    assert_eq!(old_window as usize, test_env.consume_all_data());
+    assert_eq!(stream_interests(&["tx"]), test_env.stream.interests());
+
+    let expected_window = old_window
+        + u64::from(
+            test_env
+                .stream
+                .receive_stream
+                .flow_controller
+                .desired_flow_control_window,
+        );
+    assert_eq!(
+        expected_window,
+        Into::<u64>::into(
+            test_env
+                .stream
+                .receive_stream
+                .flow_controller
+                .current_stream_receive_window()
+        )
+    );
+
+    // We expect to have sent a MaxStreamData frame
+    test_env.assert_write_frames(1);
+    let mut sent_frame = test_env.sent_frames.pop_front().expect("Frame is written");
+    assert_eq!(
+        Frame::MaxStreamData(MaxStreamData {
+            stream_id: test_env.stream.stream_id.into(),
+            maximum_stream_data: VarInt::new(expected_window).unwrap(),
+        }),
+        sent_frame.as_frame()
+    );
+    let packet_nr = sent_frame.packet_nr;
+    assert_eq!(stream_interests(&["ack"]), test_env.stream.interests());
+
+    // Nothing new to write
+    test_env.assert_write_frames(0);
+
+    // Notify the stream about packet loss
+    test_env.nack_packet(packet_nr);
+    assert_eq!(stream_interests(&["lost"]), test_env.stream.interests());
+
+    // Now we are constrained to retransmission only
+    test_env.transmission_constraint = transmission::Constraint::RetransmissionOnly;
+
+    // We can send the lost MaxStreamData frame
+    test_env.assert_write_frames(1);
+    let mut sent_frame = test_env.sent_frames.pop_front().expect("Frame is written");
+    assert_eq!(
+        Frame::MaxStreamData(MaxStreamData {
+            stream_id: test_env.stream.stream_id.into(),
+            maximum_stream_data: VarInt::new(expected_window).unwrap(),
+        }),
+        sent_frame.as_frame()
+    );
+
+    assert_eq!(stream_interests(&["ack"]), test_env.stream.interests());
+
+    // Nothing new to write
+    test_env.assert_write_frames(0);
+
+    // Completely fill and drain the flow control window
+    test_env.feed_data(VarInt::from_u32(old_window as u32), old_window as usize);
+    assert_eq!(old_window as usize, test_env.consume_all_data());
+    assert_eq!(stream_interests(&["tx"]), test_env.stream.interests());
+
+    // The new MaxStreamData frame cannot be sent
     test_env.assert_write_frames(0);
 }
 
