@@ -22,6 +22,7 @@ use s2n_quic_core::{
 
 mod config;
 mod initial;
+mod version;
 
 pub use config::{Config, Context};
 /// re-export core
@@ -46,6 +47,7 @@ pub struct Endpoint<Cfg: Config> {
     /// This is not a local variable in order to reuse the allocated queue capacity in between
     /// [`Endpoint`] interactions.
     dequeued_wakeups: VecDeque<InternalConnectionId>,
+    version_negotiator: version::Negotiator<Cfg>,
 }
 
 // Safety: The endpoint is marked as `!Send`, because the struct contains `Rc`s.
@@ -67,6 +69,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             timer_manager: TimerManager::new(),
             wakeup_queue: WakeupQueue::new(),
             dequeued_wakeups: VecDeque::new(),
+            version_negotiator: version::Negotiator::new(),
         };
 
         (endpoint, acceptor)
@@ -111,6 +114,15 @@ impl<Cfg: Config> Endpoint<Cfg> {
             dbg!("invalid packet received");
             return;
         };
+
+        // ensure the version is supported
+        if self
+            .version_negotiator
+            .on_packet(datagram, &packet)
+            .is_err()
+        {
+            return;
+        }
 
         let connection_id = match connection::Id::try_from_bytes(packet.destination_connection_id())
         {
@@ -225,7 +237,9 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 }
             });
 
-        let _ = transmit_result; // TODO: Do something in the error case
+        if transmit_result.is_ok() {
+            self.version_negotiator.on_transmit(&mut queue);
+        }
     }
 
     /// Handles all timer events. This should be called when a timer expired
