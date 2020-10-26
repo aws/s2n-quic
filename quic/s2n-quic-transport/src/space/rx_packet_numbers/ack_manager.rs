@@ -147,6 +147,8 @@ impl AckManager {
             //# them, such as once per round trip, to enable dropping unnecessary ACK
             //# ranges and any state for previously sent packets.
             // check the timer and make sure we can still write a Ping frame before removing it
+            // We send a ping even when constrained to retransmissions only, as a fast
+            // retransmission that is not ack eliciting will not help us recover faster.
             if (context.transmission_constraint().can_transmit()
                 || context.transmission_constraint().can_retransmit())
                 && self.transmissions_since_elicitation >= ACK_ELICITATION_INTERVAL
