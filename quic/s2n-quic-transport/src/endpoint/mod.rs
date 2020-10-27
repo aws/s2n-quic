@@ -69,7 +69,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             timer_manager: TimerManager::new(),
             wakeup_queue: WakeupQueue::new(),
             dequeued_wakeups: VecDeque::new(),
-            version_negotiator: version::Negotiator::new(),
+            version_negotiator: version::Negotiator::default(),
         };
 
         (endpoint, acceptor)
@@ -313,5 +313,64 @@ impl<'a, Cfg: Config> core::future::Future for PendingWakeups<'a, Cfg> {
     ) -> core::task::Poll<Self::Output> {
         let timestamp = self.timestamp;
         self.endpoint.poll_pending_wakeups(cx, timestamp)
+    }
+}
+
+#[cfg(any(test, feature = "testing"))]
+pub mod testing {
+    use super::*;
+
+    #[derive(Debug)]
+    pub struct Server;
+
+    impl Config for Server {
+        type CongestionControllerEndpoint = crate::recovery::testing::Endpoint;
+        type TLSEndpoint = s2n_quic_core::crypto::tls::testing::Endpoint;
+        type ConnectionConfig = connection::testing::Server;
+        type Connection = connection::Implementation<Self::ConnectionConfig>;
+        type EndpointLimits = Limits;
+        type ConnectionIdFormat = connection::id::testing::Format;
+        type TokenFormat = s2n_quic_core::token::testing::Format;
+
+        fn create_connection_config(&mut self) -> Self::ConnectionConfig {
+            todo!()
+        }
+
+        fn context(&mut self) -> super::Context<Self> {
+            todo!()
+        }
+    }
+
+    #[derive(Debug)]
+    pub struct Client;
+
+    impl Config for Client {
+        type CongestionControllerEndpoint = crate::recovery::testing::Endpoint;
+        type TLSEndpoint = s2n_quic_core::crypto::tls::testing::Endpoint;
+        type ConnectionConfig = connection::testing::Client;
+        type Connection = connection::Implementation<Self::ConnectionConfig>;
+        type EndpointLimits = Limits;
+        type ConnectionIdFormat = connection::id::testing::Format;
+        type TokenFormat = s2n_quic_core::token::testing::Format;
+
+        fn create_connection_config(&mut self) -> Self::ConnectionConfig {
+            todo!()
+        }
+
+        fn context(&mut self) -> super::Context<Self> {
+            todo!()
+        }
+    }
+
+    #[derive(Debug)]
+    pub struct Limits;
+
+    impl super::Limits for Limits {
+        fn on_connection_attempt(
+            &mut self,
+            _attempt: &super::limits::ConnectionAttempt,
+        ) -> super::limits::Outcome {
+            super::limits::Outcome::Allow
+        }
     }
 }

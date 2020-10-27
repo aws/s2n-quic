@@ -62,3 +62,46 @@ pub trait Endpoint: Sized {
 pub trait Session: CryptoSuite + Sized + Send {
     fn poll<C: Context<Self>>(&mut self, context: &mut C) -> Result<(), CryptoError>;
 }
+
+#[cfg(any(test, feature = "testing"))]
+pub mod testing {
+    use super::Context;
+    use crate::crypto::{error::CryptoError, key::testing::Key, CryptoSuite};
+    use s2n_codec::EncoderValue;
+
+    pub struct Endpoint;
+
+    impl super::Endpoint for Endpoint {
+        type Session = Session;
+
+        fn new_server_session<Params: EncoderValue>(
+            &mut self,
+            _transport_parameters: &Params,
+        ) -> Self::Session {
+            Session
+        }
+
+        fn new_client_session<Params: EncoderValue>(
+            &mut self,
+            _transport_parameters: &Params,
+            _sni: &[u8],
+        ) -> Self::Session {
+            Session
+        }
+    }
+
+    pub struct Session;
+
+    impl super::Session for Session {
+        fn poll<C: Context<Self>>(&mut self, _context: &mut C) -> Result<(), CryptoError> {
+            todo!("implement dummy handshake")
+        }
+    }
+
+    impl CryptoSuite for Session {
+        type HandshakeCrypto = Key;
+        type InitialCrypto = Key;
+        type ZeroRTTCrypto = Key;
+        type OneRTTCrypto = Key;
+    }
+}

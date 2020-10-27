@@ -216,3 +216,26 @@ mod tests {
         assert!(Id::try_from_bytes(&connection_id_bytes).is_none());
     }
 }
+
+#[cfg(any(test, feature = "testing"))]
+pub mod testing {
+    use super::*;
+    use core::convert::TryInto;
+
+    #[derive(Debug, Default)]
+    pub struct Format(u64);
+
+    impl Validator for Format {
+        fn validate(&self, _buffer: &[u8]) -> Option<usize> {
+            Some(core::mem::size_of::<u64>())
+        }
+    }
+
+    impl Generator for Format {
+        fn generate(&mut self) -> (Id, Option<core::time::Duration>) {
+            let id = (&self.0.to_be_bytes()[..]).try_into().unwrap();
+            self.0 += 1;
+            (id, None)
+        }
+    }
+}

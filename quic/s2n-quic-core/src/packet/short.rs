@@ -62,6 +62,12 @@ pub enum SpinBit {
     One,
 }
 
+impl Default for SpinBit {
+    fn default() -> Self {
+        Self::Zero
+    }
+}
+
 impl SpinBit {
     fn from_tag(tag: Tag) -> Self {
         if tag & SPIN_BIT_MASK == SPIN_BIT_MASK {
@@ -105,6 +111,12 @@ pub struct ProtectedKeyPhase;
 pub enum KeyPhase {
     Zero,
     One,
+}
+
+impl Default for KeyPhase {
+    fn default() -> Self {
+        Self::Zero
+    }
 }
 
 impl KeyPhase {
