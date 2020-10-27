@@ -219,19 +219,28 @@ pub trait ConnectionTrait: Sized {
         mut payload: DecoderBufferMut,
     ) -> Result<(), TransportError> {
         while !payload.is_empty() {
-            let (packet, remaining) = ProtectedPacket::decode(payload, connection_id_validator)?;
-            payload = remaining;
+            if let Ok((packet, remaining)) =
+                ProtectedPacket::decode(payload, connection_id_validator)
+            {
+                payload = remaining;
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#12.2
-            //# Senders MUST NOT coalesce QUIC packets for different connections into
-            //# a single UDP datagram.  Receivers SHOULD ignore any subsequent
-            //# packets with a different Destination Connection ID than the first
-            //# packet in the datagram.
-            if original_connection_id.as_bytes() != packet.destination_connection_id() {
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#12.2
+                //# Senders MUST NOT coalesce QUIC packets for different connections into
+                //# a single UDP datagram.  Receivers SHOULD ignore any subsequent
+                //# packets with a different Destination Connection ID than the first
+                //# packet in the datagram.
+                if original_connection_id.as_bytes() != packet.destination_connection_id() {
+                    break;
+                }
+
+                self.handle_packet(shared_state, datagram, path_id, packet)?;
+            } else {
+                // ignore any errors that occur on the remaining packets
+                //
+                // Some implementations will pad their initial packets with 0s, which won't correctly
+                // decode into anything meaningful.
                 break;
             }
-
-            self.handle_packet(shared_state, datagram, path_id, packet)?;
         }
 
         Ok(())
