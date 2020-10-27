@@ -10,18 +10,20 @@ use crate::{
 #[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
 #[non_exhaustive]
 pub enum StreamError {
-    /// The Stream ID which was referenced is invalid and/or no longer tracked
-    /// by the Connection.
+    /// The Stream ID which was referenced is invalid
+    ///
+    /// This could mean the ID is no longer tracked by the Connection.
     InvalidStream,
     /// The Stream had been reset by the peer via a `RESET_STREAM` frame.
     ///
     /// Inside this frame the peer will deliver an error code, which will be
     /// provided by the parameter.
     StreamReset(ApplicationErrorCode),
-    /// A send attempt had been performed on a Stream after the Stream was
-    /// already closed.
+    /// A send attempt had been performed on a Stream after it was closed
     SendAfterFinish,
-    /// Data could not be written to a stream, because the maximum possible amount
+    /// Attempting to write data would exceed the stream limit
+    ///
+    /// This is caused because the maximum possible amount
     /// of data (2^62-1 bytes) had already been writtten to the
     /// Stream.
     MaxStreamDataSizeExceeded,

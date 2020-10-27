@@ -12,14 +12,18 @@ pub enum Error {
     /// The connection was closed without an error
     Closed,
 
-    /// The connection was closed on the transport level either locally or
-    /// by the peer. The argument contains the error code which the transport
-    /// provided in order to close the connection.
+    /// The connection was closed on the transport level
+    ///
+    /// This can occur either locally or by the peer. The argument contains
+    /// the error code which the transport provided in order to close the
+    /// connection.
     Transport(u64),
 
-    /// The connection was closed on the application level either locally or
-    /// by the peer. The argument contains the error code which the application
-    /// supplied in order to close the connection.
+    /// The connection was closed on the application level
+    ///
+    /// This can occur either locally or by the peer. The argument contains
+    /// the error code which the application/ supplied in order to close the
+    /// connection.
     Application(ApplicationErrorCode),
 
     /// The connection was closed because the connection's idle timer expired
@@ -44,16 +48,22 @@ impl ApplicationErrorExt for Error {
 
 impl From<ApplicationErrorCode> for Error {
     fn from(error_code: ApplicationErrorCode) -> Self {
-        Self::Application(error_code)
+        match error_code.into() {
+            0u64 => Self::Closed,
+            _ => Self::Application(error_code),
+        }
     }
 }
 
 impl From<TransportError> for Error {
     fn from(error: TransportError) -> Self {
         if let Some(error_code) = error.application_error_code() {
-            Self::Application(error_code)
+            error_code.into()
         } else {
-            Self::Transport(error.code.as_u64())
+            match error.code.as_u64() {
+                0 => Self::Closed,
+                code => Self::Transport(code),
+            }
         }
     }
 }
@@ -61,9 +71,12 @@ impl From<TransportError> for Error {
 impl<'a> From<ConnectionClose<'a>> for Error {
     fn from(error: ConnectionClose) -> Self {
         if let Some(error_code) = error.application_error_code() {
-            Self::Application(error_code)
+            error_code.into()
         } else {
-            Self::Transport(error.error_code.as_u64())
+            match error.error_code.as_u64() {
+                0 => Self::Closed,
+                code => Self::Transport(code),
+            }
         }
     }
 }

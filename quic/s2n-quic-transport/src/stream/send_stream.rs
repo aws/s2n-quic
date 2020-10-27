@@ -824,11 +824,23 @@ impl SendStream {
             store_waker!(true);
         }
 
-        // inform the caller of the available space to send
-        if self.data_sender.state() == DataSenderState::Sending {
-            response.bytes.available = self.data_sender.available_buffer_space();
-            // assume chunks are 1 bytes
-            response.chunks.available = response.bytes.available;
+        match self.data_sender.state() {
+            DataSenderState::Sending => {
+                // inform the caller of the available space to send
+                response.bytes.available = self.data_sender.available_buffer_space();
+                // assume chunks are 1 bytes
+                response.chunks.available = response.bytes.available;
+            }
+            DataSenderState::Finishing => {
+                response.status = ops::Status::Finishing;
+            }
+            DataSenderState::FinishAcknowledged => {
+                response.status = ops::Status::Finished;
+            }
+            DataSenderState::Cancelled => {
+                // TODO determine if the peer has acknowledged the reset
+                response.status = ops::Status::Reset;
+            }
         }
 
         Ok(response)

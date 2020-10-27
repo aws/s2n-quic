@@ -149,8 +149,8 @@ impl<ConfigType: connection::Config> ConnectionImpl<ConfigType> {
         //# initiating an immediate close (Section 10.3) if it abandons the
         //# connection prior to the effective value.
 
-        // TODO: Derive this from transport parameters
-        Duration::from_millis(5000)
+        // TODO: Derive this from transport parameters and pto
+        Duration::from_secs(30)
     }
 
     fn restart_peer_idle_timer(&mut self, timestamp: Timestamp) {
