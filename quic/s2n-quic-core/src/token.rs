@@ -39,3 +39,48 @@ pub enum Source {
     RetryPacket,
     NewTokenFrame,
 }
+
+#[cfg(any(test, feature = "testing"))]
+pub mod testing {
+    use super::*;
+
+    #[derive(Debug, Default)]
+    pub struct Format(u64);
+
+    impl super::Format for Format {
+        const TOKEN_LEN: usize = 0;
+
+        fn generate_new_token(
+            &mut self,
+            _peer_address: &SocketAddress,
+            _destination_connection_id: &connection::Id,
+            _source_connection_id: &connection::Id,
+            _output_buffer: &mut [u8],
+        ) -> Option<()> {
+            // TODO implement one for testing
+            None
+        }
+
+        fn generate_retry_token(
+            &mut self,
+            _peer_address: &SocketAddress,
+            _destination_connection_id: &connection::Id,
+            _original_destination_connection_id: &connection::Id,
+            _output_buffer: &mut [u8],
+        ) -> Option<()> {
+            // TODO implement one for testing
+            None
+        }
+
+        fn validate_token(
+            &mut self,
+            _peer_address: &SocketAddress,
+            _destination_connection_id: &connection::Id,
+            _source_connection_id: &connection::Id,
+            _token: &[u8],
+        ) -> Option<Source> {
+            // TODO implement one for testing
+            None
+        }
+    }
+}

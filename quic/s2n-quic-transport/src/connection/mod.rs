@@ -135,3 +135,52 @@ pub struct Limits {
     // temporary field to supress clippy::trivially_copy_pass_by_ref warnings
     _padding: u64,
 }
+
+#[cfg(any(test, feature = "testing"))]
+pub mod testing {
+    use super::*;
+
+    #[derive(Debug)]
+    pub struct Server;
+
+    impl Config for Server {
+        type Stream = crate::stream::StreamImpl;
+        type CongestionController = crate::recovery::CubicCongestionController;
+        type TLSSession = tls::testing::Session;
+        const ENDPOINT_TYPE: endpoint::EndpointType = endpoint::EndpointType::Server;
+
+        fn local_flow_control_limits(&self) -> InitialFlowControlLimits {
+            todo!()
+        }
+
+        fn local_ack_settings(&self) -> AckSettings {
+            todo!()
+        }
+
+        fn connection_limits(&self) -> Limits {
+            todo!()
+        }
+    }
+
+    #[derive(Debug)]
+    pub struct Client;
+
+    impl Config for Client {
+        type Stream = crate::stream::StreamImpl;
+        type CongestionController = crate::recovery::CubicCongestionController;
+        type TLSSession = tls::testing::Session;
+        const ENDPOINT_TYPE: endpoint::EndpointType = endpoint::EndpointType::Client;
+
+        fn local_flow_control_limits(&self) -> InitialFlowControlLimits {
+            todo!()
+        }
+
+        fn local_ack_settings(&self) -> AckSettings {
+            todo!()
+        }
+
+        fn connection_limits(&self) -> Limits {
+            todo!()
+        }
+    }
+}

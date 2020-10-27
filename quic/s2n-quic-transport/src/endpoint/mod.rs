@@ -22,6 +22,7 @@ use s2n_quic_core::{
 
 mod config;
 mod initial;
+mod version;
 
 pub use config::{Config, Context};
 /// re-export core
@@ -46,6 +47,7 @@ pub struct Endpoint<Cfg: Config> {
     /// This is not a local variable in order to reuse the allocated queue capacity in between
     /// [`Endpoint`] interactions.
     dequeued_wakeups: VecDeque<InternalConnectionId>,
+    version_negotiator: version::Negotiator<Cfg>,
 }
 
 // Safety: The endpoint is marked as `!Send`, because the struct contains `Rc`s.
@@ -67,6 +69,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             timer_manager: TimerManager::new(),
             wakeup_queue: WakeupQueue::new(),
             dequeued_wakeups: VecDeque::new(),
+            version_negotiator: version::Negotiator::default(),
         };
 
         (endpoint, acceptor)
@@ -111,6 +114,15 @@ impl<Cfg: Config> Endpoint<Cfg> {
             dbg!("invalid packet received");
             return;
         };
+
+        // ensure the version is supported
+        if self
+            .version_negotiator
+            .on_packet(datagram, &packet)
+            .is_err()
+        {
+            return;
+        }
 
         let connection_id = match connection::Id::try_from_bytes(packet.destination_connection_id())
         {
@@ -225,7 +237,9 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 }
             });
 
-        let _ = transmit_result; // TODO: Do something in the error case
+        if transmit_result.is_ok() {
+            self.version_negotiator.on_transmit(&mut queue);
+        }
     }
 
     /// Handles all timer events. This should be called when a timer expired
@@ -299,5 +313,64 @@ impl<'a, Cfg: Config> core::future::Future for PendingWakeups<'a, Cfg> {
     ) -> core::task::Poll<Self::Output> {
         let timestamp = self.timestamp;
         self.endpoint.poll_pending_wakeups(cx, timestamp)
+    }
+}
+
+#[cfg(any(test, feature = "testing"))]
+pub mod testing {
+    use super::*;
+
+    #[derive(Debug)]
+    pub struct Server;
+
+    impl Config for Server {
+        type CongestionControllerEndpoint = crate::recovery::testing::Endpoint;
+        type TLSEndpoint = s2n_quic_core::crypto::tls::testing::Endpoint;
+        type ConnectionConfig = connection::testing::Server;
+        type Connection = connection::Implementation<Self::ConnectionConfig>;
+        type EndpointLimits = Limits;
+        type ConnectionIdFormat = connection::id::testing::Format;
+        type TokenFormat = s2n_quic_core::token::testing::Format;
+
+        fn create_connection_config(&mut self) -> Self::ConnectionConfig {
+            todo!()
+        }
+
+        fn context(&mut self) -> super::Context<Self> {
+            todo!()
+        }
+    }
+
+    #[derive(Debug)]
+    pub struct Client;
+
+    impl Config for Client {
+        type CongestionControllerEndpoint = crate::recovery::testing::Endpoint;
+        type TLSEndpoint = s2n_quic_core::crypto::tls::testing::Endpoint;
+        type ConnectionConfig = connection::testing::Client;
+        type Connection = connection::Implementation<Self::ConnectionConfig>;
+        type EndpointLimits = Limits;
+        type ConnectionIdFormat = connection::id::testing::Format;
+        type TokenFormat = s2n_quic_core::token::testing::Format;
+
+        fn create_connection_config(&mut self) -> Self::ConnectionConfig {
+            todo!()
+        }
+
+        fn context(&mut self) -> super::Context<Self> {
+            todo!()
+        }
+    }
+
+    #[derive(Debug)]
+    pub struct Limits;
+
+    impl super::Limits for Limits {
+        fn on_connection_attempt(
+            &mut self,
+            _attempt: &super::limits::ConnectionAttempt,
+        ) -> super::limits::Outcome {
+            super::limits::Outcome::Allow
+        }
     }
 }
