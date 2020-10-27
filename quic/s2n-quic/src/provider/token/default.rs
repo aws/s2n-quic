@@ -5,9 +5,8 @@
 //!
 //! The default provider does not support tokens delivered in a NEW_TOKEN frame.
 
-extern crate cuckoofilter;
-
 use core::{mem::size_of, time::Duration};
+use hash_hasher::HashHasher;
 use ring::{
     digest, hmac,
     rand::{SecureRandom, SystemRandom},
@@ -24,7 +23,7 @@ struct BaseKey {
     key: Option<(Timestamp, hmac::Key)>,
 
     // Each key tracks tokens it has verified, preventing duplicates
-    duplicate_filter: cuckoofilter::CuckooFilter<TokenHasher>,
+    duplicate_filter: cuckoofilter::CuckooFilter<HashHasher>,
 }
 
 impl BaseKey {
@@ -164,6 +163,13 @@ impl Format {
         original_destination_connection_id: &connection::Id,
         token: &Token,
     ) -> Option<()> {
+        if self.keys[token.header.key_id() as usize]
+            .duplicate_filter
+            .contains(token)
+        {
+            return None;
+        }
+
         let tag = self.tag_retry_token(
             token,
             peer_address,
@@ -171,14 +177,16 @@ impl Format {
             original_destination_connection_id,
         )?;
 
-        let key = &mut self.keys[token.header.key_id() as usize];
-        if key.duplicate_filter.contains(token) {
-            return None;
-        }
-
         if ring::constant_time::verify_slices_are_equal(&token.hmac, &tag.as_ref()).is_ok() {
-            key.duplicate_filter.add(token);
-            return Some(());
+            match self.keys[token.header.key_id() as usize]
+                .duplicate_filter
+                .add(token)
+            {
+                Ok(_) => return Some(()),
+                // This error indicates our value was stored, but another value was evicted from
+                // the filter. We want to continue to connection in this case.
+                Err(cuckoofilter::CuckooError::NotEnoughSpace) => return Some(()),
+            }
         }
 
         None
@@ -352,29 +360,10 @@ struct Token {
 
 s2n_codec::zerocopy_value_codec!(Token);
 
-#[derive(Debug, Default)]
-struct TokenHasher {
-    bytes: [u8; 8],
-}
-
-impl Hasher for TokenHasher {
-    fn write(&mut self, bytes: &[u8]) {
-        // TokenHasher expects a 32 byte HMAC to be written. Other values are ignored.
-        if bytes.len() == 32 {
-            self.bytes.copy_from_slice(&bytes[0..8]);
-        }
-    }
-
-    fn finish(&self) -> u64 {
-        u64::from_be_bytes(self.bytes)
-    }
-}
-
 impl Hash for Token {
     /// Token hashes are taken from the hmac
     fn hash<H: Hasher>(&self, state: &mut H) {
         state.write(&self.hmac);
-        state.finish();
     }
 }
 
@@ -386,42 +375,6 @@ mod tests {
     use std::sync::Arc;
 
     const TEST_KEY_ROTATION_PERIOD: Duration = Duration::from_millis(1000);
-
-    #[test]
-    fn test_token_hash() {
-        let first_token = Token {
-            header: Header(0),
-            nonce: [0; 32],
-            hmac: [0; 32],
-        };
-
-        let second_token = Token {
-            header: Header(0),
-            nonce: [0; 32],
-            hmac: [1; 32],
-        };
-
-        let third_token = Token {
-            header: Header(0),
-            nonce: [0; 32],
-            hmac: [0; 32],
-        };
-
-        let mut hasher = TokenHasher::default();
-        first_token.hash(&mut hasher);
-        let first_hash = hasher.finish();
-
-        let mut hasher = TokenHasher::default();
-        second_token.hash(&mut hasher);
-        let second_hash = hasher.finish();
-
-        let mut hasher = TokenHasher::default();
-        third_token.hash(&mut hasher);
-        let third_hash = hasher.finish();
-
-        assert!(first_hash == third_hash);
-        assert!(first_hash != second_hash);
-    }
 
     #[test]
     fn test_header() {
@@ -578,9 +531,6 @@ mod tests {
 
     #[test]
     fn test_duplicate_token_detection() {
-        let clock = Arc::new(time::testing::MockClock::new());
-        time::testing::set_local_clock(clock.clone());
-
         let mut format = Format {
             key_rotation_period: TEST_KEY_ROTATION_PERIOD,
             keys: [
