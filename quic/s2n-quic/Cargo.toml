@@ -15,6 +15,7 @@ rustls = ["s2n-quic-rustls"]
 [dependencies]
 bytes = { version = "0.6", default-features = false }
 cfg-if = "1.0"
+cuckoofilter = "0.3"
 futures = { version = "0.3", default-features = false }
 rand = { version = "0.7", optional = true }
 ring = { version = "0.16", optional = true, default-features = false }

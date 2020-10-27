@@ -5,6 +5,8 @@
 //!
 //! The default provider does not support tokens delivered in a NEW_TOKEN frame.
 
+extern crate cuckoofilter;
+
 use core::{mem::size_of, time::Duration};
 use ring::{
     digest, hmac,
@@ -12,15 +14,17 @@ use ring::{
 };
 use s2n_codec::{DecoderBuffer, DecoderBufferMut};
 use s2n_quic_core::{connection, inet::SocketAddress, time::Timestamp, token::Source};
+use std::hash::{Hash, Hasher};
 use zerocopy::{AsBytes, FromBytes, Unaligned};
 
-#[derive(Debug)]
 struct BaseKey {
     active_duration: Duration,
 
     // HMAC key for signing and verifying
     key: Option<(Timestamp, hmac::Key)>,
-    // TODO the key could keep track of signed tokens, to support preventing duplicates
+
+    // Each key tracks tokens it has verified, preventing duplicates
+    duplicate_filter: cuckoofilter::CuckooFilter<TokenHasher>,
 }
 
 impl BaseKey {
@@ -28,6 +32,9 @@ impl BaseKey {
         Self {
             active_duration,
             key: None,
+            duplicate_filter: cuckoofilter::CuckooFilter::with_capacity(
+                cuckoofilter::DEFAULT_CAPACITY,
+            ),
         }
     }
 
@@ -53,6 +60,11 @@ impl BaseKey {
         let mut key_material = [0; digest::SHA256_OUTPUT_LEN];
         SystemRandom::new().fill(&mut key_material[..]).ok()?;
         let key = hmac::Key::new(hmac::HMAC_SHA256, &key_material);
+
+        // TODO clear the filter instead of recreating. This is pending a merge to crates.io
+        // (https://github.com/axiomhq/rust-cuckoofilter/pull/52)
+        self.duplicate_filter =
+            cuckoofilter::CuckooFilter::with_capacity(cuckoofilter::DEFAULT_CAPACITY);
 
         self.key = Some((expires_at, key));
 
@@ -159,9 +171,17 @@ impl Format {
             original_destination_connection_id,
         )?;
 
-        // TODO check filter for duplicate tokens
+        let key = &mut self.keys[token.header.key_id() as usize];
+        if key.duplicate_filter.contains(token) {
+            return None;
+        }
 
-        ring::constant_time::verify_slices_are_equal(&token.hmac, &tag.as_ref()).ok()
+        if ring::constant_time::verify_slices_are_equal(&token.hmac, &tag.as_ref()).is_ok() {
+            key.duplicate_filter.add(token);
+            return Some(());
+        }
+
+        None
     }
 }
 
@@ -332,6 +352,32 @@ struct Token {
 
 s2n_codec::zerocopy_value_codec!(Token);
 
+#[derive(Debug, Default)]
+struct TokenHasher {
+    bytes: [u8; 8],
+}
+
+impl Hasher for TokenHasher {
+    fn write(&mut self, bytes: &[u8]) {
+        // TokenHasher expects a 32 byte HMAC to be written. Other values are ignored.
+        if bytes.len() == 32 {
+            self.bytes.copy_from_slice(&bytes[0..8]);
+        }
+    }
+
+    fn finish(&self) -> u64 {
+        u64::from_be_bytes(self.bytes)
+    }
+}
+
+impl Hash for Token {
+    /// Token hashes are taken from the hmac
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        state.write(&self.hmac);
+        state.finish();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -340,6 +386,42 @@ mod tests {
     use std::sync::Arc;
 
     const TEST_KEY_ROTATION_PERIOD: Duration = Duration::from_millis(1000);
+
+    #[test]
+    fn test_token_hash() {
+        let first_token = Token {
+            header: Header(0),
+            nonce: [0; 32],
+            hmac: [0; 32],
+        };
+
+        let second_token = Token {
+            header: Header(0),
+            nonce: [0; 32],
+            hmac: [1; 32],
+        };
+
+        let third_token = Token {
+            header: Header(0),
+            nonce: [0; 32],
+            hmac: [0; 32],
+        };
+
+        let mut hasher = TokenHasher::default();
+        first_token.hash(&mut hasher);
+        let first_hash = hasher.finish();
+
+        let mut hasher = TokenHasher::default();
+        second_token.hash(&mut hasher);
+        let second_hash = hasher.finish();
+
+        let mut hasher = TokenHasher::default();
+        third_token.hash(&mut hasher);
+        let third_hash = hasher.finish();
+
+        assert!(first_hash == third_hash);
+        assert!(first_hash != second_hash);
+    }
 
     #[test]
     fn test_header() {
@@ -357,7 +439,7 @@ mod tests {
     }
 
     #[test]
-    fn test_valid_retry_token() {
+    fn test_valid_retry_tokens() {
         let clock = Arc::new(time::testing::MockClock::new());
         time::testing::set_local_clock(clock.clone());
 
@@ -371,17 +453,28 @@ mod tests {
             current_key: 0,
         };
 
-        let conn_id = connection::Id::EMPTY;
+        let dest_conn_id = connection::Id::EMPTY;
+        let orig_conn_id = connection::Id::try_from_bytes(&[0, 1, 2, 3, 4, 5, 6, 7]).unwrap();
         let addr = SocketAddress::default();
-        let mut buf = [0; Format::TOKEN_LEN];
+        let mut first_token = [0; Format::TOKEN_LEN];
+        let mut second_token = [0; Format::TOKEN_LEN];
 
+        // Generate two tokens for different connections
         format
-            .generate_retry_token(&addr, &conn_id, &conn_id, &mut buf)
+            .generate_retry_token(&addr, &dest_conn_id, &orig_conn_id, &mut first_token)
             .unwrap();
 
+        format
+            .generate_retry_token(&addr, &orig_conn_id, &dest_conn_id, &mut second_token)
+            .unwrap();
+
+        // Both tokens should pass validation
         clock.adjust_by(TEST_KEY_ROTATION_PERIOD);
         assert!(format
-            .validate_token(&addr, &conn_id, &conn_id, &buf)
+            .validate_token(&addr, &dest_conn_id, &orig_conn_id, &first_token)
+            .is_some());
+        assert!(format
+            .validate_token(&addr, &orig_conn_id, &dest_conn_id, &second_token)
             .is_some());
     }
 
@@ -480,6 +573,39 @@ mod tests {
         let wrong_conn_id = connection::Id::try_from_bytes(&[0, 1, 2]).unwrap();
         assert!(format
             .validate_token(&addr, &wrong_conn_id, &conn_id, &buf)
+            .is_none());
+    }
+
+    #[test]
+    fn test_duplicate_token_detection() {
+        let clock = Arc::new(time::testing::MockClock::new());
+        time::testing::set_local_clock(clock.clone());
+
+        let mut format = Format {
+            key_rotation_period: TEST_KEY_ROTATION_PERIOD,
+            keys: [
+                BaseKey::new(TEST_KEY_ROTATION_PERIOD * 2),
+                BaseKey::new(TEST_KEY_ROTATION_PERIOD * 2),
+            ],
+            current_key_rotates_at: time::now(),
+            current_key: 0,
+        };
+
+        let conn_id = connection::Id::EMPTY;
+        let addr = SocketAddress::default();
+        let mut buf = [0; Format::TOKEN_LEN];
+        format
+            .generate_retry_token(&addr, &conn_id, &conn_id, &mut buf)
+            .unwrap();
+
+        assert_eq!(
+            format.validate_token(&addr, &conn_id, &conn_id, &buf),
+            Some(Source::RetryPacket)
+        );
+
+        // Second attempt with the same token should fail because the token is a duplicate
+        assert!(format
+            .validate_token(&addr, &conn_id, &conn_id, &buf)
             .is_none());
     }
 }
