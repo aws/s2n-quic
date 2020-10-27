@@ -7,6 +7,7 @@ on:
     paths:
       - '**/Cargo.toml'
       - '**/Cargo.lock'
+      - '.github/workflows/dependencies.yml'
 
   pull_request:
     branches:
@@ -14,6 +15,7 @@ on:
     paths:
       - '**/Cargo.toml'
       - '**/Cargo.lock'
+      - '.github/workflows/dependencies.yml'
 
   schedule:
     # run every morning at 10am Pacific Time
@@ -24,6 +26,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+
+      - uses: actions-rs/toolchain@v1
+        id: toolchain
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
 
       - uses: actions-rs/install@v0.1
         with:
@@ -40,6 +49,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+
+      - uses: actions-rs/toolchain@v1
+        id: toolchain
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
 
       - uses: EmbarkStudios/cargo-deny-action@v1
         with:
