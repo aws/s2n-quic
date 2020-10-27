@@ -69,6 +69,7 @@ pub mod testing {
     use crate::crypto::{error::CryptoError, key::testing::Key, CryptoSuite};
     use s2n_codec::EncoderValue;
 
+    #[derive(Debug)]
     pub struct Endpoint;
 
     impl super::Endpoint for Endpoint {
@@ -90,6 +91,7 @@ pub mod testing {
         }
     }
 
+    #[derive(Debug)]
     pub struct Session;
 
     impl super::Session for Session {
