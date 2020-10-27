@@ -36,16 +36,16 @@ macro_rules! is_supported {
     };
 }
 
-impl<C: endpoint::Config> Default for Negotiator<C> {
+impl<Config: endpoint::Config> Default for Negotiator<Config> {
     fn default() -> Self {
         Self::new(DEFAULT_MAX_PEERS)
     }
 }
 
-impl<C: endpoint::Config> Negotiator<C> {
+impl<Config: endpoint::Config> Negotiator<Config> {
     pub fn new(max_peers: usize) -> Self {
         Self {
-            transmissions: if C::ENDPOINT_TYPE.is_server() {
+            transmissions: if Config::ENDPOINT_TYPE.is_server() {
                 VecDeque::with_capacity(max_peers)
             } else {
                 VecDeque::new()
@@ -61,7 +61,7 @@ impl<C: endpoint::Config> Negotiator<C> {
         packet: &ProtectedPacket,
     ) -> Result<(), TransportError> {
         // always forward packets for clients on to connections
-        if C::ENDPOINT_TYPE.is_client() {
+        if Config::ENDPOINT_TYPE.is_client() {
             return Ok(());
         }
 
@@ -109,7 +109,7 @@ impl<C: endpoint::Config> Negotiator<C> {
 
     pub fn on_transmit<Tx: tx::Queue>(&mut self, queue: &mut Tx) {
         // clients don't transmit version negotiation packets
-        if C::ENDPOINT_TYPE.is_client() {
+        if Config::ENDPOINT_TYPE.is_client() {
             return;
         }
 
