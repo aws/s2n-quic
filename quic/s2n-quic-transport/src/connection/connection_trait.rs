@@ -224,21 +224,33 @@ pub trait ConnectionTrait: Sized {
             {
                 payload = remaining;
 
-                //= https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#12.2
-                //# Senders MUST NOT coalesce QUIC packets for different connections into
-                //# a single UDP datagram.  Receivers SHOULD ignore any subsequent
-                //# packets with a different Destination Connection ID than the first
-                //# packet in the datagram.
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.2
+                //# Senders MUST NOT coalesce QUIC packets
+                //# with different connection IDs into a single UDP datagram.  Receivers
+                //# SHOULD ignore any subsequent packets with a different Destination
+                //# Connection ID than the first packet in the datagram.
                 if original_connection_id.as_bytes() != packet.destination_connection_id() {
                     break;
                 }
 
+                // Packet processing should silently discard packets that fail decryption
+                // but this method could return an error on protocol violations which would result
+                // in shutting down the connection anyway. In this case this will return early
+                // without processing the remaining packets.
                 self.handle_packet(shared_state, datagram, path_id, packet)?;
             } else {
-                // ignore any errors that occur on the remaining packets
-                //
-                // Some implementations will pad their initial packets with 0s, which won't correctly
-                // decode into anything meaningful.
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.2
+                //# Every QUIC packet that is coalesced into a single UDP datagram is
+                //# separate and complete.  The receiver of coalesced QUIC packets MUST
+                //# individually process each QUIC packet and separately acknowledge
+                //# them, as if they were received as the payload of different UDP
+                //# datagrams.  For example, if decryption fails (because the keys are
+                //# not available or any other reason), the receiver MAY either discard
+                //# or buffer the packet for later processing and MUST attempt to process
+                //# the remaining packets.
+
+                // we choose to discard the rest of the datagram on parsing errors since it would
+                // be difficult to recover from an invalid packet.
                 break;
             }
         }
