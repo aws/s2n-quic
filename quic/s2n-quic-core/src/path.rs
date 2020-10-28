@@ -135,7 +135,7 @@ impl<CC: CongestionController> Path<CC> {
             //# recovery if the data in the lost packet is retransmitted and is
             //# similar to TCP as described in Section 5 of [RFC6675].
             transmission::Constraint::RetransmissionOnly
-        } else if self.congestion_controller.available_congestion_window() < (self.mtu as u32) {
+        } else if self.congestion_controller.is_congestion_limited() {
             //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7
             //# An endpoint MUST NOT send a packet if it would cause bytes_in_flight
             //# (see Appendix B.2) to be larger than the congestion window, unless

@@ -110,9 +110,11 @@ impl AddAssign<usize> for BytesInFlight {
 }
 
 impl CongestionController for CubicCongestionController {
-    fn available_congestion_window(&self) -> u32 {
-        self.congestion_window
-            .saturating_sub(self.bytes_in_flight.0)
+    fn is_congestion_limited(&self) -> bool {
+        let available_congestion_window = self
+            .congestion_window
+            .saturating_sub(self.bytes_in_flight.0);
+        available_congestion_window < self.max_datagram_size as u32
     }
 
     fn requires_fast_retransmission(&self) -> bool {
@@ -122,7 +124,7 @@ impl CongestionController for CubicCongestionController {
     fn on_packet_sent(&mut self, time_sent: Timestamp, bytes_sent: usize) {
         self.bytes_in_flight += bytes_sent;
 
-        if self.is_under_utilized() {
+        if !self.is_congestion_limited() {
             if let CongestionAvoidance(ref mut avoidance_start_time) = self.state {
                 //= https://tools.ietf.org/rfc/rfc8312.txt#5.8
                 //# CUBIC does not raise its congestion window size if the flow is
@@ -168,7 +170,7 @@ impl CongestionController for CubicCongestionController {
         ack_receive_time: Timestamp,
     ) {
         // Check if the congestion window is under utilized before updating bytes in flight
-        let under_utilized = self.is_under_utilized();
+        let under_utilized = !self.is_congestion_limited();
         self.bytes_in_flight -= sent_bytes;
 
         if under_utilized {
@@ -344,14 +346,6 @@ impl CubicCongestionController {
     //# congestion.  The RECOMMENDED value is 2 * max_datagram_size.
     fn minimum_window(&self) -> u32 {
         2 * self.max_datagram_size as u32
-    }
-
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.8
-    //# When bytes in flight is smaller than the congestion window and
-    //# sending is not pacing limited, the congestion window is under-
-    //# utilized.
-    fn is_under_utilized(&self) -> bool {
-        self.bytes_in_flight.0 < self.congestion_window
     }
 
     fn congestion_avoidance(&mut self, t: Duration, rtt: Duration, sent_bytes: usize) {
@@ -638,28 +632,21 @@ mod test {
 
     #[test]
     #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.8")]
-    fn is_under_utilized() {
-        let mut cc = CubicCongestionController::new(1000);
+    fn is_congestion_limited() {
+        let max_datagram_size = 1000;
+        let mut cc = CubicCongestionController::new(max_datagram_size);
         cc.congestion_window = 1000;
         cc.bytes_in_flight = BytesInFlight(100);
 
-        assert!(cc.is_under_utilized());
+        assert!(cc.is_congestion_limited());
 
-        cc.bytes_in_flight = BytesInFlight(1000);
+        cc.congestion_window = 1100;
 
-        assert!(!cc.is_under_utilized());
-    }
-
-    #[test]
-    fn available_congestion_window() {
-        let mut cc = CubicCongestionController::new(1000);
-        cc.congestion_window = 1000;
-        cc.bytes_in_flight = BytesInFlight(100);
-
-        assert_eq!(cc.available_congestion_window(), 900);
+        assert!(!cc.is_congestion_limited());
 
         cc.bytes_in_flight = BytesInFlight(2000);
-        assert_eq!(cc.available_congestion_window(), 0);
+
+        assert!(cc.is_congestion_limited());
     }
 
     #[test]
@@ -713,10 +700,10 @@ mod test {
         let now = s2n_quic_platform::time::now();
 
         cc.congestion_window = 100_000;
-        cc.bytes_in_flight = BytesInFlight(99900);
+        cc.bytes_in_flight = BytesInFlight(99_000);
         cc.state = CongestionAvoidance(now);
 
-        cc.on_packet_sent(now + Duration::from_secs(10), 100);
+        cc.on_packet_sent(now + Duration::from_secs(10), 1000);
 
         assert_eq!(cc.bytes_in_flight.0, 100_000);
         assert_eq!(
@@ -726,9 +713,9 @@ mod test {
         // Not application limited so the CongestionAvoidance start stays the same
         assert_eq!(cc.state, CongestionAvoidance(now));
 
-        cc.bytes_in_flight = BytesInFlight(99800);
+        cc.bytes_in_flight = BytesInFlight(97500);
 
-        cc.on_packet_sent(now + Duration::from_secs(25), 100);
+        cc.on_packet_sent(now + Duration::from_secs(25), 1000);
 
         // Application limited so the CongestionAvoidance start moves up by 15 seconds
         // (time_of_last_sent_packet - time_sent)
