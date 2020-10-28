@@ -430,17 +430,17 @@ impl Manager {
                 break;
             }
 
-            let is_earlier = lost_send_time.map_or(false, |lost_send_time| {
+            let time_threshold_exceeded = lost_send_time.map_or(false, |lost_send_time| {
                 unacked_sent_info.time_sent <= lost_send_time
             });
 
-            let is_beyond_threshold = largest_acked_packet
+            let packet_number_threshold_exceeded = largest_acked_packet
                 .checked_distance(*unacked_packet_number)
                 .expect("largest_acked_packet >= unacked_packet_number")
                 >= K_PACKET_THRESHOLD;
 
             // Mark packet as lost, or set time when it should be marked.
-            if is_earlier || is_beyond_threshold {
+            if time_threshold_exceeded || packet_number_threshold_exceeded {
                 sent_packets_to_remove.push(*unacked_packet_number);
 
                 loss_info.bytes_in_flight += unacked_sent_info.sent_bytes as usize;

@@ -36,6 +36,19 @@ pub enum Error {
     Unspecified,
 }
 
+impl Error {
+    fn from_error_code(code: u64) -> Self {
+        match code {
+            // The connection closed without an error
+            code if code == TransportError::NO_ERROR.code.as_u64() => Self::Closed,
+            // The connection closed without an error at the application layer
+            code if code == TransportError::APPLICATION_ERROR.code.as_u64() => Self::Closed,
+            // The connection closed with an actual error
+            code => Self::Transport(code),
+        }
+    }
+}
+
 impl ApplicationErrorExt for Error {
     fn application_error_code(&self) -> Option<ApplicationErrorCode> {
         if let Self::Application(error_code) = self {
@@ -48,10 +61,7 @@ impl ApplicationErrorExt for Error {
 
 impl From<ApplicationErrorCode> for Error {
     fn from(error_code: ApplicationErrorCode) -> Self {
-        match error_code.into() {
-            0u64 => Self::Closed,
-            _ => Self::Application(error_code),
-        }
+        Self::Application(error_code)
     }
 }
 
@@ -60,10 +70,7 @@ impl From<TransportError> for Error {
         if let Some(error_code) = error.application_error_code() {
             error_code.into()
         } else {
-            match error.code.as_u64() {
-                0 => Self::Closed,
-                code => Self::Transport(code),
-            }
+            Self::from_error_code(error.code.as_u64())
         }
     }
 }
@@ -73,10 +80,7 @@ impl<'a> From<ConnectionClose<'a>> for Error {
         if let Some(error_code) = error.application_error_code() {
             error_code.into()
         } else {
-            match error.error_code.as_u64() {
-                0 => Self::Closed,
-                code => Self::Transport(code),
-            }
+            Self::from_error_code(error.error_code.as_u64())
         }
     }
 }
