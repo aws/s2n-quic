@@ -288,7 +288,7 @@ macro_rules! impl_send_stream_trait {
                     return Ok(0).into();
                 }
 
-                let len = futures::ready!(self.poll_send_ready(cx))?;
+                let len = futures::ready!(self.poll_send_ready(cx))?.min(buf.len());
                 let data = bytes::Bytes::copy_from_slice(&buf[..len]);
                 self.send_data(data)?;
                 Ok(len).into()
@@ -304,6 +304,8 @@ macro_rules! impl_send_stream_trait {
                 }
 
                 let len = futures::ready!(self.poll_send_ready(cx))?;
+                let capacity = bufs.iter().map(|buf| buf.len()).sum();
+                let len = len.min(capacity);
 
                 let mut data = bytes::BytesMut::with_capacity(len);
                 for buf in bufs {
@@ -336,6 +338,31 @@ macro_rules! impl_send_stream_trait {
             ) -> core::task::Poll<std::io::Result<()>> {
                 futures::ready!($name::poll_finish(&mut self, cx))?;
                 Ok(()).into()
+            }
+        }
+
+        #[cfg(all(feature = "std", feature = "tokio"))]
+        impl tokio::io::AsyncWrite for $name {
+            fn poll_write(
+                self: core::pin::Pin<&mut Self>,
+                cx: &mut core::task::Context<'_>,
+                buf: &[u8],
+            ) -> core::task::Poll<std::io::Result<usize>> {
+                futures::io::AsyncWrite::poll_write(self, cx, buf)
+            }
+
+            fn poll_flush(
+                self: core::pin::Pin<&mut Self>,
+                cx: &mut core::task::Context<'_>,
+            ) -> core::task::Poll<std::io::Result<()>> {
+                futures::io::AsyncWrite::poll_flush(self, cx)
+            }
+
+            fn poll_shutdown(
+                self: core::pin::Pin<&mut Self>,
+                cx: &mut core::task::Context<'_>,
+            ) -> core::task::Poll<std::io::Result<()>> {
+                futures::io::AsyncWrite::poll_close(self, cx)
             }
         }
     };

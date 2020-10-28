@@ -12,14 +12,18 @@ pub enum Error {
     /// The connection was closed without an error
     Closed,
 
-    /// The connection was closed on the transport level either locally or
-    /// by the peer. The argument contains the error code which the transport
-    /// provided in order to close the connection.
+    /// The connection was closed on the transport level
+    ///
+    /// This can occur either locally or by the peer. The argument contains
+    /// the error code which the transport provided in order to close the
+    /// connection.
     Transport(u64),
 
-    /// The connection was closed on the application level either locally or
-    /// by the peer. The argument contains the error code which the application
-    /// supplied in order to close the connection.
+    /// The connection was closed on the application level
+    ///
+    /// This can occur either locally or by the peer. The argument contains
+    /// the error code which the application/ supplied in order to close the
+    /// connection.
     Application(ApplicationErrorCode),
 
     /// The connection was closed because the connection's idle timer expired
@@ -30,6 +34,19 @@ pub enum Error {
 
     /// The connection was closed due to an unspecified reason
     Unspecified,
+}
+
+impl Error {
+    fn from_error_code(code: u64) -> Self {
+        match code {
+            // The connection closed without an error
+            code if code == TransportError::NO_ERROR.code.as_u64() => Self::Closed,
+            // The connection closed without an error at the application layer
+            code if code == TransportError::APPLICATION_ERROR.code.as_u64() => Self::Closed,
+            // The connection closed with an actual error
+            code => Self::Transport(code),
+        }
+    }
 }
 
 impl ApplicationErrorExt for Error {
@@ -51,9 +68,9 @@ impl From<ApplicationErrorCode> for Error {
 impl From<TransportError> for Error {
     fn from(error: TransportError) -> Self {
         if let Some(error_code) = error.application_error_code() {
-            Self::Application(error_code)
+            error_code.into()
         } else {
-            Self::Transport(error.code.as_u64())
+            Self::from_error_code(error.code.as_u64())
         }
     }
 }
@@ -61,9 +78,9 @@ impl From<TransportError> for Error {
 impl<'a> From<ConnectionClose<'a>> for Error {
     fn from(error: ConnectionClose) -> Self {
         if let Some(error_code) = error.application_error_code() {
-            Self::Application(error_code)
+            error_code.into()
         } else {
-            Self::Transport(error.error_code.as_u64())
+            Self::from_error_code(error.error_code.as_u64())
         }
     }
 }

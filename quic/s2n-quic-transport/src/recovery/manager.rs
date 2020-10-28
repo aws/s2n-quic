@@ -409,7 +409,7 @@ impl Manager {
         // older than the largest acked packet, but not old enough to be considered lost yet
         self.loss_timer.cancel();
         // Packets sent before this time are deemed lost.
-        let lost_send_time = now - self.time_threshold;
+        let lost_send_time = now.checked_sub(self.time_threshold);
 
         // TODO: Investigate a more efficient mechanism for managing sent_packets
         //       See https://github.com/awslabs/s2n-quic/issues/69
@@ -430,14 +430,17 @@ impl Manager {
                 break;
             }
 
+            let time_threshold_exceeded = lost_send_time.map_or(false, |lost_send_time| {
+                unacked_sent_info.time_sent <= lost_send_time
+            });
+
+            let packet_number_threshold_exceeded = largest_acked_packet
+                .checked_distance(*unacked_packet_number)
+                .expect("largest_acked_packet >= unacked_packet_number")
+                >= K_PACKET_THRESHOLD;
+
             // Mark packet as lost, or set time when it should be marked.
-            if unacked_sent_info.time_sent <= lost_send_time // Time threshold
-                ||
-                largest_acked_packet // Packet threshold
-                    .checked_distance(*unacked_packet_number)
-                    .expect("largest_acked_packet >= unacked_packet_number")
-                    >= K_PACKET_THRESHOLD
-            {
+            if time_threshold_exceeded || packet_number_threshold_exceeded {
                 sent_packets_to_remove.push(*unacked_packet_number);
 
                 loss_info.bytes_in_flight += unacked_sent_info.sent_bytes as usize;

@@ -245,6 +245,17 @@ macro_rules! impl_receive_stream_trait {
                 Ok(copied_len).into()
             }
         }
+
+        #[cfg(all(feature = "std", feature = "tokio"))]
+        impl tokio::io::AsyncRead for $name {
+            fn poll_read(
+                self: core::pin::Pin<&mut Self>,
+                cx: &mut core::task::Context<'_>,
+                buf: &mut [u8],
+            ) -> core::task::Poll<std::io::Result<usize>> {
+                futures::io::AsyncRead::poll_read(self, cx, buf)
+            }
+        }
     };
 }
 
