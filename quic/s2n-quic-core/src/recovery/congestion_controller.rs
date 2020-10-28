@@ -31,9 +31,10 @@ impl<'a> PathInfo<'a> {
 }
 
 pub trait CongestionController: 'static + Clone + Send {
-    /// Gets the numbers of bytes remaining in the congestion window
-    /// considering the current bytes in flight
-    fn available_congestion_window(&self) -> u32;
+    /// Returns `true` if the congestion window does not have sufficient
+    /// space for a packet of `max_datagram_size` considering the current
+    /// bytes in flight
+    fn is_congestion_limited(&self) -> bool;
 
     /// Returns `true` if the current state of the congestion controller
     /// requires a packet to be transmitted without respecting the
@@ -84,8 +85,8 @@ pub mod testing {
     pub struct Unlimited {}
 
     impl CongestionController for Unlimited {
-        fn available_congestion_window(&self) -> u32 {
-            u32::max_value()
+        fn is_congestion_limited(&self) -> bool {
+            false
         }
 
         fn requires_fast_retransmission(&self) -> bool {
