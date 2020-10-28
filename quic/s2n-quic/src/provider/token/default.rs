@@ -186,6 +186,9 @@ impl Format {
                 // This error indicates our value was stored, but another value was evicted from
                 // the filter. We want to continue to connection in this case.
                 Err(cuckoofilter::CuckooError::NotEnoughSpace) => return Some(()),
+                // Handle any other possible errors
+                #[allow(unreachable_patterns)]
+                Err(_) => return Some(()),
             }
         }
 
