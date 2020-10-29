@@ -142,15 +142,22 @@ impl<ConfigType: connection::Config> ConnectionImpl<ConfigType> {
 
     /// Returns the idle timeout based on transport parameters of both peers
     fn get_idle_timer_duration(&self) -> Duration {
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#10.2
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.1
         //# Each endpoint advertises a max_idle_timeout, but the effective value
         //# at an endpoint is computed as the minimum of the two advertised
         //# values.  By announcing a max_idle_timeout, an endpoint commits to
-        //# initiating an immediate close (Section 10.3) if it abandons the
+        //# initiating an immediate close (Section 10.2) if it abandons the
         //# connection prior to the effective value.
 
-        // TODO: Derive this from transport parameters
-        Duration::from_millis(5000)
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.1
+        //# To avoid excessively small idle timeout periods, endpoints MUST
+        //# increase the idle timeout period to be at least three times the
+        //# current Probe Timeout (PTO).  This allows for multiple PTOs to
+        //# expire, and therefore multiple probes to be sent and lost, prior to
+        //# idle timeout.
+
+        // TODO: Derive this from transport parameters and pto
+        Duration::from_secs(30)
     }
 
     fn restart_peer_idle_timer(&mut self, timestamp: Timestamp) {
@@ -191,7 +198,7 @@ impl<ConfigType: connection::Config> ConnectionImpl<ConfigType> {
 /// This is a macro instead of a function because it removes the need to have a
 /// complex trait with a bunch of generics for each of the packet spaces.
 macro_rules! packet_validator {
-    ($packet:ident) => {
+    ($packet:ident $(, $inspect:expr)?) => {
         move |space| {
             let crypto = &space.crypto;
             let packet_number_decoder = space.packet_number_decoder();
@@ -201,17 +208,19 @@ macro_rules! packet_validator {
             //# existence of a protocol error in a peer or an attack.
 
             // In this case we silently drop the packet
-            let packet = $packet.unprotect(crypto, packet_number_decoder).ok()?;
+            let $packet = $packet.unprotect(crypto, packet_number_decoder).ok()?;
 
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#12.3
             //# A receiver MUST discard a newly unprotected packet unless it is
             //# certain that it has not processed another packet with the same packet
             //# number from the same packet number space.
-            if space.is_duplicate(packet.packet_number) {
+            if space.is_duplicate($packet.packet_number) {
                 return None;
             }
 
-            let packet = packet.decrypt(crypto).ok()?;
+            $($inspect)?
+
+            let packet = $packet.decrypt(crypto).ok()?;
 
             Some((packet, space))
         }
@@ -587,14 +596,19 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
 
             self.on_loss_info(shared_state, loss_info, path_id, datagram.timestamp);
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-tls-27.txt#4.10.1
-            //# A server MUST discard Initial keys when it first successfully
-            //# processes a Handshake packet.
-
             if Self::Config::ENDPOINT_TYPE.is_server() {
+                //= https://tools.ietf.org/id/draft-ietf-quic-tls-27.txt#4.10.1
+                //# A server MUST discard Initial keys when it first successfully
+                //# processes a Handshake packet.
                 shared_state
                     .space_manager
                     .discard_initial(self.path_manager.active_path_mut().1);
+
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1
+                //# Once the server has successfully processed a
+                //# Handshake packet from the client, it can consider the client address
+                //# to have been validated.
+                self.path_manager[path_id].on_validated();
             }
 
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#10.2
@@ -619,10 +633,16 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
     ) -> Result<(), TransportError> {
         let pto_backoff = shared_state.space_manager.pto_backoff();
 
-        if let Some((packet, space)) = shared_state
-            .space_manager
-            .application_mut()
-            .and_then(packet_validator!(packet))
+        if let Some((packet, space)) =
+            shared_state
+                .space_manager
+                .application_mut()
+                .and_then(packet_validator!(packet, {
+                    if packet.key_phase != Default::default() {
+                        dbg!("key updates are not currently implemented");
+                        return None;
+                    }
+                }))
         {
             let (loss_info, close) = space.handle_cleartext_payload(
                 packet.packet_number,
