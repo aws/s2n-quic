@@ -1,5 +1,6 @@
 use crate::crypto::{CryptoError, CryptoSuite};
 pub use bytes::{Bytes, BytesMut};
+use core::fmt::Debug;
 use s2n_codec::EncoderValue;
 
 /// Holds all application parameters which are exchanged within the TLS handshake.
@@ -59,7 +60,7 @@ pub trait Endpoint: Sized {
     ) -> Self::Session;
 }
 
-pub trait Session: CryptoSuite + Sized + Send {
+pub trait Session: CryptoSuite + Sized + Send + Debug {
     fn poll<C: Context<Self>>(&mut self, context: &mut C) -> Result<(), CryptoError>;
 }
 

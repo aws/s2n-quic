@@ -6,7 +6,7 @@ use s2n_quic_core::time::Timestamp;
 /// https://pdfs.semanticscholar.org/25e9/ef3f03315782c7f1cbcd31b587857adae7d1.pdf
 /// Most of the constants have been updated since this paper. This constants used in
 /// this implementation are based on https://github.com/torvalds/linux/blob/net/ipv4/tcp_cubic.c
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct HybridSlowStart {
     sample_count: usize,
     last_min_rtt: Option<Duration>,

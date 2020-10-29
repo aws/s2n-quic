@@ -7,6 +7,7 @@ use s2n_quic_core::connection;
 use smallvec::SmallVec;
 use std::collections::hash_map::{Entry, HashMap};
 
+#[derive(Debug)]
 struct ConnectionIdMapperState {
     /// Maps from external to internal connection IDs
     connection_map: HashMap<connection::Id, InternalConnectionId>,
@@ -80,6 +81,7 @@ const NR_STATIC_REGISTRABLE_IDS: usize = 5;
 ///
 /// It allows to add and remove external QUIC Connection IDs which are mapped to
 /// internal IDs.
+#[derive(Debug)]
 pub struct ConnectionIdMapperRegistration {
     /// The internal connection ID for this registration
     internal_id: InternalConnectionId,

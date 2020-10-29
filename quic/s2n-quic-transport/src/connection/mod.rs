@@ -42,12 +42,13 @@ pub(crate) use transmission::{ConnectionTransmission, ConnectionTransmissionCont
 
 pub use api::Connection;
 pub use connection_impl::ConnectionImpl as Implementation;
+use core::fmt::Debug;
 /// re-export core
 pub use s2n_quic_core::connection::*;
 
 /// Stores configuration parameters for a connection which might be shared
 /// between multiple connections of the same type.
-pub trait Config: 'static + Send {
+pub trait Config: 'static + Send + Debug {
     /// The congestion controller used for the connection
     type CongestionController: CongestionController;
     /// The type of the Streams which are managed by the `Connection`

@@ -90,6 +90,7 @@ impl<'a> From<ConnectionCloseReason<'a>> for ConnectionState {
     }
 }
 
+#[derive(Debug)]
 pub struct ConnectionImpl<Config: connection::Config> {
     /// The configuration of this connection
     config: Config,
@@ -112,6 +113,15 @@ pub struct ConnectionImpl<Config: connection::Config> {
     state: ConnectionState,
     /// Manage the paths that the connection could use
     path_manager: path::Manager<Config::CongestionController>,
+}
+
+#[cfg(debug_assertions)]
+impl<Config: connection::Config> Drop for ConnectionImpl<Config> {
+    fn drop(&mut self) {
+        if std::thread::panicking() {
+            eprintln!("\nLast known connection state: \n {:#?}", self);
+        }
+    }
 }
 
 impl<ConfigType: connection::Config> ConnectionImpl<ConfigType> {
