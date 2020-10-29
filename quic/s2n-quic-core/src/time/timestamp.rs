@@ -1,6 +1,6 @@
 //! Defines time related datatypes and functions
 
-use core::{num::NonZeroU64, time::Duration};
+use core::{fmt, num::NonZeroU64, time::Duration};
 
 /// An absolute point in time.
 ///
@@ -13,8 +13,47 @@ use core::{num::NonZeroU64, time::Duration};
 /// library, but can be created even without an available standard library.
 ///
 /// The size of `Timestamp` is guaranteed to be consistent across platforms.
-#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Copy, Clone, Hash)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Copy, Clone, Hash)]
 pub struct Timestamp(NonZeroU64);
+
+impl fmt::Debug for Timestamp {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Timestamp({})", self)
+    }
+}
+
+impl fmt::Display for Timestamp {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let duration = self.as_duration_impl();
+        let micros = duration.subsec_micros();
+        let secs = duration.as_secs() % 60;
+        let mins = duration.as_secs() / 60 % 60;
+        let hours = duration.as_secs() / 60 / 60;
+        if micros != 0 {
+            write!(f, "{}:{:02}:{:02}.{:06}", hours, mins, secs, micros)
+        } else {
+            write!(f, "{}:{:02}:{:02}", hours, mins, secs)
+        }
+    }
+}
+
+#[test]
+fn fmt_test() {
+    macro_rules! debug {
+        ($secs:expr, $micros:expr) => {
+            format!(
+                "{:#?}",
+                Timestamp::from_duration_impl(
+                    Duration::from_secs($secs) + Duration::from_micros($micros)
+                )
+            )
+        };
+    }
+
+    assert_eq!(debug!(1, 0), "Timestamp(0:00:01)");
+    assert_eq!(debug!(1, 1), "Timestamp(0:00:01.000001)");
+    assert_eq!(debug!(123456789, 123456), "Timestamp(34293:33:09.123456)");
+}
 
 /// A prechecked 1us value
 const ONE_MICROSECOND: NonZeroU64 = unsafe { NonZeroU64::new_unchecked(1) };
