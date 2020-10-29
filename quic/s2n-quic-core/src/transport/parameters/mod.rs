@@ -662,6 +662,12 @@ impl AckSettings {
     }
 }
 
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#18.2
+//#  retry_source_connection_id (0x10):  The value that the server
+//#     included in the Source Connection ID field of a Retry packet; see
+//#     Section 7.3.  This transport parameter is only sent by a server.
+// optional_transport_parameter!(RetrySourceConnectionId, 0x10);
+
 #[cfg(test)]
 mod ack_settings_tests {
     use super::*;

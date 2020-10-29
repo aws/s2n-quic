@@ -69,7 +69,7 @@ fn decrypt_packet(packet: ProtectedPacket) -> Result<CleartextPacket, CryptoErro
         Retry(packet) => {
             let _ = packet.destination_connection_id();
             let _ = packet.source_connection_id();
-            let _ = packet.original_destination_connection_id();
+            let _ = packet.retry_integrity_tag();
 
             Ok(CleartextPacket::Retry(packet))
         }
