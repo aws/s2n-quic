@@ -135,9 +135,13 @@ impl CongestionController for CubicCongestionController {
                 //# after restarting from these periods.
 
                 // Since we are application limited, we shift the start time of CongestionAvoidance
-                // by the limited duration, to avoid including that duration in W_cubic(t).
+                // by the app limited duration, to avoid including that duration in W_cubic(t).
                 let last_time_sent = self.time_of_last_sent_packet.unwrap_or(time_sent);
-                *avoidance_start_time += time_sent - last_time_sent;
+                // Use the later of the last time sent and the avoidance start time to not count
+                // the app limited time spent prior to entering congestion avoidance.
+                let app_limited_duration = time_sent - last_time_sent.max(*avoidance_start_time);
+
+                *avoidance_start_time += app_limited_duration;
             }
         }
 
@@ -359,7 +363,7 @@ impl CubicCongestionController {
             //# or less than W_max), CUBIC checks whether W_cubic(t) is less than
             //# W_est(t).  If so, CUBIC is in the TCP-friendly region and cwnd SHOULD
             //# be set to W_est(t) at each reception of an ACK.
-            self.congestion_window = self.packets_to_bytes(self.cubic.w_est(t, rtt));
+            self.congestion_window = self.packets_to_bytes(w_est);
         } else {
             //= https://tools.ietf.org/rfc/rfc8312.txt#4.1
             //# Upon receiving an ACK during congestion avoidance, CUBIC computes the
@@ -700,26 +704,38 @@ mod test {
         let now = s2n_quic_platform::time::now();
 
         cc.congestion_window = 100_000;
-        cc.bytes_in_flight = BytesInFlight(99_000);
-        cc.state = CongestionAvoidance(now);
+        cc.bytes_in_flight = BytesInFlight(96_500);
+        cc.state = SlowStart;
 
-        cc.on_packet_sent(now + Duration::from_secs(10), 1000);
+        // t0: Send a packet in Slow Start
+        cc.on_packet_sent(now, 1000);
 
-        assert_eq!(cc.bytes_in_flight.0, 100_000);
+        assert_eq!(cc.bytes_in_flight.0, 97_500);
+        assert_eq!(cc.time_of_last_sent_packet, Some(now));
+
+        // t10: Enter Congestion Avoidance
+        cc.state = CongestionAvoidance(now + Duration::from_secs(10));
+
+        // t15: Send a packet in Congestion Avoidance
+        cc.on_packet_sent(now + Duration::from_secs(15), 1000);
+
+        assert_eq!(cc.bytes_in_flight.0, 98_500);
         assert_eq!(
             cc.time_of_last_sent_packet,
-            Some(now + Duration::from_secs(10))
+            Some(now + Duration::from_secs(15))
         );
-        // Not application limited so the CongestionAvoidance start stays the same
-        assert_eq!(cc.state, CongestionAvoidance(now));
+        // Application limited, but the last sent packet was sent before CongestionAvoidance,
+        // so the CongestionAvoidance increases by the time from avoidance start to now
+        assert_eq!(cc.state, CongestionAvoidance(now + Duration::from_secs(15)));
 
         cc.bytes_in_flight = BytesInFlight(97500);
 
+        // t25: Send a packet in Congestion Avoidance
         cc.on_packet_sent(now + Duration::from_secs(25), 1000);
 
-        // Application limited so the CongestionAvoidance start moves up by 15 seconds
+        // Application limited so the CongestionAvoidance start moves up by 10 seconds
         // (time_of_last_sent_packet - time_sent)
-        assert_eq!(cc.state, CongestionAvoidance(now + Duration::from_secs(15)));
+        assert_eq!(cc.state, CongestionAvoidance(now + Duration::from_secs(25)));
     }
 
     #[test]

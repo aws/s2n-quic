@@ -13,7 +13,6 @@ pub struct HybridSlowStart {
     cur_min_rtt: Option<Duration>,
     pub(super) threshold: u32,
     max_datagram_size: u16,
-    time_of_last_sent_packet: Option<Timestamp>,
     rtt_round_end_time: Option<Timestamp>,
 }
 
@@ -43,7 +42,6 @@ impl HybridSlowStart {
             //# is initialized to an infinite value.
             threshold: u32::max_value(),
             max_datagram_size,
-            time_of_last_sent_packet: None,
             rtt_round_end_time: None,
         }
     }
