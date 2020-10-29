@@ -177,7 +177,7 @@ jobs:
           mkdir -p results
           # enable IPv6 support
           sudo modprobe ip6table_filter
-          python3 run.py --client ${{ matrix.client }} --server ${{ matrix.server }} --json results/results.json --debug --log-dir results/logs || true
+          python3 run.py --client ${{ matrix.client }} --server ${{ matrix.server }} --json results/result.json --debug --log-dir results/logs || true
 
       - name: Prepare artifacts
         working-directory: quic-interop-runner
@@ -197,3 +197,40 @@ jobs:
         with:
           name: interop-${{ matrix.client }}-client-${{ matrix.server }}-server
           path: quic-interop-runner/results/
+  report:
+    runs-on: ubuntu-latest
+    needs: [interop]
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: actions/download-artifact@v2
+        with:
+          path: results/
+
+      - name: Download latest results
+        run: |
+          rm -f result.json
+          wget https://interop.seemann.io/logs/latest/result.json | echo '{}' > result.json
+          mv result.json latest.json
+
+      - uses: actions/checkout@v2
+        with:
+          repository: marten-seemann/quic-interop-runner
+          ref: ${{ env.INTEROP_RUNNER_REF }}
+          path: quic-interop-runner
+
+      - name: Merge results
+        run: |
+          mv quic-interop-runner/web web
+          rm -f web/Caddyfile
+          mkdir -p web/logs/latest
+          python3 .github/workflows/interop-report.py latest.json results/**/result.json > \
+            web/logs/latest/result.json
+          find results -maxdepth 3 -type d -wholename '*/logs/*' | while read from; do
+            mv $from web/logs/latest/$(basename $to)
+          done
+
+      - uses: actions/upload-artifact@v2
+        with:
+          name: report
+          path: web/
