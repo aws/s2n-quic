@@ -1,9 +1,9 @@
 use crate::Result;
 use bytes::Bytes;
 use s2n_quic::{stream::BidirectionalStream, Connection, Server};
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Arc};
 use structopt::StructOpt;
-use tokio::spawn;
+use tokio::{fs::File, io, spawn};
 
 #[derive(Debug, StructOpt)]
 pub struct Interop {
@@ -18,6 +18,9 @@ pub struct Interop {
 
     #[structopt(long, default_value = "hq-29")]
     alpn_protocols: Vec<String>,
+
+    #[structopt(long, default_value = ".")]
+    www_dir: PathBuf,
 }
 
 impl Interop {
@@ -26,51 +29,103 @@ impl Interop {
 
         let mut server = self.server()?;
 
+        let www_dir = Arc::new(self.www_dir.clone());
+
         while let Some(connection) = server.accept().await {
             println!("Accepted a QUIC connection!");
 
+            // TODO check the ALPN of the connection to determine handler
+
             // spawn a task per connection
-            spawn(handle_connection(connection));
+            spawn(handle_h09_connection(connection, www_dir.clone()));
         }
 
-        async fn handle_connection(mut connection: Connection) {
+        async fn handle_h09_connection(mut connection: Connection, www_dir: Arc<PathBuf>) {
             loop {
                 match connection.accept_bidirectional_stream().await {
                     Ok(stream) => {
+                        let www_dir = www_dir.clone();
                         // spawn a task per stream
                         tokio::spawn(async move {
-                            println!("Accepted a Stream");
-
-                            if let Err(err) = handle_stream(stream).await {
+                            if let Err(err) = handle_h09_stream(stream, www_dir).await {
                                 eprintln!("Stream errror: {:?}", err)
                             }
                         });
                     }
                     Err(err) => {
-                        eprintln!("error while accepting stream: {:?}", err);
+                        eprintln!("error while accepting stream: {}", err);
                         return;
                     }
                 }
             }
         }
 
-        async fn handle_stream(mut stream: BidirectionalStream) -> Result<()> {
+        async fn handle_h09_stream(
+            mut stream: BidirectionalStream,
+            www_dir: Arc<PathBuf>,
+        ) -> Result<()> {
+            let path = handle_h09_request(&mut stream).await?;
+            let mut abs_path = www_dir.to_path_buf();
+            abs_path.extend(
+                path.split('/')
+                    .filter(|segment| !segment.starts_with('.'))
+                    .map(std::path::Path::new),
+            );
+            let mut file = File::open(&abs_path).await?;
+            io::copy(&mut file, &mut stream).await?;
+            stream.finish().await?;
+            Ok(())
+        }
+
+        async fn handle_h09_request(stream: &mut BidirectionalStream) -> Result<String> {
+            let mut path = String::new();
+            let mut chunks = vec![Bytes::new(), Bytes::new()];
+            let mut total_chunks = 0;
             loop {
-                let data = match stream.receive().await? {
-                    Some(data) => data,
-                    None => {
-                        eprintln!("End of Stream");
-                        // Finish the response
-                        stream.finish().await?;
-                        return Ok(());
+                // grow the chunks
+                if chunks.len() == total_chunks {
+                    chunks.push(Bytes::new());
+                }
+                let (consumed, is_open) =
+                    stream.receive_vectored(&mut chunks[total_chunks..]).await?;
+                total_chunks += consumed;
+                if parse_h09_request(&chunks[..total_chunks], &mut path, is_open)? {
+                    return Ok(path);
+                }
+            }
+        }
+
+        fn parse_h09_request(chunks: &[Bytes], path: &mut String, is_open: bool) -> Result<bool> {
+            let mut bytes = chunks.iter().flat_map(|chunk| chunk.iter().cloned());
+
+            macro_rules! expect {
+                ($char:literal) => {
+                    match bytes.next() {
+                        Some($char) => {}
+                        None if is_open => return Ok(false),
+                        _ => return Err("invalid request".into()),
                     }
                 };
+            }
 
-                println!("Received {:?}", std::str::from_utf8(&data[..]));
+            expect!(b'G');
+            expect!(b'E');
+            expect!(b'T');
+            expect!(b' ');
+            expect!(b'/');
 
-                // Send a response
-                let response = Bytes::from_static(b"HTTP/3 500 Work In Progress");
-                stream.send(response).await?;
+            loop {
+                match bytes.next() {
+                    Some(c @ b'0'..=b'9') => path.push(c as char),
+                    Some(c @ b'a'..=b'z') => path.push(c as char),
+                    Some(c @ b'A'..=b'Z') => path.push(c as char),
+                    Some(b'.') => path.push('.'),
+                    Some(b'/') => path.push('/'),
+                    Some(b'-') => path.push('-'),
+                    Some(b'\n') | Some(b'\r') => return Ok(true),
+                    Some(c) => return Err(format!("invalid request {}", c as char).into()),
+                    None => return Ok(!is_open),
+                }
             }
         }
 
@@ -87,9 +142,10 @@ impl Interop {
             .build()?;
 
         let server = Server::builder()
-            .with_io(("0.0.0.0", self.port))?
+            .with_io(("::", self.port))?
             .with_tls(tls)?
-            .start()?;
+            .start()
+            .unwrap();
 
         eprintln!("Server listening on port {}", self.port);
 
@@ -113,17 +169,28 @@ impl Interop {
     }
 
     fn check_testcase(&self) {
-        match std::env::var("TESTCASE").ok().as_deref() {
-            // TODO uncomment once connection id authentication is done
-            // Some("handshake") | Some("transfer") => {}
-            None => {
-                eprintln!("missing TESTCASE environment variable");
-                std::process::exit(127);
-            }
-            _ => {
-                eprintln!("unsupported");
-                std::process::exit(127);
-            }
+        let is_supported = match std::env::var("TESTCASE").ok().as_deref() {
+            Some("versionnegotiation") => false,
+            Some("handshake") => true,
+            Some("transfer") => true,
+            Some("chacha20") => true,
+            Some("retry") => false,
+            Some("resumption") => false,
+            Some("zerortt") => false,
+            Some("http3") => false,
+            Some("mutliconnect") => true,
+            Some("handshakecorruption") => true,
+            Some("transfercorruption") => true,
+            Some("ecn") => false,
+            Some("rebind-addr") => false,
+            Some("crosstraffic") => true,
+            None => true,
+            _ => false,
+        };
+
+        if !is_supported {
+            eprintln!("unsupported");
+            std::process::exit(127);
         }
     }
 }

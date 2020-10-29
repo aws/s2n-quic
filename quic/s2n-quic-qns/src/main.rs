@@ -1,6 +1,6 @@
 use structopt::StructOpt;
 
-pub type Error = Box<dyn std::error::Error>;
+pub type Error = Box<dyn 'static + std::error::Error + Send + Sync>;
 pub type Result<T> = core::result::Result<T, Error>;
 mod client;
 mod server;

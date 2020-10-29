@@ -12,3 +12,6 @@ RUN set -eux; \
   # ensure the binary works \
   s2n-quic-qns --help; \
   echo done
+
+# help with debugging
+ENV RUST_BACKTRACE=1

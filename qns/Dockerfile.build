@@ -1,7 +1,6 @@
 FROM rust:latest AS builder
 
-# remove debug symbols
-ENV RUSTFLAGS="-C link-arg=-s -C panic=abort"
+ARG release="false"
 
 # copy sources
 COPY Cargo.* /s2n-quic/
@@ -10,16 +9,27 @@ COPY quic /s2n-quic/quic
 WORKDIR /s2n-quic
 
 # build runner
-RUN cargo build --bin s2n-quic-qns --release
+RUN set -eux; \
+  if [ "$release" = "true" ]; then \
+    RUSTFLAGS="-C link-arg=-s -C panic=abort" \
+      cargo build --bin s2n-quic-qns --release; \
+    cp target/release/s2n-quic-qns .; \
+  else \
+    cargo build --bin s2n-quic-qns; \
+    cp target/debug/s2n-quic-qns .; \
+  fi; \
+  rm -rf target
 
 FROM martenseemann/quic-network-simulator-endpoint:latest
+
+ENV RUST_BACKTRACE="1"
 
 # copy entrypoint
 COPY qns/run_endpoint.sh .
 RUN chmod +x run_endpoint.sh
 
 # copy runner
-COPY --from=builder /s2n-quic/target/release/s2n-quic-qns /usr/bin/s2n-quic-qns
+COPY --from=builder /s2n-quic/s2n-quic-qns /usr/bin/s2n-quic-qns
 RUN set -eux; \
   chmod +x /usr/bin/s2n-quic-qns; \
   ldd /usr/bin/s2n-quic-qns; \
