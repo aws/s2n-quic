@@ -7,6 +7,7 @@ use s2n_quic_core::time::Timestamp;
 ///
 /// The timer can be activated via `set_expiration` and deactivated via `stop`.
 /// If the timer expired, the [`TimerManager`] will yields its token.
+#[derive(Debug)]
 pub struct TimerEntry<T> {
     /// The shared state between timer and client
     pub(super) state: Rc<RefCell<TimerSharedState<T>>>,

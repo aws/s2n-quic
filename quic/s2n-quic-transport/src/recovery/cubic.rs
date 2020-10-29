@@ -71,13 +71,6 @@ pub struct CubicCongestionController {
     time_of_last_sent_packet: Option<Timestamp>,
 }
 
-#[cfg(debug_assertions)]
-impl Drop for CubicCongestionController {
-    fn drop(&mut self) {
-        eprintln!("\nLast known congestion controller state: \n {:#?}", self)
-    }
-}
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct BytesInFlight(u32);
 

@@ -4,7 +4,7 @@ use crate::{
     recovery::{loss_info::LossInfo, RTTEstimator},
     time::Timestamp,
 };
-use core::time::Duration;
+use core::{fmt::Debug, time::Duration};
 
 pub trait Endpoint: 'static {
     type CongestionController: CongestionController;
@@ -30,7 +30,7 @@ impl<'a> PathInfo<'a> {
     }
 }
 
-pub trait CongestionController: 'static + Clone + Send {
+pub trait CongestionController: 'static + Clone + Send + Debug {
     /// Returns `true` if the congestion window does not have sufficient
     /// space for a packet of `max_datagram_size` considering the current
     /// bytes in flight

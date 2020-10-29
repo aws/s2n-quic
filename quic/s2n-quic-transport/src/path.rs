@@ -17,6 +17,7 @@ const INLINE_PATH_LEN: usize = 5;
 
 /// The PathManager handles paths for a specific connection.
 /// It will handle path validation operations, and track the active path for a connection.
+#[derive(Debug)]
 pub struct Manager<CC: CongestionController> {
     /// Path array
     paths: SmallVec<[Path<CC>; INLINE_PATH_LEN]>,

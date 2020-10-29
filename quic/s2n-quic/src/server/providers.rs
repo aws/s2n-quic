@@ -242,6 +242,7 @@ impl<
     }
 }
 
+#[derive(Debug)]
 struct ConnectionConfig<CC, Tls> {
     congestion_controller: PhantomData<CC>,
     tls: PhantomData<Tls>,
