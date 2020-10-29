@@ -753,6 +753,39 @@ mod test {
     }
 
     #[test]
+    fn congestion_avoidance_start_is_not_set_to_future_time() {
+        let mut cc = CubicCongestionController::new(1000);
+        let now = s2n_quic_platform::time::now();
+        let rtt_estimator = &RTTEstimator::new(Duration::from_secs(0));
+
+        cc.congestion_window = 3000;
+        cc.bytes_in_flight = BytesInFlight(0);
+        cc.state = SlowStart;
+
+        // t0: Send a packet in Slow Start
+        cc.on_packet_sent(now, 1000);
+
+        assert_eq!(cc.bytes_in_flight.0, 1000);
+
+        // t10: Enter Congestion Avoidance
+        cc.state = CongestionAvoidance(now + Duration::from_secs(10));
+
+        // t15: Send a packet in Congestion Avoidance while under utilized
+        cc.on_packet_sent(now + Duration::from_secs(15), 1000);
+
+        // t15: Send a packet in Congestion Avoidance while not under utilized
+        cc.on_packet_sent(now + Duration::from_secs(15), 1000);
+
+        assert_eq!(cc.bytes_in_flight.0, 3000);
+
+        // t16: Ack a packet in Congestion Avoidance
+        cc.on_packet_ack(now, 1000, rtt_estimator, now + Duration::from_secs(16));
+
+        assert_eq!(cc.bytes_in_flight.0, 2000);
+        assert_eq!(cc.state, CongestionAvoidance(now + Duration::from_secs(15)));
+    }
+
+    #[test]
     fn on_packet_lost() {
         let mut cc = CubicCongestionController::new(1000);
         let now = s2n_quic_platform::time::now();
