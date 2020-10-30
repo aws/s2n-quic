@@ -210,24 +210,18 @@ jobs:
       - name: Download latest results
         run: |
           rm -f result.json
-          wget https://interop.seemann.io/logs/latest/result.json | echo '{}' > result.json
+          wget https://interop.seemann.io/logs/latest/result.json || echo '{}' > result.json
           mv result.json latest.json
 
-      - uses: actions/checkout@v2
-        with:
-          repository: marten-seemann/quic-interop-runner
-          ref: ${{ env.INTEROP_RUNNER_REF }}
-          path: quic-interop-runner
-
-      - name: Merge results
+      - name: Generate report
         run: |
-          mv quic-interop-runner/web web
-          rm -f web/Caddyfile
+          cp -R .github/interop web
+          rm -f web/merge.py
           mkdir -p web/logs/latest
-          python3 .github/workflows/interop-report.py latest.json results/**/result.json > \
+          python3 .github/interop/merge.py latest.json results/**/result.json > \
             web/logs/latest/result.json
           find results -maxdepth 3 -type d -wholename '*/logs/*' | while read from; do
-            mv $from web/logs/latest/$(basename $to)
+            mv $from web/logs/latest/$(basename $from)
           done
 
       - uses: actions/upload-artifact@v2

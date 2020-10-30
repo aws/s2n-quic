@@ -67,7 +67,7 @@ for pattern in sys.argv[1:]:
 out = {
     "start_time": start_time,
     "end_time": end_time,
-    "log_dir": "logs", # TODO how do we merge this?
+    "log_dir": "latest", # TODO how do we merge this?
     "servers": sorted(servers),
     "clients": sorted(clients),
     "urls": urls,
