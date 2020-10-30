@@ -216,7 +216,7 @@ impl CongestionController for CubicCongestionController {
                     //# avoidance, K is set to 0, and W_max is set to the congestion window
                     //# size at the beginning of the current congestion avoidance.
                     self.state = State::CongestionAvoidance(ack_receive_time);
-                    self.cubic.update_w_max(self.congestion_window);
+                    self.cubic.on_slow_start_exit(self.congestion_window);
                 }
             }
             Recovery(_, _) => {
@@ -499,34 +499,29 @@ impl Cubic {
     //#    cwnd = cwnd * beta_cubic;     // window reduction
     // This does not change the units of the congestion window
     fn multiplicative_decrease(&mut self, cwnd: u32) -> u32 {
-        self.update_w_max(cwnd);
-        (cwnd as f32 * BETA_CUBIC) as u32
-    }
-
-    //= https://tools.ietf.org/rfc/rfc8312.txt#4.6
-    //# With fast convergence, when a congestion event occurs, before the
-    //# window reduction of the congestion window, a flow remembers the last
-    //# value of W_max before it updates W_max for the current congestion
-    //# event.  Let us call the last value of W_max to be W_last_max.
-    //#
-    //#    if (W_max < W_last_max){ // should we make room for others
-    //#       W_last_max = W_max;             // remember the last W_max
-    //#       W_max = W_max*(1.0+beta_cubic)/2.0; // further reduce W_max
-    //#    } else {
-    //#       W_last_max = W_max              // remember the last W_max
-    //#    }
-    //#
-    //# At a congestion event, if the current value of W_max is less than
-    //# W_last_max, this indicates that the saturation point experienced by
-    //# this flow is getting reduced because of the change in available
-    //# bandwidth.  Then we allow this flow to release more bandwidth by
-    //# reducing W_max further.  This action effectively lengthens the time
-    //# for this flow to increase its congestion window because the reduced
-    //# W_max forces the flow to have the plateau earlier.  This allows more
-    //# time for the new flow to catch up to its congestion window size.
-    fn update_w_max(&mut self, cwnd: u32) {
         self.w_max = cwnd as f32 / self.max_datagram_size as f32;
 
+        //= https://tools.ietf.org/rfc/rfc8312.txt#4.6
+        //# With fast convergence, when a congestion event occurs, before the
+        //# window reduction of the congestion window, a flow remembers the last
+        //# value of W_max before it updates W_max for the current congestion
+        //# event.  Let us call the last value of W_max to be W_last_max.
+        //#
+        //#    if (W_max < W_last_max){ // should we make room for others
+        //#       W_last_max = W_max;             // remember the last W_max
+        //#       W_max = W_max*(1.0+beta_cubic)/2.0; // further reduce W_max
+        //#    } else {
+        //#       W_last_max = W_max              // remember the last W_max
+        //#    }
+        //#
+        //# At a congestion event, if the current value of W_max is less than
+        //# W_last_max, this indicates that the saturation point experienced by
+        //# this flow is getting reduced because of the change in available
+        //# bandwidth.  Then we allow this flow to release more bandwidth by
+        //# reducing W_max further.  This action effectively lengthens the time
+        //# for this flow to increase its congestion window because the reduced
+        //# W_max forces the flow to have the plateau earlier.  This allows more
+        //# time for the new flow to catch up to its congestion window size.
         if self.w_max < self.w_last_max {
             self.w_last_max = self.w_max;
             self.w_max = self.w_max * (1.0 + BETA_CUBIC) / 2.0;
@@ -534,8 +529,26 @@ impl Cubic {
             self.w_last_max = self.w_max;
         }
 
-        // Update k since it only varies on w_max
+        // Update k since it only depends on w_max
         self.k = Duration::from_secs_f32((self.w_max * (1.0 - BETA_CUBIC) / C).cbrt());
+
+        (cwnd as f32 * BETA_CUBIC) as u32
+    }
+
+    //= https://tools.ietf.org/rfc/rfc8312.txt#4.8
+    //# In the case when CUBIC runs the hybrid slow start [HR08], it may exit
+    //# the first slow start without incurring any packet loss and thus W_max
+    //# is undefined.  In this special case, CUBIC switches to congestion
+    //# avoidance and increases its congestion window size using Eq. 1, where
+    //# t is the elapsed time since the beginning of the current congestion
+    //# avoidance, K is set to 0, and W_max is set to the congestion window
+    //# size at the beginning of the current congestion avoidance.
+    fn on_slow_start_exit(&mut self, cwnd: u32) {
+        self.w_max = cwnd as f32 / self.max_datagram_size as f32;
+
+        // We are currently at the w_max, so set k to zero indicating zero
+        // seconds to reach the max
+        self.k = Duration::from_secs(0);
     }
 }
 
@@ -562,16 +575,24 @@ mod test {
         };
     }
 
+    fn bytes_to_packets(bytes: u32, max_datagram_size: u16) -> f32 {
+        bytes as f32 / max_datagram_size as f32
+    }
+
     #[test]
     #[compliance::tests("https://tools.ietf.org/rfc/rfc8312.txt#4.1")]
     fn w_cubic() {
-        let max_datagram_size = 1200.0;
-        let mut cubic = Cubic::new(max_datagram_size as u16);
+        let max_datagram_size = 1200;
+        let mut cubic = Cubic::new(max_datagram_size);
 
         // 2_764_800 is used because it can be divided by 1200 and then have a cubic
         // root result in an integer value.
-        cubic.update_w_max(2_764_800);
-        assert_delta!(cubic.w_max, 2_764_800.0 / max_datagram_size, 0.001);
+        cubic.multiplicative_decrease(2_764_800);
+        assert_delta!(
+            cubic.w_max,
+            bytes_to_packets(2_764_800, max_datagram_size),
+            0.001
+        );
 
         let mut t = Duration::from_secs(0);
 
@@ -596,8 +617,8 @@ mod test {
     #[test]
     #[compliance::tests("https://tools.ietf.org/rfc/rfc8312.txt#4.6")]
     fn w_est() {
-        let max_datagram_size = 1200.0;
-        let mut cubic = Cubic::new(max_datagram_size as u16);
+        let max_datagram_size = 1200;
+        let mut cubic = Cubic::new(max_datagram_size);
         cubic.w_max = 100.0;
         let t = Duration::from_secs(6);
         let rtt = Duration::from_millis(300);
@@ -614,7 +635,7 @@ mod test {
     fn multiplicative_decrease() {
         let max_datagram_size = 1200.0;
         let mut cubic = Cubic::new(max_datagram_size as u16);
-        cubic.update_w_max(10000);
+        cubic.w_max = bytes_to_packets(10000, max_datagram_size as u16);
 
         assert_eq!(
             cubic.multiplicative_decrease(100_000),
@@ -899,7 +920,7 @@ mod test {
         let mut cc = CubicCongestionController::new(5000);
         let now = s2n_quic_platform::time::now();
 
-        cc.cubic.update_w_max(25000);
+        cc.cubic.w_max = bytes_to_packets(25000, 5000);
         cc.state = Recovery(now, Idle);
         cc.bytes_in_flight = BytesInFlight(25000);
 
@@ -936,6 +957,7 @@ mod test {
 
         assert_eq!(cc.congestion_window, 10100);
         assert_eq!(cc.packets_to_bytes(cc.cubic.w_max), cc.congestion_window);
+        assert_eq!(cc.cubic.k, Duration::from_secs(0));
         assert_eq!(
             cc.state,
             CongestionAvoidance(now + Duration::from_millis(2))
@@ -965,18 +987,19 @@ mod test {
 
     #[test]
     fn on_packet_ack_congestion_avoidance() {
-        let mut cc = CubicCongestionController::new(5000);
-        let mut cc2 = CubicCongestionController::new(5000);
+        let max_datagram_size = 5000;
+        let mut cc = CubicCongestionController::new(max_datagram_size);
+        let mut cc2 = CubicCongestionController::new(max_datagram_size);
         let now = s2n_quic_platform::time::now();
 
         cc.state = CongestionAvoidance(now + Duration::from_millis(3300));
         cc.congestion_window = 10000;
         cc.bytes_in_flight = BytesInFlight(10000);
-        cc.cubic.update_w_max(10000);
+        cc.cubic.w_max = bytes_to_packets(10000, max_datagram_size);
 
         cc2.congestion_window = 10000;
         cc2.bytes_in_flight = BytesInFlight(10000);
-        cc2.cubic.update_w_max(10000);
+        cc2.cubic.w_max = bytes_to_packets(10000, max_datagram_size);
 
         let mut rtt_estimator = RTTEstimator::new(Duration::from_secs(0));
         rtt_estimator.update_rtt(
@@ -1002,7 +1025,8 @@ mod test {
         let mut cc = CubicCongestionController::new(5000);
 
         cc.congestion_window = 10000;
-        cc.cubic.update_w_max(30 * 5000);
+        cc.cubic.w_max = 30.0;
+        cc.cubic.k = Duration::from_secs_f32(2.823);
 
         let t = Duration::from_millis(4400);
         let rtt = Duration::from_millis(200);
@@ -1019,11 +1043,12 @@ mod test {
     #[test]
     #[compliance::tests("https://tools.ietf.org/rfc/rfc8312.txt#4.3")]
     fn on_packet_ack_congestion_avoidance_concave_region() {
-        let max_datagram_size = 1200.0;
+        let max_datagram_size = 1200;
         let mut cc = CubicCongestionController::new(max_datagram_size as u16);
 
         cc.congestion_window = 2_400_000;
-        cc.cubic.update_w_max(2_764_800);
+        cc.cubic.w_max = 2304.0;
+        cc.cubic.k = Duration::from_secs(12);
 
         let t = Duration::from_millis(9800);
         let rtt = Duration::from_millis(200);
@@ -1046,11 +1071,12 @@ mod test {
     #[test]
     #[compliance::tests("https://tools.ietf.org/rfc/rfc8312.txt#4.4")]
     fn on_packet_ack_congestion_avoidance_convex_region() {
-        let max_datagram_size = 1200.0;
-        let mut cc = CubicCongestionController::new(max_datagram_size as u16);
+        let max_datagram_size = 1200;
+        let mut cc = CubicCongestionController::new(max_datagram_size);
 
         cc.congestion_window = 3_600_000;
-        cc.cubic.update_w_max(2_764_800);
+        cc.cubic.w_max = 2304.0;
+        cc.cubic.k = Duration::from_secs(12);
 
         let t = Duration::from_millis(25800);
         let rtt = Duration::from_millis(200);
@@ -1072,11 +1098,11 @@ mod test {
 
     #[test]
     fn on_packet_ack_congestion_avoidance_too_large_increase() {
-        let max_datagram_size = 1200.0;
-        let mut cc = CubicCongestionController::new(max_datagram_size as u16);
+        let max_datagram_size = 1200;
+        let mut cc = CubicCongestionController::new(max_datagram_size);
 
         cc.congestion_window = 3_600_000;
-        cc.cubic.update_w_max(2_764_800);
+        cc.cubic.w_max = bytes_to_packets(2_764_800, max_datagram_size);
 
         let t = Duration::from_millis(125_800);
         let rtt = Duration::from_millis(200);
