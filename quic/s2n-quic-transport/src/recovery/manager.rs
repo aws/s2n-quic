@@ -1,7 +1,6 @@
 use crate::{
     contexts::WriteContext,
     recovery::{loss_info::LossInfo, SentPacketInfo, SentPackets},
-    space::INITIAL_PTO_BACKOFF,
     timer::VirtualTimer,
     transmission,
 };
@@ -120,8 +119,9 @@ impl Manager {
             .chain(self.loss_timer.iter())
     }
 
-    pub fn on_timeout<Ctx: Context>(
+    pub fn on_timeout<CC: CongestionController, Ctx: Context>(
         &mut self,
+        path: &mut Path<CC>,
         timestamp: Timestamp,
         context: &mut Ctx,
     ) -> LossInfo {
@@ -129,14 +129,22 @@ impl Manager {
 
         if self.loss_timer.is_armed() {
             if self.loss_timer.poll_expiration(timestamp).is_ready() {
-                loss_info = self.detect_and_remove_lost_packets(timestamp, |packet_number_range| {
-                    context.on_packet_loss(&packet_number_range);
-                })
+                loss_info =
+                    self.detect_and_remove_lost_packets(path, timestamp, |packet_number_range| {
+                        context.on_packet_loss(&packet_number_range);
+                    })
             }
         } else {
-            loss_info.pto_expired = self
+            let pto_expired = self
                 .pto
                 .on_timeout(!self.sent_packets.is_empty(), timestamp);
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
+            //# When a PTO timer expires, the PTO backoff MUST be increased,
+            //# resulting in the PTO period being set to twice its current value.
+            if pto_expired {
+                path.pto_backoff *= 2;
+            }
         }
 
         loss_info
@@ -176,7 +184,6 @@ impl Manager {
     pub fn update<CC: CongestionController>(
         &mut self,
         path: &Path<CC>,
-        pto_backoff: u32,
         now: Timestamp,
         is_handshake_confirmed: bool,
     ) {
@@ -222,7 +229,7 @@ impl Manager {
         if self.space.is_application_data() && !is_handshake_confirmed {
             self.pto.cancel();
         } else {
-            self.pto.update(path, pto_backoff, pto_base_timestamp);
+            self.pto.update(path, pto_base_timestamp);
         }
     }
 
@@ -236,7 +243,6 @@ impl Manager {
         datagram: &DatagramInfo,
         frame: frame::Ack<A>,
         path: &mut Path<CC>,
-        backoff: u32,
         context: &mut Ctx,
     ) -> Result<LossInfo, TransportError> {
         let largest_acked_in_frame = self.space.new_packet_number(frame.largest_acknowledged());
@@ -323,18 +329,10 @@ impl Manager {
         //# Once a later packet within the same packet number space has been
         //# acknowledged, an endpoint SHOULD declare an earlier packet lost if it
         //# was sent a threshold amount of time in the past.
-        let mut loss_info =
-            self.detect_and_remove_lost_packets(datagram.timestamp, |packet_number_range| {
+        let loss_info =
+            self.detect_and_remove_lost_packets(path, datagram.timestamp, |packet_number_range| {
                 context.on_packet_loss(&packet_number_range);
             });
-
-        if loss_info.bytes_in_flight > 0 {
-            path.congestion_controller.on_packets_lost(
-                loss_info,
-                path.rtt_estimator.persistent_congestion_threshold(),
-                datagram.timestamp,
-            );
-        }
 
         for acked_packet_info in newly_acked_packets {
             path.congestion_controller.on_packet_ack(
@@ -354,21 +352,15 @@ impl Manager {
         //# validating the client's address.  That is, a client does not reset
         //# the PTO backoff factor on receiving acknowledgements until the
         //# handshake is confirmed; see Section 4.1.2 of [QUIC-TLS].
-        loss_info.pto_reset = path.is_peer_validated();
-
-        // If there is a pending pto reset, use the initial pto_backoff when updating the PTO timer
-        let pto_backoff = if loss_info.pto_reset {
-            INITIAL_PTO_BACKOFF
-        } else {
-            backoff
-        };
+        if path.is_peer_validated() {
+            path.reset_pto_backoff();
+        }
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
         //# A sender SHOULD restart its PTO timer every time an ack-eliciting
         //# packet is sent or acknowledged,
         self.update(
             &path,
-            pto_backoff,
             datagram.timestamp,
             self.space.is_application_data() && context.is_handshake_confirmed(),
         );
@@ -400,8 +392,12 @@ impl Manager {
     //# DetectAndRemoveLostPackets is called every time an ACK is received or the time threshold
     //# loss detection timer expires. This function operates on the sent_packets for that packet
     //# number space and returns a list of packets newly detected as lost.
-    fn detect_and_remove_lost_packets<OnLoss: FnMut(PacketNumberRange)>(
+    fn detect_and_remove_lost_packets<
+        CC: CongestionController,
+        OnLoss: FnMut(PacketNumberRange),
+    >(
         &mut self,
+        path: &mut Path<CC>,
         now: Timestamp,
         mut on_loss: OnLoss,
     ) -> LossInfo {
@@ -515,6 +511,12 @@ impl Manager {
         for packet_number in sent_packets_to_remove {
             self.sent_packets.remove(packet_number);
         }
+
+        path.congestion_controller.on_packets_lost(
+            loss_info,
+            path.rtt_estimator.persistent_congestion_threshold(),
+            now,
+        );
 
         loss_info
     }
@@ -678,12 +680,7 @@ impl Pto {
     //# packet is sent or acknowledged, when the handshake is confirmed
     //# (Section 4.1.2 of [QUIC-TLS]), or when Initial or Handshake keys are
     //# discarded (Section 9 of [QUIC-TLS]).
-    pub fn update<CC: CongestionController>(
-        &mut self,
-        path: &Path<CC>,
-        backoff: u32,
-        base_timestamp: Timestamp,
-    ) {
+    pub fn update<CC: CongestionController>(&mut self, path: &Path<CC>, base_timestamp: Timestamp) {
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
         //# When an ack-eliciting packet is transmitted, the sender schedules a
         //# timer for the PTO period as follows:
@@ -711,7 +708,7 @@ impl Pto {
         //# prevent excess load on the network.  For example, a timeout in the
         //# Initial packet number space doubles the length of the timeout in the
         //# Handshake packet number space.
-        pto_period *= backoff;
+        pto_period *= path.pto_backoff;
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
         //# The PTO period is the amount of time that a sender ought to wait for
@@ -745,6 +742,7 @@ mod test {
         space::rx_packet_numbers::ack_ranges::AckRanges,
     };
     use core::{ops::RangeInclusive, time::Duration};
+    use s2n_quic_core::path::INITIAL_PTO_BACKOFF;
     use s2n_quic_core::{
         connection, frame::ack_elicitation::AckElicitation, packet::number::PacketNumberSpace,
         recovery::congestion_controller::testing::Unlimited, varint::VarInt,
@@ -818,6 +816,9 @@ mod test {
             true,
         );
 
+        // Start the pto backoff at 2 so we can tell if it was reset
+        path.pto_backoff = 2;
+
         let time_sent = s2n_quic_platform::time::now() + Duration::from_secs(10);
 
         // Send packets 1 to 10
@@ -841,7 +842,7 @@ mod test {
         let (result, context) = ack_packets(1..=3, ack_receive_time, &mut path, &mut manager);
 
         assert_eq!(result.unwrap().bytes_in_flight, 0);
-        assert!(result.unwrap().pto_reset);
+        assert_eq!(path.pto_backoff, INITIAL_PTO_BACKOFF);
         assert_eq!(manager.sent_packets.iter().count(), 7);
         assert_eq!(
             manager.largest_acked_packet,
@@ -853,13 +854,16 @@ mod test {
         assert_eq!(context.on_packet_loss_count, 0);
         assert_eq!(path.rtt_estimator.latest_rtt(), Duration::from_millis(500));
 
+        // Reset the pto backoff to 2 so we can tell if it was reset
+        path.pto_backoff = 2;
+
         // Acknowledging already acked packets
         let ack_receive_time = ack_receive_time + Duration::from_secs(1);
         let (result, context) = ack_packets(1..=3, ack_receive_time, &mut path, &mut manager);
 
         // Acknowledging already acked packets does not call on_new_packet_ack or change RTT
         assert_eq!(result.unwrap().bytes_in_flight, 0);
-        assert!(!result.unwrap().pto_reset);
+        assert_eq!(path.pto_backoff, 2);
         assert_eq!(context.on_packet_ack_count, 1);
         assert_eq!(context.on_new_packet_ack_count, 0);
         assert_eq!(context.validate_packet_ack_count, 1);
@@ -871,7 +875,7 @@ mod test {
         let (result, context) = ack_packets(7..=9, ack_receive_time, &mut path, &mut manager);
 
         assert_eq!(result.unwrap().bytes_in_flight, (packet_bytes * 3) as usize);
-        assert!(result.unwrap().pto_reset);
+        assert_eq!(path.pto_backoff, INITIAL_PTO_BACKOFF);
         assert_eq!(context.on_packet_ack_count, 1);
         assert_eq!(context.on_new_packet_ack_count, 1);
         assert_eq!(context.validate_packet_ack_count, 1);
@@ -886,9 +890,10 @@ mod test {
             Unlimited::default(),
             false,
         );
+        path.pto_backoff = 2;
         let ack_receive_time = ack_receive_time + Duration::from_millis(500);
-        let (result, context) = ack_packets(10..=10, ack_receive_time, &mut path, &mut manager);
-        assert!(!result.unwrap().pto_reset);
+        let (_result, context) = ack_packets(10..=10, ack_receive_time, &mut path, &mut manager);
+        assert_eq!(path.pto_backoff, 2);
         assert_eq!(context.on_packet_ack_count, 1);
         assert_eq!(context.on_new_packet_ack_count, 1);
         assert_eq!(context.validate_packet_ack_count, 1);
@@ -958,7 +963,7 @@ mod test {
         let now = time_sent;
         let mut lost_packets: HashSet<PacketNumber> = HashSet::default();
 
-        let loss_info = manager.detect_and_remove_lost_packets(now, |packet_range| {
+        let loss_info = manager.detect_and_remove_lost_packets(&mut path, now, |packet_range| {
             lost_packets.insert(packet_range.start());
         });
 
@@ -1201,7 +1206,6 @@ mod test {
         let rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
         let mut manager = Manager::new(space, Duration::from_millis(10));
         let now = s2n_quic_platform::time::now() + Duration::from_secs(10);
-        let pto_backoff = 2;
         let is_handshake_confirmed = true;
 
         let mut path = Path::new(
@@ -1228,7 +1232,7 @@ mod test {
         path.on_bytes_transmitted((1200 * 2) + 1);
         // Arm the PTO so we can verify it is cancelled
         manager.pto.timer.set(now + Duration::from_secs(10));
-        manager.update(&path, pto_backoff, now, is_handshake_confirmed);
+        manager.update(&path, now, is_handshake_confirmed);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.1.2
         //# The time threshold is:
@@ -1244,7 +1248,7 @@ mod test {
         // Validate the path so it is not at the anti-amplification limit
         path.on_validated();
         path.on_peer_validated();
-        manager.update(&path, pto_backoff, now, is_handshake_confirmed);
+        manager.update(&path, now, is_handshake_confirmed);
 
         // Since the path is peer validated and sent packets is empty, PTO is cancelled
         assert!(!manager.pto.timer.is_armed());
@@ -1258,15 +1262,16 @@ mod test {
             false,
         );
         path.on_validated();
+        path.pto_backoff = 2;
         let is_handshake_confirmed = false;
-        manager.update(&path, pto_backoff, now, is_handshake_confirmed);
+        manager.update(&path, now, is_handshake_confirmed);
 
         // Since the packet space is Application and the handshake is not confirmed, PTO is cancelled
         assert!(!manager.pto.timer.is_armed());
 
         // Set is handshake confirmed back to true
         let is_handshake_confirmed = true;
-        manager.update(&path, pto_backoff, now, is_handshake_confirmed);
+        manager.update(&path, now, is_handshake_confirmed);
 
         // Now the PTO is armed
         assert!(manager.pto.timer.is_armed());
@@ -1292,7 +1297,7 @@ mod test {
             now,
             space,
         );
-        manager.update(&path, pto_backoff, now, is_handshake_confirmed);
+        manager.update(&path, now, is_handshake_confirmed);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
         //# When an ack-eliciting packet is transmitted, the sender schedules a
@@ -1325,12 +1330,14 @@ mod test {
             false,
         );
 
+        let mut expected_pto_backoff = path.pto_backoff;
+
         // Loss timer is armed but not expired yet, nothing happens
         manager.loss_timer.set(now + Duration::from_secs(10));
-        let mut loss_info = manager.on_timeout(now, &mut context);
+        let mut loss_info = manager.on_timeout(&mut path, now, &mut context);
         assert_eq!(context.on_packet_loss_count, 0);
         assert!(!manager.pto.timer.is_armed());
-        assert!(!loss_info.pto_expired);
+        assert_eq!(expected_pto_backoff, path.pto_backoff);
 
         // Send a packet that will be considered lost
         manager.on_packet_sent(
@@ -1346,29 +1353,31 @@ mod test {
 
         // Loss timer is armed and expired, on_packet_loss is called
         manager.loss_timer.set(now - Duration::from_secs(1));
-        loss_info = manager.on_timeout(now, &mut context);
+        loss_info = manager.on_timeout(&mut path, now, &mut context);
         assert_eq!(context.on_packet_loss_count, 1);
         assert!(!manager.pto.timer.is_armed());
-        assert!(!loss_info.pto_expired);
+        assert_eq!(expected_pto_backoff, path.pto_backoff);
 
         // Loss timer is not armed, pto timer is not armed
         manager.loss_timer.cancel();
-        loss_info = manager.on_timeout(now, &mut context);
-        assert!(!loss_info.pto_expired);
+        loss_info = manager.on_timeout(&mut path, now, &mut context);
+        assert_eq!(expected_pto_backoff, path.pto_backoff);
 
         // Loss timer is not armed, pto timer is armed but not expired
         manager.loss_timer.cancel();
         manager.pto.timer.set(now + Duration::from_secs(5));
-        loss_info = manager.on_timeout(now, &mut context);
-        assert!(!loss_info.pto_expired);
+        loss_info = manager.on_timeout(&mut path, now, &mut context);
+        assert_eq!(expected_pto_backoff, path.pto_backoff);
 
         // Loss timer is not armed, pto timer is expired without bytes in flight
+        expected_pto_backoff *= 2;
         manager.pto.timer.set(now - Duration::from_secs(5));
-        loss_info = manager.on_timeout(now, &mut context);
-        assert!(loss_info.pto_expired);
+        loss_info = manager.on_timeout(&mut path, now, &mut context);
+        assert_eq!(expected_pto_backoff, path.pto_backoff);
         assert_eq!(manager.pto.state, RequiresTransmission(1));
 
         // Loss timer is not armed, pto timer is expired with bytes in flight
+        expected_pto_backoff *= 2;
         manager.sent_packets.insert(
             space.new_packet_number(VarInt::from_u8(1)),
             SentPacketInfo {
@@ -1378,8 +1387,8 @@ mod test {
             },
         );
         manager.pto.timer.set(now - Duration::from_secs(5));
-        loss_info = manager.on_timeout(now, &mut context);
-        assert!(loss_info.pto_expired);
+        loss_info = manager.on_timeout(&mut path, now, &mut context);
+        assert_eq!(expected_pto_backoff, path.pto_backoff);
         assert_eq!(manager.pto.state, RequiresTransmission(2));
     }
 
@@ -1488,7 +1497,7 @@ mod test {
         };
 
         let mut context = MockContext::default();
-        let result = manager.on_ack_frame(&datagram, frame, path, 1, &mut context);
+        let result = manager.on_ack_frame(&datagram, frame, path, &mut context);
 
         for packet in acked_packets {
             assert!(manager.sent_packets.get(packet).is_none());

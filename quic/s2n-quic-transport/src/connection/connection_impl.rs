@@ -9,7 +9,7 @@ use crate::{
     },
     contexts::ConnectionOnTransmitError,
     path,
-    recovery::{congestion_controller, CongestionController, RTTEstimator},
+    recovery::{congestion_controller, RTTEstimator},
     space::{PacketSpace, EARLY_ACK_SETTINGS},
     transmission,
 };
@@ -188,17 +188,7 @@ impl<ConfigType: connection::Config> ConnectionImpl<ConfigType> {
         if loss_info.updated_required() {
             let path = &mut self.path_manager[path_id];
 
-            shared_state
-                .space_manager
-                .on_loss_info(&loss_info, path, timestamp);
-
-            if loss_info.bytes_in_flight > 0 {
-                path.congestion_controller.on_packets_lost(
-                    loss_info,
-                    path.rtt_estimator.persistent_congestion_threshold(),
-                    timestamp,
-                )
-            }
+            shared_state.space_manager.on_loss_info(path, timestamp);
         }
     }
 }
@@ -430,7 +420,9 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
             }
         }
 
-        let loss_info = shared_state.space_manager.on_timeout(timestamp);
+        let loss_info = shared_state
+            .space_manager
+            .on_timeout(self.path_manager.active_path_mut().1, timestamp);
 
         self.on_loss_info(
             shared_state,
@@ -544,14 +536,12 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         path_id: path::Id,
         packet: CleartextInitial,
     ) -> Result<(), TransportError> {
-        let pto_backoff = shared_state.space_manager.pto_backoff();
         if let Some(space) = shared_state.space_manager.initial_mut() {
             let (loss_info, close) = space.handle_cleartext_payload(
                 packet.packet_number,
                 packet.payload,
                 datagram,
                 &mut self.path_manager[path_id],
-                pto_backoff,
             )?;
 
             if let Some(close) = close {
@@ -580,8 +570,6 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         path_id: path::Id,
         packet: ProtectedHandshake,
     ) -> Result<(), TransportError> {
-        let pto_backoff = shared_state.space_manager.pto_backoff();
-
         if let Some((packet, space)) = shared_state
             .space_manager
             .handshake_mut()
@@ -592,7 +580,6 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                 packet.payload,
                 datagram,
                 &mut self.path_manager[path_id],
-                pto_backoff,
             )?;
 
             if let Some(close) = close {
@@ -641,8 +628,6 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         path_id: path::Id,
         packet: ProtectedShort,
     ) -> Result<(), TransportError> {
-        let pto_backoff = shared_state.space_manager.pto_backoff();
-
         if let Some((packet, space)) =
             shared_state
                 .space_manager
@@ -659,7 +644,6 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                 packet.payload,
                 datagram,
                 &mut self.path_manager[path_id],
-                pto_backoff,
             )?;
 
             if let Some(close) = close {

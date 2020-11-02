@@ -20,7 +20,6 @@ pub struct SessionContext<'a, Config: connection::Config> {
     pub now: Timestamp,
     pub connection_config: &'a Config,
     pub path: &'a Path<Config::CongestionController>,
-    pub pto_backoff: u32,
     pub initial: &'a mut Option<Box<InitialSpace<Config>>>,
     pub handshake: &'a mut Option<Box<HandshakeSpace<Config>>>,
     pub application: &'a mut Option<Box<ApplicationSpace<Config>>>,
@@ -130,7 +129,7 @@ impl<'a, Config: connection::Config> tls::Context<Config::TLSSession>
 
     fn on_handshake_done(&mut self) -> Result<(), CryptoError> {
         if let Some(application) = self.application.as_mut() {
-            application.on_handshake_done(&self.path, self.pto_backoff, self.now);
+            application.on_handshake_done(&self.path, self.now);
             Ok(())
         } else {
             Err(CryptoError::INTERNAL_ERROR
