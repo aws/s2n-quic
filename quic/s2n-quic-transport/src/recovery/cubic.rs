@@ -400,6 +400,18 @@ impl CubicCongestionController {
             // higher than needed to achieve the target window, and thus a smaller congestion window
             // is appropriate.
             let target_congestion_window = self.packets_to_bytes(self.cubic.w_cubic(t + rtt));
+
+            // In the case of Fast Convergence, the target congestion window may be lower than the
+            // current congestion window. In this case, we will leave the congestion window as is.
+            // Once enough time has passed, the window will begin increasing again.
+            // TODO: This is slightly different than Linux, which adds a "very small increment" to
+            //       the congestion window in this case. Investigate if this is needed. See
+            //       https://github.com/torvalds/linux/blob/master/net/ipv4/tcp_cubic.c#L293-L297
+            //       Issue: https://github.com/awslabs/s2n-quic/issues/209
+            if target_congestion_window <= self.congestion_window {
+                return;
+            }
+
             let window_increase_rate = (target_congestion_window - self.congestion_window) as f32
                 / self.congestion_window as f32;
             // Convert the increase rate to bytes and limit to half the acked bytes as the Linux
@@ -803,6 +815,44 @@ mod test {
 
         assert_eq!(cc.bytes_in_flight.0, 2000);
         assert_eq!(cc.state, CongestionAvoidance(now + Duration::from_secs(15)));
+    }
+
+    #[test]
+    fn congestion_avoidance_after_fast_convergence() {
+        let max_datagram_size = 1200;
+        let mut cc = CubicCongestionController::new(max_datagram_size);
+        let now = s2n_quic_platform::time::now();
+        cc.bytes_in_flight = BytesInFlight(100);
+        cc.congestion_window = 80_000;
+        cc.cubic.w_last_max = bytes_to_packets(100_000, max_datagram_size);
+
+        cc.on_packets_lost(100, false, now);
+        assert_eq!(cc.congestion_window, (80_000.0 * BETA_CUBIC) as u32);
+
+        // Window max was less than the last max, so fast convergence applies
+        assert_delta!(
+            cc.cubic.w_last_max,
+            80000.0 / max_datagram_size as f32,
+            0.001
+        );
+        // W_max = W_max*(1.0+beta_cubic)/2.0 = W_max * .85
+        assert_delta!(
+            cc.cubic.w_max,
+            80000.0 * 0.85 / max_datagram_size as f32,
+            0.001
+        );
+
+        // At this point the target is less than the congestion window
+        assert!(
+            cc.cubic.w_cubic(Duration::from_secs(0))
+                < bytes_to_packets(cc.congestion_window, max_datagram_size)
+        );
+
+        // Enter congestion avoidance
+        cc.congestion_avoidance(Duration::from_millis(10), Duration::from_millis(100), 100);
+
+        // Verify congestion window did not change
+        assert_eq!(cc.congestion_window, (80_000.0 * BETA_CUBIC) as u32);
     }
 
     #[test]
