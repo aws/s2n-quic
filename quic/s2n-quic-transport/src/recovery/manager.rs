@@ -709,12 +709,16 @@ mod test {
         space::rx_packet_numbers::ack_ranges::AckRanges,
     };
     use core::{ops::RangeInclusive, time::Duration};
-    use s2n_quic_core::path::INITIAL_PTO_BACKOFF;
-    use s2n_quic_core::recovery::congestion_controller::testing::MockCongestionController;
-    use s2n_quic_core::recovery::DEFAULT_INITIAL_RTT;
     use s2n_quic_core::{
-        connection, frame::ack_elicitation::AckElicitation, packet::number::PacketNumberSpace,
-        recovery::congestion_controller::testing::Unlimited, varint::VarInt,
+        connection,
+        frame::ack_elicitation::AckElicitation,
+        packet::number::PacketNumberSpace,
+        path::INITIAL_PTO_BACKOFF,
+        recovery::{
+            congestion_controller::testing::{MockCongestionController, Unlimited},
+            DEFAULT_INITIAL_RTT,
+        },
+        varint::VarInt,
     };
     use std::collections::HashSet;
 
