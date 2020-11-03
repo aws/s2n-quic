@@ -246,6 +246,8 @@ impl CongestionController for CubicCongestionController {
         persistent_congestion: bool,
         timestamp: Timestamp,
     ) {
+        debug_assert!(lost_bytes > 0);
+
         self.bytes_in_flight -= lost_bytes;
         self.on_congestion_event(timestamp);
 
@@ -842,9 +844,10 @@ mod test {
         let mut cc = CubicCongestionController::new(1000);
         let now = s2n_quic_platform::time::now();
         cc.congestion_window = 10000;
+        cc.bytes_in_flight = BytesInFlight(1000);
         cc.state = Recovery(now, Idle);
 
-        cc.on_packets_lost(0, true, now);
+        cc.on_packets_lost(100, true, now);
 
         assert_eq!(cc.state, SlowStart);
         assert_eq!(cc.congestion_window, cc.minimum_window());

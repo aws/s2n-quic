@@ -493,8 +493,10 @@ impl Manager {
         let persistent_congestion =
             max_persistent_congestion_period > path.rtt_estimator.persistent_congestion_threshold();
 
-        path.congestion_controller
-            .on_packets_lost(lost_bytes, persistent_congestion, now);
+        if lost_bytes > 0 {
+            path.congestion_controller
+                .on_packets_lost(lost_bytes, persistent_congestion, now);
+        }
     }
 
     fn calculate_loss_time_threshold(rtt_estimator: &RTTEstimator) -> Duration {
@@ -1009,6 +1011,43 @@ mod test {
             sent_packets.get(not_lost).unwrap().time_sent + expected_time_threshold;
         assert!(manager.loss_timer.is_armed());
         assert_eq!(Some(&expected_loss_time), manager.loss_timer.iter().next());
+    }
+
+    #[test]
+    fn detect_and_remove_lost_packets_nothing_lost() {
+        let space = PacketNumberSpace::ApplicationData;
+        let mut manager = Manager::new(space, Duration::from_millis(100));
+        let mut path = Path::new(
+            Default::default(),
+            connection::Id::EMPTY,
+            RTTEstimator::new(Duration::from_millis(10)),
+            MockCongestionController::default(),
+            true,
+        );
+        let recovery_context = &MockContext::default();
+        manager.largest_acked_packet = Some(space.new_packet_number(VarInt::from_u8(10)));
+
+        let time_sent = s2n_quic_platform::time::now();
+        let outcome = transmission::Outcome {
+            ack_elicitation: AckElicitation::Eliciting,
+            is_congestion_controlled: true,
+            bytes_sent: 1,
+        };
+
+        // Send a packet that is less than the largest acked but not lost
+        let not_lost = space.new_packet_number(VarInt::from_u8(9));
+        manager.on_packet_sent(not_lost, outcome, time_sent, &mut path, recovery_context);
+
+        let mut lost_packets: HashSet<PacketNumber> = HashSet::default();
+        manager.detect_and_remove_lost_packets(&mut path, time_sent, |packet_range| {
+            lost_packets.insert(packet_range.start());
+        });
+
+        // Verify no lost bytes are sent to the congestion controller and
+        // on_packets_lost is not called
+        assert_eq!(lost_packets.len(), 0);
+        assert_eq!(path.congestion_controller.lost_bytes, 0);
+        assert_eq!(path.congestion_controller.on_packets_lost, 0);
     }
 
     #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.6.3")]
