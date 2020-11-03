@@ -148,14 +148,12 @@ macro_rules! tx_stream_apis {
         /// Marks the stream as finished and flushes the send buffer.
         ///
         /// The method will return:
-        /// - `Poll::Ready(Ok(()))` if the stream was finished and the send buffer was completely
-        ///   flushed and acknowledged.
-        /// - `Poll::Ready(Err(stream_error))` if the stream could not be finished, because the stream
+        /// - `Ok(())` if the stream was finished successfully
+        /// - `Err(stream_error)` if the stream could not be finished, because the stream
         ///   had previously entered an error state.
-        /// - `Poll::Pending` if the stream is still being finished. In this case, the
-        ///   caller should retry sending after the `Waker` on the provided `Context` is notified.
-        pub fn poll_finish(&mut self, cx: &mut Context) -> Poll<Result<(), StreamError>> {
-            self.tx_request()?.finish().flush().poll(Some(cx))?.into()
+        pub fn finish(&mut self) -> Result<(), StreamError> {
+            self.tx_request()?.finish().poll(None)?;
+            Ok(())
         }
 
         /// Initiates a `RESET` on the stream.
@@ -252,7 +250,7 @@ macro_rules! rx_stream_apis {
 /// A readable and writeable QUIC stream
 pub struct Stream {
     state: StreamState,
-    reset_on_drop: bool,
+    is_open: bool,
 }
 
 impl fmt::Debug for Stream {
@@ -273,13 +271,13 @@ impl fmt::Debug for Stream {
 
 impl Drop for Stream {
     fn drop(&mut self) {
-        if self.reset_on_drop {
+        if self.is_open {
             let _ = self
                 .request()
-                // Reset the sending half of the `Stream`, for the case the
-                // application did not reset it itself or sent all data.
-                // If that already happened, this will be a noop.
-                .reset(ApplicationErrorCode::UNKNOWN)
+                // Dropping a send stream will automatically finish the stream
+                //
+                // This is to stay consistent with std::net::TcpStream
+                .finish()
                 // Send a STOP_SENDING message on the receiving half of the `Stream`,
                 // for the case the application did not consume all data.
                 // If that already happened, this will be a noop.
@@ -296,14 +294,14 @@ impl Stream {
     pub(crate) fn new(shared_state: ConnectionApi, stream_id: StreamId) -> Self {
         Self {
             state: StreamState::new(shared_state, stream_id),
-            reset_on_drop: true,
+            is_open: true,
         }
     }
 
     pub fn request(&mut self) -> Request {
         Request {
             state: &mut self.state,
-            reset_on_drop: &mut self.reset_on_drop,
+            is_open: &mut self.is_open,
             request: ops::Request::default(),
         }
     }
@@ -311,7 +309,7 @@ impl Stream {
     pub fn tx_request(&mut self) -> Result<TxRequest, StreamError> {
         Ok(TxRequest {
             state: &mut self.state,
-            reset_on_drop: &mut self.reset_on_drop,
+            is_open: &mut self.is_open,
             request: ops::Request::default(),
         })
     }
@@ -319,7 +317,7 @@ impl Stream {
     pub fn rx_request(&mut self) -> Result<RxRequest, StreamError> {
         Ok(RxRequest {
             state: &mut self.state,
-            reset_on_drop: &mut self.reset_on_drop,
+            is_open: &mut self.is_open,
             request: ops::Request::default(),
         })
     }
@@ -342,7 +340,7 @@ impl Stream {
         let writable_stream =
             SendStream::new(self.state.shared_state.clone(), self.state.stream_id);
 
-        self.reset_on_drop = false;
+        self.is_open = false;
         (readable_stream, writable_stream)
     }
 }
@@ -350,7 +348,7 @@ impl Stream {
 /// A writeable QUIC stream
 pub struct SendStream {
     state: StreamState,
-    reset_on_drop: bool,
+    is_open: bool,
 }
 
 impl fmt::Debug for SendStream {
@@ -371,14 +369,11 @@ impl fmt::Debug for SendStream {
 
 impl Drop for SendStream {
     fn drop(&mut self) {
-        if self.reset_on_drop {
-            // Reset the `Stream`, for the case the application did not reset it
-            // itself or sent all data. If that already happened, this will be a noop.
-            let _ = self
-                .tx_request()
-                .unwrap()
-                .reset(ApplicationErrorCode::UNKNOWN)
-                .poll(None);
+        if self.is_open {
+            // Dropping a send stream will automatically finish the stream
+            //
+            // This is to stay consistent with std::net::TcpStream
+            let _ = self.tx_request().unwrap().finish().poll(None);
         }
     }
 }
@@ -390,7 +385,7 @@ impl SendStream {
     pub(crate) fn new(shared_state: ConnectionApi, stream_id: StreamId) -> Self {
         Self {
             state: StreamState::new(shared_state, stream_id),
-            reset_on_drop: true,
+            is_open: true,
         }
     }
 
@@ -399,7 +394,7 @@ impl SendStream {
     pub fn tx_request(&mut self) -> Result<TxRequest, StreamError> {
         Ok(TxRequest {
             state: &mut self.state,
-            reset_on_drop: &mut self.reset_on_drop,
+            is_open: &mut self.is_open,
             request: ops::Request::default(),
         })
     }
@@ -408,7 +403,7 @@ impl SendStream {
 /// A readable QUIC stream
 pub struct ReceiveStream {
     state: StreamState,
-    reset_on_drop: bool,
+    is_open: bool,
 }
 
 impl fmt::Debug for ReceiveStream {
@@ -429,7 +424,7 @@ impl fmt::Debug for ReceiveStream {
 
 impl Drop for ReceiveStream {
     fn drop(&mut self) {
-        if self.reset_on_drop {
+        if self.is_open {
             // Send a STOP_SENDING message on the receiving half of the `Stream`,
             // for the case the application did not consume all data.
             // If that already happened, this will be a noop.
@@ -449,14 +444,14 @@ impl ReceiveStream {
     pub(crate) fn new(shared_state: ConnectionApi, stream_id: StreamId) -> Self {
         Self {
             state: StreamState::new(shared_state, stream_id),
-            reset_on_drop: true,
+            is_open: true,
         }
     }
 
     pub fn rx_request(&mut self) -> Result<RxRequest, StreamError> {
         Ok(RxRequest {
             state: &mut self.state,
-            reset_on_drop: &mut self.reset_on_drop,
+            is_open: &mut self.is_open,
             request: ops::Request::default(),
         })
     }
@@ -527,7 +522,7 @@ macro_rules! rx_request_apis {
 
 pub struct Request<'state, 'chunks> {
     state: &'state mut StreamState,
-    reset_on_drop: &'state mut bool,
+    is_open: &'state mut bool,
     request: ops::Request<'chunks>,
 }
 
@@ -538,11 +533,10 @@ impl<'state, 'chunks> Request<'state, 'chunks> {
     pub fn poll(&mut self, context: Option<&Context>) -> Result<ops::Response, StreamError> {
         let response = self.state.poll_request(&mut self.request, context)?;
 
-        // don't reset after exiting the open status
-        *self.reset_on_drop = core::iter::empty()
-            .chain(response.rx().map(|rx| !rx.is_open()))
-            .chain(response.tx().map(|tx| !tx.is_open()))
-            .all(|is_final| is_final);
+        *self.is_open = core::iter::empty()
+            .chain(response.rx().map(|rx| rx.is_open()))
+            .chain(response.tx().map(|tx| tx.is_open()))
+            .any(|is_open| is_open);
 
         Ok(response)
     }
@@ -561,7 +555,7 @@ impl<'state, 'chunks> Future for Request<'state, 'chunks> {
 
 pub struct TxRequest<'state, 'chunks> {
     state: &'state mut StreamState,
-    reset_on_drop: &'state mut bool,
+    is_open: &'state mut bool,
     request: ops::Request<'chunks>,
 }
 
@@ -575,8 +569,7 @@ impl<'state, 'chunks> TxRequest<'state, 'chunks> {
             .tx
             .expect("invalid response");
 
-        // don't reset after exiting the open status
-        *self.reset_on_drop = !response.is_open();
+        *self.is_open = response.is_open();
 
         Ok(response)
     }
@@ -595,7 +588,7 @@ impl<'state, 'chunks> Future for TxRequest<'state, 'chunks> {
 
 pub struct RxRequest<'state, 'chunks> {
     state: &'state mut StreamState,
-    reset_on_drop: &'state mut bool,
+    is_open: &'state mut bool,
     request: ops::Request<'chunks>,
 }
 
@@ -609,8 +602,7 @@ impl<'state, 'chunks> RxRequest<'state, 'chunks> {
             .rx
             .expect("invalid response");
 
-        // don't reset after exiting the open status
-        *self.reset_on_drop = !response.is_open();
+        *self.is_open = response.is_open();
 
         Ok(response)
     }
