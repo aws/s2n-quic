@@ -129,15 +129,18 @@ impl<Config: connection::Config> HandshakeSpace<Config> {
         timestamp: Timestamp,
         is_handshake_confirmed: bool,
     ) {
+        debug_assert!(
+            Config::ENDPOINT_TYPE.is_server(),
+            "Clients are never in an anti-amplification state"
+        );
+
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.6
         //# When a server is blocked by anti-amplification limits, receiving a
         //# datagram unblocks it, even if none of the packets in the datagram are
         //# successfully processed.  In such a case, the PTO timer will need to
         //# be re-armed.
-        if Config::ENDPOINT_TYPE.is_server() {
-            self.recovery_manager
-                .update_pto_timer(path, timestamp, is_handshake_confirmed);
-        }
+        self.recovery_manager
+            .update_pto_timer(path, timestamp, is_handshake_confirmed);
     }
 
     /// Returns all of the component timers
