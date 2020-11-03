@@ -73,7 +73,6 @@ impl Interop {
             );
             let mut file = File::open(&abs_path).await?;
             io::copy(&mut file, &mut stream).await?;
-            stream.finish().await?;
             Ok(())
         }
 
