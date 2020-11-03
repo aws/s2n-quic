@@ -2,7 +2,6 @@ use crate::recovery::{
     congestion_controller::CongestionController,
     cubic::{FastRetransmission::*, State::*},
     hybrid_slow_start::HybridSlowStart,
-    loss_info::LossInfo,
 };
 use core::{
     cmp::{max, min},
@@ -564,9 +563,7 @@ mod test {
         CongestionController,
     };
     use s2n_quic_core::{
-        packet::number::PacketNumberSpace,
-        recovery::{loss_info::LossInfo, RTTEstimator},
-        time::Duration,
+        packet::number::PacketNumberSpace, recovery::RTTEstimator, time::Duration,
     };
 
     macro_rules! assert_delta {
@@ -813,8 +810,6 @@ mod test {
         cc.congestion_window = 100_000;
         cc.bytes_in_flight = BytesInFlight(100_000);
         cc.state = CongestionAvoidance(now);
-
-        let mut loss_info = LossInfo::default();
 
         cc.on_packets_lost(100, false, now + Duration::from_secs(10));
 

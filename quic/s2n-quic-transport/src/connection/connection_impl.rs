@@ -400,7 +400,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
             }
         }
 
-        let loss_info = shared_state
+        shared_state
             .space_manager
             .on_timeout(self.path_manager.active_path_mut().1, timestamp);
     }
@@ -510,14 +510,12 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         packet: CleartextInitial,
     ) -> Result<(), TransportError> {
         if let Some(space) = shared_state.space_manager.initial_mut() {
-            let (loss_info, close) = space.handle_cleartext_payload(
+            if let Some(close) = space.handle_cleartext_payload(
                 packet.packet_number,
                 packet.payload,
                 datagram,
                 &mut self.path_manager[path_id],
-            )?;
-
-            if let Some(close) = close {
+            )? {
                 self.close(
                     shared_state,
                     ConnectionCloseReason::PeerImmediateClose(close),
@@ -546,14 +544,12 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
             .handshake_mut()
             .and_then(packet_validator!(packet))
         {
-            let (loss_info, close) = space.handle_cleartext_payload(
+            if let Some(close) = space.handle_cleartext_payload(
                 packet.packet_number,
                 packet.payload,
                 datagram,
                 &mut self.path_manager[path_id],
-            )?;
-
-            if let Some(close) = close {
+            )? {
                 self.close(
                     shared_state,
                     ConnectionCloseReason::PeerImmediateClose(close),
@@ -608,14 +604,12 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                     }
                 }))
         {
-            let (loss_info, close) = space.handle_cleartext_payload(
+            if let Some(close) = space.handle_cleartext_payload(
                 packet.packet_number,
                 packet.payload,
                 datagram,
                 &mut self.path_manager[path_id],
-            )?;
-
-            if let Some(close) = close {
+            )? {
                 self.close(
                     shared_state,
                     ConnectionCloseReason::PeerImmediateClose(close),

@@ -1,10 +1,5 @@
-use crate::{
-    inet::SocketAddress,
-    path::MINIMUM_MTU,
-    recovery::{loss_info::LossInfo, RTTEstimator},
-    time::Timestamp,
-};
-use core::{fmt::Debug, time::Duration};
+use crate::{inet::SocketAddress, path::MINIMUM_MTU, recovery::RTTEstimator, time::Timestamp};
+use core::fmt::Debug;
 
 pub trait Endpoint: 'static {
     type CongestionController: CongestionController;

@@ -1,6 +1,6 @@
 use crate::{
     contexts::WriteContext,
-    recovery::{loss_info::LossInfo, SentPacketInfo, SentPackets},
+    recovery::{SentPacketInfo, SentPackets},
     timer::VirtualTimer,
     transmission,
 };
@@ -109,15 +109,12 @@ impl Manager {
         path: &mut Path<CC>,
         timestamp: Timestamp,
         context: &mut Ctx,
-    ) -> LossInfo {
-        let mut loss_info = LossInfo::default();
-
+    ) {
         if self.loss_timer.is_armed() {
             if self.loss_timer.poll_expiration(timestamp).is_ready() {
-                loss_info =
-                    self.detect_and_remove_lost_packets(path, timestamp, |packet_number_range| {
-                        context.on_packet_loss(&packet_number_range);
-                    })
+                self.detect_and_remove_lost_packets(path, timestamp, |packet_number_range| {
+                    context.on_packet_loss(&packet_number_range);
+                })
             }
         } else {
             let pto_expired = self
@@ -133,8 +130,6 @@ impl Manager {
                 self.update_pto_timer(path, timestamp, context.is_handshake_confirmed());
             }
         }
-
-        loss_info
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#A.5
@@ -226,7 +221,7 @@ impl Manager {
         frame: frame::Ack<A>,
         path: &mut Path<CC>,
         context: &mut Ctx,
-    ) -> Result<LossInfo, TransportError> {
+    ) -> Result<(), TransportError> {
         let largest_acked_in_frame = self.space.new_packet_number(frame.largest_acknowledged());
         let mut newly_acked_packets =
             SmallVec::<[SentPacketInfo; ACKED_PACKETS_INITIAL_CAPACITY]>::new();
@@ -271,7 +266,7 @@ impl Manager {
 
         if largest_newly_acked.is_none() {
             // Nothing to do if there are no newly acked packets.
-            return Ok(LossInfo::default());
+            return Ok(());
         }
 
         let largest_newly_acked = largest_newly_acked.expect("There are newly acked packets");
@@ -310,10 +305,9 @@ impl Manager {
         //# Once a later packet within the same packet number space has been
         //# acknowledged, an endpoint SHOULD declare an earlier packet lost if it
         //# was sent a threshold amount of time in the past.
-        let loss_info =
-            self.detect_and_remove_lost_packets(path, datagram.timestamp, |packet_number_range| {
-                context.on_packet_loss(&packet_number_range);
-            });
+        self.detect_and_remove_lost_packets(path, datagram.timestamp, |packet_number_range| {
+            context.on_packet_loss(&packet_number_range);
+        });
 
         for acked_packet_info in newly_acked_packets {
             path.congestion_controller.on_packet_ack(
@@ -346,7 +340,7 @@ impl Manager {
             self.space.is_application_data() && context.is_handshake_confirmed(),
         );
 
-        Ok(loss_info)
+        Ok(())
     }
 
     /// Returns `true` if the recovery manager requires a probe packet to be sent.
@@ -381,7 +375,7 @@ impl Manager {
         path: &mut Path<CC>,
         now: Timestamp,
         mut on_loss: OnLoss,
-    ) -> LossInfo {
+    ) {
         // Cancel the loss timer. It will be armed again if any unacknowledged packets are
         // older than the largest acked packet, but not old enough to be considered lost yet
         self.loss_timer.cancel();
@@ -393,8 +387,6 @@ impl Manager {
         // TODO: Investigate a more efficient mechanism for managing sent_packets
         //       See https://github.com/awslabs/s2n-quic/issues/69
         let mut sent_packets_to_remove = Vec::new();
-
-        let mut loss_info = LossInfo::default();
 
         let largest_acked_packet = &self
             .largest_acked_packet
@@ -503,8 +495,6 @@ impl Manager {
 
         path.congestion_controller
             .on_packets_lost(lost_bytes, persistent_congestion, now);
-
-        loss_info
     }
 
     fn calculate_loss_time_threshold(rtt_estimator: &RTTEstimator) -> Duration {
@@ -837,7 +827,7 @@ mod test {
 
         // Ack packets 1 to 3
         let ack_receive_time = time_sent + Duration::from_millis(500);
-        let (result, context) = ack_packets(1..=3, ack_receive_time, &mut path, &mut manager);
+        let context = ack_packets(1..=3, ack_receive_time, &mut path, &mut manager);
 
         assert_eq!(path.congestion_controller.lost_bytes, 0);
         assert_eq!(path.pto_backoff, INITIAL_PTO_BACKOFF);
@@ -857,7 +847,7 @@ mod test {
 
         // Acknowledging already acked packets
         let ack_receive_time = ack_receive_time + Duration::from_secs(1);
-        let (result, context) = ack_packets(1..=3, ack_receive_time, &mut path, &mut manager);
+        let context = ack_packets(1..=3, ack_receive_time, &mut path, &mut manager);
 
         // Acknowledging already acked packets does not call on_new_packet_ack or change RTT
         assert_eq!(path.congestion_controller.lost_bytes, 0);
@@ -870,7 +860,7 @@ mod test {
 
         // Ack packets 7 to 9 (4 - 6 will be considered lost)
         let ack_receive_time = ack_receive_time + Duration::from_secs(1);
-        let (result, context) = ack_packets(7..=9, ack_receive_time, &mut path, &mut manager);
+        let context = ack_packets(7..=9, ack_receive_time, &mut path, &mut manager);
 
         assert_eq!(
             path.congestion_controller.lost_bytes,
@@ -893,7 +883,7 @@ mod test {
         );
         path.pto_backoff = 2;
         let ack_receive_time = ack_receive_time + Duration::from_millis(500);
-        let (_result, context) = ack_packets(10..=10, ack_receive_time, &mut path, &mut manager);
+        let context = ack_packets(10..=10, ack_receive_time, &mut path, &mut manager);
         assert_eq!(path.pto_backoff, 2);
         assert_eq!(context.on_packet_ack_count, 1);
         assert_eq!(context.on_new_packet_ack_count, 1);
@@ -1067,7 +1057,7 @@ mod test {
         );
 
         // t=1.2: Recv acknowledgement of #1
-        let _ = ack_packets(
+        ack_packets(
             1..=1,
             time_zero + Duration::from_millis(1200),
             &mut path,
@@ -1104,7 +1094,7 @@ mod test {
         );
 
         // t=12.2: Recv acknowledgement of #9
-        let (result, context) = ack_packets(
+        let context = ack_packets(
             9..=9,
             time_zero + Duration::from_millis(12200),
             &mut path,
@@ -1164,7 +1154,7 @@ mod test {
         );
 
         // t=1.2: Recv acknowledgement of #1
-        let _ = ack_packets(
+        ack_packets(
             1..=1,
             time_zero + Duration::from_millis(1200),
             &mut path,
@@ -1212,7 +1202,7 @@ mod test {
         );
 
         // t=30.2: Recv acknowledgement of #11
-        let (result, context) = ack_packets(
+        let context = ack_packets(
             11..=11,
             time_zero + Duration::from_millis(30200),
             &mut path,
@@ -1359,7 +1349,7 @@ mod test {
 
         // Loss timer is armed but not expired yet, nothing happens
         manager.loss_timer.set(now + Duration::from_secs(10));
-        let mut loss_info = manager.on_timeout(&mut path, now, &mut context);
+        manager.on_timeout(&mut path, now, &mut context);
         assert_eq!(context.on_packet_loss_count, 0);
         assert!(!manager.pto.timer.is_armed());
         assert_eq!(expected_pto_backoff, path.pto_backoff);
@@ -1379,26 +1369,26 @@ mod test {
 
         // Loss timer is armed and expired, on_packet_loss is called
         manager.loss_timer.set(now - Duration::from_secs(1));
-        loss_info = manager.on_timeout(&mut path, now, &mut context);
+        manager.on_timeout(&mut path, now, &mut context);
         assert_eq!(context.on_packet_loss_count, 1);
         assert!(!manager.pto.timer.is_armed());
         assert_eq!(expected_pto_backoff, path.pto_backoff);
 
         // Loss timer is not armed, pto timer is not armed
         manager.loss_timer.cancel();
-        loss_info = manager.on_timeout(&mut path, now, &mut context);
+        manager.on_timeout(&mut path, now, &mut context);
         assert_eq!(expected_pto_backoff, path.pto_backoff);
 
         // Loss timer is not armed, pto timer is armed but not expired
         manager.loss_timer.cancel();
         manager.pto.timer.set(now + Duration::from_secs(5));
-        loss_info = manager.on_timeout(&mut path, now, &mut context);
+        manager.on_timeout(&mut path, now, &mut context);
         assert_eq!(expected_pto_backoff, path.pto_backoff);
 
         // Loss timer is not armed, pto timer is expired without bytes in flight
         expected_pto_backoff *= 2;
         manager.pto.timer.set(now - Duration::from_secs(5));
-        loss_info = manager.on_timeout(&mut path, now, &mut context);
+        manager.on_timeout(&mut path, now, &mut context);
         assert_eq!(expected_pto_backoff, path.pto_backoff);
         assert_eq!(manager.pto.state, RequiresTransmission(1));
 
@@ -1413,7 +1403,7 @@ mod test {
             },
         );
         manager.pto.timer.set(now - Duration::from_secs(5));
-        loss_info = manager.on_timeout(&mut path, now, &mut context);
+        manager.on_timeout(&mut path, now, &mut context);
         assert_eq!(expected_pto_backoff, path.pto_backoff);
         assert_eq!(manager.pto.state, RequiresTransmission(2));
     }
@@ -1493,7 +1483,7 @@ mod test {
         ack_receive_time: Timestamp,
         path: &mut Path<CC>,
         manager: &mut Manager,
-    ) -> (Result<LossInfo, TransportError>, MockContext) {
+    ) -> MockContext {
         let acked_packets = PacketNumberRange::new(
             manager
                 .space
@@ -1523,13 +1513,13 @@ mod test {
         };
 
         let mut context = MockContext::default();
-        let result = manager.on_ack_frame(&datagram, frame, path, &mut context);
+        let _ = manager.on_ack_frame(&datagram, frame, path, &mut context);
 
         for packet in acked_packets {
             assert!(manager.sent_packets.get(packet).is_none());
         }
 
-        (result, context)
+        context
     }
 
     #[test]

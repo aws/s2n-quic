@@ -16,7 +16,6 @@ use s2n_quic_core::{
     inet::DatagramInfo,
     packet::number::{PacketNumber, PacketNumberSpace},
     path::Path,
-    recovery::loss_info::LossInfo,
     time::Timestamp,
     transport::error::TransportError,
 };
@@ -160,23 +159,16 @@ impl<Config: connection::Config> PacketSpaceManager<Config> {
         &mut self,
         path: &mut Path<Config::CongestionController>,
         timestamp: Timestamp,
-    ) -> LossInfo {
-        let initial_loss_info = self
-            .initial_mut()
-            .map(|space| space.on_timeout(path, timestamp));
-        let handshake_loss_info = self
-            .handshake_mut()
-            .map(|space| space.on_timeout(path, timestamp));
-        let application_loss_info = self
-            .application_mut()
-            .map(|space| space.on_timeout(path, timestamp));
-
-        core::iter::empty()
-            .chain(initial_loss_info.iter())
-            .chain(handshake_loss_info.iter())
-            .chain(application_loss_info.iter())
-            .cloned()
-            .sum()
+    ) {
+        if let Some(space) = self.initial_mut() {
+            space.on_timeout(path, timestamp)
+        }
+        if let Some(space) = self.handshake_mut() {
+            space.on_timeout(path, timestamp)
+        }
+        if let Some(space) = self.application_mut() {
+            space.on_timeout(path, timestamp)
+        }
     }
 
     pub fn requires_probe(&self) -> bool {
@@ -264,7 +256,7 @@ pub trait PacketSpace<Config: connection::Config> {
         frame: Ack<A>,
         datagram: &DatagramInfo,
         path: &mut Path<Config::CongestionController>,
-    ) -> Result<LossInfo, TransportError>;
+    ) -> Result<(), TransportError>;
 
     fn handle_handshake_done_frame(
         &mut self,
@@ -303,9 +295,7 @@ pub trait PacketSpace<Config: connection::Config> {
         mut payload: DecoderBufferMut<'a>,
         datagram: &DatagramInfo,
         path: &mut Path<Config::CongestionController>,
-    ) -> Result<(LossInfo, Option<frame::ConnectionClose<'a>>), TransportError> {
-        let mut loss_info = LossInfo::default();
-
+    ) -> Result<Option<frame::ConnectionClose<'a>>, TransportError> {
         use s2n_quic_core::{
             frame::{Frame, FrameMut},
             varint::VarInt,
@@ -345,12 +335,11 @@ pub trait PacketSpace<Config: connection::Config> {
                 Frame::Ack(frame) => {
                     let on_error = with_frame_type!(frame);
                     processed_packet.on_processed_frame(&frame);
-                    loss_info += self
-                        .handle_ack_frame(frame, datagram, path)
+                    self.handle_ack_frame(frame, datagram, path)
                         .map_err(on_error)?;
                 }
                 Frame::ConnectionClose(frame) => {
-                    return Ok((loss_info, Some(frame)));
+                    return Ok(Some(frame));
                 }
                 Frame::Stream(frame) => {
                     let on_error = with_frame_type!(frame);
@@ -460,6 +449,6 @@ pub trait PacketSpace<Config: connection::Config> {
 
         self.on_processed_packet(processed_packet)?;
 
-        Ok((loss_info, None))
+        Ok(None)
     }
 }
