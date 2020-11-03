@@ -179,34 +179,6 @@ impl<Config: connection::Config> PacketSpaceManager<Config> {
             .sum()
     }
 
-    pub fn on_loss_info(
-        &mut self,
-        path: &Path<Config::CongestionController>,
-        timestamp: Timestamp,
-    ) {
-        self.update_recovery(path, timestamp);
-    }
-
-    pub fn update_recovery(
-        &mut self,
-        path: &Path<Config::CongestionController>,
-        timestamp: Timestamp,
-    ) {
-        let is_handshake_confirmed = self.is_handshake_confirmed();
-
-        if let Some(space) = self.initial_mut() {
-            space.update_recovery(path, timestamp, is_handshake_confirmed);
-        }
-
-        if let Some(space) = self.handshake_mut() {
-            space.update_recovery(path, timestamp, is_handshake_confirmed);
-        }
-
-        if let Some(space) = self.application_mut() {
-            space.update_recovery(path, timestamp, is_handshake_confirmed);
-        }
-    }
-
     pub fn requires_probe(&self) -> bool {
         core::iter::empty()
             .chain(self.initial.iter().map(|space| space.requires_probe()))

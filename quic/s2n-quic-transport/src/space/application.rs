@@ -134,11 +134,13 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         let (_protected_packet, buffer) =
             packet.encode_packet(&self.crypto, packet_number_encoder, buffer)?;
 
-        self.recovery_manager.on_packet_sent(
+        let (recovery_manager, recovery_context) = self.recovery();
+        recovery_manager.on_packet_sent(
             packet_number,
             outcome,
             context.timestamp,
             context.path,
+            &recovery_context,
         );
 
         Ok(buffer)
@@ -154,7 +156,8 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
             self.handshake_status.on_handshake_done();
         }
 
-        self.recovery_manager.update(path, timestamp, true)
+        self.recovery_manager
+            .update_pto_timer(path, timestamp, true)
     }
 
     /// Returns all of the component timers
@@ -174,16 +177,6 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
 
         let (recovery_manager, mut context) = self.recovery();
         recovery_manager.on_timeout(path, timestamp, &mut context)
-    }
-
-    pub fn update_recovery(
-        &mut self,
-        path: &Path<Config::CongestionController>,
-        timestamp: Timestamp,
-        is_handshake_confirmed: bool,
-    ) {
-        self.recovery_manager
-            .update(path, timestamp, is_handshake_confirmed)
     }
 
     /// Returns the Packet Number to be used when decoding incoming packets
@@ -460,7 +453,8 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
         //# packet is sent or acknowledged, when the handshake is confirmed
         //# (Section 4.1.2 of [QUIC-TLS]), or when Initial or Handshake keys are
         //# discarded (Section 9 of [QUIC-TLS]).
-        self.recovery_manager.update(path, datagram.timestamp, true);
+        self.recovery_manager
+            .update_pto_timer(path, datagram.timestamp, true);
 
         Ok(())
     }

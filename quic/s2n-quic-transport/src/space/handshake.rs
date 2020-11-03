@@ -110,11 +110,13 @@ impl<Config: connection::Config> HandshakeSpace<Config> {
         let (_protected_packet, buffer) =
             packet.encode_packet(&self.crypto, packet_number_encoder, buffer)?;
 
-        self.recovery_manager.on_packet_sent(
+        let (recovery_manager, recovery_context) = self.recovery();
+        recovery_manager.on_packet_sent(
             packet_number,
             outcome,
             context.timestamp,
             context.path,
+            &recovery_context,
         );
 
         Ok(buffer)
@@ -146,16 +148,6 @@ impl<Config: connection::Config> HandshakeSpace<Config> {
 
     pub fn requires_probe(&self) -> bool {
         self.recovery_manager.requires_probe()
-    }
-
-    pub fn update_recovery(
-        &mut self,
-        path: &Path<Config::CongestionController>,
-        timestamp: Timestamp,
-        is_handshake_confirmed: bool,
-    ) {
-        self.recovery_manager
-            .update(path, timestamp, is_handshake_confirmed)
     }
 
     /// Returns the Packet Number to be used when decoding incoming packets

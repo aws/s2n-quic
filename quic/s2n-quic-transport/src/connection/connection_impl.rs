@@ -26,7 +26,6 @@ use s2n_quic_core::{
         version_negotiation::ProtectedVersionNegotiation,
         zero_rtt::ProtectedZeroRTT,
     },
-    recovery::loss_info::LossInfo,
     time::Timestamp,
     transport::error::TransportError,
 };
@@ -174,22 +173,6 @@ impl<ConfigType: connection::Config> ConnectionImpl<ConfigType> {
         self.timers
             .peer_idle_timer
             .set(timestamp + self.get_idle_timer_duration())
-    }
-
-    fn on_loss_info(
-        &mut self,
-        shared_state: &mut SharedConnectionState<ConfigType>,
-        loss_info: LossInfo,
-        path_id: path::Id,
-        timestamp: Timestamp,
-    ) {
-        // This function is called regardless if there was a loss event or not.
-        // Only propagate on_loss_info if necessary.
-        if loss_info.updated_required() {
-            let path = &mut self.path_manager[path_id];
-
-            shared_state.space_manager.on_loss_info(path, timestamp);
-        }
     }
 }
 
@@ -381,9 +364,6 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         if count == 0 {
             Err(ConnectionOnTransmitError::NoDatagram)
         } else {
-            shared_state
-                .space_manager
-                .update_recovery(active_path, timestamp);
             Ok(())
         }
     }
@@ -423,13 +403,6 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         let loss_info = shared_state
             .space_manager
             .on_timeout(self.path_manager.active_path_mut().1, timestamp);
-
-        self.on_loss_info(
-            shared_state,
-            loss_info,
-            self.path_manager.active_path().0,
-            timestamp,
-        );
     }
 
     /// Updates the per-connection timer based on individual component timers.
@@ -553,8 +526,6 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                 return Ok(());
             }
 
-            self.on_loss_info(shared_state, loss_info, path_id, datagram.timestamp);
-
             // try to move the crypto state machine forward
             self.update_crypto_state(shared_state, datagram)?;
         }
@@ -590,8 +561,6 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                 );
                 return Ok(());
             }
-
-            self.on_loss_info(shared_state, loss_info, path_id, datagram.timestamp);
 
             if Self::Config::ENDPOINT_TYPE.is_server() {
                 //= https://tools.ietf.org/id/draft-ietf-quic-tls-27.txt#4.10.1
@@ -654,8 +623,6 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                 );
                 return Ok(());
             }
-
-            self.on_loss_info(shared_state, loss_info, path_id, datagram.timestamp);
 
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#10.2
             //# An endpoint restarts its idle timer when a packet from its peer is
