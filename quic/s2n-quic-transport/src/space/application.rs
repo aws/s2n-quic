@@ -43,8 +43,6 @@ pub struct ApplicationSpace<Config: connection::Config> {
     /// The crypto suite for application data
     /// TODO: What about ZeroRtt?
     pub crypto: <Config::TLSSession as CryptoSuite>::OneRTTCrypto,
-    /// Records if the handshake is pending or done, which is communicated to the peer
-    pub handshake_status: HandshakeStatus,
     processed_packet_numbers: SlidingWindow,
     recovery_manager: recovery::Manager,
 }
@@ -64,7 +62,6 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
             spin_bit: SpinBit::Zero,
             stream_manager,
             crypto,
-            handshake_status: HandshakeStatus::default(),
             processed_packet_numbers: SlidingWindow::default(),
             recovery_manager: recovery::Manager::new(
                 PacketNumberSpace::ApplicationData,
@@ -92,6 +89,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         &mut self,
         context: &mut ConnectionTransmissionContext<Config>,
         transmission_constraint: transmission::Constraint,
+        handshake_status: &mut HandshakeStatus,
         buffer: EncoderBuffer<'a>,
     ) -> Result<EncoderBuffer<'a>, PacketEncodingError<'a>> {
         let mut packet_number = self.tx_packet_numbers.next();
@@ -113,7 +111,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         let payload = transmission::application::Transmission {
             ack_manager: &mut self.ack_manager,
             context,
-            handshake_status: &mut self.handshake_status,
+            handshake_status,
             packet_number,
             recovery_manager: &mut self.recovery_manager,
             stream_manager: &mut self.stream_manager,
@@ -133,7 +131,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         let (_protected_packet, buffer) =
             packet.encode_packet(&self.crypto, packet_number_encoder, buffer)?;
 
-        let (recovery_manager, recovery_context) = self.recovery();
+        let (recovery_manager, recovery_context) = self.recovery(handshake_status);
         recovery_manager.on_packet_sent(
             packet_number,
             outcome,
@@ -173,10 +171,11 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         path: &Path<Config::CongestionController>,
         timestamp: Timestamp,
     ) {
-        if Config::ENDPOINT_TYPE.is_server() {
-            self.handshake_status.on_handshake_done();
-        }
-
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
+        //# A sender SHOULD restart its PTO timer every time an ack-eliciting
+        //# packet is sent or acknowledged, when the handshake is confirmed
+        //# (Section 4.1.2 of [QUIC-TLS]), or when Initial or Handshake keys are
+        //# discarded (Section 9 of [QUIC-TLS]).
         self.recovery_manager
             .update_pto_timer(path, timestamp, true)
     }
@@ -192,11 +191,12 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
     pub fn on_timeout(
         &mut self,
         path: &mut Path<Config::CongestionController>,
+        handshake_status: &mut HandshakeStatus,
         timestamp: Timestamp,
     ) {
         self.ack_manager.on_timeout(timestamp);
 
-        let (recovery_manager, mut context) = self.recovery();
+        let (recovery_manager, mut context) = self.recovery(handshake_status);
         recovery_manager.on_timeout(path, timestamp, &mut context)
     }
 
@@ -216,12 +216,15 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         self.tx_packet_numbers.largest_sent_packet_number_acked()
     }
 
-    fn recovery(&mut self) -> (&mut recovery::Manager, RecoveryContext<Config>) {
+    fn recovery<'a>(
+        &'a mut self,
+        handshake_status: &'a mut HandshakeStatus,
+    ) -> (&'a mut recovery::Manager, RecoveryContext<'a, Config>) {
         (
             &mut self.recovery_manager,
             RecoveryContext {
                 ack_manager: &mut self.ack_manager,
-                handshake_status: &mut self.handshake_status,
+                handshake_status,
                 stream_manager: &mut self.stream_manager,
                 tx_packet_numbers: &mut self.tx_packet_numbers,
             },
@@ -233,7 +236,6 @@ impl<Config: connection::Config> transmission::interest::Provider for Applicatio
     fn transmission_interest(&self) -> transmission::Interest {
         transmission::Interest::default()
             + self.ack_manager.transmission_interest()
-            + self.handshake_status.transmission_interest()
             + self.stream_manager.transmission_interest()
             + self.recovery_manager.transmission_interest()
     }
@@ -308,9 +310,10 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
         frame: Ack<A>,
         datagram: &DatagramInfo,
         path: &mut Path<Config::CongestionController>,
+        handshake_status: &mut HandshakeStatus,
     ) -> Result<(), TransportError> {
         path.on_peer_validated();
-        let (recovery_manager, mut context) = self.recovery();
+        let (recovery_manager, mut context) = self.recovery(handshake_status);
         recovery_manager.on_ack_frame(datagram, frame, path, &mut context)
     }
 
@@ -455,6 +458,7 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
         frame: HandshakeDone,
         datagram: &DatagramInfo,
         path: &mut Path<Config::CongestionController>,
+        handshake_status: &mut HandshakeStatus,
     ) -> Result<(), TransportError> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#19.20
         //# A server MUST
@@ -467,15 +471,8 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
                 .with_frame_type(frame.tag().into()));
         }
 
-        self.handshake_status.on_handshake_done_received();
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
-        //# A sender SHOULD restart its PTO timer every time an ack-eliciting
-        //# packet is sent or acknowledged, when the handshake is confirmed
-        //# (Section 4.1.2 of [QUIC-TLS]), or when Initial or Handshake keys are
-        //# discarded (Section 9 of [QUIC-TLS]).
-        self.recovery_manager
-            .update_pto_timer(path, datagram.timestamp, true);
+        handshake_status.on_handshake_done_received();
+        self.on_handshake_done(path, datagram.timestamp);
 
         Ok(())
     }

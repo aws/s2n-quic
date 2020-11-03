@@ -2,7 +2,7 @@ use crate::{
     connection,
     space::{
         rx_packet_numbers::{AckManager, DEFAULT_ACK_RANGES_LIMIT, EARLY_ACK_SETTINGS},
-        ApplicationSpace, HandshakeSpace, InitialSpace,
+        ApplicationSpace, HandshakeSpace, HandshakeStatus, InitialSpace,
     },
     stream::AbstractStreamManager,
 };
@@ -24,6 +24,7 @@ pub struct SessionContext<'a, Config: connection::Config> {
     pub handshake: &'a mut Option<Box<HandshakeSpace<Config>>>,
     pub application: &'a mut Option<Box<ApplicationSpace<Config>>>,
     pub zero_rtt_crypto: &'a mut Option<Box<<Config::TLSSession as CryptoSuite>::ZeroRTTCrypto>>,
+    pub handshake_status: &'a mut HandshakeStatus,
 }
 
 impl<'a, Config: connection::Config> tls::Context<Config::TLSSession>
@@ -129,7 +130,16 @@ impl<'a, Config: connection::Config> tls::Context<Config::TLSSession>
 
     fn on_handshake_done(&mut self) -> Result<(), CryptoError> {
         if let Some(application) = self.application.as_mut() {
-            application.on_handshake_done(&self.path, self.now);
+            if Config::ENDPOINT_TYPE.is_server() {
+                //= https://tools.ietf.org/id/draft-ietf-quic-tls-29#4.11.2
+                //# The server MUST send a HANDSHAKE_DONE
+                //# frame as soon as it completes the handshake.
+                self.handshake_status.on_handshake_done();
+
+                // All of the other spaces are discarded by the time the handshake is confirmed so
+                // we only need to notify the application space
+                application.on_handshake_done(&self.path, self.now);
+            }
             Ok(())
         } else {
             Err(CryptoError::INTERNAL_ERROR

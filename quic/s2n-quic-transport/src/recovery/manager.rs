@@ -518,9 +518,7 @@ impl Manager {
 pub trait Context {
     const ENDPOINT_TYPE: EndpointType;
 
-    fn is_handshake_confirmed(&self) -> bool {
-        panic!("Handshake status is not currently available in this packet space")
-    }
+    fn is_handshake_confirmed(&self) -> bool;
 
     fn validate_packet_ack(
         &mut self,
