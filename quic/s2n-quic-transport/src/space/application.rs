@@ -145,6 +145,25 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         Ok(buffer)
     }
 
+    /// Signals the connection was previously blocked by anti-amplification limits
+    /// but is now no longer limited.
+    pub fn on_amplification_unblocked(
+        &mut self,
+        path: &Path<Config::CongestionController>,
+        timestamp: Timestamp,
+        is_handshake_confirmed: bool,
+    ) {
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.6
+        //# When a server is blocked by anti-amplification limits, receiving a
+        //# datagram unblocks it, even if none of the packets in the datagram are
+        //# successfully processed.  In such a case, the PTO timer will need to
+        //# be re-armed.
+        if Config::ENDPOINT_TYPE.is_server() {
+            self.recovery_manager
+                .update_pto_timer(path, timestamp, is_handshake_confirmed);
+        }
+    }
+
     /// Signals the handshake is done
     pub fn on_handshake_done(
         &mut self,

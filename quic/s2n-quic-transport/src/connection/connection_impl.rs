@@ -465,7 +465,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
     ) -> Result<path::Id, TransportError> {
         let is_handshake_confirmed = shared_state.space_manager.is_handshake_confirmed();
 
-        self.path_manager.on_datagram_received(
+        let (id, unblocked) = self.path_manager.on_datagram_received(
             datagram,
             peer_connection_id,
             is_handshake_confirmed,
@@ -474,7 +474,20 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                 // TODO set alpn if available
                 congestion_controller_endpoint.new_congestion_controller(path_info)
             },
-        )
+        )?;
+
+        if unblocked {
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.6
+            //# When a server is blocked by anti-amplification limits, receiving a
+            //# datagram unblocks it, even if none of the packets in the datagram are
+            //# successfully processed.  In such a case, the PTO timer will need to
+            //# be re-armed.
+            shared_state
+                .space_manager
+                .on_amplification_unblocked(&self.path_manager[id], datagram.timestamp);
+        }
+
+        Ok(id)
     }
 
     /// Is called when a initial packet had been received

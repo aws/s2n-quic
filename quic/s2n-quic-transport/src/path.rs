@@ -67,16 +67,19 @@ impl<CC: CongestionController> Manager<CC> {
     }
 
     /// Called when a datagram is received on a connection
+    /// Upon success, returns a `(Id, bool)` containing the path ID and a boolean that is
+    /// true if the path had been amplification limited prior to receiving the datagram
+    /// and is now no longer amplification limited.
     pub fn on_datagram_received<NewCC: FnOnce() -> CC>(
         &mut self,
         datagram: &DatagramInfo,
         peer_connection_id: &connection::Id,
         is_handshake_confirmed: bool,
         new_congestion_controller: NewCC,
-    ) -> Result<Id, TransportError> {
+    ) -> Result<(Id, bool), TransportError> {
         if let Some((id, path)) = self.path_mut(&datagram.remote_address) {
-            path.on_bytes_received(datagram.payload_len);
-            return Ok(id);
+            let unblocked = path.on_bytes_received(datagram.payload_len);
+            return Ok((id, unblocked));
         }
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#9
@@ -94,7 +97,7 @@ impl<CC: CongestionController> Manager<CC> {
             );
             let id = Id(self.paths.len());
             self.paths.push(path);
-            return Ok(id);
+            return Ok((id, false));
         }
 
         Err(TransportError::PROTOCOL_VIOLATION)

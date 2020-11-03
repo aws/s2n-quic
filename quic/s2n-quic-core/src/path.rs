@@ -84,10 +84,14 @@ impl<CC: CongestionController> Path<CC> {
     }
 
     /// Called when bytes have been received on this path
-    pub fn on_bytes_received(&mut self, bytes: usize) {
+    /// Returns true if receiving these bytes unblocked the
+    /// path from being amplification limited
+    pub fn on_bytes_received(&mut self, bytes: usize) -> bool {
+        let was_at_amplification_limit = self.at_amplification_limit();
         if let State::Pending { rx_bytes, .. } = &mut self.state {
             *rx_bytes += bytes as u32;
         }
+        was_at_amplification_limit && !self.at_amplification_limit()
     }
 
     /// Called when the path is validated
@@ -183,17 +187,29 @@ mod tests {
 
         // Verify we enforce the amplification limit if we can't send
         // at least 1 minimum sized packet
-        path.on_bytes_received(1200);
+        let mut unblocked = path.on_bytes_received(1200);
+        assert!(unblocked);
         path.on_bytes_transmitted((1200 * 2) + 1);
         assert_eq!(path.at_amplification_limit(), true);
 
-        path.on_bytes_received(1200);
+        unblocked = path.on_bytes_received(1200);
         assert_eq!(path.at_amplification_limit(), false);
+        assert!(unblocked);
+
+        path.on_bytes_transmitted((1200 * 6) + 1);
+        assert_eq!(path.at_amplification_limit(), true);
+        unblocked = path.on_bytes_received(1200);
+        assert!(!unblocked);
 
         path.on_validated();
         path.on_bytes_transmitted(24);
         // Validated paths should always be able to transmit
         assert_eq!(path.at_amplification_limit(), false);
+
+        // If we were already not amplification limited, receiving
+        // more bytes doesn't unblock
+        unblocked = path.on_bytes_received(1200);
+        assert!(!unblocked);
     }
 
     #[test]
