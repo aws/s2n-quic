@@ -171,6 +171,28 @@ impl<Config: connection::Config> PacketSpaceManager<Config> {
         }
     }
 
+    /// Signals the connection was previously blocked by anti-amplification limits
+    /// but is now no longer limited.
+    pub fn on_amplification_unblocked(
+        &mut self,
+        path: &Path<Config::CongestionController>,
+        timestamp: Timestamp,
+    ) {
+        let is_handshake_confirmed = self.is_handshake_confirmed();
+
+        if let Some(space) = self.initial_mut() {
+            space.on_amplification_unblocked(path, timestamp, is_handshake_confirmed);
+        }
+
+        if let Some(space) = self.handshake_mut() {
+            space.on_amplification_unblocked(path, timestamp, is_handshake_confirmed);
+        }
+
+        if let Some(space) = self.application_mut() {
+            space.on_amplification_unblocked(path, timestamp, is_handshake_confirmed);
+        }
+    }
+
     pub fn requires_probe(&self) -> bool {
         core::iter::empty()
             .chain(self.initial.iter().map(|space| space.requires_probe()))
