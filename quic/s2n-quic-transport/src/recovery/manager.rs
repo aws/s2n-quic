@@ -493,8 +493,10 @@ impl Manager {
         let persistent_congestion =
             max_persistent_congestion_period > path.rtt_estimator.persistent_congestion_threshold();
 
-        path.congestion_controller
-            .on_packets_lost(lost_bytes, persistent_congestion, now);
+        if lost_bytes > 0 {
+            path.congestion_controller
+                .on_packets_lost(lost_bytes, persistent_congestion, now);
+        }
     }
 
     fn calculate_loss_time_threshold(rtt_estimator: &RTTEstimator) -> Duration {
@@ -516,9 +518,7 @@ impl Manager {
 pub trait Context {
     const ENDPOINT_TYPE: EndpointType;
 
-    fn is_handshake_confirmed(&self) -> bool {
-        panic!("Handshake status is not currently available in this packet space")
-    }
+    fn is_handshake_confirmed(&self) -> bool;
 
     fn validate_packet_ack(
         &mut self,

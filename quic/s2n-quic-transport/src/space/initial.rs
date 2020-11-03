@@ -2,7 +2,9 @@ use crate::{
     connection::{self, ConnectionTransmissionContext},
     processed_packet::ProcessedPacket,
     recovery,
-    space::{rx_packet_numbers::AckManager, CryptoStream, PacketSpace, TxPacketNumbers},
+    space::{
+        rx_packet_numbers::AckManager, CryptoStream, HandshakeStatus, PacketSpace, TxPacketNumbers,
+    },
     transmission,
 };
 use core::marker::PhantomData;
@@ -69,6 +71,7 @@ impl<Config: connection::Config> InitialSpace<Config> {
         &mut self,
         context: &mut ConnectionTransmissionContext<Config>,
         transmission_constraint: transmission::Constraint,
+        handshake_status: &HandshakeStatus,
         buffer: EncoderBuffer<'a>,
     ) -> Result<EncoderBuffer<'a>, PacketEncodingError<'a>> {
         let token = &[][..]; // TODO
@@ -111,7 +114,7 @@ impl<Config: connection::Config> InitialSpace<Config> {
         let (_protected_packet, buffer) =
             packet.encode_packet(&self.crypto, packet_number_encoder, buffer)?;
 
-        let (recovery_manager, recovery_context) = self.recovery();
+        let (recovery_manager, recovery_context) = self.recovery(handshake_status);
         recovery_manager.on_packet_sent(
             packet_number,
             outcome,
@@ -156,11 +159,12 @@ impl<Config: connection::Config> InitialSpace<Config> {
     pub fn on_timeout(
         &mut self,
         path: &mut Path<Config::CongestionController>,
+        handshake_status: &HandshakeStatus,
         timestamp: Timestamp,
     ) {
         self.ack_manager.on_timeout(timestamp);
 
-        let (recovery_manager, mut context) = self.recovery();
+        let (recovery_manager, mut context) = self.recovery(handshake_status);
         recovery_manager.on_timeout(path, timestamp, &mut context)
     }
 
@@ -183,13 +187,17 @@ impl<Config: connection::Config> InitialSpace<Config> {
         self.tx_packet_numbers.largest_sent_packet_number_acked()
     }
 
-    fn recovery(&mut self) -> (&mut recovery::Manager, RecoveryContext<Config>) {
+    fn recovery<'a>(
+        &'a mut self,
+        handshake_status: &'a HandshakeStatus,
+    ) -> (&'a mut recovery::Manager, RecoveryContext<'a, Config>) {
         (
             &mut self.recovery_manager,
             RecoveryContext {
                 ack_manager: &mut self.ack_manager,
                 crypto_stream: &mut self.crypto_stream,
                 tx_packet_numbers: &mut self.tx_packet_numbers,
+                handshake_status,
                 config: PhantomData,
             },
         )
@@ -216,11 +224,16 @@ struct RecoveryContext<'a, Config> {
     ack_manager: &'a mut AckManager,
     crypto_stream: &'a mut CryptoStream,
     tx_packet_numbers: &'a mut TxPacketNumbers,
+    handshake_status: &'a HandshakeStatus,
     config: PhantomData<Config>,
 }
 
 impl<'a, Config: connection::Config> recovery::Context for RecoveryContext<'a, Config> {
     const ENDPOINT_TYPE: EndpointType = Config::ENDPOINT_TYPE;
+
+    fn is_handshake_confirmed(&self) -> bool {
+        self.handshake_status.is_confirmed()
+    }
 
     fn validate_packet_ack(
         &mut self,
@@ -276,8 +289,9 @@ impl<Config: connection::Config> PacketSpace<Config> for InitialSpace<Config> {
         frame: Ack<A>,
         datagram: &DatagramInfo,
         path: &mut Path<Config::CongestionController>,
+        handshake_status: &mut HandshakeStatus,
     ) -> Result<(), TransportError> {
-        let (recovery_manager, mut context) = self.recovery();
+        let (recovery_manager, mut context) = self.recovery(handshake_status);
         recovery_manager.on_ack_frame(datagram, frame, path, &mut context)
     }
 

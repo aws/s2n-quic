@@ -62,6 +62,7 @@ impl<ConnectionConfigType: connection::Config>
             .space_manager
             .application_mut()
             .expect("Stream manager must be available")
+            .0
             .stream_manager;
 
         func(stream_id, stream_manager, &mut api_call_context)
@@ -114,6 +115,7 @@ impl<ConnectionConfigType: connection::Config> ConnectionApiProvider
             .space_manager
             .application_mut()
             .expect("Application space must be available on active connections")
+            .0
             .stream_manager;
 
         macro_rules! poll_accept {
@@ -151,7 +153,7 @@ impl<ConnectionConfigType: connection::Config> ConnectionApiProvider
         let mut shared_state = self.lock();
 
         let application_space = match shared_state.space_manager.application_mut() {
-            Some(space) => space,
+            Some((space, _handshake_status)) => space,
             None => return,
         };
 

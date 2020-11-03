@@ -95,8 +95,13 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
             self.context.path.transmission_constraint()
         };
 
-        let encoder = if let Some(space) = space_manager.initial_mut() {
-            match space.on_transmit(&mut self.context, transmission_constraint, encoder) {
+        let encoder = if let Some((space, handshake_status)) = space_manager.initial_mut() {
+            match space.on_transmit(
+                &mut self.context,
+                transmission_constraint,
+                handshake_status,
+                encoder,
+            ) {
                 Ok(encoder) => encoder,
                 Err(PacketEncodingError::PacketNumberTruncationError(encoder)) => {
                     // TODO handle this
@@ -115,40 +120,42 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
             encoder
         };
 
-        let encoder = if let Some(space) = space_manager.handshake_mut() {
-            let encoder =
-                match space.on_transmit(&mut self.context, transmission_constraint, encoder) {
-                    Ok(encoder) => {
-                        //= https://tools.ietf.org/id/draft-ietf-quic-tls-27.txt#4.10.1
-                        //# A client MUST discard Initial keys when it first sends a Handshake packet
+        let encoder = if let Some((space, handshake_status)) = space_manager.handshake_mut() {
+            let encoder = match space.on_transmit(
+                &mut self.context,
+                transmission_constraint,
+                handshake_status,
+                encoder,
+            ) {
+                Ok(encoder) => {
+                    //= https://tools.ietf.org/id/draft-ietf-quic-tls-27.txt#4.10.1
+                    //# A client MUST discard Initial keys when it first sends a Handshake packet
 
-                        if Config::ENDPOINT_TYPE.is_client() {
-                            space_manager.discard_initial(self.context.path);
-                        }
+                    if Config::ENDPOINT_TYPE.is_client() {
+                        space_manager.discard_initial(self.context.path);
+                    }
 
-                        encoder
-                    }
-                    Err(PacketEncodingError::PacketNumberTruncationError(encoder)) => {
-                        // TODO handle this
-                        encoder
-                    }
-                    Err(PacketEncodingError::InsufficientSpace(encoder)) => {
-                        // move to the next packet space
-                        encoder
-                    }
-                    Err(PacketEncodingError::EmptyPayload(encoder)) => {
-                        // move to the next packet space
-                        encoder
-                    }
-                };
+                    encoder
+                }
+                Err(PacketEncodingError::PacketNumberTruncationError(encoder)) => {
+                    // TODO handle this
+                    encoder
+                }
+                Err(PacketEncodingError::InsufficientSpace(encoder)) => {
+                    // move to the next packet space
+                    encoder
+                }
+                Err(PacketEncodingError::EmptyPayload(encoder)) => {
+                    // move to the next packet space
+                    encoder
+                }
+            };
 
             //= https://tools.ietf.org/id/draft-ietf-quic-tls-29#4.11.2
             //# An endpoint MUST discard its handshake keys when the TLS handshake is
             //# confirmed (Section 4.1.2).
-            if let Some(application_space) = space_manager.application() {
-                if application_space.handshake_status.is_confirmed() {
-                    space_manager.discard_handshake(self.context.path);
-                }
+            if space_manager.is_handshake_confirmed() {
+                space_manager.discard_handshake(self.context.path);
             }
 
             encoder
@@ -156,8 +163,13 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
             encoder
         };
 
-        let encoder = if let Some(space) = space_manager.application_mut() {
-            match space.on_transmit(&mut self.context, transmission_constraint, encoder) {
+        let encoder = if let Some((space, handshake_status)) = space_manager.application_mut() {
+            match space.on_transmit(
+                &mut self.context,
+                transmission_constraint,
+                handshake_status,
+                encoder,
+            ) {
                 Ok(encoder) => encoder,
                 Err(PacketEncodingError::PacketNumberTruncationError(encoder)) => {
                     // TODO handle this

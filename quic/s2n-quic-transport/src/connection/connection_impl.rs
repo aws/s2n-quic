@@ -182,7 +182,7 @@ impl<ConfigType: connection::Config> ConnectionImpl<ConfigType> {
 /// complex trait with a bunch of generics for each of the packet spaces.
 macro_rules! packet_validator {
     ($packet:ident $(, $inspect:expr)?) => {
-        move |space| {
+        move |(space, handshake_status)| {
             let crypto = &space.crypto;
             let packet_number_decoder = space.packet_number_decoder();
 
@@ -205,7 +205,7 @@ macro_rules! packet_validator {
 
             let packet = $packet.decrypt(crypto).ok()?;
 
-            Some((packet, space))
+            Some((packet, space, handshake_status))
         }
     };
 }
@@ -291,7 +291,8 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
             .space_manager
             .discard_handshake(self.path_manager.active_path_mut().1);
         shared_state.space_manager.discard_zero_rtt_crypto();
-        if let Some(application) = shared_state.space_manager.application_mut() {
+        if let Some((application, _handshake_status)) = shared_state.space_manager.application_mut()
+        {
             // Close all streams with the derived error
             application.stream_manager.close(close_reason.into());
         }
@@ -433,7 +434,9 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         // For active connections we have to check if the application requested
         // to close them
         if self.state == ConnectionState::Active {
-            if let Some(application) = shared_state.space_manager.application_mut() {
+            if let Some((application, _handshake_status)) =
+                shared_state.space_manager.application_mut()
+            {
                 if let Some(stream_error) = application.stream_manager.close_reason() {
                     // A connection close was requested. This needs to have an
                     // associated error code which can be used as `TransportError`
@@ -498,7 +501,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         path_id: path::Id,
         packet: ProtectedInitial,
     ) -> Result<(), TransportError> {
-        if let Some((packet, _space)) = shared_state
+        if let Some((packet, _space, _handshake_status)) = shared_state
             .space_manager
             .initial_mut()
             .and_then(packet_validator!(packet))
@@ -522,12 +525,13 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         path_id: path::Id,
         packet: CleartextInitial,
     ) -> Result<(), TransportError> {
-        if let Some(space) = shared_state.space_manager.initial_mut() {
+        if let Some((space, handshake_status)) = shared_state.space_manager.initial_mut() {
             if let Some(close) = space.handle_cleartext_payload(
                 packet.packet_number,
                 packet.payload,
                 datagram,
                 &mut self.path_manager[path_id],
+                handshake_status,
             )? {
                 self.close(
                     shared_state,
@@ -552,7 +556,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         path_id: path::Id,
         packet: ProtectedHandshake,
     ) -> Result<(), TransportError> {
-        if let Some((packet, space)) = shared_state
+        if let Some((packet, space, handshake_status)) = shared_state
             .space_manager
             .handshake_mut()
             .and_then(packet_validator!(packet))
@@ -562,6 +566,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                 packet.payload,
                 datagram,
                 &mut self.path_manager[path_id],
+                handshake_status,
             )? {
                 self.close(
                     shared_state,
@@ -606,22 +611,22 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         path_id: path::Id,
         packet: ProtectedShort,
     ) -> Result<(), TransportError> {
-        if let Some((packet, space)) =
-            shared_state
-                .space_manager
-                .application_mut()
-                .and_then(packet_validator!(packet, {
-                    if packet.key_phase != Default::default() {
-                        dbg!("key updates are not currently implemented");
-                        return None;
-                    }
-                }))
+        if let Some((packet, space, handshake_status)) = shared_state
+            .space_manager
+            .application_mut()
+            .and_then(packet_validator!(packet, {
+                if packet.key_phase != Default::default() {
+                    dbg!("key updates are not currently implemented");
+                    return None;
+                }
+            }))
         {
             if let Some(close) = space.handle_cleartext_payload(
                 packet.packet_number,
                 packet.payload,
                 datagram,
                 &mut self.path_manager[path_id],
+                handshake_status,
             )? {
                 self.close(
                     shared_state,

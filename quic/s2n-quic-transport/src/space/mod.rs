@@ -44,20 +44,23 @@ pub struct PacketSpaceManager<ConnectionConfigType: connection::Config> {
     handshake: Option<Box<HandshakeSpace<ConnectionConfigType>>>,
     application: Option<Box<ApplicationSpace<ConnectionConfigType>>>,
     zero_rtt_crypto: Option<Box<<ConnectionConfigType::TLSSession as CryptoSuite>::ZeroRTTCrypto>>,
+    handshake_status: HandshakeStatus,
 }
 
 macro_rules! packet_space_api {
-    ($ty:ty, $get:ident, $get_mut:ident $(, $discard:ident)?) => {
-        pub fn $get(&self) -> Option<&$ty> {
-            self.$get
+    ($ty:ty, $field:ident, $get_mut:ident $(, $discard:ident)?) => {
+        #[allow(dead_code)]
+        pub fn $field(&self) -> Option<&$ty> {
+            self.$field
                 .as_ref()
                 .map(Box::as_ref)
         }
 
-        pub fn $get_mut(&mut self) -> Option<&mut $ty> {
-            self.$get
+        pub fn $get_mut(&mut self) -> Option<(&mut $ty, &mut HandshakeStatus)> {
+            let space = self.$field
                 .as_mut()
-                .map(Box::as_mut)
+                .map(Box::as_mut)?;
+            Some((space, &mut self.handshake_status))
         }
 
         $(
@@ -68,15 +71,37 @@ macro_rules! packet_space_api {
                 //# forward progress and the loss detection timer might have been set for
                 //# a now discarded packet number space.
                 path.reset_pto_backoff();
-                if let Some(space) = self.$get_mut().take() {
+                if let Some(mut space) = self.$field.take() {
                     space.on_discard(path);
                 }
+                debug_assert!(self.$field.is_none(), "space should have been discarded");
             }
         )?
     };
 }
 
 impl<Config: connection::Config> PacketSpaceManager<Config> {
+    pub fn new(
+        session: Config::TLSSession,
+        initial: <Config::TLSSession as CryptoSuite>::InitialCrypto,
+        now: Timestamp,
+    ) -> Self {
+        let ack_manager = AckManager::new(
+            PacketNumberSpace::Initial,
+            EARLY_ACK_SETTINGS,
+            DEFAULT_ACK_RANGES_LIMIT,
+        );
+
+        Self {
+            session: Some(session),
+            initial: Some(Box::new(InitialSpace::new(initial, now, ack_manager))),
+            handshake: None,
+            application: None,
+            zero_rtt_crypto: None,
+            handshake_status: HandshakeStatus::default(),
+        }
+    }
+
     packet_space_api!(InitialSpace<Config>, initial, initial_mut, discard_initial);
 
     packet_space_api!(
@@ -96,26 +121,6 @@ impl<Config: connection::Config> PacketSpaceManager<Config> {
         self.zero_rtt_crypto = None;
     }
 
-    pub fn new(
-        session: Config::TLSSession,
-        initial: <Config::TLSSession as CryptoSuite>::InitialCrypto,
-        now: Timestamp,
-    ) -> Self {
-        let ack_manager = AckManager::new(
-            PacketNumberSpace::Initial,
-            EARLY_ACK_SETTINGS,
-            DEFAULT_ACK_RANGES_LIMIT,
-        );
-
-        Self {
-            session: Some(session),
-            initial: Some(Box::new(InitialSpace::new(initial, now, ack_manager))),
-            handshake: None,
-            application: None,
-            zero_rtt_crypto: None,
-        }
-    }
-
     pub fn poll_crypto(
         &mut self,
         connection_config: &Config,
@@ -131,6 +136,7 @@ impl<Config: connection::Config> PacketSpaceManager<Config> {
                 zero_rtt_crypto: &mut self.zero_rtt_crypto,
                 path,
                 connection_config,
+                handshake_status: &mut self.handshake_status,
             };
 
             session.poll(&mut context)?;
@@ -160,14 +166,14 @@ impl<Config: connection::Config> PacketSpaceManager<Config> {
         path: &mut Path<Config::CongestionController>,
         timestamp: Timestamp,
     ) {
-        if let Some(space) = self.initial_mut() {
-            space.on_timeout(path, timestamp)
+        if let Some((space, handshake_status)) = self.initial_mut() {
+            space.on_timeout(path, handshake_status, timestamp)
         }
-        if let Some(space) = self.handshake_mut() {
-            space.on_timeout(path, timestamp)
+        if let Some((space, handshake_status)) = self.handshake_mut() {
+            space.on_timeout(path, handshake_status, timestamp)
         }
-        if let Some(space) = self.application_mut() {
-            space.on_timeout(path, timestamp)
+        if let Some((space, handshake_status)) = self.application_mut() {
+            space.on_timeout(path, handshake_status, timestamp)
         }
     }
 
@@ -178,18 +184,16 @@ impl<Config: connection::Config> PacketSpaceManager<Config> {
         path: &Path<Config::CongestionController>,
         timestamp: Timestamp,
     ) {
-        let is_handshake_confirmed = self.is_handshake_confirmed();
-
-        if let Some(space) = self.initial_mut() {
-            space.on_amplification_unblocked(path, timestamp, is_handshake_confirmed);
+        if let Some((space, handshake_status)) = self.initial_mut() {
+            space.on_amplification_unblocked(path, timestamp, handshake_status.is_confirmed());
         }
 
-        if let Some(space) = self.handshake_mut() {
-            space.on_amplification_unblocked(path, timestamp, is_handshake_confirmed);
+        if let Some((space, handshake_status)) = self.handshake_mut() {
+            space.on_amplification_unblocked(path, timestamp, handshake_status.is_confirmed());
         }
 
-        if let Some(space) = self.application_mut() {
-            space.on_amplification_unblocked(path, timestamp, is_handshake_confirmed);
+        if let Some((space, handshake_status)) = self.application_mut() {
+            space.on_amplification_unblocked(path, timestamp, handshake_status.is_confirmed());
         }
     }
 
@@ -202,9 +206,7 @@ impl<Config: connection::Config> PacketSpaceManager<Config> {
     }
 
     pub fn is_handshake_confirmed(&self) -> bool {
-        self.application()
-            .map(|space| space.handshake_status.is_confirmed())
-            .unwrap_or(false)
+        self.handshake_status.is_confirmed()
     }
 }
 
@@ -226,6 +228,7 @@ impl<Config: connection::Config> transmission::interest::Provider for PacketSpac
                     .iter()
                     .map(|space| space.transmission_interest()),
             )
+            .chain(Some(self.handshake_status.transmission_interest()))
             .sum()
     }
 }
@@ -278,6 +281,7 @@ pub trait PacketSpace<Config: connection::Config> {
         frame: Ack<A>,
         datagram: &DatagramInfo,
         path: &mut Path<Config::CongestionController>,
+        handshake_status: &mut HandshakeStatus,
     ) -> Result<(), TransportError>;
 
     fn handle_handshake_done_frame(
@@ -285,6 +289,7 @@ pub trait PacketSpace<Config: connection::Config> {
         frame: HandshakeDone,
         _datagram: &DatagramInfo,
         _path: &mut Path<Config::CongestionController>,
+        _handshake_status: &mut HandshakeStatus,
     ) -> Result<(), TransportError> {
         Err(TransportError::PROTOCOL_VIOLATION
             .with_reason(Self::INVALID_FRAME_ERROR)
@@ -317,6 +322,7 @@ pub trait PacketSpace<Config: connection::Config> {
         mut payload: DecoderBufferMut<'a>,
         datagram: &DatagramInfo,
         path: &mut Path<Config::CongestionController>,
+        handshake_status: &mut HandshakeStatus,
     ) -> Result<Option<frame::ConnectionClose<'a>>, TransportError> {
         use s2n_quic_core::{
             frame::{Frame, FrameMut},
@@ -357,7 +363,7 @@ pub trait PacketSpace<Config: connection::Config> {
                 Frame::Ack(frame) => {
                     let on_error = with_frame_type!(frame);
                     processed_packet.on_processed_frame(&frame);
-                    self.handle_ack_frame(frame, datagram, path)
+                    self.handle_ack_frame(frame, datagram, path, handshake_status)
                         .map_err(on_error)?;
                 }
                 Frame::ConnectionClose(frame) => {
@@ -450,7 +456,7 @@ pub trait PacketSpace<Config: connection::Config> {
                 Frame::HandshakeDone(frame) => {
                     let on_error = with_frame_type!(frame);
                     processed_packet.on_processed_frame(&frame);
-                    self.handle_handshake_done_frame(frame, datagram, path)
+                    self.handle_handshake_done_frame(frame, datagram, path, handshake_status)
                         .map_err(on_error)?;
                 }
             }
