@@ -29,7 +29,7 @@ pub struct Manager<CC: CongestionController> {
 impl<CC: CongestionController> Manager<CC> {
     pub fn new(initial_path: Path<CC>) -> Self {
         Manager {
-            paths: SmallVec::from_elem(initial_path, INLINE_PATH_LEN),
+            paths: SmallVec::from_elem(initial_path, 1),
             active: 0,
         }
     }
@@ -201,6 +201,7 @@ mod tests {
         );
 
         let manager = Manager::new(first_path);
+        assert_eq!(manager.paths.len(), 1);
 
         let (_id, matched_path) = manager.path(&SocketAddress::default()).unwrap();
         assert_eq!(matched_path, &first_path);
@@ -219,6 +220,7 @@ mod tests {
         first_path.challenge = Some([0u8; 8]);
 
         let mut manager = Manager::new(first_path);
+        assert_eq!(manager.paths.len(), 1);
         {
             let (_id, first_path) = manager.path(&first_path.peer_socket_address).unwrap();
             assert_eq!(first_path.is_validated(), false);
@@ -243,11 +245,13 @@ mod tests {
             false,
         );
         let mut manager = Manager::new(first_path);
+        assert_eq!(manager.paths.len(), 1);
         let new_addr: SocketAddr = "127.0.0.1:80".parse().unwrap();
         let new_addr = SocketAddress::from(new_addr);
 
         assert_eq!(manager.path(&SocketAddress::default()).is_some(), true);
         assert_eq!(manager.path(&new_addr), None);
+        assert_eq!(manager.paths.len(), 1);
 
         let datagram = DatagramInfo {
             timestamp: unsafe { Timestamp::from_duration(Duration::from_millis(30)) },
@@ -260,6 +264,7 @@ mod tests {
             .on_datagram_received(&datagram, &first_conn_id, true, Unlimited::default)
             .unwrap();
         assert_eq!(manager.path(&new_addr).is_some(), true);
+        assert_eq!(manager.paths.len(), 2);
 
         let new_addr: SocketAddr = "127.0.0.1:443".parse().unwrap();
         let new_addr = SocketAddress::from(new_addr);
@@ -276,5 +281,6 @@ mod tests {
                 .is_err(),
             true
         );
+        assert_eq!(manager.paths.len(), 2);
     }
 }
