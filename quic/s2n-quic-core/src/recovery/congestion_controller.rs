@@ -120,6 +120,7 @@ pub mod testing {
         pub bytes_in_flight: u32,
         pub lost_bytes: u32,
         pub persistent_congestion: Option<bool>,
+        pub on_packets_lost: u32,
     }
 
     impl CongestionController for MockCongestionController {
@@ -153,6 +154,7 @@ pub mod testing {
             self.bytes_in_flight = self.bytes_in_flight.saturating_sub(lost_bytes);
             self.lost_bytes += lost_bytes;
             self.persistent_congestion = Some(persistent_congestion);
+            self.on_packets_lost += 1;
         }
 
         fn on_congestion_event(&mut self, _event_time: Timestamp) {}
