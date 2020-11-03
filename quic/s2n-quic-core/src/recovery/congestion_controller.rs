@@ -60,8 +60,8 @@ pub trait CongestionController: 'static + Clone + Send + Debug {
     /// Invoked when packets are declared lost
     fn on_packets_lost(
         &mut self,
-        loss_info: LossInfo,
-        persistent_congestion_threshold: Duration,
+        lost_bytes: u32,
+        persistent_congestion: bool,
         timestamp: Timestamp,
     );
 
@@ -107,8 +107,8 @@ pub mod testing {
 
         fn on_packets_lost(
             &mut self,
-            _loss_info: LossInfo,
-            _persistent_congestion_threshold: Duration,
+            _lost_bytes: u32,
+            _persistent_congestion: bool,
             _timestamp: Timestamp,
         ) {
         }
@@ -118,5 +118,52 @@ pub mod testing {
         fn on_mtu_update(&mut self, _max_data_size: u16) {}
 
         fn on_packet_discarded(&mut self, _bytes_sent: usize) {}
+    }
+
+    #[derive(Clone, Copy, Debug, Default, PartialEq)]
+    pub struct MockCongestionController {
+        pub bytes_in_flight: u32,
+        pub lost_bytes: u32,
+        pub persistent_congestion: Option<bool>,
+    }
+
+    impl CongestionController for MockCongestionController {
+        fn is_congestion_limited(&self) -> bool {
+            false
+        }
+        fn requires_fast_retransmission(&self) -> bool {
+            false
+        }
+
+        fn on_packet_sent(&mut self, _time_sent: Timestamp, bytes_sent: usize) {
+            self.bytes_in_flight += bytes_sent as u32
+        }
+        fn on_rtt_update(&mut self, _time_sent: Timestamp, _rtt_estimator: &RTTEstimator) {}
+
+        fn on_packet_ack(
+            &mut self,
+            _largest_acked_time_sent: Timestamp,
+            _sent_bytes: usize,
+            _rtt_estimator: &RTTEstimator,
+            _ack_receive_time: Timestamp,
+        ) {
+        }
+
+        fn on_packets_lost(
+            &mut self,
+            lost_bytes: u32,
+            persistent_congestion: bool,
+            _timestamp: Timestamp,
+        ) {
+            self.bytes_in_flight = self.bytes_in_flight.saturating_sub(lost_bytes);
+            self.lost_bytes += lost_bytes;
+            self.persistent_congestion = Some(persistent_congestion);
+        }
+
+        fn on_congestion_event(&mut self, _event_time: Timestamp) {}
+        fn on_mtu_update(&mut self, _max_data_size: u16) {}
+        fn on_packet_discarded(&mut self, bytes_sent: usize) {
+            self.bytes_in_flight = self.bytes_in_flight.saturating_sub(bytes_sent as u32);
+        }
     }
 }

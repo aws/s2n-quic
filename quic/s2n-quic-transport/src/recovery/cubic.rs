@@ -243,16 +243,16 @@ impl CongestionController for CubicCongestionController {
 
     fn on_packets_lost(
         &mut self,
-        loss_info: LossInfo,
-        persistent_congestion_threshold: Duration,
+        lost_bytes: u32,
+        persistent_congestion: bool,
         timestamp: Timestamp,
     ) {
-        self.bytes_in_flight -= loss_info.bytes_in_flight;
+        self.bytes_in_flight -= lost_bytes;
         self.on_congestion_event(timestamp);
 
         // Reset the congestion window if the loss of these
         // packets indicates persistent congestion.
-        if loss_info.persistent_congestion_period > persistent_congestion_threshold {
+        if persistent_congestion {
             self.congestion_window = self.minimum_window();
             self.state = State::SlowStart;
         }
@@ -815,13 +815,8 @@ mod test {
         cc.state = CongestionAvoidance(now);
 
         let mut loss_info = LossInfo::default();
-        loss_info.bytes_in_flight = 100;
 
-        cc.on_packets_lost(
-            loss_info,
-            Duration::from_secs(5),
-            now + Duration::from_secs(10),
-        );
+        cc.on_packets_lost(100, false, now + Duration::from_secs(10));
 
         assert_eq!(cc.bytes_in_flight.0, 100_000 - 100);
         assert_eq!(
@@ -838,9 +833,10 @@ mod test {
         let mut cc = CubicCongestionController::new(1000);
         let now = s2n_quic_platform::time::now();
         cc.congestion_window = 10000;
+        cc.bytes_in_flight = BytesInFlight(1000);
         cc.state = Recovery(now, Idle);
 
-        cc.on_packets_lost(LossInfo::default(), Duration::from_secs(5), now);
+        cc.on_packets_lost(100, false, now);
 
         // No change to the congestion window
         assert_eq!(cc.congestion_window, 10000);
@@ -853,10 +849,7 @@ mod test {
         cc.congestion_window = 10000;
         cc.state = Recovery(now, Idle);
 
-        let mut loss_info = LossInfo::default();
-        loss_info.persistent_congestion_period = Duration::from_secs(10);
-
-        cc.on_packets_lost(loss_info, Duration::from_secs(5), now);
+        cc.on_packets_lost(0, true, now);
 
         assert_eq!(cc.state, SlowStart);
         assert_eq!(cc.congestion_window, cc.minimum_window());

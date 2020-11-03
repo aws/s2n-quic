@@ -1,26 +1,14 @@
 use crate::time::Duration;
 
-#[must_use = "Ignoring loss information would lead to permanent data loss"]
 #[derive(Copy, Clone, Default)]
-pub struct LossInfo {
-    /// Lost bytes in flight
-    pub bytes_in_flight: usize,
-
-    /// The longest period of persistent congestion
-    pub persistent_congestion_period: Duration,
-}
+pub struct LossInfo {}
 
 #[allow(clippy::suspicious_arithmetic_impl)]
 impl core::ops::Add for LossInfo {
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self {
-        Self {
-            bytes_in_flight: self.bytes_in_flight + rhs.bytes_in_flight,
-            persistent_congestion_period: self
-                .persistent_congestion_period
-                .max(rhs.persistent_congestion_period),
-        }
+        Self {}
     }
 }
 
