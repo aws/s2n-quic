@@ -28,6 +28,11 @@ jobs:
     outputs:
       matrix: ${{ steps.implementations.outputs.matrix }}
     steps:
+      - uses: ouzi-dev/commit-status-updater@v1.1.0
+        with:
+          name: 'interop / report'
+          status: 'pending'
+
       - uses: actions/checkout@v2
         with:
           repository: marten-seemann/quic-interop-runner
@@ -197,7 +202,7 @@ jobs:
         with:
           name: interop-${{ matrix.client }}-client-${{ matrix.server }}-server
           path: quic-interop-runner/results/
-  report:
+  generate-report:
     runs-on: ubuntu-latest
     needs: [interop]
     steps:
@@ -215,16 +220,36 @@ jobs:
 
       - name: Generate report
         run: |
-          cp -R .github/interop web
-          rm -f web/merge.py
           mkdir -p web/logs/latest
           python3 .github/interop/merge.py latest.json results/**/result.json > \
             web/logs/latest/result.json
           find results -maxdepth 3 -type d -wholename '*/logs/*' | while read from; do
             mv $from web/logs/latest/$(basename $from)
           done
+          cat .github/interop/index.head.html web/logs/latest/result.json .github/interop/index.body.html > \
+            web/index.html
 
       - uses: actions/upload-artifact@v2
         with:
           name: report
           path: web/
+
+      - uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-west-1
+
+      - name: Upload to S3
+        id: s3
+        run: |
+          aws s3 sync web s3://s2n-quic-ci-artifacts/interop/${{ github.sha }} --acl private --follow-symlinks
+          # generate a presigned url that is valid for 30 days
+          URL=$(aws s3 presign s3://s2n-quic-ci-artifacts/interop/${{ github.sha }}/index.html --expires-in 2592000)
+          echo "::set-output name=URL::$URL"
+
+      - uses: ouzi-dev/commit-status-updater@v1.1.0
+        with:
+          name: 'interop / report'
+          status: 'success'
+          url: "${{ steps.s3.outputs.URL }}"
