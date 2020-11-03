@@ -16,7 +16,6 @@ use s2n_quic_core::{
     inet::DatagramInfo,
     packet::number::{PacketNumber, PacketNumberSpace},
     path::Path,
-    recovery::loss_info::LossInfo,
     time::Timestamp,
     transport::error::TransportError,
 };
@@ -39,15 +38,12 @@ pub(crate) use rx_packet_numbers::EARLY_ACK_SETTINGS;
 pub(crate) use session_context::SessionContext;
 pub(crate) use tx_packet_numbers::TxPacketNumbers;
 
-pub const INITIAL_PTO_BACKOFF: u32 = 1;
-
 pub struct PacketSpaceManager<ConnectionConfigType: connection::Config> {
     session: Option<ConnectionConfigType::TLSSession>,
     initial: Option<Box<InitialSpace<ConnectionConfigType>>>,
     handshake: Option<Box<HandshakeSpace<ConnectionConfigType>>>,
     application: Option<Box<ApplicationSpace<ConnectionConfigType>>>,
     zero_rtt_crypto: Option<Box<<ConnectionConfigType::TLSSession as CryptoSuite>::ZeroRTTCrypto>>,
-    pto_backoff: u32,
 }
 
 macro_rules! packet_space_api {
@@ -71,7 +67,7 @@ macro_rules! packet_space_api {
                 //# detection timers MUST be reset, because discarding keys indicates
                 //# forward progress and the loss detection timer might have been set for
                 //# a now discarded packet number space.
-                self.pto_backoff = INITIAL_PTO_BACKOFF;
+                path.reset_pto_backoff();
                 if let Some(space) = self.$get_mut().take() {
                     space.on_discard(path);
                 }
@@ -117,7 +113,6 @@ impl<Config: connection::Config> PacketSpaceManager<Config> {
             handshake: None,
             application: None,
             zero_rtt_crypto: None,
-            pto_backoff: INITIAL_PTO_BACKOFF,
         }
     }
 
@@ -135,7 +130,6 @@ impl<Config: connection::Config> PacketSpaceManager<Config> {
                 application: &mut self.application,
                 zero_rtt_crypto: &mut self.zero_rtt_crypto,
                 path,
-                pto_backoff: self.pto_backoff,
                 connection_config,
             };
 
@@ -161,68 +155,19 @@ impl<Config: connection::Config> PacketSpaceManager<Config> {
     }
 
     /// Called when the connection timer expired
-    pub fn on_timeout(&mut self, timestamp: Timestamp) -> LossInfo {
-        core::iter::empty()
-            .chain(
-                self.initial
-                    .iter_mut()
-                    .map(|space| space.on_timeout(timestamp)),
-            )
-            .chain(
-                self.handshake
-                    .iter_mut()
-                    .map(|space| space.on_timeout(timestamp)),
-            )
-            .chain(
-                self.application
-                    .iter_mut()
-                    .map(|space| space.on_timeout(timestamp)),
-            )
-            .sum()
-    }
-
-    pub fn on_loss_info(
+    pub fn on_timeout(
         &mut self,
-        loss_info: &LossInfo,
-        path: &Path<Config::CongestionController>,
+        path: &mut Path<Config::CongestionController>,
         timestamp: Timestamp,
     ) {
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
-        //# When a PTO timer expires, the PTO backoff MUST be increased,
-        //# resulting in the PTO period being set to twice its current value.
-        if loss_info.pto_expired {
-            self.pto_backoff *= 2;
-        }
-
-        if loss_info.pto_reset {
-            self.pto_backoff = INITIAL_PTO_BACKOFF;
-        }
-
-        self.update_recovery(path, timestamp);
-    }
-
-    pub fn pto_backoff(&self) -> u32 {
-        self.pto_backoff
-    }
-
-    pub fn update_recovery(
-        &mut self,
-        path: &Path<Config::CongestionController>,
-        timestamp: Timestamp,
-    ) {
-        let pto_backoff = self.pto_backoff;
-        let is_handshake_confirmed = self.is_handshake_confirmed();
-
         if let Some(space) = self.initial_mut() {
-            space.update_recovery(path, pto_backoff, timestamp, is_handshake_confirmed);
+            space.on_timeout(path, timestamp)
         }
-
         if let Some(space) = self.handshake_mut() {
-            space.update_recovery(path, pto_backoff, timestamp, is_handshake_confirmed);
+            space.on_timeout(path, timestamp)
         }
-
         if let Some(space) = self.application_mut() {
-            space.update_recovery(path, pto_backoff, timestamp, is_handshake_confirmed);
+            space.on_timeout(path, timestamp)
         }
     }
 
@@ -311,15 +256,13 @@ pub trait PacketSpace<Config: connection::Config> {
         frame: Ack<A>,
         datagram: &DatagramInfo,
         path: &mut Path<Config::CongestionController>,
-        pto_backoff: u32,
-    ) -> Result<LossInfo, TransportError>;
+    ) -> Result<(), TransportError>;
 
     fn handle_handshake_done_frame(
         &mut self,
         frame: HandshakeDone,
         _datagram: &DatagramInfo,
         _path: &mut Path<Config::CongestionController>,
-        _pto_backoff: u32,
     ) -> Result<(), TransportError> {
         Err(TransportError::PROTOCOL_VIOLATION
             .with_reason(Self::INVALID_FRAME_ERROR)
@@ -352,10 +295,7 @@ pub trait PacketSpace<Config: connection::Config> {
         mut payload: DecoderBufferMut<'a>,
         datagram: &DatagramInfo,
         path: &mut Path<Config::CongestionController>,
-        pto_backoff: u32,
-    ) -> Result<(LossInfo, Option<frame::ConnectionClose<'a>>), TransportError> {
-        let mut loss_info = LossInfo::default();
-
+    ) -> Result<Option<frame::ConnectionClose<'a>>, TransportError> {
         use s2n_quic_core::{
             frame::{Frame, FrameMut},
             varint::VarInt,
@@ -395,12 +335,11 @@ pub trait PacketSpace<Config: connection::Config> {
                 Frame::Ack(frame) => {
                     let on_error = with_frame_type!(frame);
                     processed_packet.on_processed_frame(&frame);
-                    loss_info += self
-                        .handle_ack_frame(frame, datagram, path, pto_backoff)
+                    self.handle_ack_frame(frame, datagram, path)
                         .map_err(on_error)?;
                 }
                 Frame::ConnectionClose(frame) => {
-                    return Ok((loss_info, Some(frame)));
+                    return Ok(Some(frame));
                 }
                 Frame::Stream(frame) => {
                     let on_error = with_frame_type!(frame);
@@ -489,7 +428,7 @@ pub trait PacketSpace<Config: connection::Config> {
                 Frame::HandshakeDone(frame) => {
                     let on_error = with_frame_type!(frame);
                     processed_packet.on_processed_frame(&frame);
-                    self.handle_handshake_done_frame(frame, datagram, path, pto_backoff)
+                    self.handle_handshake_done_frame(frame, datagram, path)
                         .map_err(on_error)?;
                 }
             }
@@ -510,6 +449,6 @@ pub trait PacketSpace<Config: connection::Config> {
 
         self.on_processed_packet(processed_packet)?;
 
-        Ok((loss_info, None))
+        Ok(None)
     }
 }

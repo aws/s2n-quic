@@ -24,7 +24,6 @@ use s2n_quic_core::{
         short::{KeyPhase, Short, SpinBit},
     },
     path::Path,
-    recovery::loss_info::LossInfo,
     time::Timestamp,
     transport::error::TransportError,
 };
@@ -134,11 +133,13 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         let (_protected_packet, buffer) =
             packet.encode_packet(&self.crypto, packet_number_encoder, buffer)?;
 
-        self.recovery_manager.on_packet_sent(
+        let (recovery_manager, recovery_context) = self.recovery();
+        recovery_manager.on_packet_sent(
             packet_number,
             outcome,
             context.timestamp,
             context.path,
+            &recovery_context,
         );
 
         Ok(buffer)
@@ -148,7 +149,6 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
     pub fn on_handshake_done(
         &mut self,
         path: &Path<Config::CongestionController>,
-        pto_backoff: u32,
         timestamp: Timestamp,
     ) {
         if Config::ENDPOINT_TYPE.is_server() {
@@ -156,7 +156,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         }
 
         self.recovery_manager
-            .update(path, pto_backoff, timestamp, true)
+            .update_pto_timer(path, timestamp, true)
     }
 
     /// Returns all of the component timers
@@ -167,22 +167,15 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
     }
 
     /// Called when the connection timer expired
-    pub fn on_timeout(&mut self, timestamp: Timestamp) -> LossInfo {
+    pub fn on_timeout(
+        &mut self,
+        path: &mut Path<Config::CongestionController>,
+        timestamp: Timestamp,
+    ) {
         self.ack_manager.on_timeout(timestamp);
 
         let (recovery_manager, mut context) = self.recovery();
-        recovery_manager.on_timeout(timestamp, &mut context)
-    }
-
-    pub fn update_recovery(
-        &mut self,
-        path: &Path<Config::CongestionController>,
-        pto_backoff: u32,
-        timestamp: Timestamp,
-        is_handshake_confirmed: bool,
-    ) {
-        self.recovery_manager
-            .update(path, pto_backoff, timestamp, is_handshake_confirmed)
+        recovery_manager.on_timeout(path, timestamp, &mut context)
     }
 
     /// Returns the Packet Number to be used when decoding incoming packets
@@ -293,11 +286,10 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
         frame: Ack<A>,
         datagram: &DatagramInfo,
         path: &mut Path<Config::CongestionController>,
-        pto_backoff: u32,
-    ) -> Result<LossInfo, TransportError> {
+    ) -> Result<(), TransportError> {
         path.on_peer_validated();
         let (recovery_manager, mut context) = self.recovery();
-        recovery_manager.on_ack_frame(datagram, frame, path, pto_backoff, &mut context)
+        recovery_manager.on_ack_frame(datagram, frame, path, &mut context)
     }
 
     fn handle_stream_frame(
@@ -441,7 +433,6 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
         frame: HandshakeDone,
         datagram: &DatagramInfo,
         path: &mut Path<Config::CongestionController>,
-        pto_backoff: u32,
     ) -> Result<(), TransportError> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#19.20
         //# A server MUST
@@ -462,7 +453,7 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
         //# (Section 4.1.2 of [QUIC-TLS]), or when Initial or Handshake keys are
         //# discarded (Section 9 of [QUIC-TLS]).
         self.recovery_manager
-            .update(path, pto_backoff, datagram.timestamp, true);
+            .update_pto_timer(path, datagram.timestamp, true);
 
         Ok(())
     }

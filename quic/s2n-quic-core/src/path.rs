@@ -21,6 +21,9 @@ pub enum State {
 //# packets
 pub const MINIMUM_MTU: u16 = 1200;
 
+// Initial PTO backoff multiplier is 1 indicating no additional increase to the backoff.
+pub const INITIAL_PTO_BACKOFF: u32 = 1;
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Path<CC: CongestionController> {
     /// The peer's socket address
@@ -31,6 +34,8 @@ pub struct Path<CC: CongestionController> {
     pub rtt_estimator: RTTEstimator,
     /// The congestion controller for the path
     pub congestion_controller: CC,
+    /// Probe timeout backoff multiplier
+    pub pto_backoff: u32,
     /// Tracks whether this path has passed Address or Path validation
     state: State,
     /// Maximum transmission unit of the path
@@ -60,6 +65,7 @@ impl<CC: CongestionController> Path<CC> {
             peer_connection_id,
             rtt_estimator,
             congestion_controller,
+            pto_backoff: INITIAL_PTO_BACKOFF,
             state: State::Pending {
                 tx_bytes: 0,
                 rx_bytes: 0,
@@ -151,6 +157,11 @@ impl<CC: CongestionController> Path<CC> {
     pub fn at_amplification_limit(&self) -> bool {
         let mtu = self.mtu as usize;
         self.clamp_mtu(mtu) < mtu
+    }
+
+    /// Resets the PTO backoff to the initial value
+    pub fn reset_pto_backoff(&mut self) {
+        self.pto_backoff = INITIAL_PTO_BACKOFF;
     }
 }
 

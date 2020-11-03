@@ -20,7 +20,6 @@ use s2n_quic_core::{
         },
     },
     path::Path,
-    recovery::loss_info::LossInfo,
     time::Timestamp,
     transport::error::TransportError,
 };
@@ -112,11 +111,13 @@ impl<Config: connection::Config> InitialSpace<Config> {
         let (_protected_packet, buffer) =
             packet.encode_packet(&self.crypto, packet_number_encoder, buffer)?;
 
-        self.recovery_manager.on_packet_sent(
+        let (recovery_manager, recovery_context) = self.recovery();
+        recovery_manager.on_packet_sent(
             packet_number,
             outcome,
             context.timestamp,
             context.path,
+            &recovery_context,
         );
 
         Ok(buffer)
@@ -130,28 +131,20 @@ impl<Config: connection::Config> InitialSpace<Config> {
     }
 
     /// Called when the connection timer expired
-    pub fn on_timeout(&mut self, timestamp: Timestamp) -> LossInfo {
+    pub fn on_timeout(
+        &mut self,
+        path: &mut Path<Config::CongestionController>,
+        timestamp: Timestamp,
+    ) {
         self.ack_manager.on_timeout(timestamp);
 
         let (recovery_manager, mut context) = self.recovery();
-        recovery_manager.on_timeout(timestamp, &mut context)
+        recovery_manager.on_timeout(path, timestamp, &mut context)
     }
 
     /// Called before the Initial packet space is discarded
     pub fn on_discard(&mut self, path: &mut Path<Config::CongestionController>) {
         self.recovery_manager.on_packet_number_space_discarded(path);
-    }
-
-    pub fn update_recovery(
-        &mut self,
-
-        path: &Path<Config::CongestionController>,
-        pto_backoff: u32,
-        timestamp: Timestamp,
-        is_handshake_confirmed: bool,
-    ) {
-        self.recovery_manager
-            .update(path, pto_backoff, timestamp, is_handshake_confirmed)
     }
 
     pub fn requires_probe(&self) -> bool {
@@ -261,10 +254,9 @@ impl<Config: connection::Config> PacketSpace<Config> for InitialSpace<Config> {
         frame: Ack<A>,
         datagram: &DatagramInfo,
         path: &mut Path<Config::CongestionController>,
-        pto_backoff: u32,
-    ) -> Result<LossInfo, TransportError> {
+    ) -> Result<(), TransportError> {
         let (recovery_manager, mut context) = self.recovery();
-        recovery_manager.on_ack_frame(datagram, frame, path, pto_backoff, &mut context)
+        recovery_manager.on_ack_frame(datagram, frame, path, &mut context)
     }
 
     fn on_processed_packet(
