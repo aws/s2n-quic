@@ -407,6 +407,7 @@ impl CubicCongestionController {
             // TODO: This is slightly different than Linux, which adds a "very small increment" to
             //       the congestion window in this case. Investigate if this is needed. See
             //       https://github.com/torvalds/linux/blob/master/net/ipv4/tcp_cubic.c#L293-L297
+            //       Issue: https://github.com/awslabs/s2n-quic/issues/209
             if target_congestion_window <= self.congestion_window {
                 return;
             }
