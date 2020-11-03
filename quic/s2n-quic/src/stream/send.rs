@@ -185,27 +185,13 @@ macro_rules! impl_send_stream_api {
         /// ```rust
         /// // TODO
         /// ```
-        pub async fn finish(&mut self) -> $crate::stream::Result<()> {
-            ::futures::future::poll_fn(|cx| self.poll_finish(cx)).await
-        }
-
-        /// Polls finishing and closing the stream.
-        ///
-        /// # Examples
-        ///
-        /// ```rust
-        /// // TODO
-        /// ```
-        pub fn poll_finish(
-            &mut self,
-            cx: &mut core::task::Context,
-        ) -> core::task::Poll<$crate::stream::Result<()>> {
+        pub fn finish(&mut self) -> $crate::stream::Result<()> {
             macro_rules! $dispatch {
                 () => {
                     Err($crate::stream::Error::NonWritable).into()
                 };
                 ($variant: expr) => {
-                    $variant.poll_finish(cx)
+                    $variant.finish()
                 };
             }
 
@@ -271,9 +257,10 @@ macro_rules! impl_send_stream_trait {
 
             fn poll_close(
                 mut self: core::pin::Pin<&mut Self>,
-                cx: &mut core::task::Context<'_>,
+                _cx: &mut core::task::Context<'_>,
             ) -> core::task::Poll<$crate::stream::Result<()>> {
-                self.poll_finish(cx)
+                self.finish()?;
+                Ok(()).into()
             }
         }
 
@@ -334,9 +321,9 @@ macro_rules! impl_send_stream_trait {
 
             fn poll_close(
                 mut self: core::pin::Pin<&mut Self>,
-                cx: &mut core::task::Context<'_>,
+                _cx: &mut core::task::Context<'_>,
             ) -> core::task::Poll<std::io::Result<()>> {
-                futures::ready!($name::poll_finish(&mut self, cx))?;
+                self.finish()?;
                 Ok(()).into()
             }
         }
@@ -359,10 +346,11 @@ macro_rules! impl_send_stream_trait {
             }
 
             fn poll_shutdown(
-                self: core::pin::Pin<&mut Self>,
-                cx: &mut core::task::Context<'_>,
+                mut self: core::pin::Pin<&mut Self>,
+                _cx: &mut core::task::Context<'_>,
             ) -> core::task::Poll<std::io::Result<()>> {
-                futures::io::AsyncWrite::poll_close(self, cx)
+                self.finish()?;
+                Ok(()).into()
             }
         }
     };
