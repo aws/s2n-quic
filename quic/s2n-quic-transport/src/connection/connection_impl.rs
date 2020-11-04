@@ -71,13 +71,16 @@ impl<'a> From<ConnectionCloseReason<'a>> for ConnectionState {
                 ConnectionState::Finished
             }
             ConnectionCloseReason::LocalImmediateClose(_error) => {
-                //= https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#10.1
-                //# An endpoint enters a closing period after initiating an immediate close (Section 10.3).
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.2.1
+                //# An endpoint enters the closing state after initiating an immediate
+                //# close.
                 ConnectionState::Closing
             }
             ConnectionCloseReason::PeerImmediateClose(_error) => {
-                //= https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#10.1
-                //# The draining state is entered once an endpoint receives a signal that its peer is closing or draining.
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.2.2
+                //# The draining state is entered once an endpoint receives a
+                //# CONNECTION_CLOSE frame, which indicates that its peer is closing or
+                //# draining.
                 ConnectionState::Draining
             }
             ConnectionCloseReason::LocalObservedTransportErrror(_error) => {
