@@ -131,7 +131,7 @@ impl<'a, Config: connection::Config> tls::Context<Config::TLSSession>
     fn on_handshake_done(&mut self) -> Result<(), CryptoError> {
         if let Some(application) = self.application.as_mut() {
             if Config::ENDPOINT_TYPE.is_server() {
-                //= https://tools.ietf.org/id/draft-ietf-quic-tls-29#4.11.2
+                //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9.2
                 //# The server MUST send a HANDSHAKE_DONE
                 //# frame as soon as it completes the handshake.
                 self.handshake_status.on_handshake_done();

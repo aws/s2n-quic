@@ -39,7 +39,7 @@ pub enum HandshakeStatus {
         latest: PacketNumber,
     },
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-tls-29#4.1.2
+    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.1.2
     //# the TLS handshake is considered confirmed at the
     //# server when the handshake completes.  At the client, the handshake is
     //# considered confirmed when a HANDSHAKE_DONE frame is received.
@@ -57,11 +57,11 @@ impl HandshakeStatus {
     /// This method is called on the server after the handshake has been completed
     pub fn on_handshake_done(&mut self) {
         if matches!(self, Self::InProgress) {
-            //= https://tools.ietf.org/id/draft-ietf-quic-tls-29#4.11.2
+            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9.2
             //# The server MUST send a HANDSHAKE_DONE
             //# frame as soon as it completes the handshake.
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-tls-29#4.1.2
+            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.1.2
             //# the TLS handshake is considered confirmed at the
             //# server when the handshake completes.
             *self = Self::RequiresTransmission;
@@ -71,7 +71,7 @@ impl HandshakeStatus {
     /// This method is called on the client when the HANDSHAKE_DONE frame has been received
     pub fn on_handshake_done_received(&mut self) {
         if matches!(self, Self::InProgress) {
-            //= https://tools.ietf.org/id/draft-ietf-quic-tls-29#4.1.2
+            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.1.2
             //# At the client, the handshake is
             //# considered confirmed when a HANDSHAKE_DONE frame is received.
             *self = Self::Confirmed;
