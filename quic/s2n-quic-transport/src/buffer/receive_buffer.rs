@@ -5,7 +5,7 @@ use alloc::collections::VecDeque;
 use bytes::BytesMut;
 use s2n_quic_core::varint::VarInt;
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-22.txt#2.2
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#2.2
 //# STREAM frames (Section 19.8) encapsulate data sent by an application.
 //# An endpoint uses the Stream ID and Offset fields in STREAM frames to
 //# place data in order.

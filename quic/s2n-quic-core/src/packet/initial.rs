@@ -17,97 +17,40 @@ use crate::{
 };
 use s2n_codec::{CheckedRange, DecoderBufferMut, DecoderBufferMutResult, Encoder, EncoderValue};
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-22.txt#17.2.2
-//# An Initial packet uses long headers with a type value of 0x0.  It
-//# carries the first CRYPTO frames sent by the client and server to
-//# perform key exchange, and carries ACKs in either direction.
-//#
-//# +-+-+-+-+-+-+-+-+
-//# |1|1| 0 |R R|P P|
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# |                         Version (32)                          |
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# | DCID Len (8)  |
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# |               Destination Connection ID (0..160)            ...
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# | SCID Len (8)  |
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# |                 Source Connection ID (0..160)               ...
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# |                         Token Length (i)                    ...
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# |                            Token (*)                        ...
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# |                           Length (i)                        ...
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# |                    Packet Number (8/16/24/32)               ...
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# |                          Payload (*)                        ...
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//#
-//#                       Figure 11: Initial Packet
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.2
+//# Initial Packet {
+//#   Header Form (1) = 1,
+//#   Fixed Bit (1) = 1,
+//#   Long Packet Type (2) = 0,
+//#   Reserved Bits (2),
+//#   Packet Number Length (2),
+//#   Version (32),
+//#   Destination Connection ID Length (8),
+//#   Destination Connection ID (0..160),
+//#   Source Connection ID Length (8),
+//#   Source Connection ID (0..160),
+//#   Token Length (i),
+//#   Token (..),
+//#   Length (i),
+//#   Packet Number (8..32),
+//#   Packet Payload (..),
+//# }
 
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.2
+//# An Initial packet uses long headers with a type value of 0x0.
 macro_rules! initial_tag {
     () => {
         0b1100u8
     };
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-22.txt#17.2.2
-//# The Initial packet contains a long header as well as the Length and
-//# Packet Number fields.  The first byte contains the Reserved and
-//# Packet Number Length bits.  Between the SCID and Length fields, there
-//# are two additional field specific to the Initial packet.
-//#
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.2
 //# Token Length:  A variable-length integer specifying the length of the
 //#    Token field, in bytes.  This value is zero if no token is present.
-//#    Initial packets sent by the server MUST set the Token Length field
-//#    to zero; clients that receive an Initial packet with a non-zero
-//#    Token Length field MUST either discard the packet or generate a
-//#    connection error of type PROTOCOL_VIOLATION.
-//#
+
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.2
 //# Token:  The value of the token that was previously provided in a
-//#    Retry packet or NEW_TOKEN frame.
-//#
-//# Payload:  The payload of the packet.
-//#
-//# In order to prevent tampering by version-unaware middleboxes, Initial
-//# packets are protected with connection- and version-specific keys
-//# (Initial keys) as described in [QUIC-TLS].  This protection does not
-//# provide confidentiality or integrity against on-path attackers, but
-//# provides some level of protection against off-path attackers.
-//#
-//# The client and server use the Initial packet type for any packet that
-//# contains an initial cryptographic handshake message.  This includes
-//# all cases where a new packet containing the initial cryptographic
-//# message needs to be created, such as the packets sent after receiving
-//# a Retry packet (Section 17.2.5).
-//#
-//# A server sends its first Initial packet in response to a client
-//# Initial.  A server may send multiple Initial packets.  The
-//# cryptographic key exchange could require multiple round trips or
-//# retransmissions of this data.
-//#
-//# The payload of an Initial packet includes a CRYPTO frame (or frames)
-//# containing a cryptographic handshake message, ACK frames, or both.
-//# PADDING and CONNECTION_CLOSE frames are also permitted.  An endpoint
-//# that receives an Initial packet containing other frames can either
-//# discard the packet as spurious or treat it as a connection error.
-//#
-//# The first packet sent by a client always includes a CRYPTO frame that
-//# contains the entirety of the first cryptographic handshake message.
-//# This packet, and the cryptographic handshake message, MUST fit in a
-//# single UDP datagram (see Section 7).  The first CRYPTO frame sent
-//# always begins at an offset of 0 (see Section 7).
-//#
-//# Note that if the server sends a HelloRetryRequest, the client will
-//# send a second Initial packet.  This Initial packet will continue the
-//#
-//# cryptographic handshake and will contain a CRYPTO frame with an
-//# offset matching the size of the CRYPTO frame sent in the first
-//# Initial packet.  Cryptographic handshake messages subsequent to the
-//# first do not need to fit within a single UDP datagram.
+//#    Retry packet or NEW_TOKEN frame; see Section 8.1.
 
 #[derive(Debug)]
 pub struct Initial<DCID, SCID, Token, PacketNumber, Payload> {

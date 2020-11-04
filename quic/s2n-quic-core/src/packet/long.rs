@@ -7,77 +7,60 @@ use s2n_codec::{
     decoder_invariant, CheckedRange, DecoderError, Encoder, EncoderBuffer, EncoderValue,
 };
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-22.txt#17.2
-//#  0                   1                   2                   3
-//#  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-//# +-+-+-+-+-+-+-+-+
-//# |1|1|T T|X X X X|
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# |                         Version (32)                          |
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# | DCID Len (8)  |
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# |               Destination Connection ID (0..160)            ...
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# | SCID Len (8)  |
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# |                 Source Connection ID (0..160)               ...
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//#
-//#                  Figure 9: Long Header Packet Format
-//#
-//# Long headers are used for packets that are sent prior to the
-//# establishment of 1-RTT keys.  Once both conditions are met, a sender
-//# switches to sending packets using the short header (Section 17.3).
-//# The long form allows for special packets - such as the Version
-//# Negotiation packet - to be represented in this uniform fixed-length
-//# packet format.  Packets that use the long header contain the
-//# following fields:
-//#
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2
+//# Long Header Packet {
+//#   Header Form (1) = 1,
+//#   Fixed Bit (1) = 1,
+//#   Long Packet Type (2),
+//#   Type-Specific Bits (4),
+//#   Version (32),
+//#   Destination Connection ID Length (8),
+//#   Destination Connection ID (0..160),
+//#   Source Connection ID Length (8),
+//#   Source Connection ID (0..160),
+//# }
+
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2
 //# Header Form:  The most significant bit (0x80) of byte 0 (the first
 //#   byte) is set to 1 for long headers.
-//#
-//# Fixed Bit:  The next bit (0x40) of byte 0 is set to 1.  Packets
-//#    containing a zero value for this bit are not valid packets in this
-//#    version and MUST be discarded.
-//#
-//# Long Packet Type (T):  The next two bits (those with a mask of 0x30)
+
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2
+//# Fixed Bit:  The next bit (0x40) of byte 0 is set to 1.
+
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2
+//# Long Packet Type:  The next two bits (those with a mask of 0x30)
 //#    of byte 0 contain a packet type.  Packet types are listed in
 //#    Table 5.
 
 pub(crate) const PACKET_TYPE_MASK: u8 = 0x30;
 const PACKET_TYPE_OFFSET: u8 = 4;
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-22.txt#17.2
-//# Type-Specific Bits (X):  The lower four bits (those with a mask of
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2
+//# Type-Specific Bits:  The lower four bits (those with a mask of
 //#    0x0f) of byte 0 are type-specific.
-//#
-//# Version:  The QUIC Version is a 32-bit field that follows the first
-//#    byte.  This field indicates which version of QUIC is in use and
+
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2
+//# Version: The QUIC Version is a 32-bit field that follows the first
+//#    byte.  This field indicates the version of QUIC that is in use and
 //#    determines how the rest of the protocol fields are interpreted.
 
 pub(crate) type Version = u32;
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-22.txt#17.2
-//# DCID Len:  The byte following the version contains the lengths of the
-//#    two connection ID fields that follow it.  These lengths are
-//#    encoded as two 4-bit unsigned integers.  The Destination
-//#    Connection ID Length (DCIL) field occupies the 4 high bits of the
-//#    byte and the Source Connection ID Length (SCIL) field occupies the
-//#    4 low bits of the byte.  An encoded length of 0 indicates that the
-//#    connection ID is also 0 bytes in length.  Non-zero encoded lengths
-//#    are increased by 3 to get the full length of the connection ID,
-//#    producing a length between 4 and 18 bytes inclusive.  For example,
-//#    a byte with the value 0x50 describes an 8-byte Destination
-//#    Connection ID and a zero-length Source Connection ID.
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2
+//# Destination Connection ID Length:  The byte following the version
+//#    contains the length in bytes of the Destination Connection ID
+//#    field that follows it.  This length is encoded as an 8-bit
+//#    unsigned integer.  In QUIC version 1, this value MUST NOT exceed
+//#    20.
 
 pub(crate) type DestinationConnectionIDLen = u8;
 pub(crate) const DESTINATION_CONNECTION_ID_MAX_LEN: usize = 20;
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-22.txt#17.2
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2
 //# Destination Connection ID:  The Destination Connection ID field
-//#   follows the DCID Len and is between 0 and 20 bytes in length.
-//#   Section 7.2 describes the use of this field in more detail.
+//#   follows the Destination Connection ID Length field, which
+//#   indicates the length of this field.  Section 7.2 describes the use
+//#   of this field in more detail.
 
 pub(crate) fn validate_destination_connection_id_range(
     range: &CheckedRange,
@@ -86,6 +69,9 @@ pub(crate) fn validate_destination_connection_id_range(
 }
 
 pub(crate) fn validate_destination_connection_id_len(len: usize) -> Result<(), DecoderError> {
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2
+    //# Endpoints that receive a version 1 long header with a value
+    //# larger than 20 MUST drop the packet.
     decoder_invariant!(
         len <= DESTINATION_CONNECTION_ID_MAX_LEN,
         "destination connection exceeds max length"
@@ -93,27 +79,28 @@ pub(crate) fn validate_destination_connection_id_len(len: usize) -> Result<(), D
     Ok(())
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-22.txt#17.2
-//# SCID Len:  The byte following the Destination Connection ID contains
-//#   the length in bytes of the Source Connection ID field that follows
-//#   it.  This length is encoded as a 8-bit unsigned integer.  In QUIC
-//#   version 1, this value MUST NOT exceed 20 bytes.  Endpoints that
-//#   receive a version 1 long header with a value larger than 20 MUST
-//#   drop the packet.  Servers SHOULD be able to read longer connection
-//#   IDs from other QUIC versions in order to properly form a version
-//#   negotiation packet.
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2
+//# Source Connection ID Length:  The byte following the Destination
+//#   Connection ID contains the length in bytes of the Source
+//#   Connection ID field that follows it.  This length is encoded as a
+//#   8-bit unsigned integer.  In QUIC version 1, this value MUST NOT
+//#   exceed 20 bytes.
 
 pub(crate) type SourceConnectionIDLen = u8;
 pub(crate) const SOURCE_CONNECTION_ID_MAX_LEN: usize = 20;
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-22.txt#17.2
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2
 //# Source Connection ID:  The Source Connection ID field follows the
-//#   SCID Len and is between 0 and 20 bytes in length.  Section 7.2
-//#   describes the use of this field in more detail.
+//#   Source Connection ID Length field, which indicates the length of
+//#   this field.  Section 7.2 describes the use of this field in more
+//#   detail.
 
 pub(crate) fn validate_source_connection_id_range(
     range: &CheckedRange,
 ) -> Result<(), DecoderError> {
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2
+    //# Endpoints that receive a version 1 long header
+    //# with a value larger than 20 MUST drop the packet.
     validate_source_connection_id_len(range.len())
 }
 
@@ -125,19 +112,19 @@ pub(crate) fn validate_source_connection_id_len(len: usize) -> Result<(), Decode
     Ok(())
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-22.txt#17.2
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2
 //# In this version of QUIC, the following packet types with the long
 //# header are defined:
 //#
-//#                 +------+-----------+----------------+
+//#                 +======+===========+================+
 //#                 | Type | Name      | Section        |
-//#                 +------+-----------+----------------+
+//#                 +======+===========+================+
 //#                 |  0x0 | Initial   | Section 17.2.2 |
-//#                 |      |           |                |
+//#                 +------+-----------+----------------+
 //#                 |  0x1 | 0-RTT     | Section 17.2.3 |
-//#                 |      |           |                |
+//#                 +------+-----------+----------------+
 //#                 |  0x2 | Handshake | Section 17.2.4 |
-//#                 |      |           |                |
+//#                 +------+-----------+----------------+
 //#                 |  0x3 | Retry     | Section 17.2.5 |
 //#                 +------+-----------+----------------+
 //#
@@ -180,46 +167,27 @@ impl Into<u8> for PacketType {
     }
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-22.txt#17.2
-//# The header form bit, connection ID lengths byte, Destination and
-//# Source Connection ID fields, and Version fields of a long header
-//# packet are version-independent.  The other fields in the first byte
-//# are version-specific.  See [QUIC-INVARIANTS] for details on how
-//# packets from different versions of QUIC are interpreted.
-//#
-//# The interpretation of the fields and the payload are specific to a
-//# version and packet type.  While type-specific semantics for this
-//# version are described in the following sections, several long-header
-//# packets in this version of QUIC contain these additional fields:
-//#
-//# Reserved Bits (R):  Two bits (those with a mask of 0x0c) of byte 0
-//#    are reserved across multiple packet types.  These bits are
-//#    protected using header protection (see Section 5.4 of [QUIC-TLS]).
-//#    The value included prior to protection MUST be set to 0.  An
-//#    endpoint MUST treat receipt of a packet that has a non-zero value
-//#    for these bits, after removing both packet and header protection,
-//#    as a connection error of type PROTOCOL_VIOLATION.  Discarding such
-//#    a packet after only removing header protection can expose the
-//#    endpoint to attacks (see Section 9.3 of [QUIC-TLS]).
-//#
-//# Packet Number Length (P):  In packet types which contain a Packet
-//#    Number field, the least significant two bits (those with a mask of
-//#    0x03) of byte 0 contain the length of the packet number, encoded
-//#    as an unsigned, two-bit integer that is one less than the length
-//#    of the packet number field in bytes.  That is, the length of the
-//#    packet number field is the value of this field, plus one.  These
-//#    bits are protected using header protection (see Section 5.4 of
-//#    [QUIC-TLS]).
-//#
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2
+//# Reserved Bits:  Two bits (those with a mask of 0x0c) of byte 0 are
+//#    reserved across multiple packet types.  These bits are protected
+//#    using header protection; see Section 5.4 of [QUIC-TLS].
+
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2
+//# Packet Number Length:  In packet types that contain a Packet Number
+//#    field, the least significant two bits (those with a mask of 0x03)
+//#    of byte 0 contain the length of the packet number, encoded as an
+//#    unsigned, two-bit integer that is one less than the length of the
+//#    packet number field in bytes.
+
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2
 //# Length:  The length of the remainder of the packet (that is, the
 //#    Packet Number and Payload fields) in bytes, encoded as a variable-
 //#    length integer (Section 16).
-//#
+
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2
 //# Packet Number:  The packet number field is 1 to 4 bytes long.  The
-//#    packet number has confidentiality protection separate from packet
-//#    protection, as described in Section 5.4 of [QUIC-TLS].  The length
-//#    of the packet number field is encoded in the Packet Number Length
-//#    bits of byte 0 (see above).
+//#    packet number is protected using header protection; see
+//#    Section 5.4 of [QUIC-TLS].
 
 pub(crate) struct LongPayloadEncoder<Payload> {
     pub packet_number: TruncatedPacketNumber,

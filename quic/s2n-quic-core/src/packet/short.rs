@@ -13,34 +13,27 @@ use crate::{
 };
 use s2n_codec::{CheckedRange, DecoderBufferMut, DecoderBufferMutResult, Encoder, EncoderValue};
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-22.txt#17.3
-//# This version of QUIC defines a single packet type which uses the
-//# short packet header.
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.3
+//# This version of QUIC defines a single packet type that uses the short
+//# packet header.
 //#
-//#  0                   1                   2                   3
-//#  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-//# +-+-+-+-+-+-+-+-+
-//# |0|1|S|R|R|K|P P|
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# |                Destination Connection ID (0..160)           ...
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# |                     Packet Number (8/16/24/32)              ...
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# |                     Protected Payload (*)                   ...
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//#
-//#                 Figure 14: Short Header Packet Format
-//#
-//# The short header can be used after the version and 1-RTT keys are
-//# negotiated.  Packets that use the short header contain the following
-//# fields:
-//#
+//# Short Header Packet {
+//#   Header Form (1) = 0,
+//#   Fixed Bit (1) = 1,
+//#   Spin Bit (1),
+//#   Reserved Bits (2),
+//#   Key Phase (1),
+//#   Packet Number Length (2),
+//#   Destination Connection ID (0..160),
+//#   Packet Number (8..32),
+//#   Packet Payload (..),
+//# }
+
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.3
 //# Header Form:  The most significant bit (0x80) of byte 0 is set to 0
 //#    for the short header.
 //#
-//# Fixed Bit:  The next bit (0x40) of byte 0 is set to 1.  Packets
-//#    containing a zero value for this bit are not valid packets in this
-//#    version and MUST be discarded.
+//# Fixed Bit:  The next bit (0x40) of byte 0 is set to 1.
 
 macro_rules! short_tag {
     () => {
@@ -50,8 +43,8 @@ macro_rules! short_tag {
 
 const ENCODING_TAG: u8 = 0b0100_0000;
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-22.txt#17.3
-//# Spin Bit (S):  The third most significant bit (0x20) of byte 0 is the
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.3
+//# Spin Bit:  The third most significant bit (0x20) of byte 0 is the
 //#    latency spin bit, set as described in Section 17.3.1.
 
 const SPIN_BIT_MASK: u8 = 0x20;
@@ -85,22 +78,15 @@ impl SpinBit {
     }
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-22.txt#17.3
-//# Reserved Bits (R):  The next two bits (those with a mask of 0x18) of
-//#    byte 0 are reserved.  These bits are protected using header
-//#    protection (see Section 5.4 of [QUIC-TLS]).  The value included
-//#    prior to protection MUST be set to 0.  An endpoint MUST treat
-//#    receipt of a packet that has a non-zero value for these bits,
-//#    after removing both packet and header protection, as a connection
-//#    error of type PROTOCOL_VIOLATION.  Discarding such a packet after
-//#    only removing header protection can expose the endpoint to attacks
-//#    (see Section 9.3 of [QUIC-TLS]).
-//#
-//# Key Phase (K):  The next bit (0x04) of byte 0 indicates the key
-//#    phase, which allows a recipient of a packet to identify the packet
-//#    protection keys that are used to protect the packet.  See
-//#    [QUIC-TLS] for details.  This bit is protected using header
-//#    protection (see Section 5.4 of [QUIC-TLS]).
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.3
+//# Reserved Bits:  The next two bits (those with a mask of 0x18) of byte
+//#    0 are reserved.  These bits are protected using header protection;
+//#    see Section 5.4 of [QUIC-TLS].
+
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.3
+//# Key Phase:  The next bit (0x04) of byte 0 indicates the key phase,
+//#    which allows a recipient of a packet to identify the packet
+//#    protection keys that are used to protect the packet.
 
 const KEY_PHASE_MASK: u8 = 0x04;
 
@@ -136,32 +122,27 @@ impl KeyPhase {
     }
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-22.txt#17.3
-//# Packet Number Length (P):  The least significant two bits (those with
-//#    a mask of 0x03) of byte 0 contain the length of the packet number,
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.3
+//# Packet Number Length:  The least significant two bits (those with a
+//#    mask of 0x03) of byte 0 contain the length of the packet number,
 //#    encoded as an unsigned, two-bit integer that is one less than the
-//#    length of the packet number field in bytes.  That is, the length
-//#    of the packet number field is the value of this field, plus one.
-//#    These bits are protected using header protection (see Section 5.4
-//#    of [QUIC-TLS]).
-//#
+//#    length of the packet number field in bytes.
+
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.3
 //# Destination Connection ID:  The Destination Connection ID is a
 //#    connection ID that is chosen by the intended recipient of the
-//#    packet.  See Section 5.1 for more details.
-//#
+//#    packet.
+
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.3
 //# Packet Number:  The packet number field is 1 to 4 bytes long.  The
 //#    packet number has confidentiality protection separate from packet
 //#    protection, as described in Section 5.4 of [QUIC-TLS].  The length
 //#    of the packet number field is encoded in Packet Number Length
 //#    field.  See Section 17.1 for details.
-//#
-//# Protected Payload:  Packets with a short header always include a
+
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.3
+//# Packet Payload:  Packets with a short header always include a
 //#    1-RTT protected payload.
-//#
-//# The header form bit and the connection ID field of a short header
-//# packet are version-independent.  The remaining fields are specific to
-//# the selected QUIC version.  See [QUIC-INVARIANTS] for details on how
-//# packets from different versions of QUIC are interpreted.
 
 #[derive(Debug)]
 pub struct Short<DCID, KeyPhase, PacketNumber, Payload> {
