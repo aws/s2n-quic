@@ -7,6 +7,7 @@ use alloc::collections::{
 };
 use core::convert::TryInto;
 use s2n_quic_core::{
+    frame::ack_elicitation::AckElicitation,
     packet::number::{PacketNumber, PacketNumberRange},
     time::Timestamp,
 };
@@ -57,22 +58,36 @@ impl SentPackets {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct SentPacketInfo {
     /// Indicates whether the packet counts towards bytes in flight
-    pub in_flight: bool,
+    pub congestion_controlled: bool,
     /// The number of bytes sent in the packet, not including UDP or IP overhead,
     /// but including QUIC framing overhead
     pub sent_bytes: u16,
     /// The time the packet was sent
     pub time_sent: Timestamp,
+    /// Indicates whether a packet is ack-eliciting
+    pub ack_elicitation: AckElicitation,
 }
 
 impl SentPacketInfo {
-    pub fn new(in_flight: bool, sent_bytes: usize, time_sent: Timestamp) -> Self {
+    pub fn new(
+        congestion_controlled: bool,
+        sent_bytes: usize,
+        time_sent: Timestamp,
+        ack_elicitation: AckElicitation,
+    ) -> Self {
+        debug_assert_eq!(
+            sent_bytes > 0,
+            congestion_controlled,
+            "sent bytes should be zero for packets that are not congestion controlled"
+        );
+
         SentPacketInfo {
-            in_flight,
+            congestion_controlled,
             sent_bytes: sent_bytes
                 .try_into()
                 .expect("sent_bytes exceeds max UDP payload size"),
             time_sent,
+            ack_elicitation,
         }
     }
 }
@@ -81,6 +96,7 @@ impl SentPacketInfo {
 mod test {
     use crate::recovery::{SentPacketInfo, SentPackets};
     use s2n_quic_core::{
+        frame::ack_elicitation::AckElicitation,
         packet::number::{PacketNumberRange, PacketNumberSpace},
         varint::VarInt,
     };
@@ -89,9 +105,10 @@ mod test {
     #[should_panic]
     fn too_large_packet() {
         SentPacketInfo::new(
-            false,
+            true,
             u16::max_value() as usize + 1,
             s2n_quic_platform::time::now(),
+            AckElicitation::Eliciting,
         );
     }
 
@@ -100,13 +117,28 @@ mod test {
         let mut sent_packets = SentPackets::default();
 
         let packet_number_1 = PacketNumberSpace::Initial.new_packet_number(VarInt::from_u8(1));
-        let sent_packet_1 = SentPacketInfo::new(false, 1, s2n_quic_platform::time::now());
+        let sent_packet_1 = SentPacketInfo::new(
+            true,
+            1,
+            s2n_quic_platform::time::now(),
+            AckElicitation::Eliciting,
+        );
 
         let packet_number_2 = PacketNumberSpace::Initial.new_packet_number(VarInt::from_u8(2));
-        let sent_packet_2 = SentPacketInfo::new(false, 2, s2n_quic_platform::time::now());
+        let sent_packet_2 = SentPacketInfo::new(
+            true,
+            2,
+            s2n_quic_platform::time::now(),
+            AckElicitation::Eliciting,
+        );
 
         let packet_number_3 = PacketNumberSpace::Initial.new_packet_number(VarInt::from_u8(3));
-        let sent_packet_3 = SentPacketInfo::new(false, 3, s2n_quic_platform::time::now());
+        let sent_packet_3 = SentPacketInfo::new(
+            true,
+            3,
+            s2n_quic_platform::time::now(),
+            AckElicitation::Eliciting,
+        );
 
         sent_packets.insert(packet_number_1, sent_packet_1);
         sent_packets.insert(packet_number_2, sent_packet_2);
@@ -138,7 +170,12 @@ mod test {
     fn remove() {
         let mut sent_packets = SentPackets::default();
         let packet_number = PacketNumberSpace::Initial.new_packet_number(VarInt::from_u8(1));
-        let sent_packet = SentPacketInfo::new(false, 0, s2n_quic_platform::time::now());
+        let sent_packet = SentPacketInfo::new(
+            false,
+            0,
+            s2n_quic_platform::time::now(),
+            AckElicitation::Eliciting,
+        );
         sent_packets.insert(packet_number, sent_packet);
 
         assert!(sent_packets.get(packet_number).is_some());
@@ -158,7 +195,12 @@ mod test {
         assert!(sent_packets.is_empty());
 
         let packet_number = PacketNumberSpace::Initial.new_packet_number(VarInt::from_u8(1));
-        let sent_packet = SentPacketInfo::new(false, 0, s2n_quic_platform::time::now());
+        let sent_packet = SentPacketInfo::new(
+            false,
+            0,
+            s2n_quic_platform::time::now(),
+            AckElicitation::Eliciting,
+        );
         sent_packets.insert(packet_number, sent_packet);
         assert!(!sent_packets.is_empty());
     }
@@ -170,7 +212,12 @@ mod test {
 
         let packet_number =
             PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u8(1));
-        let sent_packet = SentPacketInfo::new(false, 0, s2n_quic_platform::time::now());
+        let sent_packet = SentPacketInfo::new(
+            false,
+            0,
+            s2n_quic_platform::time::now(),
+            AckElicitation::Eliciting,
+        );
 
         sent_packets.insert(packet_number, sent_packet);
     }
@@ -213,7 +260,12 @@ mod test {
     fn new_sent_packets(space: PacketNumberSpace) -> SentPackets {
         let mut sent_packets = SentPackets::default();
         let packet_number = space.new_packet_number(VarInt::from_u8(1));
-        let sent_packet = SentPacketInfo::new(false, 0, s2n_quic_platform::time::now());
+        let sent_packet = SentPacketInfo::new(
+            false,
+            0,
+            s2n_quic_platform::time::now(),
+            AckElicitation::Eliciting,
+        );
         sent_packets.insert(packet_number, sent_packet);
         sent_packets
     }

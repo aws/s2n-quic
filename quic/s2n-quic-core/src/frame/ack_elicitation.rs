@@ -6,7 +6,7 @@ use core::ops::{BitOr, BitOrAssign};
 //#    are called ack-eliciting packets.
 
 /// Describes if a frame or packet requires an ACK from the peer
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum AckElicitation {
     NonEliciting,
     Eliciting,
