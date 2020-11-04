@@ -127,6 +127,10 @@ jobs:
     strategy:
       matrix: ${{ fromJson(needs.env.outputs.matrix) }}
     steps:
+      - uses: actions/checkout@v2
+        with:
+          path: s2n-quic
+
       - uses: actions/download-artifact@v2
         with:
           name: s2n-quic-qns
@@ -143,15 +147,10 @@ jobs:
           ref: ${{ env.INTEROP_RUNNER_REF }}
           path: quic-interop-runner
 
-      - name: Patch implementations.json
+      - name: Patch quic-interop-runner
         working-directory: quic-interop-runner
         run: |
-          mv implementations.json implementations.old.json
-          # Append our implementation
-          cat implementations.old.json \
-            | jq '. + {"s2n-quic": {"image": "awslabs/s2n-quic-qns:latest", "url": "https://github.com/awslabs/s2n-quic", "role": "both"}}' \
-            > implementations.json
-          cat implementations.json
+          git apply --3way ../s2n-quic/.github/interop/runner.patch
 
       - name: Run docker pull
         working-directory: quic-interop-runner
