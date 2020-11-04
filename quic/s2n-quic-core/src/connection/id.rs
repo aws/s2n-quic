@@ -4,60 +4,14 @@ use crate::transport::error::TransportError;
 use core::convert::TryFrom;
 use s2n_codec::{decoder_value, Encoder, EncoderValue};
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#5.1
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1
 //# Each connection possesses a set of connection identifiers, or
 //# connection IDs, each of which can identify the connection.
 //# Connection IDs are independently selected by endpoints; each endpoint
 //# selects the connection IDs that its peer uses.
-//#
-//# The primary function of a connection ID is to ensure that changes in
-//# addressing at lower protocol layers (UDP, IP) don't cause packets for
-//# a QUIC connection to be delivered to the wrong endpoint.  Each
-//# endpoint selects connection IDs using an implementation-specific (and
-//# perhaps deployment-specific) method which will allow packets with
-//# that connection ID to be routed back to the endpoint and identified
-//# by the endpoint upon receipt.
-//#
-//# Connection IDs MUST NOT contain any information that can be used by
-//# an external observer (that is, one that does not cooperate with the
-//# issuer) to correlate them with other connection IDs for the same
-//# connection.  As a trivial example, this means the same connection ID
-//# MUST NOT be issued more than once on the same connection.
-//#
-//# Packets with long headers include Source Connection ID and
-//# Destination Connection ID fields.  These fields are used to set the
-//# connection IDs for new connections; see Section 7.2 for details.
-//#
-//# Packets with short headers (Section 17.3) only include the
-//# Destination Connection ID and omit the explicit length.  The length
-//# of the Destination Connection ID field is expected to be known to
-//# endpoints.  Endpoints using a load balancer that routes based on
-//# connection ID could agree with the load balancer on a fixed length
-//# for connection IDs, or agree on an encoding scheme.  A fixed portion
-//# could encode an explicit length, which allows the entire connection
-//# ID to vary in length and still be used by the load balancer.
-//#
-//# A Version Negotiation (Section 17.2.1) packet echoes the connection
-//# IDs selected by the client, both to ensure correct routing toward the
-//# client and to allow the client to validate that the packet is in
-//# response to an Initial packet.
-//#
-//# A zero-length connection ID can be used when a connection ID is not
-//# needed to route to the correct endpoint.  However, multiplexing
-//# connections on the same local IP address and port while using zero-
-//# length connection IDs will cause failures in the presence of peer
-//# connection migration, NAT rebinding, and client port reuse; and
-//# therefore MUST NOT be done unless an endpoint is certain that those
-//# protocol features are not in use.
-//#
-//# When an endpoint has requested a non-zero-length connection ID, it
-//# needs to ensure that the peer has a supply of connection IDs from
-//# which to choose for packets sent to the endpoint.  These connection
-//# IDs are supplied by the endpoint using the NEW_CONNECTION_ID frame
-//# (Section 19.15).
 
-/// The maximum size of a connection ID. In QUIC v1, this is 20 bytes.
-pub const MAX_LEN: usize = 20;
+/// The maximum size of a connection ID.
+pub const MAX_LEN: usize = crate::packet::long::DESTINATION_CONNECTION_ID_MAX_LEN;
 
 /// Uniquely identifies a QUIC connection between 2 peers
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]

@@ -2,13 +2,9 @@
 
 use crate::{application::ApplicationErrorExt, varint::VarInt};
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-24.txt#20.1
-//# Application protocol error codes are 62-bit unsigned integers, but
-//# the management of application error codes is left to application
-//# protocols.  Application protocol error codes are used for the
-//# RESET_STREAM frame (Section 19.4), the STOP_SENDING frame
-//# (Section 19.5), and the CONNECTION_CLOSE frame with a type of 0x1d
-//# (Section 19.19).
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#20.2
+//# The management of application error codes is left to application
+//# protocols.
 
 /// Application Error Codes are 62-bit unsigned integer values which
 /// may be used by applications to exchange errors.
