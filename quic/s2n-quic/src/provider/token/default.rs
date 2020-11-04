@@ -210,7 +210,7 @@ impl super::Format for Format {
         None
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-30.txt#8.1.2
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.2
     //# Requiring the server
     //# to provide a different connection ID, along with the
     //# original_destination_connection_id transport parameter defined in

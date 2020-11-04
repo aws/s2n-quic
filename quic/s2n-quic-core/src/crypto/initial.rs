@@ -11,37 +11,32 @@ pub trait InitialCrypto: Key + HeaderCrypto {
     fn new_client(connection_id: &[u8]) -> Self;
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-tls-29.txt#5.2
-//# Initial packets are protected with a secret derived from the
-//# Destination Connection ID field from the client's Initial packet.
-//# Specifically:
-//#
+//= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.2
 //# initial_salt = 0xafbfec289993d24c9e9786f19c6111e04390a899
 
 pub const INITIAL_SALT: [u8; 20] = hex!("afbfec289993d24c9e9786f19c6111e04390a899");
 
-//= https://tools.ietf.org/id/draft-ietf-quic-tls-29.txt#5.2
+//= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.2
 //# client_initial_secret = HKDF-Expand-Label(initial_secret,
 //#                                           "client in", "",
 //#                                           Hash.length)
 
 pub const INITIAL_CLIENT_LABEL: [u8; 9] = *b"client in";
 
-//= https://tools.ietf.org/id/draft-ietf-quic-tls-29.txt#5.2
+//= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.2
 //# server_initial_secret = HKDF-Expand-Label(initial_secret,
 //#                                           "server in", "",
 //#                                           Hash.length)
 
 pub const INITIAL_SERVER_LABEL: [u8; 9] = *b"server in";
 
-//= https://tools.ietf.org/id/draft-ietf-quic-tls-29.txt#A
-//# These packets
-//# use an 8-byte client-chosen Destination Connection ID of
-//# 0x8394c8f03e515708.
+//= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#A
+//# These packets use an 8-byte client-chosen Destination Connection ID
+//# of 0x8394c8f03e515708.
 
 pub const EXAMPLE_DCID: [u8; 8] = hex!("8394c8f03e515708");
 
-//= https://tools.ietf.org/id/draft-ietf-quic-tls-29.txt#A.1
+//= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#A.1
 //# client_initial_secret
 //#     = HKDF-Expand-Label(initial_secret, "client in", _, 32)
 //#     = 0088119288f1d866733ceeed15ff9d50
@@ -54,7 +49,7 @@ pub const EXAMPLE_CLIENT_INITIAL_SECRET: [u8; 32] = hex!(
     "
 );
 
-//= https://tools.ietf.org/id/draft-ietf-quic-tls-29.txt#A.1
+//= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#A.1
 //# server_initial_secret
 //#     = HKDF-Expand-Label(initial_secret, "server in", _, 32)
 //#     = 006f881359244dd9ad1acf85f595bad6
@@ -67,80 +62,82 @@ pub const EXAMPLE_SERVER_INITIAL_SECRET: [u8; 32] = hex!(
     "
 );
 
-//= https://tools.ietf.org/id/draft-ietf-quic-tls-29.txt#A.2
+//= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#A.2
 //# The client sends an Initial packet.  The unprotected payload of this
 //# packet contains the following CRYPTO frame, plus enough PADDING
 //# frames to make an 1162 byte payload:
 //#
-//# 060040c4010000c003036660261ff947 cea49cce6cfad687f457cf1b14531ba1
-//# 4131a0e8f309a1d0b9c4000006130113 031302010000910000000b0009000006
-//# 736572766572ff01000100000a001400 12001d00170018001901000101010201
-//# 03010400230000003300260024001d00 204cfdfcd178b784bf328cae793b136f
-//# 2aedce005ff183d7bb14952072366470 37002b0003020304000d0020001e0403
-//# 05030603020308040805080604010501 060102010402050206020202002d0002
-//# 0101001c00024001
+//# 060040f1010000ed0303ebf8fa56f129 39b9584a3896472ec40bb863cfd3e868
+//# 04fe3a47f06a2b69484c000004130113 02010000c000000010000e00000b6578
+//# 616d706c652e636f6dff01000100000a 00080006001d00170018001000070005
+//# 04616c706e0005000501000000000033 00260024001d00209370b2c9caa47fba
+//# baf4559fedba753de171fa71f50f1ce1 5d43e994ec74d748002b000302030400
+//# 0d0010000e0403050306030203080408 050806002d00020101001c00024001ff
+//# a500320408ffffffffffffffff050480 00ffff07048000ffff08011001048000
+//# 75300901100f088394c8f03e51570806 048000ffff
 
-/// Example payload from https://tools.ietf.org/id/draft-ietf-quic-tls-29.txt#A.2
-pub const EXAMPLE_CLIENT_INITIAL_PAYLOAD: [u8; 200] = hex!(
+/// Example payload from https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#A.2
+pub const EXAMPLE_CLIENT_INITIAL_PAYLOAD: [u8; 245] = hex!(
     "
-    060040c4010000c003036660261ff947 cea49cce6cfad687f457cf1b14531ba1
-    4131a0e8f309a1d0b9c4000006130113 031302010000910000000b0009000006
-    736572766572ff01000100000a001400 12001d00170018001901000101010201
-    03010400230000003300260024001d00 204cfdfcd178b784bf328cae793b136f
-    2aedce005ff183d7bb14952072366470 37002b0003020304000d0020001e0403
-    05030603020308040805080604010501 060102010402050206020202002d0002
-    0101001c00024001
+   060040f1010000ed0303ebf8fa56f129 39b9584a3896472ec40bb863cfd3e868
+   04fe3a47f06a2b69484c000004130113 02010000c000000010000e00000b6578
+   616d706c652e636f6dff01000100000a 00080006001d00170018001000070005
+   04616c706e0005000501000000000033 00260024001d00209370b2c9caa47fba
+   baf4559fedba753de171fa71f50f1ce1 5d43e994ec74d748002b000302030400
+   0d0010000e0403050306030203080408 050806002d00020101001c00024001ff
+   a500320408ffffffffffffffff050480 00ffff07048000ffff08011001048000
+   75300901100f088394c8f03e51570806 048000ffff
     "
 );
 
-//= https://tools.ietf.org/id/draft-ietf-quic-tls-29.txt#A.2
+//= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#A.2
 //# The unprotected header includes the connection ID and a 4 byte packet
 //# number encoding for a packet number of 2:
 //#
-//# c3ff00001d088394c8f03e5157080000449e00000002
+//# c3ff000020088394c8f03e5157080000449e00000002
 
 pub const EXAMPLE_CLIENT_INITIAL_HEADER: [u8; 22] =
-    hex!("c3ff00001d088394c8f03e5157080000449e00000002");
+    hex!("c3ff000020088394c8f03e5157080000449e00000002");
 
-//= https://tools.ietf.org/id/draft-ietf-quic-tls-29.txt#A.2
+//= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#A.2
 //# Protecting the payload produces output that is sampled for header
 //# protection.  Because the header uses a 4 byte packet number encoding,
 //# the first 16 bytes of the protected payload is sampled, then applied
 //# to the header:
 //#
-//# sample = fb66bc5f93032b7ddd89fe0ff15d9c4f
+//# sample = fb66bc6a93032b50dd8973972d149421
 //#
 //# mask = AES-ECB(hp, sample)[0..4]
-//#      = d64a952459
+//#      = 1e9cdb9909
 //#
 //# header[0] ^= mask[0] & 0x0f
-//#      = c5
+//#      = cd
 //# header[18..21] ^= mask[1..4]
-//#      = 4a95245b
-//# header = c5ff00001d088394c8f03e5157080000449e4a95245b
+//#      = 9cdb990b
+//# header = cdff000020088394c8f03e5157080000449e9cdb990b
 
 #[test]
 fn client_initial_protection_test() {
-    let mask = hex!("d64a952459");
+    let mask = hex!("1e9cdb9909");
     let unprotected_header = EXAMPLE_CLIENT_INITIAL_HEADER;
-    let protected_header = hex!("c5ff00001d088394c8f03e5157080000449e4a95245b");
+    let protected_header = hex!("cdff000020088394c8f03e5157080000449e9cdb990b");
     let packet_tag = 0b11; // results in 4 byte packet number
 
     header_protection_test_helper(mask, &unprotected_header, &protected_header, packet_tag);
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-tls-29.txt#A.2
+//= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#A.2
 //# The resulting protected packet is:
 //#
-//# c5ff00001d088394c8f03e5157080000 449e4a95245bfb66bc5f93032b7ddd89
-//# fe0ff15d9c4f7050fccdb71c1cd80512 d4431643a53aafa1b0b518b44968b18b
-//# 8d3e7a4d04c30b3ed9410325b2abb2da fb1c12f8b70479eb8df98abcaf95dd8f
-//# 3d1c78660fbc719f88b23c8aef6771f3 d50e10fdfb4c9d92386d44481b6c52d5
-//# 9e5538d3d3942de9f13a7f8b702dc317 24180da9df22714d01003fc5e3d165c9
-//# 50e630b8540fbd81c9df0ee63f949970 26c4f2e1887a2def79050ac2d86ba318
-//# e0b3adc4c5aa18bcf63c7cf8e85f5692 49813a2236a7e72269447cd1c755e451
-//# f5e77470eb3de64c8849d29282069802 9cfa18e5d66176fe6e5ba4ed18026f90
-//# 900a5b4980e2f58e39151d5cd685b109 29636d4f02e7fad2a5a458249f5c0298
+//# cdff000020088394c8f03e5157080000 449e9cdb990bfb66bc6a93032b50dd89
+//# 73972d149421874d3849e3708d71354e a33bcdc356f3ea6e2a1a1bd7c3d14003
+//# 8d3e784d04c30a2cdb40c32523aba2da fe1c1bf3d27a6be38fe38ae033fbb071
+//# 3c1c73661bb6639795b42b97f77068ea d51f11fbf9489af2501d09481e6c64d4
+//# b8551cd3cea70d830ce2aeeec789ef55 1a7fbe36b3f7e1549a9f8d8e153b3fac
+//# 3fb7b7812c9ed7c20b4be190ebd89956 26e7f0fc887925ec6f0606c5d36aa81b
+//# ebb7aacdc4a31bb5f23d55faef5c5190 5783384f375a43235b5c742c78ab1bae
+//# 0a188b75efbde6b3774ed61282f9670a 9dea19e1566103ce675ab4e21081fb58
+//# 60340a1e88e4f10e39eae25cd685b109 29636d4f02e7fad2a5a458249f5c0298
 //# a6d53acbe41a7fc83fa7cc01973f7a74 d1237a51974e097636b6203997f921d0
 //# 7bc1940a6f2d0de9f5a11432946159ed 6cc21df65c4ddd1115f86427259a196c
 //# 7148b25b6478b0dc7766e1c4d1b1f515 9f90eabc61636226244642ee148b464c
@@ -169,117 +166,120 @@ fn client_initial_protection_test() {
 //# a10b0c9875125e257c7bfdf27eef4060 bd3d00f4c14fd3e3496c38d3c5d1a566
 //# 8c39350effbc2d16ca17be4ce29f02ed 969504dda2a8c6b9ff919e693ee79e09
 //# 089316e7d1d89ec099db3b2b268725d8 88536a4b8bf9aee8fb43e82a4d919d48
-//# 43b1ca70a2d8d3f725ead1391377dcc0
+//# b5a464ca5b62df3be35ee0d0a2ec68f3
 
 /// Example protected packet from
-/// https://tools.ietf.org/id/draft-ietf-quic-tls-29.txt#A.2
+/// https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#A.2
 pub const EXAMPLE_CLIENT_INITIAL_PROTECTED_PACKET: [u8; 1200] = hex!(
     "
-    c5ff00001d088394c8f03e5157080000 449e4a95245bfb66bc5f93032b7ddd89
-    fe0ff15d9c4f7050fccdb71c1cd80512 d4431643a53aafa1b0b518b44968b18b
-    8d3e7a4d04c30b3ed9410325b2abb2da fb1c12f8b70479eb8df98abcaf95dd8f
-    3d1c78660fbc719f88b23c8aef6771f3 d50e10fdfb4c9d92386d44481b6c52d5
-    9e5538d3d3942de9f13a7f8b702dc317 24180da9df22714d01003fc5e3d165c9
-    50e630b8540fbd81c9df0ee63f949970 26c4f2e1887a2def79050ac2d86ba318
-    e0b3adc4c5aa18bcf63c7cf8e85f5692 49813a2236a7e72269447cd1c755e451
-    f5e77470eb3de64c8849d29282069802 9cfa18e5d66176fe6e5ba4ed18026f90
-    900a5b4980e2f58e39151d5cd685b109 29636d4f02e7fad2a5a458249f5c0298
-    a6d53acbe41a7fc83fa7cc01973f7a74 d1237a51974e097636b6203997f921d0
-    7bc1940a6f2d0de9f5a11432946159ed 6cc21df65c4ddd1115f86427259a196c
-    7148b25b6478b0dc7766e1c4d1b1f515 9f90eabc61636226244642ee148b464c
-    9e619ee50a5e3ddc836227cad938987c 4ea3c1fa7c75bbf88d89e9ada642b2b8
-    8fe8107b7ea375b1b64889a4e9e5c38a 1c896ce275a5658d250e2d76e1ed3a34
-    ce7e3a3f383d0c996d0bed106c2899ca 6fc263ef0455e74bb6ac1640ea7bfedc
-    59f03fee0e1725ea150ff4d69a7660c5 542119c71de270ae7c3ecfd1af2c4ce5
-    51986949cc34a66b3e216bfe18b347e6 c05fd050f85912db303a8f054ec23e38
-    f44d1c725ab641ae929fecc8e3cefa56 19df4231f5b4c009fa0c0bbc60bc75f7
-    6d06ef154fc8577077d9d6a1d2bd9bf0 81dc783ece60111bea7da9e5a9748069
-    d078b2bef48de04cabe3755b197d52b3 2046949ecaa310274b4aac0d008b1948
-    c1082cdfe2083e386d4fd84c0ed0666d 3ee26c4515c4fee73433ac703b690a9f
-    7bf278a77486ace44c489a0c7ac8dfe4 d1a58fb3a730b993ff0f0d61b4d89557
-    831eb4c752ffd39c10f6b9f46d8db278 da624fd800e4af85548a294c1518893a
-    8778c4f6d6d73c93df200960104e062b 388ea97dcf4016bced7f62b4f062cb6c
-    04c20693d9a0e3b74ba8fe74cc012378 84f40d765ae56a51688d985cf0ceaef4
-    3045ed8c3f0c33bced08537f6882613a cd3b08d665fce9dd8aa73171e2d3771a
-    61dba2790e491d413d93d987e2745af2 9418e428be34941485c93447520ffe23
-    1da2304d6a0fd5d07d08372202369661 59bef3cf904d722324dd852513df39ae
-    030d8173908da6364786d3c1bfcb19ea 77a63b25f1e7fc661def480c5d00d444
-    56269ebd84efd8e3a8b2c257eec76060 682848cbf5194bc99e49ee75e4d0d254
-    bad4bfd74970c30e44b65511d4ad0e6e c7398e08e01307eeeea14e46ccd87cf3
-    6b285221254d8fc6a6765c524ded0085 dca5bd688ddf722e2c0faf9d0fb2ce7a
-    0c3f2cee19ca0ffba461ca8dc5d2c817 8b0762cf67135558494d2a96f1a139f0
-    edb42d2af89a9c9122b07acbc29e5e72 2df8615c343702491098478a389c9872
-    a10b0c9875125e257c7bfdf27eef4060 bd3d00f4c14fd3e3496c38d3c5d1a566
-    8c39350effbc2d16ca17be4ce29f02ed 969504dda2a8c6b9ff919e693ee79e09
-    089316e7d1d89ec099db3b2b268725d8 88536a4b8bf9aee8fb43e82a4d919d48
-    43b1ca70a2d8d3f725ead1391377dcc0
+   cdff000020088394c8f03e5157080000 449e9cdb990bfb66bc6a93032b50dd89
+   73972d149421874d3849e3708d71354e a33bcdc356f3ea6e2a1a1bd7c3d14003
+   8d3e784d04c30a2cdb40c32523aba2da fe1c1bf3d27a6be38fe38ae033fbb071
+   3c1c73661bb6639795b42b97f77068ea d51f11fbf9489af2501d09481e6c64d4
+   b8551cd3cea70d830ce2aeeec789ef55 1a7fbe36b3f7e1549a9f8d8e153b3fac
+   3fb7b7812c9ed7c20b4be190ebd89956 26e7f0fc887925ec6f0606c5d36aa81b
+   ebb7aacdc4a31bb5f23d55faef5c5190 5783384f375a43235b5c742c78ab1bae
+   0a188b75efbde6b3774ed61282f9670a 9dea19e1566103ce675ab4e21081fb58
+   60340a1e88e4f10e39eae25cd685b109 29636d4f02e7fad2a5a458249f5c0298
+   a6d53acbe41a7fc83fa7cc01973f7a74 d1237a51974e097636b6203997f921d0
+   7bc1940a6f2d0de9f5a11432946159ed 6cc21df65c4ddd1115f86427259a196c
+   7148b25b6478b0dc7766e1c4d1b1f515 9f90eabc61636226244642ee148b464c
+   9e619ee50a5e3ddc836227cad938987c 4ea3c1fa7c75bbf88d89e9ada642b2b8
+   8fe8107b7ea375b1b64889a4e9e5c38a 1c896ce275a5658d250e2d76e1ed3a34
+   ce7e3a3f383d0c996d0bed106c2899ca 6fc263ef0455e74bb6ac1640ea7bfedc
+   59f03fee0e1725ea150ff4d69a7660c5 542119c71de270ae7c3ecfd1af2c4ce5
+   51986949cc34a66b3e216bfe18b347e6 c05fd050f85912db303a8f054ec23e38
+   f44d1c725ab641ae929fecc8e3cefa56 19df4231f5b4c009fa0c0bbc60bc75f7
+   6d06ef154fc8577077d9d6a1d2bd9bf0 81dc783ece60111bea7da9e5a9748069
+   d078b2bef48de04cabe3755b197d52b3 2046949ecaa310274b4aac0d008b1948
+   c1082cdfe2083e386d4fd84c0ed0666d 3ee26c4515c4fee73433ac703b690a9f
+   7bf278a77486ace44c489a0c7ac8dfe4 d1a58fb3a730b993ff0f0d61b4d89557
+   831eb4c752ffd39c10f6b9f46d8db278 da624fd800e4af85548a294c1518893a
+   8778c4f6d6d73c93df200960104e062b 388ea97dcf4016bced7f62b4f062cb6c
+   04c20693d9a0e3b74ba8fe74cc012378 84f40d765ae56a51688d985cf0ceaef4
+   3045ed8c3f0c33bced08537f6882613a cd3b08d665fce9dd8aa73171e2d3771a
+   61dba2790e491d413d93d987e2745af2 9418e428be34941485c93447520ffe23
+   1da2304d6a0fd5d07d08372202369661 59bef3cf904d722324dd852513df39ae
+   030d8173908da6364786d3c1bfcb19ea 77a63b25f1e7fc661def480c5d00d444
+   56269ebd84efd8e3a8b2c257eec76060 682848cbf5194bc99e49ee75e4d0d254
+   bad4bfd74970c30e44b65511d4ad0e6e c7398e08e01307eeeea14e46ccd87cf3
+   6b285221254d8fc6a6765c524ded0085 dca5bd688ddf722e2c0faf9d0fb2ce7a
+   0c3f2cee19ca0ffba461ca8dc5d2c817 8b0762cf67135558494d2a96f1a139f0
+   edb42d2af89a9c9122b07acbc29e5e72 2df8615c343702491098478a389c9872
+   a10b0c9875125e257c7bfdf27eef4060 bd3d00f4c14fd3e3496c38d3c5d1a566
+   8c39350effbc2d16ca17be4ce29f02ed 969504dda2a8c6b9ff919e693ee79e09
+   089316e7d1d89ec099db3b2b268725d8 88536a4b8bf9aee8fb43e82a4d919d48
+   b5a464ca5b62df3be35ee0d0a2ec68f3
     "
 );
 
-//= https://tools.ietf.org/id/draft-ietf-quic-tls-29.txt#A.3
+//= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#A.3
 //# The server sends the following payload in response, including an ACK
 //# frame, a CRYPTO frame, and no PADDING frames:
 //#
-//# 0d0000000018410a020000560303eefc e7f7b37ba1d1632e96677825ddf73988
-//# cfc79825df566dc5430b9a045a120013 0100002e00330024001d00209d3c940d
-//# 89690b84d08a60993c144eca684d1081 287c834d5311bcf32bb9da1a002b0002
-//# 0304
+//# 02000000000600405a020000560303ee fce7f7b37ba1d1632e96677825ddf739
+//# 88cfc79825df566dc5430b9a045a1200 130100002e00330024001d00209d3c94
+//# 0d89690b84d08a60993c144eca684d10 81287c834d5311bcf32bb9da1a002b00
+//# 020304
 
-/// Example payload from https://tools.ietf.org/id/draft-ietf-quic-tls-29.txt#A.3
-pub const EXAMPLE_SERVER_INITIAL_PAYLOAD: [u8; 98] = hex!(
+/// Example payload from https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#A.3
+pub const EXAMPLE_SERVER_INITIAL_PAYLOAD: [u8; 99] = hex!(
     "
-    0d0000000018410a020000560303eefc e7f7b37ba1d1632e96677825ddf73988
-    cfc79825df566dc5430b9a045a120013 0100002e00330024001d00209d3c940d
-    89690b84d08a60993c144eca684d1081 287c834d5311bcf32bb9da1a002b0002
-    0304
+   02000000000600405a020000560303ee fce7f7b37ba1d1632e96677825ddf739
+   88cfc79825df566dc5430b9a045a1200 130100002e00330024001d00209d3c94
+   0d89690b84d08a60993c144eca684d10 81287c834d5311bcf32bb9da1a002b00
+   020304
     "
 );
 
-//= https://tools.ietf.org/id/draft-ietf-quic-tls-29.txt#A.3
+//= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#A.3
 //# The header from the server includes a new connection ID and a 2-byte
 //# packet number encoding for a packet number of 1:
 //#
-//# c1ff00001d0008f067a5502a4262b50040740001
+//# c1ff0000200008f067a5502a4262b50040750001
 
 pub const EXAMPLE_SERVER_INITIAL_HEADER: [u8; 20] =
-    hex!("c1ff00001d0008f067a5502a4262b50040740001");
+    hex!("c1ff0000200008f067a5502a4262b50040750001");
 
-//= https://tools.ietf.org/id/draft-ietf-quic-tls-29.txt#A.3
+//= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#A.3
 //# As a result, after protection, the header protection sample is taken
 //# starting from the third protected octet:
 //#
-//# sample = 823a5d3a1207c86ee49132824f046524
+//# sample = 823a5d24534d906ce4c76782a2167e34
 //# mask   = abaaf34fdc
-//# header = caff00001d0008f067a5502a4262b5004074aaf2
+//# header = c7ff0000200008f067a5502a4262b5004075fb12
 
 #[test]
 fn server_initial_protection_test() {
-    let mask = hex!("abaaf34fdc");
+    // the mask in draft-32 is incorrect! this value was derived from running their samples script
+    // https://github.com/quicwg/base-drafts/blob/master/protection-samples.js
+    let mask = hex!("56fb1381e7");
+
     let unprotected_header = EXAMPLE_SERVER_INITIAL_HEADER;
-    let protected_header = hex!("caff00001d0008f067a5502a4262b5004074aaf2");
+    let protected_header = hex!("c7ff0000200008f067a5502a4262b5004075fb12");
     let packet_tag = 0b01; // results in a 2 byte packet number
 
     header_protection_test_helper(mask, &unprotected_header, &protected_header, packet_tag);
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-tls-29.txt#A.3
+//= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#A.3
 //# The final protected packet is then:
 //#
-//# caff00001d0008f067a5502a4262b500 4074aaf2f007823a5d3a1207c86ee491
-//# 32824f0465243d082d868b107a38092b c80528664cbf9456ebf27673fb5fa506
-//# 1ab573c9f001b81da028a00d52ab00b1 5bebaa70640e106cf2acd043e9c6b441
-//# 1c0a79637134d8993701fe779e58c2fe 753d14b0564021565ea92e57bc6faf56
-//# dfc7a40870e6
+//# c7ff0000200008f067a5502a4262b500 4075fb12ff07823a5d24534d906ce4c7
+//# 6782a2167e3479c0f7f6395dc2c91676 302fe6d70bb7cbeb117b4ddb7d173498
+//# 44fd61dae200b8338e1b932976b61d91 e64a02e9e0ee72e3a6f63aba4ceeeec5
+//# be2f24f2d86027572943533846caa13e 6f163fb257473d0eda5047360fd4a47e
+//# fd8142fafc0f76
 
 /// Example protected packet from
-/// https://tools.ietf.org/id/draft-ietf-quic-tls-29.txt#A.3
-pub const EXAMPLE_SERVER_INITIAL_PROTECTED_PACKET: [u8; 134] = hex!(
+/// https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#A.3
+pub const EXAMPLE_SERVER_INITIAL_PROTECTED_PACKET: [u8; 135] = hex!(
     "
-    caff00001d0008f067a5502a4262b500 4074aaf2f007823a5d3a1207c86ee491
-    32824f0465243d082d868b107a38092b c80528664cbf9456ebf27673fb5fa506
-    1ab573c9f001b81da028a00d52ab00b1 5bebaa70640e106cf2acd043e9c6b441
-    1c0a79637134d8993701fe779e58c2fe 753d14b0564021565ea92e57bc6faf56
-    dfc7a40870e6
+   c7ff0000200008f067a5502a4262b500 4075fb12ff07823a5d24534d906ce4c7
+   6782a2167e3479c0f7f6395dc2c91676 302fe6d70bb7cbeb117b4ddb7d173498
+   44fd61dae200b8338e1b932976b61d91 e64a02e9e0ee72e3a6f63aba4ceeeec5
+   be2f24f2d86027572943533846caa13e 6f163fb257473d0eda5047360fd4a47e
+   fd8142fafc0f76
     "
 );
 
