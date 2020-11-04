@@ -1,0 +1,67 @@
+diff --git a/certs.sh b/certs.sh
+index b26b2f8..b7652af 100755
+--- a/certs.sh
++++ b/certs.sh
+@@ -1,4 +1,4 @@
+-#!/bin/bash
++#!/usr/bin/env bash
+ 
+ set -e
+ 
+diff --git a/docker-compose.yml b/docker-compose.yml
+index 8bbc4e8..93f0ddd 100644
+--- a/docker-compose.yml
++++ b/docker-compose.yml
+@@ -21,6 +21,8 @@ services:
+       rightnet:
+         ipv4_address: 193.167.100.2
+         ipv6_address: fd00:cafe:cafe:100::2
++    extra_hosts:
++      - "server:193.167.100.100"
+ 
+   server:
+     image: $SERVER
+@@ -77,6 +79,7 @@ services:
+         ipv4_address: 193.167.0.100
+         ipv6_address: fd00:cafe:cafe:0::100
+     extra_hosts:
++      - "server:193.167.100.100"
+       - "server4:193.167.100.100"
+       - "server6:fd00:cafe:cafe:100::100"
+       - "server46:193.167.100.100"
+@@ -122,6 +125,7 @@ services:
+         ipv4_address: 193.167.0.90
+         ipv6_address: fd00:cafe:cafe:0::90
+     extra_hosts:
++      - "server:193.167.100.100"
+       - "server4:193.167.100.110"
+       - "server6:fd00:cafe:cafe:100::110"
+       - "server46:193.167.100.110"
+diff --git a/implementations.json b/implementations.json
+index 7ff3924..0f8e26b 100644
+--- a/implementations.json
++++ b/implementations.json
+@@ -1,4 +1,9 @@
+ {
++  "s2n-quic": {
++    "image": "awslabs/s2n-quic-qns:latest",
++    "url": "https://github.com/awslabs/s2n-quic",
++    "role": "both"
++  },
+   "quic-go": {
+     "image": "martenseemann/quic-go-interop:latest",
+     "url": "https://github.com/lucas-clemente/quic-go",
+diff --git a/testcases.py b/testcases.py
+index 77cdf29..c8f9d5a 100644
+--- a/testcases.py
++++ b/testcases.py
+@@ -171,9 +171,6 @@ class TestCase(abc.ABC):
+         if len(versions) != 1:
+             logging.info("Expected exactly one version. Got %s", versions)
+             return False
+-        if QUIC_VERSION not in versions:
+-            logging.info("Wrong version. Expected %s, got %s", QUIC_VERSION, versions)
+-            return False
+ 
+         if len(self._files) == 0:
+             raise Exception("No test files generated.")
