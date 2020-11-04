@@ -878,6 +878,7 @@ mod test {
         let context = ack_packets(1..=3, ack_receive_time, &mut path, &mut manager);
 
         assert_eq!(path.congestion_controller.lost_bytes, 0);
+        assert_eq!(path.congestion_controller.on_rtt_update, 1);
         assert_eq!(path.pto_backoff, INITIAL_PTO_BACKOFF);
         assert_eq!(manager.sent_packets.iter().count(), 7);
         assert_eq!(
@@ -899,7 +900,7 @@ mod test {
 
         // Acknowledging already acked packets does not call on_new_packet_ack or change RTT
         assert_eq!(path.congestion_controller.lost_bytes, 0);
-        assert_eq!(path.congestion_controller.on_rtt_update, 0);
+        assert_eq!(path.congestion_controller.on_rtt_update, 1);
         assert_eq!(path.pto_backoff, 2);
         assert_eq!(context.on_packet_ack_count, 1);
         assert_eq!(context.on_new_packet_ack_count, 0);
@@ -933,6 +934,7 @@ mod test {
         path.pto_backoff = 2;
         let ack_receive_time = ack_receive_time + Duration::from_millis(500);
         let context = ack_packets(10..=10, ack_receive_time, &mut path, &mut manager);
+        assert_eq!(path.congestion_controller.on_rtt_update, 1);
         assert_eq!(path.pto_backoff, 2);
         assert_eq!(context.on_packet_ack_count, 1);
         assert_eq!(context.on_new_packet_ack_count, 1);
@@ -955,7 +957,7 @@ mod test {
         ack_packets(11..=11, ack_receive_time, &mut path, &mut manager);
 
         assert_eq!(path.congestion_controller.lost_bytes, 0);
-        assert_eq!(path.congestion_controller.on_rtt_update, 0);
+        assert_eq!(path.congestion_controller.on_rtt_update, 1);
         assert_eq!(context.on_packet_ack_count, 1);
         assert_eq!(context.on_new_packet_ack_count, 1);
         assert_eq!(context.validate_packet_ack_count, 1);

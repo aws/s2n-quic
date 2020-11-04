@@ -6,8 +6,8 @@ use alloc::collections::{
     BTreeMap,
 };
 use core::convert::TryInto;
-use s2n_quic_core::frame::ack_elicitation::AckElicitation;
 use s2n_quic_core::{
+    frame::ack_elicitation::AckElicitation,
     packet::number::{PacketNumber, PacketNumberRange},
     time::Timestamp,
 };
@@ -95,8 +95,8 @@ impl SentPacketInfo {
 #[cfg(test)]
 mod test {
     use crate::recovery::{SentPacketInfo, SentPackets};
-    use s2n_quic_core::frame::ack_elicitation::AckElicitation;
     use s2n_quic_core::{
+        frame::ack_elicitation::AckElicitation,
         packet::number::{PacketNumberRange, PacketNumberSpace},
         varint::VarInt,
     };
