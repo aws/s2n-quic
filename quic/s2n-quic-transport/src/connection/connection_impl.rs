@@ -186,6 +186,9 @@ macro_rules! packet_validator {
             let crypto = &space.crypto;
             let packet_number_decoder = space.packet_number_decoder();
 
+            // TODO ensure this is all side-channel free and reserved bits are 0
+            // https://github.com/awslabs/s2n-quic/issues/212
+
             //= https://tools.ietf.org/id/draft-ietf-quic-tls-27.txt#5.5
             //# Failure to unprotect a packet does not necessarily indicate the
             //# existence of a protocol error in a peer or an attack.
