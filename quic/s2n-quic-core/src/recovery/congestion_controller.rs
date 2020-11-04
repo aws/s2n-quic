@@ -121,6 +121,7 @@ pub mod testing {
         pub lost_bytes: u32,
         pub persistent_congestion: Option<bool>,
         pub on_packets_lost: u32,
+        pub on_rtt_update: u32,
     }
 
     impl CongestionController for MockCongestionController {
@@ -134,7 +135,9 @@ pub mod testing {
         fn on_packet_sent(&mut self, _time_sent: Timestamp, bytes_sent: usize) {
             self.bytes_in_flight += bytes_sent as u32
         }
-        fn on_rtt_update(&mut self, _time_sent: Timestamp, _rtt_estimator: &RTTEstimator) {}
+        fn on_rtt_update(&mut self, _time_sent: Timestamp, _rtt_estimator: &RTTEstimator) {
+            self.on_rtt_update += 1
+        }
 
         fn on_packet_ack(
             &mut self,
