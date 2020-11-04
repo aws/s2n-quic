@@ -128,8 +128,9 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
                 encoder,
             ) {
                 Ok(encoder) => {
-                    //= https://tools.ietf.org/id/draft-ietf-quic-tls-27.txt#4.10.1
-                    //# A client MUST discard Initial keys when it first sends a Handshake packet
+                    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9.1
+                    //# a client MUST discard Initial keys when it first sends a
+                    //# Handshake packet
 
                     if Config::ENDPOINT_TYPE.is_client() {
                         space_manager.discard_initial(self.context.path);
@@ -151,7 +152,7 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
                 }
             };
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-tls-29#4.11.2
+            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9.2
             //# An endpoint MUST discard its handshake keys when the TLS handshake is
             //# confirmed (Section 4.1.2).
             if space_manager.is_handshake_confirmed() {

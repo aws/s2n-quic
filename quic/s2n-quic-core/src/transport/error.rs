@@ -85,7 +85,7 @@ impl fmt::Debug for TransportError {
     }
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-30.txt#19.19
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.19
 //# A value of 0 (equivalent to the mention
 //# of the PADDING frame) is used when the frame type is unknown.
 const UNKNOWN_FRAME_TYPE: u32 = 0;

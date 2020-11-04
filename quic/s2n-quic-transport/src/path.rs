@@ -148,7 +148,7 @@ impl<CC: CongestionController> Manager<CC> {
     /// Start the validation process for a path
     pub fn validate_path(&self, _path: Path<CC>) {}
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29#10.4
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#10.4
     //# Tokens are invalidated when their associated connection ID is retired via a
     //# RETIRE_CONNECTION_ID frame (Section 19.16).
     pub fn on_connection_id_retire(&self, _connenction_id: &connection::Id) {

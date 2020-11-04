@@ -186,7 +186,7 @@ macro_rules! packet_validator {
             let crypto = &space.crypto;
             let packet_number_decoder = space.packet_number_decoder();
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-tls-27.txt#5.5
+            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.5
             //# Failure to unprotect a packet does not necessarily indicate the
             //# existence of a protocol error in a peer or an attack.
 
@@ -577,9 +577,9 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
             }
 
             if Self::Config::ENDPOINT_TYPE.is_server() {
-                //= https://tools.ietf.org/id/draft-ietf-quic-tls-27.txt#4.10.1
-                //# A server MUST discard Initial keys when it first successfully
-                //# processes a Handshake packet.
+                //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9.1
+                //# a server MUST discard Initial keys when it first
+                //# successfully processes a Handshake packet.
                 shared_state
                     .space_manager
                     .discard_initial(self.path_manager.active_path_mut().1);
