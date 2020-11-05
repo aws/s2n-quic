@@ -1,7 +1,7 @@
 use crate::{frame::Tag, varint::VarInt};
 use s2n_codec::{decoder_parameterized_value, Encoder, EncoderValue};
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#19.7
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.7
 //# A server sends a NEW_TOKEN frame (type=0x07) to provide the client
 //# with a token to send in the header of an Initial packet for a future
 //# connection.
@@ -12,17 +12,14 @@ macro_rules! new_token_tag {
     };
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#19.7
-//# The NEW_TOKEN frame is shown in Figure 30.
-//#
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.7
 //# NEW_TOKEN Frame {
 //#   Type (i) = 0x07,
 //#   Token Length (i),
 //#   Token (..),
 //# }
-//#
-//#                   Figure 30: NEW_TOKEN Frame Format
-//#
+
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.7
 //# NEW_TOKEN frames contain the following fields:
 //#
 //# Token Length:  A variable-length integer specifying the length of the

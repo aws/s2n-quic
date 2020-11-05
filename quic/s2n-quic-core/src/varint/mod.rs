@@ -7,7 +7,7 @@ use s2n_codec::{decoder_value, Encoder, EncoderValue};
 #[cfg(feature = "generator")]
 use bolero_generator::*;
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#16
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#16
 //# QUIC packets and frames commonly use a variable-length encoding for
 //# non-negative integer values.  This encoding ensures that smaller
 //# integer values need fewer bytes to encode.
@@ -19,12 +19,12 @@ use bolero_generator::*;
 
 use byteorder::{ByteOrder, NetworkEndian};
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#16
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#16
 //# This means that integers are encoded on 1, 2, 4, or 8 bytes and can
 //# encode 6, 14, 30, or 62 bit values respectively.  Table 4 summarizes
 //# the encoding properties.
 //#
-//#        +------+--------+-------------+-----------------------+
+//#        +======+========+=============+=======================+
 //#        | 2Bit | Length | Usable Bits | Range                 |
 //#        +======+========+=============+=======================+
 //#        | 00   | 1      | 6           | 0-63                  |
@@ -88,7 +88,7 @@ mod tests {
         }
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#16
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#16
     //# For example, the eight byte sequence c2 19 7c 5e ff 14 e8 8c (in
     //# hexadecimal) decodes to the decimal value 151288809941952652; the
     //# four byte sequence 9d 7f 3e 7d decodes to 494878333; the two byte

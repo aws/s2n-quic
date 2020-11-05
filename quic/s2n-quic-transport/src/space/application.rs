@@ -470,7 +470,7 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
         path: &mut Path<Config::CongestionController>,
         handshake_status: &mut HandshakeStatus,
     ) -> Result<(), TransportError> {
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#19.20
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.20
         //# A server MUST
         //# treat receipt of a HANDSHAKE_DONE frame as a connection error of type
         //# PROTOCOL_VIOLATION.

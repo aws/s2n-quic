@@ -1,9 +1,8 @@
 use crate::varint::VarInt;
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#19.10
-//# The MAX_STREAM_DATA frame (type=0x11) is used in flow control to
-//# inform a peer of the maximum amount of data that can be sent on a
-//# stream.
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.10
+//# A MAX_STREAM_DATA frame (type=0x11) is used in flow control to inform
+//# a peer of the maximum amount of data that can be sent on a stream.
 
 macro_rules! max_stream_data_tag {
     () => {
@@ -11,17 +10,14 @@ macro_rules! max_stream_data_tag {
     };
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#19.10
-//# The MAX_STREAM_DATA frame is shown in Figure 33.
-//#
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.10
 //# MAX_STREAM_DATA Frame {
 //#   Type (i) = 0x11,
 //#   Stream ID (i),
 //#   Maximum Stream Data (i),
 //# }
-//#
-//#                Figure 33: MAX_STREAM_DATA Frame Format
-//#
+
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.10
 //# MAX_STREAM_DATA frames contain the following fields:
 //#
 //# Stream ID:  The stream ID of the stream that is affected encoded as a

@@ -1,13 +1,11 @@
 use crate::{frame::Tag, stream::StreamType, varint::VarInt};
-use s2n_codec::{decoder_parameterized_value, Encoder, EncoderValue};
+use s2n_codec::{decoder_invariant, decoder_parameterized_value, Encoder, EncoderValue};
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#19.14
-//# A sender SHOULD send a STREAMS_BLOCKED frame (type=0x16 or 0x17) when
-//# it wishes to open a stream, but is unable to due to the maximum
-//# stream limit set by its peer; see Section 19.11.  A STREAMS_BLOCKED
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.14
+//# A STREAMS_BLOCKED
 //# frame of type 0x16 is used to indicate reaching the bidirectional
-//# stream limit, and a STREAMS_BLOCKED frame of type 0x17 indicates
-//# reaching the unidirectional stream limit.
+//# stream limit, and a STREAMS_BLOCKED frame of type 0x17 is used to
+//# indicate reaching the unidirectional stream limit.
 
 macro_rules! streams_blocked_tag {
     () => {
@@ -17,24 +15,17 @@ macro_rules! streams_blocked_tag {
 const BIDIRECTIONAL_TAG: u8 = 0x16;
 const UNIDIRECTIONAL_TAG: u8 = 0x17;
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#19.14
-//# The STREAMS_BLOCKED frames are shown in Figure 37.
-//#
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.14
 //# STREAMS_BLOCKED Frame {
 //#   Type (i) = 0x16..0x17,
 //#   Maximum Streams (i),
 //# }
-//#
-//#                Figure 37: STREAMS_BLOCKED Frame Format
-//#
-//# STREAMS_BLOCKED frames contain the following fields:
+
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.14
+//# STREAMS_BLOCKED frames contain the following field:
 //#
 //# Maximum Streams:  A variable-length integer indicating the maximum
-//#    number of streams allowed at the time the frame was sent.  This
-//#    value cannot exceed 2^60, as it is not possible to encode stream
-//#    IDs larger than 2^62-1.  Receipt of a frame that encodes a larger
-//#    stream ID MUST be treated as a STREAM_LIMIT_ERROR or a
-//#    FRAME_ENCODING_ERROR.
+//#    number of streams allowed at the time the frame was sent.
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct StreamsBlocked {
@@ -63,7 +54,18 @@ decoder_parameterized_value!(
                 StreamType::Unidirectional
             };
 
-            let (stream_limit, buffer) = buffer.decode()?;
+            let (stream_limit, buffer) = buffer.decode::<VarInt>()?;
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.14
+            //# This
+            //# value cannot exceed 2^60, as it is not possible to encode stream
+            //# IDs larger than 2^62-1.  Receipt of a frame that encodes a larger
+            //# stream ID MUST be treated as a STREAM_LIMIT_ERROR or a
+            //# FRAME_ENCODING_ERROR.
+            decoder_invariant!(
+                *stream_limit <= 2u64.pow(60),
+                "maximum streams cannot exceed 2^60"
+            );
 
             let frame = StreamsBlocked {
                 stream_type,

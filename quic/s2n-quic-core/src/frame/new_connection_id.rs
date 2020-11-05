@@ -2,7 +2,7 @@ use crate::{frame::Tag, varint::VarInt};
 use core::{convert::TryInto, mem::size_of};
 use s2n_codec::{decoder_invariant, decoder_parameterized_value, Encoder, EncoderValue};
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#19.15
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
 //# An endpoint sends a NEW_CONNECTION_ID frame (type=0x18) to provide
 //# its peer with alternative connection IDs that can be used to break
 //# linkability when migrating connections; see Section 9.5.
@@ -13,9 +13,7 @@ macro_rules! new_connection_id_tag {
     };
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#19.15
-//# The NEW_CONNECTION_ID frame is shown in Figure 38.
-//#
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
 //# NEW_CONNECTION_ID Frame {
 //#   Type (i) = 0x18,
 //#   Sequence Number (i),
@@ -24,13 +22,13 @@ macro_rules! new_connection_id_tag {
 //#   Connection ID (8..160),
 //#   Stateless Reset Token (128),
 //# }
-//#
-//#               Figure 38: NEW_CONNECTION_ID Frame Format
-//#
+
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
 //# NEW_CONNECTION_ID frames contain the following fields:
 //#
 //# Sequence Number:  The sequence number assigned to the connection ID
-//#    by the sender.  See Section 5.1.1.
+//#    by the sender, encoded as a variable-length integer; see
+//#    Section 5.1.1.
 //#
 //# Retire Prior To:  A variable-length integer indicating which
 //#    connection IDs should be retired; see Section 5.1.2.
@@ -44,7 +42,7 @@ macro_rules! new_connection_id_tag {
 //#
 //# Stateless Reset Token:  A 128-bit value that will be used for a
 //#    stateless reset when the associated connection ID is used; see
-//#    Section 10.4.
+//#    Section 10.3.
 
 const STATELESS_RESET_TOKEN_LEN: usize = size_of::<u128>();
 

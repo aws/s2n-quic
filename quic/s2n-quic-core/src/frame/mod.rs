@@ -8,7 +8,7 @@ use s2n_codec::{
 pub mod ack_elicitation;
 pub mod congestion_controlled;
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#19
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19
 //# As described in Section 12.4, packets contain one or more frames.
 //# This section describes the format and semantics of the core QUIC
 //# frame types.

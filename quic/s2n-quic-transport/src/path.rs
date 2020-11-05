@@ -82,7 +82,7 @@ impl<CC: CongestionController> Manager<CC> {
             return Ok((id, unblocked));
         }
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#9
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
         //# The design of QUIC relies on endpoints retaining a stable address
         //# for the duration of the handshake.  An endpoint MUST NOT initiate
         //# connection migration before the handshake is confirmed, as defined
@@ -103,22 +103,22 @@ impl<CC: CongestionController> Manager<CC> {
         Err(TransportError::PROTOCOL_VIOLATION)
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#8.4
-    //# On receiving a PATH_CHALLENGE frame, an endpoint MUST respond
-    //# immediately by echoing the data contained in the PATH_CHALLENGE frame
-    //# in a PATH_RESPONSE frame.
+    //TODO= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.4
+    //# On receiving a PATH_CHALLENGE frame, an endpoint MUST respond by
+    //# echoing the data contained in the PATH_CHALLENGE frame in a
+    //# PATH_RESPONSE frame.
     pub fn on_path_challenge(
         &mut self,
         _peer_address: &SocketAddress,
         _challenge: s2n_quic_core::frame::PathChallenge,
     ) {
-        // TODO  this may be a no-op here. Perhaps the frame handler does the work.
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#8.5
-    //# A new address is considered valid when a PATH_RESPONSE frame is
-    //# received that contains the data that was sent in a previous
-    //# PATH_CHALLENGE.
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.3
+    //# Path validation succeeds when a PATH_RESPONSE frame is received that
+    //# contains the data that was sent in a previous PATH_CHALLENGE frame.
+    //# A PATH_RESPONSE frame received on any network path validates the path
+    //# on which the PATH_CHALLENGE was sent.
     pub fn on_path_response(
         &mut self,
         peer_address: &SocketAddress,
@@ -148,8 +148,9 @@ impl<CC: CongestionController> Manager<CC> {
     /// Start the validation process for a path
     pub fn validate_path(&self, _path: Path<CC>) {}
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#10.4
-    //# Tokens are invalidated when their associated connection ID is retired via a
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
+    //# Tokens are
+    //# invalidated when their associated connection ID is retired via a
     //# RETIRE_CONNECTION_ID frame (Section 19.16).
     pub fn on_connection_id_retire(&self, _connenction_id: &connection::Id) {
         // TODO invalidate any tokens issued under this connection id

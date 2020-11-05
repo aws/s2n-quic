@@ -8,12 +8,9 @@ use crate::{
 use core::fmt;
 use s2n_codec::DecoderError;
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#20
-//# QUIC error codes are 62-bit unsigned integers.
-//#
-//# This section lists the defined QUIC transport error codes that may be
-//# used in a CONNECTION_CLOSE frame.  These errors apply to the entire
-//# connection.
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#20
+//# QUIC transport error codes and application error codes are 62-bit
+//# unsigned integers.
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
@@ -122,7 +119,7 @@ macro_rules! impl_errors {
 }
 
 impl_errors! {
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#20
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#20.1
     //# NO_ERROR (0x0):  An endpoint uses this with CONNECTION_CLOSE to
     //#    signal that the connection is being closed abruptly in the absence
     //#    of any error.
@@ -131,28 +128,28 @@ impl_errors! {
     /// of any error
     NO_ERROR = 0x0.with_frame_type(UNKNOWN_FRAME_TYPE),
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#20
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#20.1
     //# INTERNAL_ERROR (0x1):  The endpoint encountered an internal error and
     //#    cannot continue with the connection.
     /// The endpoint encountered an internal error
     /// and cannot continue with the connection.
     INTERNAL_ERROR = 0x1.with_frame_type(UNKNOWN_FRAME_TYPE),
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#20
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#20.1
     //# CONNECTION_REFUSED (0x2):  The server refused to accept a new
     //#  connection.
     /// The server refused to accept a new
     ///  connection.
     CONNECTION_REFUSED = 0x2.with_frame_type(UNKNOWN_FRAME_TYPE),
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#20
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#20.1
     //# FLOW_CONTROL_ERROR (0x3):  An endpoint received more data than it
     //#    permitted in its advertised data limits; see Section 4.
     /// An endpoint received more data than it
     /// permitted in its advertised data limits.
     FLOW_CONTROL_ERROR = 0x3.with_frame_type(UNKNOWN_FRAME_TYPE),
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#20
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#20.1
     //# STREAM_LIMIT_ERROR (0x4):  An endpoint received a frame for a stream
     //#    identifier that exceeded its advertised stream limit for the
     //#    corresponding stream type.
@@ -161,14 +158,14 @@ impl_errors! {
     /// corresponding stream type.
     STREAM_LIMIT_ERROR = 0x4.with_frame_type(UNKNOWN_FRAME_TYPE),
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#20
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#20.1
     //# STREAM_STATE_ERROR (0x5):  An endpoint received a frame for a stream
     //#    that was not in a state that permitted that frame; see Section 3.
     /// An endpoint received a frame for a stream
     /// that was not in a state that permitted that frame.
     STREAM_STATE_ERROR = 0x5.with_frame_type(UNKNOWN_FRAME_TYPE),
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#20
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#20.1
     //# FINAL_SIZE_ERROR (0x6):  An endpoint received a STREAM frame
     //#    containing data that exceeded the previously established final
     //#    size.  Or an endpoint received a STREAM frame or a RESET_STREAM
@@ -181,7 +178,7 @@ impl_errors! {
     /// size.
     FINAL_SIZE_ERROR = 0x6.with_frame_type(UNKNOWN_FRAME_TYPE),
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#20
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#20.1
     //# FRAME_ENCODING_ERROR (0x7):  An endpoint received a frame that was
     //#    badly formatted.  For instance, a frame of an unknown type, or an
     //#    ACK frame that has more acknowledgment ranges than the remainder
@@ -190,7 +187,7 @@ impl_errors! {
     /// badly formatted.
     FRAME_ENCODING_ERROR = 0x7.with_frame_type(UNKNOWN_FRAME_TYPE),
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#20
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#20.1
     //# TRANSPORT_PARAMETER_ERROR (0x8):  An endpoint received transport
     //#    parameters that were badly formatted, included an invalid value,
     //#    was absent even though it is mandatory, was present though it is
@@ -199,7 +196,7 @@ impl_errors! {
     /// parameters that were badly formatted.
     TRANSPORT_PARAMETER_ERROR = 0x8.with_frame_type(UNKNOWN_FRAME_TYPE),
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#20
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#20.1
     //# CONNECTION_ID_LIMIT_ERROR (0x9):  The number of connection IDs
     //#    provided by the peer exceeds the advertised
     //#    active_connection_id_limit.
@@ -208,7 +205,7 @@ impl_errors! {
     /// active_connection_id_limit.
     CONNECTION_ID_LIMIT_ERROR = 0x9.with_frame_type(UNKNOWN_FRAME_TYPE),
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#20
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#20.1
     //# PROTOCOL_VIOLATION (0xA):  An endpoint detected an error with
     //#    protocol compliance that was not covered by more specific error
     //#    codes.
@@ -217,29 +214,43 @@ impl_errors! {
     /// codes.
     PROTOCOL_VIOLATION = 0xA.with_frame_type(UNKNOWN_FRAME_TYPE),
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#20
-    //# INVALID_TOKEN (0xB):  A server received a Retry Token in a client
-    //#    Initial that is invalid.
-    /// A server received a Retry Token in a client
-    /// Initial that is invalid.
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#20.1
+    //# INVALID_TOKEN (0xB):  A server received a client Initial that
+    //#     contained an invalid Token field.
+    /// A server received a client Initial that
+    /// contained an invalid Token field.
     INVALID_TOKEN = 0xB.with_frame_type(UNKNOWN_FRAME_TYPE),
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#20
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#20.1
     //# APPLICATION_ERROR (0xC):  The application or application protocol
     //#    caused the connection to be closed.
     /// The application or application protocol
     /// caused the connection to be closed.
     APPLICATION_ERROR = 0xC,
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#20
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#20.1
     //# CRYPTO_BUFFER_EXCEEDED (0xD):  An endpoint has received more data in
     //#    CRYPTO frames than it can buffer.
     /// An endpoint has received more data in
     /// CRYPTO frames than it can buffer.
     CRYPTO_BUFFER_EXCEEDED = 0xD.with_frame_type(UNKNOWN_FRAME_TYPE),
+
+    //# KEY_UPDATE_ERROR (0xe):  An endpoint detected errors in performing
+    //#    key updates; see Section 6 of [QUIC-TLS].
+    /// An endpoint detected errors in performing
+    /// key updates.
+    KEY_UPDATE_ERROR = 0xe.with_frame_type(UNKNOWN_FRAME_TYPE),
+
+    //# AEAD_LIMIT_REACHED (0xf):  An endpoint has reached the
+    //#    confidentiality or integrity limit for the AEAD algorithm used by
+    //#    the given connection.
+    /// An endpoint has reached the
+    /// confidentiality or integrity limit for the AEAD algorithm used by
+    /// the given connection.
+    AEAD_LIMIT_REACHED = 0xf.with_frame_type(UNKNOWN_FRAME_TYPE),
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#20
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#20.1
 //# CRYPTO_ERROR (0x1XX):  The cryptographic handshake failed.  A range
 //#    of 256 values is reserved for carrying error codes specific to the
 //#    cryptographic handshake that is used.  Codes for errors occurring
@@ -255,9 +266,8 @@ impl TransportError {
     }
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#20.1
-//# Application protocol error codes are 62-bit unsigned integers, but
-//# the management of application error codes is left to application
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#20.2
+//# The management of application error codes is left to application
 //# protocols.  Application protocol error codes are used for the
 //# RESET_STREAM frame (Section 19.4), the STOP_SENDING frame
 //# (Section 19.5), and the CONNECTION_CLOSE frame with a type of 0x1d
