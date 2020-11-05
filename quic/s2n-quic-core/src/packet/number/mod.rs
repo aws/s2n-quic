@@ -4,7 +4,7 @@ pub use sliding_window::*;
 mod protected_packet_number;
 pub use protected_packet_number::ProtectedPacketNumber;
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-22.txt#12.3
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.3
 //# The packet number is an integer in the range 0 to 2^62-1.  This
 //# number is used in determining the cryptographic nonce for packet
 //# protection.  Each endpoint maintains a separate packet number for
@@ -15,76 +15,34 @@ use crate::varint::VarInt;
 mod packet_number;
 pub use packet_number::PacketNumber;
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-22.txt#12.3
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.3
 //# Packet numbers are limited to this range because they need to be
 //# representable in whole in the Largest Acknowledged field of an ACK
 //# frame (Section 19.3).  When present in a long or short header
-//# however, packet numbers are reduced and encoded in 1 to 4 bytes (see
-//# Section 17.1).
+//# however, packet numbers are reduced and encoded in 1 to 4 bytes; see
+//# Section 17.1.
 
 mod truncated_packet_number;
 pub use truncated_packet_number::TruncatedPacketNumber;
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-22.txt#12.3
-//# Version Negotiation (Section 17.2.1) and Retry (Section 17.2.5)
-//# packets do not include a packet number.
-//#
-//# Packet numbers are divided into 3 spaces in QUIC:
-//#
-//# o  Initial space: All Initial packets (Section 17.2.2) are in this
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.3
+//# *  Initial space: All Initial packets (Section 17.2.2) are in this
 //#    space.
 //#
-//# o  Handshake space: All Handshake packets (Section 17.2.4) are in
+//# *  Handshake space: All Handshake packets (Section 17.2.4) are in
 //#    this space.
 //#
-//# o  Application data space: All 0-RTT and 1-RTT encrypted packets
-//#    (Section 12.1) are in this space.
+//# *  Application data space: All 0-RTT (Section 17.2.3) and 1-RTT
+//#    (Section 17.3) encrypted packets are in this space.
 
 mod packet_number_space;
 pub use packet_number_space::PacketNumberSpace;
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-22.txt#12.3
-//# As described in [QUIC-TLS], each packet type uses different
-//# protection keys.
-//#
-//# Conceptually, a packet number space is the context in which a packet
-//# can be processed and acknowledged.  Initial packets can only be sent
-//# with Initial packet protection keys and acknowledged in packets which
-//# are also Initial packets.  Similarly, Handshake packets are sent at
-//# the Handshake encryption level and can only be acknowledged in
-//# Handshake packets.
-//#
-//# This enforces cryptographic separation between the data sent in the
-//# different packet sequence number spaces.  Packet numbers in each
-//# space start at packet number 0.  Subsequent packets sent in the same
-//# packet number space MUST increase the packet number by at least one.
-//#
-//# 0-RTT and 1-RTT data exist in the same packet number space to make
-//# loss recovery algorithms easier to implement between the two packet
-//# types.
-//#
-//# A QUIC endpoint MUST NOT reuse a packet number within the same packet
-//# number space in one connection.  If the packet number for sending
-//# reaches 2^62 - 1, the sender MUST close the connection without
-//# sending a CONNECTION_CLOSE frame or any further packets; an endpoint
-//# MAY send a Stateless Reset (Section 10.4) in response to further
-//# packets that it receives.
-//#
-//# A receiver MUST discard a newly unprotected packet unless it is
-//# certain that it has not processed another packet with the same packet
-//# number from the same packet number space.  Duplicate suppression MUST
-//# happen after removing packet protection for the reasons described in
-//# Section 9.3 of [QUIC-TLS].  An efficient algorithm for duplicate
-//# suppression can be found in Section 3.4.3 of [RFC4303].
-//#
-//# Packet number encoding at a sender and decoding at a receiver are
-//# described in Section 17.1.
-
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-22.txt#17.1
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.1
 //# Packet numbers are integers in the range 0 to 2^62-1 (Section 12.3).
 //# When present in long or short packet headers, they are encoded in 1
 //# to 4 bytes.  The number of bits required to represent the packet
-//# number is reduced by including the least significant bits of the
+//# number is reduced by including only the least significant bits of the
 //# packet number.
 
 /// The packet number len is the two least significant bits of the packet tag
@@ -96,11 +54,8 @@ pub use packet_number_len::PacketNumberLen;
 mod packet_number_range;
 pub use packet_number_range::PacketNumberRange;
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-22.txt#17.1
-//# The encoded packet number is protected as described in Section 5.4 of
-//# [QUIC-TLS].
-//#
-//# The sender MUST use a packet number size able to represent more than
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.1
+//# the sender MUST use a packet number size able to represent more than
 //# twice as large a range than the difference between the largest
 //# acknowledged packet and packet number being sent.  A peer receiving
 //# the packet will then correctly decode the packet number, unless the
@@ -124,7 +79,7 @@ fn derive_truncation_range(
         .and_then(|value| PacketNumberLen::from_varint(value, space))
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-22.txt#17.1
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.1
 //# As a result, the size of the packet number encoding is at least one
 //# bit more than the base-2 logarithm of the number of contiguous
 //# unacknowledged packet numbers, including the new packet.
@@ -159,7 +114,7 @@ fn packet_number_len_example_test() {
     );
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-22.txt#17.1
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.1
 //# At a receiver, protection of the packet number is removed prior to
 //# recovering the full packet number.  The full packet number is then
 //# reconstructed based on the number of significant bits present, the
@@ -190,10 +145,7 @@ fn packet_decoding_example_test() {
     );
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-22.txt#A
-//# The following pseudo-code shows how an implementation can decode
-//# packet numbers after header protection has been removed.
-//#
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#A
 //# DecodePacketNumber(largest_pn, truncated_pn, pn_nbits):
 //#    expected_pn  = largest_pn + 1
 //#    pn_win       = 1 << pn_nbits
@@ -203,19 +155,19 @@ fn packet_decoding_example_test() {
 //#    // expected_pn - pn_hwin and less than or equal to
 //#    // expected_pn + pn_hwin
 //#    //
-//#    // This means we can't just strip the trailing bits from
+//#    // This means we cannot just strip the trailing bits from
 //#    // expected_pn and add the truncated_pn because that might
 //#    // yield a value outside the window.
 //#    //
 //#    // The following code calculates a candidate value and
 //#    // makes sure it's within the packet number window.
+//#    // Note the extra checks to prevent overflow and underflow.
 //#    candidate_pn = (expected_pn & ~pn_mask) | truncated_pn
-//#    if candidate_pn <= expected_pn - pn_hwin:
+//#    if candidate_pn <= expected_pn - pn_hwin and
+//#       candidate_pn < (1 << 62) - pn_win:
 //#       return candidate_pn + pn_win
-//#    // Note the extra check for underflow when candidate_pn
-//#    // is near zero.
 //#    if candidate_pn > expected_pn + pn_hwin and
-//#       candidate_pn > pn_win:
+//#       candidate_pn >= pn_win:
 //#       return candidate_pn - pn_win
 //#    return candidate_pn
 

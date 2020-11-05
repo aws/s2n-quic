@@ -17,79 +17,30 @@ use crate::{
 };
 use s2n_codec::{CheckedRange, DecoderBufferMut, DecoderBufferMutResult, Encoder, EncoderValue};
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-22.txt#17.2.3
-//# A 0-RTT packet uses long headers with a type value of 0x1, followed
-//# by the Length and Packet Number fields.  The first byte contains the
-//# Reserved and Packet Number Length bits.  It is used to carry "early"
-//# data from the client to the server as part of the first flight, prior
-//# to handshake completion.  As part of the TLS handshake, the server
-//# can accept or reject this early data.
-//#
-//# See Section 2.3 of [TLS13] for a discussion of 0-RTT data and its
-//# limitations.
-//#
-//# +-+-+-+-+-+-+-+-+
-//# |1|1| 1 |R R|P P|
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# |                         Version (32)                          |
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# | DCID Len (8)  |
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# |               Destination Connection ID (0..160)            ...
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# | SCID Len (8)  |
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# |                 Source Connection ID (0..160)               ...
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# |                           Length (i)                        ...
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# |                    Packet Number (8/16/24/32)               ...
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//# |                          Payload (*)                        ...
-//# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//#
-//#                             0-RTT Packet
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.3
+//# 0-RTT Packet {
+//#   Header Form (1) = 1,
+//#   Fixed Bit (1) = 1,
+//#   Long Packet Type (2) = 1,
+//#   Reserved Bits (2),
+//#   Packet Number Length (2),
+//#   Version (32),
+//#   Destination Connection ID Length (8),
+//#   Destination Connection ID (0..160),
+//#   Source Connection ID Length (8),
+//#   Source Connection ID (0..160),
+//#   Length (i),
+//#   Packet Number (8..32),
+//#   Packet Payload (..),
+//# }
 
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.3
+//# A 0-RTT packet uses long headers with a type value of 0x1,
 macro_rules! zero_rtt_tag {
     () => {
         0b1101u8
     };
 }
-
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-22.txt#17.2.3
-//# Packet numbers for 0-RTT protected packets use the same space as
-//# 1-RTT protected packets.
-//#
-//# After a client receives a Retry packet, 0-RTT packets are likely to
-//# have been lost or discarded by the server.  A client MAY attempt to
-//# resend data in 0-RTT packets after it sends a new Initial packet.
-//#
-//# A client MUST NOT reset the packet number it uses for 0-RTT packets,
-//# since the keys used to protect 0-RTT packets will not change as a
-//# result of responding to a Retry packet.  Sending packets with the
-//# same packet number in that case is likely to compromise the packet
-//# protection for all 0-RTT packets because the same key and nonce could
-//# be used to protect different content.
-//#
-//# A client only receives acknowledgments for its 0-RTT packets once the
-//# handshake is complete.  Consequently, a server might expect 0-RTT
-//# packets to start with a packet number of 0.  Therefore, in
-//# determining the length of the packet number encoding for 0-RTT
-//# packets, a client MUST assume that all packets up to the current
-//# packet number are in flight, starting from a packet number of 0.
-//# Thus, 0-RTT packets could need to use a longer packet number
-//# encoding.
-//#
-//# A client MUST NOT send 0-RTT packets once it starts processing 1-RTT
-//# packets from the server.  This means that 0-RTT packets cannot
-//# contain any response to frames from 1-RTT packets.  For instance, a
-//# client cannot send an ACK frame in a 0-RTT packet, because that can
-//# only acknowledge a 1-RTT packet.  An acknowledgment for a 1-RTT
-//# packet MUST be carried in a 1-RTT packet.
-//#
-//# A server SHOULD treat a violation of remembered limits as a
-//# connection error of an appropriate type (for instance, a
-//# FLOW_CONTROL_ERROR for exceeding stream data limits).
 
 #[derive(Debug)]
 pub struct ZeroRTT<DCID, SCID, PacketNumber, Payload> {
