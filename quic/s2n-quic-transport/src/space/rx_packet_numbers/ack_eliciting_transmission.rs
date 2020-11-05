@@ -74,7 +74,7 @@ pub struct AckElicitingTransmission {
 impl AckElicitingTransmission {
     /// Called when a set of packets was acknowledged or lost
     pub fn ack_range<A: AckSet>(&self, ack_set: &A) -> Option<AckRange> {
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#13.2.3
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2.4
         //# When a packet containing an
         //# ACK frame is acknowledged, the receiver can stop acknowledging
         //# packets less than or equal to the largest acknowledged in the sent

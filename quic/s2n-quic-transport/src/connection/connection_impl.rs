@@ -199,7 +199,7 @@ macro_rules! packet_validator {
             // In this case we silently drop the packet
             let $packet = $packet.unprotect(crypto, packet_number_decoder).ok()?;
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#12.3
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.3
             //# A receiver MUST discard a newly unprotected packet unless it is
             //# certain that it has not processed another packet with the same packet
             //# number from the same packet number space.
@@ -514,7 +514,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         {
             self.handle_cleartext_initial_packet(shared_state, datagram, path_id, packet)?;
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#10.2
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.1
             //# An endpoint restarts its idle timer when a packet from its peer is
             //# received and processed successfully.
             self.restart_peer_idle_timer(datagram.timestamp);
@@ -597,7 +597,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                 self.path_manager[path_id].on_validated();
             }
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#10.2
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.1
             //# An endpoint restarts its idle timer when a packet from its peer is
             //# received and processed successfully.
             self.restart_peer_idle_timer(datagram.timestamp);
@@ -642,7 +642,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                 return Ok(());
             }
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#10.2
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.1
             //# An endpoint restarts its idle timer when a packet from its peer is
             //# received and processed successfully.
             self.restart_peer_idle_timer(datagram.timestamp);

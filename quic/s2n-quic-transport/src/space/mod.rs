@@ -8,8 +8,8 @@ use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     crypto::{tls::Session as TLSSession, CryptoSuite},
     frame::{
-        self, ack::AckRanges, crypto::CryptoRef, stream::StreamRef, Ack, DataBlocked,
-        HandshakeDone, MaxData, MaxStreamData, MaxStreams, NewConnectionID, NewToken,
+        self, ack::AckRanges, crypto::CryptoRef, stream::StreamRef, Ack, ConnectionClose,
+        DataBlocked, HandshakeDone, MaxData, MaxStreamData, MaxStreams, NewConnectionID, NewToken,
         PathChallenge, PathResponse, ResetStream, RetireConnectionID, StopSending,
         StreamDataBlocked, StreamsBlocked,
     },
@@ -284,6 +284,13 @@ pub trait PacketSpace<Config: connection::Config> {
         handshake_status: &mut HandshakeStatus,
     ) -> Result<(), TransportError>;
 
+    fn handle_connection_close_frame(
+        &mut self,
+        frame: ConnectionClose,
+        datagram: &DatagramInfo,
+        path: &mut Path<Config::CongestionController>,
+    ) -> Result<(), TransportError>;
+
     fn handle_handshake_done_frame(
         &mut self,
         frame: HandshakeDone,
@@ -343,15 +350,17 @@ pub trait PacketSpace<Config: connection::Config> {
 
             match frame {
                 Frame::Padding(frame) => {
-                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.1
-                    //# A PADDING frame has no content.  That is, a PADDING frame consists of
-                    //# the single byte that identifies the frame as a PADDING frame.
+                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.1
+                    //# A PADDING frame (type=0x00) has no semantic value.  PADDING frames
+                    //# can be used to increase the size of a packet.  Padding can be used to
+                    //# increase an initial client packet to the minimum required size, or to
+                    //# provide protection against traffic analysis for protected packets.
                     processed_packet.on_processed_frame(&frame);
                 }
                 Frame::Ping(frame) => {
-                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.2
-                    //# The receiver of a PING frame simply needs to acknowledge the packet
-                    //# containing this frame.
+                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.2
+                    //# Endpoints can use PING frames (type=0x01) to verify that their peers
+                    //# are still alive or to check reachability to the peer.
                     processed_packet.on_processed_frame(&frame);
                 }
                 Frame::Crypto(frame) => {
@@ -367,6 +376,14 @@ pub trait PacketSpace<Config: connection::Config> {
                         .map_err(on_error)?;
                 }
                 Frame::ConnectionClose(frame) => {
+                    let on_error = with_frame_type!(frame);
+                    processed_packet.on_processed_frame(&frame);
+                    self.handle_connection_close_frame(frame, datagram, path)
+                        .map_err(on_error)?;
+
+                    // skip processing any other frames
+                    // TODO is this actually OK to do?
+                    // https://github.com/awslabs/s2n-quic/issues/216
                     return Ok(Some(frame));
                 }
                 Frame::Stream(frame) => {
@@ -464,7 +481,7 @@ pub trait PacketSpace<Config: connection::Config> {
             payload = remaining;
         }
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#13.1
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.1
         //# A packet MUST NOT be acknowledged until packet protection has been
         //# successfully removed and all frames contained in the packet have been
         //# processed.  For STREAM frames, this means the data has been enqueued
