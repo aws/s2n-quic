@@ -12,9 +12,9 @@ use s2n_quic_core::{
     time::Timestamp,
 };
 
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.1
+//= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.1
 
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#A.1.1
+//= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.1.1
 #[derive(Clone, Debug, Default)]
 pub struct SentPackets {
     // TODO: Investigate a more efficient mechanism for managing sent_packets

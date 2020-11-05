@@ -303,6 +303,7 @@ impl Manager {
                 frame.ack_delay(),
                 latest_rtt,
                 datagram.timestamp,
+                context.is_handshake_confirmed(),
                 largest_acked_in_frame.space(),
             );
 
@@ -1001,8 +1002,13 @@ mod test {
 
         // time threshold = max(kTimeThreshold * max(smoothed_rtt, latest_rtt), kGranularity)
         // time threshold = max(9/8 * 8) = 9
-        path.rtt_estimator
-            .update_rtt(Duration::from_secs(0), Duration::from_secs(8), now, space);
+        path.rtt_estimator.update_rtt(
+            Duration::from_secs(0),
+            Duration::from_secs(8),
+            now,
+            true,
+            space,
+        );
         let expected_time_threshold = Duration::from_secs(9);
         assert_eq!(
             expected_time_threshold,
@@ -1140,6 +1146,7 @@ mod test {
             Duration::from_millis(10),
             Duration::from_millis(700),
             s2n_quic_platform::time::now(),
+            true,
             space,
         );
 
@@ -1350,12 +1357,14 @@ mod test {
             Duration::from_millis(0),
             Duration::from_millis(500),
             now,
+            true,
             space,
         );
         path.rtt_estimator.update_rtt(
             Duration::from_millis(0),
             Duration::from_millis(1000),
             now,
+            true,
             space,
         );
         // The path will be at the anti-amplification limit
@@ -1420,6 +1429,7 @@ mod test {
             Duration::from_millis(0),
             Duration::from_millis(2000),
             now,
+            true,
             space,
         );
         manager.update_pto_timer(&path, now, is_handshake_confirmed);

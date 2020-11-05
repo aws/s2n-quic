@@ -703,6 +703,7 @@ mod test {
             Duration::from_millis(0),
             Duration::from_millis(100),
             now,
+            true,
             PacketNumberSpace::ApplicationData,
         );
 
@@ -714,6 +715,7 @@ mod test {
             Duration::from_millis(0),
             Duration::from_millis(200),
             now,
+            true,
             PacketNumberSpace::ApplicationData,
         );
 
@@ -1047,6 +1049,7 @@ mod test {
             Duration::from_secs(0),
             Duration::from_millis(275),
             now,
+            true,
             PacketNumberSpace::ApplicationData,
         );
 
