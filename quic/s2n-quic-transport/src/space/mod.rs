@@ -284,6 +284,13 @@ pub trait PacketSpace<Config: connection::Config> {
         handshake_status: &mut HandshakeStatus,
     ) -> Result<(), TransportError>;
 
+    fn handle_connection_close_frame(
+        &mut self,
+        frame: ConnectionClose,
+        datagram: &DatagramInfo,
+        path: &mut Path<Config::CongestionController>,
+    ) -> Result<(), TransportError>;
+
     fn handle_handshake_done_frame(
         &mut self,
         frame: HandshakeDone,
@@ -310,7 +317,6 @@ pub trait PacketSpace<Config: connection::Config> {
     default_frame_handler!(handle_retire_connection_id_frame, RetireConnectionID);
     default_frame_handler!(handle_path_challenge_frame, PathChallenge);
     default_frame_handler!(handle_path_response_frame, PathResponse);
-    default_frame_handler!(handle_connection_close_frame, ConnectionClose);
 
     fn on_processed_packet(
         &mut self,

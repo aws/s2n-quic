@@ -11,9 +11,10 @@ use s2n_quic_core::{
     crypto::CryptoSuite,
     endpoint::EndpointType,
     frame::{
-        ack::AckRanges, crypto::CryptoRef, stream::StreamRef, Ack, DataBlocked, HandshakeDone,
-        MaxData, MaxStreamData, MaxStreams, NewConnectionID, NewToken, PathChallenge, PathResponse,
-        ResetStream, RetireConnectionID, StopSending, StreamDataBlocked, StreamsBlocked,
+        ack::AckRanges, crypto::CryptoRef, stream::StreamRef, Ack, ConnectionClose, DataBlocked,
+        HandshakeDone, MaxData, MaxStreamData, MaxStreams, NewConnectionID, NewToken,
+        PathChallenge, PathResponse, ResetStream, RetireConnectionID, StopSending,
+        StreamDataBlocked, StreamsBlocked,
     },
     inet::DatagramInfo,
     packet::{
@@ -315,6 +316,15 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
         path.on_peer_validated();
         let (recovery_manager, mut context) = self.recovery(handshake_status);
         recovery_manager.on_ack_frame(datagram, frame, path, &mut context)
+    }
+
+    fn handle_connection_close_frame(
+        &mut self,
+        _frame: ConnectionClose,
+        _datagram: &DatagramInfo,
+        _path: &mut Path<Config::CongestionController>,
+    ) -> Result<(), TransportError> {
+        Ok(())
     }
 
     fn handle_stream_frame(
