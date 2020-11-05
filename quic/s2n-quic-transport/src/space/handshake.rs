@@ -77,7 +77,7 @@ impl<Config: connection::Config> HandshakeSpace<Config> {
         let mut packet_number = self.tx_packet_numbers.next();
 
         if self.recovery_manager.requires_probe() {
-            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#6.2.4
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
             //# If the sender wants to elicit a faster acknowledgement on PTO, it can
             //# skip a packet number to eliminate the acknowledgment delay.
 

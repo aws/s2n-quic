@@ -10,13 +10,14 @@ use core::{
 pub const DEFAULT_INITIAL_RTT: Duration = Duration::from_millis(333);
 const ZERO_DURATION: Duration = Duration::from_millis(0);
 
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#6.1.2
+//= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.1.2
 //# The RECOMMENDED value of the timer granularity (kGranularity) is 1ms.
 pub const K_GRANULARITY: Duration = Duration::from_millis(1);
 
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.6.1
+//= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.1
 //# The RECOMMENDED value for kPersistentCongestionThreshold is 3, which
-//# is approximately equivalent to two TLPs before an RTO in TCP.
+//# results in behavior that is approximately equivalent to a TCP sender
+//# declaring an RTO after two TLPs.
 const K_PERSISTENT_CONGESTION_THRESHOLD: u32 = 3;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -171,7 +172,7 @@ impl RTTEstimator {
     /// Calculates the persistent congestion threshold used for determining
     /// if persistent congestion is being encountered.
     pub fn persistent_congestion_threshold(&self) -> Duration {
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.6.1
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.1
         //# The persistent congestion duration is computed as follows:
         //#
         //# (smoothed_rtt + max(4*rttvar, kGranularity) + max_ack_delay) *

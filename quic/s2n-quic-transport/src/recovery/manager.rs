@@ -312,7 +312,7 @@ impl Manager {
                 .on_rtt_update(largest_newly_acked.1.time_sent, &path.rtt_estimator);
         }
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.1
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.1
         //# If a path has been validated to support ECN ([RFC3168], [RFC8311]),
         //# QUIC treats a Congestion Experienced (CE) codepoint in the IP header
         //# as a signal of congestion.
@@ -371,9 +371,9 @@ impl Manager {
         matches!(self.pto.state, PtoState::RequiresTransmission(_))
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#B.9
-    //# When Initial or Handshake keys are discarded, packets from the
-    //# space are discarded and loss detection state is updated.
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#B.9
+    //# When Initial or Handshake keys are discarded, packets sent in that
+    //# space no longer count toward bytes in flight.
     pub fn on_packet_number_space_discarded<CC: CongestionController>(
         &mut self,
         path: &mut Path<CC>,
@@ -456,7 +456,7 @@ impl Manager {
                     on_loss(range);
                 }
 
-                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.6.2
+                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.2
                 //# A sender establishes persistent congestion on receiving an
                 //# acknowledgement if at least two ack-eliciting packets are declared
                 //# lost, and:
@@ -501,7 +501,7 @@ impl Manager {
                 break;
             }
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.6.2
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.2
             //# The persistent congestion period SHOULD NOT start until there is at
             //# least one RTT sample.  Before the first RTT sample, a sender arms its
             //# PTO timer based on the initial RTT (Section 6.2.2), which could be
@@ -1124,7 +1124,7 @@ mod test {
         assert_eq!(path.congestion_controller.on_packets_lost, 0);
     }
 
-    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.6.3")]
+    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.3")]
     #[test]
     fn persistent_congestion() {
         let space = PacketNumberSpace::ApplicationData;
@@ -1219,19 +1219,19 @@ mod test {
             &mut manager,
         );
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.6.3
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.3
         //# Packets 2 through 8 are declared lost when the acknowledgement for
         //# packet 9 is received at t = 12.2.
         assert_eq!(7, context.on_packet_loss_count);
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.6.3
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.3
         //# The congestion period is calculated as the time between the oldest
         //# and newest lost packets: 8 - 1 = 7.
         assert!(path.rtt_estimator.persistent_congestion_threshold() < Duration::from_secs(7));
         assert_eq!(Some(true), path.congestion_controller.persistent_congestion);
     }
 
-    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.6")]
+    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6")]
     #[test]
     fn persistent_congestion_multiple_periods() {
         let space = PacketNumberSpace::ApplicationData;
