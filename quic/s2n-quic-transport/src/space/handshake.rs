@@ -12,7 +12,7 @@ use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
     crypto::CryptoSuite,
     endpoint::EndpointType,
-    frame::{ack::AckRanges, crypto::CryptoRef, Ack},
+    frame::{ack::AckRanges, crypto::CryptoRef, Ack, ConnectionClose},
     inet::DatagramInfo,
     packet::{
         encoding::{PacketEncoder, PacketEncodingError},
@@ -261,11 +261,11 @@ impl<'a, Config: connection::Config> recovery::Context for RecoveryContext<'a, C
     }
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#17.2.4
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.4
 //# The payload of this packet contains CRYPTO frames and could contain
 //# PING, PADDING, or ACK frames.  Handshake packets MAY contain
-//# CONNECTION_CLOSE frames.  Endpoints MUST treat receipt of Handshake
-//# packets with other frames as a connection error.
+//# CONNECTION_CLOSE frames of type 0x1c.  Endpoints MUST treat receipt
+//# of Handshake packets with other frames as a connection error.
 impl<Config: connection::Config> PacketSpace<Config> for HandshakeSpace<Config> {
     const INVALID_FRAME_ERROR: &'static str = "invalid frame in handshake space";
 
@@ -290,6 +290,23 @@ impl<Config: connection::Config> PacketSpace<Config> for HandshakeSpace<Config> 
         path.on_peer_validated();
         let (recovery_manager, mut context) = self.recovery(handshake_status);
         recovery_manager.on_ack_frame(datagram, frame, path, &mut context)
+    }
+
+    fn handle_connection_close_frame(
+        &mut self,
+        frame: ConnectionClose,
+        _datagram: &DatagramInfo,
+        _path: &mut Path<Config::CongestionController>,
+    ) -> Result<(), TransportError> {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.4
+        //# Handshake packets MAY contain
+        //# CONNECTION_CLOSE frames of type 0x1c.
+
+        if frame.tag() != 0x1c {
+            return Err(TransportError::PROTOCOL_VIOLATION);
+        }
+
+        Ok(())
     }
 
     fn on_processed_packet(

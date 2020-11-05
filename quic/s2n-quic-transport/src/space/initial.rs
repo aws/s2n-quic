@@ -12,7 +12,7 @@ use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
     crypto::CryptoSuite,
     endpoint::EndpointType,
-    frame::{ack::AckRanges, crypto::CryptoRef, Ack},
+    frame::{ack::AckRanges, crypto::CryptoRef, Ack, ConnectionClose},
     inet::DatagramInfo,
     packet::{
         encoding::{PacketEncoder, PacketEncodingError},
@@ -263,13 +263,13 @@ impl<'a, Config: connection::Config> recovery::Context for RecoveryContext<'a, C
     }
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#17.2.2
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.2
 //# The payload of an Initial packet includes a CRYPTO frame (or frames)
 //# containing a cryptographic handshake message, ACK frames, or both.
-//# PING, PADDING, and CONNECTION_CLOSE frames are also permitted.  An
-//# endpoint that receives an Initial packet containing other frames can
-//# either discard the packet as spurious or treat it as a connection
-//# error.
+//# PING, PADDING, and CONNECTION_CLOSE frames of type 0x1c are also
+//# permitted.  An endpoint that receives an Initial packet containing
+//# other frames can either discard the packet as spurious or treat it as
+//# a connection error.
 impl<Config: connection::Config> PacketSpace<Config> for InitialSpace<Config> {
     const INVALID_FRAME_ERROR: &'static str = "invalid frame in initial space";
 
@@ -293,6 +293,23 @@ impl<Config: connection::Config> PacketSpace<Config> for InitialSpace<Config> {
     ) -> Result<(), TransportError> {
         let (recovery_manager, mut context) = self.recovery(handshake_status);
         recovery_manager.on_ack_frame(datagram, frame, path, &mut context)
+    }
+
+    fn handle_connection_close_frame(
+        &mut self,
+        frame: ConnectionClose,
+        _datagram: &DatagramInfo,
+        _path: &mut Path<Config::CongestionController>,
+    ) -> Result<(), TransportError> {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.2
+        //# CONNECTION_CLOSE frames of type 0x1c are also
+        //# permitted.
+
+        if frame.tag() != 0x1c {
+            return Err(TransportError::PROTOCOL_VIOLATION);
+        }
+
+        Ok(())
     }
 
     fn on_processed_packet(

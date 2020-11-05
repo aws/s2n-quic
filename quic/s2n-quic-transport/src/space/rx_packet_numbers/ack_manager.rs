@@ -20,14 +20,14 @@ use s2n_quic_core::{
     varint::VarInt,
 };
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#13.2
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2
 //# Endpoints acknowledge all packets they receive and process.  However,
 //# only ack-eliciting packets cause an ACK frame to be sent within the
 //# maximum ack delay.  Packets that are not ack-eliciting are only
 //# acknowledged when an ACK frame is sent for other reasons.
 //#
-//# When sending a packet for any reason, an endpoint should attempt to
-//# bundle an ACK frame if one has not been sent recently.  Doing so
+//# When sending a packet for any reason, an endpoint SHOULD attempt to
+//# include an ACK frame if one has not been sent recently.  Doing so
 //# helps with timely loss detection at the peer.
 //#
 //# In general, frequent feedback from a receiver improves loss and
@@ -66,18 +66,22 @@ pub struct AckManager {
     transmission_state: AckTransmissionState,
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#13.2.1
-//# For Initial and Handshake packets, a max_ack_delay of 0 is used.
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2.1
+//# An endpoint MUST acknowledge all ack-eliciting Initial and Handshake
+//# packets immediately
 pub const EARLY_ACK_SETTINGS: AckSettings = AckSettings {
     max_ack_delay: Duration::from_secs(0),
     ack_delay_exponent: 0,
 };
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#13.2.4
-//# When the receiver is only sending non-ack-eliciting packets, it can
-//# bundle a PING or other small ack-eliciting frame with a fraction of
-//# them, such as once per round trip, to enable dropping unnecessary ACK
-//# ranges and any state for previously sent packets.
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2.4
+//# A receiver that sends only non-ack-eliciting packets, such as ACK
+//# frames, might not receive an acknowledgement for a long period of
+//# time.  This could cause the receiver to maintain state for a large
+//# number of ACK frames for a long period of time, and ACK frames it
+//# sends could be unnecessarily large.  In such a case, a receiver could
+//# send a PING or other small ack-eliciting frame occasionally, such as
+//# once per round trip, to elicit an ACK from the peer.
 
 // Originally, this was using a timer derived from RTT. However,
 // there were issues in certain simulations that led to endless looping.
@@ -141,11 +145,6 @@ impl AckManager {
         let mut is_ack_eliciting = context.ack_elicitation().is_ack_eliciting();
 
         if !is_ack_eliciting {
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#13.2.4
-            //# When the receiver is only sending non-ack-eliciting packets, it can
-            //# bundle a PING or other small ack-eliciting frame with a fraction of
-            //# them, such as once per round trip, to enable dropping unnecessary ACK
-            //# ranges and any state for previously sent packets.
             // check the timer and make sure we can still write a Ping frame before removing it
             // We send a ping even when constrained to retransmissions only, as a fast
             // retransmission that is not ack eliciting will not help us recover faster.
@@ -169,7 +168,7 @@ impl AckManager {
             // reset the counter
             self.transmissions_since_elicitation = 0;
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#13.2.3
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2.4
             //# When a packet containing an ACK frame is sent, the largest
             //# acknowledged in that frame may be saved.
             self.ack_eliciting_transmissions
@@ -245,14 +244,14 @@ impl AckManager {
         self.processed_packets_since_transmission =
             self.processed_packets_since_transmission.saturating_add(1);
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#13.2.5
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2.5
         //# An endpoint measures the delays intentionally introduced between the
         //# time the packet with the largest packet number is received and the
-        //# time an acknowledgment is sent.  The endpoint encodes this delay in
-        //# the Ack Delay field of an ACK frame (see Section 19.3).  This allows
-        //# the receiver of the ACK to adjust for any intentional delays, which
-        //# is important for getting a better estimate of the path RTT when
-        //# acknowledgments are delayed.
+        //# time an acknowledgment is sent.  The endpoint encodes this
+        //# acknowledgement delay in the ACK Delay field of an ACK frame; see
+        //# Section 19.3.  This allows the receiver of the ACK frame to adjust
+        //# for any intentional delays, which is important for getting a better
+        //# estimate of the path RTT when acknowledgments are delayed.
         if is_largest {
             self.largest_received_packet_number_at = Some(now);
         }
@@ -260,13 +259,24 @@ impl AckManager {
         if processed_packet.is_ack_eliciting() {
             let mut should_activate = false;
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#13.2.1
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2.1
             //# In order to assist loss detection at the sender, an endpoint SHOULD
-            //# send an ACK frame immediately on receiving an ack-eliciting packet
-            //# that is out of order.
+            //# generate and send an ACK frame without delay when it receives an ack-
+            //# eliciting packet either:
+            //#
+            //# *  when the received packet has a packet number less than another
+            //#    ack-eliciting packet that has been received, or
+
+            should_activate |= !is_largest;
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2.1
+            //# *  when the packet has a packet number larger than the highest-
+            //#    numbered ack-eliciting packet that has been received and there are
+            //#    missing packets between that packet and this packet.
+
             should_activate |= !is_ordered;
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#13.2.1
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2.1
             //# Similarly, packets marked with the ECN Congestion Experienced (CE)
             //# codepoint in the IP header SHOULD be acknowledged immediately, to
             //# reduce the peer's response time to congestion events.
@@ -285,7 +295,7 @@ impl AckManager {
             if should_activate {
                 self.transmission_state.activate();
             } else if !self.ack_delay_timer.is_armed() {
-                //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#13.2
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2
                 //# Endpoints acknowledge all packets they receive and process.  However,
                 //# only ack-eliciting packets cause an ACK frame to be sent within the
                 //# maximum ack delay.  Packets that are not ack-eliciting are only
@@ -326,11 +336,6 @@ impl AckManager {
 
     /// Computes the ack_delay field for the current state
     fn ack_delay(&self, now: Timestamp) -> VarInt {
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-27.txt#19.3
-        //# ACK Delay:  A variable-length integer representing the time delta in
-        //#    microseconds between when this ACK was sent and when the largest
-        //#    acknowledged packet, as indicated in the Largest Acknowledged
-        //#    field, was received by this peer.
         let ack_delay = self
             .largest_received_packet_number_at
             .map(|prev| now.saturating_duration_since(prev))
