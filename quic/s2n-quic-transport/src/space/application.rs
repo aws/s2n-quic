@@ -96,7 +96,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         let mut packet_number = self.tx_packet_numbers.next();
 
         if self.recovery_manager.requires_probe() {
-            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#6.2.4
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
             //# If the sender wants to elicit a faster acknowledgement on PTO, it can
             //# skip a packet number to eliminate the acknowledgment delay.
 
@@ -172,11 +172,11 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         path: &Path<Config::CongestionController>,
         timestamp: Timestamp,
     ) {
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
         //# A sender SHOULD restart its PTO timer every time an ack-eliciting
         //# packet is sent or acknowledged, when the handshake is confirmed
         //# (Section 4.1.2 of [QUIC-TLS]), or when Initial or Handshake keys are
-        //# discarded (Section 9 of [QUIC-TLS]).
+        //# discarded (Section 4.9 of [QUIC-TLS]).
         self.recovery_manager
             .update_pto_timer(path, timestamp, true)
     }

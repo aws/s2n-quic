@@ -10,7 +10,7 @@ use core::{
 };
 use s2n_quic_core::{recovery::RTTEstimator, time::Timestamp};
 
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.3
+//= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3
 //#                 New Path or      +------------+
 //#            persistent congestion |   Slow     |
 //#        (O)---------------------->|   Start    |
@@ -37,7 +37,7 @@ enum State {
     CongestionAvoidance(Timestamp),
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.3.2
+//= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.2
 //# If the congestion window is reduced immediately, a
 //# single packet can be sent prior to reduction.  This speeds up loss
 //# recovery if the data in the lost packet is retransmitted and is
@@ -58,7 +58,7 @@ pub struct CubicCongestionController {
     max_datagram_size: u16,
     congestion_window: u32,
     state: State,
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#B.2
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#B.2
     //# The sum of the size in bytes of all sent packets
     //# that contain at least one ack-eliciting or PADDING frame, and have
     //# not been acknowledged or declared lost.  The size does not include
@@ -177,7 +177,7 @@ impl CongestionController for CubicCongestionController {
         self.bytes_in_flight -= sent_bytes;
 
         if under_utilized {
-            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.8
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.8
             //# When bytes in flight is smaller than the congestion window and
             //# sending is not pacing limited, the congestion window is under-
             //# utilized.  When this occurs, the congestion window SHOULD NOT be
@@ -189,7 +189,7 @@ impl CongestionController for CubicCongestionController {
         // Check if this ack causes the controller to exit recovery
         if let State::Recovery(recovery_start_time, _) = self.state {
             if largest_acked_time_sent > recovery_start_time {
-                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.3.2
+                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.2
                 //# A recovery period ends and the sender enters congestion avoidance
                 //# when a packet sent during the recovery period is acknowledged.
                 self.state = State::CongestionAvoidance(ack_receive_time)
@@ -198,7 +198,7 @@ impl CongestionController for CubicCongestionController {
 
         match self.state {
             SlowStart => {
-                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.3.1
+                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.1
                 //# While a sender is in slow start, the congestion window increases by
                 //# the number of bytes acknowledged when each acknowledgment is
                 //# processed.  This results in exponential growth of the congestion
@@ -267,14 +267,14 @@ impl CongestionController for CubicCongestionController {
 
         // Enter recovery period.
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.3.2
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.2
         //# If the congestion window is reduced immediately, a
         //# single packet can be sent prior to reduction.  This speeds up loss
         //# recovery if the data in the lost packet is retransmitted and is
         //# similar to TCP as described in Section 5 of [RFC6675].
         self.state = Recovery(event_time, RequiresTransmission);
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.3.2
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.2
         //# On entering a recovery period, a sender MUST set the slow start threshold
         //# to half the value of the congestion window when loss is detected. The
         //# congestion window MUST be set to the reduced value of the slow start
@@ -282,15 +282,24 @@ impl CongestionController for CubicCongestionController {
         // Since this is CUBIC and not NewReno, the slow start threshold is
         // set according to CUBIC.
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.3.2
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.2
         //# Implementations MAY reduce the congestion window immediately
         //# upon entering a recovery period
-        self.congestion_window = self.cubic.multiplicative_decrease(self.congestion_window);
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.2
+        //# The minimum congestion window is the smallest value the congestion
+        //# window can decrease to as a response to loss, increase in the peer-
+        //# reported ECN-CE count, or persistent congestion.
+        self.congestion_window = self
+            .cubic
+            .multiplicative_decrease(self.congestion_window)
+            .max(self.minimum_window());
+
         // Update Hybrid Slow Start with the decreased congestion window.
         self.slow_start.on_congestion_event(self.congestion_window);
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.2
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.2
     //# If the maximum datagram size changes during the connection, the
     //# initial congestion window SHOULD be recalculated with the new size.
     //# If the maximum datagram size is decreased in order to complete the
@@ -309,7 +318,7 @@ impl CongestionController for CubicCongestionController {
         }
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#6.4
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.4
     //# When packet protection keys are discarded (see Section 4.8 of
     //# [QUIC-TLS]), all packets that were sent with those keys can no longer
     //# be acknowledged because their acknowledgements cannot be processed
@@ -333,7 +342,7 @@ impl CubicCongestionController {
         }
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.2
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.2
     //# Endpoints SHOULD use an initial congestion window of 10 times the
     //# maximum datagram size (max_datagram_size), limited to the larger
     //# of 14720 bytes or twice the maximum datagram size.
@@ -345,10 +354,11 @@ impl CubicCongestionController {
         )
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.2
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.2
     //# The minimum congestion window is the smallest value the congestion
-    //# window can decrease to as a response to loss, ECN-CE, or persistent
-    //# congestion.  The RECOMMENDED value is 2 * max_datagram_size.
+    //# window can decrease to as a response to loss, increase in the peer-
+    //# reported ECN-CE count, or persistent congestion.  The RECOMMENDED
+    //# value is 2 * max_datagram_size.
     fn minimum_window(&self) -> u32 {
         2 * self.max_datagram_size as u32
     }
@@ -667,7 +677,7 @@ mod test {
     }
 
     #[test]
-    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.8")]
+    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.8")]
     fn is_congestion_limited() {
         let max_datagram_size = 1000;
         let mut cc = CubicCongestionController::new(max_datagram_size);
@@ -703,6 +713,7 @@ mod test {
             Duration::from_millis(0),
             Duration::from_millis(100),
             now,
+            true,
             PacketNumberSpace::ApplicationData,
         );
 
@@ -714,6 +725,7 @@ mod test {
             Duration::from_millis(0),
             Duration::from_millis(200),
             now,
+            true,
             PacketNumberSpace::ApplicationData,
         );
 
@@ -876,6 +888,19 @@ mod test {
     }
 
     #[test]
+    fn on_packet_lost_below_minimum_window() {
+        let mut cc = CubicCongestionController::new(1000);
+        let now = s2n_quic_platform::time::now();
+        cc.congestion_window = cc.minimum_window();
+        cc.bytes_in_flight = BytesInFlight(cc.minimum_window());
+        cc.state = CongestionAvoidance(now);
+
+        cc.on_packets_lost(100, false, now + Duration::from_secs(10));
+
+        assert_eq!(cc.congestion_window, cc.minimum_window());
+    }
+
+    #[test]
     fn on_packet_lost_already_in_recovery() {
         let mut cc = CubicCongestionController::new(1000);
         let now = s2n_quic_platform::time::now();
@@ -904,7 +929,7 @@ mod test {
     }
 
     #[test]
-    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.2")]
+    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.2")]
     fn on_mtu_update_decrease() {
         let mut cc = CubicCongestionController::new(10000);
 
@@ -919,7 +944,7 @@ mod test {
     }
 
     #[test]
-    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.2")]
+    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.2")]
     fn on_mtu_update_increase() {
         let mut cc = CubicCongestionController::new(5000);
         cc.congestion_window = 100_000;
@@ -932,7 +957,7 @@ mod test {
     }
 
     #[test]
-    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#6.4")]
+    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.4")]
     fn on_packet_discarded() {
         let mut cc = CubicCongestionController::new(5000);
         cc.bytes_in_flight = BytesInFlight(10000);
@@ -943,7 +968,7 @@ mod test {
     }
 
     #[test]
-    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.8")]
+    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.8")]
     fn on_packet_ack_limited() {
         let mut cc = CubicCongestionController::new(5000);
         let now = s2n_quic_platform::time::now();
@@ -956,7 +981,7 @@ mod test {
     }
 
     #[test]
-    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.3.2")]
+    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.2")]
     fn on_packet_ack_recovery_to_congestion_avoidance() {
         let mut cc = CubicCongestionController::new(5000);
         let now = s2n_quic_platform::time::now();
@@ -979,7 +1004,7 @@ mod test {
     }
 
     #[test]
-    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.3.2")]
+    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.2")]
     fn on_packet_ack_slow_start_to_congestion_avoidance() {
         let mut cc = CubicCongestionController::new(5000);
         let now = s2n_quic_platform::time::now();
@@ -1047,6 +1072,7 @@ mod test {
             Duration::from_secs(0),
             Duration::from_millis(275),
             now,
+            true,
             PacketNumberSpace::ApplicationData,
         );
 

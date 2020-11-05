@@ -1,4 +1,4 @@
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#7
+//= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7
 //# Similar to TCP, packets containing only ACK frames do not count
 //# towards bytes in flight and are not congestion controlled.
 

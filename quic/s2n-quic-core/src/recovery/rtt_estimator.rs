@@ -4,19 +4,20 @@ use core::{
     time::Duration,
 };
 
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#6.2.2
+//= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.2
 //# When no previous RTT is available, the initial RTT SHOULD be set to 333ms,
 //# resulting in a 1 second initial timeout, as recommended in [RFC6298].
 pub const DEFAULT_INITIAL_RTT: Duration = Duration::from_millis(333);
 const ZERO_DURATION: Duration = Duration::from_millis(0);
 
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#6.1.2
+//= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.1.2
 //# The RECOMMENDED value of the timer granularity (kGranularity) is 1ms.
 pub const K_GRANULARITY: Duration = Duration::from_millis(1);
 
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.6.1
+//= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.1
 //# The RECOMMENDED value for kPersistentCongestionThreshold is 3, which
-//# is approximately equivalent to two TLPs before an RTO in TCP.
+//# results in behavior that is approximately equivalent to a TCP sender
+//# declaring an RTO after two TLPs.
 const K_PERSISTENT_CONGESTION_THRESHOLD: u32 = 3;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -40,18 +41,18 @@ pub struct RTTEstimator {
 impl RTTEstimator {
     /// Creates a new RTT Estimator with default initial values using the given `max_ack_delay`.
     pub fn new(max_ack_delay: Duration) -> Self {
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#5.3
-        //# Before any RTT samples are available, the initial RTT is used as rtt_sample.
-        let rtt_sample = DEFAULT_INITIAL_RTT;
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#5.3
-        //# When there are no samples for a network path, and on the first RTT
-        //# sample for the network path:
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3
+        //# Before any RTT samples are available for a new path or when the
+        //# estimator is reset, the estimator is initialized using the initial RTT;
+        //# see Section 6.2.2.
         //#
-        //# smoothed_rtt = rtt_sample
-        //# rttvar = rtt_sample / 2
-        let smoothed_rtt = rtt_sample;
-        let rttvar = rtt_sample / 2;
+        //# smoothed_rtt and rttvar are initialized as follows, where kInitialRtt
+        //# contains the initial RTT value:
+        //
+        //# smoothed_rtt = kInitialRtt
+        //# rttvar = kInitialRtt / 2
+        let smoothed_rtt = DEFAULT_INITIAL_RTT;
+        let rttvar = DEFAULT_INITIAL_RTT / 2;
 
         Self {
             latest_rtt: ZERO_DURATION,
@@ -95,56 +96,71 @@ impl RTTEstimator {
         mut ack_delay: Duration,
         rtt_sample: Duration,
         timestamp: Timestamp,
+        is_handshake_confirmed: bool,
         space: PacketNumberSpace,
     ) {
         self.latest_rtt = rtt_sample.max(Duration::from_millis(1));
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#5.2
-        //# min_rtt is set to the latest_rtt on the first RTT sample,
         if self.first_rtt_sample.is_none() {
             self.first_rtt_sample = Some(timestamp);
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.2
+            //# min_rtt MUST be set to the latest_rtt on the first RTT sample.
             self.min_rtt = self.latest_rtt;
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3
+            //# On the first RTT sample after initialization, smoothed_rtt and rttvar
+            //# are set as follows:
+            //#
+            //# smoothed_rtt = latest_rtt
+            //# rttvar = latest_rtt / 2
             self.smoothed_rtt = self.latest_rtt;
             self.rttvar = self.latest_rtt / 2;
             return;
         }
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#5.2
-        //# and to the lesser of min_rtt and latest_rtt on
-        //# subsequent samples.
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.2
+        //# min_rtt MUST be set to the lesser of min_rtt and latest_rtt
+        //# (Section 5.1) on all other samples.
         self.min_rtt = min(self.min_rtt, self.latest_rtt);
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#5.3
-        //# When adjusting an RTT sample using peer-reported acknowledgement
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3
+        //# when adjusting an RTT sample using peer-reported acknowledgement
         //# delays, an endpoint:
         //#
-        //# *  MUST ignore the Ack Delay field of the ACK frame for packets sent in the Initial
-        //#    and Handshake packet number space.
-        if space.is_initial() || space.is_handshake() {
+        //# *  MAY ignore the acknowledgement delay for Initial packets, since
+        //     these acknowledgements are not delayed by the peer (Section 13.2.1
+        //     of [QUIC-TRANSPORT]);
+        if space.is_initial() {
             ack_delay = ZERO_DURATION;
         }
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#5.3
-        //# *  MUST use the lesser of the value reported in Ack Delay field of
-        //#    the ACK frame and the peer's max_ack_delay transport parameter.
-        let ack_delay = min(ack_delay, self.max_ack_delay);
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3
+        //# SHOULD ignore the peer's max_ack_delay until the handshake is
+        //# confirmed;
+        if is_handshake_confirmed {
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3
+            //# *  MUST use the lesser of the acknowledgement delay and the peer's
+            //#    max_ack_delay after the handshake is confirmed; and
+            ack_delay = min(ack_delay, self.max_ack_delay);
+        }
 
         let mut adjusted_rtt = self.latest_rtt;
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#5.3
-        //# *  MUST NOT apply the adjustment if the resulting RTT sample
-        //#    is smaller than the min_rtt.
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3
+        //# *  MUST NOT subtract the acknowledgement delay from the RTT sample if
+        //     the resulting value is smaller than the min_rtt.
         if self.min_rtt + ack_delay < self.latest_rtt {
             adjusted_rtt -= ack_delay;
         }
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#5.3
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3
         //# On subsequent RTT samples, smoothed_rtt and rttvar evolve as follows:
         //#
-        //# ack_delay = min(Ack Delay in ACK Frame, max_ack_delay)
+        //# ack_delay = decoded acknowledgement delay from ACK frame
+        //# if (handshake confirmed):
+        //#   ack_delay = min(ack_delay, max_ack_delay)
         //# adjusted_rtt = latest_rtt
         //# if (min_rtt + ack_delay < latest_rtt):
-        //# adjusted_rtt = latest_rtt - ack_delay
+        //#   adjusted_rtt = latest_rtt - ack_delay
         //# smoothed_rtt = 7/8 * smoothed_rtt + 1/8 * adjusted_rtt
         //# rttvar_sample = abs(smoothed_rtt - adjusted_rtt)
         //# rttvar = 3/4 * rttvar + 1/4 * rttvar_sample
@@ -156,7 +172,7 @@ impl RTTEstimator {
     /// Calculates the persistent congestion threshold used for determining
     /// if persistent congestion is being encountered.
     pub fn persistent_congestion_threshold(&self) -> Duration {
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.6.1
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.1
         //# The persistent congestion duration is computed as follows:
         //#
         //# (smoothed_rtt + max(4*rttvar, kGranularity) + max_ack_delay) *
@@ -192,7 +208,7 @@ mod test {
     };
 
     /// Test the initial values before any RTT samples
-    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#5.3")]
+    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3")]
     #[test]
     fn initial_rtt() {
         let rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
@@ -211,6 +227,7 @@ mod test {
             Duration::from_millis(10),
             Duration::from_millis(0),
             now,
+            false,
             PacketNumberSpace::ApplicationData,
         );
         assert_eq!(rtt_estimator.min_rtt, Duration::from_millis(1));
@@ -219,9 +236,9 @@ mod test {
     }
 
     #[compliance::tests(
-    /// MUST use the lesser of the value reported in Ack Delay field of the ACK frame and the peer's
-    /// max_ack_delay transport parameter.
-    "https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#5.3")]
+    /// MUST use the lesser of the acknowledgement delay and the peer's
+    //  max_ack_delay after the handshake is confirmed;.
+    "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3")]
     #[test]
     fn max_ack_delay() {
         let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
@@ -230,12 +247,16 @@ mod test {
             Duration::from_millis(0),
             Duration::from_millis(100),
             now,
+            true,
             PacketNumberSpace::ApplicationData,
         );
+
+        // Update when the handshake is confirmed
         rtt_estimator.update_rtt(
             Duration::from_millis(1000),
             Duration::from_millis(200),
             now,
+            true,
             PacketNumberSpace::ApplicationData,
         );
         assert_eq!(
@@ -243,11 +264,27 @@ mod test {
             7 * Duration::from_millis(100) / 8 + Duration::from_millis(200 - 10) / 8
         );
         assert_eq!(rtt_estimator.first_rtt_sample(), Some(now));
+
+        let prev_smoothed_rtt = rtt_estimator.smoothed_rtt;
+
+        // Update when the handshake is not confirmed
+        rtt_estimator.update_rtt(
+            Duration::from_millis(50),
+            Duration::from_millis(200),
+            now,
+            false,
+            PacketNumberSpace::ApplicationData,
+        );
+
+        assert_eq!(
+            rtt_estimator.smoothed_rtt,
+            7 * prev_smoothed_rtt / 8 + Duration::from_millis(200 - 50) / 8
+        );
     }
 
     /// Test several rounds of RTT updates
-    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#5.2")]
-    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#5.3")]
+    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.2")]
+    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3")]
     #[test]
     fn update_rtt() {
         let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
@@ -258,6 +295,7 @@ mod test {
             Duration::from_millis(10),
             rtt_sample,
             now,
+            true,
             PacketNumberSpace::ApplicationData,
         );
         assert_eq!(rtt_estimator.min_rtt, rtt_sample);
@@ -274,6 +312,7 @@ mod test {
             ack_delay,
             rtt_sample,
             now + Duration::from_secs(1),
+            true,
             PacketNumberSpace::ApplicationData,
         );
 
@@ -296,6 +335,7 @@ mod test {
             ack_delay,
             rtt_sample,
             now + Duration::from_secs(2),
+            true,
             PacketNumberSpace::ApplicationData,
         );
 
@@ -309,11 +349,12 @@ mod test {
     }
 
     #[compliance::tests(
-    /// MUST ignore the Ack Delay field of the ACK frame for packets 
-    /// sent in the Initial and Handshake packet number space.
-    "https://tools.ietf.org/id/draft-ietf-quic-recovery-29.txt#5.3")]
+    /// MAY ignore the acknowledgement delay for Initial packets, since
+    //  these acknowledgements are not delayed by the peer (Section 13.2.1
+    //  of [QUIC-TRANSPORT]);
+    "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3")]
     #[test]
-    fn initial_and_handshake_space() {
+    fn initial_space() {
         let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
         let now = NoopClock.get_time();
         let rtt_sample = Duration::from_millis(500);
@@ -321,6 +362,7 @@ mod test {
             Duration::from_millis(10),
             rtt_sample,
             now,
+            true,
             PacketNumberSpace::Initial,
         );
 
@@ -331,22 +373,8 @@ mod test {
             Duration::from_millis(100),
             rtt_sample,
             now,
+            true,
             PacketNumberSpace::Initial,
-        );
-
-        assert_eq!(
-            rtt_estimator.smoothed_rtt,
-            7 * prev_smoothed_rtt / 8 + rtt_sample / 8
-        );
-
-        let prev_smoothed_rtt = rtt_estimator.smoothed_rtt;
-        let rtt_sample = Duration::from_millis(2000);
-
-        rtt_estimator.update_rtt(
-            Duration::from_millis(100),
-            rtt_sample,
-            now,
-            PacketNumberSpace::Handshake,
         );
 
         assert_eq!(
@@ -360,7 +388,7 @@ mod test {
     /// 
     /// (smoothed_rtt + max(4*rttvar, kGranularity) + max_ack_delay) *
     ///    kPersistentCongestionThreshold
-    "https://tools.ietf.org/id/draft-ietf-quic-recovery-31.txt#7.6.1")]
+    "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.1")]
     #[test]
     fn persistent_congestion_duration() {
         let max_ack_delay = Duration::from_millis(10);
