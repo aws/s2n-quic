@@ -23,7 +23,7 @@ pub struct Manager {
     // The packet space for this recovery manager
     space: PacketNumberSpace,
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#A.3
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.3
     //# The maximum amount of time by which the receiver
     //# intends to delay acknowledgments for packets in the Application
     //# Data packet number space, as defined by the eponymous transport
@@ -32,11 +32,11 @@ pub struct Manager {
     //# timers, reordering, or loss.
     max_ack_delay: Duration,
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#A.3
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.3
     //# The largest packet number acknowledged in the packet number space so far.
     largest_acked_packet: Option<PacketNumber>,
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#A.3
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.3
     //# An association of packet numbers in a packet number space to information about them.
     //  These are packets that are pending acknowledgement.
     sent_packets: SentPackets,
@@ -44,7 +44,7 @@ pub struct Manager {
     // Timer set when packets may be declared lost at a time in the future
     loss_timer: VirtualTimer,
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2
     //# A Probe Timeout (PTO) triggers sending one or two probe datagrams
     //# when ack-eliciting packets are not acknowledged within the expected
     //# period of time or the server may not have validated the client's
@@ -52,7 +52,7 @@ pub struct Manager {
     //# packets or acknowledgements.
     pto: Pto,
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#A.3
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.3
     //# The time the most recent ack-eliciting packet was sent.
     time_of_last_ack_eliciting_packet: Option<Timestamp>,
 
@@ -63,7 +63,7 @@ pub struct Manager {
     ecn_ce_counter: VarInt,
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.1.1
+//= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.1.1
 //# The RECOMMENDED initial value for the packet reordering threshold
 //# (kPacketThreshold) is 3, based on best practices for TCP loss
 //# detection ([RFC5681], [RFC6675]).  In order to remain similar to TCP,
@@ -92,11 +92,11 @@ impl Manager {
     }
 
     pub fn timers(&self) -> impl Iterator<Item = &Timestamp> {
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
-        //# The probe timer MUST NOT be set if the time threshold (Section 6.1.2)
-        //# loss detection timer is set.  The time threshold loss detection timer
-        //# is expected to both expire earlier than the PTO and be less likely to
-        //# spuriously retransmit data.
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+        //# The PTO timer MUST NOT be set if a timer is set for time threshold
+        //# loss detection; see Section 6.1.2.  A timer that is set for time
+        //# threshold loss detection will expire earlier than the PTO timer in
+        //# most cases and is less likely to spuriously retransmit data.
 
         core::iter::empty()
             .chain(self.pto.timers())
@@ -121,7 +121,7 @@ impl Manager {
                 .pto
                 .on_timeout(!self.sent_packets.is_empty(), timestamp);
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
             //# When a PTO timer expires, the PTO backoff MUST be increased,
             //# resulting in the PTO period being set to twice its current value.
             if pto_expired {
@@ -132,7 +132,7 @@ impl Manager {
         }
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#A.5
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.5
     //# After a packet is sent, information about the packet is stored.
     pub fn on_packet_sent<CC: CongestionController, Ctx: Context>(
         &mut self,
@@ -181,7 +181,7 @@ impl Manager {
         now: Timestamp,
         is_handshake_confirmed: bool,
     ) {
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.2.1
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.2.1
         //# If no additional data can be sent, the server's PTO timer MUST NOT be
         //# armed until datagrams have been received from the client
         if path.at_amplification_limit() {
@@ -190,7 +190,7 @@ impl Manager {
             return;
         }
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.2.1
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.2.1
         //# it is the client's responsibility to send packets to unblock the server
         //# until it is certain that the server has finished its address validation
         if self.sent_packets.is_empty() && path.is_peer_validated() {
@@ -213,7 +213,7 @@ impl Manager {
             now
         };
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
         //# An endpoint MUST NOT set its PTO timer for the application data
         //# packet number space until the handshake is confirmed.
         if self.space.is_application_data() && !is_handshake_confirmed {
@@ -293,7 +293,7 @@ impl Manager {
 
         let largest_newly_acked = largest_newly_acked.expect("There are newly acked packets");
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#5.1
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.1
         //# An RTT sample is generated using only the largest acknowledged packet in the
         //# received ACK frame. This is because a peer reports acknowledgment delays for
         //# only the largest acknowledged packet in an ACK frame.
@@ -324,7 +324,7 @@ impl Manager {
             }
         }
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.1.2
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.1.2
         //# Once a later packet within the same packet number space has been
         //# acknowledged, an endpoint SHOULD declare an earlier packet lost if it
         //# was sent a threshold amount of time in the past.
@@ -341,20 +341,20 @@ impl Manager {
             );
         }
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
         //# The PTO backoff factor is reset when an acknowledgement is received,
         //# except in the following case.  A server might take longer to respond
         //# to packets during the handshake than otherwise.  To protect such a
         //# server from repeated client probes, the PTO backoff is not reset at a
         //# client that is not yet certain that the server has finished
         //# validating the client's address.  That is, a client does not reset
-        //# the PTO backoff factor on receiving acknowledgements until the
-        //# handshake is confirmed; see Section 4.1.2 of [QUIC-TLS].
+        //# the PTO backoff factor on receiving acknowledgements in Initial
+        //# packets.
         if path.is_peer_validated() {
             path.reset_pto_backoff();
         }
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
         //# A sender SHOULD restart its PTO timer every time an ack-eliciting
         //# packet is sent or acknowledged,
         self.update_pto_timer(
@@ -386,7 +386,7 @@ impl Manager {
         }
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#A.10
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.10
     //# DetectAndRemoveLostPackets is called every time an ACK is received or the time threshold
     //# loss detection timer expires. This function operates on the sent_packets for that packet
     //# number space and returns a list of packets newly detected as lost.
@@ -483,17 +483,17 @@ impl Manager {
                     persistent_congestion_period = Duration::from_secs(0);
                 }
             } else {
-                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.1.2
+                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.1.2
                 //# If packets sent prior to the largest acknowledged packet cannot yet
                 //# be declared lost, then a timer SHOULD be set for the remaining time.
                 self.loss_timer
                     .set(unacked_sent_info.time_sent + time_threshold);
 
-                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
-                //# The probe timer MUST NOT be set if the time threshold (Section 6.1.2)
-                //# loss detection timer is set.  The time threshold loss detection timer
-                //# is expected to both expire earlier than the PTO and be less likely to
-                //# spuriously retransmit data.
+                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+                //# The PTO timer MUST NOT be set if a timer is set for time threshold
+                //# loss detection; see Section 6.1.2.  A timer that is set for time
+                //# threshold loss detection will expire earlier than the PTO timer in
+                //# most cases and is less likely to spuriously retransmit data.
                 self.pto.cancel();
 
                 // assuming sent_packets is ordered by packet number and sent time, all remaining
@@ -531,7 +531,7 @@ impl Manager {
     }
 
     fn calculate_loss_time_threshold(rtt_estimator: &RTTEstimator) -> Duration {
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.1.2
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.1.2
         //# The time threshold is:
         //#
         //# max(kTimeThreshold * max(smoothed_rtt, latest_rtt), kGranularity)
@@ -609,21 +609,21 @@ impl Pto {
     /// Called when a timeout has occurred. Returns true if the PTO timer had expired.
     pub fn on_timeout(&mut self, packets_in_flight: bool, timestamp: Timestamp) -> bool {
         if self.timer.poll_expiration(timestamp).is_ready() {
-            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.4
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
             //# When a PTO timer expires, a sender MUST send at least one ack-
             //# eliciting packet in the packet number space as a probe
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.2.1
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.2.1
             //# Since the server could be blocked until more datagrams are received
             //# from the client, it is the client's responsibility to send packets to
             //# unblock the server until it is certain that the server has finished
             //# its address validation
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.4
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
             //# An endpoint MAY send up to two full-
             //# sized datagrams containing ack-eliciting packets
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.4
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
             //# Sending two packets on PTO
             //# expiration increases resilience to packet drops, thus reducing the
             //# probability of consecutive PTO events.
@@ -641,17 +641,17 @@ impl Pto {
         match self.state {
             PtoState::RequiresTransmission(0) => self.state = PtoState::Idle,
             PtoState::RequiresTransmission(remaining) => {
-                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.4
+                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
                 //# When there is no data to send, the sender SHOULD send
                 //# a PING or other ack-eliciting frame in a single packet, re-arming the
                 //# PTO timer.
 
-                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.2.1
-                //# When the PTO fires, the client MUST send a Handshake packet if it has Handshake
-                //# keys, otherwise it MUST send an Initial packet in a UDP datagram of at least
-                //# 1200 bytes.
+                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.2.1
+                //# When the PTO fires, the client MUST send a Handshake packet if it
+                //# has Handshake keys, otherwise it MUST send an Initial packet in a
+                //# UDP datagram with a payload of at least 1200 bytes.
 
-                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#A.9
+                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.9
                 // Client sends an anti-deadlock packet: Initial is padded
                 // to earn more anti-amplification credit,
                 // a Handshake packet proves address ownership.
@@ -673,13 +673,13 @@ impl Pto {
         }
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
     //# A sender SHOULD restart its PTO timer every time an ack-eliciting
     //# packet is sent or acknowledged, when the handshake is confirmed
     //# (Section 4.1.2 of [QUIC-TLS]), or when Initial or Handshake keys are
-    //# discarded (Section 9 of [QUIC-TLS]).
+    //# discarded (Section 4.9 of [QUIC-TLS]).
     pub fn update<CC: CongestionController>(&mut self, path: &Path<CC>, base_timestamp: Timestamp) {
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
         //# When an ack-eliciting packet is transmitted, the sender schedules a
         //# timer for the PTO period as follows:
         //#
@@ -687,19 +687,19 @@ impl Pto {
 
         let mut pto_period = path.rtt_estimator.smoothed_rtt();
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
         //# The PTO period MUST be at least kGranularity, to avoid the timer
         //# expiring immediately.
         pto_period += max(4 * path.rtt_estimator.rttvar(), K_GRANULARITY);
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
         //# When the PTO is armed for Initial or Handshake packet number spaces,
         //# the max_ack_delay in the PTO period computation is set to 0, since
         //# the peer is expected to not delay these packets intentionally; see
         //# 13.2.1 of [QUIC-TRANSPORT].
         pto_period += self.max_ack_delay;
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
         //# Even when there are ack-
         //# eliciting packets in-flight in multiple packet number spaces, the
         //# exponential increase in probe timeout occurs across all spaces to
@@ -708,7 +708,7 @@ impl Pto {
         //# Handshake packet number space.
         pto_period *= path.pto_backoff;
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
         //# The PTO period is the amount of time that a sender ought to wait for
         //# an acknowledgement of a sent packet.
         self.timer.set(base_timestamp + pto_period);
@@ -753,7 +753,7 @@ mod test {
     };
     use std::collections::HashSet;
 
-    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#A.5")]
+    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.5")]
     #[test]
     fn on_packet_sent() {
         let space = PacketNumberSpace::ApplicationData;
@@ -837,7 +837,7 @@ mod test {
         );
     }
 
-    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#A.7")]
+    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.7")]
     #[test]
     fn on_ack_frame() {
         let space = PacketNumberSpace::ApplicationData;
@@ -967,7 +967,7 @@ mod test {
         assert_eq!(path.rtt_estimator.latest_rtt(), Duration::from_millis(3000));
     }
 
-    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#A.10")]
+    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.10")]
     #[test]
     fn detect_and_remove_lost_packets() {
         let space = PacketNumberSpace::ApplicationData;
@@ -1335,7 +1335,7 @@ mod test {
         assert_eq!(Some(true), path.congestion_controller.persistent_congestion);
     }
 
-    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1")]
+    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1")]
     #[test]
     fn update() {
         let space = PacketNumberSpace::ApplicationData;
@@ -1434,7 +1434,7 @@ mod test {
         );
         manager.update_pto_timer(&path, now, is_handshake_confirmed);
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
         //# When an ack-eliciting packet is transmitted, the sender schedules a
         //# timer for the PTO period as follows:
         //#
@@ -1448,7 +1448,7 @@ mod test {
         );
     }
 
-    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.1")]
+    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1")]
     #[test]
     fn on_timeout() {
         let space = PacketNumberSpace::ApplicationData;

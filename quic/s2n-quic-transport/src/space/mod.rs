@@ -65,7 +65,7 @@ macro_rules! packet_space_api {
 
         $(
             pub fn $discard(&mut self, path: &mut Path<Config::CongestionController>) {
-                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-30.txt#6.2.2
+                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.2
                 //# When Initial or Handshake keys are discarded, the PTO and loss
                 //# detection timers MUST be reset, because discarding keys indicates
                 //# forward progress and the loss detection timer might have been set for
