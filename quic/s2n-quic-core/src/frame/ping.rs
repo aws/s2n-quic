@@ -1,7 +1,6 @@
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#19.2
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.2
 //# Endpoints can use PING frames (type=0x01) to verify that their peers
-//# are still alive or to check reachability to the peer.  As shown in
-//# Figure 23 a PING frame contains no content.
+//# are still alive or to check reachability to the peer.
 
 macro_rules! ping_tag {
     () => {
@@ -9,7 +8,7 @@ macro_rules! ping_tag {
     };
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#19.2
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.2
 //# PING Frame {
 //#   Type (i) = 0x01,
 //# }

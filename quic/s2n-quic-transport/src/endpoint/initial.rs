@@ -26,11 +26,10 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             "only servers can accept new initial connections"
         );
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#14.1
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.1
         //# A client MUST expand the payload of all UDP datagrams carrying
-        //# Initial packets to at least the smallest allowed maximum packet size
-        //# (1200 bytes) by adding PADDING frames to the Initial packet or by
-        //# coalescing the Initial packet
+        //# Initial packets to at least the smallest allowed maximum datagram
+        //# size of 1200 bytes
         if datagram.payload_len < 1200 {
             return Err(TransportError::PROTOCOL_VIOLATION.with_reason("packet too small"));
         }
@@ -38,7 +37,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         let destination_connection_id: connection::Id =
             packet.destination_connection_id().try_into()?;
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#7.2
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.2
         //# When an Initial packet is sent by a client that has not previously
         //# received an Initial or Retry packet from the server, the client
         //# populates the Destination Connection ID field with an unpredictable
@@ -126,7 +125,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         transport_parameters.initial_max_streams_bidi = max.try_into().unwrap();
         transport_parameters.initial_max_streams_uni = max.try_into().unwrap();
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#7.3
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.3
         //# A server includes the Destination Connection ID field from the first
         //# Initial packet it received from the client in the
         //# original_destination_connection_id transport parameter
@@ -134,7 +133,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             .try_into()
             .expect("connection ID already validated");
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#7.3
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.3
         //# Each endpoint includes the value of the Source Connection ID field
         //# from the first Initial packet it sent in the
         //# initial_source_connection_id transport parameter

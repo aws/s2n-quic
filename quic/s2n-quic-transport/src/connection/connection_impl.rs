@@ -53,10 +53,10 @@ enum ConnectionState {
     /// The connection is active
     Active,
     /// The connection is closing, as described in
-    /// https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#10.1
+    /// https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.1
     Closing,
     /// The connection is draining, as described in
-    /// https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#10.1
+    /// https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.1
     Draining,
     /// The connection was drained, and is in its terminal state.
     /// The connection will be removed from the endpoint when it reached this state.
@@ -261,7 +261,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Initiates closing the connection as described in
-    /// https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#10
+    /// https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10
     ///
     /// This method can be called for any of the close reasons:
     /// - Idle timeout
@@ -283,7 +283,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         // TODO: Rember close reason
         // TODO: Build a CONNECTION_CLOSE frame based on the keys that are available
         // at the moment. We need to use the highest set of available keys as
-        // described in https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#10.3
+        // described in https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
 
         // We are not interested in this timer anymore
         // TODO: There might be more such timers need to get added in the future

@@ -1,6 +1,6 @@
 use crate::varint::VarInt;
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#19.4
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.4
 //# An endpoint uses a RESET_STREAM frame (type=0x04) to abruptly
 //# terminate the sending part of a stream.
 
@@ -10,29 +10,27 @@ macro_rules! reset_stream_tag {
     };
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#19.4
-//# The RESET_STREAM frame is shown in Figure 27.
-//#
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.4
 //# RESET_STREAM Frame {
 //#   Type (i) = 0x04,
 //#   Stream ID (i),
 //#   Application Protocol Error Code (i),
 //#   Final Size (i),
 //# }
-//#
-//#                  Figure 27: RESET_STREAM Frame Format
-//#
+
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.4
 //# RESET_STREAM frames contain the following fields:
 //#
 //# Stream ID:  A variable-length integer encoding of the Stream ID of
 //#    the stream being terminated.
 //#
 //# Application Protocol Error Code:  A variable-length integer
-//#    containing the application protocol error code (see Section 20.1)
-//#    which indicates why the stream is being closed.
+//#    containing the application protocol error code (see Section 20.2)
+//#    that indicates why the stream is being closed.
 //#
 //# Final Size:  A variable-length integer indicating the final size of
-//#    the stream by the RESET_STREAM sender, in unit of bytes.
+//#    the stream by the RESET_STREAM sender, in unit of bytes; see
+//#    Section 4.5.
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct ResetStream {

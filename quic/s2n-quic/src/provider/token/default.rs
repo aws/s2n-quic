@@ -248,7 +248,7 @@ impl super::Format for Format {
         Some(())
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#8.1.3
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.3
     //# When a server receives an Initial packet with an address validation
     //# token, it MUST attempt to validate the token, unless it has already
     //# completed address validation.
@@ -322,7 +322,7 @@ impl Header {
         (self.0 & KEY_ID_MASK) >> KEY_ID_SHIFT
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#8.1.1
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.1
     //# A token sent in a NEW_TOKEN frames or a Retry packet MUST be
     //# constructed in a way that allows the server to identify how it was
     //# provided to a client.  These tokens are carried in the same field,
@@ -336,7 +336,7 @@ impl Header {
     }
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#8.1.4
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.4
 //#   There is no need for a single well-defined format for the token
 //#   because the server that generates the token also consumes it.
 #[derive(Copy, Clone, Debug, FromBytes, AsBytes, Unaligned)]
@@ -344,13 +344,13 @@ impl Header {
 struct Token {
     header: Header,
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#8.1.4
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.4
     //# An address validation token MUST be difficult to guess.  Including a
     //# large enough random value in the token would be sufficient, but this
     //# depends on the server remembering the value it sends to clients.
     nonce: [u8; 32],
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#8.1.4
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.4
     //# A token-based scheme allows the server to offload any state
     //# associated with validation to the client.  For this design to work,
     //# the token MUST be covered by integrity protection against

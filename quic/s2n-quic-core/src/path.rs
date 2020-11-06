@@ -14,11 +14,8 @@ pub enum State {
     Pending { tx_bytes: u32, rx_bytes: u32 },
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#14.2
-//# If a QUIC endpoint determines that the PMTU between any pair of local
-//# and remote IP addresses has fallen below the smallest allowed maximum
-//# packet size of 1200 bytes, it MUST immediately cease sending QUIC
-//# packets
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14
+//# The maximum datagram size MUST be at least 1200 bytes.
 pub const MINIMUM_MTU: u16 = 1200;
 
 // Initial PTO backoff multiplier is 1 indicating no additional increase to the backoff.
@@ -41,9 +38,9 @@ pub struct Path<CC: CongestionController> {
     /// Maximum transmission unit of the path
     mtu: u16,
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#8.3
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
     //# To initiate path validation, an endpoint sends a PATH_CHALLENGE frame
-    //# containing a random payload on the path to be validated.
+    //# containing an unpredictable payload on the path to be validated.
     pub challenge: Option<[u8; path_challenge::DATA_LEN]>,
 
     /// True if the path has been validated by the peer
@@ -114,7 +111,7 @@ impl<CC: CongestionController> Path<CC> {
         self.peer_validated
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#8.1
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1
     //# Prior to validating the client address, servers MUST NOT send more
     //# than three times as many bytes as the number of bytes they have
     //# received.

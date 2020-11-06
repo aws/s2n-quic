@@ -7,8 +7,8 @@ use s2n_codec::{
     decoder_parameterized_value, DecoderBuffer, DecoderBufferMut, Encoder, EncoderValue,
 };
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#19.6
-//# The CRYPTO frame (type=0x06) is used to transmit cryptographic
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.6
+//# A CRYPTO frame (type=0x06) is used to transmit cryptographic
 //# handshake messages.
 
 macro_rules! crypto_tag {
@@ -17,18 +17,15 @@ macro_rules! crypto_tag {
     };
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#19.6
-//# The CRYPTO frame is shown in Figure 29.
-//#
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.6
 //# CRYPTO Frame {
 //#   Type (i) = 0x06,
 //#   Offset (i),
 //#   Length (i),
 //#   Crypto Data (..),
 //# }
-//#
-//#                     Figure 29: CRYPTO Frame Format
-//#
+
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.6
 //# CRYPTO frames contain the following fields:
 //#
 //# Offset:  A variable-length integer specifying the byte offset in the

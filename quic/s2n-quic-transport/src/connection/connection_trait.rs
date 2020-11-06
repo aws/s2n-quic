@@ -42,7 +42,7 @@ pub trait ConnectionTrait: Sized {
     fn internal_connection_id(&self) -> InternalConnectionId;
 
     /// Initiates closing the connection as described in
-    /// https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#10
+    /// https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10
     ///
     /// This method can be called for any of the close reasons:
     /// - Idle timeout

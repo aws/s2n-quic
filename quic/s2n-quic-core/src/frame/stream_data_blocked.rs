@@ -1,9 +1,7 @@
 use crate::varint::VarInt;
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#19.13
-//# A sender SHOULD send a STREAM_DATA_BLOCKED frame (type=0x15) when it
-//# wishes to send data, but is unable to due to stream-level flow
-//# control.  This frame is analogous to DATA_BLOCKED (Section 19.12).
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.13
+//# This frame is analogous to DATA_BLOCKED (Section 19.12).
 
 macro_rules! stream_data_blocked_tag {
     () => {
@@ -11,21 +9,18 @@ macro_rules! stream_data_blocked_tag {
     };
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#19.13
-//# The STREAM_DATA_BLOCKED frame is shown in Figure 36.
-//#
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.13
 //# STREAM_DATA_BLOCKED Frame {
 //#   Type (i) = 0x15,
 //#   Stream ID (i),
 //#   Maximum Stream Data (i),
 //# }
-//#
-//#              Figure 36: STREAM_DATA_BLOCKED Frame Format
-//#
+
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.13
 //# STREAM_DATA_BLOCKED frames contain the following fields:
 //#
-//# Stream ID:  A variable-length integer indicating the stream which is
-//#    flow control blocked.
+//# Stream ID:  A variable-length integer indicating the stream that is
+//#    blocked due to flow control.
 //#
 //# Maximum Stream Data:  A variable-length integer indicating the offset
 //#    of the stream at which the blocking occurred.
