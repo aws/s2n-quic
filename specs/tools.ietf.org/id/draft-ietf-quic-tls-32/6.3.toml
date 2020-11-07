@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.3
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.3"
+
 # 6.3.  Timing of Receive Key Generation
 #
 # Endpoints responding to an apparent key update MUST NOT generate a
@@ -32,7 +32,6 @@
 # performance, but this is not essential.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.3"
 level = "MUST"
 quote = '''
 Endpoints responding to an apparent key update MUST NOT generate a
@@ -41,7 +40,6 @@ was invalid (see Section 9.4).
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.3"
 level = "MAY"
 quote = '''
 An endpoint MAY
@@ -52,7 +50,6 @@ packets.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.3"
 level = "MAY"
 quote = '''
 Endpoints MAY instead defer the creation of the next set of
@@ -61,7 +58,6 @@ completes, up to three times the PTO; see Section 6.5.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.3"
 level = "SHOULD"
 quote = '''
 Once generated, the next set of packet protection keys SHOULD be
@@ -70,7 +66,6 @@ discarded.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.3"
 level = "MUST"
 quote = '''
 For this reason, endpoints MUST be able to retain two sets of packet

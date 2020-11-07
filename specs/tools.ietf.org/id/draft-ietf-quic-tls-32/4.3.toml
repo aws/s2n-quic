@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.3
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.3"
+
 # 4.3.  ClientHello Size
 #
 # The first Initial packet from a client contains the start or all of
@@ -41,7 +41,6 @@
 # size of the packet as necessary.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.3"
 level = "MAY"
 quote = '''
 To

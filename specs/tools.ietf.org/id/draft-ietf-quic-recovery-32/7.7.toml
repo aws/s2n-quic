@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.7
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.7"
+
 # 7.7.  Pacing
 #
 # A sender SHOULD pace sending of all in-flight packets based on input
@@ -48,7 +48,6 @@
 # the above function.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.7"
 level = "SHOULD"
 quote = '''
 A sender SHOULD pace sending of all in-flight packets based on input
@@ -56,14 +55,12 @@ from the congestion controller.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.7"
 level = "MUST"
 quote = '''
 Senders MUST either use pacing or limit such bursts.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.7"
 level = "SHOULD"
 quote = '''
 Senders SHOULD limit bursts to the initial congestion window; see
@@ -71,7 +68,6 @@ Section 7.2.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.7"
 level = "MAY"
 quote = '''
 A sender with knowledge that the network path to the
@@ -79,7 +75,6 @@ receiver can absorb larger bursts MAY use a higher limit.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.7"
 level = "SHOULD"
 quote = '''
 Packets containing only ACK frames SHOULD therefore not be

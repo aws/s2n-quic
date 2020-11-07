@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.2.2
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.2.2"
+
 # 10.2.2.  Draining Connection State
 #
 # The draining state is entered once an endpoint receives a
@@ -24,7 +24,6 @@
 # packets on this connection.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.2.2"
 level = "MUST"
 quote = '''
 While otherwise identical to the closing state, an
@@ -32,7 +31,6 @@ endpoint in the draining state MUST NOT send any packets.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.2.2"
 level = "MAY"
 quote = '''
 An endpoint that receives a CONNECTION_CLOSE frame MAY send a single
@@ -41,7 +39,6 @@ draining state, using a NO_ERROR code if appropriate.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.2.2"
 level = "MUST"
 quote = '''
 An endpoint
@@ -49,7 +46,6 @@ MUST NOT send further packets.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.2.2"
 level = "MAY"
 quote = '''
 An endpoint MAY enter the draining state from the closing state if it
@@ -58,7 +54,6 @@ also closing or draining.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.2.2"
 level = "SHOULD"
 quote = '''
 In this case, the draining state SHOULD

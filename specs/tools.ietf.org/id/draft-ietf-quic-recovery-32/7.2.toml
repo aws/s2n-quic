@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.2
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.2"
+
 # 7.2.  Initial and Minimum Congestion Window
 #
 # QUIC begins every connection in slow start with the congestion window
@@ -29,7 +29,6 @@
 # value is 2 * max_datagram_size.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.2"
 level = "SHOULD"
 quote = '''
 Endpoints SHOULD use an initial congestion
@@ -39,7 +38,6 @@ size.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.2"
 level = "SHOULD"
 quote = '''
 If the maximum datagram size changes during the connection, the
@@ -47,7 +45,6 @@ initial congestion window SHOULD be recalculated with the new size.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.2"
 level = "SHOULD"
 quote = '''
 If the maximum datagram size is decreased in order to complete the
@@ -56,7 +53,6 @@ congestion window.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.2"
 level = "RECOMMENDED"
 quote = '''
 The RECOMMENDED

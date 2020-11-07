@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7"
+
 # 7.  Congestion Control
 #
 # This document specifies a sender-side congestion controller for QUIC
@@ -30,7 +30,6 @@
 # when entering recovery (see Section 7.3.2).
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7"
 level = "MUST"
 quote = '''
 If a sender uses a different controller than that specified in this
@@ -39,7 +38,6 @@ control guidelines specified in Section 3.1 of [RFC8085].
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7"
 level = "MAY"
 quote = '''
 Unlike
@@ -50,7 +48,6 @@ mechanism for doing so.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7"
 level = "MUST"
 quote = '''
 An endpoint MUST NOT send a packet if it would cause bytes_in_flight

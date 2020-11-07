@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.1
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.1"
+
 # 9.3.1.  Peer Address Spoofing
 #
 # It is possible that a peer is spoofing its source address to cause an
@@ -24,7 +24,6 @@
 # it does not need to limit its sending rate.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.1"
 level = "MUST"
 quote = '''
 Until a peer's address is deemed valid, an endpoint MUST
@@ -32,7 +31,6 @@ limit the rate at which it sends data to this address.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.1"
 level = "MUST"
 quote = '''
 The endpoint
@@ -42,7 +40,6 @@ per estimated round-trip time (kMinimumWindow, as defined in
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.1"
 level = "SHOULD"
 quote = '''
 Note that since the endpoint will not have any round-trip

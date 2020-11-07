@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.1
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.1"
+
 # 6.1.  Acknowledgement-Based Detection
 #
 # Acknowledgement-based loss detection implements the spirit of TCP's
@@ -31,7 +31,6 @@
 # thresholds to minimize recovery latency.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.1"
 level = "MAY"
 quote = '''
 Implementations with adaptive time

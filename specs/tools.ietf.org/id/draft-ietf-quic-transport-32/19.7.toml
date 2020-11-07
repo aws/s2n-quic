@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.7
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.7"
+
 # 19.7.  NEW_TOKEN Frames
 #
 # A server sends a NEW_TOKEN frame (type=0x07) to provide the client
@@ -37,14 +37,12 @@
 # PROTOCOL_VIOLATION.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.7"
 level = "MUST"
 quote = '''
 The token MUST NOT be empty.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.7"
 level = "MUST"
 quote = '''
 An endpoint MUST treat
@@ -53,14 +51,12 @@ connection error of type FRAME_ENCODING_ERROR.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.7"
 level = "MUST"
 quote = '''
 Clients MUST NOT send NEW_TOKEN frames.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.7"
 level = "MUST"
 quote = '''
 Servers MUST treat receipt

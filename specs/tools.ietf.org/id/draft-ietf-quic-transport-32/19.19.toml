@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.19
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.19"
+
 # 19.19.  CONNECTION_CLOSE Frames
 #
 # An endpoint sends a CONNECTION_CLOSE frame (type=0x1c or 0x1d) to
@@ -55,7 +55,6 @@
 # code of APPLICATION_ERROR in an Initial or a Handshake packet.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.19"
 level = "SHOULD"
 quote = '''
 This SHOULD be a UTF-8

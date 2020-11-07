@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#11.1
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#11.1"
+
 # 11.1.  Connection Errors
 #
 # Errors that result in the connection being unusable, such as an
@@ -27,7 +27,6 @@
 # process (Section 10.3).
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#11.1"
 level = "MUST"
 quote = '''
 Errors that result in the connection being unusable, such as an
@@ -37,7 +36,6 @@ CONNECTION_CLOSE frame (Section 19.19).
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#11.1"
 level = "SHOULD"
 quote = '''
 An

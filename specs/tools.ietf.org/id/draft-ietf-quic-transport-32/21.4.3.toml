@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#21.4.3
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#21.4.3"
+
 # 21.4.3.  Request Forgery with Preferred Addresses
 #
 # Servers can specify a preferred address, which clients then migrate
@@ -18,7 +18,6 @@
 # used as further mitigation.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#21.4.3"
 level = "MUST"
 quote = '''
 A client MUST NOT send non-probing frames to a preferred address

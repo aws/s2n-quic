@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.18
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.18"
+
 # 19.18.  PATH_RESPONSE Frames
 #
 # A PATH_RESPONSE frame (type=0x1b) is sent in response to a
@@ -20,7 +20,6 @@
 # MAY generate a connection error of type PROTOCOL_VIOLATION.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.18"
 level = "MAY"
 quote = '''
 If the content of a PATH_RESPONSE frame does not match the content of

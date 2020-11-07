@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9.1
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9.1"
+
 # 4.9.1.  Discarding Initial Keys
 #
 # Packets protected with Initial secrets (Section 5.2) are not
@@ -20,7 +20,6 @@
 # encryption level and ignoring any outstanding Initial packets.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9.1"
 level = "MUST"
 quote = '''
 Thus, a client MUST discard Initial keys when it first sends a
@@ -29,7 +28,6 @@ successfully processes a Handshake packet.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9.1"
 level = "MUST"
 quote = '''
 Thus, a client MUST discard Initial keys when it first sends a
@@ -38,7 +36,6 @@ successfully processes a Handshake packet.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9.1"
 level = "MUST"
 quote = '''
 Endpoints MUST NOT send

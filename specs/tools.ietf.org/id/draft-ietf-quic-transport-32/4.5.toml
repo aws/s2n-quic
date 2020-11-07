@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.5
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.5"
+
 # 4.5.  Stream Final Size
 #
 # The final size is the amount of flow control credit that is consumed
@@ -36,7 +36,6 @@
 # for closed streams, which could mean a significant state commitment.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.5"
 level = "MUST"
 quote = '''
 The receiver MUST use the final size of the stream to
@@ -45,7 +44,6 @@ controller.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.5"
 level = "MUST"
 quote = '''
 An endpoint MUST NOT send data on a stream at or beyond the final
@@ -53,7 +51,6 @@ size.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.5"
 level = "SHOULD"
 quote = '''
 If a
@@ -63,7 +60,6 @@ FINAL_SIZE_ERROR error; see Section 11.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.5"
 level = "SHOULD"
 quote = '''
 A receiver SHOULD treat

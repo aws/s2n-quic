@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2.6
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2.6"
+
 # 13.2.6.  ACK Frames and Packet Protection
 #
 # ACK frames MUST only be carried in a packet that has the same packet
@@ -15,7 +15,6 @@
 # server protected by the 1-RTT keys.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2.6"
 level = "MUST"
 quote = '''
 ACK frames MUST only be carried in a packet that has the same packet
@@ -23,7 +22,6 @@ number space as the packet being acknowledged; see Section 12.1.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2.6"
 level = "MUST"
 quote = '''
 For
@@ -32,7 +30,6 @@ acknowledged in packets that are also protected with 1-RTT keys.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2.6"
 level = "MUST"
 quote = '''
 Packets that a client sends with 0-RTT packet protection MUST be

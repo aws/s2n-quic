@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3"
+
 # 9.3.  Responding to Connection Migration
 #
 # Receiving a packet from a new peer address containing a non-probing
@@ -34,7 +34,6 @@
 # address validation tokens (Section 8) to the client.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3"
 level = "MUST"
 quote = '''
 If the recipient permits the migration, it MUST send subsequent
@@ -44,7 +43,6 @@ validation is not already underway.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3"
 level = "MUST"
 quote = '''
 If the recipient permits the migration, it MUST send subsequent
@@ -54,7 +52,6 @@ validation is not already underway.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3"
 level = "MUST"
 quote = '''
 An endpoint MAY send data to an unvalidated peer address, but it MUST
@@ -63,7 +60,6 @@ Section 9.3.2.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3"
 level = "MAY"
 quote = '''
 An endpoint MAY skip validation of a peer address if
@@ -71,7 +67,6 @@ that address has been seen recently.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3"
 level = "SHOULD"
 quote = '''
 After verifying a new client address, the server SHOULD send new

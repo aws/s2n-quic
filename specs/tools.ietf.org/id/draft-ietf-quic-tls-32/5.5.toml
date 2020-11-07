@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.5
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.5"
+
 # 5.5.  Receiving Protected Packets
 #
 # Once an endpoint successfully receives a packet with a given packet
@@ -16,7 +16,6 @@
 # decoded incorrectly if they are delayed significantly.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.5"
 level = "MUST"
 quote = '''
 Once an endpoint successfully receives a packet with a given packet
@@ -27,7 +26,6 @@ packet protection key (see Section 6).
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.5"
 level = "MUST"
 quote = '''
 Similarly, a packet that

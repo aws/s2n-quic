@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.7
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.7"
+
 # 4.7.  HelloRetryRequest
 #
 # The HelloRetryRequest message (see Section 4.1.4 of [TLS13]) can be
@@ -12,7 +12,6 @@
 # Retry feature; see Section 8.1 of [QUIC-TRANSPORT].
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.7"
 level = "SHOULD"
 quote = '''
 Although it is in principle possible to use this feature

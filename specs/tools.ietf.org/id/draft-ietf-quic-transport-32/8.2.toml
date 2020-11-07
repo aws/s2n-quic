@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2"
+
 # 8.2.  Path Validation
 #
 # Path validation is used by both peers during connection migration
@@ -53,7 +53,6 @@
 # connection ID.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2"
 level = "MAY"
 quote = '''
 An endpoint MAY include other frames with the PATH_CHALLENGE and

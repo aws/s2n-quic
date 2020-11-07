@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.2.1
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.2.1"
+
 # 6.2.2.1.  Before Address Validation
 #
 # Until the server has validated the client's address on the path, the
@@ -24,7 +24,6 @@
 # bytes.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.2.1"
 level = "MUST"
 quote = '''
 If
@@ -34,7 +33,6 @@ packets sent on PTO count against the anti-amplification limit.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.2.1"
 level = "MUST"
 quote = '''
 That is,
@@ -45,7 +43,6 @@ packets in flight.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.2.1"
 level = "MUST"
 quote = '''
 When the PTO fires, the client MUST send a
@@ -55,7 +52,6 @@ bytes.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.2.1"
 level = "MUST"
 quote = '''
 When the PTO fires, the client MUST send a

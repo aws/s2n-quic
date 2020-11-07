@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#9.6
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#9.6"
+
 # 9.6.  Key Diversity
 #
 # In using TLS, the central key schedule of TLS is used.  As a result
@@ -24,7 +24,6 @@
 # calculating initial secrets.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#9.6"
 level = "SHOULD"
 quote = '''
 To preserve this separation, a new version of QUIC SHOULD define new
@@ -33,7 +32,6 @@ header protection keys.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#9.6"
 level = "SHOULD"
 quote = '''
 New QUIC versions SHOULD define a new salt value used in

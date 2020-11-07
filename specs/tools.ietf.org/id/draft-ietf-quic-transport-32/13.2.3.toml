@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2.3
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2.3"
+
 # 13.2.3.  Managing ACK Ranges
 #
 # When an ACK frame is sent, one or more ranges of acknowledged packets
@@ -53,7 +53,6 @@
 # processed, it is still possible for acknowledgments to be lost.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2.3"
 level = "SHOULD"
 quote = '''
 ACK frames SHOULD always acknowledge the most recently received
@@ -64,7 +63,6 @@ the frames it contains.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2.3"
 level = "SHOULD"
 quote = '''
 After receiving
@@ -73,7 +71,6 @@ those acknowledged ACK Ranges.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2.3"
 level = "MAY"
 quote = '''
 Receivers MAY also limit ACK
@@ -82,7 +79,6 @@ capacity that acknowledgments consume.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2.3"
 level = "MUST"
 quote = '''
 A receiver MUST retain an ACK Range unless it can ensure that it will
@@ -90,7 +86,6 @@ not subsequently accept packets with numbers in that range.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2.3"
 level = "MUST"
 quote = '''
 Receivers can discard all ACK Ranges, but they MUST retain the
@@ -100,7 +95,6 @@ Section 17.1.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2.3"
 level = "SHOULD"
 quote = '''
 A receiver SHOULD include an ACK Range containing the largest

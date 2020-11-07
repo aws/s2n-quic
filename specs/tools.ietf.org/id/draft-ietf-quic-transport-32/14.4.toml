@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.4
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.4"
+
 # 14.4.  Sending QUIC PMTU Probes
 #
 # PMTU probes are ack-eliciting packets.
@@ -14,7 +14,6 @@
 # transmission by an application.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.4"
 level = "SHOULD"
 quote = '''
 Loss of

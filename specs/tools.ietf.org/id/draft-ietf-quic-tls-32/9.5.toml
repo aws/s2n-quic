@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#9.5
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#9.5"
+
 # 9.5.  Header Protection Timing Side-Channels
 #
 # An attacker could guess values for packet numbers or Key Phase and
@@ -37,7 +37,6 @@
 # receive keys need to be retained at any point in time.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#9.5"
 level = "MUST"
 quote = '''
 For authentication to be
@@ -47,7 +46,6 @@ be applied together without timing and other side-channels.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#9.5"
 level = "MUST"
 quote = '''
 For the sending of packets, construction and protection of packet
@@ -56,7 +54,6 @@ would reveal the packet number or its encoded size.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#9.5"
 level = "SHOULD"
 quote = '''
 After

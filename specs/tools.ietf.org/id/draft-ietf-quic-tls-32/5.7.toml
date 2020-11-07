@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.7
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.7"
+
 # 5.7.  Receiving Out-of-Order Protected Packets
 #
 # Due to reordering and loss, protected packets might be received by an
@@ -56,7 +56,6 @@
 # complete.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.7"
 level = "MUST"
 quote = '''
 Endpoints in either role MUST NOT decrypt 1-RTT packets from
@@ -64,7 +63,6 @@ their peer prior to completing the handshake.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.7"
 level = "MUST"
 quote = '''
 A server MUST NOT process
@@ -73,7 +71,6 @@ complete.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.7"
 level = "MAY"
 quote = '''
 Received
@@ -82,7 +79,6 @@ and used once the handshake is complete.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.7"
 level = "MAY"
 quote = '''
 The server MAY retain these packets for
@@ -90,7 +86,6 @@ later decryption in anticipation of receiving a ClientHello.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.7"
 level = "MUST"
 quote = '''
 Even if it has 1-RTT secrets, a client MUST NOT

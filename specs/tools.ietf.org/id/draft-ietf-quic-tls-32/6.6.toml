@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6"
+
 # 6.6.  Limits on AEAD Usage
 #
 # This document sets usage limits for AEAD algorithms to ensure that
@@ -83,7 +83,6 @@
 # varying usage conditions.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6"
 level = "MUST"
 quote = '''
 Endpoints MUST count the number of encrypted packets for each set of
@@ -91,7 +90,6 @@ keys.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6"
 level = "MUST"
 quote = '''
 If the total number of encrypted packets with the same key
@@ -100,7 +98,6 @@ MUST stop using those keys.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6"
 level = "MUST"
 quote = '''
 Endpoints MUST initiate a key update
@@ -109,7 +106,6 @@ for the selected AEAD permits.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6"
 level = "MUST"
 quote = '''
 If a key update is not possible or
@@ -119,7 +115,6 @@ packets.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6"
 level = "RECOMMENDED"
 quote = '''
 It is RECOMMENDED that endpoints immediately close the
@@ -128,7 +123,6 @@ reaching a state where key updates are not possible.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6"
 level = "MUST"
 quote = '''
 In addition to counting packets sent, endpoints MUST count the number
@@ -137,7 +131,6 @@ connection.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6"
 level = "MUST"
 quote = '''
 If the total number of received packets that fail
@@ -148,7 +141,6 @@ AEAD_LIMIT_REACHED and not process any more packets.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6"
 level = "MAY"
 quote = '''
 Endpoints that limit the size of packets MAY use higher
@@ -156,7 +148,6 @@ confidentiality and integrity limits; see Appendix B for details.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6"
 level = "MAY"
 quote = '''
 Future analyses and specifications MAY relax confidentiality or
@@ -164,7 +155,6 @@ integrity limits for an AEAD.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6"
 level = "MUST"
 quote = '''
 Any TLS cipher suite that is specified for use with QUIC MUST define
@@ -173,7 +163,6 @@ margins for confidentiality and integrity.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6"
 level = "MUST"
 quote = '''
 That is, limits MUST be

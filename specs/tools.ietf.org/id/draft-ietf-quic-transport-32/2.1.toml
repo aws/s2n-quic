@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#2.1
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#2.1"
+
 # 2.1.  Stream Types and Identifiers
 #
 # Streams can be unidirectional or bidirectional.  Unidirectional
@@ -46,7 +46,6 @@
 # numbered stream IDs also being opened.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#2.1"
 level = "MUST"
 quote = '''
 A QUIC

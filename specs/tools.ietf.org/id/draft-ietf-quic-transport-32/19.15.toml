@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15"
+
 # 19.15.  NEW_CONNECTION_ID Frames
 #
 # An endpoint sends a NEW_CONNECTION_ID frame (type=0x18) to provide
@@ -80,7 +80,6 @@
 # ID, unless it has already done so for that sequence number.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15"
 level = "MUST"
 quote = '''
 Values less than 1 and greater than 20 are invalid
@@ -89,7 +88,6 @@ FRAME_ENCODING_ERROR.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15"
 level = "MUST"
 quote = '''
 An endpoint MUST NOT send this frame if it currently requires that
@@ -97,7 +95,6 @@ its peer send packets with a zero-length Destination Connection ID.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15"
 level = "MUST"
 quote = '''
 An endpoint that is sending packets with a zero-length Destination
@@ -106,7 +103,6 @@ connection error of type PROTOCOL_VIOLATION.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15"
 level = "MUST"
 quote = '''
 Receipt
@@ -115,7 +111,6 @@ error.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15"
 level = "MAY"
 quote = '''
 If an endpoint receives a NEW_CONNECTION_ID frame that repeats a
@@ -126,7 +121,6 @@ a connection error of type PROTOCOL_VIOLATION.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15"
 level = "MUST"
 quote = '''
 The Retire Prior To field MUST be less
@@ -134,7 +128,6 @@ than or equal to the Sequence Number field.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15"
 level = "MUST"
 quote = '''
 Receiving a value
@@ -143,7 +136,6 @@ error of type FRAME_ENCODING_ERROR.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15"
 level = "MUST"
 quote = '''
 A receiver
@@ -152,7 +144,6 @@ largest received Retire Prior To value.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15"
 level = "MUST"
 quote = '''
 An endpoint that receives a NEW_CONNECTION_ID frame with a sequence

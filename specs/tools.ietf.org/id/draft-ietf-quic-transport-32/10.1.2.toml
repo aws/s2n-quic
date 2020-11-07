@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.1.2
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.1.2"
+
 # 10.1.2.  Deferring Idle Timeout
 #
 # An endpoint might need to send ack-eliciting packets to avoid an idle
@@ -32,7 +32,6 @@
 # middleboxes from losing state for UDP flows [GATEWAY].
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.1.2"
 level = "SHOULD"
 quote = '''
 Application protocols that use QUIC SHOULD provide guidance on when

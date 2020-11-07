@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.4
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.4"
+
 # 12.4.  Frames and Frame Types
 #
 # The payload of QUIC packets, after removing packet protection,
@@ -142,7 +142,6 @@
 # a connection error of type PROTOCOL_VIOLATION.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.4"
 level = "MUST"
 quote = '''
 The payload of a packet that contains frames MUST contain at least
@@ -150,7 +149,6 @@ one frame, and MAY contain multiple frames and multiple frame types.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.4"
 level = "MUST"
 quote = '''
 An endpoint MUST treat
@@ -159,7 +157,6 @@ connection error of type PROTOCOL_VIOLATION.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.4"
 level = "MUST"
 quote = '''
 An endpoint MUST treat the receipt of a frame of unknown type as a
@@ -167,7 +164,6 @@ connection error of type FRAME_ENCODING_ERROR.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.4"
 level = "MUST"
 quote = '''
 To ensure simple and efficient
@@ -176,7 +172,6 @@ possible encoding.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.4"
 level = "MAY"
 quote = '''
 An endpoint MAY treat the

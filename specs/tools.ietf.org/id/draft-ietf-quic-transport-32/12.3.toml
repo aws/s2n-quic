@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.3
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.3"
+
 # 12.3.  Packet Numbers
 #
 # The packet number is an integer in the range 0 to 2^62-1.  This
@@ -72,7 +72,6 @@
 # described in Section 17.1.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.3"
 level = "MUST"
 quote = '''
 Subsequent packets sent in the same packet
@@ -80,7 +79,6 @@ number space MUST increase the packet number by at least one.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.3"
 level = "MUST"
 quote = '''
 A QUIC endpoint MUST NOT reuse a packet number within the same packet
@@ -88,7 +86,6 @@ number space in one connection.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.3"
 level = "MUST"
 quote = '''
 If the packet number for sending
@@ -99,7 +96,6 @@ packets that it receives.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.3"
 level = "MUST"
 quote = '''
 A receiver MUST discard a newly unprotected packet unless it is
@@ -108,7 +104,6 @@ number from the same packet number space.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.3"
 level = "MUST"
 quote = '''
 Duplicate suppression MUST

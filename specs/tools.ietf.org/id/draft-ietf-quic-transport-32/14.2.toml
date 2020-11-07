@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.2
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.2"
+
 # 14.2.  Path Maximum Transmission Unit
 #
 # The Path Maximum Transmission Unit (PMTU) is the maximum size of the
@@ -39,7 +39,6 @@
 # header options/extensions.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.2"
 level = "SHOULD"
 quote = '''
 An endpoint SHOULD use DPLPMTUD (Section 14.3) or PMTUD
@@ -48,7 +47,6 @@ support a desired maximum datagram size without fragmentation.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.2"
 level = "SHOULD"
 quote = '''
 In
@@ -57,7 +55,6 @@ datagrams larger than the smallest allowed maximum datagram size.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.2"
 level = "SHOULD"
 quote = '''
 All QUIC
@@ -67,7 +64,6 @@ fragmented or dropped ([RFC8085]).
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.2"
 level = "MUST"
 quote = '''
 If a QUIC endpoint determines that the PMTU between any pair of local
@@ -78,7 +74,6 @@ CONNECTION_CLOSE frames, on the affected path.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.2"
 level = "MAY"
 quote = '''
 An endpoint MAY
@@ -86,7 +81,6 @@ terminate the connection if an alternative path cannot be found.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.2"
 level = "SHOULD"
 quote = '''
 QUIC implementations that implement any kind of PMTU discovery
@@ -95,7 +89,6 @@ combination of local and remote IP addresses.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.2"
 level = "MAY"
 quote = '''
 A QUIC implementation MAY be more conservative in computing the

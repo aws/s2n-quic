@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.5
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.5"
+
 # 7.5.  Cryptographic Message Buffering
 #
 # Implementations need to maintain a buffer of CRYPTO data received out
@@ -29,7 +29,6 @@
 # frame was discarded.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.5"
 level = "MUST"
 quote = '''
 Implementations MUST support buffering at least 4096 bytes of data
@@ -37,7 +36,6 @@ received in out-of-order CRYPTO frames.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.5"
 level = "MAY"
 quote = '''
 Endpoints MAY choose to
@@ -45,7 +43,6 @@ allow more data to be buffered during the handshake.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.5"
 level = "MUST"
 quote = '''
 If an endpoint does not expand its buffer, it MUST close
@@ -53,7 +50,6 @@ the connection with a CRYPTO_BUFFER_EXCEEDED error code.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.5"
 level = "MAY"
 quote = '''
 Once the handshake completes, if an endpoint is unable to buffer all
@@ -63,7 +59,6 @@ with a CRYPTO_BUFFER_EXCEEDED error code.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.5"
 level = "MAY"
 quote = '''
 Once the handshake completes, if an endpoint is unable to buffer all
@@ -73,7 +68,6 @@ with a CRYPTO_BUFFER_EXCEEDED error code.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.5"
 level = "MUST"
 quote = '''
 Packets containing

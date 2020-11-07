@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.1
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.1"
+
 # 13.1.  Packet Processing
 #
 # A packet MUST NOT be acknowledged until packet protection has been
@@ -17,7 +17,6 @@
 # is able to detect the condition.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.1"
 level = "MUST"
 quote = '''
 A packet MUST NOT be acknowledged until packet protection has been
@@ -26,7 +25,6 @@ processed.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.1"
 level = "SHOULD"
 quote = '''
 An endpoint SHOULD treat receipt of an acknowledgment for a packet it

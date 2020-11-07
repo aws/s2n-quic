@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.1
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.1"
+
 # 9.1.  Probing a New Path
 #
 # An endpoint MAY probe for peer reachability from a new local address
@@ -15,7 +15,6 @@
 # packet containing any other frame is a "non-probing packet".
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.1"
 level = "MAY"
 quote = '''
 An endpoint MAY probe for peer reachability from a new local address

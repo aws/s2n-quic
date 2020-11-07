@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.9
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.9"
+
 # 19.9.  MAX_DATA Frames
 #
 # A MAX_DATA frame (type=0x10) is used in flow control to inform the
@@ -30,7 +30,6 @@
 # Section 7.4.1.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.9"
 level = "MUST"
 quote = '''
 The sum of
@@ -39,7 +38,6 @@ the final sizes on all streams - including streams in terminal states
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.9"
 level = "MUST"
 quote = '''
 An endpoint

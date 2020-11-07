@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1"
+
 # 8.2.1.  Initiating Path Validation
 #
 # To initiate path validation, an endpoint sends a PATH_CHALLENGE frame
@@ -24,7 +24,6 @@
 # the endpoint to the peer can be used for QUIC; see Section 14.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1"
 level = "MAY"
 quote = '''
 An endpoint MAY send multiple PATH_CHALLENGE frames to guard against
@@ -32,7 +31,6 @@ packet loss.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1"
 level = "SHOULD"
 quote = '''
 However, an endpoint SHOULD NOT send multiple
@@ -40,7 +38,6 @@ PATH_CHALLENGE frames in a single packet.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1"
 level = "SHOULD"
 quote = '''
 An endpoint SHOULD NOT probe a new path with packets containing a
@@ -49,7 +46,6 @@ packet.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1"
 level = "MUST"
 quote = '''
 The endpoint MUST use unpredictable data in every PATH_CHALLENGE
@@ -58,7 +54,6 @@ corresponding PATH_CHALLENGE.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1"
 level = "MUST"
 quote = '''
 An endpoint MUST expand datagrams that contain a PATH_CHALLENGE frame

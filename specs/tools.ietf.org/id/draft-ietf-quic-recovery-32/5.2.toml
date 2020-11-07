@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.2
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.2"
+
 # 5.2.  Estimating min_rtt
 #
 # min_rtt is the sender's estimate of the minimum RTT observed for a
@@ -37,14 +37,12 @@
 # of the path is not frequently observable.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.2"
 level = "MUST"
 quote = '''
 min_rtt MUST be set to the latest_rtt on the first RTT sample.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.2"
 level = "MUST"
 quote = '''
 min_rtt MUST be set to the lesser of min_rtt and latest_rtt
@@ -52,7 +50,6 @@ min_rtt MUST be set to the lesser of min_rtt and latest_rtt
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.2"
 level = "SHOULD"
 quote = '''
 Endpoints SHOULD set the min_rtt to the newest RTT sample after
@@ -60,7 +57,6 @@ persistent congestion is established.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.2"
 level = "MAY"
 quote = '''
 Endpoints MAY re-establish the min_rtt at other times in the
@@ -69,7 +65,6 @@ is received with a low acknowledgement delay.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.2"
 level = "SHOULD"
 quote = '''
 Implementations SHOULD

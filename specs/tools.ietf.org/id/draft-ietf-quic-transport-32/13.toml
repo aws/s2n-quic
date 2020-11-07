@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13"
+
 # 13.  Packetization and Reliability
 #
 # A sender sends one or more frames in a QUIC packet; see Section 12.4.
@@ -31,7 +31,6 @@
 # to underfilled packets.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13"
 level = "MAY"
 quote = '''
 A sender
@@ -41,7 +40,6 @@ large numbers of small packets.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13"
 level = "MAY"
 quote = '''
 An implementation MAY use knowledge

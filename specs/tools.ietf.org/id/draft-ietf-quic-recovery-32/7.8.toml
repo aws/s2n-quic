@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.8
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.8"
+
 # 7.8.  Under-utilizing the Congestion Window
 #
 # When bytes in flight is smaller than the congestion window and
@@ -18,7 +18,6 @@
 # proposed for TCP in [RFC7661].
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.8"
 level = "SHOULD"
 quote = '''
 When this occurs, the congestion window SHOULD NOT be
@@ -26,7 +25,6 @@ increased in either slow start or congestion avoidance.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.8"
 level = "SHOULD"
 quote = '''
 A sender SHOULD NOT consider itself application limited if it
@@ -34,7 +32,6 @@ would have fully utilized the congestion window without pacing delay.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.8"
 level = "MAY"
 quote = '''
 A sender MAY implement alternative mechanisms to update its

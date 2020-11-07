@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.5
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.5"
+
 # 7.5.  Probe Timeout
 #
 # Probe packets MUST NOT be blocked by the congestion controller.  A
@@ -11,14 +11,12 @@
 # packets.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.5"
 level = "MUST"
 quote = '''
 Probe packets MUST NOT be blocked by the congestion controller.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.5"
 level = "MUST"
 quote = '''
 A

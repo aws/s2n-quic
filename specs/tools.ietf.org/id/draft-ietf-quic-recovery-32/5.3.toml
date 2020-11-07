@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3"
+
 # 5.3.  Estimating smoothed_rtt and rttvar
 #
 # smoothed_rtt is an exponentially-weighted moving average of an
@@ -101,7 +101,6 @@
 # rttvar = 3/4 * rttvar + 1/4 * rttvar_sample
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3"
 level = "SHOULD"
 quote = '''
 To account for this, the endpoint SHOULD ignore
@@ -110,7 +109,6 @@ max_ack_delay until the handshake is confirmed (Section 4.1.2 of
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3"
 level = "MAY"
 quote = '''
 Therefore, prior to handshake
@@ -120,7 +118,6 @@ the min_rtt.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3"
 level = "MAY"
 quote = '''
 *  MAY ignore the acknowledgement delay for Initial packets, since
@@ -129,7 +126,6 @@ of [QUIC-TRANSPORT]);
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3"
 level = "SHOULD"
 quote = '''
 *  SHOULD ignore the peer's max_ack_delay until the handshake is
@@ -137,7 +133,6 @@ confirmed;
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3"
 level = "MUST"
 quote = '''
 *  MUST use the lesser of the acknowledgement delay and the peer's
@@ -145,7 +140,6 @@ max_ack_delay after the handshake is confirmed; and
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3"
 level = "MUST"
 quote = '''
 *  MUST NOT subtract the acknowledgement delay from the RTT sample if
@@ -153,7 +147,6 @@ the resulting value is smaller than the min_rtt.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3"
 level = "SHOULD"
 quote = '''
 In such

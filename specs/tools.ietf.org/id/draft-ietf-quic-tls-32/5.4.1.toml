@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.4.1
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.4.1"
+
 # 5.4.1.  Header Protection Application
 #
 # Header protection is applied after packet protection is applied (see
@@ -86,7 +86,6 @@
 # (Section 5.4.3), matching the AEAD_AES_128_GCM packet protection.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.4.1"
 level = "MUST"
 quote = '''
 Before a TLS cipher suite can be used with QUIC, a header protection

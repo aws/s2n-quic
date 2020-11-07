@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2"
+
 # 17.2.  Long Header Packets
 #
 # Long Header Packet {
@@ -126,7 +126,6 @@
 #    is encoded in the Packet Number Length bits of byte 0; see above.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2"
 level = "MUST"
 quote = '''
 Packets
@@ -135,7 +134,6 @@ version and MUST be discarded.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2"
 level = "MUST"
 quote = '''
 In QUIC version 1, this value MUST NOT exceed
@@ -143,7 +141,6 @@ In QUIC version 1, this value MUST NOT exceed
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2"
 level = "MUST"
 quote = '''
 Endpoints that receive a version 1 long header with a value
@@ -151,7 +148,6 @@ larger than 20 MUST drop the packet.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2"
 level = "SHOULD"
 quote = '''
 In order to properly form a
@@ -160,7 +156,6 @@ connection IDs from other QUIC versions.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2"
 level = "MUST"
 quote = '''
 In QUIC version 1, this value MUST NOT
@@ -168,7 +163,6 @@ exceed 20 bytes.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2"
 level = "MUST"
 quote = '''
 Endpoints that receive a version 1 long header
@@ -176,7 +170,6 @@ with a value larger than 20 MUST drop the packet.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2"
 level = "SHOULD"
 quote = '''
 In order to
@@ -185,7 +178,6 @@ to read longer connection IDs from other QUIC versions.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2"
 level = "MUST"
 quote = '''
 The value
@@ -193,7 +185,6 @@ included prior to protection MUST be set to 0.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2"
 level = "MUST"
 quote = '''
 An endpoint MUST

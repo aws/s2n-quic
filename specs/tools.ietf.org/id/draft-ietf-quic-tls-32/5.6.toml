@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.6
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.6"
+
 # 5.6.  Use of 0-RTT Keys
 #
 # If 0-RTT keys are available (see Section 4.6.1), the lack of replay
@@ -33,14 +33,12 @@
 #    handshake messages.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.6"
 level = "MUST"
 quote = '''
 A client MUST only use 0-RTT keys to protect data that is idempotent.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.6"
 level = "MAY"
 quote = '''
 A client MAY wish to apply additional restrictions on what data it
@@ -48,7 +46,6 @@ sends prior to the completion of the TLS handshake.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.6"
 level = "MUST"
 quote = '''
 A client
@@ -57,7 +54,6 @@ it MUST NOT send ACKs with 0-RTT keys.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.6"
 level = "SHOULD"
 quote = '''
 A client SHOULD stop sending 0-RTT data
@@ -65,7 +61,6 @@ if it receives an indication that 0-RTT data has been rejected.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.6"
 level = "MUST"
 quote = '''
 A server MUST NOT use 0-RTT keys to protect packets; it uses 1-RTT
@@ -73,7 +68,6 @@ keys to protect acknowledgements of 0-RTT packets.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.6"
 level = "MUST"
 quote = '''
 A client MUST NOT
@@ -82,7 +76,6 @@ them.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.6"
 level = "MUST"
 quote = '''
 A client MUST NOT
@@ -91,7 +84,6 @@ them.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.6"
 level = "MUST"
 quote = '''
 Once a client has installed 1-RTT keys, it MUST NOT send any more

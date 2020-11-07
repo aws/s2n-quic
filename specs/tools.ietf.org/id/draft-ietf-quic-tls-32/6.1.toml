@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.1
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.1"
+
 # 6.1.  Initiating a Key Update
 #
 # Endpoints maintain separate read and write secrets for packet
@@ -47,7 +47,6 @@
 # packet loss by the peer and could adversely affect performance.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.1"
 level = "MUST"
 quote = '''
 An endpoint MUST NOT initiate a key update prior to having confirmed
@@ -55,7 +54,6 @@ the handshake (Section 4.1.2).
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.1"
 level = "MUST"
 quote = '''
 An endpoint MUST NOT initiate a
@@ -64,7 +62,6 @@ packet that was sent protected with keys from the current key phase.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.1"
 level = "MUST"
 quote = '''
 An endpoint MUST retain old keys until it has successfully
@@ -72,7 +69,6 @@ unprotected a packet sent using the new keys.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.1"
 level = "SHOULD"
 quote = '''
 An endpoint SHOULD

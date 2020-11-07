@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.2
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.2"
+
 # 10.2.  Immediate Close
 #
 # An endpoint sends a CONNECTION_CLOSE frame (Section 19.19) to
@@ -46,7 +46,6 @@
 # connection.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.2"
 level = "SHOULD"
 quote = '''
 These states SHOULD persist for at least three
@@ -55,7 +54,6 @@ times the current Probe Timeout (PTO) interval as defined in
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.2"
 level = "MAY"
 quote = '''
 Endpoints that have some alternative means to ensure that late-
@@ -65,7 +63,6 @@ for faster resource recovery.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.2"
 level = "SHOULD"
 quote = '''
 Servers that retain an open socket for
@@ -74,7 +71,6 @@ states early.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.2"
 level = "SHOULD"
 quote = '''
 Once its closing or draining state ends, an endpoint SHOULD discard
@@ -82,7 +78,6 @@ all connection state.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.2"
 level = "MAY"
 quote = '''
 The endpoint MAY send a stateless reset in

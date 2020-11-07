@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1"
+
 # 8.1.  Address Validation During Connection Establishment
 #
 # Connection establishment implicitly provides address validation for
@@ -54,7 +54,6 @@
 # congestion controller.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1"
 level = "MAY"
 quote = '''
 Additionally, a server MAY consider the client address validated if
@@ -63,7 +62,6 @@ connection ID contains at least 64 bits of entropy.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1"
 level = "MUST"
 quote = '''
 Prior to validating the client address, servers MUST NOT send more
@@ -72,7 +70,6 @@ received.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1"
 level = "MUST"
 quote = '''
 For the purposes of
@@ -82,7 +79,6 @@ uniquely attributed to a single connection.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1"
 level = "MUST"
 quote = '''
 Clients MUST ensure that UDP datagrams containing Initial packets
@@ -91,7 +87,6 @@ necessary.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1"
 level = "MUST"
 quote = '''
 To
@@ -100,7 +95,6 @@ prevent this deadlock, clients MUST send a packet on a probe timeout
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1"
 level = "MUST"
 quote = '''
 Specifically, the client

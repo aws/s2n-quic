@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#21.5
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#21.5"
+
 # 21.5.  Slowloris Attacks
 #
 # The attacks commonly known as Slowloris ([SLOWLORIS]) try to keep
@@ -19,7 +19,6 @@
 # an endpoint is allowed to stay connected.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#21.5"
 level = "SHOULD"
 quote = '''
 QUIC deployments SHOULD provide mitigations for the Slowloris

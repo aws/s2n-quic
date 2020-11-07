@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10"
+
 # 10.  Connection Termination
 #
 # An established QUIC connection can be terminated in one of three
@@ -15,7 +15,6 @@
 # validated path on which it can send packets; see Section 8.2.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10"
 level = "MAY"
 quote = '''
 An endpoint MAY discard connection state if it does not have a

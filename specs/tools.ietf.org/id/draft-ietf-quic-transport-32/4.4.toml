@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.4
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.4"
+
 # 4.4.  Handling Stream Cancellation
 #
 # Endpoints need to eventually agree on the amount of flow control
@@ -17,7 +17,6 @@
 # enters a terminal state.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.4"
 level = "MUST"
 quote = '''
 Both endpoints MUST maintain flow control state

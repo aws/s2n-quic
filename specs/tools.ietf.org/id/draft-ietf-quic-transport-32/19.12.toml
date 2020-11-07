@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.12
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.12"
+
 # 19.12.  DATA_BLOCKED Frames
 #
 # A sender SHOULD send a DATA_BLOCKED frame (type=0x14) when it wishes
@@ -22,7 +22,6 @@
 #    level limit at which blocking occurred.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.12"
 level = "SHOULD"
 quote = '''
 A sender SHOULD send a DATA_BLOCKED frame (type=0x14) when it wishes

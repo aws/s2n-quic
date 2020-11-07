@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.4
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.4"
+
 # 8.2.4.  Failed Path Validation
 #
 # Path validation only fails when the endpoint attempting to validate
@@ -34,14 +34,12 @@
 # progress.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.4"
 level = "SHOULD"
 quote = '''
 Endpoints SHOULD abandon path validation based on a timer.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.4"
 level = "RECOMMENDED"
 quote = '''
 A value of

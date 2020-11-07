@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#8.3
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#8.3"
+
 # 8.3.  Removing the EndOfEarlyData Message
 #
 # The TLS EndOfEarlyData message is not used with QUIC.  QUIC does not
@@ -14,14 +14,12 @@
 # transcript.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#8.3"
 level = "MUST"
 quote = '''
 Clients MUST NOT send the EndOfEarlyData message.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#8.3"
 level = "MUST"
 quote = '''
 A server MUST

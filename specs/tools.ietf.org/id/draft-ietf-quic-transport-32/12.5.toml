@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.5
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.5"
+
 # 12.5.  Frames and Number Spaces
 #
 # Some frames are prohibited in different packet number spaces.  The
@@ -30,7 +30,6 @@
 # PROTOCOL_VIOLATION.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.5"
 level = "MAY"
 quote = '''
 *  PADDING, PING, and CRYPTO frames MAY appear in any packet number
@@ -38,7 +37,6 @@ space.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.5"
 level = "MAY"
 quote = '''
 *  CONNECTION_CLOSE frames signaling errors at the QUIC layer (type
@@ -46,7 +44,6 @@ quote = '''
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.5"
 level = "MUST"
 quote = '''
 CONNECTION_CLOSE
@@ -55,7 +52,6 @@ in the application data packet number space.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.5"
 level = "MAY"
 quote = '''
 *  ACK frames MAY appear in any packet number space, but can only
@@ -63,7 +59,6 @@ acknowledge packets that appeared in that packet number space.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.5"
 level = "MUST"
 quote = '''
 *  All other frame types MUST only be sent in the application data
@@ -71,7 +66,6 @@ packet number space.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.5"
 level = "MAY"
 quote = '''
 A server MAY treat receipt

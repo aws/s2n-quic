@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#21.6
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#21.6"
+
 # 21.6.  Stream Fragmentation and Reassembly Attacks
 #
 # An adversarial sender might intentionally not send portions of the
@@ -26,7 +26,6 @@
 # on the age and duration of reassembly holes, or some combination.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#21.6"
 level = "SHOULD"
 quote = '''
 QUIC deployments SHOULD provide mitigations against stream

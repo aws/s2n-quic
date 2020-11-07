@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9"
+
 # 9.  Connection Migration
 #
 # The use of a connection ID allows connections to survive changes to
@@ -46,7 +46,6 @@
 # packets.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9"
 level = "MUST"
 quote = '''
 An endpoint MUST NOT initiate
@@ -55,7 +54,6 @@ section 4.1.2 of [QUIC-TLS].
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9"
 level = "MUST"
 quote = '''
 If the peer sent the disable_active_migration transport parameter, an
@@ -66,7 +64,6 @@ preferred_address transport parameter from the peer.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9"
 level = "MUST"
 quote = '''
 If the peer
@@ -76,7 +73,6 @@ with path validation and allow the peer to migrate.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9"
 level = "MUST"
 quote = '''
 An endpoint MUST
@@ -85,7 +81,6 @@ peer's address, unless it has previously validated that address.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9"
 level = "MAY"
 quote = '''
 When an endpoint has no validated path on which to send packets, it
@@ -93,7 +88,6 @@ MAY discard connection state.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9"
 level = "MAY"
 quote = '''
 An endpoint capable of connection
@@ -102,7 +96,6 @@ discarding connection state.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9"
 level = "MUST"
 quote = '''
 If a client receives

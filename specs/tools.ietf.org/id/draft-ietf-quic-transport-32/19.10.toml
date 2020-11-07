@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.10
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.10"
+
 # 19.10.  MAX_STREAM_DATA Frames
 #
 # A MAX_STREAM_DATA frame (type=0x11) is used in flow control to inform
@@ -46,7 +46,6 @@
 # Early Data; see Section 7.4.1.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.10"
 level = "MUST"
 quote = '''
 Receiving a MAX_STREAM_DATA frame for a locally-
@@ -55,7 +54,6 @@ connection error of type STREAM_STATE_ERROR.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.10"
 level = "MUST"
 quote = '''
 An endpoint that
@@ -64,7 +62,6 @@ terminate the connection with error STREAM_STATE_ERROR.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.10"
 level = "MUST"
 quote = '''
 The data sent on a stream MUST NOT exceed the largest maximum stream
@@ -72,7 +69,6 @@ data value advertised by the receiver.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.10"
 level = "MUST"
 quote = '''
 An endpoint MUST terminate a

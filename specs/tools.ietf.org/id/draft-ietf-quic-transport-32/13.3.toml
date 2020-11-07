@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.3
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.3"
+
 # 13.3.  Retransmission of Information
 #
 # QUIC packets that are determined to be lost are not retransmitted
@@ -133,7 +133,6 @@
 # are described in [QUIC-RECOVERY].
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.3"
 level = "MUST"
 quote = '''
 The content of a RESET_STREAM frame MUST NOT change when it is
@@ -141,7 +140,6 @@ sent again.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.3"
 level = "SHOULD"
 quote = '''
 An endpoint SHOULD stop sending
@@ -150,7 +148,6 @@ enters a "Size Known" state.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.3"
 level = "MUST"
 quote = '''
 *  The HANDSHAKE_DONE frame MUST be retransmitted until it is
@@ -158,7 +155,6 @@ acknowledged.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.3"
 level = "SHOULD"
 quote = '''
 Endpoints SHOULD prioritize retransmission of data over sending new
@@ -167,7 +163,6 @@ otherwise; see Section 2.3.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.3"
 level = "MUST"
 quote = '''
 A receiver MUST accept packets containing an
@@ -176,7 +171,6 @@ data than one found in an older packet.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.3"
 level = "SHOULD"
 quote = '''
 A sender SHOULD avoid retransmitting information from packets once
@@ -184,7 +178,6 @@ they are acknowledged.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.3"
 level = "MUST"
 quote = '''
 Upon detecting losses, a sender MUST take appropriate congestion

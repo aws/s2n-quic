@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.5
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.5"
+
 # 19.5.  STOP_SENDING Frames
 #
 # An endpoint uses a STOP_SENDING frame (type=0x05) to communicate that
@@ -34,7 +34,6 @@
 #    the stream; see Section 20.2.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.5"
 level = "MUST"
 quote = '''
 Receiving a STOP_SENDING frame for a
@@ -43,7 +42,6 @@ treated as a connection error of type STREAM_STATE_ERROR.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.5"
 level = "MUST"
 quote = '''
 An

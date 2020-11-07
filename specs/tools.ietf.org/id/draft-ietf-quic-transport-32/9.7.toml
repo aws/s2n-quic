@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.7
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.7"
+
 # 9.7.  Use of IPv6 Flow-Label and Migration
 #
 # Endpoints that send data using IPv6 SHOULD apply an IPv6 flow label
@@ -19,7 +19,6 @@
 # and a local secret.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.7"
 level = "SHOULD"
 quote = '''
 Endpoints that send data using IPv6 SHOULD apply an IPv6 flow label
@@ -28,7 +27,6 @@ setting IPv6 flow labels.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.7"
 level = "SHOULD"
 quote = '''
 The IPv6 flow label SHOULD be a pseudo-random function of the source
@@ -37,7 +35,6 @@ Destination Connection ID field.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.7"
 level = "MUST"
 quote = '''
 The flow label generation MUST be

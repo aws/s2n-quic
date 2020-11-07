@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3"
+
 # 10.3.  Stateless Reset
 #
 # A stateless reset is provided as an option of last resort for an
@@ -125,7 +125,6 @@
 # packet other than the last 16 bytes for carrying data.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3"
 level = "MAY"
 quote = '''
 An
@@ -134,7 +133,6 @@ that it cannot associate with an active connection.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3"
 level = "MUST"
 quote = '''
 An endpoint that wishes to communicate a fatal
@@ -142,7 +140,6 @@ connection error MUST use a CONNECTION_CLOSE frame if it is able.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3"
 level = "SHOULD"
 quote = '''
 The remainder of the first byte
@@ -151,7 +148,6 @@ SHOULD be indistinguishable from random.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3"
 level = "SHOULD"
 quote = '''
 To achieve that end,
@@ -162,7 +158,6 @@ necessary.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3"
 level = "SHOULD"
 quote = '''
 An
@@ -172,7 +167,6 @@ shorter than the packet it responds to.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3"
 level = "MUST"
 quote = '''
 An endpoint MUST NOT send a stateless reset that is three times or
@@ -181,7 +175,6 @@ amplification.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3"
 level = "MUST"
 quote = '''
 Endpoints MUST discard packets that are too small to be valid QUIC
@@ -189,7 +182,6 @@ packets.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3"
 level = "MUST"
 quote = '''
 Endpoints MUST send stateless reset packets formatted as a packet
@@ -197,7 +189,6 @@ with a short header.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3"
 level = "MUST"
 quote = '''
 However, endpoints MUST treat any packet ending
@@ -206,7 +197,6 @@ versions might allow the use of a long header.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3"
 level = "MAY"
 quote = '''
 An endpoint MAY send a stateless reset in response to a packet with a

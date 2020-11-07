@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.2
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.2"
+
 # 7.6.2.  Establishing Persistent Congestion
 #
 # A sender establishes persistent congestion on receiving an
@@ -34,7 +34,6 @@
 # ([RFC5681]).
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.2"
 level = "SHOULD"
 quote = '''
 The persistent congestion period SHOULD NOT start until there is at
@@ -42,7 +41,6 @@ least one RTT sample.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.2"
 level = "SHOULD"
 quote = '''
 Since network congestion is not affected by packet number spaces,
@@ -51,7 +49,6 @@ number spaces.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.2"
 level = "MAY"
 quote = '''
 A sender that does not have state for all packet
@@ -61,7 +58,6 @@ space that was acknowledged.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.2"
 level = "MUST"
 quote = '''
 When persistent congestion is declared, the sender's congestion

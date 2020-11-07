@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.3
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.3"
+
 # 17.3.  Short Header Packets
 #
 # This version of QUIC defines a single packet type that uses the short
@@ -77,7 +77,6 @@
 # packets from different versions of QUIC are interpreted.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.3"
 level = "MUST"
 quote = '''
 containing a zero value for this bit are not valid packets in this
@@ -85,7 +84,6 @@ version and MUST be discarded.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.3"
 level = "MUST"
 quote = '''
 The value included prior to
@@ -93,7 +91,6 @@ protection MUST be set to 0.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.3"
 level = "MUST"
 quote = '''
 An endpoint MUST treat receipt of a

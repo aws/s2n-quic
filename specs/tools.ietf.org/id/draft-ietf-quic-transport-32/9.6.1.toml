@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.6.1
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.6.1"
+
 # 9.6.1.  Communicating a Preferred Address
 #
 # A server conveys a preferred address by including the
@@ -22,7 +22,6 @@
 # server's original IP address.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.6.1"
 level = "MAY"
 quote = '''
 Servers MAY communicate a preferred address of each address family
@@ -31,7 +30,6 @@ network attachment.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.6.1"
 level = "SHOULD"
 quote = '''
 Once the handshake is confirmed, the client SHOULD select one of the
@@ -40,7 +38,6 @@ two addresses provided by the server and initiate path validation
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.6.1"
 level = "SHOULD"
 quote = '''
 As soon as path validation succeeds, the client SHOULD begin sending
@@ -49,7 +46,6 @@ ID and discontinue use of the old server address.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.6.1"
 level = "MUST"
 quote = '''
 If path validation

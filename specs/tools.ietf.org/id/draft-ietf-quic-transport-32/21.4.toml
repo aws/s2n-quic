@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#21.4
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#21.4"
+
 # 21.4.  Request Forgery Attacks
 #
 # A request forgery attack occurs where an endpoint causes its peer to
@@ -54,7 +54,6 @@
 # also define countermeasures for forgery attacks.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#21.4"
 level = "SHOULD"
 quote = '''
 QUIC
@@ -63,7 +62,6 @@ inadequately secured UDP endpoints.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#21.4"
 level = "MUST"
 quote = '''
 Any future extension which allows server migration MUST

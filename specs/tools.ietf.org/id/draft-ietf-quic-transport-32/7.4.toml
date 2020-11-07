@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.4
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.4"
+
 # 7.4.  Transport Parameters
 #
 # During connection establishment, both endpoints make authenticated
@@ -44,7 +44,6 @@
 # multiple application protocols if these constraints conflict.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.4"
 level = "MUST"
 quote = '''
 An endpoint MUST treat receipt of a transport parameter with an
@@ -53,7 +52,6 @@ TRANSPORT_PARAMETER_ERROR.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.4"
 level = "MUST"
 quote = '''
 An endpoint MUST NOT send a parameter more than once in a given
@@ -61,7 +59,6 @@ transport parameters extension.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.4"
 level = "SHOULD"
 quote = '''
 An endpoint SHOULD treat receipt of

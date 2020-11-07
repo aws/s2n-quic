@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.2
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.2"
+
 # 4.2.  Increasing Flow Control Limits
 #
 # Implementations decide when and how much credit to advertise in
@@ -40,7 +40,6 @@
 # how a sender can avoid this congestion.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.2"
 level = "MAY"
 quote = '''
 To avoid blocking a sender, a receiver MAY send a MAX_STREAM_DATA or
@@ -49,7 +48,6 @@ enough to allow time for loss of the frame and subsequent recovery.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.2"
 level = "MUST"
 quote = '''
 Therefore, a receiver MUST NOT wait for a

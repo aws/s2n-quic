@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.3.1
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.3.1"
+
 # 17.3.1.  Latency Spin Bit
 #
 # The latency spin bit enables passive latency monitoring from
@@ -57,14 +57,12 @@
 # end-to-end RTT of a connection.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.3.1"
 level = "OPTIONAL"
 quote = '''
 The spin bit is an OPTIONAL feature of QUIC.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.3.1"
 level = "MUST"
 quote = '''
 A QUIC stack that
@@ -73,7 +71,6 @@ this section.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.3.1"
 level = "MUST"
 quote = '''
 Implementations MUST allow administrators
@@ -82,7 +79,6 @@ a per-connection basis.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.3.1"
 level = "MUST"
 quote = '''
 Even when the spin bit is not disabled by
@@ -92,7 +88,6 @@ for one in every 16 connection IDs.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.3.1"
 level = "MUST"
 quote = '''
 When the spin bit is disabled, endpoints MAY set the spin bit to any
@@ -100,7 +95,6 @@ value, and MUST ignore any incoming value.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.3.1"
 level = "RECOMMENDED"
 quote = '''
 It is RECOMMENDED that

@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2.7
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2.7"
+
 # 13.2.7.  PADDING Frames Consume Congestion Window
 #
 # Packets containing PADDING frames are considered to be in flight for
@@ -11,7 +11,6 @@
 # from the receiver.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2.7"
 level = "SHOULD"
 quote = '''
 To

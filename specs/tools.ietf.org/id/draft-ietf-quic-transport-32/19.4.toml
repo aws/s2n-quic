@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.4
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.4"
+
 # 19.4.  RESET_STREAM Frames
 #
 # An endpoint uses a RESET_STREAM frame (type=0x04) to abruptly
@@ -38,7 +38,6 @@
 #    Section 4.5.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.4"
 level = "MUST"
 quote = '''
 An endpoint that receives a RESET_STREAM frame for a send-only stream

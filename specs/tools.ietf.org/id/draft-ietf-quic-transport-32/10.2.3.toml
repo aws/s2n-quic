@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.2.3
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.2.3"
+
 # 10.2.3.  Immediate Close During the Handshake
 #
 # When sending CONNECTION_CLOSE, the goal is to ensure that the peer
@@ -62,7 +62,6 @@
 # frame.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.2.3"
 level = "MUST"
 quote = '''
 After the handshake is confirmed (see
@@ -71,7 +70,6 @@ CONNECTION_CLOSE frames in a 1-RTT packet.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.2.3"
 level = "MAY"
 quote = '''
 However, prior to
@@ -82,7 +80,6 @@ packet protection level.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.2.3"
 level = "SHOULD"
 quote = '''
 Under these
@@ -92,7 +89,6 @@ them is processable by the client.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.2.3"
 level = "SHOULD"
 quote = '''
 *  Prior to confirming the handshake, a peer might be unable to
@@ -101,7 +97,6 @@ in both Handshake and 1-RTT packets.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.2.3"
 level = "SHOULD"
 quote = '''
 A server SHOULD also send
@@ -109,7 +104,6 @@ CONNECTION_CLOSE in an Initial packet.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.2.3"
 level = "MUST"
 quote = '''
 A CONNECTION_CLOSE of type 0x1d MUST be replaced by a
@@ -118,7 +112,6 @@ Handshake packets.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.2.3"
 level = "MUST"
 quote = '''
 Endpoints MUST clear the value of the
@@ -127,7 +120,6 @@ converting to a CONNECTION_CLOSE of type 0x1c.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.2.3"
 level = "MAY"
 quote = '''
 For this

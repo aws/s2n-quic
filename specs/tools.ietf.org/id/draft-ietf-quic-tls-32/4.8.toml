@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.8
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.8"
+
 # 4.8.  TLS Errors
 #
 # If TLS experiences an error, it generates an appropriate alert as
@@ -20,7 +20,6 @@
 # code to avoid possibly exposing confidential information.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.8"
 level = "MUST"
 quote = '''
 The alert level of all TLS alerts is "fatal"; a TLS stack MUST NOT
@@ -28,7 +27,6 @@ generate alerts at the "warning" level.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.8"
 level = "MAY"
 quote = '''
 Endpoints MAY use a generic error

@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#2.3
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#2.3"
+
 # 2.3.  Stream Prioritization
 #
 # Stream multiplexing can have a significant effect on application
@@ -16,7 +16,6 @@
 # resources to active streams.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#2.3"
 level = "SHOULD"
 quote = '''
 A QUIC implementation SHOULD provide ways in which an application can

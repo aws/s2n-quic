@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1"
+
 # 5.1.  Connection ID
 #
 # Each connection possesses a set of connection identifiers, or
@@ -55,7 +55,6 @@
 # (Section 19.15).
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1"
 level = "MUST"
 quote = '''
 Connection IDs MUST NOT contain any information that can be used by
@@ -65,7 +64,6 @@ connection.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1"
 level = "MUST"
 quote = '''
 As a trivial example, this means the same connection ID
@@ -73,7 +71,6 @@ MUST NOT be issued more than once on the same connection.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1"
 level = "MUST"
 quote = '''
 An

@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4"
+
 # 4.  Flow Control
 #
 # It is necessary to limit the amount of data that a receiver could
@@ -23,7 +23,6 @@
 # implementation to communicate its buffering limits.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4"
 level = "SHOULD"
 quote = '''
 To avoid excessive buffering at multiple layers, QUIC implementations

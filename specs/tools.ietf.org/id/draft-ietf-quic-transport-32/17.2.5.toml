@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.5
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.5"
+
 # 17.2.5.  Retry Packet
 #
 # A Retry packet uses a long packet header with a type value of 0x3.
@@ -34,7 +34,6 @@
 #    [QUIC-TLS].
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.5"
 level = "MUST"
 quote = '''
 The value in the Unused field is set to an arbitrary value

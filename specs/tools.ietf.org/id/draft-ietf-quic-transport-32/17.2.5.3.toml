@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.5.3
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.5.3"
+
 # 17.2.5.3.  Continuing a Handshake After Retry
 #
 # Subsequent Initial packets from the client include the connection ID
@@ -39,7 +39,6 @@
 # validated as described in Section 7.3.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.5.3"
 level = "MUST"
 quote = '''
 A client MUST use the same
@@ -47,7 +46,6 @@ cryptographic handshake message it included in this packet.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.5.3"
 level = "MAY"
 quote = '''
 A server
@@ -56,7 +54,6 @@ message as a connection error or discard it.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.5.3"
 level = "MAY"
 quote = '''
 A client MAY attempt 0-RTT after receiving a Retry packet by sending
@@ -64,7 +61,6 @@ A client MAY attempt 0-RTT after receiving a Retry packet by sending
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.5.3"
 level = "MUST"
 quote = '''
 A client
@@ -73,7 +69,6 @@ response to receiving a Retry.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.5.3"
 level = "MUST"
 quote = '''
 A client MUST NOT reset the packet number for any packet number space
@@ -81,7 +76,6 @@ after processing a Retry packet.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.5.3"
 level = "MAY"
 quote = '''
 A server MAY abort the connection if it

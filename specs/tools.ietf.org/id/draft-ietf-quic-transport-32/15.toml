@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#15
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#15"
+
 # 15.  Versions
 #
 # QUIC versions are identified using a 32-bit unsigned number.
@@ -47,7 +47,6 @@
 # https://github.com/quicwg/base-drafts/wiki/QUIC-Versions.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#15"
 level = "MAY"
 quote = '''
 A
@@ -56,7 +55,6 @@ versions.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#15"
 level = "MAY"
 quote = '''
 Reserved version numbers will never represent a real protocol; a
@@ -67,7 +65,6 @@ the value.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#15"
 level = "MAY"
 quote = '''
 Reserved version numbers will never represent a real protocol; a

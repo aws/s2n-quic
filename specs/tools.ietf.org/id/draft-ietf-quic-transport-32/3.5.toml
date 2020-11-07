@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#3.5
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#3.5"
+
 # 3.5.  Solicited State Transitions
 #
 # If an application is no longer interested in the data it is receiving
@@ -48,7 +48,6 @@
 # opposite direction by sending a STOP_SENDING frame.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#3.5"
 level = "SHOULD"
 quote = '''
 If the stream is in the "Recv" or "Size Known" states, the transport
@@ -57,7 +56,6 @@ of the stream in the opposite direction.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#3.5"
 level = "MUST"
 quote = '''
 An endpoint that receives a STOP_SENDING frame
@@ -66,7 +64,6 @@ state.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#3.5"
 level = "MAY"
 quote = '''
 If the stream is in the "Data Sent" state, the endpoint MAY
@@ -75,7 +72,6 @@ outstanding data are acknowledged or declared lost.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#3.5"
 level = "SHOULD"
 quote = '''
 If any
@@ -84,7 +80,6 @@ RESET_STREAM frame instead of retransmitting the data.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#3.5"
 level = "SHOULD"
 quote = '''
 An endpoint SHOULD copy the error code from the STOP_SENDING frame to
@@ -93,7 +88,6 @@ code.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#3.5"
 level = "MAY"
 quote = '''
 An endpoint that sends a STOP_SENDING frame MAY ignore the
@@ -102,7 +96,6 @@ stream.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#3.5"
 level = "SHOULD"
 quote = '''
 STOP_SENDING SHOULD only be sent for a stream that has not been reset

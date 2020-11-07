@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.6
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.6"
+
 # 9.6.  Server's Preferred Address
 #
 # QUIC allows servers to accept connections on one IP address and
@@ -17,7 +17,6 @@
 # these packets.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.6"
 level = "SHOULD"
 quote = '''
 If a

@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.5
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.5"
+
 # 9.5.  Privacy Implications of Connection Migration
 #
 # Using a stable connection ID on multiple network paths would allow a
@@ -72,7 +72,6 @@
 # all packets sent on a new network path.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.5"
 level = "MAY"
 quote = '''
 At any time, endpoints MAY change the Destination Connection ID they
@@ -80,7 +79,6 @@ transmit with to a value that has not been used on another path.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.5"
 level = "MUST"
 quote = '''
 An endpoint MUST NOT reuse a connection ID when sending from more
@@ -90,7 +88,6 @@ path as described in Section 9.1.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.5"
 level = "MUST"
 quote = '''
 Similarly, an endpoint MUST NOT reuse a connection ID when sending to
@@ -98,7 +95,6 @@ more than one destination address.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.5"
 level = "MAY"
 quote = '''
 Due to network changes outside
@@ -109,7 +105,6 @@ address while still sending from the same local address.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.5"
 level = "SHOULD"
 quote = '''
 An endpoint SHOULD NOT initiate migration with a peer that has
@@ -118,7 +113,6 @@ path might be trivially linkable to traffic over the old one.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.5"
 level = "SHOULD"
 quote = '''
 Changing port number can cause a peer to
@@ -127,7 +121,6 @@ be changed infrequently.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.5"
 level = "SHOULD"
 quote = '''
 To ensure that migration is possible and

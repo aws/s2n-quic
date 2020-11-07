@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#3.3
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#3.3"
+
 # 3.3.  Permitted Frame Types
 #
 # The sender of a stream sends just three frame types that affect the
@@ -26,7 +26,6 @@
 # in any state as a result of delayed delivery of packets.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#3.3"
 level = "MUST"
 quote = '''
 A sender MUST NOT send any of these frames from a terminal state
@@ -34,7 +33,6 @@ A sender MUST NOT send any of these frames from a terminal state
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#3.3"
 level = "MUST"
 quote = '''
 A sender MUST NOT send a STREAM or
@@ -43,7 +41,6 @@ any terminal state, that is, after sending a RESET_STREAM frame.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#3.3"
 level = "MAY"
 quote = '''
 A

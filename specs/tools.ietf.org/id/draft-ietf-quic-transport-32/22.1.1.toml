@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#22.1.1
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#22.1.1"
+
 # 22.1.1.  Provisional Registrations
 #
 # Provisional registration of codepoints are intended to allow for
@@ -45,7 +45,6 @@
 # is created or updated.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#22.1.1"
 level = "MAY"
 quote = '''
 Provisional registrations MAY omit the Specification and Notes

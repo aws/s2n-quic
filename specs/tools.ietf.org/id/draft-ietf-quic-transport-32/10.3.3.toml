@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.3
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.3"
+
 # 10.3.3.  Looping
 #
 # The design of a Stateless Reset is such that without knowing the
@@ -29,7 +29,6 @@
 # failures might only be detected by other means, such as timers.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.3"
 level = "MUST"
 quote = '''
 An endpoint MUST ensure that every Stateless Reset that it sends is

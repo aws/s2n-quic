@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2"
+
 # 18.2.  Transport Parameter Definitions
 #
 # This section details the transport parameters defined in this
@@ -207,7 +207,6 @@
 # error of type TRANSPORT_PARAMETER_ERROR.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2"
 level = "MUST"
 quote = '''
 This transport parameter MUST NOT be sent
@@ -215,7 +214,6 @@ by a client, but MAY be sent by a server.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2"
 level = "SHOULD"
 quote = '''
 This value SHOULD include the receiver's
@@ -223,7 +221,6 @@ expected delays in alarms firing.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2"
 level = "MUST"
 quote = '''
 When a peer sets this transport parameter,
@@ -232,7 +229,6 @@ address that the peer used during the handshake.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2"
 level = "MAY"
 quote = '''
 Servers MAY choose to only send a preferred address
@@ -241,7 +237,6 @@ of one address family by sending an all-zero address and port
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2"
 level = "MUST"
 quote = '''
 A server
@@ -250,7 +245,6 @@ preferred address.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2"
 level = "MUST"
 quote = '''
 Similarly, a server MUST NOT include a zero-
@@ -258,7 +252,6 @@ length connection ID in this transport parameter.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2"
 level = "MUST"
 quote = '''
 A client MUST
@@ -267,7 +260,6 @@ type TRANSPORT_PARAMETER_ERROR.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2"
 level = "MUST"
 quote = '''
 The value of the
@@ -275,7 +267,6 @@ active_connection_id_limit parameter MUST be at least 2.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2"
 level = "MUST"
 quote = '''
 An
@@ -284,7 +275,6 @@ connection with an error of type TRANSPORT_PARAMETER_ERROR.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2"
 level = "MUST"
 quote = '''
 A client MUST NOT include any server-only transport parameter:
@@ -293,7 +283,6 @@ retry_source_connection_id, or stateless_reset_token.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2"
 level = "MUST"
 quote = '''
 A server MUST

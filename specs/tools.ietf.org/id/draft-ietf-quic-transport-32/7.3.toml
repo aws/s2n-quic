@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.3
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.3"
+
 # 7.3.  Authenticating Connection IDs
 #
 # The choice each endpoint makes about connection IDs during the
@@ -93,7 +93,6 @@
 # to "S3".
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.3"
 level = "MUST"
 quote = '''
 The values provided by a peer for these transport parameters MUST
@@ -102,7 +101,6 @@ Connection ID fields of Initial packets that it sent.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.3"
 level = "MUST"
 quote = '''
 An endpoint MUST treat absence of the initial_source_connection_id
@@ -112,7 +110,6 @@ server as a connection error of type TRANSPORT_PARAMETER_ERROR.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.3"
 level = "MUST"
 quote = '''
 An endpoint MUST treat the following as a connection error of type

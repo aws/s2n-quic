@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.3
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.3"
+
 # 17.2.3.  0-RTT
 #
 # A 0-RTT packet uses long headers with a type value of 0x1, followed
@@ -56,7 +56,6 @@
 # instance, a FLOW_CONTROL_ERROR for exceeding stream data limits).
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.3"
 level = "SHOULD"
 quote = '''
 A client SHOULD attempt
@@ -64,7 +63,6 @@ to resend data in 0-RTT packets after it sends a new Initial packet.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.3"
 level = "MUST"
 quote = '''
 New packet numbers MUST be used for any new packets that are sent; as
@@ -73,7 +71,6 @@ compromise packet protection.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.3"
 level = "MUST"
 quote = '''
 A client MUST NOT send 0-RTT packets once it starts processing 1-RTT
@@ -81,7 +78,6 @@ packets from the server.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.3"
 level = "MUST"
 quote = '''
 An acknowledgment for a 1-RTT
@@ -89,7 +85,6 @@ packet MUST be carried in a 1-RTT packet.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.3"
 level = "SHOULD"
 quote = '''
 A server SHOULD treat a violation of remembered limits

@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.2.1
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.2.1"
+
 # 10.2.1.  Closing Connection State
 #
 # An endpoint enters the closing state after initiating an immediate
@@ -55,7 +55,6 @@
 # but it otherwise has no impact.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.2.1"
 level = "SHOULD"
 quote = '''
 An endpoint SHOULD limit the rate at which it generates packets in
@@ -63,7 +62,6 @@ the closing state.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.2.1"
 level = "MAY"
 quote = '''
 An endpoint's selected connection ID and the QUIC version are
@@ -72,7 +70,6 @@ the endpoint MAY discard all other connection state.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.2.1"
 level = "MAY"
 quote = '''
 An
@@ -81,7 +78,6 @@ allow it to read and process a CONNECTION_CLOSE frame.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.2.1"
 level = "MAY"
 quote = '''
 An endpoint MAY drop packet protection keys when entering the closing
@@ -90,7 +86,6 @@ response to any UDP datagram that is received.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.2.1"
 level = "MUST"
 quote = '''
 To avoid being used for an amplication attack, such
@@ -100,7 +95,6 @@ attributed to the connection.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.2.1"
 level = "MAY"
 quote = '''
 To minimize the state that an endpoint
@@ -109,7 +103,6 @@ packet in response to any received packet.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.2.1"
 level = "MUST"
 quote = '''
 An endpoint in the closing state MUST either discard

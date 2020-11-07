@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2.5
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2.5"
+
 # 13.2.5.  Measuring and Reporting Host Delay
 #
 # An endpoint measures the delays intentionally introduced between the
@@ -23,7 +23,6 @@
 # might be large; see Section 13.2.1.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2.5"
 level = "MUST"
 quote = '''
 An endpoint MUST NOT include delays that it
@@ -31,7 +30,6 @@ does not control when populating the ACK Delay field in an ACK frame.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2.5"
 level = "SHOULD"
 quote = '''
 However, endpoints SHOULD include buffering delays caused by
@@ -40,7 +38,6 @@ and are likely to be non-repeating.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2.5"
 level = "SHOULD"
 quote = '''
 When the measured acknowledgement delay is larger than its

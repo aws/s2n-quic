@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.4
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.4"
+
 # 7.4.  Ignoring Loss of Undecryptable Packets
 #
 # During the handshake, some packet protection keys might not be
@@ -14,7 +14,6 @@
 # the earliest acknowledged packet in a given packet number space.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.4"
 level = "MAY"
 quote = '''
 Endpoints MAY ignore the
@@ -23,7 +22,6 @@ before the peer had packet protection keys to process those packets.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.4"
 level = "MUST"
 quote = '''
 Endpoints MUST NOT ignore the loss of packets that were sent after

@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6"
+
 # 4.6.  Controlling Concurrency
 #
 # An endpoint limits the cumulative number of incoming streams a peer
@@ -44,7 +44,6 @@
 # not to send STREAMS_BLOCKED frames.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6"
 level = "MUST"
 quote = '''
 If either is received, the connection MUST be closed
@@ -55,14 +54,12 @@ Section 10.2.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6"
 level = "MUST"
 quote = '''
 Endpoints MUST NOT exceed the limit set by their peer.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6"
 level = "MUST"
 quote = '''
 An endpoint
@@ -72,7 +69,6 @@ sent MUST treat this as a connection error of type STREAM_LIMIT_ERROR
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6"
 level = "MUST"
 quote = '''
 A receiver MUST
@@ -80,7 +76,6 @@ ignore any MAX_STREAMS frame that does not increase the stream limit.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6"
 level = "SHOULD"
 quote = '''
 An endpoint that is unable to open a new stream due to the peer's
@@ -88,7 +83,6 @@ limits SHOULD send a STREAMS_BLOCKED frame (Section 19.14).
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6"
 level = "MUST"
 quote = '''
 An endpoint MUST NOT wait

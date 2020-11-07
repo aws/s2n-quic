@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14"
+
 # 14.  Datagram Size
 #
 # A UDP datagram can include one or more QUIC packets.  The datagram
@@ -44,21 +44,18 @@
 # such datagrams.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14"
 level = "MUST"
 quote = '''
 The maximum datagram size MUST be at least 1200 bytes.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14"
 level = "MUST"
 quote = '''
 UDP datagrams MUST NOT be fragmented at the IP layer.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14"
 level = "MUST"
 quote = '''
 In IPv4
@@ -67,7 +64,6 @@ fragmentation on the path.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14"
 level = "MUST"
 quote = '''
 Therefore,

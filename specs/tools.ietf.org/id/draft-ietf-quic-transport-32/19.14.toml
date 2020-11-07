@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.14
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.14"
+
 # 19.14.  STREAMS_BLOCKED Frames
 #
 # A sender SHOULD send a STREAMS_BLOCKED frame (type=0x16 or 0x17) when
@@ -32,7 +32,6 @@
 #    FRAME_ENCODING_ERROR.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.14"
 level = "SHOULD"
 quote = '''
 A sender SHOULD send a STREAMS_BLOCKED frame (type=0x16 or 0x17) when
@@ -41,7 +40,6 @@ stream limit set by its peer; see Section 19.11.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.14"
 level = "MUST"
 quote = '''
 Receipt of a frame that encodes a larger

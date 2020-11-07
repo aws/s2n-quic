@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.1
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.1"
+
 # 5.1.  Generating RTT samples
 #
 # An endpoint generates an RTT sample on receiving an ACK frame that
@@ -40,7 +40,6 @@
 # open research question.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.1"
 level = "SHOULD"
 quote = '''
 To avoid generating multiple RTT samples for a single packet, an ACK
@@ -49,7 +48,6 @@ acknowledge the largest acknowledged packet.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.1"
 level = "MUST"
 quote = '''
 An RTT sample MUST NOT be generated on receiving an ACK frame that

@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1"
+
 # 10.3.1.  Detecting a Stateless Reset
 #
 # An endpoint detects a potential stateless reset using the trailing 16
@@ -41,7 +41,6 @@
 # and not send any further packets on this connection.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1"
 level = "MAY"
 quote = '''
 Endpoints MAY skip this check if any packet from a datagram is
@@ -49,7 +48,6 @@ successfully processed.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1"
 level = "MUST"
 quote = '''
 However, the comparison MUST be performed
@@ -58,7 +56,6 @@ associated with a connection, or cannot be decrypted.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1"
 level = "MUST"
 quote = '''
 An endpoint MUST NOT check for any Stateless Reset Tokens associated
@@ -67,7 +64,6 @@ been retired.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1"
 level = "MUST"
 quote = '''
 When comparing a datagram to Stateless Reset Token values, endpoints
@@ -76,7 +72,6 @@ value of the token.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1"
 level = "MUST"
 quote = '''
 If the last 16 bytes of the datagram are identical in value to a

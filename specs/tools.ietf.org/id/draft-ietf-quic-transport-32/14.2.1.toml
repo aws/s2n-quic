@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.2.1
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.2.1"
+
 # 14.2.1.  Handling of ICMP Messages by PMTUD
 #
 # Path Maximum Transmission Unit Discovery (PMTUD; [RFC1191],
@@ -38,7 +38,6 @@
 # actually been lost.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.2.1"
 level = "MUST"
 quote = '''
 An endpoint MUST ignore an ICMP message that claims the PMTU has
@@ -46,7 +45,6 @@ decreased below QUIC's smallest allowed maximum datagram size.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.2.1"
 level = "SHOULD"
 quote = '''
 QUIC endpoints using PMTUD SHOULD validate ICMP messages to protect
@@ -55,7 +53,6 @@ from off-path injection as specified in [RFC8201] and Section 5.2 of
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.2.1"
 level = "SHOULD"
 quote = '''
 This validation SHOULD use the quoted packet supplied in
@@ -64,7 +61,6 @@ corresponding transport connection (see Section 4.6.1 of [DPLPMTUD]).
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.2.1"
 level = "MUST"
 quote = '''
 ICMP message validation MUST include matching IP addresses and UDP
@@ -73,7 +69,6 @@ QUIC session.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.2.1"
 level = "SHOULD"
 quote = '''
 The endpoint SHOULD ignore all ICMP messages that fail
@@ -81,7 +76,6 @@ validation.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.2.1"
 level = "MUST"
 quote = '''
 An endpoint MUST NOT increase PMTU based on ICMP messages; see
@@ -89,7 +83,6 @@ Section 3, clause 6 of [DPLPMTUD].
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.2.1"
 level = "MAY"
 quote = '''
 Any reduction in QUIC's maximum

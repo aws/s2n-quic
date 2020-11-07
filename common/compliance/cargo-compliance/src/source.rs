@@ -30,8 +30,9 @@ impl<'a> SourceFile<'a> {
             }
             Self::Spec(file) => {
                 let text = std::fs::read_to_string(&file)?;
-                for spec in toml::from_str::<Specs>(&text)?.specs {
-                    annotations.insert(spec.into_annotation(file.clone())?);
+                let specs = toml::from_str::<Specs>(&text)?;
+                for spec in specs.specs {
+                    annotations.insert(spec.into_annotation(file.clone(), &specs.target)?);
                 }
                 Ok(annotations)
             }
@@ -42,6 +43,8 @@ impl<'a> SourceFile<'a> {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Specs<'a> {
+    target: Option<String>,
+
     #[serde(borrow)]
     #[serde(alias = "spec", default)]
     specs: Vec<Spec<'a>>,
@@ -50,14 +53,18 @@ struct Specs<'a> {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Spec<'a> {
-    target: String,
+    target: Option<String>,
     level: Option<&'a str>,
     format: Option<&'a str>,
     quote: &'a str,
 }
 
 impl<'a> Spec<'a> {
-    fn into_annotation(self, source: PathBuf) -> Result<Annotation, Error> {
+    fn into_annotation(
+        self,
+        source: PathBuf,
+        default_target: &Option<String>,
+    ) -> Result<Annotation, Error> {
         Ok(Annotation {
             anno_line: 1,
             anno_column: 0,
@@ -65,7 +72,10 @@ impl<'a> Spec<'a> {
             item_column: 0,
             path: String::new(),
             anno: AnnotationType::Spec,
-            target: self.target,
+            target: self
+                .target
+                .or_else(|| default_target.as_ref().cloned())
+                .ok_or("missing target")?,
             quote: self.quote.trim().replace('\n', " "),
             code: String::new(),
             manifest_dir: source.clone(),

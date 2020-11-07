@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.1.4
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.1.4"
+
 # 4.1.4.  Encryption Level Changes
 #
 # As keys at a given encryption level become available to TLS, TLS
@@ -66,7 +66,6 @@
 # to QUIC before it might produce them for its own use.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.1.4"
 level = "SHOULD"
 quote = '''
 While waiting for TLS processing to
@@ -75,7 +74,6 @@ processed using keys that aren't yet available.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.1.4"
 level = "SHOULD"
 quote = '''
 An endpoint SHOULD continue

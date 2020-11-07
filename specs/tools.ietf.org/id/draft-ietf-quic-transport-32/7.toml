@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7"
+
 # 7.  Cryptographic and Transport Handshake
 #
 # QUIC relies on a combined cryptographic and transport handshake to
@@ -73,7 +73,6 @@
 # that is in use.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7"
 level = "MUST"
 quote = '''
 The cryptographic handshake MUST
@@ -81,7 +80,6 @@ provide the following properties:
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7"
 level = "MUST"
 quote = '''
 Endpoints MUST explicitly negotiate an application protocol.

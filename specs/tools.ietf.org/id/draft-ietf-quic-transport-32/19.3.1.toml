@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.3.1
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.3.1"
+
 # 19.3.1.  ACK Ranges
 #
 # Each ACK Range consists of alternating Gap and ACK Range values in
@@ -62,7 +62,6 @@
 # a connection error of type FRAME_ENCODING_ERROR.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.3.1"
 level = "MUST"
 quote = '''
 If any computed packet number is negative, an endpoint MUST generate

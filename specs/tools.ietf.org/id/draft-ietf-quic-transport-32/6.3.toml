@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#6.3
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#6.3"
+
 # 6.3.  Using Reserved Versions
 #
 # For a server to use a new version in the future, clients need to
@@ -15,7 +15,6 @@
 # peer correctly discards the packet.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#6.3"
 level = "MAY"
 quote = '''
 Endpoints MAY add reserved versions to any field where unknown or
@@ -24,7 +23,6 @@ ignores the value.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#6.3"
 level = "MAY"
 quote = '''
 Endpoints MAY send packets with a reserved version to test that a

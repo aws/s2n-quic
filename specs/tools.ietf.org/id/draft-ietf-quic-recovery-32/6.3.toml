@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.3
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.3"
+
 # 6.3.  Handling Retry Packets
 #
 # A Retry packet causes a client to send another Initial packet,
@@ -19,7 +19,6 @@
 # value in place of its default for the initial RTT estimate.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.3"
 level = "MAY"
 quote = '''
 The client MAY compute an RTT estimate to the server as the time
@@ -28,7 +27,6 @@ Version Negotiation packet is received.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.3"
 level = "MAY"
 quote = '''
 The client MAY use this

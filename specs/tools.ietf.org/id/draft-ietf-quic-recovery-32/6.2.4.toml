@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4"
+
 # 6.2.4.  Sending Probe Packets
 #
 # When a PTO timer expires, a sender MUST send at least one ack-
@@ -55,7 +55,6 @@
 # retransmission.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4"
 level = "MUST"
 quote = '''
 When a PTO timer expires, a sender MUST send at least one ack-
@@ -63,7 +62,6 @@ eliciting packet in the packet number space as a probe.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4"
 level = "MAY"
 quote = '''
 An endpoint
@@ -74,14 +72,12 @@ spaces.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4"
 level = "MUST"
 quote = '''
 All probe packets sent on a PTO MUST be ack-eliciting.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4"
 level = "SHOULD"
 quote = '''
 In addition to sending data in the packet number space for which the
@@ -91,14 +87,12 @@ possible.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4"
 level = "MUST"
 quote = '''
 When the PTO timer expires, an ack-eliciting packet MUST be sent.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4"
 level = "SHOULD"
 quote = '''
 An
@@ -106,7 +100,6 @@ endpoint SHOULD include new data in this packet.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4"
 level = "MAY"
 quote = '''
 Previously sent
@@ -114,7 +107,6 @@ data MAY be sent if no new data can be sent.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4"
 level = "MAY"
 quote = '''
 Implementations MAY use
@@ -124,7 +116,6 @@ application's priorities.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4"
 level = "SHOULD"
 quote = '''
 When there is no data to send, the sender SHOULD send
@@ -133,7 +124,6 @@ PTO timer.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4"
 level = "MAY"
 quote = '''
 Alternatively, instead of sending an ack-eliciting packet, the sender

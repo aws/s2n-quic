@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.1
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.1"
+
 # 7.6.1.  Duration
 #
 # The persistent congestion duration is computed as follows:
@@ -37,7 +37,6 @@
 # congestion without depending on PTO expiration.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.1"
 level = "RECOMMENDED"
 quote = '''
 The RECOMMENDED value for kPersistentCongestionThreshold is 3, which

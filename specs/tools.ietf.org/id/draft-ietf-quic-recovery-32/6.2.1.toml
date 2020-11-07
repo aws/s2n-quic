@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1"
+
 # 6.2.1.  Computing PTO
 #
 # When an ack-eliciting packet is transmitted, the sender schedules a
@@ -73,7 +73,6 @@
 # most cases and is less likely to spuriously retransmit data.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1"
 level = "MUST"
 quote = '''
 The PTO period MUST be at least kGranularity, to avoid the timer
@@ -81,7 +80,6 @@ expiring immediately.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1"
 level = "MUST"
 quote = '''
 When ack-eliciting packets in multiple packet number spaces are in
@@ -90,7 +88,6 @@ Handshake packet number spaces.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1"
 level = "MUST"
 quote = '''
 An endpoint MUST NOT set its PTO timer for the application data
@@ -98,7 +95,6 @@ packet number space until the handshake is confirmed.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1"
 level = "SHOULD"
 quote = '''
 A sender SHOULD restart its PTO timer every time an ack-eliciting
@@ -108,7 +104,6 @@ discarded (Section 4.9 of [QUIC-TLS]).
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1"
 level = "MUST"
 quote = '''
 When a PTO timer expires, the PTO backoff MUST be increased,
@@ -116,7 +111,6 @@ resulting in the PTO period being set to twice its current value.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1"
 level = "MUST"
 quote = '''
 The PTO timer MUST NOT be set if a timer is set for time threshold

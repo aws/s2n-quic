@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2.1
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2.1"
+
 # 13.2.1.  Sending ACK Frames
 #
 # Every packet SHOULD be acknowledged at least once, and ack-eliciting
@@ -67,7 +67,6 @@
 # loop of acknowledgements.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2.1"
 level = "MUST"
 quote = '''
 Every packet SHOULD be acknowledged at least once, and ack-eliciting
@@ -77,7 +76,6 @@ see Section 18.2.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2.1"
 level = "MUST"
 quote = '''
 An endpoint MUST acknowledge all ack-eliciting Initial and Handshake
@@ -86,7 +84,6 @@ within its advertised max_ack_delay, with the following exception.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2.1"
 level = "MUST"
 quote = '''
 Since packets containing only ACK frames are not congestion
@@ -95,7 +92,6 @@ response to receiving an ack-eliciting packet.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2.1"
 level = "MUST"
 quote = '''
 An endpoint MUST NOT send a non-ack-eliciting packet in response to a
@@ -104,7 +100,6 @@ the received packet.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2.1"
 level = "SHOULD"
 quote = '''
 In order to assist loss detection at the sender, an endpoint SHOULD
@@ -113,7 +108,6 @@ eliciting packet either:
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2.1"
 level = "SHOULD"
 quote = '''
 Similarly, packets marked with the ECN Congestion Experienced (CE)
@@ -122,7 +116,6 @@ reduce the peer's response time to congestion events.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2.1"
 level = "SHOULD"
 quote = '''
 An endpoint SHOULD
@@ -131,7 +124,6 @@ packets to acknowledge.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2.1"
 level = "MAY"
 quote = '''
 When only non-ack-eliciting packets need to
@@ -140,7 +132,6 @@ has been received to include an ACK frame with outgoing frames.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2.1"
 level = "MUST"
 quote = '''
 A receiver MUST NOT send an ack-eliciting frame in all packets that

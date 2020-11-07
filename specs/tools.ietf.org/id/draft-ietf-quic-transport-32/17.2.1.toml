@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.1
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.1"
+
 # 17.2.1.  Version Negotiation Packet
 #
 # A Version Negotiation packet is inherently not version-specific.
@@ -66,14 +66,12 @@
 # See Section 6 for a description of the version negotiation process.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.1"
 level = "MUST"
 quote = '''
 Clients MUST ignore the value of this field.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.1"
 level = "SHOULD"
 quote = '''
 Servers SHOULD set the
@@ -82,7 +80,6 @@ Negotiation packets appear to have the Fixed Bit field.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.1"
 level = "MUST"
 quote = '''
 The Version field of a Version Negotiation packet MUST be set to
@@ -90,7 +87,6 @@ The Version field of a Version Negotiation packet MUST be set to
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.1"
 level = "MUST"
 quote = '''
 The server MUST include the value from the Source Connection ID field
@@ -98,7 +94,6 @@ of the packet it receives in the Destination Connection ID field.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.1"
 level = "MUST"
 quote = '''
 The value for Source Connection ID MUST be copied from the
@@ -107,7 +102,6 @@ randomly selected by a client.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.1"
 level = "MUST"
 quote = '''
 Version-
@@ -116,7 +110,6 @@ server decision about whether to send a Version Negotiation packet.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.1"
 level = "MUST"
 quote = '''
 A server MUST NOT send more than one Version Negotiation packet in

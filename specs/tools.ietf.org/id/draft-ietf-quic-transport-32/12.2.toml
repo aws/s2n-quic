@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.2
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.2"
+
 # 12.2.  Coalescing Packets
 #
 # Initial (Section 17.2.2), 0-RTT (Section 17.2.3), and Handshake
@@ -47,14 +47,12 @@
 # packet.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.2"
 level = "MUST"
 quote = '''
 Receivers MUST be able to process coalesced packets.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.2"
 level = "SHOULD"
 quote = '''
 An
@@ -64,7 +62,6 @@ multiple packets at the same encryption level.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.2"
 level = "MAY"
 quote = '''
 Receivers MAY route based on the information in the first packet
@@ -72,7 +69,6 @@ contained in a UDP datagram.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.2"
 level = "MUST"
 quote = '''
 Senders MUST NOT coalesce QUIC packets
@@ -80,7 +76,6 @@ with different connection IDs into a single UDP datagram.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.2"
 level = "SHOULD"
 quote = '''
 Receivers
@@ -89,7 +84,6 @@ Connection ID than the first packet in the datagram.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.2"
 level = "MUST"
 quote = '''
 The receiver of coalesced QUIC packets MUST
@@ -99,7 +93,6 @@ datagrams.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.2"
 level = "MUST"
 quote = '''
 For example, if decryption fails (because the keys are

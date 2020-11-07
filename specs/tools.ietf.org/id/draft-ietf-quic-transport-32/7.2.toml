@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.2
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.2"
+
 # 7.2.  Negotiating Connection IDs
 #
 # A connection ID is used to ensure consistent routing of packets, as
@@ -66,7 +66,6 @@
 # migration (Section 9); see Section 5.1.1 for details.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.2"
 level = "MUST"
 quote = '''
 This Destination Connection ID MUST be at least 8 bytes in
@@ -74,7 +73,6 @@ length.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.2"
 level = "MUST"
 quote = '''
 Until a packet is received from the server, the client MUST
@@ -83,7 +81,6 @@ connection.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.2"
 level = "MUST"
 quote = '''
 Once a client
@@ -93,7 +90,6 @@ ID.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.2"
 level = "MUST"
 quote = '''
 A client MUST change the Destination Connection ID it uses for
@@ -102,7 +98,6 @@ Retry packet.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.2"
 level = "MUST"
 quote = '''
 A server MUST set the Destination Connection ID it
@@ -110,7 +105,6 @@ uses for sending packets based on the first received Initial packet.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.2"
 level = "MUST"
 quote = '''
 Any further changes to the Destination Connection ID are only

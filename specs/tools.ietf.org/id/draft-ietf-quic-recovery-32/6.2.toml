@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2"
+
 # 6.2.  Probe Timeout
 #
 # A Probe Timeout (PTO) triggers sending one or two probe datagrams
@@ -23,7 +23,6 @@
 # retransmission timeout period [RFC6298].
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2"
 level = "MUST"
 quote = '''
 A PTO timer expiration event does not indicate packet loss and MUST

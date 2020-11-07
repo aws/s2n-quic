@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#11.2
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#11.2"
+
 # 11.2.  Stream Errors
 #
 # If an application-level error affects a single stream, but otherwise
@@ -23,7 +23,6 @@
 # are prematurely cancelled by either endpoint.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#11.2"
 level = "MUST"
 quote = '''
 RESET_STREAM MUST only be instigated by the
@@ -31,7 +30,6 @@ application protocol that uses QUIC.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#11.2"
 level = "SHOULD"
 quote = '''
 Application protocols SHOULD define rules for handling streams that

@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.4
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.4"
+
 # 4.4.  Peer Authentication
 #
 # The requirements for authentication depend on the application
@@ -36,14 +36,12 @@
 # PROTOCOL_VIOLATION.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.4"
 level = "MUST"
 quote = '''
 A client MUST authenticate the identity of the server.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.4"
 level = "MAY"
 quote = '''
 A server MAY request that the client authenticate during the
@@ -51,7 +49,6 @@ handshake.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.4"
 level = "MAY"
 quote = '''
 A server MAY refuse a connection if the client is unable
@@ -59,7 +56,6 @@ to authenticate when requested.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.4"
 level = "MUST"
 quote = '''
 A server MUST NOT use post-handshake client authentication (as
@@ -70,7 +66,6 @@ request with the application-level event that triggered it (see
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.4"
 level = "MUST"
 quote = '''
 More specifically, servers MUST NOT send post-
@@ -80,7 +75,6 @@ PROTOCOL_VIOLATION.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.4"
 level = "MUST"
 quote = '''
 More specifically, servers MUST NOT send post-

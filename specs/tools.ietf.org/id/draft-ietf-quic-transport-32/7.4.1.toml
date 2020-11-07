@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.4.1
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.4.1"
+
 # 7.4.1.  Values of Transport Parameters for 0-RTT
 #
 # Using 0-RTT depends on both client and server using protocol
@@ -87,7 +87,6 @@
 # connection error of type PROTOCOL_VIOLATION.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.4.1"
 level = "MUST"
 quote = '''
 The definition of a new transport parameter (Section 7.4.2) MUST
@@ -96,7 +95,6 @@ mandatory, optional, or prohibited.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.4.1"
 level = "MUST"
 quote = '''
 A client MUST NOT use remembered values for the following parameters:
@@ -106,7 +104,6 @@ retry_source_connection_id, and stateless_reset_token.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.4.1"
 level = "MUST"
 quote = '''
 The client
@@ -115,7 +112,6 @@ server does not provide new values, the default value is used.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.4.1"
 level = "MUST"
 quote = '''
 A client that attempts to send 0-RTT data MUST remember all other
@@ -123,7 +119,6 @@ transport parameters used by the server that it is able to process.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.4.1"
 level = "MUST"
 quote = '''
 If 0-RTT data is accepted by the server, the server MUST NOT reduce
@@ -132,7 +127,6 @@ with its 0-RTT data.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.4.1"
 level = "MUST"
 quote = '''
 In particular, a server that accepts 0-RTT data
@@ -141,7 +135,6 @@ are smaller than the remembered value of the parameters.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.4.1"
 level = "SHOULD"
 quote = '''
 The applicable
@@ -150,7 +143,6 @@ data SHOULD be set to non-zero values for 0-RTT.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.4.1"
 level = "MAY"
 quote = '''
 A server MAY store and recover the previously sent values of the
@@ -159,7 +151,6 @@ parameters and reject 0-RTT if it selects smaller values.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.4.1"
 level = "MUST"
 quote = '''
 A server MUST reject 0-RTT data if the restored values for transport
@@ -167,7 +158,6 @@ parameters cannot be supported.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.4.1"
 level = "MUST"
 quote = '''
 When sending frames in 0-RTT packets, a client MUST only use
@@ -177,7 +167,6 @@ or from frames received in 1-RTT packets.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.4.1"
 level = "MUST"
 quote = '''
 When sending frames in 0-RTT packets, a client MUST only use
@@ -187,7 +176,6 @@ or from frames received in 1-RTT packets.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.4.1"
 level = "MAY"
 quote = '''
 A

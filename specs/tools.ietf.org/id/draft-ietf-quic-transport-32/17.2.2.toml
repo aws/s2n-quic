@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.2
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.2"
+
 # 17.2.2.  Initial Packet
 #
 # An Initial packet uses long headers with a type value of 0x0.  It
@@ -80,7 +80,6 @@
 # the first flight of Initial packets.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.2"
 level = "MUST"
 quote = '''
 Initial packets sent by the server MUST set the Token Length field
@@ -90,7 +89,6 @@ connection error of type PROTOCOL_VIOLATION.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.2"
 level = "MUST"
 quote = '''
 Initial packets sent by the server MUST set the Token Length field

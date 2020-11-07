@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.3
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.3"
+
 # 19.3.  ACK Frames
 #
 # Receivers send ACK frames (types 0x02 and 0x03) to inform senders of
@@ -75,7 +75,6 @@
 # ECN Counts:  The three ECN Counts; see Section 19.3.2.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.3"
 level = "MUST"
 quote = '''
 QUIC implementations MUST properly handle both types

@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.8
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.8"
+
 # 19.8.  STREAM Frames
 #
 # STREAM frames implicitly create a stream and carry stream data.  The
@@ -68,7 +68,6 @@
 # FLOW_CONTROL_ERROR.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.8"
 level = "MUST"
 quote = '''
 An endpoint MUST terminate the connection with error
@@ -78,7 +77,6 @@ stream.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.8"
 level = "MUST"
 quote = '''
 Receipt of a frame that exceeds this limit

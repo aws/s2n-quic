@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.5.1
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.5.1"
+
 # 17.2.5.1.  Sending a Retry Packet
 #
 # The server populates the Destination Connection ID with the
@@ -22,7 +22,6 @@
 # packet in response to a single UDP datagram.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.5.1"
 level = "MUST"
 quote = '''
 This value MUST NOT be equal to the Destination
@@ -30,7 +29,6 @@ Connection ID field of the packet sent by the client.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.5.1"
 level = "MUST"
 quote = '''
 A client MUST
@@ -40,7 +38,6 @@ Initial packet.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.5.1"
 level = "MUST"
 quote = '''
 The client MUST use the value from the Source
@@ -49,7 +46,6 @@ ID field of subsequent packets that it sends.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.5.1"
 level = "MAY"
 quote = '''
 A server MAY send Retry packets in response to Initial and 0-RTT
@@ -57,7 +53,6 @@ packets.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.5.1"
 level = "MUST"
 quote = '''
 A server MUST NOT send more than one Retry

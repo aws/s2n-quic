@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#21.8
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#21.8"
+
 # 21.8.  Peer Denial of Service
 #
 # QUIC and TLS both contain frames or messages that have legitimate
@@ -22,7 +22,6 @@
 # error, or by dropping packets.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#21.8"
 level = "SHOULD"
 quote = '''
 While there are legitimate uses for all messages, implementations
@@ -32,7 +31,6 @@ an attack.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#21.8"
 level = "MAY"
 quote = '''
 Endpoints MAY respond to this condition with a connection

@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#6.2.1
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#6.2.1"
+
 # 6.2.1.  Version Negotiation Between Draft Versions
 #
 # [[RFC editor: please remove this section before publication.]]
@@ -25,7 +25,6 @@
 # and MUST NOT be used outside of draft implementations.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#6.2.1"
 level = "MAY"
 quote = '''
 When a draft implementation receives a Version Negotiation packet, it
@@ -35,7 +34,6 @@ attempt; see Section 6.2.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#6.2.1"
 level = "MUST"
 quote = '''
 The client MUST check that the Destination and Source Connection ID
@@ -44,7 +42,6 @@ packet that the client sent.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#6.2.1"
 level = "MUST"
 quote = '''
 If this check fails, the packet MUST be
@@ -52,7 +49,6 @@ discarded.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#6.2.1"
 level = "MUST"
 quote = '''
 The new connection MUST use a new
@@ -61,7 +57,6 @@ previously sent.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#6.2.1"
 level = "MUST"
 quote = '''
 Note that this mechanism does not protect against downgrade attacks

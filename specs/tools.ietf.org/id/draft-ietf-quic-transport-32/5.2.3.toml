@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2.3
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2.3"
+
 # 5.2.3.  Considerations for Simple Load Balancers
 #
 # A server deployment could load balance among servers using only
@@ -30,7 +30,6 @@
 # avoid the creation of a stateless reset oracle; see Section 21.10.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2.3"
 level = "SHOULD"
 quote = '''
 A server in a deployment that does not implement a solution to
@@ -40,7 +39,6 @@ disable_active_migration transport parameter.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2.3"
 level = "MUST"
 quote = '''
 Server deployments that use this simple form of load balancing MUST

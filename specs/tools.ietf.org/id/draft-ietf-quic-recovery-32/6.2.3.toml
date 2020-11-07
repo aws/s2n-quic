@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.3
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.3"
+
 # 6.2.3.  Speeding Up Handshake Completion
 #
 # When a server receives an Initial packet containing duplicate CRYPTO
@@ -26,7 +26,6 @@
 # with one or more packets in its first flight.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.3"
 level = "MAY"
 quote = '''
 To speed up handshake completion under these conditions, an endpoint

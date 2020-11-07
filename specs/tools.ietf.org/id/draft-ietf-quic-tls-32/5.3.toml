@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.3
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.3"
+
 # 5.3.  AEAD Usage
 #
 # The Authenticated Encryption with Associated Data (AEAD; see [AEAD])
@@ -50,7 +50,6 @@
 # use.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.3"
 level = "MUST"
 quote = '''
 A cipher suite MUST NOT be
@@ -59,7 +58,6 @@ cipher suite.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.3"
 level = "MUST"
 quote = '''
 Note:  An endpoint MUST NOT reject a ClientHello that offers a cipher
@@ -68,7 +66,6 @@ deploy a new cipher suite.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.3"
 level = "MUST"
 quote = '''
 An endpoint MUST initiate a key update

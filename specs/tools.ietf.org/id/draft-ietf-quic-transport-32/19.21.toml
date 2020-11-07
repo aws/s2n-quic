@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.21
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.21"
+
 # 19.21.  Extension Frames
 #
 # QUIC frames do not use a self-describing encoding.  An endpoint
@@ -30,7 +30,6 @@
 # Section 22.3.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.21"
 level = "MUST"
 quote = '''
 An extension to QUIC that wishes to use a new type of frame MUST
@@ -38,7 +37,6 @@ first ensure that a peer is able to understand the frame.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.21"
 level = "SHOULD"
 quote = '''
 Such extensions
@@ -47,7 +45,6 @@ modifying the same protocol components.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.21"
 level = "MUST"
 quote = '''
 Extension frames MUST be congestion controlled and MUST cause an ACK
@@ -55,7 +52,6 @@ frame to be sent.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.21"
 level = "MUST"
 quote = '''
 Extension frames MUST be congestion controlled and MUST cause an ACK

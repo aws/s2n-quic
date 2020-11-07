@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.20
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.20"
+
 # 19.20.  HANDSHAKE_DONE Frames
 #
 # The server uses a HANDSHAKE_DONE frame (type=0x1e) to signal
@@ -20,7 +20,6 @@
 # error of type PROTOCOL_VIOLATION.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.20"
 level = "MUST"
 quote = '''
 Servers MUST
@@ -28,7 +27,6 @@ NOT send a HANDSHAKE_DONE frame before completing the handshake.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.20"
 level = "MUST"
 quote = '''
 A

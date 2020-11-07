@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.2
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.2"
+
 # 9.2.  Initiating Connection Migration
 #
 # An endpoint can migrate a connection to a new local address by
@@ -24,7 +24,6 @@
 # endpoint validates ECN capability as described in Section 13.4.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.2"
 level = "MAY"
 quote = '''
 An endpoint MAY defer path

@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.1
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.1"
+
 # 17.1.  Packet Number Encoding and Decoding
 #
 # Packet numbers are integers in the range 0 to 2^62-1 (Section 12.3).
@@ -53,7 +53,6 @@
 # Appendix A.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.1"
 level = "MUST"
 quote = '''
 Prior to receiving an acknowledgement for a packet number space, the
@@ -62,7 +61,6 @@ described below.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.1"
 level = "MUST"
 quote = '''
 After an acknowledgement is received for a packet number space, the
@@ -72,7 +70,6 @@ acknowledged packet and packet number being sent.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.1"
 level = "SHOULD"
 quote = '''
 An endpoint SHOULD use a large

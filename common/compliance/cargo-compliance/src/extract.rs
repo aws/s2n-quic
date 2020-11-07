@@ -315,8 +315,8 @@ fn write_toml<W: std::io::Write>(
     section: &Section,
     features: &[Feature],
 ) -> Result<(), std::io::Error> {
-    writeln!(w, "# {}#{}", target, section.id)?;
-    writeln!(w, "#")?;
+    writeln!(w, "target = \"{}#{}\"", target, section.id)?;
+    writeln!(w)?;
     writeln!(w, "# {}", section.full_title)?;
     writeln!(w, "#")?;
     for line in &section.lines {
@@ -326,7 +326,6 @@ fn write_toml<W: std::io::Write>(
 
     for feature in features {
         writeln!(w, "[[spec]]")?;
-        writeln!(w, "target = \"{}#{}\"", target, section.id)?;
         writeln!(w, "level = \"{}\"", feature.level)?;
         writeln!(w, "quote = '''")?;
         for line in feature.quote.iter() {

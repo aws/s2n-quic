@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.4
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.4"
+
 # 6.4.  Discarding Keys and Packet State
 #
 # When packet protection keys are discarded (see Section 4.9 of
@@ -26,7 +26,6 @@
 # available to both client and server; see Section 4.9.1 of [QUIC-TLS].
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.4"
 level = "MUST"
 quote = '''
 The sender MUST discard all recovery state associated with
@@ -34,7 +33,6 @@ those packets and MUST remove them from the count of bytes in flight.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.4"
 level = "MUST"
 quote = '''
 The sender MUST discard all recovery state associated with

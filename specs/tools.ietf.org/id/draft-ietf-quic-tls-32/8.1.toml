@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#8.1
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#8.1"
+
 # 8.1.  Protocol Negotiation
 #
 # QUIC requires that the cryptographic handshake provide authenticated
@@ -24,7 +24,6 @@
 # protocol by a server as a connection error of type 0x178.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#8.1"
 level = "MUST"
 quote = '''
 Unless
@@ -33,7 +32,6 @@ endpoints MUST use ALPN for this purpose.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#8.1"
 level = "MUST"
 quote = '''
 When using ALPN, endpoints MUST immediately close a connection (see
@@ -43,7 +41,6 @@ protocol is not negotiated.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#8.1"
 level = "MUST"
 quote = '''
 While [ALPN] only specifies that servers
@@ -52,7 +49,6 @@ connection when ALPN negotiation fails.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#8.1"
 level = "MAY"
 quote = '''
 An application protocol MAY restrict the QUIC versions that it can
@@ -60,7 +56,6 @@ operate over.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#8.1"
 level = "MUST"
 quote = '''
 Servers MUST select an application protocol compatible
@@ -68,7 +63,6 @@ with the QUIC version that the client has selected.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#8.1"
 level = "MUST"
 quote = '''
 The server MUST
@@ -77,7 +71,6 @@ connection error of type 0x178 (no_application_protocol).
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#8.1"
 level = "MUST"
 quote = '''
 Similarly,

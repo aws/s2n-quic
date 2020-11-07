@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#21.11
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#21.11"
+
 # 21.11.  Version Downgrade
 #
 # This document defines QUIC Version Negotiation packets in Section 6
@@ -12,7 +12,6 @@
 # mechanism that is robust against version downgrade attacks.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#21.11"
 level = "MUST"
 quote = '''
 Future

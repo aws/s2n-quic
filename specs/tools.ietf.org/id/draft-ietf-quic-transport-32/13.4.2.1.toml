@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.4.2.1
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.4.2.1"
+
 # 13.4.2.1.  Receiving ACK Frames with ECN Counts
 #
 # Erroneous application of CE markings by the network can result in
@@ -45,7 +45,6 @@
 # are remarked to ECT(0) or ECT(1) in the network.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.4.2.1"
 level = "MUST"
 quote = '''
 An endpoint MUST NOT fail ECN validation as a result of

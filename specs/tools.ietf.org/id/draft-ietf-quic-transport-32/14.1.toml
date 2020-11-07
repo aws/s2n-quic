@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.1
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.1"
+
 # 14.1.  Initial Datagram Size
 #
 # A client MUST expand the payload of all UDP datagrams carrying
@@ -29,7 +29,6 @@
 # validating the address of the client; see Section 8.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.1"
 level = "MUST"
 quote = '''
 A client MUST expand the payload of all UDP datagrams carrying
@@ -39,7 +38,6 @@ by coalescing the Initial packet; see Section 12.2.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.1"
 level = "MUST"
 quote = '''
 Similarly, a
@@ -49,7 +47,6 @@ datagram size of 1200 bytes.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.1"
 level = "MAY"
 quote = '''
 Datagrams containing Initial packets MAY exceed 1200 bytes if the
@@ -58,7 +55,6 @@ that it chooses.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.1"
 level = "MUST"
 quote = '''
 A server MUST discard an Initial packet that is carried in a UDP
@@ -67,7 +63,6 @@ maximum datagram size of 1200 bytes.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.1"
 level = "MAY"
 quote = '''
 A server MAY also immediately
@@ -76,7 +71,6 @@ error code of PROTOCOL_VIOLATION; see Section 10.2.3.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.1"
 level = "MUST"
 quote = '''
 The server MUST also limit the number of bytes it sends before

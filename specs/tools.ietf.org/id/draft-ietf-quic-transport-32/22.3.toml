@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#22.3
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#22.3"
+
 # 22.3.  QUIC Frame Types Registry
 #
 # IANA [SHALL add/has added] a registry for "QUIC Frame Types" under a
@@ -31,7 +31,6 @@
 # Table 3.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#22.3"
 level = "SHALL"
 quote = '''
 IANA [SHALL add/has added] a registry for "QUIC Frame Types" under a
@@ -39,7 +38,6 @@ IANA [SHALL add/has added] a registry for "QUIC Frame Types" under a
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#22.3"
 level = "MUST"
 quote = '''
 In addition to the fields in Section 22.1.1, permanent registrations
@@ -47,7 +45,6 @@ in this registry MUST include the following field:
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#22.3"
 level = "SHOULD"
 quote = '''
 In addition to the advice in Section 22.1, specifications for new

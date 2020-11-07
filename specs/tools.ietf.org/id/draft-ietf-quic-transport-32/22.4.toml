@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#22.4
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#22.4"
+
 # 22.4.  QUIC Transport Error Codes Registry
 #
 # IANA [SHALL add/has added] a registry for "QUIC Transport Error
@@ -84,7 +84,6 @@
 #          Table 7: Initial QUIC Transport Error Codes Entries
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#22.4"
 level = "SHALL"
 quote = '''
 IANA [SHALL add/has added] a registry for "QUIC Transport Error
@@ -92,7 +91,6 @@ Codes" under a "QUIC" heading.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#22.4"
 level = "MUST"
 quote = '''
 In addition to the fields in Section 22.1.1, permanent registrations
@@ -100,7 +98,6 @@ in this registry MUST include the following fields:
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#22.4"
 level = "MAY"
 quote = '''
 Description:  A brief description of the error code semantics, which

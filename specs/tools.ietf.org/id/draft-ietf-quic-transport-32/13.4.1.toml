@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.4.1
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.4.1"
+
 # 13.4.1.  Reporting ECN Counts
 #
 # Use of ECN requires the receiving endpoint to read the ECN field from
@@ -33,7 +33,6 @@
 # relevant security concerns.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.4.1"
 level = "MUST"
 quote = '''
 Even if an endpoint does not set an ECT field on packets it sends,

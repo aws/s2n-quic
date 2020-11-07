@@ -1,5 +1,5 @@
-# https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9
-#
+target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9"
+
 # 4.9.  Discarding Unused Keys
 #
 # After QUIC moves to a new encryption level, packet protection keys
@@ -30,7 +30,6 @@
 # encryption level.  These packets MAY also include PADDING frames.
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9"
 level = "MUST"
 quote = '''
 If packets from a lower encryption level contain
@@ -39,7 +38,6 @@ same encryption level.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9"
 level = "MUST"
 quote = '''
 Though an endpoint might retain older keys, new data MUST be sent at
@@ -47,7 +45,6 @@ the highest currently-available encryption level.
 '''
 
 [[spec]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9"
 level = "MAY"
 quote = '''
 These packets MAY also include PADDING frames.
