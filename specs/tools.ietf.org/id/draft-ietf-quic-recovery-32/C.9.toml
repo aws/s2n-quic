@@ -1,0 +1,29 @@
+# https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#C.9
+#
+# C.9.  Since draft-ietf-quic-recovery-23
+#
+# *  Define under-utilizing the congestion window (#2630, #2686, #2675)
+# 
+# *  PTO MUST send data if possible (#3056, #3057)
+# 
+# *  Connection Close is not ack-eliciting (#3097, #3098)
+# 
+# *  MUST limit bursts to the initial congestion window (#3160)
+# 
+# *  Define the current max_datagram_size for congestion control
+#    (#3041, #3167)
+
+[[spec]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#C.9"
+level = "MUST"
+quote = '''
+*  PTO MUST send data if possible (#3056, #3057)
+'''
+
+[[spec]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#C.9"
+level = "MUST"
+quote = '''
+*  MUST limit bursts to the initial congestion window (#3160)
+'''
+

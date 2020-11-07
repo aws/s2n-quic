@@ -1,0 +1,88 @@
+# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#22.2
+#
+# 22.2.  QUIC Transport Parameter Registry
+#
+# IANA [SHALL add/has added] a registry for "QUIC Transport Parameters"
+# under a "QUIC" heading.
+# 
+# The "QUIC Transport Parameters" registry governs a 62-bit space.
+# This registry follows the registration policy from Section 22.1.
+# Permanent registrations in this registry are assigned using the
+# Specification Required policy ([RFC8126]).
+# 
+# In addition to the fields in Section 22.1.1, permanent registrations
+# in this registry MUST include the following field:
+# 
+# Parameter Name:  A short mnemonic for the parameter.
+# 
+# The initial contents of this registry are shown in Table 6.
+# 
+#    +=======+=====================================+===============+
+#    | Value | Parameter Name                      | Specification |
+#    +=======+=====================================+===============+
+#    | 0x00  | original_destination_connection_id  | Section 18.2  |
+#    +-------+-------------------------------------+---------------+
+#    | 0x01  | max_idle_timeout                    | Section 18.2  |
+#    +-------+-------------------------------------+---------------+
+#    | 0x02  | stateless_reset_token               | Section 18.2  |
+#    +-------+-------------------------------------+---------------+
+#    | 0x03  | max_udp_payload_size                | Section 18.2  |
+#    +-------+-------------------------------------+---------------+
+#    | 0x04  | initial_max_data                    | Section 18.2  |
+#    +-------+-------------------------------------+---------------+
+#    | 0x05  | initial_max_stream_data_bidi_local  | Section 18.2  |
+#    +-------+-------------------------------------+---------------+
+#    | 0x06  | initial_max_stream_data_bidi_remote | Section 18.2  |
+#    +-------+-------------------------------------+---------------+
+#    | 0x07  | initial_max_stream_data_uni         | Section 18.2  |
+#    +-------+-------------------------------------+---------------+
+#    | 0x08  | initial_max_streams_bidi            | Section 18.2  |
+#    +-------+-------------------------------------+---------------+
+#    | 0x09  | initial_max_streams_uni             | Section 18.2  |
+#    +-------+-------------------------------------+---------------+
+#    | 0x0a  | ack_delay_exponent                  | Section 18.2  |
+#    +-------+-------------------------------------+---------------+
+#    | 0x0b  | max_ack_delay                       | Section 18.2  |
+#    +-------+-------------------------------------+---------------+
+#    | 0x0c  | disable_active_migration            | Section 18.2  |
+#    +-------+-------------------------------------+---------------+
+#    | 0x0d  | preferred_address                   | Section 18.2  |
+#    +-------+-------------------------------------+---------------+
+#    | 0x0e  | active_connection_id_limit          | Section 18.2  |
+#    +-------+-------------------------------------+---------------+
+#    | 0x0f  | initial_source_connection_id        | Section 18.2  |
+#    +-------+-------------------------------------+---------------+
+#    | 0x10  | retry_source_connection_id          | Section 18.2  |
+#    +-------+-------------------------------------+---------------+
+# 
+#           Table 6: Initial QUIC Transport Parameters Entries
+# 
+# Additionally, each value of the format "31 * N + 27" for integer
+# values of N (that is, 27, 58, 89, ...) are reserved and MUST NOT be
+# assigned by IANA.
+
+[[spec]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#22.2"
+level = "SHALL"
+quote = '''
+IANA [SHALL add/has added] a registry for "QUIC Transport Parameters"
+under a "QUIC" heading.
+'''
+
+[[spec]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#22.2"
+level = "MUST"
+quote = '''
+In addition to the fields in Section 22.1.1, permanent registrations
+in this registry MUST include the following field:
+'''
+
+[[spec]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#22.2"
+level = "MUST"
+quote = '''
+Additionally, each value of the format "31 * N + 27" for integer
+values of N (that is, 27, 58, 89, ...) are reserved and MUST NOT be
+assigned by IANA.
+'''
+

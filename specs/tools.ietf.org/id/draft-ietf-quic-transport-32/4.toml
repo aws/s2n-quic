@@ -1,0 +1,33 @@
+# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4
+#
+# 4.  Flow Control
+#
+# It is necessary to limit the amount of data that a receiver could
+# buffer, to prevent a fast sender from overwhelming a slow receiver,
+# or to prevent a malicious sender from consuming a large amount of
+# memory at a receiver.  To enable a receiver to limit memory
+# commitment to a connection and to apply back pressure on the sender,
+# streams are flow controlled both individually and as an aggregate.  A
+# QUIC receiver controls the maximum amount of data the sender can send
+# on a stream at any time, as described in Section 4.1 and Section 4.2.
+# 
+# Similarly, to limit concurrency within a connection, a QUIC endpoint
+# controls the maximum cumulative number of streams that its peer can
+# initiate, as described in Section 4.6.
+# 
+# Data sent in CRYPTO frames is not flow controlled in the same way as
+# stream data.  QUIC relies on the cryptographic protocol
+# implementation to avoid excessive buffering of data; see [QUIC-TLS].
+# To avoid excessive buffering at multiple layers, QUIC implementations
+# SHOULD provide an interface for the cryptographic protocol
+# implementation to communicate its buffering limits.
+
+[[spec]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4"
+level = "SHOULD"
+quote = '''
+To avoid excessive buffering at multiple layers, QUIC implementations
+SHOULD provide an interface for the cryptographic protocol
+implementation to communicate its buffering limits.
+'''
+

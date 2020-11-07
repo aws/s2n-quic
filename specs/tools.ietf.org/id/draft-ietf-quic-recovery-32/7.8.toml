@@ -1,0 +1,44 @@
+# https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.8
+#
+# 7.8.  Under-utilizing the Congestion Window
+#
+# When bytes in flight is smaller than the congestion window and
+# sending is not pacing limited, the congestion window is under-
+# utilized.  When this occurs, the congestion window SHOULD NOT be
+# increased in either slow start or congestion avoidance.  This can
+# happen due to insufficient application data or flow control limits.
+# 
+# A sender that paces packets (see Section 7.7) might delay sending
+# packets and not fully utilize the congestion window due to this
+# delay.  A sender SHOULD NOT consider itself application limited if it
+# would have fully utilized the congestion window without pacing delay.
+# 
+# A sender MAY implement alternative mechanisms to update its
+# congestion window after periods of under-utilization, such as those
+# proposed for TCP in [RFC7661].
+
+[[spec]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.8"
+level = "SHOULD"
+quote = '''
+When this occurs, the congestion window SHOULD NOT be
+increased in either slow start or congestion avoidance.
+'''
+
+[[spec]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.8"
+level = "SHOULD"
+quote = '''
+A sender SHOULD NOT consider itself application limited if it
+would have fully utilized the congestion window without pacing delay.
+'''
+
+[[spec]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.8"
+level = "MAY"
+quote = '''
+A sender MAY implement alternative mechanisms to update its
+congestion window after periods of under-utilization, such as those
+proposed for TCP in [RFC7661].
+'''
+

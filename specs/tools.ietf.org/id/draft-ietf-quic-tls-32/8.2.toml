@@ -1,0 +1,76 @@
+# https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#8.2
+#
+# 8.2.  QUIC Transport Parameters Extension
+#
+# QUIC transport parameters are carried in a TLS extension.  Different
+# versions of QUIC might define a different method for negotiating
+# transport configuration.
+# 
+# Including transport parameters in the TLS handshake provides
+# integrity protection for these values.
+# 
+#    enum {
+#       quic_transport_parameters(0xffa5), (65535)
+#    } ExtensionType;
+# 
+# The extension_data field of the quic_transport_parameters extension
+# contains a value that is defined by the version of QUIC that is in
+# use.
+# 
+# The quic_transport_parameters extension is carried in the ClientHello
+# and the EncryptedExtensions messages during the handshake.  Endpoints
+# MUST send the quic_transport_parameters extension; endpoints that
+# receive ClientHello or EncryptedExtensions messages without the
+# 
+# quic_transport_parameters extension MUST close the connection with an
+# error of type 0x16d (equivalent to a fatal TLS missing_extension
+# alert, see Section 4.8).
+# 
+# While the transport parameters are technically available prior to the
+# completion of the handshake, they cannot be fully trusted until the
+# handshake completes, and reliance on them should be minimized.
+# However, any tampering with the parameters will cause the handshake
+# to fail.
+# 
+# Endpoints MUST NOT send this extension in a TLS connection that does
+# not use QUIC (such as the use of TLS with TCP defined in [TLS13]).  A
+# fatal unsupported_extension alert MUST be sent by an implementation
+# that supports this extension if the extension is received when the
+# transport is not QUIC.
+
+[[spec]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#8.2"
+level = "MUST"
+quote = '''
+Endpoints
+MUST send the quic_transport_parameters extension; endpoints that
+receive ClientHello or EncryptedExtensions messages without the
+'''
+
+[[spec]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#8.2"
+level = "MUST"
+quote = '''
+quic_transport_parameters extension MUST close the connection with an
+error of type 0x16d (equivalent to a fatal TLS missing_extension
+alert, see Section 4.8).
+'''
+
+[[spec]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#8.2"
+level = "MUST"
+quote = '''
+Endpoints MUST NOT send this extension in a TLS connection that does
+not use QUIC (such as the use of TLS with TCP defined in [TLS13]).
+'''
+
+[[spec]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#8.2"
+level = "MUST"
+quote = '''
+A
+fatal unsupported_extension alert MUST be sent by an implementation
+that supports this extension if the extension is received when the
+transport is not QUIC.
+'''
+

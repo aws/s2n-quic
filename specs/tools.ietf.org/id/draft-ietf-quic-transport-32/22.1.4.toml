@@ -1,0 +1,54 @@
+# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#22.1.4
+#
+# 22.1.4.  Permanent Registrations
+#
+# Permanent registrations in QUIC registries use the Specification
+# Required policy ([RFC8126]), unless otherwise specified.  The
+# designated expert(s) verify that a specification exists and is
+# readily accessible.  Expert(s) are encouraged to be biased towards
+# approving registrations unless they are abusive, frivolous, or
+# actively harmful (not merely aesthetically displeasing, or
+# architecturally dubious).  The creation of a registry MAY specify
+# additional constraints on permanent registrations.
+# 
+# The creation of a registry MAY identify a range of codepoints where
+# registrations are governed by a different registration policy.  For
+# instance, the registries for 62-bit codepoints in this document have
+# stricter policies for codepoints in the range from 0 to 63.
+# 
+# Any stricter requirements for permanent registrations do not prevent
+# provisional registrations for affected codepoints.  For instance, a
+# provisional registration for a frame type (Section 22.3) of 61 could
+# be requested.
+# 
+# All registrations made by Standards Track publications MUST be
+# permanent.
+# 
+# All registrations in this document are assigned a permanent status
+# and list a change controller of the IETF and a contact of the QUIC
+# working group (quic@ietf.org).
+
+[[spec]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#22.1.4"
+level = "MAY"
+quote = '''
+The creation of a registry MAY specify
+additional constraints on permanent registrations.
+'''
+
+[[spec]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#22.1.4"
+level = "MAY"
+quote = '''
+The creation of a registry MAY identify a range of codepoints where
+registrations are governed by a different registration policy.
+'''
+
+[[spec]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#22.1.4"
+level = "MUST"
+quote = '''
+All registrations made by Standards Track publications MUST be
+permanent.
+'''
+

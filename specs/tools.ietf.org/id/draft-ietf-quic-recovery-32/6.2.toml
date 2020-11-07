@@ -1,0 +1,32 @@
+# https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2
+#
+# 6.2.  Probe Timeout
+#
+# A Probe Timeout (PTO) triggers sending one or two probe datagrams
+# when ack-eliciting packets are not acknowledged within the expected
+# period of time or the server may not have validated the client's
+# address.  A PTO enables a connection to recover from loss of tail
+# packets or acknowledgements.
+# 
+# As with loss detection, the probe timeout is per packet number space.
+# That is, a PTO value is computed per packet number space.
+# 
+# A PTO timer expiration event does not indicate packet loss and MUST
+# NOT cause prior unacknowledged packets to be marked as lost.  When an
+# acknowledgement is received that newly acknowledges packets, loss
+# detection proceeds as dictated by packet and time threshold
+# mechanisms; see Section 6.1.
+# 
+# The PTO algorithm used in QUIC implements the reliability functions
+# of Tail Loss Probe [RACK], RTO [RFC5681], and F-RTO algorithms for
+# TCP [RFC5682].  The timeout computation is based on TCP's
+# retransmission timeout period [RFC6298].
+
+[[spec]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2"
+level = "MUST"
+quote = '''
+A PTO timer expiration event does not indicate packet loss and MUST
+NOT cause prior unacknowledged packets to be marked as lost.
+'''
+

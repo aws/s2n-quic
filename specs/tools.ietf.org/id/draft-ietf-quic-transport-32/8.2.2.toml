@@ -1,0 +1,78 @@
+# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
+#
+# 8.2.2.  Path Validation Responses
+#
+# On receiving a PATH_CHALLENGE frame, an endpoint MUST respond by
+# echoing the data contained in the PATH_CHALLENGE frame in a
+# PATH_RESPONSE frame.  An endpoint MUST NOT delay transmission of a
+# packet containing a PATH_RESPONSE frame unless constrained by
+# congestion control.
+# 
+# A PATH_RESPONSE frame MUST be sent on the network path where the
+# PATH_CHALLENGE was received.  This ensures that path validation by a
+# peer only succeeds if the path is functional in both directions.
+# This requirement MUST NOT be enforced by the endpoint that initiates
+# path validation as that would enable an attack on migration; see
+# Section 9.3.3.
+# 
+# An endpoint MUST expand datagrams that contain a PATH_RESPONSE frame
+# to at least the smallest allowed maximum datagram size of 1200 bytes.
+# This verifies that the path is able to carry datagrams of this size
+# in both directions.
+# 
+# An endpoint MUST NOT send more than one PATH_RESPONSE frame in
+# response to one PATH_CHALLENGE frame; see Section 13.3.  The peer is
+# expected to send more PATH_CHALLENGE frames as necessary to evoke
+# additional PATH_RESPONSE frames.
+
+[[spec]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2"
+level = "MUST"
+quote = '''
+On receiving a PATH_CHALLENGE frame, an endpoint MUST respond by
+echoing the data contained in the PATH_CHALLENGE frame in a
+PATH_RESPONSE frame.
+'''
+
+[[spec]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2"
+level = "MUST"
+quote = '''
+An endpoint MUST NOT delay transmission of a
+packet containing a PATH_RESPONSE frame unless constrained by
+congestion control.
+'''
+
+[[spec]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2"
+level = "MUST"
+quote = '''
+A PATH_RESPONSE frame MUST be sent on the network path where the
+PATH_CHALLENGE was received.
+'''
+
+[[spec]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2"
+level = "MUST"
+quote = '''
+This requirement MUST NOT be enforced by the endpoint that initiates
+path validation as that would enable an attack on migration; see
+Section 9.3.3.
+'''
+
+[[spec]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2"
+level = "MUST"
+quote = '''
+An endpoint MUST expand datagrams that contain a PATH_RESPONSE frame
+to at least the smallest allowed maximum datagram size of 1200 bytes.
+'''
+
+[[spec]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2"
+level = "MUST"
+quote = '''
+An endpoint MUST NOT send more than one PATH_RESPONSE frame in
+response to one PATH_CHALLENGE frame; see Section 13.3.
+'''
+

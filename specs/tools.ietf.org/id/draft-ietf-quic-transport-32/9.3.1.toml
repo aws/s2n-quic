@@ -1,0 +1,52 @@
+# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.1
+#
+# 9.3.1.  Peer Address Spoofing
+#
+# It is possible that a peer is spoofing its source address to cause an
+# endpoint to send excessive amounts of data to an unwilling host.  If
+# the endpoint sends significantly more data than the spoofing peer,
+# connection migration might be used to amplify the volume of data that
+# an attacker can generate toward a victim.
+# 
+# As described in Section 9.3, an endpoint is required to validate a
+# peer's new address to confirm the peer's possession of the new
+# address.  Until a peer's address is deemed valid, an endpoint MUST
+# limit the rate at which it sends data to this address.  The endpoint
+# MUST NOT send more than a minimum congestion window's worth of data
+# per estimated round-trip time (kMinimumWindow, as defined in
+# [QUIC-RECOVERY]).  In the absence of this limit, an endpoint risks
+# being used for a denial of service attack against an unsuspecting
+# victim.  Note that since the endpoint will not have any round-trip
+# time measurements to this address, the estimate SHOULD be the default
+# initial value; see [QUIC-RECOVERY].
+# 
+# If an endpoint skips validation of a peer address as described above,
+# it does not need to limit its sending rate.
+
+[[spec]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.1"
+level = "MUST"
+quote = '''
+Until a peer's address is deemed valid, an endpoint MUST
+limit the rate at which it sends data to this address.
+'''
+
+[[spec]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.1"
+level = "MUST"
+quote = '''
+The endpoint
+MUST NOT send more than a minimum congestion window's worth of data
+per estimated round-trip time (kMinimumWindow, as defined in
+[QUIC-RECOVERY]).
+'''
+
+[[spec]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.1"
+level = "SHOULD"
+quote = '''
+Note that since the endpoint will not have any round-trip
+time measurements to this address, the estimate SHOULD be the default
+initial value; see [QUIC-RECOVERY].
+'''
+

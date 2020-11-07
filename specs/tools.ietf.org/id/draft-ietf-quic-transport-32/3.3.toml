@@ -1,0 +1,54 @@
+# https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#3.3
+#
+# 3.3.  Permitted Frame Types
+#
+# The sender of a stream sends just three frame types that affect the
+# state of a stream at either sender or receiver: STREAM
+# (Section 19.8), STREAM_DATA_BLOCKED (Section 19.13), and RESET_STREAM
+# (Section 19.4).
+# 
+# A sender MUST NOT send any of these frames from a terminal state
+# ("Data Recvd" or "Reset Recvd").  A sender MUST NOT send a STREAM or
+# STREAM_DATA_BLOCKED frame for a stream in the "Reset Sent" state or
+# any terminal state, that is, after sending a RESET_STREAM frame.  A
+# receiver could receive any of these three frames in any state, due to
+# the possibility of delayed delivery of packets carrying them.
+# 
+# The receiver of a stream sends MAX_STREAM_DATA (Section 19.10) and
+# STOP_SENDING frames (Section 19.5).
+# 
+# The receiver only sends MAX_STREAM_DATA in the "Recv" state.  A
+# receiver MAY send STOP_SENDING in any state where it has not received
+# a RESET_STREAM frame; that is states other than "Reset Recvd" or
+# "Reset Read".  However there is little value in sending a
+# STOP_SENDING frame in the "Data Recvd" state, since all stream data
+# has been received.  A sender could receive either of these two frames
+# in any state as a result of delayed delivery of packets.
+
+[[spec]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#3.3"
+level = "MUST"
+quote = '''
+A sender MUST NOT send any of these frames from a terminal state
+("Data Recvd" or "Reset Recvd").
+'''
+
+[[spec]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#3.3"
+level = "MUST"
+quote = '''
+A sender MUST NOT send a STREAM or
+STREAM_DATA_BLOCKED frame for a stream in the "Reset Sent" state or
+any terminal state, that is, after sending a RESET_STREAM frame.
+'''
+
+[[spec]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#3.3"
+level = "MAY"
+quote = '''
+A
+receiver MAY send STOP_SENDING in any state where it has not received
+a RESET_STREAM frame; that is states other than "Reset Recvd" or
+"Reset Read".
+'''
+

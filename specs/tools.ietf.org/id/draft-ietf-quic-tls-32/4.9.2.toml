@@ -1,0 +1,24 @@
+# https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9.2
+#
+# 4.9.2.  Discarding Handshake Keys
+#
+# An endpoint MUST discard its handshake keys when the TLS handshake is
+# confirmed (Section 4.1.2).  The server MUST send a HANDSHAKE_DONE
+# frame as soon as it completes the handshake.
+
+[[spec]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9.2"
+level = "MUST"
+quote = '''
+An endpoint MUST discard its handshake keys when the TLS handshake is
+confirmed (Section 4.1.2).
+'''
+
+[[spec]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9.2"
+level = "MUST"
+quote = '''
+The server MUST send a HANDSHAKE_DONE
+frame as soon as it completes the handshake.
+'''
+
