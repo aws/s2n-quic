@@ -9,13 +9,15 @@ use core::fmt;
 use rayon::prelude::*;
 use std::{
     collections::{BTreeSet, HashMap},
-    io::BufWriter,
     path::PathBuf,
 };
 use structopt::StructOpt;
 
+mod html;
+mod json;
 mod lcov;
 mod stats;
+mod status;
 
 use stats::Statistics;
 
@@ -26,9 +28,24 @@ pub struct Report {
 
     #[structopt(long)]
     lcov: Option<PathBuf>,
+
+    #[structopt(long)]
+    json: Option<PathBuf>,
+
+    #[structopt(long)]
+    html: Option<PathBuf>,
+
+    #[structopt(long)]
+    require_citations: Option<Option<bool>>,
+
+    #[structopt(long)]
+    require_tests: Option<Option<bool>>,
+
+    #[structopt(long)]
+    blob_link: Option<String>,
 }
 
-#[derive(Debug, PartialEq, PartialOrd, Eq, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord)]
 struct Reference<'a> {
     line: usize,
     start: usize,
@@ -147,7 +164,11 @@ impl Report {
             })
             .collect();
 
-        let mut report = ReportResult::default();
+        let mut report = ReportResult {
+            targets: Default::default(),
+            annotations: &annotations,
+            blob_link: self.blob_link.as_deref(),
+        };
         let mut errors = BTreeSet::new();
 
         for result in results {
@@ -164,6 +185,9 @@ impl Report {
                     references: BTreeSet::new(),
                     contents: contents.get(&target).expect("content should exist"),
                     specification: specifications.get(&target).expect("content should exist"),
+                    require_citations: self.require_citations(),
+                    require_tests: self.require_tests(),
+                    statuses: Default::default(),
                 });
 
             match result {
@@ -184,41 +208,59 @@ impl Report {
             return Err("source errors were found. no reports were generated".into());
         }
 
-        if let Some(lcov_dir) = &self.lcov {
-            std::fs::create_dir_all(&lcov_dir)?;
-            let lcov_dir = lcov_dir.canonicalize()?;
-            let results: Vec<Result<(), std::io::Error>> = report
-                .targets
-                .par_iter()
-                .map(|(source, report)| {
-                    let id = crate::fnv(source);
-                    let path = lcov_dir.join(format!("compliance.{}.lcov", id));
-                    let mut output = BufWriter::new(std::fs::File::create(&path)?);
-                    lcov::report(report, &mut output)?;
-                    Ok(())
-                })
-                .collect();
+        report
+            .targets
+            .par_iter_mut()
+            .for_each(|(_, target)| target.statuses.populate(&target.references));
 
-            for result in results {
-                result?;
-            }
+        if let Some(dir) = &self.lcov {
+            lcov::report(&report, &dir)?;
+        }
+
+        if let Some(file) = &self.json {
+            json::report(&report, &file)?;
+        }
+
+        if let Some(dir) = &self.html {
+            html::report(&report, &dir)?;
         }
 
         Ok(())
     }
+
+    fn require_citations(&self) -> bool {
+        match self.require_citations {
+            None => true,
+            Some(None) => true,
+            Some(Some(value)) => value,
+        }
+    }
+
+    fn require_tests(&self) -> bool {
+        match self.require_tests {
+            None => true,
+            Some(None) => true,
+            Some(Some(value)) => value,
+        }
+    }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct ReportResult<'a> {
-    targets: HashMap<&'a Target, TargetReport<'a>>,
+    pub targets: HashMap<&'a Target, TargetReport<'a>>,
+    pub annotations: &'a AnnotationSet,
+    pub blob_link: Option<&'a str>,
 }
 
 #[derive(Debug)]
 pub struct TargetReport<'a> {
     target: &'a Target,
     references: BTreeSet<Reference<'a>>,
-    contents: &'a String,
+    contents: &'a str,
     specification: &'a Specification<'a>,
+    require_citations: bool,
+    require_tests: bool,
+    statuses: status::StatusMap,
 }
 
 impl<'a> TargetReport<'a> {

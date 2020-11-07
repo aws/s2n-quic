@@ -4,6 +4,7 @@ use crate::{
     Error,
 };
 use core::{fmt, ops::Range, str::FromStr};
+use serde::Serialize;
 use std::{
     collections::{BTreeSet, HashMap},
     io::Write,
@@ -54,6 +55,7 @@ pub struct Annotation {
     pub target: String,
     pub quote: String,
     pub code: String,
+    pub comment: String,
     pub manifest_dir: PathBuf,
     pub level: AnnotationLevel,
     pub format: Format,
@@ -141,6 +143,18 @@ impl Default for AnnotationType {
     }
 }
 
+impl fmt::Display for AnnotationType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str(match self {
+            Self::Spec => "SPEC",
+            Self::Test => "TEST",
+            Self::Citation => "CITATION",
+            Self::Exception => "EXCEPTION",
+            Self::Todo => "TODO",
+        })
+    }
+}
+
 impl FromStr for AnnotationType {
     type Err = Error;
 
@@ -150,13 +164,14 @@ impl FromStr for AnnotationType {
             "TEST" | "test" => Ok(Self::Test),
             "CITATION" | "citation" => Ok(Self::Citation),
             "EXCEPTION" | "exception" => Ok(Self::Exception),
+            "TODO" | "todo" => Ok(Self::Todo),
             _ => Err(format!("Invalid annotation type {:?}", v).into()),
         }
     }
 }
 
 // The order is in terms of priority from least to greatest
-#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord, Hash, Serialize)]
 pub enum AnnotationLevel {
     Auto,
     OPTIONAL,
@@ -165,6 +180,18 @@ pub enum AnnotationLevel {
     SHOULD,
     SHALL,
     MUST,
+}
+
+impl AnnotationLevel {
+    pub const LEVELS: [Self; 7] = [
+        Self::Auto,
+        Self::OPTIONAL,
+        Self::MAY,
+        Self::RECOMMENDED,
+        Self::SHOULD,
+        Self::SHALL,
+        Self::MUST,
+    ];
 }
 
 impl Default for AnnotationLevel {
