@@ -62,6 +62,7 @@ pub fn report<Output: Write>(report: &TargetReport, output: &mut Output) -> Resu
     // TODO replace with interval set
     let mut cited_lines = HashSet::new();
     let mut tested_lines = HashSet::new();
+    let mut significant_lines = HashSet::new();
 
     // record all references to specific sections
     for reference in &report.references {
@@ -86,6 +87,8 @@ pub fn report<Output: Write>(report: &TargetReport, output: &mut Output) -> Resu
             };
         }
 
+        significant_lines.insert(line);
+
         match reference.annotation.anno {
             AnnotationType::Test => {
                 citation!(0);
@@ -106,6 +109,10 @@ pub fn report<Output: Write>(report: &TargetReport, output: &mut Output) -> Resu
                 test!(0);
             }
         }
+    }
+
+    for line in &significant_lines {
+        put!("DA:{},{}", line, 0);
     }
 
     match (report.require_citations, report.require_tests) {
