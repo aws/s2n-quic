@@ -10,7 +10,7 @@ use core::ops::Deref;
 use lazy_static::lazy_static;
 use rayon::prelude::*;
 use regex::{Regex, RegexSet};
-use std::{fs::OpenOptions, path::PathBuf};
+use std::{fs::OpenOptions, io::BufWriter, path::PathBuf};
 use structopt::StructOpt;
 
 lazy_static! {
@@ -81,11 +81,12 @@ impl Extract {
                     let _ = std::fs::create_dir_all(&out);
                     out.push(format!("{}.{}", section.id, self.extension));
 
-                    let mut file = OpenOptions::new()
+                    let file = OpenOptions::new()
                         .write(true)
                         .create(true)
                         .truncate(true)
                         .open(out)?;
+                    let mut file = BufWriter::new(file);
 
                     let target = &self.target;
 

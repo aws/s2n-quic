@@ -26,6 +26,12 @@ pub struct Report {
 
     #[structopt(long)]
     lcov: Option<PathBuf>,
+
+    #[structopt(long)]
+    require_citations: Option<Option<bool>>,
+
+    #[structopt(long)]
+    require_tests: Option<Option<bool>>,
 }
 
 #[derive(Debug, PartialEq, PartialOrd, Eq, Ord)]
@@ -164,6 +170,8 @@ impl Report {
                     references: BTreeSet::new(),
                     contents: contents.get(&target).expect("content should exist"),
                     specification: specifications.get(&target).expect("content should exist"),
+                    require_citations: self.require_citations(),
+                    require_tests: self.require_tests(),
                 });
 
             match result {
@@ -206,6 +214,22 @@ impl Report {
 
         Ok(())
     }
+
+    fn require_citations(&self) -> bool {
+        match self.require_citations {
+            None => true,
+            Some(None) => true,
+            Some(Some(value)) => value,
+        }
+    }
+
+    fn require_tests(&self) -> bool {
+        match self.require_tests {
+            None => true,
+            Some(None) => true,
+            Some(Some(value)) => value,
+        }
+    }
 }
 
 #[derive(Debug, Default)]
@@ -219,6 +243,8 @@ pub struct TargetReport<'a> {
     references: BTreeSet<Reference<'a>>,
     contents: &'a String,
     specification: &'a Specification<'a>,
+    require_citations: bool,
+    require_tests: bool,
 }
 
 impl<'a> TargetReport<'a> {
