@@ -1,0 +1,22 @@
+target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.1.2"
+
+# 4.1.2.  Handshake Confirmed
+#
+# In this document, the TLS handshake is considered confirmed at the
+# server when the handshake completes.  At the client, the handshake is
+# considered confirmed when a HANDSHAKE_DONE frame is received.
+# 
+# A client MAY consider the handshake to be confirmed when it receives
+# an acknowledgement for a 1-RTT packet.  This can be implemented by
+# recording the lowest packet number sent with 1-RTT keys, and
+# comparing it to the Largest Acknowledged field in any received 1-RTT
+# ACK frame: once the latter is greater than or equal to the former,
+# the handshake is confirmed.
+
+[[spec]]
+level = "MAY"
+quote = '''
+A client MAY consider the handshake to be confirmed when it receives
+an acknowledgement for a 1-RTT packet.
+'''
+

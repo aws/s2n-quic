@@ -375,7 +375,7 @@ jobs:
           RUSTC_WRAPPER: sccache
 
       - name: Run cargo compliance
-        run: ./target/release/cargo-compliance report --lcov compliance --source-pattern 'quic/**/*.rs' --workspace --exclude compliance --exclude cargo-compliance
+        run: ./target/release/cargo-compliance report --lcov compliance --spec-pattern 'spec/**/*.toml' --source-pattern 'quic/**/*.rs' --workspace --exclude compliance --exclude cargo-compliance
 
       - name: Stop sccache
         run: sccache --stop-server

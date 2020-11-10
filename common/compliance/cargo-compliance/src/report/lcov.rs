@@ -100,7 +100,7 @@ pub fn report<Output: Write>(report: &TargetReport, output: &mut Output) -> Resu
                 citation!(1);
                 test!(1);
             }
-            AnnotationType::Spec => {
+            AnnotationType::Spec | AnnotationType::Todo => {
                 // specifications highlight the line as significant, but no coverage
                 citation!(0);
                 test!(0);

@@ -1,4 +1,5 @@
 use crate::{annotation::Annotation, specification::Format, Error};
+use core::{fmt, str::FromStr};
 use std::{
     collections::HashSet,
     path::{Path, PathBuf},
@@ -23,10 +24,30 @@ impl Target {
     }
 }
 
+impl FromStr for Target {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Self {
+            path: s.parse()?,
+            format: Format::default(),
+        })
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, PartialOrd, Ord, Eq, Hash)]
 pub enum TargetPath {
     Url(Url),
     Path(PathBuf),
+}
+
+impl fmt::Display for TargetPath {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Url(url) => url.fmt(f),
+            Self::Path(path) => path.display().fmt(f),
+        }
+    }
 }
 
 impl TargetPath {
@@ -87,10 +108,24 @@ impl TargetPath {
                 path.push("specs");
                 path.push(url.host_str().expect("url should have host"));
                 path.extend(url.path_segments().expect("url should have path"));
-                path.set_extension("spec");
+                path.set_extension("txt");
                 path
             }
             Self::Path(path) => path.clone(),
         }
+    }
+}
+
+impl FromStr for TargetPath {
+    type Err = Error;
+
+    fn from_str(path: &str) -> Result<Self, Self::Err> {
+        if path.contains("://") {
+            let url = Url::parse(&path)?;
+            return Ok(Self::Url(url));
+        }
+
+        let path = Path::new(path).canonicalize()?;
+        Ok(Self::Path(path))
     }
 }

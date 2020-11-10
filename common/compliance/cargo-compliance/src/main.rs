@@ -1,6 +1,7 @@
 use structopt::StructOpt;
 
 mod annotation;
+mod extract;
 mod object;
 mod parser;
 mod pattern;
@@ -11,7 +12,7 @@ mod sourcemap;
 mod specification;
 mod target;
 
-pub type Error = Box<dyn std::error::Error>;
+pub type Error = Box<dyn std::error::Error + 'static>;
 
 fn main() {
     if let Err(err) = Arguments::from_args().exec() {
@@ -22,12 +23,14 @@ fn main() {
 
 #[derive(Debug, StructOpt)]
 enum Arguments {
+    Extract(extract::Extract),
     Report(report::Report),
 }
 
 impl Arguments {
     pub fn exec(&self) -> Result<(), Error> {
         match self {
+            Self::Extract(args) => args.exec(),
             Self::Report(args) => args.exec(),
         }
     }

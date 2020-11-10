@@ -3,7 +3,7 @@ use crate::{
     target::{Target, TargetSet},
     Error,
 };
-use core::{ops::Range, str::FromStr};
+use core::{fmt, ops::Range, str::FromStr};
 use std::{
     collections::{BTreeSet, HashMap},
     io::Write,
@@ -132,6 +132,7 @@ pub enum AnnotationType {
     Test,
     Citation,
     Exception,
+    Todo,
 }
 
 impl Default for AnnotationType {
@@ -145,26 +146,44 @@ impl FromStr for AnnotationType {
 
     fn from_str(v: &str) -> Result<Self, Self::Err> {
         match v {
-            "SPEC" => Ok(Self::Spec),
-            "TEST" => Ok(Self::Test),
-            "CITATION" => Ok(Self::Citation),
-            "EXCEPTION" => Ok(Self::Exception),
+            "SPEC" | "spec" => Ok(Self::Spec),
+            "TEST" | "test" => Ok(Self::Test),
+            "CITATION" | "citation" => Ok(Self::Citation),
+            "EXCEPTION" | "exception" => Ok(Self::Exception),
             _ => Err(format!("Invalid annotation type {:?}", v).into()),
         }
     }
 }
 
+// The order is in terms of priority from least to greatest
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord, Hash)]
 pub enum AnnotationLevel {
     Auto,
-    MUST,
-    SHOULD,
+    OPTIONAL,
     MAY,
+    RECOMMENDED,
+    SHOULD,
+    SHALL,
+    MUST,
 }
 
 impl Default for AnnotationLevel {
     fn default() -> Self {
         Self::Auto
+    }
+}
+
+impl fmt::Display for AnnotationLevel {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str(match self {
+            Self::Auto => "AUTO",
+            Self::OPTIONAL => "OPTIONAL",
+            Self::MAY => "MAY",
+            Self::RECOMMENDED => "RECOMMENDED",
+            Self::SHOULD => "SHOULD",
+            Self::SHALL => "SHALL",
+            Self::MUST => "MUST",
+        })
     }
 }
 
@@ -175,8 +194,11 @@ impl FromStr for AnnotationLevel {
         match v {
             "AUTO" => Ok(Self::Auto),
             "MUST" => Ok(Self::MUST),
+            "SHALL" => Ok(Self::SHALL),
             "SHOULD" => Ok(Self::SHOULD),
+            "RECOMMENDED" => Ok(Self::RECOMMENDED),
             "MAY" => Ok(Self::MAY),
+            "OPTIONAL" => Ok(Self::OPTIONAL),
             _ => Err(format!("Invalid annotation level {:?}", v).into()),
         }
     }
