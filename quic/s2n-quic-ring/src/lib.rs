@@ -17,6 +17,7 @@ pub struct SecretPair {
 pub mod handshake;
 pub mod initial;
 pub mod one_rtt;
+pub mod retry;
 pub mod zero_rtt;
 
 #[derive(Clone, Copy, Debug, Default)]
