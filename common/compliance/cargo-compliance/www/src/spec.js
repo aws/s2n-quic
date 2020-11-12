@@ -17,7 +17,7 @@ export function Spec({ spec }) {
       <Stats spec={spec} />
 
       <h3>Requirements</h3>
-      <Requirements requirements={spec.requirements} showSection />
+      <Requirements key={spec.id} requirements={spec.requirements} showSection />
     </>
   );
 }

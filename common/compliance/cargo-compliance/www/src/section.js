@@ -14,6 +14,8 @@ import { Requirements } from "./spec";
 
 export function Section({ spec, section }) {
   const requirements = section.requirements || [];
+  // the datagrid is crashing on link transition and needs to be rebuilt
+  const key = `${spec.id}--${section.id}`;
   return (
     <>
       <h2>
@@ -27,7 +29,11 @@ export function Section({ spec, section }) {
       {requirements.length ? (
         <>
           <h3>Requirements</h3>
-          <Requirements requirements={section.requirements} showSection />
+          <Requirements
+            key={key}
+            requirements={section.requirements}
+            showSection
+          />
         </>
       ) : null}
     </>
