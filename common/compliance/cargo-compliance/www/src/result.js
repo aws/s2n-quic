@@ -1,5 +1,5 @@
 const input = JSON.parse(document.getElementById("result").innerHTML);
-//import input from "./result.test.json";
+// import input from "./result.test.json";
 
 const specifications = [];
 
@@ -52,6 +52,7 @@ input.annotations.forEach((anno, id) => {
   anno.source = linker(anno);
   anno.specification = specifications[anno.target_path];
   anno.section = anno.specification.sections[`section-${anno.target_section}`];
+  anno.target = `${anno.specification.id}#${anno.section.id}`;
   anno.cmp = function (b) {
     const a = this;
     if (a.specification === b.specification && a.section.idx !== b.section.idx)

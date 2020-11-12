@@ -9,7 +9,10 @@ import ListItemText from "@material-ui/core/ListItemText";
 import Paper from "@material-ui/core/Paper";
 import Dialog from "@material-ui/core/Dialog";
 import Tooltip from "@material-ui/core/Tooltip";
+import Chip from "@material-ui/core/Chip";
+import FileCopyIcon from "@material-ui/icons/FileCopy";
 import clsx from "clsx";
+import copyToClipboard from "copy-to-clipboard";
 import { Requirements } from "./spec";
 
 export function Section({ spec, section }) {
@@ -61,6 +64,9 @@ const useStyles = makeStyles((theme) => ({
     paddingLeft: theme.spacing(2),
     paddingRight: theme.spacing(2),
     paddingBottom: theme.spacing(2),
+  },
+  reference: {
+    cursor: "pointer",
   },
   error: {
     borderBottom: `2px solid ${theme.palette.error.main}`,
@@ -143,7 +149,7 @@ function Quote({ reference }) {
     <>
       <QuoteTooltip title={<Annotations reference={reference} />}>
         <span
-          className={clsx(classes[statusClass], {
+          className={clsx(classes.reference, classes[statusClass], {
             [classes.selected]: selected,
           })}
           onClick={handleOpen}
@@ -185,9 +191,13 @@ function Annotations({ reference: { annotations, status }, expanded }) {
     <>
       {requirement}
       {comments.map((anno, i) => (
-        <p key={anno.id}>{anno.comment}</p>
+        <Comment annotation={anno} key={anno.id} />
       ))}
-      <AnnotationRef title="Defined in" refs={refs.SPEC} expanded={expanded} />
+      <AnnotationRef
+        title="Defined in"
+        refs={refs.SPEC.length > 1 ? refs.SPEC : []}
+        expanded={expanded}
+      />
       <AnnotationRef
         title="Implemented in"
         alt={requirement && "Missing implementation!"}
@@ -224,8 +234,8 @@ function AnnotationRef({ title, alt, refs, expanded }) {
 
   return (
     <>
-      <h4>{title}</h4>
-      <List>
+      <h4 style={{ lineHeight: 1 }}>{title}</h4>
+      <List style={{ padding: 0 }}>
         {refs.map((anno, id) => {
           const text = <ListItemText secondary={anno.source.title} />;
           const content = anno.source.href ? (
@@ -233,9 +243,108 @@ function AnnotationRef({ title, alt, refs, expanded }) {
           ) : (
             text
           );
-          return <ListItem key={id}>{content}</ListItem>;
+          return (
+            <ListItem style={{ padding: "0 8px" }} key={id}>
+              {content}
+            </ListItem>
+          );
         })}
       </List>
     </>
   );
+}
+
+const useCommentStyles = makeStyles((theme) => ({
+  list: {
+    display: "flex",
+    flexWrap: "wrap",
+    listStyle: "none",
+    justifyContent: "right",
+    padding: theme.spacing(0.5),
+    margin: 0,
+  },
+  chip: {
+    margin: theme.spacing(0.5),
+  },
+}));
+
+function Comment({ annotation }) {
+  const classes = useCommentStyles();
+  return (
+    <>
+      <p>
+        <pre>{annotation.comment}</pre>
+      </p>
+      <ul className={classes.list}>
+        <li style={{ padding: "6px 4px" }}>
+          <FileCopyIcon color="primary" />
+        </li>
+        <li>
+          <Cite
+            className={classes.chip}
+            getData={() => formatReferenceComment({ annotation })}
+            label="Citation"
+          />
+        </li>
+        <li>
+          <Cite
+            className={classes.chip}
+            getData={() => formatReferenceComment({ annotation, type: "test" })}
+            label="Test"
+          />
+        </li>
+        <li>
+          <Cite
+            className={classes.chip}
+            getData={() => formatTomlComment({ annotation, type: "exception" })}
+            label="Exception"
+          />
+        </li>
+      </ul>
+    </>
+  );
+}
+
+function Cite({ getData, label, ...props }) {
+  const [copied, setCopied] = useState(false);
+
+  const onClick = () => {
+    copyToClipboard(getData());
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1000);
+  };
+
+  return (
+    <Chip
+      variant="outlined"
+      onClick={onClick}
+      label={copied ? `${label} - Copied!` : label}
+      {...props}
+    />
+  );
+}
+
+function formatReferenceComment({ annotation, type }) {
+  let comment = [];
+  comment.push(`//= ${annotation.target}`);
+  if (type) comment.push(`//= type=${type}`);
+  annotation.comment
+    .trim()
+    .split("\n")
+    .forEach((line) => {
+      comment.push(`//# ${line}`);
+    });
+  return comment.join("\n") + '\n';
+}
+
+function formatTomlComment({ annotation, type }) {
+  let comment = [`[[${type}]]`];
+  comment.push(`target = ${JSON.stringify(annotation.target)}`);
+  comment.push("quote = '''");
+  comment.push(...annotation.comment.trim().split("\n"));
+  comment.push("'''");
+  if (type === "exception")
+    comment.push('reason = "TODO: Add reason for exception here"');
+
+  return comment.join("\n") + '\n';
 }

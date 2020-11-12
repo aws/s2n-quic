@@ -129,6 +129,25 @@ impl Report {
                         let contents = section.contents();
 
                         for (annotation_id, annotation) in annotations {
+                            if annotation.quote.is_empty() {
+                                // empty quotes don't count towards coverage but are still
+                                // references
+                                let title = section.title;
+                                let range = title.range();
+                                results.push(Ok((
+                                    target,
+                                    Reference {
+                                        line: title.line,
+                                        start: range.start,
+                                        end: range.end,
+                                        annotation,
+                                        annotation_id: *annotation_id,
+                                        level: annotation.level,
+                                    },
+                                )));
+                                continue;
+                            }
+
                             if let Some(range) = annotation.quote_range(&contents) {
                                 for (line, range) in contents.ranges(range) {
                                     results.push(Ok((

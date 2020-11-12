@@ -96,7 +96,8 @@ impl Annotation {
 
     pub fn quote_range(&self, contents: &str) -> Option<Range<usize>> {
         if self.quote.is_empty() {
-            Some(0..contents.len())
+            // Don't actually consider full-section quotes as valid
+            None
         } else {
             text_search(self.quote.as_bytes(), contents.as_bytes())
                 .find(|m| m.k < 2)
