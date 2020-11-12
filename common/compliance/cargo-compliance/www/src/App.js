@@ -68,6 +68,9 @@ const useStyles = makeStyles((theme) => ({
     }),
     marginLeft: 0,
   },
+  container: {
+    marginBottom: theme.spacing(5),
+  },
 }));
 
 function App() {
@@ -93,19 +96,17 @@ function App() {
       >
         <div className={classes.drawerHeader} />
         <Container maxWidth="lg" className={classes.container}>
-          <Box overflow="auto">
-            <Switch>
-              <Route path="/spec/:specid/:sectionid">
-                <SectionRoute />
-              </Route>
-              <Route path="/spec/:specid">
-                <SpecRoute />
-              </Route>
-              <Route path="/">
-                <Main />
-              </Route>
-            </Switch>
-          </Box>
+          <Switch>
+            <Route path="/spec/:specid/:sectionid">
+              <SectionRoute />
+            </Route>
+            <Route path="/spec/:specid">
+              <SpecRoute />
+            </Route>
+            <Route path="/">
+              <Main />
+            </Route>
+          </Switch>
         </Container>
       </main>
     </div>

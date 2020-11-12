@@ -284,7 +284,12 @@ pub fn report_source<Output: Write>(
                                         item!(
                                             arr,
                                             if let Some(refs) = references.get(&line.line) {
-                                                report_references(line, refs, output)?;
+                                                report_references(
+                                                    line,
+                                                    refs,
+                                                    &mut requirements,
+                                                    output,
+                                                )?;
                                             } else {
                                                 // the line has no annotations so just print it
                                                 s!(line);
@@ -293,6 +298,19 @@ pub fn report_source<Output: Write>(
                                     }
                                 })
                             );
+
+                            if !requirements.is_empty() {
+                                kv!(
+                                    obj,
+                                    s!("requirements"),
+                                    arr!(|arr| {
+                                        for requirement in requirements.iter() {
+                                            item!(arr, w!(requirement));
+                                        }
+                                        requirements.clear();
+                                    })
+                                );
+                            }
                         })
                     );
                 }
@@ -306,6 +324,7 @@ pub fn report_source<Output: Write>(
 fn report_references<Output: Write>(
     line: &Str,
     refs: &[&Reference],
+    requirements: &mut BTreeSet<usize>,
     output: &mut Output,
 ) -> Result<(), Error> {
     writer!(output);
@@ -347,6 +366,9 @@ fn report_references<Output: Write>(
                         arr!(|arr| {
                             for r in current_refs {
                                 item!(arr, w!(r.annotation_id));
+                                if r.annotation.anno == AnnotationType::Spec {
+                                    requirements.insert(r.annotation_id);
+                                }
                                 status.on_anno(r);
                             }
                         })

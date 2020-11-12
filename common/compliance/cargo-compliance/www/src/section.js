@@ -1,4 +1,5 @@
-import { useState, default as React } from "react";
+import { useState, useMemo, default as React } from "react";
+import { useLocation } from "react-router-dom";
 import { makeStyles, withStyles } from "@material-ui/core/styles";
 import Box from "@material-ui/core/Box";
 import List from "@material-ui/core/List";
@@ -8,8 +9,11 @@ import ListItemText from "@material-ui/core/ListItemText";
 import Paper from "@material-ui/core/Paper";
 import Dialog from "@material-ui/core/Dialog";
 import Tooltip from "@material-ui/core/Tooltip";
+import clsx from "clsx";
+import { Requirements } from "./spec";
 
 export function Section({ spec, section }) {
+  const requirements = section.requirements || [];
   return (
     <>
       <h2>
@@ -20,6 +24,12 @@ export function Section({ spec, section }) {
           <Line content={line} key={i} />
         ))}
       </pre>
+      {requirements.length ? (
+        <>
+          <h3>Requirements</h3>
+          <Requirements requirements={section.requirements} showSection />
+        </>
+      ) : null}
     </>
   );
 }
@@ -61,6 +71,9 @@ const useStyles = makeStyles((theme) => ({
   exception: {
     borderBottom: `2px solid ${theme.palette.text.disabled}`,
   },
+  selected: {
+    backgroundColor: theme.palette.action.focus,
+  },
 }));
 
 const QuoteTooltip = withStyles((theme) => ({
@@ -73,10 +86,25 @@ const QuoteTooltip = withStyles((theme) => ({
   },
 }))(Tooltip);
 
+function useAnnotationSelection() {
+  const { hash } = useLocation();
+
+  return useMemo(() => {
+    return new Set(
+      (hash || "")
+        .replace(/^#/, "")
+        .split(",")
+        .filter((id) => /^A[\d]+/.test(id))
+        .map((id) => parseInt(id.slice(1)))
+    );
+  }, [hash]);
+}
+
 function Quote({ reference }) {
   const { status, text } = reference;
   const classes = useStyles();
   const [open, setOpen] = useState(false);
+  const selectedAnnotations = useAnnotationSelection();
 
   const handleOpen = () => {
     setOpen(true);
@@ -101,10 +129,19 @@ function Quote({ reference }) {
     statusClass = "exception";
   }
 
+  let selected =
+    selectedAnnotations.size &&
+    reference.annotations.find((anno) => selectedAnnotations.has(anno.id));
+
   return (
     <>
       <QuoteTooltip title={<Annotations reference={reference} />}>
-        <span className={classes[statusClass]} onClick={handleOpen}>
+        <span
+          className={clsx(classes[statusClass], {
+            [classes.selected]: selected,
+          })}
+          onClick={handleOpen}
+        >
           {text}
         </span>
       </QuoteTooltip>
@@ -127,12 +164,16 @@ function Annotations({ reference: { annotations, status }, expanded }) {
   };
 
   annotations.forEach((anno) => {
-    (refs[anno.type || "CITATION"] || []).push(anno);
+    if (anno.source) {
+      (refs[anno.type || "CITATION"] || []).push(anno);
+    }
   });
 
   const requirement = status.level ? <h3>Level: {status.level}</h3> : null;
 
-  const comments = expanded ? annotations.filter((ref) => ref.comment) : [];
+  const comments = expanded
+    ? annotations.filter((ref) => ref.type === "SPEC" && ref.comment)
+    : [];
 
   return (
     <>
@@ -169,20 +210,20 @@ function Annotations({ reference: { annotations, status }, expanded }) {
 
 function AnnotationRef({ title, alt, refs, expanded }) {
   if (!refs.length)
-    return (
+    return alt ? (
       <Box color="error.main">
         <h4>{alt}</h4>
       </Box>
-    );
+    ) : null;
 
   return (
     <>
       <h4>{title}</h4>
       <List>
         {refs.map((anno, id) => {
-          const text = <ListItemText secondary={anno.source} />;
-          const content = anno.code_url ? (
-            <Link href={anno.code_url}>{text}</Link>
+          const text = <ListItemText secondary={anno.source.title} />;
+          const content = anno.source.href ? (
+            <Link href={anno.source.href}>{text}</Link>
           ) : (
             text
           );

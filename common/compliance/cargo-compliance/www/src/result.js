@@ -1,4 +1,5 @@
 const input = JSON.parse(document.getElementById("result").innerHTML);
+//import input from "./result.test.json";
 
 const specifications = [];
 
@@ -15,6 +16,9 @@ Object.keys(input.specifications).forEach((id) => {
     section.lines = section.lines.map(mapLine);
     section.spec = spec;
     section.idx = idx;
+    section.requirements = (section.requirements || []).map(
+      (id) => input.annotations[id]
+    );
 
     sections.push(section);
     sections[`section-${section.id}`] = section;
@@ -45,9 +49,15 @@ input.annotations.forEach((anno, id) => {
   }
 
   anno.id = id;
-  anno.code_url = linker(anno);
+  anno.source = linker(anno);
   anno.specification = specifications[anno.target_path];
   anno.section = anno.specification.sections[`section-${anno.target_section}`];
+  anno.cmp = function (b) {
+    const a = this;
+    if (a.specification === b.specification && a.section.idx !== b.section.idx)
+      return a.section.idx - b.section.idx;
+    return a.id - b.id;
+  };
 });
 
 class Stats {
@@ -93,10 +103,9 @@ class Stats {
 
 // create stats now that we've linked everything
 specifications.forEach((spec) => {
-  spec.requirements.sort((a, b) => {
-    if (a.section.idx !== b.section.idx) return a.section.idx >= b.section.idx;
-
-    return a.id >= b.id;
+  spec.requirements.sort(sortRequirements);
+  spec.sections.forEach((section) => {
+    section.requirements.sort(sortRequirements);
   });
 
   const stats = {
@@ -119,22 +128,30 @@ specifications.forEach((spec) => {
   spec.stats = stats;
 });
 
-function createLinker(blob_link) {
-  if (!blob_link) return () => {};
+function sortRequirements(a, b) {
+  return a.cmp(b);
+}
 
-  blob_link = blob_link.replace(/\/+$/, "");
+function createLinker(blob_link) {
+  blob_link = (blob_link || "").replace(/\/+$/, "");
 
   return (anno) => {
     if (!anno.source) return null;
 
-    let link = `${blob_link}/${anno.source}`;
+    let link = anno.source;
+
     if (anno.line > 0) {
       link += `#L${anno.line}`;
     }
+
     if (anno.line > 0 && anno.line_impl > 0) {
       link += `-L${anno.line_impl}`;
     }
-    return link;
+
+    return {
+      title: link,
+      href: blob_link.length ? `${blob_link}/${link}` : null,
+    };
   };
 }
 
