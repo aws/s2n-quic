@@ -5,43 +5,11 @@ use alloc::collections::VecDeque;
 use bytes::BytesMut;
 use s2n_quic_core::varint::VarInt;
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#2.2
-//# STREAM frames (Section 19.8) encapsulate data sent by an application.
-//# An endpoint uses the Stream ID and Offset fields in STREAM frames to
-//# place data in order.
-//#
-//# Endpoints MUST be able to deliver stream data to an application as an
-//# ordered byte-stream.  Delivering an ordered byte-stream requires that
-//# an endpoint buffer any data that is received out of order, up to the
-//# advertised flow control limit.
-//#
-//# QUIC makes no specific allowances for delivery of stream data out of
-//# order.  However, implementations MAY choose to offer the ability to
-//# deliver data out of order to a receiving application.
-//#
-//# An endpoint could receive data for a stream at the same stream offset
-//# multiple times.  Data that has already been received can be
-//# discarded.  The data at a given offset MUST NOT change if it is sent
-//# multiple times; an endpoint MAY treat receipt of different data at
-//# the same offset within a stream as a connection error of type
-//# PROTOCOL_VIOLATION.
-//#
-//# Streams are an ordered byte-stream abstraction with no other
-//# structure visible to QUIC.  STREAM frame boundaries are not expected
-//# to be preserved when data is transmitted, retransmitted after packet
-//# loss, or delivered to the application at a receiver.
-//#
-//# An endpoint MUST NOT send data on any stream without ensuring that it
-//# is within the flow control limits set by its peer.  Flow control is
-//# described in detail in Section 4.
-
 /// Enumerates error that can occur while inserting data into the Receive Buffer
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum StreamReceiveBufferError {
     /// An invalid data range was provided
     OutOfRange,
-    /// The allocation of a chunk failed
-    AllocationError,
 }
 
 /// Possible states for slots in the [`StreamReceiveBuffer`]s queue
@@ -89,6 +57,10 @@ pub const MIN_STREAM_RECEIVE_BUFFER_ALLOCATION_SIZE: usize = 4 * core::mem::size
 fn align_offset(offset: u64, alignment: usize) -> u64 {
     (offset / (alignment as u64)) * (alignment as u64)
 }
+
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#2.2
+//# Endpoints MUST be able to deliver stream data to an application as an
+//# ordered byte-stream.
 
 /// `StreamReceiveBuffer` is a buffer structure for combining chunks of bytes in an
 /// ordered stream, which might arrive out of order.
@@ -185,6 +157,7 @@ impl StreamReceiveBuffer {
     }
 
     /// Returns true if no bytes are available for reading
+    #[allow(dead_code)] // if we have a `len`, it's good to have `is_empty`
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }

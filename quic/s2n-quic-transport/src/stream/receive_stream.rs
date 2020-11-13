@@ -380,9 +380,6 @@ impl ReceiveStream {
                             StreamReceiveBufferError::OutOfRange => {
                                 TransportError::FLOW_CONTROL_ERROR
                             }
-                            StreamReceiveBufferError::AllocationError => {
-                                TransportError::INTERNAL_ERROR
-                            }
                         }
                         .with_reason("data reception error")
                         .with_frame_type(frame.tag().into())
@@ -498,6 +495,13 @@ impl ReceiveStream {
         frame: &ResetStream,
         events: &mut StreamEvents,
     ) -> Result<(), TransportError> {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#3.5
+        //= type=exception
+        //= reason=It's simpler to accept any RESET_STREAM frame instead of ignore
+        //# An endpoint that sends a STOP_SENDING frame MAY ignore the
+        //# error code in any RESET_STREAM frames subsequently received for that
+        //# stream.
+
         let error = StreamError::StreamReset(frame.application_error_code.into());
         self.init_reset(error, Some(frame.final_size), Some(frame.tag()))?;
 
@@ -520,6 +524,11 @@ impl ReceiveStream {
         actual_size: Option<VarInt>,
         frame_tag: Option<u8>,
     ) -> Result<(), TransportError> {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#3.2
+        //# An implementation MAY
+        //# interrupt delivery of stream data, discard any data that was not
+        //# consumed, and signal the receipt of the RESET_STREAM.
+
         // Reset logic is only executed if the stream is neither reset nor if all
         // data had been already received.
         match self.state {
@@ -629,7 +638,24 @@ impl ReceiveStream {
         let mut response = ops::rx::Response::default();
 
         if let Some(error_code) = request.stop_sending {
-            self.stop_sending_sync.request_delivery(error_code);
+            match self.state {
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#3.3
+                //# A
+                //# receiver MAY send STOP_SENDING in any state where it has not received
+                //# a RESET_STREAM frame; that is states other than "Reset Recvd" or
+                //# "Reset Read".
+
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#3.5
+                //# STOP_SENDING SHOULD only be sent for a stream that has not been reset
+                //# by the peer.
+                ReceiveStreamState::Reset(_) => (),
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#3.5
+                //# If the stream is in the "Recv" or "Size Known" states, the transport
+                //# SHOULD signal this by sending a STOP_SENDING frame to prompt closure
+                //# of the stream in the opposite direction.
+                _ => self.stop_sending_sync.request_delivery(error_code),
+            }
+
             self.read_waiter = None;
 
             // We clear the receive buffer, to free up any buffer

@@ -488,6 +488,10 @@ impl<
         first_buffer_offset: VarInt,
         offset: VarInt,
     ) -> &[u8] {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#2.2
+        //# The data at a given offset MUST NOT change if it is sent
+        //# multiple times;
+
         let mut current_offset = first_buffer_offset;
         for buffer in buffers.iter() {
             if offset >= current_offset && offset < (current_offset + buffer.len()) {
@@ -525,9 +529,14 @@ impl<
                 // to the maximum window.
 
                 let chunk_end = chunk.offset + VarInt::from_u32(chunk.len);
+
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#2.2
+                //# An endpoint MUST NOT send data on any stream without ensuring that it
+                //# is within the flow control limits set by its peer.
                 let window_end = self
                     .flow_controller
                     .acquire_flow_control_window(chunk.offset, chunk.len as usize);
+
                 let truncate_by = Into::<u64>::into(chunk_end.saturating_sub(window_end)) as usize;
                 if truncate_by == (chunk.len as usize) && chunk.len > 0 {
                     // Can not write anything in this chunk due to being beyond

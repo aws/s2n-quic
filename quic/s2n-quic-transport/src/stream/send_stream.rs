@@ -503,10 +503,13 @@ impl SendStream {
         // cases as if the user of the `Stream` would have triggered a reset,
         // and we can delegate to the same method.
 
-        if self.init_reset(
-            ResetSource::StopSendingFrame,
-            StreamError::StreamReset(frame.application_error_code.into()),
-        ) == InitResetResult::ResetInitiated
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#3.5
+        //# An endpoint SHOULD copy the error code from the STOP_SENDING frame to
+        //# the RESET_STREAM frame it sends, but MAY use any application error
+        //# code.
+        let error = StreamError::StreamReset(frame.application_error_code.into());
+
+        if self.init_reset(ResetSource::StopSendingFrame, error) == InitResetResult::ResetInitiated
         {
             // Return the waker to wake up potential users of the stream.
             // If the Stream got reset, then blocked writers need to get woken up.
@@ -844,6 +847,11 @@ impl SendStream {
             self.final_state_observed = true;
         };
 
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#3.1
+        //# An endpoint MAY send a RESET_STREAM as the first frame that mentions
+        //# a stream; this causes the sending part of that stream to open and
+        //# then immediately transition to the "Reset Sent" state.
+
         // Clear the send buffer. Since we initiated a RESET, there is no need
         // to send or resend the remaining data.
         self.data_sender.stop_sending();
@@ -902,8 +910,21 @@ impl StreamInterestProvider for SendStream {
         let delivery_notifications =
             self.data_sender.is_inflight() || self.reset_sync.is_inflight();
 
-        let transmission =
-            self.data_sender.transmission_interest() + self.reset_sync.transmission_interest();
+        let transmission = match self.state {
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#3.3
+            //# A sender MUST NOT send any of these frames from a terminal state
+            //# ("Data Recvd" or "Reset Recvd").
+            SendStreamState::Sending if self.final_state_observed => Default::default(),
+            SendStreamState::ResetAcknowledged(_) => Default::default(),
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#3.3
+            //# A sender MUST NOT send a STREAM or
+            //# STREAM_DATA_BLOCKED frame for a stream in the "Reset Sent" state or
+            //# any terminal state, that is, after sending a RESET_STREAM frame.
+            SendStreamState::ResetSent(_) => self.reset_sync.transmission_interest(),
+
+            _ => self.data_sender.transmission_interest() + self.reset_sync.transmission_interest(),
+        };
 
         StreamInterests {
             finalization,
