@@ -303,15 +303,20 @@ impl Manager {
 
         let largest_newly_acked = largest_newly_acked.expect("There are newly acked packets");
 
+        let mut should_update_rtt = true;
+
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.1
         //# To avoid generating multiple RTT samples for a single packet, an ACK
         //# frame SHOULD NOT be used to update RTT estimates if it does not newly
         //# acknowledge the largest acknowledged packet.
+        should_update_rtt &= largest_newly_acked.0 == largest_acked_in_frame;
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.1
         //# An RTT sample MUST NOT be generated on receiving an ACK frame that
         //# does not newly acknowledge at least one ack-eliciting packet.
-        if largest_newly_acked.0 == largest_acked_in_frame && includes_ack_eliciting {
+        should_update_rtt &= includes_ack_eliciting;
+
+        if should_update_rtt {
             let latest_rtt = datagram.timestamp - largest_newly_acked.1.time_sent;
             path.rtt_estimator.update_rtt(
                 frame.ack_delay(),
