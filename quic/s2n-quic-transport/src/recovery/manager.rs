@@ -294,9 +294,12 @@ impl Manager {
         let largest_newly_acked = largest_newly_acked.expect("There are newly acked packets");
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.1
-        //# An RTT sample is generated using only the largest acknowledged packet in the
-        //# received ACK frame. This is because a peer reports acknowledgment delays for
-        //# only the largest acknowledged packet in an ACK frame.
+        //# To avoid generating multiple RTT samples for a single packet, an ACK
+        //# frame SHOULD NOT be used to update RTT estimates if it does not newly
+        //# acknowledge the largest acknowledged packet.
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.1
+        //# An RTT sample MUST NOT be generated on receiving an ACK frame that
+        //# does not newly acknowledge at least one ack-eliciting packet.
         if largest_newly_acked.0 == largest_acked_in_frame && includes_ack_eliciting {
             let latest_rtt = datagram.timestamp - largest_newly_acked.1.time_sent;
             path.rtt_estimator.update_rtt(
@@ -899,6 +902,11 @@ mod test {
         let ack_receive_time = ack_receive_time + Duration::from_secs(1);
         let context = ack_packets(1..=3, ack_receive_time, &mut path, &mut manager);
 
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.1
+        //= type=test
+        //# An RTT sample MUST NOT be generated on receiving an ACK frame that
+        //# does not newly acknowledge at least one ack-eliciting packet.
+
         // Acknowledging already acked packets does not call on_new_packet_ack or change RTT
         assert_eq!(path.congestion_controller.lost_bytes, 0);
         assert_eq!(path.congestion_controller.on_rtt_update, 1);
@@ -965,6 +973,74 @@ mod test {
         assert_eq!(context.on_packet_loss_count, 0);
         // RTT remains unchanged
         assert_eq!(path.rtt_estimator.latest_rtt(), Duration::from_millis(3000));
+    }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.1
+    //= type=test
+    //# To avoid generating multiple RTT samples for a single packet, an ACK
+    //# frame SHOULD NOT be used to update RTT estimates if it does not newly
+    //# acknowledge the largest acknowledged packet.
+    #[test]
+    fn no_rtt_update_when_not_acknowledging_the_largest_acknowledged_packet() {
+        let space = PacketNumberSpace::ApplicationData;
+        let rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
+        let mut manager = Manager::new(space, Duration::from_millis(100));
+        let packet_bytes = 128;
+        let mut path = Path::new(
+            Default::default(),
+            connection::Id::EMPTY,
+            rtt_estimator,
+            MockCongestionController::default(),
+            true,
+        );
+
+        let time_sent = s2n_quic_platform::time::now() + Duration::from_secs(10);
+
+        // Send 2 packets
+        manager.on_packet_sent(
+            space.new_packet_number(VarInt::from_u8(0)),
+            transmission::Outcome {
+                ack_elicitation: AckElicitation::Eliciting,
+                is_congestion_controlled: true,
+                bytes_sent: packet_bytes,
+            },
+            time_sent,
+            &mut path,
+            &MockContext::default(),
+        );
+        manager.on_packet_sent(
+            space.new_packet_number(VarInt::from_u8(1)),
+            transmission::Outcome {
+                ack_elicitation: AckElicitation::Eliciting,
+                is_congestion_controlled: true,
+                bytes_sent: packet_bytes,
+            },
+            time_sent,
+            &mut path,
+            &MockContext::default(),
+        );
+
+        assert_eq!(manager.sent_packets.iter().count(), 2);
+
+        // Ack packet 1
+        let ack_receive_time = time_sent + Duration::from_millis(500);
+        ack_packets(1..=1, ack_receive_time, &mut path, &mut manager);
+
+        // New rtt estimate because the largest packet was newly acked
+        assert_eq!(path.congestion_controller.on_rtt_update, 1);
+        assert_eq!(
+            manager.largest_acked_packet,
+            Some(space.new_packet_number(VarInt::from_u8(1)))
+        );
+        assert_eq!(path.rtt_estimator.latest_rtt(), Duration::from_millis(500));
+
+        // Ack packets 0 and 1
+        let ack_receive_time = time_sent + Duration::from_millis(1500);
+        ack_packets(0..=1, ack_receive_time, &mut path, &mut manager);
+
+        // No new rtt estimate because the largest packet was not newly acked
+        assert_eq!(path.congestion_controller.on_rtt_update, 1);
+        assert_eq!(path.rtt_estimator.latest_rtt(), Duration::from_millis(500));
     }
 
     #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.10")]
