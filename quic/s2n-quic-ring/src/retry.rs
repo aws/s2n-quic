@@ -39,7 +39,7 @@ impl RetryCrypto for RingRetryCrypto {
 mod tests {
     use super::*;
     use hex_literal::hex;
-    use s2n_quic_core::crypto::{EXAMPLE_EXPECTED_TAG, EXAMPLE_PSEUDO_RETRY_PACKET};
+    use s2n_quic_core::crypto::retry::{EXAMPLE_EXPECTED_TAG, EXAMPLE_PSEUDO_RETRY_PACKET};
 
     #[test]
     fn test_valid_tag() {

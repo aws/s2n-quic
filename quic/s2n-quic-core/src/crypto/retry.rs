@@ -3,11 +3,6 @@ use hex_literal::hex;
 
 pub type IntegrityTag = [u8; 16];
 
-/// Types for which are able to perform cryptography.
-///
-/// This marker trait ensures only 1-RTT-level keys
-/// are used with Short packets. Any key misuses are
-/// caught by the type system.
 pub trait RetryCrypto {
     fn generate_tag(payload: &[u8]) -> IntegrityTag;
     fn validate(payload: &[u8], tag: IntegrityTag) -> Result<(), CryptoError>;

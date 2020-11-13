@@ -149,7 +149,7 @@ pub use key::*;
 pub use one_rtt::*;
 pub use packet_protection::*;
 pub use payload::*;
-pub use retry::*;
+pub use retry::RetryCrypto;
 pub use zero_rtt::*;
 
 /// Trait which aggregates all Crypto types
