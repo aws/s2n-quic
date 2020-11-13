@@ -66,9 +66,9 @@ impl<'a> Spec<'a> {
         default_target: &Option<String>,
     ) -> Result<Annotation, Error> {
         Ok(Annotation {
-            anno_line: 1,
+            anno_line: 0,
             anno_column: 0,
-            item_line: 1,
+            item_line: 0,
             item_column: 0,
             path: String::new(),
             anno: AnnotationType::Spec,
@@ -78,6 +78,7 @@ impl<'a> Spec<'a> {
                 .ok_or("missing target")?,
             quote: self.quote.trim().replace('\n', " "),
             code: String::new(),
+            comment: self.quote.to_string(),
             manifest_dir: source.clone(),
             source,
             level: if let Some(level) = self.level {
