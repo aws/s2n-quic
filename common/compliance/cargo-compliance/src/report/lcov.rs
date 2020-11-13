@@ -1,8 +1,10 @@
-use super::TargetReport;
+use super::{ReportResult, TargetReport};
 use crate::annotation::AnnotationType;
+use rayon::prelude::*;
 use std::{
     collections::HashSet,
-    io::{Error, Write},
+    io::{BufWriter, Error, Write},
+    path::Path,
 };
 
 const IMPL_BLOCK: &str = "0,0";
@@ -38,8 +40,28 @@ macro_rules! record {
     };
 }
 
+pub fn report(report: &ReportResult, dir: &Path) -> Result<(), Error> {
+    std::fs::create_dir_all(&dir)?;
+    let lcov_dir = dir.canonicalize()?;
+    report
+        .targets
+        .par_iter()
+        .map(|(source, report)| {
+            let id = crate::fnv(source);
+            let path = lcov_dir.join(format!("compliance.{}.lcov", id));
+            let mut output = BufWriter::new(std::fs::File::create(&path)?);
+            report_source(report, &mut output)?;
+            Ok(())
+        })
+        .collect::<Result<(), std::io::Error>>()?;
+    Ok(())
+}
+
 #[allow(clippy::cognitive_complexity)]
-pub fn report<Output: Write>(report: &TargetReport, output: &mut Output) -> Result<(), Error> {
+pub fn report_source<Output: Write>(
+    report: &TargetReport,
+    output: &mut Output,
+) -> Result<(), Error> {
     macro_rules! put {
         ($($arg:expr),* $(,)?) => {
             writeln!(output $(, $arg)*)?;
@@ -62,6 +84,7 @@ pub fn report<Output: Write>(report: &TargetReport, output: &mut Output) -> Resu
     // TODO replace with interval set
     let mut cited_lines = HashSet::new();
     let mut tested_lines = HashSet::new();
+    let mut significant_lines = HashSet::new();
 
     // record all references to specific sections
     for reference in &report.references {
@@ -86,6 +109,8 @@ pub fn report<Output: Write>(report: &TargetReport, output: &mut Output) -> Resu
             };
         }
 
+        significant_lines.insert(line);
+
         match reference.annotation.anno {
             AnnotationType::Test => {
                 citation!(0);
@@ -100,7 +125,7 @@ pub fn report<Output: Write>(report: &TargetReport, output: &mut Output) -> Resu
                 citation!(1);
                 test!(1);
             }
-            AnnotationType::Spec => {
+            AnnotationType::Spec | AnnotationType::Todo => {
                 // specifications highlight the line as significant, but no coverage
                 citation!(0);
                 test!(0);
@@ -108,14 +133,43 @@ pub fn report<Output: Write>(report: &TargetReport, output: &mut Output) -> Resu
         }
     }
 
-    // mark any lines that were both cited and tested as covered
-    for line in cited_lines.intersection(&tested_lines) {
-        put!("DA:{},{}", line, 1);
+    for line in &significant_lines {
+        put!("DA:{},{}", line, 0);
     }
 
-    // mark any lines that didn't appear in both as uncovered
-    for line in cited_lines.symmetric_difference(&tested_lines) {
-        put!("DA:{},{}", line, 0);
+    match (report.require_citations, report.require_tests) {
+        (true, true) => {
+            for line in cited_lines.intersection(&tested_lines) {
+                put!("DA:{},{}", line, 1);
+            }
+
+            for line in cited_lines.symmetric_difference(&tested_lines) {
+                put!("DA:{},{}", line, 0);
+            }
+        }
+        (true, false) => {
+            for line in &cited_lines {
+                put!("DA:{},{}", line, 1);
+            }
+
+            for line in tested_lines.difference(&cited_lines) {
+                put!("DA:{},{}", line, 0);
+            }
+        }
+        (false, true) => {
+            for line in &tested_lines {
+                put!("DA:{},{}", line, 1);
+            }
+
+            for line in cited_lines.difference(&tested_lines) {
+                put!("DA:{},{}", line, 0);
+            }
+        }
+        (false, false) => {
+            for line in cited_lines.union(&tested_lines) {
+                put!("DA:{},{}", line, 1);
+            }
+        }
     }
 
     put!("end_of_record");

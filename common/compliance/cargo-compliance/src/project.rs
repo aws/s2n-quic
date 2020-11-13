@@ -53,6 +53,10 @@ pub struct Project {
     /// Glob patterns for additional source files
     #[structopt(long = "source-pattern")]
     source_patterns: Vec<String>,
+
+    /// Glob patterns for spec files
+    #[structopt(long = "spec-pattern")]
+    spec_patterns: Vec<String>,
 }
 
 macro_rules! arg {
@@ -81,6 +85,10 @@ impl Project {
 
         for pattern in &self.source_patterns {
             self.source_file(&pattern, &mut sources)?;
+        }
+
+        for pattern in &self.spec_patterns {
+            self.spec_file(&pattern, &mut sources)?;
         }
 
         Ok(sources)
@@ -169,6 +177,18 @@ impl Project {
 
         for entry in glob(file_pattern)? {
             files.insert(SourceFile::Text(compliance_pattern, entry?));
+        }
+
+        Ok(())
+    }
+
+    fn spec_file<'a>(
+        &self,
+        pattern: &'a str,
+        files: &mut HashSet<SourceFile<'a>>,
+    ) -> Result<(), Error> {
+        for entry in glob(pattern)? {
+            files.insert(SourceFile::Spec(entry?));
         }
 
         Ok(())

@@ -1,7 +1,6 @@
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#19.20
-//# The server uses the HANDSHAKE_DONE frame (type=0x1e) to signal
-//# confirmation of the handshake to the client.  As shown in Figure 43,
-//# a HANDSHAKE_DONE frame has no content.
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.20
+//# The server uses a HANDSHAKE_DONE frame (type=0x1e) to signal
+//# confirmation of the handshake to the client.
 
 macro_rules! handshake_done_tag {
     () => {

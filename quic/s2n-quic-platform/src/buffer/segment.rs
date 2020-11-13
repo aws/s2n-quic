@@ -1,5 +1,6 @@
 use crate::buffer::Buffer;
 use core::ops::{Deref, DerefMut, Index, IndexMut, Range};
+use s2n_quic_core::path::MINIMUM_MTU;
 
 #[derive(Debug)]
 pub struct SegmentBuffer<Region> {
@@ -9,13 +10,10 @@ pub struct SegmentBuffer<Region> {
 
 impl<Region> SegmentBuffer<Region> {
     pub fn new(region: Region, mtu: usize) -> Self {
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#14.1
-        //# A client MUST expand the payload of all UDP datagrams carrying
-        //# Initial packets to at least the smallest allowed maximum packet size
-        //# (1200 bytes)
         assert!(
-            mtu >= 1200,
-            "MTU must be at least 1200 for spec compatibility"
+            mtu >= (MINIMUM_MTU as usize),
+            "MTU must be at least {} for spec compatibility",
+            MINIMUM_MTU
         );
         Self { region, mtu }
     }

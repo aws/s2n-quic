@@ -1,0 +1,18 @@
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#21.3"
+
+# 21.3.  Optimistic ACK Attack
+#
+# An endpoint that acknowledges packets it has not received might cause
+# a congestion controller to permit sending at rates beyond what the
+# network supports.  An endpoint MAY skip packet numbers when sending
+# packets to detect this behavior.  An endpoint can then immediately
+# close the connection with a connection error of type
+# PROTOCOL_VIOLATION; see Section 10.2.
+
+[[spec]]
+level = "MAY"
+quote = '''
+An endpoint MAY skip packet numbers when sending
+packets to detect this behavior.
+'''
+

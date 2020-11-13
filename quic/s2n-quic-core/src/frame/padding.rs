@@ -1,8 +1,8 @@
 use crate::frame::Tag;
 use s2n_codec::{decoder_parameterized_value, Encoder, EncoderValue};
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#19.1
-//# The PADDING frame (type=0x00) has no semantic value.  PADDING frames
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.1
+//# A PADDING frame (type=0x00) has no semantic value.  PADDING frames
 //# can be used to increase the size of a packet.  Padding can be used to
 //# increase an initial client packet to the minimum required size, or to
 //# provide protection against traffic analysis for protected packets.
@@ -13,16 +13,10 @@ macro_rules! padding_tag {
     };
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#19.1
-//# As shown in Figure 22, a PADDING frame has no content.  That is, a
-//# PADDING frame consists of the single byte that identifies the frame
-//# as a PADDING frame.
-//#
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.1
 //# PADDING Frame {
 //#   Type (i) = 0x00,
 //# }
-//#
-//#                    Figure 22: PADDING Frame Format
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Padding {

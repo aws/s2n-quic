@@ -1,0 +1,27 @@
+target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.5"
+
+# 7.5.  Probe Timeout
+#
+# Probe packets MUST NOT be blocked by the congestion controller.  A
+# sender MUST however count these packets as being additionally in
+# flight, since these packets add network load without establishing
+# packet loss.  Note that sending probe packets might cause the
+# sender's bytes in flight to exceed the congestion window until an
+# acknowledgement is received that establishes loss or delivery of
+# packets.
+
+[[spec]]
+level = "MUST"
+quote = '''
+Probe packets MUST NOT be blocked by the congestion controller.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A
+sender MUST however count these packets as being additionally in
+flight, since these packets add network load without establishing
+packet loss.
+'''
+

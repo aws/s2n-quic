@@ -1,0 +1,21 @@
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2.7"
+
+# 13.2.7.  PADDING Frames Consume Congestion Window
+#
+# Packets containing PADDING frames are considered to be in flight for
+# congestion control purposes [QUIC-RECOVERY].  Packets containing only
+# PADDING frames therefore consume congestion window but do not
+# generate acknowledgments that will open the congestion window.  To
+# avoid a deadlock, a sender SHOULD ensure that other frames are sent
+# periodically in addition to PADDING frames to elicit acknowledgments
+# from the receiver.
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+To
+avoid a deadlock, a sender SHOULD ensure that other frames are sent
+periodically in addition to PADDING frames to elicit acknowledgments
+from the receiver.
+'''
+

@@ -3,7 +3,8 @@ use crate::{
     target::{Target, TargetSet},
     Error,
 };
-use core::{ops::Range, str::FromStr};
+use core::{fmt, ops::Range, str::FromStr};
+use serde::Serialize;
 use std::{
     collections::{BTreeSet, HashMap},
     io::Write,
@@ -54,6 +55,7 @@ pub struct Annotation {
     pub target: String,
     pub quote: String,
     pub code: String,
+    pub comment: String,
     pub manifest_dir: PathBuf,
     pub level: AnnotationLevel,
     pub format: Format,
@@ -94,7 +96,8 @@ impl Annotation {
 
     pub fn quote_range(&self, contents: &str) -> Option<Range<usize>> {
         if self.quote.is_empty() {
-            Some(0..contents.len())
+            // Don't actually consider full-section quotes as valid
+            None
         } else {
             text_search(self.quote.as_bytes(), contents.as_bytes())
                 .find(|m| m.k < 2)
@@ -132,6 +135,7 @@ pub enum AnnotationType {
     Test,
     Citation,
     Exception,
+    Todo,
 }
 
 impl Default for AnnotationType {
@@ -140,31 +144,74 @@ impl Default for AnnotationType {
     }
 }
 
+impl fmt::Display for AnnotationType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str(match self {
+            Self::Spec => "SPEC",
+            Self::Test => "TEST",
+            Self::Citation => "CITATION",
+            Self::Exception => "EXCEPTION",
+            Self::Todo => "TODO",
+        })
+    }
+}
+
 impl FromStr for AnnotationType {
     type Err = Error;
 
     fn from_str(v: &str) -> Result<Self, Self::Err> {
         match v {
-            "SPEC" => Ok(Self::Spec),
-            "TEST" => Ok(Self::Test),
-            "CITATION" => Ok(Self::Citation),
-            "EXCEPTION" => Ok(Self::Exception),
+            "SPEC" | "spec" => Ok(Self::Spec),
+            "TEST" | "test" => Ok(Self::Test),
+            "CITATION" | "citation" => Ok(Self::Citation),
+            "EXCEPTION" | "exception" => Ok(Self::Exception),
+            "TODO" | "todo" => Ok(Self::Todo),
             _ => Err(format!("Invalid annotation type {:?}", v).into()),
         }
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord, Hash)]
+// The order is in terms of priority from least to greatest
+#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord, Hash, Serialize)]
 pub enum AnnotationLevel {
     Auto,
-    MUST,
-    SHOULD,
+    OPTIONAL,
     MAY,
+    RECOMMENDED,
+    SHOULD,
+    SHALL,
+    MUST,
+}
+
+impl AnnotationLevel {
+    pub const LEVELS: [Self; 7] = [
+        Self::Auto,
+        Self::OPTIONAL,
+        Self::MAY,
+        Self::RECOMMENDED,
+        Self::SHOULD,
+        Self::SHALL,
+        Self::MUST,
+    ];
 }
 
 impl Default for AnnotationLevel {
     fn default() -> Self {
         Self::Auto
+    }
+}
+
+impl fmt::Display for AnnotationLevel {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str(match self {
+            Self::Auto => "AUTO",
+            Self::OPTIONAL => "OPTIONAL",
+            Self::MAY => "MAY",
+            Self::RECOMMENDED => "RECOMMENDED",
+            Self::SHOULD => "SHOULD",
+            Self::SHALL => "SHALL",
+            Self::MUST => "MUST",
+        })
     }
 }
 
@@ -175,8 +222,11 @@ impl FromStr for AnnotationLevel {
         match v {
             "AUTO" => Ok(Self::Auto),
             "MUST" => Ok(Self::MUST),
+            "SHALL" => Ok(Self::SHALL),
             "SHOULD" => Ok(Self::SHOULD),
+            "RECOMMENDED" => Ok(Self::RECOMMENDED),
             "MAY" => Ok(Self::MAY),
+            "OPTIONAL" => Ok(Self::OPTIONAL),
             _ => Err(format!("Invalid annotation level {:?}", v).into()),
         }
     }

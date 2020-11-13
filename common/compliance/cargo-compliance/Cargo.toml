@@ -17,8 +17,10 @@ reqwest = { version = "0.10", features = ["blocking", "native-tls"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 structopt = "0.3"
+toml = "0.5"
 triple_accel = "0.3"
 url = "2"
+v_jsonescape = "0.3"
 
 [dev-dependencies]
 insta = "1.0"

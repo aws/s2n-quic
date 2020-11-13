@@ -5,7 +5,7 @@ use crate::{
 };
 use s2n_codec::{decoder_parameterized_value, Encoder, EncoderValue};
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#19.19
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.19
 //# An endpoint sends a CONNECTION_CLOSE frame (type=0x1c or 0x1d) to
 //# notify its peer that the connection is being closed.  The
 //# CONNECTION_CLOSE with a frame type of 0x1c is used to signal errors
@@ -21,9 +21,7 @@ macro_rules! connection_close_tag {
 const QUIC_ERROR_TAG: u8 = 0x1c;
 const APPLICATION_ERROR_TAG: u8 = 0x1d;
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-29.txt#19.19
-//# The CONNECTION_CLOSE frames are shown in Figure 42.
-//#
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.19
 //# CONNECTION_CLOSE Frame {
 //#   Type (i) = 0x1c..0x1d,
 //#   Error Code (i),
@@ -31,16 +29,15 @@ const APPLICATION_ERROR_TAG: u8 = 0x1d;
 //#   Reason Phrase Length (i),
 //#   Reason Phrase (..),
 //# }
-//#
-//#                Figure 42: CONNECTION_CLOSE Frame Format
-//#
+
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.19
 //# CONNECTION_CLOSE frames contain the following fields:
 //#
-//# Error Code:  A variable length integer error code which indicates the
+//# Error Code:  A variable-length integer error code that indicates the
 //#    reason for closing this connection.  A CONNECTION_CLOSE frame of
-//#    type 0x1c uses codes from the space defined in Section 20.  A
+//#    type 0x1c uses codes from the space defined in Section 20.1.  A
 //#    CONNECTION_CLOSE frame of type 0x1d uses codes from the
-//#    application protocol error code space; see Section 20.1.
+//#    application protocol error code space; see Section 20.2.
 //#
 //# Frame Type:  A variable-length integer encoding the type of frame
 //#    that triggered the error.  A value of 0 (equivalent to the mention
@@ -54,7 +51,7 @@ const APPLICATION_ERROR_TAG: u8 = 0x1d;
 //#    will also limit the space available for a reason phrase.
 //#
 //# Reason Phrase:  A human-readable explanation for why the connection
-//#    was closed.  This can be zero length if the sender chooses to not
+//#    was closed.  This can be zero length if the sender chooses not to
 //#    give details beyond the Error Code.  This SHOULD be a UTF-8
 //#    encoded string [RFC3629].
 

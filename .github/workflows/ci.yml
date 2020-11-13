@@ -37,6 +37,11 @@ jobs:
           export VERSIONS=$(echo $RAW_VERSIONS | jq -scR 'rtrimstr("\n")|split(" ")|.')
           echo "::set-output name=versions::$VERSIONS"
 
+      - uses: ouzi-dev/commit-status-updater@v1.1.0
+        with:
+          name: 'compliance / report'
+          status: 'pending'
+
   rustfmt:
     runs-on: ubuntu-latest
     steps:
@@ -375,7 +380,7 @@ jobs:
           RUSTC_WRAPPER: sccache
 
       - name: Run cargo compliance
-        run: ./target/release/cargo-compliance report --lcov compliance --source-pattern 'quic/**/*.rs' --workspace --exclude compliance --exclude cargo-compliance
+        run: ./target/release/cargo-compliance report --lcov compliance --spec-pattern 'specs/**/*.toml' --source-pattern 'quic/**/*.rs' --workspace --exclude compliance --exclude cargo-compliance --require-citations --require-tests false --blob-link https://github.com/awslabs/s2n-quic/blob/${{ github.sha }} --html compliance/index.html
 
       - name: Stop sccache
         run: sccache --stop-server
@@ -391,6 +396,26 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           directory: compliance
           flags: compliance
+
+      - uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-west-1
+
+      - name: Upload to S3
+        id: s3
+        run: |
+          aws s3 cp compliance/index.html s3://s2n-quic-ci-artifacts/compliance/${{ github.sha }}/index.html --acl private --follow-symlinks
+          # generate a presigned url that is valid for 30 days
+          URL=$(aws s3 presign s3://s2n-quic-ci-artifacts/compliance/${{ github.sha }}/index.html --expires-in 2592000)
+          echo "::set-output name=URL::$URL"
+
+      - uses: ouzi-dev/commit-status-updater@v1.1.0
+        with:
+          name: 'compliance / report'
+          status: 'success'
+          url: "${{ steps.s3.outputs.URL }}"
 
   coverage:
     runs-on: ubuntu-latest

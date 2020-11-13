@@ -4,16 +4,25 @@ use crate::annotation::{AnnotationLevel, AnnotationType};
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Statistics {
     pub must: AnnotationStatistics,
+    pub shall: AnnotationStatistics,
     pub should: AnnotationStatistics,
     pub may: AnnotationStatistics,
+    pub recommended: AnnotationStatistics,
+    pub optional: AnnotationStatistics,
 }
 
 impl Statistics {
     #[allow(dead_code)]
     pub(super) fn record(&mut self, reference: &Reference) {
         match reference.level {
+            AnnotationLevel::Auto => {
+                // don't record auto references
+            }
             AnnotationLevel::MUST => {
                 self.must.record(reference);
+            }
+            AnnotationLevel::SHALL => {
+                self.shall.record(reference);
             }
             AnnotationLevel::SHOULD => {
                 self.should.record(reference);
@@ -21,9 +30,11 @@ impl Statistics {
             AnnotationLevel::MAY => {
                 self.may.record(reference);
             }
-            AnnotationLevel::Auto => {
-                // TODO pull in default level
-                self.may.record(reference);
+            AnnotationLevel::OPTIONAL => {
+                self.optional.record(reference);
+            }
+            AnnotationLevel::RECOMMENDED => {
+                self.recommended.record(reference);
             }
         }
     }
@@ -35,6 +46,7 @@ pub struct AnnotationStatistics {
     pub citations: Stat,
     pub tests: Stat,
     pub exceptions: Stat,
+    pub todos: Stat,
 }
 
 impl AnnotationStatistics {
@@ -50,6 +62,9 @@ impl AnnotationStatistics {
             }
             AnnotationType::Exception => {
                 self.exceptions.record(reference);
+            }
+            AnnotationType::Todo => {
+                self.todos.record(reference);
             }
             AnnotationType::Spec => {
                 // do nothing, it's just a reference

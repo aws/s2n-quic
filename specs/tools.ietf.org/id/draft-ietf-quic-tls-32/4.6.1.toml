@@ -1,0 +1,42 @@
+target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.6.1"
+
+# 4.6.1.  Enabling 0-RTT
+#
+# To communicate their willingness to process 0-RTT data, servers send
+# a NewSessionTicket message that contains the early_data extension
+# with a max_early_data_size of 0xffffffff.  The TLS
+# max_early_data_size parameter is not used in QUIC.  The amount of
+# data that the client can send in 0-RTT is controlled by the
+# initial_max_data transport parameter supplied by the server.
+# 
+# Servers MUST NOT send the early_data extension with a
+# max_early_data_size field set to any value other than 0xffffffff.  A
+# client MUST treat receipt of a NewSessionTicket that contains an
+# early_data extension with any other value as a connection error of
+# type PROTOCOL_VIOLATION.
+# 
+# A client that wishes to send 0-RTT packets uses the early_data
+# extension in the ClientHello message of a subsequent handshake; see
+# Section 4.2.10 of [TLS13].  It then sends application data in 0-RTT
+# packets.
+# 
+# A client that attempts 0-RTT might also provide an address validation
+# token if the server has sent a NEW_TOKEN frame; see Section 8.1 of
+# [QUIC-TRANSPORT].
+
+[[spec]]
+level = "MUST"
+quote = '''
+Servers MUST NOT send the early_data extension with a
+max_early_data_size field set to any value other than 0xffffffff.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A
+client MUST treat receipt of a NewSessionTicket that contains an
+early_data extension with any other value as a connection error of
+type PROTOCOL_VIOLATION.
+'''
+

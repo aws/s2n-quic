@@ -1,0 +1,92 @@
+target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.6"
+
+# 5.6.  Use of 0-RTT Keys
+#
+# If 0-RTT keys are available (see Section 4.6.1), the lack of replay
+# protection means that restrictions on their use are necessary to
+# avoid replay attacks on the protocol.
+# 
+# A client MUST only use 0-RTT keys to protect data that is idempotent.
+# A client MAY wish to apply additional restrictions on what data it
+# sends prior to the completion of the TLS handshake.  A client
+# otherwise treats 0-RTT keys as equivalent to 1-RTT keys, except that
+# it MUST NOT send ACKs with 0-RTT keys.
+# 
+# A client that receives an indication that its 0-RTT data has been
+# accepted by a server can send 0-RTT data until it receives all of the
+# server's handshake messages.  A client SHOULD stop sending 0-RTT data
+# if it receives an indication that 0-RTT data has been rejected.
+# 
+# A server MUST NOT use 0-RTT keys to protect packets; it uses 1-RTT
+# keys to protect acknowledgements of 0-RTT packets.  A client MUST NOT
+# attempt to decrypt 0-RTT packets it receives and instead MUST discard
+# them.
+# 
+# Once a client has installed 1-RTT keys, it MUST NOT send any more
+# 0-RTT packets.
+# 
+# Note:  0-RTT data can be acknowledged by the server as it receives
+#    it, but any packets containing acknowledgments of 0-RTT data
+#    cannot have packet protection removed by the client until the TLS
+#    handshake is complete.  The 1-RTT keys necessary to remove packet
+#    protection cannot be derived until the client receives all server
+#    handshake messages.
+
+[[spec]]
+level = "MUST"
+quote = '''
+A client MUST only use 0-RTT keys to protect data that is idempotent.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+A client MAY wish to apply additional restrictions on what data it
+sends prior to the completion of the TLS handshake.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A client
+otherwise treats 0-RTT keys as equivalent to 1-RTT keys, except that
+it MUST NOT send ACKs with 0-RTT keys.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+A client SHOULD stop sending 0-RTT data
+if it receives an indication that 0-RTT data has been rejected.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A server MUST NOT use 0-RTT keys to protect packets; it uses 1-RTT
+keys to protect acknowledgements of 0-RTT packets.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A client MUST NOT
+attempt to decrypt 0-RTT packets it receives and instead MUST discard
+them.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A client MUST NOT
+attempt to decrypt 0-RTT packets it receives and instead MUST discard
+them.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Once a client has installed 1-RTT keys, it MUST NOT send any more
+0-RTT packets.
+'''
+

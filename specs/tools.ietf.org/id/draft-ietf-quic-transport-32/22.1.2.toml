@@ -1,0 +1,72 @@
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#22.1.2"
+
+# 22.1.2.  Selecting Codepoints
+#
+# New uses of codepoints from QUIC registries SHOULD use a randomly
+# selected codepoint that excludes both existing allocations and the
+# first unallocated codepoint in the selected space.  Requests for
+# multiple codepoints MAY use a contiguous range.  This minimizes the
+# risk that differing semantics are attributed to the same codepoint by
+# different implementations.  Use of the first codepoint in a range is
+# intended for use by specifications that are developed through the
+# standards process [STD] and its allocation MUST be negotiated with
+# IANA before use.
+# 
+# For codepoints that are encoded in variable-length integers
+# (Section 16), such as frame types, codepoints that encode to four or
+# eight bytes (that is, values 2^14 and above) SHOULD be used unless
+# the usage is especially sensitive to having a longer encoding.
+# 
+# Applications to register codepoints in QUIC registries MAY include a
+# codepoint as part of the registration.  IANA MUST allocate the
+# selected codepoint unless that codepoint is already assigned or the
+# codepoint is the first unallocated codepoint in the registry.
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+New uses of codepoints from QUIC registries SHOULD use a randomly
+selected codepoint that excludes both existing allocations and the
+first unallocated codepoint in the selected space.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+Requests for
+multiple codepoints MAY use a contiguous range.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Use of the first codepoint in a range is
+intended for use by specifications that are developed through the
+standards process [STD] and its allocation MUST be negotiated with
+IANA before use.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+For codepoints that are encoded in variable-length integers
+(Section 16), such as frame types, codepoints that encode to four or
+eight bytes (that is, values 2^14 and above) SHOULD be used unless
+the usage is especially sensitive to having a longer encoding.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+Applications to register codepoints in QUIC registries MAY include a
+codepoint as part of the registration.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+IANA MUST allocate the
+selected codepoint unless that codepoint is already assigned or the
+codepoint is the first unallocated codepoint in the registry.
+'''
+

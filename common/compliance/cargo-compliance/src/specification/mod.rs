@@ -84,6 +84,7 @@ impl<'a> Section<'a> {
     }
 }
 
+#[derive(Debug)]
 pub struct StrView {
     pub value: String,
     pub byte_map: Vec<usize>,
