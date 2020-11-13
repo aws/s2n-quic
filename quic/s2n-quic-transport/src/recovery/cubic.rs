@@ -956,8 +956,11 @@ mod test {
         assert_eq!(cc.congestion_window, 200_000);
     }
 
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.4
+    //= type=test
+    //# The sender MUST discard all recovery state associated with
+    //# those packets and MUST remove them from the count of bytes in flight.
     #[test]
-    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.4")]
     fn on_packet_discarded() {
         let mut cc = CubicCongestionController::new(5000);
         cc.bytes_in_flight = BytesInFlight(10000);
