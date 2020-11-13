@@ -334,7 +334,7 @@ function formatReferenceComment({ annotation, type }) {
     .forEach((line) => {
       comment.push(`//# ${line}`);
     });
-  return comment.join("\n") + '\n';
+  return comment.join("\n") + "\n";
 }
 
 function formatTomlComment({ annotation, type }) {
@@ -346,5 +346,5 @@ function formatTomlComment({ annotation, type }) {
   if (type === "exception")
     comment.push('reason = "TODO: Add reason for exception here"');
 
-  return comment.join("\n") + '\n';
+  return comment.join("\n") + "\n";
 }

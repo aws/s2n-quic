@@ -199,13 +199,14 @@ function StatsRow({ title, stats }) {
 function requirementStatus(requirement) {
   if (requirement.isComplete) return [1, "Complete", "success"];
   if (requirement.isOk) return [2, "Complete (with exceptions)", "info"];
-  if (requirement.incomplete === requirement.spec)
-    return [7, "Not started", "error"];
 
   if (requirement.spec === requirement.citation)
     return [6, "Missing test", "warning"];
   if (requirement.spec === requirement.test)
     return [5, "Missing citation", "warning"];
+  if (requirement.todo) return [7, "Not started", "error"];
+  if (requirement.incomplete === requirement.spec)
+    return [8, "Unknown", "error"];
 
-  return [4, "In progress", "warning"];
+  return [4, "Partial coverage", "warning"];
 }
