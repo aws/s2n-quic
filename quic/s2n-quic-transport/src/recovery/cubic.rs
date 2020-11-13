@@ -251,8 +251,11 @@ impl CongestionController for CubicCongestionController {
         self.bytes_in_flight -= lost_bytes;
         self.on_congestion_event(timestamp);
 
-        // Reset the congestion window if the loss of these
-        // packets indicates persistent congestion.
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.2
+        //# When persistent congestion is declared, the sender's congestion
+        //# window MUST be reduced to the minimum congestion window
+        //# (kMinimumWindow), similar to a TCP sender's response on an RTO
+        //# ([RFC5681]).
         if persistent_congestion {
             self.congestion_window = self.minimum_window();
             self.state = State::SlowStart;
@@ -266,6 +269,11 @@ impl CongestionController for CubicCongestionController {
         }
 
         // Enter recovery period.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.1
+        //# The sender MUST exit slow start and enter a recovery period when a
+        //# packet is lost or when the ECN-CE count reported by its peer
+        //# increases.
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.2
         //# If the congestion window is reduced immediately, a
@@ -283,8 +291,10 @@ impl CongestionController for CubicCongestionController {
         // set according to CUBIC.
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.2
-        //# Implementations MAY reduce the congestion window immediately
-        //# upon entering a recovery period
+        //# Implementations MAY reduce the congestion window immediately upon
+        //# entering a recovery period or use other mechanisms, such as
+        //# Proportional Rate Reduction ([PRR]), to reduce the congestion window
+        //# more gradually.
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.2
         //# The minimum congestion window is the smallest value the congestion
@@ -695,6 +705,45 @@ mod test {
         assert!(cc.is_congestion_limited());
     }
 
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.2
+    //= type=test
+    //# Endpoints SHOULD use an initial congestion
+    //# window of 10 times the maximum datagram size (max_datagram_size),
+    //# limited to the larger of 14720 bytes or twice the maximum datagram
+    //# size.
+    #[test]
+    fn initial_window() {
+        let mut max_datagram_size = 1200;
+        assert_eq!(
+            (max_datagram_size * 10) as u32,
+            CubicCongestionController::initial_window(max_datagram_size)
+        );
+
+        max_datagram_size = 2000;
+        assert_eq!(
+            14720,
+            CubicCongestionController::initial_window(max_datagram_size)
+        );
+
+        max_datagram_size = 8000;
+        assert_eq!(
+            (max_datagram_size * 2) as u32,
+            CubicCongestionController::initial_window(max_datagram_size)
+        );
+    }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.2
+    //= type=test
+    //# The RECOMMENDED
+    //# value is 2 * max_datagram_size.
+    #[test]
+    fn minimum_window_equals_two_times_max_datagram_size() {
+        let max_datagram_size = 1200;
+        let cc = CubicCongestionController::new(max_datagram_size);
+
+        assert_eq!((2 * max_datagram_size) as u32, cc.minimum_window());
+    }
+
     #[test]
     fn on_packet_sent() {
         let mut cc = CubicCongestionController::new(1000);
@@ -873,17 +922,31 @@ mod test {
         let now = s2n_quic_platform::time::now();
         cc.congestion_window = 100_000;
         cc.bytes_in_flight = BytesInFlight(100_000);
-        cc.state = CongestionAvoidance(now);
+        cc.state = SlowStart;
 
         cc.on_packets_lost(100, false, now + Duration::from_secs(10));
 
         assert_eq!(cc.bytes_in_flight.0, 100_000 - 100);
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.1
+        //= type=test
+        //# The sender MUST exit slow start and enter a recovery period when a
+        //# packet is lost or when the ECN-CE count reported by its peer
+        //# increases.
         assert_eq!(
             cc.state,
             Recovery(now + Duration::from_secs(10), RequiresTransmission)
         );
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.2
+        //= type=test
+        //# Implementations MAY reduce the congestion window immediately upon
+        //# entering a recovery period or use other mechanisms, such as
+        //# Proportional Rate Reduction ([PRR]), to reduce the congestion window
+        //# more gradually.
         assert_eq!(cc.congestion_window, (100_000.0 * BETA_CUBIC) as u32);
-        assert_eq!(cc.slow_start.threshold, (100_000.0 * BETA_CUBIC) as u32);
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.2
+        //= type=test
+        //# The congestion window MUST be set to the reduced value of
+        //# the slow start threshold before exiting the recovery period.
         assert_eq!(cc.slow_start.threshold, (100_000.0 * BETA_CUBIC) as u32);
     }
 
@@ -914,6 +977,12 @@ mod test {
         assert_eq!(cc.congestion_window, 10000);
     }
 
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.2
+    //= type=test
+    //# When persistent congestion is declared, the sender's congestion
+    //# window MUST be reduced to the minimum congestion window
+    //# (kMinimumWindow), similar to a TCP sender's response on an RTO
+    //# ([RFC5681]).
     #[test]
     fn on_packet_lost_persistent_congestion() {
         let mut cc = CubicCongestionController::new(1000);
@@ -928,8 +997,12 @@ mod test {
         assert_eq!(cc.congestion_window, cc.minimum_window());
     }
 
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.2
+    //= type=test
+    //# If the maximum datagram size is decreased in order to complete the
+    //# handshake, the congestion window SHOULD be set to the new initial
+    //# congestion window.
     #[test]
-    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.2")]
     fn on_mtu_update_decrease() {
         let mut cc = CubicCongestionController::new(10000);
 
@@ -943,8 +1016,11 @@ mod test {
         );
     }
 
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.2
+    //= type=test
+    //# If the maximum datagram size changes during the connection, the
+    //# initial congestion window SHOULD be recalculated with the new size.
     #[test]
-    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.2")]
     fn on_mtu_update_increase() {
         let mut cc = CubicCongestionController::new(5000);
         cc.congestion_window = 100_000;
@@ -970,13 +1046,25 @@ mod test {
         assert_eq!(cc.bytes_in_flight.0, 10000 - 1000);
     }
 
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.8
+    //= type=test
+    //# When bytes in flight is smaller than the congestion window and
+    //# sending is not pacing limited, the congestion window is under-
+    //# utilized. When this occurs, the congestion window SHOULD NOT be
+    //# increased in either slow start or congestion avoidance.
     #[test]
-    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.8")]
     fn on_packet_ack_limited() {
         let mut cc = CubicCongestionController::new(5000);
         let now = s2n_quic_platform::time::now();
         cc.congestion_window = 100_000;
         cc.bytes_in_flight = BytesInFlight(10000);
+        cc.state = SlowStart;
+
+        cc.on_packet_ack(now, 1, &RTTEstimator::new(Duration::from_secs(0)), now);
+
+        assert_eq!(cc.congestion_window, 100_000);
+
+        cc.state = CongestionAvoidance(now);
 
         cc.on_packet_ack(now, 1, &RTTEstimator::new(Duration::from_secs(0)), now);
 

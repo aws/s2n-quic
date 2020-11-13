@@ -474,6 +474,12 @@ mod test {
 
         rtt_estimator.rttvar = Duration::from_millis(0);
 
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.1
+        //= type=test
+        //# The RECOMMENDED value for kPersistentCongestionThreshold is 3, which
+        //# results in behavior that is approximately equivalent to a TCP sender
+        //# declaring an RTO after two TLPs.
+
         // persistent congestion period =
         // (smoothed_rtt + max(4*rttvar, kGranularity) + max_ack_delay) * kPersistentCongestionThreshold
         // = (100 + max(0, 1) + 10) * 3 = 333

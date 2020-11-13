@@ -535,6 +535,11 @@ impl Manager {
             self.sent_packets.remove(packet_number);
         }
 
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.2
+        //# A sender that does not have state for all packet
+        //# number spaces or an implementation that cannot compare send times
+        //# across packet number spaces MAY use state for just the packet number
+        //# space that was acknowledged.
         let persistent_congestion =
             max_persistent_congestion_period > path.rtt_estimator.persistent_congestion_threshold();
 
