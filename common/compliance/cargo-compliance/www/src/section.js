@@ -11,6 +11,7 @@ import Dialog from "@material-ui/core/Dialog";
 import Tooltip from "@material-ui/core/Tooltip";
 import Chip from "@material-ui/core/Chip";
 import FileCopyIcon from "@material-ui/icons/FileCopy";
+import Typography from "@material-ui/core/Typography";
 import clsx from "clsx";
 import copyToClipboard from "copy-to-clipboard";
 import { Requirements } from "./spec";
@@ -59,11 +60,8 @@ function Line({ content }) {
 
 const useStyles = makeStyles((theme) => ({
   paper: {
-    margin: theme.spacing(1),
-    paddingTop: theme.spacing(1),
-    paddingLeft: theme.spacing(2),
-    paddingRight: theme.spacing(2),
-    paddingBottom: theme.spacing(2),
+    margin: theme.spacing(2),
+    padding: theme.spacing(2),
   },
   reference: {
     cursor: "pointer",
@@ -182,10 +180,10 @@ function Annotations({ reference: { annotations, status }, expanded }) {
   });
 
   const requirement = status.level ? <h3>Level: {status.level}</h3> : null;
+  const isOk = !!refs.SPEC.find((ref) => ref.isOk);
+  const showMissing = requirement && !isOk;
 
-  const comments = expanded
-    ? annotations.filter((ref) => ref.type === "SPEC" && ref.comment)
-    : [];
+  const comments = expanded ? refs.SPEC.filter((ref) => ref.comment) : [];
 
   return (
     <>
@@ -194,62 +192,68 @@ function Annotations({ reference: { annotations, status }, expanded }) {
         <Comment annotation={anno} key={anno.id} />
       ))}
       <AnnotationRef
-        title="Defined in"
+        title="Specifications"
         refs={refs.SPEC.length > 1 ? refs.SPEC : []}
-        expanded={expanded}
       />
       <AnnotationRef
-        title="Implemented in"
-        alt={requirement && "Missing implementation!"}
+        title="Citations"
+        alt={showMissing && "Missing!"}
         refs={refs.CITATION}
-        expanded={expanded}
       />
       <AnnotationRef
-        title="Tested in"
-        alt={requirement && "Missing test!"}
+        title="Tests"
+        alt={showMissing && "Missing!"}
         refs={refs.TEST}
-        expanded={expanded}
       />
       <AnnotationRef
-        title="Exempted in"
+        title="Exceptions"
         refs={refs.EXCEPTION}
         expanded={expanded}
       />
-      <AnnotationRef
-        title="To be implemented in"
-        refs={refs.TODO}
-        expanded={expanded}
-      />
+      <AnnotationRef title="TODOs" refs={refs.TODO} />
     </>
   );
 }
 
 function AnnotationRef({ title, alt, refs, expanded }) {
-  if (!refs.length)
-    return alt ? (
+  if (!refs.length && !alt) {
+    return null;
+  }
+
+  const content = refs.length ? (
+    refs.map((anno, id) => {
+      const text = <ListItemText secondary={anno.source.title} />;
+      const content = anno.source.href ? (
+        <Link href={anno.source.href}>{text}</Link>
+      ) : (
+        text
+      );
+      return (
+        <ListItem style={{ padding: "0 8px", display: "block" }} key={id}>
+          {content}
+          {expanded && anno.comment ? (
+            <Typography
+              variant="body2"
+              style={{ paddingLeft: 16, maxWidth: 500 }}
+            >
+              {anno.comment}
+            </Typography>
+          ) : null}
+        </ListItem>
+      );
+    })
+  ) : (
+    <ListItem style={{ padding: "0 8px", display: "block" }}>
       <Box color="error.main">
         <h4>{alt}</h4>
       </Box>
-    ) : null;
+    </ListItem>
+  );
 
   return (
     <>
       <h4 style={{ lineHeight: 1 }}>{title}</h4>
-      <List style={{ padding: 0 }}>
-        {refs.map((anno, id) => {
-          const text = <ListItemText secondary={anno.source.title} />;
-          const content = anno.source.href ? (
-            <Link href={anno.source.href}>{text}</Link>
-          ) : (
-            text
-          );
-          return (
-            <ListItem style={{ padding: "0 8px" }} key={id}>
-              {content}
-            </ListItem>
-          );
-        })}
-      </List>
+      <List style={{ padding: 0 }}>{content}</List>
     </>
   );
 }
@@ -298,6 +302,13 @@ function Comment({ annotation }) {
             className={classes.chip}
             getData={() => formatTomlComment({ annotation, type: "exception" })}
             label="Exception"
+          />
+        </li>
+        <li>
+          <Cite
+            className={classes.chip}
+            getData={() => formatReferenceComment({ annotation, type: "TODO" })}
+            label="TODO"
           />
         </li>
       </ul>

@@ -1,0 +1,12 @@
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#2.2"
+
+[[exception]]
+quote = '''
+However, implementations MAY choose to offer the ability to
+deliver data out of order to a receiving application.
+'''
+reason = '''
+This isn't something that would be used in HTTP/3 so we see little benefit
+in doing it currently.
+'''
+
