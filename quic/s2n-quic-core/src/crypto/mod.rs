@@ -137,6 +137,7 @@ pub mod label;
 pub mod one_rtt;
 pub mod packet_protection;
 pub mod payload;
+pub mod retry;
 pub mod tls;
 pub mod zero_rtt;
 
@@ -148,6 +149,7 @@ pub use key::*;
 pub use one_rtt::*;
 pub use packet_protection::*;
 pub use payload::*;
+pub use retry::RetryCrypto;
 pub use zero_rtt::*;
 
 /// Trait which aggregates all Crypto types
