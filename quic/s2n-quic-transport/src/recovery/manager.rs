@@ -297,6 +297,7 @@ impl Manager {
         //# To avoid generating multiple RTT samples for a single packet, an ACK
         //# frame SHOULD NOT be used to update RTT estimates if it does not newly
         //# acknowledge the largest acknowledged packet.
+
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.1
         //# An RTT sample MUST NOT be generated on receiving an ACK frame that
         //# does not newly acknowledge at least one ack-eliciting packet.
@@ -530,6 +531,13 @@ impl Manager {
         if lost_bytes > 0 {
             path.congestion_controller
                 .on_packets_lost(lost_bytes, persistent_congestion, now);
+        }
+
+        if persistent_congestion {
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.2
+            //# Endpoints SHOULD set the min_rtt to the newest RTT sample after
+            //# persistent congestion is established.
+            path.rtt_estimator.on_persistent_congestion();
         }
     }
 
@@ -1305,6 +1313,31 @@ mod test {
         //# and newest lost packets: 8 - 1 = 7.
         assert!(path.rtt_estimator.persistent_congestion_threshold() < Duration::from_secs(7));
         assert_eq!(Some(true), path.congestion_controller.persistent_congestion);
+        assert_eq!(path.rtt_estimator.first_rtt_sample(), None);
+
+        // t=20: Send packet #10
+        manager.on_packet_sent(
+            space.new_packet_number(VarInt::from_u8(10)),
+            outcome,
+            time_zero + Duration::from_secs(20),
+            &mut path,
+            recovery_context,
+        );
+
+        // t=21: Recv acknowledgement of #10
+        ack_packets(
+            10..=10,
+            time_zero + Duration::from_secs(21),
+            &mut path,
+            &mut manager,
+        );
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.2
+        //= type=test
+        //# Endpoints SHOULD set the min_rtt to the newest RTT sample after
+        //# persistent congestion is established.
+        assert_eq!(path.rtt_estimator.min_rtt(), Duration::from_secs(1));
+        assert_eq!(path.rtt_estimator.smoothed_rtt(), Duration::from_secs(1));
     }
 
     #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6")]
