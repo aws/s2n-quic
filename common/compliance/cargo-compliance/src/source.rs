@@ -31,8 +31,11 @@ impl<'a> SourceFile<'a> {
             Self::Spec(file) => {
                 let text = std::fs::read_to_string(&file)?;
                 let specs = toml::from_str::<Specs>(&text)?;
-                for spec in specs.specs {
-                    annotations.insert(spec.into_annotation(file.clone(), &specs.target)?);
+                for anno in specs.specs {
+                    annotations.insert(anno.into_annotation(file.clone(), &specs.target)?);
+                }
+                for anno in specs.exceptions {
+                    annotations.insert(anno.into_annotation(file.clone(), &specs.target)?);
                 }
                 Ok(annotations)
             }
@@ -48,6 +51,10 @@ struct Specs<'a> {
     #[serde(borrow)]
     #[serde(alias = "spec", default)]
     specs: Vec<Spec<'a>>,
+
+    #[serde(borrow)]
+    #[serde(alias = "exception", default)]
+    exceptions: Vec<Exception<'a>>,
 }
 
 #[derive(Deserialize)]
@@ -91,6 +98,42 @@ impl<'a> Spec<'a> {
             } else {
                 Format::Auto
             },
+        })
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Exception<'a> {
+    target: Option<String>,
+    quote: &'a str,
+    reason: &'a str,
+}
+
+impl<'a> Exception<'a> {
+    fn into_annotation(
+        self,
+        source: PathBuf,
+        default_target: &Option<String>,
+    ) -> Result<Annotation, Error> {
+        Ok(Annotation {
+            anno_line: 0,
+            anno_column: 0,
+            item_line: 0,
+            item_column: 0,
+            path: String::new(),
+            anno: AnnotationType::Exception,
+            target: self
+                .target
+                .or_else(|| default_target.as_ref().cloned())
+                .ok_or("missing target")?,
+            quote: self.quote.trim().replace('\n', " "),
+            code: String::new(),
+            comment: self.reason.to_string(),
+            manifest_dir: source.clone(),
+            source,
+            level: AnnotationLevel::Auto,
+            format: Format::Auto,
         })
     }
 }
