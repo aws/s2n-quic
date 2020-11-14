@@ -338,7 +338,6 @@ fn annotation(spec: SpecRef, item: Item, annotation: TokenStream2) -> TokenStrea
     }
     chunk!(quot, StrAsBytes(spec.quote));
     chunk!(anno, annotation);
-    chunk!(code, StrAsBytes(code));
     chunk!(alin, quote!(&line!().to_le_bytes()));
     chunk!(acol, quote!(&column!().to_le_bytes()));
     chunk!(file, quote_spanned!(item_span=> file!().as_bytes()));

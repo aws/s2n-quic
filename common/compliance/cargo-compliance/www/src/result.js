@@ -1,5 +1,7 @@
-const input = JSON.parse(document.getElementById("result").innerHTML);
-// import input from "./result.test.json";
+const input =
+  process.env.NODE_ENV === "production"
+    ? JSON.parse(document.getElementById("result").innerHTML)
+    : require("./result.test.json");
 
 const specifications = [];
 
@@ -38,7 +40,8 @@ Object.keys(input.specifications).forEach((id) => {
   specifications[encodeURIComponent(id)] = s;
 });
 
-const linker = createLinker(input.blob_link);
+const blobLinker = createBlobLinker(input.blob_link);
+const issueLinker = createIssueLinker(input.issue_link);
 input.annotations.forEach((anno, id) => {
   const status = input.statuses[id];
   if (status) {
@@ -49,10 +52,13 @@ input.annotations.forEach((anno, id) => {
   }
 
   anno.id = id;
-  anno.source = linker(anno);
+  anno.source = blobLinker(anno);
   anno.specification = specifications[anno.target_path];
   anno.section = anno.specification.sections[`section-${anno.target_section}`];
   anno.target = `${anno.specification.id}#${anno.section.id}`;
+  anno.features = [];
+  anno.tracking_issues = [];
+  anno.tags = anno.tags || [];
   anno.cmp = function (b) {
     const a = this;
     if (a.specification === b.specification && a.section.idx !== b.section.idx)
@@ -81,7 +87,7 @@ class Stats {
     if (requirement.citation) this.citations += 1;
     if (requirement.test) this.tests += 1;
     if (requirement.exception) this.exceptions += 1;
-    if (requirement.todo) this.exceptions += 1;
+    if (requirement.todo) this.todos += 1;
   }
 
   get completePercent() {
@@ -107,8 +113,13 @@ specifications.forEach((spec) => {
   spec.requirements.sort(sortRequirements);
   spec.sections.forEach((section) => {
     section.requirements.sort(sortRequirements);
+    section.stats = getRequirementsStats(section.requirements);
   });
 
+  spec.stats = getRequirementsStats(spec.requirements);
+});
+
+function getRequirementsStats(reqs) {
   const stats = {
     overall: new Stats(),
     MUST: new Stats(),
@@ -119,21 +130,53 @@ specifications.forEach((spec) => {
     OPTIONAL: new Stats(),
   };
 
-  spec.requirements.forEach((requirement) => {
+  reqs.maxFeatures = 0;
+  reqs.maxTrackingIssues = 0;
+  reqs.maxTags = 0;
+
+  reqs.forEach((requirement) => {
     stats.overall.onRequirement(requirement);
     let s = stats[requirement.level] || new Stats();
     stats[requirement.level] = s;
     s.onRequirement(requirement);
+    const features = new Set();
+    const tracking_issues = new Set();
+    const tags = new Set();
+
+    function onRelated(related) {
+      if (related.feature) features.add(related.feature);
+      if (related.tracking_issue) tracking_issues.add(related.tracking_issue);
+      (related.tags || []).forEach(tags.add, tags);
+    }
+
+    onRelated(requirement);
+    (requirement.related || []).forEach(onRelated);
+
+    requirement.features = Array.from(features);
+    requirement.features.sort();
+    reqs.maxFeatures = Math.max(reqs.maxFeatures, features.size);
+
+    requirement.tracking_issues = Array.from(tracking_issues);
+    requirement.tracking_issues.sort();
+    requirement.tracking_issues = requirement.tracking_issues.map(issueLinker);
+    reqs.maxTrackingIssues = Math.max(
+      reqs.maxTrackingIssues,
+      tracking_issues.size
+    );
+
+    requirement.tags = Array.from(tags);
+    requirement.tags.sort();
+    reqs.maxTags = Math.max(reqs.maxTags, tags.size);
   });
 
-  spec.stats = stats;
-});
+  return stats;
+}
 
 function sortRequirements(a, b) {
   return a.cmp(b);
 }
 
-function createLinker(blob_link) {
+function createBlobLinker(blob_link) {
   blob_link = (blob_link || "").replace(/\/+$/, "");
 
   return (anno) => {
@@ -152,6 +195,26 @@ function createLinker(blob_link) {
     return {
       title: link,
       href: blob_link.length ? `${blob_link}/${link}` : null,
+      toString() {
+        return link;
+      },
+    };
+  };
+}
+
+function createIssueLinker(base) {
+  base = (base || "").replace(/\/+$/, "");
+
+  return (issue) => {
+    if (!issue) return null;
+    if (/^http(s)?:/.test(issue)) return { title: issue, href: issue };
+
+    return {
+      title: issue,
+      href: base.length ? `${base}/${issue}` : null,
+      toString() {
+        return issue;
+      },
     };
   };
 }

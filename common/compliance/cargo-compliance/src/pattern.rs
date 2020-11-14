@@ -1,5 +1,5 @@
 use crate::{
-    annotation::{Annotation, AnnotationSet},
+    annotation::{Annotation, AnnotationSet, AnnotationType},
     parser::ParsedAnnotation,
     sourcemap::{LinesIter, Str},
     Error,
@@ -133,6 +133,15 @@ impl<'a> Capture<'a> {
             ("level", Some(value)) => self.annotation.level = value.parse()?,
             ("format", Some(value)) => self.annotation.format = value.parse()?,
             ("type", Some(value)) => self.annotation.anno = value.parse()?,
+            ("reason", Some(value)) if self.annotation.anno == AnnotationType::Exception => {
+                self.annotation.comment = value
+            }
+            ("feature", Some(value)) if self.annotation.anno == AnnotationType::Todo => {
+                self.annotation.feature = value
+            }
+            ("tracking-issue", Some(value)) if self.annotation.anno == AnnotationType::Todo => {
+                self.annotation.tracking_issue = value
+            }
             (key, Some(_)) => return Err(format!("invalid metadata field {}", key).into()),
             (value, None) if self.annotation.target.is_empty() => self.annotation.target = value,
             (_, None) => return Err("annotation source already specified".into()),

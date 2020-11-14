@@ -43,6 +43,9 @@ pub struct Report {
 
     #[structopt(long)]
     blob_link: Option<String>,
+
+    #[structopt(long)]
+    issue_link: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord)]
@@ -187,6 +190,7 @@ impl Report {
             targets: Default::default(),
             annotations: &annotations,
             blob_link: self.blob_link.as_deref(),
+            issue_link: self.issue_link.as_deref(),
         };
         let mut errors = BTreeSet::new();
 
@@ -269,6 +273,7 @@ pub struct ReportResult<'a> {
     pub targets: HashMap<&'a Target, TargetReport<'a>>,
     pub annotations: &'a AnnotationSet,
     pub blob_link: Option<&'a str>,
+    pub issue_link: Option<&'a str>,
 }
 
 #[derive(Debug)]

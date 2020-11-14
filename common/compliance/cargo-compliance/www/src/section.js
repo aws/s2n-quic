@@ -3,7 +3,6 @@ import { useLocation } from "react-router-dom";
 import { makeStyles, withStyles } from "@material-ui/core/styles";
 import Box from "@material-ui/core/Box";
 import List from "@material-ui/core/List";
-import Link from "@material-ui/core/Link";
 import ListItem from "@material-ui/core/ListItem";
 import ListItemText from "@material-ui/core/ListItemText";
 import Paper from "@material-ui/core/Paper";
@@ -15,6 +14,7 @@ import Typography from "@material-ui/core/Typography";
 import clsx from "clsx";
 import copyToClipboard from "copy-to-clipboard";
 import { Requirements } from "./spec";
+import { Link } from "./link";
 
 export function Section({ spec, section }) {
   const requirements = section.requirements || [];
@@ -171,12 +171,21 @@ function Annotations({ reference: { annotations, status }, expanded }) {
     TEST: [],
     EXCEPTION: [],
     TODO: [],
+    features: new Set(),
+    tracking_issues: new Set(),
+    tags: new Set(),
   };
 
   annotations.forEach((anno) => {
     if (anno.source) {
       (refs[anno.type || "CITATION"] || []).push(anno);
     }
+    anno.features.forEach(refs.features.add, refs.features);
+    anno.tracking_issues.forEach(
+      refs.tracking_issues.add,
+      refs.tracking_issues
+    );
+    anno.tags.forEach(refs.tags.add, refs.tags);
   });
 
   const requirement = status.level ? <h3>Level: {status.level}</h3> : null;
@@ -191,6 +200,13 @@ function Annotations({ reference: { annotations, status }, expanded }) {
       {comments.map((anno, i) => (
         <Comment annotation={anno} key={anno.id} />
       ))}
+      {expanded ? (
+        <AnnotationList title="Features" items={refs.features} />
+      ) : null}
+      {expanded ? (
+        <AnnotationList title="Tracking issues" items={refs.tracking_issues} />
+      ) : null}
+      {expanded ? <AnnotationList title="Tags" items={refs.tags} /> : null}
       <AnnotationRef
         title="Specifications"
         refs={refs.SPEC.length > 1 ? refs.SPEC : []}
@@ -215,6 +231,39 @@ function Annotations({ reference: { annotations, status }, expanded }) {
   );
 }
 
+const listItemStyle = { padding: "0 8px", display: "block" };
+
+function AnnotationList({ title, items }) {
+  if (!items.size) return null;
+  items = Array.from(items);
+
+  if (items.length === 1) {
+    // remove `s` if there's only 1
+    title = title.slice(0, title.length - 1);
+  } else {
+    // sort the items if there's more than 1
+    items.sort();
+  }
+
+  const content = items.map((item, idx) => {
+    const text = item.toString();
+    const content = item.href ? <Link href={item.href}>{text}</Link> : text;
+    return (
+      <ListItem style={{ ...listItemStyle, display: "inline" }} key={idx}>
+        {idx ? ", " : ""}
+        {content}
+      </ListItem>
+    );
+  });
+
+  return (
+    <div>
+      <h3 style={{ lineHeight: 1, display: "inline" }}>{title}</h3>
+      <List style={{ padding: 0, display: "inline" }}>{content}</List>
+    </div>
+  );
+}
+
 function AnnotationRef({ title, alt, refs, expanded }) {
   if (!refs.length && !alt) {
     return null;
@@ -229,7 +278,7 @@ function AnnotationRef({ title, alt, refs, expanded }) {
         text
       );
       return (
-        <ListItem style={{ padding: "0 8px", display: "block" }} key={id}>
+        <ListItem style={listItemStyle} key={id}>
           {content}
           {expanded && anno.comment ? (
             <Typography
@@ -243,7 +292,7 @@ function AnnotationRef({ title, alt, refs, expanded }) {
       );
     })
   ) : (
-    <ListItem style={{ padding: "0 8px", display: "block" }}>
+    <ListItem style={listItemStyle}>
       <Box color="error.main">
         <h4>{alt}</h4>
       </Box>

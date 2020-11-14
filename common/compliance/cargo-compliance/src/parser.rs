@@ -12,7 +12,6 @@ pub struct ParsedAnnotation<'a> {
     pub target: &'a str,
     pub quote: &'a str,
     pub anno: AnnotationType,
-    pub code: &'a str,
     pub comment: &'a str,
     pub source: &'a str,
     pub anno_line: u32,
@@ -21,6 +20,8 @@ pub struct ParsedAnnotation<'a> {
     pub item_column: u32,
     pub path: &'a str,
     pub manifest_dir: &'a str,
+    pub feature: &'a str,
+    pub tracking_issue: &'a str,
     pub level: AnnotationLevel,
     pub format: Format,
 }
@@ -67,7 +68,6 @@ impl<'a> ParsedAnnotation<'a> {
                 b"spec" => parsed.target = to_str!(),
                 b"quot" => parsed.quote = to_str!(),
                 b"anno" => parsed.anno = to_str!().parse()?,
-                b"code" => parsed.code = to_str!(),
                 b"comm" => parsed.comment = to_str!(),
                 b"file" => parsed.source = to_str!(),
                 b"ilin" => parsed.item_line = to_u32!(),
@@ -98,7 +98,6 @@ impl Into<Annotation> for ParsedAnnotation<'_> {
             target: self.target.to_string(),
             quote: self.quote.to_string(),
             anno: self.anno,
-            code: self.code.to_string(),
             comment: self.comment.to_string(),
             source: self.source.into(),
             path: self.path.to_string(),
@@ -109,6 +108,9 @@ impl Into<Annotation> for ParsedAnnotation<'_> {
             manifest_dir: self.manifest_dir.into(),
             level: self.level,
             format: self.format,
+            feature: self.feature.to_string(),
+            tags: Default::default(),
+            tracking_issue: self.tracking_issue.to_string(),
         }
     }
 }
