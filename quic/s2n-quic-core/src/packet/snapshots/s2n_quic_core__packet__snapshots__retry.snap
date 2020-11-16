@@ -5,7 +5,7 @@ expression: values
 [
     Retry(
         Retry {
-            version: 16909060,
+            version: 4278190112,
             destination_connection_id: [
                 1,
                 2,
@@ -50,7 +50,7 @@ expression: values
                 19,
                 20,
             ],
-            original_destination_connection_id: [
+            retry_token: [
                 1,
                 2,
                 3,
@@ -72,7 +72,7 @@ expression: values
                 19,
                 20,
             ],
-            retry_token: [
+            retry_integrity_tag: [
                 1,
                 2,
                 3,
@@ -81,6 +81,14 @@ expression: values
                 6,
                 7,
                 8,
+                9,
+                10,
+                11,
+                12,
+                13,
+                14,
+                15,
+                16,
             ],
         },
     ),
