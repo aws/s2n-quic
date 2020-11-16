@@ -121,6 +121,10 @@ impl Manager {
                 .pto
                 .on_timeout(!self.sent_packets.is_empty(), timestamp);
 
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2
+            //# A PTO timer expiration event does not indicate packet loss and MUST
+            //# NOT cause prior unacknowledged packets to be marked as lost.
+
             //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
             //# When a PTO timer expires, the PTO backoff MUST be increased,
             //# resulting in the PTO period being set to twice its current value.
@@ -183,7 +187,8 @@ impl Manager {
     ) {
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.2.1
         //# If no additional data can be sent, the server's PTO timer MUST NOT be
-        //# armed until datagrams have been received from the client
+        //# armed until datagrams have been received from the client, because
+        //# packets sent on PTO count against the anti-amplification limit.
         if path.at_amplification_limit() {
             // The server's timer is not set if nothing can be sent.
             self.pto.cancel();
@@ -210,6 +215,11 @@ impl Manager {
                 .expect("there is at least one ack eliciting packet in flight")
         } else {
             // Arm PTO from now when there are no inflight packets.
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.2.1
+            //# That is, the client MUST set the probe timer if the client has not received an
+            //# acknowledgement for one of its Handshake packets and the handshake is
+            //# not confirmed (see Section 4.1.2 of [QUIC-TLS]), even if there are no
+            //# packets in flight.
             now
         };
 
@@ -293,11 +303,20 @@ impl Manager {
 
         let largest_newly_acked = largest_newly_acked.expect("There are newly acked packets");
 
+        let mut should_update_rtt = true;
+
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.1
-        //# An RTT sample is generated using only the largest acknowledged packet in the
-        //# received ACK frame. This is because a peer reports acknowledgment delays for
-        //# only the largest acknowledged packet in an ACK frame.
-        if largest_newly_acked.0 == largest_acked_in_frame && includes_ack_eliciting {
+        //# To avoid generating multiple RTT samples for a single packet, an ACK
+        //# frame SHOULD NOT be used to update RTT estimates if it does not newly
+        //# acknowledge the largest acknowledged packet.
+        should_update_rtt &= largest_newly_acked.0 == largest_acked_in_frame;
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.1
+        //# An RTT sample MUST NOT be generated on receiving an ACK frame that
+        //# does not newly acknowledge at least one ack-eliciting packet.
+        should_update_rtt &= includes_ack_eliciting;
+
+        if should_update_rtt {
             let latest_rtt = datagram.timestamp - largest_newly_acked.1.time_sent;
             path.rtt_estimator.update_rtt(
                 frame.ack_delay(),
@@ -521,12 +540,24 @@ impl Manager {
             self.sent_packets.remove(packet_number);
         }
 
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.2
+        //# A sender that does not have state for all packet
+        //# number spaces or an implementation that cannot compare send times
+        //# across packet number spaces MAY use state for just the packet number
+        //# space that was acknowledged.
         let persistent_congestion =
             max_persistent_congestion_period > path.rtt_estimator.persistent_congestion_threshold();
 
         if lost_bytes > 0 {
             path.congestion_controller
                 .on_packets_lost(lost_bytes, persistent_congestion, now);
+        }
+
+        if persistent_congestion {
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.2
+            //# Endpoints SHOULD set the min_rtt to the newest RTT sample after
+            //# persistent congestion is established.
+            path.rtt_estimator.on_persistent_congestion();
         }
     }
 
@@ -542,6 +573,11 @@ impl Manager {
         //# round-trip time multiplier, is 9/8.
         time_threshold = (time_threshold * 9) / 8;
 
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.1.2
+        //# To avoid declaring
+        //# packets as lost too early, this time threshold MUST be set to at
+        //# least the local timer granularity, as indicated by the kGranularity
+        //# constant.
         max(time_threshold, K_GRANULARITY)
     }
 }
@@ -809,6 +845,10 @@ mod test {
 
                 let expected_pto;
                 if outcome.ack_elicitation.is_ack_eliciting() {
+                    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+                    //= type=test
+                    //# A sender SHOULD restart its PTO timer every time an ack-eliciting
+                    //# packet is sent
                     expected_pto = time_sent + expected_pto_duration;
                 } else if let Some(time_of_last_ack_eliciting_packet) =
                     manager.time_of_last_ack_eliciting_packet
@@ -899,6 +939,11 @@ mod test {
         let ack_receive_time = ack_receive_time + Duration::from_secs(1);
         let context = ack_packets(1..=3, ack_receive_time, &mut path, &mut manager);
 
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.1
+        //= type=test
+        //# An RTT sample MUST NOT be generated on receiving an ACK frame that
+        //# does not newly acknowledge at least one ack-eliciting packet.
+
         // Acknowledging already acked packets does not call on_new_packet_ack or change RTT
         assert_eq!(path.congestion_controller.lost_bytes, 0);
         assert_eq!(path.congestion_controller.on_rtt_update, 1);
@@ -965,6 +1010,74 @@ mod test {
         assert_eq!(context.on_packet_loss_count, 0);
         // RTT remains unchanged
         assert_eq!(path.rtt_estimator.latest_rtt(), Duration::from_millis(3000));
+    }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.1
+    //= type=test
+    //# To avoid generating multiple RTT samples for a single packet, an ACK
+    //# frame SHOULD NOT be used to update RTT estimates if it does not newly
+    //# acknowledge the largest acknowledged packet.
+    #[test]
+    fn no_rtt_update_when_not_acknowledging_the_largest_acknowledged_packet() {
+        let space = PacketNumberSpace::ApplicationData;
+        let rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
+        let mut manager = Manager::new(space, Duration::from_millis(100));
+        let packet_bytes = 128;
+        let mut path = Path::new(
+            Default::default(),
+            connection::Id::EMPTY,
+            rtt_estimator,
+            MockCongestionController::default(),
+            true,
+        );
+
+        let time_sent = s2n_quic_platform::time::now() + Duration::from_secs(10);
+
+        // Send 2 packets
+        manager.on_packet_sent(
+            space.new_packet_number(VarInt::from_u8(0)),
+            transmission::Outcome {
+                ack_elicitation: AckElicitation::Eliciting,
+                is_congestion_controlled: true,
+                bytes_sent: packet_bytes,
+            },
+            time_sent,
+            &mut path,
+            &MockContext::default(),
+        );
+        manager.on_packet_sent(
+            space.new_packet_number(VarInt::from_u8(1)),
+            transmission::Outcome {
+                ack_elicitation: AckElicitation::Eliciting,
+                is_congestion_controlled: true,
+                bytes_sent: packet_bytes,
+            },
+            time_sent,
+            &mut path,
+            &MockContext::default(),
+        );
+
+        assert_eq!(manager.sent_packets.iter().count(), 2);
+
+        // Ack packet 1
+        let ack_receive_time = time_sent + Duration::from_millis(500);
+        ack_packets(1..=1, ack_receive_time, &mut path, &mut manager);
+
+        // New rtt estimate because the largest packet was newly acked
+        assert_eq!(path.congestion_controller.on_rtt_update, 1);
+        assert_eq!(
+            manager.largest_acked_packet,
+            Some(space.new_packet_number(VarInt::from_u8(1)))
+        );
+        assert_eq!(path.rtt_estimator.latest_rtt(), Duration::from_millis(500));
+
+        // Ack packets 0 and 1
+        let ack_receive_time = time_sent + Duration::from_millis(1500);
+        ack_packets(0..=1, ack_receive_time, &mut path, &mut manager);
+
+        // No new rtt estimate because the largest packet was not newly acked
+        assert_eq!(path.congestion_controller.on_rtt_update, 1);
+        assert_eq!(path.rtt_estimator.latest_rtt(), Duration::from_millis(500));
     }
 
     #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.10")]
@@ -1058,6 +1171,12 @@ mod test {
             lost_packets.insert(packet_range.start());
         });
 
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.1.2
+        //= type=test
+        //# Once a later packet within the same packet number space has been
+        //# acknowledged, an endpoint SHOULD declare an earlier packet lost if it
+        //# was sent a threshold amount of time in the past.
+
         // Two packets lost, each size 1 byte
         assert_eq!(path.congestion_controller.lost_bytes, 2);
         // Two packets remaining
@@ -1083,6 +1202,10 @@ mod test {
 
         let expected_loss_time =
             sent_packets.get(not_lost).unwrap().time_sent + expected_time_threshold;
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.1.2
+        //= type=test
+        //# If packets sent prior to the largest acknowledged packet cannot yet
+        //# be declared lost, then a timer SHOULD be set for the remaining time.
         assert!(manager.loss_timer.is_armed());
         assert_eq!(Some(&expected_loss_time), manager.loss_timer.iter().next());
     }
@@ -1229,6 +1352,31 @@ mod test {
         //# and newest lost packets: 8 - 1 = 7.
         assert!(path.rtt_estimator.persistent_congestion_threshold() < Duration::from_secs(7));
         assert_eq!(Some(true), path.congestion_controller.persistent_congestion);
+        assert_eq!(path.rtt_estimator.first_rtt_sample(), None);
+
+        // t=20: Send packet #10
+        manager.on_packet_sent(
+            space.new_packet_number(VarInt::from_u8(10)),
+            outcome,
+            time_zero + Duration::from_secs(20),
+            &mut path,
+            recovery_context,
+        );
+
+        // t=21: Recv acknowledgement of #10
+        ack_packets(
+            10..=10,
+            time_zero + Duration::from_secs(21),
+            &mut path,
+            &mut manager,
+        );
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.2
+        //= type=test
+        //# Endpoints SHOULD set the min_rtt to the newest RTT sample after
+        //# persistent congestion is established.
+        assert_eq!(path.rtt_estimator.min_rtt(), Duration::from_secs(1));
+        assert_eq!(path.rtt_estimator.smoothed_rtt(), Duration::from_secs(1));
     }
 
     #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6")]
@@ -1337,7 +1485,7 @@ mod test {
 
     #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1")]
     #[test]
-    fn update() {
+    fn update_pto_timer() {
         let space = PacketNumberSpace::ApplicationData;
         let rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
         let mut manager = Manager::new(space, Duration::from_millis(10));
@@ -1373,7 +1521,11 @@ mod test {
         manager.pto.timer.set(now + Duration::from_secs(10));
         manager.update_pto_timer(&path, now, is_handshake_confirmed);
 
-        // PTO is not armed because the path was at anti-amplification limit
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.2.1
+        //= type=test
+        //# If no additional data can be sent, the server's PTO timer MUST NOT be
+        //# armed until datagrams have been received from the client, because
+        //# packets sent on PTO count against the anti-amplification limit.
         assert!(!manager.pto.timer.is_armed());
 
         // Arm the PTO so we can verify it is cancelled
@@ -1399,7 +1551,10 @@ mod test {
         let is_handshake_confirmed = false;
         manager.update_pto_timer(&path, now, is_handshake_confirmed);
 
-        // Since the packet space is Application and the handshake is not confirmed, PTO is cancelled
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+        //= type=test
+        //# An endpoint MUST NOT set its PTO timer for the application data
+        //# packet number space until the handshake is confirmed.
         assert!(!manager.pto.timer.is_armed());
 
         // Set is handshake confirmed back to true
@@ -1448,6 +1603,35 @@ mod test {
         );
     }
 
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.2.1
+    //= type=test
+    //# That is,
+    //# the client MUST set the probe timer if the client has not received an
+    //# acknowledgement for one of its Handshake packets and the handshake is
+    //# not confirmed (see Section 4.1.2 of [QUIC-TLS]), even if there are no
+    //# packets in flight.
+    #[test]
+    fn pto_armed_if_handshake_not_confirmed() {
+        let space = PacketNumberSpace::Handshake;
+        let mut manager = Manager::new(space, Duration::from_millis(10));
+        let now = s2n_quic_platform::time::now() + Duration::from_secs(10);
+        let is_handshake_confirmed = false;
+
+        let mut path = Path::new(
+            Default::default(),
+            connection::Id::EMPTY,
+            RTTEstimator::new(Duration::from_millis(10)),
+            Unlimited::default(),
+            false,
+        );
+
+        path.on_validated();
+
+        manager.update_pto_timer(&path, now, is_handshake_confirmed);
+
+        assert!(manager.pto.timer.is_armed());
+    }
+
     #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1")]
     #[test]
     fn on_timeout() {
@@ -1472,6 +1656,10 @@ mod test {
         manager.loss_timer.set(now + Duration::from_secs(10));
         manager.on_timeout(&mut path, now, &mut context);
         assert_eq!(context.on_packet_loss_count, 0);
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+        //= type=test
+        //# The PTO timer MUST NOT be set if a timer is set for time threshold
+        //# loss detection; see Section 6.1.2.
         assert!(!manager.pto.timer.is_armed());
         assert_eq!(expected_pto_backoff, path.pto_backoff);
 
@@ -1492,6 +1680,10 @@ mod test {
         manager.loss_timer.set(now - Duration::from_secs(1));
         manager.on_timeout(&mut path, now, &mut context);
         assert_eq!(context.on_packet_loss_count, 1);
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+        //= type=test
+        //# The PTO timer MUST NOT be set if a timer is set for time threshold
+        //# loss detection; see Section 6.1.2.
         assert!(!manager.pto.timer.is_armed());
         assert_eq!(expected_pto_backoff, path.pto_backoff);
 
@@ -1514,6 +1706,11 @@ mod test {
         assert_eq!(manager.pto.state, RequiresTransmission(1));
 
         // Loss timer is not armed, pto timer is expired with bytes in flight
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+        //= type=test
+        //# When a PTO timer expires, the PTO backoff MUST be increased,
+        //# resulting in the PTO period being set to twice its current value.
         expected_pto_backoff *= 2;
         manager.sent_packets.insert(
             space.new_packet_number(VarInt::from_u8(1)),
@@ -1528,6 +1725,15 @@ mod test {
         manager.on_timeout(&mut path, now, &mut context);
         assert_eq!(expected_pto_backoff, path.pto_backoff);
         assert_eq!(manager.pto.state, RequiresTransmission(2));
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2
+        //= type=test
+        //# A PTO timer expiration event does not indicate packet loss and MUST
+        //# NOT cause prior unacknowledged packets to be marked as lost.
+        assert!(manager
+            .sent_packets
+            .get(space.new_packet_number(VarInt::from_u8(1)))
+            .is_some());
     }
 
     #[test]
@@ -1584,13 +1790,30 @@ mod test {
         // One transmission required, not ack eliciting
         manager.pto.state = RequiresTransmission(1);
         context.write_frame(&frame::Padding { length: 1 });
+        assert!(!context.ack_elicitation().is_ack_eliciting());
         manager.on_transmit(&mut context);
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
+        //= type=test
+        //# All probe packets sent on a PTO MUST be ack-eliciting.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
+        //= type=test
+        //# When the PTO timer expires, an ack-eliciting packet MUST be sent.
+        assert!(context.ack_elicitation().is_ack_eliciting());
         assert_eq!(manager.pto.state, PtoState::Idle);
 
         // One transmission required, ack eliciting
         manager.pto.state = RequiresTransmission(1);
         context.write_frame(&frame::Ping);
         manager.on_transmit(&mut context);
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
+        //= type=test
+        //# All probe packets sent on a PTO MUST be ack-eliciting.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
+        //= type=test
+        //# When the PTO timer expires, an ack-eliciting packet MUST be sent.
+        assert!(context.ack_elicitation().is_ack_eliciting());
         assert_eq!(manager.pto.state, PtoState::Idle);
 
         // Two transmissions required
@@ -1654,6 +1877,69 @@ mod test {
 
         manager.pto.state = PtoState::Idle;
         assert!(!manager.requires_probe());
+    }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.1.1
+    //= type=test
+    //# The RECOMMENDED initial value for the packet reordering threshold
+    //# (kPacketThreshold) is 3, based on best practices for TCP loss
+    //# detection ([RFC5681], [RFC6675]).
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.1.1
+    //= type=test
+    //# In order to remain similar to TCP,
+    //# implementations SHOULD NOT use a packet threshold less than 3; see
+    //# [RFC5681].
+    #[allow(clippy::assertions_on_constants)]
+    #[test]
+    fn packet_reorder_threshold_at_least_three() {
+        assert!(K_PACKET_THRESHOLD >= 3);
+    }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.1.2
+    //= type=test
+    //# The RECOMMENDED time threshold (kTimeThreshold), expressed as a
+    //# round-trip time multiplier, is 9/8.
+    #[test]
+    fn time_threshold_multiplier_equals_nine_eighths() {
+        let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
+        rtt_estimator.update_rtt(
+            Duration::from_millis(10),
+            Duration::from_secs(1),
+            s2n_quic_platform::time::now(),
+            true,
+            PacketNumberSpace::Initial,
+        );
+        assert_eq!(
+            Duration::from_millis(1125), // 9/8 seconds = 1.125 seconds
+            Manager::calculate_loss_time_threshold(&rtt_estimator)
+        );
+    }
+
+    #[test]
+    fn timer_granularity() {
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.1.2
+        //= type=test
+        //# The RECOMMENDED value of the
+        //# timer granularity (kGranularity) is 1ms.
+        assert_eq!(Duration::from_millis(1), K_GRANULARITY);
+
+        let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(0));
+        rtt_estimator.update_rtt(
+            Duration::from_millis(0),
+            Duration::from_nanos(1),
+            s2n_quic_platform::time::now(),
+            true,
+            PacketNumberSpace::Initial,
+        );
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.1.2
+        //= type=test
+        //# To avoid declaring
+        //# packets as lost too early, this time threshold MUST be set to at
+        //# least the local timer granularity, as indicated by the kGranularity
+        //# constant.
+        assert!(Manager::calculate_loss_time_threshold(&rtt_estimator) >= K_GRANULARITY);
     }
 
     #[derive(Default)]
