@@ -39,15 +39,17 @@ impl RetryCrypto for RingRetryCrypto {
 mod tests {
     use super::*;
     use hex_literal::hex;
-    use s2n_quic_core::crypto::retry::{EXAMPLE_EXPECTED_TAG, EXAMPLE_PSEUDO_RETRY_PACKET};
+    use s2n_quic_core::crypto::retry;
 
     #[test]
-    fn test_valid_tag() {
+    fn test_tag_validation() {
         let invalid_tag: [u8; 16] = hex!("00112233445566778899aabbccddeeff");
 
-        assert!(
-            RingRetryCrypto::validate(&EXAMPLE_PSEUDO_RETRY_PACKET, EXAMPLE_EXPECTED_TAG).is_ok()
-        );
-        assert!(RingRetryCrypto::validate(&EXAMPLE_PSEUDO_RETRY_PACKET, invalid_tag).is_err());
+        assert!(RingRetryCrypto::validate(
+            &retry::example::PSEUDO_PACKET,
+            retry::example::EXPECTED_TAG
+        )
+        .is_ok());
+        assert!(RingRetryCrypto::validate(&retry::example::PSEUDO_PACKET, invalid_tag).is_err());
     }
 }

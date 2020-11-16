@@ -1,9 +1,14 @@
-use crate::packet::{
-    decoding::HeaderDecoder,
-    long::{DestinationConnectionIDLen, SourceConnectionIDLen, Version},
-    Tag,
+use crate::{
+    crypto::retry,
+    packet::{
+        decoding::HeaderDecoder,
+        long::{DestinationConnectionIDLen, SourceConnectionIDLen, Version},
+        Tag,
+    },
 };
-use s2n_codec::{DecoderBufferMut, DecoderBufferMutResult, Encoder, EncoderValue};
+use s2n_codec::{
+    decoder_invariant, DecoderBufferMut, DecoderBufferMutResult, Encoder, EncoderValue,
+};
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.5
 //# Retry Packet {
@@ -41,8 +46,8 @@ pub struct Retry<'a> {
     pub version: Version,
     pub destination_connection_id: &'a [u8],
     pub source_connection_id: &'a [u8],
-    pub original_destination_connection_id: &'a [u8],
     pub retry_token: &'a [u8],
+    pub retry_integrity_tag: &'a [u8],
 }
 
 pub type ProtectedRetry<'a> = Retry<'a>;
@@ -60,8 +65,6 @@ impl<'a> Retry<'a> {
 
         let destination_connection_id = decoder.decode_destination_connection_id(&buffer)?;
         let source_connection_id = decoder.decode_source_connection_id(&buffer)?;
-        let original_destination_connection_id =
-            decoder.decode_destination_connection_id(&buffer)?;
 
         // split header and payload
         let header_len = decoder.decoded_len();
@@ -71,18 +74,21 @@ impl<'a> Retry<'a> {
         // read borrowed slices
         let destination_connection_id = destination_connection_id.get(header);
         let source_connection_id = source_connection_id.get(header);
-        let original_destination_connection_id = original_destination_connection_id.get(header);
 
-        let buffer_len = buffer.len();
+        let buffer_len = buffer.len().saturating_sub(retry::INTEGRITY_TAG_LEN);
+        decoder_invariant!(buffer_len > 0, "Token cannot be empty");
         let (retry_token, buffer) = buffer.decode_slice(buffer_len)?;
         let retry_token: &[u8] = retry_token.into_less_safe_slice();
+
+        let (retry_integrity_tag, buffer) = buffer.decode_slice(retry::INTEGRITY_TAG_LEN)?;
+        let retry_integrity_tag: &[u8] = retry_integrity_tag.into_less_safe_slice();
 
         let packet = Retry {
             version,
             destination_connection_id,
             source_connection_id,
-            original_destination_connection_id,
             retry_token,
+            retry_integrity_tag,
         };
 
         Ok((packet, buffer))
@@ -96,11 +102,6 @@ impl<'a> Retry<'a> {
     #[inline]
     pub fn source_connection_id(&self) -> &[u8] {
         &self.source_connection_id
-    }
-
-    #[inline]
-    pub fn original_destination_connection_id(&self) -> &[u8] {
-        &self.original_destination_connection_id
     }
 
     #[inline]
@@ -120,8 +121,25 @@ impl<'a> EncoderValue for Retry<'a> {
             .encode_with_len_prefix::<DestinationConnectionIDLen, E>(encoder);
         self.source_connection_id
             .encode_with_len_prefix::<SourceConnectionIDLen, E>(encoder);
-        self.original_destination_connection_id
-            .encode_with_len_prefix::<DestinationConnectionIDLen, E>(encoder);
         self.retry_token.encode(encoder);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::crypto::retry;
+
+    #[test]
+    fn test_decode() {
+        let tag = retry_tag!() << 4;
+        let mut buf = retry::example::PACKET;
+        let decoder = DecoderBufferMut::new(&mut buf);
+
+        let (packet, _) = Retry::decode(tag, retry::example::VERSION, decoder).unwrap();
+        assert_eq!(packet.retry_integrity_tag, retry::example::EXPECTED_TAG);
+        assert_eq!(packet.retry_token, retry::example::TOKEN);
+        assert_eq!(packet.source_connection_id, retry::example::SCID);
+        assert_eq!(packet.destination_connection_id, retry::example::DCID);
     }
 }
