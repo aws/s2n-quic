@@ -106,7 +106,7 @@ fn simulation_harness_test() {
 /// Additional checks may be implemented at some point to expand guarantees
 #[test]
 fn simulation_test() {
-    bolero::fuzz!()
+    bolero::check!()
         .with_type::<Simulation>()
         .cloned()
         .for_each(|mut simulation| {

@@ -1,4 +1,4 @@
-use bolero::{fuzz, generator::*};
+use bolero::{check, generator::*};
 use core::mem::size_of;
 use s2n_codec::{DecoderBufferMut, EncoderBuffer};
 use s2n_quic_core::{
@@ -9,7 +9,7 @@ use s2n_quic_core::{
 use std::convert::TryInto;
 
 fn main() {
-    fuzz!()
+    check!()
         .with_generator((
             gen()
                 .map(VarInt::from_u32)

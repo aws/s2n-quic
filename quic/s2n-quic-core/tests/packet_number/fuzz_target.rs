@@ -1,4 +1,4 @@
-use bolero::{fuzz, generator::*};
+use bolero::{check, generator::*};
 use s2n_codec::{testing::encode, DecoderBuffer};
 use s2n_quic_core::{
     packet::number::{PacketNumber, PacketNumberSpace},
@@ -6,7 +6,7 @@ use s2n_quic_core::{
 };
 
 fn main() {
-    fuzz!()
+    check!()
         .with_generator(
             gen_packet_number_space()
                 .and_then(|space| (gen_packet_number(space), gen_packet_number(space))),

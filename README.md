@@ -33,11 +33,11 @@ You'll need to have `cargo-bolero` installed first.
 See Bolero's [instructions](https://camshaft.github.io/bolero/cli-installation.html) to install.
 
 ```bash
-$ cargo bolero fuzz varint -p s2n-quic-core -s address
+$ cargo bolero test varint -p s2n-quic-core -s address
 ```
 
-Fuzz targets can be executed on stable by removing the sanitzer flag:
+Test targets can be executed on stable by disabling the sanitzer:
 
 ```bash
-$ cargo bolero fuzz varint -p s2n-quic-core
+$ cargo bolero test varint -p s2n-quic-core -s NONE
 ```

@@ -1,4 +1,4 @@
-use bolero::fuzz;
+use bolero::check;
 use s2n_codec::{DecoderBufferMut, Encoder, EncoderBuffer};
 use s2n_quic_core::{
     crypto::CryptoError,
@@ -9,7 +9,7 @@ use s2n_quic_core::{
 
 fn main() {
     let mut encoder_data = vec![];
-    fuzz!().for_each(move |data| {
+    check!().for_each(move |data| {
         let mut data = data.to_vec();
         // add a few bytes to the end for padding
         encoder_data.resize(data.len() * 2, 0);

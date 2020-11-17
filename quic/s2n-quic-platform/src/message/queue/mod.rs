@@ -127,7 +127,7 @@ impl<Ring: message::Ring> fmt::Debug for Queue<Ring> {
 mod tests {
     use super::*;
     use crate::{buffer::VecBuffer, message::Message};
-    use bolero::{fuzz, generator::*};
+    use bolero::{check, generator::*};
     use s2n_quic_core::inet;
     use std::collections::VecDeque;
 
@@ -256,7 +256,7 @@ mod tests {
             /// A VecDeque is used to assert the behavior matches the Queue
             #[test]
             fn $name() {
-                fuzz!()
+                check!()
                     .with_generator((0usize..16, gen::<Vec<Operation>>()))
                     .for_each(|(capacity, ops)| {
                         use $ring;

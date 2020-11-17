@@ -1,4 +1,4 @@
-use bolero::{fuzz, generator::*};
+use bolero::{check, generator::*};
 use ring::{
     aead::{AES_128_GCM, AES_256_GCM, CHACHA20_POLY1305},
     hkdf,
@@ -11,7 +11,7 @@ use s2n_quic_ring::{
 };
 
 fn main() {
-    fuzz!()
+    check!()
         .with_generator((
             gen_crypto(),
             gen(),

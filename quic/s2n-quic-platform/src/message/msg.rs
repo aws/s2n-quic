@@ -281,7 +281,7 @@ impl rx::Entry for Message {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bolero::fuzz;
+    use bolero::check;
 
     #[cfg(feature = "ipv6")]
     use s2n_quic_core::inet::SocketAddress;
@@ -300,7 +300,7 @@ mod tests {
 
         let mut message = Message(msghdr);
 
-        fuzz!()
+        check!()
             .with_type::<SocketAddress>()
             .cloned()
             .for_each(|addr| {
