@@ -143,7 +143,7 @@ impl<'a> Retry<'a> {
     }
 
     #[inline]
-    pub fn pseudo_packet(&mut self, odcid: &'a [u8]) -> PseudoRetry {
+    pub fn pseudo_packet(&self, odcid: &'a [u8]) -> PseudoRetry {
         PseudoRetry {
             original_destination_connection_id: odcid,
             tag: self.tag,
@@ -215,7 +215,7 @@ mod tests {
         let mut buf = retry::example::PACKET;
         let decoder = DecoderBufferMut::new(&mut buf);
         let (packet, _) = packet::ProtectedPacket::decode(decoder, &20).unwrap();
-        let mut packet = match packet {
+        let packet = match packet {
             packet::ProtectedPacket::Retry(retry) => retry,
             _ => panic!("expected retry packet type"),
         };
