@@ -43,11 +43,38 @@ macro_rules! retry_tag {
 
 #[derive(Debug)]
 pub struct Retry<'a> {
+    pub tag: Tag,
     pub version: Version,
     pub destination_connection_id: &'a [u8],
     pub source_connection_id: &'a [u8],
     pub retry_token: &'a [u8],
     pub retry_integrity_tag: &'a [u8],
+}
+
+//= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.8
+//# Retry Pseudo-Packet {
+//#   ODCID Length (8),
+//#   Original Destination Connection ID (0..160),
+//#   Header Form (1) = 1,
+//#   Fixed Bit (1) = 1,
+//#   Long Packet Type (2) = 3,
+//#   Type-Specific Bits (4),
+//#   Version (32),
+//#   DCID Len (8),
+//#   Destination Connection ID (0..160),
+//#   SCID Len (8),
+//#   Source Connection ID (0..160),
+//#   Retry Token (..),
+//# }
+
+#[derive(Debug)]
+pub struct PseudoRetry<'a> {
+    pub original_destination_connection_id: &'a [u8],
+    pub tag: Tag,
+    pub version: Version,
+    pub destination_connection_id: &'a [u8],
+    pub source_connection_id: &'a [u8],
+    pub retry_token: &'a [u8],
 }
 
 pub type ProtectedRetry<'a> = Retry<'a>;
@@ -57,7 +84,7 @@ pub type CleartextRetry<'a> = Retry<'a>;
 impl<'a> Retry<'a> {
     #[inline]
     pub(crate) fn decode(
-        _tag: Tag,
+        tag: Tag,
         version: Version,
         buffer: DecoderBufferMut,
     ) -> DecoderBufferMutResult<Retry> {
@@ -76,7 +103,12 @@ impl<'a> Retry<'a> {
         let source_connection_id = source_connection_id.get(header);
 
         let buffer_len = buffer.len().saturating_sub(retry::INTEGRITY_TAG_LEN);
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.5.2
+        //# A client MUST discard a Retry packet with a zero-length
+        //# Retry Token field.
         decoder_invariant!(buffer_len > 0, "Token cannot be empty");
+
         let (retry_token, buffer) = buffer.decode_slice(buffer_len)?;
         let retry_token: &[u8] = retry_token.into_less_safe_slice();
 
@@ -84,6 +116,7 @@ impl<'a> Retry<'a> {
         let retry_integrity_tag: &[u8] = retry_integrity_tag.into_less_safe_slice();
 
         let packet = Retry {
+            tag,
             version,
             destination_connection_id,
             source_connection_id,
@@ -108,6 +141,18 @@ impl<'a> Retry<'a> {
     pub fn retry_token(&self) -> &[u8] {
         &self.retry_token
     }
+
+    #[inline]
+    pub fn pseudo_packet(&self, odcid: &'a [u8]) -> PseudoRetry {
+        PseudoRetry {
+            original_destination_connection_id: odcid,
+            tag: self.tag,
+            version: self.version,
+            destination_connection_id: self.destination_connection_id,
+            source_connection_id: self.source_connection_id,
+            retry_token: self.retry_token,
+        }
+    }
 }
 
 impl<'a> EncoderValue for Retry<'a> {
@@ -125,21 +170,74 @@ impl<'a> EncoderValue for Retry<'a> {
     }
 }
 
+impl<'a> EncoderValue for PseudoRetry<'a> {
+    fn encode<E: Encoder>(&self, encoder: &mut E) {
+        self.original_destination_connection_id
+            .encode_with_len_prefix::<DestinationConnectionIDLen, E>(encoder);
+
+        self.tag.encode(encoder);
+
+        self.version.encode(encoder);
+
+        self.destination_connection_id
+            .encode_with_len_prefix::<DestinationConnectionIDLen, E>(encoder);
+        self.source_connection_id
+            .encode_with_len_prefix::<SourceConnectionIDLen, E>(encoder);
+        self.retry_token.encode(encoder);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::crypto::retry;
+    use crate::{crypto::retry, packet};
+    use s2n_codec::EncoderBuffer;
 
     #[test]
     fn test_decode() {
-        let tag = retry_tag!() << 4;
         let mut buf = retry::example::PACKET;
         let decoder = DecoderBufferMut::new(&mut buf);
+        let (packet, _) = packet::ProtectedPacket::decode(decoder, &20).unwrap();
+        let packet = match packet {
+            packet::ProtectedPacket::Retry(retry) => retry,
+            _ => panic!("expected retry packet type"),
+        };
 
-        let (packet, _) = Retry::decode(tag, retry::example::VERSION, decoder).unwrap();
         assert_eq!(packet.retry_integrity_tag, retry::example::EXPECTED_TAG);
         assert_eq!(packet.retry_token, retry::example::TOKEN);
         assert_eq!(packet.source_connection_id, retry::example::SCID);
         assert_eq!(packet.destination_connection_id, retry::example::DCID);
+        assert_eq!(packet.version, retry::example::VERSION);
+    }
+
+    #[test]
+    fn test_pseudo_decode() {
+        let mut buf = retry::example::PACKET;
+        let decoder = DecoderBufferMut::new(&mut buf);
+        let (packet, _) = packet::ProtectedPacket::decode(decoder, &20).unwrap();
+        let packet = match packet {
+            packet::ProtectedPacket::Retry(retry) => retry,
+            _ => panic!("expected retry packet type"),
+        };
+        let pseudo_packet = packet.pseudo_packet(&retry::example::ODCID);
+
+        assert_eq!(pseudo_packet.retry_token, retry::example::TOKEN);
+        assert_eq!(pseudo_packet.source_connection_id, retry::example::SCID);
+        assert_eq!(
+            pseudo_packet.destination_connection_id,
+            retry::example::DCID
+        );
+        assert_eq!(pseudo_packet.version, retry::example::VERSION);
+        assert_eq!(
+            pseudo_packet.original_destination_connection_id,
+            retry::example::ODCID
+        );
+
+        let length = pseudo_packet.encoding_size();
+        let mut pseudo_scratch: Vec<u8> = vec![0; length];
+        let mut encoder = EncoderBuffer::new(&mut pseudo_scratch);
+        pseudo_packet.encode(&mut encoder);
+
+        assert_eq!(pseudo_scratch, retry::example::PSEUDO_PACKET);
     }
 }
