@@ -1,6 +1,6 @@
 use crate::interval_set::IntervalSet;
 use alloc::collections::BTreeSet;
-use bolero::{fuzz, generator::*};
+use bolero::{check, generator::*};
 use core::{
     num::NonZeroUsize,
     ops::{Range, RangeInclusive},
@@ -71,7 +71,7 @@ macro_rules! assert_set_eq {
 
 #[test]
 fn interval_set_test() {
-    fuzz!().with_type().for_each(
+    check!().with_type().for_each(
         |(initial_ops, union_ops, difference_ops, intersection_ops)| {
             // creates an initial set given a Vec of insertions and deletions
             let (oracle, subject) = process_operation(initial_ops);

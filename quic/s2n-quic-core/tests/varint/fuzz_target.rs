@@ -1,9 +1,9 @@
-use bolero::fuzz;
+use bolero::check;
 use s2n_codec::assert_codec_round_trip_bytes;
 use s2n_quic_core::varint::VarInt;
 
 fn main() {
-    fuzz!().for_each(|input| {
+    check!().for_each(|input| {
         for value in assert_codec_round_trip_bytes!(VarInt, input) {
             let _ = value.checked_add(value);
             let _ = value.checked_sub(value);

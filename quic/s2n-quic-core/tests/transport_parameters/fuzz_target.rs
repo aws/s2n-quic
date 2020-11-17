@@ -1,9 +1,9 @@
-use bolero::fuzz;
+use bolero::check;
 use s2n_codec::assert_codec_round_trip_bytes;
 use s2n_quic_core::transport::parameters::{ClientTransportParameters, ServerTransportParameters};
 
 fn main() {
-    fuzz!().for_each(|input| {
+    check!().for_each(|input| {
         if input.is_empty() {
             return;
         }

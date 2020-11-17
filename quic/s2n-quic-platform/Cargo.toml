@@ -26,6 +26,6 @@ zeroize = { version = "1", default-features = false, optional = true }
 libc = "0.2"
 
 [dev-dependencies]
-bolero = "0.5"
+bolero = "0.6"
 s2n-quic-core = { version = "0.1.0", path = "../s2n-quic-core", features = ["testing"] }
 tokio = { version = "0.2", features = ["macros", "rt-threaded", "time", "udp"] }

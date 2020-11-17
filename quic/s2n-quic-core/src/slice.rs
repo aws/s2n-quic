@@ -131,7 +131,7 @@ mod tests {
     #[cfg(not(miri))] // bolero doesn't currently work with miri
     #[test]
     fn vectored_copy_fuzz_test() {
-        bolero::fuzz!()
+        bolero::check!()
             .with_type::<(Vec<Vec<u8>>, Vec<Vec<u8>>)>()
             .cloned()
             .for_each(|(from, mut to)| {
