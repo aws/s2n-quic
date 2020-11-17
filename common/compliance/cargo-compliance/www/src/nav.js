@@ -2,7 +2,6 @@ import { useState, default as React, useMemo, forwardRef } from "react";
 import { makeStyles, useTheme } from "@material-ui/core/styles";
 import clsx from "clsx";
 import Drawer from "@material-ui/core/Drawer";
-import CssBaseline from "@material-ui/core/CssBaseline";
 import AppBar from "@material-ui/core/AppBar";
 import Toolbar from "@material-ui/core/Toolbar";
 import List from "@material-ui/core/List";
@@ -13,21 +12,15 @@ import MenuIcon from "@material-ui/icons/Menu";
 import ChevronLeftIcon from "@material-ui/icons/ChevronLeft";
 import ChevronRightIcon from "@material-ui/icons/ChevronRight";
 import ListItem from "@material-ui/core/ListItem";
-import ListItemIcon from "@material-ui/core/ListItemIcon";
 import ListItemText from "@material-ui/core/ListItemText";
-import ListItemSecondaryAction from "@material-ui/core/ListItemSecondaryAction";
 import Collapse from "@material-ui/core/Collapse";
-import InboxIcon from "@material-ui/icons/MoveToInbox";
-import MailIcon from "@material-ui/icons/Mail";
 import ExpandLess from "@material-ui/icons/ExpandLess";
 import ExpandMore from "@material-ui/icons/ExpandMore";
-import { Switch, Route, useRouteMatch } from "react-router-dom";
+import { useRouteMatch } from "react-router-dom";
 import specifications from "./result";
 import { Link } from "./link";
 
 const drawerWidth = 400;
-const mainListItems = null;
-const secondaryListItems = null;
 
 const useStyles = makeStyles((theme) => ({
   appBar: {
@@ -174,9 +167,6 @@ const specSections = specifications.reduce((acc, spec) => {
 }, {});
 
 function SpecItem({ spec }) {
-  const classes = useStyles();
-  const theme = useTheme();
-
   const selected = !!useRouteMatch(spec.url);
   const [open, setOpen] = useState(selected);
   const handleClick = (evt) => {

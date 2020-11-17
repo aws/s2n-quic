@@ -5,7 +5,7 @@ use crate::{
     Error,
 };
 use serde::Deserialize;
-use std::path::PathBuf;
+use std::{collections::BTreeSet, path::PathBuf};
 
 #[derive(Debug, PartialEq, PartialOrd, Ord, Eq, Hash)]
 pub enum SourceFile<'a> {
@@ -37,6 +37,9 @@ impl<'a> SourceFile<'a> {
                 for anno in specs.exceptions {
                     annotations.insert(anno.into_annotation(file.clone(), &specs.target)?);
                 }
+                for anno in specs.todos {
+                    annotations.insert(anno.into_annotation(file.clone(), &specs.target)?);
+                }
                 Ok(annotations)
             }
         }
@@ -55,6 +58,10 @@ struct Specs<'a> {
     #[serde(borrow)]
     #[serde(alias = "exception", default)]
     exceptions: Vec<Exception<'a>>,
+
+    #[serde(borrow)]
+    #[serde(alias = "TODO", alias = "todo", default)]
+    todos: Vec<Todo<'a>>,
 }
 
 #[derive(Deserialize)]
@@ -84,9 +91,11 @@ impl<'a> Spec<'a> {
                 .or_else(|| default_target.as_ref().cloned())
                 .ok_or("missing target")?,
             quote: self.quote.trim().replace('\n', " "),
-            code: String::new(),
             comment: self.quote.to_string(),
             manifest_dir: source.clone(),
+            feature: Default::default(),
+            tags: Default::default(),
+            tracking_issue: Default::default(),
             source,
             level: if let Some(level) = self.level {
                 level.parse()?
@@ -107,7 +116,7 @@ impl<'a> Spec<'a> {
 struct Exception<'a> {
     target: Option<String>,
     quote: &'a str,
-    reason: &'a str,
+    reason: String,
 }
 
 impl<'a> Exception<'a> {
@@ -128,10 +137,55 @@ impl<'a> Exception<'a> {
                 .or_else(|| default_target.as_ref().cloned())
                 .ok_or("missing target")?,
             quote: self.quote.trim().replace('\n', " "),
-            code: String::new(),
-            comment: self.reason.to_string(),
+            comment: self.reason,
+            manifest_dir: source.clone(),
+            feature: Default::default(),
+            tags: Default::default(),
+            tracking_issue: Default::default(),
+            source,
+            level: AnnotationLevel::Auto,
+            format: Format::Auto,
+        })
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Todo<'a> {
+    target: Option<String>,
+    quote: &'a str,
+    feature: Option<String>,
+    #[serde(alias = "tracking-issue")]
+    tracking_issue: Option<String>,
+    reason: Option<String>,
+    #[serde(default)]
+    tags: BTreeSet<String>,
+}
+
+impl<'a> Todo<'a> {
+    fn into_annotation(
+        self,
+        source: PathBuf,
+        default_target: &Option<String>,
+    ) -> Result<Annotation, Error> {
+        Ok(Annotation {
+            anno_line: 0,
+            anno_column: 0,
+            item_line: 0,
+            item_column: 0,
+            path: String::new(),
+            anno: AnnotationType::Todo,
+            target: self
+                .target
+                .or_else(|| default_target.as_ref().cloned())
+                .ok_or("missing target")?,
+            quote: self.quote.trim().replace('\n', " "),
+            comment: self.reason.unwrap_or_default(),
             manifest_dir: source.clone(),
             source,
+            tags: self.tags,
+            feature: self.feature.unwrap_or_default(),
+            tracking_issue: self.tracking_issue.unwrap_or_default(),
             level: AnnotationLevel::Auto,
             format: Format::Auto,
         })

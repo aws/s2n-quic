@@ -104,6 +104,9 @@ pub fn report_writer<Output: Write>(
         if let Some(link) = report.blob_link {
             kv!(obj, s!("blob_link"), s!(link));
         }
+        if let Some(link) = report.issue_link {
+            kv!(obj, s!("issue_link"), s!(link));
+        }
 
         kv!(
             obj,
@@ -145,6 +148,26 @@ pub fn report_writer<Output: Write>(
 
                             if !annotation.comment.is_empty() {
                                 kv!(obj, s!("comment"), s!(annotation.comment));
+                            }
+
+                            if !annotation.feature.is_empty() {
+                                kv!(obj, s!("feature"), s!(annotation.feature));
+                            }
+
+                            if !annotation.tracking_issue.is_empty() {
+                                kv!(obj, s!("tracking_issue"), s!(annotation.tracking_issue));
+                            }
+
+                            if !annotation.tags.is_empty() {
+                                kv!(
+                                    obj,
+                                    s!("tags"),
+                                    arr!(|arr| {
+                                        for tag in &annotation.tags {
+                                            item!(arr, s!(tag));
+                                        }
+                                    })
+                                )
                             }
                         })
                     );

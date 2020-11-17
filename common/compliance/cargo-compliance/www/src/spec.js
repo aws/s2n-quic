@@ -124,15 +124,64 @@ export function Requirements({ requirements, showSection }) {
           return classes[params.value[2]];
         },
       },
-      {
-        field: "comment",
-        headerName: "Text",
-        sortable: false,
-        width: 850,
-        cellClassName: classes.text,
-      },
     ]
   );
+
+  function listColumn(params) {
+    columns.push({
+      width: 150,
+      sortComparator(v1, v2, row1, row2) {
+        const a = v1.join(", ");
+        const b = v2.join(", ");
+        return a.localeCompare(b);
+      },
+      valueFormatter(params) {
+        return (params.value || []).join(", ");
+      },
+      ...params,
+    });
+  }
+
+  if (requirements.maxFeatures)
+    listColumn({
+      width: 200,
+      field: "features",
+      headerName: requirements.maxFeatures === 1 ? "Feature" : "Features",
+    });
+
+  if (requirements.maxTrackingIssues)
+    listColumn({
+      field: "tracking_issues",
+      headerName:
+        requirements.maxTrackingIssues === 1
+          ? "Tracking Issue"
+          : "Tracking Issues",
+      renderCell(params) {
+        return params.value.map((issue) =>
+          issue.href ? (
+            <Link key={issue.title} href={issue.href}>
+              {issue.title}
+            </Link>
+          ) : (
+            issue.title
+          )
+        );
+      },
+    });
+
+  if (requirements.maxTags)
+    listColumn({
+      field: "tags",
+      headerName: requirements.maxTags === 1 ? "Tag" : "Tags",
+    });
+
+  columns.push({
+    field: "comment",
+    headerName: "Text",
+    sortable: false,
+    width: 850,
+    cellClassName: classes.text,
+  });
 
   return (
     <div className={classes.root}>

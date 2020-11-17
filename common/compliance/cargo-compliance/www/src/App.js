@@ -1,6 +1,5 @@
 import { useState, default as React } from "react";
 import { makeStyles } from "@material-ui/core/styles";
-import Box from "@material-ui/core/Box";
 import CssBaseline from "@material-ui/core/CssBaseline";
 import Container from "@material-ui/core/Container";
 import { Switch, Route, useParams } from "react-router-dom";
@@ -76,14 +75,6 @@ const useStyles = makeStyles((theme) => ({
 function App() {
   const classes = useStyles();
   const [open, setOpen] = useState(false);
-
-  const handleDrawerOpen = () => {
-    setOpen(true);
-  };
-
-  const handleDrawerClose = () => {
-    setOpen(false);
-  };
 
   return (
     <div className={classes.root}>

@@ -380,7 +380,7 @@ jobs:
           RUSTC_WRAPPER: sccache
 
       - name: Run cargo compliance
-        run: ./target/release/cargo-compliance report --lcov compliance --spec-pattern 'specs/**/*.toml' --source-pattern 'quic/**/*.rs' --workspace --exclude compliance --exclude cargo-compliance --require-citations --require-tests false --blob-link https://github.com/awslabs/s2n-quic/blob/${{ github.sha }} --html compliance/index.html
+        run: ./target/release/cargo-compliance report --lcov compliance --spec-pattern 'specs/**/*.toml' --source-pattern 'quic/**/*.rs' --workspace --exclude compliance --exclude cargo-compliance --require-citations --require-tests false --blob-link https://github.com/awslabs/s2n-quic/blob/${{ github.sha }} --issue-link https://github.com/awslabs/s2n-quic/issues/ --html compliance/index.html
 
       - name: Stop sccache
         run: sccache --stop-server
@@ -389,13 +389,6 @@ jobs:
         with:
           name: compliance
           path: compliance
-
-      - name: Upload report to codecov
-        uses: codecov/codecov-action@v1
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          directory: compliance
-          flags: compliance
 
       - uses: aws-actions/configure-aws-credentials@v1
         with:

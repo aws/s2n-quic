@@ -7,9 +7,7 @@ use core::{fmt, ops::Range, str::FromStr};
 use serde::Serialize;
 use std::{
     collections::{BTreeSet, HashMap},
-    io::Write,
     path::{Path, PathBuf},
-    process::{Command, Stdio},
 };
 use triple_accel::levenshtein_search as text_search;
 
@@ -54,11 +52,13 @@ pub struct Annotation {
     pub anno: AnnotationType,
     pub target: String,
     pub quote: String,
-    pub code: String,
     pub comment: String,
     pub manifest_dir: PathBuf,
     pub level: AnnotationLevel,
     pub format: Format,
+    pub tracking_issue: String,
+    pub feature: String,
+    pub tags: BTreeSet<String>,
 }
 
 impl Annotation {
@@ -103,29 +103,6 @@ impl Annotation {
                 .find(|m| m.k < 2)
                 .map(|m| m.start..m.end)
         }
-    }
-
-    #[allow(dead_code)]
-    pub fn format_code(&mut self) -> Result<(), Error> {
-        if self.code.is_empty() {
-            return Ok(());
-        }
-
-        let mut child = Command::new("rustfmt")
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .spawn()?;
-
-        {
-            let stdin = child.stdin.as_mut().expect("piped stdin above");
-            stdin.write_all(self.code.as_bytes())?;
-        }
-
-        let output = child.wait_with_output()?;
-
-        self.code = String::from_utf8(output.stdout)?;
-
-        Ok(())
     }
 }
 

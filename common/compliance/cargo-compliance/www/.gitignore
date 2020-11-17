@@ -7,6 +7,7 @@
 
 # testing
 /coverage
+/src/result.test.json
 
 # production
 /build
