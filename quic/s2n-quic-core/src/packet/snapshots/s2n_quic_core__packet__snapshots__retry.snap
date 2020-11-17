@@ -5,6 +5,7 @@ expression: values
 [
     Retry(
         Retry {
+            tag: 255,
             version: 4278190112,
             destination_connection_id: [
                 1,
