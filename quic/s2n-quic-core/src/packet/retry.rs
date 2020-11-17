@@ -162,15 +162,18 @@ impl<'a> EncoderValue for Retry<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::crypto::retry;
+    use crate::{crypto::retry, packet};
 
     #[test]
     fn test_decode() {
-        let tag = retry_tag!() << 4;
         let mut buf = retry::example::PACKET;
         let decoder = DecoderBufferMut::new(&mut buf);
+        let (packet, _) = packet::ProtectedPacket::decode(decoder, &20).unwrap();
+        let packet = match packet {
+            packet::ProtectedPacket::Retry(retry) => retry,
+            _ => panic!("expected retry packet type"),
+        };
 
-        let (packet, _) = Retry::decode(tag, retry::example::VERSION, decoder).unwrap();
         assert_eq!(packet.retry_integrity_tag, retry::example::EXPECTED_TAG);
         assert_eq!(packet.retry_token, retry::example::TOKEN);
         assert_eq!(packet.source_connection_id, retry::example::SCID);
@@ -180,15 +183,15 @@ mod tests {
 
     #[test]
     fn test_pseudo_decode() {
-        let tag = retry_tag!() << 4;
         let mut buf = retry::example::PACKET;
         let decoder = DecoderBufferMut::new(&mut buf);
-
-        let (mut packet, _) = Retry::decode(tag, retry::example::VERSION, decoder).unwrap();
+        let (packet, _) = packet::ProtectedPacket::decode(decoder, &20).unwrap();
+        let mut packet = match packet {
+            packet::ProtectedPacket::Retry(retry) => retry,
+            _ => panic!("expected retry packet type"),
+        };
         let pseudo_packet = packet.pseudo_packet(&retry::example::ODCID);
 
-        println!("{:x?}", pseudo_packet);
-        println!("{:x?}", retry::example::PSEUDO_PACKET);
         assert_eq!(pseudo_packet, retry::example::PSEUDO_PACKET);
     }
 }
