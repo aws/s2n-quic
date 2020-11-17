@@ -22,7 +22,7 @@ thiserror = { version = "1", optional = true }
 zerocopy = "0.3"
 
 [dev-dependencies]
-bolero = "0.5"
+bolero = "0.6"
 compliance = { path = "../../common/compliance/compliance" }
 criterion = "0.3"
 insta = "1.0"

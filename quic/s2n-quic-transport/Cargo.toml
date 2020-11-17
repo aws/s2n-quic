@@ -13,7 +13,7 @@ intrusive-collections = "0.9"
 smallvec = { version = "1.3", default-features = false }
 
 [dev-dependencies]
-bolero = "0.5"
+bolero = "0.6"
 compliance = { path = "../../common/compliance/compliance" }
 futures-test = "0.3" # For testing Waker interactions
 insta = "1.0"
