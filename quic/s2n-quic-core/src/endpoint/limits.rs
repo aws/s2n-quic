@@ -50,12 +50,12 @@ pub trait Limits {
     /// use s2n_quic_core::endpoint::limits::{Limits, ConnectionAttempt, Outcome};
     /// # struct MyEndpointLimits {
     /// #    handshake_limit: usize,
-    /// #    backoff: core::time::Duration,
+    /// #    delay: core::time::Duration,
     /// # }
     ///  impl Limits for MyEndpointLimits {
     ///     fn on_connection_attempt(&mut self, info: &ConnectionAttempt) -> Outcome {
     ///         if info.inflight_handshakes > self.handshake_limit {
-    ///             Outcome::Retry { delay: self.backoff }
+    ///             Outcome::Retry { delay: self.delay }
     ///         } else {
     ///             Outcome::Allow
     ///         }

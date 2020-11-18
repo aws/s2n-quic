@@ -135,6 +135,30 @@ impl<Providers: ServerProviders> Builder<Providers> {
     );
 
     impl_provider_method!(
+        /// Sets the endpoint limits provider for the [`Server`]
+        ///
+        /// # Examples
+        ///
+        /// Sets the max inflight handshakes for an endpoint, while inheriting the remaining default limits
+        ///
+        /// ```rust,no_run
+        /// # use std::{error::Error, time::Duration};
+        /// use s2n_quic::{Server, provider::endpoint_limits};
+        ///
+        /// # #[tokio::main]
+        /// # async fn main() -> Result<(), Box<dyn Error>> {
+        /// let server = Server::builder()
+        ///     .with_endpoint_limits(endpoint_limits::Default::default())?
+        ///     .start()?;
+        /// #
+        /// #    Ok(())
+        /// # }
+        /// ```
+        with_endpoint_limits,
+        endpoint_limits
+    );
+
+    impl_provider_method!(
         /// Sets the log provider for the [`Server`]
         ///
         /// # Examples
