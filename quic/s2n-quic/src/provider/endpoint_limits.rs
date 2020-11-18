@@ -33,21 +33,21 @@ pub mod default {
     /// # async fn main() -> Result<(), Box<dyn Error>> {
     /// let limits = endpoint_limits::Default::builder()
     ///     .with_inflight_handshake_limit(100)?
-    ///     .with_retry_backoff(time::Duration::from_millis(100))?
+    ///     .with_retry_delay(time::Duration::from_millis(100))?
     ///     .build();
     ///
     ///     Ok(())
     /// # }
     /// ```
     pub struct Builder {
-        retry_backoff: time::Duration,
+        retry_delay: time::Duration,
         max_inflight_handshake_limit: Option<usize>,
     }
 
     impl std::default::Default for Builder {
         fn default() -> Self {
             Self {
-                retry_backoff: time::Duration::from_millis(0),
+                retry_delay: time::Duration::from_millis(0),
                 max_inflight_handshake_limit: None,
             }
         }
@@ -60,16 +60,16 @@ pub mod default {
             Ok(self)
         }
 
-        /// Sets the backoff time when sending Retry packets
-        pub fn with_retry_backoff(mut self, backoff: time::Duration) -> Result<Self, Infallible> {
-            self.retry_backoff = backoff;
+        /// Sets the delay when sending Retry packets
+        pub fn with_retry_delay(mut self, delay: time::Duration) -> Result<Self, Infallible> {
+            self.retry_delay = delay;
             Ok(self)
         }
 
         /// Build the limits
         pub fn build(self) -> Result<Limits, Infallible> {
             Ok(Limits {
-                retry_backoff: self.retry_backoff,
+                retry_delay: self.retry_delay,
                 max_inflight_handshake_limit: self.max_inflight_handshake_limit,
             })
         }
@@ -78,7 +78,7 @@ pub mod default {
     #[derive(Clone, Copy, Debug)]
     pub struct Limits {
         /// Amount of time to wait before sending a Retry packet
-        retry_backoff: time::Duration,
+        retry_delay: time::Duration,
 
         /// Maximum number of handshakes to allow before Retry packets are queued
         max_inflight_handshake_limit: Option<usize>,
@@ -90,7 +90,7 @@ pub mod default {
             if let Some(limit) = self.max_inflight_handshake_limit {
                 if info.inflight_handshakes > limit {
                     return limits::Outcome::Retry {
-                        delay: self.retry_backoff,
+                        delay: self.retry_delay,
                     };
                 }
             }
@@ -103,7 +103,7 @@ pub mod default {
     impl std::default::Default for Limits {
         fn default() -> Self {
             Self {
-                retry_backoff: time::Duration::from_millis(0),
+                retry_delay: time::Duration::from_millis(0),
                 max_inflight_handshake_limit: None,
             }
         }
@@ -141,11 +141,11 @@ pub mod default {
         let elp = Provider::builder()
             .with_inflight_handshake_limit(100)
             .unwrap()
-            .with_retry_backoff(time::Duration::from_millis(100))
+            .with_retry_delay(time::Duration::from_millis(100))
             .unwrap()
             .build()
             .unwrap();
         assert_eq!(elp.max_inflight_handshake_limit, Some(100));
-        assert_eq!(elp.retry_backoff, time::Duration::from_millis(100));
+        assert_eq!(elp.retry_delay, time::Duration::from_millis(100));
     }
 }
