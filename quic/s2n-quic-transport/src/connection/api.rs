@@ -4,6 +4,7 @@ use crate::{
     connection::{self, ConnectionApi},
     stream::Stream,
 };
+use bytes::Bytes;
 use core::{
     fmt,
     task::{Context, Poll},
@@ -71,5 +72,13 @@ impl Connection {
     /// This will immediatly terminate all outstanding streams.
     pub fn close(&self, error_code: ApplicationErrorCode) {
         self.shared_state.close_connection(error_code);
+    }
+
+    pub fn sni(&self) -> Option<Bytes> {
+        self.shared_state.sni()
+    }
+
+    pub fn alpn(&self) -> Option<Bytes> {
+        self.shared_state.alpn()
     }
 }

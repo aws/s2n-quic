@@ -8,6 +8,7 @@ use crate::{
     stream::{AbstractStreamManager, Stream, StreamError},
     wakeup_queue::WakeupHandle,
 };
+use bytes::Bytes;
 use core::task::{Context, Poll};
 use s2n_quic_core::{
     application::ApplicationErrorCode,
@@ -186,5 +187,13 @@ impl<ConnectionConfigType: connection::Config> ConnectionApiProvider
         // state and might handle packets. However the StreamManager is closed.
         // The behavior of this will depend on the frame.
         shared_state.wakeup_handle.wakeup();
+    }
+
+    fn sni(&self) -> Option<Bytes> {
+        self.lock().space_manager.application()?.sni.clone()
+    }
+
+    fn alpn(&self) -> Option<Bytes> {
+        self.lock().space_manager.application()?.alpn.clone()
     }
 }

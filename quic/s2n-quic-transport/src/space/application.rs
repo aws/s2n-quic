@@ -6,6 +6,7 @@ use crate::{
     stream::AbstractStreamManager,
     transmission,
 };
+use bytes::Bytes;
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
     crypto::CryptoSuite,
@@ -44,6 +45,8 @@ pub struct ApplicationSpace<Config: connection::Config> {
     /// The crypto suite for application data
     /// TODO: What about ZeroRtt?
     pub crypto: <Config::TLSSession as CryptoSuite>::OneRTTCrypto,
+    pub alpn: Option<Bytes>,
+    pub sni: Option<Bytes>,
     processed_packet_numbers: SlidingWindow,
     recovery_manager: recovery::Manager,
 }
@@ -54,6 +57,8 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         now: Timestamp,
         stream_manager: AbstractStreamManager<Config::Stream>,
         ack_manager: AckManager,
+        sni: Option<Bytes>,
+        alpn: Option<Bytes>,
     ) -> Self {
         let max_ack_delay = ack_manager.ack_settings.max_ack_delay;
         Self {
@@ -63,6 +68,8 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
             spin_bit: SpinBit::Zero,
             stream_manager,
             crypto,
+            sni,
+            alpn,
             processed_packet_numbers: SlidingWindow::default(),
             recovery_manager: recovery::Manager::new(
                 PacketNumberSpace::ApplicationData,

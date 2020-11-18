@@ -135,10 +135,19 @@ macro_rules! impl_handle_api {
         /// ```rust
         /// // TODO
         /// ```
-        pub fn handshake_status(
-            &self,
-        ) -> $crate::connection::Result<$crate::connection::HandshakeStatus> {
-            todo!()
+        pub fn sni(&self) -> Option<::bytes::Bytes> {
+            self.0.sni()
+        }
+
+        /// TODO
+        ///
+        /// # Examples
+        ///
+        /// ```rust
+        /// // TODO
+        /// ```
+        pub fn alpn(&self) -> Option<::bytes::Bytes> {
+            self.0.alpn()
         }
 
         /// TODO
