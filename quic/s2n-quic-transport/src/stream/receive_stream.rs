@@ -640,8 +640,7 @@ impl ReceiveStream {
         if let Some(error_code) = request.stop_sending {
             match self.state {
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#3.3
-                //# A
-                //# receiver MAY send STOP_SENDING in any state where it has not received
+                //# A receiver MAY send STOP_SENDING in any state where it has not received
                 //# a RESET_STREAM frame; that is states other than "Reset Recvd" or
                 //# "Reset Read".
 
