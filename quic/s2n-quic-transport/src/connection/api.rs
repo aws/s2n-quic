@@ -52,7 +52,7 @@ impl Connection {
         &mut self,
         stream_type: Option<StreamType>,
         context: &Context,
-    ) -> Poll<Result<Option<(Stream, StreamType)>, connection::Error>> {
+    ) -> Poll<Result<Option<Stream>, connection::Error>> {
         self.shared_state
             .poll_accept(&self.shared_state, stream_type, context)
     }

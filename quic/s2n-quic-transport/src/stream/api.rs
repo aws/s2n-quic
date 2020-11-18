@@ -298,6 +298,10 @@ impl Stream {
         }
     }
 
+    pub fn id(&self) -> StreamId {
+        self.state.stream_id
+    }
+
     pub fn request(&mut self) -> Request {
         Request {
             state: &mut self.state,
@@ -389,7 +393,9 @@ impl SendStream {
         }
     }
 
-    tx_stream_apis!();
+    pub fn id(&self) -> StreamId {
+        self.state.stream_id
+    }
 
     pub fn tx_request(&mut self) -> Result<TxRequest, StreamError> {
         Ok(TxRequest {
@@ -398,6 +404,8 @@ impl SendStream {
             request: ops::Request::default(),
         })
     }
+
+    tx_stream_apis!();
 }
 
 /// A readable QUIC stream
@@ -446,6 +454,10 @@ impl ReceiveStream {
             state: StreamState::new(shared_state, stream_id),
             is_open: true,
         }
+    }
+
+    pub fn id(&self) -> StreamId {
+        self.state.stream_id
     }
 
     pub fn rx_request(&mut self) -> Result<RxRequest, StreamError> {

@@ -613,7 +613,7 @@ fn accept_returns_remotely_initiated_stream() {
 
                     // Stream is now available
                     assert_eq!(
-                        Poll::Ready(Ok(Some((stream_id, stream_type)))),
+                        Poll::Ready(Ok(Some(stream_id))),
                         manager.poll_accept(Some(stream_type), &Context::from_waker(&accept_waker))
                     );
                 }
@@ -641,11 +641,11 @@ fn accept_returns_remotely_initiated_stream() {
 
                 // Streams are now available
                 assert_eq!(
-                    Poll::Ready(Ok(Some((stream_id_1, stream_type)))),
+                    Poll::Ready(Ok(Some(stream_id_1))),
                     manager.poll_accept(Some(stream_type), &Context::from_waker(&accept_waker))
                 );
                 assert_eq!(
-                    Poll::Ready(Ok(Some((stream_id_2, stream_type)))),
+                    Poll::Ready(Ok(Some(stream_id_2))),
                     manager.poll_accept(Some(stream_type), &Context::from_waker(&accept_waker))
                 );
                 assert_eq!(
@@ -701,7 +701,7 @@ fn accept_returns_opened_streams_of_any_type() {
 
             for _ in 0..STREAMS_TO_OPEN {
                 match manager.poll_accept(None, &Context::from_waker(&accept_waker)) {
-                    Poll::Ready(Ok(Some((stream_id, _stream_type)))) => assert!(
+                    Poll::Ready(Ok(Some(stream_id))) => assert!(
                         streams.remove(&stream_id),
                         "accepted {:?} stream multiple times",
                         stream_id
@@ -758,7 +758,7 @@ fn accept_notifies_of_any_type() {
 
                 // Stream is now available
                 assert_eq!(
-                    Poll::Ready(Ok(Some((stream_id, stream_type)))),
+                    Poll::Ready(Ok(Some(stream_id))),
                     manager.poll_accept(Some(stream_type), &Context::from_waker(&accept_waker))
                 );
             }
@@ -832,7 +832,7 @@ fn accept_returns_opened_streams_even_if_stream_manager_was_closed() {
                 for n in 0..STREAMS_TO_OPEN {
                     let stream_id = StreamId::nth(*initiator_type, *stream_type, n).unwrap();
                     assert_eq!(
-                        Poll::Ready(Ok(Some((stream_id, *stream_type)))),
+                        Poll::Ready(Ok(Some(stream_id))),
                         manager
                             .poll_accept(Some(*stream_type), &Context::from_waker(&accept_waker))
                     );

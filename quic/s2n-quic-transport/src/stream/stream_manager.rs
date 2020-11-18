@@ -427,7 +427,7 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         &mut self,
         stream_type: Option<StreamType>,
         context: &Context,
-    ) -> Poll<Result<Option<(StreamId, StreamType)>, connection::Error>> {
+    ) -> Poll<Result<Option<StreamId>, connection::Error>> {
         macro_rules! with_stream_type {
             (| $stream_type:ident | $block:stmt) => {
                 if stream_type == None || stream_type == Some(StreamType::Bidirectional) {
@@ -454,10 +454,10 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         //    this point, and for applications it can be helpful to act on this
         //    data.
 
-        with_stream_type!(|stream_type| if let Some(stream) =
+        with_stream_type!(|stream_type| if let Some(stream_id) =
             self.accept_stream_with_type(stream_type)?
         {
-            return Ok(Some(stream)).into();
+            return Ok(Some(stream_id)).into();
         });
 
         match self.inner.close_reason {
@@ -478,7 +478,7 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
     fn accept_stream_with_type(
         &mut self,
         stream_type: StreamType,
-    ) -> Result<Option<(StreamId, StreamType)>, connection::Error> {
+    ) -> Result<Option<StreamId>, connection::Error> {
         // Check if the Stream exists
         let next_id_to_accept = self
             .inner
@@ -489,7 +489,7 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         if self.inner.streams.contains(next_id_to_accept) {
             *self.inner.accept_state.next_stream_mut(stream_type) =
                 next_id_to_accept.next_of_type();
-            Ok(Some((next_id_to_accept, stream_type)))
+            Ok(Some(next_id_to_accept))
         } else {
             Ok(None)
         }
