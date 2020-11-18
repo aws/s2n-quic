@@ -1,0 +1,103 @@
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1"
+
+[[TODO]]
+quote = '''
+The sequence number on
+each newly issued connection ID MUST increase by 1.
+'''
+feature = "Issuing Connection IDs"
+tracking-issue = "238"
+
+[[TODO]]
+quote = '''
+When an endpoint issues a connection ID, it MUST accept packets that
+carry this connection ID for the duration of the connection or until
+its peer invalidates the connection ID via a RETIRE_CONNECTION_ID
+frame (Section 19.16).
+'''
+feature = "Issuing Connection IDs"
+tracking-issue = "238"
+
+[[TODO]]
+quote = '''
+An endpoint SHOULD ensure that its peer has a sufficient number of
+available and unused connection IDs.
+'''
+feature = "Issuing Connection IDs"
+tracking-issue = "238"
+
+[[TODO]]
+quote = '''
+An endpoint MUST NOT
+provide more connection IDs than the peer's limit.
+'''
+feature = "Issuing Connection IDs"
+tracking-issue = "238"
+
+[[TODO]]
+quote = '''
+An endpoint MAY
+send connection IDs that temporarily exceed a peer's limit if the
+NEW_CONNECTION_ID frame also requires the retirement of any excess,
+by including a sufficiently large value in the Retire Prior To field.
+'''
+feature = "Issuing Connection IDs"
+tracking-issue = "238"
+
+[[TODO]]
+quote = '''
+After processing a NEW_CONNECTION_ID frame and
+adding and retiring active connection IDs, if the number of active
+connection IDs exceeds the value advertised in its
+active_connection_id_limit transport parameter, an endpoint MUST
+close the connection with an error of type CONNECTION_ID_LIMIT_ERROR.
+'''
+feature = "Issuing Connection IDs"
+tracking-issue = "238"
+
+[[TODO]]
+quote = '''
+An endpoint SHOULD supply a new connection ID when the peer retires a
+connection ID.
+'''
+feature = "Issuing Connection IDs"
+tracking-issue = "238"
+
+[[TODO]]
+quote = '''
+If an endpoint provided fewer connection IDs than the
+peer's active_connection_id_limit, it MAY supply a new connection ID
+'''
+feature = "Issuing Connection IDs"
+tracking-issue = "238"
+
+[[TODO]]
+quote = '''
+An
+endpoint MAY limit the total number of connection IDs issued for each
+connection to avoid the risk of running out of connection IDs; see
+Section 10.3.2.
+'''
+feature = "Issuing Connection IDs"
+tracking-issue = "238"
+
+[[TODO]]
+quote = '''
+An endpoint MAY also limit the issuance of
+connection IDs to reduce the amount of per-path state it maintains,
+such as path validation status, as its peer might interact with it
+over as many paths as there are issued connection IDs.
+'''
+feature = "Issuing Connection IDs"
+tracking-issue = "238"
+
+[[TODO]]
+quote = '''
+An endpoint that initiates migration and requires non-zero-length
+connection IDs SHOULD ensure that the pool of connection IDs
+available to its peer allows the peer to use a new connection ID on
+migration, as the peer will be unable to respond if the pool is
+exhausted.
+'''
+feature = "Issuing Connection IDs"
+tracking-issue = "238"

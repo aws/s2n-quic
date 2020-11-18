@@ -1,0 +1,74 @@
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2"
+
+[[TODO]]
+quote = '''
+Endpoints SHOULD retire connection IDs when
+they are no longer actively using either the local or destination
+address for which the connection ID was used.
+'''
+feature = "Consuming and Retiring Connection IDs"
+tracking-issue = "239"
+
+[[TODO]]
+quote = '''
+The endpoint SHOULD continue to
+accept the previously issued connection IDs until they are retired by
+the peer.
+'''
+feature = "Consuming and Retiring Connection IDs"
+tracking-issue = "239"
+
+[[TODO]]
+quote = '''
+If the endpoint can no longer process the indicated
+connection IDs, it MAY close the connection.
+'''
+feature = "Consuming and Retiring Connection IDs"
+tracking-issue = "239"
+
+[[TODO]]
+quote = '''
+Upon receipt of an increased Retire Prior To field, the peer MUST
+stop using the corresponding connection IDs and retire them with
+RETIRE_CONNECTION_ID frames before adding the newly provided
+connection ID to the set of active connection IDs.
+'''
+feature = "Consuming and Retiring Connection IDs"
+tracking-issue = "239"
+
+[[TODO]]
+quote = '''
+An endpoint SHOULD limit the number of connection IDs it has retired
+locally and have not yet been acknowledged.
+'''
+feature = "Consuming and Retiring Connection IDs"
+tracking-issue = "239"
+
+[[TODO]]
+quote = '''
+An endpoint SHOULD allow
+for sending and tracking a number of RETIRE_CONNECTION_ID frames of
+at least twice the active_connection_id limit.
+'''
+feature = "Consuming and Retiring Connection IDs"
+tracking-issue = "239"
+
+[[TODO]]
+quote = '''
+An endpoint MUST NOT
+forget a connection ID without retiring it, though it MAY choose to
+treat having connection IDs in need of retirement that exceed this
+limit as a connection error of type CONNECTION_ID_LIMIT_ERROR.
+'''
+feature = "Consuming and Retiring Connection IDs"
+tracking-issue = "239"
+
+[[TODO]]
+quote = '''
+Endpoints SHOULD NOT issue updates of the Retire Prior To field
+before receiving RETIRE_CONNECTION_ID frames that retire all
+connection IDs indicated by the previous Retire Prior To value.
+'''
+feature = "Consuming and Retiring Connection IDs"
+tracking-issue = "239"
+

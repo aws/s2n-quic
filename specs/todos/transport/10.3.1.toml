@@ -1,0 +1,46 @@
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1"
+
+[[TODO]]
+quote = '''
+Endpoints MAY skip this check if any packet from a datagram is
+successfully processed.
+'''
+feature = "Stateless Reset"
+tracking-issue = "195"
+
+[[TODO]]
+quote = '''
+However, the comparison MUST be performed
+when the first packet in an incoming datagram either cannot be
+associated with a connection, or cannot be decrypted.
+'''
+feature = "Stateless Reset"
+tracking-issue = "195"
+
+[[TODO]]
+quote = '''
+An endpoint MUST NOT check for any Stateless Reset Tokens associated
+with connection IDs it has not used or for connection IDs that have
+been retired.
+'''
+feature = "Stateless Reset"
+tracking-issue = "195"
+
+[[TODO]]
+quote = '''
+When comparing a datagram to Stateless Reset Token values, endpoints
+MUST perform the comparison without leaking information about the
+value of the token.
+'''
+feature = "Stateless Reset"
+tracking-issue = "195"
+
+[[TODO]]
+quote = '''
+If the last 16 bytes of the datagram are identical in value to a
+Stateless Reset Token, the endpoint MUST enter the draining period
+and not send any further packets on this connection.
+'''
+feature = "Stateless Reset"
+tracking-issue = "195"
+
