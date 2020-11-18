@@ -1,8 +1,6 @@
 #[macro_use]
 mod connection;
 #[macro_use]
-pub mod metric;
-#[macro_use]
 mod splittable;
 #[macro_use]
 mod receive;
@@ -18,7 +16,6 @@ pub use s2n_quic_core::stream::{StreamError as Error, StreamType as Type};
 
 pub use bidirectional::*;
 pub use local::*;
-pub use metric::Metric;
 pub use peer::*;
 pub use receive::*;
 pub use send::*;
@@ -61,8 +58,6 @@ impl Stream {
         Stream::Receive(stream) => stream.connection(),
         Stream::Send(stream) => stream.connection(),
     });
-
-    impl_metric_api!();
 }
 
 impl_receive_stream_trait!(Stream, |stream, dispatch| match stream {

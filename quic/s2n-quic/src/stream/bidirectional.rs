@@ -21,8 +21,6 @@ impl BidirectionalStream {
     });
 
     impl_connection_api!(|_stream| todo!());
-
-    impl_metric_api!();
 }
 
 impl_receive_stream_trait!(BidirectionalStream, |stream, call| call!(stream.0));

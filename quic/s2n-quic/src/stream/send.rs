@@ -1,11 +1,11 @@
-use s2n_quic_transport::stream;
+use s2n_quic_transport::stream::Stream;
 
 /// A QUIC stream that is only allowed to send data.
 ///
 /// The [`SendStream`] implements the required send operations described in the
 /// [QUIC Transport RFC](https://tools.ietf.org/html/draft-ietf-quic-transport-28#section-2)
 #[derive(Debug)]
-pub struct SendStream(stream::SendStream);
+pub struct SendStream(Stream);
 
 macro_rules! impl_send_stream_api {
     (| $stream:ident, $dispatch:ident | $dispatch_body:expr) => {
@@ -357,13 +357,15 @@ macro_rules! impl_send_stream_trait {
 }
 
 impl SendStream {
+    pub(crate) const fn new(stream: Stream) -> Self {
+        Self(stream)
+    }
+
     impl_send_stream_api!(|stream, dispatch| dispatch!(stream.0));
 
     impl_splittable_stream_api!(|stream| (None, Some(stream)));
 
     impl_connection_api!(|_stream| todo!());
-
-    impl_metric_api!();
 }
 
 impl_splittable_stream_trait!(SendStream, |stream| (None, Some(stream)));

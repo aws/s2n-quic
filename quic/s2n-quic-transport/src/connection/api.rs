@@ -57,6 +57,15 @@ impl Connection {
             .poll_accept(&self.shared_state, stream_type, context)
     }
 
+    pub fn poll_open_stream(
+        &mut self,
+        stream_type: StreamType,
+        context: &Context,
+    ) -> Poll<Result<Stream, connection::Error>> {
+        self.shared_state
+            .poll_open_stream(&self.shared_state, stream_type, context)
+    }
+
     /// Closes the Connection with the provided error code
     ///
     /// This will immediatly terminate all outstanding streams.

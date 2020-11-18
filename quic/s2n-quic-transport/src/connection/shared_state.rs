@@ -133,6 +133,35 @@ impl<ConnectionConfigType: connection::Config> ConnectionApiProvider
         }
     }
 
+    fn poll_open_stream(
+        &self,
+        arc_self: &ConnectionApi,
+        stream_type: StreamType,
+        context: &Context,
+    ) -> Poll<Result<Stream, connection::Error>> {
+        let mut shared_state = self.lock();
+
+        let stream_manager = &mut shared_state
+            .space_manager
+            .application_mut()
+            .expect("Application space must be available on active connections")
+            .0
+            .stream_manager;
+
+        match stream_manager.poll_open(stream_type, context) {
+            Poll::Pending => Poll::Pending,
+            Poll::Ready(Err(e)) => Err(e).into(),
+            Poll::Ready(Ok(stream_id)) => {
+                // Unlock the Mutex
+                drop(shared_state);
+
+                let stream = Stream::new(arc_self.clone(), stream_id);
+
+                Ok(stream).into()
+            }
+        }
+    }
+
     fn close_connection(&self, error_code: ApplicationErrorCode) {
         let mut shared_state = self.lock();
 

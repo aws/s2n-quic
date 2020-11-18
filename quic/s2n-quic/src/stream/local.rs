@@ -30,8 +30,6 @@ impl LocalStream {
         LocalStream::Bidirectional(stream) => stream.connection(),
         LocalStream::Send(stream) => stream.connection(),
     });
-
-    impl_metric_api!();
 }
 
 impl_receive_stream_trait!(LocalStream, |stream, dispatch| match stream {
@@ -46,3 +44,15 @@ impl_splittable_stream_trait!(LocalStream, |stream| match stream {
     LocalStream::Bidirectional(stream) => stream.split(),
     LocalStream::Send(stream) => stream.split(),
 });
+
+impl From<SendStream> for LocalStream {
+    fn from(stream: SendStream) -> Self {
+        Self::Send(stream)
+    }
+}
+
+impl From<BidirectionalStream> for LocalStream {
+    fn from(stream: BidirectionalStream) -> Self {
+        Self::Bidirectional(stream)
+    }
+}
