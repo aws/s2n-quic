@@ -58,6 +58,16 @@ decoder_parameterized_value!(
 
             let (maximum_streams, buffer) = buffer.decode::<VarInt>()?;
 
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6
+            //# If a max_streams transport parameter or a MAX_STREAMS frame is
+            //# received with a value greater than 2^60, this would allow a maximum
+            //# stream ID that cannot be expressed as a variable-length integer; see
+            //# Section 16.  If either is received, the connection MUST be closed
+            //# immediately with a connection error of type TRANSPORT_PARAMETER_ERROR
+            //# if the offending value was received in a transport parameter or of
+            //# type FRAME_ENCODING_ERROR if it was received in a frame; see
+            //# Section 10.2.
+
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.11
             //# This value cannot exceed 2^60, as it is not possible
             //# to encode stream IDs larger than 2^62-1.  Receipt of a frame that

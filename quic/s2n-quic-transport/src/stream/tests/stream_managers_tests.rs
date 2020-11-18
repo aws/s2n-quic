@@ -339,9 +339,11 @@ fn create_stream_manager(local_ep_type: EndpointType) -> AbstractStreamManager<M
     let initial_local_limits = create_default_initial_flow_control_limits();
     let initial_peer_limits = create_default_initial_flow_control_limits();
 
-    let mut limits = ConnectionLimits::default();
-    limits.stream_limits = StreamLimits {
-        max_send_buffer_size: 4096,
+    let limits = ConnectionLimits {
+        stream_limits: StreamLimits {
+            max_send_buffer_size: 4096,
+        },
+        ..Default::default()
     };
 
     AbstractStreamManager::<MockStream>::new(
@@ -350,6 +352,19 @@ fn create_stream_manager(local_ep_type: EndpointType) -> AbstractStreamManager<M
         initial_local_limits,
         initial_peer_limits,
     )
+}
+
+/// Tries to open a new stream and returns an error if we're at the limit
+fn try_open(
+    manager: &mut AbstractStreamManager<MockStream>,
+    stream_type: StreamType,
+) -> Result<StreamId, connection::Error> {
+    let (accept_waker, _accept_wake_counter) = new_count_waker();
+
+    match manager.poll_open(stream_type, &Context::from_waker(&accept_waker)) {
+        Poll::Ready(res) => res,
+        Poll::Pending => Err(connection::Error::Unspecified),
+    }
 }
 
 #[test]
@@ -431,15 +446,18 @@ fn remote_streams_do_not_open_if_manager_is_closed() {
 
 #[test]
 fn opens_locally_initiated_streams() {
-    for local_ep_type in &[EndpointType::Client, EndpointType::Server] {
-        for stream_type in &[StreamType::Bidirectional, StreamType::Unidirectional] {
-            let mut manager = create_stream_manager(*local_ep_type);
+    for local_ep_type in [EndpointType::Client, EndpointType::Server].iter().copied() {
+        for stream_type in [StreamType::Bidirectional, StreamType::Unidirectional]
+            .iter()
+            .copied()
+        {
+            let mut manager = create_stream_manager(local_ep_type);
 
             for n in 0..8 {
-                let stream_id: StreamId = manager.open(*stream_type).unwrap();
+                let stream_id: StreamId = try_open(&mut manager, stream_type).unwrap();
                 assert!(manager.active_streams().contains(&stream_id));
                 assert_eq!(
-                    StreamId::nth(*local_ep_type, *stream_type, n).unwrap(),
+                    StreamId::nth(local_ep_type, stream_type, n).unwrap(),
                     stream_id
                 );
             }
@@ -448,11 +466,11 @@ fn opens_locally_initiated_streams() {
             *manager
                 .inner
                 .next_stream_ids
-                .get_mut(*local_ep_type, *stream_type) = None;
+                .get_mut(local_ep_type, stream_type) = None;
 
             assert_eq!(
-                (Err(connection::Error::StreamIdExhausted)),
-                manager.open(*stream_type)
+                Err(connection::Error::StreamIdExhausted),
+                try_open(&mut manager, stream_type)
             );
         }
     }
@@ -465,7 +483,7 @@ fn open_returns_error_after_close() {
     manager.close(connection::Error::Unspecified);
     assert_eq!(
         Err(connection::Error::Unspecified),
-        manager.open(StreamType::Bidirectional)
+        try_open(&mut manager, StreamType::Bidirectional)
     )
 }
 
@@ -475,9 +493,9 @@ fn returns_finalization_interest_after_last_stream_is_drained() {
     let (_wakeup_queue, mut wakeup_handle) = create_wakeup_queue_and_handle();
 
     assert_eq!(0, manager.active_streams().len());
-    let stream_1 = manager.open(StreamType::Bidirectional).unwrap();
+    let stream_1 = try_open(&mut manager, StreamType::Bidirectional).unwrap();
     assert_eq!(1, manager.active_streams().len());
-    let stream_2 = manager.open(StreamType::Bidirectional).unwrap();
+    let stream_2 = try_open(&mut manager, StreamType::Unidirectional).unwrap();
     assert_eq!(2, manager.active_streams().len());
     assert!(manager.finalization_status().is_idle());
 
@@ -528,7 +546,7 @@ fn remote_messages_which_target_locally_initiated_unopened_streams_error() {
                     let mut manager = create_stream_manager(*local_ep_type);
 
                     for _ in 0..*already_open {
-                        let stream_id = manager.open(*stream_type).unwrap();
+                        let stream_id = try_open(&mut manager, *stream_type).unwrap();
                         // Check that the Stream is really open
                         assert!(manager.active_streams().contains(&stream_id));
                     }
@@ -932,10 +950,10 @@ fn add_and_remove_streams_from_on_connection_window_lists() {
     );
 
     // Create some open Streams with interests
-    let stream_1 = manager.open(StreamType::Bidirectional).unwrap();
-    let stream_2 = manager.open(StreamType::Unidirectional).unwrap();
-    let _stream_3 = manager.open(StreamType::Bidirectional).unwrap();
-    let stream_4 = manager.open(StreamType::Unidirectional).unwrap();
+    let stream_1 = try_open(&mut manager, StreamType::Bidirectional).unwrap();
+    let stream_2 = try_open(&mut manager, StreamType::Unidirectional).unwrap();
+    let _stream_3 = try_open(&mut manager, StreamType::Bidirectional).unwrap();
+    let stream_4 = try_open(&mut manager, StreamType::Unidirectional).unwrap();
 
     for stream_id in &[stream_2, stream_1, stream_4] {
         manager.with_asserted_stream(*stream_id, |stream| {
@@ -1006,10 +1024,10 @@ fn max_data_causes_on_connection_window_available_to_be_called_on_streams() {
     );
 
     // Create some open Streams with interests
-    let stream_1 = manager.open(StreamType::Bidirectional).unwrap();
-    let stream_2 = manager.open(StreamType::Unidirectional).unwrap();
-    let stream_3 = manager.open(StreamType::Bidirectional).unwrap();
-    let stream_4 = manager.open(StreamType::Unidirectional).unwrap();
+    let stream_1 = try_open(&mut manager, StreamType::Bidirectional).unwrap();
+    let stream_2 = try_open(&mut manager, StreamType::Unidirectional).unwrap();
+    let stream_3 = try_open(&mut manager, StreamType::Bidirectional).unwrap();
+    let stream_4 = try_open(&mut manager, StreamType::Unidirectional).unwrap();
 
     manager.with_asserted_stream(stream_1, |stream| {
         stream.on_connection_window_available_retrieve_window = 1;
@@ -1152,10 +1170,10 @@ fn max_data_causes_on_connection_window_available_to_be_called_on_streams() {
 fn add_and_remove_streams_from_delivery_notification_window_lists() {
     let mut manager = create_stream_manager(EndpointType::Server);
 
-    let stream_1 = manager.open(StreamType::Bidirectional).unwrap();
-    let stream_2 = manager.open(StreamType::Unidirectional).unwrap();
-    let _stream_3 = manager.open(StreamType::Bidirectional).unwrap();
-    let stream_4 = manager.open(StreamType::Unidirectional).unwrap();
+    let stream_1 = try_open(&mut manager, StreamType::Bidirectional).unwrap();
+    let stream_2 = try_open(&mut manager, StreamType::Unidirectional).unwrap();
+    let _stream_3 = try_open(&mut manager, StreamType::Bidirectional).unwrap();
+    let stream_4 = try_open(&mut manager, StreamType::Unidirectional).unwrap();
 
     for stream_id in &[stream_2, stream_1, stream_4] {
         manager.with_asserted_stream(*stream_id, |stream| {
@@ -1201,10 +1219,10 @@ fn on_packet_ack_and_loss_is_forwarded_to_interested_streams() {
     let (read_waker, read_wake_counter) = new_count_waker();
     let (write_waker, write_wake_counter) = new_count_waker();
 
-    let stream_1 = manager.open(StreamType::Bidirectional).unwrap();
-    let stream_2 = manager.open(StreamType::Unidirectional).unwrap();
-    let stream_3 = manager.open(StreamType::Bidirectional).unwrap();
-    let stream_4 = manager.open(StreamType::Unidirectional).unwrap();
+    let stream_1 = try_open(&mut manager, StreamType::Bidirectional).unwrap();
+    let stream_2 = try_open(&mut manager, StreamType::Unidirectional).unwrap();
+    let stream_3 = try_open(&mut manager, StreamType::Bidirectional).unwrap();
+    let stream_4 = try_open(&mut manager, StreamType::Unidirectional).unwrap();
 
     for stream_id in &[stream_2, stream_1, stream_4] {
         let read_waker = read_waker.clone();
@@ -1284,10 +1302,10 @@ fn close_is_forwarded_to_all_streams() {
             .with_outgoing_connection_flow_controller(|ctrl| ctrl.acquire_window(current_window))
     );
 
-    let stream_1 = manager.open(StreamType::Bidirectional).unwrap();
-    let stream_2 = manager.open(StreamType::Unidirectional).unwrap();
-    let stream_3 = manager.open(StreamType::Bidirectional).unwrap();
-    let stream_4 = manager.open(StreamType::Unidirectional).unwrap();
+    let stream_1 = try_open(&mut manager, StreamType::Bidirectional).unwrap();
+    let stream_2 = try_open(&mut manager, StreamType::Unidirectional).unwrap();
+    let stream_3 = try_open(&mut manager, StreamType::Bidirectional).unwrap();
+    let stream_4 = try_open(&mut manager, StreamType::Unidirectional).unwrap();
 
     let read_waker_clone = read_waker.clone();
     manager.with_asserted_stream(stream_1, |stream| {
@@ -1339,10 +1357,10 @@ fn add_and_remove_streams_from_transmission_lists() {
     let mut manager = create_stream_manager(EndpointType::Server);
 
     // Create some open Streams with interests
-    let stream_1 = manager.open(StreamType::Bidirectional).unwrap();
-    let stream_2 = manager.open(StreamType::Unidirectional).unwrap();
-    let _stream_3 = manager.open(StreamType::Bidirectional).unwrap();
-    let stream_4 = manager.open(StreamType::Unidirectional).unwrap();
+    let stream_1 = try_open(&mut manager, StreamType::Bidirectional).unwrap();
+    let stream_2 = try_open(&mut manager, StreamType::Unidirectional).unwrap();
+    let _stream_3 = try_open(&mut manager, StreamType::Bidirectional).unwrap();
+    let stream_4 = try_open(&mut manager, StreamType::Unidirectional).unwrap();
 
     for stream_id in &[stream_2, stream_1, stream_4] {
         manager.with_asserted_stream(*stream_id, |stream| {
@@ -1379,10 +1397,10 @@ fn add_and_remove_streams_from_retransmission_lists() {
     let mut manager = create_stream_manager(EndpointType::Server);
 
     // Create some open Streams with interests
-    let stream_1 = manager.open(StreamType::Bidirectional).unwrap();
-    let stream_2 = manager.open(StreamType::Unidirectional).unwrap();
-    let _stream_3 = manager.open(StreamType::Bidirectional).unwrap();
-    let stream_4 = manager.open(StreamType::Unidirectional).unwrap();
+    let stream_1 = try_open(&mut manager, StreamType::Bidirectional).unwrap();
+    let stream_2 = try_open(&mut manager, StreamType::Unidirectional).unwrap();
+    let _stream_3 = try_open(&mut manager, StreamType::Bidirectional).unwrap();
+    let stream_4 = try_open(&mut manager, StreamType::Unidirectional).unwrap();
 
     for stream_id in &[stream_2, stream_1, stream_4] {
         manager.with_asserted_stream(*stream_id, |stream| {
@@ -1439,11 +1457,11 @@ fn on_transmit_queries_streams_for_data() {
     let mut frame_buffer = OutgoingFrameBuffer::new();
 
     // Create some open Streams with interests
-    let stream_1 = manager.open(StreamType::Bidirectional).unwrap();
-    let stream_2 = manager.open(StreamType::Unidirectional).unwrap();
-    let stream_3 = manager.open(StreamType::Bidirectional).unwrap();
-    let stream_4 = manager.open(StreamType::Unidirectional).unwrap();
-    let stream_5 = manager.open(StreamType::Unidirectional).unwrap();
+    let stream_1 = try_open(&mut manager, StreamType::Bidirectional).unwrap();
+    let stream_2 = try_open(&mut manager, StreamType::Unidirectional).unwrap();
+    let stream_3 = try_open(&mut manager, StreamType::Bidirectional).unwrap();
+    let stream_4 = try_open(&mut manager, StreamType::Unidirectional).unwrap();
+    let stream_5 = try_open(&mut manager, StreamType::Unidirectional).unwrap();
 
     manager.with_asserted_stream(stream_1, |stream| {
         stream.on_transmit_try_write_frames = 1;
@@ -1654,8 +1672,8 @@ fn forwards_on_data() {
     let (read_waker, read_wake_counter) = new_count_waker();
     let (write_waker, write_wake_counter) = new_count_waker();
 
-    let stream_1 = manager.open(StreamType::Bidirectional).unwrap();
-    let stream_2 = manager.open(StreamType::Bidirectional).unwrap();
+    let stream_1 = try_open(&mut manager, StreamType::Bidirectional).unwrap();
+    let stream_2 = try_open(&mut manager, StreamType::Bidirectional).unwrap();
 
     manager.with_asserted_stream(stream_1, |stream| {
         stream.read_waker_to_return = Some(read_waker);
@@ -1703,8 +1721,8 @@ fn forwards_on_stream_data_blocked() {
     let (read_waker, read_wake_counter) = new_count_waker();
     let (write_waker, write_wake_counter) = new_count_waker();
 
-    let stream_1 = manager.open(StreamType::Bidirectional).unwrap();
-    let stream_2 = manager.open(StreamType::Bidirectional).unwrap();
+    let stream_1 = try_open(&mut manager, StreamType::Bidirectional).unwrap();
+    let stream_2 = try_open(&mut manager, StreamType::Bidirectional).unwrap();
 
     manager.with_asserted_stream(stream_1, |stream| {
         stream.read_waker_to_return = Some(read_waker);
@@ -1756,8 +1774,8 @@ fn forwards_on_max_stream_data() {
     let (read_waker, read_wake_counter) = new_count_waker();
     let (write_waker, write_wake_counter) = new_count_waker();
 
-    let stream_1 = manager.open(StreamType::Bidirectional).unwrap();
-    let stream_2 = manager.open(StreamType::Bidirectional).unwrap();
+    let stream_1 = try_open(&mut manager, StreamType::Bidirectional).unwrap();
+    let stream_2 = try_open(&mut manager, StreamType::Bidirectional).unwrap();
 
     manager.with_asserted_stream(stream_1, |stream| {
         stream.read_waker_to_return = Some(read_waker);
@@ -1809,8 +1827,8 @@ fn forwards_on_stop_sending() {
     let (read_waker, read_wake_counter) = new_count_waker();
     let (write_waker, write_wake_counter) = new_count_waker();
 
-    let stream_1 = manager.open(StreamType::Bidirectional).unwrap();
-    let stream_2 = manager.open(StreamType::Bidirectional).unwrap();
+    let stream_1 = try_open(&mut manager, StreamType::Bidirectional).unwrap();
+    let stream_2 = try_open(&mut manager, StreamType::Bidirectional).unwrap();
 
     manager.with_asserted_stream(stream_1, |stream| {
         stream.read_waker_to_return = Some(read_waker);
@@ -1862,8 +1880,8 @@ fn forwards_on_reset() {
     let (read_waker, read_wake_counter) = new_count_waker();
     let (write_waker, write_wake_counter) = new_count_waker();
 
-    let stream_1 = manager.open(StreamType::Bidirectional).unwrap();
-    let stream_2 = manager.open(StreamType::Bidirectional).unwrap();
+    let stream_1 = try_open(&mut manager, StreamType::Bidirectional).unwrap();
+    let stream_2 = try_open(&mut manager, StreamType::Bidirectional).unwrap();
 
     manager.with_asserted_stream(stream_1, |stream| {
         stream.read_waker_to_return = Some(read_waker);
@@ -1918,7 +1936,7 @@ fn forwards_poll_pop() {
     let (waker, _wake_counter) = new_count_waker();
     let mut manager = create_stream_manager(EndpointType::Server);
 
-    let stream_1 = manager.open(StreamType::Bidirectional).unwrap();
+    let stream_1 = try_open(&mut manager, StreamType::Bidirectional).unwrap();
 
     let ctx = Context::from_waker(&waker);
     assert!(manager
@@ -1971,8 +1989,8 @@ fn forwards_stop_sending() {
     let (mut wakeup_queue, mut wakeup_handle) = create_wakeup_queue_and_handle();
     let mut manager = create_stream_manager(EndpointType::Server);
 
-    let stream_1 = manager.open(StreamType::Bidirectional).unwrap();
-    let error = ApplicationErrorCode::new(0x123_456).unwrap();
+    let stream_1 = try_open(&mut manager, StreamType::Bidirectional).unwrap();
+    let error = ApplicationErrorCode::new(0x12_3456).unwrap();
 
     assert!(manager
         .poll_request(
@@ -2025,7 +2043,7 @@ fn forwards_poll_push() {
     let (waker, _wake_counter) = new_count_waker();
     let mut manager = create_stream_manager(EndpointType::Server);
 
-    let stream_1 = manager.open(StreamType::Bidirectional).unwrap();
+    let stream_1 = try_open(&mut manager, StreamType::Bidirectional).unwrap();
     let data = Bytes::from_static(b"1234");
 
     let ctx = Context::from_waker(&waker);
@@ -2080,7 +2098,7 @@ fn forwards_poll_finish() {
     let (waker, _wake_counter) = new_count_waker();
     let mut manager = create_stream_manager(EndpointType::Server);
 
-    let stream_1 = manager.open(StreamType::Bidirectional).unwrap();
+    let stream_1 = try_open(&mut manager, StreamType::Bidirectional).unwrap();
 
     let ctx = Context::from_waker(&waker);
     assert!(manager
@@ -2133,8 +2151,8 @@ fn forwards_reset() {
     let (mut wakeup_queue, mut wakeup_handle) = create_wakeup_queue_and_handle();
     let mut manager = create_stream_manager(EndpointType::Server);
 
-    let stream_1 = manager.open(StreamType::Bidirectional).unwrap();
-    let error = ApplicationErrorCode::new(0x123_456).unwrap();
+    let stream_1 = try_open(&mut manager, StreamType::Bidirectional).unwrap();
+    let error = ApplicationErrorCode::new(0x12_3456).unwrap();
 
     assert!(manager
         .poll_request(

@@ -30,8 +30,6 @@ impl PeerStream {
         PeerStream::Bidirectional(stream) => stream.connection(),
         PeerStream::Receive(stream) => stream.connection(),
     });
-
-    impl_metric_api!();
 }
 
 impl_receive_stream_trait!(PeerStream, |stream, dispatch| match stream {

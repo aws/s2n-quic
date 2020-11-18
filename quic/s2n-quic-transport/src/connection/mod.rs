@@ -134,7 +134,7 @@ pub struct Limits {
 
     // TODO remove this field when more fields are added to increase the size
     // temporary field to supress clippy::trivially_copy_pass_by_ref warnings
-    _padding: u64,
+    pub(crate) _padding: u64,
 }
 
 #[cfg(any(test, feature = "testing"))]
