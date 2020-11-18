@@ -10,3 +10,17 @@ This isn't something that would be used in HTTP/3 so we see little benefit
 in doing it currently.
 '''
 
+[[exception]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#2.2"
+quote = '''
+; an endpoint MAY treat receipt of different data at
+the same offset within a stream as a connection error of type
+PROTOCOL_VIOLATION.
+'''
+reason = '''
+This would require comparing every single byte that a peer sends, which would
+be quite costly and not add much value.
+
+Maybe in the future, we would include an option to enable it but it should not
+be the default, as it would not be realistic for a production workload.
+'''

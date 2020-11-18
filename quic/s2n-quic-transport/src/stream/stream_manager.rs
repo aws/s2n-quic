@@ -282,6 +282,10 @@ impl<S: StreamTrait> StreamManagerState<S> {
                         .expect("Expect a valid Stream ID");
                 }
 
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#2.1
+                //# A QUIC
+                //# endpoint MUST NOT reuse a stream ID within a connection.
+
                 // Increase the next expected Stream ID. We might thereby exhaust
                 // the Stream ID range, which means we can no longer accept a
                 // further Stream.
