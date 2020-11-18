@@ -1,0 +1,23 @@
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1"
+
+[[exception]]
+quote = '''
+Connection IDs MUST NOT contain any information that can be used by
+an external observer (that is, one that does not cooperate with the
+issuer) to correlate them with other connection IDs for the same
+connection.
+'''
+reason = '''
+Non-random connection ID generation is implemented by the customer
+'''
+
+[[exception]]
+quote = '''
+An
+endpoint MUST NOT use the same IP address and port for multiple
+connections with zero-length connection IDs, unless it is certain
+that those protocol features are not in use.
+'''
+reason = '''
+Zero-length connection IDs generated on an s2n-QUIC endpoint are not supported
+'''

@@ -1,0 +1,13 @@
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3"
+
+[[exception]]
+quote = '''
+An endpoint MAY send a stateless reset in response to a packet with a
+long header.
+'''
+reason = '''
+Because the stateless reset token is not available
+until connection establishment is complete or near completion,
+ignoring an unknown packet with a long header might be as effective
+as sending a stateless reset.
+'''

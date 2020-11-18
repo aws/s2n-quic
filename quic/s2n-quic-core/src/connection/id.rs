@@ -147,7 +147,11 @@ impl Validator for usize {
 
 /// A generator for a connection ID format
 pub trait Generator {
-    /// Generates a connection ID with an optional validity duration
+    /// Generates a connection ID with an optional validity duration.
+    /// Connection IDs MUST NOT contain any information that can be used by
+    /// an external observer (that is, one that does not cooperate with the
+    /// issuer) to correlate them with other connection IDs for the same
+    /// connection.
     fn generate(&mut self) -> (Id, Option<core::time::Duration>);
 }
 

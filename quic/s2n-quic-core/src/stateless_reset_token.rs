@@ -10,6 +10,10 @@ use s2n_codec::{decoder_value, Encoder, EncoderValue};
 //#   Stateless Reset Token (128),
 //# }
 
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
+//# Endpoints MUST send stateless reset packets formatted as a packet
+//# with a short header.
+
 const STATELESS_RESET_TOKEN_LEN: usize = 128 / 8;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
