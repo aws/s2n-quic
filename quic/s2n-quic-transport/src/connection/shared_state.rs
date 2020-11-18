@@ -108,7 +108,7 @@ impl<ConnectionConfigType: connection::Config> ConnectionApiProvider
         arc_self: &ConnectionApi,
         stream_type: Option<StreamType>,
         context: &Context,
-    ) -> Poll<Result<(Stream, StreamType), connection::Error>> {
+    ) -> Poll<Result<Option<(Stream, StreamType)>, connection::Error>> {
         let mut shared_state = self.lock();
 
         let stream_manager = &mut shared_state
@@ -121,13 +121,14 @@ impl<ConnectionConfigType: connection::Config> ConnectionApiProvider
         match stream_manager.poll_accept(stream_type, context) {
             Poll::Pending => Poll::Pending,
             Poll::Ready(Err(e)) => Err(e).into(),
-            Poll::Ready(Ok((stream_id, stream_type))) => {
+            Poll::Ready(Ok(None)) => Ok(None).into(),
+            Poll::Ready(Ok(Some((stream_id, stream_type)))) => {
                 // Unlock the Mutex
                 drop(shared_state);
 
                 let stream = Stream::new(arc_self.clone(), stream_id);
 
-                Ok((stream, stream_type)).into()
+                Ok(Some((stream, stream_type))).into()
             }
         }
     }

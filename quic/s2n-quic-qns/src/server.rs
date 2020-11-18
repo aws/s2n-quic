@@ -43,7 +43,7 @@ impl Interop {
         async fn handle_h09_connection(mut connection: Connection, www_dir: Arc<PathBuf>) {
             loop {
                 match connection.accept_bidirectional_stream().await {
-                    Ok(stream) => {
+                    Ok(Some(stream)) => {
                         let www_dir = www_dir.clone();
                         // spawn a task per stream
                         tokio::spawn(async move {
@@ -51,6 +51,10 @@ impl Interop {
                                 eprintln!("Stream errror: {:?}", err)
                             }
                         });
+                    }
+                    Ok(None) => {
+                        // the connection was closed without an error
+                        return;
                     }
                     Err(err) => {
                         eprintln!("error while accepting stream: {}", err);

@@ -427,7 +427,7 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         &mut self,
         stream_type: Option<StreamType>,
         context: &Context,
-    ) -> Poll<Result<(StreamId, StreamType), connection::Error>> {
+    ) -> Poll<Result<Option<(StreamId, StreamType)>, connection::Error>> {
         macro_rules! with_stream_type {
             (| $stream_type:ident | $block:stmt) => {
                 if stream_type == None || stream_type == Some(StreamType::Bidirectional) {
@@ -457,11 +457,13 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         with_stream_type!(|stream_type| if let Some(stream) =
             self.accept_stream_with_type(stream_type)?
         {
-            return Ok(stream).into();
+            return Ok(Some(stream)).into();
         });
 
-        if let Some(close_reason) = self.inner.close_reason {
-            return Err(close_reason).into();
+        match self.inner.close_reason {
+            Some(connection::Error::Closed) => return Ok(None).into(),
+            Some(reason) => return Err(reason).into(),
+            None => {}
         }
 
         // Store the `Waker` for notifying the application if we accept a Stream

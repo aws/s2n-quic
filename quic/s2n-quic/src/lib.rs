@@ -19,7 +19,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         tokio::spawn(async move {
             eprintln!("Connection accepted from {:?}", connection.remote_addr());
 
-            while let Ok(mut stream) = connection.accept_bidirectional_stream().await {
+            while let Ok(Some(mut stream)) = connection.accept_bidirectional_stream().await {
                 // spawn a new task for the stream
                 tokio::spawn(async move {
                     eprintln!("Stream opened from {:?}", stream.connection().remote_addr());

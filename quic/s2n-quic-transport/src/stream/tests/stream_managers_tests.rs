@@ -613,7 +613,7 @@ fn accept_returns_remotely_initiated_stream() {
 
                     // Stream is now available
                     assert_eq!(
-                        Poll::Ready(Ok((stream_id, stream_type))),
+                        Poll::Ready(Ok(Some((stream_id, stream_type)))),
                         manager.poll_accept(Some(stream_type), &Context::from_waker(&accept_waker))
                     );
                 }
@@ -641,11 +641,11 @@ fn accept_returns_remotely_initiated_stream() {
 
                 // Streams are now available
                 assert_eq!(
-                    Poll::Ready(Ok((stream_id_1, stream_type))),
+                    Poll::Ready(Ok(Some((stream_id_1, stream_type)))),
                     manager.poll_accept(Some(stream_type), &Context::from_waker(&accept_waker))
                 );
                 assert_eq!(
-                    Poll::Ready(Ok((stream_id_2, stream_type))),
+                    Poll::Ready(Ok(Some((stream_id_2, stream_type)))),
                     manager.poll_accept(Some(stream_type), &Context::from_waker(&accept_waker))
                 );
                 assert_eq!(
@@ -701,13 +701,11 @@ fn accept_returns_opened_streams_of_any_type() {
 
             for _ in 0..STREAMS_TO_OPEN {
                 match manager.poll_accept(None, &Context::from_waker(&accept_waker)) {
-                    Poll::Ready(Ok((stream_id, _stream_type))) => {
-                        assert!(
-                            streams.remove(&stream_id),
-                            "accepted {:?} stream multiple times",
-                            stream_id
-                        )
-                    }
+                    Poll::Ready(Ok(Some((stream_id, _stream_type)))) => assert!(
+                        streams.remove(&stream_id),
+                        "accepted {:?} stream multiple times",
+                        stream_id
+                    ),
                     other => panic!("unexpected result {:?}", other),
                 }
             }
@@ -760,7 +758,7 @@ fn accept_notifies_of_any_type() {
 
                 // Stream is now available
                 assert_eq!(
-                    Poll::Ready(Ok((stream_id, stream_type))),
+                    Poll::Ready(Ok(Some((stream_id, stream_type)))),
                     manager.poll_accept(Some(stream_type), &Context::from_waker(&accept_waker))
                 );
             }
@@ -834,7 +832,7 @@ fn accept_returns_opened_streams_even_if_stream_manager_was_closed() {
                 for n in 0..STREAMS_TO_OPEN {
                     let stream_id = StreamId::nth(*initiator_type, *stream_type, n).unwrap();
                     assert_eq!(
-                        Poll::Ready(Ok((stream_id, *stream_type))),
+                        Poll::Ready(Ok(Some((stream_id, *stream_type)))),
                         manager
                             .poll_accept(Some(*stream_type), &Context::from_waker(&accept_waker))
                     );
@@ -878,6 +876,43 @@ fn closing_stream_manager_wakes_blocked_accepts() {
                 assert_eq!(
                     Poll::Ready(Err(connection::Error::Unspecified)),
                     manager.poll_accept(Some(*stream_type), &Context::from_waker(&accept_waker))
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn closing_stream_manager_without_error_returns_none() {
+    for initiator_type in [EndpointType::Server, EndpointType::Client].iter().copied() {
+        for local_ep_type in [EndpointType::Server, EndpointType::Client].iter().copied() {
+            let is_remote_initialized = local_ep_type != initiator_type;
+            if !is_remote_initialized {
+                continue;
+            }
+
+            for stream_type in [StreamType::Bidirectional, StreamType::Unidirectional]
+                .iter()
+                .copied()
+            {
+                let mut manager = create_stream_manager(local_ep_type);
+                let (accept_waker, accept_wake_counter) = new_count_waker();
+
+                assert_eq!(
+                    Poll::Pending,
+                    manager.poll_accept(Some(stream_type), &Context::from_waker(&accept_waker))
+                );
+                assert_eq!(accept_wake_counter, 0);
+
+                // Close the StreamManager
+                // This should wake up the accept call
+                manager.close(connection::Error::Closed);
+                assert_eq!(accept_wake_counter, 1);
+
+                // Now the stream should return None
+                assert_eq!(
+                    Poll::Ready(Ok(None)),
+                    manager.poll_accept(Some(stream_type), &Context::from_waker(&accept_waker))
                 );
             }
         }
