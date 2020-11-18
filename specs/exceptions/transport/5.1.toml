@@ -8,7 +8,9 @@ issuer) to correlate them with other connection IDs for the same
 connection.
 '''
 reason = '''
-Non-random connection ID generation is implemented by the customer
+While the default provider in s2n-quic generates completely random connection IDs,
+an alternative provider can be provided and should ensure this is true. Ultimately,
+this means this requirement cannot be guaranteed by s2n-quic alone.
 '''
 
 [[exception]]

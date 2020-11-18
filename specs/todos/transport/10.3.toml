@@ -66,6 +66,14 @@ tracking-issue = "195"
 
 [[TODO]]
 quote = '''
+Endpoints MUST send stateless reset packets formatted as a packet
+with a short header.
+'''
+feature = "Stateless Reset"
+tracking-issue = "195"
+
+[[TODO]]
+quote = '''
 However, endpoints MUST treat any packet ending
 in a valid stateless reset token as a stateless reset, as other QUIC
 versions might allow the use of a long header.
