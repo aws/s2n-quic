@@ -425,19 +425,24 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
     /// Accepts the next incoming stream of a given type
     pub fn poll_accept(
         &mut self,
-        stream_type: StreamType,
+        stream_type: Option<StreamType>,
         context: &Context,
-    ) -> Poll<Result<StreamId, connection::Error>> {
-        // Clear a stored Waker
-        *self.inner.accept_state.waker_mut(stream_type) = None;
-
-        // Check if the Stream exists
-        let next_id_to_accept =
-            if let Some(next_id_to_accept) = self.inner.accept_state.next_stream_id(stream_type) {
-                next_id_to_accept
-            } else {
-                return Poll::Ready(Err(connection::Error::StreamIdExhausted));
+    ) -> Poll<Result<Option<StreamId>, connection::Error>> {
+        macro_rules! with_stream_type {
+            (| $stream_type:ident | $block:stmt) => {
+                if stream_type == None || stream_type == Some(StreamType::Bidirectional) {
+                    let $stream_type = StreamType::Bidirectional;
+                    $block
+                }
+                if stream_type == None || stream_type == Some(StreamType::Unidirectional) {
+                    let $stream_type = StreamType::Unidirectional;
+                    $block
+                }
             };
+        }
+
+        // Clear a stored Waker
+        with_stream_type!(|stream_type| *self.inner.accept_state.waker_mut(stream_type) = None);
 
         // If the connection was closed we still allow the application to accept
         // Streams which are already known to the StreamManager.
@@ -449,16 +454,44 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         //    this point, and for applications it can be helpful to act on this
         //    data.
 
+        with_stream_type!(|stream_type| if let Some(stream_id) =
+            self.accept_stream_with_type(stream_type)?
+        {
+            return Ok(Some(stream_id)).into();
+        });
+
+        match self.inner.close_reason {
+            Some(connection::Error::Closed) => return Ok(None).into(),
+            Some(reason) => return Err(reason).into(),
+            None => {}
+        }
+
+        // Store the `Waker` for notifying the application if we accept a Stream
+        with_stream_type!(
+            |stream_type| *self.inner.accept_state.waker_mut(stream_type) =
+                Some(context.waker().clone())
+        );
+
+        Poll::Pending
+    }
+
+    fn accept_stream_with_type(
+        &mut self,
+        stream_type: StreamType,
+    ) -> Result<Option<StreamId>, connection::Error> {
+        // Check if the Stream exists
+        let next_id_to_accept = self
+            .inner
+            .accept_state
+            .next_stream_id(stream_type)
+            .ok_or(connection::Error::StreamIdExhausted)?;
+
         if self.inner.streams.contains(next_id_to_accept) {
             *self.inner.accept_state.next_stream_mut(stream_type) =
                 next_id_to_accept.next_of_type();
-            Poll::Ready(Ok(next_id_to_accept))
-        } else if let Some(close_reason) = self.inner.close_reason {
-            Poll::Ready(Err(close_reason))
+            Ok(Some(next_id_to_accept))
         } else {
-            // Store the `Waker` for notifying the application if we accept a Stream
-            *self.inner.accept_state.waker_mut(stream_type) = Some(context.waker().clone());
-            Poll::Pending
+            Ok(None)
         }
     }
 

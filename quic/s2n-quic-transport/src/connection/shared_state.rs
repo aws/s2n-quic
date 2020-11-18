@@ -108,7 +108,7 @@ impl<ConnectionConfigType: connection::Config> ConnectionApiProvider
         arc_self: &ConnectionApi,
         stream_type: Option<StreamType>,
         context: &Context,
-    ) -> Poll<Result<(Stream, StreamType), connection::Error>> {
+    ) -> Poll<Result<Option<Stream>, connection::Error>> {
         let mut shared_state = self.lock();
 
         let stream_manager = &mut shared_state
@@ -118,33 +118,17 @@ impl<ConnectionConfigType: connection::Config> ConnectionApiProvider
             .0
             .stream_manager;
 
-        macro_rules! poll_accept {
-            ($stream_type:expr) => {
-                match stream_manager.poll_accept($stream_type, context) {
-                    Poll::Pending => {}
-                    Poll::Ready(Err(e)) => return Poll::Ready(Err(e)),
-                    Poll::Ready(Ok(internal_id)) => {
-                        // Unlock the Mutex
-                        drop(shared_state);
+        match stream_manager.poll_accept(stream_type, context) {
+            Poll::Pending => Poll::Pending,
+            Poll::Ready(Err(e)) => Err(e).into(),
+            Poll::Ready(Ok(None)) => Ok(None).into(),
+            Poll::Ready(Ok(Some(stream_id))) => {
+                // Unlock the Mutex
+                drop(shared_state);
 
-                        let stream = Stream::new(arc_self.clone(), internal_id);
+                let stream = Stream::new(arc_self.clone(), stream_id);
 
-                        return Poll::Ready(Ok((stream, $stream_type)));
-                    }
-                }
-            };
-        }
-
-        match stream_type {
-            None => {
-                // Poll either type
-                poll_accept!(StreamType::Unidirectional);
-                poll_accept!(StreamType::Bidirectional);
-                Poll::Pending
-            }
-            Some(stream_type) => {
-                poll_accept!(stream_type);
-                Poll::Pending
+                Ok(Some(stream)).into()
             }
         }
     }

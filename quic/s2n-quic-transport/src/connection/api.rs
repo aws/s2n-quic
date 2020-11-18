@@ -40,7 +40,8 @@ impl Connection {
     /// Accepts an incoming [`Stream`]
     ///
     /// The method will return
-    /// - `Poll::Ready(Ok(stream))` if a [`Stream`] was accepted
+    /// - `Poll::Ready(Ok(Some(stream, stream_type)))` if a [`Stream`] was accepted
+    /// - `Poll::Ready(Ok(None))` if the connection was closed without an error
     /// - `Poll::Ready(Err(stream_error))` if no could be accepted due to an error
     /// - `Poll::Pending` if no new [`Stream`] of the given type was accepted by the connection yet.
     ///   In this case the caller must retry calling [`poll_accept`].
@@ -51,7 +52,7 @@ impl Connection {
         &mut self,
         stream_type: Option<StreamType>,
         context: &Context,
-    ) -> Poll<Result<(Stream, StreamType), connection::Error>> {
+    ) -> Poll<Result<Option<Stream>, connection::Error>> {
         self.shared_state
             .poll_accept(&self.shared_state, stream_type, context)
     }

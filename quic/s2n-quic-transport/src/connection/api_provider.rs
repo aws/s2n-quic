@@ -30,7 +30,7 @@ pub(crate) trait ConnectionApiProvider: Sync + Send {
         arc_self: &Arc<dyn ConnectionApiProvider>,
         stream_type: Option<StreamType>,
         context: &Context,
-    ) -> Poll<Result<(Stream, StreamType), connection::Error>>;
+    ) -> Poll<Result<Option<Stream>, connection::Error>>;
 
     fn close_connection(&self, error_code: ApplicationErrorCode);
 }

@@ -12,7 +12,7 @@ macro_rules! impl_acceptor_api {
         /// ```rust
         /// // TODO
         /// ```
-        pub async fn accept(&mut self) -> $crate::connection::Result<$crate::stream::PeerStream> {
+        pub async fn accept(&mut self) -> $crate::connection::Result<Option<$crate::stream::PeerStream>> {
             futures::future::poll_fn(|cx| self.poll_accept(cx)).await
         }
 
@@ -26,14 +26,14 @@ macro_rules! impl_acceptor_api {
         pub fn poll_accept(
             &mut self,
             cx: &mut core::task::Context,
-        ) -> core::task::Poll<$crate::connection::Result<$crate::stream::PeerStream>> {
+        ) -> core::task::Poll<$crate::connection::Result<Option<$crate::stream::PeerStream>>> {
             use s2n_quic_core::stream::StreamType;
             use $crate::stream::{BidirectionalStream, ReceiveStream};
 
-            Ok(match futures::ready!(self.0.poll_accept(None, cx))? {
-                (stream, StreamType::Unidirectional) => ReceiveStream::new(stream).into(),
-                (stream, StreamType::Bidirectional) => BidirectionalStream::new(stream).into(),
-            })
+            Ok(futures::ready!(self.0.poll_accept(None, cx))?.map(|stream| match stream.id().stream_type() {
+                StreamType::Unidirectional => ReceiveStream::new(stream).into(),
+                StreamType::Bidirectional => BidirectionalStream::new(stream).into(),
+            }))
             .into()
         }
 
@@ -46,7 +46,7 @@ macro_rules! impl_acceptor_api {
         /// ```
         pub async fn accept_bidirectional_stream(
             &mut self,
-        ) -> $crate::connection::Result<$crate::stream::BidirectionalStream> {
+        ) -> $crate::connection::Result<Option<$crate::stream::BidirectionalStream>> {
             futures::future::poll_fn(|cx| self.poll_accept_bidirectional_stream(cx)).await
         }
 
@@ -60,11 +60,13 @@ macro_rules! impl_acceptor_api {
         pub fn poll_accept_bidirectional_stream(
             &mut self,
             cx: &mut core::task::Context,
-        ) -> core::task::Poll<$crate::connection::Result<$crate::stream::BidirectionalStream>> {
-            let (stream, _) = futures::ready!(self
-                .0
-                .poll_accept(Some(s2n_quic_core::stream::StreamType::Bidirectional), cx))?;
-            Ok($crate::stream::BidirectionalStream::new(stream)).into()
+        ) -> core::task::Poll<$crate::connection::Result<Option<$crate::stream::BidirectionalStream>>> {
+            Ok(
+                futures::ready!(self
+                    .0
+                    .poll_accept(Some(s2n_quic_core::stream::StreamType::Bidirectional), cx)
+                )?.map($crate::stream::BidirectionalStream::new)
+            ).into()
         }
 
         /// TODO
@@ -76,7 +78,7 @@ macro_rules! impl_acceptor_api {
         /// ```
         pub async fn accept_receive_stream(
             &mut self,
-        ) -> $crate::connection::Result<$crate::stream::ReceiveStream> {
+        ) -> $crate::connection::Result<Option<$crate::stream::ReceiveStream>> {
             futures::future::poll_fn(|cx| self.poll_accept_receive_stream(cx)).await
         }
 
@@ -90,11 +92,13 @@ macro_rules! impl_acceptor_api {
         pub fn poll_accept_receive_stream(
             &mut self,
             cx: &mut core::task::Context,
-        ) -> core::task::Poll<$crate::connection::Result<$crate::stream::ReceiveStream>> {
-            let (stream, _) = futures::ready!(self
-                .0
-                .poll_accept(Some(s2n_quic_core::stream::StreamType::Unidirectional), cx))?;
-            Ok($crate::stream::ReceiveStream::new(stream)).into()
+        ) -> core::task::Poll<$crate::connection::Result<Option<$crate::stream::ReceiveStream>>> {
+            Ok(
+                futures::ready!(self
+                    .0
+                    .poll_accept(Some(s2n_quic_core::stream::StreamType::Unidirectional), cx)
+                )?.map($crate::stream::ReceiveStream::new)
+            ).into()
         }
     };
 }
@@ -125,8 +129,8 @@ impl futures::stream::Stream for StreamAcceptor {
         cx: &mut core::task::Context<'_>,
     ) -> core::task::Poll<Option<Self::Item>> {
         match futures::ready!(self.poll_accept(cx)) {
-            Ok(stream) => Some(Ok(stream)),
-            Err(connection::Error::Closed) => None,
+            Ok(Some(stream)) => Some(Ok(stream)),
+            Ok(None) => None,
             Err(err) => Some(Err(err)),
         }
         .into()
