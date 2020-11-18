@@ -30,9 +30,9 @@ macro_rules! impl_acceptor_api {
             use s2n_quic_core::stream::StreamType;
             use $crate::stream::{BidirectionalStream, ReceiveStream};
 
-            Ok(futures::ready!(self.0.poll_accept(None, cx))?.map(|stream| match stream {
-                stream if stream.id().stream_type() == StreamType::Unidirectional => ReceiveStream::new(stream).into(),
-                stream => BidirectionalStream::new(stream).into(),
+            Ok(futures::ready!(self.0.poll_accept(None, cx))?.map(|stream| match stream.id().stream_type() {
+                StreamType::Unidirectional => ReceiveStream::new(stream).into(),
+                StreamType::Bidirectional => BidirectionalStream::new(stream).into(),
             }))
             .into()
         }
@@ -61,11 +61,12 @@ macro_rules! impl_acceptor_api {
             &mut self,
             cx: &mut core::task::Context,
         ) -> core::task::Poll<$crate::connection::Result<Option<$crate::stream::BidirectionalStream>>> {
-            Ok(futures::ready!(self
-                .0
-                .poll_accept(Some(s2n_quic_core::stream::StreamType::Bidirectional), cx))?.map(|stream|
-                    $crate::stream::BidirectionalStream::new(stream)
-                )).into()
+            Ok(
+                futures::ready!(self
+                    .0
+                    .poll_accept(Some(s2n_quic_core::stream::StreamType::Bidirectional), cx)
+                )?.map($crate::stream::BidirectionalStream::new)
+            ).into()
         }
 
         /// TODO
@@ -92,11 +93,12 @@ macro_rules! impl_acceptor_api {
             &mut self,
             cx: &mut core::task::Context,
         ) -> core::task::Poll<$crate::connection::Result<Option<$crate::stream::ReceiveStream>>> {
-            Ok(futures::ready!(self
-                .0
-                .poll_accept(Some(s2n_quic_core::stream::StreamType::Unidirectional), cx))?.map(|stream|
-                    $crate::stream::ReceiveStream::new(stream)
-                )).into()
+            Ok(
+                futures::ready!(self
+                    .0
+                    .poll_accept(Some(s2n_quic_core::stream::StreamType::Unidirectional), cx)
+                )?.map($crate::stream::ReceiveStream::new)
+            ).into()
         }
     };
 }
