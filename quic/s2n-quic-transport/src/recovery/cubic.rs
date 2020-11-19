@@ -54,6 +54,15 @@ enum FastRetransmission {
 #[derive(Clone, Debug)]
 pub struct CubicCongestionController {
     cubic: Cubic,
+    //= https://tools.ietf.org/rfc/rfc8312#4.8
+    //# CUBIC MUST employ a slow-start algorithm, when the cwnd is no more
+    //# than ssthresh.
+
+    //= https://tools.ietf.org/rfc/rfc8312#4.8
+    //# Among the slow-start algorithms, CUBIC MAY choose the
+    //# standard TCP slow start [RFC5681] in general networks, or the limited
+    //# slow start [RFC3742] or hybrid slow start [HR08] for fast and long-
+    //# distance networks.
     slow_start: HybridSlowStart,
     max_datagram_size: u16,
     congestion_window: u32,
@@ -125,7 +134,7 @@ impl CongestionController for CubicCongestionController {
 
         if !self.is_congestion_limited() {
             if let CongestionAvoidance(ref mut avoidance_start_time) = self.state {
-                //= https://tools.ietf.org/rfc/rfc8312.txt#5.8
+                //= https://tools.ietf.org/rfc/rfc8312#5.8
                 //# CUBIC does not raise its congestion window size if the flow is
                 //# currently limited by the application instead of the congestion
                 //# window.  In case of long periods when cwnd has not been updated due
@@ -371,35 +380,37 @@ impl CubicCongestionController {
 
         if w_cubic < w_est {
             // TCP-Friendly Region
-            //= https://tools.ietf.org/rfc/rfc8312.txt#4.2
+            //= https://tools.ietf.org/rfc/rfc8312#4.2
             //# When receiving an ACK in congestion avoidance (cwnd could be greater than
             //# or less than W_max), CUBIC checks whether W_cubic(t) is less than
             //# W_est(t).  If so, CUBIC is in the TCP-friendly region and cwnd SHOULD
             //# be set to W_est(t) at each reception of an ACK.
             self.congestion_window = self.packets_to_bytes(w_est);
         } else {
-            //= https://tools.ietf.org/rfc/rfc8312.txt#4.1
+            //= https://tools.ietf.org/rfc/rfc8312#4.1
             //# Upon receiving an ACK during congestion avoidance, CUBIC computes the
             //# window increase rate during the next RTT period using Eq. 1.  It sets
             //# W_cubic(t+RTT) as the candidate target value of the congestion
             //# window
 
             // Concave Region
-            //= https://tools.ietf.org/rfc/rfc8312.txt#4.3
+            //= https://tools.ietf.org/rfc/rfc8312#4.3
             //# When receiving an ACK in congestion avoidance, if CUBIC is not in the
             //# TCP-friendly region and cwnd is less than W_max, then CUBIC is in the
             //# concave region.  In this region, cwnd MUST be incremented by
-            //# (W_cubic(t+RTT) - cwnd)/cwnd for each received ACK
+            //# (W_cubic(t+RTT) - cwnd)/cwnd for each received ACK, where
+            //# W_cubic(t+RTT) is calculated using Eq. 1.
 
             // Convex Region
-            //# https://tools.ietf.org/rfc/rfc8312.txt#4.4
+            //# https://tools.ietf.org/rfc/rfc8312#4.4
             //# When receiving an ACK in congestion avoidance, if CUBIC is not in the
             //# TCP-friendly region and cwnd is larger than or equal to W_max, then
             //# CUBIC is in the convex region.
 
-            //= https://tools.ietf.org/rfc/rfc8312.txt#4.4
+            //= https://tools.ietf.org/rfc/rfc8312#4.4
             //# In this region, cwnd MUST be incremented by
-            //# (W_cubic(t+RTT) - cwnd)/cwnd for each received ACK
+            //# (W_cubic(t+RTT) - cwnd)/cwnd for each received ACK, where
+            //# W_cubic(t+RTT) is calculated using Eq. 1.
 
             // The congestion window is adjusted in the same way in the convex and concave regions.
             // A target congestion window is calculated for where the congestion window should be
@@ -449,11 +460,11 @@ impl CubicCongestionController {
 /// congestion window in the congestion controller.
 #[derive(Clone, Debug)]
 struct Cubic {
-    //= https://tools.ietf.org/rfc/rfc8312.txt#4.1
+    //= https://tools.ietf.org/rfc/rfc8312#4.1
     //# W_max is the window size just before the window is
     //# reduced in the last congestion event.
     w_max: f32,
-    //= https://tools.ietf.org/rfc/rfc8312.txt#4.6
+    //= https://tools.ietf.org/rfc/rfc8312#4.6
     //# a flow remembers the last value of W_max before it
     //# updates W_max for the current congestion event.
     //# Let us call the last value of W_max to be W_last_max.
@@ -463,13 +474,13 @@ struct Cubic {
     max_datagram_size: u16,
 }
 
-//= https://tools.ietf.org/rfc/rfc8312.txt#5.1
+//= https://tools.ietf.org/rfc/rfc8312#5.1
 //# Based on these observations and our experiments, we find C=0.4
 //# gives a good balance between TCP-friendliness and aggressiveness
 //# of window increase.  Therefore, C SHOULD be set to 0.4.
 const C: f32 = 0.4;
 
-//= https://tools.ietf.org/rfc/rfc8312.txt#4.5
+//= https://tools.ietf.org/rfc/rfc8312#4.5
 //# Parameter beta_cubic SHOULD be set to 0.7.
 const BETA_CUBIC: f32 = 0.7;
 
@@ -483,7 +494,7 @@ impl Cubic {
         }
     }
 
-    //= https://tools.ietf.org/rfc/rfc8312.txt#4.1
+    //= https://tools.ietf.org/rfc/rfc8312#4.1
     //# CUBIC uses the following window increase function:
     //#
     //#    W_cubic(t) = C*(t-K)^3 + W_max (Eq. 1)
@@ -502,7 +513,7 @@ impl Cubic {
         C * (t.as_secs_f32() - self.k.as_secs_f32()).powf(3.0) + self.w_max as f32
     }
 
-    //= https://tools.ietf.org/rfc/rfc8312.txt#4.2
+    //= https://tools.ietf.org/rfc/rfc8312#4.2
     //# W_est(t) = W_max*beta_cubic +
     //               [3*(1-beta_cubic)/(1+beta_cubic)] * (t/RTT) (Eq. 4)
     fn w_est(&self, t: Duration, rtt: Duration) -> f32 {
@@ -512,7 +523,7 @@ impl Cubic {
         )
     }
 
-    //= https://tools.ietf.org/rfc/rfc8312.txt#4.5
+    //= https://tools.ietf.org/rfc/rfc8312#4.5
     //# When a packet loss is detected by duplicate ACKs or a network
     //# congestion is detected by ECN-Echo ACKs, CUBIC updates its W_max,
     //# cwnd, and ssthresh as follows.  Parameter beta_cubic SHOULD be set to
@@ -526,7 +537,12 @@ impl Cubic {
     fn multiplicative_decrease(&mut self, cwnd: u32) -> u32 {
         self.w_max = cwnd as f32 / self.max_datagram_size as f32;
 
-        //= https://tools.ietf.org/rfc/rfc8312.txt#4.6
+        //= https://tools.ietf.org/rfc/rfc8312#4.6
+        //# To speed up this bandwidth release by
+        //# existing flows, the following mechanism called "fast convergence"
+        //# SHOULD be implemented.
+
+        //= https://tools.ietf.org/rfc/rfc8312#4.6
         //# With fast convergence, when a congestion event occurs, before the
         //# window reduction of the congestion window, a flow remembers the last
         //# value of W_max before it updates W_max for the current congestion
@@ -560,7 +576,7 @@ impl Cubic {
         (cwnd as f32 * BETA_CUBIC) as u32
     }
 
-    //= https://tools.ietf.org/rfc/rfc8312.txt#4.8
+    //= https://tools.ietf.org/rfc/rfc8312#4.8
     //# In the case when CUBIC runs the hybrid slow start [HR08], it may exit
     //# the first slow start without incurring any packet loss and thus W_max
     //# is undefined.  In this special case, CUBIC switches to congestion
@@ -626,6 +642,10 @@ mod test {
         // K = cubic_root(2304 * 0.75) = 12
         assert_eq!(cubic.k, Duration::from_secs(12));
 
+        //= https://tools.ietf.org/rfc/rfc8312#5.1
+        //= type=test
+        //# Therefore, C SHOULD be set to 0.4.
+
         // W_cubic(t) = C*(t-K)^3 + W_max
         // W_cubic(t) = .4*(t-12)^3 + 2304
         // W_cubic(15) = .4*27 + 2304 = 2314.8
@@ -653,6 +673,7 @@ mod test {
         assert_delta!(cubic.w_est(t, rtt), 80.5882, 0.001);
     }
 
+    #[allow(clippy::float_cmp)]
     #[test]
     #[compliance::tests("https://tools.ietf.org/rfc/rfc8312.txt#4.5")]
     fn multiplicative_decrease() {
@@ -672,10 +693,20 @@ mod test {
             cubic.multiplicative_decrease(80000),
             (80000.0 * BETA_CUBIC) as u32
         );
+        //= https://tools.ietf.org/rfc/rfc8312#4.6
+        //= type=test
+        //# To speed up this bandwidth release by
+        //# existing flows, the following mechanism called "fast convergence"
+        //# SHOULD be implemented.
         // Window max was less than the last max, so fast convergence applies
         assert_delta!(cubic.w_last_max, 80000.0 / max_datagram_size, 0.001);
         // W_max = W_max*(1.0+beta_cubic)/2.0 = W_max * .85
         assert_delta!(cubic.w_max, 80000.0 * 0.85 / max_datagram_size, 0.001);
+
+        //= https://tools.ietf.org/rfc/rfc8312#4.5
+        //= type=test
+        //# Parameter beta_cubic SHOULD be set to 0.7.
+        assert_eq!(0.7, BETA_CUBIC);
     }
 
     #[test]
@@ -758,7 +789,15 @@ mod test {
             PacketNumberSpace::ApplicationData,
         );
 
-        // Round one of Hystart
+        //= https://tools.ietf.org/rfc/rfc8312#4.8
+        //= type=test
+        //# CUBIC MUST employ a slow-start algorithm, when the cwnd is no more
+        //# than ssthresh.  Among the slow-start algorithms, CUBIC MAY choose the
+        //# standard TCP slow start [RFC5681] in general networks, or the limited
+        //# slow start [RFC3742] or hybrid slow start [HR08] for fast and long-
+        //# distance networks.
+
+        // Round one of hybrid slow start
         cc.on_rtt_update(now, &rtt_estimator);
 
         // Latest RTT is 200ms
@@ -775,7 +814,7 @@ mod test {
 
         assert_eq!(cc.bytes_in_flight.0, 2);
 
-        // Round two of Hystart
+        // Round two of hybrid slow start
         for _i in 1..=8 {
             cc.on_rtt_update(now + Duration::from_secs(10), &rtt_estimator);
         }
@@ -837,8 +876,14 @@ mod test {
         assert_eq!(cc.state, Recovery(now, Idle));
     }
 
+    //= https://tools.ietf.org/rfc/rfc8312#5.8
+    //= type=test
+    //# In case of long periods when cwnd has not been updated due
+    //# to the application rate limit, such as idle periods, t in Eq. 1 MUST
+    //# NOT include these periods; otherwise, W_cubic(t) might be very high
+    //# after restarting from these periods.
     #[test]
-    fn congestion_avoidance_start_is_not_set_to_future_time() {
+    fn congestion_avoidance_after_idle_period() {
         let mut cc = CubicCongestionController::new(1000);
         let now = s2n_quic_platform::time::now();
         let rtt_estimator = &RTTEstimator::new(Duration::from_secs(0));
@@ -867,6 +912,9 @@ mod test {
         cc.on_packet_ack(now, 1000, rtt_estimator, now + Duration::from_secs(16));
 
         assert_eq!(cc.bytes_in_flight.0, 2000);
+
+        // Verify congestion avoidance start time was moved from t10 to t15 to account
+        // for the 5 seconds of under utilized time
         assert_eq!(cc.state, CongestionAvoidance(now + Duration::from_secs(15)));
     }
 
@@ -1165,8 +1213,11 @@ mod test {
         assert_eq!(cc.congestion_window, cc2.congestion_window);
     }
 
+    //= https://tools.ietf.org/rfc/rfc8312#4.2
+    //= type=test
+    //# If so, CUBIC is in the TCP-friendly region and cwnd SHOULD
+    //# be set to W_est(t) at each reception of an ACK.
     #[test]
-    #[compliance::tests("https://tools.ietf.org/rfc/rfc8312.txt#4.2")]
     fn on_packet_ack_congestion_avoidance_tcp_friendly_region() {
         let mut cc = CubicCongestionController::new(5000);
 
@@ -1186,8 +1237,12 @@ mod test {
         );
     }
 
+    //= https://tools.ietf.org/rfc/rfc8312#4.3
+    //= type=test
+    //# In this region, cwnd MUST be incremented by
+    //# (W_cubic(t+RTT) - cwnd)/cwnd for each received ACK, where
+    //# W_cubic(t+RTT) is calculated using Eq. 1.
     #[test]
-    #[compliance::tests("https://tools.ietf.org/rfc/rfc8312.txt#4.3")]
     fn on_packet_ack_congestion_avoidance_concave_region() {
         let max_datagram_size = 1200;
         let mut cc = CubicCongestionController::new(max_datagram_size as u16);
@@ -1214,8 +1269,12 @@ mod test {
         assert_eq!(cc.congestion_window, 2_400_180);
     }
 
+    //= https://tools.ietf.org/rfc/rfc8312#4.4
+    //= type=test
+    //# In this region, cwnd MUST be incremented by
+    //# (W_cubic(t+RTT) - cwnd)/cwnd for each received ACK, where
+    //# W_cubic(t+RTT) is calculated using Eq. 1.
     #[test]
-    #[compliance::tests("https://tools.ietf.org/rfc/rfc8312.txt#4.4")]
     fn on_packet_ack_congestion_avoidance_convex_region() {
         let max_datagram_size = 1200;
         let mut cc = CubicCongestionController::new(max_datagram_size);

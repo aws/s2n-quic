@@ -1,0 +1,12 @@
+target = "https://tools.ietf.org/rfc/rfc8312#4.6"
+
+[[exception]]
+quote = '''
+In network environments with only a single
+CUBIC flow and without any other traffic, the fast convergence SHOULD
+be disabled.
+'''
+reason = '''
+s2n-QUIC is unlikely to be used in networks with only a single connection, so
+there isn't much benefit from making this configurable.
+'''
