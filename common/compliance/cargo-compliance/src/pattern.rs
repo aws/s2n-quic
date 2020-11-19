@@ -1,5 +1,3 @@
-#![allow(clippy::unknown_clippy_lints, clippy::manual_strip)] // strip functions were added in 1.45
-
 use crate::{
     annotation::{Annotation, AnnotationSet, AnnotationType},
     parser::ParsedAnnotation,
@@ -54,8 +52,8 @@ impl<'a> Pattern<'a> {
 
             match core::mem::replace(&mut state, ParserState::Search) {
                 ParserState::Search => {
-                    let content = if content.starts_with(self.meta) {
-                        &content[self.meta.len()..]
+                    let content = if let Some(content) = content.strip_prefix(self.meta) {
+                        content
                     } else {
                         continue;
                     };
@@ -71,11 +69,11 @@ impl<'a> Pattern<'a> {
                     state = ParserState::CapturingMeta(capture);
                 }
                 ParserState::CapturingMeta(mut capture) => {
-                    if content.starts_with(self.meta) {
-                        capture.push_meta(&content[self.meta.len()..])?;
+                    if let Some(meta) = content.strip_prefix(self.meta) {
+                        capture.push_meta(meta)?;
                         state = ParserState::CapturingMeta(capture);
-                    } else if content.starts_with(self.content) {
-                        capture.push_content(&content[self.content.len()..]);
+                    } else if let Some(content) = content.strip_prefix(self.content) {
+                        capture.push_content(content);
                         state = ParserState::CapturingContent(capture);
                     } else {
                         annotations.insert(capture.done(line_no, path)?);
@@ -84,8 +82,8 @@ impl<'a> Pattern<'a> {
                 ParserState::CapturingContent(mut capture) => {
                     if content.starts_with(self.meta) {
                         return Err("cannot set metadata while parsing content".into());
-                    } else if content.starts_with(self.content) {
-                        capture.push_content(&content[self.content.len()..]);
+                    } else if let Some(content) = content.strip_prefix(self.content) {
+                        capture.push_content(content);
                         state = ParserState::CapturingContent(capture);
                     } else {
                         annotations.insert(capture.done(line_no, path)?);

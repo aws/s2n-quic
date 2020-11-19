@@ -14,7 +14,7 @@ pub(crate) fn insert<T: IntervalBound + Ord>(
 ) -> Result<usize, IntervalSetError> {
     // this range is intentionally invalid and will only be
     // valid if the `scan` method finds a match
-    #[allow(clippy::unknown_clippy_lints, clippy::reversed_empty_ranges)]
+    #[allow(clippy::reversed_empty_ranges)]
     let replace_range = core::usize::MAX..0;
 
     let mut insertion = Insertion { replace_range };

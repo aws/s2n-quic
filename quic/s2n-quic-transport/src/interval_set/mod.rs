@@ -598,13 +598,12 @@ impl<T: IntervalBound> IntervalSet<T> {
     /// Internal function for searching for a value in the contained intervals
     #[inline]
     fn binary_search_with<
-        'a,
         V,
         EqualFn: Fn(usize) -> V,
         GreaterFn: Fn(usize) -> V,
         LessFn: Fn(usize) -> V,
     >(
-        &'a self,
+        &self,
         value: &T,
         on_equal: EqualFn,
         on_greater: GreaterFn,

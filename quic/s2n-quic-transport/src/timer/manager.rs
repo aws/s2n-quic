@@ -51,7 +51,7 @@ impl<T: Copy> TimerManager<T> {
     }
 
     /// Returns an iterator over expired timers, based on the given [`Timestamp`]
-    pub fn expirations<'a>(&'a mut self, current_time: Timestamp) -> impl Iterator<Item = T> + 'a {
+    pub fn expirations(&mut self, current_time: Timestamp) -> impl Iterator<Item = T> + '_ {
         TimerExpirationIterator {
             timer_manager: self,
             current_time,

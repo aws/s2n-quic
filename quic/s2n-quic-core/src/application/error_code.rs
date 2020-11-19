@@ -1,6 +1,9 @@
 //! Defines QUIC Application Error Codes
 
-use crate::{application::ApplicationErrorExt, varint::VarInt};
+use crate::{
+    application::ApplicationErrorExt,
+    varint::{VarInt, VarIntError},
+};
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#20.2
 //# The management of application error codes is left to application
@@ -26,8 +29,8 @@ impl ApplicationErrorCode {
     ///
     /// This will return the error code if the given value is inside the valid
     /// range for error codes and return `Err` otherwise.
-    pub fn new(value: u64) -> Result<ApplicationErrorCode, ()> {
-        Ok(ApplicationErrorCode(VarInt::new(value).map_err(|_| ())?))
+    pub fn new(value: u64) -> Result<ApplicationErrorCode, VarIntError> {
+        Ok(ApplicationErrorCode(VarInt::new(value)?))
     }
 }
 

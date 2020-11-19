@@ -1,6 +1,3 @@
-// TODO: Remove when used
-#![allow(dead_code)]
-
 use alloc::collections::{
     btree_map::{Iter, Range},
     BTreeMap,
