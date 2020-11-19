@@ -118,11 +118,20 @@ impl<'a, Config: connection::Config> tls::Context<Config::TLSSession>
             ack_interval_limit,
         );
 
+        // TODO use interning for these values
+        // issue: https://github.com/awslabs/s2n-quic/issues/248
+        let sni = application_parameters.sni.map(Bytes::copy_from_slice);
+        let alpn = application_parameters
+            .alpn_protocol
+            .map(Bytes::copy_from_slice);
+
         *self.application = Some(Box::new(ApplicationSpace::new(
             keys,
             self.now,
             stream_manager,
             ack_manager,
+            sni,
+            alpn,
         )));
 
         Ok(())

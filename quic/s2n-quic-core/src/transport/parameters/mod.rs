@@ -527,7 +527,25 @@ impl TransportParameterValidator for InitialMaxStreamDataUni {}
 
 transport_parameter!(InitialMaxStreamsBidi(VarInt), 0x08);
 
-impl TransportParameterValidator for InitialMaxStreamsBidi {}
+impl TransportParameterValidator for InitialMaxStreamsBidi {
+    fn validate(self) -> Result<Self, DecoderError> {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6
+        //# If a max_streams transport parameter or a MAX_STREAMS frame is
+        //# received with a value greater than 2^60, this would allow a maximum
+        //# stream ID that cannot be expressed as a variable-length integer; see
+        //# Section 16.  If either is received, the connection MUST be closed
+        //# immediately with a connection error of type TRANSPORT_PARAMETER_ERROR
+        //# if the offending value was received in a transport parameter or of
+        //# type FRAME_ENCODING_ERROR if it was received in a frame; see
+        //# Section 10.2.
+        decoder_invariant!(
+            *self <= 2u64.pow(60),
+            "initial_max_streams_bidi cannot be greater than 2^60"
+        );
+
+        Ok(self)
+    }
+}
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2
 //# initial_max_streams_uni (0x09):  The initial maximum unidirectional
@@ -540,7 +558,25 @@ impl TransportParameterValidator for InitialMaxStreamsBidi {}
 
 transport_parameter!(InitialMaxStreamsUni(VarInt), 0x09);
 
-impl TransportParameterValidator for InitialMaxStreamsUni {}
+impl TransportParameterValidator for InitialMaxStreamsUni {
+    fn validate(self) -> Result<Self, DecoderError> {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6
+        //# If a max_streams transport parameter or a MAX_STREAMS frame is
+        //# received with a value greater than 2^60, this would allow a maximum
+        //# stream ID that cannot be expressed as a variable-length integer; see
+        //# Section 16.  If either is received, the connection MUST be closed
+        //# immediately with a connection error of type TRANSPORT_PARAMETER_ERROR
+        //# if the offending value was received in a transport parameter or of
+        //# type FRAME_ENCODING_ERROR if it was received in a frame; see
+        //# Section 10.2.
+        decoder_invariant!(
+            *self <= 2u64.pow(60),
+            "initial_max_streams_uni cannot be greater than 2^60"
+        );
+
+        Ok(self)
+    }
+}
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2
 //# ack_delay_exponent (0x0a):  The acknowledgement delay exponent is an

@@ -4,6 +4,7 @@ use crate::{
     connection::{self, ConnectionApi},
     stream::Stream,
 };
+use bytes::Bytes;
 use core::{
     fmt,
     task::{Context, Poll},
@@ -57,10 +58,27 @@ impl Connection {
             .poll_accept(&self.shared_state, stream_type, context)
     }
 
+    pub fn poll_open_stream(
+        &mut self,
+        stream_type: StreamType,
+        context: &Context,
+    ) -> Poll<Result<Stream, connection::Error>> {
+        self.shared_state
+            .poll_open_stream(&self.shared_state, stream_type, context)
+    }
+
     /// Closes the Connection with the provided error code
     ///
     /// This will immediatly terminate all outstanding streams.
     pub fn close(&self, error_code: ApplicationErrorCode) {
         self.shared_state.close_connection(error_code);
+    }
+
+    pub fn sni(&self) -> Option<Bytes> {
+        self.shared_state.sni()
+    }
+
+    pub fn alpn(&self) -> Option<Bytes> {
+        self.shared_state.alpn()
     }
 }
