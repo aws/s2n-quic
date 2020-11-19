@@ -113,6 +113,7 @@ impl<Config: connection::Config> PacketSpaceManager<Config> {
 
     packet_space_api!(ApplicationSpace<Config>, application, application_mut);
 
+    #[allow(dead_code)] // 0RTT hasn't been started yet
     pub fn zero_rtt_crypto(&self) -> Option<&<Config::TLSSession as CryptoSuite>::ZeroRTTCrypto> {
         self.zero_rtt_crypto.as_ref().map(Box::as_ref)
     }

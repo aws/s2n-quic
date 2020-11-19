@@ -156,17 +156,14 @@ impl VarInt {
     }
 
     pub const fn from_u8(v: u8) -> Self {
-        #[allow(clippy::cast_lossless)]
         Self(v as u64)
     }
 
     pub const fn from_u16(v: u16) -> Self {
-        #[allow(clippy::cast_lossless)]
         Self(v as u64)
     }
 
     pub const fn from_u32(v: u32) -> Self {
-        #[allow(clippy::cast_lossless)]
         Self(v as u64)
     }
 

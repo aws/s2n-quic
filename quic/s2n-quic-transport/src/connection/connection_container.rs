@@ -1,9 +1,6 @@
 //! `ConnectionContainer` is a container for all Connections. It manages the permanent
 //! map of all active Connections, as well as a variety of dynamic Connection lists.
 
-// Silence the clippy warning that shows up when using the intrusive adapter
-#![allow(clippy::unneeded_field_pattern, clippy::useless_transmute)]
-
 use crate::{
     connection::{
         Connection, ConnectionInterests, InternalConnectionId, SharedConnectionState,
