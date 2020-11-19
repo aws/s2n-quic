@@ -3,6 +3,18 @@
 use crate::{contexts::WriteContext, transmission};
 use s2n_quic_core::{packet::number::PacketNumber, stream::StreamId, time::Timestamp};
 
+mod data_sender;
+pub mod flag;
+mod incremental_value_sync;
+mod once_sync;
+
+pub use data_sender::{
+    ChunkToFrameWriter, DataSender, DataSenderState, OutgoingDataFlowController,
+};
+pub use flag::Flag;
+pub use incremental_value_sync::IncrementalValueSync;
+pub use once_sync::OnceSync;
+
 /// Carries information about the packet in which a frame is transmitted
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct InflightPacketInfo {
@@ -109,13 +121,3 @@ pub trait ValueToFrameWriter<T>: Default {
         context: &mut W,
     ) -> Option<PacketNumber>;
 }
-
-mod data_sender;
-pub use data_sender::{
-    ChunkToFrameWriter, DataSender, DataSenderState, OutgoingDataFlowController,
-};
-
-mod once_sync;
-pub use once_sync::OnceSync;
-mod incremental_value_sync;
-pub use incremental_value_sync::IncrementalValueSync;

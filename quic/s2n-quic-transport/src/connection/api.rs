@@ -81,4 +81,8 @@ impl Connection {
     pub fn alpn(&self) -> Option<Bytes> {
         self.shared_state.alpn()
     }
+
+    pub fn ping(&self) -> Result<(), connection::Error> {
+        self.shared_state.ping()
+    }
 }

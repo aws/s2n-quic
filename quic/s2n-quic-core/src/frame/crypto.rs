@@ -112,7 +112,7 @@ impl<Data> Crypto<Data> {
     /// store the given amount of data.
     ///
     /// The actual frame size might be lower, but is never allowed to be higher.
-    pub fn get_max_frame_size(min_payload: usize) -> usize {
+    pub const fn get_max_frame_size(min_payload: usize) -> usize {
         size_of::<Tag>() +
         8 /* Offset size */ + 4 /* Size of len */ + min_payload
     }
@@ -150,5 +150,17 @@ impl<'a> Into<CryptoMut<'a>> for Crypto<DecoderBufferMut<'a>> {
             offset: self.offset,
             data: self.data.into_less_safe_slice(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use insta::assert_debug_snapshot;
+
+    #[test]
+    #[cfg_attr(miri, ignore)] // snapshot tests don't work on miri
+    fn max_frame_size_snapshot() {
+        assert_debug_snapshot!(CryptoRef::get_max_frame_size(16));
     }
 }

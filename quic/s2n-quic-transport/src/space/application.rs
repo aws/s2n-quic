@@ -4,6 +4,7 @@ use crate::{
     recovery,
     space::{rx_packet_numbers::AckManager, HandshakeStatus, PacketSpace, TxPacketNumbers},
     stream::AbstractStreamManager,
+    sync::flag,
     transmission,
 };
 use bytes::Bytes;
@@ -47,6 +48,7 @@ pub struct ApplicationSpace<Config: connection::Config> {
     pub crypto: <Config::TLSSession as CryptoSuite>::OneRTTCrypto,
     pub alpn: Option<Bytes>,
     pub sni: Option<Bytes>,
+    ping: flag::Ping,
     processed_packet_numbers: SlidingWindow,
     recovery_manager: recovery::Manager,
 }
@@ -70,6 +72,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
             crypto,
             sni,
             alpn,
+            ping: flag::Ping::default(),
             processed_packet_numbers: SlidingWindow::default(),
             recovery_manager: recovery::Manager::new(
                 PacketNumberSpace::ApplicationData,
@@ -116,13 +119,16 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
 
         let mut outcome = transmission::Outcome::default();
 
-        let payload = transmission::application::Transmission {
+        let payload = transmission::Transmission {
             ack_manager: &mut self.ack_manager,
             context,
-            handshake_status,
+            payload: transmission::application::Payload {
+                handshake_status,
+                ping: &mut self.ping,
+                stream_manager: &mut self.stream_manager,
+            },
             packet_number,
             recovery_manager: &mut self.recovery_manager,
-            stream_manager: &mut self.stream_manager,
             tx_packet_numbers: &mut self.tx_packet_numbers,
             outcome: &mut outcome,
             transmission_constraint,
@@ -219,6 +225,10 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         self.recovery_manager.requires_probe()
     }
 
+    pub fn ping(&mut self) {
+        self.ping.send()
+    }
+
     /// Returns the Packet Number to be used when encoding outgoing packets
     fn packet_number_encoder(&self) -> PacketNumber {
         self.tx_packet_numbers.largest_sent_packet_number_acked()
@@ -233,6 +243,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
             RecoveryContext {
                 ack_manager: &mut self.ack_manager,
                 handshake_status,
+                ping: &mut self.ping,
                 stream_manager: &mut self.stream_manager,
                 tx_packet_numbers: &mut self.tx_packet_numbers,
             },
@@ -244,8 +255,9 @@ impl<Config: connection::Config> transmission::interest::Provider for Applicatio
     fn transmission_interest(&self) -> transmission::Interest {
         transmission::Interest::default()
             + self.ack_manager.transmission_interest()
-            + self.stream_manager.transmission_interest()
+            + self.ping.transmission_interest()
             + self.recovery_manager.transmission_interest()
+            + self.stream_manager.transmission_interest()
     }
 }
 
@@ -258,6 +270,7 @@ impl<Config: connection::Config> connection::finalization::Provider for Applicat
 struct RecoveryContext<'a, Config: connection::Config> {
     ack_manager: &'a mut AckManager,
     handshake_status: &'a mut HandshakeStatus,
+    ping: &'a mut flag::Ping,
     stream_manager: &'a mut AbstractStreamManager<Config::Stream>,
     tx_packet_numbers: &'a mut TxPacketNumbers,
 }
@@ -284,6 +297,7 @@ impl<'a, Config: connection::Config> recovery::Context for RecoveryContext<'a, C
         packet_number_range: &PacketNumberRange,
     ) {
         self.handshake_status.on_packet_ack(packet_number_range);
+        self.ping.on_packet_ack(packet_number_range);
         self.stream_manager.on_packet_ack(packet_number_range);
     }
 
@@ -293,9 +307,10 @@ impl<'a, Config: connection::Config> recovery::Context for RecoveryContext<'a, C
     }
 
     fn on_packet_loss(&mut self, packet_number_range: &PacketNumberRange) {
-        self.handshake_status.on_packet_loss(packet_number_range);
-        self.stream_manager.on_packet_loss(packet_number_range);
         self.ack_manager.on_packet_loss(packet_number_range);
+        self.handshake_status.on_packet_loss(packet_number_range);
+        self.ping.on_packet_loss(packet_number_range);
+        self.stream_manager.on_packet_loss(packet_number_range);
     }
 }
 

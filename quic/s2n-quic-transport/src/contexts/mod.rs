@@ -55,6 +55,14 @@ pub trait WriteContext {
     /// method will return the actual available space for writing a frame in
     /// the `Ok` variant.
     fn reserve_minimum_space_for_frame(&mut self, min_size: usize) -> Result<usize, ()>;
+
+    fn local_endpoint_type(&self) -> EndpointType {
+        self.connection_context().local_endpoint_type()
+    }
+
+    fn connection_id(&self) -> &connection::Id {
+        self.connection_context().connection_id()
+    }
 }
 
 /// Enumerates error values for `on_transmit` calls

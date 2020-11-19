@@ -91,9 +91,11 @@ impl<Config: connection::Config> InitialSpace<Config> {
 
         let mut outcome = transmission::Outcome::default();
 
-        let payload = transmission::early::Transmission {
+        let payload = transmission::Transmission {
             ack_manager: &mut self.ack_manager,
-            crypto_stream: &mut self.crypto_stream,
+            payload: transmission::early::Payload {
+                crypto_stream: &mut self.crypto_stream,
+            },
             context,
             packet_number,
             recovery_manager: &mut self.recovery_manager,
