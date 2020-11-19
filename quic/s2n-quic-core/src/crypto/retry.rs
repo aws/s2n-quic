@@ -56,7 +56,7 @@ pub mod example {
 
     pub const ODCID: [u8; 8] = hex!("8394c8f03e515708");
 
-    pub const VERSION: u32 = 0xff000020;
+    pub const VERSION: u32 = 0xff00_0020;
 
     pub const TOKEN: [u8; 5] = hex!("746f6b656e");
 }

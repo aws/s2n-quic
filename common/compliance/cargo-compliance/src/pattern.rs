@@ -1,3 +1,5 @@
+#![allow(clippy::unknown_clippy_lints, clippy::manual_strip)] // strip functions were added in 1.45
+
 use crate::{
     annotation::{Annotation, AnnotationSet, AnnotationType},
     parser::ParsedAnnotation,

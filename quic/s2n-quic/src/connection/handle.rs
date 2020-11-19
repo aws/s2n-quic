@@ -11,8 +11,7 @@ macro_rules! impl_handle_api {
             &mut self,
             stream_type: $crate::stream::Type,
         ) -> $crate::stream::Result<$crate::stream::LocalStream> {
-            let _ = stream_type;
-            todo!()
+            futures::future::poll_fn(|cx| self.poll_open_stream(stream_type, cx)).await
         }
 
         /// Polls opening a stream with a specific type
@@ -23,13 +22,22 @@ macro_rules! impl_handle_api {
         /// // TODO
         /// ```
         pub fn poll_open_stream(
-            self: core::pin::Pin<&mut Self>,
+            &mut self,
+            stream_type: $crate::stream::Type,
             cx: &mut core::task::Context,
-            stream: $crate::stream::Type,
         ) -> core::task::Poll<$crate::stream::Result<$crate::stream::LocalStream>> {
-            let _ = cx;
-            let _ = stream;
-            todo!()
+            use s2n_quic_core::stream::StreamType;
+            use $crate::stream::{BidirectionalStream, SendStream};
+
+            Ok(
+                match futures::ready!(self.0.poll_open_stream(stream_type, cx))? {
+                    stream if stream_type == StreamType::Unidirectional => {
+                        SendStream::new(stream).into()
+                    }
+                    stream => BidirectionalStream::new(stream).into(),
+                },
+            )
+            .into()
         }
 
         /// Opens a bidirectional stream
@@ -42,7 +50,7 @@ macro_rules! impl_handle_api {
         pub async fn open_bidirectional_stream(
             &mut self,
         ) -> $crate::stream::Result<$crate::stream::BidirectionalStream> {
-            todo!();
+            futures::future::poll_fn(|cx| self.poll_open_bidirectional_stream(cx)).await
         }
 
         /// Polls opening a bidirectional stream
@@ -53,11 +61,15 @@ macro_rules! impl_handle_api {
         /// // TODO
         /// ```
         pub fn poll_open_bidirectional_stream(
-            self: core::pin::Pin<&mut Self>,
+            &mut self,
             cx: &mut core::task::Context,
         ) -> core::task::Poll<$crate::stream::Result<$crate::stream::BidirectionalStream>> {
-            let _ = cx;
-            todo!()
+            use s2n_quic_core::stream::StreamType;
+            use $crate::stream::BidirectionalStream;
+
+            let stream = futures::ready!(self.0.poll_open_stream(StreamType::Bidirectional, cx))?;
+
+            Ok(BidirectionalStream::new(stream)).into()
         }
 
         /// Opens a send stream
@@ -70,7 +82,7 @@ macro_rules! impl_handle_api {
         pub async fn open_send_stream(
             &mut self,
         ) -> $crate::stream::Result<$crate::stream::SendStream> {
-            todo!();
+            futures::future::poll_fn(|cx| self.poll_open_send_stream(cx)).await
         }
 
         /// Polls opening a send stream
@@ -81,11 +93,15 @@ macro_rules! impl_handle_api {
         /// // TODO
         /// ```
         pub fn poll_open_send_stream(
-            self: core::pin::Pin<&mut Self>,
+            &mut self,
             cx: &mut core::task::Context,
         ) -> core::task::Poll<$crate::stream::Result<$crate::stream::SendStream>> {
-            let _ = cx;
-            todo!()
+            use s2n_quic_core::stream::StreamType;
+            use $crate::stream::SendStream;
+
+            let stream = futures::ready!(self.0.poll_open_stream(StreamType::Unidirectional, cx))?;
+
+            Ok(SendStream::new(stream)).into()
         }
 
         /// Returns the local address that this connection is bound to.
@@ -119,10 +135,19 @@ macro_rules! impl_handle_api {
         /// ```rust
         /// // TODO
         /// ```
-        pub fn handshake_status(
-            &self,
-        ) -> $crate::connection::Result<$crate::connection::HandshakeStatus> {
-            todo!()
+        pub fn sni(&self) -> Option<::bytes::Bytes> {
+            self.0.sni()
+        }
+
+        /// TODO
+        ///
+        /// # Examples
+        ///
+        /// ```rust
+        /// // TODO
+        /// ```
+        pub fn alpn(&self) -> Option<::bytes::Bytes> {
+            self.0.alpn()
         }
 
         /// TODO
@@ -162,19 +187,6 @@ macro_rules! impl_handle_api {
             todo!()
         }
 
-        /// Returns the current value of the given metric
-        ///
-        /// # Examples
-        ///
-        /// ```rust
-        /// // TODO
-        /// ```
-        pub fn query<Metric: $crate::connection::Metric>(
-            &self,
-        ) -> $crate::connection::Result<Metric> {
-            todo!()
-        }
-
         /// TODO
         ///
         /// # Examples
@@ -193,9 +205,7 @@ macro_rules! impl_handle_api {
 }
 
 #[derive(Clone, Debug)]
-pub struct Handle {
-    // TODO
-}
+pub struct Handle(s2n_quic_transport::connection::Connection);
 
 impl Handle {
     impl_handle_api!(|handle, call| call!(handle));

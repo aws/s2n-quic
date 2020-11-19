@@ -260,6 +260,12 @@ impl<S: StreamTrait> StreamManagerState<S> {
                     return Err(TransportError::NO_ERROR.with_reason("Connection was closed"));
                 }
 
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6
+                //= type=TODO
+                //= tracking-issue=244
+                //= feature=Stream concurrency
+                //# Endpoints MUST NOT exceed the limit set by their peer.
+
                 // TODO: Check if the peer is allowed to open the stream according to `MAX_STREAMS`.
                 // Otherwise return an error which should lead to a connection error
 
@@ -500,23 +506,45 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
     }
 
     /// Opens the next outgoing stream of a certain type
-    pub fn open(&mut self, stream_type: StreamType) -> Result<StreamId, connection::Error> {
+    pub fn poll_open(
+        &mut self,
+        stream_type: StreamType,
+        _context: &Context,
+    ) -> Poll<Result<StreamId, connection::Error>> {
         // If StreamManager was closed, return the error
         if let Some(error) = self.inner.close_reason {
-            return Err(error);
+            return Err(error).into();
         }
 
         let local_endpoint_type = self.inner.local_endpoint_type;
 
-        let first_unopened_id: StreamId = if let Some(next_id) = *self
+        let first_unopened_id = self
             .inner
             .next_stream_ids
             .get_mut(local_endpoint_type, stream_type)
-        {
-            next_id
-        } else {
-            return Err(connection::Error::StreamIdExhausted);
-        };
+            .ok_or(connection::Error::StreamIdExhausted)?;
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6
+        //= type=TODO
+        //= tracking-issue=244
+        //= feature=Stream concurrency
+        //# Endpoints MUST NOT exceed the limit set by their peer.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6
+        //= type=TODO
+        //= tracking-issue=244
+        //= feature=Stream concurrency
+        //# An endpoint that is unable to open a new stream due to the peer's
+        //# limits SHOULD send a STREAMS_BLOCKED frame (Section 19.14).
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6
+        //= type=TODO
+        //= tracking-issue=244
+        //= feature=Stream concurrency
+        //# An endpoint MUST NOT wait
+        //# to receive this signal before advertising additional credit, since
+        //# doing so will mean that the peer will be blocked for at least an
+        //# entire round trip
 
         // TODO: Check if we can open this Stream according to MAX_STREAMS and
         // return an error otherwise. Also return an error if no more outgoing
@@ -531,7 +559,7 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
 
         self.inner.open_stream(first_unopened_id);
 
-        Ok(first_unopened_id)
+        Ok(first_unopened_id).into()
     }
 
     /// This method gets called when a packet delivery got acknowledged
@@ -652,6 +680,15 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
     {
         let mut events = StreamEvents::new();
 
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6
+        //= type=TODO
+        //= tracking-issue=244
+        //= feature=Stream concurrency
+        //# An endpoint
+        //# that receives a frame with a stream ID exceeding the limit it has
+        //# sent MUST treat this as a connection error of type STREAM_LIMIT_ERROR
+        //# (Section 11).
+
         let result = {
             // If Stream handling causes an error, trigger an internal reset
             self.inner.reset_streams_on_error(|state| {
@@ -722,7 +759,6 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
     }
 
     /// This is called when a `MAX_DATA` frame had been received
-    #[allow(clippy::trivially_copy_pass_by_ref)] // Frames are always by ref
     pub fn on_max_data(&mut self, frame: MaxData) -> Result<(), TransportError> {
         self.inner
             .outgoing_connection_flow_controller
@@ -759,11 +795,22 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
 
     /// This is called when a `STREAMS_BLOCKED` frame had been received
     pub fn on_streams_blocked(&mut self, _frame: &StreamsBlocked) -> Result<(), TransportError> {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6
+        //= type=TODO
+        //= tracking-issue=244
+        //= feature=Stream concurrency
         Ok(()) // TODO: Implement me
     }
 
     /// This is called when a `MAX_STREAMS` frame had been received
     pub fn on_max_streams(&mut self, _frame: &MaxStreams) -> Result<(), TransportError> {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6
+        //= type=TODO
+        //= tracking-issue=244
+        //= feature=Stream concurrency
+        //# A receiver MUST
+        //# ignore any MAX_STREAMS frame that does not increase the stream limit.
+
         Ok(()) // TODO: Implement me
     }
 

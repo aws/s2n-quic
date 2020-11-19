@@ -269,8 +269,6 @@ impl ReceiveStream {
     impl_splittable_stream_api!(|stream| (Some(stream), None));
 
     impl_connection_api!(|_stream| todo!());
-
-    impl_metric_api!();
 }
 
 impl_splittable_stream_trait!(ReceiveStream, |stream| (None, Some(stream)));

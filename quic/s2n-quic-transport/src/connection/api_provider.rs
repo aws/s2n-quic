@@ -6,6 +6,7 @@ use crate::{
     stream::{Stream, StreamError},
 };
 use alloc::sync::Arc;
+use bytes::Bytes;
 use core::task::{Context, Poll};
 use s2n_quic_core::{
     application::ApplicationErrorCode,
@@ -32,5 +33,16 @@ pub(crate) trait ConnectionApiProvider: Sync + Send {
         context: &Context,
     ) -> Poll<Result<Option<Stream>, connection::Error>>;
 
+    fn poll_open_stream(
+        &self,
+        arc_self: &Arc<dyn ConnectionApiProvider>,
+        stream_type: StreamType,
+        context: &Context,
+    ) -> Poll<Result<Stream, connection::Error>>;
+
     fn close_connection(&self, error_code: ApplicationErrorCode);
+
+    fn sni(&self) -> Option<Bytes>;
+
+    fn alpn(&self) -> Option<Bytes>;
 }
