@@ -1,7 +1,10 @@
 use crate::Result;
 use bytes::Bytes;
 use s2n_quic::{stream::BidirectionalStream, Connection, Server};
-use std::{path::PathBuf, sync::Arc};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 use structopt::StructOpt;
 use tokio::{fs::File, io, spawn};
 
@@ -29,7 +32,7 @@ impl Interop {
 
         let mut server = self.server()?;
 
-        let www_dir = Arc::new(self.www_dir.clone());
+        let www_dir: Arc<Path> = Arc::from(self.www_dir.as_path());
 
         while let Some(connection) = server.accept().await {
             println!("Accepted a QUIC connection!");
@@ -40,7 +43,7 @@ impl Interop {
             spawn(handle_h09_connection(connection, www_dir.clone()));
         }
 
-        async fn handle_h09_connection(mut connection: Connection, www_dir: Arc<PathBuf>) {
+        async fn handle_h09_connection(mut connection: Connection, www_dir: Arc<Path>) {
             loop {
                 match connection.accept_bidirectional_stream().await {
                     Ok(Some(stream)) => {
@@ -66,7 +69,7 @@ impl Interop {
 
         async fn handle_h09_stream(
             mut stream: BidirectionalStream,
-            www_dir: Arc<PathBuf>,
+            www_dir: Arc<Path>,
         ) -> Result<()> {
             let path = handle_h09_request(&mut stream).await?;
             let mut abs_path = www_dir.to_path_buf();

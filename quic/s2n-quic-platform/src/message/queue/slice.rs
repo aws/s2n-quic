@@ -103,7 +103,7 @@ impl<'a, Message: tx::Entry + message::Message, B: Behavior> tx::Queue for Slice
         let index = self
             .primary
             .index(&self.secondary)
-            .ok_or_else(|| tx::Error::AtCapacity)?;
+            .ok_or(tx::Error::AtCapacity)?;
 
         self.messages[index].set(message)?;
         self.advance(1);
