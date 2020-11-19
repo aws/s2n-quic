@@ -314,11 +314,11 @@ impl Header {
         Header(header)
     }
 
-    fn version(&self) -> u8 {
+    fn version(self) -> u8 {
         (self.0 & VERSION_MASK) >> VERSION_SHIFT
     }
 
-    fn key_id(&self) -> u8 {
+    fn key_id(self) -> u8 {
         (self.0 & KEY_ID_MASK) >> KEY_ID_SHIFT
     }
 
@@ -327,7 +327,7 @@ impl Header {
     //# constructed in a way that allows the server to identify how it was
     //# provided to a client.  These tokens are carried in the same field,
     //# but require different handling from servers.
-    fn token_source(&self) -> Source {
+    fn token_source(self) -> Source {
         match (self.0 & TOKEN_SOURCE_MASK) >> TOKEN_SOURCE_SHIFT {
             0 => Source::NewTokenFrame,
             1 => Source::RetryPacket,

@@ -63,7 +63,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             endpoint::limits::Outcome::Allow => {
                 // No action
             }
-            endpoint::limits::Outcome::Retry { delay: _ } => {
+            endpoint::limits::Outcome::Retry { .. } => {
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.2
                 //# A server can also use a Retry packet to defer the state and
                 //# processing costs of connection establishment.
@@ -72,7 +72,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                 // Stop processing
                 return Ok(());
             }
-            endpoint::limits::Outcome::Close { delay: _ } => {
+            endpoint::limits::Outcome::Close { .. } => {
                 // Queue close packet
             }
         }
