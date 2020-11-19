@@ -105,7 +105,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
         // Try to decode the first packet in the datagram
         let buffer = DecoderBufferMut::new(payload);
         let (packet, remaining) = if let Ok((packet, remaining)) =
-            ProtectedPacket::decode(buffer, endpoint_context.connection_id_format)
+            ProtectedPacket::decode(buffer, datagram, endpoint_context.connection_id_format)
         {
             (packet, remaining)
         } else {

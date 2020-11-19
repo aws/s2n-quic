@@ -1,3 +1,5 @@
+use crate::connection::id::ConnectionInfo;
+use crate::inet::DatagramInfo;
 use crate::{
     connection,
     crypto::ProtectedPayload,
@@ -55,10 +57,13 @@ impl<'a> HeaderDecoder<'a> {
     pub fn decode_short_destination_connection_id<'b, Validator: connection::id::Validator>(
         &mut self,
         buffer: &DecoderBufferMut<'b>,
+        datagram: &DatagramInfo,
         connection_id_validator: &Validator,
     ) -> Result<CheckedRange, DecoderError> {
-        let destination_connection_id_len = if let Some(len) =
-            connection_id_validator.validate(self.peek.peek().into_less_safe_slice())
+        let connection_info = ConnectionInfo::new(&datagram.remote_address);
+
+        let destination_connection_id_len = if let Some(len) = connection_id_validator
+            .validate(connection_info, self.peek.peek().into_less_safe_slice())
         {
             len
         } else {

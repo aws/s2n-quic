@@ -220,7 +220,7 @@ pub trait ConnectionTrait: Sized {
     ) -> Result<(), TransportError> {
         while !payload.is_empty() {
             if let Ok((packet, remaining)) =
-                ProtectedPacket::decode(payload, connection_id_validator)
+                ProtectedPacket::decode(payload, datagram, connection_id_validator)
             {
                 payload = remaining;
 

@@ -22,6 +22,7 @@ pub mod long;
 
 pub mod number;
 
+use crate::inet::DatagramInfo;
 use handshake::ProtectedHandshake;
 use initial::ProtectedInitial;
 use retry::ProtectedRetry;
@@ -46,9 +47,10 @@ pub enum ProtectedPacket<'a> {
 impl<'a> ProtectedPacket<'a> {
     pub fn decode<Validator: connection::id::Validator>(
         buffer: DecoderBufferMut<'a>,
+        datagram: &DatagramInfo,
         connection_id_validator: &Validator,
     ) -> DecoderBufferMutResult<'a, Self> {
-        BasicPacketDecoder.decode_packet(buffer, connection_id_validator)
+        BasicPacketDecoder.decode_packet(buffer, datagram, connection_id_validator)
     }
 
     /// Returns the packets destination connection ID
@@ -160,6 +162,7 @@ pub trait PacketDecoder<'a> {
     fn decode_packet<Validator: connection::id::Validator>(
         &mut self,
         buffer: DecoderBufferMut<'a>,
+        datagram: &DatagramInfo,
         connection_id_validator: &Validator,
     ) -> Result<(Self::Output, DecoderBufferMut<'a>), Self::Error> {
         let peek = buffer.peek();
@@ -190,7 +193,7 @@ pub trait PacketDecoder<'a> {
         match tag >> 4 {
             short_tag!() => {
                 let (packet, buffer) =
-                    short::ProtectedShort::decode(tag, buffer, connection_id_validator)?;
+                    short::ProtectedShort::decode(tag, buffer, datagram, connection_id_validator)?;
                 let output = self.handle_short_packet(packet)?;
                 Ok((output, buffer))
             }

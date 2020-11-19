@@ -1,5 +1,6 @@
 //! Defines the QUIC connection ID
 
+use crate::inet::SocketAddress;
 use crate::transport::error::TransportError;
 use core::convert::TryFrom;
 use s2n_codec::{decoder_value, Encoder, EncoderValue};
@@ -118,6 +119,20 @@ impl EncoderValue for Id {
     }
 }
 
+/// Information about the connection that may be used
+/// when generating or validating connection IDs
+#[derive(Copy, Clone, Debug)]
+#[non_exhaustive]
+pub struct ConnectionInfo<'a> {
+    pub remote_address: &'a SocketAddress,
+}
+
+impl<'a> ConnectionInfo<'a> {
+    pub fn new(remote_address: &'a SocketAddress) -> Self {
+        Self { remote_address }
+    }
+}
+
 /// Format for connection IDs
 pub trait Format: Validator + Generator {}
 
@@ -132,11 +147,11 @@ pub trait Validator {
     /// data after the connection ID.
     ///
     /// Returns the length of the connection id if successful, otherwise `None` is returned.
-    fn validate(&self, buffer: &[u8]) -> Option<usize>;
+    fn validate(&self, connection_info: ConnectionInfo, buffer: &[u8]) -> Option<usize>;
 }
 
 impl Validator for usize {
-    fn validate(&self, buffer: &[u8]) -> Option<usize> {
+    fn validate(&self, _connection_info: ConnectionInfo, buffer: &[u8]) -> Option<usize> {
         if buffer.len() >= *self {
             Some(*self)
         } else {
@@ -152,7 +167,7 @@ pub trait Generator {
     /// an external observer (that is, one that does not cooperate with the
     /// issuer) to correlate them with other connection IDs for the same
     /// connection.
-    fn generate(&mut self) -> (Id, Option<core::time::Duration>);
+    fn generate(&mut self, connection_info: ConnectionInfo) -> (Id, Option<core::time::Duration>);
 }
 
 #[cfg(test)]
@@ -184,13 +199,16 @@ pub mod testing {
     pub struct Format(u64);
 
     impl Validator for Format {
-        fn validate(&self, _buffer: &[u8]) -> Option<usize> {
+        fn validate(&self, _connection_info: ConnectionInfo, _buffer: &[u8]) -> Option<usize> {
             Some(core::mem::size_of::<u64>())
         }
     }
 
     impl Generator for Format {
-        fn generate(&mut self) -> (Id, Option<core::time::Duration>) {
+        fn generate(
+            &mut self,
+            _connection_info: ConnectionInfo,
+        ) -> (Id, Option<core::time::Duration>) {
             let id = (&self.0.to_be_bytes()[..]).try_into().unwrap();
             self.0 += 1;
             (id, None)

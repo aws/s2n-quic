@@ -1,3 +1,4 @@
+use crate::connection::id::ConnectionInfo;
 use crate::{
     connection::{self, id::Generator as _, SynchronizedSharedConnectionState, Trait as _},
     endpoint::{self, Limits as _},
@@ -92,9 +93,12 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
 
         let internal_connection_id = self.connection_id_generator.generate_id();
 
+        let connection_info = ConnectionInfo::new(&datagram.remote_address);
+
         // TODO store the expiration of the connection ID
-        let (local_connection_id, _connection_id_expiration) =
-            endpoint_context.connection_id_format.generate();
+        let (local_connection_id, _connection_id_expiration) = endpoint_context
+            .connection_id_format
+            .generate(connection_info);
 
         let mut connection_id_mapper_registration = self
             .connection_id_mapper
