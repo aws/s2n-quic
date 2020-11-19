@@ -149,6 +149,12 @@ impl Manager {
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7
         //# Similar to TCP, packets containing only ACK frames do not count
         //# towards bytes in flight and are not congestion controlled.
+
+        // Everything else (including probe packets) are counted, as specified below:
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.5
+        //# A sender MUST however count these packets as being additionally in
+        //# flight, since these packets add network load without establishing
+        //# packet loss.
         let congestion_controlled_bytes = if outcome.is_congestion_controlled {
             outcome.bytes_sent
         } else {
@@ -647,7 +653,7 @@ impl Pto {
         if self.timer.poll_expiration(timestamp).is_ready() {
             //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
             //# When a PTO timer expires, a sender MUST send at least one ack-
-            //# eliciting packet in the packet number space as a probe
+            //# eliciting packet in the packet number space as a probe.
 
             //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.2.1
             //# Since the server could be blocked until more datagrams are received
@@ -656,8 +662,10 @@ impl Pto {
             //# its address validation
 
             //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
-            //# An endpoint MAY send up to two full-
-            //# sized datagrams containing ack-eliciting packets
+            //# An endpoint MAY send up to two full-sized datagrams containing
+            //# ack-eliciting packets, to avoid an expensive consecutive PTO
+            //# expiration due to a single lost datagram or transmit data from
+            //# multiple packet number spaces.
 
             //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
             //# Sending two packets on PTO
@@ -688,9 +696,12 @@ impl Pto {
                 //# UDP datagram with a payload of at least 1200 bytes.
 
                 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.9
-                // Client sends an anti-deadlock packet: Initial is padded
-                // to earn more anti-amplification credit,
-                // a Handshake packet proves address ownership.
+                //# // Client sends an anti-deadlock packet: Initial is padded
+                //# // to earn more anti-amplification credit,
+                //# // a Handshake packet proves address ownership.
+
+                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
+                //# All probe packets sent on a PTO MUST be ack-eliciting.
 
                 // The early transmission will automatically ensure all initial packets sent by the
                 // client are padded to 1200 bytes
@@ -1247,9 +1258,14 @@ mod test {
         assert_eq!(path.congestion_controller.on_packets_lost, 0);
     }
 
-    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.3")]
     #[test]
     fn persistent_congestion() {
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.2
+        //= type=test
+        //# A sender that does not have state for all packet
+        //# number spaces or an implementation that cannot compare send times
+        //# across packet number spaces MAY use state for just the packet number
+        //# space that was acknowledged.
         let space = PacketNumberSpace::ApplicationData;
         let rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
         let mut manager = Manager::new(space, Duration::from_millis(100));
@@ -1483,6 +1499,75 @@ mod test {
         assert_eq!(Some(true), path.congestion_controller.persistent_congestion);
     }
 
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.2
+    //= type=test
+    //# The persistent congestion period SHOULD NOT start until there is at
+    //# least one RTT sample.
+    #[test]
+    fn persistent_congestion_period_does_not_start_until_rtt_sample() {
+        let space = PacketNumberSpace::ApplicationData;
+        let mut manager = Manager::new(space, Duration::from_millis(100));
+        let mut path = Path::new(
+            Default::default(),
+            connection::Id::EMPTY,
+            RTTEstimator::new(Duration::from_millis(10)),
+            MockCongestionController::default(),
+            true,
+        );
+        let recovery_context = &MockContext::default();
+        let time_zero = s2n_quic_platform::time::now() + Duration::from_secs(10);
+
+        let outcome = transmission::Outcome {
+            ack_elicitation: AckElicitation::Eliciting,
+            is_congestion_controlled: true,
+            bytes_sent: 1,
+        };
+
+        // t=0: Send packet #1 (app data)
+        manager.on_packet_sent(
+            space.new_packet_number(VarInt::from_u8(1)),
+            outcome,
+            time_zero,
+            &mut path,
+            recovery_context,
+        );
+
+        // t=10: Send packet #2 (app data)
+        manager.on_packet_sent(
+            space.new_packet_number(VarInt::from_u8(2)),
+            outcome,
+            time_zero + Duration::from_secs(10),
+            &mut path,
+            recovery_context,
+        );
+
+        // t=20: Send packet #3 (app data)
+        manager.on_packet_sent(
+            space.new_packet_number(VarInt::from_u8(3)),
+            outcome,
+            time_zero + Duration::from_secs(20),
+            &mut path,
+            recovery_context,
+        );
+
+        // t=20.1: Recv acknowledgement of #3. The first RTT sample is collected
+        //         now, at t=20.1
+        ack_packets(
+            3..=3,
+            time_zero + Duration::from_millis(20100),
+            &mut path,
+            &mut manager,
+        );
+
+        // There is no persistent congestion, because the lost packets were all
+        // sent prior to the first RTT sample
+        assert_eq!(path.congestion_controller.on_packets_lost, 1);
+        assert_eq!(
+            path.congestion_controller.persistent_congestion,
+            Some(false)
+        );
+    }
+
     #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1")]
     #[test]
     fn update_pto_timer() {
@@ -1632,6 +1717,69 @@ mod test {
         assert!(manager.pto.timer.is_armed());
     }
 
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+    //= type=test
+    //# The PTO period MUST be at least kGranularity, to avoid the timer
+    //# expiring immediately.
+    #[test]
+    fn pto_must_be_at_least_k_granularity() {
+        let space = PacketNumberSpace::Handshake;
+        let max_ack_delay = Duration::from_millis(0);
+        let mut manager = Manager::new(space, max_ack_delay);
+        let now = s2n_quic_platform::time::now();
+
+        let mut path = Path::new(
+            Default::default(),
+            connection::Id::EMPTY,
+            RTTEstimator::new(max_ack_delay),
+            Unlimited::default(),
+            false,
+        );
+
+        // Update RTT with the smallest possible sample
+        path.rtt_estimator.update_rtt(
+            Duration::from_millis(0),
+            Duration::from_nanos(1),
+            now,
+            true,
+            space,
+        );
+
+        manager.pto.update(&path, now);
+
+        assert!(manager.pto.timer.is_armed());
+        assert!(manager.pto.timer.iter().next().cloned().unwrap() >= now + K_GRANULARITY);
+    }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.2
+    //= type=test
+    //# When no previous RTT is available, the initial RTT
+    //# SHOULD be set to 333ms, resulting in a 1 second initial timeout, as
+    //# recommended in [RFC6298].
+    #[test]
+    fn one_second_pto_when_no_previous_rtt_available() {
+        let space = PacketNumberSpace::Handshake;
+        let max_ack_delay = Duration::from_millis(0);
+        let mut manager = Manager::new(space, max_ack_delay);
+        let now = s2n_quic_platform::time::now();
+
+        let path = Path::new(
+            Default::default(),
+            connection::Id::EMPTY,
+            RTTEstimator::new(max_ack_delay),
+            Unlimited::default(),
+            false,
+        );
+
+        manager.pto.update(&path, now);
+
+        assert!(manager.pto.timer.is_armed());
+        assert_eq!(
+            manager.pto.timer.iter().next().cloned(),
+            Some(now + Duration::from_millis(999))
+        );
+    }
+
     #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1")]
     #[test]
     fn on_timeout() {
@@ -1724,6 +1872,19 @@ mod test {
         manager.pto.timer.set(now - Duration::from_secs(5));
         manager.on_timeout(&mut path, now, &mut context);
         assert_eq!(expected_pto_backoff, path.pto_backoff);
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
+        //= type=test
+        //# When a PTO timer expires, a sender MUST send at least one ack-
+        //# eliciting packet in the packet number space as a probe.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
+        //= type=test
+        //# An endpoint
+        //# MAY send up to two full-sized datagrams containing ack-eliciting
+        //# packets, to avoid an expensive consecutive PTO expiration due to a
+        //# single lost datagram or transmit data from multiple packet number
+        //# spaces.
         assert_eq!(manager.pto.state, RequiresTransmission(2));
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2
@@ -1799,6 +1960,12 @@ mod test {
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
         //= type=test
         //# When the PTO timer expires, an ack-eliciting packet MUST be sent.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
+        //= type=test
+        //# When there is no data to send, the sender SHOULD send
+        //# a PING or other ack-eliciting frame in a single packet, re-arming the
+        //# PTO timer.
         assert!(context.ack_elicitation().is_ack_eliciting());
         assert_eq!(manager.pto.state, PtoState::Idle);
 
@@ -1877,6 +2044,41 @@ mod test {
 
         manager.pto.state = PtoState::Idle;
         assert!(!manager.requires_probe());
+    }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.5
+    //= type=test
+    //# A sender MUST however count these packets as being additionally in
+    //# flight, since these packets add network load without establishing
+    //# packet loss.
+    #[test]
+    fn probe_packets_count_towards_bytes_in_flight() {
+        let space = PacketNumberSpace::ApplicationData;
+        let mut manager = Manager::new(space, Duration::from_millis(10));
+
+        manager.pto.state = PtoState::RequiresTransmission(2);
+
+        let mut path = Path::new(
+            Default::default(),
+            connection::Id::EMPTY,
+            RTTEstimator::new(manager.max_ack_delay),
+            MockCongestionController::default(),
+            true,
+        );
+        let outcome = transmission::Outcome {
+            ack_elicitation: AckElicitation::Eliciting,
+            is_congestion_controlled: true,
+            bytes_sent: 100,
+        };
+        manager.on_packet_sent(
+            space.new_packet_number(VarInt::from_u8(1)),
+            outcome,
+            s2n_quic_platform::time::now(),
+            &mut path,
+            &MockContext::default(),
+        );
+
+        assert_eq!(path.congestion_controller.bytes_in_flight, 100);
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.1.1

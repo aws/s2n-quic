@@ -416,6 +416,11 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
     /// This method is used in order to update the connection timer only once
     /// per interaction with the connection and thereby to batch timer updates.
     fn update_connection_timer(&mut self, shared_state: &mut SharedConnectionState<Self::Config>) {
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+        //# When ack-eliciting packets in multiple packet number spaces are in
+        //# flight, the timer MUST be set to the earlier value of the Initial and
+        //# Handshake packet number spaces.
+
         // find the earliest armed timer
         let earliest = core::iter::empty()
             .chain(self.timers.iter())

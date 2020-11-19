@@ -1,0 +1,10 @@
+target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3"
+
+[[TODO]]
+quote = '''
+In such
+cases, an endpoint SHOULD subtract such local delays from its RTT
+sample until the handshake is confirmed.
+'''
+feature = "Local delays in RTT"
+tracking-issue = "251"

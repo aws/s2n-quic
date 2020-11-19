@@ -1,0 +1,40 @@
+target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.7"
+
+[[TODO]]
+quote = '''
+A sender SHOULD pace sending of all in-flight packets based on input
+from the congestion controller.
+'''
+feature = "Packet pacing"
+tracking-issue = "146"
+
+[[TODO]]
+quote = '''
+Senders MUST either use pacing or limit such bursts.
+'''
+feature = "Packet pacing"
+tracking-issue = "146"
+
+[[TODO]]
+quote = '''
+Senders SHOULD limit bursts to the initial congestion window; see
+Section 7.2.
+'''
+feature = "Packet pacing"
+tracking-issue = "146"
+
+[[TODO]]
+quote = '''
+A sender with knowledge that the network path to the
+receiver can absorb larger bursts MAY use a higher limit.
+'''
+feature = "Packet pacing"
+tracking-issue = "146"
+
+[[TODO]]
+quote = '''
+Packets containing only ACK frames SHOULD therefore not be
+paced, to avoid delaying their delivery to the peer.
+'''
+feature = "Packet pacing"
+tracking-issue = "146"

@@ -1,0 +1,10 @@
+target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.1.2"
+
+[[TODO]]
+quote = '''
+Implementations MAY experiment with absolute thresholds, thresholds
+from previous connections, adaptive thresholds, or including RTT
+variation.
+'''
+feature = "Adaptive loss thresholds"
+tracking-issue = "252"

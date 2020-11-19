@@ -1,0 +1,13 @@
+target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.2"
+
+[[exception]]
+quote = '''
+A connection MAY use the delay between sending a PATH_CHALLENGE and
+receiving a PATH_RESPONSE to set the initial RTT (see kInitialRtt in
+Appendix A.2) for a new path, but the delay SHOULD NOT be considered
+an RTT sample.
+'''
+reason = '''
+There isn't much benefit from doing this since the initial RTT is
+discarded after the first RTT sample.
+'''

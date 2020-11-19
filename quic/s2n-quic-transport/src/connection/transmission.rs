@@ -90,6 +90,9 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
             //# When the PTO timer expires, an ack-eliciting packet MUST be sent.  An
             //# endpoint SHOULD include new data in this packet.  Previously sent
             //# data MAY be sent if no new data can be sent.
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.5
+            //# Probe packets MUST NOT be blocked by the congestion controller.
             transmission::Constraint::None
         } else {
             self.context.path.transmission_constraint()

@@ -1,0 +1,14 @@
+target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.2"
+
+[[exception]]
+quote = '''
+Since network congestion is not affected by packet number spaces,
+persistent congestion SHOULD consider packets sent across packet
+number spaces.
+'''
+reason = '''
+This would require a large refactor to enable comparing sent packets
+across all packet number spaces. The benefit is minimal, since it would
+just allow for persistent congestion while the handshake is still underway.
+'''
+

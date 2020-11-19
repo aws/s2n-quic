@@ -1,0 +1,12 @@
+target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.3"
+
+[[TODO]]
+quote = '''
+To speed up handshake completion under these conditions, an endpoint
+MAY, for a limited number of occasions per each connection, send a
+packet containing unacknowledged CRYPTO data earlier than the PTO
+expiry, subject to the address validation limits in Section 8.1 of
+[QUIC-TRANSPORT].
+'''
+feature = "Speeding up handshake completion"
+tracking-issue = "253"

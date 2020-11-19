@@ -1,0 +1,10 @@
+target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.1"
+
+[[TODO]]
+quote = '''
+Implementations with adaptive time
+thresholds MAY choose to start with smaller initial reordering
+thresholds to minimize recovery latency.
+'''
+feature = "Adaptive loss thresholds"
+tracking-issue = "252"

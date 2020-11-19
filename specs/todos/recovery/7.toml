@@ -1,0 +1,12 @@
+target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7"
+
+[[TODO]]
+quote = '''
+Unlike
+TCP, QUIC can detect the loss of these packets and MAY use that
+information to adjust the congestion controller or the rate of ACK-
+only packets being sent, but this document does not describe a
+mechanism for doing so.
+'''
+feature = "Detect loss of ack-only packets"
+tracking-issue = "255"

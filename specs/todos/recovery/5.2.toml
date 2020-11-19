@@ -1,0 +1,20 @@
+target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.2"
+
+[[TODO]]
+quote = '''
+Endpoints MAY re-establish the min_rtt at other times in the
+connection, such as when traffic volume is low and an acknowledgement
+is received with a low acknowledgement delay.
+'''
+feature = "Re-establishing min_rtt"
+tracking-issue = "249"
+
+[[TODO]]
+quote = '''
+Implementations SHOULD
+NOT refresh the min_rtt value too often, since the actual minimum RTT
+of the path is not frequently observable.
+'''
+feature = "Re-establishing min_rtt"
+tracking-issue = "249"
+
