@@ -1,0 +1,11 @@
+target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4"
+
+[[TODO]]
+quote = '''
+Implementations MAY use
+alternative strategies for determining the content of probe packets,
+including sending new or retransmitted data based on the
+application's priorities.
+'''
+feature = "Probe packet configuration"
+tracking-issue = "254"

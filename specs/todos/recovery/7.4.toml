@@ -1,0 +1,19 @@
+target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.4"
+
+[[TODO]]
+quote = '''
+Endpoints MAY ignore the
+loss of Handshake, 0-RTT, and 1-RTT packets that might have arrived
+before the peer had packet protection keys to process those packets.
+'''
+feature = "Ignoring loss of undecryptable packets"
+tracking-issue = "149"
+
+[[TODO]]
+quote = '''
+Endpoints MUST NOT ignore the loss of packets that were sent after
+the earliest acknowledged packet in a given packet number space.
+'''
+feature = "Ignoring loss of undecryptable packets"
+tracking-issue = "149"
+

@@ -155,6 +155,13 @@ impl RTTEstimator {
         //#    the resulting value is smaller than the min_rtt.
         if self.min_rtt + ack_delay < self.latest_rtt {
             adjusted_rtt -= ack_delay;
+        } else if !is_handshake_confirmed {
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3
+            //# Therefore, prior to handshake
+            //# confirmation, an endpoint MAY ignore RTT samples if adjusting the RTT
+            //# sample for acknowledgement delay causes the sample to be less than
+            //# the min_rtt.
+            return;
         }
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3
@@ -413,6 +420,35 @@ mod test {
             rtt_estimator.smoothed_rtt,
             7 * prev_smoothed_rtt / 8 + rtt_sample / 8
         );
+    }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3
+    //= type=test
+    //# Therefore, prior to handshake
+    //# confirmation, an endpoint MAY ignore RTT samples if adjusting the RTT
+    //# sample for acknowledgement delay causes the sample to be less than
+    //# the min_rtt.
+    #[test]
+    fn prior_to_handshake_ignore_if_less_than_min_rtt() {
+        let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(200));
+        let now = NoopClock.get_time();
+        let smoothed_rtt = Duration::from_millis(700);
+
+        rtt_estimator.min_rtt = Duration::from_millis(500);
+        rtt_estimator.smoothed_rtt = smoothed_rtt;
+        rtt_estimator.first_rtt_sample = Some(now);
+
+        let rtt_sample = Duration::from_millis(600);
+
+        rtt_estimator.update_rtt(
+            Duration::from_millis(200),
+            rtt_sample,
+            now,
+            false,
+            PacketNumberSpace::ApplicationData,
+        );
+
+        assert_eq!(rtt_estimator.smoothed_rtt, smoothed_rtt);
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3

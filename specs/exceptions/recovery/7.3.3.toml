@@ -1,0 +1,16 @@
+target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.3"
+
+[[exception]]
+quote = '''
+A sender in congestion avoidance uses an Additive Increase
+Multiplicative Decrease (AIMD) approach that MUST limit the increase
+to the congestion window to at most one maximum datagram size for
+each congestion window that is acknowledged.
+'''
+reason = '''
+The default congestion controller is CUBIC and not NewReno,
+and CUBIC does not specify this limit. However, the Linux implementation
+of CUBIC does limit the congestion window increase to 1 packet for
+2 packets acked. The s2n-QUIC implementation of CUBIC follows the Linux
+implementation by limiting the increase on each ACK to half the acked bytes.
+'''

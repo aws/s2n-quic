@@ -283,14 +283,6 @@ impl CongestionController for CubicCongestionController {
         self.state = Recovery(event_time, RequiresTransmission);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.2
-        //# On entering a recovery period, a sender MUST set the slow start threshold
-        //# to half the value of the congestion window when loss is detected. The
-        //# congestion window MUST be set to the reduced value of the slow start
-        //# threshold before exiting the recovery period.
-        // Since this is CUBIC and not NewReno, the slow start threshold is
-        // set according to CUBIC.
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.2
         //# Implementations MAY reduce the congestion window immediately upon
         //# entering a recovery period or use other mechanisms, such as
         //# Proportional Rate Reduction ([PRR]), to reduce the congestion window
@@ -943,10 +935,6 @@ mod test {
         //# Proportional Rate Reduction ([PRR]), to reduce the congestion window
         //# more gradually.
         assert_eq!(cc.congestion_window, (100_000.0 * BETA_CUBIC) as u32);
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.2
-        //= type=test
-        //# The congestion window MUST be set to the reduced value of
-        //# the slow start threshold before exiting the recovery period.
         assert_eq!(cc.slow_start.threshold, (100_000.0 * BETA_CUBIC) as u32);
     }
 

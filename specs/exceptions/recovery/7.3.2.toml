@@ -1,0 +1,22 @@
+target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.2"
+
+[[exception]]
+quote = '''
+On entering a recovery period, a sender MUST set the slow start
+threshold to half the value of the congestion window when loss is
+detected.
+'''
+reason = '''
+Since the default congestion controller is CUBIC and not NewReno,
+the slow start threshold is set to congestion window * beta_cubic.
+'''
+
+[[exception]]
+quote = '''
+The congestion window MUST be set to the reduced value of
+the slow start threshold before exiting the recovery period.
+'''
+reason = '''
+Since the default congestion controller is CUBIC and not NewReno,
+the congestion window is set to congestion window * beta_cubic.
+'''
