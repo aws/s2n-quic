@@ -212,6 +212,9 @@ impl<ConnectionConfigType: connection::Config> ConnectionApiProvider
 
         space.ping();
 
+        // Notify the connection it needs to send a packet
+        shared_state.wakeup_handle.wakeup();
+
         Ok(())
     }
 }
