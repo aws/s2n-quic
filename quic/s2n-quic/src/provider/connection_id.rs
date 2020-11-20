@@ -26,10 +26,9 @@ pub mod random {
         time::Duration,
     };
     use rand::prelude::*;
-    use s2n_quic_core::connection::id::ConnectionInfo;
     use s2n_quic_core::connection::{
         self,
-        id::{Generator, Validator},
+        id::{ConnectionInfo, Generator, Validator},
     };
 
     #[derive(Debug, Default)]

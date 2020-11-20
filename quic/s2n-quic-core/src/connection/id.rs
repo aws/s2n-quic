@@ -1,7 +1,6 @@
 //! Defines the QUIC connection ID
 
-use crate::inet::SocketAddress;
-use crate::transport::error::TransportError;
+use crate::{inet::SocketAddress, transport::error::TransportError};
 use core::convert::TryFrom;
 use s2n_codec::{decoder_value, Encoder, EncoderValue};
 

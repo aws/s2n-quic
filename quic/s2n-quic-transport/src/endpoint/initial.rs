@@ -1,6 +1,9 @@
-use crate::connection::id::ConnectionInfo;
 use crate::{
-    connection::{self, id::Generator as _, SynchronizedSharedConnectionState, Trait as _},
+    connection::{
+        self,
+        id::{ConnectionInfo, Generator as _},
+        SynchronizedSharedConnectionState, Trait as _,
+    },
     endpoint::{self, Limits as _},
     recovery::congestion_controller::{self, Endpoint as _},
     space::PacketSpaceManager,

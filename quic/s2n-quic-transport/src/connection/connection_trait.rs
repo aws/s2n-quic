@@ -1,9 +1,8 @@
 //! This module contains the implementation of QUIC `Connections` and their management
 
-use crate::connection::id::ConnectionInfo;
 use crate::{
     connection::{
-        self, connection_interests::ConnectionInterests,
+        self, connection_interests::ConnectionInterests, id::ConnectionInfo,
         internal_connection_id::InternalConnectionId, shared_state::SharedConnectionState,
         CloseReason as ConnectionCloseReason, Parameters as ConnectionParameters,
     },
