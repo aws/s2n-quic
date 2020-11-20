@@ -22,6 +22,7 @@ pub mod long;
 
 pub mod number;
 
+use connection::id::ConnectionInfo;
 use handshake::ProtectedHandshake;
 use initial::ProtectedInitial;
 use retry::ProtectedRetry;
@@ -46,9 +47,10 @@ pub enum ProtectedPacket<'a> {
 impl<'a> ProtectedPacket<'a> {
     pub fn decode<Validator: connection::id::Validator>(
         buffer: DecoderBufferMut<'a>,
+        connection_info: &ConnectionInfo,
         connection_id_validator: &Validator,
     ) -> DecoderBufferMutResult<'a, Self> {
-        BasicPacketDecoder.decode_packet(buffer, connection_id_validator)
+        BasicPacketDecoder.decode_packet(buffer, connection_info, connection_id_validator)
     }
 
     /// Returns the packets destination connection ID
@@ -160,6 +162,7 @@ pub trait PacketDecoder<'a> {
     fn decode_packet<Validator: connection::id::Validator>(
         &mut self,
         buffer: DecoderBufferMut<'a>,
+        connection_info: &ConnectionInfo,
         connection_id_validator: &Validator,
     ) -> Result<(Self::Output, DecoderBufferMut<'a>), Self::Error> {
         let peek = buffer.peek();
@@ -189,8 +192,12 @@ pub trait PacketDecoder<'a> {
 
         match tag >> 4 {
             short_tag!() => {
-                let (packet, buffer) =
-                    short::ProtectedShort::decode(tag, buffer, connection_id_validator)?;
+                let (packet, buffer) = short::ProtectedShort::decode(
+                    tag,
+                    buffer,
+                    connection_info,
+                    connection_id_validator,
+                )?;
                 let output = self.handle_short_packet(packet)?;
                 Ok((output, buffer))
             }
@@ -223,8 +230,12 @@ mod snapshots {
                     crate::packet::ProtectedPacket,
                     concat!("src/packet/test_samples/", stringify!($name), ".bin"),
                     |buffer| {
+                        let remote_address = crate::inet::ip::SocketAddress::default();
+                        let connection_info =
+                            crate::connection::id::ConnectionInfo::new(&remote_address);
                         crate::packet::ProtectedPacket::decode(
                             buffer,
+                            &connection_info,
                             &long::DESTINATION_CONNECTION_ID_MAX_LEN,
                         )
                         .unwrap()

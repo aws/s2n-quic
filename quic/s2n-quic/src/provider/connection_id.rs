@@ -28,7 +28,7 @@ pub mod random {
     use rand::prelude::*;
     use s2n_quic_core::connection::{
         self,
-        id::{Generator, Validator},
+        id::{ConnectionInfo, Generator, Validator},
     };
 
     #[derive(Debug, Default)]
@@ -105,7 +105,10 @@ pub mod random {
     }
 
     impl Generator for Format {
-        fn generate(&mut self) -> (connection::Id, Option<Duration>) {
+        fn generate(
+            &mut self,
+            _connection_info: &ConnectionInfo,
+        ) -> (connection::Id, Option<Duration>) {
             let mut id = [0u8; connection::id::MAX_LEN];
             let id = &mut id[..self.len];
             rand::thread_rng().fill_bytes(id);
@@ -115,7 +118,7 @@ pub mod random {
     }
 
     impl Validator for Format {
-        fn validate(&self, buffer: &[u8]) -> Option<usize> {
+        fn validate(&self, _connection_info: &ConnectionInfo, buffer: &[u8]) -> Option<usize> {
             if buffer.len() >= self.len {
                 Some(self.len)
             } else {
@@ -126,11 +129,14 @@ pub mod random {
 
     #[test]
     fn generator_test() {
+        let remote_address = &s2n_quic_core::inet::SocketAddress::default();
+        let connection_info = ConnectionInfo::new(remote_address);
+
         for len in 0..connection::id::MAX_LEN {
             let mut format = Format::builder().with_len(len).unwrap().build().unwrap();
 
-            let (id, _) = format.generate();
-            assert_eq!(format.validate(id.as_ref()), Some(len));
+            let (id, _) = format.generate(&connection_info);
+            assert_eq!(format.validate(&connection_info, id.as_ref()), Some(len));
             assert_eq!(id.len(), len);
         }
     }

@@ -1,6 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, Benchmark, Criterion, Throughput};
 use s2n_codec::DecoderBufferMut;
-use s2n_quic_core::packet::ProtectedPacket;
+use s2n_quic_core::{connection::id::ConnectionInfo, inet::SocketAddress, packet::ProtectedPacket};
 
 fn decoding(c: &mut Criterion) {
     macro_rules! benchmark {
@@ -22,7 +22,11 @@ fn decoding(c: &mut Criterion) {
                         });
 
                         let buffer = DecoderBufferMut::new(&mut data);
-                        let _ = black_box(ProtectedPacket::decode(buffer, &20).unwrap());
+                        let remote_address = SocketAddress::default();
+                        let connection_info = ConnectionInfo::new(&remote_address);
+                        let _ = black_box(
+                            ProtectedPacket::decode(buffer, &connection_info, &20).unwrap(),
+                        );
                     })
                 })
                 .throughput(Throughput::Bytes(test.len() as u64)),

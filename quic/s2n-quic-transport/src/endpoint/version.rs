@@ -175,6 +175,7 @@ mod tests {
     use super::*;
     use s2n_codec::{DecoderBufferMut, Encoder, EncoderBuffer};
     use s2n_quic_core::{
+        connection::id::ConnectionInfo,
         packet::{
             handshake::Handshake,
             initial::Initial,
@@ -206,7 +207,9 @@ mod tests {
 
             let len = encoder.len();
             let decoder = DecoderBufferMut::new(&mut buffer[..len]);
-            let (packet, _) = ProtectedPacket::decode(decoder, &3).unwrap();
+            let remote_address = SocketAddress::default();
+            let connection_info = ConnectionInfo::new(&remote_address);
+            let (packet, _) = ProtectedPacket::decode(decoder, &connection_info, &3).unwrap();
             $negotiator.on_packet(&$datagram_info, &packet)
         }};
     }

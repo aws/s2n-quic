@@ -197,7 +197,9 @@ mod tests {
     fn test_decode() {
         let mut buf = retry::example::PACKET;
         let decoder = DecoderBufferMut::new(&mut buf);
-        let (packet, _) = packet::ProtectedPacket::decode(decoder, &20).unwrap();
+        let remote_address = crate::inet::ip::SocketAddress::default();
+        let connection_info = crate::connection::id::ConnectionInfo::new(&remote_address);
+        let (packet, _) = packet::ProtectedPacket::decode(decoder, &connection_info, &20).unwrap();
         let packet = match packet {
             packet::ProtectedPacket::Retry(retry) => retry,
             _ => panic!("expected retry packet type"),
@@ -214,7 +216,9 @@ mod tests {
     fn test_pseudo_decode() {
         let mut buf = retry::example::PACKET;
         let decoder = DecoderBufferMut::new(&mut buf);
-        let (packet, _) = packet::ProtectedPacket::decode(decoder, &20).unwrap();
+        let remote_address = crate::inet::ip::SocketAddress::default();
+        let connection_info = crate::connection::id::ConnectionInfo::new(&remote_address);
+        let (packet, _) = packet::ProtectedPacket::decode(decoder, &connection_info, &20).unwrap();
         let packet = match packet {
             packet::ProtectedPacket::Retry(retry) => retry,
             _ => panic!("expected retry packet type"),

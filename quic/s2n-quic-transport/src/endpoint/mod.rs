@@ -25,6 +25,7 @@ mod initial;
 mod version;
 
 pub use config::{Config, Context};
+use connection::id::ConnectionInfo;
 /// re-export core
 pub use s2n_quic_core::endpoint::*;
 
@@ -104,9 +105,12 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
         // Try to decode the first packet in the datagram
         let buffer = DecoderBufferMut::new(payload);
-        let (packet, remaining) = if let Ok((packet, remaining)) =
-            ProtectedPacket::decode(buffer, endpoint_context.connection_id_format)
-        {
+        let connection_info = ConnectionInfo::new(&datagram.remote_address);
+        let (packet, remaining) = if let Ok((packet, remaining)) = ProtectedPacket::decode(
+            buffer,
+            &connection_info,
+            endpoint_context.connection_id_format,
+        ) {
             (packet, remaining)
         } else {
             // Packet is not decodable. Skip it.

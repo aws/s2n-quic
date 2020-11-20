@@ -1,5 +1,6 @@
 use crate::{
     connection,
+    connection::id::ConnectionInfo,
     crypto::{CryptoError, EncryptedPayload, HeaderCrypto, OneRTTCrypto, ProtectedPayload},
     packet::{
         decoding::HeaderDecoder,
@@ -163,6 +164,7 @@ impl<'a> ProtectedShort<'a> {
     pub(crate) fn decode<Validator: connection::id::Validator>(
         tag: Tag,
         buffer: DecoderBufferMut<'a>,
+        connection_info: &ConnectionInfo,
         destination_connection_id_decoder: &Validator,
     ) -> DecoderBufferMutResult<'a, ProtectedShort<'a>> {
         let mut decoder = HeaderDecoder::new_short(&buffer);
@@ -170,8 +172,11 @@ impl<'a> ProtectedShort<'a> {
         let spin_bit = SpinBit::from_tag(tag);
         let key_phase = ProtectedKeyPhase;
 
-        let destination_connection_id = decoder
-            .decode_short_destination_connection_id(&buffer, destination_connection_id_decoder)?;
+        let destination_connection_id = decoder.decode_short_destination_connection_id(
+            &buffer,
+            connection_info,
+            destination_connection_id_decoder,
+        )?;
 
         let (payload, packet_number, remaining) =
             decoder.finish_short()?.split_off_packet(buffer)?;

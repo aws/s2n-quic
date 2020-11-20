@@ -2,7 +2,7 @@
 
 use crate::{
     connection::{
-        self, connection_interests::ConnectionInterests,
+        self, connection_interests::ConnectionInterests, id::ConnectionInfo,
         internal_connection_id::InternalConnectionId, shared_state::SharedConnectionState,
         CloseReason as ConnectionCloseReason, Parameters as ConnectionParameters,
     },
@@ -218,9 +218,11 @@ pub trait ConnectionTrait: Sized {
         connection_id_validator: &Validator,
         mut payload: DecoderBufferMut,
     ) -> Result<(), TransportError> {
+        let connection_info = ConnectionInfo::new(&datagram.remote_address);
+
         while !payload.is_empty() {
             if let Ok((packet, remaining)) =
-                ProtectedPacket::decode(payload, connection_id_validator)
+                ProtectedPacket::decode(payload, &connection_info, connection_id_validator)
             {
                 payload = remaining;
 
