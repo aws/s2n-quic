@@ -56,10 +56,12 @@ pub trait WriteContext {
     /// the `Ok` variant.
     fn reserve_minimum_space_for_frame(&mut self, min_size: usize) -> Result<usize, ()>;
 
+    /// Returns the local endpoint type (client or server)
     fn local_endpoint_type(&self) -> EndpointType {
         self.connection_context().local_endpoint_type()
     }
 
+    /// The ID of the connection
     fn connection_id(&self) -> &connection::Id {
         self.connection_context().connection_id()
     }

@@ -1,4 +1,9 @@
-//! Synchronizes a strictly increasing value of type `T` towards the remote peer.
+//! Sends a "flag" frame towards the peer
+//!
+//! This is intended to be used by frames, like PING and HANDSHAKE_DONE, that don't have any
+//! content other than the frame tag itself. At the cost of a single byte per packet, it will passively
+//! transmit the flag in any outgoing packets until the peer ACKs the frame. This is to increase
+//! the likelyhood the peer receives the flag, even in a high-loss environment.
 
 use crate::{
     contexts::{OnTransmitError, WriteContext},
@@ -21,16 +26,18 @@ enum DeliveryState {
     /// The flag has not been requested
     Idle,
 
+    /// The flag needs to be transmitted
     RequiresTransmission,
 
+    /// The flag was lost and needs to be retransmitted
     RequiresRetransmission,
 
-    /// The HANDSHAKE_DONE frame has been transmitted and is pending acknowledgement.
+    /// The flag has been transmitted and is pending acknowledgement.
     ///
-    /// Note that in this state, frames are being passively transmitted to ensure
+    /// Note that in this state, flags are being passively transmitted to ensure
     /// the peer can make progress.
     InFlight {
-        /// A stable frame transmission
+        /// A stable flag transmission
         ///
         /// In this case, "stable" means the oldest transmission that
         /// hasn't been acked by the peer.
@@ -40,10 +47,11 @@ enum DeliveryState {
         /// transition to the `Delivered` state
         stable: PacketNumber,
 
-        /// The latest frame transmission
+        /// The latest flag transmission
         latest: PacketNumber,
     },
 
+    /// The flag has been delivered
     Delivered,
 }
 
@@ -54,40 +62,24 @@ impl Default for DeliveryState {
 }
 
 impl<W: Writer> Flag<W> {
-    pub fn new(should_transmit: bool) -> Self {
-        Self {
-            delivery: if should_transmit {
-                DeliveryState::RequiresTransmission
-            } else {
-                DeliveryState::Idle
-            },
-            writer: Default::default(),
-        }
-    }
-
-    /// Returns `true` if the frame hasn't been sent
+    /// Returns `true` if the flag hasn't been sent
     pub fn is_idle(&self) -> bool {
         matches!(self.delivery, DeliveryState::Idle)
     }
 
-    /// Returns `true` if the frame has been delivered
+    /// Returns `true` if the flag has been delivered
     pub fn is_delivered(&self) -> bool {
         matches!(self.delivery, DeliveryState::Delivered)
     }
 
-    /// Returns `true` if the delivery is current in progress.
-    pub fn is_inflight(&self) -> bool {
-        matches!(self.delivery, DeliveryState::InFlight { .. })
-    }
-
-    /// Stars sending the frame to the peer
+    /// Stars sending the flag to the peer
     pub fn send(&mut self) {
         if self.is_idle() || self.is_delivered() {
             self.delivery = DeliveryState::RequiresTransmission;
         }
     }
 
-    /// Mark the frame as delivered
+    /// Mark the flag as delivered
     pub fn finish(&mut self) {
         self.delivery = DeliveryState::Delivered
     }
@@ -96,7 +88,7 @@ impl<W: Writer> Flag<W> {
     pub fn on_packet_ack<A: AckSet>(&mut self, ack_set: &A) -> bool {
         if let DeliveryState::InFlight { stable, latest } = &self.delivery {
             if ack_set.contains(*stable) || ack_set.contains(*latest) {
-                self.delivery = DeliveryState::Delivered;
+                self.finish();
                 return true;
             }
         }
