@@ -107,8 +107,6 @@ jobs:
           args: --bin s2n-quic-qns ${{ matrix.mode == 'release' && '--release' || '' }}
         env:
           RUSTC_WRAPPER: sccache
-          # since we're building on the same machines as the tests, this should be ok
-          RUSTFLAGS: -C target-cpu=native
 
       - name: Prepare artifact
         run: |
