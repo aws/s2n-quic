@@ -158,7 +158,7 @@ macro_rules! impl_handle_api {
         /// // TODO
         /// ```
         pub fn ping(&mut self) -> $crate::connection::Result<()> {
-            todo!()
+            self.0.ping()
         }
 
         /// Returns a reference to the [`Extensions`] for the [`Connection`]

@@ -196,4 +196,25 @@ impl<ConnectionConfigType: connection::Config> ConnectionApiProvider
     fn alpn(&self) -> Option<Bytes> {
         self.lock().space_manager.application()?.alpn.clone()
     }
+
+    fn ping(&self) -> Result<(), connection::Error> {
+        let mut shared_state = self.lock();
+
+        let space = &mut shared_state
+            .space_manager
+            .application_mut()
+            .expect("Application space must be available on active connections")
+            .0;
+
+        if let Some(error) = space.stream_manager.close_reason() {
+            return Err(error);
+        }
+
+        space.ping();
+
+        // Notify the connection it needs to send a packet
+        shared_state.wakeup_handle.wakeup();
+
+        Ok(())
+    }
 }

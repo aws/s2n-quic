@@ -45,4 +45,6 @@ pub(crate) trait ConnectionApiProvider: Sync + Send {
     fn sni(&self) -> Option<Bytes>;
 
     fn alpn(&self) -> Option<Bytes>;
+
+    fn ping(&self) -> Result<(), connection::Error>;
 }
