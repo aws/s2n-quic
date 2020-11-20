@@ -194,12 +194,8 @@ macro_rules! impl_handle_api {
         /// ```rust
         /// // TODO
         /// ```
-        pub async fn close(
-            self,
-            error_code: $crate::ApplicationErrorCode,
-        ) -> $crate::connection::Result<()> {
-            let _ = error_code;
-            todo!()
+        pub fn close(self, error_code: $crate::ApplicationErrorCode) {
+            self.0.close(error_code)
         }
     };
 }
