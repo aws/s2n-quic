@@ -18,7 +18,7 @@ env:
   SCCACHE_IDLE_TIMEOUT: 0
   # This kept breaking builds so we're pinning for now. We should do our best to keep
   # up with the changes, though.
-  INTEROP_RUNNER_REF: 18a87278621e9bdf166b9e294f4095e213cb4845
+  INTEROP_RUNNER_REF: 3d292c252e0c0159db93b62292abcf6b040a7060
   NETWORK_SIMULATOR_REF: sha256:d36e1ffd9369e41e9fd5cb8d2af5fb69d4bfaf1b1983fc538a5a3bf7777af4ba
   IPERF_ENDPOINT_REF: sha256:cb50cc8019d45d9cad5faecbe46a3c21dd5e871949819a5175423755a9045106
 
@@ -58,6 +58,9 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        mode: ["debug", "release"]
     steps:
       - uses: actions-rs/toolchain@v1
         id: toolchain
@@ -83,16 +86,16 @@ jobs:
         continue-on-error: true
         with:
           path: ~/.cargo/registry/cache
-          key: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-cargo-registry-
+          key: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-${{ matrix.mode }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-${{ matrix.mode }}-cargo-registry-
 
       - name: Cache sccache output
         uses: actions/cache@v2
         continue-on-error: true
         with:
           path: ${{ github.workspace }}/.sccache
-          key: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-sccache-${{ hashFiles('**/Cargo.*') }}
-          restore-keys: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-sccache-
+          key: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-${{ matrix.mode }}-sccache-${{ hashFiles('**/Cargo.*') }}
+          restore-keys: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-${{ matrix.mode }}-sccache-
 
       - name: Start sccache
         run: sccache --start-server
@@ -101,21 +104,18 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: build
-          # build in debug to have better stacktraces when things go wrong
-          args: --bin s2n-quic-qns
+          args: --bin s2n-quic-qns ${{ matrix.mode == 'release' && '--release' || '' }}
         env:
           RUSTC_WRAPPER: sccache
 
       - name: Prepare artifact
         run: |
           mkdir -p s2n-quic-qns
-          cp target/debug/s2n-quic-qns s2n-quic-qns/
-          cp qns/Dockerfile s2n-quic-qns/
-          cp qns/run_endpoint.sh s2n-quic-qns/
+          cp target/${{ matrix.mode }}/s2n-quic-qns s2n-quic-qns/s2n-quic-qns-${{ matrix.mode }}
 
       - uses: actions/upload-artifact@v2
         with:
-          name: s2n-quic-qns
+          name: s2n-quic-qns-${{ matrix.mode }}
           path: s2n-quic-qns/
 
       - name: Stop sccache
@@ -133,8 +133,19 @@ jobs:
 
       - uses: actions/download-artifact@v2
         with:
-          name: s2n-quic-qns
+          name: s2n-quic-qns-debug
           path: s2n-quic-qns/
+
+      - uses: actions/download-artifact@v2
+        with:
+          name: s2n-quic-qns-release
+          path: s2n-quic-qns/
+
+      - name: Setup dockerfile
+        working-directory: s2n-quic-qns
+        run: |
+          cp ../s2n-quic/.github/interop/Dockerfile .
+          cp ../s2n-quic/qns/run_endpoint.sh .
 
       - name: Run docker build
         working-directory: s2n-quic-qns

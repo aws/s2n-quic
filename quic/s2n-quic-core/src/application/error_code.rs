@@ -4,6 +4,7 @@ use crate::{
     application::ApplicationErrorExt,
     varint::{VarInt, VarIntError},
 };
+use core::convert::{Infallible, TryFrom};
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#20.2
 //# The management of application error codes is left to application
@@ -57,3 +58,20 @@ impl Into<u64> for ApplicationErrorCode {
         self.0.into()
     }
 }
+
+macro_rules! convert {
+    ($ty:ident, $err:ident) => {
+        impl TryFrom<$ty> for ApplicationErrorCode {
+            type Error = $err;
+
+            fn try_from(value: $ty) -> Result<Self, Self::Error> {
+                Ok(VarInt::try_from(value)?.into())
+            }
+        }
+    };
+}
+
+convert!(u8, Infallible);
+convert!(u16, Infallible);
+convert!(u32, Infallible);
+convert!(u64, VarIntError);

@@ -1,12 +1,14 @@
-use crate::Result;
+use crate::{file::File, Result};
 use bytes::Bytes;
+use core::convert::TryInto;
+use futures::stream::StreamExt;
 use s2n_quic::{stream::BidirectionalStream, Connection, Server};
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
 use structopt::StructOpt;
-use tokio::{fs::File, io, spawn};
+use tokio::spawn;
 
 #[derive(Debug, StructOpt)]
 pub struct Interop {
@@ -79,8 +81,19 @@ impl Interop {
                     .map(std::path::Path::new),
             );
             let mut file = File::open(&abs_path).await?;
-            io::copy(&mut file, &mut stream).await?;
-            Ok(())
+            loop {
+                match file.next().await {
+                    Some(Ok(chunk)) => stream.send(chunk).await?,
+                    Some(Err(err)) => {
+                        stream.reset(1u32.try_into()?)?;
+                        return Err(err.into());
+                    }
+                    None => {
+                        stream.finish()?;
+                        return Ok(());
+                    }
+                }
+            }
         }
 
         async fn handle_h09_request(stream: &mut BidirectionalStream) -> Result<String> {
