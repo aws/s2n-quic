@@ -16,6 +16,7 @@ LOG=$LOG_DIR/logs.txt
 QNS_BIN="s2n-quic-qns"
 
 if [ "$TEST_TYPE" == "MEASUREMENT" ] && [ -x "$(command -v s2n-quic-qns-perf)" ]; then
+  echo "using optimized build"
   QNS_BIN="s2n-quic-qns-perf"
 fi
 
