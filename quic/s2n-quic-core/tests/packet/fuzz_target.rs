@@ -16,8 +16,12 @@ fn main() {
 
         let mut decoder_buffer = DecoderBufferMut::new(&mut data);
         let mut encoder_buffer = EncoderBuffer::new(&mut encoder_data);
+        let remote_address = SocketAddress::default();
+        let connection_info = ConnectionInfo::new(&remote_address);
 
-        while let Ok((packet, remaining)) = ProtectedPacket::decode(decoder_buffer, &20) {
+        while let Ok((packet, remaining)) =
+            ProtectedPacket::decode(decoder_buffer, &connection_info, &20)
+        {
             if let Ok(cleartext_packet) = decrypt_packet(packet) {
                 encoder_buffer = encode_packet(cleartext_packet, encoder_buffer);
             }
@@ -152,13 +156,17 @@ fn encode_packet<'a>(packet: CleartextPacket, mut encoder: EncoderBuffer<'a>) ->
 
 // NULL Crypto implementation
 
-use s2n_quic_core::crypto::{
-    handshake::HandshakeCrypto,
-    header_crypto::{HeaderCrypto, HeaderProtectionMask},
-    initial::InitialCrypto,
-    key::Key,
-    one_rtt::OneRTTCrypto,
-    zero_rtt::ZeroRTTCrypto,
+use s2n_quic_core::{
+    connection::id::ConnectionInfo,
+    crypto::{
+        handshake::HandshakeCrypto,
+        header_crypto::{HeaderCrypto, HeaderProtectionMask},
+        initial::InitialCrypto,
+        key::Key,
+        one_rtt::OneRTTCrypto,
+        zero_rtt::ZeroRTTCrypto,
+    },
+    inet::SocketAddress,
 };
 
 #[derive(Copy, Clone, Debug, Default)]

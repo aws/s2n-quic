@@ -1,5 +1,6 @@
 //! This module contains the implementation of QUIC `Connections` and their management
 
+use crate::connection::id::ConnectionInfo;
 use crate::{
     connection::{
         self, connection_interests::ConnectionInterests,
@@ -218,9 +219,11 @@ pub trait ConnectionTrait: Sized {
         connection_id_validator: &Validator,
         mut payload: DecoderBufferMut,
     ) -> Result<(), TransportError> {
+        let connection_info = ConnectionInfo::new(&datagram.remote_address);
+
         while !payload.is_empty() {
             if let Ok((packet, remaining)) =
-                ProtectedPacket::decode(payload, datagram, connection_id_validator)
+                ProtectedPacket::decode(payload, &connection_info, connection_id_validator)
             {
                 payload = remaining;
 

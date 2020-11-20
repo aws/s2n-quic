@@ -106,10 +106,12 @@ mod tests {
     use super::*;
     use s2n_codec::{DecoderBufferMut, EncoderBuffer};
     use s2n_quic_core::{
+        connection::id::ConnectionInfo,
         crypto::initial::{
             EXAMPLE_CLIENT_INITIAL_PAYLOAD, EXAMPLE_CLIENT_INITIAL_PROTECTED_PACKET, EXAMPLE_DCID,
             EXAMPLE_SERVER_INITIAL_PAYLOAD, EXAMPLE_SERVER_INITIAL_PROTECTED_PACKET,
         },
+        inet::SocketAddress,
         packet::{encoding::PacketEncoder, initial::CleartextInitial, ProtectedPacket},
     };
 
@@ -180,7 +182,9 @@ mod tests {
         on_decrypt: F,
     ) -> O {
         let decoder = DecoderBufferMut::new(&mut protected_packet);
-        let (packet, _) = ProtectedPacket::decode(decoder, &20).unwrap();
+        let remote_address = SocketAddress::default();
+        let connection_info = ConnectionInfo::new(&remote_address);
+        let (packet, _) = ProtectedPacket::decode(decoder, &connection_info, &20).unwrap();
 
         let packet = match packet {
             ProtectedPacket::Initial(initial) => initial,

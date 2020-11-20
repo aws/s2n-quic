@@ -98,7 +98,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         // TODO store the expiration of the connection ID
         let (local_connection_id, _connection_id_expiration) = endpoint_context
             .connection_id_format
-            .generate(connection_info);
+            .generate(&connection_info);
 
         let mut connection_id_mapper_registration = self
             .connection_id_mapper
