@@ -9,7 +9,7 @@ index b26b2f8..b7652af 100755
  set -e
  
 diff --git a/docker-compose.yml b/docker-compose.yml
-index 8bbc4e8..93f0ddd 100644
+index 8bbc4e8..83896f5 100644
 --- a/docker-compose.yml
 +++ b/docker-compose.yml
 @@ -21,6 +21,8 @@ services:
@@ -21,7 +21,23 @@ index 8bbc4e8..93f0ddd 100644
  
    server:
      image: $SERVER
-@@ -77,6 +79,7 @@ services:
+@@ -38,6 +40,7 @@ services:
+       - SSLKEYLOGFILE=/logs/keys.log
+       - QLOGDIR=/logs/qlog/
+       - TESTCASE=$TESTCASE_SERVER
++      - TEST_TYPE=$TEST_TYPE
+     depends_on:
+       - sim
+     cap_add: 
+@@ -65,6 +68,7 @@ services:
+       - SSLKEYLOGFILE=/logs/keys.log
+       - QLOGDIR=/logs/qlog/
+       - TESTCASE=$TESTCASE_CLIENT
++      - TEST_TYPE=$TEST_TYPE
+       - REQUESTS=$REQUESTS
+     depends_on:
+       - sim
+@@ -77,6 +81,7 @@ services:
          ipv4_address: 193.167.0.100
          ipv6_address: fd00:cafe:cafe:0::100
      extra_hosts:
@@ -29,7 +45,7 @@ index 8bbc4e8..93f0ddd 100644
        - "server4:193.167.100.100"
        - "server6:fd00:cafe:cafe:100::100"
        - "server46:193.167.100.100"
-@@ -122,6 +125,7 @@ services:
+@@ -122,6 +127,7 @@ services:
          ipv4_address: 193.167.0.90
          ipv6_address: fd00:cafe:cafe:0::90
      extra_hosts:
@@ -38,7 +54,7 @@ index 8bbc4e8..93f0ddd 100644
        - "server6:fd00:cafe:cafe:100::110"
        - "server46:193.167.100.110"
 diff --git a/implementations.json b/implementations.json
-index 7ff3924..0f8e26b 100644
+index 7ff3924..7d94d04 100644
 --- a/implementations.json
 +++ b/implementations.json
 @@ -1,4 +1,9 @@
@@ -51,11 +67,50 @@ index 7ff3924..0f8e26b 100644
    "quic-go": {
      "image": "martenseemann/quic-go-interop:latest",
      "url": "https://github.com/lucas-clemente/quic-go",
+diff --git a/interop.py b/interop.py
+index 2d781d1..a459e14 100644
+--- a/interop.py
++++ b/interop.py
+@@ -124,6 +124,7 @@ class InteropRunner:
+         cmd = (
+             "CERTS=" + certs_dir.name + " "
+             "TESTCASE_CLIENT=" + random_string(6) + " "
++            "TEST_TYPE=TEST" + " "
+             "SERVER_LOGS=/dev/null "
+             "CLIENT_LOGS=" + client_log_dir.name + " "
+             "WWW=" + www_dir.name + " "
+@@ -148,6 +149,7 @@ class InteropRunner:
+         cmd = (
+             "CERTS=" + certs_dir.name + " "
+             "TESTCASE_SERVER=" + random_string(6) + " "
++            "TEST_TYPE=TEST" + " "
+             "SERVER_LOGS=" + server_log_dir.name + " "
+             "CLIENT_LOGS=/dev/null "
+             "WWW=" + www_dir.name + " "
+@@ -344,6 +346,7 @@ class InteropRunner:
+             "CERTS=" + testcase.certs_dir() + " "
+             "TESTCASE_SERVER=" + testcase.testname(Perspective.SERVER) + " "
+             "TESTCASE_CLIENT=" + testcase.testname(Perspective.CLIENT) + " "
++            "TEST_TYPE=" + testcase.test_type() + " "
+             "WWW=" + testcase.www_dir() + " "
+             "DOWNLOADS=" + testcase.download_dir() + " "
+             "SERVER_LOGS=" + server_log_dir.name + " "
 diff --git a/testcases.py b/testcases.py
-index 77cdf29..c8f9d5a 100644
+index e511f88..2fec491 100644
 --- a/testcases.py
 +++ b/testcases.py
-@@ -171,9 +171,6 @@ class TestCase(abc.ABC):
+@@ -89,6 +89,10 @@ class TestCase(abc.ABC):
+         """ The name of testcase presented to the endpoint Docker images"""
+         return self.name()
+ 
++    @staticmethod
++    def test_type() -> str:
++        return "TEST"
++
+     @staticmethod
+     def scenario() -> str:
+         """ Scenario for the ns3 simulator """
+@@ -171,9 +175,6 @@ class TestCase(abc.ABC):
          if len(versions) != 1:
              logging.info("Expected exactly one version. Got %s", versions)
              return False
@@ -65,3 +120,14 @@ index 77cdf29..c8f9d5a 100644
  
          if len(self._files) == 0:
              raise Exception("No test files generated.")
+@@ -1433,6 +1434,10 @@ class MeasurementGoodput(Measurement):
+     def testname(p: Perspective):
+         return "transfer"
+ 
++    @staticmethod
++    def test_type() -> str:
++        return "MEASUREMENT"
++
+     @staticmethod
+     def abbreviation():
+         return "G"

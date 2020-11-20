@@ -13,12 +13,18 @@ set -o pipefail
 LOG_DIR=/logs
 LOG=$LOG_DIR/logs.txt
 
+QNS_BIN="s2n-quic-qns"
+
+if [ "$TEST_TYPE" == "MEASUREMENT" ] && [ -x "$(command -v s2n-quic-qns-perf)" ]; then
+  QNS_BIN="s2n-quic-qns-perf"
+fi
+
 if [ "$ROLE" == "client" ]; then
     # Wait for the simulator to start up.
     /wait-for-it.sh sim:57832 -s -t 30
-    s2n-quic-qns interop client $CLIENT_PARAMS 2>&1 | tee $LOG
+    $QNS_BIN interop client $CLIENT_PARAMS 2>&1 | tee $LOG
 elif [ "$ROLE" == "server" ]; then
-    s2n-quic-qns interop server \
+    $QNS_BIN interop server \
       --www-dir /www \
       $SERVER_PARAMS 2>&1 | tee $LOG
 fi
