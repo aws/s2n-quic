@@ -14,12 +14,12 @@ use alloc::collections::VecDeque;
 use core::task::{self, Poll};
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
-    endpoint::limits::{Limits, Outcome},
+    endpoint::{limits::Outcome, Limits},
     inet::DatagramInfo,
     io::{rx, tx},
     packet::ProtectedPacket,
     time::Timestamp,
-    token,
+    token::Format,
 };
 
 mod config;
@@ -53,7 +53,7 @@ pub struct Endpoint<Cfg: Config> {
     dequeued_wakeups: VecDeque<InternalConnectionId>,
     version_negotiator: version::Negotiator<Cfg>,
     /// Limit manager for the endpoint
-    limits_manager: limits::Manager<token::Format>,
+    limits_manager: limits::Manager,
 }
 
 // Safety: The endpoint is marked as `!Send`, because the struct contains `Rc`s.
@@ -76,7 +76,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             wakeup_queue: WakeupQueue::new(),
             dequeued_wakeups: VecDeque::new(),
             version_negotiator: version::Negotiator::default(),
-            limits_manager: limits::Manager::new(config.context().token),
+            limits_manager: limits::Manager::new(),
         };
 
         (endpoint, acceptor)
@@ -201,64 +201,58 @@ impl<Cfg: Config> Endpoint<Cfg> {
         if Cfg::ENDPOINT_TYPE.is_server() {
             match packet {
                 ProtectedPacket::Initial(packet) => {
-                    let attempt = s2n_quic_core::endpoint::limits::ConnectionAttempt::new(
-                        self.limits_manager.inflight_handshakes(),
-                        &datagram.remote_address,
-                    );
-
                     if packet.token().len() > 0 {
-                        // If a token
                         let source_connection_id =
                             match connection::Id::try_from_bytes(packet.source_connection_id()) {
                                 Some(connection_id) => connection_id,
                                 None => {
-                                    // Ignore the datagram
-                                    dbg!("packet with invalid connection ID received");
+                                    dbg!("Could not decode source connection id");
                                     return;
                                 }
                             };
 
-                        // TODO Distinguish between Retry and NEW_TOKEN tokens
-                        if let None = self.config.context().token.validate_token(
+                        if let None = endpoint_context.token.validate_token(
                             &datagram.remote_address,
                             &connection_id,
                             &source_connection_id,
                             packet.token(),
                         ) {
-                            // Always drop initial packets with invalid tokens
-                            dbg!("token validation failed");
+                            dbg!("Invalid token");
                             return;
                         }
-                    } else {
-                        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.2
-                        //# Upon receiving the client's Initial packet, the server can request
-                        //# address validation by sending a Retry packet (Section 17.2.5)
-                        //# containing a token.  This token MUST be repeated by the client in all
-                        //# Initial packets it sends for that connection after it receives the
-                        //# Retry packet.
-                        let outcome = endpoint_context
-                            .endpoint_limits
-                            .on_connection_attempt(&attempt);
-                        match outcome {
-                            Outcome::Allow => {
-                                if let Err(err) =
-                                    self.handle_initial_packet(datagram, packet, remaining)
-                                {
-                                    dbg!(err);
-                                }
-                            }
-                            #[allow(unused_variables)]
-                            Outcome::Retry { delay } => {
-                                // TODO https://github.com/awslabs/s2n-quic/issues/166
-                                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.2
-                                //# A server can also use a Retry packet to defer the state and
-                                //# processing costs of connection establishment.
-                                self.enqueue_retry_packet(&datagram, &connection_id);
-                            }
-                            Outcome::Drop => return,
-                            #[allow(unused_variables)]
-                            Outcome::Close { delay } => return,
-                        };
+                    }
+
+                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.2
+                    //# Upon receiving the client's Initial packet, the server can request
+                    //# address validation by sending a Retry packet (Section 17.2.5)
+                    //# containing a token.  This token MUST be repeated by the client in all
+                    //# Initial packets it sends for that connection after it receives the
+                    //# Retry packet.
+                    let attempt = s2n_quic_core::endpoint::limits::ConnectionAttempt::new(
+                        self.limits_manager.inflight_handshakes(),
+                        &datagram.remote_address,
+                    );
+                    let outcome = endpoint_context
+                        .endpoint_limits
+                        .on_connection_attempt(&attempt);
+                    match outcome {
+                        Outcome::Allow => {}
+                        #[allow(unused_variables)]
+                        Outcome::Retry { delay } => {
+                            // TODO https://github.com/awslabs/s2n-quic/issues/166
+                            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.2
+                            //# A server can also use a Retry packet to defer the state and
+                            //# processing costs of connection establishment.
+                            self.enqueue_retry_packet(&datagram, &connection_id);
+                            return;
+                        }
+                        Outcome::Drop => return,
+                        #[allow(unused_variables)]
+                        Outcome::Close { delay } => return,
+                    };
+
+                    if let Err(err) = self.handle_initial_packet(datagram, packet, remaining) {
+                        dbg!(err);
                     }
                 }
                 _ => {
