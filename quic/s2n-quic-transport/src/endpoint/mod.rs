@@ -201,7 +201,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
         if Cfg::ENDPOINT_TYPE.is_server() {
             match packet {
                 ProtectedPacket::Initial(packet) => {
-                    if packet.token().len() > 0 {
+                    if !packet.token().is_empty() {
                         let source_connection_id =
                             match connection::Id::try_from_bytes(packet.source_connection_id()) {
                                 Some(connection_id) => connection_id,
@@ -211,12 +211,16 @@ impl<Cfg: Config> Endpoint<Cfg> {
                                 }
                             };
 
-                        if let None = endpoint_context.token.validate_token(
-                            &datagram.remote_address,
-                            &connection_id,
-                            &source_connection_id,
-                            packet.token(),
-                        ) {
+                        if endpoint_context
+                            .token
+                            .validate_token(
+                                &datagram.remote_address,
+                                &connection_id,
+                                &source_connection_id,
+                                packet.token(),
+                            )
+                            .is_none()
+                        {
                             dbg!("Invalid token");
                             return;
                         }
