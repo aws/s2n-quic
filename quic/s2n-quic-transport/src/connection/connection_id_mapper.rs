@@ -127,12 +127,6 @@ impl ConnectionIdMapperRegistration {
         self.internal_id
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
-    //= type=TODO
-    //# The sequence number on
-    //# each newly issued connection ID MUST increase by 1.
-    // TODO: Store sequence number along with connection ID
-
     /// Registers a connection ID mapping at the mapper with an optional expiration
     /// timestamp. Returns the sequence number of the connection ID.
     ///
