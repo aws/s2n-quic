@@ -47,4 +47,7 @@ pub struct Context<'a, Cfg: Config> {
 
     /// The endpoint limits
     pub endpoint_limits: &'a mut Cfg::EndpointLimits,
+
+    /// Token generator / validator
+    pub token: &'a mut Cfg::TokenFormat,
 }

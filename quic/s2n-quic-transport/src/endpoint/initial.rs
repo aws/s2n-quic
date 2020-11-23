@@ -4,7 +4,7 @@ use crate::{
         id::{ConnectionInfo, Generator as _},
         SynchronizedSharedConnectionState, Trait as _,
     },
-    endpoint::{self, Limits as _},
+    endpoint,
     recovery::congestion_controller::{self, Endpoint as _},
     space::PacketSpaceManager,
 };
@@ -54,35 +54,6 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
 
         let source_connection_id: connection::Id = packet.source_connection_id().try_into()?;
 
-        let endpoint_context = self.config.context();
-
-        // Before allocating resources for a new connection, verify that can proceed.
-        // NOTE: How do we access TLS handshakes in-flight from here (instead of 0)?
-        // TODO https://github.com/awslabs/s2n-quic/issues/166
-        let attempt = endpoint::limits::ConnectionAttempt::new(0, &datagram.remote_address);
-        match endpoint_context
-            .endpoint_limits
-            .on_connection_attempt(&attempt)
-        {
-            endpoint::limits::Outcome::Allow => {
-                // No action
-            }
-            endpoint::limits::Outcome::Retry { .. } => {
-                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.2
-                //# A server can also use a Retry packet to defer the state and
-                //# processing costs of connection establishment.
-            }
-            endpoint::limits::Outcome::Drop => {
-                // Stop processing
-                return Ok(());
-            }
-            endpoint::limits::Outcome::Close { .. } => {
-                // Queue close packet
-            }
-        }
-
-        // TODO https://github.com/awslabs/s2n-quic/issues/159: Negotiate the version
-
         let initial_crypto =
             <<Config::ConnectionConfig as connection::Config>::TLSSession as CryptoSuite>::InitialCrypto::new_server(
                 destination_connection_id.as_bytes(),
@@ -97,6 +68,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         let internal_connection_id = self.connection_id_generator.generate_id();
 
         let connection_info = ConnectionInfo::new(&datagram.remote_address);
+        let endpoint_context = self.config.context();
 
         // TODO store the expiration of the connection ID
         let (local_connection_id, _connection_id_expiration) = endpoint_context
@@ -148,8 +120,6 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             .try_into()
             .expect("connection ID already validated");
 
-        // TODO send retry_source_connection_id
-
         let tls_session = endpoint_context
             .tls
             .new_server_session(&transport_parameters);
@@ -185,7 +155,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         let mut connection = <Config as endpoint::Config>::Connection::new(connection_parameters);
 
         // The scope is needed in order to lock the shared state only for a certain duration.
-        // It needs to be unlocked when wee insert the connection in our map
+        // It needs to be unlocked when we insert the connection in our map
         {
             let locked_shared_state = &mut *shared_state.lock();
 
@@ -220,7 +190,10 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         // will also clean up all state which was already allocated for
         // the connection
         self.connections.insert_connection(connection, shared_state);
-        // TODO https://github.com/awslabs/s2n-quic/issues/162: increment inflight handshakes
+
+        // The handshake has begun and we should start tracking it
+        self.limits_manager.on_handshake_start();
+
         Ok(())
     }
 }

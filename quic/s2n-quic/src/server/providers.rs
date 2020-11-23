@@ -238,6 +238,7 @@ impl<
             connection_id_format: &mut self.connection_id,
             tls: &mut self.tls,
             endpoint_limits: &mut self.endpoint_limits,
+            token: &mut self.token,
         }
     }
 }
