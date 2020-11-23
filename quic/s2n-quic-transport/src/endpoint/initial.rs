@@ -96,20 +96,26 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
 
         let internal_connection_id = self.connection_id_generator.generate_id();
 
-        let connection_info = ConnectionInfo::new(&datagram.remote_address);
-
-        // TODO store the expiration of the connection ID
-        let (local_connection_id, _connection_id_expiration) = endpoint_context
-            .connection_id_format
-            .generate(&connection_info);
-
         let mut connection_id_mapper_registration = self
             .connection_id_mapper
             .create_registration(internal_connection_id);
 
-        connection_id_mapper_registration
-            .register_connection_id(&local_connection_id)
+        let connection_info = ConnectionInfo::new(&datagram.remote_address);
+
+        let (local_connection_id, connection_id_duration) = endpoint_context
+            .connection_id_format
+            .generate(&connection_info);
+
+        let connection_id_expiration =
+            connection_id_duration.map(|cid_duration| datagram.timestamp + cid_duration);
+
+        let seq_number = connection_id_mapper_registration
+            .register_connection_id(&local_connection_id, connection_id_expiration)
             .expect("can register connection ID");
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
+        //# The sequence number of the initial connection ID is 0.
+        debug_assert_eq!(seq_number, 0);
 
         let timer = self.timer_manager.create_timer(
             internal_connection_id,
