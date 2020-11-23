@@ -240,7 +240,9 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         .endpoint_limits
                         .on_connection_attempt(&attempt);
                     match outcome {
-                        Outcome::Allow => {}
+                        Outcome::Allow => {
+                            // No action
+                        }
                         #[allow(unused_variables)]
                         Outcome::Retry { delay } => {
                             // TODO https://github.com/awslabs/s2n-quic/issues/166

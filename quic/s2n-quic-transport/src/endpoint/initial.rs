@@ -120,6 +120,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             .try_into()
             .expect("connection ID already validated");
 
+        // TODO send retry_source_connection_id
         let tls_session = endpoint_context
             .tls
             .new_server_session(&transport_parameters);
