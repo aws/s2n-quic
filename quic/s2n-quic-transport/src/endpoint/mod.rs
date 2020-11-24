@@ -32,6 +32,7 @@ mod version;
 
 pub use config::{Config, Context};
 use connection::id::ConnectionInfo;
+pub use s2n_quic_core::endpoint::*;
 
 /// A QUIC `Endpoint`
 pub struct Endpoint<Cfg: Config> {
@@ -168,11 +169,11 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         .map_err(|_| ())?;
 
                     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
+                    //= type=TODO
+                    //= tracking-issue=https://github.com/awslabs/s2n-quic/issues/271
                     //# An endpoint MUST
                     //# perform path validation (Section 8.2) if it detects any change to a
                     //# peer's address, unless it has previously validated that address.
-                    //= type=TODO
-                    //= tracking-issue=https://github.com/awslabs/s2n-quic/issues/271
                     if let Err(err) = conn.handle_packet(shared_state, datagram, path_id, packet) {
                         conn.handle_transport_error(shared_state, datagram, err);
                         return Err(());
