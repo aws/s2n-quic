@@ -1,7 +1,7 @@
 use super::*;
 use core::{marker::PhantomData, time::Duration};
 use futures::{select_biased, FutureExt};
-use s2n_quic_core::{crypto, recovery, transport};
+use s2n_quic_core::{crypto, endpoint::EndpointType, recovery, transport};
 use s2n_quic_transport::{acceptor::Acceptor, connection, endpoint, stream};
 
 impl_providers_state! {
@@ -238,6 +238,7 @@ impl<
             connection_id_format: &mut self.connection_id,
             tls: &mut self.tls,
             endpoint_limits: &mut self.endpoint_limits,
+            token: &mut self.token,
         }
     }
 }
@@ -255,7 +256,7 @@ impl<CC: recovery::CongestionController, Tls: 'static + crypto::tls::Session> co
     type CongestionController = CC;
     type TLSSession = Tls;
 
-    const ENDPOINT_TYPE: endpoint::EndpointType = endpoint::EndpointType::Server;
+    const ENDPOINT_TYPE: EndpointType = EndpointType::Server;
 
     fn local_flow_control_limits(&self) -> transport::parameters::InitialFlowControlLimits {
         // TODO ask the limits provider

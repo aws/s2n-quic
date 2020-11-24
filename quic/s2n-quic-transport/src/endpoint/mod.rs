@@ -11,22 +11,27 @@ use crate::{
     wakeup_queue::WakeupQueue,
 };
 use alloc::collections::VecDeque;
-use core::task::{self, Poll};
+use core::{
+    task::{self, Poll},
+    time,
+};
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
+    endpoint::{limits::Outcome, Limits},
     inet::DatagramInfo,
     io::{rx, tx},
     packet::ProtectedPacket,
     time::Timestamp,
+    token::Format,
 };
 
 mod config;
 mod initial;
+mod limits;
 mod version;
 
 pub use config::{Config, Context};
 use connection::id::ConnectionInfo;
-/// re-export core
 pub use s2n_quic_core::endpoint::*;
 
 /// A QUIC `Endpoint`
@@ -49,6 +54,8 @@ pub struct Endpoint<Cfg: Config> {
     /// [`Endpoint`] interactions.
     dequeued_wakeups: VecDeque<InternalConnectionId>,
     version_negotiator: version::Negotiator<Cfg>,
+    /// Limit manager for the endpoint
+    limits_manager: limits::Manager,
 }
 
 // Safety: The endpoint is marked as `!Send`, because the struct contains `Rc`s.
@@ -71,6 +78,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             wakeup_queue: WakeupQueue::new(),
             dequeued_wakeups: VecDeque::new(),
             version_negotiator: version::Negotiator::default(),
+            limits_manager: limits::Manager::new(),
         };
 
         (endpoint, acceptor)
@@ -160,6 +168,12 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         )
                         .map_err(|_| ())?;
 
+                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
+                    //= type=TODO
+                    //= tracking-issue=https://github.com/awslabs/s2n-quic/issues/271
+                    //# An endpoint MUST
+                    //# perform path validation (Section 8.2) if it detects any change to a
+                    //# peer's address, unless it has previously validated that address.
                     if let Err(err) = conn.handle_packet(shared_state, datagram, path_id, packet) {
                         conn.handle_transport_error(shared_state, datagram, err);
                         return Err(());
@@ -194,6 +208,61 @@ impl<Cfg: Config> Endpoint<Cfg> {
         if Cfg::ENDPOINT_TYPE.is_server() {
             match packet {
                 ProtectedPacket::Initial(packet) => {
+                    if !packet.token().is_empty() {
+                        let source_connection_id =
+                            match connection::Id::try_from_bytes(packet.source_connection_id()) {
+                                Some(connection_id) => connection_id,
+                                None => {
+                                    dbg!("Could not decode source connection id");
+                                    return;
+                                }
+                            };
+
+                        if endpoint_context
+                            .token
+                            .validate_token(
+                                &datagram.remote_address,
+                                &connection_id,
+                                &source_connection_id,
+                                packet.token(),
+                            )
+                            .is_none()
+                        {
+                            dbg!("Invalid token");
+                            return;
+                        }
+                    }
+
+                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.2
+                    //# Upon receiving the client's Initial packet, the server can request
+                    //# address validation by sending a Retry packet (Section 17.2.5)
+                    //# containing a token.
+                    let attempt = s2n_quic_core::endpoint::limits::ConnectionAttempt::new(
+                        self.limits_manager.inflight_handshakes(),
+                        &datagram.remote_address,
+                    );
+                    let outcome = endpoint_context
+                        .endpoint_limits
+                        .on_connection_attempt(&attempt);
+                    match outcome {
+                        Outcome::Allow => {
+                            // No action
+                        }
+                        Outcome::Retry { delay } => {
+                            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.2
+                            //= type=TODO
+                            //= tracking-issue=166
+                            //# A server can also use a Retry packet to defer the state and
+                            //# processing costs of connection establishment.
+                            self.enqueue_retry_packet(&datagram, &connection_id, delay);
+                            return;
+                        }
+                        Outcome::Drop => return,
+                        // TODO https://github.com/awslabs/s2n-quic/issues/270
+                        #[allow(unused_variables)]
+                        Outcome::Close { delay } => return,
+                    };
+
                     if let Err(err) = self.handle_initial_packet(datagram, packet, remaining) {
                         dbg!(err);
                     }
@@ -222,6 +291,17 @@ impl<Cfg: Config> Endpoint<Cfg> {
     ) {
         // TODO: Implement me
         dbg!("stateless reset triggered");
+    }
+
+    /// Enqueues sending a retry packet to a peer.
+    pub fn enqueue_retry_packet(
+        &mut self,
+        _datagram: &DatagramInfo,
+        _destination_connection_id: &connection::Id,
+        _delay: time::Duration,
+    ) {
+        // TODO: https://github.com/awslabs/s2n-quic/issues/260
+        dbg!("retry packet triggered");
     }
 
     /// Queries the endpoint for outgoing datagrams
@@ -323,6 +403,7 @@ impl<'a, Cfg: Config> core::future::Future for PendingWakeups<'a, Cfg> {
 #[cfg(any(test, feature = "testing"))]
 pub mod testing {
     use super::*;
+    use s2n_quic_core::endpoint;
 
     #[derive(Debug)]
     pub struct Server;
@@ -369,12 +450,12 @@ pub mod testing {
     #[derive(Debug)]
     pub struct Limits;
 
-    impl super::Limits for Limits {
+    impl endpoint::Limits for Limits {
         fn on_connection_attempt(
             &mut self,
-            _attempt: &super::limits::ConnectionAttempt,
-        ) -> super::limits::Outcome {
-            super::limits::Outcome::Allow
+            _attempt: &endpoint::limits::ConnectionAttempt,
+        ) -> endpoint::limits::Outcome {
+            endpoint::limits::Outcome::Allow
         }
     }
 }
