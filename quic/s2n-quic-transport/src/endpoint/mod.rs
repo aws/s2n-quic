@@ -11,7 +11,10 @@ use crate::{
     wakeup_queue::WakeupQueue,
 };
 use alloc::collections::VecDeque;
-use core::task::{self, Poll};
+use core::{
+    task::{self, Poll},
+    time,
+};
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     endpoint::{limits::Outcome, Limits},
@@ -29,8 +32,6 @@ mod version;
 
 pub use config::{Config, Context};
 use connection::id::ConnectionInfo;
-/// re-export core
-pub use s2n_quic_core::endpoint::EndpointType;
 
 /// A QUIC `Endpoint`
 pub struct Endpoint<Cfg: Config> {
@@ -166,7 +167,12 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         )
                         .map_err(|_| ())?;
 
-                    // TODO Verify the path is validated. The connection Id could have migrated.
+                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
+                    //# An endpoint MUST
+                    //# perform path validation (Section 8.2) if it detects any change to a
+                    //# peer's address, unless it has previously validated that address.
+                    //= type=TODO
+                    //= tracking-issue=https://github.com/awslabs/s2n-quic/issues/271
                     if let Err(err) = conn.handle_packet(shared_state, datagram, path_id, packet) {
                         conn.handle_transport_error(shared_state, datagram, err);
                         return Err(());
@@ -229,9 +235,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.2
                     //# Upon receiving the client's Initial packet, the server can request
                     //# address validation by sending a Retry packet (Section 17.2.5)
-                    //# containing a token.  This token MUST be repeated by the client in all
-                    //# Initial packets it sends for that connection after it receives the
-                    //# Retry packet.
+                    //# containing a token.
                     let attempt = s2n_quic_core::endpoint::limits::ConnectionAttempt::new(
                         self.limits_manager.inflight_handshakes(),
                         &datagram.remote_address,
@@ -243,16 +247,17 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         Outcome::Allow => {
                             // No action
                         }
-                        #[allow(unused_variables)]
                         Outcome::Retry { delay } => {
-                            // TODO https://github.com/awslabs/s2n-quic/issues/166
                             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.2
+                            //= type=TODO
+                            //= tracking-issue=166
                             //# A server can also use a Retry packet to defer the state and
                             //# processing costs of connection establishment.
-                            self.enqueue_retry_packet(&datagram, &connection_id);
+                            self.enqueue_retry_packet(&datagram, &connection_id, delay);
                             return;
                         }
                         Outcome::Drop => return,
+                        // TODO https://github.com/awslabs/s2n-quic/issues/270
                         #[allow(unused_variables)]
                         Outcome::Close { delay } => return,
                     };
@@ -292,7 +297,9 @@ impl<Cfg: Config> Endpoint<Cfg> {
         &mut self,
         _datagram: &DatagramInfo,
         _destination_connection_id: &connection::Id,
+        _delay: time::Duration,
     ) {
+        // TODO: https://github.com/awslabs/s2n-quic/issues/260
         dbg!("retry packet triggered");
     }
 
