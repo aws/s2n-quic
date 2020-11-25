@@ -177,13 +177,9 @@ impl VarInt {
     }
 
     #[inline]
-    pub fn checked_add_u64(self, value: u64) -> Option<Self> {
-        Self::new(self.0.checked_add(value)?).ok()
-    }
-
-    #[inline]
     pub fn checked_add_usize(self, value: usize) -> Option<Self> {
-        self.checked_add_u64(value as u64)
+        let value = value.try_into().ok()?;
+        self.checked_add(value)
     }
 
     #[inline]
