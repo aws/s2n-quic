@@ -288,7 +288,7 @@ impl<C: ConnectionTrait> ConnectionContainer<C> {
         &mut self,
         connection_id: InternalConnectionId,
         func: F,
-    ) -> Option<R>
+    ) -> Option<(R, ConnectionInterests)>
     where
         F: FnOnce(&mut C, &mut SharedConnectionState<C::Config>) -> R,
     {
@@ -327,7 +327,7 @@ impl<C: ConnectionTrait> ConnectionContainer<C> {
             .update_interests(&mut self.accept_queue, &node_ptr, interests);
         self.finalize_done_connections();
 
-        Some(result)
+        Some((result, interests))
     }
 
     /// Removes all Connections in the `done` state from the `ConnectionContainer`.
