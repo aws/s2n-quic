@@ -304,6 +304,27 @@ impl<Cfg: Config> Endpoint<Cfg> {
         dbg!("retry packet triggered");
     }
 
+    /// TODO
+    pub fn issue_new_connection_ids(&mut self, timestamp: Timestamp) {
+        // Iterate over all connections which need new connection IDs
+        let mut new_connection_id_result = Ok(());
+        let connection_id_format = self.config.context().connection_id_format;
+        self.connections
+            .iterate_new_connection_id_list(|connection, shared_state| {
+                new_connection_id_result =
+                    connection.on_new_connection_id(connection_id_format, shared_state, timestamp);
+                if new_connection_id_result.is_err() {
+                    ConnectionContainerIterationResult::BreakAndInsertAtBack
+                } else {
+                    ConnectionContainerIterationResult::Continue
+                }
+            });
+
+        if new_connection_id_result.is_err() {
+            //TODO: What to do on error?
+        }
+    }
+
     /// Queries the endpoint for outgoing datagrams
     pub fn transmit<'a, Tx: tx::Tx<'a>>(&mut self, tx: &'a mut Tx, timestamp: Timestamp) {
         let mut queue = tx.queue();

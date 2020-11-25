@@ -2,8 +2,9 @@
 
 use crate::{
     connection::{
-        self, CloseReason as ConnectionCloseReason, ConnectionIdMapperRegistration,
-        ConnectionInterests, ConnectionTimerEntry, ConnectionTimers, ConnectionTransmission,
+        self, connection_id_mapper::ConnectionIdMapperRegistrationError, id::ConnectionInfo,
+        CloseReason as ConnectionCloseReason, ConnectionIdMapperRegistration, ConnectionInterests,
+        ConnectionTimerEntry, ConnectionTimers, ConnectionTransmission,
         ConnectionTransmissionContext, InternalConnectionId, Parameters as ConnectionParameters,
         SharedConnectionState,
     },
@@ -16,6 +17,7 @@ use crate::{
 use core::time::Duration;
 use s2n_quic_core::{
     application::ApplicationErrorExt,
+    connection::id::Interest,
     inet::DatagramInfo,
     io::tx,
     packet::{
@@ -115,6 +117,8 @@ pub struct ConnectionImpl<Config: connection::Config> {
     state: ConnectionState,
     /// Manage the paths that the connection could use
     path_manager: path::Manager<Config::CongestionController>,
+    /// New Connection ID interest for this connection
+    id_interest: connection::id::Interest,
 }
 
 #[cfg(debug_assertions)]
@@ -247,6 +251,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
             accept_state: AcceptState::Handshaking,
             state: ConnectionState::Handshaking,
             path_manager,
+            id_interest: connection::id::Interest::None,
         }
     }
 
@@ -310,6 +315,39 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
             let delay = core::time::Duration::from_millis(100);
             self.timers.close_timer.set(timestamp + delay);
         }
+    }
+
+    //TODO: comment
+    fn on_new_connection_id<ConnectionIdFormat: connection::id::Format>(
+        &mut self,
+        connection_id_format: &mut ConnectionIdFormat,
+        _shared_state: &mut SharedConnectionState<Self::Config>,
+        timestamp: Timestamp,
+    ) -> Result<(), ConnectionIdMapperRegistrationError> {
+        debug_assert_ne!(self.id_interest, connection::id::Interest::None);
+
+        let (_path_id, active_path) = self.path_manager.active_path();
+        let connection_info = ConnectionInfo::new(&active_path.peer_socket_address);
+
+        if let connection::id::Interest::New {
+            mut count,
+            retire_prior_to,
+        } = self.id_interest
+        {
+            while count > 0 {
+                let (id, duration) = connection_id_format.generate(&connection_info);
+                let expiration = duration.map(|duration| timestamp + duration);
+                let sequence_number = self
+                    .connection_id_mapper_registration
+                    .register_connection_id(&id, expiration)?;
+                // TODO: send NEW_CONNECTION_ID frame with sequence_number and retire_prior_to
+                // TODO: Move retired connection IDs into a pending retirement confirmation state
+                count -= 1;
+            }
+            self.id_interest = Interest::None;
+        }
+
+        Ok(())
     }
 
     /// Queries the connection for outgoing packets
@@ -741,6 +779,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                 }
 
                 interests.transmission = transmission.can_transmit(constraint);
+                interests.id = self.id_interest;
             }
             ConnectionState::Closing => {
                 // TODO: Ask the Close Sender whether it needs to transmit

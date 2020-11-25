@@ -1,5 +1,7 @@
 //! A collection of a all the interactions a `Connection` is interested in
 
+use s2n_quic_core::connection;
+
 /// A collection of a all the interactions a `Connection` is interested in
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
 pub struct ConnectionInterests {
@@ -11,6 +13,8 @@ pub struct ConnectionInterests {
     pub accept: bool,
     /// Is `true` if a `Connection` wants to send data
     pub transmission: bool,
+    /// Is `true` if a `Connection` needs a new connection id
+    pub id: connection::id::Interest,
 }
 
 impl ConnectionInterests {
@@ -30,6 +34,7 @@ impl ConnectionInterests {
             finalization: self.finalization && other.finalization,
             accept: self.accept || other.accept,
             transmission: self.transmission || other.transmission,
+            id: self.id + other.id,
         }
     }
 }

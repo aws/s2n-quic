@@ -3,6 +3,7 @@
 use crate::{inet::SocketAddress, transport::error::TransportError};
 use core::convert::TryFrom;
 use s2n_codec::{decoder_value, Encoder, EncoderValue};
+use std::ops::Add;
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1
 //# Each connection possesses a set of connection identifiers, or
@@ -167,6 +168,61 @@ pub trait Generator {
     /// issuer) to correlate them with other connection IDs for the same
     /// connection.
     fn generate(&mut self, connection_info: &ConnectionInfo) -> (Id, Option<core::time::Duration>);
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Interest {
+    None,
+    New { count: u32, retire_prior_to: u32 },
+}
+
+impl Add for Interest {
+    type Output = Interest;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        match (self, rhs) {
+            (Interest::None, Interest::None) => Interest::None,
+            (
+                Interest::None,
+                Interest::New {
+                    count,
+                    retire_prior_to,
+                },
+            ) => Interest::New {
+                count,
+                retire_prior_to,
+            },
+            (
+                Interest::New {
+                    count,
+                    retire_prior_to,
+                },
+                Interest::None,
+            ) => Interest::New {
+                count,
+                retire_prior_to,
+            },
+            (
+                Interest::New {
+                    count,
+                    retire_prior_to,
+                },
+                Interest::New {
+                    count: count_rhs,
+                    retire_prior_to: retire_prior_to_rhs,
+                },
+            ) => Interest::New {
+                count: count.max(count_rhs),
+                retire_prior_to: retire_prior_to.max(retire_prior_to_rhs),
+            },
+        }
+    }
+}
+
+impl Default for Interest {
+    fn default() -> Self {
+        Interest::None
+    }
 }
 
 #[cfg(test)]
