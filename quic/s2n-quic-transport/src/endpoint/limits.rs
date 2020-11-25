@@ -1,27 +1,26 @@
+use s2n_quic_core::counter::Counter;
+
 #[derive(Debug, Default)]
 pub struct Manager {
-    inflight_handshakes: usize,
+    inflight_handshakes: Counter<usize>,
 }
 
 impl Manager {
     pub fn new() -> Self {
         Self {
-            inflight_handshakes: 0,
+            inflight_handshakes: Counter::new(0usize),
         }
     }
 
     pub fn on_handshake_start(&mut self) {
-        self.inflight_handshakes += 1;
+        self.inflight_handshakes += 1u8;
     }
 
-    // TODO Remove dead_code when this function is actually used
-    // https://github.com/awslabs/s2n-quic/issues/272
-    #[allow(dead_code)]
     pub fn on_handshake_end(&mut self) {
-        self.inflight_handshakes -= 1;
+        self.inflight_handshakes -= 1u8;
     }
 
     pub fn inflight_handshakes(&self) -> usize {
-        self.inflight_handshakes
+        *self.inflight_handshakes
     }
 }

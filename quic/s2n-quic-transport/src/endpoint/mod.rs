@@ -154,7 +154,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             .connection_id_mapper
             .lookup_internal_connection_id(&connection_id)
         {
-            let is_ok = self
+            let outcome = self
                 .connections
                 .with_connection(internal_id, |conn, shared_state| {
                     // The path `Id` needs to be passed around instead of the path to get around `&mut self` and
@@ -166,7 +166,16 @@ impl<Cfg: Config> Endpoint<Cfg> {
                             &connection_id,
                             endpoint_context.congestion_controller,
                         )
-                        .map_err(|_| ())?;
+                        .map_err(|_| {
+                            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
+                            //# If the peer
+                            //# violates this requirement, the endpoint MUST either drop the incoming
+                            //# packets on that path without generating a stateless reset or proceed
+                            //# with path validation and allow the peer to migrate.  Generating a
+                            //# stateless reset or closing the connection would allow third parties
+                            //# in the network to cause connections to close by spoofing or otherwise
+                            //# manipulating observed traffic.
+                        })?;
 
                     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
                     //= type=TODO
@@ -192,15 +201,26 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     }
 
                     Ok(())
-                })
-                .is_some();
+                });
 
-            if !is_ok {
-                debug_assert!(
-                    false,
-                    "Connection was found in external but not internal connection map"
-                );
-            }
+            match outcome {
+                Some((Ok(()), interests)) => {
+                    // When connections are marked `accept` they have completed their handshake
+                    // TODO: Verify this is valid for the client
+                    if interests.accept {
+                        self.limits_manager.on_handshake_end();
+                    }
+                }
+                Some((Err(()), _interests)) => {
+                    // Ignored error from the `.with_connection` call
+                }
+                None => {
+                    debug_assert!(
+                        false,
+                        "Connection was found in external but not internal connection map"
+                    );
+                }
+            };
 
             return;
         }
