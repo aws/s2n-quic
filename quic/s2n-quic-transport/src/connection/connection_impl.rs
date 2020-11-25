@@ -335,8 +335,10 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         } = self.id_interest
         {
             while count > 0 {
-                let (id, duration) = connection_id_format.generate(&connection_info);
-                let expiration = duration.map(|duration| timestamp + duration);
+                let id = connection_id_format.generate(&connection_info);
+                let expiration = connection_id_format
+                    .lifetime()
+                    .map(|duration| timestamp + duration);
                 let sequence_number = self
                     .connection_id_mapper_registration
                     .register_connection_id(&id, expiration)?;

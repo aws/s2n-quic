@@ -162,12 +162,20 @@ impl Validator for usize {
 
 /// A generator for a connection ID format
 pub trait Generator {
-    /// Generates a connection ID with an optional validity duration.
+    /// Generates a connection ID.
+    ///
     /// Connection IDs MUST NOT contain any information that can be used by
     /// an external observer (that is, one that does not cooperate with the
     /// issuer) to correlate them with other connection IDs for the same
     /// connection.
-    fn generate(&mut self, connection_info: &ConnectionInfo) -> (Id, Option<core::time::Duration>);
+    fn generate(&mut self, connection_info: &ConnectionInfo) -> Id;
+
+    /// The maximum amount of time each generated connection ID should be
+    /// used for. By default there is no maximum, though connection IDs
+    /// may be retired due to rotation requirements or peer requests.
+    fn lifetime(&self) -> Option<core::time::Duration> {
+        None
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -260,13 +268,10 @@ pub mod testing {
     }
 
     impl Generator for Format {
-        fn generate(
-            &mut self,
-            _connection_info: &ConnectionInfo,
-        ) -> (Id, Option<core::time::Duration>) {
+        fn generate(&mut self, _connection_info: &ConnectionInfo) -> Id {
             let id = (&self.0.to_be_bytes()[..]).try_into().unwrap();
             self.0 += 1;
-            (id, None)
+            id
         }
     }
 }
