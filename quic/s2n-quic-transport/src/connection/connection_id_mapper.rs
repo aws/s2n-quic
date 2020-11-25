@@ -1,6 +1,9 @@
 //! Maps from external connection IDs to internal connection IDs
 
-use crate::connection::InternalConnectionId;
+use crate::connection::{
+    connection_id_mapper::LocalConnectionIdStatus::{Active, PendingRetirement},
+    InternalConnectionId,
+};
 use alloc::rc::Rc;
 use core::cell::RefCell;
 use s2n_quic_core::{connection, time::Timestamp};
@@ -102,6 +105,17 @@ struct LocalConnectionIdInfo {
     //# to the same value.
     sequence_number: u32,
     expiration: Option<Timestamp>,
+    status: LocalConnectionIdStatus,
+}
+
+/// The current status of the connection ID.
+/// Connection IDs are put in the `PendingRetirement` status
+/// upon retirement, until confirmation of the retirement
+/// is received from the peer.
+#[derive(Debug)]
+enum LocalConnectionIdStatus {
+    Active,
+    PendingRetirement,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -162,6 +176,7 @@ impl ConnectionIdMapperRegistration {
                 id: *id,
                 sequence_number,
                 expiration,
+                status: Active,
             });
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
             //# The sequence number on
@@ -192,6 +207,16 @@ impl ConnectionIdMapperRegistration {
         );
 
         self.registered_ids.remove(registration_index);
+    }
+
+    /// Moves all registered connection IDs with a sequence number less
+    /// than the provided `sequence_number` into the `PendingRetirement`
+    /// status.
+    pub fn retire_prior_to(&mut self, sequence_number: u32) {
+        self.registered_ids
+            .iter_mut()
+            .filter(|id_info| id_info.sequence_number < sequence_number)
+            .for_each(|mut id_info| id_info.status = PendingRetirement)
     }
 }
 

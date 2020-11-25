@@ -181,7 +181,7 @@ pub trait Generator {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Interest {
     None,
-    New { count: u32, retire_prior_to: u32 },
+    New(u8, u32),
 }
 
 impl Add for Interest {
@@ -190,39 +190,19 @@ impl Add for Interest {
     fn add(self, rhs: Self) -> Self::Output {
         match (self, rhs) {
             (Interest::None, Interest::None) => Interest::None,
+            (Interest::None, Interest::New(count, retire_prior_to)) => {
+                Interest::New(count, retire_prior_to)
+            }
+            (Interest::New(count, retire_prior_to), Interest::None) => {
+                Interest::New(count, retire_prior_to)
+            }
             (
-                Interest::None,
-                Interest::New {
-                    count,
-                    retire_prior_to,
-                },
-            ) => Interest::New {
-                count,
-                retire_prior_to,
-            },
-            (
-                Interest::New {
-                    count,
-                    retire_prior_to,
-                },
-                Interest::None,
-            ) => Interest::New {
-                count,
-                retire_prior_to,
-            },
-            (
-                Interest::New {
-                    count,
-                    retire_prior_to,
-                },
-                Interest::New {
-                    count: count_rhs,
-                    retire_prior_to: retire_prior_to_rhs,
-                },
-            ) => Interest::New {
-                count: count.max(count_rhs),
-                retire_prior_to: retire_prior_to.max(retire_prior_to_rhs),
-            },
+                Interest::New(count, retire_prior_to),
+                Interest::New(count_rhs, retire_prior_to_rhs),
+            ) => Interest::New(
+                count.max(count_rhs),
+                retire_prior_to.max(retire_prior_to_rhs),
+            ),
         }
     }
 }
