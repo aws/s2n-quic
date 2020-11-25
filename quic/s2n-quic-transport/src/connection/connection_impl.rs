@@ -103,7 +103,6 @@ pub struct ConnectionImpl<Config: connection::Config> {
     /// The connection ID to send packets from
     local_connection_id: connection::Id,
     /// The connection ID mapper registration which should be utilized by the connection
-    #[allow(dead_code)] // TODO: temporary supression until connections support ID registration
     connection_id_mapper_registration: ConnectionIdMapperRegistration,
     /// The timers which are used within the connection
     timers: ConnectionTimers,
@@ -329,11 +328,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         let (_path_id, active_path) = self.path_manager.active_path();
         let connection_info = ConnectionInfo::new(&active_path.peer_socket_address);
 
-        if let connection::id::Interest::New {
-            mut count,
-            retire_prior_to,
-        } = self.id_interest
-        {
+        if let connection::id::Interest::New(mut count, retire_prior_to) = self.id_interest {
             while count > 0 {
                 let id = connection_id_format.generate(&connection_info);
                 let expiration = connection_id_format
@@ -342,10 +337,12 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                 let sequence_number = self
                     .connection_id_mapper_registration
                     .register_connection_id(&id, expiration)?;
+
                 // TODO: send NEW_CONNECTION_ID frame with sequence_number and retire_prior_to
-                // TODO: Move retired connection IDs into a pending retirement confirmation state
                 count -= 1;
             }
+            self.connection_id_mapper_registration
+                .retire_prior_to(retire_prior_to);
             self.id_interest = Interest::None;
         }
 
