@@ -74,12 +74,14 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         let connection_info = ConnectionInfo::new(&datagram.remote_address);
         let endpoint_context = self.config.context();
 
-        let (local_connection_id, connection_id_duration) = endpoint_context
+        let local_connection_id = endpoint_context
             .connection_id_format
             .generate(&connection_info);
 
-        let connection_id_expiration =
-            connection_id_duration.map(|cid_duration| datagram.timestamp + cid_duration);
+        let connection_id_expiration = endpoint_context
+            .connection_id_format
+            .lifetime()
+            .map(|lifetime| datagram.timestamp + lifetime);
 
         let seq_number = connection_id_mapper_registration
             .register_connection_id(&local_connection_id, connection_id_expiration)
