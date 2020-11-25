@@ -278,7 +278,11 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                 // The connection is already closing
                 return;
             }
-            ConnectionState::Handshaking | ConnectionState::Active => {}
+            ConnectionState::Handshaking => {
+                // TODO: Decrement the inflight handshake counter
+                // https://github.com/awslabs/s2n-quic/issues/162
+            }
+            ConnectionState::Active => {}
         }
 
         // TODO: Rember close reason
