@@ -219,7 +219,7 @@ impl ConnectionIdMapperRegistration {
             .for_each(|mut id_info| id_info.status = PendingRetirement)
     }
 
-    pub fn connection_id_interest(&mut self) -> connection::id::Interest {
+    pub fn connection_id_interest(&self) -> connection::id::Interest {
         //TODO let count = min(active_connection_id_limit, local_limit) - self.iter()
         //             .filter(|id_info| id_info.status == Active).len()
         let count = 2;
