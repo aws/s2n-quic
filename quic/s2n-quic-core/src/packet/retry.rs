@@ -2,6 +2,7 @@ use crate::{
     crypto::retry,
     packet::{
         decoding::HeaderDecoder,
+        initial::ProtectedInitial,
         long::{DestinationConnectionIDLen, SourceConnectionIDLen, Version},
         Tag,
     },
@@ -48,7 +49,7 @@ pub struct Retry<'a> {
     pub destination_connection_id: &'a [u8],
     pub source_connection_id: &'a [u8],
     pub retry_token: &'a [u8],
-    pub retry_integrity_tag: &'a [u8],
+    pub retry_integrity_tag: Option<&'a [u8]>,
 }
 
 //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.8
@@ -77,11 +78,42 @@ pub struct PseudoRetry<'a> {
     pub retry_token: &'a [u8],
 }
 
+impl<'a> PseudoRetry<'a> {
+    pub fn new(
+        odcid: &'a [u8],
+        tag: Tag,
+        version: Version,
+        destination_connection_id: &'a [u8],
+        source_connection_id: &'a [u8],
+        retry_token: &'a [u8],
+    ) -> Self {
+        Self {
+            original_destination_connection_id: odcid,
+            tag,
+            version,
+            destination_connection_id,
+            source_connection_id,
+            retry_token,
+        }
+    }
+}
+
 pub type ProtectedRetry<'a> = Retry<'a>;
 pub type EncryptedRetry<'a> = Retry<'a>;
 pub type CleartextRetry<'a> = Retry<'a>;
 
 impl<'a> Retry<'a> {
+    pub fn from_initial(initial_packet: &'a ProtectedInitial) -> Self {
+        Self {
+            tag: retry_tag!(),
+            version: initial_packet.version,
+            destination_connection_id: initial_packet.destination_connection_id(),
+            source_connection_id: initial_packet.source_connection_id(),
+            retry_token: &[0u8; 512],
+            retry_integrity_tag: None,
+        }
+    }
+
     #[inline]
     pub(crate) fn decode(
         tag: Tag,
@@ -121,7 +153,7 @@ impl<'a> Retry<'a> {
             destination_connection_id,
             source_connection_id,
             retry_token,
-            retry_integrity_tag,
+            retry_integrity_tag: Some(retry_integrity_tag),
         };
 
         Ok((packet, buffer))
@@ -205,7 +237,10 @@ mod tests {
             _ => panic!("expected retry packet type"),
         };
 
-        assert_eq!(packet.retry_integrity_tag, retry::example::EXPECTED_TAG);
+        assert_eq!(
+            packet.retry_integrity_tag.unwrap(),
+            retry::example::EXPECTED_TAG
+        );
         assert_eq!(packet.retry_token, retry::example::TOKEN);
         assert_eq!(packet.source_connection_id, retry::example::SCID);
         assert_eq!(packet.destination_connection_id, retry::example::DCID);
