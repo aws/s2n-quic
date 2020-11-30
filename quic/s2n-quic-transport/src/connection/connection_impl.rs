@@ -116,8 +116,6 @@ pub struct ConnectionImpl<Config: connection::Config> {
     state: ConnectionState,
     /// Manage the paths that the connection could use
     path_manager: path::Manager<Config::CongestionController>,
-    /// New Connection ID interest for this connection
-    id_interest: connection::id::Interest,
 }
 
 #[cfg(debug_assertions)]
@@ -250,7 +248,6 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
             accept_state: AcceptState::Handshaking,
             state: ConnectionState::Handshaking,
             path_manager,
-            id_interest: connection::id::Interest::None,
         }
     }
 
@@ -323,30 +320,30 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         _shared_state: &mut SharedConnectionState<Self::Config>,
         timestamp: Timestamp,
     ) -> Result<(), ConnectionIdMapperRegistrationError> {
-        debug_assert_ne!(self.id_interest, connection::id::Interest::None);
+        match self
+            .connection_id_mapper_registration
+            .connection_id_interest()
+        {
+            Interest::New(mut count, retire_prior_to) => {
+                let (_path_id, active_path) = self.path_manager.active_path();
+                let connection_info = ConnectionInfo::new(&active_path.peer_socket_address);
 
-        let (_path_id, active_path) = self.path_manager.active_path();
-        let connection_info = ConnectionInfo::new(&active_path.peer_socket_address);
+                while count > 0 {
+                    let id = connection_id_format.generate(&connection_info);
+                    let expiration = connection_id_format
+                        .lifetime()
+                        .map(|duration| timestamp + duration);
+                    let sequence_number = self
+                        .connection_id_mapper_registration
+                        .register_connection_id(&id, expiration)?;
 
-        if let connection::id::Interest::New(mut count, retire_prior_to) = self.id_interest {
-            while count > 0 {
-                let id = connection_id_format.generate(&connection_info);
-                let expiration = connection_id_format
-                    .lifetime()
-                    .map(|duration| timestamp + duration);
-                let sequence_number = self
-                    .connection_id_mapper_registration
-                    .register_connection_id(&id, expiration)?;
-
-                // TODO: send NEW_CONNECTION_ID frame with sequence_number and retire_prior_to
-                count -= 1;
+                    // TODO: send NEW_CONNECTION_ID frame with sequence_number and retire_prior_to
+                    count -= 1;
+                }
+                Ok(())
             }
-            self.connection_id_mapper_registration
-                .retire_prior_to(retire_prior_to);
-            self.id_interest = Interest::None;
+            Interest::None => Ok(()),
         }
-
-        Ok(())
     }
 
     /// Queries the connection for outgoing packets
@@ -778,7 +775,9 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                 }
 
                 interests.transmission = transmission.can_transmit(constraint);
-                interests.id = self.id_interest;
+                interests.id = self
+                    .connection_id_mapper_registration
+                    .connection_id_interest();
             }
             ConnectionState::Closing => {
                 // TODO: Ask the Close Sender whether it needs to transmit
