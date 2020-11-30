@@ -112,7 +112,7 @@ struct LocalConnectionIdInfo {
 /// Connection IDs are put in the `PendingRetirement` status
 /// upon retirement, until confirmation of the retirement
 /// is received from the peer.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 enum LocalConnectionIdStatus {
     Active,
     PendingRetirement,
@@ -217,6 +217,25 @@ impl ConnectionIdMapperRegistration {
             .iter_mut()
             .filter(|id_info| id_info.sequence_number < sequence_number)
             .for_each(|mut id_info| id_info.status = PendingRetirement)
+    }
+
+    pub fn connection_id_interest(&mut self) -> connection::id::Interest {
+        //TODO let count = min(active_connection_id_limit, local_limit) - self.iter()
+        //             .filter(|id_info| id_info.status == Active).len()
+        let count = 2;
+
+        if count > 0 {
+            let retire_prior_to = self
+                .registered_ids
+                .iter()
+                .filter(|id_info| id_info.status == PendingRetirement)
+                .map(|id_info| id_info.sequence_number)
+                .max()
+                .unwrap_or(0);
+            connection::id::Interest::New(count, retire_prior_to)
+        } else {
+            connection::id::Interest::None
+        }
     }
 }
 
