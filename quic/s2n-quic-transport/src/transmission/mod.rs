@@ -35,7 +35,7 @@ pub trait Payload: interest::Provider {
 
 pub struct Transmission<'a, Config: connection::Config, P: Payload> {
     pub ack_manager: &'a mut AckManager,
-    pub context: &'a ConnectionTransmissionContext<'a, Config>,
+    pub context: &'a mut ConnectionTransmissionContext<'a, Config>,
     pub payload: P,
     pub packet_number: PacketNumber,
     pub recovery_manager: &'a mut recovery::Manager,
@@ -73,9 +73,9 @@ impl<'a, Config: connection::Config, P: Payload> PacketPayloadEncoder
         let did_send_ack = self.ack_manager.on_transmit(&mut context);
 
         if self.payload.packet_number_space().is_application_data() {
-            //self.context
-            //    .connection_id_mapper_registration
-            //    .on_transmit(&mut context);
+            self.context
+                .connection_id_mapper_registration
+                .on_transmit(&mut context);
         }
 
         self.payload.on_transmit(&mut context);
