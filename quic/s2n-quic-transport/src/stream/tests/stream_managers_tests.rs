@@ -600,8 +600,14 @@ fn max_data_replenishes_connection_flow_control_window() {
 fn accept_returns_remotely_initiated_stream() {
     const STREAMS_TO_OPEN: usize = 8;
 
-    for initiator_type in [endpoint::Type::Server, endpoint::Type::Client].iter().copied() {
-        for local_ep_type in [endpoint::Type::Server, endpoint::Type::Client].iter().copied() {
+    for initiator_type in [endpoint::Type::Server, endpoint::Type::Client]
+        .iter()
+        .copied()
+    {
+        for local_ep_type in [endpoint::Type::Server, endpoint::Type::Client]
+            .iter()
+            .copied()
+        {
             let is_remote_initialized = local_ep_type != initiator_type;
             if !is_remote_initialized {
                 continue;
@@ -690,8 +696,14 @@ fn accept_returns_remotely_initiated_stream() {
 fn accept_returns_opened_streams_of_any_type() {
     const STREAMS_TO_OPEN: usize = 8;
 
-    for initiator_type in [endpoint::Type::Server, endpoint::Type::Client].iter().copied() {
-        for local_ep_type in [endpoint::Type::Server, endpoint::Type::Client].iter().copied() {
+    for initiator_type in [endpoint::Type::Server, endpoint::Type::Client]
+        .iter()
+        .copied()
+    {
+        for local_ep_type in [endpoint::Type::Server, endpoint::Type::Client]
+            .iter()
+            .copied()
+        {
             let is_remote_initialized = local_ep_type != initiator_type;
             if !is_remote_initialized {
                 continue;
@@ -745,8 +757,14 @@ fn accept_returns_opened_streams_of_any_type() {
 
 #[test]
 fn accept_notifies_of_any_type() {
-    for initiator_type in [endpoint::Type::Server, endpoint::Type::Client].iter().copied() {
-        for local_ep_type in [endpoint::Type::Server, endpoint::Type::Client].iter().copied() {
+    for initiator_type in [endpoint::Type::Server, endpoint::Type::Client]
+        .iter()
+        .copied()
+    {
+        for local_ep_type in [endpoint::Type::Server, endpoint::Type::Client]
+            .iter()
+            .copied()
+        {
             let is_remote_initialized = local_ep_type != initiator_type;
             if !is_remote_initialized {
                 continue;
@@ -789,8 +807,14 @@ fn accept_notifies_of_any_type() {
 
 #[test]
 fn accept_notifies_on_both_types() {
-    for initiator_type in [endpoint::Type::Server, endpoint::Type::Client].iter().copied() {
-        for local_ep_type in [endpoint::Type::Server, endpoint::Type::Client].iter().copied() {
+    for initiator_type in [endpoint::Type::Server, endpoint::Type::Client]
+        .iter()
+        .copied()
+    {
+        for local_ep_type in [endpoint::Type::Server, endpoint::Type::Client]
+            .iter()
+            .copied()
+        {
             let is_remote_initialized = local_ep_type != initiator_type;
             if !is_remote_initialized {
                 continue;
@@ -905,8 +929,14 @@ fn closing_stream_manager_wakes_blocked_accepts() {
 
 #[test]
 fn closing_stream_manager_without_error_returns_none() {
-    for initiator_type in [endpoint::Type::Server, endpoint::Type::Client].iter().copied() {
-        for local_ep_type in [endpoint::Type::Server, endpoint::Type::Client].iter().copied() {
+    for initiator_type in [endpoint::Type::Server, endpoint::Type::Client]
+        .iter()
+        .copied()
+    {
+        for local_ep_type in [endpoint::Type::Server, endpoint::Type::Client]
+            .iter()
+            .copied()
+        {
             let is_remote_initialized = local_ep_type != initiator_type;
             if !is_remote_initialized {
                 continue;
