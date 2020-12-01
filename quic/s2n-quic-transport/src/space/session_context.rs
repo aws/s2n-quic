@@ -1,5 +1,6 @@
 use crate::{
     connection,
+    connection::ConnectionIdMapperRegistration,
     space::{
         rx_packet_numbers::{AckManager, DEFAULT_ACK_RANGES_LIMIT, EARLY_ACK_SETTINGS},
         ApplicationSpace, HandshakeSpace, HandshakeStatus, InitialSpace,
@@ -25,6 +26,7 @@ pub struct SessionContext<'a, Config: connection::Config> {
     pub application: &'a mut Option<Box<ApplicationSpace<Config>>>,
     pub zero_rtt_crypto: &'a mut Option<Box<<Config::TLSSession as CryptoSuite>::ZeroRTTCrypto>>,
     pub handshake_status: &'a mut HandshakeStatus,
+    pub connection_id_mapper_registration: &'a mut ConnectionIdMapperRegistration,
 }
 
 impl<'a, Config: connection::Config> tls::Context<Config::TLSSession>
@@ -133,6 +135,9 @@ impl<'a, Config: connection::Config> tls::Context<Config::TLSSession>
             sni,
             alpn,
         )));
+
+        self.connection_id_mapper_registration
+            .set_active_connection_id_limit(peer_parameters.active_connection_id_limit.as_u64());
 
         Ok(())
     }

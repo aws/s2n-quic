@@ -135,7 +135,12 @@ impl<ConfigType: connection::Config> ConnectionImpl<ConfigType> {
     ) -> Result<(), TransportError> {
         let space_manager = &mut shared_state.space_manager;
         let (_, path) = self.path_manager.active_path();
-        space_manager.poll_crypto(&self.config, path, datagram.timestamp)?;
+        space_manager.poll_crypto(
+            &self.config,
+            path,
+            &mut self.connection_id_mapper_registration,
+            datagram.timestamp,
+        )?;
 
         if matches!(self.state, ConnectionState::Handshaking)
             && space_manager.application().is_some()

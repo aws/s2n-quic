@@ -29,6 +29,7 @@ pub(crate) mod rx_packet_numbers;
 mod session_context;
 mod tx_packet_numbers;
 
+use crate::connection::ConnectionIdMapperRegistration;
 pub(crate) use application::ApplicationSpace;
 pub(crate) use crypto_stream::CryptoStream;
 pub(crate) use handshake::HandshakeSpace;
@@ -126,6 +127,7 @@ impl<Config: connection::Config> PacketSpaceManager<Config> {
         &mut self,
         connection_config: &Config,
         path: &Path<Config::CongestionController>,
+        connection_id_mapper_registration: &mut ConnectionIdMapperRegistration,
         now: Timestamp,
     ) -> Result<(), TransportError> {
         if let Some(session) = self.session.as_mut() {
@@ -138,6 +140,7 @@ impl<Config: connection::Config> PacketSpaceManager<Config> {
                 path,
                 connection_config,
                 handshake_status: &mut self.handshake_status,
+                connection_id_mapper_registration,
             };
 
             session.poll(&mut context)?;

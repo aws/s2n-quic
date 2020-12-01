@@ -82,6 +82,9 @@ impl ConnectionIdMapper {
             registered_ids: SmallVec::new(),
             next_sequence_number: 0,
             retire_prior_to: 0,
+            // Initialize to 1 until we know the actual limit
+            // from the peer transport parameters
+            active_connection_id_limit: 1,
         };
         let seq_number = registration
             .register_connection_id(initial_connection_id, expiration)
@@ -104,6 +107,11 @@ impl ConnectionIdMapper {
 /// The amount of ConnectionIds we can register without dynamic memory allocation
 const NR_STATIC_REGISTRABLE_IDS: usize = 5;
 
+/// Limit the number of connection IDs issued to the peer to reduce the amount
+/// of per-path state maintained. Increasing this value allows peers to probe
+/// more paths simultaneously at the expense of additional state to maintain.
+const MAX_ACTIVE_CONNECTION_ID_LIMIT: u64 = 3;
+
 /// A registration at the [`ConnectionIdMapper`].
 ///
 /// It allows to add and remove external QUIC Connection IDs which are mapped to
@@ -116,8 +124,12 @@ pub struct ConnectionIdMapperRegistration {
     state: Rc<RefCell<ConnectionIdMapperState>>,
     /// The connection IDs which are currently registered at the ConnectionIdMapper
     registered_ids: SmallVec<[LocalConnectionIdInfo; NR_STATIC_REGISTRABLE_IDS]>,
+    /// The sequence number to use the next time a new connection ID is registered
     next_sequence_number: u32,
+    /// The current sequence number below which all connection IDs are considered retired
     retire_prior_to: u32,
+    /// The maximum number of connection IDs to give to the peer
+    active_connection_id_limit: u8,
 }
 
 #[derive(Debug)]
@@ -164,6 +176,12 @@ impl ConnectionIdMapperRegistration {
     /// Returns the associated internal connection ID
     pub fn internal_connection_id(&self) -> InternalConnectionId {
         self.internal_id
+    }
+
+    /// Sets the active connection id limit
+    pub fn set_active_connection_id_limit(&mut self, active_connection_id_limit: u64) {
+        self.active_connection_id_limit =
+            MAX_ACTIVE_CONNECTION_ID_LIMIT.min(active_connection_id_limit) as u8;
     }
 
     /// Registers a connection ID mapping at the mapper with an optional expiration
@@ -246,12 +264,17 @@ impl ConnectionIdMapperRegistration {
     }
 
     pub fn connection_id_interest(&self) -> connection::id::Interest {
-        //TODO let count = min(active_connection_id_limit, local_limit) - self.iter()
-        //             .filter(|id_info| id_info.status == Active).len()
-        let count = 2;
+        let active_connection_id_count = self
+            .registered_ids
+            .iter()
+            .filter(|id_info| id_info.status == Active || id_info.status == PendingIssuance)
+            .count() as u8;
 
-        if count > 0 {
-            connection::id::Interest::New(count)
+        let new_connection_id_count = self.active_connection_id_limit
+            - active_connection_id_count;
+
+        if new_connection_id_count > 0 {
+            connection::id::Interest::New(new_connection_id_count)
         } else {
             connection::id::Interest::None
         }
