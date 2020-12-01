@@ -67,14 +67,10 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
 
         let internal_connection_id = self.connection_id_generator.generate_id();
 
-        let mut connection_id_mapper_registration = self
-            .connection_id_mapper
-            .create_registration(internal_connection_id);
-
         let connection_info = ConnectionInfo::new(&datagram.remote_address);
         let endpoint_context = self.config.context();
 
-        let local_connection_id = endpoint_context
+        let initial_connection_id = endpoint_context
             .connection_id_format
             .generate(&connection_info);
 
@@ -83,13 +79,11 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             .lifetime()
             .map(|lifetime| datagram.timestamp + lifetime);
 
-        let seq_number = connection_id_mapper_registration
-            .register_connection_id(&local_connection_id, connection_id_expiration)
-            .expect("can register connection ID");
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
-        //# The sequence number of the initial connection ID is 0.
-        debug_assert_eq!(seq_number, 0);
+        let connection_id_mapper_registration = self.connection_id_mapper.create_registration(
+            internal_connection_id,
+            &initial_connection_id,
+            connection_id_expiration,
+        );
 
         let timer = self.timer_manager.create_timer(
             internal_connection_id,
@@ -124,7 +118,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         //# Each endpoint includes the value of the Source Connection ID field
         //# from the first Initial packet it sent in the
         //# initial_source_connection_id transport parameter
-        transport_parameters.initial_source_connection_id = local_connection_id
+        transport_parameters.initial_source_connection_id = initial_connection_id
             .try_into()
             .expect("connection ID already validated");
 
@@ -146,7 +140,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             connection_id_mapper_registration,
             timer,
             peer_connection_id: source_connection_id,
-            local_connection_id,
+            local_connection_id: initial_connection_id,
             peer_socket_address: datagram.remote_address,
             congestion_controller,
             timestamp: datagram.timestamp,

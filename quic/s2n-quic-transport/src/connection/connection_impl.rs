@@ -328,7 +328,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
             .connection_id_mapper_registration
             .connection_id_interest()
         {
-            Interest::New(mut count, retire_prior_to) => {
+            Interest::New(mut count) => {
                 let (_path_id, active_path) = self.path_manager.active_path();
                 let connection_info = ConnectionInfo::new(&active_path.peer_socket_address);
 
@@ -337,11 +337,8 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                     let expiration = connection_id_format
                         .lifetime()
                         .map(|duration| timestamp + duration);
-                    let sequence_number = self
-                        .connection_id_mapper_registration
+                    self.connection_id_mapper_registration
                         .register_connection_id(&id, expiration)?;
-
-                    // TODO: send NEW_CONNECTION_ID frame with sequence_number and retire_prior_to
                     count -= 1;
                 }
                 Ok(())
