@@ -64,7 +64,6 @@ impl<'a, Config: connection::Config, P: Payload> PacketPayloadEncoder
         let mut context: Context<Config> = Context {
             outcome: self.outcome,
             buffer,
-            context,
             packet_number: self.packet_number,
             transmission_constraint: self.transmission_constraint,
             timestamp: self.context.timestamp,
