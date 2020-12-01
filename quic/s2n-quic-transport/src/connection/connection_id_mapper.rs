@@ -279,7 +279,16 @@ impl ConnectionIdMapperRegistration {
 
 impl transmission::interest::Provider for ConnectionIdMapperRegistration {
     fn transmission_interest(&self) -> transmission::Interest {
-        todo!()
+        let has_ids_pending_issuance = self
+            .registered_ids
+            .iter()
+            .any(|id_info| id_info.status == PendingIssuance);
+
+        if has_ids_pending_issuance {
+            transmission::Interest::NewData
+        } else {
+            transmission::Interest::None
+        }
     }
 }
 
