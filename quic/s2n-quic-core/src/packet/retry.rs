@@ -6,6 +6,7 @@ use crate::{
         long::{DestinationConnectionIDLen, SourceConnectionIDLen, Version},
         Tag,
     },
+    path::MINIMUM_MTU,
 };
 use s2n_codec::{
     decoder_invariant, DecoderBufferMut, DecoderBufferMutResult, Encoder, EncoderValue,
@@ -104,12 +105,13 @@ pub type CleartextRetry<'a> = Retry<'a>;
 
 impl<'a> Retry<'a> {
     pub fn from_initial(initial_packet: &'a ProtectedInitial) -> Self {
+        // TODO: Calculate correct maximum size for the retry token
         Self {
             tag: retry_tag!(),
             version: initial_packet.version,
             destination_connection_id: initial_packet.destination_connection_id(),
             source_connection_id: initial_packet.source_connection_id(),
-            retry_token: &[0u8; 512],
+            retry_token: &[0u8; MINIMUM_MTU as usize],
             retry_integrity_tag: None,
         }
     }

@@ -5,7 +5,9 @@ use s2n_quic_core::{
     crypto::RetryCrypto,
     inet::{DatagramInfo, ExplicitCongestionNotification, SocketAddress},
     io::tx,
-    packet, time, token,
+    packet,
+    path::MINIMUM_MTU,
+    time, token,
 };
 
 #[derive(Debug)]
@@ -52,7 +54,7 @@ impl Dispatch {
 #[derive(Debug)]
 pub struct Transmission {
     remote_address: SocketAddress,
-    packet: [u8; 1200],
+    packet: [u8; MINIMUM_MTU as usize],
     packet_len: usize,
 }
 
@@ -63,9 +65,9 @@ impl Transmission {
         token_format: &mut T,
         _tag_generator: C,
     ) -> Self {
-        let mut packet_buf = [0u8; 1200];
+        let mut packet_buf = [0u8; MINIMUM_MTU as usize];
         let retry_packet = packet::retry::Retry::from_initial(packet);
-        let mut token_buf = [0u8; 1200];
+        let mut token_buf = [0u8; MINIMUM_MTU as usize];
         let _token = token_format.generate_retry_token(
             &remote_address,
             &connection::Id::try_from_bytes(retry_packet.destination_connection_id).unwrap(),
@@ -88,7 +90,7 @@ impl Transmission {
         // https://github.com/awslabs/s2n-quic/issues/260
         Self {
             remote_address,
-            packet: [0; 1200],
+            packet: [0; MINIMUM_MTU as usize],
             packet_len: 0,
         }
     }
