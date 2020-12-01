@@ -97,7 +97,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
     }
 
     pub fn on_transmit<'a>(
-        &mut self,
+        &'a mut self,
         context: &'a mut ConnectionTransmissionContext<'a, Config>,
         transmission_constraint: transmission::Constraint,
         handshake_status: &mut HandshakeStatus,

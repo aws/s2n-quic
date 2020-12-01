@@ -68,8 +68,8 @@ impl<Config: connection::Config> HandshakeSpace<Config> {
     }
 
     pub fn on_transmit<'a>(
-        &mut self,
-        context: &mut ConnectionTransmissionContext<Config>,
+        &'a mut self,
+        context: &'a mut ConnectionTransmissionContext<'a, Config>,
         transmission_constraint: transmission::Constraint,
         handshake_status: &HandshakeStatus,
         buffer: EncoderBuffer<'a>,
