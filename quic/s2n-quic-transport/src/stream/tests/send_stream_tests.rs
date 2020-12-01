@@ -8,8 +8,7 @@ use core::task::Poll;
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     application::ApplicationErrorCode,
-    connection,
-    endpoint::EndpointType,
+    connection, endpoint,
     frame::{Frame, MaxData, MaxStreamData, StopSending},
     packet::number::PacketNumber,
     stream::{ops, StreamType},
@@ -21,18 +20,20 @@ use s2n_quic_core::{
 /// the Stream is open
 fn setup_send_only_test_env() -> TestEnvironment {
     let mut test_env_config: TestEnvironmentConfig = Default::default();
-    test_env_config.stream_id = StreamId::initial(EndpointType::Server, StreamType::Unidirectional);
-    test_env_config.local_endpoint_type = EndpointType::Server;
+    test_env_config.stream_id = StreamId::initial(
+        test_env_config.local_endpoint_type,
+        StreamType::Unidirectional,
+    );
     setup_stream_test_env_with_config(test_env_config)
 }
 
 #[test]
 fn remotely_initiated_unidirectional_stream_can_not_be_sent_to() {
-    for local_endpoint_type in &[EndpointType::Client, EndpointType::Server] {
-        let initator_endpoint_type = if *local_endpoint_type == EndpointType::Client {
-            EndpointType::Server
+    for local_endpoint_type in &[endpoint::Type::Client, endpoint::Type::Server] {
+        let initator_endpoint_type = if *local_endpoint_type == endpoint::Type::Client {
+            endpoint::Type::Server
         } else {
-            EndpointType::Client
+            endpoint::Type::Client
         };
 
         let mut test_env_config: TestEnvironmentConfig = Default::default();
@@ -51,9 +52,9 @@ fn remotely_initiated_unidirectional_stream_can_not_be_sent_to() {
 
 #[test]
 fn bidirectional_and_locally_initiated_unidirectional_streams_can_be_written_to() {
-    for local_endpoint_type in &[EndpointType::Client, EndpointType::Server] {
+    for local_endpoint_type in &[endpoint::Type::Client, endpoint::Type::Server] {
         for stream_type in &[StreamType::Unidirectional, StreamType::Bidirectional] {
-            for initiator in &[EndpointType::Client, EndpointType::Server] {
+            for initiator in &[endpoint::Type::Client, endpoint::Type::Server] {
                 // Skip remotely initiated unidirectional stream
                 if *stream_type == StreamType::Unidirectional && *initiator != *local_endpoint_type
                 {
@@ -1711,8 +1712,8 @@ fn transmit_fin_while_outstanding_data_exceeds_stream_flow_control_window() {
         let mut test_env_config = TestEnvironmentConfig::default();
         test_env_config.initial_send_window = 2000;
         test_env_config.stream_id =
-            StreamId::initial(EndpointType::Server, StreamType::Unidirectional);
-        test_env_config.local_endpoint_type = EndpointType::Server;
+            StreamId::initial(endpoint::Type::Server, StreamType::Unidirectional);
+        test_env_config.local_endpoint_type = endpoint::Type::Server;
         let mut test_env = setup_stream_test_env_with_config(test_env_config);
         test_env.sent_frames.set_max_packet_size(Some(1000));
         execute_instructions(&mut test_env, &test_config[..]);
@@ -1804,8 +1805,8 @@ fn transmit_fin_while_outstanding_data_exceeds_connection_flow_control_window() 
         test_env_config.initial_send_window = 200 * 1024;
         test_env_config.initial_connection_send_window_size = 2000;
         test_env_config.stream_id =
-            StreamId::initial(EndpointType::Server, StreamType::Unidirectional);
-        test_env_config.local_endpoint_type = EndpointType::Server;
+            StreamId::initial(endpoint::Type::Server, StreamType::Unidirectional);
+        test_env_config.local_endpoint_type = endpoint::Type::Server;
         let mut test_env = setup_stream_test_env_with_config(test_env_config);
         test_env.sent_frames.set_max_packet_size(Some(1000));
         execute_instructions(&mut test_env, &test_config[..]);
@@ -1939,9 +1940,9 @@ fn stop_sending_while_sending_data_leads_to_a_reset() {
     for require_wakeup in &[true, false] {
         let mut test_env_config = TestEnvironmentConfig::default();
         test_env_config.max_send_buffer_size = 1000;
-        test_env_config.local_endpoint_type = EndpointType::Server;
+        test_env_config.local_endpoint_type = endpoint::Type::Server;
         test_env_config.stream_id =
-            StreamId::initial(EndpointType::Server, StreamType::Unidirectional);
+            StreamId::initial(endpoint::Type::Server, StreamType::Unidirectional);
         let mut test_env = setup_stream_test_env_with_config(test_env_config);
 
         execute_instructions(
@@ -2239,9 +2240,9 @@ fn resetting_the_stream_does_does_trigger_a_reset_frame_and_reset_errors() {
         for is_finishing in &[true, false] {
             let mut test_env_config = TestEnvironmentConfig::default();
             test_env_config.max_send_buffer_size = 1000;
-            test_env_config.local_endpoint_type = EndpointType::Client;
+            test_env_config.local_endpoint_type = endpoint::Type::Client;
             test_env_config.stream_id =
-                StreamId::initial(EndpointType::Client, StreamType::Unidirectional);
+                StreamId::initial(endpoint::Type::Client, StreamType::Unidirectional);
             let mut test_env = setup_stream_test_env_with_config(test_env_config);
 
             let reset_error_code = ApplicationErrorCode::new(0x3333_4444).unwrap();
@@ -2371,9 +2372,9 @@ fn stream_does_not_try_to_acquire_connection_flow_control_credits_after_reset() 
             let mut test_env_config = TestEnvironmentConfig::default();
             test_env_config.max_send_buffer_size = 1500;
             test_env_config.initial_connection_send_window_size = 1000;
-            test_env_config.local_endpoint_type = EndpointType::Client;
+            test_env_config.local_endpoint_type = endpoint::Type::Client;
             test_env_config.stream_id =
-                StreamId::initial(EndpointType::Client, StreamType::Unidirectional);
+                StreamId::initial(endpoint::Type::Client, StreamType::Unidirectional);
             let mut test_env = setup_stream_test_env_with_config(test_env_config);
 
             let reset_error_code = ApplicationErrorCode::new(0x3333_4444).unwrap();
@@ -2515,8 +2516,9 @@ fn stream_reports_stream_size_based_on_acquired_connection_window() {
     test_env_config.max_send_buffer_size = 1500;
     test_env_config.initial_send_window = 100 * 1024;
     test_env_config.initial_connection_send_window_size = 1000;
-    test_env_config.local_endpoint_type = EndpointType::Client;
-    test_env_config.stream_id = StreamId::initial(EndpointType::Client, StreamType::Unidirectional);
+    test_env_config.local_endpoint_type = endpoint::Type::Client;
+    test_env_config.stream_id =
+        StreamId::initial(endpoint::Type::Client, StreamType::Unidirectional);
     let mut test_env = setup_stream_test_env_with_config(test_env_config);
 
     let reset_error_code = ApplicationErrorCode::new(0x3333_4444).unwrap();
@@ -2650,9 +2652,9 @@ fn can_send_multiple_chunks() {
                 for with_context in [false, true].iter().cloned() {
                     let mut test_env_config = TestEnvironmentConfig::default();
                     test_env_config.max_send_buffer_size = max_send_buffer_size;
-                    test_env_config.local_endpoint_type = EndpointType::Client;
+                    test_env_config.local_endpoint_type = endpoint::Type::Client;
                     test_env_config.stream_id =
-                        StreamId::initial(EndpointType::Client, StreamType::Unidirectional);
+                        StreamId::initial(endpoint::Type::Client, StreamType::Unidirectional);
                     let mut test_env = setup_stream_test_env_with_config(test_env_config);
                     let mut expected_buffer_size = max_send_buffer_size;
 
@@ -2772,9 +2774,9 @@ fn can_query_stream_readiness() {
         for with_context in [false, true].iter().cloned() {
             let mut test_env_config = TestEnvironmentConfig::default();
             test_env_config.max_send_buffer_size = max_send_buffer_size;
-            test_env_config.local_endpoint_type = EndpointType::Client;
+            test_env_config.local_endpoint_type = endpoint::Type::Client;
             test_env_config.stream_id =
-                StreamId::initial(EndpointType::Client, StreamType::Unidirectional);
+                StreamId::initial(endpoint::Type::Client, StreamType::Unidirectional);
             let mut test_env = setup_stream_test_env_with_config(test_env_config);
 
             dbg!(size);

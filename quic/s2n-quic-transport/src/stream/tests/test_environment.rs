@@ -1,7 +1,4 @@
-use super::{
-    gen_pattern_test_data, stream_data, MockConnectionContext, MockWriteContext,
-    OutgoingFrameBuffer,
-};
+use super::{gen_pattern_test_data, stream_data, MockWriteContext, OutgoingFrameBuffer};
 use crate::{
     stream::{
         incoming_connection_flow_controller::IncomingConnectionFlowController,
@@ -16,7 +13,7 @@ use core::task::{Context, Poll, Waker};
 use futures_test::task::{new_count_waker, AwokenCount};
 use s2n_quic_core::{
     application::ApplicationErrorCode,
-    endpoint::EndpointType,
+    endpoint,
     frame::{Frame, ResetStream},
     packet::number::{PacketNumber, PacketNumberSpace},
     stream::{ops, StreamError, StreamId, StreamType},
@@ -76,7 +73,6 @@ pub fn transmission_interests(interests: &[&str]) -> transmission::Interest {
 /// Holds a set of associated objects that act as a test environment for a single
 /// [`StreamImpl`].
 pub struct TestEnvironment {
-    pub connection_context: MockConnectionContext,
     pub sent_frames: OutgoingFrameBuffer,
     pub stream: StreamImpl,
     pub rx_connection_flow_controller: IncomingConnectionFlowController,
@@ -85,6 +81,7 @@ pub struct TestEnvironment {
     pub waker: Waker,
     pub current_time: Timestamp,
     pub transmission_constraint: transmission::Constraint,
+    pub endpoint: endpoint::Type,
 }
 
 impl TestEnvironment {
@@ -184,10 +181,10 @@ impl TestEnvironment {
     pub fn assert_write_frames(&mut self, expected_frames: usize) {
         let prev_written = self.sent_frames.len();
         let mut write_ctx = MockWriteContext::new(
-            &self.connection_context,
             self.current_time,
             &mut self.sent_frames,
             self.transmission_constraint,
+            self.endpoint,
         );
         assert!(self
             .rx_connection_flow_controller
@@ -212,10 +209,10 @@ impl TestEnvironment {
         expected_packet_number: PacketNumber,
     ) {
         let mut write_ctx = MockWriteContext::new(
-            &self.connection_context,
             self.current_time,
             &mut self.sent_frames,
             self.transmission_constraint,
+            self.endpoint,
         );
         assert!(self.stream.on_transmit(&mut write_ctx).is_ok());
         self.sent_frames.flush();
@@ -255,10 +252,10 @@ impl TestEnvironment {
         expected_final_size: VarInt,
     ) {
         let mut write_ctx = MockWriteContext::new(
-            &self.connection_context,
             self.current_time,
             &mut self.sent_frames,
             self.transmission_constraint,
+            self.endpoint,
         );
         assert!(self.stream.on_transmit(&mut write_ctx).is_ok());
         self.sent_frames.flush();
@@ -378,7 +375,6 @@ impl TestEnvironment {
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct TestEnvironmentConfig {
-    pub local_endpoint_type: EndpointType,
     pub stream_id: StreamId,
     pub initial_receive_window: u64,
     pub desired_flow_control_window: u32,
@@ -388,13 +384,23 @@ pub struct TestEnvironmentConfig {
     pub desired_connection_flow_control_window: u32,
     pub max_send_buffer_size: usize,
     pub transmission_constraint: transmission::Constraint,
+    pub local_endpoint_type: endpoint::Type,
 }
 
 impl Default for TestEnvironmentConfig {
-    fn default() -> TestEnvironmentConfig {
+    fn default() -> Self {
+        Self::new(endpoint::Type::Server)
+    }
+}
+
+impl TestEnvironmentConfig {
+    pub fn new(local_endpoint_type: endpoint::Type) -> Self {
         TestEnvironmentConfig {
-            local_endpoint_type: EndpointType::Server,
-            stream_id: StreamId::initial(EndpointType::Client, StreamType::Bidirectional),
+            local_endpoint_type,
+            stream_id: StreamId::initial(
+                local_endpoint_type.peer_type(),
+                StreamType::Bidirectional,
+            ),
             initial_receive_window: TestEnvironment::DEFAULT_INITIAL_RECEIVE_WINDOW,
             desired_flow_control_window: TestEnvironment::DEFAULT_INITIAL_RECEIVE_WINDOW as u32,
             initial_send_window: TestEnvironment::DEFAULT_INITIAL_SEND_WINDOW,
@@ -418,8 +424,6 @@ pub fn setup_stream_test_env() -> TestEnvironment {
 
 /// Sets up a test environment for Stream testing with custom parameters
 pub fn setup_stream_test_env_with_config(config: TestEnvironmentConfig) -> TestEnvironment {
-    let connection_context = MockConnectionContext::new(config.local_endpoint_type);
-
     let rx_connection_flow_controller = IncomingConnectionFlowController::new(
         VarInt::new(config.initial_connection_receive_window_size).unwrap(),
         config.desired_connection_flow_control_window,
@@ -443,7 +447,6 @@ pub fn setup_stream_test_env_with_config(config: TestEnvironmentConfig) -> TestE
     let (waker, wake_counter) = new_count_waker();
 
     TestEnvironment {
-        connection_context,
         sent_frames: OutgoingFrameBuffer::new(),
         stream,
         rx_connection_flow_controller,
@@ -452,5 +455,6 @@ pub fn setup_stream_test_env_with_config(config: TestEnvironmentConfig) -> TestE
         waker,
         current_time: s2n_quic_platform::time::now(),
         transmission_constraint: config.transmission_constraint,
+        endpoint: config.local_endpoint_type,
     }
 }

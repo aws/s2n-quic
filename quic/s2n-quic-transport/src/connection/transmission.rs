@@ -1,12 +1,12 @@
 use crate::{
-    connection::{self, SharedConnectionState},
-    contexts::ConnectionContext,
+    connection::{
+        self, connection_id_mapper::ConnectionIdMapperRegistration, SharedConnectionState,
+    },
     transmission,
 };
 use core::time::Duration;
 use s2n_codec::{Encoder, EncoderBuffer};
 use s2n_quic_core::{
-    endpoint::EndpointType,
     inet::{ExplicitCongestionNotification, SocketAddress},
     io::tx,
     packet::encoding::PacketEncodingError,
@@ -19,20 +19,9 @@ pub struct ConnectionTransmissionContext<'a, Config: connection::Config> {
     pub quic_version: u32,
     pub timestamp: Timestamp,
     pub path: &'a mut Path<Config::CongestionController>,
+    pub connection_id_mapper_registration: &'a mut ConnectionIdMapperRegistration,
     pub source_connection_id: &'a connection::Id,
     pub ecn: ExplicitCongestionNotification,
-}
-
-impl<'a, Config: connection::Config> ConnectionContext
-    for ConnectionTransmissionContext<'a, Config>
-{
-    fn local_endpoint_type(&self) -> EndpointType {
-        Config::ENDPOINT_TYPE
-    }
-
-    fn connection_id(&self) -> &connection::Id {
-        &self.path.peer_connection_id
-    }
 }
 
 pub struct ConnectionTransmission<'a, Config: connection::Config> {

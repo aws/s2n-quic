@@ -6,8 +6,7 @@ use crate::{
 };
 use core::{cmp::max, time::Duration};
 use s2n_quic_core::{
-    endpoint::EndpointType,
-    frame,
+    endpoint, frame,
     inet::DatagramInfo,
     packet::number::{PacketNumber, PacketNumberRange, PacketNumberSpace},
     path::Path,
@@ -589,7 +588,7 @@ impl Manager {
 }
 
 pub trait Context {
-    const ENDPOINT_TYPE: EndpointType;
+    const ENDPOINT_TYPE: endpoint::Type;
 
     fn is_handshake_confirmed(&self) -> bool;
 
@@ -781,14 +780,14 @@ impl transmission::interest::Provider for Pto {
 mod test {
     use super::*;
     use crate::{
-        contexts::testing::{MockConnectionContext, MockWriteContext, OutgoingFrameBuffer},
+        contexts::testing::{MockWriteContext, OutgoingFrameBuffer},
         recovery,
         recovery::manager::PtoState::RequiresTransmission,
         space::rx_packet_numbers::ack_ranges::AckRanges,
     };
     use core::{ops::RangeInclusive, time::Duration};
     use s2n_quic_core::{
-        connection,
+        connection, endpoint,
         frame::ack_elicitation::AckElicitation,
         packet::number::PacketNumberSpace,
         path::INITIAL_PTO_BACKOFF,
@@ -1929,13 +1928,12 @@ mod test {
     fn on_transmit() {
         let space = PacketNumberSpace::ApplicationData;
         let mut manager = Manager::new(space, Duration::from_millis(10));
-        let connection_context = MockConnectionContext::new(EndpointType::Client);
         let mut frame_buffer = OutgoingFrameBuffer::new();
         let mut context = MockWriteContext::new(
-            &connection_context,
             s2n_quic_platform::time::now(),
             &mut frame_buffer,
             transmission::Constraint::CongestionLimited, // Recovery manager ignores constraints
+            endpoint::Type::Client,
         );
 
         // Already idle
@@ -2153,7 +2151,7 @@ mod test {
     }
 
     impl recovery::Context for MockContext {
-        const ENDPOINT_TYPE: EndpointType = EndpointType::Client;
+        const ENDPOINT_TYPE: endpoint::Type = endpoint::Type::Client;
 
         fn is_handshake_confirmed(&self) -> bool {
             true

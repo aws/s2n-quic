@@ -2,7 +2,7 @@
 
 use crate::{
     connection::{self, Limits as ConnectionLimits},
-    contexts::{ConnectionApiCallContext, ConnectionContext, OnTransmitError, WriteContext},
+    contexts::{ConnectionApiCallContext, OnTransmitError, WriteContext},
     stream::{
         incoming_connection_flow_controller::IncomingConnectionFlowController,
         outgoing_connection_flow_controller::OutgoingConnectionFlowController,
@@ -16,7 +16,7 @@ use crate::{
 use core::task::{Context, Poll, Waker};
 use s2n_quic_core::{
     ack_set::AckSet,
-    endpoint::EndpointType,
+    endpoint,
     frame::{
         stream::StreamRef, DataBlocked, MaxData, MaxStreamData, MaxStreams, ResetStream,
         StopSending, StreamDataBlocked, StreamsBlocked,
@@ -41,19 +41,19 @@ impl StreamIdSet {
     pub fn initial() -> Self {
         Self {
             server_initiated_bidirectional: Some(StreamId::initial(
-                EndpointType::Server,
+                endpoint::Type::Server,
                 StreamType::Bidirectional,
             )),
             client_initiated_bidirectional: Some(StreamId::initial(
-                EndpointType::Client,
+                endpoint::Type::Client,
                 StreamType::Bidirectional,
             )),
             server_initiated_unidirectional: Some(StreamId::initial(
-                EndpointType::Server,
+                endpoint::Type::Server,
                 StreamType::Unidirectional,
             )),
             client_initiated_unidirectional: Some(StreamId::initial(
-                EndpointType::Client,
+                endpoint::Type::Client,
                 StreamType::Unidirectional,
             )),
         }
@@ -63,20 +63,20 @@ impl StreamIdSet {
     /// initiator and stream type
     pub fn get_mut(
         &mut self,
-        initiator: EndpointType,
+        initiator: endpoint::Type,
         stream_type: StreamType,
     ) -> &mut Option<StreamId> {
         match (initiator, stream_type) {
-            (EndpointType::Server, StreamType::Unidirectional) => {
+            (endpoint::Type::Server, StreamType::Unidirectional) => {
                 &mut self.server_initiated_unidirectional
             }
-            (EndpointType::Client, StreamType::Unidirectional) => {
+            (endpoint::Type::Client, StreamType::Unidirectional) => {
                 &mut self.client_initiated_unidirectional
             }
-            (EndpointType::Server, StreamType::Bidirectional) => {
+            (endpoint::Type::Server, StreamType::Bidirectional) => {
                 &mut self.server_initiated_bidirectional
             }
-            (EndpointType::Client, StreamType::Bidirectional) => {
+            (endpoint::Type::Client, StreamType::Bidirectional) => {
                 &mut self.client_initiated_bidirectional
             }
         }
@@ -102,7 +102,7 @@ pub(super) struct AcceptState {
 }
 
 impl AcceptState {
-    pub fn new(local_endpoint_type: EndpointType) -> AcceptState {
+    pub fn new(local_endpoint_type: endpoint::Type) -> AcceptState {
         let peer_type = local_endpoint_type.peer_type();
 
         AcceptState {
@@ -159,7 +159,7 @@ pub struct StreamManagerState<S> {
     /// for each stream type
     pub(super) next_stream_ids: StreamIdSet,
     /// The type of our local endpoint (client or server)
-    local_endpoint_type: EndpointType,
+    local_endpoint_type: endpoint::Type,
     /// The initial flow control limits which we advertised towards the peer
     /// via transport parameters
     initial_local_limits: InitialFlowControlLimits,
@@ -355,38 +355,6 @@ impl<S: StreamTrait> StreamManagerState<S> {
     }
 }
 
-/// Implements the [`ConnectionContext`] that `StreamManager` passes to
-/// individual `Streams`.
-///
-/// This might go away, since most of the functionality of
-/// `ConnectionContext` is now covereec by different functionality.
-struct StreamManagerConnectionContext {
-    local_endpoint_type: EndpointType,
-    connection_id: connection::Id,
-}
-
-impl StreamManagerConnectionContext {
-    /// Creates a new `StreamManagerContext`
-    pub fn new(local_endpoint_type: EndpointType) -> Self {
-        // TODO: The `ConnectionId` is wrong. However it is not yet utiliezd
-        // anywhere. It either needs to get fixed or removed.
-        Self {
-            local_endpoint_type,
-            connection_id: connection::Id::try_from_bytes(&[]).unwrap(),
-        }
-    }
-}
-
-impl ConnectionContext for StreamManagerConnectionContext {
-    fn local_endpoint_type(&self) -> EndpointType {
-        self.local_endpoint_type
-    }
-
-    fn connection_id(&self) -> &connection::Id {
-        &self.connection_id
-    }
-}
-
 /// Manages all active `Stream`s inside a connection.
 /// `AbstractStreamManager` is paramterized over the `Stream` type.
 #[derive(Debug)]
@@ -402,7 +370,7 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
     /// Creates a new `StreamManager` using the provided configuration parameters
     pub fn new(
         limits: &ConnectionLimits,
-        local_endpoint_type: EndpointType,
+        local_endpoint_type: endpoint::Type,
         initial_local_limits: InitialFlowControlLimits,
         initial_peer_limits: InitialFlowControlLimits,
     ) -> Self {
@@ -831,17 +799,14 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         func: F,
     ) -> R
     where
-        F: FnOnce(&mut S, &StreamManagerConnectionContext) -> R,
+        F: FnOnce(&mut S) -> R,
     {
         let prev_transmission_interest = self.inner.streams.transmission_interest();
-
-        let connection_context =
-            StreamManagerConnectionContext::new(self.inner.local_endpoint_type);
 
         let result = self
             .inner
             .streams
-            .with_stream(stream_id, |stream| func(stream, &connection_context))
+            .with_stream(stream_id, |stream| func(stream))
             .unwrap_or(unknown_stream_result);
 
         // A wakeup is only triggered if the the transmission list is
@@ -870,7 +835,7 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
             stream_id,
             Err(StreamError::InvalidStream),
             api_call_context,
-            |stream, _connection_context| stream.poll_request(request, context),
+            |stream| stream.poll_request(request, context),
         )
     }
 }

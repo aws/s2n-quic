@@ -2,7 +2,7 @@ use super::{generator::gen_duration, Endpoint, Packet};
 use alloc::collections::VecDeque;
 use bolero::generator::*;
 use core::time::Duration;
-use s2n_quic_core::{endpoint::EndpointType, time::Timestamp};
+use s2n_quic_core::{endpoint, time::Timestamp};
 
 #[derive(Clone, Debug, TypeGenerator)]
 pub struct Application {
@@ -21,7 +21,7 @@ impl Application {
         }
     }
 
-    pub fn init(&mut self, now: Timestamp, endpoint_type: EndpointType) {
+    pub fn init(&mut self, now: Timestamp, endpoint_type: endpoint::Type) {
         self.init_next_transmission(now);
         self.endpoint.init(now, endpoint_type);
     }

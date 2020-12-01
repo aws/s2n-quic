@@ -4,8 +4,7 @@
 use crate::{connection::InternalConnectionId, transmission, wakeup_queue::WakeupHandle};
 use s2n_codec::encoder::EncoderValue;
 use s2n_quic_core::{
-    connection,
-    endpoint::EndpointType,
+    endpoint,
     frame::{
         ack_elicitation::{AckElicitable, AckElicitation},
         congestion_controlled::CongestionControlled,
@@ -14,25 +13,10 @@ use s2n_quic_core::{
     time::Timestamp,
 };
 
-/// Context information about the connection to which a stream is attached to
-/// that is passed on calls to the stream
-pub trait ConnectionContext {
-    /// Returns the local endpoint type (client or server)
-    fn local_endpoint_type(&self) -> EndpointType;
-    /// The ID of the connection (TODO: This can change - should it be the current ID?)
-    fn connection_id(&self) -> &connection::Id;
-}
-
 /// Context information that is passed to `on_transmit` calls on Streams
 pub trait WriteContext {
-    /// The type of the `connection_context` return value
-    type ConnectionContext: ConnectionContext;
-
     /// Returns the current point of time
     fn current_time(&self) -> Timestamp;
-
-    /// Returns a reference to the underlying connection
-    fn connection_context(&self) -> &Self::ConnectionContext;
 
     /// Returns the transmission constraint for the current packet
     fn transmission_constraint(&self) -> transmission::Constraint;
@@ -57,14 +41,7 @@ pub trait WriteContext {
     fn reserve_minimum_space_for_frame(&mut self, min_size: usize) -> Result<usize, ()>;
 
     /// Returns the local endpoint type (client or server)
-    fn local_endpoint_type(&self) -> EndpointType {
-        self.connection_context().local_endpoint_type()
-    }
-
-    /// The ID of the connection
-    fn connection_id(&self) -> &connection::Id {
-        self.connection_context().connection_id()
-    }
+    fn local_endpoint_type(&self) -> endpoint::Type;
 }
 
 /// Enumerates error values for `on_transmit` calls

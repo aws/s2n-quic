@@ -13,7 +13,7 @@ use crate::{
 use core::task::Context;
 use s2n_quic_core::{
     ack_set::AckSet,
-    endpoint::EndpointType,
+    endpoint,
     frame::{stream::StreamRef, MaxStreamData, ResetStream, StopSending, StreamDataBlocked},
     stream::{ops, StreamId},
     transport::error::TransportError,
@@ -25,7 +25,7 @@ pub struct StreamConfig {
     /// The [`Stream`]s identifier
     pub stream_id: StreamId,
     /// The type of the local endpoint
-    pub local_endpoint_type: EndpointType,
+    pub local_endpoint_type: endpoint::Type,
     /// The connection-wide flow controller for receiving data
     pub incoming_connection_flow_controller: IncomingConnectionFlowController,
     /// The connection-wide flow controller for sending data

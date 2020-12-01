@@ -7,7 +7,7 @@ use crate::{
 };
 use bolero::generator::*;
 use s2n_quic_core::{
-    endpoint::EndpointType,
+    endpoint,
     frame::{ack_elicitation::AckElicitation, Ack, Frame, Ping},
     inet::DatagramInfo,
     packet::number::PacketNumberSpace,
@@ -40,9 +40,9 @@ impl Endpoint {
         }
     }
 
-    pub fn init(&mut self, now: Timestamp, endpoint_type: EndpointType) {
+    pub fn init(&mut self, now: Timestamp, endpoint_type: endpoint::Type) {
         self.env.current_time = now;
-        self.env.connection_context.local_endpoint_type = endpoint_type;
+        self.env.local_endpoint_type = endpoint_type;
     }
 
     pub fn recv(&mut self, packet: Packet) {
