@@ -66,18 +66,21 @@ mod tests {
             transmission: false,
             accept: true,
             finalization: true,
+            id: connection::id::Interest::None,
         };
 
         let b = ConnectionInterests {
             transmission: true,
             accept: false,
             finalization: false,
+            id: connection::id::Interest::New(1),
         };
 
         let c = ConnectionInterests {
             transmission: false,
             accept: false,
             finalization: true,
+            id: connection::id::Interest::New(2),
         };
 
         assert_eq!(
@@ -85,6 +88,7 @@ mod tests {
                 transmission: true,
                 accept: true,
                 finalization: false,
+                id: connection::id::Interest::New(1),
             },
             a + b
         );
@@ -94,6 +98,7 @@ mod tests {
                 transmission: false,
                 accept: true,
                 finalization: true,
+                id: connection::id::Interest::New(2),
             },
             a + c
         );
@@ -103,6 +108,7 @@ mod tests {
                 transmission: true,
                 accept: false,
                 finalization: false,
+                id: connection::id::Interest::New(2),
             },
             b + c
         );
