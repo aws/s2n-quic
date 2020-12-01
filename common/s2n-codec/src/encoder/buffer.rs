@@ -64,11 +64,16 @@ impl<'a> EncoderBuffer<'a> {
 }
 
 impl<'a> Encoder for EncoderBuffer<'a> {
-    fn write_sized<F: FnOnce(&mut [u8])>(&mut self, len: usize, write: F) {
+    fn write_sized<F: FnOnce(&mut [u8]) -> Option<()>>(
+        &mut self,
+        len: usize,
+        write: F,
+    ) -> Option<()> {
         self.assert_capacity(len);
         let end = self.position + len;
-        write(&mut self.bytes[self.position..end]);
+        write(&mut self.bytes[self.position..end])?;
         self.position = end;
+        Some(())
     }
 
     fn write_slice(&mut self, slice: &[u8]) {

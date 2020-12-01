@@ -54,6 +54,9 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
 
         let source_connection_id: connection::Id = packet.source_connection_id().try_into()?;
 
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.5.2
+        //# Changing Destination Connection ID also results in a change
+        //# to the keys used to protect the Initial packet.
         let initial_crypto =
             <<Config::ConnectionConfig as connection::Config>::TLSSession as CryptoSuite>::InitialCrypto::new_server(
                 destination_connection_id.as_bytes(),
@@ -70,6 +73,11 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         let connection_info = ConnectionInfo::new(&datagram.remote_address);
         let endpoint_context = self.config.context();
 
+        // TODO If this packet has a token, we should use the dcid in the packet instead of
+        // generating a new one. This is because the dcid was already generated when constructing
+        // the retry packet.
+        // expired, we shouldn't accept the packet. This situation could occur if the token
+        // duration is longer than the connection ID duration.
         let initial_connection_id = endpoint_context
             .connection_id_format
             .generate(&connection_info);

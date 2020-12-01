@@ -229,9 +229,12 @@ impl VarInt {
         (two_bit, len, usable_bits): (u64, usize, u64),
         encoder: &mut E,
     ) {
-        encoder.write_sized(len, |buffer| {
-            NetworkEndian::write_uint(buffer, two_bit << usable_bits | self.0, len)
-        })
+        encoder
+            .write_sized(len, |buffer| {
+                NetworkEndian::write_uint(buffer, two_bit << usable_bits | self.0, len);
+                Some(())
+            })
+            .expect("Write should never fail");
     }
 
     #[inline]

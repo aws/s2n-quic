@@ -25,8 +25,9 @@ pub trait Key {
 #[cfg(any(test, feature = "testing"))]
 pub mod testing {
     use crate::crypto::{
+        retry::{IntegrityTag, INTEGRITY_TAG_LEN},
         CryptoError, HandshakeCrypto, HeaderCrypto, HeaderProtectionMask, InitialCrypto,
-        OneRTTCrypto, ZeroRTTCrypto,
+        OneRTTCrypto, RetryCrypto, ZeroRTTCrypto,
     };
 
     #[derive(Debug)]
@@ -95,4 +96,12 @@ pub mod testing {
     impl HandshakeCrypto for Key {}
     impl OneRTTCrypto for Key {}
     impl ZeroRTTCrypto for Key {}
+    impl RetryCrypto for Key {
+        fn generate_tag(_payload: &[u8]) -> IntegrityTag {
+            [0u8; INTEGRITY_TAG_LEN]
+        }
+        fn validate(_payload: &[u8], _tag: IntegrityTag) -> Result<(), CryptoError> {
+            Ok(())
+        }
+    }
 }
