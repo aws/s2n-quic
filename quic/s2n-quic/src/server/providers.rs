@@ -161,6 +161,7 @@ impl<
                         }
 
                         endpoint.handle_timers(clock.get_time());
+                        endpoint.issue_new_connection_ids(clock.get_time());
                         endpoint.transmit(&mut tx, clock.get_time());
                     }
 

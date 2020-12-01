@@ -327,22 +327,20 @@ impl<Cfg: Config> Endpoint<Cfg> {
     /// TODO
     pub fn issue_new_connection_ids(&mut self, timestamp: Timestamp) {
         // Iterate over all connections which need new connection IDs
-        let mut new_connection_id_result = Ok(());
         let connection_id_format = self.config.context().connection_id_format;
+
         self.connections
             .iterate_new_connection_id_list(|connection, shared_state| {
-                new_connection_id_result =
+                let result =
                     connection.on_new_connection_id(connection_id_format, shared_state, timestamp);
-                if new_connection_id_result.is_err() {
-                    ConnectionContainerIterationResult::BreakAndInsertAtBack
-                } else {
+                if result.is_ok() {
                     ConnectionContainerIterationResult::Continue
+                } else {
+                    // The provided Connection ID generator must never generate the same connection
+                    // ID twice. If this happens, it is unlikely we could recover from it.
+                    panic!("Generated connection ID was already in use");
                 }
             });
-
-        if new_connection_id_result.is_err() {
-            //TODO: What to do on error?
-        }
     }
 
     /// Queries the endpoint for outgoing datagrams
