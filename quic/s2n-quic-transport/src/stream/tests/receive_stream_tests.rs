@@ -8,8 +8,7 @@ use bytes::Bytes;
 use core::{convert::TryFrom, task::Poll};
 use s2n_quic_core::{
     application::ApplicationErrorCode,
-    connection,
-    endpoint::EndpointType,
+    connection, endpoint,
     frame::{Frame, MaxData, MaxStreamData, ResetStream, StopSending},
     stream::{ops, StreamError, StreamType},
     varint::VarInt,
@@ -17,7 +16,7 @@ use s2n_quic_core::{
 
 #[test]
 fn locally_initiated_unidirectional_stream_can_not_be_read() {
-    for local_endpoint_type in &[EndpointType::Client, EndpointType::Server] {
+    for local_endpoint_type in &[endpoint::Type::Client, endpoint::Type::Server] {
         let mut test_env_config: TestEnvironmentConfig = Default::default();
         test_env_config.stream_id =
             StreamId::initial(*local_endpoint_type, StreamType::Unidirectional);
@@ -30,9 +29,9 @@ fn locally_initiated_unidirectional_stream_can_not_be_read() {
 
 #[test]
 fn bidirectional_and_remotely_initiated_unidirectional_streams_can_be_read() {
-    for local_endpoint_type in &[EndpointType::Client, EndpointType::Server] {
+    for local_endpoint_type in &[endpoint::Type::Client, endpoint::Type::Server] {
         for stream_type in &[StreamType::Unidirectional, StreamType::Bidirectional] {
-            for initiator in &[EndpointType::Client, EndpointType::Server] {
+            for initiator in &[endpoint::Type::Client, endpoint::Type::Server] {
                 // Skip locally initiated unidirectional stream
                 if *stream_type == StreamType::Unidirectional && *initiator == *local_endpoint_type
                 {
@@ -54,8 +53,10 @@ fn bidirectional_and_remotely_initiated_unidirectional_streams_can_be_read() {
 /// the Stream is open
 fn setup_receive_only_test_env() -> TestEnvironment {
     let mut test_env_config: TestEnvironmentConfig = Default::default();
-    test_env_config.stream_id = StreamId::initial(EndpointType::Client, StreamType::Unidirectional);
-    test_env_config.local_endpoint_type = EndpointType::Server;
+    test_env_config.stream_id = StreamId::initial(
+        test_env_config.local_endpoint_type.peer_type(),
+        StreamType::Unidirectional,
+    );
     setup_stream_test_env_with_config(test_env_config)
 }
 
@@ -63,8 +64,10 @@ fn setup_receive_only_test_env() -> TestEnvironment {
 /// connection flow control window
 fn conn_flow_control_test_env_config() -> TestEnvironmentConfig {
     let mut test_env_config: TestEnvironmentConfig = Default::default();
-    test_env_config.stream_id = StreamId::initial(EndpointType::Client, StreamType::Unidirectional);
-    test_env_config.local_endpoint_type = EndpointType::Server;
+    test_env_config.stream_id = StreamId::initial(
+        test_env_config.local_endpoint_type.peer_type(),
+        StreamType::Unidirectional,
+    );
     // Increase the stream window to error on the connection window
     test_env_config.initial_receive_window = core::u32::MAX.into();
     test_env_config.desired_flow_control_window = core::u32::MAX;

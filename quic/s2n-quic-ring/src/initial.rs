@@ -5,7 +5,7 @@ use s2n_quic_core::{
         label::{CLIENT_IN, SERVER_IN},
         CryptoError, HeaderCrypto, HeaderProtectionMask, InitialCrypto, Key, INITIAL_SALT,
     },
-    endpoint::EndpointType,
+    endpoint,
 };
 
 #[derive(Debug)]
@@ -20,7 +20,7 @@ lazy_static::lazy_static! {
 }
 
 impl RingInitialCrypto {
-    fn new(endpoint: EndpointType, connection_id: &[u8]) -> Self {
+    fn new(endpoint: endpoint::Type, connection_id: &[u8]) -> Self {
         let initial_secret = INITIAL_SIGNING_KEY.extract(connection_id);
         let digest = INITIAL_SIGNING_KEY.algorithm();
 
@@ -35,11 +35,11 @@ impl RingInitialCrypto {
             .into();
 
         let (sealer, opener) = match endpoint {
-            EndpointType::Client => (
+            endpoint::Type::Client => (
                 Ciphersuite::new(client_secret),
                 Ciphersuite::new(server_secret),
             ),
-            EndpointType::Server => (
+            endpoint::Type::Server => (
                 Ciphersuite::new(server_secret),
                 Ciphersuite::new(client_secret),
             ),
@@ -51,11 +51,11 @@ impl RingInitialCrypto {
 
 impl InitialCrypto for RingInitialCrypto {
     fn new_server(connection_id: &[u8]) -> Self {
-        Self::new(EndpointType::Server, connection_id)
+        Self::new(endpoint::Type::Server, connection_id)
     }
 
     fn new_client(connection_id: &[u8]) -> Self {
-        Self::new(EndpointType::Client, connection_id)
+        Self::new(endpoint::Type::Client, connection_id)
     }
 }
 

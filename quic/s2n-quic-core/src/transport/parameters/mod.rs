@@ -1,6 +1,5 @@
 use crate::{
-    connection,
-    endpoint::EndpointType,
+    connection, endpoint,
     inet::{SocketAddressV4, SocketAddressV6, Unspecified},
     stateless_reset_token::StatelessResetToken,
     stream::{StreamId, StreamType},
@@ -962,7 +961,7 @@ impl InitialStreamLimits {
     /// Returns the initial maximum data limit for a Stream based on its Stream ID
     /// and the information whether the "local" endpoint is referring to the Client
     /// or the Server.
-    pub fn max_data(&self, local_endpoint_type: EndpointType, stream_id: StreamId) -> VarInt {
+    pub fn max_data(&self, local_endpoint_type: endpoint::Type, stream_id: StreamId) -> VarInt {
         match (stream_id.initiator(), stream_id.stream_type()) {
             (endpoint_type, StreamType::Bidirectional) if endpoint_type == local_endpoint_type => {
                 self.max_data_bidi_local

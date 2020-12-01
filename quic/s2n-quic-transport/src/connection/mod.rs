@@ -56,7 +56,7 @@ pub trait Config: 'static + Send + Debug {
     /// Session type
     type TLSSession: tls::Session;
 
-    const ENDPOINT_TYPE: endpoint::EndpointType;
+    const ENDPOINT_TYPE: endpoint::Type;
 
     /// Our initial flow control limits as advertised in transport parameters.
     fn local_flow_control_limits(&self) -> InitialFlowControlLimits;
@@ -148,7 +148,7 @@ pub mod testing {
         type Stream = crate::stream::StreamImpl;
         type CongestionController = crate::recovery::CubicCongestionController;
         type TLSSession = tls::testing::Session;
-        const ENDPOINT_TYPE: endpoint::EndpointType = endpoint::EndpointType::Server;
+        const ENDPOINT_TYPE: endpoint::Type = endpoint::Type::Server;
 
         fn local_flow_control_limits(&self) -> InitialFlowControlLimits {
             todo!()
@@ -170,7 +170,7 @@ pub mod testing {
         type Stream = crate::stream::StreamImpl;
         type CongestionController = crate::recovery::CubicCongestionController;
         type TLSSession = tls::testing::Session;
-        const ENDPOINT_TYPE: endpoint::EndpointType = endpoint::EndpointType::Client;
+        const ENDPOINT_TYPE: endpoint::Type = endpoint::Type::Client;
 
         fn local_flow_control_limits(&self) -> InitialFlowControlLimits {
             todo!()

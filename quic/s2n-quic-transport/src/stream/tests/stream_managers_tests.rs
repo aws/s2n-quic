@@ -7,6 +7,7 @@ use crate::{
         Limits as ConnectionLimits,
     },
     contexts::{ConnectionApiCallContext, OnTransmitError, WriteContext},
+    endpoint,
     stream::{
         stream_impl::StreamConfig,
         stream_interests::{StreamInterestProvider, StreamInterests},
@@ -24,7 +25,6 @@ use s2n_quic_core::{
     ack_set::AckSet,
     application::ApplicationErrorCode,
     connection,
-    endpoint::EndpointType,
     frame::{
         stream::StreamRef, MaxData, MaxStreamData, ResetStream, StopSending, Stream as StreamFrame,
         StreamDataBlocked,
@@ -335,7 +335,7 @@ fn assert_wakeups(wakeup_queue: &mut WakeupQueue<InternalConnectionId>, expected
     assert_eq!(expected_wakeups, dequeued_wakeups.len());
 }
 
-fn create_stream_manager(local_ep_type: EndpointType) -> AbstractStreamManager<MockStream> {
+fn create_stream_manager(local_ep_type: endpoint::Type) -> AbstractStreamManager<MockStream> {
     let initial_local_limits = create_default_initial_flow_control_limits();
     let initial_peer_limits = create_default_initial_flow_control_limits();
 
@@ -371,9 +371,9 @@ fn try_open(
 fn remote_messages_open_unopened_streams() {
     const STREAMS_TO_OPEN: usize = 8;
 
-    for initiator_type in &[EndpointType::Server, EndpointType::Client] {
+    for initiator_type in &[endpoint::Type::Server, endpoint::Type::Client] {
         for stream_type in &[StreamType::Bidirectional, StreamType::Unidirectional] {
-            for local_ep_type in &[EndpointType::Server, EndpointType::Client] {
+            for local_ep_type in &[endpoint::Type::Server, endpoint::Type::Client] {
                 let is_remote_initialized = *local_ep_type != *initiator_type;
                 if !is_remote_initialized {
                     continue;
@@ -413,9 +413,9 @@ fn remote_messages_open_unopened_streams() {
 fn remote_streams_do_not_open_if_manager_is_closed() {
     const STREAMS_TO_OPEN: usize = 8;
 
-    for initiator_type in &[EndpointType::Server, EndpointType::Client] {
+    for initiator_type in &[endpoint::Type::Server, endpoint::Type::Client] {
         for stream_type in &[StreamType::Bidirectional, StreamType::Unidirectional] {
-            for local_ep_type in &[EndpointType::Server, EndpointType::Client] {
+            for local_ep_type in &[endpoint::Type::Server, endpoint::Type::Client] {
                 let is_remote_initialized = *local_ep_type != *initiator_type;
                 if !is_remote_initialized {
                     continue;
@@ -446,7 +446,10 @@ fn remote_streams_do_not_open_if_manager_is_closed() {
 
 #[test]
 fn opens_locally_initiated_streams() {
-    for local_ep_type in [EndpointType::Client, EndpointType::Server].iter().copied() {
+    for local_ep_type in [endpoint::Type::Client, endpoint::Type::Server]
+        .iter()
+        .copied()
+    {
         for stream_type in [StreamType::Bidirectional, StreamType::Unidirectional]
             .iter()
             .copied()
@@ -478,7 +481,7 @@ fn opens_locally_initiated_streams() {
 
 #[test]
 fn open_returns_error_after_close() {
-    let mut manager = create_stream_manager(EndpointType::Server);
+    let mut manager = create_stream_manager(endpoint::Type::Server);
 
     manager.close(connection::Error::Unspecified);
     assert_eq!(
@@ -489,7 +492,7 @@ fn open_returns_error_after_close() {
 
 #[test]
 fn returns_finalization_interest_after_last_stream_is_drained() {
-    let mut manager = create_stream_manager(EndpointType::Server);
+    let mut manager = create_stream_manager(endpoint::Type::Server);
     let (_wakeup_queue, mut wakeup_handle) = create_wakeup_queue_and_handle();
 
     assert_eq!(0, manager.active_streams().len());
@@ -534,9 +537,9 @@ fn returns_finalization_interest_after_last_stream_is_drained() {
 
 #[test]
 fn remote_messages_which_target_locally_initiated_unopened_streams_error() {
-    for initiator_type in &[EndpointType::Server, EndpointType::Client] {
+    for initiator_type in &[endpoint::Type::Server, endpoint::Type::Client] {
         for stream_type in &[StreamType::Bidirectional, StreamType::Unidirectional] {
-            for local_ep_type in &[EndpointType::Server, EndpointType::Client] {
+            for local_ep_type in &[endpoint::Type::Server, endpoint::Type::Client] {
                 let is_remote_initialized = *local_ep_type != *initiator_type;
                 if is_remote_initialized {
                     continue;
@@ -576,7 +579,7 @@ fn remote_messages_which_target_locally_initiated_unopened_streams_error() {
 
 #[test]
 fn max_data_replenishes_connection_flow_control_window() {
-    let mut manager = create_stream_manager(EndpointType::Server);
+    let mut manager = create_stream_manager(endpoint::Type::Server);
     let current_window =
         manager.with_outgoing_connection_flow_controller(|ctrl| ctrl.total_window());
 
@@ -597,8 +600,14 @@ fn max_data_replenishes_connection_flow_control_window() {
 fn accept_returns_remotely_initiated_stream() {
     const STREAMS_TO_OPEN: usize = 8;
 
-    for initiator_type in [EndpointType::Server, EndpointType::Client].iter().copied() {
-        for local_ep_type in [EndpointType::Server, EndpointType::Client].iter().copied() {
+    for initiator_type in [endpoint::Type::Server, endpoint::Type::Client]
+        .iter()
+        .copied()
+    {
+        for local_ep_type in [endpoint::Type::Server, endpoint::Type::Client]
+            .iter()
+            .copied()
+        {
             let is_remote_initialized = local_ep_type != initiator_type;
             if !is_remote_initialized {
                 continue;
@@ -687,8 +696,14 @@ fn accept_returns_remotely_initiated_stream() {
 fn accept_returns_opened_streams_of_any_type() {
     const STREAMS_TO_OPEN: usize = 8;
 
-    for initiator_type in [EndpointType::Server, EndpointType::Client].iter().copied() {
-        for local_ep_type in [EndpointType::Server, EndpointType::Client].iter().copied() {
+    for initiator_type in [endpoint::Type::Server, endpoint::Type::Client]
+        .iter()
+        .copied()
+    {
+        for local_ep_type in [endpoint::Type::Server, endpoint::Type::Client]
+            .iter()
+            .copied()
+        {
             let is_remote_initialized = local_ep_type != initiator_type;
             if !is_remote_initialized {
                 continue;
@@ -742,8 +757,14 @@ fn accept_returns_opened_streams_of_any_type() {
 
 #[test]
 fn accept_notifies_of_any_type() {
-    for initiator_type in [EndpointType::Server, EndpointType::Client].iter().copied() {
-        for local_ep_type in [EndpointType::Server, EndpointType::Client].iter().copied() {
+    for initiator_type in [endpoint::Type::Server, endpoint::Type::Client]
+        .iter()
+        .copied()
+    {
+        for local_ep_type in [endpoint::Type::Server, endpoint::Type::Client]
+            .iter()
+            .copied()
+        {
             let is_remote_initialized = local_ep_type != initiator_type;
             if !is_remote_initialized {
                 continue;
@@ -786,8 +807,14 @@ fn accept_notifies_of_any_type() {
 
 #[test]
 fn accept_notifies_on_both_types() {
-    for initiator_type in [EndpointType::Server, EndpointType::Client].iter().copied() {
-        for local_ep_type in [EndpointType::Server, EndpointType::Client].iter().copied() {
+    for initiator_type in [endpoint::Type::Server, endpoint::Type::Client]
+        .iter()
+        .copied()
+    {
+        for local_ep_type in [endpoint::Type::Server, endpoint::Type::Client]
+            .iter()
+            .copied()
+        {
             let is_remote_initialized = local_ep_type != initiator_type;
             if !is_remote_initialized {
                 continue;
@@ -822,8 +849,8 @@ fn accept_notifies_on_both_types() {
 fn accept_returns_opened_streams_even_if_stream_manager_was_closed() {
     const STREAMS_TO_OPEN: usize = 8;
 
-    for initiator_type in &[EndpointType::Server, EndpointType::Client] {
-        for local_ep_type in &[EndpointType::Server, EndpointType::Client] {
+    for initiator_type in &[endpoint::Type::Server, endpoint::Type::Client] {
+        for local_ep_type in &[endpoint::Type::Server, endpoint::Type::Client] {
             let is_remote_initialized = *local_ep_type != *initiator_type;
             if !is_remote_initialized {
                 continue;
@@ -868,8 +895,8 @@ fn accept_returns_opened_streams_even_if_stream_manager_was_closed() {
 
 #[test]
 fn closing_stream_manager_wakes_blocked_accepts() {
-    for initiator_type in &[EndpointType::Server, EndpointType::Client] {
-        for local_ep_type in &[EndpointType::Server, EndpointType::Client] {
+    for initiator_type in &[endpoint::Type::Server, endpoint::Type::Client] {
+        for local_ep_type in &[endpoint::Type::Server, endpoint::Type::Client] {
             let is_remote_initialized = *local_ep_type != *initiator_type;
             if !is_remote_initialized {
                 continue;
@@ -902,8 +929,14 @@ fn closing_stream_manager_wakes_blocked_accepts() {
 
 #[test]
 fn closing_stream_manager_without_error_returns_none() {
-    for initiator_type in [EndpointType::Server, EndpointType::Client].iter().copied() {
-        for local_ep_type in [EndpointType::Server, EndpointType::Client].iter().copied() {
+    for initiator_type in [endpoint::Type::Server, endpoint::Type::Client]
+        .iter()
+        .copied()
+    {
+        for local_ep_type in [endpoint::Type::Server, endpoint::Type::Client]
+            .iter()
+            .copied()
+        {
             let is_remote_initialized = local_ep_type != initiator_type;
             if !is_remote_initialized {
                 continue;
@@ -939,7 +972,7 @@ fn closing_stream_manager_without_error_returns_none() {
 
 #[test]
 fn add_and_remove_streams_from_on_connection_window_lists() {
-    let mut manager = create_stream_manager(EndpointType::Server);
+    let mut manager = create_stream_manager(endpoint::Type::Server);
     // Consume all window
     let current_window =
         manager.with_outgoing_connection_flow_controller(|ctrl| ctrl.total_window());
@@ -1013,7 +1046,7 @@ fn max_data_causes_on_connection_window_available_to_be_called_on_streams() {
         });
     }
 
-    let mut manager = create_stream_manager(EndpointType::Server);
+    let mut manager = create_stream_manager(endpoint::Type::Server);
     // Consume all window
     let mut current_window =
         manager.with_outgoing_connection_flow_controller(|ctrl| ctrl.total_window());
@@ -1168,7 +1201,7 @@ fn max_data_causes_on_connection_window_available_to_be_called_on_streams() {
 
 #[test]
 fn add_and_remove_streams_from_delivery_notification_window_lists() {
-    let mut manager = create_stream_manager(EndpointType::Server);
+    let mut manager = create_stream_manager(endpoint::Type::Server);
 
     let stream_1 = try_open(&mut manager, StreamType::Bidirectional).unwrap();
     let stream_2 = try_open(&mut manager, StreamType::Unidirectional).unwrap();
@@ -1214,7 +1247,7 @@ fn add_and_remove_streams_from_delivery_notification_window_lists() {
 
 #[test]
 fn on_packet_ack_and_loss_is_forwarded_to_interested_streams() {
-    let mut manager = create_stream_manager(EndpointType::Server);
+    let mut manager = create_stream_manager(endpoint::Type::Server);
 
     let (read_waker, read_wake_counter) = new_count_waker();
     let (write_waker, write_wake_counter) = new_count_waker();
@@ -1291,7 +1324,7 @@ fn on_packet_ack_and_loss_is_forwarded_to_interested_streams() {
 fn close_is_forwarded_to_all_streams() {
     let (read_waker, read_wake_counter) = new_count_waker();
     let (write_waker, write_wake_counter) = new_count_waker();
-    let mut manager = create_stream_manager(EndpointType::Server);
+    let mut manager = create_stream_manager(endpoint::Type::Server);
 
     // Consume all window
     let current_window =
@@ -1354,7 +1387,7 @@ fn close_is_forwarded_to_all_streams() {
 
 #[test]
 fn add_and_remove_streams_from_transmission_lists() {
-    let mut manager = create_stream_manager(EndpointType::Server);
+    let mut manager = create_stream_manager(endpoint::Type::Server);
 
     // Create some open Streams with interests
     let stream_1 = try_open(&mut manager, StreamType::Bidirectional).unwrap();
@@ -1394,7 +1427,7 @@ fn add_and_remove_streams_from_transmission_lists() {
 
 #[test]
 fn add_and_remove_streams_from_retransmission_lists() {
-    let mut manager = create_stream_manager(EndpointType::Server);
+    let mut manager = create_stream_manager(endpoint::Type::Server);
 
     // Create some open Streams with interests
     let stream_1 = try_open(&mut manager, StreamType::Bidirectional).unwrap();
@@ -1453,7 +1486,7 @@ fn on_transmit_queries_streams_for_data() {
         });
     }
 
-    let mut manager = create_stream_manager(EndpointType::Server);
+    let mut manager = create_stream_manager(endpoint::Type::Server);
     let mut frame_buffer = OutgoingFrameBuffer::new();
 
     // Create some open Streams with interests
@@ -1482,12 +1515,11 @@ fn on_transmit_queries_streams_for_data() {
     );
     assert_eq!([stream_5], *manager.streams_waiting_for_retransmission());
 
-    let connection_context = MockConnectionContext::new(EndpointType::Server);
     let mut write_context = MockWriteContext::new(
-        &connection_context,
         s2n_quic_platform::time::now(),
         &mut frame_buffer,
         transmission::Constraint::None,
+        endpoint::Type::Server,
     );
 
     write_context.transmission_constraint = transmission::Constraint::CongestionLimited;
@@ -1537,12 +1569,11 @@ fn on_transmit_queries_streams_for_data() {
     });
 
     frame_buffer.set_error_write_after_n_frames(15);
-    let connection_context = MockConnectionContext::new(EndpointType::Server);
     let mut write_context = MockWriteContext::new(
-        &connection_context,
         s2n_quic_platform::time::now(),
         &mut frame_buffer,
         transmission::Constraint::None,
+        endpoint::Type::Server,
     );
 
     assert_eq!(
@@ -1571,12 +1602,11 @@ fn on_transmit_queries_streams_for_data() {
     );
 
     frame_buffer.set_error_write_after_n_frames(15);
-    let connection_context = MockConnectionContext::new(EndpointType::Server);
     let mut write_context = MockWriteContext::new(
-        &connection_context,
         s2n_quic_platform::time::now(),
         &mut frame_buffer,
         transmission::Constraint::None,
+        endpoint::Type::Server,
     );
 
     assert_eq!(
@@ -1596,12 +1626,11 @@ fn on_transmit_queries_streams_for_data() {
     );
 
     frame_buffer.set_error_write_after_n_frames(5);
-    let connection_context = MockConnectionContext::new(EndpointType::Server);
     let mut write_context = MockWriteContext::new(
-        &connection_context,
         s2n_quic_platform::time::now(),
         &mut frame_buffer,
         transmission::Constraint::None,
+        endpoint::Type::Server,
     );
 
     assert_eq!(
@@ -1621,12 +1650,11 @@ fn on_transmit_queries_streams_for_data() {
     );
 
     frame_buffer.set_error_write_after_n_frames(5);
-    let connection_context = MockConnectionContext::new(EndpointType::Server);
     let mut write_context = MockWriteContext::new(
-        &connection_context,
         s2n_quic_platform::time::now(),
         &mut frame_buffer,
         transmission::Constraint::None,
+        endpoint::Type::Server,
     );
 
     assert_eq!(
@@ -1643,12 +1671,11 @@ fn on_transmit_queries_streams_for_data() {
     assert_eq!([stream_1], *manager.streams_waiting_for_transmission());
 
     frame_buffer.set_error_write_after_n_frames(11);
-    let connection_context = MockConnectionContext::new(EndpointType::Server);
     let mut write_context = MockWriteContext::new(
-        &connection_context,
         s2n_quic_platform::time::now(),
         &mut frame_buffer,
         transmission::Constraint::None,
+        endpoint::Type::Server,
     );
 
     assert_eq!(Ok(()), manager.on_transmit(&mut write_context));
@@ -1662,13 +1689,13 @@ fn on_transmit_queries_streams_for_data() {
     assert_eq!(true, manager.streams_waiting_for_transmission().is_empty());
 }
 
-fn invalid_stream_id(local_ep_type: EndpointType) -> StreamId {
+fn invalid_stream_id(local_ep_type: endpoint::Type) -> StreamId {
     StreamId::nth(local_ep_type, StreamType::Bidirectional, 100_000).unwrap()
 }
 
 #[test]
 fn forwards_on_data() {
-    let mut manager = create_stream_manager(EndpointType::Server);
+    let mut manager = create_stream_manager(endpoint::Type::Server);
     let (read_waker, read_wake_counter) = new_count_waker();
     let (write_waker, write_wake_counter) = new_count_waker();
 
@@ -1711,13 +1738,13 @@ fn forwards_on_data() {
     });
 
     // Check invalid stream ID
-    frame.stream_id = invalid_stream_id(EndpointType::Server).into();
+    frame.stream_id = invalid_stream_id(endpoint::Type::Server).into();
     assert_is_transport_error(manager.on_data(&frame), TransportError::STREAM_STATE_ERROR);
 }
 
 #[test]
 fn forwards_on_stream_data_blocked() {
-    let mut manager = create_stream_manager(EndpointType::Server);
+    let mut manager = create_stream_manager(endpoint::Type::Server);
     let (read_waker, read_wake_counter) = new_count_waker();
     let (write_waker, write_wake_counter) = new_count_waker();
 
@@ -1761,7 +1788,7 @@ fn forwards_on_stream_data_blocked() {
     });
 
     // Check invalid stream ID
-    frame.stream_id = invalid_stream_id(EndpointType::Server).into();
+    frame.stream_id = invalid_stream_id(endpoint::Type::Server).into();
     assert_is_transport_error(
         manager.on_stream_data_blocked(&frame),
         TransportError::STREAM_STATE_ERROR,
@@ -1770,7 +1797,7 @@ fn forwards_on_stream_data_blocked() {
 
 #[test]
 fn forwards_on_max_stream_data() {
-    let mut manager = create_stream_manager(EndpointType::Server);
+    let mut manager = create_stream_manager(endpoint::Type::Server);
     let (read_waker, read_wake_counter) = new_count_waker();
     let (write_waker, write_wake_counter) = new_count_waker();
 
@@ -1814,7 +1841,7 @@ fn forwards_on_max_stream_data() {
     });
 
     // Check invalid stream ID
-    frame.stream_id = invalid_stream_id(EndpointType::Server).into();
+    frame.stream_id = invalid_stream_id(endpoint::Type::Server).into();
     assert_is_transport_error(
         manager.on_max_stream_data(&frame),
         TransportError::STREAM_STATE_ERROR,
@@ -1823,7 +1850,7 @@ fn forwards_on_max_stream_data() {
 
 #[test]
 fn forwards_on_stop_sending() {
-    let mut manager = create_stream_manager(EndpointType::Server);
+    let mut manager = create_stream_manager(endpoint::Type::Server);
     let (read_waker, read_wake_counter) = new_count_waker();
     let (write_waker, write_wake_counter) = new_count_waker();
 
@@ -1867,7 +1894,7 @@ fn forwards_on_stop_sending() {
     });
 
     // Check invalid stream ID
-    frame.stream_id = invalid_stream_id(EndpointType::Server).into();
+    frame.stream_id = invalid_stream_id(endpoint::Type::Server).into();
     assert_is_transport_error(
         manager.on_stop_sending(&frame),
         TransportError::STREAM_STATE_ERROR,
@@ -1876,7 +1903,7 @@ fn forwards_on_stop_sending() {
 
 #[test]
 fn forwards_on_reset() {
-    let mut manager = create_stream_manager(EndpointType::Server);
+    let mut manager = create_stream_manager(endpoint::Type::Server);
     let (read_waker, read_wake_counter) = new_count_waker();
     let (write_waker, write_wake_counter) = new_count_waker();
 
@@ -1921,7 +1948,7 @@ fn forwards_on_reset() {
     });
 
     // Check invalid stream ID
-    frame.stream_id = invalid_stream_id(EndpointType::Server).into();
+    frame.stream_id = invalid_stream_id(endpoint::Type::Server).into();
     assert_is_transport_error(
         manager.on_reset_stream(&frame),
         TransportError::STREAM_STATE_ERROR,
@@ -1934,7 +1961,7 @@ fn forwards_on_reset() {
 fn forwards_poll_pop() {
     let (mut wakeup_queue, mut wakeup_handle) = create_wakeup_queue_and_handle();
     let (waker, _wake_counter) = new_count_waker();
-    let mut manager = create_stream_manager(EndpointType::Server);
+    let mut manager = create_stream_manager(endpoint::Type::Server);
 
     let stream_1 = try_open(&mut manager, StreamType::Bidirectional).unwrap();
 
@@ -1976,7 +2003,7 @@ fn forwards_poll_pop() {
     assert_eq!(
         Err(StreamError::InvalidStream),
         manager.poll_request(
-            invalid_stream_id(EndpointType::Server),
+            invalid_stream_id(endpoint::Type::Server),
             &mut ConnectionApiCallContext::from_wakeup_handle(&mut wakeup_handle),
             ops::Request::default().receive(&mut [Bytes::new()]),
             Some(&ctx)
@@ -1987,7 +2014,7 @@ fn forwards_poll_pop() {
 #[test]
 fn forwards_stop_sending() {
     let (mut wakeup_queue, mut wakeup_handle) = create_wakeup_queue_and_handle();
-    let mut manager = create_stream_manager(EndpointType::Server);
+    let mut manager = create_stream_manager(endpoint::Type::Server);
 
     let stream_1 = try_open(&mut manager, StreamType::Bidirectional).unwrap();
     let error = ApplicationErrorCode::new(0x12_3456).unwrap();
@@ -2029,7 +2056,7 @@ fn forwards_stop_sending() {
     assert_eq!(
         Err(StreamError::InvalidStream),
         manager.poll_request(
-            invalid_stream_id(EndpointType::Server),
+            invalid_stream_id(endpoint::Type::Server),
             &mut ConnectionApiCallContext::from_wakeup_handle(&mut wakeup_handle),
             ops::Request::default().stop_sending(error),
             None,
@@ -2041,7 +2068,7 @@ fn forwards_stop_sending() {
 fn forwards_poll_push() {
     let (mut wakeup_queue, mut wakeup_handle) = create_wakeup_queue_and_handle();
     let (waker, _wake_counter) = new_count_waker();
-    let mut manager = create_stream_manager(EndpointType::Server);
+    let mut manager = create_stream_manager(endpoint::Type::Server);
 
     let stream_1 = try_open(&mut manager, StreamType::Bidirectional).unwrap();
     let data = Bytes::from_static(b"1234");
@@ -2084,7 +2111,7 @@ fn forwards_poll_push() {
     assert_eq!(
         Err(StreamError::InvalidStream),
         manager.poll_request(
-            invalid_stream_id(EndpointType::Server),
+            invalid_stream_id(endpoint::Type::Server),
             &mut ConnectionApiCallContext::from_wakeup_handle(&mut wakeup_handle),
             ops::Request::default().send(&mut [data]),
             Some(&ctx)
@@ -2096,7 +2123,7 @@ fn forwards_poll_push() {
 fn forwards_poll_finish() {
     let (mut wakeup_queue, mut wakeup_handle) = create_wakeup_queue_and_handle();
     let (waker, _wake_counter) = new_count_waker();
-    let mut manager = create_stream_manager(EndpointType::Server);
+    let mut manager = create_stream_manager(endpoint::Type::Server);
 
     let stream_1 = try_open(&mut manager, StreamType::Bidirectional).unwrap();
 
@@ -2138,7 +2165,7 @@ fn forwards_poll_finish() {
     assert_eq!(
         Err(StreamError::InvalidStream),
         manager.poll_request(
-            invalid_stream_id(EndpointType::Server),
+            invalid_stream_id(endpoint::Type::Server),
             &mut ConnectionApiCallContext::from_wakeup_handle(&mut wakeup_handle),
             ops::Request::default().finish().flush(),
             Some(&ctx)
@@ -2149,7 +2176,7 @@ fn forwards_poll_finish() {
 #[test]
 fn forwards_reset() {
     let (mut wakeup_queue, mut wakeup_handle) = create_wakeup_queue_and_handle();
-    let mut manager = create_stream_manager(EndpointType::Server);
+    let mut manager = create_stream_manager(endpoint::Type::Server);
 
     let stream_1 = try_open(&mut manager, StreamType::Bidirectional).unwrap();
     let error = ApplicationErrorCode::new(0x12_3456).unwrap();
@@ -2191,7 +2218,7 @@ fn forwards_reset() {
     assert_eq!(
         Err(StreamError::InvalidStream),
         manager.poll_request(
-            invalid_stream_id(EndpointType::Server),
+            invalid_stream_id(endpoint::Type::Server),
             &mut ConnectionApiCallContext::from_wakeup_handle(&mut wakeup_handle),
             ops::Request::default().reset(error),
             None,

@@ -1,10 +1,8 @@
-use crate::{
-    connection::{self, ConnectionTransmissionContext},
-    contexts::WriteContext,
-    transmission,
-};
+use crate::{connection, contexts::WriteContext, transmission};
+use core::marker::PhantomData;
 use s2n_codec::{Encoder, EncoderBuffer, EncoderValue};
 use s2n_quic_core::{
+    endpoint,
     frame::{
         ack_elicitation::{AckElicitable, AckElicitation},
         congestion_controlled::CongestionControlled,
@@ -16,20 +14,15 @@ use s2n_quic_core::{
 pub struct Context<'a, 'b, Config: connection::Config> {
     pub outcome: &'a mut transmission::Outcome,
     pub buffer: &'a mut EncoderBuffer<'b>,
-    pub context: &'a ConnectionTransmissionContext<'a, Config>,
     pub packet_number: PacketNumber,
     pub transmission_constraint: transmission::Constraint,
+    pub timestamp: Timestamp,
+    pub config: PhantomData<Config>,
 }
 
 impl<'a, 'b, Config: connection::Config> WriteContext for Context<'a, 'b, Config> {
-    type ConnectionContext = ConnectionTransmissionContext<'a, Config>;
-
     fn current_time(&self) -> Timestamp {
-        self.context.timestamp
-    }
-
-    fn connection_context(&self) -> &Self::ConnectionContext {
-        &self.context
+        self.timestamp
     }
 
     fn transmission_constraint(&self) -> transmission::Constraint {
@@ -80,6 +73,10 @@ impl<'a, 'b, Config: connection::Config> WriteContext for Context<'a, 'b, Config
             Ok(cap)
         }
     }
+
+    fn local_endpoint_type(&self) -> endpoint::Type {
+        Config::ENDPOINT_TYPE
+    }
 }
 
 // Overrides a context's transmission constraint to allow only retransmissions to be written to
@@ -95,14 +92,8 @@ impl<'a, C: WriteContext> RetransmissionContext<'a, C> {
 }
 
 impl<'a, C: WriteContext> WriteContext for RetransmissionContext<'a, C> {
-    type ConnectionContext = C::ConnectionContext;
-
     fn current_time(&self) -> Timestamp {
         self.context.current_time()
-    }
-
-    fn connection_context(&self) -> &Self::ConnectionContext {
-        self.context.connection_context()
     }
 
     fn transmission_constraint(&self) -> transmission::Constraint {
@@ -131,5 +122,9 @@ impl<'a, C: WriteContext> WriteContext for RetransmissionContext<'a, C> {
 
     fn reserve_minimum_space_for_frame(&mut self, min_size: usize) -> Result<usize, ()> {
         self.context.reserve_minimum_space_for_frame(min_size)
+    }
+
+    fn local_endpoint_type(&self) -> endpoint::Type {
+        self.context.local_endpoint_type()
     }
 }

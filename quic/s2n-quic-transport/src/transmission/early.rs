@@ -1,9 +1,10 @@
 use crate::{contexts::WriteContext, space::CryptoStream, transmission};
 use core::ops::RangeInclusive;
-use s2n_quic_core::frame::crypto::CryptoRef;
+use s2n_quic_core::{frame::crypto::CryptoRef, packet::number::PacketNumberSpace};
 
 pub struct Payload<'a> {
     pub crypto_stream: &'a mut CryptoStream,
+    pub packet_number_space: PacketNumberSpace,
 }
 
 /// Rather than creating a packet with a very small CRYPTO frame (under 16 bytes), it would be
@@ -21,6 +22,10 @@ impl<'a> super::Payload for Payload<'a> {
 
         // TODO add required padding
         // https://github.com/awslabs/s2n-quic/issues/179
+    }
+
+    fn packet_number_space(&self) -> PacketNumberSpace {
+        self.packet_number_space
     }
 }
 

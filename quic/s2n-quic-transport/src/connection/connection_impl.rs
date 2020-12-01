@@ -376,6 +376,8 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                         timestamp,
                         path: active_path,
                         source_connection_id: &self.local_connection_id,
+                        connection_id_mapper_registration: &mut self
+                            .connection_id_mapper_registration,
                         ecn,
                     },
                     shared_state,

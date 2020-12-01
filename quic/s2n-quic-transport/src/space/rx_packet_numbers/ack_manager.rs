@@ -353,7 +353,7 @@ impl transmission::interest::Provider for AckManager {
 #[cfg(test)]
 mod tests {
     use super::{super::tests::*, *};
-    use crate::contexts::testing::{MockConnectionContext, MockWriteContext, OutgoingFrameBuffer};
+    use crate::contexts::testing::{MockWriteContext, OutgoingFrameBuffer};
     use core::{
         iter::{empty, once},
         mem::size_of,
@@ -361,7 +361,7 @@ mod tests {
     };
     use insta::assert_debug_snapshot;
     use s2n_quic_core::{
-        endpoint::EndpointType,
+        endpoint,
         frame::{ping, Frame},
         transport::parameters::AckSettings,
     };
@@ -373,13 +373,12 @@ mod tests {
             AckSettings::default(),
             1,
         );
-        let connection_context = MockConnectionContext::new(EndpointType::Server);
         let mut frame_buffer = OutgoingFrameBuffer::new();
         let mut write_context = MockWriteContext::new(
-            &connection_context,
             s2n_quic_platform::time::now(),
             &mut frame_buffer,
             transmission::Constraint::None,
+            endpoint::Type::Server,
         );
 
         manager.ack_ranges = AckRanges::default();

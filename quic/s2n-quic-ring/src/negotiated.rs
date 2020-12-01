@@ -1,7 +1,7 @@
 use crate::{ciphersuite::NegotiatedCiphersuite as Ciphersuite, Algorithm, SecretPair};
 use s2n_quic_core::{
     crypto::{CryptoError, HeaderCrypto, HeaderProtectionMask, Key},
-    endpoint::EndpointType,
+    endpoint,
 };
 
 #[derive(Debug)]
@@ -13,18 +13,18 @@ pub struct RingNegotiatedCrypto {
 impl RingNegotiatedCrypto {
     /// Create a server ciphersuite with a given negotiated algorithm and secret
     pub fn new_server(algorithm: &Algorithm, secrets: SecretPair) -> Option<Self> {
-        Self::new(EndpointType::Server, algorithm, secrets)
+        Self::new(endpoint::Type::Server, algorithm, secrets)
     }
 
     /// Create a client ciphersuite with a given negotiated algorithm and secret
     pub fn new_client(algorithm: &Algorithm, secrets: SecretPair) -> Option<Self> {
-        Self::new(EndpointType::Client, algorithm, secrets)
+        Self::new(endpoint::Type::Client, algorithm, secrets)
     }
 
-    fn new(endpoint: EndpointType, algorithm: &Algorithm, secrets: SecretPair) -> Option<Self> {
+    fn new(endpoint: endpoint::Type, algorithm: &Algorithm, secrets: SecretPair) -> Option<Self> {
         let (sealer_secret, opener_secret) = match endpoint {
-            EndpointType::Client => (secrets.client, secrets.server),
-            EndpointType::Server => (secrets.server, secrets.client),
+            endpoint::Type::Client => (secrets.client, secrets.server),
+            endpoint::Type::Server => (secrets.server, secrets.client),
         };
 
         let sealer = Ciphersuite::new(algorithm, sealer_secret)?;

@@ -11,7 +11,7 @@ use core::marker::PhantomData;
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
     crypto::CryptoSuite,
-    endpoint::EndpointType,
+    endpoint,
     frame::{ack::AckRanges, crypto::CryptoRef, Ack, ConnectionClose},
     inet::DatagramInfo,
     packet::{
@@ -94,6 +94,7 @@ impl<Config: connection::Config> HandshakeSpace<Config> {
             ack_manager: &mut self.ack_manager,
             payload: transmission::early::Payload {
                 crypto_stream: &mut self.crypto_stream,
+                packet_number_space: PacketNumberSpace::Handshake,
             },
             context,
             packet_number,
@@ -229,7 +230,7 @@ struct RecoveryContext<'a, Config> {
 }
 
 impl<'a, Config: connection::Config> recovery::Context for RecoveryContext<'a, Config> {
-    const ENDPOINT_TYPE: EndpointType = Config::ENDPOINT_TYPE;
+    const ENDPOINT_TYPE: endpoint::Type = Config::ENDPOINT_TYPE;
 
     fn is_handshake_confirmed(&self) -> bool {
         self.handshake_status.is_confirmed()
