@@ -53,9 +53,10 @@ fn bidirectional_and_remotely_initiated_unidirectional_streams_can_be_read() {
 /// the Stream is open
 fn setup_receive_only_test_env() -> TestEnvironment {
     let mut test_env_config: TestEnvironmentConfig = Default::default();
-    test_env_config.stream_id =
-        StreamId::initial(endpoint::Type::Client, StreamType::Unidirectional);
-    test_env_config.local_endpoint_type = test_env_config.local_endpoint_type;
+    test_env_config.stream_id = StreamId::initial(
+        test_env_config.local_endpoint_type.peer_type(),
+        StreamType::Unidirectional,
+    );
     setup_stream_test_env_with_config(test_env_config)
 }
 
@@ -63,9 +64,10 @@ fn setup_receive_only_test_env() -> TestEnvironment {
 /// connection flow control window
 fn conn_flow_control_test_env_config() -> TestEnvironmentConfig {
     let mut test_env_config: TestEnvironmentConfig = Default::default();
-    test_env_config.stream_id =
-        StreamId::initial(endpoint::Type::Client, StreamType::Unidirectional);
-    test_env_config.local_endpoint_type = endpoint::Type::Server;
+    test_env_config.stream_id = StreamId::initial(
+        test_env_config.local_endpoint_type.peer_type(),
+        StreamType::Unidirectional,
+    );
     // Increase the stream window to error on the connection window
     test_env_config.initial_receive_window = core::u32::MAX.into();
     test_env_config.desired_flow_control_window = core::u32::MAX;
