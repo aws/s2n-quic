@@ -174,18 +174,17 @@ impl Writer for PingWriter {
 mod tests {
     use super::*;
     use crate::{contexts::testing::*, transmission::interest::Provider};
-    use s2n_quic_core::endpoint::EndpointType;
+    use s2n_quic_core::endpoint;
     use s2n_quic_platform::time;
 
     #[test]
     fn ping_test() {
-        let connection_context = MockConnectionContext::new(EndpointType::Server);
         let mut frame_buffer = OutgoingFrameBuffer::new();
         let mut context = MockWriteContext::new(
-            &connection_context,
             time::now(),
             &mut frame_buffer,
             transmission::Constraint::None,
+            endpoint::Type::Server,
         );
 
         let mut pinger = Ping::default();

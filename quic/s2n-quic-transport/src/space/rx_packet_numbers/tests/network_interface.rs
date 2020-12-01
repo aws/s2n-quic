@@ -1,7 +1,7 @@
 use super::{generator::gen_default, Application, Packet};
 use alloc::collections::BTreeMap;
 use bolero::generator::*;
-use s2n_quic_core::{endpoint::EndpointType, time::Timestamp};
+use s2n_quic_core::{endpoint, time::Timestamp};
 
 #[derive(Clone, Debug, TypeGenerator)]
 pub struct NetworkInterface {
@@ -18,7 +18,7 @@ impl NetworkInterface {
         }
     }
 
-    pub fn init(&mut self, now: Timestamp, endpoint_type: EndpointType) {
+    pub fn init(&mut self, now: Timestamp, endpoint_type: endpoint::Type) {
         self.application.init(now, endpoint_type);
     }
 

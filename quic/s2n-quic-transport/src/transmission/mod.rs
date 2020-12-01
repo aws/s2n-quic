@@ -21,12 +21,16 @@ use core::ops::RangeInclusive;
 use s2n_codec::{Encoder, EncoderBuffer};
 use s2n_quic_core::{
     frame::Padding,
-    packet::{encoding::PacketPayloadEncoder, number::PacketNumber},
+    packet::{
+        encoding::PacketPayloadEncoder,
+        number::{PacketNumber, PacketNumberSpace},
+    },
 };
 
 pub trait Payload: interest::Provider {
     fn size_hint(&self, payload_range: RangeInclusive<usize>) -> usize;
     fn on_transmit<W: WriteContext>(&mut self, context: &mut W);
+    fn packet_number_space(&self) -> PacketNumberSpace;
 }
 
 pub struct Transmission<'a, Config: connection::Config, P: Payload> {
@@ -57,15 +61,22 @@ impl<'a, Config: connection::Config, P: Payload> PacketPayloadEncoder
             "the implementation assumes an empty buffer"
         );
 
-        let mut context = Context {
+        let mut context: Context<Config> = Context {
             outcome: self.outcome,
             buffer,
-            context: self.context,
             packet_number: self.packet_number,
             transmission_constraint: self.transmission_constraint,
+            timestamp: self.context.timestamp,
+            config: Default::default(),
         };
 
         let did_send_ack = self.ack_manager.on_transmit(&mut context);
+
+        if self.payload.packet_number_space().is_application_data() {
+            //self.context
+            //    .connection_id_mapper_registration
+            //    .on_transmit(&mut context);
+        }
 
         self.payload.on_transmit(&mut context);
         self.recovery_manager.on_transmit(&mut context);

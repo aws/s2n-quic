@@ -6,6 +6,7 @@ use crate::{
     transmission,
 };
 use core::ops::RangeInclusive;
+use s2n_quic_core::packet::number::PacketNumberSpace;
 
 pub struct Payload<'a, S: Stream> {
     pub handshake_status: &'a mut HandshakeStatus,
@@ -29,6 +30,10 @@ impl<'a, S: Stream> super::Payload for Payload<'a, S> {
         // send PINGs last, since they might not actually be needed if there's an ack-eliciting
         // frame already present in the payload
         let _ = self.ping.on_transmit(context);
+    }
+
+    fn packet_number_space(&self) -> PacketNumberSpace {
+        PacketNumberSpace::ApplicationData
     }
 }
 

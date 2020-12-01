@@ -1,6 +1,6 @@
 //! Types and utilities around the QUIC Stream identifier
 
-use crate::{endpoint::EndpointType, stream::StreamType, varint::VarInt};
+use crate::{endpoint, stream::StreamType, varint::VarInt};
 
 /// The ID of a stream.
 ///
@@ -41,13 +41,13 @@ impl StreamId {
     /// Example:
     ///
     /// ```
-    /// # use s2n_quic_core::{endpoint::EndpointType, stream::{StreamId, StreamType}};
-    /// let stream_id = StreamId::initial(EndpointType::Server, StreamType::Unidirectional);
+    /// # use s2n_quic_core::{endpoint, stream::{StreamId, StreamType}};
+    /// let stream_id = StreamId::initial(endpoint::Type::Server, StreamType::Unidirectional);
     /// // Initial server initiated unidirectional Stream ID is 3
     /// assert_eq!(3u64, stream_id.into());
     /// ```
     #[inline]
-    pub fn initial(initator: EndpointType, stream_type: StreamType) -> StreamId {
+    pub fn initial(initator: endpoint::Type, stream_type: StreamType) -> StreamId {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#2.1
         //# The two least significant bits from a stream ID therefore identify a
         //# stream as one of four types, as summarized in Table 1.
@@ -66,7 +66,7 @@ impl StreamId {
 
         match (
             stream_type == StreamType::Bidirectional,
-            initator == EndpointType::Client,
+            initator == endpoint::Type::Client,
         ) {
             (true, true) => StreamId(VarInt::from_u32(0)),
             (true, false) => StreamId(VarInt::from_u32(1)),
@@ -83,7 +83,7 @@ impl StreamId {
     ///
     /// nth() will return `None` if the resulting `StreamId` would not be valid.
     #[inline]
-    pub fn nth(initiator: EndpointType, stream_type: StreamType, n: usize) -> Option<StreamId> {
+    pub fn nth(initiator: endpoint::Type, stream_type: StreamType, n: usize) -> Option<StreamId> {
         let initial = Self::initial(initiator, stream_type);
         // We calculate as much as possible with u64, to reduce the number of
         // overflow checks for the maximum Stream ID to the last operation
@@ -102,8 +102,8 @@ impl StreamId {
     /// Example:
     ///
     /// ```
-    /// # use s2n_quic_core::{endpoint::EndpointType, stream::{StreamId, StreamType}};
-    /// let stream_id = StreamId::initial(EndpointType::Client, StreamType::Unidirectional);
+    /// # use s2n_quic_core::{endpoint, stream::{StreamId, StreamType}};
+    /// let stream_id = StreamId::initial(endpoint::Type::Client, StreamType::Unidirectional);
     /// // Initial client initiated unidirectional Stream ID is 2
     /// assert_eq!(2u64, stream_id.into());
     /// // Get the next client initiated Stream ID
@@ -121,15 +121,15 @@ impl StreamId {
 
     /// Returns whether the client or server initated the Stream
     #[inline]
-    pub fn initiator(self) -> EndpointType {
+    pub fn initiator(self) -> endpoint::Type {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#2.1
         //# The least significant bit (0x1) of the stream ID identifies the
         //# initiator of the stream.  Client-initiated streams have even-numbered
         //# stream IDs (with the bit set to 0)
         if Into::<u64>::into(self.0) & 0x01u64 == 0 {
-            EndpointType::Client
+            endpoint::Type::Client
         } else {
-            EndpointType::Server
+            endpoint::Type::Server
         }
     }
 
@@ -156,7 +156,7 @@ mod tests {
     #[test]
     fn initial_stream_ids() {
         for stream_type in &[StreamType::Bidirectional, StreamType::Unidirectional] {
-            for initiator in &[EndpointType::Client, EndpointType::Server] {
+            for initiator in &[endpoint::Type::Client, endpoint::Type::Server] {
                 let id = StreamId::initial(*initiator, *stream_type);
                 assert_eq!(*stream_type, id.stream_type());
                 assert_eq!(*initiator, id.initiator());
@@ -186,7 +186,7 @@ mod tests {
     #[test]
     fn nth_stream_id() {
         for stream_type in &[StreamType::Bidirectional, StreamType::Unidirectional] {
-            for initiator in &[EndpointType::Client, EndpointType::Server] {
+            for initiator in &[endpoint::Type::Client, endpoint::Type::Server] {
                 // The first StreamId is the initial one
                 let first = StreamId::nth(*initiator, *stream_type, 0).unwrap();
                 assert_eq!(StreamId::initial(*initiator, *stream_type), first);
@@ -202,7 +202,7 @@ mod tests {
     #[test]
     fn invalid_nth_stream_id() {
         for stream_type in &[StreamType::Bidirectional, StreamType::Unidirectional] {
-            for initiator in &[EndpointType::Client, EndpointType::Server] {
+            for initiator in &[endpoint::Type::Client, endpoint::Type::Server] {
                 assert_eq!(
                     None,
                     StreamId::nth(

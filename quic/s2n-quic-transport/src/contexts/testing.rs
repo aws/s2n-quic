@@ -1,9 +1,8 @@
-use crate::contexts::{ConnectionContext, WriteContext};
+use crate::contexts::WriteContext;
 use alloc::collections::VecDeque;
 use s2n_codec::{encoder::EncoderBuffer, DecoderBufferMut};
 use s2n_quic_core::{
-    connection,
-    endpoint::EndpointType,
+    endpoint,
     frame::{
         ack_elicitation::{AckElicitable, AckElicitation},
         FrameMut,
@@ -13,32 +12,6 @@ use s2n_quic_core::{
     transmission::Constraint,
     varint::VarInt,
 };
-
-/// A [`ConnectionContext`] that is used for testing
-#[derive(Clone, Debug)]
-pub struct MockConnectionContext {
-    pub local_endpoint_type: EndpointType,
-    connection_id: connection::Id,
-}
-
-impl MockConnectionContext {
-    pub fn new(local_endpoint_type: EndpointType) -> MockConnectionContext {
-        MockConnectionContext {
-            local_endpoint_type,
-            connection_id: connection::Id::try_from_bytes(&[]).unwrap(),
-        }
-    }
-}
-
-impl ConnectionContext for MockConnectionContext {
-    fn local_endpoint_type(&self) -> EndpointType {
-        self.local_endpoint_type
-    }
-
-    fn connection_id(&self) -> &connection::Id {
-        &self.connection_id
-    }
-}
 
 /// A single frame which had been written.
 /// The buffer always stores only a single serialized Frame.
@@ -245,37 +218,31 @@ impl OutgoingFrameBuffer {
 
 #[derive(Debug)]
 pub struct MockWriteContext<'a> {
-    pub connection_context: &'a MockConnectionContext,
     pub current_time: Timestamp,
     pub frame_buffer: &'a mut OutgoingFrameBuffer,
     pub transmission_constraint: Constraint,
+    pub endpoint: endpoint::Type,
 }
 
 impl<'a> MockWriteContext<'a> {
     pub fn new(
-        connection_context: &'a MockConnectionContext,
         current_time: Timestamp,
         frame_buffer: &'a mut OutgoingFrameBuffer,
         transmission_constraint: Constraint,
+        endpoint: endpoint::Type,
     ) -> MockWriteContext<'a> {
         MockWriteContext {
-            connection_context,
             current_time,
             frame_buffer,
             transmission_constraint,
+            endpoint,
         }
     }
 }
 
 impl<'a> WriteContext for MockWriteContext<'a> {
-    type ConnectionContext = MockConnectionContext;
-
     fn current_time(&self) -> Timestamp {
         self.current_time
-    }
-
-    fn connection_context(&self) -> &Self::ConnectionContext {
-        self.connection_context
     }
 
     fn transmission_constraint(&self) -> Constraint {
@@ -299,5 +266,9 @@ impl<'a> WriteContext for MockWriteContext<'a> {
 
     fn reserve_minimum_space_for_frame(&mut self, min_size: usize) -> Result<usize, ()> {
         self.frame_buffer.reserve_minimum_space_for_frame(min_size)
+    }
+
+    fn local_endpoint_type(&self) -> endpoint::Type {
+        self.endpoint
     }
 }

@@ -1,7 +1,7 @@
 use super::{NetworkEvent, NetworkInterface, Report};
 use bolero::generator::*;
 use core::time::Duration;
-use s2n_quic_core::{endpoint::EndpointType, time::Timestamp};
+use s2n_quic_core::{endpoint, time::Timestamp};
 
 #[derive(Clone, Debug, TypeGenerator)]
 pub struct Network {
@@ -11,8 +11,8 @@ pub struct Network {
 
 impl Network {
     pub fn init(&mut self, now: Timestamp) {
-        self.client.init(now, EndpointType::Client);
-        self.server.init(now, EndpointType::Server);
+        self.client.init(now, endpoint::Type::Client);
+        self.server.init(now, endpoint::Type::Server);
     }
 
     pub fn tick<E: Iterator<Item = NetworkEvent>>(

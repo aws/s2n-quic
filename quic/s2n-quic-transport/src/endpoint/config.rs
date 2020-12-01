@@ -25,7 +25,7 @@ pub trait Config: Sized {
     type EndpointLimits: endpoint::Limits;
 
     /// The type of the local endpoint
-    const ENDPOINT_TYPE: endpoint::EndpointType =
+    const ENDPOINT_TYPE: endpoint::Type =
         <Self::ConnectionConfig as connection::Config>::ENDPOINT_TYPE;
 
     /// Obtain the configuration for the next connection to be handled
