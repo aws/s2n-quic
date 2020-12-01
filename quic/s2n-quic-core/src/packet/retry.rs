@@ -6,7 +6,6 @@ use crate::{
         long::{DestinationConnectionIDLen, SourceConnectionIDLen, Version},
         Tag,
     },
-    path::MINIMUM_MTU,
 };
 use s2n_codec::{
     decoder_invariant, DecoderBufferMut, DecoderBufferMutResult, Encoder, EncoderValue,
@@ -50,7 +49,7 @@ pub struct Retry<'a> {
     pub destination_connection_id: &'a [u8],
     pub source_connection_id: &'a [u8],
     pub retry_token: &'a [u8],
-    pub retry_integrity_tag: Option<&'a [u8]>,
+    pub retry_integrity_tag: &'a [u8],
 }
 
 //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.8
@@ -111,8 +110,8 @@ impl<'a> Retry<'a> {
             version: initial_packet.version,
             destination_connection_id: initial_packet.destination_connection_id(),
             source_connection_id: initial_packet.source_connection_id(),
-            retry_token: &[0u8; MINIMUM_MTU as usize],
-            retry_integrity_tag: None,
+            retry_token: &[][..],
+            retry_integrity_tag: &[][..],
         }
     }
 
@@ -155,7 +154,7 @@ impl<'a> Retry<'a> {
             destination_connection_id,
             source_connection_id,
             retry_token,
-            retry_integrity_tag: Some(retry_integrity_tag),
+            retry_integrity_tag,
         };
 
         Ok((packet, buffer))
@@ -239,10 +238,7 @@ mod tests {
             _ => panic!("expected retry packet type"),
         };
 
-        assert_eq!(
-            packet.retry_integrity_tag.unwrap(),
-            retry::example::EXPECTED_TAG
-        );
+        assert_eq!(packet.retry_integrity_tag, retry::example::EXPECTED_TAG);
         assert_eq!(packet.retry_token, retry::example::TOKEN);
         assert_eq!(packet.source_connection_id, retry::example::SCID);
         assert_eq!(packet.destination_connection_id, retry::example::DCID);
