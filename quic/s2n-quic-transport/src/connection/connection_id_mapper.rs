@@ -7,7 +7,7 @@ use crate::{
         },
         InternalConnectionId,
     },
-    transmission::WriteContext,
+    transmission::{self, WriteContext},
 };
 use alloc::rc::Rc;
 use core::cell::RefCell;
@@ -274,6 +274,12 @@ impl ConnectionIdMapperRegistration {
                 id_info.status = Active;
             }
         }
+    }
+}
+
+impl transmission::interest::Provider for ConnectionIdMapperRegistration {
+    fn transmission_interest(&self) -> transmission::Interest {
+        todo!()
     }
 }
 

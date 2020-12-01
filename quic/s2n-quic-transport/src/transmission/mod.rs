@@ -12,12 +12,12 @@ pub use interest::Interest;
 pub use s2n_quic_core::transmission::*;
 
 use crate::{
-    connection::{self, ConnectionTransmissionContext},
+    connection::{self, ConnectionIdMapperRegistration},
     recovery,
     space::{rx_packet_numbers::AckManager, TxPacketNumbers},
     transmission::{self, interest::Provider as _},
 };
-use core::ops::RangeInclusive;
+use core::{marker::PhantomData, ops::RangeInclusive};
 use s2n_codec::{Encoder, EncoderBuffer};
 use s2n_quic_core::{
     frame::Padding,
@@ -25,6 +25,7 @@ use s2n_quic_core::{
         encoding::PacketPayloadEncoder,
         number::{PacketNumber, PacketNumberSpace},
     },
+    time::Timestamp,
 };
 
 pub trait Payload: interest::Provider {
@@ -35,13 +36,15 @@ pub trait Payload: interest::Provider {
 
 pub struct Transmission<'a, Config: connection::Config, P: Payload> {
     pub ack_manager: &'a mut AckManager,
-    pub context: &'a mut ConnectionTransmissionContext<'a, Config>,
+    pub config: PhantomData<Config>,
+    pub connection_id_mapper_registration: &'a mut ConnectionIdMapperRegistration,
+    pub outcome: &'a mut transmission::Outcome,
     pub payload: P,
     pub packet_number: PacketNumber,
     pub recovery_manager: &'a mut recovery::Manager,
-    pub tx_packet_numbers: &'a mut TxPacketNumbers,
-    pub outcome: &'a mut transmission::Outcome,
+    pub timestamp: Timestamp,
     pub transmission_constraint: transmission::Constraint,
+    pub tx_packet_numbers: &'a mut TxPacketNumbers,
 }
 
 impl<'a, Config: connection::Config, P: Payload> PacketPayloadEncoder
@@ -66,15 +69,14 @@ impl<'a, Config: connection::Config, P: Payload> PacketPayloadEncoder
             buffer,
             packet_number: self.packet_number,
             transmission_constraint: self.transmission_constraint,
-            timestamp: self.context.timestamp,
+            timestamp: self.timestamp,
             config: Default::default(),
         };
 
         let did_send_ack = self.ack_manager.on_transmit(&mut context);
 
         if self.payload.packet_number_space().is_application_data() {
-            self.context
-                .connection_id_mapper_registration
+            self.connection_id_mapper_registration
                 .on_transmit(&mut context);
         }
 
@@ -103,9 +105,18 @@ impl<'a, Config: connection::Config, P: Payload> transmission::interest::Provide
     for Transmission<'a, Config, P>
 {
     fn transmission_interest(&self) -> transmission::Interest {
-        transmission::Interest::default()
+        let mut interest = transmission::Interest::default()
             + self.ack_manager.transmission_interest()
             + self.recovery_manager.transmission_interest()
-            + self.payload.transmission_interest()
+            + self.payload.transmission_interest();
+
+        // connection ID frames can only be written in the application space
+        if self.payload.packet_number_space().is_application_data() {
+            interest += self
+                .connection_id_mapper_registration
+                .transmission_interest();
+        }
+
+        interest
     }
 }

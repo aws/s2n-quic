@@ -68,8 +68,8 @@ impl<Config: connection::Config> InitialSpace<Config> {
     }
 
     pub fn on_transmit<'a>(
-        &'a mut self,
-        context: &'a mut ConnectionTransmissionContext<'a, Config>,
+        &mut self,
+        context: &mut ConnectionTransmissionContext<Config>,
         transmission_constraint: transmission::Constraint,
         handshake_status: &HandshakeStatus,
         buffer: EncoderBuffer<'a>,
@@ -93,16 +93,18 @@ impl<Config: connection::Config> InitialSpace<Config> {
 
         let payload = transmission::Transmission {
             ack_manager: &mut self.ack_manager,
+            config: <PhantomData<Config>>::default(),
+            connection_id_mapper_registration: context.connection_id_mapper_registration,
+            outcome: &mut outcome,
+            packet_number,
             payload: transmission::early::Payload {
                 crypto_stream: &mut self.crypto_stream,
                 packet_number_space: PacketNumberSpace::Initial,
             },
-            context,
-            packet_number,
             recovery_manager: &mut self.recovery_manager,
-            tx_packet_numbers: &mut self.tx_packet_numbers,
-            outcome: &mut outcome,
+            timestamp: context.timestamp,
             transmission_constraint,
+            tx_packet_numbers: &mut self.tx_packet_numbers,
         };
 
         let packet = Initial {

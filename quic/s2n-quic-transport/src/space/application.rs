@@ -8,6 +8,7 @@ use crate::{
     transmission,
 };
 use bytes::Bytes;
+use core::marker::PhantomData;
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
     crypto::CryptoSuite,
@@ -97,8 +98,8 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
     }
 
     pub fn on_transmit<'a>(
-        &'a mut self,
-        context: &'a mut ConnectionTransmissionContext<'a, Config>,
+        &mut self,
+        context: &mut ConnectionTransmissionContext<Config>,
         transmission_constraint: transmission::Constraint,
         handshake_status: &mut HandshakeStatus,
         buffer: EncoderBuffer<'a>,
@@ -121,17 +122,19 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
 
         let payload = transmission::Transmission {
             ack_manager: &mut self.ack_manager,
-            context,
+            config: <PhantomData<Config>>::default(),
+            connection_id_mapper_registration: context.connection_id_mapper_registration,
+            outcome: &mut outcome,
+            packet_number,
             payload: transmission::application::Payload {
                 handshake_status,
                 ping: &mut self.ping,
                 stream_manager: &mut self.stream_manager,
             },
-            packet_number,
             recovery_manager: &mut self.recovery_manager,
-            tx_packet_numbers: &mut self.tx_packet_numbers,
-            outcome: &mut outcome,
+            timestamp: context.timestamp,
             transmission_constraint,
+            tx_packet_numbers: &mut self.tx_packet_numbers,
         };
 
         let packet = Short {
