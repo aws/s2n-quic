@@ -63,7 +63,7 @@ impl core::fmt::Debug for Transmission {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Transmission")
             .field("remote_address", &self.remote_address)
-            .field("packet", &self.packet)
+            .field("packet", &&self.packet[..self.packet_len])
             .finish()
     }
 }
