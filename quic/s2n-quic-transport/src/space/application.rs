@@ -123,13 +123,13 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         let payload = transmission::Transmission {
             ack_manager: &mut self.ack_manager,
             config: <PhantomData<Config>>::default(),
-            connection_id_mapper_registration: context.connection_id_mapper_registration,
             outcome: &mut outcome,
             packet_number,
             payload: transmission::application::Payload {
                 handshake_status,
                 ping: &mut self.ping,
                 stream_manager: &mut self.stream_manager,
+                connection_id_mapper_registration: context.connection_id_mapper_registration,
             },
             recovery_manager: &mut self.recovery_manager,
             timestamp: context.timestamp,

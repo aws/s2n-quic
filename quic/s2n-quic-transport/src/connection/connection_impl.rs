@@ -322,7 +322,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         }
     }
 
-    /// Queries the connection for interest in new connection IDs
+    /// Generates and registers new connection IDs using the given `ConnectionIdFormat`
     fn on_new_connection_id<ConnectionIdFormat: connection::id::Format>(
         &mut self,
         connection_id_format: &mut ConnectionIdFormat,

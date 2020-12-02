@@ -3,7 +3,7 @@
 use crate::{
     connection::{
         connection_id_mapper::LocalConnectionIdStatus::{
-            Active, PendingIssuance, PendingRetirement,
+            Active, PendingAcknowledgement, PendingIssuance, PendingReissue, PendingRetirement,
         },
         InternalConnectionId,
     },
@@ -11,7 +11,9 @@ use crate::{
 };
 use alloc::rc::Rc;
 use core::cell::RefCell;
-use s2n_quic_core::{connection, frame, time::Timestamp};
+use s2n_quic_core::{
+    ack_set::AckSet, connection, frame, packet::number::PacketNumber, time::Timestamp,
+};
 use smallvec::SmallVec;
 use std::collections::hash_map::{Entry, HashMap};
 
@@ -149,20 +151,34 @@ struct LocalConnectionIdInfo {
 /// The current status of the connection ID.
 #[derive(Debug, PartialEq)]
 enum LocalConnectionIdStatus {
-    /// Once a connection ID has been communicated to the peer it
-    /// enters the `Active` status. The initial connection ID starts
-    /// in this status.
-    Active,
     /// New Connection IDs are put in the `PendingIssuance` status
     /// upon creation until a NEW_CONNECTION_ID frame has been sent
     /// to the peer to communicate the new connection ID.
     PendingIssuance,
+    /// If the packet containing the NEW_CONNECTION_ID is lost, the
+    /// connection ID is put into PendingReissue status.
+    PendingReissue,
+    /// Once a NEW_CONNECTION_ID frame is transmitted, the connection
+    /// ID waits for acknowledgement of the packet.
+    PendingAcknowledgement(PacketNumber),
+    /// Once a connection ID has been communicated to the peer  and the
+    /// peer has acknowledged the ID, it enters the `Active` status.
+    /// The initial connection ID starts in this status.
+    Active,
     /// Connection IDs are put in the `PendingRetirement` status
     /// upon retirement, until confirmation of the retirement
     /// is received from the peer.
     PendingRetirement,
-    // TODO: Additional statuses may be needed to track connection IDs
-    //       that have been issued/retired but not acknowledged by the peer.
+}
+
+impl LocalConnectionIdStatus {
+    /// Returns true if this status counts towards the active_connection_id_limit
+    fn counts_towards_limit(&self) -> bool {
+        match self {
+            PendingRetirement => false,
+            _ => true,
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -219,7 +235,7 @@ impl ConnectionIdMapperRegistration {
         debug_assert!(
             self.registered_ids
                 .iter()
-                .filter(|id_info| id_info.status == Active || id_info.status == PendingIssuance)
+                .filter(|id_info| id_info.status.counts_towards_limit())
                 .count()
                 < self.active_connection_id_limit as usize,
             "Attempted to register more connection IDs than the active connection id limit: {}",
@@ -292,7 +308,7 @@ impl ConnectionIdMapperRegistration {
         let active_connection_id_count = self
             .registered_ids
             .iter()
-            .filter(|id_info| id_info.status == Active || id_info.status == PendingIssuance)
+            .filter(|id_info| id_info.status.counts_towards_limit())
             .count() as u8;
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
@@ -316,17 +332,37 @@ impl ConnectionIdMapperRegistration {
         for mut id_info in self
             .registered_ids
             .iter_mut()
-            .filter(|id_info| id_info.status == PendingIssuance)
+            .filter(|id_info| id_info.status == PendingIssuance || id_info.status == PendingReissue)
         {
-            if (context.write_frame(&frame::NewConnectionID {
+            if let Some(packet_number) = context.write_frame(&frame::NewConnectionID {
                 sequence_number: id_info.sequence_number.into(),
                 retire_prior_to: self.retire_prior_to.into(),
                 connection_id: id_info.id.as_bytes(),
-                stateless_reset_token: &[1; 16], // TODO
-            }))
-            .is_some()
-            {
-                id_info.status = Active;
+                stateless_reset_token: &[1; 16], // TODO https://github.com/awslabs/s2n-quic/issues/195
+            }) {
+                id_info.status = PendingAcknowledgement(packet_number);
+            }
+        }
+    }
+
+    /// Activates connection IDs that were pending acknowledgement
+    pub fn on_packet_ack<A: AckSet>(&mut self, ack_set: &A) {
+        for mut id_info in self.registered_ids.iter_mut() {
+            if let PendingAcknowledgement(packet_number) = id_info.status {
+                if ack_set.contains(packet_number) {
+                    id_info.status = Active;
+                }
+            }
+        }
+    }
+
+    /// Moves connection IDs pending acknowledgement into pending reissue
+    pub fn on_packet_loss<A: AckSet>(&mut self, ack_set: &A) {
+        for mut id_info in self.registered_ids.iter_mut() {
+            if let PendingAcknowledgement(packet_number) = id_info.status {
+                if ack_set.contains(packet_number) {
+                    id_info.status = PendingReissue;
+                }
             }
         }
     }
@@ -347,6 +383,15 @@ impl ConnectionIdMapperRegistration {
 
 impl transmission::interest::Provider for ConnectionIdMapperRegistration {
     fn transmission_interest(&self) -> transmission::Interest {
+        let has_ids_pending_reissue = self
+            .registered_ids
+            .iter()
+            .any(|id_info| id_info.status == PendingReissue);
+
+        if has_ids_pending_reissue {
+            return transmission::Interest::LostData;
+        }
+
         let has_ids_pending_issuance = self
             .registered_ids
             .iter()
@@ -371,6 +416,7 @@ mod tests {
     };
     use s2n_quic_core::{
         frame::{Frame, NewConnectionID},
+        packet::number::PacketNumberRange,
         varint::VarInt,
     };
 
@@ -683,6 +729,14 @@ mod tests {
             reg1.transmission_interest()
         );
 
+        // Switch ID 3 to PendingReissue
+        reg1.get_connection_id_info_mut(&ext_id_3).unwrap().status = PendingReissue;
+
+        assert_eq!(
+            transmission::Interest::LostData,
+            reg1.transmission_interest()
+        );
+
         reg1.on_transmit(&mut write_context);
 
         let expected_frame = Frame::NewConnectionID {
@@ -700,5 +754,52 @@ mod tests {
         );
 
         assert_eq!(transmission::Interest::None, reg1.transmission_interest());
+    }
+
+    #[test]
+    fn on_packet_ack_and_loss() {
+        let mut id_generator = InternalConnectionIdGenerator::new();
+        let mut mapper = ConnectionIdMapper::new();
+
+        let id1 = id_generator.generate_id();
+
+        let ext_id_1 = connection::Id::try_from_bytes(b"id1").unwrap();
+        let ext_id_2 = connection::Id::try_from_bytes(b"id2").unwrap();
+
+        let mut reg1 = mapper.create_registration(id1, &ext_id_1);
+        reg1.set_active_connection_id_limit(3);
+
+        assert!(reg1.register_connection_id(&ext_id_2, None).is_ok());
+
+        let mut frame_buffer = OutgoingFrameBuffer::new();
+        let mut write_context = MockWriteContext::new(
+            s2n_quic_platform::time::now(),
+            &mut frame_buffer,
+            transmission::Constraint::None,
+            endpoint::Type::Server,
+        );
+
+        // Transition ID to PendingAcknowledgement
+        let packet_number = write_context.packet_number();
+        reg1.on_transmit(&mut write_context);
+
+        // Packet was lost
+        reg1.on_packet_loss(&PacketNumberRange::new(packet_number, packet_number));
+
+        assert_eq!(
+            PendingReissue,
+            reg1.get_connection_id_info(&ext_id_2).unwrap().status
+        );
+
+        // Transition ID to PendingAcknowledgement again
+        let packet_number = write_context.packet_number();
+        reg1.on_transmit(&mut write_context);
+
+        reg1.on_packet_ack(&PacketNumberRange::new(packet_number, packet_number));
+
+        assert_eq!(
+            Active,
+            reg1.get_connection_id_info(&ext_id_2).unwrap().status
+        );
     }
 }
