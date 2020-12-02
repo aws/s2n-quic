@@ -88,20 +88,19 @@ impl ConnectionIdMapper {
         };
         // The initial connection ID will be retired after the handshake has completed
         // so an explicit expiration timestamp is not needed.
-        let seq_number = registration
-            .register_connection_id(initial_connection_id, None)
-            .expect("can register connection ID");
+        let _ = registration.register_connection_id(initial_connection_id, None);
+
+        let initial_connection_id_info = registration
+            .get_connection_id_info_mut(&initial_connection_id)
+            .expect("initial id added above");
+
         // The initial connection ID is sent in the Initial packet,
         // so it starts in the `Active` status.
-        registration
-            .registered_ids
-            .get_mut(0)
-            .expect("initial id added above")
-            .status = Active;
+        initial_connection_id_info.status = Active;
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
         //# The sequence number of the initial connection ID is 0.
-        debug_assert_eq!(seq_number, 0);
+        debug_assert_eq!(initial_connection_id_info.sequence_number, 0);
 
         registration
     }
@@ -204,17 +203,13 @@ impl ConnectionIdMapperRegistration {
         &mut self,
         id: &connection::Id,
         expiration: Option<Timestamp>,
-    ) -> Result<u32, ConnectionIdMapperRegistrationError> {
+    ) -> Result<(), ConnectionIdMapperRegistrationError> {
         if self.registered_ids.iter().any(|id_info| id_info.id == *id) {
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1
             //# As a trivial example, this means the same connection ID
             //# MUST NOT be issued more than once on the same connection.
             return Err(ConnectionIdMapperRegistrationError::ConnectionIdInUse);
         }
-
-        // TODO: We might want to limit the maximum amount of aliases which
-        // can be registered. But maybe there is already an implicit limit due to
-        // how we provide IDs to the peer.
 
         // Try to insert into the global map
         if self
@@ -236,7 +231,7 @@ impl ConnectionIdMapperRegistration {
             //# The sequence number on
             //# each newly issued connection ID MUST increase by 1.
             self.next_sequence_number += 1;
-            Ok(sequence_number)
+            Ok(())
         } else {
             Err(ConnectionIdMapperRegistrationError::ConnectionIdInUse)
         }
@@ -264,14 +259,17 @@ impl ConnectionIdMapperRegistration {
     }
 
     /// Moves all registered connection IDs with a sequence number less
-    /// than the provided `sequence_number` into the `PendingRetirement`
-    /// status.
-    pub fn retire_prior_to(&mut self, sequence_number: u32) {
-        self.registered_ids
-            .iter_mut()
-            .filter(|id_info| id_info.sequence_number < sequence_number)
-            .for_each(|mut id_info| id_info.status = PendingRetirement);
-        self.retire_prior_to = self.retire_prior_to.max(sequence_number);
+    /// than or equal to the sequence number of the provided `connection::Id`
+    /// into the `PendingRetirement` status.
+    pub fn retire_connection_id(&mut self, id: &connection::Id) {
+        if let Some(retired_id_info) = self.get_connection_id_info(id) {
+            let retired_sequence_number = retired_id_info.sequence_number;
+            self.registered_ids
+                .iter_mut()
+                .filter(|id_info| id_info.sequence_number <= retired_sequence_number)
+                .for_each(|mut id_info| id_info.status = PendingRetirement);
+            self.retire_prior_to = self.retire_prior_to.max(retired_sequence_number + 1);
+        }
     }
 
     /// Returns the mappers interest in new connection IDs
@@ -309,6 +307,19 @@ impl ConnectionIdMapperRegistration {
                 id_info.status = Active;
             }
         }
+    }
+
+    fn get_connection_id_info(&self, id: &connection::Id) -> Option<&LocalConnectionIdInfo> {
+        self.registered_ids.iter().find(|id_info| id_info.id == *id)
+    }
+
+    fn get_connection_id_info_mut(
+        &mut self,
+        id: &connection::Id,
+    ) -> Option<&mut LocalConnectionIdInfo> {
+        self.registered_ids
+            .iter_mut()
+            .find(|id_info| id_info.id == *id)
     }
 }
 
@@ -361,9 +372,16 @@ mod tests {
             InternalConnectionIdGenerator::new().generate_id(),
             &ext_id_1,
         );
+        reg.register_connection_id(&ext_id_2, None).unwrap();
 
-        let seq_num_1 = reg.registered_ids.get(0).unwrap().sequence_number;
-        let seq_num_2 = reg.register_connection_id(&ext_id_2, None).unwrap();
+        let seq_num_1 = reg
+            .get_connection_id_info(&ext_id_1)
+            .unwrap()
+            .sequence_number;
+        let seq_num_2 = reg
+            .get_connection_id_info(&ext_id_2)
+            .unwrap()
+            .sequence_number;
 
         assert_eq!(1, seq_num_2 - seq_num_1);
     }
@@ -384,7 +402,12 @@ mod tests {
         let mut reg1 = mapper.create_registration(id1, &ext_id_1);
         let mut reg2 = mapper.create_registration(id2, &ext_id_3);
 
-        assert_eq!(0, reg1.registered_ids.get(0).unwrap().sequence_number);
+        assert_eq!(
+            0,
+            reg1.get_connection_id_info(&ext_id_1)
+                .unwrap()
+                .sequence_number
+        );
         assert_eq!(Some(id1), mapper.lookup_internal_connection_id(&ext_id_1));
 
         assert_eq!(
@@ -395,7 +418,10 @@ mod tests {
         let exp_2 = s2n_quic_platform::time::now();
 
         assert!(reg1.register_connection_id(&ext_id_2, Some(exp_2)).is_ok());
-        assert_eq!(Some(exp_2), reg1.registered_ids.get(1).unwrap().expiration);
+        assert_eq!(
+            Some(exp_2),
+            reg1.get_connection_id_info(&ext_id_2).unwrap().expiration
+        );
         assert!(reg2.register_connection_id(&ext_id_4, None).is_ok());
         assert_eq!(Some(id1), mapper.lookup_internal_connection_id(&ext_id_2));
         assert_eq!(Some(id2), mapper.lookup_internal_connection_id(&ext_id_3));
