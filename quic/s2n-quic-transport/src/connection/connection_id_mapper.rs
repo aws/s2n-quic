@@ -69,12 +69,12 @@ impl ConnectionIdMapper {
     }
 
     /// Creates a registration for a new internal connection ID, which allows that
-    /// connection to modify the mappings of it's Connection ID aliases.
+    /// connection to modify the mappings of it's Connection ID aliases. The provided
+    /// `initial_connection_id` will be registered in the returned registration.
     pub fn create_registration(
         &mut self,
         internal_id: InternalConnectionId,
         initial_connection_id: &connection::Id,
-        expiration: Option<Timestamp>,
     ) -> ConnectionIdMapperRegistration {
         let mut registration = ConnectionIdMapperRegistration {
             internal_id,
@@ -86,10 +86,13 @@ impl ConnectionIdMapper {
             // from the peer transport parameters
             active_connection_id_limit: 1,
         };
+        // The initial connection ID will be retired after the handshake has completed
+        // so an explicit expiration timestamp is not needed.
         let seq_number = registration
-            .register_connection_id(initial_connection_id, expiration)
+            .register_connection_id(initial_connection_id, None)
             .expect("can register connection ID");
-        // Start the initial connection ID at active
+        // The initial connection ID is sent in the Initial packet,
+        // so it starts in the `Active` status.
         registration
             .registered_ids
             .get_mut(0)
@@ -107,7 +110,7 @@ impl ConnectionIdMapper {
 /// The amount of ConnectionIds we can register without dynamic memory allocation
 const NR_STATIC_REGISTRABLE_IDS: usize = 5;
 
-/// Limit the number of connection IDs issued to the peer to reduce the amount
+/// Limit on the number of connection IDs issued to the peer to reduce the amount
 /// of per-path state maintained. Increasing this value allows peers to probe
 /// more paths simultaneously at the expense of additional state to maintain.
 const MAX_ACTIVE_CONNECTION_ID_LIMIT: u64 = 3;
@@ -145,14 +148,22 @@ struct LocalConnectionIdInfo {
 }
 
 /// The current status of the connection ID.
-/// Connection IDs are put in the `PendingRetirement` status
-/// upon retirement, until confirmation of the retirement
-/// is received from the peer.
 #[derive(Debug, PartialEq)]
 enum LocalConnectionIdStatus {
+    /// Once a connection ID has been communicated to the peer it
+    /// enters the `Active` status. The initial connection ID starts
+    /// in this status.
     Active,
+    /// New Connection IDs are put in the `PendingIssuance` status
+    /// upon creation until a NEW_CONNECTION_ID frame has been sent
+    /// to the peer to communicate the new connection ID.
     PendingIssuance,
+    /// Connection IDs are put in the `PendingRetirement` status
+    /// upon retirement, until confirmation of the retirement
+    /// is received from the peer.
     PendingRetirement,
+    // TODO: Additional statuses may be needed to track connection IDs
+    //       that have been issued/retired but not acknowledged by the peer.
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -263,6 +274,7 @@ impl ConnectionIdMapperRegistration {
         self.retire_prior_to = self.retire_prior_to.max(sequence_number);
     }
 
+    /// Returns the mappers interest in new connection IDs
     pub fn connection_id_interest(&self) -> connection::id::Interest {
         let active_connection_id_count = self
             .registered_ids
@@ -270,8 +282,7 @@ impl ConnectionIdMapperRegistration {
             .filter(|id_info| id_info.status == Active || id_info.status == PendingIssuance)
             .count() as u8;
 
-        let new_connection_id_count = self.active_connection_id_limit
-            - active_connection_id_count;
+        let new_connection_id_count = self.active_connection_id_limit - active_connection_id_count;
 
         if new_connection_id_count > 0 {
             connection::id::Interest::New(new_connection_id_count)
@@ -280,6 +291,7 @@ impl ConnectionIdMapperRegistration {
         }
     }
 
+    /// Writes any NEW_CONNECTION_ID frames necessary to the given context
     pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
         for mut id_info in self
             .registered_ids
@@ -327,11 +339,8 @@ mod tests {
     #[test]
     fn same_connection_id_must_not_be_issued_for_same_connection() {
         let ext_id = connection::Id::try_from_bytes(b"id1").unwrap();
-        let mut reg = ConnectionIdMapper::new().create_registration(
-            InternalConnectionIdGenerator::new().generate_id(),
-            &ext_id,
-            None,
-        );
+        let mut reg = ConnectionIdMapper::new()
+            .create_registration(InternalConnectionIdGenerator::new().generate_id(), &ext_id);
 
         assert_eq!(
             Err(ConnectionIdMapperRegistrationError::ConnectionIdInUse),
@@ -351,7 +360,6 @@ mod tests {
         let mut reg = ConnectionIdMapper::new().create_registration(
             InternalConnectionIdGenerator::new().generate_id(),
             &ext_id_1,
-            None,
         );
 
         let seq_num_1 = reg.registered_ids.get(0).unwrap().sequence_number;
@@ -373,13 +381,10 @@ mod tests {
         let ext_id_3 = connection::Id::try_from_bytes(b"id3").unwrap();
         let ext_id_4 = connection::Id::try_from_bytes(b"id4").unwrap();
 
-        let exp_1 = s2n_quic_platform::time::now();
-
-        let mut reg1 = mapper.create_registration(id1, &ext_id_1, Some(exp_1));
-        let mut reg2 = mapper.create_registration(id2, &ext_id_3, None);
+        let mut reg1 = mapper.create_registration(id1, &ext_id_1);
+        let mut reg2 = mapper.create_registration(id2, &ext_id_3);
 
         assert_eq!(0, reg1.registered_ids.get(0).unwrap().sequence_number);
-        assert_eq!(Some(exp_1), reg1.registered_ids.get(0).unwrap().expiration);
         assert_eq!(Some(id1), mapper.lookup_internal_connection_id(&ext_id_1));
 
         assert_eq!(
@@ -387,7 +392,10 @@ mod tests {
             reg2.register_connection_id(&ext_id_1, None)
         );
 
-        assert!(reg1.register_connection_id(&ext_id_2, None).is_ok());
+        let exp_2 = s2n_quic_platform::time::now();
+
+        assert!(reg1.register_connection_id(&ext_id_2, Some(exp_2)).is_ok());
+        assert_eq!(Some(exp_2), reg1.registered_ids.get(1).unwrap().expiration);
         assert!(reg2.register_connection_id(&ext_id_4, None).is_ok());
         assert_eq!(Some(id1), mapper.lookup_internal_connection_id(&ext_id_2));
         assert_eq!(Some(id2), mapper.lookup_internal_connection_id(&ext_id_3));

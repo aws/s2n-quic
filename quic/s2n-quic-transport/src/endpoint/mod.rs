@@ -325,15 +325,14 @@ impl<Cfg: Config> Endpoint<Cfg> {
         dbg!("retry packet triggered");
     }
 
-    /// TODO
+    /// Queries the endpoint for connections requiring new connection IDs
     pub fn issue_new_connection_ids(&mut self, timestamp: Timestamp) {
         // Iterate over all connections which need new connection IDs
         let connection_id_format = self.config.context().connection_id_format;
 
         self.connections
-            .iterate_new_connection_id_list(|connection, shared_state| {
-                let result =
-                    connection.on_new_connection_id(connection_id_format, shared_state, timestamp);
+            .iterate_new_connection_id_list(|connection, _shared_state| {
+                let result = connection.on_new_connection_id(connection_id_format, timestamp);
                 if result.is_ok() {
                     ConnectionContainerIterationResult::Continue
                 } else {

@@ -322,11 +322,10 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         }
     }
 
-    //TODO: comment
+    /// Queries the connection for interest in new connection IDs
     fn on_new_connection_id<ConnectionIdFormat: connection::id::Format>(
         &mut self,
         connection_id_format: &mut ConnectionIdFormat,
-        _shared_state: &mut SharedConnectionState<Self::Config>,
         timestamp: Timestamp,
     ) -> Result<(), ConnectionIdMapperRegistrationError> {
         match self
@@ -783,9 +782,9 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                 }
 
                 interests.transmission = transmission.can_transmit(constraint);
-                interests.id = self
+                interests.new_connection_id = self
                     .connection_id_mapper_registration
-                    .connection_id_interest();
+                    .connection_id_interest() != connection::id::Interest::None;
             }
             ConnectionState::Closing => {
                 // TODO: Ask the Close Sender whether it needs to transmit

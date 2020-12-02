@@ -64,7 +64,6 @@ pub trait ConnectionTrait: Sized {
     fn on_new_connection_id<ConnectionIdFormat: connection::id::Format>(
         &mut self,
         connection_id_format: &mut ConnectionIdFormat,
-        shared_state: &mut SharedConnectionState<Self::Config>,
         timestamp: Timestamp,
     ) -> Result<(), ConnectionIdMapperRegistrationError>;
 

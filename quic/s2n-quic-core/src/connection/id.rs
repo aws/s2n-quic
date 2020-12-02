@@ -3,7 +3,6 @@
 use crate::{inet::SocketAddress, transport::error::TransportError};
 use core::convert::TryFrom;
 use s2n_codec::{decoder_value, Encoder, EncoderValue};
-use std::ops::Add;
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1
 //# Each connection possesses a set of connection identifiers, or
@@ -168,6 +167,9 @@ pub trait Generator {
     /// an external observer (that is, one that does not cooperate with the
     /// issuer) to correlate them with other connection IDs for the same
     /// connection.
+    ///
+    /// Each call to `generate` should produce a unique Connection ID,
+    /// otherwise the endpoint may terminate.
     fn generate(&mut self, connection_info: &ConnectionInfo) -> Id;
 
     /// The maximum amount of time each generated connection ID should be
@@ -180,21 +182,10 @@ pub trait Generator {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Interest {
+    /// No new connection Ids are required
     None,
+    /// The specified number of new connection Ids are required
     New(u8),
-}
-
-impl Add for Interest {
-    type Output = Interest;
-
-    fn add(self, rhs: Self) -> Self::Output {
-        match (self, rhs) {
-            (Interest::None, Interest::None) => Interest::None,
-            (Interest::None, Interest::New(count)) => Interest::New(count),
-            (Interest::New(count), Interest::None) => Interest::New(count),
-            (Interest::New(count), Interest::New(count_rhs)) => Interest::New(count.max(count_rhs)),
-        }
-    }
 }
 
 impl Default for Interest {

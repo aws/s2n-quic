@@ -13,7 +13,6 @@ use core::{cell::RefCell, ops::Deref};
 use intrusive_collections::{
     intrusive_adapter, KeyAdapter, LinkedList, LinkedListLink, RBTree, RBTreeLink,
 };
-use s2n_quic_core::connection;
 
 // Intrusive list adapter for managing the list of `done` connections
 intrusive_adapter!(DoneConnectionsAdapter<C> = Rc<ConnectionNode<C>>: ConnectionNode<C> {
@@ -168,9 +167,8 @@ impl<C: ConnectionTrait> InterestLists<C> {
             waiting_for_transmission
         );
 
-        let has_connection_id_interest = interests.id != connection::id::Interest::None;
         sync_interests!(
-            has_connection_id_interest,
+            interests.new_connection_id,
             waiting_for_connection_id_link,
             waiting_for_connection_id
         );
