@@ -190,6 +190,11 @@ impl ConnectionIdMapperRegistration {
 
     /// Sets the active connection id limit
     pub fn set_active_connection_id_limit(&mut self, active_connection_id_limit: u64) {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
+        //# An endpoint MAY also limit the issuance of
+        //# connection IDs to reduce the amount of per-path state it maintains,
+        //# such as path validation status, as its peer might interact with it
+        //# over as many paths as there are issued connection IDs.
         self.active_connection_id_limit =
             MAX_ACTIVE_CONNECTION_ID_LIMIT.min(active_connection_id_limit) as u8;
     }
@@ -210,6 +215,16 @@ impl ConnectionIdMapperRegistration {
             //# MUST NOT be issued more than once on the same connection.
             return Err(ConnectionIdMapperRegistrationError::ConnectionIdInUse);
         }
+
+        debug_assert!(
+            self.registered_ids
+                .iter()
+                .filter(|id_info| id_info.status == Active || id_info.status == PendingIssuance)
+                .count()
+                < self.active_connection_id_limit as usize,
+            "Attempted to register more connection IDs than the active connection id limit: {}",
+            self.active_connection_id_limit
+        );
 
         // Try to insert into the global map
         if self
@@ -280,6 +295,13 @@ impl ConnectionIdMapperRegistration {
             .filter(|id_info| id_info.status == Active || id_info.status == PendingIssuance)
             .count() as u8;
 
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
+        //# An endpoint SHOULD ensure that its peer has a sufficient number of
+        //# available and unused connection IDs.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
+        //# An endpoint MUST NOT
+        //# provide more connection IDs than the peer's limit.
         let new_connection_id_count = self.active_connection_id_limit - active_connection_id_count;
 
         if new_connection_id_count > 0 {
@@ -381,6 +403,7 @@ mod tests {
             InternalConnectionIdGenerator::new().generate_id(),
             &ext_id_1,
         );
+        reg.set_active_connection_id_limit(3);
         reg.register_connection_id(&ext_id_2, None).unwrap();
 
         let seq_num_1 = reg
@@ -410,6 +433,9 @@ mod tests {
 
         let mut reg1 = mapper.create_registration(id1, &ext_id_1);
         let mut reg2 = mapper.create_registration(id2, &ext_id_3);
+
+        reg1.set_active_connection_id_limit(3);
+        reg2.set_active_connection_id_limit(3);
 
         assert_eq!(
             0,
@@ -461,9 +487,9 @@ mod tests {
         let ext_id_1 = connection::Id::try_from_bytes(b"id1").unwrap();
         let ext_id_2 = connection::Id::try_from_bytes(b"id2").unwrap();
         let ext_id_3 = connection::Id::try_from_bytes(b"id3").unwrap();
-        let ext_id_4 = connection::Id::try_from_bytes(b"id4").unwrap();
 
         let mut reg1 = mapper.create_registration(id1, &ext_id_1);
+        reg1.set_active_connection_id_limit(3);
 
         assert_eq!(0, reg1.retire_prior_to);
         // Retiring an unregistered ID does nothing
@@ -476,10 +502,9 @@ mod tests {
 
         assert!(reg1.register_connection_id(&ext_id_2, None).is_ok());
         assert!(reg1.register_connection_id(&ext_id_3, None).is_ok());
-        assert!(reg1.register_connection_id(&ext_id_4, None).is_ok());
 
-        // Retire ID 3 (sequence number 2)
-        reg1.retire_connection_id(&ext_id_3);
+        // Retire ID 2 (sequence number 1)
+        reg1.retire_connection_id(&ext_id_2);
 
         // ID 3 and all those before it should be retired
         assert_eq!(
@@ -490,19 +515,19 @@ mod tests {
             PendingRetirement,
             reg1.get_connection_id_info(&ext_id_2).unwrap().status
         );
-        assert_eq!(
-            PendingRetirement,
-            reg1.get_connection_id_info(&ext_id_3).unwrap().status
-        );
-        assert_eq!(3, reg1.retire_prior_to);
+        assert_eq!(2, reg1.retire_prior_to);
 
-        // ID 4 was after ID 3, so it is not retired
+        // ID 3 was after ID 2, so it is not retired
         assert_eq!(
             PendingIssuance,
-            reg1.get_connection_id_info(&ext_id_4).unwrap().status
+            reg1.get_connection_id_info(&ext_id_3).unwrap().status
         );
     }
 
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
+    //= type=test
+    //# An endpoint SHOULD ensure that its peer has a sufficient number of
+    //# available and unused connection IDs.
     #[test]
     fn connection_id_interest() {
         let mut id_generator = InternalConnectionIdGenerator::new();
@@ -548,6 +573,60 @@ mod tests {
         );
     }
 
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
+    //= type=test
+    //# An endpoint MUST NOT
+    //# provide more connection IDs than the peer's limit.
+    #[test]
+    #[should_panic]
+    fn endpoint_must_not_provide_more_ids_than_peer_limit() {
+        let mut id_generator = InternalConnectionIdGenerator::new();
+        let mut mapper = ConnectionIdMapper::new();
+
+        let id1 = id_generator.generate_id();
+
+        let ext_id_1 = connection::Id::try_from_bytes(b"id1").unwrap();
+        let ext_id_2 = connection::Id::try_from_bytes(b"id2").unwrap();
+        let ext_id_3 = connection::Id::try_from_bytes(b"id3").unwrap();
+
+        let mut reg1 = mapper.create_registration(id1, &ext_id_1);
+        reg1.set_active_connection_id_limit(2);
+
+        assert_eq!(
+            connection::id::Interest::New(1),
+            reg1.connection_id_interest()
+        );
+
+        assert!(reg1.register_connection_id(&ext_id_2, None).is_ok());
+
+        // Panics because we are inserting more than the limit
+        let _ = reg1.register_connection_id(&ext_id_3, None);
+    }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
+    //= type=test
+    //# An endpoint MAY also limit the issuance of
+    //# connection IDs to reduce the amount of per-path state it maintains,
+    //# such as path validation status, as its peer might interact with it
+    //# over as many paths as there are issued connection IDs.
+    #[test]
+    fn endpoint_may_limit_connection_ids() {
+        let mut id_generator = InternalConnectionIdGenerator::new();
+        let mut mapper = ConnectionIdMapper::new();
+
+        let id1 = id_generator.generate_id();
+
+        let ext_id_1 = connection::Id::try_from_bytes(b"id1").unwrap();
+
+        let mut reg1 = mapper.create_registration(id1, &ext_id_1);
+        reg1.set_active_connection_id_limit(100);
+
+        assert_eq!(
+            MAX_ACTIVE_CONNECTION_ID_LIMIT,
+            reg1.active_connection_id_limit as u64
+        );
+    }
+
     #[test]
     fn on_transmit() {
         let mut id_generator = InternalConnectionIdGenerator::new();
@@ -560,6 +639,8 @@ mod tests {
         let ext_id_3 = connection::Id::try_from_bytes(b"id3").unwrap();
 
         let mut reg1 = mapper.create_registration(id1, &ext_id_1);
+        reg1.set_active_connection_id_limit(3);
+
         assert_eq!(transmission::Interest::None, reg1.transmission_interest());
 
         assert!(reg1.register_connection_id(&ext_id_2, None).is_ok());
