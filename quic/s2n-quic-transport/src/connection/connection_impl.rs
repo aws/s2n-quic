@@ -784,7 +784,8 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                 interests.transmission = transmission.can_transmit(constraint);
                 interests.new_connection_id = self
                     .connection_id_mapper_registration
-                    .connection_id_interest() != connection::id::Interest::None;
+                    .connection_id_interest()
+                    != connection::id::Interest::None;
             }
             ConnectionState::Closing => {
                 // TODO: Ask the Close Sender whether it needs to transmit
