@@ -53,11 +53,20 @@ impl Dispatch {
     }
 }
 
-#[derive(Debug)]
 pub struct Transmission {
     remote_address: SocketAddress,
     packet: [u8; MINIMUM_MTU as usize],
     packet_len: usize,
+}
+
+impl core::fmt::Debug for Transmission {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "Transmission({:?}):{:?}",
+            self.remote_address, self.packet
+        )
+    }
 }
 
 impl Transmission {

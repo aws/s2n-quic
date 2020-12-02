@@ -104,7 +104,6 @@ pub type CleartextRetry<'a> = Retry<'a>;
 
 impl<'a> Retry<'a> {
     pub fn from_initial(initial_packet: &'a ProtectedInitial) -> Self {
-        // TODO: Calculate correct maximum size for the retry token
         Self {
             tag: retry_tag!(),
             version: initial_packet.version,
