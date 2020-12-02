@@ -11,10 +11,7 @@ use crate::{
     wakeup_queue::WakeupQueue,
 };
 use alloc::collections::VecDeque;
-use core::{
-    task::{self, Poll},
-    time,
-};
+use core::task::{self, Poll};
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     endpoint::{limits::Outcome, Limits},
@@ -28,6 +25,7 @@ use s2n_quic_core::{
 mod config;
 mod initial;
 mod limits;
+mod retry;
 mod version;
 
 pub use config::{Config, Context};
@@ -54,6 +52,7 @@ pub struct Endpoint<Cfg: Config> {
     /// [`Endpoint`] interactions.
     dequeued_wakeups: VecDeque<InternalConnectionId>,
     version_negotiator: version::Negotiator<Cfg>,
+    retry_dispatch: retry::Dispatch,
     /// Limit manager for the endpoint
     limits_manager: limits::Manager,
 }
@@ -78,6 +77,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             wakeup_queue: WakeupQueue::new(),
             dequeued_wakeups: VecDeque::new(),
             version_negotiator: version::Negotiator::default(),
+            retry_dispatch: retry::Dispatch::default(),
             limits_manager: limits::Manager::new(),
         };
 
@@ -228,17 +228,17 @@ impl<Cfg: Config> Endpoint<Cfg> {
         if Cfg::ENDPOINT_TYPE.is_server() {
             match packet {
                 ProtectedPacket::Initial(packet) => {
-                    if !packet.token().is_empty() {
-                        let source_connection_id =
-                            match connection::Id::try_from_bytes(packet.source_connection_id()) {
-                                Some(connection_id) => connection_id,
-                                None => {
-                                    dbg!("Could not decode source connection id");
-                                    return;
-                                }
-                            };
+                    let source_connection_id =
+                        match connection::Id::try_from_bytes(packet.source_connection_id()) {
+                            Some(connection_id) => connection_id,
+                            None => {
+                                dbg!("Could not decode source connection id");
+                                return;
+                            }
+                        };
 
-                        if endpoint_context
+                    if !packet.token().is_empty()
+                        && endpoint_context
                             .token
                             .validate_token(
                                 &datagram.remote_address,
@@ -247,10 +247,9 @@ impl<Cfg: Config> Endpoint<Cfg> {
                                 packet.token(),
                             )
                             .is_none()
-                        {
-                            dbg!("Invalid token");
-                            return;
-                        }
+                    {
+                        dbg!("Invalid token");
+                        return;
                     }
 
                     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.2
@@ -268,13 +267,15 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         Outcome::Allow => {
                             // No action
                         }
-                        Outcome::Retry { delay } => {
+                        Outcome::Retry { delay: _ } => {
                             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.2
                             //= type=TODO
                             //= tracking-issue=166
                             //# A server can also use a Retry packet to defer the state and
                             //# processing costs of connection establishment.
-                            self.enqueue_retry_packet(&datagram, &connection_id, delay);
+
+                            // TODO: Call retry_dispatch.queue to queue the packet for delivery
+                            // https://github.com/awslabs/s2n-quic/issues/260
                             return;
                         }
                         Outcome::Drop => return,
@@ -313,17 +314,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
         dbg!("stateless reset triggered");
     }
 
-    /// Enqueues sending a retry packet to a peer.
-    pub fn enqueue_retry_packet(
-        &mut self,
-        _datagram: &DatagramInfo,
-        _destination_connection_id: &connection::Id,
-        _delay: time::Duration,
-    ) {
-        // TODO: https://github.com/awslabs/s2n-quic/issues/260
-        dbg!("retry packet triggered");
-    }
-
     /// Queries the endpoint for outgoing datagrams
     pub fn transmit<'a, Tx: tx::Tx<'a>>(&mut self, tx: &'a mut Tx, timestamp: Timestamp) {
         let mut queue = tx.queue();
@@ -343,6 +333,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
         if transmit_result.is_ok() {
             self.version_negotiator.on_transmit(&mut queue);
+            self.retry_dispatch.on_transmit(&mut queue);
         }
     }
 
