@@ -341,7 +341,16 @@ impl transmission::interest::Provider for ConnectionIdMapperRegistration {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::connection::InternalConnectionIdGenerator;
+    use crate::{
+        connection::InternalConnectionIdGenerator,
+        contexts::testing::{MockWriteContext, OutgoingFrameBuffer},
+        endpoint,
+        transmission::interest::Provider,
+    };
+    use s2n_quic_core::{
+        frame::{Frame, NewConnectionID},
+        varint::VarInt,
+    };
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1
     //= type=test
@@ -492,5 +501,123 @@ mod tests {
             PendingIssuance,
             reg1.get_connection_id_info(&ext_id_4).unwrap().status
         );
+    }
+
+    #[test]
+    fn connection_id_interest() {
+        let mut id_generator = InternalConnectionIdGenerator::new();
+        let mut mapper = ConnectionIdMapper::new();
+
+        let id1 = id_generator.generate_id();
+
+        let ext_id_1 = connection::Id::try_from_bytes(b"id1").unwrap();
+        let ext_id_2 = connection::Id::try_from_bytes(b"id2").unwrap();
+        let ext_id_3 = connection::Id::try_from_bytes(b"id3").unwrap();
+
+        let mut reg1 = mapper.create_registration(id1, &ext_id_1);
+
+        // Active connection ID limit starts at 1, so there is no interest initially
+        assert_eq!(
+            connection::id::Interest::None,
+            reg1.connection_id_interest()
+        );
+
+        reg1.set_active_connection_id_limit(5);
+        assert_eq!(
+            MAX_ACTIVE_CONNECTION_ID_LIMIT,
+            reg1.active_connection_id_limit as u64
+        );
+
+        assert_eq!(
+            connection::id::Interest::New(reg1.active_connection_id_limit - 1),
+            reg1.connection_id_interest()
+        );
+
+        assert!(reg1.register_connection_id(&ext_id_2, None).is_ok());
+
+        assert_eq!(
+            connection::id::Interest::New(reg1.active_connection_id_limit - 2),
+            reg1.connection_id_interest()
+        );
+
+        assert!(reg1.register_connection_id(&ext_id_3, None).is_ok());
+
+        assert_eq!(
+            connection::id::Interest::None,
+            reg1.connection_id_interest()
+        );
+    }
+
+    #[test]
+    fn on_transmit() {
+        let mut id_generator = InternalConnectionIdGenerator::new();
+        let mut mapper = ConnectionIdMapper::new();
+
+        let id1 = id_generator.generate_id();
+
+        let ext_id_1 = connection::Id::try_from_bytes(b"id1").unwrap();
+        let ext_id_2 = connection::Id::try_from_bytes(b"id2").unwrap();
+        let ext_id_3 = connection::Id::try_from_bytes(b"id3").unwrap();
+
+        let mut reg1 = mapper.create_registration(id1, &ext_id_1);
+        assert_eq!(transmission::Interest::None, reg1.transmission_interest());
+
+        assert!(reg1.register_connection_id(&ext_id_2, None).is_ok());
+
+        assert_eq!(
+            transmission::Interest::NewData,
+            reg1.transmission_interest()
+        );
+
+        let mut frame_buffer = OutgoingFrameBuffer::new();
+        let mut write_context = MockWriteContext::new(
+            s2n_quic_platform::time::now(),
+            &mut frame_buffer,
+            transmission::Constraint::None,
+            endpoint::Type::Server,
+        );
+        reg1.on_transmit(&mut write_context);
+
+        let expected_frame = Frame::NewConnectionID {
+            0: NewConnectionID {
+                sequence_number: VarInt::from_u32(1),
+                retire_prior_to: VarInt::from_u32(0),
+                connection_id: ext_id_2.as_bytes(),
+                stateless_reset_token: &[1; 16],
+            },
+        };
+
+        assert_eq!(
+            expected_frame,
+            write_context.frame_buffer.pop_front().unwrap().as_frame()
+        );
+
+        assert_eq!(transmission::Interest::None, reg1.transmission_interest());
+
+        reg1.retire_connection_id(&ext_id_2);
+        assert!(reg1.register_connection_id(&ext_id_3, None).is_ok());
+
+        assert_eq!(
+            transmission::Interest::NewData,
+            reg1.transmission_interest()
+        );
+
+        reg1.on_transmit(&mut write_context);
+
+        let expected_frame = Frame::NewConnectionID {
+            0: NewConnectionID {
+                sequence_number: VarInt::from_u32(2),
+                retire_prior_to: VarInt::from_u32(2),
+                connection_id: ext_id_3.as_bytes(),
+                stateless_reset_token: &[1; 16],
+            },
+        };
+
+        assert_eq!(
+            expected_frame,
+            write_context.frame_buffer.pop_front().unwrap().as_frame()
+        );
+
+        assert_eq!(transmission::Interest::None, reg1.transmission_interest());
     }
 }
