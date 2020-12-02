@@ -2,8 +2,9 @@
 
 use crate::{
     connection::{
-        self, CloseReason as ConnectionCloseReason, ConnectionIdMapperRegistration,
-        ConnectionInterests, ConnectionTimerEntry, ConnectionTimers, ConnectionTransmission,
+        self, connection_id_mapper::ConnectionIdMapperRegistrationError, id::ConnectionInfo,
+        CloseReason as ConnectionCloseReason, ConnectionIdMapperRegistration, ConnectionInterests,
+        ConnectionTimerEntry, ConnectionTimers, ConnectionTransmission,
         ConnectionTransmissionContext, InternalConnectionId, Parameters as ConnectionParameters,
         SharedConnectionState,
     },
@@ -16,6 +17,7 @@ use crate::{
 use core::time::Duration;
 use s2n_quic_core::{
     application::ApplicationErrorExt,
+    connection::id::Interest,
     inet::DatagramInfo,
     io::tx,
     packet::{
@@ -101,7 +103,6 @@ pub struct ConnectionImpl<Config: connection::Config> {
     /// The connection ID to send packets from
     local_connection_id: connection::Id,
     /// The connection ID mapper registration which should be utilized by the connection
-    #[allow(dead_code)] // TODO: temporary supression until connections support ID registration
     connection_id_mapper_registration: ConnectionIdMapperRegistration,
     /// The timers which are used within the connection
     timers: ConnectionTimers,
@@ -134,7 +135,12 @@ impl<ConfigType: connection::Config> ConnectionImpl<ConfigType> {
     ) -> Result<(), TransportError> {
         let space_manager = &mut shared_state.space_manager;
         let (_, path) = self.path_manager.active_path();
-        space_manager.poll_crypto(&self.config, path, datagram.timestamp)?;
+        space_manager.poll_crypto(
+            &self.config,
+            path,
+            &mut self.connection_id_mapper_registration,
+            datagram.timestamp,
+        )?;
 
         if matches!(self.state, ConnectionState::Handshaking)
             && space_manager.application().is_some()
@@ -313,6 +319,35 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
             // TODO: The time should be coming from config + PTO estimation
             let delay = core::time::Duration::from_millis(100);
             self.timers.close_timer.set(timestamp + delay);
+        }
+    }
+
+    /// Generates and registers new connection IDs using the given `ConnectionIdFormat`
+    fn on_new_connection_id<ConnectionIdFormat: connection::id::Format>(
+        &mut self,
+        connection_id_format: &mut ConnectionIdFormat,
+        timestamp: Timestamp,
+    ) -> Result<(), ConnectionIdMapperRegistrationError> {
+        match self
+            .connection_id_mapper_registration
+            .connection_id_interest()
+        {
+            Interest::New(mut count) => {
+                let (_path_id, active_path) = self.path_manager.active_path();
+                let connection_info = ConnectionInfo::new(&active_path.peer_socket_address);
+
+                while count > 0 {
+                    let id = connection_id_format.generate(&connection_info);
+                    let expiration = connection_id_format
+                        .lifetime()
+                        .map(|duration| timestamp + duration);
+                    self.connection_id_mapper_registration
+                        .register_connection_id(&id, expiration)?;
+                    count -= 1;
+                }
+                Ok(())
+            }
+            Interest::None => Ok(()),
         }
     }
 
@@ -744,9 +779,16 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                 // don't iterate over everything if we can't send anyway
                 if !constraint.is_amplification_limited() {
                     transmission += shared_state.space_manager.transmission_interest();
+                    transmission += self
+                        .connection_id_mapper_registration
+                        .transmission_interest();
                 }
 
                 interests.transmission = transmission.can_transmit(constraint);
+                interests.new_connection_id = self
+                    .connection_id_mapper_registration
+                    .connection_id_interest()
+                    != connection::id::Interest::None;
             }
             ConnectionState::Closing => {
                 // TODO: Ask the Close Sender whether it needs to transmit

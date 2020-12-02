@@ -93,16 +93,17 @@ impl<Config: connection::Config> InitialSpace<Config> {
 
         let payload = transmission::Transmission {
             ack_manager: &mut self.ack_manager,
+            config: <PhantomData<Config>>::default(),
+            outcome: &mut outcome,
+            packet_number,
             payload: transmission::early::Payload {
                 crypto_stream: &mut self.crypto_stream,
                 packet_number_space: PacketNumberSpace::Initial,
             },
-            context,
-            packet_number,
             recovery_manager: &mut self.recovery_manager,
-            tx_packet_numbers: &mut self.tx_packet_numbers,
-            outcome: &mut outcome,
+            timestamp: context.timestamp,
             transmission_constraint,
+            tx_packet_numbers: &mut self.tx_packet_numbers,
         };
 
         let packet = Initial {

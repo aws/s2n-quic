@@ -12,12 +12,12 @@ pub use interest::Interest;
 pub use s2n_quic_core::transmission::*;
 
 use crate::{
-    connection::{self, ConnectionTransmissionContext},
+    connection::{self},
     recovery,
     space::{rx_packet_numbers::AckManager, TxPacketNumbers},
     transmission::{self, interest::Provider as _},
 };
-use core::ops::RangeInclusive;
+use core::{marker::PhantomData, ops::RangeInclusive};
 use s2n_codec::{Encoder, EncoderBuffer};
 use s2n_quic_core::{
     frame::Padding,
@@ -25,6 +25,7 @@ use s2n_quic_core::{
         encoding::PacketPayloadEncoder,
         number::{PacketNumber, PacketNumberSpace},
     },
+    time::Timestamp,
 };
 
 pub trait Payload: interest::Provider {
@@ -35,13 +36,14 @@ pub trait Payload: interest::Provider {
 
 pub struct Transmission<'a, Config: connection::Config, P: Payload> {
     pub ack_manager: &'a mut AckManager,
-    pub context: &'a ConnectionTransmissionContext<'a, Config>,
+    pub config: PhantomData<Config>,
+    pub outcome: &'a mut transmission::Outcome,
     pub payload: P,
     pub packet_number: PacketNumber,
     pub recovery_manager: &'a mut recovery::Manager,
-    pub tx_packet_numbers: &'a mut TxPacketNumbers,
-    pub outcome: &'a mut transmission::Outcome,
+    pub timestamp: Timestamp,
     pub transmission_constraint: transmission::Constraint,
+    pub tx_packet_numbers: &'a mut TxPacketNumbers,
 }
 
 impl<'a, Config: connection::Config, P: Payload> PacketPayloadEncoder
@@ -66,17 +68,11 @@ impl<'a, Config: connection::Config, P: Payload> PacketPayloadEncoder
             buffer,
             packet_number: self.packet_number,
             transmission_constraint: self.transmission_constraint,
-            timestamp: self.context.timestamp,
+            timestamp: self.timestamp,
             config: Default::default(),
         };
 
         let did_send_ack = self.ack_manager.on_transmit(&mut context);
-
-        if self.payload.packet_number_space().is_application_data() {
-            //self.context
-            //    .connection_id_mapper_registration
-            //    .on_transmit(&mut context);
-        }
 
         self.payload.on_transmit(&mut context);
         self.recovery_manager.on_transmit(&mut context);

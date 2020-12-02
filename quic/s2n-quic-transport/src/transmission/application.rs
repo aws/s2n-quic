@@ -1,4 +1,5 @@
 use crate::{
+    connection::ConnectionIdMapperRegistration,
     contexts::WriteContext,
     space::HandshakeStatus,
     stream::{AbstractStreamManager, StreamTrait as Stream},
@@ -12,6 +13,7 @@ pub struct Payload<'a, S: Stream> {
     pub handshake_status: &'a mut HandshakeStatus,
     pub ping: &'a mut Ping,
     pub stream_manager: &'a mut AbstractStreamManager<S>,
+    pub connection_id_mapper_registration: &'a mut ConnectionIdMapperRegistration,
 }
 
 impl<'a, S: Stream> super::Payload for Payload<'a, S> {
@@ -24,6 +26,8 @@ impl<'a, S: Stream> super::Payload for Payload<'a, S> {
         // send HANDSHAKE_DONE frames first, if needed, to ensure the handshake is confirmed as
         // soon as possible
         let _ = self.handshake_status.on_transmit(context);
+
+        self.connection_id_mapper_registration.on_transmit(context);
 
         let _ = self.stream_manager.on_transmit(context);
 
@@ -42,5 +46,8 @@ impl<'a, S: Stream> transmission::interest::Provider for Payload<'a, S> {
         transmission::Interest::default()
             + self.handshake_status.transmission_interest()
             + self.stream_manager.transmission_interest()
+            + self
+                .connection_id_mapper_registration
+                .transmission_interest()
     }
 }

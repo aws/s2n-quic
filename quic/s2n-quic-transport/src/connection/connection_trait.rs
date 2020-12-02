@@ -2,7 +2,8 @@
 
 use crate::{
     connection::{
-        self, connection_interests::ConnectionInterests, id::ConnectionInfo,
+        self, connection_id_mapper::ConnectionIdMapperRegistrationError,
+        connection_interests::ConnectionInterests, id::ConnectionInfo,
         internal_connection_id::InternalConnectionId, shared_state::SharedConnectionState,
         CloseReason as ConnectionCloseReason, Parameters as ConnectionParameters,
     },
@@ -58,6 +59,13 @@ pub trait ConnectionTrait: Sized {
     /// (via [`ConnectionInterests`]) as accepted. After this call the `accept` interest should
     /// no longer be signalled.
     fn mark_as_accepted(&mut self);
+
+    /// Generates and registers new connection IDs using the given `ConnectionIdFormat`
+    fn on_new_connection_id<ConnectionIdFormat: connection::id::Format>(
+        &mut self,
+        connection_id_format: &mut ConnectionIdFormat,
+        timestamp: Timestamp,
+    ) -> Result<(), ConnectionIdMapperRegistrationError>;
 
     /// Queries the connection for outgoing packets
     fn on_transmit<Tx: tx::Queue>(

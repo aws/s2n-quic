@@ -21,10 +21,7 @@ impl_provider_utils!();
 
 #[cfg(feature = "rand")]
 pub mod random {
-    use core::{
-        convert::{Infallible, TryInto},
-        time::Duration,
-    };
+    use core::convert::{Infallible, TryInto};
     use rand::prelude::*;
     use s2n_quic_core::connection::{
         self,
@@ -105,15 +102,11 @@ pub mod random {
     }
 
     impl Generator for Format {
-        fn generate(
-            &mut self,
-            _connection_info: &ConnectionInfo,
-        ) -> (connection::Id, Option<Duration>) {
+        fn generate(&mut self, _connection_info: &ConnectionInfo) -> connection::Id {
             let mut id = [0u8; connection::id::MAX_LEN];
             let id = &mut id[..self.len];
             rand::thread_rng().fill_bytes(id);
-            let id = (&id[..]).try_into().expect("length already checked");
-            (id, None)
+            (&id[..]).try_into().expect("length already checked")
         }
     }
 
@@ -135,7 +128,7 @@ pub mod random {
         for len in 0..connection::id::MAX_LEN {
             let mut format = Format::builder().with_len(len).unwrap().build().unwrap();
 
-            let (id, _) = format.generate(&connection_info);
+            let id = format.generate(&connection_info);
             assert_eq!(format.validate(&connection_info, id.as_ref()), Some(len));
             assert_eq!(id.len(), len);
         }

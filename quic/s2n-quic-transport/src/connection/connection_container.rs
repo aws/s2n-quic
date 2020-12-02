@@ -25,6 +25,12 @@ intrusive_adapter!(WaitingForTransmissionAdapter<C> = Rc<ConnectionNode<C>>: Con
     waiting_for_transmission_link: LinkedListLink
 } where C: ConnectionTrait);
 
+// Intrusive list adapter for managing the list of
+// `waiting_for_connection_id` connections
+intrusive_adapter!(WaitingForConnectionIdAdapter<C> = Rc<ConnectionNode<C>>: ConnectionNode<C> {
+    waiting_for_connection_id_link: LinkedListLink
+} where C: ConnectionTrait);
+
 // Intrusive red black tree adapter for managing all connections in a tree for
 // lookup by Connection ID
 intrusive_adapter!(ConnectionTreeAdapter<C> = Rc<ConnectionNode<C>>: ConnectionNode<C> {
@@ -48,6 +54,8 @@ struct ConnectionNode<C: ConnectionTrait> {
     accepted_connections_link: LinkedListLink,
     /// Allows the Connection to be part of the `waiting_for_transmission` collection
     waiting_for_transmission_link: LinkedListLink,
+    /// Allows the Connection to be part of the `waiting_for_connection_id` collection
+    waiting_for_connection_id_link: LinkedListLink,
 }
 
 impl<C: ConnectionTrait> ConnectionNode<C> {
@@ -63,6 +71,7 @@ impl<C: ConnectionTrait> ConnectionNode<C> {
             accepted_connections_link: LinkedListLink::new(),
             done_connections_link: LinkedListLink::new(),
             waiting_for_transmission_link: LinkedListLink::new(),
+            waiting_for_connection_id_link: LinkedListLink::new(),
         }
     }
 }
@@ -105,6 +114,8 @@ struct InterestLists<C: ConnectionTrait> {
     done_connections: LinkedList<DoneConnectionsAdapter<C>>,
     /// Connections which need to transmit data
     waiting_for_transmission: LinkedList<WaitingForTransmissionAdapter<C>>,
+    /// Connections which need a new connection ID
+    waiting_for_connection_id: LinkedList<WaitingForConnectionIdAdapter<C>>,
 }
 
 impl<C: ConnectionTrait> InterestLists<C> {
@@ -112,6 +123,7 @@ impl<C: ConnectionTrait> InterestLists<C> {
         Self {
             done_connections: LinkedList::new(DoneConnectionsAdapter::new()),
             waiting_for_transmission: LinkedList::new(WaitingForTransmissionAdapter::new()),
+            waiting_for_connection_id: LinkedList::new(WaitingForConnectionIdAdapter::new()),
         }
     }
 
@@ -153,6 +165,12 @@ impl<C: ConnectionTrait> InterestLists<C> {
             interests.transmission,
             waiting_for_transmission_link,
             waiting_for_transmission
+        );
+
+        sync_interests!(
+            interests.new_connection_id,
+            waiting_for_connection_id_link,
+            waiting_for_connection_id
         );
 
         // Accepted connections are only automatically pushed into the accepted connections queue.
@@ -362,6 +380,7 @@ impl<C: ConnectionTrait> ConnectionContainer<C> {
             }
 
             remove_connection_from_list!(waiting_for_transmission, waiting_for_transmission_link);
+            remove_connection_from_list!(waiting_for_connection_id, waiting_for_connection_id_link);
         }
     }
 
@@ -378,6 +397,23 @@ impl<C: ConnectionTrait> ConnectionContainer<C> {
             self,
             waiting_for_transmission,
             waiting_for_transmission_link,
+            func
+        );
+    }
+
+    /// Iterates over all `Connection`s which are waiting for new connection Ids,
+    /// and executes the given function on each `Connection`
+    pub fn iterate_new_connection_id_list<F>(&mut self, mut func: F)
+    where
+        F: FnMut(
+            &mut C,
+            &mut SharedConnectionState<C::Config>,
+        ) -> ConnectionContainerIterationResult,
+    {
+        iterate_interruptible!(
+            self,
+            waiting_for_connection_id,
+            waiting_for_connection_id_link,
             func
         );
     }
