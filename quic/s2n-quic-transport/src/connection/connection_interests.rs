@@ -1,7 +1,5 @@
 //! A collection of a all the interactions a `Connection` is interested in
 
-use s2n_quic_core::connection;
-
 /// A collection of a all the interactions a `Connection` is interested in
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
 pub struct ConnectionInterests {
@@ -14,7 +12,7 @@ pub struct ConnectionInterests {
     /// Is `true` if a `Connection` wants to send data
     pub transmission: bool,
     /// Is `true` if a `Connection` needs a new connection id
-    pub id: connection::id::Interest,
+    pub new_connection_id: bool,
 }
 
 impl ConnectionInterests {
@@ -34,7 +32,7 @@ impl ConnectionInterests {
             finalization: self.finalization && other.finalization,
             accept: self.accept || other.accept,
             transmission: self.transmission || other.transmission,
-            id: self.id + other.id,
+            new_connection_id: self.new_connection_id || other.new_connection_id,
         }
     }
 }
@@ -66,21 +64,21 @@ mod tests {
             transmission: false,
             accept: true,
             finalization: true,
-            id: connection::id::Interest::None,
+            new_connection_id: false,
         };
 
         let b = ConnectionInterests {
             transmission: true,
             accept: false,
             finalization: false,
-            id: connection::id::Interest::New(1),
+            new_connection_id: true,
         };
 
         let c = ConnectionInterests {
             transmission: false,
             accept: false,
             finalization: true,
-            id: connection::id::Interest::New(2),
+            new_connection_id: false,
         };
 
         assert_eq!(
@@ -88,7 +86,7 @@ mod tests {
                 transmission: true,
                 accept: true,
                 finalization: false,
-                id: connection::id::Interest::New(1),
+                new_connection_id: true,
             },
             a + b
         );
@@ -98,7 +96,7 @@ mod tests {
                 transmission: false,
                 accept: true,
                 finalization: true,
-                id: connection::id::Interest::New(2),
+                new_connection_id: false,
             },
             a + c
         );
@@ -108,7 +106,7 @@ mod tests {
                 transmission: true,
                 accept: false,
                 finalization: false,
-                id: connection::id::Interest::New(2),
+                new_connection_id: true,
             },
             b + c
         );

@@ -74,16 +74,9 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             .connection_id_format
             .generate(&connection_info);
 
-        let connection_id_expiration = endpoint_context
-            .connection_id_format
-            .lifetime()
-            .map(|lifetime| datagram.timestamp + lifetime);
-
-        let connection_id_mapper_registration = self.connection_id_mapper.create_registration(
-            internal_connection_id,
-            &initial_connection_id,
-            connection_id_expiration,
-        );
+        let connection_id_mapper_registration = self
+            .connection_id_mapper
+            .create_registration(internal_connection_id, &initial_connection_id);
 
         let timer = self.timer_manager.create_timer(
             internal_connection_id,
