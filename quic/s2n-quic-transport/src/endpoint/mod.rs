@@ -314,17 +314,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
         dbg!("stateless reset triggered");
     }
 
-    /// Enqueues sending a retry packet to a peer.
-    pub fn enqueue_retry_packet(
-        &mut self,
-        _datagram: &DatagramInfo,
-        _destination_connection_id: &connection::Id,
-        _delay: time::Duration,
-    ) {
-        // TODO: https://github.com/awslabs/s2n-quic/issues/260
-        dbg!("retry packet triggered");
-    }
-
     /// Queries the endpoint for connections requiring new connection IDs
     pub fn issue_new_connection_ids(&mut self, timestamp: Timestamp) {
         // Iterate over all connections which need new connection IDs
