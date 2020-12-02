@@ -441,4 +441,56 @@ mod tests {
         assert_eq!(None, mapper.lookup_internal_connection_id(&ext_id_3));
         assert_eq!(Some(id2), mapper.lookup_internal_connection_id(&ext_id_4));
     }
+
+    #[test]
+    fn retire_connection_id() {
+        let mut id_generator = InternalConnectionIdGenerator::new();
+        let mut mapper = ConnectionIdMapper::new();
+
+        let id1 = id_generator.generate_id();
+
+        let ext_id_1 = connection::Id::try_from_bytes(b"id1").unwrap();
+        let ext_id_2 = connection::Id::try_from_bytes(b"id2").unwrap();
+        let ext_id_3 = connection::Id::try_from_bytes(b"id3").unwrap();
+        let ext_id_4 = connection::Id::try_from_bytes(b"id4").unwrap();
+
+        let mut reg1 = mapper.create_registration(id1, &ext_id_1);
+
+        assert_eq!(0, reg1.retire_prior_to);
+        // Retiring an unregistered ID does nothing
+        reg1.retire_connection_id(&ext_id_2);
+        assert_eq!(0, reg1.retire_prior_to);
+        assert_eq!(
+            Active,
+            reg1.get_connection_id_info(&ext_id_1).unwrap().status
+        );
+
+        assert!(reg1.register_connection_id(&ext_id_2, None).is_ok());
+        assert!(reg1.register_connection_id(&ext_id_3, None).is_ok());
+        assert!(reg1.register_connection_id(&ext_id_4, None).is_ok());
+
+        // Retire ID 3 (sequence number 2)
+        reg1.retire_connection_id(&ext_id_3);
+
+        // ID 3 and all those before it should be retired
+        assert_eq!(
+            PendingRetirement,
+            reg1.get_connection_id_info(&ext_id_1).unwrap().status
+        );
+        assert_eq!(
+            PendingRetirement,
+            reg1.get_connection_id_info(&ext_id_2).unwrap().status
+        );
+        assert_eq!(
+            PendingRetirement,
+            reg1.get_connection_id_info(&ext_id_3).unwrap().status
+        );
+        assert_eq!(3, reg1.retire_prior_to);
+
+        // ID 4 was after ID 3, so it is not retired
+        assert_eq!(
+            PendingIssuance,
+            reg1.get_connection_id_info(&ext_id_4).unwrap().status
+        );
+    }
 }
