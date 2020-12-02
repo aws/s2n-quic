@@ -174,7 +174,7 @@ enum LocalConnectionIdStatus {
 impl LocalConnectionIdStatus {
     /// Returns true if this status counts towards the active_connection_id_limit
     fn counts_towards_limit(&self) -> bool {
-        !matches!(PendingRetirement)
+        !matches!(self, PendingRetirement)
     }
 
     /// Returns true if this status allows for transmission based on the transmission constraint
