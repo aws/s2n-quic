@@ -332,6 +332,24 @@ impl<Cfg: Config> Endpoint<Cfg> {
             });
     }
 
+    /// Queries the endpoint for connections requiring new connection IDs
+    pub fn issue_new_connection_ids(&mut self, timestamp: Timestamp) {
+        // Iterate over all connections which need new connection IDs
+        let connection_id_format = self.config.context().connection_id_format;
+
+        self.connections
+            .iterate_new_connection_id_list(|connection, _shared_state| {
+                let result = connection.on_new_connection_id(connection_id_format, timestamp);
+                if result.is_ok() {
+                    ConnectionContainerIterationResult::Continue
+                } else {
+                    // The provided Connection ID generator must never generate the same connection
+                    // ID twice. If this happens, it is unlikely we could recover from it.
+                    panic!("Generated connection ID was already in use");
+                }
+            });
+    }
+
     /// Queries the endpoint for outgoing datagrams
     pub fn transmit<'a, Tx: tx::Tx<'a>>(&mut self, tx: &'a mut Tx, timestamp: Timestamp) {
         let mut queue = tx.queue();
