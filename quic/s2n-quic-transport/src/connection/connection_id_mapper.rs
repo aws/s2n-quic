@@ -179,6 +179,15 @@ impl LocalConnectionIdStatus {
             _ => true,
         }
     }
+
+    /// Returns true if this status allows for transmission based on the transmission constraint
+    fn can_transmit(&self, constraint: transmission::Constraint) -> bool {
+        match self {
+            PendingReissue => constraint.can_retransmit(),
+            PendingIssuance => constraint.can_transmit(),
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -329,10 +338,12 @@ impl ConnectionIdMapperRegistration {
 
     /// Writes any NEW_CONNECTION_ID frames necessary to the given context
     pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
+        let constraint = context.transmission_constraint();
+
         for mut id_info in self
             .registered_ids
             .iter_mut()
-            .filter(|id_info| id_info.status == PendingIssuance || id_info.status == PendingReissue)
+            .filter(|id_info| id_info.status.can_transmit(constraint))
         {
             if let Some(packet_number) = context.write_frame(&frame::NewConnectionID {
                 sequence_number: id_info.sequence_number.into(),
@@ -754,6 +765,74 @@ mod tests {
         );
 
         assert_eq!(transmission::Interest::None, reg1.transmission_interest());
+    }
+
+    #[test]
+    fn on_transmit_constrained() {
+        let mut id_generator = InternalConnectionIdGenerator::new();
+        let mut mapper = ConnectionIdMapper::new();
+
+        let id1 = id_generator.generate_id();
+
+        let ext_id_1 = connection::Id::try_from_bytes(b"id1").unwrap();
+        let ext_id_2 = connection::Id::try_from_bytes(b"id2").unwrap();
+        let ext_id_3 = connection::Id::try_from_bytes(b"id3").unwrap();
+
+        let mut reg1 = mapper.create_registration(id1, &ext_id_1);
+        reg1.set_active_connection_id_limit(3);
+
+        assert_eq!(transmission::Interest::None, reg1.transmission_interest());
+
+        assert!(reg1.register_connection_id(&ext_id_2, None).is_ok());
+        assert!(reg1.register_connection_id(&ext_id_3, None).is_ok());
+
+        assert_eq!(
+            transmission::Interest::NewData,
+            reg1.transmission_interest()
+        );
+
+        let mut frame_buffer = OutgoingFrameBuffer::new();
+        let mut write_context = MockWriteContext::new(
+            s2n_quic_platform::time::now(),
+            &mut frame_buffer,
+            transmission::Constraint::RetransmissionOnly,
+            endpoint::Type::Server,
+        );
+        reg1.on_transmit(&mut write_context);
+
+        // No frame written because only retransmissions are allowed
+        assert!(write_context.frame_buffer.is_empty());
+
+        reg1.get_connection_id_info_mut(&ext_id_2).unwrap().status = PendingReissue;
+
+        assert_eq!(
+            transmission::Interest::LostData,
+            reg1.transmission_interest()
+        );
+
+        reg1.on_transmit(&mut write_context);
+
+        // Only the ID pending reissue should be written
+        assert_eq!(1, write_context.frame_buffer.len());
+
+        let expected_frame = Frame::NewConnectionID {
+            0: NewConnectionID {
+                sequence_number: VarInt::from_u32(1),
+                retire_prior_to: VarInt::from_u32(0),
+                connection_id: ext_id_2.as_bytes(),
+                stateless_reset_token: &[1; 16],
+            },
+        };
+
+        assert_eq!(
+            expected_frame,
+            write_context.frame_buffer.pop_front().unwrap().as_frame()
+        );
+
+        assert_eq!(
+            transmission::Interest::NewData,
+            reg1.transmission_interest()
+        );
     }
 
     #[test]

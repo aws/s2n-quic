@@ -779,6 +779,9 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                 // don't iterate over everything if we can't send anyway
                 if !constraint.is_amplification_limited() {
                     transmission += shared_state.space_manager.transmission_interest();
+                    transmission += self
+                        .connection_id_mapper_registration
+                        .transmission_interest();
                 }
 
                 interests.transmission = transmission.can_transmit(constraint);
