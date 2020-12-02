@@ -1,5 +1,5 @@
 use crate::{
-    connection::{self, ConnectionTransmissionContext},
+    connection::{self, ConnectionIdMapperRegistration, ConnectionTransmissionContext},
     processed_packet::ProcessedPacket,
     recovery,
     space::{
@@ -164,6 +164,7 @@ impl<Config: connection::Config> InitialSpace<Config> {
         &mut self,
         path: &mut Path<Config::CongestionController>,
         handshake_status: &HandshakeStatus,
+        _connection_id_mapper_registration: &mut ConnectionIdMapperRegistration,
         timestamp: Timestamp,
     ) {
         self.ack_manager.on_timeout(timestamp);
@@ -294,6 +295,7 @@ impl<Config: connection::Config> PacketSpace<Config> for InitialSpace<Config> {
         datagram: &DatagramInfo,
         path: &mut Path<Config::CongestionController>,
         handshake_status: &mut HandshakeStatus,
+        _connection_id_mapper_registration: &mut ConnectionIdMapperRegistration,
     ) -> Result<(), TransportError> {
         let (recovery_manager, mut context) = self.recovery(handshake_status);
         recovery_manager.on_ack_frame(datagram, frame, path, &mut context)
