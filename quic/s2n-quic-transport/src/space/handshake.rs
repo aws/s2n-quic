@@ -93,7 +93,6 @@ impl<Config: connection::Config> HandshakeSpace<Config> {
         let payload = transmission::Transmission {
             ack_manager: &mut self.ack_manager,
             config: <PhantomData<Config>>::default(),
-            connection_id_mapper_registration: context.connection_id_mapper_registration,
             outcome: &mut outcome,
             packet_number,
             payload: transmission::early::Payload {
