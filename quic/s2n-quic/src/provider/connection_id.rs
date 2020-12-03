@@ -100,14 +100,17 @@ pub mod random {
         /// Sets the length of the generated connection Id
         pub fn with_len(mut self, len: usize) -> Result<Self, connection::id::Error> {
             if len > connection::id::MAX_LEN {
-                return Err(connection::id::Error);
+                return Err(connection::id::Error::InvalidLength);
             }
             self.len = len;
             Ok(self)
         }
 
         /// Sets the lifetime of each generated connection Id
-        pub fn with_lifetime(mut self, lifetime: Duration) -> Result<Self, ()> {
+        pub fn with_lifetime(mut self, lifetime: Duration) -> Result<Self, connection::id::Error> {
+            if lifetime < connection::id::MIN_LIFETIME {
+                return Err(connection::id::Error::InvalidLifetime);
+            }
             self.lifetime = Some(lifetime);
             Ok(self)
         }
@@ -158,6 +161,13 @@ pub mod random {
             assert_eq!(format.lifetime(), None);
         }
 
+        assert_eq!(
+            Some(connection::id::Error::InvalidLength),
+            Format::builder()
+                .with_len(connection::id::MAX_LEN + 1)
+                .err()
+        );
+
         let lifetime = Duration::from_secs(1000);
         let format = Format::builder()
             .with_lifetime(lifetime)
@@ -165,5 +175,12 @@ pub mod random {
             .build()
             .unwrap();
         assert_eq!(Some(lifetime), format.lifetime());
+
+        assert_eq!(
+            Some(connection::id::Error::InvalidLifetime),
+            Format::builder()
+                .with_lifetime(connection::id::MIN_LIFETIME - Duration::from_millis(1))
+                .err()
+        );
     }
 }
