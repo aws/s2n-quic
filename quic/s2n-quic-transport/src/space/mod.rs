@@ -168,6 +168,7 @@ impl<Config: connection::Config> PacketSpaceManager<Config> {
     pub fn on_timeout(
         &mut self,
         path: &mut Path<Config::CongestionController>,
+        connection_id_mapper_registration: &mut ConnectionIdMapperRegistration,
         timestamp: Timestamp,
     ) {
         if let Some((space, handshake_status)) = self.initial_mut() {
@@ -177,7 +178,12 @@ impl<Config: connection::Config> PacketSpaceManager<Config> {
             space.on_timeout(path, handshake_status, timestamp)
         }
         if let Some((space, handshake_status)) = self.application_mut() {
-            space.on_timeout(path, handshake_status, timestamp)
+            space.on_timeout(
+                path,
+                handshake_status,
+                connection_id_mapper_registration,
+                timestamp,
+            )
         }
     }
 
@@ -286,6 +292,7 @@ pub trait PacketSpace<Config: connection::Config> {
         datagram: &DatagramInfo,
         path: &mut Path<Config::CongestionController>,
         handshake_status: &mut HandshakeStatus,
+        connection_id_mapper_registration: &mut ConnectionIdMapperRegistration,
     ) -> Result<(), TransportError>;
 
     fn handle_connection_close_frame(
@@ -334,6 +341,7 @@ pub trait PacketSpace<Config: connection::Config> {
         datagram: &DatagramInfo,
         path: &mut Path<Config::CongestionController>,
         handshake_status: &mut HandshakeStatus,
+        connection_id_mapper_registration: &mut ConnectionIdMapperRegistration,
     ) -> Result<Option<frame::ConnectionClose<'a>>, TransportError> {
         use s2n_quic_core::{
             frame::{Frame, FrameMut},
@@ -376,8 +384,14 @@ pub trait PacketSpace<Config: connection::Config> {
                 Frame::Ack(frame) => {
                     let on_error = with_frame_type!(frame);
                     processed_packet.on_processed_frame(&frame);
-                    self.handle_ack_frame(frame, datagram, path, handshake_status)
-                        .map_err(on_error)?;
+                    self.handle_ack_frame(
+                        frame,
+                        datagram,
+                        path,
+                        handshake_status,
+                        connection_id_mapper_registration,
+                    )
+                    .map_err(on_error)?;
                 }
                 Frame::ConnectionClose(frame) => {
                     let on_error = with_frame_type!(frame);

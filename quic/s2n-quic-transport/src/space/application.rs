@@ -1,5 +1,5 @@
 use crate::{
-    connection::{self, ConnectionTransmissionContext},
+    connection::{self, ConnectionIdMapperRegistration, ConnectionTransmissionContext},
     processed_packet::ProcessedPacket,
     recovery,
     space::{rx_packet_numbers::AckManager, HandshakeStatus, PacketSpace, TxPacketNumbers},
@@ -148,7 +148,8 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         let (_protected_packet, buffer) =
             packet.encode_packet(&self.crypto, packet_number_encoder, buffer)?;
 
-        let (recovery_manager, recovery_context) = self.recovery(handshake_status);
+        let (recovery_manager, recovery_context) =
+            self.recovery(handshake_status, context.connection_id_mapper_registration);
         recovery_manager.on_packet_sent(
             packet_number,
             outcome,
@@ -209,11 +210,13 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         &mut self,
         path: &mut Path<Config::CongestionController>,
         handshake_status: &mut HandshakeStatus,
+        connection_id_mapper_registration: &mut ConnectionIdMapperRegistration,
         timestamp: Timestamp,
     ) {
         self.ack_manager.on_timeout(timestamp);
 
-        let (recovery_manager, mut context) = self.recovery(handshake_status);
+        let (recovery_manager, mut context) =
+            self.recovery(handshake_status, connection_id_mapper_registration);
         recovery_manager.on_timeout(path, timestamp, &mut context)
     }
 
@@ -240,6 +243,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
     fn recovery<'a>(
         &'a mut self,
         handshake_status: &'a mut HandshakeStatus,
+        connection_id_mapper_registration: &'a mut ConnectionIdMapperRegistration,
     ) -> (&'a mut recovery::Manager, RecoveryContext<'a, Config>) {
         (
             &mut self.recovery_manager,
@@ -248,6 +252,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
                 handshake_status,
                 ping: &mut self.ping,
                 stream_manager: &mut self.stream_manager,
+                connection_id_mapper_registration,
                 tx_packet_numbers: &mut self.tx_packet_numbers,
             },
         )
@@ -275,6 +280,7 @@ struct RecoveryContext<'a, Config: connection::Config> {
     handshake_status: &'a mut HandshakeStatus,
     ping: &'a mut flag::Ping,
     stream_manager: &'a mut AbstractStreamManager<Config::Stream>,
+    connection_id_mapper_registration: &'a mut ConnectionIdMapperRegistration,
     tx_packet_numbers: &'a mut TxPacketNumbers,
 }
 
@@ -302,6 +308,8 @@ impl<'a, Config: connection::Config> recovery::Context for RecoveryContext<'a, C
         self.handshake_status.on_packet_ack(packet_number_range);
         self.ping.on_packet_ack(packet_number_range);
         self.stream_manager.on_packet_ack(packet_number_range);
+        self.connection_id_mapper_registration
+            .on_packet_ack(packet_number_range);
     }
 
     fn on_packet_ack(&mut self, datagram: &DatagramInfo, packet_number_range: &PacketNumberRange) {
@@ -314,6 +322,8 @@ impl<'a, Config: connection::Config> recovery::Context for RecoveryContext<'a, C
         self.handshake_status.on_packet_loss(packet_number_range);
         self.ping.on_packet_loss(packet_number_range);
         self.stream_manager.on_packet_loss(packet_number_range);
+        self.connection_id_mapper_registration
+            .on_packet_loss(packet_number_range);
     }
 }
 
@@ -337,9 +347,11 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
         datagram: &DatagramInfo,
         path: &mut Path<Config::CongestionController>,
         handshake_status: &mut HandshakeStatus,
+        connection_id_mapper_registration: &mut ConnectionIdMapperRegistration,
     ) -> Result<(), TransportError> {
         path.on_peer_validated();
-        let (recovery_manager, mut context) = self.recovery(handshake_status);
+        let (recovery_manager, mut context) =
+            self.recovery(handshake_status, connection_id_mapper_registration);
         recovery_manager.on_ack_frame(datagram, frame, path, &mut context)
     }
 

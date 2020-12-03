@@ -448,9 +448,11 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
             }
         }
 
-        shared_state
-            .space_manager
-            .on_timeout(self.path_manager.active_path_mut().1, timestamp);
+        shared_state.space_manager.on_timeout(
+            self.path_manager.active_path_mut().1,
+            &mut self.connection_id_mapper_registration,
+            timestamp,
+        );
     }
 
     /// Updates the per-connection timer based on individual component timers.
@@ -584,6 +586,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                 datagram,
                 &mut self.path_manager[path_id],
                 handshake_status,
+                &mut self.connection_id_mapper_registration,
             )? {
                 self.close(
                     shared_state,
@@ -619,6 +622,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                 datagram,
                 &mut self.path_manager[path_id],
                 handshake_status,
+                &mut self.connection_id_mapper_registration,
             )? {
                 self.close(
                     shared_state,
@@ -679,6 +683,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                 datagram,
                 &mut self.path_manager[path_id],
                 handshake_status,
+                &mut self.connection_id_mapper_registration,
             )? {
                 self.close(
                     shared_state,

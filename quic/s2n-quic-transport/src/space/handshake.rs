@@ -1,5 +1,5 @@
 use crate::{
-    connection::{self, ConnectionTransmissionContext},
+    connection::{self, ConnectionIdMapperRegistration, ConnectionTransmissionContext},
     processed_packet::ProcessedPacket,
     recovery,
     space::{
@@ -290,6 +290,7 @@ impl<Config: connection::Config> PacketSpace<Config> for HandshakeSpace<Config> 
         datagram: &DatagramInfo,
         path: &mut Path<Config::CongestionController>,
         handshake_status: &mut HandshakeStatus,
+        _connection_id_mapper_registration: &mut ConnectionIdMapperRegistration,
     ) -> Result<(), TransportError> {
         path.on_peer_validated();
         let (recovery_manager, mut context) = self.recovery(handshake_status);
