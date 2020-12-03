@@ -1,7 +1,7 @@
 //! Defines the QUIC connection ID
 
 use crate::{inet::SocketAddress, transport::error::TransportError};
-use core::convert::TryFrom;
+use core::{convert::TryFrom, time::Duration};
 use s2n_codec::{decoder_value, Encoder, EncoderValue};
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1
@@ -12,6 +12,9 @@ use s2n_codec::{decoder_value, Encoder, EncoderValue};
 
 /// The maximum size of a connection ID.
 pub const MAX_LEN: usize = crate::packet::long::DESTINATION_CONNECTION_ID_MAX_LEN;
+
+/// The minimum lifetime of a connection ID.
+pub const MIN_LIFETIME: Duration = Duration::from_secs(60);
 
 /// Uniquely identifies a QUIC connection between 2 peers
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -57,12 +60,30 @@ impl Id {
     }
 }
 
-#[derive(Debug)]
-pub struct Error;
+#[derive(Debug, PartialEq)]
+pub enum Error {
+    InvalidLength,
+    InvalidLifetime,
+}
+
+impl Error {
+    fn message(&self) -> &'static str {
+        match self {
+            Error::InvalidLength => "invalid connection id length",
+            Error::InvalidLifetime => "invalid connection id lifetime",
+        }
+    }
+}
+
+impl core::fmt::Display for Error {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        write!(f, "{}", self.message())
+    }
+}
 
 impl From<Error> for TransportError {
-    fn from(_: Error) -> TransportError {
-        TransportError::PROTOCOL_VIOLATION.with_reason("invalid connection id")
+    fn from(error: Error) -> TransportError {
+        TransportError::PROTOCOL_VIOLATION.with_reason(error.message())
     }
 }
 
@@ -81,7 +102,7 @@ impl TryFrom<&[u8]> for Id {
     fn try_from(slice: &[u8]) -> Result<Self, Self::Error> {
         let len = slice.len();
         if len > MAX_LEN {
-            return Err(Error);
+            return Err(Error::InvalidLength);
         }
         let mut bytes = [0; MAX_LEN];
         bytes[..len].copy_from_slice(slice);

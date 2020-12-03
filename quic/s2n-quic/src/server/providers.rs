@@ -1,7 +1,7 @@
 use super::*;
 use core::{marker::PhantomData, time::Duration};
 use futures::{select_biased, FutureExt};
-use s2n_quic_core::{crypto, recovery, transport};
+use s2n_quic_core::{connection::id::Generator, crypto, recovery, transport};
 use s2n_quic_transport::{acceptor::Acceptor, connection, endpoint, stream};
 
 impl_providers_state! {
@@ -77,6 +77,15 @@ impl<
         let token = token.start().map_err(StartError::new)?;
         let sync = sync.start().map_err(StartError::new)?;
         let tls = tls.start_server().map_err(StartError::new)?;
+
+        // Validate providers
+        // TODO: Add more validation https://github.com/awslabs/s2n-quic/issues/285
+        if connection_id
+            .lifetime()
+            .map_or(false, |lifetime| lifetime < connection::id::MIN_LIFETIME)
+        {
+            return Err(StartError::new(connection::id::Error::InvalidLifetime));
+        };
 
         // Start the IO last
         let io = io.start().map_err(StartError::new)?;
