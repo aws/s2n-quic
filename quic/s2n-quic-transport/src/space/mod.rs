@@ -172,18 +172,10 @@ impl<Config: connection::Config> PacketSpaceManager<Config> {
         timestamp: Timestamp,
     ) {
         if let Some((space, handshake_status)) = self.initial_mut() {
-            space.on_timeout(
-                path,
-                handshake_status,
-                timestamp,
-            )
+            space.on_timeout(path, handshake_status, timestamp)
         }
         if let Some((space, handshake_status)) = self.handshake_mut() {
-            space.on_timeout(
-                path,
-                handshake_status,
-                timestamp,
-            )
+            space.on_timeout(path, handshake_status, timestamp)
         }
         if let Some((space, handshake_status)) = self.application_mut() {
             space.on_timeout(
