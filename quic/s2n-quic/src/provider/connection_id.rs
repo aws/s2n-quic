@@ -21,7 +21,10 @@ impl_provider_utils!();
 
 #[cfg(feature = "rand")]
 pub mod random {
-    use core::convert::{Infallible, TryInto};
+    use core::{
+        convert::{Infallible, TryInto},
+        time::Duration,
+    };
     use rand::prelude::*;
     use s2n_quic_core::connection::{
         self,
@@ -58,11 +61,15 @@ pub mod random {
     #[derive(Debug)]
     pub struct Format {
         len: usize,
+        lifetime: Option<Duration>,
     }
 
     impl Default for Format {
         fn default() -> Self {
-            Self { len: DEFAULT_LEN }
+            Self {
+                len: DEFAULT_LEN,
+                lifetime: None,
+            }
         }
     }
 
@@ -77,11 +84,15 @@ pub mod random {
     #[derive(Debug)]
     pub struct Builder {
         len: usize,
+        lifetime: Option<Duration>,
     }
 
     impl Default for Builder {
         fn default() -> Self {
-            Self { len: DEFAULT_LEN }
+            Self {
+                len: DEFAULT_LEN,
+                lifetime: None,
+            }
         }
     }
 
@@ -95,9 +106,18 @@ pub mod random {
             Ok(self)
         }
 
+        /// Sets the lifetime of each generated connection Id
+        pub fn with_lifetime(mut self, lifetime: Duration) -> Result<Self, ()> {
+            self.lifetime = Some(lifetime);
+            Ok(self)
+        }
+
         /// Builds the [`Format`] into a provider
         pub fn build(self) -> Result<Format, core::convert::Infallible> {
-            Ok(Format { len: self.len })
+            Ok(Format {
+                len: self.len,
+                lifetime: self.lifetime,
+            })
         }
     }
 
@@ -107,6 +127,10 @@ pub mod random {
             let id = &mut id[..self.len];
             rand::thread_rng().fill_bytes(id);
             (&id[..]).try_into().expect("length already checked")
+        }
+
+        fn lifetime(&self) -> Option<Duration> {
+            self.lifetime
         }
     }
 
@@ -131,6 +155,15 @@ pub mod random {
             let id = format.generate(&connection_info);
             assert_eq!(format.validate(&connection_info, id.as_ref()), Some(len));
             assert_eq!(id.len(), len);
+            assert_eq!(format.lifetime(), None);
         }
+
+        let lifetime = Duration::from_secs(1000);
+        let format = Format::builder()
+            .with_lifetime(lifetime)
+            .unwrap()
+            .build()
+            .unwrap();
+        assert_eq!(Some(lifetime), format.lifetime());
     }
 }
