@@ -164,7 +164,6 @@ impl<Config: connection::Config> InitialSpace<Config> {
         &mut self,
         path: &mut Path<Config::CongestionController>,
         handshake_status: &HandshakeStatus,
-        _connection_id_mapper_registration: &mut ConnectionIdMapperRegistration,
         timestamp: Timestamp,
     ) {
         self.ack_manager.on_timeout(timestamp);

@@ -175,7 +175,6 @@ impl<Config: connection::Config> PacketSpaceManager<Config> {
             space.on_timeout(
                 path,
                 handshake_status,
-                connection_id_mapper_registration,
                 timestamp,
             )
         }
@@ -183,7 +182,6 @@ impl<Config: connection::Config> PacketSpaceManager<Config> {
             space.on_timeout(
                 path,
                 handshake_status,
-                connection_id_mapper_registration,
                 timestamp,
             )
         }
