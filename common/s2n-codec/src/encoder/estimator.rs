@@ -20,13 +20,8 @@ impl EncoderLenEstimator {
 }
 
 impl Encoder for EncoderLenEstimator {
-    fn write_sized<F: FnOnce(&mut [u8]) -> Option<()>>(
-        &mut self,
-        len: usize,
-        _write: F,
-    ) -> Option<()> {
+    fn write_sized<F: FnOnce(&mut [u8])>(&mut self, len: usize, _write: F) {
         self.len += len;
-        Some(())
     }
 
     fn write_slice(&mut self, slice: &[u8]) {

@@ -1,6 +1,6 @@
 use crate::{
     connection,
-    crypto::{retry, RetryCrypto},
+    crypto::{retry, retry::RetryCrypto},
     inet::SocketAddress,
     packet::{
         decoding::HeaderDecoder,
@@ -121,14 +121,17 @@ impl<'a> Retry<'a> {
         let mut buffer = EncoderBuffer::new(packet_buf);
         pseudo_packet.encode(&mut buffer);
 
+        let mut outcome = None;
         buffer.write_sized(T::TOKEN_LEN, |token_buf| {
-            token_format.generate_retry_token(
+            outcome = token_format.generate_retry_token(
                 &remote_address,
                 &connection::Id::try_from_bytes(retry_packet.destination_connection_id).unwrap(),
                 &connection::Id::try_from_bytes(retry_packet.source_connection_id).unwrap(),
                 token_buf,
-            )
-        })?;
+            );
+        });
+
+        outcome?;
 
         let tag = C::generate_tag(buffer.as_mut_slice());
         buffer.write_slice(&tag);
@@ -139,14 +142,21 @@ impl<'a> Retry<'a> {
         Some(start..end)
     }
 
-    pub fn from_initial(initial_packet: &'a ProtectedInitial, dcid: &'a [u8]) -> Self {
+    pub fn from_initial(
+        initial_packet: &'a ProtectedInitial,
+        local_connection_id: &'a [u8],
+    ) -> Self {
         // The destination and source connection IDs are flipped because this packet is being sent
         // back to the client.
         Self {
-            tag: retry_tag!(),
+            // The last 4 bits are unused. They are set to 0x0f here to allow easy testing with
+            // example packets provided in the RFC.
+            // https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.5
+            // https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#A.2
+            tag: (retry_tag!() << 4) | 0x0f,
             version: initial_packet.version,
             destination_connection_id: initial_packet.source_connection_id(),
-            source_connection_id: dcid,
+            source_connection_id: local_connection_id,
             retry_token: &[][..],
             retry_integrity_tag: &[][..],
         }
@@ -260,8 +270,7 @@ impl<'a> EncoderValue for PseudoRetry<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{crypto::retry, inet, packet, token};
-    use s2n_codec::EncoderBuffer;
+    use crate::{crypto::retry, inet, packet};
 
     #[test]
     fn test_decode() {

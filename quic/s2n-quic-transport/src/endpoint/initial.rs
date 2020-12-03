@@ -78,6 +78,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         // the retry packet.
         // expired, we shouldn't accept the packet. This situation could occur if the token
         // duration is longer than the connection ID duration.
+        // https://github.com/awslabs/s2n-quic/issues/283
         let initial_connection_id = endpoint_context
             .connection_id_format
             .generate(&connection_info);

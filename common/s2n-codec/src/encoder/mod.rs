@@ -27,11 +27,7 @@ pub trait Encoder: Sized {
     }
 
     /// Calls `write` with a slice of `len` bytes at the current write position
-    fn write_sized<F: FnOnce(&mut [u8]) -> Option<()>>(
-        &mut self,
-        len: usize,
-        write: F,
-    ) -> Option<()>;
+    fn write_sized<F: FnOnce(&mut [u8])>(&mut self, len: usize, write: F);
 
     /// Copies the slice into the buffer
     fn write_slice(&mut self, slice: &[u8]);

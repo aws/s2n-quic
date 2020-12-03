@@ -43,12 +43,13 @@ pub enum Source {
 #[cfg(any(test, feature = "testing"))]
 pub mod testing {
     use super::*;
+    use crate::crypto::retry;
 
     #[derive(Debug, Default)]
     pub struct Format(u64);
 
     impl super::Format for Format {
-        const TOKEN_LEN: usize = 0;
+        const TOKEN_LEN: usize = retry::example::TOKEN_LEN;
 
         fn generate_new_token(
             &mut self,
@@ -66,10 +67,10 @@ pub mod testing {
             _peer_address: &SocketAddress,
             _destination_connection_id: &connection::Id,
             _original_destination_connection_id: &connection::Id,
-            _output_buffer: &mut [u8],
+            output_buffer: &mut [u8],
         ) -> Option<()> {
-            // TODO implement one for testing
-            None
+            output_buffer.copy_from_slice(&retry::example::TOKEN);
+            Some(())
         }
 
         fn validate_token(
@@ -77,10 +78,19 @@ pub mod testing {
             _peer_address: &SocketAddress,
             _destination_connection_id: &connection::Id,
             _source_connection_id: &connection::Id,
-            _token: &[u8],
+            token: &[u8],
         ) -> Option<Source> {
-            // TODO implement one for testing
+            if token == retry::example::TOKEN {
+                return Some(Source::RetryPacket);
+            }
+
             None
+        }
+    }
+
+    impl Format {
+        pub fn new() -> Self {
+            Self(0)
         }
     }
 }

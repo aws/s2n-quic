@@ -115,9 +115,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
         datagram: &DatagramInfo,
         packet: &ProtectedInitial,
     ) -> Option<()> {
-        // TODO refactor this into a function that returns Some(()) on
-        // Outcome::Allow or None on the other branches (which indicates do not
-        // handle the initial packet)
         let attempt = s2n_quic_core::endpoint::limits::ConnectionAttempt::new(
             self.limits_manager.inflight_handshakes(),
             &datagram.remote_address,
