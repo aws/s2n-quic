@@ -137,8 +137,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 //# client.
 
                 let connection_info = ConnectionInfo::new(&datagram.remote_address);
-                // Duration is discarded because we don't have an actual connection
-                let (local_connection_id, _duration) = self
+                let local_connection_id = self
                     .config
                     .context()
                     .connection_id_format
