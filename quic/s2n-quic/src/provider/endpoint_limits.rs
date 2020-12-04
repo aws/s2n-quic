@@ -88,7 +88,7 @@ pub mod default {
     impl super::endpoint::Limits for Limits {
         fn on_connection_attempt(&mut self, info: &limits::ConnectionAttempt) -> limits::Outcome {
             if let Some(limit) = self.max_inflight_handshake_limit {
-                if info.inflight_handshakes > limit {
+                if info.inflight_handshakes >= limit {
                     return limits::Outcome::Retry {
                         delay: self.retry_delay,
                     };

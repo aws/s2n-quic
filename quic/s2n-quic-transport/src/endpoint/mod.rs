@@ -296,8 +296,8 @@ impl<Cfg: Config> Endpoint<Cfg> {
                             .token
                             .validate_token(
                                 &datagram.remote_address,
-                                &connection_id,
                                 &source_connection_id,
+                                &connection_id,
                                 packet.token(),
                             )
                             .is_none()

@@ -41,3 +41,18 @@ Test targets can be executed on stable by disabling the sanitzer:
 ```bash
 $ cargo bolero test varint -p s2n-quic-core -s NONE
 ```
+
+### Testing all the things
+
+cargo test
+
+cargo clippy --all-features --all-targets -- -D warnings
+cargo +nightly run --release --bin cargo-compliance -- report --spec-pattern 'specs/**/*.toml' --source-pattern 'quic/**/*.rs' --workspace --exclude compliance --exclude cargo-compliance --html target/compliance/coverage.html
+
+
+### Docker
+cd qns
+cp ../target/debug/s2n-quic-qns s2n-quic-qns
+cp ../target/debug/s2n-quic-qns s2n-quic-qns-release
+cp ../target/debug/s2n-quic-qns s2n-quic-qns-debug
+sudo docker build . --file ../.github/interop/Dockerfile --tag awslabs/s2n-quic-qns
