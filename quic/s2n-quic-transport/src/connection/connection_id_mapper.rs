@@ -321,9 +321,9 @@ impl ConnectionIdMapperRegistration {
             //# each newly issued connection ID MUST increase by 1.
             self.next_sequence_number += 1;
 
-            // If we are provided an expiration, update the expiration timer
+            // If we are provided an expiration, update the timers
             if expiration.is_some() {
-                self.update_retirement_timer();
+                self.update_timers();
             }
 
             Ok(())
@@ -352,8 +352,8 @@ impl ConnectionIdMapperRegistration {
 
         self.registered_ids.remove(registration_index);
 
-        // Update the expiration timer in case the earliest expiring was unregistered
-        self.update_retirement_timer();
+        // Update the timers to reflect the updated registered ids
+        self.update_timers();
     }
 
     /// Moves all registered connection IDs with a sequence number less
@@ -368,11 +368,7 @@ impl ConnectionIdMapperRegistration {
                 .for_each(|id_info| id_info.retire(timestamp));
             self.retire_prior_to = self.retire_prior_to.max(retired_sequence_number + 1);
 
-            if !self.expiration_timer.is_armed() {
-                self.expiration_timer.set(timestamp + EXPIRATION_BUFFER);
-            }
-
-            self.update_retirement_timer();
+            self.update_timers();
         }
     }
 
@@ -424,9 +420,6 @@ impl ConnectionIdMapperRegistration {
             if let Some(id) = latest_retire_ready_id {
                 self.retire_connection_id(&id, timestamp);
             }
-
-            // Rearm the retirement timer based on the next expiring connection ID
-            self.update_retirement_timer();
         }
 
         if self.expiration_timer.poll_expiration(timestamp).is_ready() {
@@ -499,8 +492,8 @@ impl ConnectionIdMapperRegistration {
             .find(|id_info| id_info.id == *id)
     }
 
-    /// Updates the retirement timer based on the earliest expiring connection ID
-    fn update_retirement_timer(&mut self) {
+    /// Updates the retirement and expiration timers based on the current registered connection IDs
+    fn update_timers(&mut self) {
         let earliest_retirement_time = self
             .registered_ids
             .iter()
@@ -512,6 +505,19 @@ impl ConnectionIdMapperRegistration {
             self.retirement_timer.set(retirement_time);
         } else {
             self.retirement_timer.cancel();
+        }
+
+        let earliest_expiration_time = self
+            .registered_ids
+            .iter()
+            .filter(|id_info| id_info.status == PendingRetirement)
+            .filter_map(|id_info| id_info.expiration_time())
+            .min();
+
+        if let Some(expiration_time) = earliest_expiration_time {
+            self.expiration_timer.set(expiration_time);
+        } else {
+            self.expiration_timer.cancel();
         }
     }
 }
@@ -1040,6 +1046,7 @@ mod tests {
         assert_eq!(0, reg1.timers().count());
 
         let expiration = s2n_quic_platform::time::now() + Duration::from_secs(60);
+        let now = s2n_quic_platform::time::now();
         assert!(reg1
             .register_connection_id(&ext_id_2, Some(expiration))
             .is_ok());
@@ -1052,11 +1059,100 @@ mod tests {
             reg1.timers().next().cloned()
         );
 
-        reg1.retire_connection_id(&ext_id_1, s2n_quic_platform::time::now());
+        reg1.retire_connection_id(&ext_id_1, now);
 
         // Retirement timer and Expiration timer are armed
         assert_eq!(2, reg1.timers().count());
+        assert_eq!(
+            Some(now + EXPIRATION_BUFFER),
+            reg1.expiration_timer.iter().next().cloned()
+        );
+        assert_eq!(
+            Some(expiration - EXPIRATION_BUFFER),
+            reg1.retirement_timer.iter().next().cloned()
+        );
 
-        //TODO assert_eq!(Some(expiration), reg1.timers().next().cloned());
+        reg1.retire_connection_id(&ext_id_2, now);
+
+        // Expiration timer is armed
+        assert_eq!(1, reg1.timers().count());
+        assert_eq!(Some(now + EXPIRATION_BUFFER), reg1.timers().next().cloned());
+
+        reg1.unregister_connection_id(&ext_id_1);
+        reg1.unregister_connection_id(&ext_id_2);
+
+        // No more timers are set
+        assert_eq!(0, reg1.timers().count());
+    }
+
+    #[test]
+    fn on_timeout() {
+        let mut id_generator = InternalConnectionIdGenerator::new();
+        let mut mapper = ConnectionIdMapper::new();
+
+        let id1 = id_generator.generate_id();
+
+        let ext_id_1 = connection::Id::try_from_bytes(b"id1").unwrap();
+        let ext_id_2 = connection::Id::try_from_bytes(b"id2").unwrap();
+        let ext_id_3 = connection::Id::try_from_bytes(b"id3").unwrap();
+
+        let mut reg1 = mapper.create_registration(id1, &ext_id_1);
+        reg1.set_active_connection_id_limit(3);
+
+        let now = s2n_quic_platform::time::now();
+
+        // No timer set for the initial connection ID
+        assert_eq!(0, reg1.timers().count());
+
+        reg1.retire_connection_id(&ext_id_1, now);
+
+        assert_eq!(
+            Some(now + EXPIRATION_BUFFER),
+            reg1.get_connection_id_info(&ext_id_1)
+                .unwrap()
+                .expiration_time()
+        );
+
+        // Too early, no timer is ready
+        reg1.on_timeout(now);
+
+        assert_eq!(
+            Some(now + EXPIRATION_BUFFER),
+            reg1.expiration_timer.iter().next().cloned()
+        );
+        assert!(reg1.get_connection_id_info(&ext_id_1).is_some());
+
+        // Now the expiration timer is ready
+        reg1.on_timeout(now + EXPIRATION_BUFFER);
+        assert!(reg1.get_connection_id_info(&ext_id_1).is_none());
+        assert!(!reg1.expiration_timer.is_armed());
+
+        let expiration_2 = now + Duration::from_secs(60);
+        let expiration_3 = now + Duration::from_secs(90);
+
+        assert!(reg1
+            .register_connection_id(&ext_id_2, Some(expiration_2))
+            .is_ok());
+        assert!(reg1
+            .register_connection_id(&ext_id_3, Some(expiration_3))
+            .is_ok());
+
+        assert_eq!(
+            Some(expiration_2 - EXPIRATION_BUFFER),
+            reg1.retirement_timer.iter().next().cloned()
+        );
+
+        reg1.on_timeout(expiration_2 - EXPIRATION_BUFFER);
+
+        // ID 2 is moved into pending retirement
+        assert_eq!(
+            PendingRetirement,
+            reg1.get_connection_id_info(&ext_id_2).unwrap().status
+        );
+        // Retirement timer is set to the next earliest retirement
+        assert_eq!(
+            Some(expiration_3 - EXPIRATION_BUFFER),
+            reg1.retirement_timer.iter().next().cloned()
+        );
     }
 }
