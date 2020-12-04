@@ -158,6 +158,7 @@ pub trait CryptoSuite {
     type InitialCrypto: InitialCrypto;
     type OneRTTCrypto: OneRTTCrypto;
     type ZeroRTTCrypto: ZeroRTTCrypto;
+    type RetryCrypto: RetryCrypto;
 }
 
 use crate::packet::number::{

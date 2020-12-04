@@ -39,7 +39,16 @@ impl RetryCrypto for RingRetryCrypto {
 mod tests {
     use super::*;
     use hex_literal::hex;
-    use s2n_quic_core::crypto::retry;
+    use s2n_codec::{DecoderBufferMut, Encoder, EncoderBuffer};
+    use s2n_quic_core::{
+        connection,
+        connection::id::ConnectionInfo,
+        crypto::retry,
+        inet, packet,
+        packet::number::{PacketNumberSpace, TruncatedPacketNumber},
+        token,
+        varint::VarInt,
+    };
 
     #[test]
     fn test_tag_validation() {
@@ -51,5 +60,52 @@ mod tests {
         )
         .is_ok());
         assert!(RingRetryCrypto::validate(&retry::example::PSEUDO_PACKET, invalid_tag).is_err());
+    }
+
+    fn pn(space: PacketNumberSpace) -> TruncatedPacketNumber {
+        let pn = space.new_packet_number(VarInt::new(0x1).unwrap());
+        pn.truncate(pn).unwrap()
+    }
+
+    #[test]
+    fn test_packet_encode() {
+        let remote_address = inet::ip::SocketAddress::default();
+        let mut token_format = token::testing::Format::new();
+        // Values are taken from the retry packet example. Since this is the Initial packet that
+        // creates the retry, source_connection_id of the Initial is set to the destination
+        // connection id of the retry.
+        let packet = packet::initial::Initial {
+            version: 0xff00_0020,
+            destination_connection_id: &retry::example::ODCID[..],
+            source_connection_id: &retry::example::DCID[..],
+            token: &retry::example::TOKEN[..],
+            packet_number: pn(PacketNumberSpace::Initial),
+            payload: &[1u8, 2, 3, 4, 5][..],
+        };
+
+        let mut buf = vec![0u8; 1200];
+        let mut encoder = EncoderBuffer::new(&mut buf);
+        encoder.encode(&packet);
+        let len = encoder.len();
+        let decoder = DecoderBufferMut::new(&mut buf[..len]);
+        let connection_info = ConnectionInfo::new(&remote_address);
+        let mut output_buf = vec![0u8; 1200];
+        if let Some(packet) =
+            match packet::ProtectedPacket::decode(decoder, &connection_info, &3).unwrap() {
+                (packet::ProtectedPacket::Initial(packet), _) => Some(packet),
+                _ => None,
+            }
+        {
+            let local_conn_id = connection::Id::try_from_bytes(&retry::example::SCID).unwrap();
+            if let Some(range) = packet::retry::Retry::encode_packet::<_, RingRetryCrypto>(
+                &remote_address,
+                &packet,
+                &local_conn_id,
+                &mut token_format,
+                &mut output_buf,
+            ) {
+                assert_eq!(&output_buf[range], &retry::example::PACKET[..]);
+            }
+        }
     }
 }

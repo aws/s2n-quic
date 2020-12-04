@@ -28,4 +28,5 @@ impl CryptoSuite for RingCryptoSuite {
     type InitialCrypto = initial::RingInitialCrypto;
     type OneRTTCrypto = one_rtt::RingOneRTTCrypto;
     type ZeroRTTCrypto = zero_rtt::RingZeroRTTCrypto;
+    type RetryCrypto = retry::RingRetryCrypto;
 }

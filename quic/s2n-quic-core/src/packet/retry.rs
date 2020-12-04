@@ -1,14 +1,19 @@
 use crate::{
-    crypto::retry,
+    connection,
+    crypto::{retry, retry::RetryCrypto},
+    inet::SocketAddress,
     packet::{
         decoding::HeaderDecoder,
         initial::ProtectedInitial,
         long::{DestinationConnectionIDLen, SourceConnectionIDLen, Version},
         Tag,
     },
+    token,
 };
+use core::{mem::size_of, ops::Range};
 use s2n_codec::{
-    decoder_invariant, DecoderBufferMut, DecoderBufferMutResult, Encoder, EncoderValue,
+    decoder_invariant, DecoderBufferMut, DecoderBufferMutResult, Encoder, EncoderBuffer,
+    EncoderValue,
 };
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.5
@@ -103,12 +108,55 @@ pub type EncryptedRetry<'a> = Retry<'a>;
 pub type CleartextRetry<'a> = Retry<'a>;
 
 impl<'a> Retry<'a> {
-    pub fn from_initial(initial_packet: &'a ProtectedInitial) -> Self {
+    pub fn encode_packet<T: token::Format, C: RetryCrypto>(
+        remote_address: &SocketAddress,
+        packet: &ProtectedInitial,
+        local_connection_id: &connection::Id,
+        token_format: &mut T,
+        packet_buf: &mut [u8],
+    ) -> Option<Range<usize>> {
+        let retry_packet = Retry::from_initial(packet, local_connection_id.as_ref());
+        let pseudo_packet = retry_packet.pseudo_packet(packet.destination_connection_id());
+
+        let mut buffer = EncoderBuffer::new(packet_buf);
+        pseudo_packet.encode(&mut buffer);
+
+        let mut outcome = None;
+        buffer.write_sized(T::TOKEN_LEN, |token_buf| {
+            outcome = token_format.generate_retry_token(
+                &remote_address,
+                &connection::Id::try_from_bytes(retry_packet.destination_connection_id).unwrap(),
+                &connection::Id::try_from_bytes(retry_packet.source_connection_id).unwrap(),
+                token_buf,
+            );
+        });
+
+        outcome?;
+
+        let tag = C::generate_tag(buffer.as_mut_slice());
+        buffer.write_slice(&tag);
+        let end = buffer.len();
+        let start =
+            packet.destination_connection_id().len() + size_of::<DestinationConnectionIDLen>();
+
+        Some(start..end)
+    }
+
+    pub fn from_initial(
+        initial_packet: &'a ProtectedInitial,
+        local_connection_id: &'a [u8],
+    ) -> Self {
+        // The destination and source connection IDs are flipped because this packet is being sent
+        // back to the client.
         Self {
-            tag: retry_tag!(),
+            // The last 4 bits are unused. They are set to 0x0f here to allow easy testing with
+            // example packets provided in the RFC.
+            // https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.5
+            // https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#A.2
+            tag: (retry_tag!() << 4) | 0x0f,
             version: initial_packet.version,
-            destination_connection_id: initial_packet.destination_connection_id(),
-            source_connection_id: initial_packet.source_connection_id(),
+            destination_connection_id: initial_packet.source_connection_id(),
+            source_connection_id: local_connection_id,
             retry_token: &[][..],
             retry_integrity_tag: &[][..],
         }
@@ -222,15 +270,14 @@ impl<'a> EncoderValue for PseudoRetry<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{crypto::retry, packet};
-    use s2n_codec::EncoderBuffer;
+    use crate::{crypto::retry, inet, packet};
 
     #[test]
     fn test_decode() {
         let mut buf = retry::example::PACKET;
         let decoder = DecoderBufferMut::new(&mut buf);
-        let remote_address = crate::inet::ip::SocketAddress::default();
-        let connection_info = crate::connection::id::ConnectionInfo::new(&remote_address);
+        let remote_address = inet::ip::SocketAddress::default();
+        let connection_info = connection::id::ConnectionInfo::new(&remote_address);
         let (packet, _) = packet::ProtectedPacket::decode(decoder, &connection_info, &20).unwrap();
         let packet = match packet {
             packet::ProtectedPacket::Retry(retry) => retry,
@@ -248,8 +295,8 @@ mod tests {
     fn test_pseudo_decode() {
         let mut buf = retry::example::PACKET;
         let decoder = DecoderBufferMut::new(&mut buf);
-        let remote_address = crate::inet::ip::SocketAddress::default();
-        let connection_info = crate::connection::id::ConnectionInfo::new(&remote_address);
+        let remote_address = inet::ip::SocketAddress::default();
+        let connection_info = connection::id::ConnectionInfo::new(&remote_address);
         let (packet, _) = packet::ProtectedPacket::decode(decoder, &connection_info, &20).unwrap();
         let packet = match packet {
             packet::ProtectedPacket::Retry(retry) => retry,

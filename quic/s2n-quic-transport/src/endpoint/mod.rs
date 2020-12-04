@@ -14,10 +14,12 @@ use alloc::collections::VecDeque;
 use core::task::{self, Poll};
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
+    connection::id::Generator,
+    crypto::{tls, CryptoSuite},
     endpoint::{limits::Outcome, Limits},
     inet::DatagramInfo,
     io::{rx, tx},
-    packet::ProtectedPacket,
+    packet::{initial::ProtectedInitial, ProtectedPacket},
     time::Timestamp,
     token::Format,
 };
@@ -105,6 +107,56 @@ impl<Cfg: Config> Endpoint<Cfg> {
         }
         let len = entries.len();
         queue.finish(len);
+    }
+
+    /// Determine the next step when a peer attempts a connection
+    fn connection_allowed(
+        &mut self,
+        datagram: &DatagramInfo,
+        packet: &ProtectedInitial,
+    ) -> Option<()> {
+        let attempt = s2n_quic_core::endpoint::limits::ConnectionAttempt::new(
+            self.limits_manager.inflight_handshakes(),
+            &datagram.remote_address,
+        );
+        let outcome = self
+            .config
+            .context()
+            .endpoint_limits
+            .on_connection_attempt(&attempt);
+        let result = match outcome {
+            Outcome::Allow => Some(()),
+            Outcome::Retry { delay: _ } => {
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.2
+                //# A server can also use a Retry packet to defer the state and
+                //# processing costs of connection establishment.  Requiring the server
+                //# to provide a different connection ID, along with the
+                //# original_destination_connection_id transport parameter defined in
+                //# Section 18.2, forces the server to demonstrate that it, or an entity
+                //# it cooperates with, received the original Initial packet from the
+                //# client.
+
+                let connection_info = ConnectionInfo::new(&datagram.remote_address);
+                let local_connection_id = self
+                    .config
+                    .context()
+                    .connection_id_format
+                    .generate(&connection_info);
+                self.retry_dispatch.queue::<_, <<<Cfg as Config>::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::RetryCrypto>(
+                                datagram,
+                                &packet,
+                                local_connection_id,
+                                self.config.context().token
+                            );
+                None
+            }
+            Outcome::Drop => None,
+            // TODO https://github.com/awslabs/s2n-quic/issues/270
+            #[allow(unused_variables)]
+            Outcome::Close { delay } => None,
+        };
+
+        result
     }
 
     /// Ingests a single datagram
@@ -237,8 +289,12 @@ impl<Cfg: Config> Endpoint<Cfg> {
                             }
                         };
 
-                    if !packet.token().is_empty()
-                        && endpoint_context
+                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.2
+                    //# In response to processing an Initial containing a token that was
+                    //# provided in a Retry packet, a server cannot send another Retry
+                    //# packet; it can only refuse the connection or permit it to proceed.
+                    if !packet.token().is_empty() {
+                        if endpoint_context
                             .token
                             .validate_token(
                                 &datagram.remote_address,
@@ -247,42 +303,20 @@ impl<Cfg: Config> Endpoint<Cfg> {
                                 packet.token(),
                             )
                             .is_none()
-                    {
-                        dbg!("Invalid token");
-                        return;
-                    }
-
-                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.2
-                    //# Upon receiving the client's Initial packet, the server can request
-                    //# address validation by sending a Retry packet (Section 17.2.5)
-                    //# containing a token.
-                    let attempt = s2n_quic_core::endpoint::limits::ConnectionAttempt::new(
-                        self.limits_manager.inflight_handshakes(),
-                        &datagram.remote_address,
-                    );
-                    let outcome = endpoint_context
-                        .endpoint_limits
-                        .on_connection_attempt(&attempt);
-                    match outcome {
-                        Outcome::Allow => {
-                            // No action
-                        }
-                        Outcome::Retry { delay: _ } => {
-                            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.2
-                            //= type=TODO
-                            //= tracking-issue=166
-                            //# A server can also use a Retry packet to defer the state and
-                            //# processing costs of connection establishment.
-
-                            // TODO: Call retry_dispatch.queue to queue the packet for delivery
-                            // https://github.com/awslabs/s2n-quic/issues/260
+                        {
+                            dbg!("Invalid token");
                             return;
                         }
-                        Outcome::Drop => return,
-                        // TODO https://github.com/awslabs/s2n-quic/issues/270
-                        #[allow(unused_variables)]
-                        Outcome::Close { delay } => return,
-                    };
+                    } else {
+                        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.2
+                        //# Upon receiving the client's Initial packet, the server can request
+                        //# address validation by sending a Retry packet (Section 17.2.5)
+                        //# containing a token.
+                        if self.connection_allowed(datagram, &packet).is_none() {
+                            dbg!("Connection not allowed");
+                            return;
+                        }
+                    }
 
                     if let Err(err) = self.handle_initial_packet(datagram, packet, remaining) {
                         dbg!(err);

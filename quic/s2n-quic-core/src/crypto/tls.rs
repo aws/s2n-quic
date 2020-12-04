@@ -106,5 +106,6 @@ pub mod testing {
         type InitialCrypto = Key;
         type ZeroRTTCrypto = Key;
         type OneRTTCrypto = Key;
+        type RetryCrypto = Key;
     }
 }

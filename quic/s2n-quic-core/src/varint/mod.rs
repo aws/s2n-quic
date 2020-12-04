@@ -230,7 +230,7 @@ impl VarInt {
         encoder: &mut E,
     ) {
         encoder.write_sized(len, |buffer| {
-            NetworkEndian::write_uint(buffer, two_bit << usable_bits | self.0, len)
+            NetworkEndian::write_uint(buffer, two_bit << usable_bits | self.0, len);
         })
     }
 

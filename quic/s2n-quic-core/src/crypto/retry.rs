@@ -36,7 +36,7 @@ pub mod example {
     //# 34d2ff85
     pub const PACKET: [u8; 36] = hex!(
         "
-    ffff0000200008f067a5502a4262b5 746f6b656e59756519dd6cc85bd90e33a9
+    ff ff000020 00 08 f067a5502a4262b5 746f6b656e59756519dd6cc85bd90e33a9
     34d2ff85
     "
     );
@@ -46,8 +46,11 @@ pub mod example {
 
     pub const EXPECTED_TAG: [u8; 16] = hex!("59756519dd6cc85bd90e33a934d2ff85");
 
+    // The server sends and empty destination connection ID back to the client
     pub const DCID: [u8; 0] = hex!("");
 
+    // This is the destination connection generated locally in the server
+    // The Retry Packet should have this as the source connection ID
     pub const SCID: [u8; 8] = hex!("f067a5502a4262b5");
 
     //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#A
@@ -59,4 +62,6 @@ pub mod example {
     pub const VERSION: u32 = 0xff00_0020;
 
     pub const TOKEN: [u8; 5] = hex!("746f6b656e");
+
+    pub const TOKEN_LEN: usize = 5;
 }

@@ -134,6 +134,7 @@ macro_rules! impl_tls {
             type InitialCrypto = <RingCryptoSuite as CryptoSuite>::InitialCrypto;
             type OneRTTCrypto = <RingCryptoSuite as CryptoSuite>::OneRTTCrypto;
             type ZeroRTTCrypto = <RingCryptoSuite as CryptoSuite>::ZeroRTTCrypto;
+            type RetryCrypto = <RingCryptoSuite as CryptoSuite>::RetryCrypto;
         }
 
         impl tls::Session for $session {

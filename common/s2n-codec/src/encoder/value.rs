@@ -49,7 +49,9 @@ macro_rules! encoder_value_byte {
         impl EncoderValue for $ty {
             #[inline]
             fn encode<E: Encoder>(&self, encoder: &mut E) {
-                encoder.write_sized(size_of::<Self>(), |buf| buf[0] = *self as u8)
+                encoder.write_sized(size_of::<Self>(), |buf| {
+                    buf[0] = *self as u8;
+                })
             }
 
             #[inline]
@@ -73,7 +75,9 @@ macro_rules! encoder_value_network_endian {
         impl EncoderValue for $ty {
             #[inline]
             fn encode<E: Encoder>(&self, encoder: &mut E) {
-                encoder.write_sized($size, |buf| NetworkEndian::$call(buf, (*self).into()))
+                encoder.write_sized($size, |buf| {
+                    NetworkEndian::$call(buf, (*self).into());
+                })
             }
 
             #[inline]
