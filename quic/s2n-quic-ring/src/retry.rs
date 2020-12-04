@@ -104,7 +104,7 @@ mod tests {
                 &mut token_format,
                 &mut output_buf,
             ) {
-                assert_eq!(&output_buf[range.clone()], &retry::example::PACKET,);
+                assert_eq!(&output_buf[range], &retry::example::PACKET,);
             }
         }
     }
