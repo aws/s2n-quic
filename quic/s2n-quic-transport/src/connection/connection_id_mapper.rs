@@ -375,6 +375,14 @@ impl ConnectionIdMapperRegistration {
         }
     }
 
+    /// Gets the connection ID associated with the the given sequence number
+    pub fn get_connection_id(&self, sequence_number: u32) -> Option<connection::Id> {
+        self.registered_ids
+            .iter()
+            .find(|id_info| id_info.sequence_number == sequence_number)
+            .map(|id_info| id_info.id)
+    }
+
     fn get_connection_id_info(&self, id: &connection::Id) -> Option<&LocalConnectionIdInfo> {
         self.registered_ids.iter().find(|id_info| id_info.id == *id)
     }

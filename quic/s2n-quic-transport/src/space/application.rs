@@ -472,9 +472,14 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
         frame: RetireConnectionID,
         _datagram: &DatagramInfo,
         _path: &mut Path<Config::CongestionController>,
+        connection_id_mapper_registration: &mut ConnectionIdMapperRegistration,
     ) -> Result<(), TransportError> {
-        // TODO
-        eprintln!("UNIMPLEMENTED APPLICATION FRAME {:?}", frame);
+        let sequence_number = frame.sequence_number.as_u64() as u32;
+
+        if let Some(id) = connection_id_mapper_registration.get_connection_id(sequence_number) {
+            connection_id_mapper_registration.unregister_connection_id(&id);
+        }
+
         Ok(())
     }
 

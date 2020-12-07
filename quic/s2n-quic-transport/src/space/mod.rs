@@ -314,6 +314,18 @@ pub trait PacketSpace<Config: connection::Config> {
             .with_frame_type(frame.tag().into()))
     }
 
+    fn handle_retire_connection_id_frame(
+        &mut self,
+        frame: RetireConnectionID,
+        _datagram: &DatagramInfo,
+        _path: &mut Path<Config::CongestionController>,
+        _connection_id_mapper_registration: &mut ConnectionIdMapperRegistration,
+    ) -> Result<(), TransportError> {
+        Err(TransportError::PROTOCOL_VIOLATION
+            .with_reason(Self::INVALID_FRAME_ERROR)
+            .with_frame_type(frame.tag().into()))
+    }
+
     default_frame_handler!(handle_stream_frame, StreamRef);
     default_frame_handler!(handle_data_blocked_frame, DataBlocked);
     default_frame_handler!(handle_max_data_frame, MaxData);
@@ -325,7 +337,6 @@ pub trait PacketSpace<Config: connection::Config> {
     default_frame_handler!(handle_streams_blocked_frame, StreamsBlocked);
     default_frame_handler!(handle_new_token_frame, NewToken);
     default_frame_handler!(handle_new_connection_id_frame, NewConnectionID);
-    default_frame_handler!(handle_retire_connection_id_frame, RetireConnectionID);
     default_frame_handler!(handle_path_challenge_frame, PathChallenge);
     default_frame_handler!(handle_path_response_frame, PathResponse);
 
@@ -473,8 +484,13 @@ pub trait PacketSpace<Config: connection::Config> {
                 Frame::RetireConnectionID(frame) => {
                     let on_error = with_frame_type!(frame);
                     processed_packet.on_processed_frame(&frame);
-                    self.handle_retire_connection_id_frame(frame, datagram, path)
-                        .map_err(on_error)?;
+                    self.handle_retire_connection_id_frame(
+                        frame,
+                        datagram,
+                        path,
+                        connection_id_mapper_registration,
+                    )
+                    .map_err(on_error)?;
                 }
                 Frame::PathChallenge(frame) => {
                     let on_error = with_frame_type!(frame);
