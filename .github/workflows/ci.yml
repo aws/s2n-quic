@@ -503,3 +503,56 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           file: coverage.lcov
           flags: unit-tests
+
+  examples:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        example: [examples/quic-echo-server]
+    steps:
+      - uses: actions-rs/toolchain@v1
+        id: toolchain
+        with:
+          toolchain: stable
+          override: true
+
+      - uses: actions/checkout@v2
+
+      - name: Install sccache
+        uses: actions-rs/install@v0.1
+        with:
+          crate: sccache
+          use-tool-cache: true
+          version: latest
+
+      - name: Generate Cargo.lock
+        run: cargo update
+
+      - name: Cache cargo registry
+        uses: actions/cache@v2
+        continue-on-error: true
+        with:
+          path: ~/.cargo/registry/cache
+          key: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-${{ matrix.example }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-${{ matrix.example }}-cargo-registry-
+
+      - name: Cache sccache output
+        uses: actions/cache@v2
+        continue-on-error: true
+        with:
+          path: ${{ github.workspace }}/.sccache
+          key: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-${{ matrix.example }}-sccache-${{ hashFiles('**/Cargo.*') }}
+          restore-keys: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-${{ matrix.example }}-sccache-
+
+      - name: Start sccache
+        run: sccache --start-server
+
+      - name: ${{ matrix.example }}
+        working-directory: ${{ matrix.example }}
+        # TODO make sure the example actually runs as well
+        run: cargo build
+        env:
+          RUSTC_WRAPPER: sccache
+
+      - name: Stop sccache
+        run: sccache --stop-server

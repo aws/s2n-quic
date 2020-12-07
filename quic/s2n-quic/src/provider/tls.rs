@@ -65,6 +65,27 @@ impl Provider for (&std::path::Path, &std::path::Path) {
     }
 }
 
+impl Provider for (&[u8], &[u8]) {
+    type Server = <Default as Provider>::Server;
+    type Client = <Default as Provider>::Client;
+    type Error = Box<dyn std::error::Error>;
+
+    fn start_server(self) -> Result<Self::Server, Self::Error> {
+        let cert = self.0.to_vec();
+        let key = self.1.to_vec();
+
+        let server = default::Server::builder()
+            .with_certificate(cert, key)?
+            .build()?;
+
+        Ok(server)
+    }
+
+    fn start_client(self) -> Result<Self::Client, Self::Error> {
+        Ok(default::Client::default())
+    }
+}
+
 #[cfg(feature = "rustls")]
 pub mod rustls {
     pub use s2n_quic_rustls::{rustls::TLSError, *};

@@ -1,0 +1,13 @@
+[package]
+name = "quic-echo-server"
+version = "0.1.0"
+authors = ["Cameron Bytheway <bytheway.cameron@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+bytes = { version = "0.6", default-features = false }
+s2n-quic = { version = "0.1", path = "../../quic/s2n-quic" }
+tokio = { version = "0.2", features = ["macros", "rt-threaded"] }
+
+[workspace]
+members = ["."]
