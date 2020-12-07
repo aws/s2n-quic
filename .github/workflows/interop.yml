@@ -218,6 +218,7 @@ jobs:
 
       - name: Install tshark
         run: |
+          chmod +x tshark
           sudo mv tshark /usr/bin
 
       - name: Install dependencies
