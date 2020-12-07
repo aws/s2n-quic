@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+
+set -x
+
+# Setup the s2n-quic docker image
+sudo docker build . --file qns/Dockerfile.build --tag awslabs/s2n-quic-qns
+
+if [ ! -d target/quic-interop-runner ]; then
+  git clone https://github.com/marten-seemann/quic-interop-runner target/quic-interop-runner
+  # make sure to keep this up to date with the interop workflow
+  cd target/quic-interop-runner
+  git checkout 3d292c252e0c0159db93b62292abcf6b040a7060
+  git apply --3way ../../.github/interop/runner.patch
+  python3 -m venv .venv
+  source .venv/bin/activate
+  pip install --upgrade pip
+  pip install wheel
+  cd ../../
+fi
+
+function ensure_executable() {
+  if ! command -v $1 &> /dev/null; then
+    echo "$1 needs to be installed"
+    exit
+  fi
+}
+
+ensure_executable "docker-compose"
+ensure_executable "tshark"
+
+case "$(uname -s)" in
+   Linux)
+     sudo modprobe ip6table_filter
+     ;;
+   *)
+     # TODO possibly add other things for Darwin
+     ;;
+esac
+
+cd target/quic-interop-runner
+source .venv/bin/activate
+pip install --upgrade -r requirements.txt
+
+case "$@" in
+   pull)
+     python pull.py
+     exit 0
+     ;;
+   *)
+     # continue
+     ;;
+esac
+
+python run.py --server s2n-quic --debug "$@"
