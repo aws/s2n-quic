@@ -187,8 +187,12 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
     pub fn on_handshake_done(
         &mut self,
         path: &Path<Config::CongestionController>,
+        connection_id_mapper_registration: &mut ConnectionIdMapperRegistration,
         timestamp: Timestamp,
     ) {
+        // Retire all local connection IDs used during the handshake to reduce linkability
+        connection_id_mapper_registration.retire_all(timestamp);
+
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
         //# A sender SHOULD restart its PTO timer every time an ack-eliciting
         //# packet is sent or acknowledged, when the handshake is confirmed
@@ -510,6 +514,7 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
         frame: HandshakeDone,
         datagram: &DatagramInfo,
         path: &mut Path<Config::CongestionController>,
+        connection_id_mapper_registration: &mut ConnectionIdMapperRegistration,
         handshake_status: &mut HandshakeStatus,
     ) -> Result<(), TransportError> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.20
@@ -524,7 +529,7 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
         }
 
         handshake_status.on_handshake_done_received();
-        self.on_handshake_done(path, datagram.timestamp);
+        self.on_handshake_done(path, connection_id_mapper_registration, datagram.timestamp);
 
         Ok(())
     }

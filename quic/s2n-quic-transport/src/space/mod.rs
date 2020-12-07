@@ -307,6 +307,7 @@ pub trait PacketSpace<Config: connection::Config> {
         frame: HandshakeDone,
         _datagram: &DatagramInfo,
         _path: &mut Path<Config::CongestionController>,
+        _connection_id_mapper_registration: &mut ConnectionIdMapperRegistration,
         _handshake_status: &mut HandshakeStatus,
     ) -> Result<(), TransportError> {
         Err(TransportError::PROTOCOL_VIOLATION
@@ -507,8 +508,14 @@ pub trait PacketSpace<Config: connection::Config> {
                 Frame::HandshakeDone(frame) => {
                     let on_error = with_frame_type!(frame);
                     processed_packet.on_processed_frame(&frame);
-                    self.handle_handshake_done_frame(frame, datagram, path, handshake_status)
-                        .map_err(on_error)?;
+                    self.handle_handshake_done_frame(
+                        frame,
+                        datagram,
+                        path,
+                        connection_id_mapper_registration,
+                        handshake_status,
+                    )
+                    .map_err(on_error)?;
                 }
             }
 

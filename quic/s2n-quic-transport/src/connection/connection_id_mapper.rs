@@ -375,6 +375,21 @@ impl ConnectionIdMapperRegistration {
         }
     }
 
+    /// Retires all registered connection IDs
+    pub fn retire_all(&mut self, _timestamp: Timestamp) {
+        // Retiring the connection ID with the highest sequence
+        // number retires all connection ids prior to it as well.
+        if let Some(id) = self
+            .registered_ids
+            .iter()
+            .filter(|id_info| id_info.status != PendingRetirement)
+            .max_by_key(|id_info| id_info.sequence_number)
+            .map(|id_info| id_info.id)
+        {
+            self.retire_connection_id(&id)
+        }
+    }
+
     /// Gets the connection ID associated with the the given sequence number
     pub fn get_connection_id(&self, sequence_number: u32) -> Option<connection::Id> {
         self.registered_ids
@@ -885,5 +900,36 @@ mod tests {
             Active,
             reg1.get_connection_id_info(&ext_id_2).unwrap().status
         );
+    }
+
+    #[test]
+    fn retire_all() {
+        let mut id_generator = InternalConnectionIdGenerator::new();
+        let mut mapper = ConnectionIdMapper::new();
+
+        let id1 = id_generator.generate_id();
+
+        let ext_id_1 = connection::Id::try_from_bytes(b"id1").unwrap();
+        let ext_id_2 = connection::Id::try_from_bytes(b"id2").unwrap();
+        let ext_id_3 = connection::Id::try_from_bytes(b"id3").unwrap();
+
+        let mut reg1 = mapper.create_registration(id1, &ext_id_1);
+        reg1.set_active_connection_id_limit(3);
+
+        assert!(reg1.register_connection_id(&ext_id_2, None).is_ok());
+        assert!(reg1.register_connection_id(&ext_id_3, None).is_ok());
+
+        reg1.retire_connection_id(&ext_id_3);
+
+        reg1.retire_all(s2n_quic_platform::time::now());
+
+        assert_eq!(3, reg1.registered_ids.iter().count());
+
+        for status in reg1.registered_ids.iter().map(|id_info| &id_info.status) {
+            assert_eq!(PendingRetirement, *status);
+        }
+
+        // Calling retire_all again does nothing
+        reg1.retire_all(s2n_quic_platform::time::now());
     }
 }
