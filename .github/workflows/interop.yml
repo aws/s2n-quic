@@ -210,16 +210,19 @@ jobs:
         with:
           python-version: 3.7
 
-      - name: Install tshark
+      - name: Download tshark
         uses: actions/download-artifact@v2
         with:
           name: tshark
           path: tshark
 
+      - name: Install tshark
+        run: |
+          mv tshark /usr/bin
+
       - name: Install dependencies
         working-directory: quic-interop-runner
         run: |
-          mv tshark /usr/bin
           python3 -m pip install --upgrade pip
           pip3 install wheel
           pip3 install --upgrade -r requirements.txt
