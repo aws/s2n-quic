@@ -122,7 +122,7 @@ jobs:
       - name: Stop sccache
         run: sccache --stop-server
 
-  wireshark:
+  tshark:
     runs-on: ubuntu-latest
     steps:
       - name: Cache
@@ -147,7 +147,7 @@ jobs:
           cd wireshark-${{ env.WIRESHARK_VERSION }}
           cmake -GNinja -DBUILD_wireshark=0 -DBUILD_qtshark=0 -DBUILD_editcap=0 -DBUILD_capinfos=0 -DBUILD_text2pcap=0 -DBUILD_rawshark=0 -DBUILD_sdjournal=0 -DBUILD_sshdump=0 -DBUILD_ciscodump=0 -DENABLE_STATIC=1 -DENABLE_PLUGINS=0 -DENABLE_LIBXML2=0 -DUSE_STATIC=1 -DENABLE_GNUTLS=1 .
           ninja
-          cp tshark ..
+          cp run/tshark ..
 
       - name: Tshark version
         run: ./tshark -v
@@ -160,7 +160,7 @@ jobs:
 
   interop:
     runs-on: ubuntu-latest
-    needs: [env, build]
+    needs: [env, build, tshark]
     strategy:
       matrix: ${{ fromJson(needs.env.outputs.matrix) }}
     steps:
