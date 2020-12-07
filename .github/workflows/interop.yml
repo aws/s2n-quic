@@ -214,7 +214,7 @@ jobs:
         uses: actions/download-artifact@v2
         with:
           name: tshark
-          path: /usr/local/bin/tshark
+          path: /usr/bin/tshark
 
       - name: Install dependencies
         working-directory: quic-interop-runner
