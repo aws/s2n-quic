@@ -220,7 +220,7 @@ jobs:
         run: |
           chmod +x tshark
           sudo mv tshark /usr/bin
-          tshark -v
+          /usr/bin/tshark -v
 
       - name: Install dependencies
         working-directory: quic-interop-runner
