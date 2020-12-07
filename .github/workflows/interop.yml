@@ -143,7 +143,7 @@ jobs:
         if: steps.cache.outputs.cache-hit != 'true'
         run: |
           wget https://www.wireshark.org/download/src/wireshark-${{ env.WIRESHARK_VERSION }}.tar.xz
-          tar xf wireshark-${{ env.WIRESHARK_VERSION }}
+          tar xf wireshark-${{ env.WIRESHARK_VERSION }}.tar.xz
           cd wireshark-${{ env.WIRESHARK_VERSION }}
           cmake -GNinja -DBUILD_wireshark=0 -DBUILD_qtshark=0 -DBUILD_editcap=0 -DBUILD_capinfos=0 -DBUILD_text2pcap=0 -DBUILD_rawshark=0 -DBUILD_sdjournal=0 -DBUILD_sshdump=0 -DBUILD_ciscodump=0 -DENABLE_STATIC=1 -DENABLE_PLUGINS=0 -DENABLE_LIBXML2=0 -DUSE_STATIC=1 -DENABLE_GNUTLS=1 .
           ninja
