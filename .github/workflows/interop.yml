@@ -218,7 +218,7 @@ jobs:
 
       - name: Install tshark
         run: |
-          mv tshark /usr/bin
+          sudo mv tshark /usr/bin
 
       - name: Install dependencies
         working-directory: quic-interop-runner
