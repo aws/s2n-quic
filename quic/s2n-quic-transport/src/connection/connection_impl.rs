@@ -448,6 +448,8 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
             }
         }
 
+        self.connection_id_mapper_registration.on_timeout(timestamp);
+
         shared_state.space_manager.on_timeout(
             self.path_manager.active_path_mut().1,
             &mut self.connection_id_mapper_registration,
@@ -468,6 +470,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         let earliest = core::iter::empty()
             .chain(self.timers.iter())
             .chain(shared_state.space_manager.timers())
+            .chain(self.connection_id_mapper_registration.timers())
             .min()
             .cloned();
 
