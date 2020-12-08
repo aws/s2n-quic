@@ -24,6 +24,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         datagram: &DatagramInfo,
         packet: ProtectedInitial,
         remaining: DecoderBufferMut,
+        odcid: Option<connection::Id>,
     ) -> Result<(), TransportError> {
         debug_assert!(
             Config::ENDPOINT_TYPE.is_server(),
@@ -77,9 +78,12 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         // generating a new one. This is because the dcid was already generated when constructing
         // the retry packet.
         // https://github.com/awslabs/s2n-quic/issues/283
-        let initial_connection_id = endpoint_context
-            .connection_id_format
-            .generate(&connection_info);
+        let initial_connection_id = match odcid {
+            Some(id) => id,
+            None => endpoint_context
+                .connection_id_format
+                .generate(&connection_info),
+        };
 
         let connection_id_mapper_registration = self
             .connection_id_mapper
@@ -109,10 +113,25 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.3
         //# A server includes the Destination Connection ID field from the first
         //# Initial packet it received from the client in the
-        //# original_destination_connection_id transport parameter
-        transport_parameters.original_destination_connection_id = destination_connection_id
-            .try_into()
-            .expect("connection ID already validated");
+        //# original_destination_connection_id transport parameter; if the server
+        //# sent a Retry packet, this refers to the first Initial packet received
+        //# before sending the Retry packet.  If it sends a Retry packet, a
+        //# server also includes the Source Connection ID field from the Retry
+        //# packet in the retry_source_connection_id transport parameter.
+        if let Some(id) = odcid {
+            transport_parameters.original_destination_connection_id =
+                id.try_into().expect("failed to convert ODCID");
+
+            transport_parameters.retry_source_connection_id = Some(
+                destination_connection_id
+                    .try_into()
+                    .expect("failed to convert source connection id"),
+            );
+        } else {
+            transport_parameters.original_destination_connection_id = destination_connection_id
+                .try_into()
+                .expect("connection ID already validated");
+        }
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.3
         //# Each endpoint includes the value of the Source Connection ID field

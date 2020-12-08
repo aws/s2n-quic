@@ -140,13 +140,12 @@ impl Format {
         token: &Token,
         peer_address: &SocketAddress,
         destination_connection_id: &connection::Id,
-        original_destination_connection_id: &connection::Id,
     ) -> Option<hmac::Tag> {
         let mut ctx = self.keys[token.header.key_id() as usize].hasher()?;
 
+        ctx.update(&token.original_destination_connection_id);
         ctx.update(&token.nonce);
         ctx.update(&destination_connection_id.as_bytes());
-        ctx.update(&original_destination_connection_id.as_bytes());
         match peer_address {
             SocketAddress::IPv4(addr) => ctx.update(addr.as_bytes()),
             SocketAddress::IPv6(addr) => ctx.update(addr.as_bytes()),
@@ -160,9 +159,8 @@ impl Format {
         &mut self,
         peer_address: &SocketAddress,
         destination_connection_id: &connection::Id,
-        original_destination_connection_id: &connection::Id,
         token: &Token,
-    ) -> Option<()> {
+    ) -> Option<connection::Id> {
         if self.keys[token.header.key_id() as usize]
             .duplicate_filter
             .contains(token)
@@ -170,26 +168,16 @@ impl Format {
             return None;
         }
 
-        let tag = self.tag_retry_token(
-            token,
-            peer_address,
-            destination_connection_id,
-            original_destination_connection_id,
-        )?;
+        let tag = self.tag_retry_token(token, peer_address, destination_connection_id)?;
 
         if ring::constant_time::verify_slices_are_equal(&token.hmac, &tag.as_ref()).is_ok() {
-            match self.keys[token.header.key_id() as usize]
+            // Ignore the outcome of adding a token to the filter because we always want to
+            // continue the connection if the filter fails.
+            let _ = self.keys[token.header.key_id() as usize]
                 .duplicate_filter
-                .add(token)
-            {
-                Ok(_) => return Some(()),
-                // This error indicates our value was stored, but another value was evicted from
-                // the filter. We want to continue to connection in this case.
-                Err(cuckoofilter::CuckooError::NotEnoughSpace) => return Some(()),
-                // Handle any other possible errors
-                #[allow(unreachable_patterns)]
-                Err(_) => return Some(()),
-            }
+                .add(token);
+
+            return token.original_destination_connection_id();
         }
 
         None
@@ -232,16 +220,22 @@ impl super::Format for Format {
         let header = Header::new(Source::RetryPacket, self.current_key());
 
         token.header = header;
+        token.original_destination_connection_id[..original_destination_connection_id.len()]
+            .copy_from_slice(original_destination_connection_id.as_bytes());
+        token.odcid_len = original_destination_connection_id.len() as u8;
+
+        for b in token
+            .original_destination_connection_id
+            .iter_mut()
+            .skip(original_destination_connection_id.len())
+        {
+            *b = 0;
+        }
 
         // Populate the nonce before signing
         SystemRandom::new().fill(&mut token.nonce[..]).ok()?;
 
-        let tag = self.tag_retry_token(
-            token,
-            peer_address,
-            destination_connection_id,
-            original_destination_connection_id,
-        )?;
+        let tag = self.tag_retry_token(token, peer_address, destination_connection_id)?;
 
         token.hmac.copy_from_slice(tag.as_ref());
 
@@ -256,9 +250,8 @@ impl super::Format for Format {
         &mut self,
         peer_address: &SocketAddress,
         destination_connection_id: &connection::Id,
-        source_connection_id: &connection::Id,
         token: &[u8],
-    ) -> Option<Source> {
+    ) -> Option<connection::Id> {
         let buffer = DecoderBuffer::new(token);
         let (token, _) = buffer.decode::<&Token>().ok()?;
 
@@ -270,13 +263,7 @@ impl super::Format for Format {
 
         match source {
             Source::RetryPacket => {
-                self.validate_retry_token(
-                    peer_address,
-                    destination_connection_id,
-                    source_connection_id,
-                    token,
-                )?;
-                Some(source)
+                self.validate_retry_token(peer_address, destination_connection_id, token)
             }
             Source::NewTokenFrame => None, // Not supported in the default provider
         }
@@ -344,6 +331,9 @@ impl Header {
 struct Token {
     header: Header,
 
+    odcid_len: u8,
+    original_destination_connection_id: [u8; 20],
+
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.4
     //# An address validation token MUST be difficult to guess.  Including a
     //# large enough random value in the token would be sufficient, but this
@@ -367,6 +357,15 @@ impl Hash for Token {
     /// Token hashes are taken from the hmac
     fn hash<H: Hasher>(&self, state: &mut H) {
         state.write(&self.hmac);
+    }
+}
+
+impl Token {
+    pub fn original_destination_connection_id(&self) -> Option<connection::Id> {
+        let dcid = self
+            .original_destination_connection_id
+            .get(..self.odcid_len as usize)?;
+        connection::Id::try_from_bytes(dcid)
     }
 }
 
@@ -409,7 +408,8 @@ mod tests {
             current_key: 0,
         };
 
-        let dest_conn_id = connection::Id::EMPTY;
+        let first_conn_id = connection::Id::try_from_bytes(&[2, 4, 6, 8, 10]).unwrap();
+        let second_conn_id = connection::Id::try_from_bytes(&[1, 3, 5, 7, 9]).unwrap();
         let orig_conn_id = connection::Id::try_from_bytes(&[0, 1, 2, 3, 4, 5, 6, 7]).unwrap();
         let addr = SocketAddress::default();
         let mut first_token = [0; Format::TOKEN_LEN];
@@ -417,21 +417,23 @@ mod tests {
 
         // Generate two tokens for different connections
         format
-            .generate_retry_token(&addr, &dest_conn_id, &orig_conn_id, &mut first_token)
+            .generate_retry_token(&addr, &first_conn_id, &orig_conn_id, &mut first_token)
             .unwrap();
 
         format
-            .generate_retry_token(&addr, &orig_conn_id, &dest_conn_id, &mut second_token)
+            .generate_retry_token(&addr, &second_conn_id, &orig_conn_id, &mut second_token)
             .unwrap();
 
         // Both tokens should pass validation
         clock.adjust_by(TEST_KEY_ROTATION_PERIOD);
-        assert!(format
-            .validate_token(&addr, &dest_conn_id, &orig_conn_id, &first_token)
-            .is_some());
-        assert!(format
-            .validate_token(&addr, &orig_conn_id, &dest_conn_id, &second_token)
-            .is_some());
+        assert_eq!(
+            format.validate_token(&addr, &first_conn_id, &first_token),
+            Some(orig_conn_id)
+        );
+        assert_eq!(
+            format.validate_token(&addr, &second_conn_id, &second_token),
+            Some(orig_conn_id)
+        );
     }
 
     #[test]
@@ -459,15 +461,11 @@ mod tests {
         // Validation should succeed because the signing key is still valid, even
         // though it has been rotated from the current signing key
         clock.adjust_by(TEST_KEY_ROTATION_PERIOD);
-        assert!(format
-            .validate_token(&addr, &conn_id, &conn_id, &buf)
-            .is_some());
+        assert!(format.validate_token(&addr, &conn_id, &buf).is_some());
 
         // Validation should fail because the key used for signing has been regenerated
         clock.adjust_by(TEST_KEY_ROTATION_PERIOD);
-        assert!(format
-            .validate_token(&addr, &conn_id, &conn_id, &buf)
-            .is_none());
+        assert!(format.validate_token(&addr, &conn_id, &buf).is_none());
     }
 
     #[test]
@@ -494,9 +492,7 @@ mod tests {
 
         // Validation should fail because multiple rotation periods have elapsed
         clock.adjust_by(TEST_KEY_ROTATION_PERIOD * 2);
-        assert!(format
-            .validate_token(&addr, &conn_id, &conn_id, &buf)
-            .is_none());
+        assert!(format.validate_token(&addr, &conn_id, &buf).is_none());
     }
 
     #[test]
@@ -515,21 +511,17 @@ mod tests {
         };
 
         let conn_id = connection::Id::EMPTY;
+        let odcid = connection::Id::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
         let addr = SocketAddress::default();
         let mut buf = [0; Format::TOKEN_LEN];
         format
-            .generate_retry_token(&addr, &conn_id, &conn_id, &mut buf)
+            .generate_retry_token(&addr, &conn_id, &odcid, &mut buf)
             .unwrap();
 
-        assert_eq!(
-            format.validate_token(&addr, &conn_id, &conn_id, &buf),
-            Some(Source::RetryPacket)
-        );
+        assert_eq!(format.validate_token(&addr, &conn_id, &buf), Some(odcid));
 
         let wrong_conn_id = connection::Id::try_from_bytes(&[0, 1, 2]).unwrap();
-        assert!(format
-            .validate_token(&addr, &wrong_conn_id, &conn_id, &buf)
-            .is_none());
+        assert!(format.validate_token(&addr, &wrong_conn_id, &buf).is_none());
     }
 
     #[test]
@@ -545,20 +537,16 @@ mod tests {
         };
 
         let conn_id = connection::Id::EMPTY;
+        let odcid = connection::Id::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
         let addr = SocketAddress::default();
         let mut buf = [0; Format::TOKEN_LEN];
         format
-            .generate_retry_token(&addr, &conn_id, &conn_id, &mut buf)
+            .generate_retry_token(&addr, &conn_id, &odcid, &mut buf)
             .unwrap();
 
-        assert_eq!(
-            format.validate_token(&addr, &conn_id, &conn_id, &buf),
-            Some(Source::RetryPacket)
-        );
+        assert_eq!(format.validate_token(&addr, &conn_id, &buf), Some(odcid));
 
         // Second attempt with the same token should fail because the token is a duplicate
-        assert!(format
-            .validate_token(&addr, &conn_id, &conn_id, &buf)
-            .is_none());
+        assert!(format.validate_token(&addr, &conn_id, &buf).is_none());
     }
 }

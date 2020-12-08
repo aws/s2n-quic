@@ -291,17 +291,14 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     //# In response to processing an Initial containing a token that was
                     //# provided in a Retry packet, a server cannot send another Retry
                     //# packet; it can only refuse the connection or permit it to proceed.
-                    if !packet.token().is_empty() {
-                        if endpoint_context
-                            .token
-                            .validate_token(
-                                &datagram.remote_address,
-                                &source_connection_id,
-                                &connection_id,
-                                packet.token(),
-                            )
-                            .is_none()
-                        {
+                    let odcid = if !packet.token().is_empty() {
+                        if let Some(id) = endpoint_context.token.validate_token(
+                            &datagram.remote_address,
+                            &source_connection_id,
+                            packet.token(),
+                        ) {
+                            Some(id)
+                        } else {
                             dbg!("Invalid token");
                             return;
                         }
@@ -314,9 +311,12 @@ impl<Cfg: Config> Endpoint<Cfg> {
                             dbg!("Connection not allowed");
                             return;
                         }
-                    }
 
-                    if let Err(err) = self.handle_initial_packet(datagram, packet, remaining) {
+                        None
+                    };
+
+                    if let Err(err) = self.handle_initial_packet(datagram, packet, remaining, odcid)
+                    {
                         dbg!(err);
                     }
                 }
