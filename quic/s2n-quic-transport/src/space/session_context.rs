@@ -10,11 +10,11 @@ use crate::{
 use bytes::Bytes;
 use s2n_codec::{DecoderBuffer, DecoderValue};
 use s2n_quic_core::{
-    crypto::{tls, CryptoError, CryptoSuite},
+    crypto::{tls, CryptoSuite},
     packet::number::PacketNumberSpace,
     path::Path,
     time::Timestamp,
-    transport::parameters::ClientTransportParameters,
+    transport::{error::TransportError, parameters::ClientTransportParameters},
 };
 
 pub struct SessionContext<'a, Config: connection::Config> {
@@ -35,10 +35,14 @@ impl<'a, Config: connection::Config> tls::Context<Config::TLSSession>
     fn on_handshake_keys(
         &mut self,
         keys: <Config::TLSSession as CryptoSuite>::HandshakeCrypto,
-    ) -> Result<(), CryptoError> {
+    ) -> Result<(), TransportError> {
         if self.handshake.is_some() {
-            return Err(CryptoError::INTERNAL_ERROR
+            return Err(TransportError::INTERNAL_ERROR
                 .with_reason("handshake keys initialized more than once"));
+        }
+
+        if let Some(space) = self.initial.as_mut() {
+            space.crypto_stream.finish()?;
         }
 
         let ack_manager = AckManager::new(
@@ -56,11 +60,10 @@ impl<'a, Config: connection::Config> tls::Context<Config::TLSSession>
         &mut self,
         keys: <Config::TLSSession as CryptoSuite>::ZeroRTTCrypto,
         _application_parameters: tls::ApplicationParameters,
-    ) -> Result<(), CryptoError> {
+    ) -> Result<(), TransportError> {
         if self.zero_rtt_crypto.is_some() {
-            return Err(
-                CryptoError::INTERNAL_ERROR.with_reason("zero rtt keys initialized more than once")
-            );
+            return Err(TransportError::INTERNAL_ERROR
+                .with_reason("zero rtt keys initialized more than once"));
         }
 
         *self.zero_rtt_crypto = Some(Box::new(keys));
@@ -72,10 +75,22 @@ impl<'a, Config: connection::Config> tls::Context<Config::TLSSession>
         &mut self,
         keys: <Config::TLSSession as CryptoSuite>::OneRTTCrypto,
         application_parameters: tls::ApplicationParameters,
-    ) -> Result<(), CryptoError> {
+    ) -> Result<(), TransportError> {
         if self.application.is_some() {
-            return Err(CryptoError::INTERNAL_ERROR
+            return Err(TransportError::INTERNAL_ERROR
                 .with_reason("application keys initialized more than once"));
+        }
+
+        if let Some(space) = self.handshake.as_mut() {
+            space.crypto_stream.finish()?;
+        }
+
+        if Config::ENDPOINT_TYPE.is_client() {
+            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9.3
+            //# Therefore, a client SHOULD discard 0-RTT keys as soon as it installs
+            //# 1-RTT keys, since they have no use after that moment.
+
+            *self.zero_rtt_crypto = None;
         }
 
         // Parse transport parameters
@@ -84,16 +99,14 @@ impl<'a, Config: connection::Config> tls::Context<Config::TLSSession>
         let (peer_parameters, remaining) = match ClientTransportParameters::decode(param_decoder) {
             Ok(parameters) => parameters,
             Err(_e) => {
-                return Err(
-                    CryptoError::MISSING_EXTENSION.with_reason("Invalid transport parameters")
-                );
+                return Err(TransportError::TRANSPORT_PARAMETER_ERROR
+                    .with_reason("Invalid transport parameters"));
             }
         };
 
         if !remaining.is_empty() {
-            return Err(
-                CryptoError::MISSING_EXTENSION.with_reason("Invalid bytes in transport parameters")
-            );
+            return Err(TransportError::TRANSPORT_PARAMETER_ERROR
+                .with_reason("Invalid bytes in transport parameters"));
         }
 
         // TODO authenticate initial_source_connection_id
@@ -142,7 +155,7 @@ impl<'a, Config: connection::Config> tls::Context<Config::TLSSession>
         Ok(())
     }
 
-    fn on_handshake_done(&mut self) -> Result<(), CryptoError> {
+    fn on_handshake_done(&mut self) -> Result<(), TransportError> {
         if let Some(application) = self.application.as_mut() {
             if Config::ENDPOINT_TYPE.is_server() {
                 //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9.2
@@ -156,7 +169,7 @@ impl<'a, Config: connection::Config> tls::Context<Config::TLSSession>
             }
             Ok(())
         } else {
-            Err(CryptoError::INTERNAL_ERROR
+            Err(TransportError::INTERNAL_ERROR
                 .with_reason("handshake cannot be completed without application keys"))
         }
     }
@@ -210,10 +223,6 @@ impl<'a, Config: connection::Config> tls::Context<Config::TLSSession>
     }
 
     fn send_handshake(&mut self, transmission: Bytes) {
-        if let Some(initial) = self.initial.as_mut() {
-            initial.crypto_stream.finish();
-        }
-
         self.handshake
             .as_mut()
             .expect("can_send_handshake should be called before sending")

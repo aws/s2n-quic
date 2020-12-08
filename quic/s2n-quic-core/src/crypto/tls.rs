@@ -1,4 +1,4 @@
-use crate::crypto::{CryptoError, CryptoSuite};
+use crate::{crypto::CryptoSuite, transport::error::TransportError};
 pub use bytes::{Bytes, BytesMut};
 use core::fmt::Debug;
 use s2n_codec::EncoderValue;
@@ -15,21 +15,21 @@ pub struct ApplicationParameters<'a> {
 }
 
 pub trait Context<Crypto: CryptoSuite> {
-    fn on_handshake_keys(&mut self, keys: Crypto::HandshakeCrypto) -> Result<(), CryptoError>;
+    fn on_handshake_keys(&mut self, keys: Crypto::HandshakeCrypto) -> Result<(), TransportError>;
 
     fn on_zero_rtt_keys(
         &mut self,
         keys: Crypto::ZeroRTTCrypto,
         application_parameters: ApplicationParameters,
-    ) -> Result<(), CryptoError>;
+    ) -> Result<(), TransportError>;
 
     fn on_one_rtt_keys(
         &mut self,
         keys: Crypto::OneRTTCrypto,
         application_parameters: ApplicationParameters,
-    ) -> Result<(), CryptoError>;
+    ) -> Result<(), TransportError>;
 
-    fn on_handshake_done(&mut self) -> Result<(), CryptoError>;
+    fn on_handshake_done(&mut self) -> Result<(), TransportError>;
 
     fn receive_initial(&mut self) -> Option<Bytes>;
     fn receive_handshake(&mut self) -> Option<Bytes>;
@@ -61,14 +61,13 @@ pub trait Endpoint: Sized {
 }
 
 pub trait Session: CryptoSuite + Sized + Send + Debug {
-    fn poll<C: Context<Self>>(&mut self, context: &mut C) -> Result<(), CryptoError>;
+    fn poll<C: Context<Self>>(&mut self, context: &mut C) -> Result<(), TransportError>;
 }
 
 #[cfg(any(test, feature = "testing"))]
 pub mod testing {
-    use super::Context;
-    use crate::crypto::{error::CryptoError, key::testing::Key, CryptoSuite};
-    use s2n_codec::EncoderValue;
+    use super::*;
+    use crate::crypto::key::testing::Key;
 
     #[derive(Debug)]
     pub struct Endpoint;
@@ -96,7 +95,7 @@ pub mod testing {
     pub struct Session;
 
     impl super::Session for Session {
-        fn poll<C: Context<Self>>(&mut self, _context: &mut C) -> Result<(), CryptoError> {
+        fn poll<C: Context<Self>>(&mut self, _context: &mut C) -> Result<(), TransportError> {
             todo!("implement dummy handshake")
         }
     }

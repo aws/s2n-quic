@@ -349,6 +349,12 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
         handshake_status: &mut HandshakeStatus,
         connection_id_mapper_registration: &mut ConnectionIdMapperRegistration,
     ) -> Result<(), TransportError> {
+        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.1.2
+        //= type=TODO
+        //= tracking-issue=297
+        //# A client MAY consider the handshake to be confirmed when it receives
+        //# an acknowledgement for a 1-RTT packet.
+
         path.on_peer_validated();
         let (recovery_manager, mut context) =
             self.recovery(handshake_status, connection_id_mapper_registration);
