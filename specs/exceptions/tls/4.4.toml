@@ -1,0 +1,32 @@
+target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.4"
+
+[[exception]]
+quote = '''
+A server MAY request that the client authenticate during the
+handshake.  A server MAY refuse a connection if the client is unable
+to authenticate when requested.
+'''
+reason = '''
+The requirements for client
+authentication vary based on application protocol and deployment.
+
+s2n-quic doesn't need to do anything specific, as this is only handled
+in the application layer.
+'''
+
+[[exception]]
+quote = '''
+A server MUST NOT use post-handshake client authentication (as
+defined in Section 4.6.2 of [TLS13]), because the multiplexing
+offered by QUIC prevents clients from correlating the certificate
+request with the application-level event that triggered it (see
+[HTTP2-TLS13]).  More specifically, servers MUST NOT send post-
+handshake TLS CertificateRequest messages and clients MUST treat
+receipt of such messages as a connection error of type
+PROTOCOL_VIOLATION.
+'''
+reason = '''
+s2n-quic doesn't actually inspect any TLS messages so this will need
+to be enforced by the TLS layer.
+'''
+

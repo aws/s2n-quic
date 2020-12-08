@@ -1,0 +1,20 @@
+target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.6.1"
+
+[[TODO]]
+quote = '''
+Servers MUST NOT send the early_data extension with a
+max_early_data_size field set to any value other than 0xffffffff.
+'''
+tracking-issue = "300"
+feature = "0-RTT"
+
+[[TODO]]
+quote = '''
+A
+client MUST treat receipt of a NewSessionTicket that contains an
+early_data extension with any other value as a connection error of
+type PROTOCOL_VIOLATION.
+'''
+tracking-issue = "300"
+feature = "0-RTT"
+

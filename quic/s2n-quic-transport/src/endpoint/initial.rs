@@ -118,9 +118,11 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         //# Each endpoint includes the value of the Source Connection ID field
         //# from the first Initial packet it sent in the
         //# initial_source_connection_id transport parameter
-        transport_parameters.initial_source_connection_id = initial_connection_id
-            .try_into()
-            .expect("connection ID already validated");
+        transport_parameters.initial_source_connection_id = Some(
+            initial_connection_id
+                .try_into()
+                .expect("connection ID already validated"),
+        );
 
         // TODO send retry_source_connection_id
         let tls_session = endpoint_context
@@ -186,6 +188,17 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                 endpoint_context.connection_id_format,
                 remaining,
             )?;
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.3
+            //= type=TODO
+            //= tracking-issue=299
+            //# If the
+            //# ClientHello spans multiple Initial packets, such servers would need
+            //# to buffer the first received fragments, which could consume excessive
+            //# resources if the client's address has not yet been validated.  To
+            //# avoid this, servers MAY use the Retry feature (see Section 8.1 of
+            //# [QUIC-TRANSPORT]) to only buffer partial ClientHello messages from
+            //# clients with a validated address.
         }
 
         // Only persist the connection if everything is good.

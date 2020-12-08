@@ -258,6 +258,7 @@ macro_rules! transport_parameter {
             }
 
             fn try_into_codec_value(&self) -> Option<&Self::CodecValue> {
+                // To save bytes on the wire, don't send the value if it matches the default value
                 if self.0 == $default {
                     None
                 } else {
@@ -923,6 +924,7 @@ impl ActiveConnectionIdLimit {
 //#    packet it sends for the connection; see Section 7.3.
 
 connection_id_parameter!(InitialSourceConnectionId, 0x0f);
+optional_transport_parameter!(InitialSourceConnectionId);
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2
 //# retry_source_connection_id (0x10):  The value that the server
@@ -1060,7 +1062,7 @@ macro_rules! impl_transport_parameters {
     (
         pub struct TransportParameters <
         $($server_param:ident),* $(,)? >
-        { $($field:ident : $field_ty:ident),* $(,)? }
+        { $($field:ident : $field_ty:ty),* $(,)? }
     ) => {
         #[derive(Clone, Copy, Debug, PartialEq)]
         pub struct TransportParameters<$($server_param),*> {
@@ -1125,10 +1127,10 @@ macro_rules! impl_transport_parameters {
 
                     buffer = match tag {
                         $(
-                            tag if tag == $field_ty::ID => {
+                            tag if tag == <$field_ty>::ID => {
                                 // ensure the field is enabled in this context
                                 s2n_codec::decoder_invariant!(
-                                    $field_ty::ENABLED,
+                                    <$field_ty>::ENABLED,
                                     concat!(stringify!($field), " is not allowed in this context")
                                 );
 
@@ -1193,7 +1195,7 @@ impl_transport_parameters!(
         original_destination_connection_id: OriginalDestinationConnectionId,
         stateless_reset_token: StatelessResetToken,
         preferred_address: PreferredAddress,
-        initial_source_connection_id: InitialSourceConnectionId,
+        initial_source_connection_id: Option<InitialSourceConnectionId>,
         retry_source_connection_id: RetrySourceConnectionId,
     }
 );
@@ -1203,30 +1205,34 @@ mod snapshot_tests {
     use super::*;
     use s2n_codec::assert_codec_round_trip_value;
 
+    macro_rules! default_transport_parameter_test {
+        ($endpoint_params:ident) => {
+            let default_value = $endpoint_params::default();
+
+            #[cfg(not(miri))] // snapshot tests don't work on miri
+            insta::assert_debug_snapshot!(
+                concat!(stringify!($endpoint_params), " default"),
+                default_value
+            );
+
+            let encoded_output: Vec<u8> =
+                assert_codec_round_trip_value!($endpoint_params, default_value);
+            let expected_output: Vec<u8> = vec![];
+            assert_eq!(
+                encoded_output, expected_output,
+                "Default parameters should be empty"
+            );
+        };
+    }
+
     #[test]
-    fn default_snapshot_test() {
-        macro_rules! default_transport_parameter_test {
-            ($endpoint_params:ident) => {
-                let default_value = $endpoint_params::default();
-
-                #[cfg(not(miri))] // snapshot tests don't work on miri
-                insta::assert_debug_snapshot!(
-                    concat!(stringify!($endpoint_params), " default"),
-                    default_value
-                );
-
-                let encoded_output: Vec<u8> =
-                    assert_codec_round_trip_value!($endpoint_params, default_value);
-                let expected_output: Vec<u8> = vec![];
-                assert_eq!(
-                    encoded_output, expected_output,
-                    "Default parameters should be empty"
-                );
-            };
-        }
-
-        default_transport_parameter_test!(ClientTransportParameters);
+    fn default_server_snapshot_test() {
         default_transport_parameter_test!(ServerTransportParameters);
+    }
+
+    #[test]
+    fn default_client_snapshot_test() {
+        default_transport_parameter_test!(ClientTransportParameters);
     }
 
     fn server_transport_parameters() -> ServerTransportParameters {
@@ -1254,9 +1260,26 @@ mod snapshot_tests {
                 connection_id: [4, 5, 6, 7][..].try_into().unwrap(),
                 stateless_reset_token: [1; 16].into(),
             }),
-            initial_source_connection_id: [1, 2, 3][..].try_into().unwrap(),
+            initial_source_connection_id: Some([1, 2, 3][..].try_into().unwrap()),
             retry_source_connection_id: Some([1, 2, 3][..].try_into().unwrap()),
         }
+    }
+
+    #[test]
+    fn server_snapshot_with_empty_initial_scid_test() {
+        let value = ServerTransportParameters {
+            initial_source_connection_id: Some([][..].try_into().unwrap()),
+            ..Default::default()
+        };
+        let encoded_output = assert_codec_round_trip_value!(ServerTransportParameters, value);
+
+        #[cfg(not(miri))] // snapshot tests don't work on miri
+        insta::assert_debug_snapshot!(
+            "server_snapshot_with_empty_initial_scid_test",
+            encoded_output
+        );
+
+        let _ = encoded_output;
     }
 
     #[test]
@@ -1290,7 +1313,7 @@ mod snapshot_tests {
             original_destination_connection_id: Default::default(),
             stateless_reset_token: Default::default(),
             preferred_address: Default::default(),
-            initial_source_connection_id: [1, 2, 3][..].try_into().unwrap(),
+            initial_source_connection_id: Some([1, 2, 3][..].try_into().unwrap()),
             retry_source_connection_id: Default::default(),
         }
     }

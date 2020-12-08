@@ -75,6 +75,13 @@ macro_rules! packet_space_api {
                 if let Some(mut space) = self.$field.take() {
                     space.on_discard(path);
                 }
+
+                //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9.1
+                //# Endpoints MUST NOT send
+                //# Initial packets after this point.
+                // By discarding a space, we are no longer capable of sending packets with those
+                // keys.
+
                 debug_assert!(self.$field.is_none(), "space should have been discarded");
             }
         )?

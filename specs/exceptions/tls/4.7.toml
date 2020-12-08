@@ -1,0 +1,13 @@
+target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.7"
+
+[[exception]]
+quote = '''
+Although it is in principle possible to use this feature
+for address verification, QUIC implementations SHOULD instead use the
+Retry feature; see Section 8.1 of [QUIC-TRANSPORT].
+'''
+reason = '''
+The TLS layer is responsible for sending/not sending this message.
+s2n-quic cannot enforce this requirement on its own.
+'''
+

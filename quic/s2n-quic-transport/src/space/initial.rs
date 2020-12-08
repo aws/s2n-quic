@@ -28,7 +28,14 @@ use s2n_quic_core::{
 
 pub struct InitialSpace<Config: connection::Config> {
     pub ack_manager: AckManager,
+    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4
+    //# If QUIC needs to retransmit that data, it MUST use
+    //# the same keys even if TLS has already updated to newer keys.
     pub crypto: <Config::TLSSession as CryptoSuite>::InitialCrypto,
+    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9
+    //# If packets from a lower encryption level contain
+    //# CRYPTO frames, frames that retransmit that data MUST be sent at the
+    //# same encryption level.
     pub crypto_stream: CryptoStream,
     pub tx_packet_numbers: TxPacketNumbers,
     processed_packet_numbers: SlidingWindow,

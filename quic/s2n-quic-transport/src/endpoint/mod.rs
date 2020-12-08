@@ -124,7 +124,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             .context()
             .endpoint_limits
             .on_connection_attempt(&attempt);
-        let result = match outcome {
+        match outcome {
             Outcome::Allow => Some(()),
             Outcome::Retry { delay: _ } => {
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.2
@@ -154,9 +154,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             // TODO https://github.com/awslabs/s2n-quic/issues/270
             #[allow(unused_variables)]
             Outcome::Close { delay } => None,
-        };
-
-        result
+        }
     }
 
     /// Ingests a single datagram

@@ -382,7 +382,7 @@ jobs:
           RUSTC_WRAPPER: sccache
 
       - name: Run cargo compliance
-        run: ./target/release/cargo-compliance report --lcov compliance --spec-pattern 'specs/**/*.toml' --source-pattern 'quic/**/*.rs' --workspace --exclude compliance --exclude cargo-compliance --require-citations --require-tests false --blob-link https://github.com/awslabs/s2n-quic/blob/${{ github.sha }} --issue-link https://github.com/awslabs/s2n-quic/issues/ --html compliance/index.html
+        run: ./scripts/compliance ${{ github.sha }}
 
       - name: Stop sccache
         run: sccache --stop-server
@@ -401,7 +401,7 @@ jobs:
       - name: Upload to S3
         id: s3
         run: |
-          aws s3 cp compliance/index.html s3://s2n-quic-ci-artifacts/compliance/${{ github.sha }}/index.html --acl private --follow-symlinks
+          aws s3 cp target/compliance/report.html s3://s2n-quic-ci-artifacts/compliance/${{ github.sha }}/index.html --acl private --follow-symlinks
           # generate a presigned url that is valid for 30 days
           URL=$(aws s3 presign s3://s2n-quic-ci-artifacts/compliance/${{ github.sha }}/index.html --expires-in 2592000)
           echo "::set-output name=URL::$URL"
@@ -503,3 +503,56 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           file: coverage.lcov
           flags: unit-tests
+
+  examples:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        example: [examples/quic-echo-server]
+    steps:
+      - uses: actions-rs/toolchain@v1
+        id: toolchain
+        with:
+          toolchain: stable
+          override: true
+
+      - uses: actions/checkout@v2
+
+      - name: Install sccache
+        uses: actions-rs/install@v0.1
+        with:
+          crate: sccache
+          use-tool-cache: true
+          version: latest
+
+      - name: Generate Cargo.lock
+        run: cargo update
+
+      - name: Cache cargo registry
+        uses: actions/cache@v2
+        continue-on-error: true
+        with:
+          path: ~/.cargo/registry/cache
+          key: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-${{ matrix.example }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-${{ matrix.example }}-cargo-registry-
+
+      - name: Cache sccache output
+        uses: actions/cache@v2
+        continue-on-error: true
+        with:
+          path: ${{ github.workspace }}/.sccache
+          key: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-${{ matrix.example }}-sccache-${{ hashFiles('**/Cargo.*') }}
+          restore-keys: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-${{ matrix.example }}-sccache-
+
+      - name: Start sccache
+        run: sccache --start-server
+
+      - name: ${{ matrix.example }}
+        working-directory: ${{ matrix.example }}
+        # TODO make sure the example actually runs as well
+        run: cargo build
+        env:
+          RUSTC_WRAPPER: sccache
+
+      - name: Stop sccache
+        run: sccache --stop-server

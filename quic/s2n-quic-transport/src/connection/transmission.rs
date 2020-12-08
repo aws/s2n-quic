@@ -87,6 +87,12 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
             self.context.path.transmission_constraint()
         };
 
+        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4
+        //# When packets of different types need to be sent,
+        //# endpoints SHOULD use coalesced packets to send them in the same UDP
+        //# datagram.
+        // here we query all of the spaces to try and fill the current datagram
+
         let encoder = if let Some((space, handshake_status)) = space_manager.initial_mut() {
             match space.on_transmit(
                 &mut self.context,
@@ -155,6 +161,15 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
         } else {
             encoder
         };
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9
+        //# Though an endpoint might retain older keys, new data MUST be sent at
+        //# the highest currently-available encryption level.
+
+        // This requirement is automatically support with s2n-quic's implementation. Each space
+        // acts mostly independent from another and will buffer its own CRYPTO and ACK state. Other
+        // frames are only allowed in the ApplicationData space, which will always be the highest
+        // current-available encryption level.
 
         let encoder = if let Some((space, handshake_status)) = space_manager.application_mut() {
             match space.on_transmit(

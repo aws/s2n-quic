@@ -7,10 +7,11 @@ use crate::{
         },
         InternalConnectionId,
     },
+    timer::VirtualTimer,
     transmission::{self, WriteContext},
 };
 use alloc::rc::Rc;
-use core::cell::RefCell;
+use core::{cell::RefCell, time::Duration};
 use s2n_quic_core::{
     ack_set::AckSet, connection, frame, packet::number::PacketNumber, time::Timestamp,
 };
@@ -87,6 +88,7 @@ impl ConnectionIdMapper {
             // Initialize to 1 until we know the actual limit
             // from the peer transport parameters
             active_connection_id_limit: 1,
+            expiration_timer: VirtualTimer::default(),
         };
         // The initial connection ID will be retired after the handshake has completed
         // so an explicit expiration timestamp is not needed.
@@ -116,6 +118,26 @@ const NR_STATIC_REGISTRABLE_IDS: usize = 5;
 /// more paths simultaneously at the expense of additional state to maintain.
 const MAX_ACTIVE_CONNECTION_ID_LIMIT: u64 = 3;
 
+/// Buffer to allow time for a peer to process and retire an expiring connection ID
+/// before the connection ID actually expires.
+///
+/// When a local connection ID is retired a NEW_CONNECTION_ID frame is sent to the peer
+/// containing a new connection ID to use as well as an increased "retire prior to" value.
+/// The peer is required to send back a RETIRE_CONNECTION_ID frame retiring the connection ID(s)
+/// indicated by the "retire prior to" value. When the RETIRE_CONNECTION_ID frame is
+/// received, the connection ID is removed from use. The `EXPIRATION_BUFFER` is meant to
+/// ensure the peer has enough time to cease using the connection ID before it is permanently
+/// removed. 30 seconds should be enough time, even in extremely slow networks, for the
+/// peer to flush all packets created with the old connection ID and to receive and start using
+/// the new connection ID, at the minimal cost of maintaining state of an extra connection ID for
+/// a brief period. Setting this value too low increases the risk of a packet being received with
+/// a removed connection ID, resulting in a stateless reset that terminates the connection.
+///
+/// The value is not dynamically based on RTT as this would introduce a moving retirement time
+/// target that would complicate arming the expiration timer and determining which connection IDs
+/// should be retired.
+const EXPIRATION_BUFFER: Duration = Duration::from_secs(30);
+
 /// A registration at the [`ConnectionIdMapper`].
 ///
 /// It allows to add and remove external QUIC Connection IDs which are mapped to
@@ -134,6 +156,8 @@ pub struct ConnectionIdMapperRegistration {
     retire_prior_to: u32,
     /// The maximum number of connection IDs to give to the peer
     active_connection_id_limit: u8,
+    /// Timer set to track retiring and expired connection IDs
+    expiration_timer: VirtualTimer,
 }
 
 #[derive(Debug)]
@@ -146,6 +170,61 @@ struct LocalConnectionIdInfo {
     sequence_number: u32,
     expiration: Option<Timestamp>,
     status: LocalConnectionIdStatus,
+}
+
+impl LocalConnectionIdInfo {
+    // Gets the time at which the connection ID should be retired. This time is prior to the
+    // expiration to account for the delay between locally retiring a connection ID and the peer
+    // retiring the connection ID
+    fn retirement_time(&self) -> Option<Timestamp> {
+        self.expiration
+            .map(|expiration| expiration - EXPIRATION_BUFFER)
+    }
+
+    // Gets the time at which the connection ID should no longer be in use
+    fn expiration_time(&self) -> Option<Timestamp> {
+        self.expiration
+    }
+
+    // The time the connection ID next needs to change status (either to
+    // PENDING_RETIREMENT, or removal altogether)
+    fn next_status_change_time(&self) -> Option<Timestamp> {
+        if matches!(self.status, PendingRetirement) {
+            self.expiration_time()
+        } else {
+            self.retirement_time()
+        }
+    }
+
+    // Moves the connection ID to PendingRetirement and sets the expiration
+    // if none was set already.
+    fn retire(&mut self, timestamp: Timestamp) {
+        debug_assert_ne!(self.status, PendingRetirement);
+
+        self.status = PendingRetirement;
+
+        // Set an expiration if the connection ID didn't already have one so we
+        // are sure to clean it up if the peer doesn't retire it as expected. This
+        // only impacts the initial connection ID, which is retired upon handshake
+        // completion.
+        if self.expiration.is_none() {
+            self.expiration = Some(timestamp + EXPIRATION_BUFFER);
+        }
+    }
+
+    // Returns true if the connection ID should be moved to PENDING_RETIREMENT
+    fn is_retire_ready(&self, timestamp: Timestamp) -> bool {
+        self.status != PendingRetirement
+            && self
+                .retirement_time()
+                .map_or(false, |retirement_time| retirement_time <= timestamp)
+    }
+
+    // Returns true if the connection ID should no longer be used
+    fn is_expired(&self, timestamp: Timestamp) -> bool {
+        self.expiration_time()
+            .map_or(false, |expiration_time| expiration_time <= timestamp)
+    }
 }
 
 /// The current status of the connection ID.
@@ -268,6 +347,12 @@ impl ConnectionIdMapperRegistration {
             //# The sequence number on
             //# each newly issued connection ID MUST increase by 1.
             self.next_sequence_number += 1;
+
+            // If we are provided an expiration, update the timers
+            if expiration.is_some() {
+                self.update_timers();
+            }
+
             Ok(())
         } else {
             Err(ConnectionIdMapperRegistrationError::ConnectionIdInUse)
@@ -285,7 +370,7 @@ impl ConnectionIdMapperRegistration {
             None => return, // Nothing to do
         };
 
-        // Try to insert into the global map
+        // Try to remove from the global map
         let remove_result = self.state.borrow_mut().connection_map.remove(id);
         debug_assert!(
             remove_result.is_some(),
@@ -293,19 +378,27 @@ impl ConnectionIdMapperRegistration {
         );
 
         self.registered_ids.remove(registration_index);
+
+        // Update the timers since we may have just removed the next retiring or expiring id
+        self.update_timers();
     }
 
     /// Moves all registered connection IDs with a sequence number less
     /// than or equal to the sequence number of the provided `connection::Id`
     /// into the `PendingRetirement` status.
-    pub fn retire_connection_id(&mut self, id: &connection::Id) {
+    pub fn retire_connection_id(&mut self, id: &connection::Id, timestamp: Timestamp) {
         if let Some(retired_id_info) = self.get_connection_id_info(id) {
+            debug_assert_ne!(retired_id_info.status, PendingRetirement);
+
             let retired_sequence_number = retired_id_info.sequence_number;
             self.registered_ids
                 .iter_mut()
                 .filter(|id_info| id_info.sequence_number <= retired_sequence_number)
-                .for_each(|mut id_info| id_info.status = PendingRetirement);
+                .filter(|id_info| id_info.status != PendingRetirement)
+                .for_each(|id_info| id_info.retire(timestamp));
             self.retire_prior_to = self.retire_prior_to.max(retired_sequence_number + 1);
+
+            self.update_timers();
         }
     }
 
@@ -330,6 +423,56 @@ impl ConnectionIdMapperRegistration {
             connection::id::Interest::New(new_connection_id_count)
         } else {
             connection::id::Interest::None
+        }
+    }
+
+    /// Gets the timers for the registration
+    pub fn timers(&self) -> impl Iterator<Item = &Timestamp> {
+        self.check_timer_integrity();
+        self.expiration_timer.iter()
+    }
+
+    /// Handles timeouts on the registration
+    ///
+    /// `timestamp` passes the current time.
+    pub fn on_timeout(&mut self, timestamp: Timestamp) {
+        if self.expiration_timer.poll_expiration(timestamp).is_ready() {
+            // We only need the latest retire ready connection ID since retiring that ID will
+            // retire all earlier connection IDs as well
+            let latest_retire_ready_id = self
+                .registered_ids
+                .iter()
+                .filter(|id_info| id_info.is_retire_ready(timestamp))
+                .max_by_key(|id_info| id_info.sequence_number)
+                .map(|id_info| id_info.id);
+
+            if let Some(id) = latest_retire_ready_id {
+                self.retire_connection_id(&id, timestamp);
+            }
+
+            let expired_id_count = self
+                .registered_ids
+                .iter()
+                .filter(|id_info| id_info.is_expired(timestamp))
+                .count();
+
+            if expired_id_count > 0 {
+                // Generally there shouldn't be any IDs that are expired, as connection IDs will be
+                // removed based on RETIRE_CONNECTION_ID frames received from the peer. If those
+                // frames take longer than the EXPIRATION_BUFFER to receive for some reason, this
+                // check ensures the connection IDs are still removed.
+                let mut expired_ids =
+                    SmallVec::<[connection::Id; MAX_ACTIVE_CONNECTION_ID_LIMIT as usize]>::new();
+
+                self.registered_ids
+                    .iter()
+                    .filter(|id_info| id_info.is_expired(timestamp))
+                    .for_each(|id_info| expired_ids.push(id_info.id));
+
+                for id in expired_ids {
+                    self.unregister_connection_id(&id);
+                }
+            }
         }
     }
 
@@ -376,7 +519,7 @@ impl ConnectionIdMapperRegistration {
     }
 
     /// Retires all registered connection IDs
-    pub fn retire_all(&mut self, _timestamp: Timestamp) {
+    pub fn retire_all(&mut self, timestamp: Timestamp) {
         // Retiring the connection ID with the highest sequence
         // number retires all connection ids prior to it as well.
         if let Some(id) = self
@@ -386,7 +529,7 @@ impl ConnectionIdMapperRegistration {
             .max_by_key(|id_info| id_info.sequence_number)
             .map(|id_info| id_info.id)
         {
-            self.retire_connection_id(&id)
+            self.retire_connection_id(&id, timestamp)
         }
     }
 
@@ -409,6 +552,33 @@ impl ConnectionIdMapperRegistration {
         self.registered_ids
             .iter_mut()
             .find(|id_info| id_info.id == *id)
+    }
+
+    /// Updates the expiration timer based on the current registered connection IDs
+    fn update_timers(&mut self) {
+        if let Some(timestamp) = self.next_status_change_time() {
+            self.expiration_timer.set(timestamp);
+        } else {
+            self.expiration_timer.cancel();
+        }
+    }
+
+    /// Gets the next time any of the registered IDs are expected to change their status
+    fn next_status_change_time(&self) -> Option<Timestamp> {
+        self.registered_ids
+            .iter()
+            .filter_map(|id_info| id_info.next_status_change_time())
+            .min()
+    }
+
+    /// Validate that the current expiration timer is based on the next status change time
+    fn check_timer_integrity(&self) {
+        if cfg!(debug_assertions) {
+            assert_eq!(
+                self.expiration_timer.iter().next().cloned(),
+                self.next_status_change_time()
+            );
+        }
     }
 }
 
@@ -446,10 +616,37 @@ mod tests {
         transmission::interest::Provider,
     };
     use s2n_quic_core::{
+        connection::id::MIN_LIFETIME,
         frame::{Frame, NewConnectionID},
         packet::number::PacketNumberRange,
         varint::VarInt,
     };
+
+    // Verify that an expiration with the earliest possible time results in a valid retirement time
+    #[test]
+    fn minimum_lifetime() {
+        let mut id_generator = InternalConnectionIdGenerator::new();
+        let mut mapper = ConnectionIdMapper::new();
+
+        let id1 = id_generator.generate_id();
+
+        let ext_id_1 = connection::Id::try_from_bytes(b"id1").unwrap();
+        let ext_id_2 = connection::Id::try_from_bytes(b"id2").unwrap();
+
+        let expiration = s2n_quic_platform::time::now() + MIN_LIFETIME;
+
+        let mut reg1 = mapper.create_registration(id1, &ext_id_1);
+        reg1.set_active_connection_id_limit(3);
+        assert!(reg1
+            .register_connection_id(&ext_id_2, Some(expiration))
+            .is_ok());
+        assert_eq!(
+            Some(expiration - EXPIRATION_BUFFER),
+            reg1.get_connection_id_info(&ext_id_2)
+                .unwrap()
+                .retirement_time()
+        );
+    }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1
     //= type=test
@@ -527,7 +724,7 @@ mod tests {
             reg2.register_connection_id(&ext_id_1, None)
         );
 
-        let exp_2 = s2n_quic_platform::time::now();
+        let exp_2 = s2n_quic_platform::time::now() + Duration::from_secs(60);
 
         assert!(reg1.register_connection_id(&ext_id_2, Some(exp_2)).is_ok());
         assert_eq!(
@@ -565,25 +762,30 @@ mod tests {
         let ext_id_2 = connection::Id::try_from_bytes(b"id2").unwrap();
         let ext_id_3 = connection::Id::try_from_bytes(b"id3").unwrap();
 
+        let now = s2n_quic_platform::time::now();
+        let expiration = now + Duration::from_secs(60);
+
         let mut reg1 = mapper.create_registration(id1, &ext_id_1);
         reg1.set_active_connection_id_limit(3);
 
         assert_eq!(0, reg1.retire_prior_to);
         // Retiring an unregistered ID does nothing
-        reg1.retire_connection_id(&ext_id_2);
+        reg1.retire_connection_id(&ext_id_2, now);
         assert_eq!(0, reg1.retire_prior_to);
         assert_eq!(
             Active,
             reg1.get_connection_id_info(&ext_id_1).unwrap().status
         );
 
-        assert!(reg1.register_connection_id(&ext_id_2, None).is_ok());
+        assert!(reg1
+            .register_connection_id(&ext_id_2, Some(expiration))
+            .is_ok());
         assert!(reg1.register_connection_id(&ext_id_3, None).is_ok());
 
         // Retire ID 2 (sequence number 1)
-        reg1.retire_connection_id(&ext_id_2);
+        reg1.retire_connection_id(&ext_id_2, now);
 
-        // ID 3 and all those before it should be retired
+        // ID 2 and all those before it should be retired
         assert_eq!(
             PendingRetirement,
             reg1.get_connection_id_info(&ext_id_1).unwrap().status
@@ -592,6 +794,16 @@ mod tests {
             PendingRetirement,
             reg1.get_connection_id_info(&ext_id_2).unwrap().status
         );
+        // ID 1 didn't have an expiration so it should get one upon retirement
+        assert_eq!(
+            Some(now + EXPIRATION_BUFFER),
+            reg1.get_connection_id_info(&ext_id_1).unwrap().expiration
+        );
+        assert_eq!(
+            Some(expiration),
+            reg1.get_connection_id_info(&ext_id_2).unwrap().expiration
+        );
+
         assert_eq!(2, reg1.retire_prior_to);
 
         // ID 3 was after ID 2, so it is not retired
@@ -715,6 +927,8 @@ mod tests {
         let ext_id_2 = connection::Id::try_from_bytes(b"id2").unwrap();
         let ext_id_3 = connection::Id::try_from_bytes(b"id3").unwrap();
 
+        let now = s2n_quic_platform::time::now();
+
         let mut reg1 = mapper.create_registration(id1, &ext_id_1);
         reg1.set_active_connection_id_limit(3);
 
@@ -752,7 +966,7 @@ mod tests {
 
         assert_eq!(transmission::Interest::None, reg1.transmission_interest());
 
-        reg1.retire_connection_id(&ext_id_2);
+        reg1.retire_connection_id(&ext_id_2, now);
         assert!(reg1.register_connection_id(&ext_id_3, None).is_ok());
 
         assert_eq!(
@@ -899,6 +1113,142 @@ mod tests {
         assert_eq!(
             Active,
             reg1.get_connection_id_info(&ext_id_2).unwrap().status
+        );
+    }
+
+    #[test]
+    fn timers() {
+        let mut id_generator = InternalConnectionIdGenerator::new();
+        let mut mapper = ConnectionIdMapper::new();
+
+        let id1 = id_generator.generate_id();
+
+        let ext_id_1 = connection::Id::try_from_bytes(b"id1").unwrap();
+        let ext_id_2 = connection::Id::try_from_bytes(b"id2").unwrap();
+
+        let mut reg1 = mapper.create_registration(id1, &ext_id_1);
+        reg1.set_active_connection_id_limit(3);
+
+        // No timer set for the initial connection ID
+        assert_eq!(0, reg1.timers().count());
+
+        let now = s2n_quic_platform::time::now();
+        let expiration = now + Duration::from_secs(60);
+
+        assert!(reg1
+            .register_connection_id(&ext_id_2, Some(expiration))
+            .is_ok());
+
+        // Expiration timer is armed based on retire time
+        assert_eq!(1, reg1.timers().count());
+        assert_eq!(
+            Some(expiration - EXPIRATION_BUFFER),
+            reg1.timers().next().cloned()
+        );
+
+        reg1.retire_connection_id(&ext_id_1, now);
+
+        // Expiration timer is armed based on expiration time
+        assert_eq!(1, reg1.timers().count());
+        assert_eq!(
+            Some(now + EXPIRATION_BUFFER),
+            reg1.expiration_timer.iter().next().cloned()
+        );
+
+        reg1.retire_connection_id(&ext_id_2, now);
+
+        // Expiration timer is armed based on expiration time
+        assert_eq!(1, reg1.timers().count());
+        assert_eq!(Some(now + EXPIRATION_BUFFER), reg1.timers().next().cloned());
+
+        reg1.unregister_connection_id(&ext_id_1);
+        reg1.unregister_connection_id(&ext_id_2);
+
+        // No more timers are set
+        assert_eq!(0, reg1.timers().count());
+    }
+
+    #[test]
+    fn on_timeout() {
+        let mut id_generator = InternalConnectionIdGenerator::new();
+        let mut mapper = ConnectionIdMapper::new();
+
+        let id1 = id_generator.generate_id();
+
+        let ext_id_1 = connection::Id::try_from_bytes(b"id1").unwrap();
+        let ext_id_2 = connection::Id::try_from_bytes(b"id2").unwrap();
+        let ext_id_3 = connection::Id::try_from_bytes(b"id3").unwrap();
+
+        let mut reg1 = mapper.create_registration(id1, &ext_id_1);
+        reg1.set_active_connection_id_limit(3);
+
+        let now = s2n_quic_platform::time::now();
+
+        // No timer set for the initial connection ID
+        assert_eq!(0, reg1.timers().count());
+
+        reg1.retire_connection_id(&ext_id_1, now);
+
+        // Initial connection ID has an expiration set based on now
+        assert_eq!(
+            Some(now + EXPIRATION_BUFFER),
+            reg1.get_connection_id_info(&ext_id_1)
+                .unwrap()
+                .expiration_time()
+        );
+
+        // Too early, no timer is ready
+        reg1.on_timeout(now);
+
+        assert_eq!(
+            Some(now + EXPIRATION_BUFFER),
+            reg1.expiration_timer.iter().next().cloned()
+        );
+        assert!(reg1.get_connection_id_info(&ext_id_1).is_some());
+
+        // Now the expiration timer is ready
+        reg1.on_timeout(now + EXPIRATION_BUFFER);
+        // ID 1 was removed since it expired
+        assert!(reg1.get_connection_id_info(&ext_id_1).is_none());
+        assert!(!reg1.expiration_timer.is_armed());
+
+        let expiration_2 = now + Duration::from_secs(60);
+        let expiration_3 = now + Duration::from_secs(120);
+
+        assert!(reg1
+            .register_connection_id(&ext_id_2, Some(expiration_2))
+            .is_ok());
+        assert!(reg1
+            .register_connection_id(&ext_id_3, Some(expiration_3))
+            .is_ok());
+
+        // Expiration timer is set based on the retirement time of ID 2
+        assert_eq!(
+            Some(expiration_2 - EXPIRATION_BUFFER),
+            reg1.expiration_timer.iter().next().cloned()
+        );
+
+        reg1.on_timeout(expiration_2 - EXPIRATION_BUFFER);
+
+        // ID 2 is moved into pending retirement
+        assert_eq!(
+            PendingRetirement,
+            reg1.get_connection_id_info(&ext_id_2).unwrap().status
+        );
+        // Expiration timer is set to the expiration time of ID 2
+        assert_eq!(
+            Some(expiration_2),
+            reg1.expiration_timer.iter().next().cloned()
+        );
+
+        reg1.on_timeout(expiration_2);
+
+        assert!(reg1.get_connection_id_info(&ext_id_2).is_none());
+
+        // Expiration timer is set to the retirement time of ID 3
+        assert_eq!(
+            Some(expiration_3 - EXPIRATION_BUFFER),
+            reg1.expiration_timer.iter().next().cloned()
         );
     }
 

@@ -1,0 +1,38 @@
+target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9.3"
+
+[[TODO]]
+quote = '''
+Additionally, a server MAY discard 0-RTT keys as soon as it receives
+a 1-RTT packet.
+'''
+feature = "0-RTT"
+tracking-issue = "305"
+
+[[TODO]]
+quote = '''
+Servers MAY temporarily retain
+0-RTT keys to allow decrypting reordered packets without requiring
+their contents to be retransmitted with 1-RTT keys.
+'''
+feature = "0-RTT"
+tracking-issue = "305"
+
+[[TODO]]
+quote = '''
+After receiving
+a 1-RTT packet, servers MUST discard 0-RTT keys within a short time;
+the RECOMMENDED time period is three times the Probe Timeout (PTO,
+see [QUIC-RECOVERY]).
+'''
+feature = "0-RTT"
+tracking-issue = "305"
+
+[[TODO]]
+quote = '''
+A server MAY discard 0-RTT keys earlier if it
+determines that it has received all 0-RTT packets, which can be done
+by keeping track of missing packet numbers.
+'''
+feature = "0-RTT"
+tracking-issue = "305"
+

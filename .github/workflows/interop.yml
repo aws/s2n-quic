@@ -21,6 +21,7 @@ env:
   INTEROP_RUNNER_REF: 3d292c252e0c0159db93b62292abcf6b040a7060
   NETWORK_SIMULATOR_REF: sha256:d36e1ffd9369e41e9fd5cb8d2af5fb69d4bfaf1b1983fc538a5a3bf7777af4ba
   IPERF_ENDPOINT_REF: sha256:cb50cc8019d45d9cad5faecbe46a3c21dd5e871949819a5175423755a9045106
+  WIRESHARK_VERSION: 3.4.0rc1
 
 jobs:
   env:
@@ -121,9 +122,45 @@ jobs:
       - name: Stop sccache
         run: sccache --stop-server
 
+  tshark:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cache
+        id: cache
+        uses: actions/cache@v2
+        continue-on-error: true
+        with:
+          path: tshark
+          key: wireshark-${{ env.WIRESHARK_VERSION }}
+
+      - name: Install dependencies
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get -o Acquire::Retries=3 update
+          sudo apt-get -o Acquire::Retries=3 install -y cmake libglib2.0-dev libc-ares-dev libgcrypt20-dev flex bison byacc libpcap-dev ninja-build
+
+      - name: Build tshark
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          wget https://www.wireshark.org/download/src/wireshark-${{ env.WIRESHARK_VERSION }}.tar.xz
+          tar xf wireshark-${{ env.WIRESHARK_VERSION }}.tar.xz
+          cd wireshark-${{ env.WIRESHARK_VERSION }}
+          cmake -GNinja -DBUILD_wireshark=0 -DBUILD_qtshark=0 -DBUILD_editcap=0 -DBUILD_capinfos=0 -DBUILD_text2pcap=0 -DBUILD_rawshark=0 -DBUILD_sdjournal=0 -DBUILD_sshdump=0 -DBUILD_ciscodump=0 -DENABLE_STATIC=1 -DENABLE_PLUGINS=0 -DENABLE_LIBXML2=0 -DUSE_STATIC=1 -DENABLE_GNUTLS=1 .
+          ninja
+          cp run/tshark ..
+
+      - name: Tshark version
+        run: ./tshark -v
+
+      - name: Upload
+        uses: actions/upload-artifact@v2
+        with:
+          name: tshark
+          path: tshark
+
   interop:
     runs-on: ubuntu-latest
-    needs: [env, build]
+    needs: [env, build, tshark]
     strategy:
       matrix: ${{ fromJson(needs.env.outputs.matrix) }}
     steps:
@@ -173,15 +210,21 @@ jobs:
         with:
           python-version: 3.7
 
+      - name: Download tshark
+        uses: actions/download-artifact@v2
+        with:
+          name: tshark
+          path: .
+
+      - name: Install tshark
+        run: |
+          chmod +x tshark
+          sudo mv tshark /usr/bin
+          /usr/bin/tshark -v
+
       - name: Install dependencies
         working-directory: quic-interop-runner
         run: |
-          sudo add-apt-repository ppa:wireshark-dev/stable
-
-          # azure packages are flaky! so add some retries
-          sudo apt-get -o Acquire::Retries=3 update
-          sudo apt-get -o Acquire::Retries=3 install -y tshark
-
           python3 -m pip install --upgrade pip
           pip3 install wheel
           pip3 install --upgrade -r requirements.txt
@@ -212,6 +255,7 @@ jobs:
         with:
           name: interop-${{ matrix.client }}-client-${{ matrix.server }}-server
           path: quic-interop-runner/results/
+
   generate-report:
     runs-on: ubuntu-latest
     needs: [interop]
