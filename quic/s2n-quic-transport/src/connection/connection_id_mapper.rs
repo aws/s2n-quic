@@ -127,7 +127,15 @@ const MAX_ACTIVE_CONNECTION_ID_LIMIT: u64 = 3;
 /// indicated by the "retire prior to" value. When the RETIRE_CONNECTION_ID frame is
 /// received, the connection ID is removed from use. The `EXPIRATION_BUFFER` is meant to
 /// ensure the peer has enough time to cease using the connection ID before it is permanently
-/// removed.
+/// removed. 30 seconds should be enough time, even in extremely slow networks, for the
+/// peer to flush all packets created with the old connection ID and to receive and start using
+/// the new connection ID, at the minimal cost of maintaining state of an extra connection ID for
+/// a brief period. Setting this value too low increases the risk of a packet being received with
+/// a removed connection ID, resulting in a stateless reset that terminates the connection.
+///
+/// The value is not dynamically based on RTT as this would introduce a moving retirement time
+/// target that would complicate arming the expiration timer and determining which connection IDs
+/// should be retired.
 const EXPIRATION_BUFFER: Duration = Duration::from_secs(30);
 
 /// A registration at the [`ConnectionIdMapper`].
@@ -585,10 +593,37 @@ mod tests {
         transmission::interest::Provider,
     };
     use s2n_quic_core::{
+        connection::id::MIN_LIFETIME,
         frame::{Frame, NewConnectionID},
         packet::number::PacketNumberRange,
         varint::VarInt,
     };
+
+    // Verify that an expiration with the earliest possible time results in a valid retirement time
+    #[test]
+    fn minimum_lifetime() {
+        let mut id_generator = InternalConnectionIdGenerator::new();
+        let mut mapper = ConnectionIdMapper::new();
+
+        let id1 = id_generator.generate_id();
+
+        let ext_id_1 = connection::Id::try_from_bytes(b"id1").unwrap();
+        let ext_id_2 = connection::Id::try_from_bytes(b"id2").unwrap();
+
+        let expiration = s2n_quic_platform::time::now() + MIN_LIFETIME;
+
+        let mut reg1 = mapper.create_registration(id1, &ext_id_1);
+        reg1.set_active_connection_id_limit(3);
+        assert!(reg1
+            .register_connection_id(&ext_id_2, Some(expiration))
+            .is_ok());
+        assert_eq!(
+            Some(expiration - EXPIRATION_BUFFER),
+            reg1.get_connection_id_info(&ext_id_2)
+                .unwrap()
+                .retirement_time()
+        );
+    }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1
     //= type=test
