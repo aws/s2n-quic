@@ -123,11 +123,12 @@ const MAX_ACTIVE_CONNECTION_ID_LIMIT: u64 = 3;
 ///
 /// When a local connection ID is retired a NEW_CONNECTION_ID frame is sent to the peer
 /// containing a new connection ID to use as well as an increased "retire prior to" value.
-/// The peer is expected to send back a RETIRE_CONNECTION_ID frame retiring the connection ID(s)
+/// The peer is required to send back a RETIRE_CONNECTION_ID frame retiring the connection ID(s)
 /// indicated by the "retire prior to" value. When the RETIRE_CONNECTION_ID frame is
 /// received, the connection ID is removed from use. The `EXPIRATION_BUFFER` is meant to
-/// ensure the connection ID is removed from use prior to its actual expiration time.
-const EXPIRATION_BUFFER: Duration = Duration::from_secs(10);
+/// ensure the peer has enough time to cease using the connection ID before it is permanently
+/// removed.
+const EXPIRATION_BUFFER: Duration = Duration::from_secs(30);
 
 /// A registration at the [`ConnectionIdMapper`].
 ///
@@ -419,6 +420,7 @@ impl ConnectionIdMapperRegistration {
 
     /// Gets the timers for the registration
     pub fn timers(&self) -> impl Iterator<Item = &Timestamp> {
+        self.check_timer_integrity();
         self.expiration_timer.iter()
     }
 
@@ -523,16 +525,28 @@ impl ConnectionIdMapperRegistration {
 
     /// Updates the expiration timer based on the current registered connection IDs
     fn update_timers(&mut self) {
-        let next_status_change_time = self
-            .registered_ids
-            .iter()
-            .filter_map(|id_info| id_info.next_status_change_time())
-            .min();
-
-        if let Some(timestamp) = next_status_change_time {
+        if let Some(timestamp) = self.next_status_change_time() {
             self.expiration_timer.set(timestamp);
         } else {
             self.expiration_timer.cancel();
+        }
+    }
+
+    /// Gets the next time any of the registered IDs are expected to change their status
+    fn next_status_change_time(&self) -> Option<Timestamp> {
+        self.registered_ids
+            .iter()
+            .filter_map(|id_info| id_info.next_status_change_time())
+            .min()
+    }
+
+    /// Validate that the current expiration timer is based on the next status change time
+    fn check_timer_integrity(&self) {
+        if cfg!(debug_assertions) {
+            assert_eq!(
+                self.expiration_timer.iter().next().cloned(),
+                self.next_status_change_time()
+            );
         }
     }
 }
@@ -1060,8 +1074,9 @@ mod tests {
         // No timer set for the initial connection ID
         assert_eq!(0, reg1.timers().count());
 
-        let expiration = s2n_quic_platform::time::now() + Duration::from_secs(60);
         let now = s2n_quic_platform::time::now();
+        let expiration = now + Duration::from_secs(60);
+
         assert!(reg1
             .register_connection_id(&ext_id_2, Some(expiration))
             .is_ok());
@@ -1140,7 +1155,7 @@ mod tests {
         assert!(!reg1.expiration_timer.is_armed());
 
         let expiration_2 = now + Duration::from_secs(60);
-        let expiration_3 = now + Duration::from_secs(90);
+        let expiration_3 = now + Duration::from_secs(120);
 
         assert!(reg1
             .register_connection_id(&ext_id_2, Some(expiration_2))
