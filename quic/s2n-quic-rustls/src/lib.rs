@@ -11,6 +11,7 @@ use s2n_codec::{EncoderBuffer, EncoderValue};
 use s2n_quic_core::{
     self,
     crypto::{tls, CryptoError, CryptoSuite},
+    transport::error::TransportError,
 };
 use s2n_quic_ring::{
     handshake::RingHandshakeCrypto, one_rtt::RingOneRTTCrypto, zero_rtt::RingZeroRTTCrypto, Prk,
@@ -25,6 +26,8 @@ pub fn default_ciphersuites() -> Vec<&'static SupportedCipherSuite> {
     rustls::ALL_CIPHERSUITES.iter().take(3).cloned().collect()
 }
 
+//= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.2
+//# Clients MUST NOT offer TLS versions older than 1.3.
 pub static PROTOCOL_VERSIONS: [ProtocolVersion; 1] = [ProtocolVersion::TLSv1_3];
 
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
@@ -138,7 +141,10 @@ macro_rules! impl_tls {
         }
 
         impl tls::Session for $session {
-            fn poll<W: tls::Context<Self>>(&mut self, context: &mut W) -> Result<(), CryptoError> {
+            fn poll<W: tls::Context<Self>>(
+                &mut self,
+                context: &mut W,
+            ) -> Result<(), TransportError> {
                 use rustls::Session;
 
                 let crypto_data = match self.0.phase {
@@ -222,12 +228,26 @@ macro_rules! impl_tls {
         }
 
         impl $session {
-            fn receive(&mut self, crypto_data: &[u8]) -> Result<(), CryptoError> {
+            fn receive(&mut self, crypto_data: &[u8]) -> Result<(), TransportError> {
                 self.0
                     .session
                     .read_hs(crypto_data)
                     .map_err(tls_error_reason)
                     .map_err(|reason| {
+                        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.8
+                        //# The alert level of all TLS alerts is "fatal"; a TLS stack MUST NOT
+                        //# generate alerts at the "warning" level.
+
+                        // According to the rustls docs, `get_alert` only returns fatal alerts:
+                        // > https://docs.rs/rustls/0.19.0/rustls/quic/trait.QuicExt.html#tymethod.get_alert
+                        // > Emit the TLS description code of a fatal alert, if one has arisen.
+
+                        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.8
+                        //= type=TODO
+                        //= tracking-issue=304
+                        //# Endpoints MAY use a generic error
+                        //# code to avoid possibly exposing confidential information.
+
                         self.0
                             .session
                             .get_alert()
@@ -236,17 +256,30 @@ macro_rules! impl_tls {
                                 reason,
                             })
                             .unwrap_or(CryptoError::INTERNAL_ERROR)
-                    })
+                    })?;
+                Ok(())
             }
 
-            fn application_parameters(&self) -> Result<tls::ApplicationParameters, CryptoError> {
+            fn application_parameters(&self) -> Result<tls::ApplicationParameters, TransportError> {
+                let alpn_protocol = rustls::Session::get_alpn_protocol(&self.0.session);
+
+                //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#8.2
+                //# endpoints that
+                //# receive ClientHello or EncryptedExtensions messages without the
+                //# quic_transport_parameters extension MUST close the connection with an
+                //# error of type 0x16d (equivalent to a fatal TLS missing_extension
+                //# alert, see Section 4.8).
+
+                let transport_parameters = self.0.session.get_quic_transport_parameters().ok_or(
+                    CryptoError::MISSING_EXTENSION.with_reason("Missing QUIC transport parameters"),
+                )?;
+
+                let sni = self.sni();
+
                 Ok(tls::ApplicationParameters {
-                    alpn_protocol: rustls::Session::get_alpn_protocol(&self.0.session),
-                    transport_parameters: self.0.session.get_quic_transport_parameters().ok_or(
-                        CryptoError::MISSING_EXTENSION
-                            .with_reason("Missing QUIC transport parameters"),
-                    )?,
-                    sni: self.sni(),
+                    alpn_protocol,
+                    transport_parameters,
+                    sni,
                 })
             }
 
@@ -467,9 +500,14 @@ fn tls_error_reason(error: TLSError) -> &'static str {
         TLSError::CorruptMessage | TLSError::CorruptMessagePayload(_) => "received corrupt message",
         TLSError::NoCertificatesPresented => "peer sent no certificates",
         TLSError::DecryptError => "cannot decrypt peer's message",
+        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.2
+        //# An endpoint MUST terminate the connection if a
+        //# version of TLS older than 1.3 is negotiated.
         TLSError::PeerIncompatibleError(_) => "peer is incompatible",
         TLSError::PeerMisbehavedError(_) => "peer misbehaved",
         TLSError::AlertReceived(_) => "received fatal alert",
+        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.4
+        //# A client MUST authenticate the identity of the server.
         TLSError::WebPKIError(_) => "invalid certificate",
         TLSError::InvalidSCT(_) => "invalid certificate timestamp",
         TLSError::FailedToGetCurrentTime => "failed to get current time",

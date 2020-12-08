@@ -94,16 +94,32 @@ impl CryptoStream {
         !self.is_finished && self.tx.available_buffer_space() > 0
     }
 
-    pub fn finish(&mut self) {
+    pub fn finish(&mut self) -> Result<(), TransportError> {
         self.is_finished = true;
         self.tx.finish();
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.1.3
+        //# When TLS
+        //# provides keys for a higher encryption level, if there is data from
+        //# a previous encryption level that TLS has not consumed, this MUST
+        //# be treated as a connection error of type PROTOCOL_VIOLATION.
+        if self.rx.is_empty() {
+            Ok(())
+        } else {
+            Err(TransportError::PROTOCOL_VIOLATION)
+        }
     }
 
     pub fn on_crypto_frame(&mut self, frame: CryptoRef) -> Result<(), TransportError> {
-        // TODO check that the data ends before the previous finalized length
-        if self.is_finished {
-            // the frame is a duplicate
-            return Ok(());
+        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.1.3
+        //# *  If the packet is from a previously installed encryption level, it
+        //# MUST NOT contain data that extends past the end of previously
+        //# received data in that flow.  Implementations MUST treat any
+        //# violations of this requirement as a connection error of type
+        //# PROTOCOL_VIOLATION.
+
+        if self.is_finished && frame.offset + frame.data.len() > self.rx.total_received_len() {
+            return Err(TransportError::PROTOCOL_VIOLATION);
         }
 
         self.rx

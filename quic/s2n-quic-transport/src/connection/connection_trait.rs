@@ -193,6 +193,13 @@ pub trait ConnectionTrait: Sized {
         path_id: path::Id,
         packet: ProtectedPacket,
     ) -> Result<(), TransportError> {
+        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.1.4
+        //# An endpoint SHOULD continue
+        //# to respond to packets that can be processed during this time.
+        // We make a best effort to process all of the packet spaces we have available. There isn't
+        // any special logic required to meet this requirement as each packet is handled
+        // independently.
+
         match packet {
             ProtectedPacket::Short(packet) => {
                 self.handle_short_packet(shared_state, datagram, path_id, packet)
