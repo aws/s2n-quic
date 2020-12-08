@@ -62,8 +62,6 @@ TransportParameters {
     ),
     stateless_reset_token: None,
     preferred_address: None,
-    initial_source_connection_id: InitialSourceConnectionId(
-        ConnectionId([]),
-    ),
+    initial_source_connection_id: None,
     retry_source_connection_id: None,
 }
