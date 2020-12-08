@@ -1,0 +1,26 @@
+#/usr/bin/env bash
+
+set -e
+
+mkdir -p target/compliance
+
+BLOB=${1:-main}
+
+# ensure the tool is built
+test -f target/release/cargo-compliance || \
+  cargo build --bin cargo-compliance --release
+
+./target/release/cargo-compliance \
+  report \
+  --spec-pattern 'specs/**/*.toml' \
+  --source-pattern 'quic/**/*.rs' \
+  --workspace \
+  --exclude compliance \
+  --exclude cargo-compliance \
+  --require-tests false \
+  --blob-link "https://github.com/awslabs/s2n-quic/blob/$BLOB" \
+  --issue-link 'https://github.com/awslabs/s2n-quic/issues' \
+  --no-cargo \
+  --html target/compliance/report.html
+
+echo "compliance report available in 'target/compliance/report.html'"

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -x
+set -e
 
 # Setup the s2n-quic docker image
 sudo docker build . --file qns/Dockerfile.build --tag awslabs/s2n-quic-qns
