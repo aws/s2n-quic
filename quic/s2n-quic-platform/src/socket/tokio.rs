@@ -2,7 +2,7 @@ use core::{
     convert::{TryFrom, TryInto},
     task::{Context, Poll},
 };
-use futures::ready;
+use futures_core::ready;
 use mio::net::UdpSocket as MioSocket;
 use s2n_quic_core::inet::SocketAddress;
 use socket2::Socket as Socket2;

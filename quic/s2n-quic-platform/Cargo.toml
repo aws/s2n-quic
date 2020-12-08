@@ -6,15 +6,16 @@ edition = "2018"
 license = "Apache-2.0"
 
 [features]
-default = ["futures", "ipv6", "mio", "std", "tokio", "wipe"]
+default = ["ipv6", "std", "tokio-runtime", "wipe"]
 ipv6 = []
 std = ["s2n-quic-core/std", "socket2", "lazy_static"]
 testing = ["std"] # Testing allows to overwrite the system time
+tokio-runtime = ["mio", "tokio"]
 wipe = ["zeroize"]
 
 [dependencies]
 cfg-if = "1.0"
-futures = { version = "0.3", optional = true }
+futures-core = { version = "0.3", default-features = false }
 lazy_static = { version = "1.4", optional = true }
 mio = { version = "0.6", optional = true }
 s2n-quic-core = { version = "0.1.0", path = "../s2n-quic-core", default-features = false }

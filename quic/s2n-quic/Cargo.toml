@@ -6,17 +6,18 @@ edition = "2018"
 license = "Apache-2.0"
 
 [features]
-default = ["default-token-provider", "std", "protocol-extensions", "rand", "rustls", "tokio"]
+default = ["default-token-provider", "std", "protocol-extensions", "rand", "rustls", "tokio-runtime"]
 default-token-provider = ["ring", "zerocopy"]
 protocol-extensions = []
 std = ["bytes/std", "futures/std", "s2n-quic-core/std", "s2n-quic-platform/std", "thiserror"]
 rustls = ["s2n-quic-rustls"]
+tokio-runtime = ["tokio", "s2n-quic-platform/tokio-runtime"]
 
 [dependencies]
 bytes = { version = "0.6", default-features = false }
 cfg-if = "1.0"
 cuckoofilter = "0.5"
-futures = { version = "0.3", default-features = false }
+futures = { version = "0.3", default-features = false, features = ["async-await"] }
 hash_hasher = "2.0"
 rand = { version = "0.7", optional = true }
 ring = { version = "0.16", optional = true, default-features = false }
