@@ -32,8 +32,8 @@ macro_rules! impl_ciphersuite {
         pub struct $name {
             secret: hkdf::Prk,
             iv: [u8; Self::IV_LEN],
-            key: [u8; Self::KEY_LEN],
-            header_key: [u8; Self::KEY_LEN],
+            key: aead::LessSafeKey,
+            header_key: (aead::quic::HeaderProtectionKey, [u8; Self::KEY_LEN]),
         }
 
         impl $name {
@@ -42,66 +42,37 @@ macro_rules! impl_ciphersuite {
 
             /// Create a ciphersuite with a given secret
             pub fn new(secret: hkdf::Prk) -> Self {
-                let mut crypto = Self {
+                let iv = Self::new_iv(&secret);
+                let key = Self::new_key(&secret);
+                let header_key = Self::new_header_key(&secret);
+
+                Self {
                     secret,
-                    iv: Default::default(),
-                    key: Default::default(),
-                    header_key: Default::default(),
-                };
-
-                crypto.reset();
-
-                crypto
-                    .secret
-                    .expand(&[&$hp_label], &$header_protection)
-                    .expect("label size verified")
-                    .fill(&mut crypto.header_key)
-                    .expect("fill size verified");
-
-                crypto
+                    iv,
+                    key,
+                    header_key,
+                }
             }
 
             /// Update the ciphersuite as defined in
             /// https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6
             pub fn update(&self) -> Self {
-                let secret = self
+                let secret: hkdf::Prk = self
                     .secret
                     .expand(&[&$key_update_label], $digest)
                     .expect("label size verified")
                     .into();
 
-                let mut crypto = Self {
+                let iv = Self::new_iv(&secret);
+                let key = Self::new_key(&secret);
+                let header_key = self.clone_header_key();
+
+                Self {
                     secret,
-                    iv: Default::default(),
-                    key: Default::default(),
-                    header_key: self.header_key,
-                };
-
-                crypto.reset();
-
-                crypto
-            }
-
-            fn reset(&mut self) {
-                let secret = &self.secret;
-
-                secret
-                    .expand(&[&$key_label], &$cipher)
-                    .expect("label size verified")
-                    .fill(&mut self.key)
-                    .expect("fill size verified");
-
-                secret
-                    .expand(&[&$iv_label], IvLen)
-                    .expect("label size verified")
-                    .fill(&mut self.iv)
-                    .expect("fill size verified");
-            }
-
-            fn aead_key(&self) -> aead::LessSafeKey {
-                let unbound_key =
-                    aead::UnboundKey::new(&$cipher, &self.key).expect("key size verified");
-                aead::LessSafeKey::new(unbound_key)
+                    iv,
+                    key,
+                    header_key,
+                }
             }
 
             fn generate_nonce(&self, packet_number: u64) -> [u8; Self::IV_LEN] {
@@ -119,10 +90,61 @@ macro_rules! impl_ciphersuite {
             }
 
             fn header_protection_mask(&self, sample: &[u8]) -> HeaderProtectionMask {
-                aead::quic::HeaderProtectionKey::new(&$header_protection, &self.header_key)
-                    .expect("header secret length already checked")
+                self.header_key
+                    .0
                     .new_mask(sample)
                     .expect("sample length already checked")
+            }
+
+            fn new_key(secret: &hkdf::Prk) -> aead::LessSafeKey {
+                let mut bytes = [0u8; Self::KEY_LEN];
+
+                secret
+                    .expand(&[&$key_label], &$cipher)
+                    .expect("label size verified")
+                    .fill(&mut bytes)
+                    .expect("fill size verified");
+
+                let unbound_key =
+                    aead::UnboundKey::new(&$cipher, &bytes).expect("key size verified");
+                aead::LessSafeKey::new(unbound_key)
+            }
+
+            fn new_iv(secret: &hkdf::Prk) -> [u8; Self::IV_LEN] {
+                let mut bytes = [0u8; Self::IV_LEN];
+
+                secret
+                    .expand(&[&$iv_label], IvLen)
+                    .expect("label size verified")
+                    .fill(&mut bytes)
+                    .expect("fill size verified");
+
+                bytes
+            }
+
+            fn new_header_key(
+                secret: &hkdf::Prk,
+            ) -> (aead::quic::HeaderProtectionKey, [u8; Self::KEY_LEN]) {
+                let mut bytes = [0u8; Self::KEY_LEN];
+
+                secret
+                    .expand(&[&$hp_label], &$header_protection)
+                    .expect("label size verified")
+                    .fill(&mut bytes)
+                    .expect("fill size verified");
+
+                let key = aead::quic::HeaderProtectionKey::new(&$header_protection, &bytes)
+                    .expect("header secret length already checked");
+                (key, bytes)
+            }
+
+            fn clone_header_key(&self) -> (aead::quic::HeaderProtectionKey, [u8; Self::KEY_LEN]) {
+                // TODO make this less expensive
+                //      https://github.com/awslabs/s2n-quic/issues/295
+                let bytes = self.header_key.1;
+                let key = aead::quic::HeaderProtectionKey::new(&$header_protection, &bytes)
+                    .expect("header secret length already checked");
+                (key, bytes)
             }
         }
 
@@ -138,7 +160,7 @@ macro_rules! impl_ciphersuite {
                 let nonce =
                     aead::Nonce::try_assume_unique_for_key(&nonce).expect("already verified");
 
-                self.aead_key()
+                self.key
                     .open_in_place(nonce, aead, payload)
                     .map_err(|_| CryptoError::DECRYPT_ERROR)?;
 
@@ -160,7 +182,7 @@ macro_rules! impl_ciphersuite {
                 let payload_len = payload.len() - tag_len;
 
                 let tagged = self
-                    .aead_key()
+                    .key
                     .seal_in_place_separate_tag(nonce, aead, &mut payload[..payload_len])
                     .map_err(|_| CryptoError::DECRYPT_ERROR)?;
 
