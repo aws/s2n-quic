@@ -1269,7 +1269,7 @@ mod tests {
         assert!(reg1.register_connection_id(&ext_id_2, None).is_ok());
         assert!(reg1.register_connection_id(&ext_id_3, None).is_ok());
 
-        reg1.retire_connection_id(&ext_id_3);
+        reg1.retire_connection_id(&ext_id_3, s2n_quic_platform::time::now());
 
         reg1.retire_all(s2n_quic_platform::time::now());
 
@@ -1281,5 +1281,11 @@ mod tests {
 
         // Calling retire_all again does nothing
         reg1.retire_all(s2n_quic_platform::time::now());
+
+        assert_eq!(3, reg1.registered_ids.iter().count());
+
+        for status in reg1.registered_ids.iter().map(|id_info| &id_info.status) {
+            assert_eq!(PendingRetirement, *status);
+        }
     }
 }
