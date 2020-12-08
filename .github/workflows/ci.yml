@@ -382,7 +382,7 @@ jobs:
           RUSTC_WRAPPER: sccache
 
       - name: Run cargo compliance
-        run: ./target/release/cargo-compliance report --lcov compliance --spec-pattern 'specs/**/*.toml' --source-pattern 'quic/**/*.rs' --workspace --exclude compliance --exclude cargo-compliance --require-citations --require-tests false --blob-link https://github.com/awslabs/s2n-quic/blob/${{ github.sha }} --issue-link https://github.com/awslabs/s2n-quic/issues/ --html compliance/index.html
+        run: ./scripts/compliance ${{ github.sha }}
 
       - name: Stop sccache
         run: sccache --stop-server
@@ -401,7 +401,7 @@ jobs:
       - name: Upload to S3
         id: s3
         run: |
-          aws s3 cp compliance/index.html s3://s2n-quic-ci-artifacts/compliance/${{ github.sha }}/index.html --acl private --follow-symlinks
+          aws s3 cp target/compliance/report.html s3://s2n-quic-ci-artifacts/compliance/${{ github.sha }}/index.html --acl private --follow-symlinks
           # generate a presigned url that is valid for 30 days
           URL=$(aws s3 presign s3://s2n-quic-ci-artifacts/compliance/${{ github.sha }}/index.html --expires-in 2592000)
           echo "::set-output name=URL::$URL"
