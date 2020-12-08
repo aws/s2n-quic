@@ -8,8 +8,10 @@ import ListItemText from "@material-ui/core/ListItemText";
 import Paper from "@material-ui/core/Paper";
 import Dialog from "@material-ui/core/Dialog";
 import Tooltip from "@material-ui/core/Tooltip";
-import Chip from "@material-ui/core/Chip";
-import FileCopyIcon from "@material-ui/icons/FileCopy";
+import Button from "@material-ui/core/Button";
+import ButtonGroup from "@material-ui/core/ButtonGroup";
+import Select from "@material-ui/core/Select";
+import MenuItem from "@material-ui/core/MenuItem";
 import Typography from "@material-ui/core/Typography";
 import clsx from "clsx";
 import copyToClipboard from "copy-to-clipboard";
@@ -308,59 +310,59 @@ function AnnotationRef({ title, alt, refs, expanded }) {
 }
 
 const useCommentStyles = makeStyles((theme) => ({
-  list: {
+  cite: {
     display: "flex",
     flexWrap: "wrap",
-    listStyle: "none",
     justifyContent: "right",
-    padding: theme.spacing(0.5),
-    margin: 0,
-  },
-  chip: {
-    margin: theme.spacing(0.5),
+    marginBottom: "2em",
   },
 }));
 
 function Comment({ annotation }) {
   const classes = useCommentStyles();
+  const [format, setFormat] = useState("comment");
+
+  const formatComment = {
+    toml: formatTomlComment,
+    comment: formatReferenceComment,
+  }[format];
+
+  const newIssueLink = annotation.newIssueLink();
+
   return (
     <>
       <p>
         <pre>{annotation.comment}</pre>
       </p>
-      <ul className={classes.list}>
-        <li style={{ padding: "6px 4px" }}>
-          <FileCopyIcon color="primary" />
-        </li>
-        <li>
-          <Cite
-            className={classes.chip}
-            getData={() => formatReferenceComment({ annotation })}
-            label="Citation"
-          />
-        </li>
-        <li>
-          <Cite
-            className={classes.chip}
-            getData={() => formatReferenceComment({ annotation, type: "test" })}
-            label="Test"
-          />
-        </li>
-        <li>
-          <Cite
-            className={classes.chip}
-            getData={() => formatTomlComment({ annotation, type: "exception" })}
-            label="Exception"
-          />
-        </li>
-        <li>
-          <Cite
-            className={classes.chip}
-            getData={() => formatReferenceComment({ annotation, type: "TODO" })}
-            label="TODO"
-          />
-        </li>
-      </ul>
+      <div className={classes.cite}>
+        <Select
+          value={format}
+          onChange={(event) => setFormat(event.target.value)}
+          autoWidth
+        >
+          <MenuItem value={"comment"}>Comment</MenuItem>
+          <MenuItem value={"toml"}>Toml</MenuItem>
+        </Select>
+        <ButtonGroup size="small" color="primary" variant="contained">
+          {[
+            { label: "Citation", type: "citation" },
+            { label: "Test", type: "test" },
+            { label: "Exception", type: "exception" },
+            { label: "TODO", type: "TODO" },
+          ].map(({ label, type }) => (
+            <Cite
+              key={label}
+              getData={() => formatComment({ annotation, type })}
+              label={label}
+            />
+          ))}
+          {newIssueLink && (
+            <Button href={newIssueLink} target="_blank">
+              Issue
+            </Button>
+          )}
+        </ButtonGroup>
+      </div>
     </>
   );
 }
@@ -375,19 +377,16 @@ function Cite({ getData, label, ...props }) {
   };
 
   return (
-    <Chip
-      variant="outlined"
-      onClick={onClick}
-      label={copied ? `${label} - Copied!` : label}
-      {...props}
-    />
+    <Button onClick={onClick} {...props}>
+      {copied ? `${label} - Copied!` : label}
+    </Button>
   );
 }
 
 function formatReferenceComment({ annotation, type }) {
   let comment = [];
   comment.push(`//= ${annotation.target}`);
-  if (type) comment.push(`//= type=${type}`);
+  if (type !== "citation") comment.push(`//= type=${type}`);
   annotation.comment
     .trim()
     .split("\n")
@@ -403,8 +402,11 @@ function formatTomlComment({ annotation, type }) {
   comment.push("quote = '''");
   comment.push(...annotation.comment.trim().split("\n"));
   comment.push("'''");
-  if (type === "exception")
-    comment.push('reason = "TODO: Add reason for exception here"');
+  if (type === "exception") {
+    comment.push("reason = '''");
+    comment.push("TODO: Add reason for exception here");
+    comment.push("'''");
+  }
 
   return comment.join("\n") + "\n";
 }
