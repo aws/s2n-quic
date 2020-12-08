@@ -17,7 +17,7 @@ wipe = ["zeroize"]
 cfg-if = "1.0"
 futures-core = { version = "0.3", default-features = false }
 lazy_static = { version = "1.4", optional = true }
-mio = { version = "0.6", optional = true }
+mio = { version = "0.7", optional = true }
 s2n-quic-core = { version = "0.1.0", path = "../s2n-quic-core", default-features = false }
 socket2 = { version = "0.3", features = ["reuseport"], optional = true }
 tokio = { version = "0.2", default-features = false, features = ["io-driver"], optional = true }
