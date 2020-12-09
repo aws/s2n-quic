@@ -480,8 +480,8 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
     fn handle_retire_connection_id_frame(
         &mut self,
         frame: RetireConnectionID,
-        _datagram: &DatagramInfo,
-        _path: &mut Path<Config::CongestionController>,
+        datagram: &DatagramInfo,
+        path: &mut Path<Config::CongestionController>,
         connection_id_mapper_registration: &mut ConnectionIdMapperRegistration,
     ) -> Result<(), TransportError> {
         let sequence_number = frame
@@ -508,8 +508,12 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
         //# greater than any previously sent to the peer MUST be treated as a
         //# connection error of type PROTOCOL_VIOLATION.
         connection_id_mapper_registration
-            .unregister_connection_id(sequence_number)
-            .map_err(|_err| TransportError::PROTOCOL_VIOLATION)
+            .on_retire_connection_id(
+                sequence_number,
+                path.rtt_estimator.smoothed_rtt(),
+                datagram.timestamp,
+            )
+            .map_err(|err| TransportError::PROTOCOL_VIOLATION.with_reason(err.message()))
     }
 
     fn handle_path_challenge_frame(
