@@ -270,6 +270,8 @@ impl LocalConnectionIdStatus {
 pub enum ConnectionIdMapperRegistrationError {
     /// The Connection ID had already been registered
     ConnectionIdInUse,
+    /// An invalid sequence number was specified
+    InvalidSequenceNumber,
 }
 
 impl Drop for ConnectionIdMapperRegistration {
@@ -360,14 +362,25 @@ impl ConnectionIdMapperRegistration {
     }
 
     /// Unregisters the connection ID with the given `sequence_number`
-    pub fn unregister_connection_id(&mut self, sequence_number: u32) {
+    pub fn unregister_connection_id(
+        &mut self,
+        sequence_number: u32,
+    ) -> Result<(), ConnectionIdMapperRegistrationError> {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.16
+        //# Receipt of a RETIRE_CONNECTION_ID frame containing a sequence number
+        //# greater than any previously sent to the peer MUST be treated as a
+        //# connection error of type PROTOCOL_VIOLATION.
+        if sequence_number >= self.next_sequence_number {
+            return Err(ConnectionIdMapperRegistrationError::InvalidSequenceNumber);
+        }
+
         let registration_index = match self
             .registered_ids
             .iter()
             .position(|id_info| id_info.sequence_number == sequence_number)
         {
             Some(index) => index,
-            None => return, // Nothing to do
+            None => return Ok(()), // Nothing to do
         };
 
         let removed_id_info = self.registered_ids.remove(registration_index);
@@ -385,6 +398,8 @@ impl ConnectionIdMapperRegistration {
 
         // Update the timers since we may have just removed the next retiring or expiring id
         self.update_timers();
+
+        Ok(())
     }
 
     /// Moves all registered connection IDs with a sequence number less
@@ -474,7 +489,8 @@ impl ConnectionIdMapperRegistration {
                     .for_each(|id_info| expired_sequence_numbers.push(id_info.sequence_number));
 
                 for sequence_number in expired_sequence_numbers {
-                    self.unregister_connection_id(sequence_number);
+                    self.unregister_connection_id(sequence_number)
+                        .expect("sequence number came from registered ids");
                 }
             }
         }
@@ -733,7 +749,7 @@ mod tests {
         assert_eq!(Some(id2), mapper.lookup_internal_connection_id(&ext_id_4));
 
         // Unregister id 3 (sequence number 0)
-        reg2.unregister_connection_id(0);
+        assert!(reg2.unregister_connection_id(0).is_ok());
         assert_eq!(None, mapper.lookup_internal_connection_id(&ext_id_3));
         assert_eq!(Some(id2), mapper.lookup_internal_connection_id(&ext_id_4));
 
@@ -746,6 +762,16 @@ mod tests {
         assert_eq!(None, mapper.lookup_internal_connection_id(&ext_id_2));
         assert_eq!(None, mapper.lookup_internal_connection_id(&ext_id_3));
         assert_eq!(Some(id2), mapper.lookup_internal_connection_id(&ext_id_4));
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.16
+        //= type=test
+        //# Receipt of a RETIRE_CONNECTION_ID frame containing a sequence number
+        //# greater than any previously sent to the peer MUST be treated as a
+        //# connection error of type PROTOCOL_VIOLATION.
+        assert_eq!(
+            Some(ConnectionIdMapperRegistrationError::InvalidSequenceNumber),
+            reg2.unregister_connection_id(2).err()
+        );
     }
 
     #[test]
@@ -1159,8 +1185,8 @@ mod tests {
         assert_eq!(Some(now + EXPIRATION_BUFFER), reg1.timers().next().cloned());
 
         // Unregister CIDs 1 and 2 (sequence numbers 0 and 1)
-        reg1.unregister_connection_id(0);
-        reg1.unregister_connection_id(1);
+        assert!(reg1.unregister_connection_id(0).is_ok());
+        assert!(reg1.unregister_connection_id(1).is_ok());
 
         // No more timers are set
         assert_eq!(0, reg1.timers().count());

@@ -490,9 +490,13 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
             .try_into()
             .map_err(|_err| TransportError::PROTOCOL_VIOLATION)?;
 
-        connection_id_mapper_registration.unregister_connection_id(sequence_number);
-
-        Ok(())
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.16
+        //# Receipt of a RETIRE_CONNECTION_ID frame containing a sequence number
+        //# greater than any previously sent to the peer MUST be treated as a
+        //# connection error of type PROTOCOL_VIOLATION.
+        connection_id_mapper_registration
+            .unregister_connection_id(sequence_number)
+            .map_err(|_err| TransportError::PROTOCOL_VIOLATION)
     }
 
     fn handle_path_challenge_frame(
