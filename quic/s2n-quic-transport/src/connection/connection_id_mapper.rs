@@ -407,7 +407,17 @@ impl ConnectionIdMapperRegistration {
         // Calculate a removal time based on RTT to give sufficient time for out of
         // order packets using the retired connection ID to be received
         let removal_time = timestamp + rtt * RTT_MULTIPLIER;
-        self.retire_connection_id(sequence_number, removal_time);
+
+        let id_info = self
+            .registered_ids
+            .iter_mut()
+            .filter(|id_info| !id_info.is_retired())
+            .find(|id_info| id_info.sequence_number == sequence_number);
+
+        if let Some(mut id_info) = id_info {
+            id_info.status = PendingRemoval(removal_time);
+            self.update_timers();
+        }
 
         Ok(())
     }
@@ -457,7 +467,7 @@ impl ConnectionIdMapperRegistration {
                 .max();
 
             if let Some(sequence_number) = max_retire_ready_sequence_number {
-                self.retire_connection_id(sequence_number, timestamp + EXPIRATION_BUFFER);
+                self.retire_prior_to(sequence_number + 1, timestamp + EXPIRATION_BUFFER);
             }
 
             let expired_id_count = self
@@ -535,19 +545,19 @@ impl ConnectionIdMapperRegistration {
             .map(|id_info| id_info.sequence_number)
             .max()
         {
-            self.retire_connection_id(sequence_number, timestamp + EXPIRATION_BUFFER)
+            self.retire_prior_to(sequence_number + 1, timestamp + EXPIRATION_BUFFER)
         }
     }
 
-    /// Moves all registered connection IDs with a sequence number less than or equal
-    /// to the provided `sequence_number` into the `PendingRemoval` status.
-    fn retire_connection_id(&mut self, sequence_number: u32, removal_time: Timestamp) {
+    /// Moves all registered connection IDs with a sequence number less than the provided
+    /// `sequence_number` into the `PendingRemoval` status.
+    fn retire_prior_to(&mut self, sequence_number: u32, removal_time: Timestamp) {
         self.registered_ids
             .iter_mut()
-            .filter(|id_info| id_info.sequence_number <= sequence_number)
+            .filter(|id_info| id_info.sequence_number < sequence_number)
             .filter(|id_info| !id_info.is_retired())
             .for_each(|id_info| id_info.status = PendingRemoval(removal_time));
-        self.retire_prior_to = self.retire_prior_to.max(sequence_number + 1);
+        self.retire_prior_to = self.retire_prior_to.max(sequence_number);
 
         self.update_timers();
     }
@@ -775,6 +785,7 @@ mod tests {
         let id1 = id_generator.generate_id();
 
         let ext_id_1 = connection::Id::try_from_bytes(b"id1").unwrap();
+        let ext_id_2 = connection::Id::try_from_bytes(b"id2").unwrap();
 
         let now = s2n_quic_platform::time::now();
 
@@ -792,17 +803,25 @@ mod tests {
                 .err()
         );
 
+        assert!(reg1.register_connection_id(&ext_id_2, None).is_ok());
+
         let rtt = Duration::from_millis(500);
-        assert!(reg1.on_retire_connection_id(0, rtt, now).is_ok());
+        assert!(reg1.on_retire_connection_id(1, rtt, now).is_ok());
 
         assert_eq!(
             PendingRemoval(now + rtt * RTT_MULTIPLIER),
+            reg1.get_connection_id_info(&ext_id_2).unwrap().status
+        );
+
+        // ID 1 wasn't impacted by the request to retire ID 2
+        assert_eq!(
+            Active,
             reg1.get_connection_id_info(&ext_id_1).unwrap().status
         );
     }
 
     #[test]
-    fn retire_connection_id() {
+    fn retire_prior_to() {
         let mut id_generator = InternalConnectionIdGenerator::new();
         let mut mapper = ConnectionIdMapper::new();
 
@@ -825,7 +844,7 @@ mod tests {
         assert!(reg1.register_connection_id(&ext_id_3, None).is_ok());
 
         // Retire ID 2 (sequence number 1)
-        reg1.retire_connection_id(1, now);
+        reg1.retire_prior_to(2, now);
 
         // ID 2 and all those before it should be retired
         assert_eq!(
@@ -999,8 +1018,8 @@ mod tests {
 
         assert_eq!(transmission::Interest::None, reg1.transmission_interest());
 
-        // Retire ID 2 (sequence number 1)
-        reg1.retire_connection_id(1, now);
+        // Retire everything
+        reg1.retire_all(now);
         assert!(reg1.register_connection_id(&ext_id_3, None).is_ok());
 
         assert_eq!(
@@ -1180,7 +1199,7 @@ mod tests {
             reg1.timers().next().cloned()
         );
 
-        reg1.retire_connection_id(0, now + EXPIRATION_BUFFER);
+        reg1.retire_prior_to(1, now + EXPIRATION_BUFFER);
 
         // Expiration timer is armed based on removal time
         assert_eq!(1, reg1.timers().count());
@@ -1189,7 +1208,7 @@ mod tests {
             reg1.expiration_timer.iter().next().cloned()
         );
 
-        reg1.retire_connection_id(1, now + EXPIRATION_BUFFER);
+        reg1.retire_prior_to(2, now + EXPIRATION_BUFFER);
 
         // Expiration timer is armed based on removal time
         assert_eq!(1, reg1.timers().count());
@@ -1297,7 +1316,7 @@ mod tests {
         assert!(reg1.register_connection_id(&ext_id_2, None).is_ok());
         assert!(reg1.register_connection_id(&ext_id_3, None).is_ok());
 
-        reg1.retire_connection_id(2, s2n_quic_platform::time::now());
+        reg1.retire_prior_to(3, s2n_quic_platform::time::now());
 
         reg1.retire_all(s2n_quic_platform::time::now());
 
