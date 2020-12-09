@@ -143,7 +143,7 @@ impl<ConfigType: connection::Config> ConnectionImpl<ConfigType> {
         )?;
 
         if matches!(self.state, ConnectionState::Handshaking)
-            && space_manager.application().is_some()
+            && space_manager.is_handshake_confirmed()
         {
             // Move into the HandshakeCompleted state. This will signal the
             // necessary interest to hand over the connection to the application.

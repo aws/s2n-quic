@@ -172,6 +172,10 @@ macro_rules! impl_tls {
                     };
 
                     if !can_send {
+                        if matches!(self.0.phase, HandshakePhase::Application) {
+                            context.on_handshake_done()?;
+                        }
+
                         return Ok(());
                     }
 
