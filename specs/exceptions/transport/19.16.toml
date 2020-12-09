@@ -1,0 +1,9 @@
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.16"
+
+[[exception]]
+quote = '''
+An endpoint that provides a zero-
+length connection ID MUST treat receipt of a RETIRE_CONNECTION_ID
+frame as a connection error of type PROTOCOL_VIOLATION.
+'''
+reason = "s2n-QUIC does not provide zero-length connection IDs"

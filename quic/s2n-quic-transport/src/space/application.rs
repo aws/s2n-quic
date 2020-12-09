@@ -491,6 +491,19 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
             .map_err(|_err| TransportError::PROTOCOL_VIOLATION)?;
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.16
+        //= type=TODO
+        //= tracking-issue=238
+        //# The sequence number specified in a RETIRE_CONNECTION_ID frame MUST
+        //# NOT refer to the Destination Connection ID field of the packet in
+        //# which the frame is contained.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.16
+        //= type=TODO
+        //= tracking-issue=238
+        //# The peer MAY treat this as a
+        //# connection error of type PROTOCOL_VIOLATION.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.16
         //# Receipt of a RETIRE_CONNECTION_ID frame containing a sequence number
         //# greater than any previously sent to the peer MUST be treated as a
         //# connection error of type PROTOCOL_VIOLATION.
