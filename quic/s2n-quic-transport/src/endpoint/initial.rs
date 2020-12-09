@@ -74,12 +74,11 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         let connection_info = ConnectionInfo::new(&datagram.remote_address);
         let endpoint_context = self.config.context();
 
-        // TODO If this packet has a token, we should use the dcid in the packet instead of
-        // generating a new one. This is because the dcid was already generated when constructing
-        // the retry packet.
-        // https://github.com/awslabs/s2n-quic/issues/283
+        // If a retry occurred then set we should use the client's destination_connection_id
+        // (server' original source_connection_id) as the initial_connection_id. Otherwise we can
+        // generate a new initial_connection_id.
         let initial_connection_id = match odcid {
-            Some(_id) => destination_connection_id,
+            Some(_) => destination_connection_id,
             None => endpoint_context
                 .connection_id_format
                 .generate(&connection_info),
