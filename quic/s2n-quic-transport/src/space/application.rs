@@ -8,7 +8,7 @@ use crate::{
     transmission,
 };
 use bytes::Bytes;
-use core::marker::PhantomData;
+use core::{convert::TryInto, marker::PhantomData};
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
     crypto::CryptoSuite,
@@ -484,7 +484,11 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
         _path: &mut Path<Config::CongestionController>,
         connection_id_mapper_registration: &mut ConnectionIdMapperRegistration,
     ) -> Result<(), TransportError> {
-        let sequence_number = frame.sequence_number.as_u64() as u32;
+        let sequence_number = frame
+            .sequence_number
+            .as_u64()
+            .try_into()
+            .map_err(|_err| TransportError::PROTOCOL_VIOLATION)?;
 
         if let Some(id) = connection_id_mapper_registration.get_connection_id(sequence_number) {
             connection_id_mapper_registration.unregister_connection_id(&id);
