@@ -79,7 +79,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         // the retry packet.
         // https://github.com/awslabs/s2n-quic/issues/283
         let initial_connection_id = match odcid {
-            Some(id) => id,
+            Some(_id) => destination_connection_id,
             None => endpoint_context
                 .connection_id_format
                 .generate(&connection_info),
