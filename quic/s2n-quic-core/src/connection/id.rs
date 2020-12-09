@@ -16,6 +16,108 @@ pub const MAX_LEN: usize = crate::packet::long::DESTINATION_CONNECTION_ID_MAX_LE
 /// The minimum lifetime of a connection ID.
 pub const MIN_LIFETIME: Duration = Duration::from_secs(60);
 
+macro_rules! id {
+    ($type:ident) => {
+        /// Uniquely identifies a QUIC connection between 2 peers
+        pub struct $type {
+            bytes: [u8; MAX_LEN],
+            len: u8,
+        }
+
+        impl core::fmt::Debug for $type {
+            fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+                write!(f, "ConnectionId({:?})", self.as_bytes())
+            }
+        }
+
+        impl $type {
+            /// An empty connection ID
+            pub const EMPTY: Self = Self {
+                bytes: [0; MAX_LEN],
+                len: 0,
+            };
+
+            /// Creates a `$type` from a byte array.
+            ///
+            /// If the passed byte array exceeds the maximum allowed length for
+            /// Connection IDs (20 bytes in QUIC v1) `None` will be returned.
+            /// All other input values are valid.
+            pub fn try_from_bytes(bytes: &[u8]) -> Option<$type> {
+                Self::try_from(bytes).ok()
+            }
+
+            /// Returns the Connection ID in byte form
+            pub fn as_bytes(&self) -> &[u8] {
+                self.as_ref()
+            }
+
+            /// Returns the length of the connection id
+            pub const fn len(&self) -> usize {
+                self.len as usize
+            }
+
+            pub const fn is_empty(&self) -> bool {
+                self.len == 0
+            }
+        }
+
+        impl From<[u8; MAX_LEN]> for $type {
+            fn from(bytes: [u8; MAX_LEN]) -> Self {
+                Self {
+                    bytes,
+                    len: MAX_LEN as u8,
+                }
+            }
+        }
+
+        impl TryFrom<&[u8]> for $type {
+            type Error = Error;
+
+            fn try_from(slice: &[u8]) -> Result<Self, Self::Error> {
+                let len = slice.len();
+                if len > MAX_LEN {
+                    return Err(Error::InvalidLength);
+                }
+                let mut bytes = [0; MAX_LEN];
+                bytes[..len].copy_from_slice(slice);
+                Ok(Self {
+                    bytes,
+                    len: len as u8,
+                })
+            }
+        }
+
+        impl AsRef<[u8]> for $type {
+            fn as_ref(&self) -> &[u8] {
+                &self.bytes[0..self.len as usize]
+            }
+        }
+
+        decoder_value!(
+            impl<'a> $type {
+                fn decode(buffer: Buffer) -> Result<Self> {
+                    let len = buffer.len();
+                    let (value, buffer) = buffer.decode_slice(len)?;
+                    let value: &[u8] = value.into_less_safe_slice();
+                    let connection_id = $type::try_from(value)
+                        .map_err(|_| s2n_codec::DecoderError::UnexpectedBytes(len - MAX_LEN))?;
+
+                    Ok((connection_id, buffer))
+                }
+            }
+        );
+
+        impl EncoderValue for $type {
+            fn encode<E: Encoder>(&self, encoder: &mut E) {
+                self.as_ref().encode(encoder)
+            }
+        }
+    };
+}
+
+id!(LocalId);
+id!(PeerId);
+
 /// Uniquely identifies a QUIC connection between 2 peers
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Id {
