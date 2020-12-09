@@ -42,6 +42,7 @@ Object.keys(input.specifications).forEach((id) => {
 
 const blobLinker = createBlobLinker(input.blob_link);
 const issueLinker = createIssueLinker(input.issue_link);
+const newIssueLinker = createNewIssueLinker(input.issue_link);
 input.annotations.forEach((anno, id) => {
   const status = input.statuses[id];
   if (status) {
@@ -59,6 +60,7 @@ input.annotations.forEach((anno, id) => {
   anno.features = [];
   anno.tracking_issues = [];
   anno.tags = anno.tags || [];
+  anno.newIssueLink = newIssueLinker;
   anno.cmp = function (b) {
     const a = this;
     if (a.specification === b.specification && a.section.idx !== b.section.idx)
@@ -90,16 +92,8 @@ class Stats {
     if (requirement.todo) this.todos += 1;
   }
 
-  get completePercent() {
-    return this.percent(this.complete);
-  }
-
-  get citationPercent() {
-    return this.percent(this.citations);
-  }
-
-  percent(value) {
-    const percent = this.total ? value / this.total : 0;
+  percent(field) {
+    const percent = this.total ? this[field] / this.total : 0;
     return Number(percent).toLocaleString(undefined, {
       style: "percent",
       minimumFractionDigits: 0,
@@ -216,6 +210,41 @@ function createIssueLinker(base) {
         return issue;
       },
     };
+  };
+}
+
+function createNewIssueLinker(base) {
+  base = (base || "").replace(/\/+$/, "");
+
+  return function () {
+    if (!base) return false;
+    if (!this.comment) return false;
+
+    const url = new URL(`${base}/new`);
+
+    const quote = this.comment
+      .trim()
+      .split("\n")
+      .map((line) => `> ${line}`)
+      .join("\n");
+
+    const body = `
+From [${this.section.title}](${this.target}) in [${this.specification.title}](${this.target_path}):
+
+${quote}`;
+
+    url.searchParams.set("body", body);
+    const labels = [
+      "compliance",
+      this.level && `compliance:${this.level}`,
+      this.specification.title && `spec:${this.specification.title}`,
+    ]
+      .concat(this.features)
+      .filter((l) => !!l)
+      .join(",");
+    url.searchParams.set("labels", labels);
+
+    return url.toString();
   };
 }
 
