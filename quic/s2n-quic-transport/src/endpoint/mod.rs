@@ -186,15 +186,15 @@ impl<Cfg: Config> Endpoint<Cfg> {
             return;
         }
 
-        let connection_id = match connection::Id::try_from_bytes(packet.destination_connection_id())
-        {
-            Some(connection_id) => connection_id,
-            None => {
-                // Ignore the datagram
-                dbg!("packet with invalid connection ID received");
-                return;
-            }
-        };
+        let connection_id =
+            match connection::LocalId::try_from_bytes(packet.destination_connection_id()) {
+                Some(connection_id) => connection_id,
+                None => {
+                    // Ignore the datagram
+                    dbg!("packet with invalid connection ID received");
+                    return;
+                }
+            };
 
         // TODO validate the connection ID before looking up the connection in the map
 

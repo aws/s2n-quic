@@ -101,7 +101,7 @@ pub struct ConnectionImpl<Config: connection::Config> {
     /// The [`Connection`]s internal identifier
     internal_connection_id: InternalConnectionId,
     /// The connection ID to send packets from
-    local_connection_id: connection::Id,
+    local_connection_id: connection::LocalId,
     /// The connection ID mapper registration which should be utilized by the connection
     connection_id_mapper_registration: ConnectionIdMapperRegistration,
     /// The timers which are used within the connection
@@ -520,7 +520,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
-        peer_connection_id: &connection::Id,
+        peer_connection_id: &connection::PeerId,
         congestion_controller_endpoint: &mut CC,
     ) -> Result<path::Id, TransportError> {
         let is_handshake_confirmed = shared_state.space_manager.is_handshake_confirmed();

@@ -178,7 +178,7 @@ pub trait ConnectionTrait: Sized {
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
-        peer_connection_id: &connection::Id,
+        peer_connection_id: &connection::PeerId,
         congestion_controller_endpoint: &mut CC,
     ) -> Result<path::Id, TransportError>;
 

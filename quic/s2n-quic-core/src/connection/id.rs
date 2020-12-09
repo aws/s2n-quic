@@ -19,6 +19,7 @@ pub const MIN_LIFETIME: Duration = Duration::from_secs(60);
 macro_rules! id {
     ($type:ident) => {
         /// Uniquely identifies a QUIC connection between 2 peers
+        #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
         pub struct $type {
             bytes: [u8; MAX_LEN],
             len: u8,

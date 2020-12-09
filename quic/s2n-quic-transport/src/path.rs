@@ -73,7 +73,7 @@ impl<CC: CongestionController> Manager<CC> {
     pub fn on_datagram_received<NewCC: FnOnce() -> CC>(
         &mut self,
         datagram: &DatagramInfo,
-        peer_connection_id: &connection::Id,
+        peer_connection_id: &connection::PeerId,
         is_handshake_confirmed: bool,
         new_congestion_controller: NewCC,
     ) -> Result<(Id, bool), TransportError> {
@@ -237,7 +237,7 @@ mod tests {
 
     #[test]
     fn new_peer_test() {
-        let first_conn_id = connection::Id::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
+        let first_conn_id = connection::PeerId::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
         let first_path = Path::new(
             SocketAddress::default(),
             first_conn_id,
