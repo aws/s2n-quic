@@ -490,9 +490,7 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
             .try_into()
             .map_err(|_err| TransportError::PROTOCOL_VIOLATION)?;
 
-        if let Some(id) = connection_id_mapper_registration.get_connection_id(sequence_number) {
-            connection_id_mapper_registration.unregister_connection_id(&id);
-        }
+        connection_id_mapper_registration.unregister_connection_id(sequence_number);
 
         Ok(())
     }

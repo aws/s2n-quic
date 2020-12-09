@@ -359,25 +359,29 @@ impl ConnectionIdMapperRegistration {
         }
     }
 
-    /// Unregisters a connection ID at the mapper
-    pub fn unregister_connection_id(&mut self, id: &connection::Id) {
+    /// Unregisters the connection ID with the given `sequence_number`
+    pub fn unregister_connection_id(&mut self, sequence_number: u32) {
         let registration_index = match self
             .registered_ids
             .iter()
-            .position(|id_info| id_info.id == *id)
+            .position(|id_info| id_info.sequence_number == sequence_number)
         {
             Some(index) => index,
             None => return, // Nothing to do
         };
 
+        let removed_id_info = self.registered_ids.remove(registration_index);
+
         // Try to remove from the global map
-        let remove_result = self.state.borrow_mut().connection_map.remove(id);
+        let remove_result = self
+            .state
+            .borrow_mut()
+            .connection_map
+            .remove(&removed_id_info.id);
         debug_assert!(
             remove_result.is_some(),
             "Connection ID should have been stored in mapper"
         );
-
-        self.registered_ids.remove(registration_index);
 
         // Update the timers since we may have just removed the next retiring or expiring id
         self.update_timers();
@@ -461,16 +465,16 @@ impl ConnectionIdMapperRegistration {
                 // removed based on RETIRE_CONNECTION_ID frames received from the peer. If those
                 // frames take longer than the EXPIRATION_BUFFER to receive for some reason, this
                 // check ensures the connection IDs are still removed.
-                let mut expired_ids =
-                    SmallVec::<[connection::Id; MAX_ACTIVE_CONNECTION_ID_LIMIT as usize]>::new();
+                let mut expired_sequence_numbers =
+                    SmallVec::<[u32; MAX_ACTIVE_CONNECTION_ID_LIMIT as usize]>::new();
 
                 self.registered_ids
                     .iter()
                     .filter(|id_info| id_info.is_expired(timestamp))
-                    .for_each(|id_info| expired_ids.push(id_info.id));
+                    .for_each(|id_info| expired_sequence_numbers.push(id_info.sequence_number));
 
-                for id in expired_ids {
-                    self.unregister_connection_id(&id);
+                for sequence_number in expired_sequence_numbers {
+                    self.unregister_connection_id(sequence_number);
                 }
             }
         }
@@ -531,14 +535,6 @@ impl ConnectionIdMapperRegistration {
         {
             self.retire_connection_id(&id, timestamp)
         }
-    }
-
-    /// Gets the connection ID associated with the the given sequence number
-    pub fn get_connection_id(&self, sequence_number: u32) -> Option<connection::Id> {
-        self.registered_ids
-            .iter()
-            .find(|id_info| id_info.sequence_number == sequence_number)
-            .map(|id_info| id_info.id)
     }
 
     fn get_connection_id_info(&self, id: &connection::Id) -> Option<&LocalConnectionIdInfo> {
@@ -736,7 +732,8 @@ mod tests {
         assert_eq!(Some(id2), mapper.lookup_internal_connection_id(&ext_id_3));
         assert_eq!(Some(id2), mapper.lookup_internal_connection_id(&ext_id_4));
 
-        reg2.unregister_connection_id(&ext_id_3);
+        // Unregister id 3 (sequence number 0)
+        reg2.unregister_connection_id(0);
         assert_eq!(None, mapper.lookup_internal_connection_id(&ext_id_3));
         assert_eq!(Some(id2), mapper.lookup_internal_connection_id(&ext_id_4));
 
@@ -1161,8 +1158,9 @@ mod tests {
         assert_eq!(1, reg1.timers().count());
         assert_eq!(Some(now + EXPIRATION_BUFFER), reg1.timers().next().cloned());
 
-        reg1.unregister_connection_id(&ext_id_1);
-        reg1.unregister_connection_id(&ext_id_2);
+        // Unregister CIDs 1 and 2 (sequence numbers 0 and 1)
+        reg1.unregister_connection_id(0);
+        reg1.unregister_connection_id(1);
 
         // No more timers are set
         assert_eq!(0, reg1.timers().count());
