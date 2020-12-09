@@ -482,6 +482,7 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
         frame: RetireConnectionID,
         datagram: &DatagramInfo,
         path: &mut Path<Config::CongestionController>,
+        destination_connection_id: &[u8],
         connection_id_mapper_registration: &mut ConnectionIdMapperRegistration,
     ) -> Result<(), TransportError> {
         let sequence_number = frame
@@ -491,15 +492,11 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
             .map_err(|_err| TransportError::PROTOCOL_VIOLATION)?;
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.16
-        //= type=TODO
-        //= tracking-issue=238
         //# The sequence number specified in a RETIRE_CONNECTION_ID frame MUST
         //# NOT refer to the Destination Connection ID field of the packet in
         //# which the frame is contained.
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.16
-        //= type=TODO
-        //= tracking-issue=238
         //# The peer MAY treat this as a
         //# connection error of type PROTOCOL_VIOLATION.
 
@@ -510,6 +507,7 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
         connection_id_mapper_registration
             .on_retire_connection_id(
                 sequence_number,
+                destination_connection_id,
                 path.rtt_estimator.smoothed_rtt(),
                 datagram.timestamp,
             )

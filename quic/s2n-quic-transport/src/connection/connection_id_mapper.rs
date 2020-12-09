@@ -393,6 +393,7 @@ impl ConnectionIdMapperRegistration {
     pub fn on_retire_connection_id(
         &mut self,
         sequence_number: u32,
+        destination_connection_id: &[u8],
         rtt: Duration,
         timestamp: Timestamp,
     ) -> Result<(), ConnectionIdMapperRegistrationError> {
@@ -415,6 +416,18 @@ impl ConnectionIdMapperRegistration {
             .find(|id_info| id_info.sequence_number == sequence_number);
 
         if let Some(mut id_info) = id_info {
+            if id_info.id.as_bytes() == destination_connection_id {
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.16
+                //# The sequence number specified in a RETIRE_CONNECTION_ID frame MUST
+                //# NOT refer to the Destination Connection ID field of the packet in
+                //# which the frame is contained.
+
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.16
+                //# The peer MAY treat this as a
+                //# connection error of type PROTOCOL_VIOLATION.
+                return Err(ConnectionIdMapperRegistrationError::InvalidSequenceNumber);
+            }
+
             id_info.status = PendingRemoval(removal_time);
             self.update_timers();
         }
@@ -799,14 +812,33 @@ mod tests {
         //# connection error of type PROTOCOL_VIOLATION.
         assert_eq!(
             Some(ConnectionIdMapperRegistrationError::InvalidSequenceNumber),
-            reg1.on_retire_connection_id(1, Duration::default(), now)
+            reg1.on_retire_connection_id(1, ext_id_1.as_bytes(), Duration::default(), now)
                 .err()
         );
 
         assert!(reg1.register_connection_id(&ext_id_2, None).is_ok());
 
         let rtt = Duration::from_millis(500);
-        assert!(reg1.on_retire_connection_id(1, rtt, now).is_ok());
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.16
+        //= type=test
+        //# The sequence number specified in a RETIRE_CONNECTION_ID frame MUST
+        //# NOT refer to the Destination Connection ID field of the packet in
+        //# which the frame is contained.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.16
+        //= type=test
+        //# The peer MAY treat this as a
+        //# connection error of type PROTOCOL_VIOLATION.
+        assert_eq!(
+            Some(ConnectionIdMapperRegistrationError::InvalidSequenceNumber),
+            reg1.on_retire_connection_id(1, ext_id_2.as_bytes(), Duration::default(), now)
+                .err()
+        );
+
+        assert!(reg1
+            .on_retire_connection_id(1, ext_id_1.as_bytes(), rtt, now)
+            .is_ok());
 
         assert_eq!(
             PendingRemoval(now + rtt * RTT_MULTIPLIER),
