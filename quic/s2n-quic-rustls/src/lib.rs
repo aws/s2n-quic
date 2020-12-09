@@ -37,6 +37,15 @@ enum HandshakePhase {
     Application,
 }
 
+impl HandshakePhase {
+    fn transition(&mut self) {
+        *self = match self {
+            Self::Initial => Self::Handshake,
+            _ => Self::Application,
+        };
+    }
+}
+
 impl Default for HandshakePhase {
     fn default() -> Self {
         Self::Initial
@@ -46,7 +55,8 @@ impl Default for HandshakePhase {
 #[derive(Clone, Copy, Debug, Default)]
 struct InnerSession<Session> {
     session: Session,
-    phase: HandshakePhase,
+    rx_phase: HandshakePhase,
+    tx_phase: HandshakePhase,
     emitted_early_secret: bool,
 }
 
@@ -54,7 +64,8 @@ impl<Session> InnerSession<Session> {
     fn new(session: Session) -> Self {
         Self {
             session,
-            phase: Default::default(),
+            tx_phase: Default::default(),
+            rx_phase: Default::default(),
             emitted_early_secret: false,
         }
     }
@@ -147,47 +158,60 @@ macro_rules! impl_tls {
             ) -> Result<(), TransportError> {
                 use rustls::Session;
 
-                let crypto_data = match self.0.phase {
-                    HandshakePhase::Initial => context.receive_initial(),
-                    HandshakePhase::Handshake => context.receive_handshake(),
-                    HandshakePhase::Application => context.receive_application(),
-                };
-
-                if let Some(crypto_data) = crypto_data {
-                    self.receive(&crypto_data)?;
-                }
-
-                if let Some(early_secret) = self.early_secret() {
-                    context.on_zero_rtt_keys(
-                        RingZeroRTTCrypto::new(early_secret.clone()),
-                        self.application_parameters()?,
-                    )?;
-                }
-
                 loop {
-                    let can_send = match self.0.phase {
-                        HandshakePhase::Initial => context.can_send_initial(),
-                        HandshakePhase::Handshake => context.can_send_handshake(),
-                        HandshakePhase::Application => context.can_send_application(),
+                    let crypto_data = match self.0.rx_phase {
+                        HandshakePhase::Initial => context.receive_initial(),
+                        HandshakePhase::Handshake => context.receive_handshake(),
+                        HandshakePhase::Application => context.receive_application(),
                     };
 
-                    if !can_send {
+                    // receive anything in the incoming buffer
+                    if let Some(crypto_data) = crypto_data {
+                        self.receive(&crypto_data)?;
+                    } else {
+                        // If there's nothing to receive then we're done for now
                         return Ok(());
                     }
 
-                    let mut transmission_buffer = vec![];
+                    // we're done with the handshake!
+                    if !self.0.session.is_handshaking() {
+                        self.0.rx_phase.transition();
+                        context.on_handshake_done()?;
+                        return Ok(());
+                    }
 
-                    let key_upgrade = self.transmit(&mut transmission_buffer);
+                    // try to pull out the early secrets, if any
+                    if let Some(early_secret) = self.early_secret() {
+                        context.on_zero_rtt_keys(
+                            RingZeroRTTCrypto::new(early_secret.clone()),
+                            self.application_parameters()?,
+                        )?;
+                    }
 
-                    if transmission_buffer.is_empty() {
-                        if matches!(self.0.phase, HandshakePhase::Application) {
-                            context.on_handshake_done()?;
+                    loop {
+                        // make sure we can send data before pulling it out of rustls
+                        let can_send = match self.0.tx_phase {
+                            HandshakePhase::Initial => context.can_send_initial(),
+                            HandshakePhase::Handshake => context.can_send_handshake(),
+                            HandshakePhase::Application => context.can_send_application(),
+                        };
+
+                        if !can_send {
+                            break;
                         }
-                        return Ok(());
-                    }
 
-                    if !transmission_buffer.is_empty() {
-                        match self.0.phase {
+                        let mut transmission_buffer = vec![];
+
+                        let key_upgrade = self.transmit(&mut transmission_buffer);
+
+                        // if we didn't upgrade the key or transmit anything then we're waiting for
+                        // more reads
+                        if key_upgrade.is_none() && transmission_buffer.is_empty() {
+                            break;
+                        }
+
+                        // fill the correct buffer according to the handshake phase
+                        match self.0.tx_phase {
                             HandshakePhase::Initial => {
                                 context.send_initial(transmission_buffer.into())
                             }
@@ -198,28 +222,38 @@ macro_rules! impl_tls {
                                 context.send_application(transmission_buffer.into())
                             }
                         }
-                    }
 
-                    if let Some(key_pair) = key_upgrade {
-                        let algorithm = self
-                            .0
-                            .session
-                            .get_negotiated_ciphersuite()
-                            .expect("ciphersuite should be available")
-                            .get_aead_alg();
+                        // we got new TLS keys!
+                        if let Some(key_pair) = key_upgrade {
+                            let algorithm = self
+                                .0
+                                .session
+                                .get_negotiated_ciphersuite()
+                                .expect("ciphersuite should be available")
+                                .get_aead_alg();
 
-                        match self.0.phase {
-                            HandshakePhase::Initial => {
-                                let keys = RingHandshakeCrypto::$new_crypto(algorithm, key_pair)
-                                    .expect("invalid cipher");
-                                self.0.phase = HandshakePhase::Handshake;
-                                context.on_handshake_keys(keys)?;
-                            }
-                            HandshakePhase::Handshake | HandshakePhase::Application => {
-                                let keys = RingOneRTTCrypto::$new_crypto(algorithm, key_pair)
-                                    .expect("invalid cipher");
-                                self.0.phase = HandshakePhase::Application;
-                                context.on_one_rtt_keys(keys, self.application_parameters()?)?;
+                            match self.0.tx_phase {
+                                HandshakePhase::Initial => {
+                                    let keys =
+                                        RingHandshakeCrypto::$new_crypto(algorithm, key_pair)
+                                            .expect("invalid cipher");
+
+                                    context.on_handshake_keys(keys)?;
+
+                                    // Transition both phases to Handshake
+                                    self.0.tx_phase.transition();
+                                    self.0.rx_phase.transition();
+                                }
+                                _ => {
+                                    let keys = RingOneRTTCrypto::$new_crypto(algorithm, key_pair)
+                                        .expect("invalid cipher");
+                                    context
+                                        .on_one_rtt_keys(keys, self.application_parameters()?)?;
+
+                                    // Transition the tx_phase to Application
+                                    // Note: the rx_phase is transitioned when the handshake is done
+                                    self.0.tx_phase.transition();
+                                }
                             }
                         }
                     }
