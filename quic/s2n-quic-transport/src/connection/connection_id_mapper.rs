@@ -467,10 +467,6 @@ impl ConnectionIdMapperRegistration {
                 .count();
 
             if expired_id_count > 0 {
-                // Generally there shouldn't be any IDs that are expired, as connection IDs will be
-                // removed based on RETIRE_CONNECTION_ID frames received from the peer. If those
-                // frames take longer than the EXPIRATION_BUFFER to receive for some reason, this
-                // check ensures the connection IDs are still removed.
                 let mut expired_sequence_numbers =
                     SmallVec::<[u32; MAX_ACTIVE_CONNECTION_ID_LIMIT as usize]>::new();
 
