@@ -652,19 +652,6 @@ mod tests {
         );
     }
 
-    #[test]
-    #[should_panic]
-    fn connection_id_too_small() {
-        let ext_id = connection::Id::try_from_bytes(b"id1").unwrap();
-        let mut reg = ConnectionIdMapper::new()
-            .create_registration(InternalConnectionIdGenerator::new().generate_id(), &ext_id);
-
-        assert_eq!(
-            Err(ConnectionIdMapperRegistrationError::ConnectionIdInUse),
-            reg.register_connection_id(&ext_id, None)
-        );
-    }
-
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1
     //= type=test
     //# As a trivial example, this means the same connection ID

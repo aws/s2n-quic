@@ -104,7 +104,7 @@ impl TryFrom<&[u8]> for Id {
 
     fn try_from(slice: &[u8]) -> Result<Self, Self::Error> {
         let len = slice.len();
-        if len < MIN_LEN || len > MAX_LEN {
+        if len > MAX_LEN {
             return Err(Error::InvalidLength);
         }
         let mut bytes = [0; MAX_LEN];
@@ -234,15 +234,6 @@ mod tests {
         assert!(Id::try_from_bytes(&connection_id_bytes).is_some());
 
         let connection_id_bytes = [0u8; MAX_LEN + 1];
-        assert!(Id::try_from_bytes(&connection_id_bytes).is_none());
-    }
-
-    #[test]
-    fn too_small_connection_id_length() {
-        let connection_id_bytes = [0u8; MIN_LEN];
-        assert!(Id::try_from_bytes(&connection_id_bytes).is_some());
-
-        let connection_id_bytes = [0u8; MIN_LEN - 1];
         assert!(Id::try_from_bytes(&connection_id_bytes).is_none());
     }
 }
