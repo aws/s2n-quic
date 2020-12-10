@@ -169,7 +169,11 @@ impl<'a, Config: connection::Config> tls::Context<Config::TLSSession>
 
                 // All of the other spaces are discarded by the time the handshake is confirmed so
                 // we only need to notify the application space
-                application.on_handshake_done(&self.path, self.now);
+                application.on_handshake_done(
+                    &self.path,
+                    self.connection_id_mapper_registration,
+                    self.now,
+                );
             }
             Ok(())
         } else {

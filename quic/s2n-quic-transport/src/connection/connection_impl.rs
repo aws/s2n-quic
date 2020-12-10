@@ -586,6 +586,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
             if let Some(close) = space.handle_cleartext_payload(
                 packet.packet_number,
                 packet.payload,
+                packet.destination_connection_id,
                 datagram,
                 &mut self.path_manager[path_id],
                 handshake_status,
@@ -622,6 +623,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
             if let Some(close) = space.handle_cleartext_payload(
                 packet.packet_number,
                 packet.payload,
+                packet.destination_connection_id,
                 datagram,
                 &mut self.path_manager[path_id],
                 handshake_status,
@@ -683,6 +685,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
             if let Some(close) = space.handle_cleartext_payload(
                 packet.packet_number,
                 packet.payload,
+                packet.destination_connection_id,
                 datagram,
                 &mut self.path_manager[path_id],
                 handshake_status,

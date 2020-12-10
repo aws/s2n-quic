@@ -314,7 +314,21 @@ pub trait PacketSpace<Config: connection::Config> {
         frame: HandshakeDone,
         _datagram: &DatagramInfo,
         _path: &mut Path<Config::CongestionController>,
+        _connection_id_mapper_registration: &mut ConnectionIdMapperRegistration,
         _handshake_status: &mut HandshakeStatus,
+    ) -> Result<(), TransportError> {
+        Err(TransportError::PROTOCOL_VIOLATION
+            .with_reason(Self::INVALID_FRAME_ERROR)
+            .with_frame_type(frame.tag().into()))
+    }
+
+    fn handle_retire_connection_id_frame(
+        &mut self,
+        frame: RetireConnectionID,
+        _datagram: &DatagramInfo,
+        _path: &mut Path<Config::CongestionController>,
+        _destination_connection_id: &[u8],
+        _connection_id_mapper_registration: &mut ConnectionIdMapperRegistration,
     ) -> Result<(), TransportError> {
         Err(TransportError::PROTOCOL_VIOLATION
             .with_reason(Self::INVALID_FRAME_ERROR)
@@ -332,7 +346,6 @@ pub trait PacketSpace<Config: connection::Config> {
     default_frame_handler!(handle_streams_blocked_frame, StreamsBlocked);
     default_frame_handler!(handle_new_token_frame, NewToken);
     default_frame_handler!(handle_new_connection_id_frame, NewConnectionID);
-    default_frame_handler!(handle_retire_connection_id_frame, RetireConnectionID);
     default_frame_handler!(handle_path_challenge_frame, PathChallenge);
     default_frame_handler!(handle_path_response_frame, PathResponse);
 
@@ -341,10 +354,13 @@ pub trait PacketSpace<Config: connection::Config> {
         processed_packet: ProcessedPacket,
     ) -> Result<(), TransportError>;
 
+    // TODO: Reduce arguments, https://github.com/awslabs/s2n-quic/issues/312
+    #[allow(clippy::too_many_arguments)]
     fn handle_cleartext_payload<'a>(
         &mut self,
         packet_number: PacketNumber,
         mut payload: DecoderBufferMut<'a>,
+        destination_connection_id: &[u8],
         datagram: &DatagramInfo,
         path: &mut Path<Config::CongestionController>,
         handshake_status: &mut HandshakeStatus,
@@ -480,8 +496,14 @@ pub trait PacketSpace<Config: connection::Config> {
                 Frame::RetireConnectionID(frame) => {
                     let on_error = with_frame_type!(frame);
                     processed_packet.on_processed_frame(&frame);
-                    self.handle_retire_connection_id_frame(frame, datagram, path)
-                        .map_err(on_error)?;
+                    self.handle_retire_connection_id_frame(
+                        frame,
+                        datagram,
+                        path,
+                        destination_connection_id,
+                        connection_id_mapper_registration,
+                    )
+                    .map_err(on_error)?;
                 }
                 Frame::PathChallenge(frame) => {
                     let on_error = with_frame_type!(frame);
@@ -498,8 +520,14 @@ pub trait PacketSpace<Config: connection::Config> {
                 Frame::HandshakeDone(frame) => {
                     let on_error = with_frame_type!(frame);
                     processed_packet.on_processed_frame(&frame);
-                    self.handle_handshake_done_frame(frame, datagram, path, handshake_status)
-                        .map_err(on_error)?;
+                    self.handle_handshake_done_frame(
+                        frame,
+                        datagram,
+                        path,
+                        connection_id_mapper_registration,
+                        handshake_status,
+                    )
+                    .map_err(on_error)?;
                 }
             }
 

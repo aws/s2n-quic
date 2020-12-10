@@ -8,7 +8,7 @@ use crate::{
     transmission,
 };
 use bytes::Bytes;
-use core::marker::PhantomData;
+use core::{convert::TryInto, marker::PhantomData};
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
     crypto::CryptoSuite,
@@ -187,8 +187,12 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
     pub fn on_handshake_done(
         &mut self,
         path: &Path<Config::CongestionController>,
+        connection_id_mapper_registration: &mut ConnectionIdMapperRegistration,
         timestamp: Timestamp,
     ) {
+        // Retire all local connection IDs used during the handshake to reduce linkability
+        connection_id_mapper_registration.retire_all(timestamp);
+
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
         //# A sender SHOULD restart its PTO timer every time an ack-eliciting
         //# packet is sent or acknowledged, when the handshake is confirmed
@@ -476,12 +480,38 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
     fn handle_retire_connection_id_frame(
         &mut self,
         frame: RetireConnectionID,
-        _datagram: &DatagramInfo,
-        _path: &mut Path<Config::CongestionController>,
+        datagram: &DatagramInfo,
+        path: &mut Path<Config::CongestionController>,
+        destination_connection_id: &[u8],
+        connection_id_mapper_registration: &mut ConnectionIdMapperRegistration,
     ) -> Result<(), TransportError> {
-        // TODO
-        eprintln!("UNIMPLEMENTED APPLICATION FRAME {:?}", frame);
-        Ok(())
+        let sequence_number = frame
+            .sequence_number
+            .as_u64()
+            .try_into()
+            .map_err(|_err| TransportError::PROTOCOL_VIOLATION)?;
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.16
+        //# The sequence number specified in a RETIRE_CONNECTION_ID frame MUST
+        //# NOT refer to the Destination Connection ID field of the packet in
+        //# which the frame is contained.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.16
+        //# The peer MAY treat this as a
+        //# connection error of type PROTOCOL_VIOLATION.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.16
+        //# Receipt of a RETIRE_CONNECTION_ID frame containing a sequence number
+        //# greater than any previously sent to the peer MUST be treated as a
+        //# connection error of type PROTOCOL_VIOLATION.
+        connection_id_mapper_registration
+            .on_retire_connection_id(
+                sequence_number,
+                destination_connection_id,
+                path.rtt_estimator.smoothed_rtt(),
+                datagram.timestamp,
+            )
+            .map_err(|err| TransportError::PROTOCOL_VIOLATION.with_reason(err.message()))
     }
 
     fn handle_path_challenge_frame(
@@ -511,6 +541,7 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
         frame: HandshakeDone,
         datagram: &DatagramInfo,
         path: &mut Path<Config::CongestionController>,
+        connection_id_mapper_registration: &mut ConnectionIdMapperRegistration,
         handshake_status: &mut HandshakeStatus,
     ) -> Result<(), TransportError> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.20
@@ -525,7 +556,7 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
         }
 
         handshake_status.on_handshake_done_received();
-        self.on_handshake_done(path, datagram.timestamp);
+        self.on_handshake_done(path, connection_id_mapper_registration, datagram.timestamp);
 
         Ok(())
     }

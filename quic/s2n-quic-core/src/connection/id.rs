@@ -13,6 +13,9 @@ use s2n_codec::{decoder_value, Encoder, EncoderValue};
 /// The maximum size of a connection ID.
 pub const MAX_LEN: usize = crate::packet::long::DESTINATION_CONNECTION_ID_MAX_LEN;
 
+/// The minimum size of a connection ID.
+pub const MIN_LEN: usize = 1;
+
 /// The minimum lifetime of a connection ID.
 pub const MIN_LIFETIME: Duration = Duration::from_secs(60);
 
