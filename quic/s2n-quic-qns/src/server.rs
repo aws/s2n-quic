@@ -197,7 +197,7 @@ impl Interop {
             Some("resumption") => false,
             Some("zerortt") => false,
             Some("http3") => false,
-            Some("mutliconnect") => true,
+            Some("multiconnect") => true,
             Some("handshakecorruption") => true,
             Some("transfercorruption") => true,
             Some("ecn") => false,
