@@ -126,7 +126,7 @@ impl<'a> Retry<'a> {
             outcome = token_format.generate_retry_token(
                 &remote_address,
                 &connection::Id::try_from_bytes(retry_packet.destination_connection_id).unwrap(),
-                &connection::Id::try_from_bytes(retry_packet.source_connection_id).unwrap(),
+                &connection::Id::try_from_bytes(packet.destination_connection_id()).unwrap(),
                 token_buf,
             );
         });
