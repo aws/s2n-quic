@@ -297,9 +297,10 @@ jobs:
       - name: Upload to S3
         id: s3
         run: |
-          aws s3 sync web s3://s2n-quic-ci-artifacts/interop/${{ github.sha }} --acl private --follow-symlinks
+          TARGET="s3://s2n-quic-ci-artifacts/${{ github.sha }}/interop"
+          aws s3 sync web $TARGET --acl private --follow-symlinks
           # generate a presigned url that is valid for 30 days
-          URL=$(aws s3 presign s3://s2n-quic-ci-artifacts/interop/${{ github.sha }}/index.html --expires-in 2592000)
+          URL=$(aws s3 presign $TARGET/index.html --expires-in 2592000)
           echo "::set-output name=URL::$URL"
 
       - uses: ouzi-dev/commit-status-updater@v1.1.0

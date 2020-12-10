@@ -1,8 +1,8 @@
-artifacts
-build
+artifacts/
+build/
 corpus/
 crashes/
-target
+target/
 **/*.rs.bk
 Cargo.lock
 *.tar.gz

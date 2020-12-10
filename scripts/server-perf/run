@@ -4,19 +4,7 @@ set -e
 
 SIZE=${1:-1G}
 
-if ! command -v "inferno-collapse-perf" &> /dev/null; then
-  cargo install inferno
-fi
-
-RUSTFLAGS="-g -Ctarget-cpu=native" cargo \
-  +stable \
-  build \
-  --bin s2n-quic-qns \
-  --release
-
-cd ./scripts/server-perf/client
-RUSTFLAGS="-Ctarget-cpu=native" cargo +stable build --release
-cd ../../../
+./scripts/server-perf/build
 
 mkdir -p ./target/perf
 if [ ! -f "./target/perf/$SIZE.img" ]; then

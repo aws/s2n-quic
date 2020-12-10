@@ -401,9 +401,10 @@ jobs:
       - name: Upload to S3
         id: s3
         run: |
-          aws s3 cp target/compliance/report.html s3://s2n-quic-ci-artifacts/compliance/${{ github.sha }}/index.html --acl private --follow-symlinks
+          TARGET="s3://s2n-quic-ci-artifacts/${{ github.sha }}/compliance.html"
+          aws s3 cp target/perf/1G.svg $TARGET --acl private --follow-symlinks
           # generate a presigned url that is valid for 30 days
-          URL=$(aws s3 presign s3://s2n-quic-ci-artifacts/compliance/${{ github.sha }}/index.html --expires-in 2592000)
+          URL=$(aws s3 presign $TARGET --expires-in 2592000)
           echo "::set-output name=URL::$URL"
 
       - uses: ouzi-dev/commit-status-updater@v1.1.0
@@ -556,3 +557,86 @@ jobs:
 
       - name: Stop sccache
         run: sccache --stop-server
+
+  perf:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        script: [server]
+    steps:
+      - uses: actions-rs/toolchain@v1
+        id: toolchain
+        with:
+          toolchain: stable
+          override: true
+
+      - uses: actions/checkout@v2
+
+      - name: Install sccache
+        uses: actions-rs/install@v0.1
+        with:
+          crate: sccache
+          use-tool-cache: true
+          version: latest
+
+      - name: Install inferno
+        uses: actions-rs/install@v0.1
+        with:
+          crate: inferno
+          use-tool-cache: true
+          version: latest
+
+      - name: Generate Cargo.lock
+        run: cargo update
+
+      - name: Cache cargo registry
+        uses: actions/cache@v2
+        continue-on-error: true
+        with:
+          path: ~/.cargo/registry/cache
+          key: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-cargo-registry-
+
+      - name: Cache sccache output
+        uses: actions/cache@v2
+        continue-on-error: true
+        with:
+          path: ${{ github.workspace }}/.sccache
+          key: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-sccache-${{ hashFiles('**/Cargo.*') }}
+          restore-keys: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-sccache-
+
+      - name: Start sccache
+        run: sccache --start-server
+
+      - name: Build
+        working-directory: scripts/${{ matrix.script }}-perf
+        run: ./build
+        env:
+          RUSTC_WRAPPER: sccache
+
+      - name: Stop sccache
+        run: sccache --stop-server
+
+      - name: Run script
+        run: ./scripts/${{ matrix.script }}-pref/run
+
+      - uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-west-1
+
+      - name: Upload results
+        id: s3
+        run: |
+          TARGET="s3://s2n-quic-ci-artifacts/${{ github.sha }}/perf/${{ matrix.script }}.svg"
+          aws s3 cp target/perf/1G.svg $TARGET --acl private --follow-symlinks
+          # generate a presigned url that is valid for 30 days
+          URL=$(aws s3 presign $TARGET --expires-in 2592000)
+          echo "::set-output name=URL::$URL"
+
+      - uses: ouzi-dev/commit-status-updater@v1.1.0
+        with:
+          name: 'perf / report (${{ matrix.script }})'
+          status: 'success'
+          url: "${{ steps.s3.outputs.URL }}"
