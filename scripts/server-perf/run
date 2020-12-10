@@ -4,6 +4,10 @@ set -e
 
 SIZE=${1:-1G}
 
+if ! command -v "inferno-collapse-perf" &> /dev/null; then
+  cargo install inferno
+fi
+
 RUSTFLAGS="-g -Ctarget-cpu=native" cargo \
   +stable \
   build \
