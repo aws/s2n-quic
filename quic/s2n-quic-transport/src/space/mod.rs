@@ -354,6 +354,7 @@ pub trait PacketSpace<Config: connection::Config> {
         processed_packet: ProcessedPacket,
     ) -> Result<(), TransportError>;
 
+    // TODO: Reduce arguments, https://github.com/awslabs/s2n-quic/issues/312
     #[allow(clippy::too_many_arguments)]
     fn handle_cleartext_payload<'a>(
         &mut self,

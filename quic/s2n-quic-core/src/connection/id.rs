@@ -13,6 +13,9 @@ use s2n_codec::{decoder_value, Encoder, EncoderValue};
 /// The maximum size of a connection ID.
 pub const MAX_LEN: usize = crate::packet::long::DESTINATION_CONNECTION_ID_MAX_LEN;
 
+/// The minimum size of a connection ID.
+pub const MIN_LEN: usize = 1;
+
 /// The minimum lifetime of a connection ID.
 pub const MIN_LIFETIME: Duration = Duration::from_secs(60);
 
@@ -101,7 +104,7 @@ impl TryFrom<&[u8]> for Id {
 
     fn try_from(slice: &[u8]) -> Result<Self, Self::Error> {
         let len = slice.len();
-        if len > MAX_LEN {
+        if len < MIN_LEN || len > MAX_LEN {
             return Err(Error::InvalidLength);
         }
         let mut bytes = [0; MAX_LEN];
@@ -231,6 +234,15 @@ mod tests {
         assert!(Id::try_from_bytes(&connection_id_bytes).is_some());
 
         let connection_id_bytes = [0u8; MAX_LEN + 1];
+        assert!(Id::try_from_bytes(&connection_id_bytes).is_none());
+    }
+
+    #[test]
+    fn too_small_connection_id_length() {
+        let connection_id_bytes = [0u8; MIN_LEN];
+        assert!(Id::try_from_bytes(&connection_id_bytes).is_some());
+
+        let connection_id_bytes = [0u8; MIN_LEN - 1];
         assert!(Id::try_from_bytes(&connection_id_bytes).is_none());
     }
 }
