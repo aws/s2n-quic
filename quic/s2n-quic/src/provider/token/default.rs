@@ -224,6 +224,7 @@ impl super::Format for Format {
             .copy_from_slice(original_destination_connection_id.as_bytes());
         token.odcid_len = original_destination_connection_id.len() as u8;
 
+        // ensure the other CID bytes are zeroed out
         for b in token
             .original_destination_connection_id
             .iter_mut()
