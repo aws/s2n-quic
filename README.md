@@ -44,15 +44,8 @@ $ cargo bolero test varint -p s2n-quic-core -s NONE
 
 ### Testing all the things
 
-cargo test
+You can verify most tests run in the CI locally:
 
-cargo clippy --all-features --all-targets -- -D warnings
-cargo +nightly run --release --bin cargo-compliance -- report --spec-pattern 'specs/**/*.toml' --source-pattern 'quic/**/*.rs' --workspace --exclude compliance --exclude cargo-compliance --html target/compliance/coverage.html
-
-
-### Docker
-cd qns
-cp ../target/debug/s2n-quic-qns s2n-quic-qns
-cp ../target/debug/s2n-quic-qns s2n-quic-qns-release
-cp ../target/debug/s2n-quic-qns s2n-quic-qns-debug
-sudo docker build . --file ../.github/interop/Dockerfile --tag awslabs/s2n-quic-qns
+ * Simulate interop tests locally by following the instructions [here](scripts/interop/README.md).
+ * Run a compliance report: `./scripts/compliance`
+ * Run clippy using the same flags as the CI: `cargo clippy --all-features --all-targets -- -D warnings`
