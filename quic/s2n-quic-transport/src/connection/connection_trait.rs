@@ -178,7 +178,6 @@ pub trait ConnectionTrait: Sized {
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
-        peer_connection_id: &connection::PeerId,
         congestion_controller_endpoint: &mut CC,
     ) -> Result<path::Id, TransportError>;
 
@@ -229,7 +228,7 @@ pub trait ConnectionTrait: Sized {
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         path_id: path::Id,
-        original_connection_id: connection::Id,
+        original_connection_id: connection::LocalId,
         connection_id_validator: &Validator,
         mut payload: DecoderBufferMut,
     ) -> Result<(), TransportError> {

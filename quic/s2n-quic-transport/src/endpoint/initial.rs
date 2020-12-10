@@ -52,7 +52,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                 .with_reason("destination connection id too short"));
         }
 
-        let source_connection_id: connection::Id = packet.source_connection_id().try_into()?;
+        let source_connection_id: connection::PeerId = packet.source_connection_id().try_into()?;
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.5.2
         //# Changing Destination Connection ID also results in a change

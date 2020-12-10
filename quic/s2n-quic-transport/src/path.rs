@@ -73,7 +73,6 @@ impl<CC: CongestionController> Manager<CC> {
     pub fn on_datagram_received<NewCC: FnOnce() -> CC>(
         &mut self,
         datagram: &DatagramInfo,
-        peer_connection_id: &connection::PeerId,
         is_handshake_confirmed: bool,
         new_congestion_controller: NewCC,
     ) -> Result<(Id, bool), TransportError> {
@@ -90,7 +89,7 @@ impl<CC: CongestionController> Manager<CC> {
         if is_handshake_confirmed {
             let path = Path::new(
                 datagram.remote_address,
-                *peer_connection_id,
+                self.active_path().1.peer_connection_id,
                 RTTEstimator::new(EARLY_ACK_SETTINGS.max_ack_delay),
                 new_congestion_controller(),
                 true,

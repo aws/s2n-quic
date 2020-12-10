@@ -213,7 +213,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         .on_datagram_received(
                             shared_state,
                             datagram,
-                            &connection_id,
                             endpoint_context.congestion_controller,
                         )
                         .map_err(|_| {
@@ -279,7 +278,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             match packet {
                 ProtectedPacket::Initial(packet) => {
                     let source_connection_id =
-                        match connection::Id::try_from_bytes(packet.source_connection_id()) {
+                        match connection::PeerId::try_from_bytes(packet.source_connection_id()) {
                             Some(connection_id) => connection_id,
                             None => {
                                 dbg!("Could not decode source connection id");

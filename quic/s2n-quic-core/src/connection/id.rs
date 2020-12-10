@@ -297,7 +297,7 @@ pub trait Generator {
     ///
     /// Each call to `generate` should produce a unique Connection ID,
     /// otherwise the endpoint may terminate.
-    fn generate(&mut self, connection_info: &ConnectionInfo) -> Id;
+    fn generate(&mut self, connection_info: &ConnectionInfo) -> LocalId;
 
     /// The maximum amount of time each generated connection ID should be
     /// used for. By default there is no maximum, though connection IDs
@@ -356,7 +356,7 @@ pub mod testing {
     }
 
     impl Generator for Format {
-        fn generate(&mut self, _connection_info: &ConnectionInfo) -> Id {
+        fn generate(&mut self, _connection_info: &ConnectionInfo) -> LocalId {
             let id = (&self.0.to_be_bytes()[..]).try_into().unwrap();
             self.0 += 1;
             id

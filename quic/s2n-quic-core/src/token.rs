@@ -28,8 +28,8 @@ pub trait Format {
     fn validate_token(
         &mut self,
         peer_address: &SocketAddress,
-        destination_connection_id: &connection::Id,
-        source_connection_id: &connection::Id,
+        destination_connection_id: &connection::LocalId,
+        source_connection_id: &connection::PeerId,
         token: &[u8],
     ) -> Option<Source>;
 }
@@ -76,8 +76,8 @@ pub mod testing {
         fn validate_token(
             &mut self,
             _peer_address: &SocketAddress,
-            _destination_connection_id: &connection::Id,
-            _source_connection_id: &connection::Id,
+            _destination_connection_id: &connection::LocalId,
+            _source_connection_id: &connection::PeerId,
             token: &[u8],
         ) -> Option<Source> {
             if token == retry::example::TOKEN {

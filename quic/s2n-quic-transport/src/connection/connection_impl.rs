@@ -520,14 +520,12 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
-        peer_connection_id: &connection::PeerId,
         congestion_controller_endpoint: &mut CC,
     ) -> Result<path::Id, TransportError> {
         let is_handshake_confirmed = shared_state.space_manager.is_handshake_confirmed();
 
         let (id, unblocked) = self.path_manager.on_datagram_received(
             datagram,
-            peer_connection_id,
             is_handshake_confirmed,
             || {
                 let path_info = congestion_controller::PathInfo::new(&datagram.remote_address);
