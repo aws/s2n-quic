@@ -35,12 +35,6 @@ macro_rules! id {
         }
 
         impl $type {
-            /// An empty connection ID
-            pub const EMPTY: Self = Self {
-                bytes: [0; MAX_LEN],
-                len: 0,
-            };
-
             /// Creates a `$type` from a byte array.
             ///
             /// If the passed byte array exceeds the maximum allowed length for
@@ -121,6 +115,22 @@ macro_rules! id {
 
 id!(LocalId);
 id!(PeerId);
+
+impl PeerId {
+    /// An empty (zero length) peer connection ID
+    pub const EMPTY: Self = Self {
+        bytes: [0; MAX_LEN],
+        len: 0,
+    };
+}
+
+impl LocalId {
+    /// An empty minimum length local connection ID
+    pub const EMPTY: Self = Self {
+        bytes: [0; MAX_LEN],
+        len: MIN_LEN as u8,
+    };
+}
 
 /// Uniquely identifies a QUIC connection between 2 peers
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]

@@ -38,7 +38,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             return Err(TransportError::PROTOCOL_VIOLATION.with_reason("packet too small"));
         }
 
-        let destination_connection_id: connection::Id =
+        let destination_connection_id: connection::LocalId =
             packet.destination_connection_id().try_into()?;
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.2
@@ -169,7 +169,6 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             let path_id = connection.on_datagram_received(
                 locked_shared_state,
                 datagram,
-                &source_connection_id,
                 endpoint_context.congestion_controller,
             )?;
 

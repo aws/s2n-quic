@@ -24,7 +24,7 @@ use std::collections::hash_map::{Entry, HashMap};
 #[derive(Debug)]
 struct ConnectionIdMapperState {
     /// Maps from external to internal connection IDs
-    connection_map: HashMap<connection::Id, InternalConnectionId>,
+    connection_map: HashMap<connection::LocalId, InternalConnectionId>,
 }
 
 impl ConnectionIdMapperState {
@@ -36,7 +36,7 @@ impl ConnectionIdMapperState {
 
     fn try_insert(
         &mut self,
-        external_id: &connection::Id,
+        external_id: &connection::LocalId,
         internal_id: InternalConnectionId,
     ) -> Result<(), ()> {
         let entry = self.connection_map.entry(*external_id);
@@ -68,7 +68,7 @@ impl ConnectionIdMapper {
     /// connection ID.
     pub fn lookup_internal_connection_id(
         &self,
-        connection_id: &connection::Id,
+        connection_id: &connection::LocalId,
     ) -> Option<InternalConnectionId> {
         let guard = self.state.borrow();
         guard.connection_map.get(connection_id).map(Clone::clone)
@@ -80,7 +80,7 @@ impl ConnectionIdMapper {
     pub fn create_registration(
         &mut self,
         internal_id: InternalConnectionId,
-        initial_connection_id: &connection::Id,
+        initial_connection_id: &connection::LocalId,
     ) -> ConnectionIdMapperRegistration {
         let mut registration = ConnectionIdMapperRegistration {
             internal_id,
@@ -173,7 +173,7 @@ pub struct ConnectionIdMapperRegistration {
 
 #[derive(Debug)]
 struct LocalConnectionIdInfo {
-    id: connection::Id,
+    id: connection::LocalId,
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
     //# Each Connection ID has an associated sequence number to assist in
     //# detecting when NEW_CONNECTION_ID or RETIRE_CONNECTION_ID frames refer
@@ -315,7 +315,7 @@ impl ConnectionIdMapperRegistration {
     /// registered or is already used by a different internal connection.
     pub fn register_connection_id(
         &mut self,
-        id: &connection::Id,
+        id: &connection::LocalId,
         expiration: Option<Timestamp>,
     ) -> Result<(), ConnectionIdMapperRegistrationError> {
         if self.registered_ids.iter().any(|id_info| id_info.id == *id) {
@@ -612,13 +612,16 @@ mod tests {
     };
 
     impl ConnectionIdMapperRegistration {
-        fn get_connection_id_info(&self, id: &connection::Id) -> Option<&LocalConnectionIdInfo> {
+        fn get_connection_id_info(
+            &self,
+            id: &connection::LocalId,
+        ) -> Option<&LocalConnectionIdInfo> {
             self.registered_ids.iter().find(|id_info| id_info.id == *id)
         }
 
         fn get_connection_id_info_mut(
             &mut self,
-            id: &connection::Id,
+            id: &connection::LocalId,
         ) -> Option<&mut LocalConnectionIdInfo> {
             self.registered_ids
                 .iter_mut()
@@ -634,8 +637,8 @@ mod tests {
 
         let id1 = id_generator.generate_id();
 
-        let ext_id_1 = connection::Id::try_from_bytes(b"id1").unwrap();
-        let ext_id_2 = connection::Id::try_from_bytes(b"id2").unwrap();
+        let ext_id_1 = connection::LocalId::try_from_bytes(b"id1").unwrap();
+        let ext_id_2 = connection::LocalId::try_from_bytes(b"id2").unwrap();
 
         let expiration = s2n_quic_platform::time::now() + MIN_LIFETIME;
 
@@ -658,7 +661,7 @@ mod tests {
     //# MUST NOT be issued more than once on the same connection.
     #[test]
     fn same_connection_id_must_not_be_issued_for_same_connection() {
-        let ext_id = connection::Id::try_from_bytes(b"id1").unwrap();
+        let ext_id = connection::LocalId::try_from_bytes(b"id1").unwrap();
         let mut reg = ConnectionIdMapper::new()
             .create_registration(InternalConnectionIdGenerator::new().generate_id(), &ext_id);
 
@@ -674,8 +677,8 @@ mod tests {
     //# each newly issued connection ID MUST increase by 1.
     #[test]
     fn sequence_number_must_increase_by_one() {
-        let ext_id_1 = connection::Id::try_from_bytes(b"id1").unwrap();
-        let ext_id_2 = connection::Id::try_from_bytes(b"id2").unwrap();
+        let ext_id_1 = connection::LocalId::try_from_bytes(b"id1").unwrap();
+        let ext_id_2 = connection::LocalId::try_from_bytes(b"id2").unwrap();
 
         let mut reg = ConnectionIdMapper::new().create_registration(
             InternalConnectionIdGenerator::new().generate_id(),
@@ -704,10 +707,10 @@ mod tests {
         let id1 = id_generator.generate_id();
         let id2 = id_generator.generate_id();
 
-        let ext_id_1 = connection::Id::try_from_bytes(b"id1").unwrap();
-        let ext_id_2 = connection::Id::try_from_bytes(b"id2").unwrap();
-        let ext_id_3 = connection::Id::try_from_bytes(b"id3").unwrap();
-        let ext_id_4 = connection::Id::try_from_bytes(b"id4").unwrap();
+        let ext_id_1 = connection::LocalId::try_from_bytes(b"id1").unwrap();
+        let ext_id_2 = connection::LocalId::try_from_bytes(b"id2").unwrap();
+        let ext_id_3 = connection::LocalId::try_from_bytes(b"id3").unwrap();
+        let ext_id_4 = connection::LocalId::try_from_bytes(b"id4").unwrap();
 
         let mut reg1 = mapper.create_registration(id1, &ext_id_1);
         let mut reg2 = mapper.create_registration(id2, &ext_id_3);
@@ -768,8 +771,8 @@ mod tests {
 
         let id1 = id_generator.generate_id();
 
-        let ext_id_1 = connection::Id::try_from_bytes(b"id1").unwrap();
-        let ext_id_2 = connection::Id::try_from_bytes(b"id2").unwrap();
+        let ext_id_1 = connection::LocalId::try_from_bytes(b"id1").unwrap();
+        let ext_id_2 = connection::LocalId::try_from_bytes(b"id2").unwrap();
 
         let now = s2n_quic_platform::time::now();
 
@@ -834,9 +837,9 @@ mod tests {
 
         let id1 = id_generator.generate_id();
 
-        let ext_id_1 = connection::Id::try_from_bytes(b"id1").unwrap();
-        let ext_id_2 = connection::Id::try_from_bytes(b"id2").unwrap();
-        let ext_id_3 = connection::Id::try_from_bytes(b"id3").unwrap();
+        let ext_id_1 = connection::LocalId::try_from_bytes(b"id1").unwrap();
+        let ext_id_2 = connection::LocalId::try_from_bytes(b"id2").unwrap();
+        let ext_id_3 = connection::LocalId::try_from_bytes(b"id3").unwrap();
 
         let mut reg1 = mapper.create_registration(id1, &ext_id_1);
 
@@ -884,9 +887,9 @@ mod tests {
 
         let id1 = id_generator.generate_id();
 
-        let ext_id_1 = connection::Id::try_from_bytes(b"id1").unwrap();
-        let ext_id_2 = connection::Id::try_from_bytes(b"id2").unwrap();
-        let ext_id_3 = connection::Id::try_from_bytes(b"id3").unwrap();
+        let ext_id_1 = connection::LocalId::try_from_bytes(b"id1").unwrap();
+        let ext_id_2 = connection::LocalId::try_from_bytes(b"id2").unwrap();
+        let ext_id_3 = connection::LocalId::try_from_bytes(b"id3").unwrap();
 
         let mut reg1 = mapper.create_registration(id1, &ext_id_1);
         reg1.set_active_connection_id_limit(2);
@@ -915,7 +918,7 @@ mod tests {
 
         let id1 = id_generator.generate_id();
 
-        let ext_id_1 = connection::Id::try_from_bytes(b"id1").unwrap();
+        let ext_id_1 = connection::LocalId::try_from_bytes(b"id1").unwrap();
 
         let mut reg1 = mapper.create_registration(id1, &ext_id_1);
         reg1.set_active_connection_id_limit(100);
@@ -933,9 +936,9 @@ mod tests {
 
         let id1 = id_generator.generate_id();
 
-        let ext_id_1 = connection::Id::try_from_bytes(b"id1").unwrap();
-        let ext_id_2 = connection::Id::try_from_bytes(b"id2").unwrap();
-        let ext_id_3 = connection::Id::try_from_bytes(b"id3").unwrap();
+        let ext_id_1 = connection::LocalId::try_from_bytes(b"id1").unwrap();
+        let ext_id_2 = connection::LocalId::try_from_bytes(b"id2").unwrap();
+        let ext_id_3 = connection::LocalId::try_from_bytes(b"id3").unwrap();
 
         let now = s2n_quic_platform::time::now();
 
@@ -1019,9 +1022,9 @@ mod tests {
 
         let id1 = id_generator.generate_id();
 
-        let ext_id_1 = connection::Id::try_from_bytes(b"id1").unwrap();
-        let ext_id_2 = connection::Id::try_from_bytes(b"id2").unwrap();
-        let ext_id_3 = connection::Id::try_from_bytes(b"id3").unwrap();
+        let ext_id_1 = connection::LocalId::try_from_bytes(b"id1").unwrap();
+        let ext_id_2 = connection::LocalId::try_from_bytes(b"id2").unwrap();
+        let ext_id_3 = connection::LocalId::try_from_bytes(b"id3").unwrap();
 
         let mut reg1 = mapper.create_registration(id1, &ext_id_1);
         reg1.set_active_connection_id_limit(3);
@@ -1087,8 +1090,8 @@ mod tests {
 
         let id1 = id_generator.generate_id();
 
-        let ext_id_1 = connection::Id::try_from_bytes(b"id1").unwrap();
-        let ext_id_2 = connection::Id::try_from_bytes(b"id2").unwrap();
+        let ext_id_1 = connection::LocalId::try_from_bytes(b"id1").unwrap();
+        let ext_id_2 = connection::LocalId::try_from_bytes(b"id2").unwrap();
 
         let mut reg1 = mapper.create_registration(id1, &ext_id_1);
         reg1.set_active_connection_id_limit(3);
@@ -1134,8 +1137,8 @@ mod tests {
 
         let id1 = id_generator.generate_id();
 
-        let ext_id_1 = connection::Id::try_from_bytes(b"id1").unwrap();
-        let ext_id_2 = connection::Id::try_from_bytes(b"id2").unwrap();
+        let ext_id_1 = connection::LocalId::try_from_bytes(b"id1").unwrap();
+        let ext_id_2 = connection::LocalId::try_from_bytes(b"id2").unwrap();
 
         let mut reg1 = mapper.create_registration(id1, &ext_id_1);
         reg1.set_active_connection_id_limit(3);
@@ -1192,9 +1195,9 @@ mod tests {
 
         let id1 = id_generator.generate_id();
 
-        let ext_id_1 = connection::Id::try_from_bytes(b"id1").unwrap();
-        let ext_id_2 = connection::Id::try_from_bytes(b"id2").unwrap();
-        let ext_id_3 = connection::Id::try_from_bytes(b"id3").unwrap();
+        let ext_id_1 = connection::LocalId::try_from_bytes(b"id1").unwrap();
+        let ext_id_2 = connection::LocalId::try_from_bytes(b"id2").unwrap();
+        let ext_id_3 = connection::LocalId::try_from_bytes(b"id3").unwrap();
 
         let mut reg1 = mapper.create_registration(id1, &ext_id_1);
         reg1.set_active_connection_id_limit(3);
@@ -1269,9 +1272,9 @@ mod tests {
 
         let id1 = id_generator.generate_id();
 
-        let ext_id_1 = connection::Id::try_from_bytes(b"id1").unwrap();
-        let ext_id_2 = connection::Id::try_from_bytes(b"id2").unwrap();
-        let ext_id_3 = connection::Id::try_from_bytes(b"id3").unwrap();
+        let ext_id_1 = connection::LocalId::try_from_bytes(b"id1").unwrap();
+        let ext_id_2 = connection::LocalId::try_from_bytes(b"id2").unwrap();
+        let ext_id_3 = connection::LocalId::try_from_bytes(b"id3").unwrap();
 
         let mut reg1 = mapper.create_registration(id1, &ext_id_1);
         reg1.set_active_connection_id_limit(3);

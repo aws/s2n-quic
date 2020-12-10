@@ -327,8 +327,12 @@ macro_rules! optional_transport_parameter {
 }
 
 macro_rules! connection_id_parameter {
-    ($name:ident, $tag:expr) => {
-        transport_parameter!($name(connection::Id), $tag, connection::Id::EMPTY);
+    ($name:ident, $id_type:ident, $tag:expr) => {
+        transport_parameter!(
+            $name(connection::$id_type),
+            $tag,
+            connection::$id_type::EMPTY
+        );
 
         // The inner connection_id handles validation
         impl TransportParameterValidator for $name {}
@@ -337,7 +341,7 @@ macro_rules! connection_id_parameter {
             type Error = crate::connection::id::Error;
 
             fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-                Ok(Self(connection::Id::try_from(value)?))
+                Ok(Self(connection::$id_type::try_from(value)?))
             }
         }
 
@@ -364,7 +368,7 @@ macro_rules! connection_id_parameter {
 //#    by the client; see Section 7.3.  This transport parameter is only
 //#    sent by a server.
 
-connection_id_parameter!(OriginalDestinationConnectionId, 0x00);
+connection_id_parameter!(OriginalDestinationConnectionId, LocalId, 0x00);
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2
 //# max_idle_timeout (0x01):  The max idle timeout is a value in
@@ -923,7 +927,7 @@ impl ActiveConnectionIdLimit {
 //#    included in the Source Connection ID field of the first Initial
 //#    packet it sends for the connection; see Section 7.3.
 
-connection_id_parameter!(InitialSourceConnectionId, 0x0f);
+connection_id_parameter!(InitialSourceConnectionId, LocalId, 0x0f);
 optional_transport_parameter!(InitialSourceConnectionId);
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2
@@ -931,7 +935,7 @@ optional_transport_parameter!(InitialSourceConnectionId);
 //#    included in the Source Connection ID field of a Retry packet; see
 //#    Section 7.3.  This transport parameter is only sent by a server.
 
-connection_id_parameter!(RetrySourceConnectionId, 0x10);
+connection_id_parameter!(RetrySourceConnectionId, LocalId, 0x10);
 optional_transport_parameter!(RetrySourceConnectionId);
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2
