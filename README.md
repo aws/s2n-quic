@@ -41,3 +41,11 @@ Test targets can be executed on stable by disabling the sanitzer:
 ```bash
 $ cargo bolero test varint -p s2n-quic-core -s NONE
 ```
+
+### Testing all the things
+
+You can verify most tests run in the CI locally:
+
+ * Simulate interop tests locally by following the instructions [here](scripts/interop/README.md).
+ * Run a compliance report: `./scripts/compliance`
+ * Run rustfmt, clippy, and all of the tests: `./scripts/test`

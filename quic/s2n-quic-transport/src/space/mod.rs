@@ -153,7 +153,7 @@ impl<Config: connection::Config> PacketSpaceManager<Config> {
             session.poll(&mut context)?;
 
             // The TLS session is no longer needed
-            if self.application.is_some() {
+            if self.is_handshake_confirmed() {
                 self.session = None;
             }
         }

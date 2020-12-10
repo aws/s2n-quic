@@ -2,7 +2,7 @@ use crate::{file::File, Result};
 use bytes::Bytes;
 use core::convert::TryInto;
 use futures::stream::StreamExt;
-use s2n_quic::{stream::BidirectionalStream, Connection, Server};
+use s2n_quic::{provider::endpoint_limits, stream::BidirectionalStream, Connection, Server};
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
@@ -160,9 +160,19 @@ impl Interop {
             .with_alpn_protocols(self.alpn_protocols.iter().map(String::as_bytes))?
             .build()?;
 
+        let mut max_handshakes = 100;
+        if let Some("retry") = std::env::var("TESTCASE").ok().as_deref() {
+            max_handshakes = 0;
+        }
+
+        let limits = endpoint_limits::Default::builder()
+            .with_inflight_handshake_limit(max_handshakes)?
+            .build()?;
+
         let server = Server::builder()
             .with_io(("::", self.port))?
             .with_tls(tls)?
+            .with_endpoint_limits(limits)?
             .start()
             .unwrap();
 
@@ -193,11 +203,11 @@ impl Interop {
             Some("handshake") => true,
             Some("transfer") => true,
             Some("chacha20") => true,
-            Some("retry") => false,
+            Some("retry") => true,
             Some("resumption") => false,
             Some("zerortt") => false,
             Some("http3") => false,
-            Some("mutliconnect") => true,
+            Some("multiconnect") => true,
             Some("handshakecorruption") => true,
             Some("transfercorruption") => true,
             Some("ecn") => false,

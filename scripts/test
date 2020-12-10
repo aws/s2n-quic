@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+
+# This script runs basic checks to verify code will pass through the CI.
+
+set -e
+
+cargo +nightly fmt --all -- --check
+cargo clippy --all-features --all-targets -- -D warnings
+cargo test

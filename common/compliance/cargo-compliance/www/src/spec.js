@@ -74,13 +74,13 @@ export function Requirements({ requirements, showSection }) {
       field: "section",
       headerName: "Section",
       valueGetter(params) {
-        return params.data.section.id;
+        return params.row.section.id;
       },
       sortComparator(v1, v2, row1, row2) {
-        return row1.data.cmp(row2.data);
+        return row1.row.cmp(row2.row);
       },
       renderCell(params) {
-        const requirement = params.data;
+        const requirement = params.row;
         return (
           <Link
             to={{
@@ -110,18 +110,19 @@ export function Requirements({ requirements, showSection }) {
         headerName: "Status",
         width: 150,
         sortComparator(v1, v2, row1, row2) {
-          const a = requirementStatus(row1.data)[0];
-          const b = requirementStatus(row2.data)[0];
+          const a = requirementStatus(row1.row)[0];
+          const b = requirementStatus(row2.row)[0];
           return b - a;
         },
         valueGetter(params) {
-          return requirementStatus(params.data) || [];
+          return requirementStatus(params.row) || [];
         },
         valueFormatter(params) {
-          return params.value[1];
+          return (params.value || requirementStatus(params.row))[1];
         },
         cellClassName(params) {
-          return classes[params.value[2]];
+          const cls = (params.value || requirementStatus(params.row))[2];
+          return classes[cls];
         },
       },
     ]
@@ -196,7 +197,15 @@ export function Requirements({ requirements, showSection }) {
   );
 }
 
+const useStatsStyles = makeStyles((theme) => ({
+  totals: {
+    borderTop: `2px solid ${theme.palette.grey.A200}`,
+  },
+}));
+
 export function Stats({ spec: { stats } }) {
+  const classes = useStatsStyles();
+
   return (
     <>
       <Table size="small">
@@ -215,32 +224,29 @@ export function Stats({ spec: { stats } }) {
           {LEVELS.filter((level) => stats[level].total).map((level) => (
             <StatsRow key={level} title={level} stats={stats[level]} />
           ))}
-          {/* TODO add a divider */}
-          <StatsRow title="Totals" stats={stats.overall} />
+          <StatsRow
+            className={classes.totals}
+            title="Totals"
+            stats={stats.overall}
+          />
         </TableBody>
       </Table>
     </>
   );
 }
 
-function StatsRow({ title, stats }) {
+function StatsRow({ title, stats, ...props }) {
   return (
-    <TableRow>
+    <TableRow {...props}>
       <TableCell component="th">{title}</TableCell>
       <TableCell align="right">{stats.total}</TableCell>
-      <TableCell align="right">
-        <Tooltip title={stats.completePercent}>
-          <span>{stats.complete}</span>
-        </Tooltip>
-      </TableCell>
-      <TableCell align="right">
-        <Tooltip title={stats.citationPercent}>
-          <span>{stats.citations}</span>
-        </Tooltip>
-      </TableCell>
-      <TableCell align="right">{stats.tests}</TableCell>
-      <TableCell align="right">{stats.exceptions}</TableCell>
-      <TableCell align="right">{stats.todos}</TableCell>
+      {["complete", "citations", "tests", "exceptions", "todos"].map((name) => (
+        <TableCell key={name} align="right">
+          <Tooltip title={stats.percent(name)}>
+            <span>{stats[name]}</span>
+          </Tooltip>
+        </TableCell>
+      ))}
     </TableRow>
   );
 }

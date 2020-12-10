@@ -41,6 +41,8 @@ impl<'a, Config: connection::Config> tls::Context<Config::TLSSession>
                 .with_reason("handshake keys initialized more than once"));
         }
 
+        // After receiving handshake keys, the initial crypto stream should be completely
+        // finished
         if let Some(space) = self.initial.as_mut() {
             space.crypto_stream.finish()?;
         }
@@ -79,10 +81,6 @@ impl<'a, Config: connection::Config> tls::Context<Config::TLSSession>
         if self.application.is_some() {
             return Err(TransportError::INTERNAL_ERROR
                 .with_reason("application keys initialized more than once"));
-        }
-
-        if let Some(space) = self.handshake.as_mut() {
-            space.crypto_stream.finish()?;
         }
 
         if Config::ENDPOINT_TYPE.is_client() {
@@ -156,6 +154,12 @@ impl<'a, Config: connection::Config> tls::Context<Config::TLSSession>
     }
 
     fn on_handshake_done(&mut self) -> Result<(), TransportError> {
+        // After the handshake is done, the handshake crypto stream should be completely
+        // finished
+        if let Some(space) = self.handshake.as_mut() {
+            space.crypto_stream.finish()?;
+        }
+
         if let Some(application) = self.application.as_mut() {
             if Config::ENDPOINT_TYPE.is_server() {
                 //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9.2

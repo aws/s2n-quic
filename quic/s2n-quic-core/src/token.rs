@@ -22,16 +22,15 @@ pub trait Format {
         output_buffer: &mut [u8],
     ) -> Option<()>;
 
-    /// Return the source of a valid token.
+    /// Return the original destination connection id of a valid token.
     /// If the token is invalid, return None.
     /// Callers should detect duplicate tokens and treat them as invalid.
     fn validate_token(
         &mut self,
         peer_address: &SocketAddress,
-        destination_connection_id: &connection::LocalId,
-        source_connection_id: &connection::PeerId,
+        destination_connection_id: &connection::Id,
         token: &[u8],
-    ) -> Option<Source>;
+    ) -> Option<connection::Id>;
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -76,12 +75,11 @@ pub mod testing {
         fn validate_token(
             &mut self,
             _peer_address: &SocketAddress,
-            _destination_connection_id: &connection::LocalId,
-            _source_connection_id: &connection::PeerId,
+            _destination_connection_id: &connection::Id,
             token: &[u8],
-        ) -> Option<Source> {
+        ) -> Option<connection::Id> {
             if token == retry::example::TOKEN {
-                return Some(Source::RetryPacket);
+                return Some(connection::Id::EMPTY);
             }
 
             None
