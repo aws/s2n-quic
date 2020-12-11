@@ -402,7 +402,7 @@ jobs:
         id: s3
         run: |
           TARGET="s3://s2n-quic-ci-artifacts/${{ github.sha }}/compliance.html"
-          aws s3 cp target/perf/1G.svg $TARGET --acl private --follow-symlinks
+          aws s3 cp target/compliance/report.html $TARGET --acl private --follow-symlinks
           # generate a presigned url that is valid for 30 days
           URL=$(aws s3 presign $TARGET --expires-in 2592000)
           echo "::set-output name=URL::$URL"
