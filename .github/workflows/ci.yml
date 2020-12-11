@@ -617,7 +617,7 @@ jobs:
         run: sccache --stop-server
 
       - name: Run script
-        run: ./scripts/${{ matrix.script }}-pref/run
+        run: ./scripts/${{ matrix.script }}-perf/run
 
       - uses: aws-actions/configure-aws-credentials@v1
         with:
