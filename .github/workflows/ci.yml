@@ -609,8 +609,7 @@ jobs:
         run: sccache --start-server
 
       - name: Build
-        working-directory: scripts/${{ matrix.script }}-perf
-        run: ./build
+        run: ./scripts/${{ matrix.script }}-perf/build
         env:
           RUSTC_WRAPPER: sccache
 
