@@ -122,10 +122,14 @@ macro_rules! id {
     };
 }
 
-// s2n-QUIC does not provide zero-length connection IDs
+// Connection IDs that are generated locally and used to route packets from the peer to the local
+// endpoint. s2n-QUIC does not provide zero-length connection IDs, the minimum allowable LocalId
+// is 4 bytes.
 id!(LocalId, 4);
-// Peers may provide zero-length connection IDs
+// Connection IDs used to route packets to the peer. The peer may choose to use zero-length
+// connection IDs.
 id!(PeerId, 0);
+// The randomly generated ID the client sends when first contacting a server.
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.2
 //# When an Initial packet is sent by a client that has not previously
 //# received an Initial or Retry packet from the server, the client
