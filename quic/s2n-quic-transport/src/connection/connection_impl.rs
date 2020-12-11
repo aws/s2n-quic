@@ -524,15 +524,13 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
     ) -> Result<path::Id, TransportError> {
         let is_handshake_confirmed = shared_state.space_manager.is_handshake_confirmed();
 
-        let (id, unblocked) = self.path_manager.on_datagram_received(
-            datagram,
-            is_handshake_confirmed,
-            || {
-                let path_info = congestion_controller::PathInfo::new(&datagram.remote_address);
-                // TODO set alpn if available
-                congestion_controller_endpoint.new_congestion_controller(path_info)
-            },
-        )?;
+        let (id, unblocked) =
+            self.path_manager
+                .on_datagram_received(datagram, is_handshake_confirmed, || {
+                    let path_info = congestion_controller::PathInfo::new(&datagram.remote_address);
+                    // TODO set alpn if available
+                    congestion_controller_endpoint.new_congestion_controller(path_info)
+                })?;
 
         if unblocked {
             //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.6

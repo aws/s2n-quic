@@ -125,7 +125,8 @@ impl<'a> Retry<'a> {
         buffer.write_sized(T::TOKEN_LEN, |token_buf| {
             outcome = token_format.generate_retry_token(
                 &remote_address,
-                &connection::PeerId::try_from_bytes(retry_packet.destination_connection_id).unwrap(),
+                &connection::PeerId::try_from_bytes(retry_packet.destination_connection_id)
+                    .unwrap(),
                 &connection::InitialId::try_from_bytes(packet.destination_connection_id()).unwrap(),
                 token_buf,
             );

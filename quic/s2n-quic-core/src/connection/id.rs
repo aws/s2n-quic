@@ -1,9 +1,11 @@
 //! Defines the QUIC connection ID
 
 use crate::{inet::SocketAddress, transport::error::TransportError};
-use core::{convert::TryFrom, time::Duration};
+use core::{
+    convert::{TryFrom, TryInto},
+    time::Duration,
+};
 use s2n_codec::{decoder_value, Encoder, EncoderValue};
-use std::convert::TryInto;
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1
 //# Each connection possesses a set of connection identifiers, or
