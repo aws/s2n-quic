@@ -178,7 +178,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             return;
         };
 
-        let connection_id =
+        let destination_connection_id =
             match connection::LocalId::try_from_bytes(packet.destination_connection_id()) {
                 Some(connection_id) => connection_id,
                 None => {
@@ -193,7 +193,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             payload_len,
             ecn,
             remote_address,
-            destination_connection_id: connection_id,
+            destination_connection_id,
         };
 
         // ensure the version is supported
@@ -250,7 +250,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         shared_state,
                         datagram,
                         path_id,
-                        connection_id,
                         endpoint_context.connection_id_format,
                         remaining,
                     ) {

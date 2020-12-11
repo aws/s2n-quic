@@ -228,7 +228,6 @@ pub trait ConnectionTrait: Sized {
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         path_id: path::Id,
-        original_connection_id: connection::LocalId,
         connection_id_validator: &Validator,
         mut payload: DecoderBufferMut,
     ) -> Result<(), TransportError> {
@@ -245,7 +244,9 @@ pub trait ConnectionTrait: Sized {
                 //# with different connection IDs into a single UDP datagram.  Receivers
                 //# SHOULD ignore any subsequent packets with a different Destination
                 //# Connection ID than the first packet in the datagram.
-                if original_connection_id.as_bytes() != packet.destination_connection_id() {
+                if datagram.destination_connection_id.as_bytes()
+                    != packet.destination_connection_id()
+                {
                     break;
                 }
 

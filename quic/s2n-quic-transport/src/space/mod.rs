@@ -327,7 +327,6 @@ pub trait PacketSpace<Config: connection::Config> {
         frame: RetireConnectionID,
         _datagram: &DatagramInfo,
         _path: &mut Path<Config::CongestionController>,
-        _destination_connection_id: &[u8],
         _connection_id_mapper_registration: &mut ConnectionIdMapperRegistration,
     ) -> Result<(), TransportError> {
         Err(TransportError::PROTOCOL_VIOLATION
@@ -355,12 +354,10 @@ pub trait PacketSpace<Config: connection::Config> {
     ) -> Result<(), TransportError>;
 
     // TODO: Reduce arguments, https://github.com/awslabs/s2n-quic/issues/312
-    #[allow(clippy::too_many_arguments)]
     fn handle_cleartext_payload<'a>(
         &mut self,
         packet_number: PacketNumber,
         mut payload: DecoderBufferMut<'a>,
-        destination_connection_id: &[u8],
         datagram: &DatagramInfo,
         path: &mut Path<Config::CongestionController>,
         handshake_status: &mut HandshakeStatus,
@@ -500,7 +497,6 @@ pub trait PacketSpace<Config: connection::Config> {
                         frame,
                         datagram,
                         path,
-                        destination_connection_id,
                         connection_id_mapper_registration,
                     )
                     .map_err(on_error)?;
