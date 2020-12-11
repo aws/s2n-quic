@@ -258,6 +258,7 @@ mod tests {
             remote_address: new_addr,
             payload_len: 0,
             ecn: ExplicitCongestionNotification::default(),
+            destination_connection_id: connection::LocalId::EMPTY,
         };
 
         manager
@@ -273,6 +274,7 @@ mod tests {
             remote_address: new_addr,
             payload_len: 0,
             ecn: ExplicitCongestionNotification::default(),
+            destination_connection_id: connection::LocalId::EMPTY,
         };
 
         assert_eq!(

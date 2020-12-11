@@ -193,6 +193,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             payload_len,
             ecn,
             remote_address,
+            destination_connection_id: connection_id,
         };
 
         // ensure the version is supported
@@ -210,7 +211,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
         // to the Connection
         if let Some(internal_id) = self
             .connection_id_mapper
-            .lookup_internal_connection_id(&connection_id)
+            .lookup_internal_connection_id(&datagram.destination_connection_id)
         {
             let outcome = self
                 .connections

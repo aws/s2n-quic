@@ -1,4 +1,5 @@
 use crate::{
+    connection,
     inet::{ExplicitCongestionNotification, SocketAddress},
     time::Timestamp,
 };
@@ -10,4 +11,5 @@ pub struct DatagramInfo {
     pub remote_address: SocketAddress,
     pub payload_len: usize,
     pub ecn: ExplicitCongestionNotification,
+    pub destination_connection_id: connection::LocalId,
 }

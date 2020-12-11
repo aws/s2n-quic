@@ -2008,6 +2008,7 @@ mod test {
             remote_address: Default::default(),
             payload_len: 0,
             ecn: Default::default(),
+            destination_connection_id: connection::LocalId::EMPTY,
         };
 
         let mut ack_range = AckRanges::new(acked_packets.count());
