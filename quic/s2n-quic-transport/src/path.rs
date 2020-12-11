@@ -151,11 +151,11 @@ impl<CC: CongestionController> Manager<CC> {
     //# Tokens are
     //# invalidated when their associated connection ID is retired via a
     //# RETIRE_CONNECTION_ID frame (Section 19.16).
-    pub fn on_connection_id_retire(&self, _connenction_id: &connection::Id) {
+    pub fn on_connection_id_retire(&self, _connection_id: &connection::LocalId) {
         // TODO invalidate any tokens issued under this connection id
     }
 
-    pub fn on_connection_id_new(&self, _connection_id: &connection::Id) {}
+    pub fn on_connection_id_new(&self, _connection_id: &connection::LocalId) {}
 
     pub fn on_packet_received(&mut self) {}
 }

@@ -191,8 +191,8 @@ impl super::Format for Format {
     fn generate_new_token(
         &mut self,
         _peer_address: &SocketAddress,
-        _destination_connection_id: &connection::Id,
-        _source_connection_id: &connection::Id,
+        _destination_connection_id: &connection::PeerId,
+        _source_connection_id: &connection::LocalId,
         _output_buffer: &mut [u8],
     ) -> Option<()> {
         None

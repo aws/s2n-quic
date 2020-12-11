@@ -125,8 +125,8 @@ impl<Config: endpoint::Config> Negotiator<Config> {
 #[derive(Debug)]
 struct Transmission {
     remote_address: SocketAddress,
-    destination_connection_id: connection::Id,
-    source_connection_id: connection::Id,
+    destination_connection_id: connection::PeerId,
+    source_connection_id: connection::LocalId,
 }
 
 impl tx::Message for &Transmission {
@@ -225,7 +225,7 @@ mod tests {
             Initial {
                 version,
                 destination_connection_id: &[1u8, 2, 3][..],
-                source_connection_id: &[4u8, 5, 6][..],
+                source_connection_id: &[4u8, 5, 6, 7][..],
                 token: &[][..],
                 packet_number: pn(PacketNumberSpace::Initial),
                 payload: &[1u8, 2, 3, 4, 5][..],

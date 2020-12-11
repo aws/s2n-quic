@@ -8,8 +8,8 @@ pub trait Format {
     fn generate_new_token(
         &mut self,
         peer_address: &SocketAddress,
-        destination_connection_id: &connection::Id,
-        source_connection_id: &connection::Id,
+        destination_connection_id: &connection::PeerId,
+        source_connection_id: &connection::LocalId,
         output_buffer: &mut [u8],
     ) -> Option<()>;
 
@@ -53,8 +53,8 @@ pub mod testing {
         fn generate_new_token(
             &mut self,
             _peer_address: &SocketAddress,
-            _destination_connection_id: &connection::Id,
-            _source_connection_id: &connection::Id,
+            _destination_connection_id: &connection::PeerId,
+            _source_connection_id: &connection::LocalId,
             _output_buffer: &mut [u8],
         ) -> Option<()> {
             // TODO implement one for testing

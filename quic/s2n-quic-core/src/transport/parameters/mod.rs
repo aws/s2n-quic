@@ -799,7 +799,7 @@ type CIDLength = u8;
 pub struct PreferredAddress {
     pub ipv4_address: Option<SocketAddressV4>,
     pub ipv6_address: Option<SocketAddressV6>,
-    pub connection_id: crate::connection::Id,
+    pub connection_id: crate::connection::LocalId,
     pub stateless_reset_token: crate::stateless_reset_token::StatelessResetToken,
 }
 
@@ -834,7 +834,7 @@ impl TransportParameter for PreferredAddress {
         Self {
             ipv4_address: None,
             ipv6_address: None,
-            connection_id: connection::Id::EMPTY,
+            connection_id: connection::LocalId::EMPTY,
             stateless_reset_token: StatelessResetToken::ZEROED,
         }
     }
