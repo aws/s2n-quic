@@ -81,6 +81,21 @@ impl<CC: CongestionController> Manager<CC> {
             return Ok((id, unblocked));
         }
 
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.5
+        //= type=TODO
+        //= tracking-issue=316
+        //# Similarly, an endpoint MUST NOT reuse a connection ID when sending to
+        //# more than one destination address.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.5
+        //= type=TODO
+        //= tracking-issue=316
+        //# Due to network changes outside
+        //# the control of its peer, an endpoint might receive packets from a new
+        //# source address with the same destination connection ID, in which case
+        //# it MAY continue to use the current connection ID with the new remote
+        //# address while still sending from the same local address.
+
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
         //# The design of QUIC relies on endpoints retaining a stable address
         //# for the duration of the handshake.  An endpoint MUST NOT initiate
@@ -89,6 +104,12 @@ impl<CC: CongestionController> Manager<CC> {
         if is_handshake_confirmed {
             let path = Path::new(
                 datagram.remote_address,
+                // TODO https://github.com/awslabs/s2n-quic/issues/316
+                // The existing peer connection id may only be reused if the destination
+                // connection ID on this packet had not been used before (this would happen
+                // when the peer's remote address gets changed due to circumstances out of their
+                // control). Otherwise we will need to consume a new connection::PeerId or ignore
+                // the request if we don't have any connection::PeerIds to use.
                 self.active_path().1.peer_connection_id,
                 RTTEstimator::new(EARLY_ACK_SETTINGS.max_ack_delay),
                 new_congestion_controller(),
