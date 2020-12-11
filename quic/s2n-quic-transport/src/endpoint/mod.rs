@@ -33,6 +33,7 @@ mod version;
 pub use config::{Config, Context};
 use connection::id::ConnectionInfo;
 pub use s2n_quic_core::endpoint::*;
+use s2n_quic_core::inet::{ExplicitCongestionNotification, SocketAddress};
 
 /// A QUIC `Endpoint`
 pub struct Endpoint<Cfg: Config> {
@@ -95,14 +96,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
         for entry in entries.iter_mut() {
             if let Some(remote_address) = entry.remote_address() {
-                let datagram = DatagramInfo {
-                    timestamp,
-                    payload_len: entry.payload_len(),
-                    ecn: entry.ecn(),
-                    remote_address,
-                };
-
-                self.receive_datagram(&datagram, entry.payload_mut())
+                self.receive_datagram(remote_address, entry.ecn(), entry.payload_mut(), timestamp)
             }
         }
         let len = entries.len();
@@ -158,12 +152,19 @@ impl<Cfg: Config> Endpoint<Cfg> {
     }
 
     /// Ingests a single datagram
-    fn receive_datagram(&mut self, datagram: &DatagramInfo, payload: &mut [u8]) {
+    fn receive_datagram(
+        &mut self,
+        remote_address: SocketAddress,
+        ecn: ExplicitCongestionNotification,
+        payload: &mut [u8],
+        timestamp: Timestamp,
+    ) {
         let endpoint_context = self.config.context();
 
         // Try to decode the first packet in the datagram
+        let payload_len = payload.len();
         let buffer = DecoderBufferMut::new(payload);
-        let connection_info = ConnectionInfo::new(&datagram.remote_address);
+        let connection_info = ConnectionInfo::new(&remote_address);
         let (packet, remaining) = if let Ok((packet, remaining)) = ProtectedPacket::decode(
             buffer,
             &connection_info,
@@ -177,15 +178,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
             return;
         };
 
-        // ensure the version is supported
-        if self
-            .version_negotiator
-            .on_packet(datagram, &packet)
-            .is_err()
-        {
-            return;
-        }
-
         let connection_id =
             match connection::LocalId::try_from_bytes(packet.destination_connection_id()) {
                 Some(connection_id) => connection_id,
@@ -195,6 +187,22 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     return;
                 }
             };
+
+        let datagram = &DatagramInfo {
+            timestamp,
+            payload_len,
+            ecn,
+            remote_address,
+        };
+
+        // ensure the version is supported
+        if self
+            .version_negotiator
+            .on_packet(datagram, &packet)
+            .is_err()
+        {
+            return;
+        }
 
         // TODO validate the connection ID before looking up the connection in the map
 
