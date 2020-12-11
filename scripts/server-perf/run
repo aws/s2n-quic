@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+
+set -e
+
+SIZE=${1:-1G}
+
+./scripts/server-perf/build
+
+mkdir -p ./target/perf
+if [ ! -f "./target/perf/$SIZE.img" ]; then
+  fallocate -l "$SIZE" "./target/perf/$SIZE.img"
+fi
+
+sudo sh -c "perf record \
+  --output ./target/perf/$SIZE.perf \
+  --call-graph dwarf \
+ ./target/release/s2n-quic-qns \
+  interop \
+  server \
+  --port 4433 \
+  --www-dir ./target/perf" &
+SUDO_PID=$!
+
+function stop_server() {
+  SHELL_PID=$(ps --ppid $SUDO_PID -o pid=)
+  PERF_PID=$(ps --ppid $SHELL_PID -o pid=)
+  sudo kill -SIGINT $PERF_PID
+  wait $SUDO_PID || true
+  if [ ! -z "$1" ]; then
+    echo $1
+    exit 1
+  fi
+}
+
+echo "waiting for server to boot"
+sleep 3
+
+echo "executing request"
+./scripts/server-perf/client/target/release/perf-client \
+  https://localhost:4433/$SIZE.img || stop_server "failed to finish the request"
+
+sleep 1
+stop_server
+
+sudo perf script \
+  --input ./target/perf/$SIZE.perf \
+  2>/dev/null \
+  | inferno-collapse-perf \
+  > ./target/perf/$SIZE.folded
+
+cat ./target/perf/$SIZE.folded \
+  | inferno-flamegraph \
+  > ./target/perf/$SIZE.svg
+
+echo "flamegraph available in ./target/perf/$SIZE.svg"

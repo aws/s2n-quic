@@ -1,0 +1,16 @@
+[package]
+name = "perf-client"
+version = "0.1.0"
+authors = ["Cameron Bytheway <bythewc@amazon.com>"]
+edition = "2018"
+
+[dependencies]
+anyhow = "1"
+bytesize = "1"
+quinn = { git = "https://github.com/quinn-rs/quinn", rev = "fc2016103dadb45158b3699a63e9046e4383ca63" }
+structopt = "0.3"
+tokio = { version = "0.2", features = ["macros", "rt-core"] }
+url = "2"
+
+[workspace]
+members = ["."]
