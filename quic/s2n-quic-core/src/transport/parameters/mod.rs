@@ -369,6 +369,7 @@ macro_rules! connection_id_parameter {
 //#    sent by a server.
 
 connection_id_parameter!(OriginalDestinationConnectionId, InitialId, 0x00);
+optional_transport_parameter!(OriginalDestinationConnectionId);
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2
 //# max_idle_timeout (0x01):  The max idle timeout is a value in
@@ -1056,7 +1057,7 @@ pub type ClientTransportParameters = TransportParameters<
 
 /// Specific TransportParameters sent by the server endpoint
 pub type ServerTransportParameters = TransportParameters<
-    OriginalDestinationConnectionId,
+    Option<OriginalDestinationConnectionId>,
     Option<StatelessResetToken>,
     Option<PreferredAddress>,
     Option<RetrySourceConnectionId>,
@@ -1256,7 +1257,9 @@ mod snapshot_tests {
             max_ack_delay: integer_value.try_into().unwrap(),
             migration_support: MigrationSupport::Disabled,
             active_connection_id_limit: integer_value.try_into().unwrap(),
-            original_destination_connection_id: [1, 2, 3, 4, 5, 6, 7, 8][..].try_into().unwrap(),
+            original_destination_connection_id: Some(
+                [1, 2, 3, 4, 5, 6, 7, 8][..].try_into().unwrap(),
+            ),
             stateless_reset_token: Some([2; 16].into()),
             preferred_address: Some(PreferredAddress {
                 ipv4_address: Some(SocketAddressV4::new([127, 0, 0, 1], 1337)),
@@ -1267,23 +1270,6 @@ mod snapshot_tests {
             initial_source_connection_id: Some([1, 2, 3, 4][..].try_into().unwrap()),
             retry_source_connection_id: Some([1, 2, 3, 4][..].try_into().unwrap()),
         }
-    }
-
-    #[test]
-    fn server_snapshot_with_empty_initial_scid_test() {
-        let value = ServerTransportParameters {
-            initial_source_connection_id: Some([][..].try_into().unwrap()),
-            ..Default::default()
-        };
-        let encoded_output = assert_codec_round_trip_value!(ServerTransportParameters, value);
-
-        #[cfg(not(miri))] // snapshot tests don't work on miri
-        insta::assert_debug_snapshot!(
-            "server_snapshot_with_empty_initial_scid_test",
-            encoded_output
-        );
-
-        let _ = encoded_output;
     }
 
     #[test]

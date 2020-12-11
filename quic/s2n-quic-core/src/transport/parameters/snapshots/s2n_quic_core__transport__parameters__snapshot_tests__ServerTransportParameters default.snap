@@ -57,9 +57,7 @@ TransportParameters {
             2,
         ),
     ),
-    original_destination_connection_id: OriginalDestinationConnectionId(
-        ConnectionId([]),
-    ),
+    original_destination_connection_id: None,
     stateless_reset_token: None,
     preferred_address: None,
     initial_source_connection_id: None,

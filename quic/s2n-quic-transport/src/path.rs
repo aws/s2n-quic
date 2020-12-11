@@ -70,6 +70,8 @@ impl<CC: CongestionController> Manager<CC> {
     /// Upon success, returns a `(Id, bool)` containing the path ID and a boolean that is
     /// true if the path had been amplification limited prior to receiving the datagram
     /// and is now no longer amplification limited.
+    #[allow(unreachable_code)]
+    #[allow(unused_variables)]
     pub fn on_datagram_received<NewCC: FnOnce() -> CC>(
         &mut self,
         datagram: &DatagramInfo,
@@ -101,26 +103,32 @@ impl<CC: CongestionController> Manager<CC> {
         //# for the duration of the handshake.  An endpoint MUST NOT initiate
         //# connection migration before the handshake is confirmed, as defined
         //# in section 4.1.2 of [QUIC-TLS].
-        if is_handshake_confirmed {
-            let path = Path::new(
-                datagram.remote_address,
-                // TODO https://github.com/awslabs/s2n-quic/issues/316
-                // The existing peer connection id may only be reused if the destination
-                // connection ID on this packet had not been used before (this would happen
-                // when the peer's remote address gets changed due to circumstances out of their
-                // control). Otherwise we will need to consume a new connection::PeerId or ignore
-                // the request if we don't have any connection::PeerIds to use.
-                self.active_path().1.peer_connection_id,
-                RTTEstimator::new(EARLY_ACK_SETTINGS.max_ack_delay),
-                new_congestion_controller(),
-                true,
-            );
-            let id = Id(self.paths.len());
-            self.paths.push(path);
-            return Ok((id, false));
+        if !is_handshake_confirmed {
+            return Err(TransportError::PROTOCOL_VIOLATION);
         }
 
-        Err(TransportError::PROTOCOL_VIOLATION)
+        // Since we are not currently supporting connection migration (whether it was deliberate or
+        // not), we will error our at this point to avoid re-using a peer connection ID.
+        // TODO: This would be better handled as a stateless reset so the peer can terminate the
+        //       connection immediately. https://github.com/awslabs/s2n-quic/issues/317
+        return Err(TransportError::INTERNAL_ERROR);
+
+        let path = Path::new(
+            datagram.remote_address,
+            // TODO https://github.com/awslabs/s2n-quic/issues/316
+            // The existing peer connection id may only be reused if the destination
+            // connection ID on this packet had not been used before (this would happen
+            // when the peer's remote address gets changed due to circumstances out of their
+            // control). Otherwise we will need to consume a new connection::PeerId or ignore
+            // the request if we don't have any connection::PeerIds to use.
+            self.active_path().1.peer_connection_id,
+            RTTEstimator::new(EARLY_ACK_SETTINGS.max_ack_delay),
+            new_congestion_controller(),
+            true,
+        );
+        let id = Id(self.paths.len());
+        self.paths.push(path);
+        Ok((id, false))
     }
 
     //TODO= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.4

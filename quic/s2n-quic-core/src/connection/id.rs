@@ -30,7 +30,7 @@ macro_rules! id {
 
         impl core::fmt::Debug for $type {
             fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-                write!(f, "ConnectionId({:?})", self.as_bytes())
+                write!(f, "{}({:?})", stringify!($type), self.as_bytes())
             }
         }
 
@@ -103,11 +103,6 @@ macro_rules! id {
         decoder_value!(
             impl<'a> $type {
                 fn decode(buffer: Buffer) -> Result<Self> {
-                    // TODO
-                    if buffer.is_empty() {
-                        return Ok(($type::EMPTY, buffer));
-                    }
-
                     let len = buffer.len();
                     let (value, buffer) = buffer.decode_slice(len)?;
                     let value: &[u8] = value.into_less_safe_slice();
@@ -121,10 +116,7 @@ macro_rules! id {
 
         impl EncoderValue for $type {
             fn encode<E: Encoder>(&self, encoder: &mut E) {
-                // TODO
-                if !self.is_empty() {
-                    self.as_ref().encode(encoder)
-                }
+                self.as_ref().encode(encoder)
             }
         }
     };
