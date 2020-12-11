@@ -191,7 +191,7 @@ mod tests {
 
     #[test]
     fn get_path_by_address_test() {
-        let conn_id = connection::Id::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
+        let conn_id = connection::PeerId::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
         let first_path = Path::new(
             SocketAddress::default(),
             conn_id,
@@ -209,7 +209,7 @@ mod tests {
 
     #[test]
     fn path_validate_test() {
-        let first_conn_id = connection::Id::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
+        let first_conn_id = connection::PeerId::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
         let mut first_path = Path::new(
             SocketAddress::default(),
             first_conn_id,
@@ -261,7 +261,7 @@ mod tests {
         };
 
         manager
-            .on_datagram_received(&datagram, &first_conn_id, true, Unlimited::default)
+            .on_datagram_received(&datagram, true, Unlimited::default)
             .unwrap();
         assert_eq!(manager.path(&new_addr).is_some(), true);
         assert_eq!(manager.paths.len(), 2);
@@ -277,7 +277,7 @@ mod tests {
 
         assert_eq!(
             manager
-                .on_datagram_received(&datagram, &first_conn_id, false, Unlimited::default)
+                .on_datagram_received(&datagram, false, Unlimited::default)
                 .is_err(),
             true
         );

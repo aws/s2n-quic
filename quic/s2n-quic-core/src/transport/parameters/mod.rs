@@ -368,7 +368,7 @@ macro_rules! connection_id_parameter {
 //#    by the client; see Section 7.3.  This transport parameter is only
 //#    sent by a server.
 
-connection_id_parameter!(OriginalDestinationConnectionId, LocalId, 0x00);
+connection_id_parameter!(OriginalDestinationConnectionId, InitialId, 0x00);
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2
 //# max_idle_timeout (0x01):  The max idle timeout is a value in
@@ -1256,7 +1256,7 @@ mod snapshot_tests {
             max_ack_delay: integer_value.try_into().unwrap(),
             migration_support: MigrationSupport::Disabled,
             active_connection_id_limit: integer_value.try_into().unwrap(),
-            original_destination_connection_id: [1, 2, 3][..].try_into().unwrap(),
+            original_destination_connection_id: [1, 2, 3, 4, 5, 6, 7, 8][..].try_into().unwrap(),
             stateless_reset_token: Some([2; 16].into()),
             preferred_address: Some(PreferredAddress {
                 ipv4_address: Some(SocketAddressV4::new([127, 0, 0, 1], 1337)),
@@ -1264,8 +1264,8 @@ mod snapshot_tests {
                 connection_id: [4, 5, 6, 7][..].try_into().unwrap(),
                 stateless_reset_token: [1; 16].into(),
             }),
-            initial_source_connection_id: Some([1, 2, 3][..].try_into().unwrap()),
-            retry_source_connection_id: Some([1, 2, 3][..].try_into().unwrap()),
+            initial_source_connection_id: Some([1, 2, 3, 4][..].try_into().unwrap()),
+            retry_source_connection_id: Some([1, 2, 3, 4][..].try_into().unwrap()),
         }
     }
 
@@ -1317,7 +1317,7 @@ mod snapshot_tests {
             original_destination_connection_id: Default::default(),
             stateless_reset_token: Default::default(),
             preferred_address: Default::default(),
-            initial_source_connection_id: Some([1, 2, 3][..].try_into().unwrap()),
+            initial_source_connection_id: Some([1, 2, 3, 4][..].try_into().unwrap()),
             retry_source_connection_id: Default::default(),
         }
     }

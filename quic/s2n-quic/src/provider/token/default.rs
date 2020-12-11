@@ -139,7 +139,7 @@ impl Format {
         &mut self,
         token: &Token,
         peer_address: &SocketAddress,
-        destination_connection_id: &connection::Id,
+        destination_connection_id: &connection::PeerId,
     ) -> Option<hmac::Tag> {
         let mut ctx = self.keys[token.header.key_id() as usize].hasher()?;
 
@@ -158,9 +158,9 @@ impl Format {
     fn validate_retry_token(
         &mut self,
         peer_address: &SocketAddress,
-        destination_connection_id: &connection::Id,
+        destination_connection_id: &connection::PeerId,
         token: &Token,
-    ) -> Option<connection::Id> {
+    ) -> Option<connection::InitialId> {
         if self.keys[token.header.key_id() as usize]
             .duplicate_filter
             .contains(token)
@@ -208,8 +208,8 @@ impl super::Format for Format {
     fn generate_retry_token(
         &mut self,
         peer_address: &SocketAddress,
-        destination_connection_id: &connection::Id,
-        original_destination_connection_id: &connection::Id,
+        destination_connection_id: &connection::PeerId,
+        original_destination_connection_id: &connection::InitialId,
         output_buffer: &mut [u8],
     ) -> Option<()> {
         let buffer = DecoderBufferMut::new(output_buffer);
@@ -250,9 +250,9 @@ impl super::Format for Format {
     fn validate_token(
         &mut self,
         peer_address: &SocketAddress,
-        destination_connection_id: &connection::Id,
+        destination_connection_id: &connection::PeerId,
         token: &[u8],
-    ) -> Option<connection::Id> {
+    ) -> Option<connection::InitialId> {
         let buffer = DecoderBuffer::new(token);
         let (token, _) = buffer.decode::<&Token>().ok()?;
 
@@ -362,11 +362,11 @@ impl Hash for Token {
 }
 
 impl Token {
-    pub fn original_destination_connection_id(&self) -> Option<connection::Id> {
+    pub fn original_destination_connection_id(&self) -> Option<connection::InitialId> {
         let dcid = self
             .original_destination_connection_id
             .get(..self.odcid_len as usize)?;
-        connection::Id::try_from_bytes(dcid)
+        connection::InitialId::try_from_bytes(dcid)
     }
 }
 
@@ -409,9 +409,10 @@ mod tests {
             current_key: 0,
         };
 
-        let first_conn_id = connection::Id::try_from_bytes(&[2, 4, 6, 8, 10]).unwrap();
-        let second_conn_id = connection::Id::try_from_bytes(&[1, 3, 5, 7, 9]).unwrap();
-        let orig_conn_id = connection::Id::try_from_bytes(&[0, 1, 2, 3, 4, 5, 6, 7]).unwrap();
+        let first_conn_id = connection::PeerId::try_from_bytes(&[2, 4, 6, 8, 10]).unwrap();
+        let second_conn_id = connection::PeerId::try_from_bytes(&[1, 3, 5, 7, 9]).unwrap();
+        let orig_conn_id =
+            connection::InitialId::try_from_bytes(&[0, 1, 2, 3, 4, 5, 6, 7]).unwrap();
         let addr = SocketAddress::default();
         let mut first_token = [0; Format::TOKEN_LEN];
         let mut second_token = [0; Format::TOKEN_LEN];
@@ -452,11 +453,12 @@ mod tests {
             current_key: 0,
         };
 
-        let conn_id = connection::Id::EMPTY;
+        let conn_id = connection::PeerId::EMPTY;
+        let orig_conn_id = connection::InitialId::EMPTY;
         let addr = SocketAddress::default();
         let mut buf = [0; Format::TOKEN_LEN];
         format
-            .generate_retry_token(&addr, &conn_id, &conn_id, &mut buf)
+            .generate_retry_token(&addr, &conn_id, &orig_conn_id, &mut buf)
             .unwrap();
 
         // Validation should succeed because the signing key is still valid, even
@@ -484,11 +486,12 @@ mod tests {
             current_key: 0,
         };
 
-        let conn_id = connection::Id::EMPTY;
+        let conn_id = connection::PeerId::EMPTY;
+        let orig_conn_id = connection::InitialId::EMPTY;
         let addr = SocketAddress::default();
         let mut buf = [0; Format::TOKEN_LEN];
         format
-            .generate_retry_token(&addr, &conn_id, &conn_id, &mut buf)
+            .generate_retry_token(&addr, &conn_id, &orig_conn_id, &mut buf)
             .unwrap();
 
         // Validation should fail because multiple rotation periods have elapsed
@@ -511,8 +514,8 @@ mod tests {
             current_key: 0,
         };
 
-        let conn_id = connection::Id::EMPTY;
-        let odcid = connection::Id::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
+        let conn_id = connection::PeerId::EMPTY;
+        let odcid = connection::InitialId::try_from_bytes(&[0, 1, 2, 3, 4, 5, 6, 7]).unwrap();
         let addr = SocketAddress::default();
         let mut buf = [0; Format::TOKEN_LEN];
         format
@@ -521,7 +524,7 @@ mod tests {
 
         assert_eq!(format.validate_token(&addr, &conn_id, &buf), Some(odcid));
 
-        let wrong_conn_id = connection::Id::try_from_bytes(&[0, 1, 2]).unwrap();
+        let wrong_conn_id = connection::PeerId::try_from_bytes(&[0, 1, 2]).unwrap();
         assert!(format.validate_token(&addr, &wrong_conn_id, &buf).is_none());
     }
 
@@ -537,8 +540,8 @@ mod tests {
             current_key: 0,
         };
 
-        let conn_id = connection::Id::EMPTY;
-        let odcid = connection::Id::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
+        let conn_id = connection::PeerId::EMPTY;
+        let odcid = connection::InitialId::try_from_bytes(&[0, 1, 2, 3, 4, 5, 6, 7]).unwrap();
         let addr = SocketAddress::default();
         let mut buf = [0; Format::TOKEN_LEN];
         format

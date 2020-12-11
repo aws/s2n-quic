@@ -3,6 +3,7 @@
 use crate::{inet::SocketAddress, transport::error::TransportError};
 use core::{convert::TryFrom, time::Duration};
 use s2n_codec::{decoder_value, Encoder, EncoderValue};
+use std::convert::TryInto;
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1
 //# Each connection possesses a set of connection identifiers, or
@@ -13,14 +14,11 @@ use s2n_codec::{decoder_value, Encoder, EncoderValue};
 /// The maximum size of a connection ID.
 pub const MAX_LEN: usize = crate::packet::long::DESTINATION_CONNECTION_ID_MAX_LEN;
 
-/// The minimum size of a connection ID.
-pub const MIN_LEN: usize = 1;
-
 /// The minimum lifetime of a connection ID.
 pub const MIN_LIFETIME: Duration = Duration::from_secs(60);
 
 macro_rules! id {
-    ($type:ident) => {
+    ($type:ident, $min_len:expr) => {
         /// Uniquely identifies a QUIC connection between 2 peers
         #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
         pub struct $type {
@@ -35,7 +33,16 @@ macro_rules! id {
         }
 
         impl $type {
-            /// Creates a `$type` from a byte array.
+            /// The minimum length for this connection ID type
+            pub const MIN_LEN: usize = $min_len;
+
+            /// An empty connection ID
+            pub const EMPTY: Self = Self {
+                bytes: [0; MAX_LEN],
+                len: $type::MIN_LEN as u8,
+            };
+
+            /// Creates a connection ID from a byte array.
             ///
             /// If the passed byte array exceeds the maximum allowed length for
             /// Connection IDs (20 bytes in QUIC v1) `None` will be returned.
@@ -54,8 +61,8 @@ macro_rules! id {
                 self.len as usize
             }
 
-            pub const fn is_empty(&self) -> bool {
-                self.len == 0
+            pub fn is_empty(&self) -> bool {
+                *self == $type::EMPTY
             }
         }
 
@@ -73,7 +80,7 @@ macro_rules! id {
 
             fn try_from(slice: &[u8]) -> Result<Self, Self::Error> {
                 let len = slice.len();
-                if len > MAX_LEN {
+                if len < $type::MIN_LEN || len > MAX_LEN {
                     return Err(Error::InvalidLength);
                 }
                 let mut bytes = [0; MAX_LEN];
@@ -94,6 +101,11 @@ macro_rules! id {
         decoder_value!(
             impl<'a> $type {
                 fn decode(buffer: Buffer) -> Result<Self> {
+                    // TODO
+                    if buffer.is_empty() {
+                        return Ok(($type::EMPTY, buffer));
+                    }
+
                     let len = buffer.len();
                     let (value, buffer) = buffer.decode_slice(len)?;
                     let value: &[u8] = value.into_less_safe_slice();
@@ -107,29 +119,35 @@ macro_rules! id {
 
         impl EncoderValue for $type {
             fn encode<E: Encoder>(&self, encoder: &mut E) {
-                self.as_ref().encode(encoder)
+                // TODO
+                if !self.is_empty() {
+                    self.as_ref().encode(encoder)
+                }
             }
         }
     };
 }
 
-id!(LocalId);
-id!(PeerId);
+// s2n-QUIC does not provide zero-length connection IDs
+id!(LocalId, 4);
+// Peers may provide zero-length connection IDs
+id!(PeerId, 0);
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.2
+//# When an Initial packet is sent by a client that has not previously
+//# received an Initial or Retry packet from the server, the client
+//# populates the Destination Connection ID field with an unpredictable
+//# value.  This Destination Connection ID MUST be at least 8 bytes in
+//# length.
+id!(InitialId, 8);
 
-impl PeerId {
-    /// An empty (zero length) peer connection ID
-    pub const EMPTY: Self = Self {
-        bytes: [0; MAX_LEN],
-        len: 0,
-    };
-}
+// A LocalId may be converted to an InitialId, but InitialId has a higher
+// minimum length, so conversion may not succeed.
+impl TryFrom<LocalId> for InitialId {
+    type Error = Error;
 
-impl LocalId {
-    /// An empty minimum length local connection ID
-    pub const EMPTY: Self = Self {
-        bytes: [0; MAX_LEN],
-        len: MIN_LEN as u8,
-    };
+    fn try_from(value: LocalId) -> Result<Self, Self::Error> {
+        value.as_bytes().try_into()
+    }
 }
 
 /// Uniquely identifies a QUIC connection between 2 peers

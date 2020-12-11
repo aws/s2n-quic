@@ -1270,7 +1270,7 @@ mod test {
         let mut manager = Manager::new(space, Duration::from_millis(100));
         let mut path = Path::new(
             Default::default(),
-            connection::Id::EMPTY,
+            connection::PeerId::EMPTY,
             rtt_estimator,
             MockCongestionController::default(),
             true,
