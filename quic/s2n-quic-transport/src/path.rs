@@ -264,6 +264,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(unreachable_code)]
     fn new_peer_test() {
         let first_conn_id = connection::PeerId::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
         let first_path = Path::new(
@@ -290,9 +291,14 @@ mod tests {
             destination_connection_id: connection::LocalId::EMPTY,
         };
 
-        manager
-            .on_datagram_received(&datagram, true, Unlimited::default)
-            .unwrap();
+        assert_eq!(
+            Err(TransportError::INTERNAL_ERROR),
+            manager.on_datagram_received(&datagram, true, Unlimited::default)
+        );
+
+        return;
+
+        // TODO: The following code can be enabled once connection migration is implemented
         assert_eq!(manager.path(&new_addr).is_some(), true);
         assert_eq!(manager.paths.len(), 2);
 
