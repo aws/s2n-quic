@@ -322,7 +322,8 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         None
                     };
 
-                    if let Err(err) = self.handle_initial_packet(datagram, packet, remaining, retry_token_dcid)
+                    if let Err(err) =
+                        self.handle_initial_packet(datagram, packet, remaining, retry_token_dcid)
                     {
                         dbg!(err);
                     }
