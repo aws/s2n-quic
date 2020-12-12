@@ -106,8 +106,9 @@ macro_rules! id {
                     let len = buffer.len();
                     let (value, buffer) = buffer.decode_slice(len)?;
                     let value: &[u8] = value.into_less_safe_slice();
-                    let connection_id = $type::try_from(value)
-                        .map_err(|_| s2n_codec::DecoderError::UnexpectedBytes(len - MAX_LEN))?;
+                    let connection_id = $type::try_from(value).map_err(|_| {
+                        s2n_codec::DecoderError::InvariantViolation("invalid connection id")
+                    })?;
 
                     Ok((connection_id, buffer))
                 }
