@@ -38,12 +38,6 @@ macro_rules! id {
             /// The minimum length for this connection ID type
             pub const MIN_LEN: usize = $min_len;
 
-            /// An empty connection ID
-            pub const EMPTY: Self = Self {
-                bytes: [0; MAX_LEN],
-                len: $type::MIN_LEN as u8,
-            };
-
             /// Creates a connection ID from a byte array.
             ///
             /// If the passed byte array exceeds the maximum allowed length for
@@ -63,8 +57,9 @@ macro_rules! id {
                 self.len as usize
             }
 
+            /// Returns true if this connection ID is zero-length
             pub fn is_empty(&self) -> bool {
-                *self == $type::EMPTY
+                self.len == 0
             }
 
             /// A connection ID to use for testing
@@ -150,6 +145,14 @@ macro_rules! id {
         impl EncoderValue for $type {
             fn encode<E: Encoder>(&self, encoder: &mut E) {
                 self.as_ref().encode(encoder)
+            }
+        }
+
+        // Implement Default to allow for transport_parameter macro to work consistently,
+        // though this value should never be used.
+        impl Default for $type {
+            fn default() -> Self {
+                unimplemented!("connection IDs do not have default values")
             }
         }
     };

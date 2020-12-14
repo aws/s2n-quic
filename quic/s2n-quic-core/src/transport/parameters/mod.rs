@@ -328,11 +328,7 @@ macro_rules! optional_transport_parameter {
 
 macro_rules! connection_id_parameter {
     ($name:ident, $id_type:ident, $tag:expr) => {
-        transport_parameter!(
-            $name(connection::$id_type),
-            $tag,
-            connection::$id_type::EMPTY
-        );
+        transport_parameter!($name(connection::$id_type), $tag);
 
         // The inner connection_id handles validation
         impl TransportParameterValidator for $name {}
@@ -832,12 +828,9 @@ impl TransportParameter for PreferredAddress {
     }
 
     fn default_value() -> Self {
-        Self {
-            ipv4_address: None,
-            ipv6_address: None,
-            connection_id: connection::UnboundedId::EMPTY,
-            stateless_reset_token: StatelessResetToken::ZEROED,
-        }
+        unimplemented!(
+            "PreferredAddress is an optional transport parameter, so the default is None"
+        )
     }
 }
 
