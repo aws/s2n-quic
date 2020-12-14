@@ -4,7 +4,7 @@ use core::{convert::TryInto, marker::PhantomData, time::Duration};
 use s2n_codec::{Encoder, EncoderBuffer, EncoderValue};
 use s2n_quic_core::{
     connection,
-    inet::{DatagramInfo, ExplicitCongestionNotification, SocketAddress},
+    inet::{ExplicitCongestionNotification, SocketAddress},
     io::tx,
     packet::{version_negotiation::VersionNegotiation, ProtectedPacket},
     path::MINIMUM_MTU,
@@ -57,7 +57,8 @@ impl<Config: endpoint::Config> Negotiator<Config> {
 
     pub fn on_packet(
         &mut self,
-        datagram_info: &DatagramInfo,
+        remote_address: SocketAddress,
+        payload_len: usize,
         packet: &ProtectedPacket,
     ) -> Result<(), TransportError> {
         // always forward packets for clients on to connections
@@ -91,16 +92,23 @@ impl<Config: endpoint::Config> Negotiator<Config> {
         //# A server might not send a Version
         //# Negotiation packet if the datagram it receives is smaller than the
         //# minimum size specified in a different version;
-        if datagram_info.payload_len < (MINIMUM_MTU as usize) {
+        if payload_len < (MINIMUM_MTU as usize) {
             return Err(TransportError::NO_ERROR);
         }
 
         // store the peer's address if we're not at capacity
         if self.transmissions.len() != self.max_peers {
             self.transmissions.push_back(Transmission {
-                remote_address: datagram_info.remote_address,
-                destination_connection_id: packet.destination_connection_id().try_into()?,
-                source_connection_id: packet.source_connection_id().try_into()?,
+                remote_address,
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.1
+                //# The server MUST include the value from the Source Connection ID field
+                //# of the packet it receives in the Destination Connection ID field.
+                destination_connection_id: packet.source_connection_id().try_into()?,
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.1
+                //# The value for Source Connection ID MUST be copied from the
+                //# Destination Connection ID of the received packet, which is initially
+                //# randomly selected by a client.
+                source_connection_id: packet.destination_connection_id().try_into()?,
             });
         }
 
@@ -125,8 +133,10 @@ impl<Config: endpoint::Config> Negotiator<Config> {
 #[derive(Debug)]
 struct Transmission {
     remote_address: SocketAddress,
-    destination_connection_id: connection::PeerId,
-    source_connection_id: connection::LocalId,
+    // Both destination and source CIDs are UnboundedIds as future versions of QUIC may
+    // have different length requirements for connection IDs
+    destination_connection_id: connection::UnboundedId,
+    source_connection_id: connection::UnboundedId,
 }
 
 impl tx::Message for &Transmission {
@@ -176,6 +186,7 @@ mod tests {
     use s2n_codec::{DecoderBufferMut, Encoder, EncoderBuffer};
     use s2n_quic_core::{
         connection::id::ConnectionInfo,
+        inet::DatagramInfo,
         packet::{
             handshake::Handshake,
             initial::Initial,
@@ -200,7 +211,7 @@ mod tests {
     }
 
     macro_rules! on_packet {
-        ($negotiator:ident, $datagram_info:expr, $packet:expr) => {{
+        ($negotiator:ident, $remote_address:expr, $payload_len:expr, $packet:expr) => {{
             let mut buffer = vec![0u8; 1200];
             let mut encoder = EncoderBuffer::new(&mut buffer);
 
@@ -211,7 +222,7 @@ mod tests {
             let remote_address = SocketAddress::default();
             let connection_info = ConnectionInfo::new(&remote_address);
             let (packet, _) = ProtectedPacket::decode(decoder, &connection_info, &3).unwrap();
-            $negotiator.on_packet(&$datagram_info, &packet)
+            $negotiator.on_packet($remote_address, $payload_len, &packet)
         }};
     }
 
@@ -222,7 +233,8 @@ mod tests {
     ) -> Result<(), TransportError> {
         on_packet!(
             negotiator,
-            datagram_info,
+            datagram_info.remote_address,
+            datagram_info.payload_len,
             Initial {
                 version,
                 destination_connection_id: &[1u8, 2, 3][..],
@@ -241,7 +253,8 @@ mod tests {
     ) -> Result<(), TransportError> {
         on_packet!(
             negotiator,
-            datagram_info,
+            datagram_info.remote_address,
+            datagram_info.payload_len,
             Handshake {
                 version,
                 destination_connection_id: &[1u8, 2, 3][..],
@@ -259,7 +272,8 @@ mod tests {
     ) -> Result<(), TransportError> {
         on_packet!(
             negotiator,
-            datagram_info,
+            datagram_info.remote_address,
+            datagram_info.payload_len,
             ZeroRTT {
                 version,
                 destination_connection_id: &[1u8, 2, 3][..],
@@ -276,7 +290,8 @@ mod tests {
     ) -> Result<(), TransportError> {
         on_packet!(
             negotiator,
-            datagram_info,
+            datagram_info.remote_address,
+            datagram_info.payload_len,
             VersionNegotiation {
                 tag: 0,
                 destination_connection_id: &[1u8, 2, 3][..],
@@ -292,7 +307,8 @@ mod tests {
     ) -> Result<(), TransportError> {
         on_packet!(
             negotiator,
-            datagram_info,
+            datagram_info.remote_address,
+            datagram_info.payload_len,
             Short {
                 destination_connection_id: &[1u8, 2, 3][..],
                 key_phase: Default::default(),

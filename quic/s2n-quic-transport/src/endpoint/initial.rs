@@ -143,6 +143,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         //# initial_source_connection_id transport parameter
         transport_parameters.initial_source_connection_id = Some(
             initial_connection_id
+                .as_bytes()
                 .try_into()
                 .expect("connection ID already validated"),
         );

@@ -107,7 +107,10 @@ macro_rules! id {
                     let (value, buffer) = buffer.decode_slice(len)?;
                     let value: &[u8] = value.into_less_safe_slice();
                     let connection_id = $type::try_from(value).map_err(|_| {
-                        s2n_codec::DecoderError::InvariantViolation("invalid connection id")
+                        s2n_codec::DecoderError::InvariantViolation(concat!(
+                            "invalid ",
+                            stringify!($type)
+                        ))
                     })?;
 
                     Ok((connection_id, buffer))
@@ -130,6 +133,9 @@ id!(LocalId, 4);
 // Connection IDs used to route packets to the peer. The peer may choose to use zero-length
 // connection IDs.
 id!(PeerId, 0);
+// Connection IDs that are used as either a LocalId or a PeerId depending on if the endpoint is a
+// server or a client, and thus the minimum length of the ID is not validated.
+id!(UnboundedId, 0);
 // The randomly generated ID the client sends when first contacting a server.
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.2
 //# When an Initial packet is sent by a client that has not previously
@@ -297,6 +303,18 @@ mod tests {
 
         let connection_id_bytes = [0u8; InitialId::MIN_LEN - 1];
         assert!(InitialId::try_from_bytes(&connection_id_bytes).is_none());
+    }
+
+    #[test]
+    fn unbounded_id() {
+        let connection_id_bytes = [0u8; LocalId::MIN_LEN];
+        assert!(UnboundedId::try_from_bytes(&connection_id_bytes).is_some());
+
+        let connection_id_bytes = [0u8; PeerId::MIN_LEN];
+        assert!(UnboundedId::try_from_bytes(&connection_id_bytes).is_some());
+
+        let connection_id_bytes = [0u8; InitialId::MIN_LEN];
+        assert!(UnboundedId::try_from_bytes(&connection_id_bytes).is_some());
     }
 }
 

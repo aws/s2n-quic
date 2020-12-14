@@ -178,6 +178,17 @@ impl<Cfg: Config> Endpoint<Cfg> {
             return;
         };
 
+        // Ensure the version is supported. This check occurs before the destination
+        // connection ID is parsed since future versions of QUIC could have different
+        // length requirements for connection IDs.
+        if self
+            .version_negotiator
+            .on_packet(remote_address, payload_len, &packet)
+            .is_err()
+        {
+            return;
+        }
+
         let destination_connection_id =
             match connection::LocalId::try_from_bytes(packet.destination_connection_id()) {
                 Some(connection_id) => connection_id,
@@ -195,15 +206,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
             remote_address,
             destination_connection_id,
         };
-
-        // ensure the version is supported
-        if self
-            .version_negotiator
-            .on_packet(datagram, &packet)
-            .is_err()
-        {
-            return;
-        }
 
         // TODO validate the connection ID before looking up the connection in the map
 

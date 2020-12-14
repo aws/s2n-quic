@@ -800,7 +800,7 @@ type CIDLength = u8;
 pub struct PreferredAddress {
     pub ipv4_address: Option<SocketAddressV4>,
     pub ipv6_address: Option<SocketAddressV6>,
-    pub connection_id: crate::connection::LocalId,
+    pub connection_id: crate::connection::UnboundedId,
     pub stateless_reset_token: crate::stateless_reset_token::StatelessResetToken,
 }
 
@@ -835,7 +835,7 @@ impl TransportParameter for PreferredAddress {
         Self {
             ipv4_address: None,
             ipv6_address: None,
-            connection_id: connection::LocalId::EMPTY,
+            connection_id: connection::UnboundedId::EMPTY,
             stateless_reset_token: StatelessResetToken::ZEROED,
         }
     }
@@ -928,7 +928,7 @@ impl ActiveConnectionIdLimit {
 //#    included in the Source Connection ID field of the first Initial
 //#    packet it sends for the connection; see Section 7.3.
 
-connection_id_parameter!(InitialSourceConnectionId, LocalId, 0x0f);
+connection_id_parameter!(InitialSourceConnectionId, UnboundedId, 0x0f);
 optional_transport_parameter!(InitialSourceConnectionId);
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2
