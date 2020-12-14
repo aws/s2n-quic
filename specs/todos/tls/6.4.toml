@@ -1,0 +1,20 @@
+target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.4"
+
+[[TODO]]
+quote = '''
+Packets with higher packet numbers MUST be protected with either the
+same or newer packet protection keys than packets with lower packet
+numbers.
+'''
+tracking-issue = "318"
+feature = "Key update"
+
+[[TODO]]
+quote = '''
+An endpoint that successfully removes protection with old
+keys when newer keys were used for packets with lower packet numbers
+MUST treat this as a connection error of type KEY_UPDATE_ERROR.
+'''
+tracking-issue = "318"
+feature = "Key update"
+
