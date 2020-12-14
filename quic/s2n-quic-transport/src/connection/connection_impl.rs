@@ -672,6 +672,38 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         path_id: path::Id,
         packet: ProtectedShort,
     ) -> Result<(), TransportError> {
+        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.7
+        //# Endpoints in either role MUST NOT decrypt 1-RTT packets from
+        //# their peer prior to completing the handshake.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.7
+        //# A server MUST NOT process
+        //# incoming 1-RTT protected packets before the TLS handshake is
+        //# complete.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.7
+        //# Even if it has 1-RTT secrets, a client MUST NOT
+        //# process incoming 1-RTT protected packets before the TLS handshake is
+        //# complete.
+
+        if !shared_state.space_manager.is_handshake_confirmed() {
+            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.7
+            //= type=TODO
+            //= tracking-issue=320
+            //# Received
+            //# packets protected with 1-RTT keys MAY be stored and later decrypted
+            //# and used once the handshake is complete.
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.7
+            //= type=TODO
+            //= tracking-issue=320
+            //= feature=0-RTT
+            //# The server MAY retain these packets for
+            //# later decryption in anticipation of receiving a ClientHello.
+
+            return Ok(());
+        }
+
         if let Some((packet, space, handshake_status)) = shared_state
             .space_manager
             .application_mut()

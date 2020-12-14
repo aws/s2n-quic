@@ -20,6 +20,12 @@ use s2n_quic_ring::{
 use std::sync::Arc;
 use webpki::DNSNameRef;
 
+//= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.3
+//# A cipher suite MUST NOT be
+//# negotiated unless a header protection scheme is defined for the
+//# cipher suite.
+// All of the ciphersuites from the current exported list have HP schemes for QUIC
+
 // The first 3 ciphers are TLS1.3
 // https://github.com/ctz/rustls/blob/1287510bece905b7e45cf31d6e7cf3334b98bb2e/rustls/src/suites.rs#L379
 pub fn default_ciphersuites() -> Vec<&'static SupportedCipherSuite> {

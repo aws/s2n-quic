@@ -1,0 +1,11 @@
+target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.1"
+
+[[exception]]
+quote = '''
+Other versions of TLS MUST
+provide a similar function in order to be used with QUIC.
+'''
+reason = '''
+s2n-quic only uses TLS for traffic encryption.
+'''
+
