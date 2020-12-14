@@ -79,7 +79,7 @@ pub mod testing {
             token: &[u8],
         ) -> Option<connection::InitialId> {
             if token == retry::example::TOKEN {
-                return Some(connection::InitialId::EMPTY);
+                return Some(connection::InitialId::TEST_ID);
             }
 
             None

@@ -288,7 +288,7 @@ mod tests {
             remote_address: new_addr,
             payload_len: 0,
             ecn: ExplicitCongestionNotification::default(),
-            destination_connection_id: connection::LocalId::EMPTY,
+            destination_connection_id: connection::LocalId::TEST_ID,
         };
 
         assert_eq!(
@@ -309,7 +309,7 @@ mod tests {
             remote_address: new_addr,
             payload_len: 0,
             ecn: ExplicitCongestionNotification::default(),
-            destination_connection_id: connection::LocalId::EMPTY,
+            destination_connection_id: connection::LocalId::TEST_ID,
         };
 
         assert_eq!(

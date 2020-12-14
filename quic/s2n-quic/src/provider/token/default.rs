@@ -453,8 +453,8 @@ mod tests {
             current_key: 0,
         };
 
-        let conn_id = connection::PeerId::EMPTY;
-        let orig_conn_id = connection::InitialId::EMPTY;
+        let conn_id = connection::PeerId::TEST_ID;
+        let orig_conn_id = connection::InitialId::TEST_ID;
         let addr = SocketAddress::default();
         let mut buf = [0; Format::TOKEN_LEN];
         format
@@ -486,8 +486,8 @@ mod tests {
             current_key: 0,
         };
 
-        let conn_id = connection::PeerId::EMPTY;
-        let orig_conn_id = connection::InitialId::EMPTY;
+        let conn_id = connection::PeerId::TEST_ID;
+        let orig_conn_id = connection::InitialId::TEST_ID;
         let addr = SocketAddress::default();
         let mut buf = [0; Format::TOKEN_LEN];
         format
@@ -514,7 +514,7 @@ mod tests {
             current_key: 0,
         };
 
-        let conn_id = connection::PeerId::EMPTY;
+        let conn_id = connection::PeerId::TEST_ID;
         let odcid = connection::InitialId::try_from_bytes(&[0, 1, 2, 3, 4, 5, 6, 7]).unwrap();
         let addr = SocketAddress::default();
         let mut buf = [0; Format::TOKEN_LEN];
@@ -540,7 +540,7 @@ mod tests {
             current_key: 0,
         };
 
-        let conn_id = connection::PeerId::EMPTY;
+        let conn_id = connection::PeerId::TEST_ID;
         let odcid = connection::InitialId::try_from_bytes(&[0, 1, 2, 3, 4, 5, 6, 7]).unwrap();
         let addr = SocketAddress::default();
         let mut buf = [0; Format::TOKEN_LEN];

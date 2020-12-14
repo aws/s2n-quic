@@ -66,6 +66,35 @@ macro_rules! id {
             pub fn is_empty(&self) -> bool {
                 *self == $type::EMPTY
             }
+
+            /// A connection ID to use for testing
+            #[cfg(any(test, feature = "testing"))]
+            pub const TEST_ID: Self = Self::test_id();
+
+            // Constructs a test connection ID by converting the name
+            // of the ID type to bytes and populating the first and last
+            // bytes of a max length ID with those bytes.
+            #[cfg(any(test, feature = "testing"))]
+            const fn test_id() -> Self {
+                let type_bytes = stringify!($type).as_bytes();
+                let mut result = [0u8; MAX_LEN];
+                result[0] = type_bytes[0];
+                result[1] = type_bytes[1];
+                result[2] = type_bytes[2];
+                result[3] = type_bytes[3];
+                result[4] = type_bytes[4];
+                result[5] = type_bytes[5];
+                result[14] = type_bytes[0];
+                result[15] = type_bytes[1];
+                result[16] = type_bytes[2];
+                result[17] = type_bytes[3];
+                result[18] = type_bytes[4];
+                result[19] = type_bytes[5];
+                Self {
+                    bytes: result,
+                    len: MAX_LEN as u8,
+                }
+            }
         }
 
         impl From<[u8; MAX_LEN]> for $type {
@@ -315,6 +344,10 @@ mod tests {
 
         let connection_id_bytes = [0u8; InitialId::MIN_LEN];
         assert!(UnboundedId::try_from_bytes(&connection_id_bytes).is_some());
+
+        println!("{:?}", LocalId::TEST_ID);
+        println!("{:?}", PeerId::TEST_ID);
+        println!("{:?}", UnboundedId::TEST_ID);
     }
 }
 

@@ -55,7 +55,7 @@ impl Endpoint {
             payload_len: 1200,
             remote_address: Default::default(),
             timestamp: self.env.current_time,
-            destination_connection_id: connection::LocalId::EMPTY,
+            destination_connection_id: connection::LocalId::TEST_ID,
         };
 
         if let Some(ack) = packet.ack {

@@ -206,7 +206,7 @@ mod tests {
             remote_address: SocketAddress::default(),
             payload_len,
             ecn: Default::default(),
-            destination_connection_id: connection::LocalId::EMPTY,
+            destination_connection_id: connection::LocalId::TEST_ID,
         }
     }
 
