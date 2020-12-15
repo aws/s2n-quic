@@ -36,7 +36,7 @@ impl Dispatch {
         &mut self,
         datagram: &DatagramInfo,
         packet: &packet::initial::ProtectedInitial,
-        local_connection_id: connection::Id,
+        local_connection_id: connection::LocalId,
         token_format: &mut T,
     ) {
         if let Some(transmission) = Transmission::new::<_, C>(
@@ -78,7 +78,7 @@ impl Transmission {
     pub fn new<T: token::Format, C: RetryCrypto>(
         remote_address: SocketAddress,
         packet: &packet::initial::ProtectedInitial,
-        local_connection_id: connection::Id,
+        local_connection_id: connection::LocalId,
         token_format: &mut T,
     ) -> Option<Self> {
         let mut packet_buf = [0u8; MINIMUM_MTU as usize];

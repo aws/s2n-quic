@@ -20,7 +20,7 @@ pub struct ConnectionTransmissionContext<'a, Config: connection::Config> {
     pub timestamp: Timestamp,
     pub path: &'a mut Path<Config::CongestionController>,
     pub connection_id_mapper_registration: &'a mut ConnectionIdMapperRegistration,
-    pub source_connection_id: &'a connection::Id,
+    pub source_connection_id: &'a connection::LocalId,
     pub ecn: ExplicitCongestionNotification,
 }
 

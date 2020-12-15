@@ -482,7 +482,6 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
         frame: RetireConnectionID,
         datagram: &DatagramInfo,
         path: &mut Path<Config::CongestionController>,
-        destination_connection_id: &[u8],
         connection_id_mapper_registration: &mut ConnectionIdMapperRegistration,
     ) -> Result<(), TransportError> {
         let sequence_number = frame
@@ -507,7 +506,7 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
         connection_id_mapper_registration
             .on_retire_connection_id(
                 sequence_number,
-                destination_connection_id,
+                &datagram.destination_connection_id,
                 path.rtt_estimator.smoothed_rtt(),
                 datagram.timestamp,
             )

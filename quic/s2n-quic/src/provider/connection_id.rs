@@ -99,7 +99,7 @@ pub mod random {
     impl Builder {
         /// Sets the length of the generated connection Id
         pub fn with_len(mut self, len: usize) -> Result<Self, connection::id::Error> {
-            if len < connection::id::MIN_LEN || len > connection::id::MAX_LEN {
+            if len < connection::LocalId::MIN_LEN || len > connection::id::MAX_LEN {
                 return Err(connection::id::Error::InvalidLength);
             }
             self.len = len;
@@ -125,7 +125,7 @@ pub mod random {
     }
 
     impl Generator for Format {
-        fn generate(&mut self, _connection_info: &ConnectionInfo) -> connection::Id {
+        fn generate(&mut self, _connection_info: &ConnectionInfo) -> connection::LocalId {
             let mut id = [0u8; connection::id::MAX_LEN];
             let id = &mut id[..self.len];
             rand::thread_rng().fill_bytes(id);
@@ -152,7 +152,7 @@ pub mod random {
         let remote_address = &s2n_quic_core::inet::SocketAddress::default();
         let connection_info = ConnectionInfo::new(remote_address);
 
-        for len in connection::id::MIN_LEN..connection::id::MAX_LEN {
+        for len in connection::LocalId::MIN_LEN..connection::id::MAX_LEN {
             let mut format = Format::builder().with_len(len).unwrap().build().unwrap();
 
             let id = format.generate(&connection_info);
@@ -171,7 +171,7 @@ pub mod random {
         assert_eq!(
             Some(connection::id::Error::InvalidLength),
             Format::builder()
-                .with_len(connection::id::MIN_LEN - 1)
+                .with_len(connection::LocalId::MIN_LEN - 1)
                 .err()
         );
 

@@ -1,8 +1,0 @@
----
-source: quic/s2n-quic-core/src/transport/parameters/mod.rs
-expression: encoded_output
----
-[
-    15,
-    0,
-]

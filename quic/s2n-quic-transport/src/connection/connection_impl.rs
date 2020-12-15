@@ -101,7 +101,7 @@ pub struct ConnectionImpl<Config: connection::Config> {
     /// The [`Connection`]s internal identifier
     internal_connection_id: InternalConnectionId,
     /// The connection ID to send packets from
-    local_connection_id: connection::Id,
+    local_connection_id: connection::LocalId,
     /// The connection ID mapper registration which should be utilized by the connection
     connection_id_mapper_registration: ConnectionIdMapperRegistration,
     /// The timers which are used within the connection
@@ -520,21 +520,17 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
-        peer_connection_id: &connection::Id,
         congestion_controller_endpoint: &mut CC,
     ) -> Result<path::Id, TransportError> {
         let is_handshake_confirmed = shared_state.space_manager.is_handshake_confirmed();
 
-        let (id, unblocked) = self.path_manager.on_datagram_received(
-            datagram,
-            peer_connection_id,
-            is_handshake_confirmed,
-            || {
-                let path_info = congestion_controller::PathInfo::new(&datagram.remote_address);
-                // TODO set alpn if available
-                congestion_controller_endpoint.new_congestion_controller(path_info)
-            },
-        )?;
+        let (id, unblocked) =
+            self.path_manager
+                .on_datagram_received(datagram, is_handshake_confirmed, || {
+                    let path_info = congestion_controller::PathInfo::new(&datagram.remote_address);
+                    // TODO set alpn if available
+                    congestion_controller_endpoint.new_congestion_controller(path_info)
+                })?;
 
         if unblocked {
             //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.6
@@ -586,7 +582,6 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
             if let Some(close) = space.handle_cleartext_payload(
                 packet.packet_number,
                 packet.payload,
-                packet.destination_connection_id,
                 datagram,
                 &mut self.path_manager[path_id],
                 handshake_status,
@@ -623,7 +618,6 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
             if let Some(close) = space.handle_cleartext_payload(
                 packet.packet_number,
                 packet.payload,
-                packet.destination_connection_id,
                 datagram,
                 &mut self.path_manager[path_id],
                 handshake_status,
@@ -685,7 +679,6 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
             if let Some(close) = space.handle_cleartext_payload(
                 packet.packet_number,
                 packet.payload,
-                packet.destination_connection_id,
                 datagram,
                 &mut self.path_manager[path_id],
                 handshake_status,

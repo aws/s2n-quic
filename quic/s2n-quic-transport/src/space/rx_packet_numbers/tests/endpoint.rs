@@ -7,7 +7,7 @@ use crate::{
 };
 use bolero::generator::*;
 use s2n_quic_core::{
-    endpoint,
+    connection, endpoint,
     frame::{ack_elicitation::AckElicitation, Ack, Frame, Ping},
     inet::DatagramInfo,
     packet::number::PacketNumberSpace,
@@ -55,6 +55,7 @@ impl Endpoint {
             payload_len: 1200,
             remote_address: Default::default(),
             timestamp: self.env.current_time,
+            destination_connection_id: connection::LocalId::TEST_ID,
         };
 
         if let Some(ack) = packet.ack {

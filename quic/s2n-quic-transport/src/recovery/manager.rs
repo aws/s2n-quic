@@ -809,7 +809,7 @@ mod test {
         let mut time_sent = now;
         let mut path = Path::new(
             Default::default(),
-            connection::Id::EMPTY,
+            connection::PeerId::TEST_ID,
             RTTEstimator::new(max_ack_delay),
             MockCongestionController::default(),
             true,
@@ -896,7 +896,7 @@ mod test {
         let packet_bytes = 128;
         let mut path = Path::new(
             Default::default(),
-            connection::Id::EMPTY,
+            connection::PeerId::TEST_ID,
             rtt_estimator,
             MockCongestionController::default(),
             true,
@@ -982,7 +982,7 @@ mod test {
         // Ack packet 10, but with a path that is not peer validated
         let mut path = Path::new(
             Default::default(),
-            connection::Id::EMPTY,
+            connection::PeerId::TEST_ID,
             rtt_estimator,
             MockCongestionController::default(),
             false,
@@ -1035,7 +1035,7 @@ mod test {
         let packet_bytes = 128;
         let mut path = Path::new(
             Default::default(),
-            connection::Id::EMPTY,
+            connection::PeerId::TEST_ID,
             rtt_estimator,
             MockCongestionController::default(),
             true,
@@ -1098,7 +1098,7 @@ mod test {
         let now = s2n_quic_platform::time::now();
         let mut path = Path::new(
             Default::default(),
-            connection::Id::EMPTY,
+            connection::PeerId::TEST_ID,
             RTTEstimator::new(Duration::from_millis(10)),
             MockCongestionController::default(),
             true,
@@ -1226,7 +1226,7 @@ mod test {
         let mut manager = Manager::new(space, Duration::from_millis(100));
         let mut path = Path::new(
             Default::default(),
-            connection::Id::EMPTY,
+            connection::PeerId::TEST_ID,
             RTTEstimator::new(Duration::from_millis(10)),
             MockCongestionController::default(),
             true,
@@ -1270,7 +1270,7 @@ mod test {
         let mut manager = Manager::new(space, Duration::from_millis(100));
         let mut path = Path::new(
             Default::default(),
-            connection::Id::EMPTY,
+            connection::PeerId::TEST_ID,
             rtt_estimator,
             MockCongestionController::default(),
             true,
@@ -1402,7 +1402,7 @@ mod test {
         let mut manager = Manager::new(space, Duration::from_millis(100));
         let mut path = Path::new(
             Default::default(),
-            connection::Id::EMPTY,
+            connection::PeerId::TEST_ID,
             rtt_estimator,
             MockCongestionController::default(),
             true,
@@ -1508,7 +1508,7 @@ mod test {
         let mut manager = Manager::new(space, Duration::from_millis(100));
         let mut path = Path::new(
             Default::default(),
-            connection::Id::EMPTY,
+            connection::PeerId::TEST_ID,
             RTTEstimator::new(Duration::from_millis(10)),
             MockCongestionController::default(),
             true,
@@ -1579,7 +1579,7 @@ mod test {
 
         let mut path = Path::new(
             Default::default(),
-            connection::Id::EMPTY,
+            connection::PeerId::TEST_ID,
             rtt_estimator,
             Unlimited::default(),
             false,
@@ -1625,7 +1625,7 @@ mod test {
         // Reset the path back to not peer validated
         let mut path = Path::new(
             Default::default(),
-            connection::Id::EMPTY,
+            connection::PeerId::TEST_ID,
             rtt_estimator,
             Unlimited::default(),
             false,
@@ -1703,7 +1703,7 @@ mod test {
 
         let mut path = Path::new(
             Default::default(),
-            connection::Id::EMPTY,
+            connection::PeerId::TEST_ID,
             RTTEstimator::new(Duration::from_millis(10)),
             Unlimited::default(),
             false,
@@ -1729,7 +1729,7 @@ mod test {
 
         let mut path = Path::new(
             Default::default(),
-            connection::Id::EMPTY,
+            connection::PeerId::TEST_ID,
             RTTEstimator::new(max_ack_delay),
             Unlimited::default(),
             false,
@@ -1764,7 +1764,7 @@ mod test {
 
         let path = Path::new(
             Default::default(),
-            connection::Id::EMPTY,
+            connection::PeerId::TEST_ID,
             RTTEstimator::new(max_ack_delay),
             Unlimited::default(),
             false,
@@ -1791,7 +1791,7 @@ mod test {
         let mut context = MockContext::default();
         let mut path = Path::new(
             Default::default(),
-            connection::Id::EMPTY,
+            connection::PeerId::TEST_ID,
             RTTEstimator::new(Duration::from_millis(10)),
             Unlimited::default(),
             false,
@@ -2008,6 +2008,7 @@ mod test {
             remote_address: Default::default(),
             payload_len: 0,
             ecn: Default::default(),
+            destination_connection_id: connection::LocalId::TEST_ID,
         };
 
         let mut ack_range = AckRanges::new(acked_packets.count());
@@ -2058,7 +2059,7 @@ mod test {
 
         let mut path = Path::new(
             Default::default(),
-            connection::Id::EMPTY,
+            connection::PeerId::TEST_ID,
             RTTEstimator::new(manager.max_ack_delay),
             MockCongestionController::default(),
             true,

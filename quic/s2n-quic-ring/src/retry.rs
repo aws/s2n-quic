@@ -96,7 +96,7 @@ mod tests {
                 _ => None,
             }
         {
-            let local_conn_id = connection::Id::try_from_bytes(&retry::example::SCID).unwrap();
+            let local_conn_id = connection::LocalId::try_from_bytes(&retry::example::SCID).unwrap();
             if let Some(range) = packet::retry::Retry::encode_packet::<_, RingRetryCrypto>(
                 &remote_address,
                 &packet,

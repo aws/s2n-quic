@@ -79,9 +79,9 @@ pub struct Parameters<Cfg: Config> {
     /// The per-connection timer
     pub timer: ConnectionTimerEntry,
     /// The last utilized remote Connection ID
-    pub peer_connection_id: Id,
+    pub peer_connection_id: PeerId,
     /// The last utilized local Connection ID
-    pub local_connection_id: Id,
+    pub local_connection_id: LocalId,
     /// The peers socket address
     pub peer_socket_address: SocketAddress,
     /// The initial congestion controller for the connection

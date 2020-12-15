@@ -8,8 +8,8 @@ pub trait Format {
     fn generate_new_token(
         &mut self,
         peer_address: &SocketAddress,
-        destination_connection_id: &connection::Id,
-        source_connection_id: &connection::Id,
+        destination_connection_id: &connection::PeerId,
+        source_connection_id: &connection::LocalId,
         output_buffer: &mut [u8],
     ) -> Option<()>;
 
@@ -17,8 +17,8 @@ pub trait Format {
     fn generate_retry_token(
         &mut self,
         peer_address: &SocketAddress,
-        destination_connection_id: &connection::Id,
-        original_destination_connection_id: &connection::Id,
+        destination_connection_id: &connection::PeerId,
+        original_destination_connection_id: &connection::InitialId,
         output_buffer: &mut [u8],
     ) -> Option<()>;
 
@@ -28,9 +28,9 @@ pub trait Format {
     fn validate_token(
         &mut self,
         peer_address: &SocketAddress,
-        destination_connection_id: &connection::Id,
+        destination_connection_id: &connection::PeerId,
         token: &[u8],
-    ) -> Option<connection::Id>;
+    ) -> Option<connection::InitialId>;
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -53,8 +53,8 @@ pub mod testing {
         fn generate_new_token(
             &mut self,
             _peer_address: &SocketAddress,
-            _destination_connection_id: &connection::Id,
-            _source_connection_id: &connection::Id,
+            _destination_connection_id: &connection::PeerId,
+            _source_connection_id: &connection::LocalId,
             _output_buffer: &mut [u8],
         ) -> Option<()> {
             // TODO implement one for testing
@@ -64,8 +64,8 @@ pub mod testing {
         fn generate_retry_token(
             &mut self,
             _peer_address: &SocketAddress,
-            _destination_connection_id: &connection::Id,
-            _original_destination_connection_id: &connection::Id,
+            _destination_connection_id: &connection::PeerId,
+            _original_destination_connection_id: &connection::InitialId,
             output_buffer: &mut [u8],
         ) -> Option<()> {
             output_buffer.copy_from_slice(&retry::example::TOKEN);
@@ -75,11 +75,11 @@ pub mod testing {
         fn validate_token(
             &mut self,
             _peer_address: &SocketAddress,
-            _destination_connection_id: &connection::Id,
+            _destination_connection_id: &connection::PeerId,
             token: &[u8],
-        ) -> Option<connection::Id> {
+        ) -> Option<connection::InitialId> {
             if token == retry::example::TOKEN {
-                return Some(connection::Id::EMPTY);
+                return Some(connection::InitialId::TEST_ID);
             }
 
             None

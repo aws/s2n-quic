@@ -70,10 +70,11 @@ impl<CC: CongestionController> Manager<CC> {
     /// Upon success, returns a `(Id, bool)` containing the path ID and a boolean that is
     /// true if the path had been amplification limited prior to receiving the datagram
     /// and is now no longer amplification limited.
+    #[allow(unreachable_code)]
+    #[allow(unused_variables)]
     pub fn on_datagram_received<NewCC: FnOnce() -> CC>(
         &mut self,
         datagram: &DatagramInfo,
-        peer_connection_id: &connection::Id,
         is_handshake_confirmed: bool,
         new_congestion_controller: NewCC,
     ) -> Result<(Id, bool), TransportError> {
@@ -82,25 +83,52 @@ impl<CC: CongestionController> Manager<CC> {
             return Ok((id, unblocked));
         }
 
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.5
+        //= type=TODO
+        //= tracking-issue=316
+        //# Similarly, an endpoint MUST NOT reuse a connection ID when sending to
+        //# more than one destination address.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.5
+        //= type=TODO
+        //= tracking-issue=316
+        //# Due to network changes outside
+        //# the control of its peer, an endpoint might receive packets from a new
+        //# source address with the same destination connection ID, in which case
+        //# it MAY continue to use the current connection ID with the new remote
+        //# address while still sending from the same local address.
+
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
         //# The design of QUIC relies on endpoints retaining a stable address
         //# for the duration of the handshake.  An endpoint MUST NOT initiate
         //# connection migration before the handshake is confirmed, as defined
         //# in section 4.1.2 of [QUIC-TLS].
-        if is_handshake_confirmed {
-            let path = Path::new(
-                datagram.remote_address,
-                *peer_connection_id,
-                RTTEstimator::new(EARLY_ACK_SETTINGS.max_ack_delay),
-                new_congestion_controller(),
-                true,
-            );
-            let id = Id(self.paths.len());
-            self.paths.push(path);
-            return Ok((id, false));
+        if !is_handshake_confirmed {
+            return Err(TransportError::PROTOCOL_VIOLATION);
         }
 
-        Err(TransportError::PROTOCOL_VIOLATION)
+        // Since we are not currently supporting connection migration (whether it was deliberate or
+        // not), we will error our at this point to avoid re-using a peer connection ID.
+        // TODO: This would be better handled as a stateless reset so the peer can terminate the
+        //       connection immediately. https://github.com/awslabs/s2n-quic/issues/317
+        return Err(TransportError::INTERNAL_ERROR);
+
+        let path = Path::new(
+            datagram.remote_address,
+            // TODO https://github.com/awslabs/s2n-quic/issues/316
+            // The existing peer connection id may only be reused if the destination
+            // connection ID on this packet had not been used before (this would happen
+            // when the peer's remote address gets changed due to circumstances out of their
+            // control). Otherwise we will need to consume a new connection::PeerId or ignore
+            // the request if we don't have any connection::PeerIds to use.
+            self.active_path().1.peer_connection_id,
+            RTTEstimator::new(EARLY_ACK_SETTINGS.max_ack_delay),
+            new_congestion_controller(),
+            true,
+        );
+        let id = Id(self.paths.len());
+        self.paths.push(path);
+        Ok((id, false))
     }
 
     //TODO= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.4
@@ -152,11 +180,11 @@ impl<CC: CongestionController> Manager<CC> {
     //# Tokens are
     //# invalidated when their associated connection ID is retired via a
     //# RETIRE_CONNECTION_ID frame (Section 19.16).
-    pub fn on_connection_id_retire(&self, _connenction_id: &connection::Id) {
+    pub fn on_connection_id_retire(&self, _connection_id: &connection::LocalId) {
         // TODO invalidate any tokens issued under this connection id
     }
 
-    pub fn on_connection_id_new(&self, _connection_id: &connection::Id) {}
+    pub fn on_connection_id_new(&self, _connection_id: &connection::LocalId) {}
 
     pub fn on_packet_received(&mut self) {}
 }
@@ -192,7 +220,7 @@ mod tests {
 
     #[test]
     fn get_path_by_address_test() {
-        let conn_id = connection::Id::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
+        let conn_id = connection::PeerId::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
         let first_path = Path::new(
             SocketAddress::default(),
             conn_id,
@@ -210,7 +238,7 @@ mod tests {
 
     #[test]
     fn path_validate_test() {
-        let first_conn_id = connection::Id::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
+        let first_conn_id = connection::PeerId::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
         let mut first_path = Path::new(
             SocketAddress::default(),
             first_conn_id,
@@ -236,8 +264,9 @@ mod tests {
     }
 
     #[test]
+    #[allow(unreachable_code)]
     fn new_peer_test() {
-        let first_conn_id = connection::Id::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
+        let first_conn_id = connection::PeerId::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
         let first_path = Path::new(
             SocketAddress::default(),
             first_conn_id,
@@ -259,11 +288,17 @@ mod tests {
             remote_address: new_addr,
             payload_len: 0,
             ecn: ExplicitCongestionNotification::default(),
+            destination_connection_id: connection::LocalId::TEST_ID,
         };
 
-        manager
-            .on_datagram_received(&datagram, &first_conn_id, true, Unlimited::default)
-            .unwrap();
+        assert_eq!(
+            Err(TransportError::INTERNAL_ERROR),
+            manager.on_datagram_received(&datagram, true, Unlimited::default)
+        );
+
+        return;
+
+        // TODO: The following code can be enabled once connection migration is implemented
         assert_eq!(manager.path(&new_addr).is_some(), true);
         assert_eq!(manager.paths.len(), 2);
 
@@ -274,11 +309,12 @@ mod tests {
             remote_address: new_addr,
             payload_len: 0,
             ecn: ExplicitCongestionNotification::default(),
+            destination_connection_id: connection::LocalId::TEST_ID,
         };
 
         assert_eq!(
             manager
-                .on_datagram_received(&datagram, &first_conn_id, false, Unlimited::default)
+                .on_datagram_received(&datagram, false, Unlimited::default)
                 .is_err(),
             true
         );

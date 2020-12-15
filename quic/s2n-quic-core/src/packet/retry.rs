@@ -111,7 +111,7 @@ impl<'a> Retry<'a> {
     pub fn encode_packet<T: token::Format, C: RetryCrypto>(
         remote_address: &SocketAddress,
         packet: &ProtectedInitial,
-        local_connection_id: &connection::Id,
+        local_connection_id: &connection::LocalId,
         token_format: &mut T,
         packet_buf: &mut [u8],
     ) -> Option<Range<usize>> {
@@ -125,8 +125,9 @@ impl<'a> Retry<'a> {
         buffer.write_sized(T::TOKEN_LEN, |token_buf| {
             outcome = token_format.generate_retry_token(
                 &remote_address,
-                &connection::Id::try_from_bytes(retry_packet.destination_connection_id).unwrap(),
-                &connection::Id::try_from_bytes(packet.destination_connection_id()).unwrap(),
+                &connection::PeerId::try_from_bytes(retry_packet.destination_connection_id)
+                    .unwrap(),
+                &connection::InitialId::try_from_bytes(packet.destination_connection_id()).unwrap(),
                 token_buf,
             );
         });

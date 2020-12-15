@@ -26,7 +26,7 @@ pub struct Path<CC: CongestionController> {
     /// The peer's socket address
     pub peer_socket_address: SocketAddress,
     /// The connection id of the peer
-    pub peer_connection_id: connection::Id,
+    pub peer_connection_id: connection::PeerId,
     /// The path owns the roundtrip between peers
     pub rtt_estimator: RTTEstimator,
     /// The congestion controller for the path
@@ -52,7 +52,7 @@ pub struct Path<CC: CongestionController> {
 impl<CC: CongestionController> Path<CC> {
     pub fn new(
         peer_socket_address: SocketAddress,
-        peer_connection_id: connection::Id,
+        peer_connection_id: connection::PeerId,
         rtt_estimator: RTTEstimator,
         congestion_controller: CC,
         peer_validated: bool,
@@ -176,7 +176,7 @@ mod tests {
     fn amplification_limit_test() {
         let mut path = Path::new(
             SocketAddress::default(),
-            connection::Id::try_from_bytes(&[]).unwrap(),
+            connection::PeerId::try_from_bytes(&[]).unwrap(),
             RTTEstimator::new(Duration::from_millis(30)),
             Unlimited::default(),
             true,
@@ -214,7 +214,7 @@ mod tests {
         // TODO this would work better as a fuzz test
         let mut path = Path::new(
             SocketAddress::default(),
-            connection::Id::try_from_bytes(&[]).unwrap(),
+            connection::PeerId::try_from_bytes(&[]).unwrap(),
             RTTEstimator::new(Duration::from_millis(30)),
             Unlimited::default(),
             true,
@@ -247,7 +247,7 @@ mod tests {
     fn peer_validated_test() {
         let mut path = Path::new(
             SocketAddress::default(),
-            connection::Id::try_from_bytes(&[]).unwrap(),
+            connection::PeerId::try_from_bytes(&[]).unwrap(),
             RTTEstimator::new(Duration::from_millis(30)),
             Unlimited::default(),
             false,

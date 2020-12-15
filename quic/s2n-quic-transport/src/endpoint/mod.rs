@@ -33,6 +33,7 @@ mod version;
 pub use config::{Config, Context};
 use connection::id::ConnectionInfo;
 pub use s2n_quic_core::endpoint::*;
+use s2n_quic_core::inet::{ExplicitCongestionNotification, SocketAddress};
 
 /// A QUIC `Endpoint`
 pub struct Endpoint<Cfg: Config> {
@@ -95,14 +96,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
         for entry in entries.iter_mut() {
             if let Some(remote_address) = entry.remote_address() {
-                let datagram = DatagramInfo {
-                    timestamp,
-                    payload_len: entry.payload_len(),
-                    ecn: entry.ecn(),
-                    remote_address,
-                };
-
-                self.receive_datagram(&datagram, entry.payload_mut())
+                self.receive_datagram(remote_address, entry.ecn(), entry.payload_mut(), timestamp)
             }
         }
         let len = entries.len();
@@ -158,12 +152,19 @@ impl<Cfg: Config> Endpoint<Cfg> {
     }
 
     /// Ingests a single datagram
-    fn receive_datagram(&mut self, datagram: &DatagramInfo, payload: &mut [u8]) {
+    fn receive_datagram(
+        &mut self,
+        remote_address: SocketAddress,
+        ecn: ExplicitCongestionNotification,
+        payload: &mut [u8],
+        timestamp: Timestamp,
+    ) {
         let endpoint_context = self.config.context();
 
         // Try to decode the first packet in the datagram
+        let payload_len = payload.len();
         let buffer = DecoderBufferMut::new(payload);
-        let connection_info = ConnectionInfo::new(&datagram.remote_address);
+        let connection_info = ConnectionInfo::new(&remote_address);
         let (packet, remaining) = if let Ok((packet, remaining)) = ProtectedPacket::decode(
             buffer,
             &connection_info,
@@ -177,23 +178,33 @@ impl<Cfg: Config> Endpoint<Cfg> {
             return;
         };
 
-        // ensure the version is supported
+        // Ensure the version is supported. This check occurs before the destination
+        // connection ID is parsed since future versions of QUIC could have different
+        // length requirements for connection IDs.
         if self
             .version_negotiator
-            .on_packet(datagram, &packet)
+            .on_packet(remote_address, payload_len, &packet)
             .is_err()
         {
             return;
         }
 
-        let connection_id = match connection::Id::try_from_bytes(packet.destination_connection_id())
-        {
-            Some(connection_id) => connection_id,
-            None => {
-                // Ignore the datagram
-                dbg!("packet with invalid connection ID received");
-                return;
-            }
+        let destination_connection_id =
+            match connection::LocalId::try_from_bytes(packet.destination_connection_id()) {
+                Some(connection_id) => connection_id,
+                None => {
+                    // Ignore the datagram
+                    dbg!("packet with invalid connection ID received");
+                    return;
+                }
+            };
+
+        let datagram = &DatagramInfo {
+            timestamp,
+            payload_len,
+            ecn,
+            remote_address,
+            destination_connection_id,
         };
 
         // TODO validate the connection ID before looking up the connection in the map
@@ -202,7 +213,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
         // to the Connection
         if let Some(internal_id) = self
             .connection_id_mapper
-            .lookup_internal_connection_id(&connection_id)
+            .lookup_internal_connection_id(&datagram.destination_connection_id)
         {
             let outcome = self
                 .connections
@@ -213,7 +224,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         .on_datagram_received(
                             shared_state,
                             datagram,
-                            &connection_id,
                             endpoint_context.congestion_controller,
                         )
                         .map_err(|_| {
@@ -242,7 +252,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         shared_state,
                         datagram,
                         path_id,
-                        connection_id,
                         endpoint_context.connection_id_format,
                         remaining,
                     ) {
@@ -279,7 +288,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             match packet {
                 ProtectedPacket::Initial(packet) => {
                     let source_connection_id =
-                        match connection::Id::try_from_bytes(packet.source_connection_id()) {
+                        match connection::PeerId::try_from_bytes(packet.source_connection_id()) {
                             Some(connection_id) => connection_id,
                             None => {
                                 dbg!("Could not decode source connection id");
@@ -291,7 +300,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     //# In response to processing an Initial containing a token that was
                     //# provided in a Retry packet, a server cannot send another Retry
                     //# packet; it can only refuse the connection or permit it to proceed.
-                    let odcid = if !packet.token().is_empty() {
+                    let retry_token_dcid = if !packet.token().is_empty() {
                         if let Some(id) = endpoint_context.token.validate_token(
                             &datagram.remote_address,
                             &source_connection_id,
@@ -315,7 +324,8 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         None
                     };
 
-                    if let Err(err) = self.handle_initial_packet(datagram, packet, remaining, odcid)
+                    if let Err(err) =
+                        self.handle_initial_packet(datagram, packet, remaining, retry_token_dcid)
                     {
                         dbg!(err);
                     }

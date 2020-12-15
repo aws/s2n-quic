@@ -327,8 +327,8 @@ macro_rules! optional_transport_parameter {
 }
 
 macro_rules! connection_id_parameter {
-    ($name:ident, $tag:expr) => {
-        transport_parameter!($name(connection::Id), $tag, connection::Id::EMPTY);
+    ($name:ident, $id_type:ident, $tag:expr) => {
+        transport_parameter!($name(connection::$id_type), $tag);
 
         // The inner connection_id handles validation
         impl TransportParameterValidator for $name {}
@@ -337,7 +337,7 @@ macro_rules! connection_id_parameter {
             type Error = crate::connection::id::Error;
 
             fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-                Ok(Self(connection::Id::try_from(value)?))
+                Ok(Self(connection::$id_type::try_from(value)?))
             }
         }
 
@@ -364,7 +364,8 @@ macro_rules! connection_id_parameter {
 //#    by the client; see Section 7.3.  This transport parameter is only
 //#    sent by a server.
 
-connection_id_parameter!(OriginalDestinationConnectionId, 0x00);
+connection_id_parameter!(OriginalDestinationConnectionId, InitialId, 0x00);
+optional_transport_parameter!(OriginalDestinationConnectionId);
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2
 //# max_idle_timeout (0x01):  The max idle timeout is a value in
@@ -795,7 +796,7 @@ type CIDLength = u8;
 pub struct PreferredAddress {
     pub ipv4_address: Option<SocketAddressV4>,
     pub ipv6_address: Option<SocketAddressV6>,
-    pub connection_id: crate::connection::Id,
+    pub connection_id: crate::connection::UnboundedId,
     pub stateless_reset_token: crate::stateless_reset_token::StatelessResetToken,
 }
 
@@ -827,12 +828,9 @@ impl TransportParameter for PreferredAddress {
     }
 
     fn default_value() -> Self {
-        Self {
-            ipv4_address: None,
-            ipv6_address: None,
-            connection_id: connection::Id::EMPTY,
-            stateless_reset_token: StatelessResetToken::ZEROED,
-        }
+        unimplemented!(
+            "PreferredAddress is an optional transport parameter, so the default is None"
+        )
     }
 }
 
@@ -923,7 +921,7 @@ impl ActiveConnectionIdLimit {
 //#    included in the Source Connection ID field of the first Initial
 //#    packet it sends for the connection; see Section 7.3.
 
-connection_id_parameter!(InitialSourceConnectionId, 0x0f);
+connection_id_parameter!(InitialSourceConnectionId, UnboundedId, 0x0f);
 optional_transport_parameter!(InitialSourceConnectionId);
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2
@@ -931,7 +929,7 @@ optional_transport_parameter!(InitialSourceConnectionId);
 //#    included in the Source Connection ID field of a Retry packet; see
 //#    Section 7.3.  This transport parameter is only sent by a server.
 
-connection_id_parameter!(RetrySourceConnectionId, 0x10);
+connection_id_parameter!(RetrySourceConnectionId, LocalId, 0x10);
 optional_transport_parameter!(RetrySourceConnectionId);
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2
@@ -1052,7 +1050,7 @@ pub type ClientTransportParameters = TransportParameters<
 
 /// Specific TransportParameters sent by the server endpoint
 pub type ServerTransportParameters = TransportParameters<
-    OriginalDestinationConnectionId,
+    Option<OriginalDestinationConnectionId>,
     Option<StatelessResetToken>,
     Option<PreferredAddress>,
     Option<RetrySourceConnectionId>,
@@ -1252,7 +1250,9 @@ mod snapshot_tests {
             max_ack_delay: integer_value.try_into().unwrap(),
             migration_support: MigrationSupport::Disabled,
             active_connection_id_limit: integer_value.try_into().unwrap(),
-            original_destination_connection_id: [1, 2, 3][..].try_into().unwrap(),
+            original_destination_connection_id: Some(
+                [1, 2, 3, 4, 5, 6, 7, 8][..].try_into().unwrap(),
+            ),
             stateless_reset_token: Some([2; 16].into()),
             preferred_address: Some(PreferredAddress {
                 ipv4_address: Some(SocketAddressV4::new([127, 0, 0, 1], 1337)),
@@ -1260,26 +1260,9 @@ mod snapshot_tests {
                 connection_id: [4, 5, 6, 7][..].try_into().unwrap(),
                 stateless_reset_token: [1; 16].into(),
             }),
-            initial_source_connection_id: Some([1, 2, 3][..].try_into().unwrap()),
-            retry_source_connection_id: Some([1, 2, 3][..].try_into().unwrap()),
+            initial_source_connection_id: Some([1, 2, 3, 4][..].try_into().unwrap()),
+            retry_source_connection_id: Some([1, 2, 3, 4][..].try_into().unwrap()),
         }
-    }
-
-    #[test]
-    fn server_snapshot_with_empty_initial_scid_test() {
-        let value = ServerTransportParameters {
-            initial_source_connection_id: Some([][..].try_into().unwrap()),
-            ..Default::default()
-        };
-        let encoded_output = assert_codec_round_trip_value!(ServerTransportParameters, value);
-
-        #[cfg(not(miri))] // snapshot tests don't work on miri
-        insta::assert_debug_snapshot!(
-            "server_snapshot_with_empty_initial_scid_test",
-            encoded_output
-        );
-
-        let _ = encoded_output;
     }
 
     #[test]
@@ -1313,7 +1296,7 @@ mod snapshot_tests {
             original_destination_connection_id: Default::default(),
             stateless_reset_token: Default::default(),
             preferred_address: Default::default(),
-            initial_source_connection_id: Some([1, 2, 3][..].try_into().unwrap()),
+            initial_source_connection_id: Some([1, 2, 3, 4][..].try_into().unwrap()),
             retry_source_connection_id: Default::default(),
         }
     }
