@@ -84,12 +84,10 @@ impl<'a> ProtectedInitial<'a> {
         //# to read longer connection IDs from other QUIC versions.
         // Connection ID validation for Initial packets occurs after version
         // negotiation has determined the specified version is supported.
-        let validate_connection_id_len = false;
-
         let destination_connection_id =
-            decoder.decode_destination_connection_id(&buffer, validate_connection_id_len)?;
+            decoder.decode_checked_range::<DestinationConnectionIDLen>(&buffer)?;
         let source_connection_id =
-            decoder.decode_source_connection_id(&buffer, validate_connection_id_len)?;
+            decoder.decode_checked_range::<SourceConnectionIDLen>(&buffer)?;
         let token = decoder.decode_checked_range::<VarInt>(&buffer)?;
 
         let (payload, packet_number, remaining) =

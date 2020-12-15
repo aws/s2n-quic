@@ -69,12 +69,8 @@ impl<'a> ProtectedZeroRTT<'a> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2
         //# Endpoints that receive a version 1 long header
         //# with a value larger than 20 MUST drop the packet.
-        let validate_connection_id_len = true;
-
-        let destination_connection_id =
-            decoder.decode_destination_connection_id(&buffer, validate_connection_id_len)?;
-        let source_connection_id =
-            decoder.decode_source_connection_id(&buffer, validate_connection_id_len)?;
+        let destination_connection_id = decoder.decode_destination_connection_id(&buffer)?;
+        let source_connection_id = decoder.decode_source_connection_id(&buffer)?;
 
         let (payload, packet_number, remaining) =
             decoder.finish_long()?.split_off_packet(buffer)?;
