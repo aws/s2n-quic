@@ -253,8 +253,10 @@ impl StreamFlowController {
 
     /// Updates the `MAXIMUM_STREAM_DATA` value which was communicated by a peer
     pub fn set_max_stream_data(&mut self, max_stream_data: VarInt) {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.1
+        //# A sender MUST ignore any MAX_STREAM_DATA or MAX_DATA frames that do
+        //# not increase flow control limits.
         if max_stream_data <= self.max_stream_data {
-            // We are only interested in window increments
             return;
         }
 

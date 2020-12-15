@@ -9,7 +9,7 @@ use alloc::rc::Rc;
 use core::cell::RefCell;
 use s2n_quic_core::{
     ack_set::AckSet, frame::max_data::MaxData, packet::number::PacketNumber, stream::StreamId,
-    varint::VarInt,
+    transport::error::TransportError, varint::VarInt,
 };
 
 /// Writes `MAX_DATA` frames based on the connections flow control window.
@@ -33,6 +33,11 @@ impl ValueToFrameWriter<VarInt> for MaxDataToFrameWriter {
 /// incoming data
 #[derive(Debug)]
 struct IncomingConnectionFlowControllerImpl {
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.1
+    //= type=exception
+    //= reason=The implementation will always send the largest value automatically
+    //# Once a receiver advertises a limit for the connection or a stream, it
+    //# MAY advertise a smaller limit, but this has no effect.
     /// Synchronizes the read window to the remote peer
     pub(super) read_window_sync: IncrementalValueSync<VarInt, MaxDataToFrameWriter>,
     /// The relative flow control window we want to maintain
@@ -81,9 +86,13 @@ impl IncomingConnectionFlowControllerImpl {
         );
     }
 
-    pub fn acquire_window(&mut self, desired: VarInt) -> Result<(), ()> {
+    pub fn acquire_window(&mut self, desired: VarInt) -> Result<(), TransportError> {
         if self.remaining_window() < desired {
-            return Err(());
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.1
+            //# A receiver MUST close the connection with a FLOW_CONTROL_ERROR error
+            //# (Section 11) if the sender violates the advertised connection or
+            //# stream data limits.
+            return Err(TransportError::FLOW_CONTROL_ERROR);
         }
 
         self.acquired_window += desired;
@@ -141,7 +150,7 @@ impl IncomingConnectionFlowController {
     ///
     /// If the requested window size is not available the method will return
     /// an error in form of the `Err` variant.
-    pub fn acquire_window(&mut self, desired: VarInt) -> Result<(), ()> {
+    pub fn acquire_window(&mut self, desired: VarInt) -> Result<(), TransportError> {
         self.inner.borrow_mut().acquire_window(desired)
     }
 
