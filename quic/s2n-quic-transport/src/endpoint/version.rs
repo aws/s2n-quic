@@ -6,7 +6,7 @@ use s2n_quic_core::{
     inet::{ExplicitCongestionNotification, SocketAddress},
     io::tx,
     packet,
-    packet::{version_negotiation, ProtectedPacket},
+    packet::ProtectedPacket,
     path::MINIMUM_MTU,
     transport::error::TransportError,
 };
@@ -122,7 +122,8 @@ impl<Config: endpoint::Config> Negotiator<Config> {
 
 struct Transmission {
     remote_address: SocketAddress,
-    packet: [u8; version_negotiation::MAX_LEN],
+    // The MINIMUM_MTU size allows for at least 170 supported versions
+    packet: [u8; MINIMUM_MTU as usize],
     packet_len: usize,
 }
 
@@ -141,7 +142,7 @@ impl Transmission {
         remote_address: SocketAddress,
         initial_packet: &packet::initial::ProtectedInitial,
     ) -> Self {
-        let mut packet_buf = [0u8; packet::version_negotiation::MAX_LEN];
+        let mut packet_buf = [0u8; MINIMUM_MTU as usize];
         let version_packet = packet::version_negotiation::VersionNegotiation::from_initial(
             initial_packet,
             SupportedVersions,

@@ -44,11 +44,6 @@ const ENCODING_TAG: u8 = 0b1100_0000;
 
 pub(crate) const VERSION: u32 = 0x0000_0000;
 
-/// Maximum size of a VersionNegotiation packet, based on the Destination Connection ID
-/// and Source Connection ID each being up to 255 bytes, plus additional bytes for the tag,
-/// supported version, and ID lengths
-pub const MAX_LEN: usize = 521;
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct VersionNegotiation<'a, SupportedVersions> {
     pub tag: Tag,
