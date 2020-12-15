@@ -72,6 +72,9 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                 .generate(&connection_info);
         }
 
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2
+        //# Endpoints that receive a version 1 long header
+        //# with a value larger than 20 MUST drop the packet.
         let source_connection_id: connection::PeerId = packet.source_connection_id().try_into()?;
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.5.2

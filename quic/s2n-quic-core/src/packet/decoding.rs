@@ -46,10 +46,13 @@ impl<'a> HeaderDecoder<'a> {
     pub fn decode_destination_connection_id<'b>(
         &mut self,
         buffer: &DecoderBufferMut<'b>,
+        validate: bool,
     ) -> Result<CheckedRange, DecoderError> {
         let destination_connection_id =
             self.decode_checked_range::<DestinationConnectionIDLen>(buffer)?;
-        validate_destination_connection_id_range(&destination_connection_id)?;
+        if validate {
+            validate_destination_connection_id_range(&destination_connection_id)?;
+        }
         Ok(destination_connection_id)
     }
 
@@ -78,9 +81,12 @@ impl<'a> HeaderDecoder<'a> {
     pub fn decode_source_connection_id<'b>(
         &mut self,
         buffer: &DecoderBufferMut<'b>,
+        validate: bool,
     ) -> Result<CheckedRange, DecoderError> {
         let source_connection_id = self.decode_checked_range::<SourceConnectionIDLen>(buffer)?;
-        validate_source_connection_id_range(&source_connection_id)?;
+        if validate {
+            validate_source_connection_id_range(&source_connection_id)?;
+        }
         Ok(source_connection_id)
     }
 

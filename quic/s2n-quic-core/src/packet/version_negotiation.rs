@@ -1,4 +1,5 @@
 use crate::packet::{
+    initial::ProtectedInitial,
     long::{
         validate_destination_connection_id_len, validate_source_connection_id_len,
         DestinationConnectionIDLen, SourceConnectionIDLen, Version,
@@ -8,7 +9,7 @@ use crate::packet::{
 use core::mem::size_of;
 use s2n_codec::{
     decoder_invariant, DecoderBuffer, DecoderBufferMut, DecoderBufferMutResult, Encoder,
-    EncoderValue,
+    EncoderBuffer, EncoderValue,
 };
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.1
@@ -42,6 +43,11 @@ const ENCODING_TAG: u8 = 0b1100_0000;
 //# 0x00000000.
 
 pub(crate) const VERSION: u32 = 0x0000_0000;
+
+/// Maximum size of a VersionNegotiation packet, based on the Destination Connection ID
+/// and Source Connection ID each being up to 255 bytes, plus additional bytes for the tag,
+/// supported version, and ID lengths
+pub const MAX_LEN: usize = 521;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct VersionNegotiation<'a, SupportedVersions> {
@@ -109,6 +115,42 @@ impl<'a> ProtectedVersionNegotiation<'a> {
     #[inline]
     pub fn destination_connection_id(&self) -> &[u8] {
         self.destination_connection_id
+    }
+}
+
+impl<'a, SupportedVersions: EncoderValue> VersionNegotiation<'a, SupportedVersions> {
+    fn from_initial(
+        initial_packet: &'a ProtectedInitial,
+        supported_versions: SupportedVersions,
+    ) -> Self {
+        // The destination and source connection IDs are flipped because this packet is being sent
+        // back to the client.
+        Self {
+            tag: 0,
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.1
+            //# The server MUST include the value from the Source Connection ID field
+            //# of the packet it receives in the Destination Connection ID field.
+            destination_connection_id: initial_packet.source_connection_id(),
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.1
+            //# The value for Source Connection ID MUST be copied from the
+            //# Destination Connection ID of the received packet, which is initially
+            //# randomly selected by a client.
+            source_connection_id: initial_packet.destination_connection_id(),
+            supported_versions,
+        }
+    }
+
+    pub fn encode_packet(
+        packet: &'a ProtectedInitial,
+        supported_versions: SupportedVersions,
+        packet_buf: &mut [u8],
+    ) -> usize {
+        let version_packet = Self::from_initial(packet, supported_versions);
+
+        let mut buffer = EncoderBuffer::new(packet_buf);
+        version_packet.encode(&mut buffer);
+
+        buffer.len()
     }
 }
 

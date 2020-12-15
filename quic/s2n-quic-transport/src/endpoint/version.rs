@@ -1,12 +1,12 @@
 use crate::endpoint;
 use alloc::collections::VecDeque;
-use core::{convert::TryInto, marker::PhantomData, time::Duration};
-use s2n_codec::{Encoder, EncoderBuffer, EncoderValue};
+use core::{marker::PhantomData, time::Duration};
+use s2n_codec::{Encoder, EncoderValue};
 use s2n_quic_core::{
-    connection,
     inet::{ExplicitCongestionNotification, SocketAddress},
     io::tx,
-    packet::{version_negotiation::VersionNegotiation, ProtectedPacket},
+    packet,
+    packet::{version_negotiation, ProtectedPacket},
     path::MINIMUM_MTU,
     transport::error::TransportError,
 };
@@ -98,18 +98,8 @@ impl<Config: endpoint::Config> Negotiator<Config> {
 
         // store the peer's address if we're not at capacity
         if self.transmissions.len() != self.max_peers {
-            self.transmissions.push_back(Transmission {
-                remote_address,
-                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.1
-                //# The server MUST include the value from the Source Connection ID field
-                //# of the packet it receives in the Destination Connection ID field.
-                destination_connection_id: packet.source_connection_id().try_into()?,
-                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.1
-                //# The value for Source Connection ID MUST be copied from the
-                //# Destination Connection ID of the received packet, which is initially
-                //# randomly selected by a client.
-                source_connection_id: packet.destination_connection_id().try_into()?,
-            });
+            self.transmissions
+                .push_back(Transmission::new(remote_address, packet));
         }
 
         Err(TransportError::NO_ERROR)
@@ -130,13 +120,43 @@ impl<Config: endpoint::Config> Negotiator<Config> {
     }
 }
 
-#[derive(Debug)]
 struct Transmission {
     remote_address: SocketAddress,
-    // Both destination and source CIDs are UnboundedIds as future versions of QUIC may
-    // have different length requirements for connection IDs
-    destination_connection_id: connection::UnboundedId,
-    source_connection_id: connection::UnboundedId,
+    packet: [u8; version_negotiation::MAX_LEN],
+    packet_len: usize,
+}
+
+impl core::fmt::Debug for Transmission {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Transmission")
+            .field("remote_address", &self.remote_address)
+            .field("packet_len", &self.packet_len)
+            .field("packet", &&self.packet[0..self.packet_len])
+            .finish()
+    }
+}
+
+impl Transmission {
+    pub fn new(remote_address: SocketAddress, packet: &packet::initial::ProtectedInitial) -> Self {
+        let mut packet_buf = [0u8; packet::version_negotiation::MAX_LEN as usize];
+        let len = packet::version_negotiation::VersionNegotiation::encode_packet(
+            packet,
+            SupportedVersions,
+            &mut packet_buf,
+        );
+
+        Self {
+            remote_address,
+            packet: packet_buf,
+            packet_len: len,
+        }
+    }
+}
+
+impl AsRef<[u8]> for Transmission {
+    fn as_ref(&self) -> &[u8] {
+        &self.packet[..self.packet_len]
+    }
 }
 
 impl tx::Message for &Transmission {
@@ -157,20 +177,14 @@ impl tx::Message for &Transmission {
     }
 
     fn write_payload(&mut self, buffer: &mut [u8]) -> usize {
-        let mut buffer = EncoderBuffer::new(buffer);
-        VersionNegotiation {
-            tag: 0,
-            destination_connection_id: self.destination_connection_id.as_ref(),
-            source_connection_id: self.source_connection_id.as_ref(),
-            supported_versions: SupportedVersions,
-        }
-        .encode(&mut buffer);
-        buffer.len()
+        let packet = self.as_ref();
+        buffer[..packet.len()].copy_from_slice(packet);
+        packet.len()
     }
 }
 
 #[derive(Clone, Copy, Debug)]
-struct SupportedVersions;
+pub struct SupportedVersions;
 
 impl EncoderValue for SupportedVersions {
     fn encode<E: Encoder>(&self, encoder: &mut E) {
@@ -183,8 +197,10 @@ impl EncoderValue for SupportedVersions {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use core::mem::size_of;
     use s2n_codec::{DecoderBufferMut, Encoder, EncoderBuffer};
     use s2n_quic_core::{
+        connection,
         connection::id::ConnectionInfo,
         inet::DatagramInfo,
         packet::{
@@ -192,6 +208,7 @@ mod tests {
             initial::Initial,
             number::{PacketNumberSpace, TruncatedPacketNumber},
             short::Short,
+            version_negotiation::VersionNegotiation,
             zero_rtt::ZeroRTT,
         },
         varint::VarInt,
@@ -239,6 +256,27 @@ mod tests {
                 version,
                 destination_connection_id: &[1u8, 2, 3][..],
                 source_connection_id: &[4u8, 5, 6, 7][..],
+                token: &[][..],
+                packet_number: pn(PacketNumberSpace::Initial),
+                payload: &[1u8, 2, 3, 4, 5][..],
+            }
+        )
+    }
+
+    fn on_future_version_initial_packet<C: endpoint::Config>(
+        datagram_info: DatagramInfo,
+        version: u32,
+        negotiator: &mut Negotiator<C>,
+    ) -> Result<(), TransportError> {
+        on_packet!(
+            negotiator,
+            datagram_info.remote_address,
+            datagram_info.payload_len,
+            Initial {
+                version,
+                // Maximum length connection IDs that may be valid in future versions
+                destination_connection_id: &[1u8; size_of::<u8>()][..],
+                source_connection_id: &[2u8; size_of::<u8>()][..],
                 token: &[][..],
                 packet_number: pn(PacketNumberSpace::Initial),
                 payload: &[1u8, 2, 3, 4, 5][..],
@@ -354,6 +392,22 @@ mod tests {
 
         assert_eq!(
             on_initial_packet(datagram_info(1200), INVALID_VERSION, &mut server),
+            Err(TransportError::NO_ERROR),
+            "server implementations should error on invalid versions"
+        );
+
+        assert!(
+            !server.transmissions.is_empty(),
+            "servers should negotiate with initial packets"
+        );
+    }
+
+    #[test]
+    fn server_future_version_initial_test() {
+        let mut server = Server::default();
+
+        assert_eq!(
+            on_future_version_initial_packet(datagram_info(1200), INVALID_VERSION, &mut server),
             Err(TransportError::NO_ERROR),
             "server implementations should error on invalid versions"
         );

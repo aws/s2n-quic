@@ -171,8 +171,13 @@ impl<'a> Retry<'a> {
     ) -> DecoderBufferMutResult<Retry> {
         let mut decoder = HeaderDecoder::new_long(&buffer);
 
-        let destination_connection_id = decoder.decode_destination_connection_id(&buffer)?;
-        let source_connection_id = decoder.decode_source_connection_id(&buffer)?;
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2
+        //# Endpoints that receive a version 1 long header
+        //# with a value larger than 20 MUST drop the packet.
+        let validate_connection_id_len = true;
+
+        let destination_connection_id = decoder.decode_destination_connection_id(&buffer, validate_connection_id_len)?;
+        let source_connection_id = decoder.decode_source_connection_id(&buffer, validate_connection_id_len)?;
 
         // split header and payload
         let header_len = decoder.decoded_len();

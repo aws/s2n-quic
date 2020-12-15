@@ -78,8 +78,18 @@ impl<'a> ProtectedInitial<'a> {
     ) -> DecoderBufferMutResult<ProtectedInitial> {
         let mut decoder = HeaderDecoder::new_long(&buffer);
 
-        let destination_connection_id = decoder.decode_destination_connection_id(&buffer)?;
-        let source_connection_id = decoder.decode_source_connection_id(&buffer)?;
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2
+        //# In order to
+        //# properly form a Version Negotiation packet, servers SHOULD be able
+        //# to read longer connection IDs from other QUIC versions.
+        // Connection ID validation for Initial packets occurs after version
+        // negotiation has determined the specified version is supported.
+        let validate_connection_id_len = false;
+
+        let destination_connection_id =
+            decoder.decode_destination_connection_id(&buffer, validate_connection_id_len)?;
+        let source_connection_id =
+            decoder.decode_source_connection_id(&buffer, validate_connection_id_len)?;
         let token = decoder.decode_checked_range::<VarInt>(&buffer)?;
 
         let (payload, packet_number, remaining) =
