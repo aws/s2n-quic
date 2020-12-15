@@ -6,6 +6,7 @@ Other versions of TLS MUST
 provide a similar function in order to be used with QUIC.
 '''
 reason = '''
-s2n-quic only uses TLS for traffic encryption.
+TLS support is implemented through a provider and is unenforceable by
+s2n-quic.
 '''
 
