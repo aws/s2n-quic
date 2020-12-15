@@ -153,6 +153,10 @@ pub struct DataSender<FlowControllerType, ChunkToFrameWriterType> {
     /// This capacity will not be exceeded - even if the remote provides us a
     /// bigger flow control window.
     max_buffer_capacity: u32,
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.4
+    //# Both endpoints MUST maintain flow control state
+    //# for the stream in the unterminated direction until that direction
+    //# enters a terminal state.
     /// The flow controller which is used to determine whether data chunks can
     /// be sent.
     flow_controller: FlowControllerType,
@@ -297,6 +301,9 @@ impl<
     /// inside this method. The already enqueued bytes can be retrieved by
     /// calling [`total_enqueued_len()`].
     pub fn push(&mut self, data: Bytes) {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.5
+        //# An endpoint MUST NOT send data on a stream at or beyond the final
+        //# size.
         debug_assert!(
             self.state == DataSenderState::Sending,
             "Data transmission is not allowed after finish() was called"
@@ -530,12 +537,16 @@ impl<
 
                 let chunk_end = chunk.offset + VarInt::from_u32(chunk.len);
 
-                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#2.2
-                //# An endpoint MUST NOT send data on any stream without ensuring that it
-                //# is within the flow control limits set by its peer.
-                let window_end = self
-                    .flow_controller
-                    .acquire_flow_control_window(chunk.offset, chunk.len as usize);
+                let window_end = {
+                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#2.2
+                    //# An endpoint MUST NOT send data on any stream without ensuring that it
+                    //# is within the flow control limits set by its peer.
+
+                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.1
+                    //# Senders MUST NOT send data in excess of either limit.
+                    self.flow_controller
+                        .acquire_flow_control_window(chunk.offset, chunk.len as usize)
+                };
 
                 let truncate_by = Into::<u64>::into(chunk_end.saturating_sub(window_end)) as usize;
                 if truncate_by == (chunk.len as usize) && chunk.len > 0 {
@@ -549,6 +560,21 @@ impl<
                     // Chunks are ordered by offset, so we will not be able to
                     // write a later offset and thereby won't miss anything
                     // by breaking early.
+
+                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.1
+                    //= type=TODO
+                    //= tracking-issue=333
+                    //# A sender SHOULD send a
+                    //# STREAM_DATA_BLOCKED or DATA_BLOCKED frame to indicate to the receiver
+                    //# that it has data to write but is blocked by flow control limits.
+
+                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.1
+                    //= type=TODO
+                    //= tracking-issue=333
+                    //# To keep the
+                    //# connection from closing, a sender that is flow control limited SHOULD
+                    //# periodically send a STREAM_DATA_BLOCKED or DATA_BLOCKED frame when it
+                    //# has no ack-eliciting packets in flight.
 
                     // TODO: This might be a place where we could send a
                     // STREAM_DATA_BLOCKED frame later on. If we are doing this,

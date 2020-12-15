@@ -14,6 +14,13 @@ pub struct ApplicationParameters<'a> {
     pub transport_parameters: &'a [u8],
 }
 
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4
+//= type=TODO
+//= tracking-issue=332
+//# To avoid excessive buffering at multiple layers, QUIC implementations
+//# SHOULD provide an interface for the cryptographic protocol
+//# implementation to communicate its buffering limits.
+
 pub trait Context<Crypto: CryptoSuite> {
     fn on_handshake_keys(&mut self, keys: Crypto::HandshakeCrypto) -> Result<(), TransportError>;
 
