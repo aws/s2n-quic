@@ -1,7 +1,7 @@
 use crate::endpoint;
 use alloc::collections::VecDeque;
 use core::{marker::PhantomData, time::Duration};
-use s2n_codec::{Encoder, EncoderValue};
+use s2n_codec::{Encoder, EncoderBuffer, EncoderValue};
 use s2n_quic_core::{
     inet::{ExplicitCongestionNotification, SocketAddress},
     io::tx,
@@ -137,18 +137,24 @@ impl core::fmt::Debug for Transmission {
 }
 
 impl Transmission {
-    pub fn new(remote_address: SocketAddress, packet: &packet::initial::ProtectedInitial) -> Self {
+    pub fn new(
+        remote_address: SocketAddress,
+        initial_packet: &packet::initial::ProtectedInitial,
+    ) -> Self {
         let mut packet_buf = [0u8; packet::version_negotiation::MAX_LEN];
-        let len = packet::version_negotiation::VersionNegotiation::encode_packet(
-            packet,
+        let version_packet = packet::version_negotiation::VersionNegotiation::from_initial(
+            initial_packet,
             SupportedVersions,
-            &mut packet_buf,
         );
+
+        let mut buffer = EncoderBuffer::new(&mut packet_buf);
+        version_packet.encode(&mut buffer);
+        let packet_len = buffer.len();
 
         Self {
             remote_address,
             packet: packet_buf,
-            packet_len: len,
+            packet_len,
         }
     }
 }

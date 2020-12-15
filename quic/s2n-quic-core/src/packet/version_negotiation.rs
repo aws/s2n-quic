@@ -9,7 +9,7 @@ use crate::packet::{
 use core::mem::size_of;
 use s2n_codec::{
     decoder_invariant, DecoderBuffer, DecoderBufferMut, DecoderBufferMutResult, Encoder,
-    EncoderBuffer, EncoderValue,
+    EncoderValue,
 };
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.1
@@ -119,7 +119,7 @@ impl<'a> ProtectedVersionNegotiation<'a> {
 }
 
 impl<'a, SupportedVersions: EncoderValue> VersionNegotiation<'a, SupportedVersions> {
-    fn from_initial(
+    pub fn from_initial(
         initial_packet: &'a ProtectedInitial,
         supported_versions: SupportedVersions,
     ) -> Self {
@@ -138,19 +138,6 @@ impl<'a, SupportedVersions: EncoderValue> VersionNegotiation<'a, SupportedVersio
             source_connection_id: initial_packet.destination_connection_id(),
             supported_versions,
         }
-    }
-
-    pub fn encode_packet(
-        packet: &'a ProtectedInitial,
-        supported_versions: SupportedVersions,
-        packet_buf: &mut [u8],
-    ) -> usize {
-        let version_packet = Self::from_initial(packet, supported_versions);
-
-        let mut buffer = EncoderBuffer::new(packet_buf);
-        version_packet.encode(&mut buffer);
-
-        buffer.len()
     }
 }
 
