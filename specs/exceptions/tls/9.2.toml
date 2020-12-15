@@ -1,0 +1,31 @@
+target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#9.2"
+
+[[exception]]
+quote = '''
+These
+MUST NOT be used to communicate application semantics between
+endpoints; clients MUST treat them as opaque values.
+'''
+reason = '''
+TLS support is implemented through a provider and is unenforceable by
+s2n-quic.
+'''
+
+[[exception]]
+quote = '''
+QUIC extensions MUST describe how replay attacks affect their
+operation, or prohibit their use in 0-RTT.
+'''
+reason = '''
+s2n-quic does not define any additional extensions
+'''
+
+[[exception]]
+quote = '''
+Application protocols
+MUST either prohibit the use of extensions that carry application
+semantics in 0-RTT or provide replay mitigation strategies.
+'''
+reason = '''
+s2n-quic does not define any application protocols
+'''

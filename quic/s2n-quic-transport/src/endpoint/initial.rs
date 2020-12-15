@@ -35,6 +35,10 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         //# A client MUST expand the payload of all UDP datagrams carrying
         //# Initial packets to at least the smallest allowed maximum datagram
         //# size of 1200 bytes
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#9.3
+        //# First, the packet
+        //# containing a ClientHello MUST be padded to a minimum size.
         if datagram.payload_len < 1200 {
             return Err(TransportError::PROTOCOL_VIOLATION.with_reason("packet too small"));
         }

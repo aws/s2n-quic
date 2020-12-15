@@ -193,8 +193,13 @@ impl<ConnectionConfigType: connection::Config> ConnectionApiProvider
         self.lock().space_manager.application()?.sni.clone()
     }
 
-    fn alpn(&self) -> Option<Bytes> {
-        self.lock().space_manager.application()?.alpn.clone()
+    fn alpn(&self) -> Bytes {
+        self.lock()
+            .space_manager
+            .application()
+            .expect("Application space must be available on active connections")
+            .alpn
+            .clone()
     }
 
     fn ping(&self) -> Result<(), connection::Error> {
