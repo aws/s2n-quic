@@ -1,0 +1,48 @@
+target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.3"
+
+[[TODO]]
+quote = '''
+Endpoints responding to an apparent key update MUST NOT generate a
+timing side-channel signal that might indicate that the Key Phase bit
+was invalid (see Section 9.4).
+'''
+tracking-issue = "318"
+feature = "Key update"
+
+[[TODO]]
+quote = '''
+An endpoint MAY
+perform this process as part of packet processing, but this creates a
+timing signal that can be used by an attacker to learn when key
+updates happen and thus the value of the Key Phase bit in certain
+packets.
+'''
+tracking-issue = "318"
+feature = "Key update"
+
+[[TODO]]
+quote = '''
+Endpoints MAY instead defer the creation of the next set of
+receive packet protection keys until some time after a key update
+completes, up to three times the PTO; see Section 6.5.
+'''
+tracking-issue = "318"
+feature = "Key update"
+
+[[TODO]]
+quote = '''
+Once generated, the next set of packet protection keys SHOULD be
+retained, even if the packet that was received was subsequently
+discarded.
+'''
+tracking-issue = "318"
+feature = "Key update"
+
+[[TODO]]
+quote = '''
+For this reason, endpoints MUST be able to retain two sets of packet
+protection keys for receiving packets: the current and the next.
+'''
+tracking-issue = "318"
+feature = "Key update"
+

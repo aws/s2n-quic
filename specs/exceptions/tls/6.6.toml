@@ -1,0 +1,14 @@
+target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6"
+
+[[exception]]
+quote = '''
+Any TLS cipher suite that is specified for use with QUIC MUST define
+limits on the use of the associated AEAD function that preserves
+margins for confidentiality and integrity. That is, limits MUST be
+specified for the number of packets that can be authenticated and for
+the number of packets that can fail authentication.
+'''
+reason = '''
+s2n-quic does not define any cipher suites beyond what is available in the
+TLS provider. In the end this means it is unenforceable by s2n-quic itself.
+'''
