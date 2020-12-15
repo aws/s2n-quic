@@ -84,7 +84,7 @@ class Stats {
     this.total += 1;
 
     if (requirement.incomplete) this.incomplete += 1;
-    else if (requirement.isComplete) this.complete += 1;
+    else if (requirement.isOk) this.complete += 1;
 
     if (requirement.citation) this.citations += 1;
     if (requirement.test) this.tests += 1;
