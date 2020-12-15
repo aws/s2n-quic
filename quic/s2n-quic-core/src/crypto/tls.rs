@@ -7,7 +7,7 @@ use s2n_codec::EncoderValue;
 #[derive(Debug)]
 pub struct ApplicationParameters<'a> {
     /// The negotiated Application Layer Protocol
-    pub alpn_protocol: Option<&'a [u8]>,
+    pub alpn_protocol: &'a [u8],
     /// Server Name Indication
     pub sni: Option<&'a [u8]>,
     /// Encoded transport parameters

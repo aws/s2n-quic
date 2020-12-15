@@ -1,0 +1,27 @@
+target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#8.1"
+
+[[TODO]]
+quote = '''
+Servers MUST select an application protocol compatible
+with the QUIC version that the client has selected.
+'''
+tracking-issue = "325"
+feature = "Protocol negotiation"
+
+[[TODO]]
+quote = '''
+The server MUST
+treat the inability to select a compatible application protocol as a
+connection error of type 0x178 (no_application_protocol).
+'''
+tracking-issue = "325"
+feature = "Protocol negotiation"
+
+[[TODO]]
+quote = '''
+Similarly,
+a client MUST treat the selection of an incompatible application
+protocol by a server as a connection error of type 0x178.
+'''
+tracking-issue = "325"
+feature = "Protocol negotiation"
