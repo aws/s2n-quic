@@ -176,8 +176,10 @@ impl<'a> Retry<'a> {
         //# with a value larger than 20 MUST drop the packet.
         let validate_connection_id_len = true;
 
-        let destination_connection_id = decoder.decode_destination_connection_id(&buffer, validate_connection_id_len)?;
-        let source_connection_id = decoder.decode_source_connection_id(&buffer, validate_connection_id_len)?;
+        let destination_connection_id =
+            decoder.decode_destination_connection_id(&buffer, validate_connection_id_len)?;
+        let source_connection_id =
+            decoder.decode_source_connection_id(&buffer, validate_connection_id_len)?;
 
         // split header and payload
         let header_len = decoder.decoded_len();

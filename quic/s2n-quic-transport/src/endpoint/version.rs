@@ -138,7 +138,7 @@ impl core::fmt::Debug for Transmission {
 
 impl Transmission {
     pub fn new(remote_address: SocketAddress, packet: &packet::initial::ProtectedInitial) -> Self {
-        let mut packet_buf = [0u8; packet::version_negotiation::MAX_LEN as usize];
+        let mut packet_buf = [0u8; packet::version_negotiation::MAX_LEN];
         let len = packet::version_negotiation::VersionNegotiation::encode_packet(
             packet,
             SupportedVersions,
