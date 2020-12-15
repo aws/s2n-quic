@@ -49,12 +49,7 @@ impl<'a> ProtectedPayload<'a> {
         &self,
         sample_len: usize,
     ) -> Result<&[u8], DecoderError> {
-        self.buffer
-            .peek()
-            .skip(self.header_len)?
-            .skip(PacketNumberLen::MAX_LEN)?
-            .decode_slice(sample_len)
-            .map(|(sample, _)| sample.into_less_safe_slice())
+        header_protection_sample(self.buffer.peek(), self.header_len, sample_len)
     }
 }
 
@@ -132,11 +127,26 @@ impl<'a> EncryptedPayload<'a> {
         &self,
         sample_len: usize,
     ) -> Result<&[u8], DecoderError> {
-        self.buffer
-            .peek()
-            .skip(self.header_len)?
-            .skip(PacketNumberLen::MAX_LEN)?
-            .decode_slice(sample_len)
-            .map(|(sample, _)| sample.into_less_safe_slice())
+        header_protection_sample(self.buffer.peek(), self.header_len, sample_len)
     }
+}
+
+fn header_protection_sample(
+    buffer: DecoderBuffer,
+    header_len: usize,
+    sample_len: usize,
+) -> Result<&[u8], DecoderError> {
+    let buffer = buffer.skip(header_len)?;
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.4.2
+    //# In sampling the packet
+    //# ciphertext, the Packet Number field is assumed to be 4 bytes long
+    let buffer = buffer.skip(PacketNumberLen::MAX_LEN)?;
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.4.2
+    //# An endpoint MUST discard packets that are not long enough to contain
+    //# a complete sample.
+    let (sample, _) = buffer.decode_slice(sample_len)?;
+
+    Ok(sample.into_less_safe_slice())
 }

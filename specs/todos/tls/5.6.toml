@@ -1,0 +1,59 @@
+target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.6"
+
+[[TODO]]
+quote = '''
+A client MUST only use 0-RTT keys to protect data that is idempotent.
+'''
+tracking-issue = "319"
+feature = "0-RTT"
+
+[[TODO]]
+quote = '''
+A client MAY wish to apply additional restrictions on what data it
+sends prior to the completion of the TLS handshake.
+'''
+tracking-issue = "319"
+feature = "0-RTT"
+
+[[TODO]]
+quote = '''
+A client
+otherwise treats 0-RTT keys as equivalent to 1-RTT keys, except that
+it MUST NOT send ACKs with 0-RTT keys.
+'''
+tracking-issue = "319"
+feature = "0-RTT"
+
+[[TODO]]
+quote = '''
+A client SHOULD stop sending 0-RTT data
+if it receives an indication that 0-RTT data has been rejected.
+'''
+tracking-issue = "319"
+feature = "0-RTT"
+
+[[TODO]]
+quote = '''
+A server MUST NOT use 0-RTT keys to protect packets; it uses 1-RTT
+keys to protect acknowledgements of 0-RTT packets.
+'''
+tracking-issue = "319"
+feature = "0-RTT"
+
+[[TODO]]
+quote = '''
+A client MUST NOT
+attempt to decrypt 0-RTT packets it receives and instead MUST discard
+them.
+'''
+tracking-issue = "319"
+feature = "0-RTT"
+
+[[TODO]]
+quote = '''
+Once a client has installed 1-RTT keys, it MUST NOT send any more
+0-RTT packets.
+'''
+tracking-issue = "319"
+feature = "0-RTT"
+

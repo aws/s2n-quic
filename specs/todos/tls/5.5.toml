@@ -1,0 +1,21 @@
+target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.5"
+
+[[TODO]]
+quote = '''
+Once an endpoint successfully receives a packet with a given packet
+number, it MUST discard all packets in the same packet number space
+with higher packet numbers if they cannot be successfully unprotected
+with either the same key, or - if there is a key update - the next
+packet protection key (see Section 6).
+'''
+tracking-issue = "318"
+feature = "Key update"
+
+[[TODO]]
+quote = '''
+Similarly, a packet that
+appears to trigger a key update, but cannot be unprotected
+successfully MUST be discarded.
+'''
+tracking-issue = "318"
+feature = "Key update"

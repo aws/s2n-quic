@@ -1,0 +1,12 @@
+target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.4.1"
+
+[[exception]]
+quote = '''
+Before a TLS cipher suite can be used with QUIC, a header protection
+algorithm MUST be specified for the AEAD used with that cipher suite.
+'''
+reason = '''
+s2n-quic delegates ciphersuite selection to the TLS provider and is unable to
+enforce this.
+'''
+
