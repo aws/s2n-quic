@@ -240,7 +240,22 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
             parameters.congestion_controller,
             peer_validated,
         );
-        let path_manager = path::Manager::new(initial_path);
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
+        //= type=TODO
+        //= tracking-issue=352
+        //= feature=Peer Connection ID Management
+        //# Servers can also specify a stateless_reset_token transport
+        //# parameter during the handshake that applies to the connection ID that
+        //# it selected during the handshake; clients cannot use this transport
+        //# parameter because their transport parameters do not have
+        //# confidentiality protection.
+        let stateless_reset_token = None;
+        let peer_id_registry = connection::PeerIdRegistry::new(
+            &initial_path.peer_connection_id,
+            stateless_reset_token,
+        );
+        let path_manager = path::Manager::new(initial_path, peer_id_registry);
 
         Self {
             config: parameters.connection_config,

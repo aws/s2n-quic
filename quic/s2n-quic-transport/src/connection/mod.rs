@@ -40,6 +40,7 @@ pub(crate) use connection_trait::ConnectionTrait as Trait;
 pub(crate) use internal_connection_id::{InternalConnectionId, InternalConnectionIdGenerator};
 pub(crate) use shared_state::{SharedConnectionState, SynchronizedSharedConnectionState};
 pub(crate) use transmission::{ConnectionTransmission, ConnectionTransmissionContext};
+pub(crate) use peer_id_registry::PeerIdRegistry;
 
 pub use api::Connection;
 pub use connection_impl::ConnectionImpl as Implementation;

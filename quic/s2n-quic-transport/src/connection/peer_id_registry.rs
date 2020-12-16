@@ -13,7 +13,7 @@ use smallvec::SmallVec;
 const NR_STATIC_REGISTRABLE_IDS: usize = 5;
 
 #[derive(Debug)]
-struct PeerIdRegistry {
+pub struct PeerIdRegistry {
     /// The connection IDs which are currently registered at the ConnectionIdMapper
     registered_ids: SmallVec<[PeerIdInfo; NR_STATIC_REGISTRABLE_IDS]>,
     retire_prior_to: u32,
@@ -27,7 +27,7 @@ struct PeerIdInfo {
     //# detecting when NEW_CONNECTION_ID or RETIRE_CONNECTION_ID frames refer
     //# to the same value.
     sequence_number: u32,
-    stateless_reset_token: u128,
+    stateless_reset_token: Option<u128>,
     status: PeerIdStatus,
 }
 
@@ -59,15 +59,20 @@ pub enum PeerIdRegistrationError {
 
 #[allow(dead_code)]
 impl PeerIdRegistry {
-    pub fn new(initial_connection_id: &connection::PeerId) -> Self {
+    pub fn new(
+        initial_connection_id: &connection::PeerId,
+        stateless_reset_token: Option<u128>,
+    ) -> Self {
         let mut registry = Self {
             registered_ids: SmallVec::new(),
             retire_prior_to: 0,
         };
         registry.registered_ids.push(PeerIdInfo {
             id: *initial_connection_id,
-            sequence_number: 0,       // TODO
-            stateless_reset_token: 0, // TODO
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
+            //# The sequence number of the initial connection ID is 0.
+            sequence_number: 0,
+            stateless_reset_token,
             status: PeerIdStatus::Active,
         });
 
@@ -93,7 +98,7 @@ impl PeerIdRegistry {
         //# a connection error of type PROTOCOL_VIOLATION.
         let same_id_diff_token_or_seq_num = |id_info: &PeerIdInfo| {
             id_info.id == *id
-                && (id_info.stateless_reset_token != stateless_reset_token
+                && (id_info.stateless_reset_token != Some(stateless_reset_token)
                     || id_info.sequence_number != sequence_number)
         };
         let diff_id_same_seq_num =
@@ -121,7 +126,7 @@ impl PeerIdRegistry {
         self.registered_ids.push(PeerIdInfo {
             id: *id,
             sequence_number,
-            stateless_reset_token, // TODO
+            stateless_reset_token: Some(stateless_reset_token),
             status: Active,
         });
 

@@ -1,6 +1,6 @@
 //! This module contains the Manager implementation
 
-use crate::space::EARLY_ACK_SETTINGS;
+use crate::{connection::PeerIdRegistry, space::EARLY_ACK_SETTINGS};
 use s2n_quic_core::{
     connection,
     inet::{DatagramInfo, SocketAddress},
@@ -22,14 +22,18 @@ pub struct Manager<CC: CongestionController> {
     /// Path array
     paths: SmallVec<[Path<CC>; INLINE_PATH_LEN]>,
 
+    /// Registry of `connection::PeerId`s
+    peer_id_registry: PeerIdRegistry,
+
     /// Index to the active path
     active: usize,
 }
 
 impl<CC: CongestionController> Manager<CC> {
-    pub fn new(initial_path: Path<CC>) -> Self {
+    pub fn new(initial_path: Path<CC>, peer_id_registry: PeerIdRegistry) -> Self {
         Manager {
             paths: SmallVec::from_elem(initial_path, 1),
+            peer_id_registry,
             active: 0,
         }
     }
@@ -229,7 +233,8 @@ mod tests {
             false,
         );
 
-        let manager = Manager::new(first_path);
+        let peer_id_registry = PeerIdRegistry::new(&first_path.peer_connection_id, None);
+        let manager = Manager::new(first_path, peer_id_registry);
         assert_eq!(manager.paths.len(), 1);
 
         let (_id, matched_path) = manager.path(&SocketAddress::default()).unwrap();
@@ -248,7 +253,8 @@ mod tests {
         );
         first_path.challenge = Some([0u8; 8]);
 
-        let mut manager = Manager::new(first_path);
+        let peer_id_registry = PeerIdRegistry::new(&first_path.peer_connection_id, None);
+        let mut manager = Manager::new(first_path, peer_id_registry);
         assert_eq!(manager.paths.len(), 1);
         {
             let (_id, first_path) = manager.path(&first_path.peer_socket_address).unwrap();
@@ -274,7 +280,8 @@ mod tests {
             Unlimited::default(),
             false,
         );
-        let mut manager = Manager::new(first_path);
+        let peer_id_registry = PeerIdRegistry::new(&first_path.peer_connection_id, None);
+        let mut manager = Manager::new(first_path, peer_id_registry);
         assert_eq!(manager.paths.len(), 1);
         let new_addr: SocketAddr = "127.0.0.1:80".parse().unwrap();
         let new_addr = SocketAddress::from(new_addr);
