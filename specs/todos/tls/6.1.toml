@@ -1,0 +1,36 @@
+target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.1"
+
+[[TODO]]
+quote = '''
+An endpoint MUST NOT initiate a key update prior to having confirmed
+the handshake (Section 4.1.2).
+'''
+tracking-issue = "318"
+feature = "Key update"
+
+[[TODO]]
+quote = '''
+An endpoint MUST NOT initiate a
+subsequent key update unless it has received an acknowledgment for a
+packet that was sent protected with keys from the current key phase.
+'''
+tracking-issue = "318"
+feature = "Key update"
+
+[[TODO]]
+quote = '''
+An endpoint MUST retain old keys until it has successfully
+unprotected a packet sent using the new keys.
+'''
+tracking-issue = "318"
+feature = "Key update"
+
+[[TODO]]
+quote = '''
+An endpoint SHOULD
+retain old keys for some time after unprotecting a packet sent using
+the new keys.
+'''
+tracking-issue = "318"
+feature = "Key update"
+

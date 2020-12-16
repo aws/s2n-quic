@@ -1,4 +1,5 @@
 use crate::packet::{
+    initial::ProtectedInitial,
     long::{
         validate_destination_connection_id_len, validate_source_connection_id_len,
         DestinationConnectionIDLen, SourceConnectionIDLen, Version,
@@ -109,6 +110,29 @@ impl<'a> ProtectedVersionNegotiation<'a> {
     #[inline]
     pub fn destination_connection_id(&self) -> &[u8] {
         self.destination_connection_id
+    }
+}
+
+impl<'a, SupportedVersions: EncoderValue> VersionNegotiation<'a, SupportedVersions> {
+    pub fn from_initial(
+        initial_packet: &'a ProtectedInitial,
+        supported_versions: SupportedVersions,
+    ) -> Self {
+        // The destination and source connection IDs are flipped because this packet is being sent
+        // back to the client.
+        Self {
+            tag: 0,
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.1
+            //# The server MUST include the value from the Source Connection ID field
+            //# of the packet it receives in the Destination Connection ID field.
+            destination_connection_id: initial_packet.source_connection_id(),
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.1
+            //# The value for Source Connection ID MUST be copied from the
+            //# Destination Connection ID of the received packet, which is initially
+            //# randomly selected by a client.
+            source_connection_id: initial_packet.destination_connection_id(),
+            supported_versions,
+        }
     }
 }
 

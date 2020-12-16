@@ -113,11 +113,13 @@ impl<Cfg: Config> Endpoint<Cfg> {
             self.limits_manager.inflight_handshakes(),
             &datagram.remote_address,
         );
+
         let outcome = self
             .config
             .context()
             .endpoint_limits
             .on_connection_attempt(&attempt);
+
         match outcome {
             Outcome::Allow => Some(()),
             Outcome::Retry { delay: _ } => {
@@ -136,18 +138,30 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     .context()
                     .connection_id_format
                     .generate(&connection_info);
-                self.retry_dispatch.queue::<_, <<<Cfg as Config>::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::RetryCrypto>(
-                                datagram,
-                                &packet,
-                                local_connection_id,
-                                self.config.context().token
-                            );
+
+                self.retry_dispatch.queue::<
+                    _,
+                    <<<Cfg as Config>::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::RetryCrypto
+                >(
+                    datagram,
+                    &packet,
+                    local_connection_id,
+                    self.config.context().token
+                );
                 None
             }
             Outcome::Drop => None,
-            // TODO https://github.com/awslabs/s2n-quic/issues/270
             #[allow(unused_variables)]
-            Outcome::Close { delay } => None,
+            Outcome::Close { delay } => {
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2.2
+                //= type=TODO
+                //= tracking-issue=270
+                //# If a server refuses to accept a new connection, it SHOULD send an
+                //# Initial packet containing a CONNECTION_CLOSE frame with error code
+                //# CONNECTION_REFUSED.
+
+                None
+            }
         }
     }
 
@@ -172,6 +186,9 @@ impl<Cfg: Config> Endpoint<Cfg> {
         ) {
             (packet, remaining)
         } else {
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2.2
+            //# Servers MUST drop incoming packets under all other circumstances.
+
             // Packet is not decodable. Skip it.
             // TODO: Potentially add a metric
             dbg!("invalid packet received");

@@ -20,6 +20,12 @@ use s2n_quic_ring::{
 use std::sync::Arc;
 use webpki::DNSNameRef;
 
+//= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.3
+//# A cipher suite MUST NOT be
+//# negotiated unless a header protection scheme is defined for the
+//# cipher suite.
+// All of the ciphersuites from the current exported list have HP schemes for QUIC
+
 // The first 3 ciphers are TLS1.3
 // https://github.com/ctz/rustls/blob/1287510bece905b7e45cf31d6e7cf3334b98bb2e/rustls/src/suites.rs#L379
 pub fn default_ciphersuites() -> Vec<&'static SupportedCipherSuite> {
@@ -295,7 +301,23 @@ macro_rules! impl_tls {
             }
 
             fn application_parameters(&self) -> Result<tls::ApplicationParameters, TransportError> {
-                let alpn_protocol = rustls::Session::get_alpn_protocol(&self.0.session);
+                //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#8.1
+                //# Unless
+                //# another mechanism is used for agreeing on an application protocol,
+                //# endpoints MUST use ALPN for this purpose.
+                let alpn_protocol = rustls::Session::get_alpn_protocol(&self.0.session).ok_or(
+                    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#8.1
+                    //# When using ALPN, endpoints MUST immediately close a connection (see
+                    //# Section 10.2 of [QUIC-TRANSPORT]) with a no_application_protocol TLS
+                    //# alert (QUIC error code 0x178; see Section 4.8) if an application
+                    //# protocol is not negotiated.
+
+                    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#8.1
+                    //# While [ALPN] only specifies that servers
+                    //# use this alert, QUIC clients MUST use error 0x178 to terminate a
+                    //# connection when ALPN negotiation fails.
+                    CryptoError::NO_APPLICATION_PROTOCOL.with_reason("Missing ALPN protocol"),
+                )?;
 
                 //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#8.2
                 //# endpoints that
@@ -413,6 +435,9 @@ pub mod server {
         type Session = Session;
 
         fn new_server_session<Params: EncoderValue>(&mut self, params: &Params) -> Self::Session {
+            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#8.2
+            //# Endpoints
+            //# MUST send the quic_transport_parameters extension;
             let params = encode_transport_params(params);
             let session = rustls::ServerSession::new_quic(&self.config, params);
             Self::Session::new(session)

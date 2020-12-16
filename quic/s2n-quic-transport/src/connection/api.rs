@@ -78,7 +78,7 @@ impl Connection {
         self.shared_state.sni()
     }
 
-    pub fn alpn(&self) -> Option<Bytes> {
+    pub fn alpn(&self) -> Bytes {
         self.shared_state.alpn()
     }
 

@@ -1,0 +1,20 @@
+target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#9.6"
+
+[[exception]]
+quote = '''
+To preserve this separation, a new version of QUIC SHOULD define new
+labels for key derivation for packet protection key and IV, plus the
+header protection keys.
+'''
+reason = '''
+s2n-quic does not define any additional versions of QUIC.
+'''
+
+[[exception]]
+quote = '''
+New QUIC versions SHOULD define a new salt value used in
+calculating initial secrets.
+'''
+reason = '''
+s2n-quic does not define any additional versions of QUIC.
+'''

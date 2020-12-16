@@ -266,6 +266,11 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         self.internal_connection_id
     }
 
+    /// Returns the QUIC version selected for the current connection
+    fn quic_version(&self) -> u32 {
+        self.quic_version
+    }
+
     /// Initiates closing the connection as described in
     /// https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10
     ///
@@ -579,6 +584,13 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         packet: CleartextInitial,
     ) -> Result<(), TransportError> {
         if let Some((space, handshake_status)) = shared_state.space_manager.initial_mut() {
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2
+            //= type=TODO
+            //= tracking-issue=336
+            //# Invalid packets that lack strong integrity protection, such as
+            //# Initial, Retry, or Version Negotiation, MAY be discarded.
+            // Attempt to validate some of the enclosed frames?
+
             if let Some(close) = space.handle_cleartext_payload(
                 packet.packet_number,
                 packet.payload,
@@ -587,6 +599,12 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                 handshake_status,
                 &mut self.connection_id_mapper_registration,
             )? {
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2
+                //# An
+                //# endpoint MUST generate a connection error if processing the contents
+                //# of these packets prior to discovering an error, unless it fully
+                //# reverts these changes.
+
                 self.close(
                     shared_state,
                     ConnectionCloseReason::PeerImmediateClose(close),
@@ -610,6 +628,19 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         path_id: path::Id,
         packet: ProtectedHandshake,
     ) -> Result<(), TransportError> {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2.1
+        //= type=TODO
+        //= tracking-issue=337
+        //# The client MAY drop these packets, or MAY buffer them in anticipation
+        //# of later packets that allow it to compute the key.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2.2
+        //= type=TODO
+        //= tracking-issue=340
+        //# Clients are not able to send Handshake packets prior to
+        //# receiving a server response, so servers SHOULD ignore any such
+        //# packets.
+
         if let Some((packet, space, handshake_status)) = shared_state
             .space_manager
             .handshake_mut()
@@ -666,6 +697,43 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         path_id: path::Id,
         packet: ProtectedShort,
     ) -> Result<(), TransportError> {
+        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.7
+        //# Endpoints in either role MUST NOT decrypt 1-RTT packets from
+        //# their peer prior to completing the handshake.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.7
+        //# A server MUST NOT process
+        //# incoming 1-RTT protected packets before the TLS handshake is
+        //# complete.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.7
+        //# Even if it has 1-RTT secrets, a client MUST NOT
+        //# process incoming 1-RTT protected packets before the TLS handshake is
+        //# complete.
+
+        if !shared_state.space_manager.is_handshake_complete() {
+            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.7
+            //= type=TODO
+            //= tracking-issue=320
+            //# Received
+            //# packets protected with 1-RTT keys MAY be stored and later decrypted
+            //# and used once the handshake is complete.
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.7
+            //= type=TODO
+            //= tracking-issue=320
+            //= feature=0-RTT
+            //# The server MAY retain these packets for
+            //# later decryption in anticipation of receiving a ClientHello.
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2.1
+            //= type=TODO
+            //# The client MAY drop these packets, or MAY buffer them in anticipation
+            //# of later packets that allow it to compute the key.
+
+            return Ok(());
+        }
+
         if let Some((packet, space, handshake_status)) = shared_state
             .space_manager
             .application_mut()
@@ -724,6 +792,13 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         _path_id: path::Id,
         _packet: ProtectedZeroRTT,
     ) -> Result<(), TransportError> {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2.2
+        //= type=TODO
+        //= tracking-issue=339
+        //# If the packet is a 0-RTT packet, the server MAY buffer a limited
+        //# number of these packets in anticipation of a late-arriving Initial
+        //# packet.
+
         // TODO
         Ok(())
     }

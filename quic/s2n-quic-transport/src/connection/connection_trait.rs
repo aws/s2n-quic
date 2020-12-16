@@ -184,6 +184,9 @@ pub trait ConnectionTrait: Sized {
     /// Returns the Connections interests
     fn interests(&self, shared_state: &SharedConnectionState<Self::Config>) -> ConnectionInterests;
 
+    /// Returns the QUIC version selected for the current connection
+    fn quic_version(&self) -> u32;
+
     /// Handles reception of a single QUIC packet
     fn handle_packet(
         &mut self,
@@ -192,6 +195,15 @@ pub trait ConnectionTrait: Sized {
         path_id: path::Id,
         packet: ProtectedPacket,
     ) -> Result<(), TransportError> {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2.1
+        //# If a client receives a packet that uses a different version than it
+        //# initially selected, it MUST discard that packet.
+        if let Some(version) = packet.version() {
+            if version != self.quic_version() {
+                return Ok(());
+            }
+        }
+
         //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.1.4
         //# An endpoint SHOULD continue
         //# to respond to packets that can be processed during this time.

@@ -169,6 +169,11 @@ impl ReceiveStreamFlowController {
         //# affected stream.  This includes violations of remembered limits in
         //# Early Data; see Section 7.4.1.
         if offset > self.read_window_sync.latest_value() {
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.1
+            //# A receiver MUST close the connection with a FLOW_CONTROL_ERROR error
+            //# (Section 11) if the sender violates the advertised connection or
+            //# stream data limits.
+
             return Err(TransportError::FLOW_CONTROL_ERROR
                 .with_reason("Stream flow control window exceeded")
                 .with_optional_frame_type(source_frame_type.map(|ty| ty.into())));
@@ -191,9 +196,12 @@ impl ReceiveStreamFlowController {
         if additional_connection_window > VarInt::from_u32(0) {
             self.connection_flow_controller
                 .acquire_window(additional_connection_window)
-                .map_err(|_| {
-                    TransportError::FLOW_CONTROL_ERROR
-                        .with_reason("Connection flow control window exceeded")
+                .map_err(|err| {
+                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.1
+                    //# A receiver MUST close the connection with a FLOW_CONTROL_ERROR error
+                    //# (Section 11) if the sender violates the advertised connection or
+                    //# stream data limits.
+                    err.with_reason("Connection flow control window exceeded")
                         .with_optional_frame_type(source_frame_type.map(|ty| ty.into()))
                 })?;
             // The connection window was acquired successfully
@@ -210,6 +218,12 @@ impl ReceiveStreamFlowController {
     /// if necessary
     fn release_window(&mut self, amount: VarInt) {
         self.released_connection_window += amount;
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.2
+        //# Therefore, a receiver MUST NOT wait for a
+        //# STREAM_DATA_BLOCKED or DATA_BLOCKED frame before sending a
+        //# MAX_STREAM_DATA or MAX_DATA frame; doing so could result in the
+        //# sender being blocked for the rest of the connection.
 
         // Enqueue Stream window updates by increasing the latest value on
         // the read window synchronisation component
@@ -410,7 +424,13 @@ impl ReceiveStream {
                 if frame.is_fin && total_size.is_none() {
                     // Store the total size
                     total_size = Some(data_end.into());
+
+                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.5
+                    //# The receiver MUST use the final size of the stream to
+                    //# account for all bytes sent on the stream in its connection level flow
+                    //# controller.
                     self.state = ReceiveStreamState::Receiving(total_size);
+
                     // We don't have to transmit MAX_STREAM_DATA frames anymore.
                     // If there is pending transmission/retransmission then remove it.
                     //
@@ -623,6 +643,12 @@ impl ReceiveStream {
     ) -> Result<(), OnTransmitError> {
         self.stop_sending_sync.on_transmit(stream_id, context)?;
 
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.2
+        //= type=TODO
+        //= tracking-issue=334
+        //# To avoid blocking a sender, a receiver MAY send a MAX_STREAM_DATA or
+        //# MAX_DATA frame multiple times within a round trip or send it early
+        //# enough to allow time for loss of the frame and subsequent recovery.
         self.flow_controller
             .read_window_sync
             .on_transmit(stream_id, context)

@@ -29,6 +29,9 @@ impl OutgoingConnectionFlowControllerImpl {
     }
 
     pub fn on_max_data(&mut self, frame: MaxData) {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.1
+        //# A sender MUST ignore any MAX_STREAM_DATA or MAX_DATA frames that do
+        //# not increase flow control limits.
         if self.total_available_window >= frame.maximum_data {
             return;
         }

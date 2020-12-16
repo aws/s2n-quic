@@ -1,0 +1,11 @@
+target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#8.1"
+
+[[exception]]
+quote = '''
+An application protocol MAY restrict the QUIC versions that it can
+operate over.
+'''
+reason = '''
+s2n-quic does not define any application protocols so this does not apply
+'''
+

@@ -64,6 +64,17 @@ impl<'a> ProtectedPacket<'a> {
             ProtectedPacket::Retry(packet) => packet.destination_connection_id(),
         }
     }
+
+    pub fn version(&self) -> Option<u32> {
+        match self {
+            ProtectedPacket::Short(_) => None,
+            ProtectedPacket::VersionNegotiation(_) => None,
+            ProtectedPacket::Initial(packet) => Some(packet.version),
+            ProtectedPacket::ZeroRTT(packet) => Some(packet.version),
+            ProtectedPacket::Handshake(packet) => Some(packet.version),
+            ProtectedPacket::Retry(packet) => Some(packet.version),
+        }
+    }
 }
 
 #[derive(Debug)]

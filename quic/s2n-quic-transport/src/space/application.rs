@@ -47,7 +47,11 @@ pub struct ApplicationSpace<Config: connection::Config> {
     /// The crypto suite for application data
     /// TODO: What about ZeroRtt?
     pub crypto: <Config::TLSSession as CryptoSuite>::OneRTTCrypto,
-    pub alpn: Option<Bytes>,
+    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#8.1
+    //# Unless
+    //# another mechanism is used for agreeing on an application protocol,
+    //# endpoints MUST use ALPN for this purpose.
+    pub alpn: Bytes,
     pub sni: Option<Bytes>,
     ping: flag::Ping,
     processed_packet_numbers: SlidingWindow,
@@ -61,7 +65,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         stream_manager: AbstractStreamManager<Config::Stream>,
         ack_manager: AckManager,
         sni: Option<Bytes>,
-        alpn: Option<Bytes>,
+        alpn: Bytes,
     ) -> Self {
         let max_ack_delay = ack_manager.ack_settings.max_ack_delay;
         Self {

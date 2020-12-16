@@ -146,7 +146,7 @@ macro_rules! impl_handle_api {
         /// ```rust
         /// // TODO
         /// ```
-        pub fn alpn(&self) -> Option<::bytes::Bytes> {
+        pub fn alpn(&self) -> ::bytes::Bytes {
             self.0.alpn()
         }
 
