@@ -92,6 +92,21 @@ pub struct Parameters<Cfg: Config> {
     pub quic_version: u32,
 }
 
+/// Possible states for handing over a connection from the endpoint to the
+/// application.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum AcceptState {
+    /// The connection is handshaking on the server side and not yet visible
+    /// to the application.
+    Handshaking,
+    /// The connection has completed the handshake but hasn't been handed over
+    /// to the application yet.
+    HandshakeCompleted,
+    /// The connection has been handed over to the application and can be
+    /// actively utilized from there.
+    Active,
+}
+
 /// Enumerates reasons for closing a connection
 #[derive(Clone, Copy, Debug)]
 pub enum CloseReason<'a> {

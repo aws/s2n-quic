@@ -5,7 +5,7 @@ use crate::{
         self, connection_id_mapper::ConnectionIdMapperRegistrationError,
         connection_interests::ConnectionInterests, id::ConnectionInfo,
         internal_connection_id::InternalConnectionId, shared_state::SharedConnectionState,
-        CloseReason as ConnectionCloseReason, Parameters as ConnectionParameters,
+        AcceptState, CloseReason as ConnectionCloseReason, Parameters as ConnectionParameters,
     },
     contexts::ConnectionOnTransmitError,
     path,
@@ -33,6 +33,7 @@ pub trait ConnectionTrait: Sized {
     /// Static configuration of a connection
     type Config: connection::Config;
 
+    fn state(&self) -> AcceptState;
     /// Creates a new `Connection` instance with the given configuration
     fn new(parameters: ConnectionParameters<Self::Config>) -> Self;
 

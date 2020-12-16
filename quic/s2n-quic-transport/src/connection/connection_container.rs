@@ -3,7 +3,7 @@
 
 use crate::{
     connection::{
-        Connection, ConnectionInterests, InternalConnectionId, SharedConnectionState,
+        AcceptState, Connection, ConnectionInterests, InternalConnectionId, SharedConnectionState,
         SynchronizedSharedConnectionState, Trait as ConnectionTrait,
     },
     unbounded_channel,
@@ -116,6 +116,8 @@ struct InterestLists<C: ConnectionTrait> {
     waiting_for_transmission: LinkedList<WaitingForTransmissionAdapter<C>>,
     /// Connections which need a new connection ID
     waiting_for_connection_id: LinkedList<WaitingForConnectionIdAdapter<C>>,
+    /// Inflight handshake count
+    handshake_connections: usize,
 }
 
 impl<C: ConnectionTrait> InterestLists<C> {
@@ -124,6 +126,7 @@ impl<C: ConnectionTrait> InterestLists<C> {
             done_connections: LinkedList::new(DoneConnectionsAdapter::new()),
             waiting_for_transmission: LinkedList::new(WaitingForTransmissionAdapter::new()),
             waiting_for_connection_id: LinkedList::new(WaitingForConnectionIdAdapter::new()),
+            handshake_connections: 0,
         }
     }
 
@@ -180,6 +183,10 @@ impl<C: ConnectionTrait> InterestLists<C> {
             {
                 let mut mutable_connection = node.inner.borrow_mut();
                 mutable_connection.mark_as_accepted();
+                // Decrement the inflight handshakes because this connection completed the
+                // handshake and is being passed to the application to be accepted.
+                println!(" -- Accepted dec counter");
+                self.handshake_connections -= 1;
             }
 
             // TODO shutdown endpoint if we can't send connections
@@ -288,9 +295,17 @@ impl<C: ConnectionTrait> ConnectionContainer<C> {
 
         let new_connection = Rc::new(ConnectionNode::new(connection, shared_state));
 
+        // Increment the inflight handshakes counter because we have accepted a new connection
+        println!(" -- Inc counter");
+        self.interest_lists.handshake_connections += 1;
+
         self.interest_lists
             .update_interests(&mut self.accept_queue, &new_connection, interests);
         self.connection_map.insert(new_connection);
+    }
+
+    pub fn handshake_connections(&self) -> usize {
+        self.interest_lists.handshake_connections
     }
 
     /// Looks up the `Connection` with the given ID and executes the provided function
@@ -379,9 +394,38 @@ impl<C: ConnectionTrait> ConnectionContainer<C> {
                 };
             }
 
+            println!(
+                "Connection in state {:?}",
+                connection.inner.borrow().state()
+            );
+            if connection.inner.borrow().state() == AcceptState::Handshaking {
+                println!(" -- Decrement counter because connection is still handshaking");
+                self.interest_lists.handshake_connections -= 1;
+            }
+
             remove_connection_from_list!(waiting_for_transmission, waiting_for_transmission_link);
             remove_connection_from_list!(waiting_for_connection_id, waiting_for_connection_id_link);
+
+            println!(
+                "Connections {} Expected {}",
+                self.connections_in_handshake(),
+                self.interest_lists.handshake_connections
+            );
+            debug_assert!(
+                self.connections_in_handshake() == self.interest_lists.handshake_connections
+            );
         }
+    }
+
+    fn connections_in_handshake(&self) -> usize {
+        let mut count = 0;
+        for conn in self.connection_map.iter() {
+            if conn.inner.borrow().state() == AcceptState::Handshaking {
+                count += 1;
+            }
+        }
+
+        count
     }
 
     /// Iterates over all `Connection`s which are waiting for transmission,

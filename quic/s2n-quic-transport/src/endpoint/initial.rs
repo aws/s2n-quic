@@ -235,10 +235,8 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         // Otherwise the connection will automatically get dropped. This
         // will also clean up all state which was already allocated for
         // the connection
+        println!("Inserting connection");
         self.connections.insert_connection(connection, shared_state);
-
-        // The handshake has begun and we should start tracking it
-        self.limits_manager.on_handshake_start();
 
         Ok(())
     }

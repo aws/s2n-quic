@@ -3,8 +3,8 @@
 use crate::{
     connection::{
         self, connection_id_mapper::ConnectionIdMapperRegistrationError, id::ConnectionInfo,
-        CloseReason as ConnectionCloseReason, ConnectionIdMapperRegistration, ConnectionInterests,
-        ConnectionTimerEntry, ConnectionTimers, ConnectionTransmission,
+        AcceptState, CloseReason as ConnectionCloseReason, ConnectionIdMapperRegistration,
+        ConnectionInterests, ConnectionTimerEntry, ConnectionTimers, ConnectionTransmission,
         ConnectionTransmissionContext, InternalConnectionId, Parameters as ConnectionParameters,
         SharedConnectionState,
     },
@@ -31,21 +31,6 @@ use s2n_quic_core::{
     time::Timestamp,
     transport::error::TransportError,
 };
-
-/// Possible states for handing over a connection from the endpoint to the
-/// application.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-enum AcceptState {
-    /// The connection is handshaking on the server side and not yet visible
-    /// to the application.
-    Handshaking,
-    /// The connection has completed the handshake but hasn't been handed over
-    /// to the application yet.
-    HandshakeCompleted,
-    /// The connection has been handed over to the application and can be
-    /// actively utilized from there.
-    Active,
-}
 
 /// Possible states of a connection
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -226,6 +211,9 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
     /// Static configuration of a connection
     type Config = Config;
 
+    fn state(&self) -> AcceptState {
+        self.accept_state
+    }
     /// Creates a new `Connection` instance with the given configuration
     fn new(parameters: ConnectionParameters<Self::Config>) -> Self {
         // The path manager always starts with a single path containing the known peer and local
