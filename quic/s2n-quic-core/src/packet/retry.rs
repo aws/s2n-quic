@@ -115,6 +115,12 @@ impl<'a> Retry<'a> {
         token_format: &mut T,
         packet_buf: &mut [u8],
     ) -> Option<Range<usize>> {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.5.1
+        //# This value MUST NOT be equal to the Destination
+        //# Connection ID field of the packet sent by the client.
+        if local_connection_id.as_ref() == packet.destination_connection_id() {
+            return None;
+        }
         let retry_packet = Retry::from_initial(packet, local_connection_id.as_ref());
         let pseudo_packet = retry_packet.pseudo_packet(packet.destination_connection_id());
 
@@ -149,10 +155,13 @@ impl<'a> Retry<'a> {
     ) -> Self {
         // The destination and source connection IDs are flipped because this packet is being sent
         // back to the client.
+
         Self {
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.5
+            //# The value in the Unused field is set to an arbitrary value
+            //# by the server; a client MUST ignore these bits.
             // The last 4 bits are unused. They are set to 0x0f here to allow easy testing with
             // example packets provided in the RFC.
-            // https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.5
             // https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#A.2
             tag: (retry_tag!() << 4) | 0x0f,
             version: initial_packet.version,
@@ -241,7 +250,7 @@ impl<'a> Retry<'a> {
 
 impl<'a> EncoderValue for Retry<'a> {
     fn encode<E: Encoder>(&self, encoder: &mut E) {
-        let tag: u8 = retry_tag!() << 4;
+        let tag: u8 = (retry_tag!() << 4) | 0x0f;
         tag.encode(encoder);
 
         self.version.encode(encoder);
@@ -251,6 +260,7 @@ impl<'a> EncoderValue for Retry<'a> {
         self.source_connection_id
             .encode_with_len_prefix::<SourceConnectionIDLen, E>(encoder);
         self.retry_token.encode(encoder);
+        self.retry_integrity_tag.encode(encoder);
     }
 }
 
@@ -275,6 +285,23 @@ impl<'a> EncoderValue for PseudoRetry<'a> {
 mod tests {
     use super::*;
     use crate::{crypto::retry, inet, packet};
+    use s2n_codec::EncoderBuffer;
+
+    #[test]
+    fn test_encode() {
+        let packet = Retry {
+            tag: retry_tag!(),
+            destination_connection_id: &retry::example::DCID,
+            source_connection_id: &retry::example::SCID,
+            retry_token: &retry::example::TOKEN,
+            retry_integrity_tag: &retry::example::EXPECTED_TAG,
+            version: retry::example::VERSION,
+        };
+        let mut buf = [0; retry::example::PACKET_LEN];
+        let mut encoder = EncoderBuffer::new(&mut buf);
+        packet.encode(&mut encoder);
+        assert_eq!(retry::example::PACKET[..], buf[..]);
+    }
 
     #[test]
     fn test_decode() {
@@ -288,6 +315,11 @@ mod tests {
             _ => panic!("expected retry packet type"),
         };
 
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.4
+        //= type=test
+        //# For this design to work,
+        //# the token MUST be covered by integrity protection against
+        //# modification or falsification by clients.
         assert_eq!(packet.retry_integrity_tag, retry::example::EXPECTED_TAG);
         assert_eq!(packet.retry_token, retry::example::TOKEN);
         assert_eq!(packet.source_connection_id, retry::example::SCID);

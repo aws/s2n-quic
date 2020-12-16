@@ -157,7 +157,6 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
 
         let endpoint_context = self.config.context();
 
-        // TODO send retry_source_connection_id
         let tls_session = endpoint_context
             .tls
             .new_server_session(&transport_parameters);

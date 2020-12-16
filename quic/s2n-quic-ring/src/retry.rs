@@ -90,6 +90,7 @@ mod tests {
         let decoder = DecoderBufferMut::new(&mut buf[..len]);
         let connection_info = ConnectionInfo::new(&remote_address);
         let mut output_buf = vec![0u8; 1200];
+
         if let Some(packet) =
             match packet::ProtectedPacket::decode(decoder, &connection_info, &3).unwrap() {
                 (packet::ProtectedPacket::Initial(packet), _) => Some(packet),
@@ -106,6 +107,32 @@ mod tests {
             ) {
                 assert_eq!(&output_buf[range], &retry::example::PACKET[..]);
             }
+        }
+
+        // Test the packet encoding when an invalid local_conn_id is used
+        let decoder = DecoderBufferMut::new(&mut buf[..len]);
+        let connection_info = ConnectionInfo::new(&remote_address);
+        let mut output_buf = vec![0u8; 1200];
+        if let Some(packet) =
+            match packet::ProtectedPacket::decode(decoder, &connection_info, &3).unwrap() {
+                (packet::ProtectedPacket::Initial(packet), _) => Some(packet),
+                _ => None,
+            }
+        {
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.5.1
+            //= type=test
+            //# This value MUST NOT be equal to the Destination
+            //# Connection ID field of the packet sent by the client.
+            let local_conn_id =
+                connection::LocalId::try_from_bytes(&retry::example::ODCID).unwrap();
+            assert!(packet::retry::Retry::encode_packet::<_, RingRetryCrypto>(
+                &remote_address,
+                &packet,
+                &local_conn_id,
+                &mut token_format,
+                &mut output_buf,
+            )
+            .is_none());
         }
     }
 }

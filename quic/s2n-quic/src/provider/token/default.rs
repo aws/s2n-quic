@@ -22,7 +22,9 @@ struct BaseKey {
     // HMAC key for signing and verifying
     key: Option<(Timestamp, hmac::Key)>,
 
-    // Each key tracks tokens it has verified, preventing duplicates
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.4
+    //# To protect against such attacks, servers MUST ensure that
+    //# replay of tokens is prevented or limited.
     duplicate_filter: cuckoofilter::CuckooFilter<HashHasher>,
 }
 
@@ -75,7 +77,13 @@ const DEFAULT_KEY_ROTATION_PERIOD: Duration = Duration::from_millis(1000);
 
 #[derive(Debug)]
 pub struct Provider {
-    /// Rotate the key periodically
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.3
+    //# Thus, a token SHOULD have an
+    //# expiration time, which could be either an explicit expiration time or
+    //# an issued timestamp that can be used to dynamically calculate the
+    //# expiration time.
+    /// To fulfill this SHOULD, we rotate the key periodically. This allows
+    /// customers to control the token lifetime without adding bytes to the token itself.
     key_rotation_period: Duration,
 }
 
@@ -109,9 +117,18 @@ impl super::Provider for Provider {
 }
 
 pub struct Format {
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.4
+    //= type=exception
+    //= reason=We use a duplicate filter to prevent tokens from being used more than once.
+    //# Servers are encouraged to allow tokens to be used only
+    //# once, if possible; tokens MAY include additional information about
+    //# clients to further narrow applicability or reuse.
     /// Key validity period
     key_rotation_period: Duration,
 
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.4
+    //# Servers SHOULD ensure that
+    //# tokens sent in Retry packets are only accepted for a short time.
     /// Timestamp to rotate current key
     current_key_rotates_at: s2n_quic_core::time::Timestamp,
 
@@ -126,9 +143,16 @@ impl Format {
     fn current_key(&mut self) -> u8 {
         let now = s2n_quic_platform::time::now();
         if now > self.current_key_rotates_at {
-            // TODO either clear the duplicate filter here, or implement in the BaseKey logic
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.4
+            //# Tokens
+            //# sent in Retry packets SHOULD include information that allows the
+            //# server to verify that the source IP address and port in client
+            //# packets remain constant.
             self.current_key ^= 1;
             self.current_key_rotates_at = now + self.key_rotation_period;
+
+            // TODO either clear the duplicate filter here, or implement in the BaseKey logic
+            // https://github.com/awslabs/s2n-quic/issues/173
         }
         self.current_key
     }
@@ -187,6 +211,10 @@ impl Format {
 impl super::Format for Format {
     const TOKEN_LEN: usize = size_of::<Token>();
 
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.3
+    //# A server SHOULD
+    //# encode tokens provided with NEW_TOKEN frames and Retry packets
+    //# differently, and validate the latter more strictly.
     /// The default provider does not support NEW_TOKEN frame tokens
     fn generate_new_token(
         &mut self,
@@ -195,6 +223,19 @@ impl super::Format for Format {
         _source_connection_id: &connection::LocalId,
         _output_buffer: &mut [u8],
     ) -> Option<()> {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.4
+        //= type=TODO
+        //= tracking-issue=346
+        //# Tokens sent in NEW_TOKEN frames MUST include information that allows
+        //# the server to verify that the client IP address has not changed from
+        //# when the token was issued.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.3
+        //= type=TODO
+        //= tracking-issue=345
+        //# A token issued with NEW_TOKEN MUST NOT include information that would
+        //# allow values to be linked by an observer to the connection on which
+        //# it was issued.
         None
     }
 
@@ -268,6 +309,12 @@ impl super::Format for Format {
             }
             Source::NewTokenFrame => None, // Not supported in the default provider
         }
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.4
+        //= type=TODO
+        //= tracking-issue=347
+        //# Tokens that are provided in NEW_TOKEN frames (Section 19.7) need to
+        //# be valid for longer, but SHOULD NOT be accepted multiple times in a
+        //# short period.
     }
 }
 
@@ -290,6 +337,10 @@ impl Header {
     fn new(source: Source, key_id: u8) -> Header {
         let mut header: u8 = 0;
         header |= TOKEN_VERSION << VERSION_SHIFT;
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.3
+        //# Information that
+        //# allows the server to distinguish between tokens from Retry and
+        //# NEW_TOKEN MAY be accessible to entities other than the server.
         header |= match source {
             Source::NewTokenFrame => 0 << TOKEN_SOURCE_SHIFT,
             Source::RetryPacket => 1 << TOKEN_SOURCE_SHIFT,
@@ -388,6 +439,11 @@ mod tests {
                 let header = Header::new(*source, key_id);
                 // The version should always be the constant TOKEN_VERSION
                 assert_eq!(header.version(), TOKEN_VERSION);
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.1
+                //= type=test
+                //# A token sent in a NEW_TOKEN frames or a Retry packet MUST be
+                //# constructed in a way that allows the server to identify how it was
+                //# provided to a client.
                 assert_eq!(header.token_source(), *source);
                 assert_eq!(header.key_id(), key_id);
             }
@@ -426,7 +482,6 @@ mod tests {
             .generate_retry_token(&addr, &second_conn_id, &orig_conn_id, &mut second_token)
             .unwrap();
 
-        // Both tokens should pass validation
         clock.adjust_by(TEST_KEY_ROTATION_PERIOD);
         assert_eq!(
             format.validate_token(&addr, &first_conn_id, &first_token),
@@ -436,10 +491,26 @@ mod tests {
             format.validate_token(&addr, &second_conn_id, &second_token),
             Some(orig_conn_id)
         );
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.4
+        //= type=test
+        //# Tokens
+        //# sent in Retry packets SHOULD include information that allows the
+        //# server to verify that the source IP address and port in client
+        //# packets remain constant.
+        assert_eq!(
+            format.validate_token(&addr, &first_conn_id, &second_token),
+            None
+        );
     }
 
     #[test]
     fn test_key_rotation() {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.3
+        //= type=test
+        //# Thus, a token SHOULD have an
+        //# expiration time, which could be either an explicit expiration time or
+        //# an issued timestamp that can be used to dynamically calculate the
+        //# expiration time.
         let clock = Arc::new(time::testing::MockClock::new());
         time::testing::set_local_clock(clock.clone());
 
@@ -473,6 +544,10 @@ mod tests {
 
     #[test]
     fn test_expired_retry_token() {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.4
+        //= type=test
+        //# Servers SHOULD ensure that
+        //# tokens sent in Retry packets are only accepted for a short time.
         let clock = Arc::new(time::testing::MockClock::new());
         time::testing::set_local_clock(clock.clone());
 
@@ -530,6 +605,10 @@ mod tests {
 
     #[test]
     fn test_duplicate_token_detection() {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.4
+        //= type=test
+        //# To protect against such attacks, servers MUST ensure that
+        //# replay of tokens is prevented or limited.
         let mut format = Format {
             key_rotation_period: TEST_KEY_ROTATION_PERIOD,
             keys: [
