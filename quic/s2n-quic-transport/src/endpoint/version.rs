@@ -88,16 +88,31 @@ impl<Config: endpoint::Config> Negotiator<Config> {
             _ => return Ok(()),
         };
 
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2.2
+        //# If a server receives a packet that indicates an unsupported version
+        //# but is large enough to initiate a new connection for any supported
+        //# version, the server SHOULD send a Version Negotiation packet as
+        //# described in Section 6.1.
+
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#6
         //# A server might not send a Version
         //# Negotiation packet if the datagram it receives is smaller than the
         //# minimum size specified in a different version;
         if payload_len < (MINIMUM_MTU as usize) {
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2.2
+            //# Servers MUST
+            //# drop smaller packets that specify unsupported versions.
             return Err(TransportError::NO_ERROR);
         }
 
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2.2
+        //# A server MAY limit the number of packets
+        //# to which it responds with a Version Negotiation packet.
         // store the peer's address if we're not at capacity
         if self.transmissions.len() != self.max_peers {
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2.2
+            //# Servers SHOULD respond with a Version
+            //# Negotiation packet, provided that the datagram is sufficiently long.
             self.transmissions
                 .push_back(Transmission::new(remote_address, packet));
         }
