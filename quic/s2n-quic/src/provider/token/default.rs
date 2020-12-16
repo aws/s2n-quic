@@ -651,9 +651,6 @@ mod tests {
         //# For this design to work,
         //# the token MUST be covered by integrity protection against
         //# modification or falsification by clients.
-        let clock = Arc::new(time::testing::MockClock::new());
-        time::testing::set_local_clock(clock.clone());
-
         let mut format = get_test_format();
         let conn_id = connection::PeerId::try_from_bytes(&[2, 4, 6, 8, 10]).unwrap();
         let orig_conn_id =
