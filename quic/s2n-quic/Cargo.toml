@@ -31,6 +31,7 @@ tokio = { version = "0.2", optional = true, features = ["rt-core", "time", "udp"
 zerocopy = { version = "0.3", optional = true }
 
 [dev-dependencies]
+bolero = { version = "0.6" }
 s2n-quic-core = { version = "0.1", path = "../s2n-quic-core", features = ["testing"] }
 s2n-quic-platform = { version = "0.1", path = "../s2n-quic-platform", features = ["testing"] }
 tokio = { version = "0.2", features = ["full"] }

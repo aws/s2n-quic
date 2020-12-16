@@ -26,6 +26,8 @@ pub const NONCE_BYTES: [u8; 12] = hex!("e54930f97f2136f0530a8c1c");
 pub mod example {
     use super::*;
 
+    pub const PACKET_LEN: usize = 36;
+
     //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#A.4
     //# This shows a Retry packet that might be sent in response to the
     //# Initial packet in Appendix A.2.  The integrity check includes the
@@ -34,7 +36,7 @@ pub mod example {
     //#
     //# ffff0000200008f067a5502a4262b574 6f6b656e59756519dd6cc85bd90e33a9
     //# 34d2ff85
-    pub const PACKET: [u8; 36] = hex!(
+    pub const PACKET: [u8; PACKET_LEN] = hex!(
         "
     ff ff000020 00 08 f067a5502a4262b5 746f6b656e59756519dd6cc85bd90e33a9
     34d2ff85
@@ -46,7 +48,7 @@ pub mod example {
 
     pub const EXPECTED_TAG: [u8; 16] = hex!("59756519dd6cc85bd90e33a934d2ff85");
 
-    // The server sends and empty destination connection ID back to the client
+    // The server sends an empty destination connection ID back to the client
     pub const DCID: [u8; 0] = hex!("");
 
     // This is the destination connection generated locally in the server

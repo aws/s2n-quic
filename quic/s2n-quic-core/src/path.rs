@@ -85,9 +85,16 @@ impl<CC: CongestionController> Path<CC> {
     /// path from being amplification limited
     pub fn on_bytes_received(&mut self, bytes: usize) -> bool {
         let was_at_amplification_limit = self.at_amplification_limit();
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1
+        //# For the purposes of
+        //# avoiding amplification prior to address validation, servers MUST
+        //# count all of the payload bytes received in datagrams that are
+        //# uniquely attributed to a single connection.
         if let State::Pending { rx_bytes, .. } = &mut self.state {
             *rx_bytes += bytes as u32;
         }
+
         was_at_amplification_limit && !self.at_amplification_limit()
     }
 
@@ -174,6 +181,12 @@ mod tests {
 
     #[test]
     fn amplification_limit_test() {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1
+        //= type=test
+        //# For the purposes of
+        //# avoiding amplification prior to address validation, servers MUST
+        //# count all of the payload bytes received in datagrams that are
+        //# uniquely attributed to a single connection.
         let mut path = Path::new(
             SocketAddress::default(),
             connection::PeerId::try_from_bytes(&[]).unwrap(),
@@ -211,6 +224,11 @@ mod tests {
 
     #[test]
     fn mtu_test() {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1
+        //= type=test
+        //# Prior to validating the client address, servers MUST NOT send more
+        //# than three times as many bytes as the number of bytes they have
+        //# received.
         // TODO this would work better as a fuzz test
         let mut path = Path::new(
             SocketAddress::default(),
