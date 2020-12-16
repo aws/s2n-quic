@@ -174,6 +174,9 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             internal_connection_id,
             connection_id_mapper_registration,
             timer,
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.2
+            //# A server MUST set the Destination Connection ID it
+            //# uses for sending packets based on the first received Initial packet.
             peer_connection_id: source_connection_id,
             local_connection_id: initial_connection_id,
             peer_socket_address: datagram.remote_address,

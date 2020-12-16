@@ -1,0 +1,11 @@
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7"
+
+[[exception]]
+quote = '''
+The cryptographic handshake MUST provide the following properties:
+'''
+reason = '''
+TLS support is implemented through a provider and is unenforceable by
+s2n-quic.
+'''
+

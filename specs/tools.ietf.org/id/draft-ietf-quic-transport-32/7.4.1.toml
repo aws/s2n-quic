@@ -161,16 +161,13 @@ parameters cannot be supported.
 level = "MUST"
 quote = '''
 When sending frames in 0-RTT packets, a client MUST only use
-remembered transport parameters; importantly, it MUST NOT use updated
-values that it learns from the server's updated transport parameters
-or from frames received in 1-RTT packets.
+remembered transport parameters;
 '''
 
 [[spec]]
 level = "MUST"
 quote = '''
-When sending frames in 0-RTT packets, a client MUST only use
-remembered transport parameters; importantly, it MUST NOT use updated
+importantly, it MUST NOT use updated
 values that it learns from the server's updated transport parameters
 or from frames received in 1-RTT packets.
 '''

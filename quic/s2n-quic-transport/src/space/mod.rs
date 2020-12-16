@@ -409,7 +409,14 @@ pub trait PacketSpace<Config: connection::Config> {
                 }
                 Frame::Crypto(frame) => {
                     let on_error = with_frame_type!(frame);
+
+                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.5
+                    //# Packets containing
+                    //# discarded CRYPTO frames MUST be acknowledged because the packet has
+                    //# been received and processed by the transport even though the CRYPTO
+                    //# frame was discarded.
                     processed_packet.on_processed_frame(&frame);
+
                     self.handle_crypto_frame(frame.into(), datagram, path)
                         .map_err(on_error)?;
                 }

@@ -97,6 +97,10 @@ impl<'a, Config: connection::Config> tls::Context<Config::TLSSession>
         let (peer_parameters, remaining) = match ClientTransportParameters::decode(param_decoder) {
             Ok(parameters) => parameters,
             Err(_e) => {
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.4
+                //# An endpoint SHOULD treat receipt of
+                //# duplicate transport parameters as a connection error of type
+                //# TRANSPORT_PARAMETER_ERROR.
                 return Err(TransportError::TRANSPORT_PARAMETER_ERROR
                     .with_reason("Invalid transport parameters"));
             }
@@ -107,9 +111,29 @@ impl<'a, Config: connection::Config> tls::Context<Config::TLSSession>
                 .with_reason("Invalid bytes in transport parameters"));
         }
 
-        // TODO authenticate initial_source_connection_id
-        // TODO authenticate original_destination_connection_id
-        // https://tools.ietf.org/html/draft-ietf-quic-transport-29#section-7.3
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.3
+        //= type=TODO
+        //= feature=Transport parameter ID validation
+        //= tracking-issue=353
+        //# The values provided by a peer for these transport parameters MUST
+        //# match the values that an endpoint used in the Destination and Source
+        //# Connection ID fields of Initial packets that it sent.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.3
+        //= type=TODO
+        //= feature=Transport parameter ID validation
+        //= tracking-issue=353
+        //# An endpoint MUST treat absence of the initial_source_connection_id
+        //# transport parameter from either endpoint or absence of the
+        //# original_destination_connection_id transport parameter from the
+        //# server as a connection error of type TRANSPORT_PARAMETER_ERROR.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.3
+        //= type=TODO
+        //= feature=Transport parameter ID validation
+        //= tracking-issue=353
+        //# An endpoint MUST treat the following as a connection error of type
+        //# TRANSPORT_PARAMETER_ERROR or PROTOCOL_VIOLATION:
 
         let peer_flow_control_limits = peer_parameters.flow_control_limits();
         let local_flow_control_limits = self.connection_config.local_flow_control_limits();

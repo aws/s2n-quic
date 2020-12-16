@@ -1,0 +1,89 @@
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.4.1"
+
+[[TODO]]
+quote = '''
+The client
+MUST use the server's new values in the handshake instead; if the
+server does not provide new values, the default value is used.
+'''
+tracking-issue = "354"
+feature = "0-RTT"
+
+[[TODO]]
+quote = '''
+A client that attempts to send 0-RTT data MUST remember all other
+transport parameters used by the server that it is able to process.
+'''
+tracking-issue = "354"
+feature = "0-RTT"
+
+[[TODO]]
+quote = '''
+If 0-RTT data is accepted by the server, the server MUST NOT reduce
+any limits or alter any values that might be violated by the client
+with its 0-RTT data.
+'''
+tracking-issue = "355"
+feature = "0-RTT"
+
+[[TODO]]
+quote = '''
+In particular, a server that accepts 0-RTT data
+MUST NOT set values for the following parameters (Section 18.2) that
+are smaller than the remembered value of the parameters.
+'''
+tracking-issue = "355"
+feature = "0-RTT"
+
+[[TODO]]
+quote = '''
+The applicable
+subset of transport parameters that permit sending of application
+data SHOULD be set to non-zero values for 0-RTT.
+'''
+tracking-issue = "355"
+feature = "0-RTT"
+
+[[TODO]]
+quote = '''
+A server MAY store and recover the previously sent values of the
+max_idle_timeout, max_udp_payload_size, and disable_active_migration
+parameters and reject 0-RTT if it selects smaller values.
+'''
+tracking-issue = "355"
+feature = "0-RTT"
+
+[[TODO]]
+quote = '''
+A server MUST reject 0-RTT data if the restored values for transport
+parameters cannot be supported.
+'''
+tracking-issue = "355"
+feature = "0-RTT"
+
+[[TODO]]
+quote = '''
+When sending frames in 0-RTT packets, a client MUST only use
+remembered transport parameters;
+'''
+tracking-issue = "354"
+feature = "0-RTT"
+
+[[TODO]]
+quote = '''
+importantly, it MUST NOT use updated
+values that it learns from the server's updated transport parameters
+or from frames received in 1-RTT packets.
+'''
+tracking-issue = "354"
+feature = "0-RTT"
+
+[[TODO]]
+quote = '''
+A
+server MAY treat use of updated transport parameters in 0-RTT as a
+connection error of type PROTOCOL_VIOLATION.
+'''
+tracking-issue = "355"
+feature = "0-RTT"
+

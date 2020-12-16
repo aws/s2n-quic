@@ -60,6 +60,12 @@ pub trait TransportParameterValidator: Sized {
 //# *  initial_max_streams_bidi
 //# *  initial_max_streams_uni
 
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.4.1
+//# A client MUST NOT use remembered values for the following parameters:
+//# ack_delay_exponent, max_ack_delay, initial_source_connection_id,
+//# original_destination_connection_id, preferred_address,
+//# retry_source_connection_id, and stateless_reset_token.
+
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub struct ZeroRTTParameters {
     pub active_connection_id_limit: VarInt,
@@ -1132,30 +1138,30 @@ macro_rules! impl_transport_parameters {
                                     concat!(stringify!($field), " is not allowed in this context")
                                 );
 
+                                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.4
+                                //# An endpoint MUST NOT send a parameter more than once in a given
+                                //# transport parameters extension.
                                 s2n_codec::decoder_invariant!(
                                     core::mem::replace(&mut used_fields.$field, true) == false,
                                     concat!("duplicate value for ", stringify!($field))
                                 );
+
                                 let (value, inner_buffer) =
                                     inner_buffer.decode::<TransportParameterCodec<$field_ty>>()?;
+
+                                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.4
+                                //# An endpoint MUST treat receipt of a transport parameter with an
+                                //# invalid value as a connection error of type
+                                //# TRANSPORT_PARAMETER_ERROR.
                                 parameters.$field = value.0.validate()?;
+
                                 inner_buffer
                             }
                         )*
                         _ => {
                             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.4.2
-                            //# New transport parameters can be used to negotiate new protocol
-                            //# behavior.  An endpoint MUST ignore transport parameters that it does
-                            //# not support.  Absence of a transport parameter therefore disables any
-                            //# optional protocol feature that is negotiated using the parameter.  As
-                            //# described in Section 18.1, some identifiers are reserved in order to
-                            //# exercise this requirement.
-
-                            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.1
-                            //# Transport parameters with an identifier of the form "31 * N + 27" for
-                            //# integer values of N are reserved to exercise the requirement that
-                            //# unknown transport parameters be ignored.  These transport parameters
-                            //# have no semantics, and may carry arbitrary values.
+                            //# An endpoint MUST ignore transport parameters that it does
+                            //# not support.
 
                             // ignore transport parameters with unknown tags
                             // We need to skip the actual content of the parameters, which
@@ -1312,6 +1318,10 @@ mod snapshot_tests {
         let _ = encoded_output;
     }
 
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.4.2
+    //= type=test
+    //# An endpoint MUST ignore transport parameters that it does
+    //# not support.
     #[test]
     fn ignore_unknown_parameter() {
         use s2n_codec::EncoderBuffer;
