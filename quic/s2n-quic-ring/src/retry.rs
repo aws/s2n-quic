@@ -108,7 +108,29 @@ mod tests {
                 assert_eq!(&output_buf[range], &retry::example::PACKET[..]);
             }
         }
+    }
 
+    #[test]
+    #[should_panic]
+    fn test_odcid_different_from_local_cid() {
+        let remote_address = inet::ip::SocketAddress::default();
+        let mut token_format = token::testing::Format::new();
+        // Values are taken from the retry packet example. Since this is the Initial packet that
+        // creates the retry, source_connection_id of the Initial is set to the destination
+        // connection id of the retry.
+        let packet = packet::initial::Initial {
+            version: 0xff00_0020,
+            destination_connection_id: &retry::example::ODCID[..],
+            source_connection_id: &retry::example::DCID[..],
+            token: &retry::example::TOKEN[..],
+            packet_number: pn(PacketNumberSpace::Initial),
+            payload: &[1u8, 2, 3, 4, 5][..],
+        };
+
+        let mut buf = vec![0u8; 1200];
+        let mut encoder = EncoderBuffer::new(&mut buf);
+        encoder.encode(&packet);
+        let len = encoder.len();
         // Test the packet encoding when an invalid local_conn_id is used
         let decoder = DecoderBufferMut::new(&mut buf[..len]);
         let connection_info = ConnectionInfo::new(&remote_address);

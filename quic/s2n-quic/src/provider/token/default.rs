@@ -143,11 +143,6 @@ impl Format {
     fn current_key(&mut self) -> u8 {
         let now = s2n_quic_platform::time::now();
         if now > self.current_key_rotates_at {
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.4
-            //# Tokens
-            //# sent in Retry packets SHOULD include information that allows the
-            //# server to verify that the source IP address and port in client
-            //# packets remain constant.
             self.current_key ^= 1;
             self.current_key_rotates_at = now + self.key_rotation_period;
 
@@ -167,6 +162,11 @@ impl Format {
     ) -> Option<hmac::Tag> {
         let mut ctx = self.keys[token.header.key_id() as usize].hasher()?;
 
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.4
+        //# Tokens
+        //# sent in Retry packets SHOULD include information that allows the
+        //# server to verify that the source IP address and port in client
+        //# packets remain constant.
         ctx.update(&token.original_destination_connection_id);
         ctx.update(&token.nonce);
         ctx.update(&destination_connection_id.as_bytes());
@@ -195,6 +195,9 @@ impl Format {
         let tag = self.tag_retry_token(token, peer_address, destination_connection_id)?;
 
         if ring::constant_time::verify_slices_are_equal(&token.hmac, &tag.as_ref()).is_ok() {
+            // Only add the token once it has been validated. This will prevent the filter from
+            // being filled with garbage tokens.
+
             // Ignore the outcome of adding a token to the filter because we always want to
             // continue the connection if the filter fails.
             let _ = self.keys[token.header.key_id() as usize]
@@ -295,7 +298,10 @@ impl super::Format for Format {
         token: &[u8],
     ) -> Option<connection::InitialId> {
         let buffer = DecoderBuffer::new(token);
-        let (token, _) = buffer.decode::<&Token>().ok()?;
+        let (token, remaining) = buffer.decode::<&Token>().ok()?;
+
+        // Verify the provided token doesn't have any additional data
+        remaining.ensure_empty().ok()?;
 
         if token.header.version() != TOKEN_VERSION {
             return None;
@@ -426,9 +432,22 @@ mod tests {
     use super::*;
     use s2n_quic_core::token::{Format as FormatTrait, Source};
     use s2n_quic_platform::time;
+    use std::net::SocketAddr;
     use std::sync::Arc;
 
     const TEST_KEY_ROTATION_PERIOD: Duration = Duration::from_millis(1000);
+
+    fn get_test_format() -> Format {
+        Format {
+            key_rotation_period: TEST_KEY_ROTATION_PERIOD,
+            keys: [
+                BaseKey::new(TEST_KEY_ROTATION_PERIOD * 2),
+                BaseKey::new(TEST_KEY_ROTATION_PERIOD * 2),
+            ],
+            current_key_rotates_at: time::now(),
+            current_key: 0,
+        }
+    }
 
     #[test]
     fn test_header() {
@@ -455,16 +474,7 @@ mod tests {
         let clock = Arc::new(time::testing::MockClock::new());
         time::testing::set_local_clock(clock.clone());
 
-        let mut format = Format {
-            key_rotation_period: TEST_KEY_ROTATION_PERIOD,
-            keys: [
-                BaseKey::new(TEST_KEY_ROTATION_PERIOD * 2),
-                BaseKey::new(TEST_KEY_ROTATION_PERIOD * 2),
-            ],
-            current_key_rotates_at: time::now(),
-            current_key: 0,
-        };
-
+        let mut format = get_test_format();
         let first_conn_id = connection::PeerId::try_from_bytes(&[2, 4, 6, 8, 10]).unwrap();
         let second_conn_id = connection::PeerId::try_from_bytes(&[1, 3, 5, 7, 9]).unwrap();
         let orig_conn_id =
@@ -491,16 +501,53 @@ mod tests {
             format.validate_token(&addr, &second_conn_id, &second_token),
             Some(orig_conn_id)
         );
+        assert_eq!(
+            format.validate_token(&addr, &first_conn_id, &second_token),
+            None
+        );
+    }
+
+    #[test]
+    fn test_retry_ip_port_validation() {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.4
         //= type=test
         //# Tokens
         //# sent in Retry packets SHOULD include information that allows the
         //# server to verify that the source IP address and port in client
         //# packets remain constant.
+        let mut format = get_test_format();
+        let conn_id = connection::PeerId::try_from_bytes(&[2, 4, 6, 8, 10]).unwrap();
+        let orig_conn_id =
+            connection::InitialId::try_from_bytes(&[0, 1, 2, 3, 4, 5, 6, 7]).unwrap();
+
+        let mut token = [0; Format::TOKEN_LEN];
+        let ip_address = "127.0.0.1:443";
+        let addr: SocketAddr = ip_address.parse().unwrap();
+        let correct_address: SocketAddress = addr.into();
+        format
+            .generate_retry_token(&correct_address, &conn_id, &orig_conn_id, &mut token)
+            .unwrap();
+
+        let ip_address = "127.0.0.2:443";
+        let addr: SocketAddr = ip_address.parse().unwrap();
+        let incorrect_address: SocketAddress = addr.into();
         assert_eq!(
-            format.validate_token(&addr, &first_conn_id, &second_token),
+            format.validate_token(&incorrect_address, &conn_id, &token),
             None
         );
+
+        let ip_address = "127.0.0.1:444";
+        let addr: SocketAddr = ip_address.parse().unwrap();
+        let incorrect_port: SocketAddress = addr.into();
+        assert_eq!(
+            format.validate_token(&incorrect_port, &conn_id, &token),
+            None
+        );
+
+        // Verify the token is still valid after the failed attempts
+        assert!(format
+            .validate_token(&correct_address, &conn_id, &token)
+            .is_some());
     }
 
     #[test]
@@ -514,16 +561,7 @@ mod tests {
         let clock = Arc::new(time::testing::MockClock::new());
         time::testing::set_local_clock(clock.clone());
 
-        let mut format = Format {
-            key_rotation_period: TEST_KEY_ROTATION_PERIOD,
-            keys: [
-                BaseKey::new(TEST_KEY_ROTATION_PERIOD * 2),
-                BaseKey::new(TEST_KEY_ROTATION_PERIOD * 2),
-            ],
-            current_key_rotates_at: time::now(),
-            current_key: 0,
-        };
-
+        let mut format = get_test_format();
         let conn_id = connection::PeerId::TEST_ID;
         let orig_conn_id = connection::InitialId::TEST_ID;
         let addr = SocketAddress::default();
@@ -551,16 +589,7 @@ mod tests {
         let clock = Arc::new(time::testing::MockClock::new());
         time::testing::set_local_clock(clock.clone());
 
-        let mut format = Format {
-            key_rotation_period: TEST_KEY_ROTATION_PERIOD,
-            keys: [
-                BaseKey::new(TEST_KEY_ROTATION_PERIOD * 2),
-                BaseKey::new(TEST_KEY_ROTATION_PERIOD * 2),
-            ],
-            current_key_rotates_at: time::now(),
-            current_key: 0,
-        };
-
+        let mut format = get_test_format();
         let conn_id = connection::PeerId::TEST_ID;
         let orig_conn_id = connection::InitialId::TEST_ID;
         let addr = SocketAddress::default();
@@ -579,16 +608,7 @@ mod tests {
         let clock = Arc::new(time::testing::MockClock::new());
         time::testing::set_local_clock(clock);
 
-        let mut format = Format {
-            key_rotation_period: TEST_KEY_ROTATION_PERIOD,
-            keys: [
-                BaseKey::new(TEST_KEY_ROTATION_PERIOD * 2),
-                BaseKey::new(TEST_KEY_ROTATION_PERIOD * 2),
-            ],
-            current_key_rotates_at: time::now(),
-            current_key: 0,
-        };
-
+        let mut format = get_test_format();
         let conn_id = connection::PeerId::TEST_ID;
         let odcid = connection::InitialId::try_from_bytes(&[0, 1, 2, 3, 4, 5, 6, 7]).unwrap();
         let addr = SocketAddress::default();
@@ -609,16 +629,7 @@ mod tests {
         //= type=test
         //# To protect against such attacks, servers MUST ensure that
         //# replay of tokens is prevented or limited.
-        let mut format = Format {
-            key_rotation_period: TEST_KEY_ROTATION_PERIOD,
-            keys: [
-                BaseKey::new(TEST_KEY_ROTATION_PERIOD * 2),
-                BaseKey::new(TEST_KEY_ROTATION_PERIOD * 2),
-            ],
-            current_key_rotates_at: time::now(),
-            current_key: 0,
-        };
-
+        let mut format = get_test_format();
         let conn_id = connection::PeerId::TEST_ID;
         let odcid = connection::InitialId::try_from_bytes(&[0, 1, 2, 3, 4, 5, 6, 7]).unwrap();
         let addr = SocketAddress::default();
@@ -631,5 +642,66 @@ mod tests {
 
         // Second attempt with the same token should fail because the token is a duplicate
         assert!(format.validate_token(&addr, &conn_id, &buf).is_none());
+    }
+
+    #[test]
+    fn test_token_modification_detection() {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.4
+        //= type=test
+        //# For this design to work,
+        //# the token MUST be covered by integrity protection against
+        //# modification or falsification by clients.
+        let clock = Arc::new(time::testing::MockClock::new());
+        time::testing::set_local_clock(clock.clone());
+
+        let mut format = get_test_format();
+        let conn_id = connection::PeerId::try_from_bytes(&[2, 4, 6, 8, 10]).unwrap();
+        let orig_conn_id =
+            connection::InitialId::try_from_bytes(&[0, 1, 2, 3, 4, 5, 6, 7]).unwrap();
+        let addr = SocketAddress::default();
+        let mut token = [0; Format::TOKEN_LEN];
+
+        // Generate two tokens for different connections
+        format
+            .generate_retry_token(&addr, &conn_id, &orig_conn_id, &mut token)
+            .unwrap();
+
+        for i in 0..Format::TOKEN_LEN {
+            token[i] = !token[i];
+            assert!(format.validate_token(&addr, &conn_id, &token).is_none());
+            token[i] = !token[i];
+        }
+    }
+
+    #[test]
+    fn test_token_length_check() {
+        let mut format = get_test_format();
+        let conn_id = connection::PeerId::try_from_bytes(&[2, 4, 6, 8, 10]).unwrap();
+        let addr = SocketAddress::default();
+
+        bolero::check!().for_each(move |token| {
+            assert!(format.validate_token(&addr, &conn_id, token).is_none())
+        });
+    }
+
+    #[test]
+    fn test_token_falsification_detection() {
+        let mut format = get_test_format();
+        let conn_id = connection::PeerId::try_from_bytes(&[2, 4, 6, 8, 10]).unwrap();
+        let addr = SocketAddress::default();
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.4
+        //= type=test
+        //# For this design to work,
+        //# the token MUST be covered by integrity protection against
+        //# modification or falsification by clients.
+        let generator = bolero::generator::gen::<Vec<u8>>()
+            .with()
+            .len(Format::TOKEN_LEN);
+        bolero::check!()
+            .with_generator(generator)
+            .for_each(move |token| {
+                assert!(format.validate_token(&addr, &conn_id, token).is_none())
+            });
     }
 }

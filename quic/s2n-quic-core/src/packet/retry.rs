@@ -118,9 +118,14 @@ impl<'a> Retry<'a> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.5.1
         //# This value MUST NOT be equal to the Destination
         //# Connection ID field of the packet sent by the client.
+        debug_assert_ne!(
+            local_connection_id.as_ref(),
+            packet.destination_connection_id()
+        );
         if local_connection_id.as_ref() == packet.destination_connection_id() {
             return None;
         }
+
         let retry_packet = Retry::from_initial(packet, local_connection_id.as_ref());
         let pseudo_packet = retry_packet.pseudo_packet(packet.destination_connection_id());
 
@@ -250,7 +255,7 @@ impl<'a> Retry<'a> {
 
 impl<'a> EncoderValue for Retry<'a> {
     fn encode<E: Encoder>(&self, encoder: &mut E) {
-        let tag: u8 = (retry_tag!() << 4) | 0x0f;
+        let tag: u8 = self.tag;
         tag.encode(encoder);
 
         self.version.encode(encoder);
@@ -290,7 +295,7 @@ mod tests {
     #[test]
     fn test_encode() {
         let packet = Retry {
-            tag: retry_tag!(),
+            tag: (retry_tag!() << 4) | 0x0f,
             destination_connection_id: &retry::example::DCID,
             source_connection_id: &retry::example::SCID,
             retry_token: &retry::example::TOKEN,
