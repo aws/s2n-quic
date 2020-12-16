@@ -1,5 +1,5 @@
 use crate::{
-    connection,
+    connection, path,
     processed_packet::ProcessedPacket,
     space::rx_packet_numbers::{AckManager, DEFAULT_ACK_RANGES_LIMIT},
     transmission,
@@ -282,12 +282,7 @@ impl<Config: connection::Config> connection::finalization::Provider for PacketSp
 
 macro_rules! default_frame_handler {
     ($name:ident, $frame:ty) => {
-        fn $name(
-            &mut self,
-            frame: $frame,
-            _datagram: &DatagramInfo,
-            _path: &mut Path<Config::CongestionController>,
-        ) -> Result<(), TransportError> {
+        fn $name(&mut self, frame: $frame) -> Result<(), TransportError> {
             Err(TransportError::PROTOCOL_VIOLATION
                 .with_reason(Self::INVALID_FRAME_ERROR)
                 .with_frame_type(frame.tag().into()))
@@ -346,6 +341,17 @@ pub trait PacketSpace<Config: connection::Config> {
             .with_frame_type(frame.tag().into()))
     }
 
+    fn handle_new_connection_id_frame(
+        &mut self,
+        frame: NewConnectionID,
+        _datagram: &DatagramInfo,
+        _path_manager: &mut path::Manager<Config::CongestionController>,
+    ) -> Result<(), TransportError> {
+        Err(TransportError::PROTOCOL_VIOLATION
+            .with_reason(Self::INVALID_FRAME_ERROR)
+            .with_frame_type(frame.tag().into()))
+    }
+
     default_frame_handler!(handle_stream_frame, StreamRef);
     default_frame_handler!(handle_data_blocked_frame, DataBlocked);
     default_frame_handler!(handle_max_data_frame, MaxData);
@@ -356,7 +362,6 @@ pub trait PacketSpace<Config: connection::Config> {
     default_frame_handler!(handle_stream_data_blocked_frame, StreamDataBlocked);
     default_frame_handler!(handle_streams_blocked_frame, StreamsBlocked);
     default_frame_handler!(handle_new_token_frame, NewToken);
-    default_frame_handler!(handle_new_connection_id_frame, NewConnectionID);
     default_frame_handler!(handle_path_challenge_frame, PathChallenge);
     default_frame_handler!(handle_path_response_frame, PathResponse);
 
@@ -366,12 +371,14 @@ pub trait PacketSpace<Config: connection::Config> {
     ) -> Result<(), TransportError>;
 
     // TODO: Reduce arguments, https://github.com/awslabs/s2n-quic/issues/312
+    #[allow(clippy::too_many_arguments)]
     fn handle_cleartext_payload<'a>(
         &mut self,
         packet_number: PacketNumber,
         mut payload: DecoderBufferMut<'a>,
         datagram: &DatagramInfo,
-        path: &mut Path<Config::CongestionController>,
+        path_id: path::Id,
+        path_manager: &mut path::Manager<Config::CongestionController>,
         handshake_status: &mut HandshakeStatus,
         connection_id_mapper_registration: &mut ConnectionIdMapperRegistration,
     ) -> Result<Option<frame::ConnectionClose<'a>>, TransportError> {
@@ -410,7 +417,7 @@ pub trait PacketSpace<Config: connection::Config> {
                 Frame::Crypto(frame) => {
                     let on_error = with_frame_type!(frame);
                     processed_packet.on_processed_frame(&frame);
-                    self.handle_crypto_frame(frame.into(), datagram, path)
+                    self.handle_crypto_frame(frame.into(), datagram, &mut path_manager[path_id])
                         .map_err(on_error)?;
                 }
                 Frame::Ack(frame) => {
@@ -419,7 +426,7 @@ pub trait PacketSpace<Config: connection::Config> {
                     self.handle_ack_frame(
                         frame,
                         datagram,
-                        path,
+                        &mut path_manager[path_id],
                         handshake_status,
                         connection_id_mapper_registration,
                     )
@@ -428,7 +435,7 @@ pub trait PacketSpace<Config: connection::Config> {
                 Frame::ConnectionClose(frame) => {
                     let on_error = with_frame_type!(frame);
                     processed_packet.on_processed_frame(&frame);
-                    self.handle_connection_close_frame(frame, datagram, path)
+                    self.handle_connection_close_frame(frame, datagram, &mut path_manager[path_id])
                         .map_err(on_error)?;
 
                     // skip processing any other frames
@@ -439,67 +446,58 @@ pub trait PacketSpace<Config: connection::Config> {
                 Frame::Stream(frame) => {
                     let on_error = with_frame_type!(frame);
                     processed_packet.on_processed_frame(&frame);
-                    self.handle_stream_frame(frame.into(), datagram, path)
-                        .map_err(on_error)?;
+                    self.handle_stream_frame(frame.into()).map_err(on_error)?;
                 }
                 Frame::DataBlocked(frame) => {
                     let on_error = with_frame_type!(frame);
                     processed_packet.on_processed_frame(&frame);
-                    self.handle_data_blocked_frame(frame, datagram, path)
-                        .map_err(on_error)?;
+                    self.handle_data_blocked_frame(frame).map_err(on_error)?;
                 }
                 Frame::MaxData(frame) => {
                     let on_error = with_frame_type!(frame);
                     processed_packet.on_processed_frame(&frame);
-                    self.handle_max_data_frame(frame, datagram, path)
-                        .map_err(on_error)?;
+                    self.handle_max_data_frame(frame).map_err(on_error)?;
                 }
                 Frame::MaxStreamData(frame) => {
                     let on_error = with_frame_type!(frame);
                     processed_packet.on_processed_frame(&frame);
-                    self.handle_max_stream_data_frame(frame, datagram, path)
-                        .map_err(on_error)?;
+                    self.handle_max_stream_data_frame(frame).map_err(on_error)?;
                 }
                 Frame::MaxStreams(frame) => {
                     let on_error = with_frame_type!(frame);
                     processed_packet.on_processed_frame(&frame);
-                    self.handle_max_streams_frame(frame, datagram, path)
-                        .map_err(on_error)?;
+                    self.handle_max_streams_frame(frame).map_err(on_error)?;
                 }
                 Frame::ResetStream(frame) => {
                     let on_error = with_frame_type!(frame);
                     processed_packet.on_processed_frame(&frame);
-                    self.handle_reset_stream_frame(frame, datagram, path)
-                        .map_err(on_error)?;
+                    self.handle_reset_stream_frame(frame).map_err(on_error)?;
                 }
                 Frame::StopSending(frame) => {
                     let on_error = with_frame_type!(frame);
                     processed_packet.on_processed_frame(&frame);
-                    self.handle_stop_sending_frame(frame, datagram, path)
-                        .map_err(on_error)?;
+                    self.handle_stop_sending_frame(frame).map_err(on_error)?;
                 }
                 Frame::StreamDataBlocked(frame) => {
                     let on_error = with_frame_type!(frame);
                     processed_packet.on_processed_frame(&frame);
-                    self.handle_stream_data_blocked_frame(frame, datagram, path)
+                    self.handle_stream_data_blocked_frame(frame)
                         .map_err(on_error)?;
                 }
                 Frame::StreamsBlocked(frame) => {
                     let on_error = with_frame_type!(frame);
                     processed_packet.on_processed_frame(&frame);
-                    self.handle_streams_blocked_frame(frame, datagram, path)
-                        .map_err(on_error)?;
+                    self.handle_streams_blocked_frame(frame).map_err(on_error)?;
                 }
                 Frame::NewToken(frame) => {
                     let on_error = with_frame_type!(frame);
                     processed_packet.on_processed_frame(&frame);
-                    self.handle_new_token_frame(frame, datagram, path)
-                        .map_err(on_error)?;
+                    self.handle_new_token_frame(frame).map_err(on_error)?;
                 }
                 Frame::NewConnectionID(frame) => {
                     let on_error = with_frame_type!(frame);
                     processed_packet.on_processed_frame(&frame);
-                    self.handle_new_connection_id_frame(frame, datagram, path)
+                    self.handle_new_connection_id_frame(frame, datagram, path_manager)
                         .map_err(on_error)?;
                 }
                 Frame::RetireConnectionID(frame) => {
@@ -508,7 +506,7 @@ pub trait PacketSpace<Config: connection::Config> {
                     self.handle_retire_connection_id_frame(
                         frame,
                         datagram,
-                        path,
+                        &mut path_manager[path_id],
                         connection_id_mapper_registration,
                     )
                     .map_err(on_error)?;
@@ -516,14 +514,12 @@ pub trait PacketSpace<Config: connection::Config> {
                 Frame::PathChallenge(frame) => {
                     let on_error = with_frame_type!(frame);
                     processed_packet.on_processed_frame(&frame);
-                    self.handle_path_challenge_frame(frame, datagram, path)
-                        .map_err(on_error)?;
+                    self.handle_path_challenge_frame(frame).map_err(on_error)?;
                 }
                 Frame::PathResponse(frame) => {
                     let on_error = with_frame_type!(frame);
                     processed_packet.on_processed_frame(&frame);
-                    self.handle_path_response_frame(frame, datagram, path)
-                        .map_err(on_error)?;
+                    self.handle_path_response_frame(frame).map_err(on_error)?;
                 }
                 Frame::HandshakeDone(frame) => {
                     let on_error = with_frame_type!(frame);
@@ -531,7 +527,7 @@ pub trait PacketSpace<Config: connection::Config> {
                     self.handle_handshake_done_frame(
                         frame,
                         datagram,
-                        path,
+                        &mut path_manager[path_id],
                         connection_id_mapper_registration,
                         handshake_status,
                     )

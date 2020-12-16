@@ -610,7 +610,8 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                 packet.packet_number,
                 packet.payload,
                 datagram,
-                &mut self.path_manager[path_id],
+                path_id,
+                &mut self.path_manager,
                 handshake_status,
                 &mut self.connection_id_mapper_registration,
             )? {
@@ -665,7 +666,8 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                 packet.packet_number,
                 packet.payload,
                 datagram,
-                &mut self.path_manager[path_id],
+                path_id,
+                &mut self.path_manager,
                 handshake_status,
                 &mut self.connection_id_mapper_registration,
             )? {
@@ -763,7 +765,8 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                 packet.packet_number,
                 packet.payload,
                 datagram,
-                &mut self.path_manager[path_id],
+                path_id,
+                &mut self.path_manager,
                 handshake_status,
                 &mut self.connection_id_mapper_registration,
             )? {
