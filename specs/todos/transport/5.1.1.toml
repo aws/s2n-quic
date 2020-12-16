@@ -22,17 +22,6 @@ tracking-issue = "238"
 
 [[TODO]]
 quote = '''
-After processing a NEW_CONNECTION_ID frame and
-adding and retiring active connection IDs, if the number of active
-connection IDs exceeds the value advertised in its
-active_connection_id_limit transport parameter, an endpoint MUST
-close the connection with an error of type CONNECTION_ID_LIMIT_ERROR.
-'''
-feature = "Issuing Connection IDs"
-tracking-issue = "238"
-
-[[TODO]]
-quote = '''
 An endpoint SHOULD supply a new connection ID when the peer retires a
 connection ID.
 '''

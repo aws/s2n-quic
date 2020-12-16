@@ -470,8 +470,27 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
         &mut self,
         frame: NewConnectionID,
         _datagram: &DatagramInfo,
-        _path: &mut Path<Config::CongestionController>,
+        path: &mut Path<Config::CongestionController>,
     ) -> Result<(), TransportError> {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
+        //# The Retire Prior To field MUST be less
+        //# than or equal to the Sequence Number field.
+
+        if path.peer_connection_id.is_empty() {
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
+            //# An endpoint that is sending packets with a zero-length Destination
+            //# Connection ID MUST treat receipt of a NEW_CONNECTION_ID frame as a
+            //# connection error of type PROTOCOL_VIOLATION.
+            return Err(TransportError::PROTOCOL_VIOLATION);
+        }
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
+        //# Receiving a value greater than the Sequence Number MUST be treated
+        //# as a connection error of type FRAME_ENCODING_ERROR.
+        if frame.retire_prior_to > frame.sequence_number {
+            return Err(TransportError::FRAME_ENCODING_ERROR);
+        }
+
         // TODO
         eprintln!("UNIMPLEMENTED APPLICATION FRAME {:?}", frame);
         Ok(())

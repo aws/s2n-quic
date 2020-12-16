@@ -1,0 +1,10 @@
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15"
+
+[[exception]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15"
+quote = '''
+An endpoint MUST NOT send this frame if it currently requires that
+its peer send packets with a zero-length Destination Connection ID.
+'''
+reason = "s2n-quic never requires the peer to send zero-length Destination Connection ID"
+
