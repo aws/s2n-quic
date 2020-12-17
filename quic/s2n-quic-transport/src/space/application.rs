@@ -452,9 +452,25 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
             return Err(TransportError::FRAME_ENCODING_ERROR);
         }
 
-        // TODO
-        eprintln!("UNIMPLEMENTED APPLICATION FRAME {:?}", frame);
-        Ok(())
+        let peer_id = connection::PeerId::try_from_bytes(frame.connection_id)
+            .expect("Length is validated when decoding the frame");
+        let sequence_number = frame
+            .sequence_number
+            .as_u64()
+            .try_into()
+            .map_err(|_err| TransportError::PROTOCOL_VIOLATION)?;
+        let retire_prior_to = frame
+            .retire_prior_to
+            .as_u64()
+            .try_into()
+            .map_err(|_err| TransportError::PROTOCOL_VIOLATION)?;
+
+        path_manager.on_new_connection_id(
+            &peer_id,
+            sequence_number,
+            retire_prior_to,
+            *frame.stateless_reset_token,
+        )
     }
 
     fn handle_retire_connection_id_frame(

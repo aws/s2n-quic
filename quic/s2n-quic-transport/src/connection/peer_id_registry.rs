@@ -6,7 +6,10 @@ use crate::{
     transmission,
     transmission::{Interest, WriteContext},
 };
-use s2n_quic_core::{ack_set::AckSet, connection, frame, packet::number::PacketNumber};
+use s2n_quic_core::{
+    ack_set::AckSet, connection, frame, frame::new_connection_id::STATELESS_RESET_TOKEN_LEN,
+    packet::number::PacketNumber, transport::error::TransportError,
+};
 use smallvec::SmallVec;
 
 /// The amount of ConnectionIds we can register without dynamic memory allocation
@@ -27,7 +30,7 @@ struct PeerIdInfo {
     //# detecting when NEW_CONNECTION_ID or RETIRE_CONNECTION_ID frames refer
     //# to the same value.
     sequence_number: u32,
-    stateless_reset_token: Option<u128>,
+    stateless_reset_token: Option<[u8; STATELESS_RESET_TOKEN_LEN]>,
     status: PeerIdStatus,
 }
 
@@ -55,13 +58,38 @@ impl PeerIdStatus {
 pub enum PeerIdRegistrationError {
     /// The NEW_CONNECTION_ID frame was invalid
     InvalidNewConnectionId,
+    /// The active_connection_id_limit was exceeded
+    ExceededActiveConnectionIdLimit,
+}
+
+impl From<PeerIdRegistrationError> for TransportError {
+    fn from(err: PeerIdRegistrationError) -> Self {
+        match err {
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
+            //# If an endpoint receives a NEW_CONNECTION_ID frame that repeats a
+            //# previously issued connection ID with a different Stateless Reset
+            //# Token or a different sequence number, or if a sequence number is used
+            //# for different connection IDs, the endpoint MAY treat that receipt as
+            //# a connection error of type PROTOCOL_VIOLATION.
+            PeerIdRegistrationError::InvalidNewConnectionId => TransportError::PROTOCOL_VIOLATION,
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
+            //# After processing a NEW_CONNECTION_ID frame and
+            //# adding and retiring active connection IDs, if the number of active
+            //# connection IDs exceeds the value advertised in its
+            //# active_connection_id_limit transport parameter, an endpoint MUST
+            //# close the connection with an error of type CONNECTION_ID_LIMIT_ERROR.
+            PeerIdRegistrationError::ExceededActiveConnectionIdLimit => {
+                TransportError::CONNECTION_ID_LIMIT_ERROR
+            }
+        }
+    }
 }
 
 #[allow(dead_code)]
 impl PeerIdRegistry {
     pub fn new(
         initial_connection_id: &connection::PeerId,
-        stateless_reset_token: Option<u128>,
+        stateless_reset_token: Option<[u8; STATELESS_RESET_TOKEN_LEN]>,
     ) -> Self {
         let mut registry = Self {
             registered_ids: SmallVec::new(),
@@ -84,7 +112,7 @@ impl PeerIdRegistry {
         id: &connection::PeerId,
         sequence_number: u32,
         retire_prior_to: u32,
-        stateless_reset_token: u128,
+        stateless_reset_token: [u8; STATELESS_RESET_TOKEN_LEN],
     ) -> Result<(), PeerIdRegistrationError> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
         //# Receipt of the same frame multiple times MUST NOT be treated as a
@@ -200,6 +228,14 @@ impl PeerIdRegistry {
                 }
             }
         }
+    }
+
+    /// Returns true if the given `connection::PeerId` is currently active
+    pub fn is_active(&self, id: &connection::PeerId) -> bool {
+        self.registered_ids
+            .iter()
+            .find(|id_info| id_info.id == *id)
+            .map_or(false, |id_info| id_info.status == Active)
     }
 }
 

@@ -9,6 +9,7 @@ use s2n_quic_core::{
 };
 use smallvec::SmallVec;
 
+use s2n_quic_core::frame::new_connection_id::STATELESS_RESET_TOKEN_LEN;
 /// re-export core
 pub use s2n_quic_core::path::*;
 
@@ -188,7 +189,34 @@ impl<CC: CongestionController> Manager<CC> {
         // TODO invalidate any tokens issued under this connection id
     }
 
-    pub fn on_connection_id_new(&self, _connection_id: &connection::LocalId) {}
+    pub fn on_new_connection_id(
+        &mut self,
+        connection_id: &connection::PeerId,
+        sequence_number: u32,
+        retire_prior_to: u32,
+        stateless_reset_token: [u8; STATELESS_RESET_TOKEN_LEN],
+    ) -> Result<(), TransportError> {
+        self.peer_id_registry.on_new_connection_id(
+            connection_id,
+            sequence_number,
+            retire_prior_to,
+            stateless_reset_token,
+        )?;
+
+        // TODO This new connection ID may retire IDs in use by multiple paths. Since we are not
+        //      currently supporting connection migration, there is only one path, but once there
+        //      are more than one we need to ensure all paths are not using retired connection IDs.
+        //      See https://github.com/awslabs/s2n-quic/issues/358
+        let active_path_using_retired_id = !self
+            .peer_id_registry
+            .is_active(&self.active_path().1.peer_connection_id);
+
+        if active_path_using_retired_id {
+            self.active_path_mut().1.peer_connection_id = *connection_id;
+        }
+
+        Ok(())
+    }
 
     pub fn on_packet_received(&mut self) {}
 }

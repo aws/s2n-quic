@@ -44,7 +44,7 @@ macro_rules! new_connection_id_tag {
 //#    stateless reset when the associated connection ID is used; see
 //#    Section 10.3.
 
-const STATELESS_RESET_TOKEN_LEN: usize = size_of::<u128>();
+pub const STATELESS_RESET_TOKEN_LEN: usize = size_of::<u128>();
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct NewConnectionID<'a> {
@@ -77,6 +77,10 @@ decoder_parameterized_value!(
 
             let (connection_id_len, buffer) = buffer.decode::<u8>()?;
 
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
+            //# Values less than 1 and greater than 20 are invalid
+            //# and MUST be treated as a connection error of type
+            //# FRAME_ENCODING_ERROR.
             decoder_invariant!(
                 (1..20).contains(&connection_id_len),
                 "invalid connection id length"
