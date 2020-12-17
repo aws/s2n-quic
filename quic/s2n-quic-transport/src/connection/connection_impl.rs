@@ -35,7 +35,7 @@ use s2n_quic_core::{
 /// Possible states for handing over a connection from the endpoint to the
 /// application.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum AcceptState {
+enum AcceptState {
     /// The connection is handshaking on the server side and not yet visible
     /// to the application.
     Handshaking,
