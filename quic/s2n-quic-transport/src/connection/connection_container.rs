@@ -300,6 +300,7 @@ impl<C: ConnectionTrait> ConnectionContainer<C> {
         self.interest_lists
             .update_interests(&mut self.accept_queue, &new_connection, interests);
         self.connection_map.insert(new_connection);
+        self.ensure_counter_consistency();
     }
 
     pub fn handshake_connections(&self) -> usize {
@@ -356,6 +357,7 @@ impl<C: ConnectionTrait> ConnectionContainer<C> {
         // Then remove all finalized connections
         self.interest_lists
             .update_interests(&mut self.accept_queue, &node_ptr, interests);
+        self.ensure_counter_consistency();
         self.finalize_done_connections();
 
         Some((result, interests))
@@ -392,21 +394,25 @@ impl<C: ConnectionTrait> ConnectionContainer<C> {
                 };
             }
 
-            // If the connection is still handshaking then it must have timed out.
-            if connection.inner.borrow().is_handshaking() {
-                self.interest_lists.handshake_connections -= 1;
-            }
-
             remove_connection_from_list!(waiting_for_transmission, waiting_for_transmission_link);
             remove_connection_from_list!(waiting_for_connection_id, waiting_for_connection_id_link);
 
-            debug_assert_eq!(
-                self.connection_map
-                    .iter()
-                    .filter(|conn| conn.inner.borrow().is_handshaking())
-                    .count(),
-                self.interest_lists.handshake_connections
-            );
+            // If the connection is still handshaking then it must have timed out.
+            if connection.inner.borrow().is_handshaking() {
+                self.interest_lists.handshake_connections -= 1;
+                self.ensure_counter_consistency();
+            }
+        }
+    }
+
+    fn ensure_counter_consistency(&self) {
+        if cfg!(debug_assertions) {
+            let expected = self
+                .connection_map
+                .iter()
+                .filter(|conn| conn.inner.borrow().is_handshaking())
+                .count();
+            assert_eq!(expected, self.interest_lists.handshake_connections);
         }
     }
 
