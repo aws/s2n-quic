@@ -22,7 +22,7 @@ const NR_STATIC_REGISTRABLE_IDS: usize = 5;
 //# maximum number of connection IDs from the peer that an endpoint is
 //# willing to store. This value includes the connection ID received
 //# during the handshake, that received in the preferred_address transport
-//# parameter, and those received in NEW_CONNECTION_ID frames. The value
+//# parameter, and those received in NEW_CONNECTION_ID frames.  The value
 //# of the active_connection_id_limit parameter MUST be at least 2.
 pub const ACTIVE_CONNECTION_ID_LIMIT: u8 = 3;
 
