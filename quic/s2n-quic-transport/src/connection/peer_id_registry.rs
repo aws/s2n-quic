@@ -1,6 +1,6 @@
 use crate::{
     connection::peer_id_registry::{
-        PeerIdRegistrationError::InvalidNewConnectionId,
+        PeerIdRegistrationError::{ExceededActiveConnectionIdLimit, InvalidNewConnectionId},
         PeerIdStatus::{
             Active, ActivePendingNewConnectionId, PendingAcknowledgement, PendingRetirement,
         },
@@ -9,16 +9,22 @@ use crate::{
     transmission::{Interest, WriteContext},
 };
 use s2n_quic_core::{
-    ack_set::AckSet,
-    connection, frame,
-    frame::new_connection_id::STATELESS_RESET_TOKEN_LEN,
-    packet::number::PacketNumber,
-    transport::{error::TransportError, parameters::ActiveConnectionIdLimit},
+    ack_set::AckSet, connection, frame, frame::new_connection_id::STATELESS_RESET_TOKEN_LEN,
+    packet::number::PacketNumber, transport::error::TransportError,
 };
 use smallvec::SmallVec;
 
 /// The amount of ConnectionIds we can register without dynamic memory allocation
 const NR_STATIC_REGISTRABLE_IDS: usize = 5;
+
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2
+//# The active connection ID limit is an integer value specifying the
+//# maximum number of connection IDs from the peer that an endpoint is
+//# willing to store. This value includes the connection ID received
+//# during the handshake, that received in the preferred_address transport
+//# parameter, and those received in NEW_CONNECTION_ID frames. The value
+//# of the active_connection_id_limit parameter MUST be at least 2.
+pub const ACTIVE_CONNECTION_ID_LIMIT: u8 = 3;
 
 #[derive(Debug)]
 pub struct PeerIdRegistry {
@@ -205,14 +211,20 @@ impl PeerIdRegistry {
         }
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
-        //= type=TODO
-        //= tracking-issue=239
-        //= feature=Peer Connection ID Management
         //# After processing a NEW_CONNECTION_ID frame and
         //# adding and retiring active connection IDs, if the number of active
         //# connection IDs exceeds the value advertised in its
         //# active_connection_id_limit transport parameter, an endpoint MUST
         //# close the connection with an error of type CONNECTION_ID_LIMIT_ERROR.
+        if self
+            .registered_ids
+            .iter()
+            .filter(|id_info| id_info.is_active())
+            .count()
+            > ACTIVE_CONNECTION_ID_LIMIT as usize
+        {
+            return Err(ExceededActiveConnectionIdLimit);
+        }
 
         Ok(())
     }

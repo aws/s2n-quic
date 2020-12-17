@@ -155,6 +155,18 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                 .expect("connection ID already validated"),
         );
 
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2
+        //# The active connection ID limit is an integer value specifying the
+        //# maximum number of connection IDs from the peer that an endpoint is
+        //# willing to store. This value includes the connection ID received
+        //# during the handshake, that received in the preferred_address transport
+        //# parameter, and those received in NEW_CONNECTION_ID frames.
+        transport_parameters.active_connection_id_limit = s2n_quic_core::varint::VarInt::from(
+            connection::peer_id_registry::ACTIVE_CONNECTION_ID_LIMIT,
+        )
+        .try_into()
+        .unwrap();
+
         let endpoint_context = self.config.context();
 
         // TODO send retry_source_connection_id

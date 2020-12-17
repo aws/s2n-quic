@@ -27,7 +27,7 @@ mod connection_trait;
 mod errors;
 pub(crate) mod finalization;
 mod internal_connection_id;
-mod peer_id_registry;
+pub(crate) mod peer_id_registry;
 mod shared_state;
 pub(crate) mod transmission;
 
