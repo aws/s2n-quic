@@ -9,7 +9,6 @@ use s2n_quic_core::{
 };
 use smallvec::SmallVec;
 
-use s2n_quic_core::frame::new_connection_id::STATELESS_RESET_TOKEN_LEN;
 /// re-export core
 pub use s2n_quic_core::path::*;
 
@@ -124,8 +123,9 @@ impl<CC: CongestionController> Manager<CC> {
             // The existing peer connection id may only be reused if the destination
             // connection ID on this packet had not been used before (this would happen
             // when the peer's remote address gets changed due to circumstances out of their
-            // control). Otherwise we will need to consume a new connection::PeerId or ignore
-            // the request if we don't have any connection::PeerIds to use.
+            // control). Otherwise we will need to consume a new connection::PeerId by calling
+            // PeerIdRegistry::consume_new_id_if_necessary(None) and ignoring the request if
+            // no new connection::PeerIds is available to use.
             self.active_path().1.peer_connection_id,
             RTTEstimator::new(EARLY_ACK_SETTINGS.max_ack_delay),
             new_congestion_controller(),
@@ -194,7 +194,7 @@ impl<CC: CongestionController> Manager<CC> {
         connection_id: &connection::PeerId,
         sequence_number: u32,
         retire_prior_to: u32,
-        stateless_reset_token: [u8; STATELESS_RESET_TOKEN_LEN],
+        stateless_reset_token: &[u8],
     ) -> Result<(), TransportError> {
         self.peer_id_registry.on_new_connection_id(
             connection_id,
@@ -205,14 +205,18 @@ impl<CC: CongestionController> Manager<CC> {
 
         // TODO This new connection ID may retire IDs in use by multiple paths. Since we are not
         //      currently supporting connection migration, there is only one path, but once there
-        //      are more than one we need to ensure all paths are not using retired connection IDs.
+        //      are more than one we should decide what to do if there aren't enough new connection
+        //      IDs available for all paths.
         //      See https://github.com/awslabs/s2n-quic/issues/358
-        let active_path_using_retired_id = !self
-            .peer_id_registry
-            .is_active(&self.active_path().1.peer_connection_id);
-
-        if active_path_using_retired_id {
-            self.active_path_mut().1.peer_connection_id = *connection_id;
+        // Ensure all paths are not using a newly retired connection ID
+        for path in self.paths.iter_mut() {
+            path.peer_connection_id = self
+                .peer_id_registry
+                .consume_new_id_if_necessary(Some(&path.peer_connection_id))
+                .expect(
+                    "There is only one path maintained currently and since a new ID was \
+                delivered, there will always be a new ID available to consume if necessary",
+                );
         }
 
         Ok(())

@@ -2,12 +2,13 @@ use crate::{
     connection::peer_id_registry::{
         PeerIdRegistrationError::{ExceededActiveConnectionIdLimit, InvalidNewConnectionId},
         PeerIdStatus::{
-            Active, ActivePendingNewConnectionId, PendingAcknowledgement, PendingRetirement,
+            InUse, InUsePendingNewConnectionId, New, PendingAcknowledgement, PendingRetirement,
         },
     },
     transmission,
     transmission::{Interest, WriteContext},
 };
+use core::convert::TryInto;
 use s2n_quic_core::{
     ack_set::AckSet, connection, frame, frame::new_connection_id::STATELESS_RESET_TOKEN_LEN,
     packet::number::PacketNumber, transport::error::TransportError,
@@ -28,8 +29,9 @@ pub const ACTIVE_CONNECTION_ID_LIMIT: u8 = 3;
 
 #[derive(Debug)]
 pub struct PeerIdRegistry {
-    /// The connection IDs which are currently registered at the ConnectionIdMapper
+    /// The connection IDs which are currently registered
     registered_ids: SmallVec<[PeerIdInfo; NR_STATIC_REGISTRABLE_IDS]>,
+    /// The largest retire prior to value that has been received from the peer
     retire_prior_to: u32,
 }
 
@@ -41,7 +43,11 @@ struct PeerIdInfo {
     //# detecting when NEW_CONNECTION_ID or RETIRE_CONNECTION_ID frames refer
     //# to the same value.
     sequence_number: u32,
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
+    //# A 128-bit value that will be used for a stateless reset when the
+    //# associated connection ID is used.
     stateless_reset_token: Option<[u8; STATELESS_RESET_TOKEN_LEN]>,
+    // The current status of the connection ID
     status: PeerIdStatus,
 }
 
@@ -49,8 +55,9 @@ impl PeerIdInfo {
     /// Returns true if this PeerId may be used to send packets to the peer
     fn is_active(&self) -> bool {
         match self.status {
-            Active => true,
-            ActivePendingNewConnectionId => true,
+            New => true,
+            InUse => true,
+            InUsePendingNewConnectionId => true,
             _ => false,
         }
     }
@@ -69,11 +76,13 @@ impl PeerIdInfo {
 /// The current status of the connection ID.
 #[derive(Debug, PartialEq)]
 enum PeerIdStatus {
-    /// Connection IDs received in NEW_CONNECTION_ID frames start in the `Active` status.
-    Active,
-    /// The initial connection ID used during the handshake is active, but will be retired
+    /// Connection IDs received in NEW_CONNECTION_ID frames start in the `New` status.
+    New,
+    /// Once a connection ID is used on a path it moves to the `InUse` status.
+    InUse,
+    /// The initial connection ID used during the handshake is in use, but will be retired
     /// as soon as a NEW_CONNECTION_ID frame is received from the peer.
-    ActivePendingNewConnectionId,
+    InUsePendingNewConnectionId,
     /// Once a connection ID will no longer be used, it enters the `PendingRetirement` status,
     /// triggering a RETIRE_CONNECTION_ID frame to be sent. The `bool` is true if the
     /// packet that sent the RETIRE_CONNECTION_ID frame was declared lost and the connection ID
@@ -117,8 +126,9 @@ impl From<PeerIdRegistrationError> for TransportError {
     }
 }
 
-#[allow(dead_code)]
 impl PeerIdRegistry {
+    /// Constructs a new `PeerIdRegistry`. The provided `initial_connection_id` will be registered
+    /// in the returned registry, with the optional associated `stateless_reset_token`.
     pub fn new(
         initial_connection_id: &connection::PeerId,
         stateless_reset_token: Option<[u8; STATELESS_RESET_TOKEN_LEN]>,
@@ -133,25 +143,31 @@ impl PeerIdRegistry {
             //# The sequence number of the initial connection ID is 0.
             sequence_number: 0,
             stateless_reset_token,
-            // Start the initial PeerId in ActivePendingNewConnectionId so the ID is
-            // rotated as soon as the handshake completes and the peer sends a new
-            // connection ID
-            status: PeerIdStatus::ActivePendingNewConnectionId,
+            // Start the initial PeerId in ActivePendingNewConnectionId so the ID used
+            // during the handshake is rotated as soon as the peer sends a new connection ID
+            status: PeerIdStatus::InUsePendingNewConnectionId,
         });
 
         registry
     }
 
+    /// Handles a new connection ID received from a NEW_CONNECTION_ID frame
     pub fn on_new_connection_id(
         &mut self,
         id: &connection::PeerId,
         sequence_number: u32,
         retire_prior_to: u32,
-        stateless_reset_token: [u8; STATELESS_RESET_TOKEN_LEN],
+        stateless_reset_token: &[u8],
     ) -> Result<(), PeerIdRegistrationError> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
         //# Receipt of the same frame multiple times MUST NOT be treated as a
         //# connection error.
+
+        let stateless_reset_token = Some(
+            stateless_reset_token
+                .try_into()
+                .expect("Length is validated when decoding"),
+        );
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
         //# If an endpoint receives a NEW_CONNECTION_ID frame that repeats a
@@ -161,7 +177,7 @@ impl PeerIdRegistry {
         //# a connection error of type PROTOCOL_VIOLATION.
         let same_id_diff_token_or_seq_num = |id_info: &PeerIdInfo| {
             id_info.id == *id
-                && (id_info.stateless_reset_token != Some(stateless_reset_token)
+                && (id_info.stateless_reset_token != stateless_reset_token
                     || id_info.sequence_number != sequence_number)
         };
         let diff_id_same_seq_num =
@@ -185,12 +201,12 @@ impl PeerIdRegistry {
         //# stop using the corresponding connection IDs and retire them with
         //# RETIRE_CONNECTION_ID frames before adding the newly provided
         //# connection ID to the set of active connection IDs.
-
+        // The new connection ID is added at the same time existing IDs are retired
         self.registered_ids.push(PeerIdInfo {
             id: *id,
             sequence_number,
-            stateless_reset_token: Some(stateless_reset_token),
-            status: Active,
+            stateless_reset_token,
+            status: New,
         });
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
@@ -214,7 +230,7 @@ impl PeerIdRegistry {
         if let Some(id_info) = self
             .registered_ids
             .iter_mut()
-            .find(|id_info| id_info.status == ActivePendingNewConnectionId)
+            .find(|id_info| id_info.status == InUsePendingNewConnectionId)
         {
             id_info.status = PendingRetirement(false);
         }
@@ -260,7 +276,7 @@ impl PeerIdRegistry {
             .filter(|id_info| id_info.can_transmit(constraint))
         {
             if let Some(packet_number) = context.write_frame(&frame::RetireConnectionID {
-                sequence_number: Default::default(),
+                sequence_number: id_info.sequence_number.into(),
             }) {
                 id_info.status = PendingAcknowledgement(packet_number);
             }
@@ -271,7 +287,9 @@ impl PeerIdRegistry {
     pub fn on_packet_ack<A: AckSet>(&mut self, ack_set: &A) {
         self.registered_ids.retain(|id_info| {
             if let PendingAcknowledgement(packet_number) = id_info.status {
-                // Don't retain the ID that was acknowledged
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2
+                //# An endpoint MUST NOT forget a connection ID without retiring it
+                // Don't retain the ID if it was acknowledged
                 !ack_set.contains(packet_number)
             } else {
                 // Retain IDs that weren't PendingAcknowledgement
@@ -292,12 +310,33 @@ impl PeerIdRegistry {
         }
     }
 
-    /// Returns true if the given `connection::PeerId` is currently active
-    pub fn is_active(&self, id: &connection::PeerId) -> bool {
-        self.registered_ids
-            .iter()
-            .find(|id_info| id_info.id == *id)
-            .map_or(false, |id_info| id_info.is_active())
+    /// Consumes a new ID from the available registered IDs if
+    /// the `current_id` is either not provided or is retired.
+    pub fn consume_new_id_if_necessary(
+        &mut self,
+        current_id: Option<&connection::PeerId>,
+    ) -> Option<connection::PeerId> {
+        let mut new_id = None;
+
+        for id_info in self.registered_ids.iter_mut() {
+            if current_id == Some(&id_info.id) && id_info.is_active() {
+                // The current ID is still ok to use, so return it
+                return Some(id_info.id);
+            }
+
+            if new_id.is_none() && id_info.status == New {
+                new_id = Some(id_info)
+            }
+        }
+
+        if let Some(mut new_id) = new_id {
+            // Consume the new id
+            new_id.status = InUse;
+            return Some(new_id.id);
+        }
+
+        // There were no available IDs to use
+        None
     }
 }
 

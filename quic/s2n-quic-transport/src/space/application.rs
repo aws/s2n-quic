@@ -469,7 +469,7 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
             &peer_id,
             sequence_number,
             retire_prior_to,
-            *frame.stateless_reset_token,
+            frame.stateless_reset_token,
         )
     }
 
