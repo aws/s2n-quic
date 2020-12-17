@@ -85,6 +85,12 @@ impl<Config: endpoint::Config> Negotiator<Config> {
                 //# eventually receive an Initial packet.
                 return Err(TransportError::NO_ERROR);
             }
+            ProtectedPacket::VersionNegotiation(_) => {
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#6.1
+                //# An endpoint MUST NOT send a Version Negotiation packet
+                //# in response to receiving a Version Negotiation packet.
+                return Ok(());
+            }
             _ => return Ok(()),
         };
 
@@ -105,16 +111,23 @@ impl<Config: endpoint::Config> Negotiator<Config> {
             return Err(TransportError::NO_ERROR);
         }
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2.2
-        //# A server MAY limit the number of packets
-        //# to which it responds with a Version Negotiation packet.
-        // store the peer's address if we're not at capacity
-        if self.transmissions.len() != self.max_peers {
+        {
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2.2
-            //# Servers SHOULD respond with a Version
-            //# Negotiation packet, provided that the datagram is sufficiently long.
-            self.transmissions
-                .push_back(Transmission::new(remote_address, packet));
+            //# A server MAY limit the number of packets
+            //# to which it responds with a Version Negotiation packet.
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#6.1
+            //# A server MAY limit the number of Version Negotiation packets it
+            //# sends.
+
+            // store the peer's address if we're not at capacity
+            if self.transmissions.len() != self.max_peers {
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2.2
+                //# Servers SHOULD respond with a Version
+                //# Negotiation packet, provided that the datagram is sufficiently long.
+                self.transmissions
+                    .push_back(Transmission::new(remote_address, packet));
+            }
         }
 
         Err(TransportError::NO_ERROR)
@@ -213,6 +226,22 @@ impl EncoderValue for SupportedVersions {
         for version in SUPPORTED_VERSIONS {
             encoder.encode(version);
         }
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#6.3
+        //# Endpoints MAY add reserved versions to any field where unknown or
+        //# unsupported versions are ignored to test that a peer correctly
+        //# ignores the value.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#6.3
+        //# Endpoints MAY send packets with a reserved version to test that a
+        //# peer correctly discards the packet.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#6.3
+        //# For a server to use a new version in the future, clients need to
+        //# correctly handle unsupported versions.  Some version numbers
+        //# (0x?a?a?a?a as defined in Section 15) are reserved for inclusion in
+        //# fields that contain version numbers.
+        encoder.encode(&0xdadada);
     }
 }
 
