@@ -226,6 +226,10 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
     /// Static configuration of a connection
     type Config = Config;
 
+    fn is_handshaking(&self) -> bool {
+        self.accept_state == AcceptState::Handshaking
+    }
+
     /// Creates a new `Connection` instance with the given configuration
     fn new(parameters: ConnectionParameters<Self::Config>) -> Self {
         // The path manager always starts with a single path containing the known peer and local

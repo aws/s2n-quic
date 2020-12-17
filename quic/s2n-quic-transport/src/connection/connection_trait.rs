@@ -42,6 +42,9 @@ pub trait ConnectionTrait: Sized {
     /// Returns the Connections internal ID
     fn internal_connection_id(&self) -> InternalConnectionId;
 
+    /// Returns whether the connection is in the handshake state
+    fn is_handshaking(&self) -> bool;
+
     /// Initiates closing the connection as described in
     /// https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10
     ///

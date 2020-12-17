@@ -26,7 +26,6 @@ use s2n_quic_core::{
 
 mod config;
 mod initial;
-mod limits;
 mod retry;
 mod version;
 
@@ -56,8 +55,6 @@ pub struct Endpoint<Cfg: Config> {
     dequeued_wakeups: VecDeque<InternalConnectionId>,
     version_negotiator: version::Negotiator<Cfg>,
     retry_dispatch: retry::Dispatch,
-    /// Limit manager for the endpoint
-    limits_manager: limits::Manager,
 }
 
 // Safety: The endpoint is marked as `!Send`, because the struct contains `Rc`s.
@@ -81,7 +78,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
             dequeued_wakeups: VecDeque::new(),
             version_negotiator: version::Negotiator::default(),
             retry_dispatch: retry::Dispatch::default(),
-            limits_manager: limits::Manager::new(),
         };
 
         (endpoint, acceptor)
@@ -110,7 +106,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
         packet: &ProtectedInitial,
     ) -> Option<()> {
         let attempt = s2n_quic_core::endpoint::limits::ConnectionAttempt::new(
-            self.limits_manager.inflight_handshakes(),
+            self.connections.handshake_connections(),
             &datagram.remote_address,
         );
 
@@ -232,7 +228,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             .connection_id_mapper
             .lookup_internal_connection_id(&datagram.destination_connection_id)
         {
-            let outcome = self
+            let _ = self
                 .connections
                 .with_connection(internal_id, |conn, shared_state| {
                     // The path `Id` needs to be passed around instead of the path to get around `&mut self` and
@@ -278,25 +274,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
                     Ok(())
                 });
-
-            match outcome {
-                Some((Ok(()), interests)) => {
-                    // When connections are marked `accept` they have completed their handshake
-                    // TODO: Verify this is valid for the client
-                    if interests.accept {
-                        self.limits_manager.on_handshake_end();
-                    }
-                }
-                Some((Err(()), _interests)) => {
-                    // Ignored error from the `.with_connection` call
-                }
-                None => {
-                    debug_assert!(
-                        false,
-                        "Connection was found in external but not internal connection map"
-                    );
-                }
-            };
 
             return;
         }
