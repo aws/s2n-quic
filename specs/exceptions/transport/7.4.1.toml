@@ -1,0 +1,12 @@
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.4.1"
+
+[[exception]]
+quote = '''
+The definition of a new transport parameter (Section 7.4.2) MUST
+specify whether storing the transport parameter for 0-RTT is
+mandatory, optional, or prohibited.
+'''
+reason = '''
+s2n-quic does not define or implement any additional transport parameters
+'''
+

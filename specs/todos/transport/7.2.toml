@@ -1,0 +1,30 @@
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.2"
+
+[[TODO]]
+quote = '''
+Until a packet is received from the server, the client MUST
+use the same Destination Connection ID value on all packets in this
+connection.
+'''
+tracking-issue = "351"
+feature = "Client IDs"
+
+[[TODO]]
+quote = '''
+Once a client
+has received a valid Initial packet from the server, it MUST discard
+any subsequent packet it receives with a different Source Connection
+ID.
+'''
+tracking-issue = "351"
+feature = "Client IDs"
+
+[[TODO]]
+quote = '''
+A client MUST change the Destination Connection ID it uses for
+sending packets in response to only the first received Initial or
+Retry packet.
+'''
+tracking-issue = "351"
+feature = "Client IDs"
+
