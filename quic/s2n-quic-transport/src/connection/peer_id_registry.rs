@@ -54,27 +54,36 @@ impl PeerIdInfo {
             _ => false,
         }
     }
-}
 
-/// The current status of the connection ID.
-#[derive(Debug, PartialEq)]
-enum PeerIdStatus {
-    // TODO
-    Active,
-    ActivePendingNewConnectionId,
-    PendingAcknowledgement(PacketNumber),
-    PendingRetirement(bool),
-}
-
-impl PeerIdStatus {
-    /// Returns true if this status allows for transmission based on the transmission constraint
+    /// Returns true if the status of this ID allows for transmission
+    /// based on the transmission constraint
     fn can_transmit(&self, constraint: transmission::Constraint) -> bool {
-        match self {
+        match self.status {
             PendingRetirement(true) => constraint.can_retransmit(),
             PendingRetirement(false) => constraint.can_transmit(),
             _ => false,
         }
     }
+}
+
+/// The current status of the connection ID.
+#[derive(Debug, PartialEq)]
+enum PeerIdStatus {
+    /// Connection IDs received in NEW_CONNECTION_ID frames start in the `Active` status.
+    Active,
+    /// The initial connection ID used during the handshake is active, but will be retired
+    /// as soon as a NEW_CONNECTION_ID frame is received from the peer.
+    ActivePendingNewConnectionId,
+    /// Once a connection ID will no longer be used, it enters the `PendingRetirement` status,
+    /// triggering a RETIRE_CONNECTION_ID frame to be sent. The `bool` is true if the
+    /// packet that sent the RETIRE_CONNECTION_ID frame was declared lost and the connection ID
+    /// has re-entered `PendingRetirement` status.
+    PendingRetirement(bool),
+    /// Once the RETIRE_CONNECTION_ID frame has been sent, the connection ID enters
+    /// `PendingAcknowledgement` status, tracking the packet number of the packet that transmitted
+    /// the retire frame. When acknowledgement of that packet is received, the connection ID is
+    /// removed.
+    PendingAcknowledgement(PacketNumber),
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -216,13 +225,25 @@ impl PeerIdRegistry {
         //# connection IDs exceeds the value advertised in its
         //# active_connection_id_limit transport parameter, an endpoint MUST
         //# close the connection with an error of type CONNECTION_ID_LIMIT_ERROR.
-        if self
+        let active_id_count = self
             .registered_ids
             .iter()
             .filter(|id_info| id_info.is_active())
-            .count()
-            > ACTIVE_CONNECTION_ID_LIMIT as usize
-        {
+            .count();
+        if active_id_count > ACTIVE_CONNECTION_ID_LIMIT as usize {
+            return Err(ExceededActiveConnectionIdLimit);
+        }
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2
+        //# An endpoint SHOULD limit the number of connection IDs it has retired
+        //# locally and have not yet been acknowledged. An endpoint SHOULD allow
+        //# for sending and tracking a number of RETIRE_CONNECTION_ID frames of
+        //# at least twice the active_connection_id limit.  An endpoint MUST NOT
+        //# forget a connection ID without retiring it, though it MAY choose to
+        //# treat having connection IDs in need of retirement that exceed this
+        //# limit as a connection error of type CONNECTION_ID_LIMIT_ERROR.
+        let retired_id_count = self.registered_ids.len() - active_id_count;
+        if retired_id_count > ACTIVE_CONNECTION_ID_LIMIT as usize * 2 {
             return Err(ExceededActiveConnectionIdLimit);
         }
 
@@ -236,7 +257,7 @@ impl PeerIdRegistry {
         for mut id_info in self
             .registered_ids
             .iter_mut()
-            .filter(|id_info| id_info.status.can_transmit(constraint))
+            .filter(|id_info| id_info.can_transmit(constraint))
         {
             if let Some(packet_number) = context.write_frame(&frame::RetireConnectionID {
                 sequence_number: Default::default(),
