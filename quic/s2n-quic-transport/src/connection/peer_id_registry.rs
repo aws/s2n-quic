@@ -1,14 +1,19 @@
 use crate::{
     connection::peer_id_registry::{
         PeerIdRegistrationError::InvalidNewConnectionId,
-        PeerIdStatus::{Active, PendingAcknowledgement, PendingRetirement},
+        PeerIdStatus::{
+            Active, ActivePendingNewConnectionId, PendingAcknowledgement, PendingRetirement,
+        },
     },
     transmission,
     transmission::{Interest, WriteContext},
 };
 use s2n_quic_core::{
-    ack_set::AckSet, connection, frame, frame::new_connection_id::STATELESS_RESET_TOKEN_LEN,
-    packet::number::PacketNumber, transport::error::TransportError,
+    ack_set::AckSet,
+    connection, frame,
+    frame::new_connection_id::STATELESS_RESET_TOKEN_LEN,
+    packet::number::PacketNumber,
+    transport::{error::TransportError, parameters::ActiveConnectionIdLimit},
 };
 use smallvec::SmallVec;
 
@@ -34,11 +39,23 @@ struct PeerIdInfo {
     status: PeerIdStatus,
 }
 
+impl PeerIdInfo {
+    /// Returns true if this PeerId may be used to send packets to the peer
+    fn is_active(&self) -> bool {
+        match self.status {
+            Active => true,
+            ActivePendingNewConnectionId => true,
+            _ => false,
+        }
+    }
+}
+
 /// The current status of the connection ID.
 #[derive(Debug, PartialEq)]
 enum PeerIdStatus {
     // TODO
     Active,
+    ActivePendingNewConnectionId,
     PendingAcknowledgement(PacketNumber),
     PendingRetirement(bool),
 }
@@ -101,7 +118,10 @@ impl PeerIdRegistry {
             //# The sequence number of the initial connection ID is 0.
             sequence_number: 0,
             stateless_reset_token,
-            status: PeerIdStatus::Active,
+            // Start the initial PeerId in ActivePendingNewConnectionId so the ID is
+            // rotated as soon as the handshake completes and the peer sends a new
+            // connection ID
+            status: PeerIdStatus::ActivePendingNewConnectionId,
         });
 
         registry
@@ -175,6 +195,15 @@ impl PeerIdRegistry {
             id_info.status = PendingRetirement(false);
         }
 
+        // TODO combine with iteration above
+        if let Some(id_info) = self
+            .registered_ids
+            .iter_mut()
+            .find(|id_info| id_info.status == ActivePendingNewConnectionId)
+        {
+            id_info.status = PendingRetirement(false);
+        }
+
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
         //= type=TODO
         //= tracking-issue=239
@@ -235,7 +264,7 @@ impl PeerIdRegistry {
         self.registered_ids
             .iter()
             .find(|id_info| id_info.id == *id)
-            .map_or(false, |id_info| id_info.status == Active)
+            .map_or(false, |id_info| id_info.is_active())
     }
 }
 
