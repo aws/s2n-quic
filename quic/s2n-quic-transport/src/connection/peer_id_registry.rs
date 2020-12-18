@@ -386,25 +386,33 @@ impl PeerIdRegistry {
     ) -> Option<connection::PeerId> {
         let mut new_id = None;
 
+        let current_id_is_active =
+            |id_info: &PeerIdInfo| current_id == Some(&id_info.id) && id_info.status.is_active();
+
         for id_info in self.registered_ids.iter_mut() {
-            if current_id == Some(&id_info.id) && id_info.status.is_active() {
+            if current_id_is_active(id_info) {
                 // The current ID is still ok to use, so return it
                 return Some(id_info.id);
             }
 
-            if new_id.is_none() && id_info.status == New {
-                new_id = Some(id_info)
+            if id_info.status == New {
+                // Consume the new id
+                id_info.status = InUse;
+                new_id = Some(id_info.id);
+                break;
             }
         }
 
-        if let Some(mut new_id) = new_id {
-            // Consume the new id
-            new_id.status = InUse;
-            return Some(new_id.id);
-        }
+        // New IDs are inserted at the end of the registered_ids Vec and are always consumed in
+        // order, so if we find a new ID before finding an active current ID, the current ID must
+        // not be active. This debug assertion will verify that remains true.
+        debug_assert!(self
+            .registered_ids
+            .iter()
+            .find(|id_info| current_id_is_active(id_info))
+            .is_none());
 
-        // There were no available IDs to use
-        None
+        new_id
     }
 
     // Validate that the ACTIVE_CONNECTION_ID_LIMIT has not been exceeded
