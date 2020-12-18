@@ -6,6 +6,7 @@ use crate::{
         },
         PeerIdStatus::{
             InUse, InUsePendingNewConnectionId, New, PendingAcknowledgement, PendingRetirement,
+            PendingRetirementRetransmission,
         },
     },
     transmission,
@@ -77,10 +78,12 @@ enum PeerIdStatus {
     /// as soon as a NEW_CONNECTION_ID frame is received from the peer.
     InUsePendingNewConnectionId,
     /// Once a connection ID will no longer be used, it enters the `PendingRetirement` status,
-    /// triggering a RETIRE_CONNECTION_ID frame to be sent. The `bool` is true if the
-    /// packet that sent the RETIRE_CONNECTION_ID frame was declared lost and the connection ID
-    /// has re-entered `PendingRetirement` status.
-    PendingRetirement(bool),
+    /// triggering a RETIRE_CONNECTION_ID frame to be sent.
+    PendingRetirement,
+    /// If the packet that sent the RETIRE_CONNECTION_ID frame was declared lost, the connection
+    /// moves to the `PendingRetirementRetransmission` status to allow for faster retransmission
+    /// of the lost frame.
+    PendingRetirementRetransmission,
     /// Once the RETIRE_CONNECTION_ID frame has been sent, the connection ID enters
     /// `PendingAcknowledgement` status, tracking the packet number of the packet that transmitted
     /// the retire frame. When acknowledgement of that packet is received, the connection ID is
@@ -103,8 +106,8 @@ impl PeerIdStatus {
     /// based on the transmission constraint
     fn can_transmit(&self, constraint: transmission::Constraint) -> bool {
         match self {
-            PendingRetirement(true) => constraint.can_retransmit(),
-            PendingRetirement(false) => constraint.can_transmit(),
+            PendingRetirementRetransmission => constraint.can_retransmit(),
+            PendingRetirement => constraint.can_transmit(),
             _ => false,
         }
     }
@@ -225,7 +228,7 @@ impl PeerIdRegistry {
                 //# stop using the corresponding connection IDs and retire them with
                 //# RETIRE_CONNECTION_ID frames before adding the newly provided
                 //# connection ID to the set of active connection IDs.
-                id_info.status = PendingRetirement(false);
+                id_info.status = PendingRetirement;
             }
 
             if id_info.status.is_active() {
@@ -261,7 +264,7 @@ impl PeerIdRegistry {
             //# RETIRE_CONNECTION_ID frame that retires the newly received connection
             //# ID, unless it has already done so for that sequence number.
             if new_id_info.is_retire_ready(self.retire_prior_to) {
-                new_id_info.status = PendingRetirement(false);
+                new_id_info.status = PendingRetirement;
             }
 
             if new_id_info.status.is_active() {
@@ -271,7 +274,7 @@ impl PeerIdRegistry {
                     // If there was an ID pending new connection ID, it can be moved to PendingRetirement
                     // now that we know we aren't processing a duplicate NEW_CONNECTION_ID and the
                     // new connection ID wasn't immediately retired.
-                    id_pending_new_connection_id.status = PendingRetirement(false);
+                    id_pending_new_connection_id.status = PendingRetirement;
                     // We retired one active connection ID
                     active_id_count -= 1;
                 }
@@ -368,7 +371,7 @@ impl PeerIdRegistry {
         for id_info in self.registered_ids.iter_mut() {
             if let PendingAcknowledgement(packet_number) = id_info.status {
                 if ack_set.contains(packet_number) {
-                    id_info.status = PendingRetirement(true);
+                    id_info.status = PendingRetirementRetransmission;
                 }
             }
         }
@@ -461,7 +464,7 @@ impl transmission::interest::Provider for PeerIdRegistry {
         let has_ids_pending_retirement_again = self
             .registered_ids
             .iter()
-            .any(|id_info| id_info.status == PendingRetirement(true));
+            .any(|id_info| id_info.status == PendingRetirementRetransmission);
 
         if has_ids_pending_retirement_again {
             return transmission::Interest::LostData;
@@ -470,7 +473,7 @@ impl transmission::interest::Provider for PeerIdRegistry {
         let has_ids_pending_retirement = self
             .registered_ids
             .iter()
-            .any(|id_info| id_info.status == PendingRetirement(false));
+            .any(|id_info| id_info.status == PendingRetirement);
 
         if has_ids_pending_retirement {
             transmission::Interest::NewData
@@ -492,6 +495,7 @@ mod tests {
                 },
                 PeerIdStatus::{
                     InUsePendingNewConnectionId, New, PendingAcknowledgement, PendingRetirement,
+                    PendingRetirementRetransmission,
                 },
                 RETIRED_CONNECTION_ID_LIMIT,
             },
@@ -597,13 +601,13 @@ mod tests {
             .is_ok());
 
         assert_eq!(2, reg.registered_ids.len());
-        reg.registered_ids[1].status = PendingRetirement(false);
+        reg.registered_ids[1].status = PendingRetirement;
 
         assert!(reg
             .on_new_connection_id(&id_2, 1, 0, &[1; STATELESS_RESET_TOKEN_LEN])
             .is_ok());
         assert_eq!(2, reg.registered_ids.len());
-        assert_eq!(PendingRetirement(false), reg.registered_ids[1].status);
+        assert_eq!(PendingRetirement, reg.registered_ids[1].status);
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2
@@ -732,7 +736,7 @@ mod tests {
             .on_new_connection_id(&id_2, 1, 1, &[2; STATELESS_RESET_TOKEN_LEN])
             .is_ok());
 
-        assert_eq!(PendingRetirement(false), reg.registered_ids[0].status);
+        assert_eq!(PendingRetirement, reg.registered_ids[0].status);
         assert_eq!(transmission::Interest::NewData, reg.transmission_interest());
 
         let mut frame_buffer = OutgoingFrameBuffer::new();
@@ -764,7 +768,10 @@ mod tests {
 
         reg.on_packet_loss(&PacketNumberRange::new(packet_number, packet_number));
 
-        assert_eq!(PendingRetirement(true), reg.registered_ids[0].status);
+        assert_eq!(
+            PendingRetirementRetransmission,
+            reg.registered_ids[0].status
+        );
         assert_eq!(
             transmission::Interest::LostData,
             reg.transmission_interest()
@@ -799,7 +806,7 @@ mod tests {
         assert!(reg
             .on_new_connection_id(&id_2, 10, 10, &[2; STATELESS_RESET_TOKEN_LEN])
             .is_ok());
-        assert_eq!(PendingRetirement(false), reg.registered_ids[0].status);
+        assert_eq!(PendingRetirement, reg.registered_ids[0].status);
         assert_eq!(New, reg.registered_ids[1].status);
 
         let id_3 = id(b"id03");
@@ -808,7 +815,7 @@ mod tests {
             .is_ok());
 
         assert_eq!(New, reg.registered_ids[1].status);
-        assert_eq!(PendingRetirement(false), reg.registered_ids[2].status);
+        assert_eq!(PendingRetirement, reg.registered_ids[2].status);
     }
 
     #[test]
@@ -823,7 +830,7 @@ mod tests {
             .on_new_connection_id(&id_2, 1, 0, &[2; STATELESS_RESET_TOKEN_LEN])
             .is_ok());
 
-        assert_eq!(PendingRetirement(false), reg.registered_ids[0].status);
+        assert_eq!(PendingRetirement, reg.registered_ids[0].status);
     }
 
     #[test]
