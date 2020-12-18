@@ -125,7 +125,7 @@ impl<CC: CongestionController> Manager<CC> {
             // when the peer's remote address gets changed due to circumstances out of their
             // control). Otherwise we will need to consume a new connection::PeerId by calling
             // PeerIdRegistry::consume_new_id_if_necessary(None) and ignoring the request if
-            // no new connection::PeerIds is available to use.
+            // no new connection::PeerId is available to use.
             self.active_path().1.peer_connection_id,
             RTTEstimator::new(EARLY_ACK_SETTINGS.max_ack_delay),
             new_congestion_controller(),
@@ -189,6 +189,7 @@ impl<CC: CongestionController> Manager<CC> {
         // TODO invalidate any tokens issued under this connection id
     }
 
+    /// Called when a NEW_CONNECTION_ID frame is received from the peer
     pub fn on_new_connection_id(
         &mut self,
         connection_id: &connection::PeerId,

@@ -247,8 +247,8 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
         //= type=TODO
-        //= tracking-issue=352
-        //= feature=Peer Connection ID Management
+        //= tracking-issue=195
+        //= feature=Stateless Reset
         //# Servers can also specify a stateless_reset_token transport
         //# parameter during the handshake that applies to the connection ID that
         //# it selected during the handshake; clients cannot use this transport
