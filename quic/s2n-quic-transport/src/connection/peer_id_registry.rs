@@ -509,6 +509,11 @@ mod tests {
         varint::VarInt,
     };
 
+    // Helper function to easily generate a PeerId from bytes
+    fn id(bytes: &[u8]) -> connection::PeerId {
+        connection::PeerId::try_from_bytes(bytes).unwrap()
+    }
+
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2
     //= type=test
     //# An endpoint SHOULD limit the number of connection IDs it has retired
@@ -520,14 +525,14 @@ mod tests {
     //# limit as a connection error of type CONNECTION_ID_LIMIT_ERROR.
     #[test]
     fn error_when_exceeding_retired_connection_id_limit() {
-        let id_1 = connection::PeerId::try_from_bytes(b"id01").unwrap();
+        let id_1 = id(b"id01");
         let mut reg = PeerIdRegistry::new(&id_1, None);
 
         // Register 6 more new IDs for a total of 7, with 6 retired
         for i in 2u32..=(RETIRED_CONNECTION_ID_LIMIT + 1).into() {
             assert!(reg
                 .on_new_connection_id(
-                    &connection::PeerId::try_from_bytes(&i.to_ne_bytes()).unwrap(),
+                    &id(&i.to_ne_bytes()),
                     i,
                     i,
                     &[i as u8; STATELESS_RESET_TOKEN_LEN],
@@ -536,12 +541,8 @@ mod tests {
         }
 
         // Retiring one more ID exceeds the limit
-        let result = reg.on_new_connection_id(
-            &connection::PeerId::try_from_bytes(b"id08").unwrap(),
-            8,
-            8,
-            &[8 as u8; STATELESS_RESET_TOKEN_LEN],
-        );
+        let result =
+            reg.on_new_connection_id(&id(b"id08"), 8, 8, &[8 as u8; STATELESS_RESET_TOKEN_LEN]);
 
         assert_eq!(Some(ExceededRetiredConnectionIdLimit), result.err());
     }
@@ -555,7 +556,7 @@ mod tests {
     //# close the connection with an error of type CONNECTION_ID_LIMIT_ERROR.
     #[test]
     fn error_when_exceeding_active_connection_id_limit() {
-        let id_1 = connection::PeerId::try_from_bytes(b"id01").unwrap();
+        let id_1 = id(b"id01");
         let mut reg = PeerIdRegistry::new(&id_1, None);
 
         // Register 5 more new IDs with a retire_prior_to of 4, so there will be a total of
@@ -563,7 +564,7 @@ mod tests {
         for i in 2u32..=6 {
             assert!(reg
                 .on_new_connection_id(
-                    &connection::PeerId::try_from_bytes(&i.to_ne_bytes()).unwrap(),
+                    &id(&i.to_ne_bytes()),
                     i,
                     4,
                     &[i as u8; STATELESS_RESET_TOKEN_LEN],
@@ -572,12 +573,8 @@ mod tests {
         }
 
         // Adding one more ID exceeds the limit
-        let result = reg.on_new_connection_id(
-            &connection::PeerId::try_from_bytes(b"id07").unwrap(),
-            8,
-            0,
-            &[8 as u8; STATELESS_RESET_TOKEN_LEN],
-        );
+        let result =
+            reg.on_new_connection_id(&id(b"id07"), 8, 0, &[8 as u8; STATELESS_RESET_TOKEN_LEN]);
 
         assert_eq!(Some(ExceededActiveConnectionIdLimit), result.err());
     }
@@ -588,10 +585,10 @@ mod tests {
     //# connection error.
     #[test]
     fn no_error_when_duplicate() {
-        let id_1 = connection::PeerId::try_from_bytes(b"id01").unwrap();
+        let id_1 = id(b"id01");
         let mut reg = PeerIdRegistry::new(&id_1, None);
 
-        let id_2 = connection::PeerId::try_from_bytes(b"id02").unwrap();
+        let id_2 = id(b"id02");
         assert!(reg
             .on_new_connection_id(&id_2, 1, 0, &[1; STATELESS_RESET_TOKEN_LEN])
             .is_ok());
@@ -611,15 +608,15 @@ mod tests {
     //# The value of the active_connection_id_limit parameter MUST be at least 2.
     #[test]
     fn active_connection_id_limit_must_be_at_least_2() {
-        let id_1 = connection::PeerId::try_from_bytes(b"id01").unwrap();
+        let id_1 = id(b"id01");
         let mut reg = PeerIdRegistry::new(&id_1, None);
 
-        let id_2 = connection::PeerId::try_from_bytes(b"id02").unwrap();
+        let id_2 = id(b"id02");
         assert!(reg
             .on_new_connection_id(&id_2, 1, 0, &[1; STATELESS_RESET_TOKEN_LEN])
             .is_ok());
 
-        let id_3 = connection::PeerId::try_from_bytes(b"id03").unwrap();
+        let id_3 = id(b"id03");
         assert!(reg
             .on_new_connection_id(&id_3, 2, 0, &[2; STATELESS_RESET_TOKEN_LEN])
             .is_ok());
@@ -642,10 +639,10 @@ mod tests {
     //# a connection error of type PROTOCOL_VIOLATION.
     #[test]
     fn duplicate_new_id_different_token_or_sequence_number() {
-        let id_1 = connection::PeerId::try_from_bytes(b"id01").unwrap();
+        let id_1 = id(b"id01");
         let mut reg = PeerIdRegistry::new(&id_1, None);
 
-        let id_2 = connection::PeerId::try_from_bytes(b"id02").unwrap();
+        let id_2 = id(b"id02");
         assert!(reg
             .on_new_connection_id(&id_2, 1, 0, &[1; STATELESS_RESET_TOKEN_LEN])
             .is_ok());
@@ -668,11 +665,11 @@ mod tests {
     //# a connection error of type PROTOCOL_VIOLATION.
     #[test]
     fn non_duplicate_new_id_same_token_or_sequence_number() {
-        let id_1 = connection::PeerId::try_from_bytes(b"id01").unwrap();
+        let id_1 = id(b"id01");
         let mut reg = PeerIdRegistry::new(&id_1, None);
 
-        let id_2 = connection::PeerId::try_from_bytes(b"id02").unwrap();
-        let id_3 = connection::PeerId::try_from_bytes(b"id03").unwrap();
+        let id_2 = id(b"id02");
+        let id_3 = id(b"id03");
         assert!(reg
             .on_new_connection_id(&id_2, 1, 0, &[1; STATELESS_RESET_TOKEN_LEN])
             .is_ok());
@@ -697,12 +694,12 @@ mod tests {
     //# increase the largest received Retire Prior To value.
     #[test]
     fn ignore_retire_prior_to_that_does_not_increase() {
-        let id_1 = connection::PeerId::try_from_bytes(b"id01").unwrap();
+        let id_1 = id(b"id01");
         let mut reg = PeerIdRegistry::new(&id_1, None);
 
-        let id_2 = connection::PeerId::try_from_bytes(b"id02").unwrap();
-        let id_3 = connection::PeerId::try_from_bytes(b"id03").unwrap();
-        let id_4 = connection::PeerId::try_from_bytes(b"id04").unwrap();
+        let id_2 = id(b"id02");
+        let id_3 = id(b"id03");
+        let id_4 = id(b"id04");
         assert!(reg
             .on_new_connection_id(&id_2, 1, 0, &[2; STATELESS_RESET_TOKEN_LEN])
             .is_ok());
@@ -724,10 +721,10 @@ mod tests {
     //# connection ID to the set of active connection IDs.
     #[test]
     fn retire_connection_id_when_retire_prior_to_increases() {
-        let id_1 = connection::PeerId::try_from_bytes(b"id01").unwrap();
+        let id_1 = id(b"id01");
         let mut reg = PeerIdRegistry::new(&id_1, None);
 
-        let id_2 = connection::PeerId::try_from_bytes(b"id02").unwrap();
+        let id_2 = id(b"id02");
         assert!(reg
             .on_new_connection_id(&id_2, 1, 1, &[2; STATELESS_RESET_TOKEN_LEN])
             .is_ok());
@@ -792,17 +789,17 @@ mod tests {
     //# ID, unless it has already done so for that sequence number.
     #[test]
     fn retire_new_connection_id_if_sequence_number_smaller_than_retire_prior_to() {
-        let id_1 = connection::PeerId::try_from_bytes(b"id01").unwrap();
+        let id_1 = id(b"id01");
         let mut reg = PeerIdRegistry::new(&id_1, None);
 
-        let id_2 = connection::PeerId::try_from_bytes(b"id02").unwrap();
+        let id_2 = id(b"id02");
         assert!(reg
             .on_new_connection_id(&id_2, 10, 10, &[2; STATELESS_RESET_TOKEN_LEN])
             .is_ok());
         assert_eq!(PendingRetirement(false), reg.registered_ids[0].status);
         assert_eq!(New, reg.registered_ids[1].status);
 
-        let id_3 = connection::PeerId::try_from_bytes(b"id03").unwrap();
+        let id_3 = id(b"id03");
         assert!(reg
             .on_new_connection_id(&id_3, 1, 0, &[3; STATELESS_RESET_TOKEN_LEN])
             .is_ok());
@@ -813,12 +810,12 @@ mod tests {
 
     #[test]
     fn retire_initial_id_when_new_connection_id_available() {
-        let id_1 = connection::PeerId::try_from_bytes(b"id01").unwrap();
+        let id_1 = id(b"id01");
         let mut reg = PeerIdRegistry::new(&id_1, None);
 
         assert_eq!(InUsePendingNewConnectionId, reg.registered_ids[0].status);
 
-        let id_2 = connection::PeerId::try_from_bytes(b"id02").unwrap();
+        let id_2 = id(b"id02");
         assert!(reg
             .on_new_connection_id(&id_2, 1, 0, &[2; STATELESS_RESET_TOKEN_LEN])
             .is_ok());
@@ -828,19 +825,19 @@ mod tests {
 
     #[test]
     fn consume_new_id_if_necessary() {
-        let id_1 = connection::PeerId::try_from_bytes(b"id01").unwrap();
+        let id_1 = id(b"id01");
         let mut reg = PeerIdRegistry::new(&id_1, None);
 
         assert_eq!(InUsePendingNewConnectionId, reg.registered_ids[0].status);
 
-        let id_2 = connection::PeerId::try_from_bytes(b"id02").unwrap();
+        let id_2 = id(b"id02");
         assert!(reg
             .on_new_connection_id(&id_2, 1, 0, &[2; STATELESS_RESET_TOKEN_LEN])
             .is_ok());
 
         assert_eq!(Some(id_2), reg.consume_new_id_if_necessary(None));
 
-        let id_3 = connection::PeerId::try_from_bytes(b"id03").unwrap();
+        let id_3 = id(b"id03");
         assert!(reg
             .on_new_connection_id(&id_3, 2, 0, &[3; STATELESS_RESET_TOKEN_LEN])
             .is_ok());
@@ -848,7 +845,7 @@ mod tests {
         // ID 3 is not retired, so it is not necessary to consume a new ID
         assert_eq!(Some(id_3), reg.consume_new_id_if_necessary(Some(&id_3)));
 
-        let id_4 = connection::PeerId::try_from_bytes(b"id04").unwrap();
+        let id_4 = id(b"id04");
         assert!(reg
             .on_new_connection_id(&id_4, 3, 3, &[4; STATELESS_RESET_TOKEN_LEN])
             .is_ok());
