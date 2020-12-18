@@ -43,7 +43,7 @@ pub struct PeerIdRegistry {
     retire_prior_to: u32,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct PeerIdInfo {
     id: connection::PeerId,
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
@@ -79,10 +79,14 @@ impl PeerIdInfo {
             _ => false,
         }
     }
+
+    fn is_retire_ready(&self, retire_prior_to: u32) -> bool {
+        self.is_active() && self.sequence_number < retire_prior_to
+    }
 }
 
 /// The current status of the connection ID.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 enum PeerIdStatus {
     /// Connection IDs received in NEW_CONNECTION_ID frames start in the `New` status.
     New,
@@ -189,101 +193,114 @@ impl PeerIdRegistry {
     /// Handles a new connection ID received from a NEW_CONNECTION_ID frame
     pub fn on_new_connection_id(
         &mut self,
-        id: &connection::PeerId,
+        new_id: &connection::PeerId,
         sequence_number: u32,
         retire_prior_to: u32,
         stateless_reset_token: &[u8],
     ) -> Result<(), PeerIdRegistrationError> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
-        //# Receipt of the same frame multiple times MUST NOT be treated as a
-        //# connection error.
-
-        let stateless_reset_token = Some(
-            stateless_reset_token
-                .try_into()
-                .expect("Length is validated when decoding"),
-        );
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
-        //# If an endpoint receives a NEW_CONNECTION_ID frame that repeats a
-        //# previously issued connection ID with a different Stateless Reset
-        //# Token or a different sequence number, or if a sequence number is used
-        //# for different connection IDs, the endpoint MAY treat that receipt as
-        //# a connection error of type PROTOCOL_VIOLATION.
-        let same_id_diff_token_or_seq_num = |id_info: &PeerIdInfo| {
-            id_info.id == *id
-                && (id_info.stateless_reset_token != stateless_reset_token
-                    || id_info.sequence_number != sequence_number)
-        };
-        let diff_id_same_seq_num =
-            |id_info: &PeerIdInfo| id_info.id != *id && id_info.sequence_number == sequence_number;
-
-        if self
-            .registered_ids
-            .iter()
-            .any(|id_info| same_id_diff_token_or_seq_num(id_info) || diff_id_same_seq_num(id_info))
-        {
-            return Err(InvalidNewConnectionId);
-        }
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
         //# A receiver MUST ignore any Retire Prior To fields that do not
         //# increase the largest received Retire Prior To value.
         self.retire_prior_to = self.retire_prior_to.max(retire_prior_to);
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2
-        //# Upon receipt of an increased Retire Prior To field, the peer MUST
-        //# stop using the corresponding connection IDs and retire them with
-        //# RETIRE_CONNECTION_ID frames before adding the newly provided
-        //# connection ID to the set of active connection IDs.
-        // The new connection ID is added at the same time existing IDs are retired
-        self.registered_ids.push(PeerIdInfo {
-            id: *id,
-            sequence_number,
-            stateless_reset_token,
-            status: New,
-        });
+        let mut active_id_count = 0;
+        let mut is_duplicate = false;
+        let mut id_pending_new_connection_id = None;
+
+        // Iterate over all registered IDs, retiring any as necessary
+        for mut id_info in self.registered_ids.iter_mut() {
+            is_duplicate |= Self::validate_new_connection_id(
+                id_info,
+                new_id,
+                stateless_reset_token,
+                sequence_number,
+            )?;
+
+            if id_info.is_retire_ready(self.retire_prior_to) {
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2
+                //# Upon receipt of an increased Retire Prior To field, the peer MUST
+                //# stop using the corresponding connection IDs and retire them with
+                //# RETIRE_CONNECTION_ID frames before adding the newly provided
+                //# connection ID to the set of active connection IDs.
+
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
+                //# An endpoint that receives a NEW_CONNECTION_ID frame with a sequence
+                //# number smaller than the Retire Prior To field of a previously
+                //# received NEW_CONNECTION_ID frame MUST send a corresponding
+                //# RETIRE_CONNECTION_ID frame that retires the newly received connection
+                //# ID, unless it has already done so for that sequence number.
+                id_info.status = PendingRetirement(false);
+            }
+
+            if id_info.is_active() {
+                active_id_count += 1;
+            }
+
+            if id_pending_new_connection_id.is_none()
+                && id_info.status == InUsePendingNewConnectionId
+            {
+                id_pending_new_connection_id = Some(id_info);
+            }
+        }
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
-        //# An endpoint that receives a NEW_CONNECTION_ID frame with a sequence
-        //# number smaller than the Retire Prior To field of a previously
-        //# received NEW_CONNECTION_ID frame MUST send a corresponding
-        //# RETIRE_CONNECTION_ID frame that retires the newly received connection
-        //# ID, unless it has already done so for that sequence number.
-        let max_retire_prior_to = self.retire_prior_to;
+        //# Receipt of the same frame multiple times MUST NOT be treated as a
+        //# connection error.
+        if !is_duplicate {
+            if let Some(mut id_pending_new_connection_id) = id_pending_new_connection_id {
+                // If there was an ID pending new connection ID, it can be moved to PendingRetirement
+                // now that we know we aren't processing a duplicate NEW_CONNECTION_ID
+                id_pending_new_connection_id.status = PendingRetirement(false);
+                active_id_count -= 1;
+            }
 
-        for mut id_info in self
-            .registered_ids
-            .iter_mut()
-            .filter(|id_info| !matches!(id_info.status, PendingAcknowledgement(_)))
-            .filter(|id_info| id_info.sequence_number < max_retire_prior_to)
-        {
-            id_info.status = PendingRetirement(false);
+            self.registered_ids.push(PeerIdInfo {
+                id: *new_id,
+                sequence_number,
+                stateless_reset_token: Some(
+                    stateless_reset_token
+                        .try_into()
+                        .expect("Length is validated when decoding"),
+                ),
+                status: New,
+            });
+
+            // Include the ID that was just added
+            active_id_count += 1;
+
+            debug_assert_eq!(
+                active_id_count,
+                self.registered_ids
+                    .iter()
+                    .filter(|id_info| id_info.is_active())
+                    .count()
+            );
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
+            //# After processing a NEW_CONNECTION_ID frame and
+            //# adding and retiring active connection IDs, if the number of active
+            //# connection IDs exceeds the value advertised in its
+            //# active_connection_id_limit transport parameter, an endpoint MUST
+            //# close the connection with an error of type CONNECTION_ID_LIMIT_ERROR.
+            if active_id_count > ACTIVE_CONNECTION_ID_LIMIT as usize {
+                return Err(ExceededActiveConnectionIdLimit);
+            }
         }
 
-        // TODO combine with iteration above
-        if let Some(id_info) = self
-            .registered_ids
-            .iter_mut()
-            .find(|id_info| id_info.status == InUsePendingNewConnectionId)
-        {
-            id_info.status = PendingRetirement(false);
-        }
+        // Duplicate NEW_CONNECTION_ID frames may not change the sequence number or
+        // stateless reset token, but the RFC does not specify the behavior if the
+        // retire prior to value changes. This means the number of retired connection
+        // IDs may have changed even if the NEW_CONNECTION_ID frame was a duplicate,
+        // so we will validate the retired id count regardless of the duplicate status.
+        let retired_id_count = self.registered_ids.len() - active_id_count;
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
-        //# After processing a NEW_CONNECTION_ID frame and
-        //# adding and retiring active connection IDs, if the number of active
-        //# connection IDs exceeds the value advertised in its
-        //# active_connection_id_limit transport parameter, an endpoint MUST
-        //# close the connection with an error of type CONNECTION_ID_LIMIT_ERROR.
-        let active_id_count = self
-            .registered_ids
-            .iter()
-            .filter(|id_info| id_info.is_active())
-            .count();
-        if active_id_count > ACTIVE_CONNECTION_ID_LIMIT as usize {
-            return Err(ExceededActiveConnectionIdLimit);
-        }
+        debug_assert_eq!(
+            retired_id_count,
+            self.registered_ids
+                .iter()
+                .filter(|id_info| !id_info.is_active())
+                .count()
+        );
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2
         //# An endpoint SHOULD limit the number of connection IDs it has retired
@@ -293,10 +310,11 @@ impl PeerIdRegistry {
         //# forget a connection ID without retiring it, though it MAY choose to
         //# treat having connection IDs in need of retirement that exceed this
         //# limit as a connection error of type CONNECTION_ID_LIMIT_ERROR.
-        let retired_id_count = self.registered_ids.len() - active_id_count;
         if retired_id_count > RETIRED_CONNECTION_ID_LIMIT as usize {
             return Err(ExceededRetiredConnectionIdLimit);
         }
+
+        self.ensure_no_duplicates();
 
         Ok(())
     }
@@ -373,6 +391,58 @@ impl PeerIdRegistry {
         // There were no available IDs to use
         None
     }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
+    //# If an endpoint receives a NEW_CONNECTION_ID frame that repeats a
+    //# previously issued connection ID with a different Stateless Reset
+    //# Token or a different sequence number, or if a sequence number is used
+    //# for different connection IDs, the endpoint MAY treat that receipt as
+    //# a connection error of type PROTOCOL_VIOLATION.
+    fn validate_new_connection_id(
+        id_info: &PeerIdInfo,
+        new_id: &connection::PeerId,
+        stateless_reset_token: &[u8],
+        sequence_number: u32,
+    ) -> Result<bool, PeerIdRegistrationError> {
+        let reset_token_is_equal = id_info
+            .stateless_reset_token
+            .map_or(false, |token| token == stateless_reset_token);
+        let sequence_number_is_equal = id_info.sequence_number == sequence_number;
+
+        if id_info.id == *new_id {
+            if !reset_token_is_equal || !sequence_number_is_equal {
+                return Err(InvalidNewConnectionId);
+            }
+
+            // This was a valid duplicate new connection ID
+            return Ok(true);
+        } else if sequence_number_is_equal || reset_token_is_equal {
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.2
+            //# Endpoints are not required to compare new values
+            //# against all previous values, but a duplicate value MAY be treated as
+            //# a connection error of type PROTOCOL_VIOLATION.
+            return Err(InvalidNewConnectionId);
+        }
+
+        // This was a valid non-duplicate new connection ID
+        Ok(false)
+    }
+
+    fn ensure_no_duplicates(&self) {
+        if cfg!(debug_assertions) {
+            let before_count = self.registered_ids.len();
+            let mut registered_id_copy = self.registered_ids.to_vec();
+            registered_id_copy.sort_by_key(|id_info| id_info.sequence_number);
+            registered_id_copy.dedup_by_key(|id_info| id_info.sequence_number);
+            assert_eq!(before_count, registered_id_copy.len());
+            registered_id_copy.sort_by_key(|id_info| id_info.id);
+            registered_id_copy.dedup_by_key(|id_info| id_info.id);
+            assert_eq!(before_count, registered_id_copy.len());
+            registered_id_copy.sort_by_key(|id_info| id_info.stateless_reset_token);
+            registered_id_copy.dedup_by_key(|id_info| id_info.stateless_reset_token);
+            assert_eq!(before_count, registered_id_copy.len());
+        }
+    }
 }
 
 impl transmission::interest::Provider for PeerIdRegistry {
@@ -403,7 +473,10 @@ impl transmission::interest::Provider for PeerIdRegistry {
 mod tests {
     use crate::connection::{
         peer_id_registry::{
-            PeerIdRegistrationError::ExceededRetiredConnectionIdLimit, RETIRED_CONNECTION_ID_LIMIT,
+            PeerIdRegistrationError::{
+                ExceededActiveConnectionIdLimit, ExceededRetiredConnectionIdLimit,
+            },
+            RETIRED_CONNECTION_ID_LIMIT,
         },
         PeerIdRegistry,
     };
@@ -419,7 +492,7 @@ mod tests {
     //# treat having connection IDs in need of retirement that exceed this
     //# limit as a connection error of type CONNECTION_ID_LIMIT_ERROR.
     #[test]
-    fn error_when_too_many_pending_retirement() {
+    fn error_when_exceeding_retired_connection_id_limit() {
         let id_1 = connection::PeerId::try_from_bytes(b"id01").unwrap();
         let mut reg = PeerIdRegistry::new(&id_1, None);
 
@@ -444,5 +517,41 @@ mod tests {
         );
 
         assert_eq!(Some(ExceededRetiredConnectionIdLimit), result.err());
+    }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
+    //= type=test
+    //# After processing a NEW_CONNECTION_ID frame and
+    //# adding and retiring active connection IDs, if the number of active
+    //# connection IDs exceeds the value advertised in its
+    //# active_connection_id_limit transport parameter, an endpoint MUST
+    //# close the connection with an error of type CONNECTION_ID_LIMIT_ERROR.
+    #[test]
+    fn error_when_exceeding_active_connection_id_limit() {
+        let id_1 = connection::PeerId::try_from_bytes(b"id01").unwrap();
+        let mut reg = PeerIdRegistry::new(&id_1, None);
+
+        // Register 5 more new IDs with a retire_prior_to of 4, so there will be a total of
+        // 6 connection IDs, with 3 retired and 3 active
+        for i in 2u32..=6 {
+            assert!(reg
+                .on_new_connection_id(
+                    &connection::PeerId::try_from_bytes(&i.to_ne_bytes()).unwrap(),
+                    i,
+                    4,
+                    &[i as u8; STATELESS_RESET_TOKEN_LEN],
+                )
+                .is_ok());
+        }
+
+        // Adding one more ID exceeds the limit
+        let result = reg.on_new_connection_id(
+            &connection::PeerId::try_from_bytes(b"id07").unwrap(),
+            8,
+            0,
+            &[8 as u8; STATELESS_RESET_TOKEN_LEN],
+        );
+
+        assert_eq!(Some(ExceededActiveConnectionIdLimit), result.err());
     }
 }
