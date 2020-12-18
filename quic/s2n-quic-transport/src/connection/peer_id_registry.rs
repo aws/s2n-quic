@@ -480,25 +480,24 @@ impl PeerIdRegistry {
 
 impl transmission::interest::Provider for PeerIdRegistry {
     fn transmission_interest(&self) -> Interest {
-        let has_ids_pending_retirement_again = self
-            .registered_ids
-            .iter()
-            .any(|id_info| id_info.status == PendingRetirementRetransmission);
+        let mut interest = transmission::Interest::None;
 
-        if has_ids_pending_retirement_again {
-            return transmission::Interest::LostData;
+        for id_info in self.registered_ids.iter() {
+            match id_info.status {
+                PendingRetirement => {
+                    interest += transmission::Interest::NewData;
+                }
+                PendingRetirementRetransmission => {
+                    interest += transmission::Interest::LostData;
+                    // `LostData` is the highest precedent interest we provide,
+                    // so we don't need to keep iterating to check other IDs
+                    break;
+                }
+                _ => {}
+            }
         }
 
-        let has_ids_pending_retirement = self
-            .registered_ids
-            .iter()
-            .any(|id_info| id_info.status == PendingRetirement);
-
-        if has_ids_pending_retirement {
-            transmission::Interest::NewData
-        } else {
-            transmission::Interest::None
-        }
+        interest
     }
 }
 
