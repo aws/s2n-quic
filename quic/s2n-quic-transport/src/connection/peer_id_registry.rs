@@ -60,28 +60,9 @@ struct PeerIdInfo {
 }
 
 impl PeerIdInfo {
-    /// Returns true if this PeerId may be used to send packets to the peer
-    fn is_active(&self) -> bool {
-        match self.status {
-            New => true,
-            InUse => true,
-            InUsePendingNewConnectionId => true,
-            _ => false,
-        }
-    }
-
-    /// Returns true if the status of this ID allows for transmission
-    /// based on the transmission constraint
-    fn can_transmit(&self, constraint: transmission::Constraint) -> bool {
-        match self.status {
-            PendingRetirement(true) => constraint.can_retransmit(),
-            PendingRetirement(false) => constraint.can_transmit(),
-            _ => false,
-        }
-    }
-
+    /// Returns true if this ID is ready to be retired
     fn is_retire_ready(&self, retire_prior_to: u32) -> bool {
-        self.is_active() && self.sequence_number < retire_prior_to
+        self.status.is_active() && self.sequence_number < retire_prior_to
     }
 }
 
@@ -105,6 +86,28 @@ enum PeerIdStatus {
     /// the retire frame. When acknowledgement of that packet is received, the connection ID is
     /// removed.
     PendingAcknowledgement(PacketNumber),
+}
+
+impl PeerIdStatus {
+    /// Returns true if this PeerId may be used to send packets to the peer
+    fn is_active(&self) -> bool {
+        match self {
+            New => true,
+            InUse => true,
+            InUsePendingNewConnectionId => true,
+            _ => false,
+        }
+    }
+
+    /// Returns true if the status of this ID allows for transmission
+    /// based on the transmission constraint
+    fn can_transmit(&self, constraint: transmission::Constraint) -> bool {
+        match self {
+            PendingRetirement(true) => constraint.can_retransmit(),
+            PendingRetirement(false) => constraint.can_transmit(),
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -225,7 +228,7 @@ impl PeerIdRegistry {
                 id_info.status = PendingRetirement(false);
             }
 
-            if id_info.is_active() {
+            if id_info.status.is_active() {
                 active_id_count += 1;
             }
 
@@ -261,7 +264,7 @@ impl PeerIdRegistry {
                 new_id_info.status = PendingRetirement(false);
             }
 
-            if new_id_info.is_active() {
+            if new_id_info.status.is_active() {
                 active_id_count += 1;
 
                 if let Some(mut id_pending_new_connection_id) = id_pending_new_connection_id {
@@ -280,7 +283,7 @@ impl PeerIdRegistry {
                 active_id_count,
                 self.registered_ids
                     .iter()
-                    .filter(|id_info| id_info.is_active())
+                    .filter(|id_info| id_info.status.is_active())
                     .count()
             );
 
@@ -306,7 +309,7 @@ impl PeerIdRegistry {
             retired_id_count,
             self.registered_ids
                 .iter()
-                .filter(|id_info| !id_info.is_active())
+                .filter(|id_info| !id_info.status.is_active())
                 .count()
         );
 
@@ -334,7 +337,7 @@ impl PeerIdRegistry {
         for id_info in self
             .registered_ids
             .iter_mut()
-            .filter(|id_info| id_info.can_transmit(constraint))
+            .filter(|id_info| id_info.status.can_transmit(constraint))
         {
             if let Some(packet_number) = context.write_frame(&frame::RetireConnectionID {
                 sequence_number: id_info.sequence_number.into(),
@@ -380,7 +383,7 @@ impl PeerIdRegistry {
         let mut new_id = None;
 
         for id_info in self.registered_ids.iter_mut() {
-            if current_id == Some(&id_info.id) && id_info.is_active() {
+            if current_id == Some(&id_info.id) && id_info.status.is_active() {
                 // The current ID is still ok to use, so return it
                 return Some(id_info.id);
             }
@@ -625,7 +628,7 @@ mod tests {
             2,
             reg.registered_ids
                 .iter()
-                .filter(|id_info| id_info.is_active())
+                .filter(|id_info| id_info.status.is_active())
                 .count()
         );
     }
