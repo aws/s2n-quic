@@ -471,16 +471,31 @@ impl transmission::interest::Provider for PeerIdRegistry {
 
 #[cfg(test)]
 mod tests {
-    use crate::connection::{
-        peer_id_registry::{
-            PeerIdRegistrationError::{
-                ExceededActiveConnectionIdLimit, ExceededRetiredConnectionIdLimit,
+    use crate::{
+        connection::{
+            peer_id_registry::{
+                PeerIdRegistrationError::{
+                    ExceededActiveConnectionIdLimit, ExceededRetiredConnectionIdLimit,
+                    InvalidNewConnectionId,
+                },
+                PeerIdStatus::{PendingAcknowledgement, PendingRetirement},
+                RETIRED_CONNECTION_ID_LIMIT,
             },
-            RETIRED_CONNECTION_ID_LIMIT,
+            PeerIdRegistry,
         },
-        PeerIdRegistry,
+        contexts::{
+            testing::{MockWriteContext, OutgoingFrameBuffer},
+            WriteContext,
+        },
+        transmission,
+        transmission::interest::Provider,
     };
-    use s2n_quic_core::{connection, frame::new_connection_id::STATELESS_RESET_TOKEN_LEN};
+    use s2n_quic_core::{
+        connection, endpoint,
+        frame::{new_connection_id::STATELESS_RESET_TOKEN_LEN, Frame, RetireConnectionID},
+        packet::number::PacketNumberRange,
+        varint::VarInt,
+    };
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2
     //= type=test
@@ -553,5 +568,201 @@ mod tests {
         );
 
         assert_eq!(Some(ExceededActiveConnectionIdLimit), result.err());
+    }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
+    //= type=test
+    //# Receipt of the same frame multiple times MUST NOT be treated as a
+    //# connection error.
+    #[test]
+    fn no_error_when_duplicate() {
+        let id_1 = connection::PeerId::try_from_bytes(b"id01").unwrap();
+        let mut reg = PeerIdRegistry::new(&id_1, None);
+
+        let id_2 = connection::PeerId::try_from_bytes(b"id02").unwrap();
+        assert!(reg
+            .on_new_connection_id(&id_2, 1, 0, &[1; STATELESS_RESET_TOKEN_LEN])
+            .is_ok());
+
+        assert_eq!(2, reg.registered_ids.len());
+        reg.registered_ids[1].status = PendingRetirement(false);
+
+        assert!(reg
+            .on_new_connection_id(&id_2, 1, 0, &[1; STATELESS_RESET_TOKEN_LEN])
+            .is_ok());
+        assert_eq!(2, reg.registered_ids.len());
+        assert_eq!(PendingRetirement(false), reg.registered_ids[1].status);
+    }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2
+    //= type=test
+    //# The value of the active_connection_id_limit parameter MUST be at least 2.
+    #[test]
+    fn active_connection_id_limit_must_be_at_least_2() {
+        let id_1 = connection::PeerId::try_from_bytes(b"id01").unwrap();
+        let mut reg = PeerIdRegistry::new(&id_1, None);
+
+        let id_2 = connection::PeerId::try_from_bytes(b"id02").unwrap();
+        assert!(reg
+            .on_new_connection_id(&id_2, 1, 0, &[1; STATELESS_RESET_TOKEN_LEN])
+            .is_ok());
+
+        assert_eq!(
+            2,
+            reg.registered_ids
+                .iter()
+                .filter(|id_info| id_info.is_active())
+                .count()
+        );
+    }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
+    //= type=test
+    //# If an endpoint receives a NEW_CONNECTION_ID frame that repeats a
+    //# previously issued connection ID with a different Stateless Reset
+    //# Token or a different sequence number, or if a sequence number is used
+    //# for different connection IDs, the endpoint MAY treat that receipt as
+    //# a connection error of type PROTOCOL_VIOLATION.
+    #[test]
+    fn duplicate_new_id_different_token_or_sequence_number() {
+        let id_1 = connection::PeerId::try_from_bytes(b"id01").unwrap();
+        let mut reg = PeerIdRegistry::new(&id_1, None);
+
+        let id_2 = connection::PeerId::try_from_bytes(b"id02").unwrap();
+        assert!(reg
+            .on_new_connection_id(&id_2, 1, 0, &[1; STATELESS_RESET_TOKEN_LEN])
+            .is_ok());
+
+        // Change the sequence number
+        let mut result = reg.on_new_connection_id(&id_2, 2, 0, &[1; STATELESS_RESET_TOKEN_LEN]);
+        assert_eq!(Some(InvalidNewConnectionId), result.err());
+
+        // Change the stateless reset token
+        result = reg.on_new_connection_id(&id_2, 1, 0, &[2; STATELESS_RESET_TOKEN_LEN]);
+        assert_eq!(Some(InvalidNewConnectionId), result.err());
+    }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
+    //= type=test
+    //# If an endpoint receives a NEW_CONNECTION_ID frame that repeats a
+    //# previously issued connection ID with a different Stateless Reset
+    //# Token or a different sequence number, or if a sequence number is used
+    //# for different connection IDs, the endpoint MAY treat that receipt as
+    //# a connection error of type PROTOCOL_VIOLATION.
+    #[test]
+    fn non_duplicate_new_id_same_token_or_sequence_number() {
+        let id_1 = connection::PeerId::try_from_bytes(b"id01").unwrap();
+        let mut reg = PeerIdRegistry::new(&id_1, None);
+
+        let id_2 = connection::PeerId::try_from_bytes(b"id02").unwrap();
+        let id_3 = connection::PeerId::try_from_bytes(b"id03").unwrap();
+        assert!(reg
+            .on_new_connection_id(&id_2, 1, 0, &[1; STATELESS_RESET_TOKEN_LEN])
+            .is_ok());
+
+        // Same sequence number
+        let mut result = reg.on_new_connection_id(&id_3, 1, 0, &[2; STATELESS_RESET_TOKEN_LEN]);
+        assert_eq!(Some(InvalidNewConnectionId), result.err());
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.2
+        //= type=test
+        //# Endpoints are not required to compare new values
+        //# against all previous values, but a duplicate value MAY be treated as
+        //# a connection error of type PROTOCOL_VIOLATION.
+        // Same stateless reset token
+        result = reg.on_new_connection_id(&id_3, 2, 0, &[1; STATELESS_RESET_TOKEN_LEN]);
+        assert_eq!(Some(InvalidNewConnectionId), result.err());
+    }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
+    //= type=test
+    //# A receiver MUST ignore any Retire Prior To fields that do not
+    //# increase the largest received Retire Prior To value.
+    #[test]
+    fn ignore_retire_prior_to_that_does_not_increase() {
+        let id_1 = connection::PeerId::try_from_bytes(b"id01").unwrap();
+        let mut reg = PeerIdRegistry::new(&id_1, None);
+
+        let id_2 = connection::PeerId::try_from_bytes(b"id02").unwrap();
+        let id_3 = connection::PeerId::try_from_bytes(b"id03").unwrap();
+        let id_4 = connection::PeerId::try_from_bytes(b"id04").unwrap();
+        assert!(reg
+            .on_new_connection_id(&id_2, 1, 0, &[2; STATELESS_RESET_TOKEN_LEN])
+            .is_ok());
+        assert!(reg
+            .on_new_connection_id(&id_3, 2, 1, &[3; STATELESS_RESET_TOKEN_LEN])
+            .is_ok());
+        assert_eq!(1, reg.retire_prior_to);
+        assert!(reg
+            .on_new_connection_id(&id_4, 3, 0, &[4; STATELESS_RESET_TOKEN_LEN])
+            .is_ok());
+        assert_eq!(1, reg.retire_prior_to);
+    }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2
+    //= type=test
+    //# Upon receipt of an increased Retire Prior To field, the peer MUST
+    //# stop using the corresponding connection IDs and retire them with
+    //# RETIRE_CONNECTION_ID frames before adding the newly provided
+    //# connection ID to the set of active connection IDs.
+    #[test]
+    fn retire_connection_id_when_retire_prior_to_increases() {
+        let id_1 = connection::PeerId::try_from_bytes(b"id01").unwrap();
+        let mut reg = PeerIdRegistry::new(&id_1, None);
+
+        let id_2 = connection::PeerId::try_from_bytes(b"id02").unwrap();
+        assert!(reg
+            .on_new_connection_id(&id_2, 1, 1, &[2; STATELESS_RESET_TOKEN_LEN])
+            .is_ok());
+
+        assert_eq!(PendingRetirement(false), reg.registered_ids[0].status);
+        assert_eq!(transmission::Interest::NewData, reg.transmission_interest());
+
+        let mut frame_buffer = OutgoingFrameBuffer::new();
+        let mut write_context = MockWriteContext::new(
+            s2n_quic_platform::time::now(),
+            &mut frame_buffer,
+            transmission::Constraint::None,
+            endpoint::Type::Server,
+        );
+        let packet_number = write_context.packet_number();
+        reg.on_transmit(&mut write_context);
+
+        let expected_frame = Frame::RetireConnectionID {
+            0: RetireConnectionID {
+                sequence_number: VarInt::from_u32(0),
+            },
+        };
+
+        assert_eq!(
+            expected_frame,
+            write_context.frame_buffer.pop_front().unwrap().as_frame()
+        );
+        assert_eq!(
+            PendingAcknowledgement(packet_number),
+            reg.registered_ids[0].status
+        );
+
+        assert_eq!(transmission::Interest::None, reg.transmission_interest());
+
+        reg.on_packet_loss(&PacketNumberRange::new(packet_number, packet_number));
+
+        assert_eq!(PendingRetirement(true), reg.registered_ids[0].status);
+        assert_eq!(
+            transmission::Interest::LostData,
+            reg.transmission_interest()
+        );
+
+        // Transition ID to PendingAcknowledgement again
+        let packet_number = write_context.packet_number();
+        reg.on_transmit(&mut write_context);
+
+        reg.on_packet_ack(&PacketNumberRange::new(packet_number, packet_number));
+
+        // ID 1 was removed
+        assert_eq!(reg.registered_ids.len(), 1);
+        assert_eq!(id_2, reg.registered_ids[0].id);
+
+        assert_eq!(transmission::Interest::None, reg.transmission_interest());
     }
 }
