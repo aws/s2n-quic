@@ -94,7 +94,7 @@ decoder_parameterized_value!(
             //# and MUST be treated as a connection error of type
             //# FRAME_ENCODING_ERROR.
             decoder_invariant!(
-                (1..20).contains(&connection_id_len),
+                (1..=20).contains(&connection_id_len),
                 "invalid connection id length"
             );
 
