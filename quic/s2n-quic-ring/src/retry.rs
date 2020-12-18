@@ -90,6 +90,7 @@ mod tests {
         let decoder = DecoderBufferMut::new(&mut buf[..len]);
         let connection_info = ConnectionInfo::new(&remote_address);
         let mut output_buf = vec![0u8; 1200];
+
         if let Some(packet) =
             match packet::ProtectedPacket::decode(decoder, &connection_info, &3).unwrap() {
                 (packet::ProtectedPacket::Initial(packet), _) => Some(packet),
@@ -106,6 +107,54 @@ mod tests {
             ) {
                 assert_eq!(&output_buf[range], &retry::example::PACKET[..]);
             }
+        }
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_odcid_different_from_local_cid() {
+        let remote_address = inet::ip::SocketAddress::default();
+        let mut token_format = token::testing::Format::new();
+        // Values are taken from the retry packet example. Since this is the Initial packet that
+        // creates the retry, source_connection_id of the Initial is set to the destination
+        // connection id of the retry.
+        let packet = packet::initial::Initial {
+            version: 0xff00_0020,
+            destination_connection_id: &retry::example::ODCID[..],
+            source_connection_id: &retry::example::DCID[..],
+            token: &retry::example::TOKEN[..],
+            packet_number: pn(PacketNumberSpace::Initial),
+            payload: &[1u8, 2, 3, 4, 5][..],
+        };
+
+        let mut buf = vec![0u8; 1200];
+        let mut encoder = EncoderBuffer::new(&mut buf);
+        encoder.encode(&packet);
+        let len = encoder.len();
+        // Test the packet encoding when an invalid local_conn_id is used
+        let decoder = DecoderBufferMut::new(&mut buf[..len]);
+        let connection_info = ConnectionInfo::new(&remote_address);
+        let mut output_buf = vec![0u8; 1200];
+        if let Some(packet) =
+            match packet::ProtectedPacket::decode(decoder, &connection_info, &3).unwrap() {
+                (packet::ProtectedPacket::Initial(packet), _) => Some(packet),
+                _ => None,
+            }
+        {
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.5.1
+            //= type=test
+            //# This value MUST NOT be equal to the Destination
+            //# Connection ID field of the packet sent by the client.
+            let local_conn_id =
+                connection::LocalId::try_from_bytes(&retry::example::ODCID).unwrap();
+            assert!(packet::retry::Retry::encode_packet::<_, RingRetryCrypto>(
+                &remote_address,
+                &packet,
+                &local_conn_id,
+                &mut token_format,
+                &mut output_buf,
+            )
+            .is_none());
         }
     }
 }

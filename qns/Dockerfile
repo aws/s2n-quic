@@ -1,5 +1,14 @@
 FROM martenseemann/quic-network-simulator-endpoint:latest
 
+# install openssl to convert PEM to DER
+RUN set -eux; \
+  apt-get update; \
+  apt-get -y install openssl; \
+  rm -rf /var/lib/apt/lists/*; \
+  apt-get clean; \
+  rm -rf /tmp/*; \
+  echo done;
+
 # copy entrypoint
 COPY run_endpoint.sh /
 RUN chmod +x run_endpoint.sh

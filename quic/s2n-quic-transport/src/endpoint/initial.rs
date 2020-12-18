@@ -169,7 +169,6 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
 
         let endpoint_context = self.config.context();
 
-        // TODO send retry_source_connection_id
         let tls_session = endpoint_context
             .tls
             .new_server_session(&transport_parameters);
@@ -186,6 +185,9 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             internal_connection_id,
             connection_id_mapper_registration,
             timer,
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.2
+            //# A server MUST set the Destination Connection ID it
+            //# uses for sending packets based on the first received Initial packet.
             peer_connection_id: source_connection_id,
             local_connection_id: initial_connection_id,
             peer_socket_address: datagram.remote_address,
@@ -249,9 +251,6 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         // will also clean up all state which was already allocated for
         // the connection
         self.connections.insert_connection(connection, shared_state);
-
-        // The handshake has begun and we should start tracking it
-        self.limits_manager.on_handshake_start();
 
         Ok(())
     }

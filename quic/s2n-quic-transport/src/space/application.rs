@@ -48,6 +48,9 @@ pub struct ApplicationSpace<Config: connection::Config> {
     /// The crypto suite for application data
     /// TODO: What about ZeroRtt?
     pub crypto: <Config::TLSSession as CryptoSuite>::OneRTTCrypto,
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7
+    //# Endpoints MUST explicitly negotiate an application protocol.
+
     //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#8.1
     //# Unless
     //# another mechanism is used for agreeing on an application protocol,
@@ -341,13 +344,18 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
 
     fn handle_crypto_frame(
         &mut self,
-        frame: CryptoRef,
+        _frame: CryptoRef,
         _datagram: &DatagramInfo,
         _path: &mut Path<Config::CongestionController>,
     ) -> Result<(), TransportError> {
-        Err(TransportError::INTERNAL_ERROR
-            .with_reason("crypto frames are not currently supported in application space")
-            .with_frame_type(frame.tag().into()))
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.5
+        //# Once the handshake completes, if an endpoint is unable to buffer all
+        //# data in a CRYPTO frame, it MAY discard that CRYPTO frame and all
+        //# CRYPTO frames received in the future, or it MAY close the connection
+        //# with a CRYPTO_BUFFER_EXCEEDED error code.
+
+        // we currently just discard CRYPTO frames post-handshake
+        Ok(())
     }
 
     fn handle_ack_frame<A: AckRanges>(

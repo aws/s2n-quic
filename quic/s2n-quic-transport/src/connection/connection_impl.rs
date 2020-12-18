@@ -226,6 +226,10 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
     /// Static configuration of a connection
     type Config = Config;
 
+    fn is_handshaking(&self) -> bool {
+        self.accept_state == AcceptState::Handshaking
+    }
+
     /// Creates a new `Connection` instance with the given configuration
     fn new(parameters: ConnectionParameters<Self::Config>) -> Self {
         // The path manager always starts with a single path containing the known peer and local
@@ -798,7 +802,30 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         _path_id: path::Id,
         _packet: ProtectedVersionNegotiation,
     ) -> Result<(), TransportError> {
-        // TODO
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#6.2
+        //= type=TODO
+        //= feature=Version negotiation handler
+        //= tracking-issue=349
+        //# A client that supports only this version of QUIC MUST abandon the
+        //# current connection attempt if it receives a Version Negotiation
+        //# packet, with the following two exceptions.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#6.2
+        //= type=TODO
+        //= feature=Version negotiation handler
+        //= tracking-issue=349
+        //# A client MUST discard any
+        //# Version Negotiation packet if it has received and successfully
+        //# processed any other packet, including an earlier Version Negotiation
+        //# packet.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#6.2
+        //= type=TODO
+        //= feature=Version negotiation handler
+        //= tracking-issue=349
+        //# A client MUST discard a Version Negotiation packet that
+        //# lists the QUIC version selected by the client.
+
         Ok(())
     }
 

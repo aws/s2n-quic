@@ -26,7 +26,6 @@ use s2n_quic_core::{
 
 mod config;
 mod initial;
-mod limits;
 mod retry;
 mod version;
 
@@ -56,8 +55,6 @@ pub struct Endpoint<Cfg: Config> {
     dequeued_wakeups: VecDeque<InternalConnectionId>,
     version_negotiator: version::Negotiator<Cfg>,
     retry_dispatch: retry::Dispatch,
-    /// Limit manager for the endpoint
-    limits_manager: limits::Manager,
 }
 
 // Safety: The endpoint is marked as `!Send`, because the struct contains `Rc`s.
@@ -81,7 +78,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
             dequeued_wakeups: VecDeque::new(),
             version_negotiator: version::Negotiator::default(),
             retry_dispatch: retry::Dispatch::default(),
-            limits_manager: limits::Manager::new(),
         };
 
         (endpoint, acceptor)
@@ -110,7 +106,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
         packet: &ProtectedInitial,
     ) -> Option<()> {
         let attempt = s2n_quic_core::endpoint::limits::ConnectionAttempt::new(
-            self.limits_manager.inflight_handshakes(),
+            self.connections.handshake_connections(),
             &datagram.remote_address,
         );
 
@@ -232,7 +228,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             .connection_id_mapper
             .lookup_internal_connection_id(&datagram.destination_connection_id)
         {
-            let outcome = self
+            let _ = self
                 .connections
                 .with_connection(internal_id, |conn, shared_state| {
                     // The path `Id` needs to be passed around instead of the path to get around `&mut self` and
@@ -279,25 +275,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     Ok(())
                 });
 
-            match outcome {
-                Some((Ok(()), interests)) => {
-                    // When connections are marked `accept` they have completed their handshake
-                    // TODO: Verify this is valid for the client
-                    if interests.accept {
-                        self.limits_manager.on_handshake_end();
-                    }
-                }
-                Some((Err(()), _interests)) => {
-                    // Ignored error from the `.with_connection` call
-                }
-                None => {
-                    debug_assert!(
-                        false,
-                        "Connection was found in external but not internal connection map"
-                    );
-                }
-            };
-
             return;
         }
 
@@ -313,6 +290,13 @@ impl<Cfg: Config> Endpoint<Cfg> {
                             }
                         };
 
+                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1
+                    //= type=TODO
+                    //= tracking-issue=140
+                    //# Additionally, a server MAY consider the client address validated if
+                    //# the client uses a connection ID chosen by the server and the
+                    //# connection ID contains at least 64 bits of entropy.
+
                     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.2
                     //# In response to processing an Initial containing a token that was
                     //# provided in a Retry packet, a server cannot send another Retry
@@ -323,9 +307,30 @@ impl<Cfg: Config> Endpoint<Cfg> {
                             &source_connection_id,
                             packet.token(),
                         ) {
+                            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.3
+                            //# If the
+                            //# validation succeeds, the server SHOULD then allow the handshake to
+                            //# proceed.
                             Some(id)
                         } else {
+                            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.3
+                            //= type=TODO
+                            //= tracking-issue=344
+                            //# If the token is invalid then the
+                            //# server SHOULD proceed as if the client did not have a validated
+                            //# address, including potentially sending a Retry.
+
+                            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.2
+                            //= type=TODO
+                            //= tracking-issue=344
+                            //# Instead, the
+                            //# server SHOULD immediately close (Section 10.2) the connection with an
+                            //# INVALID_TOKEN error.
                             dbg!("Invalid token");
+
+                            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.3
+                            //# Servers MAY
+                            //# discard any Initial packet that does not carry the expected token.
                             return;
                         }
                     } else {
@@ -335,6 +340,9 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         //# containing a token.
                         if self.connection_allowed(datagram, &packet).is_none() {
                             dbg!("Connection not allowed");
+                            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.5.1
+                            //# A server MUST NOT send more than one Retry
+                            //# packet in response to a single UDP datagram.
                             return;
                         }
 
