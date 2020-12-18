@@ -65,6 +65,42 @@ impl PeerIdInfo {
     fn is_retire_ready(&self, retire_prior_to: u32) -> bool {
         self.status.is_active() && self.sequence_number < retire_prior_to
     }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
+    //# If an endpoint receives a NEW_CONNECTION_ID frame that repeats a
+    //# previously issued connection ID with a different Stateless Reset
+    //# Token or a different sequence number, or if a sequence number is used
+    //# for different connection IDs, the endpoint MAY treat that receipt as
+    //# a connection error of type PROTOCOL_VIOLATION.
+    fn validate_new_connection_id(
+        &self,
+        new_id: &connection::PeerId,
+        stateless_reset_token: &[u8],
+        sequence_number: u32,
+    ) -> Result<bool, PeerIdRegistrationError> {
+        let reset_token_is_equal = self
+            .stateless_reset_token
+            .map_or(false, |token| token == stateless_reset_token);
+        let sequence_number_is_equal = self.sequence_number == sequence_number;
+
+        if self.id == *new_id {
+            if !reset_token_is_equal || !sequence_number_is_equal {
+                return Err(InvalidNewConnectionId);
+            }
+
+            // This was a valid duplicate new connection ID
+            return Ok(true);
+        } else if sequence_number_is_equal || reset_token_is_equal {
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.2
+            //# Endpoints are not required to compare new values
+            //# against all previous values, but a duplicate value MAY be treated as
+            //# a connection error of type PROTOCOL_VIOLATION.
+            return Err(InvalidNewConnectionId);
+        }
+
+        // This was a valid non-duplicate new connection ID
+        Ok(false)
+    }
 }
 
 /// The current status of the connection ID.
@@ -215,8 +251,7 @@ impl PeerIdRegistry {
 
         // Iterate over all registered IDs, retiring any as necessary
         for id_info in self.registered_ids.iter_mut() {
-            is_duplicate |= Self::validate_new_connection_id(
-                id_info,
+            is_duplicate |= id_info.validate_new_connection_id(
                 new_id,
                 stateless_reset_token,
                 sequence_number,
@@ -404,42 +439,6 @@ impl PeerIdRegistry {
 
         // There were no available IDs to use
         None
-    }
-
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
-    //# If an endpoint receives a NEW_CONNECTION_ID frame that repeats a
-    //# previously issued connection ID with a different Stateless Reset
-    //# Token or a different sequence number, or if a sequence number is used
-    //# for different connection IDs, the endpoint MAY treat that receipt as
-    //# a connection error of type PROTOCOL_VIOLATION.
-    fn validate_new_connection_id(
-        id_info: &PeerIdInfo,
-        new_id: &connection::PeerId,
-        stateless_reset_token: &[u8],
-        sequence_number: u32,
-    ) -> Result<bool, PeerIdRegistrationError> {
-        let reset_token_is_equal = id_info
-            .stateless_reset_token
-            .map_or(false, |token| token == stateless_reset_token);
-        let sequence_number_is_equal = id_info.sequence_number == sequence_number;
-
-        if id_info.id == *new_id {
-            if !reset_token_is_equal || !sequence_number_is_equal {
-                return Err(InvalidNewConnectionId);
-            }
-
-            // This was a valid duplicate new connection ID
-            return Ok(true);
-        } else if sequence_number_is_equal || reset_token_is_equal {
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.2
-            //# Endpoints are not required to compare new values
-            //# against all previous values, but a duplicate value MAY be treated as
-            //# a connection error of type PROTOCOL_VIOLATION.
-            return Err(InvalidNewConnectionId);
-        }
-
-        // This was a valid non-duplicate new connection ID
-        Ok(false)
     }
 
     fn ensure_no_duplicates(&self) {
