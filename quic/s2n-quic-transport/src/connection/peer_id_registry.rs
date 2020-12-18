@@ -172,7 +172,7 @@ impl PeerIdRegistry {
     /// Constructs a new `PeerIdRegistry`. The provided `initial_connection_id` will be registered
     /// in the returned registry, with the optional associated `stateless_reset_token`.
     pub fn new(
-        initial_connection_id: &connection::PeerId,
+        initial_connection_id: connection::PeerId,
         stateless_reset_token: Option<[u8; STATELESS_RESET_TOKEN_LEN]>,
     ) -> Self {
         let mut registry = Self {
@@ -180,7 +180,7 @@ impl PeerIdRegistry {
             retire_prior_to: 0,
         };
         registry.registered_ids.push(PeerIdInfo {
-            id: *initial_connection_id,
+            id: initial_connection_id,
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
             //# The sequence number of the initial connection ID is 0.
             sequence_number: 0,
@@ -529,7 +529,7 @@ mod tests {
     #[test]
     fn error_when_exceeding_retired_connection_id_limit() {
         let id_1 = id(b"id01");
-        let mut reg = PeerIdRegistry::new(&id_1, None);
+        let mut reg = PeerIdRegistry::new(id_1, None);
 
         // Register 6 more new IDs for a total of 7, with 6 retired
         for i in 2u32..=(RETIRED_CONNECTION_ID_LIMIT + 1).into() {
@@ -560,7 +560,7 @@ mod tests {
     #[test]
     fn error_when_exceeding_active_connection_id_limit() {
         let id_1 = id(b"id01");
-        let mut reg = PeerIdRegistry::new(&id_1, None);
+        let mut reg = PeerIdRegistry::new(id_1, None);
 
         // Register 5 more new IDs with a retire_prior_to of 4, so there will be a total of
         // 6 connection IDs, with 3 retired and 3 active
@@ -589,7 +589,7 @@ mod tests {
     #[test]
     fn no_error_when_duplicate() {
         let id_1 = id(b"id01");
-        let mut reg = PeerIdRegistry::new(&id_1, None);
+        let mut reg = PeerIdRegistry::new(id_1, None);
 
         let id_2 = id(b"id02");
         assert!(reg
@@ -612,7 +612,7 @@ mod tests {
     #[test]
     fn active_connection_id_limit_must_be_at_least_2() {
         let id_1 = id(b"id01");
-        let mut reg = PeerIdRegistry::new(&id_1, None);
+        let mut reg = PeerIdRegistry::new(id_1, None);
 
         let id_2 = id(b"id02");
         assert!(reg
@@ -643,7 +643,7 @@ mod tests {
     #[test]
     fn duplicate_new_id_different_token_or_sequence_number() {
         let id_1 = id(b"id01");
-        let mut reg = PeerIdRegistry::new(&id_1, None);
+        let mut reg = PeerIdRegistry::new(id_1, None);
 
         let id_2 = id(b"id02");
         assert!(reg
@@ -669,7 +669,7 @@ mod tests {
     #[test]
     fn non_duplicate_new_id_same_token_or_sequence_number() {
         let id_1 = id(b"id01");
-        let mut reg = PeerIdRegistry::new(&id_1, None);
+        let mut reg = PeerIdRegistry::new(id_1, None);
 
         let id_2 = id(b"id02");
         let id_3 = id(b"id03");
@@ -698,7 +698,7 @@ mod tests {
     #[test]
     fn ignore_retire_prior_to_that_does_not_increase() {
         let id_1 = id(b"id01");
-        let mut reg = PeerIdRegistry::new(&id_1, None);
+        let mut reg = PeerIdRegistry::new(id_1, None);
 
         let id_2 = id(b"id02");
         let id_3 = id(b"id03");
@@ -725,7 +725,7 @@ mod tests {
     #[test]
     fn retire_connection_id_when_retire_prior_to_increases() {
         let id_1 = id(b"id01");
-        let mut reg = PeerIdRegistry::new(&id_1, None);
+        let mut reg = PeerIdRegistry::new(id_1, None);
 
         let id_2 = id(b"id02");
         assert!(reg
@@ -793,7 +793,7 @@ mod tests {
     #[test]
     fn retire_new_connection_id_if_sequence_number_smaller_than_retire_prior_to() {
         let id_1 = id(b"id01");
-        let mut reg = PeerIdRegistry::new(&id_1, None);
+        let mut reg = PeerIdRegistry::new(id_1, None);
 
         let id_2 = id(b"id02");
         assert!(reg
@@ -814,7 +814,7 @@ mod tests {
     #[test]
     fn retire_initial_id_when_new_connection_id_available() {
         let id_1 = id(b"id01");
-        let mut reg = PeerIdRegistry::new(&id_1, None);
+        let mut reg = PeerIdRegistry::new(id_1, None);
 
         assert_eq!(InUsePendingNewConnectionId, reg.registered_ids[0].status);
 
@@ -829,7 +829,7 @@ mod tests {
     #[test]
     fn consume_new_id_if_necessary() {
         let id_1 = id(b"id01");
-        let mut reg = PeerIdRegistry::new(&id_1, None);
+        let mut reg = PeerIdRegistry::new(id_1, None);
 
         assert_eq!(InUsePendingNewConnectionId, reg.registered_ids[0].status);
 

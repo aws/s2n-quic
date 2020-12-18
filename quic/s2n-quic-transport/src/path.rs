@@ -273,7 +273,7 @@ mod tests {
             false,
         );
 
-        let peer_id_registry = PeerIdRegistry::new(&first_path.peer_connection_id, None);
+        let peer_id_registry = PeerIdRegistry::new(first_path.peer_connection_id, None);
         let manager = Manager::new(first_path, peer_id_registry);
         assert_eq!(manager.paths.len(), 1);
 
@@ -293,7 +293,7 @@ mod tests {
         );
         first_path.challenge = Some([0u8; 8]);
 
-        let peer_id_registry = PeerIdRegistry::new(&first_path.peer_connection_id, None);
+        let peer_id_registry = PeerIdRegistry::new(first_path.peer_connection_id, None);
         let mut manager = Manager::new(first_path, peer_id_registry);
         assert_eq!(manager.paths.len(), 1);
         {
@@ -320,7 +320,7 @@ mod tests {
             Unlimited::default(),
             false,
         );
-        let peer_id_registry = PeerIdRegistry::new(&first_path.peer_connection_id, None);
+        let peer_id_registry = PeerIdRegistry::new(first_path.peer_connection_id, None);
         let mut manager = Manager::new(first_path, peer_id_registry);
         assert_eq!(manager.paths.len(), 1);
         let new_addr: SocketAddr = "127.0.0.1:80".parse().unwrap();
@@ -384,7 +384,7 @@ mod tests {
             Unlimited::default(),
             false,
         );
-        let peer_id_registry = PeerIdRegistry::new(&first_path.peer_connection_id, None);
+        let peer_id_registry = PeerIdRegistry::new(first_path.peer_connection_id, None);
         let mut manager = Manager::new(first_path, peer_id_registry);
 
         let id_2 = connection::PeerId::try_from_bytes(b"id02").unwrap();

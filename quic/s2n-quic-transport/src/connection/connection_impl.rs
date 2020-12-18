@@ -255,10 +255,8 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         //# parameter because their transport parameters do not have
         //# confidentiality protection.
         let stateless_reset_token = None;
-        let peer_id_registry = connection::PeerIdRegistry::new(
-            &initial_path.peer_connection_id,
-            stateless_reset_token,
-        );
+        let peer_id_registry =
+            connection::PeerIdRegistry::new(initial_path.peer_connection_id, stateless_reset_token);
         let path_manager = path::Manager::new(initial_path, peer_id_registry);
 
         Self {
