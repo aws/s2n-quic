@@ -83,7 +83,7 @@ decoder_parameterized_value!(
             //# Receiving a value greater than the Sequence Number MUST be treated
             //# as a connection error of type FRAME_ENCODING_ERROR.
             decoder_invariant!(
-                retire_prior_to > sequence_number,
+                retire_prior_to <= sequence_number,
                 "invalid retire prior to value"
             );
 
