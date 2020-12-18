@@ -449,17 +449,6 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
             return Err(TransportError::PROTOCOL_VIOLATION);
         }
 
-        if frame.retire_prior_to > frame.sequence_number {
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
-            //# The Retire Prior To field MUST be less
-            //# than or equal to the Sequence Number field.
-
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
-            //# Receiving a value greater than the Sequence Number MUST be treated
-            //# as a connection error of type FRAME_ENCODING_ERROR.
-            return Err(TransportError::FRAME_ENCODING_ERROR);
-        }
-
         let peer_id = connection::PeerId::try_from_bytes(frame.connection_id)
             .expect("Length is validated when decoding the frame");
         let sequence_number = frame

@@ -222,13 +222,6 @@ impl PeerIdRegistry {
                 //# stop using the corresponding connection IDs and retire them with
                 //# RETIRE_CONNECTION_ID frames before adding the newly provided
                 //# connection ID to the set of active connection IDs.
-
-                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
-                //# An endpoint that receives a NEW_CONNECTION_ID frame with a sequence
-                //# number smaller than the Retire Prior To field of a previously
-                //# received NEW_CONNECTION_ID frame MUST send a corresponding
-                //# RETIRE_CONNECTION_ID frame that retires the newly received connection
-                //# ID, unless it has already done so for that sequence number.
                 id_info.status = PendingRetirement(false);
             }
 
@@ -247,14 +240,7 @@ impl PeerIdRegistry {
         //# Receipt of the same frame multiple times MUST NOT be treated as a
         //# connection error.
         if !is_duplicate {
-            if let Some(mut id_pending_new_connection_id) = id_pending_new_connection_id {
-                // If there was an ID pending new connection ID, it can be moved to PendingRetirement
-                // now that we know we aren't processing a duplicate NEW_CONNECTION_ID
-                id_pending_new_connection_id.status = PendingRetirement(false);
-                active_id_count -= 1;
-            }
-
-            self.registered_ids.push(PeerIdInfo {
+            let mut new_id_info = PeerIdInfo {
                 id: *new_id,
                 sequence_number,
                 stateless_reset_token: Some(
@@ -263,10 +249,32 @@ impl PeerIdRegistry {
                         .expect("Length is validated when decoding"),
                 ),
                 status: New,
-            });
+            };
 
-            // Include the ID that was just added
-            active_id_count += 1;
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
+            //# An endpoint that receives a NEW_CONNECTION_ID frame with a sequence
+            //# number smaller than the Retire Prior To field of a previously
+            //# received NEW_CONNECTION_ID frame MUST send a corresponding
+            //# RETIRE_CONNECTION_ID frame that retires the newly received connection
+            //# ID, unless it has already done so for that sequence number.
+            if new_id_info.is_retire_ready(self.retire_prior_to) {
+                new_id_info.status = PendingRetirement(false);
+            }
+
+            if new_id_info.is_active() {
+                active_id_count += 1;
+
+                if let Some(mut id_pending_new_connection_id) = id_pending_new_connection_id {
+                    // If there was an ID pending new connection ID, it can be moved to PendingRetirement
+                    // now that we know we aren't processing a duplicate NEW_CONNECTION_ID and the
+                    // new connection ID wasn't immediately retired.
+                    id_pending_new_connection_id.status = PendingRetirement(false);
+                    // We retired one active connection ID
+                    active_id_count -= 1;
+                }
+            }
+
+            self.registered_ids.push(new_id_info);
 
             debug_assert_eq!(
                 active_id_count,
@@ -474,11 +482,14 @@ mod tests {
     use crate::{
         connection::{
             peer_id_registry::{
+                PeerIdRegistrationError,
                 PeerIdRegistrationError::{
                     ExceededActiveConnectionIdLimit, ExceededRetiredConnectionIdLimit,
                     InvalidNewConnectionId,
                 },
-                PeerIdStatus::{PendingAcknowledgement, PendingRetirement},
+                PeerIdStatus::{
+                    InUsePendingNewConnectionId, New, PendingAcknowledgement, PendingRetirement,
+                },
                 RETIRED_CONNECTION_ID_LIMIT,
             },
             PeerIdRegistry,
@@ -494,6 +505,7 @@ mod tests {
         connection, endpoint,
         frame::{new_connection_id::STATELESS_RESET_TOKEN_LEN, Frame, RetireConnectionID},
         packet::number::PacketNumberRange,
+        transport::error::TransportError,
         varint::VarInt,
     };
 
@@ -605,6 +617,11 @@ mod tests {
         let id_2 = connection::PeerId::try_from_bytes(b"id02").unwrap();
         assert!(reg
             .on_new_connection_id(&id_2, 1, 0, &[1; STATELESS_RESET_TOKEN_LEN])
+            .is_ok());
+
+        let id_3 = connection::PeerId::try_from_bytes(b"id03").unwrap();
+        assert!(reg
+            .on_new_connection_id(&id_3, 2, 0, &[2; STATELESS_RESET_TOKEN_LEN])
             .is_ok());
 
         assert_eq!(
@@ -764,5 +781,128 @@ mod tests {
         assert_eq!(id_2, reg.registered_ids[0].id);
 
         assert_eq!(transmission::Interest::None, reg.transmission_interest());
+    }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
+    //= type=test
+    //# An endpoint that receives a NEW_CONNECTION_ID frame with a sequence
+    //# number smaller than the Retire Prior To field of a previously
+    //# received NEW_CONNECTION_ID frame MUST send a corresponding
+    //# RETIRE_CONNECTION_ID frame that retires the newly received connection
+    //# ID, unless it has already done so for that sequence number.
+    #[test]
+    fn retire_new_connection_id_if_sequence_number_smaller_than_retire_prior_to() {
+        let id_1 = connection::PeerId::try_from_bytes(b"id01").unwrap();
+        let mut reg = PeerIdRegistry::new(&id_1, None);
+
+        let id_2 = connection::PeerId::try_from_bytes(b"id02").unwrap();
+        assert!(reg
+            .on_new_connection_id(&id_2, 10, 10, &[2; STATELESS_RESET_TOKEN_LEN])
+            .is_ok());
+        assert_eq!(PendingRetirement(false), reg.registered_ids[0].status);
+        assert_eq!(New, reg.registered_ids[1].status);
+
+        let id_3 = connection::PeerId::try_from_bytes(b"id03").unwrap();
+        assert!(reg
+            .on_new_connection_id(&id_3, 1, 0, &[3; STATELESS_RESET_TOKEN_LEN])
+            .is_ok());
+
+        assert_eq!(New, reg.registered_ids[1].status);
+        assert_eq!(PendingRetirement(false), reg.registered_ids[2].status);
+    }
+
+    #[test]
+    fn retire_initial_id_when_new_connection_id_available() {
+        let id_1 = connection::PeerId::try_from_bytes(b"id01").unwrap();
+        let mut reg = PeerIdRegistry::new(&id_1, None);
+
+        assert_eq!(InUsePendingNewConnectionId, reg.registered_ids[0].status);
+
+        let id_2 = connection::PeerId::try_from_bytes(b"id02").unwrap();
+        assert!(reg
+            .on_new_connection_id(&id_2, 1, 0, &[2; STATELESS_RESET_TOKEN_LEN])
+            .is_ok());
+
+        assert_eq!(PendingRetirement(false), reg.registered_ids[0].status);
+    }
+
+    #[test]
+    fn consume_new_id_if_necessary() {
+        let id_1 = connection::PeerId::try_from_bytes(b"id01").unwrap();
+        let mut reg = PeerIdRegistry::new(&id_1, None);
+
+        assert_eq!(InUsePendingNewConnectionId, reg.registered_ids[0].status);
+
+        let id_2 = connection::PeerId::try_from_bytes(b"id02").unwrap();
+        assert!(reg
+            .on_new_connection_id(&id_2, 1, 0, &[2; STATELESS_RESET_TOKEN_LEN])
+            .is_ok());
+
+        assert_eq!(Some(id_2), reg.consume_new_id_if_necessary(None));
+
+        let id_3 = connection::PeerId::try_from_bytes(b"id03").unwrap();
+        assert!(reg
+            .on_new_connection_id(&id_3, 2, 0, &[3; STATELESS_RESET_TOKEN_LEN])
+            .is_ok());
+
+        // ID 3 is not retired, so it is not necessary to consume a new ID
+        assert_eq!(Some(id_3), reg.consume_new_id_if_necessary(Some(&id_3)));
+
+        let id_4 = connection::PeerId::try_from_bytes(b"id04").unwrap();
+        assert!(reg
+            .on_new_connection_id(&id_4, 3, 3, &[4; STATELESS_RESET_TOKEN_LEN])
+            .is_ok());
+
+        // ID 2 is retired, so it is necessary to consume a new ID
+        assert_eq!(Some(id_4), reg.consume_new_id_if_necessary(Some(&id_2)));
+
+        // There are no new IDs left, so None is returned
+        assert_eq!(None, reg.consume_new_id_if_necessary(Some(&id_3)));
+
+        // There are no new IDs left, but ID 4 is not retired,so it is returned
+        assert_eq!(Some(id_4), reg.consume_new_id_if_necessary(Some(&id_4)));
+    }
+
+    #[test]
+    fn error_conversion() {
+        let mut transport_error: TransportError;
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
+        //= type=test
+        //# If an endpoint receives a NEW_CONNECTION_ID frame that repeats a
+        //# previously issued connection ID with a different Stateless Reset
+        //# Token or a different sequence number, or if a sequence number is used
+        //# for different connection IDs, the endpoint MAY treat that receipt as
+        //# a connection error of type PROTOCOL_VIOLATION.
+        transport_error = PeerIdRegistrationError::InvalidNewConnectionId.into();
+        assert_eq!(
+            TransportError::PROTOCOL_VIOLATION.code,
+            transport_error.code
+        );
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
+        //= type=test
+        //# After processing a NEW_CONNECTION_ID frame and
+        //# adding and retiring active connection IDs, if the number of active
+        //# connection IDs exceeds the value advertised in its
+        //# active_connection_id_limit transport parameter, an endpoint MUST
+        //# close the connection with an error of type CONNECTION_ID_LIMIT_ERROR.
+        transport_error = PeerIdRegistrationError::ExceededActiveConnectionIdLimit.into();
+        assert_eq!(
+            TransportError::CONNECTION_ID_LIMIT_ERROR.code,
+            transport_error.code
+        );
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2
+        //= type=test
+        //# An endpoint MUST NOT forget a connection ID without retiring it,
+        //# though it MAY choose to treat having connection IDs in need of
+        //# retirement that exceed this limit as a connection error of type
+        //# CONNECTION_ID_LIMIT_ERROR.
+        transport_error = PeerIdRegistrationError::ExceededRetiredConnectionIdLimit.into();
+        assert_eq!(
+            TransportError::CONNECTION_ID_LIMIT_ERROR.code,
+            transport_error.code
+        );
     }
 }
