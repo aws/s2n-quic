@@ -317,23 +317,7 @@ impl PeerIdRegistry {
 
             self.registered_ids.push(new_id_info);
 
-            debug_assert_eq!(
-                active_id_count,
-                self.registered_ids
-                    .iter()
-                    .filter(|id_info| id_info.status.is_active())
-                    .count()
-            );
-
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
-            //# After processing a NEW_CONNECTION_ID frame and
-            //# adding and retiring active connection IDs, if the number of active
-            //# connection IDs exceeds the value advertised in its
-            //# active_connection_id_limit transport parameter, an endpoint MUST
-            //# close the connection with an error of type CONNECTION_ID_LIMIT_ERROR.
-            if active_id_count > ACTIVE_CONNECTION_ID_LIMIT as usize {
-                return Err(ExceededActiveConnectionIdLimit);
-            }
+            self.check_active_connection_id_limit(active_id_count)?;
         }
 
         // Duplicate NEW_CONNECTION_ID frames may not change the sequence number or
@@ -343,25 +327,7 @@ impl PeerIdRegistry {
         // so we will validate the retired id count regardless of the duplicate status.
         let retired_id_count = self.registered_ids.len() - active_id_count;
 
-        debug_assert_eq!(
-            retired_id_count,
-            self.registered_ids
-                .iter()
-                .filter(|id_info| !id_info.status.is_active())
-                .count()
-        );
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2
-        //# An endpoint SHOULD limit the number of connection IDs it has retired
-        //# locally and have not yet been acknowledged. An endpoint SHOULD allow
-        //# for sending and tracking a number of RETIRE_CONNECTION_ID frames of
-        //# at least twice the active_connection_id limit.  An endpoint MUST NOT
-        //# forget a connection ID without retiring it, though it MAY choose to
-        //# treat having connection IDs in need of retirement that exceed this
-        //# limit as a connection error of type CONNECTION_ID_LIMIT_ERROR.
-        if retired_id_count > RETIRED_CONNECTION_ID_LIMIT as usize {
-            return Err(ExceededRetiredConnectionIdLimit);
-        }
+        self.check_retired_connection_id_limit(retired_id_count)?;
 
         self.ensure_no_duplicates();
 
@@ -439,6 +405,60 @@ impl PeerIdRegistry {
 
         // There were no available IDs to use
         None
+    }
+
+    // Validate that the ACTIVE_CONNECTION_ID_LIMIT has not been exceeded
+    fn check_active_connection_id_limit(
+        &self,
+        active_id_count: usize,
+    ) -> Result<(), PeerIdRegistrationError> {
+        debug_assert_eq!(
+            active_id_count,
+            self.registered_ids
+                .iter()
+                .filter(|id_info| id_info.status.is_active())
+                .count()
+        );
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
+        //# After processing a NEW_CONNECTION_ID frame and
+        //# adding and retiring active connection IDs, if the number of active
+        //# connection IDs exceeds the value advertised in its
+        //# active_connection_id_limit transport parameter, an endpoint MUST
+        //# close the connection with an error of type CONNECTION_ID_LIMIT_ERROR.
+        if active_id_count > ACTIVE_CONNECTION_ID_LIMIT as usize {
+            return Err(ExceededActiveConnectionIdLimit);
+        }
+
+        Ok(())
+    }
+
+    // Validate that the RETIRED_CONNECTION_ID_LIMIT has not been exceeded
+    fn check_retired_connection_id_limit(
+        &self,
+        retired_id_count: usize,
+    ) -> Result<(), PeerIdRegistrationError> {
+        debug_assert_eq!(
+            retired_id_count,
+            self.registered_ids
+                .iter()
+                .filter(|id_info| !id_info.status.is_active())
+                .count()
+        );
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2
+        //# An endpoint SHOULD limit the number of connection IDs it has retired
+        //# locally and have not yet been acknowledged. An endpoint SHOULD allow
+        //# for sending and tracking a number of RETIRE_CONNECTION_ID frames of
+        //# at least twice the active_connection_id limit.  An endpoint MUST NOT
+        //# forget a connection ID without retiring it, though it MAY choose to
+        //# treat having connection IDs in need of retirement that exceed this
+        //# limit as a connection error of type CONNECTION_ID_LIMIT_ERROR.
+        if retired_id_count > RETIRED_CONNECTION_ID_LIMIT as usize {
+            return Err(ExceededRetiredConnectionIdLimit);
+        }
+
+        Ok(())
     }
 
     fn ensure_no_duplicates(&self) {
