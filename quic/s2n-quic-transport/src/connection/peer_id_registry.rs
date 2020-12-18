@@ -208,7 +208,7 @@ impl PeerIdRegistry {
         let mut id_pending_new_connection_id = None;
 
         // Iterate over all registered IDs, retiring any as necessary
-        for mut id_info in self.registered_ids.iter_mut() {
+        for id_info in self.registered_ids.iter_mut() {
             is_duplicate |= Self::validate_new_connection_id(
                 id_info,
                 new_id,
@@ -331,7 +331,7 @@ impl PeerIdRegistry {
     pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
         let constraint = context.transmission_constraint();
 
-        for mut id_info in self
+        for id_info in self
             .registered_ids
             .iter_mut()
             .filter(|id_info| id_info.can_transmit(constraint))
@@ -362,7 +362,7 @@ impl PeerIdRegistry {
     /// Sets the retransmit flag to true for connection IDs pending acknowledgement with a lost
     /// packet number
     pub fn on_packet_loss<A: AckSet>(&mut self, ack_set: &A) {
-        for mut id_info in self.registered_ids.iter_mut() {
+        for id_info in self.registered_ids.iter_mut() {
             if let PendingAcknowledgement(packet_number) = id_info.status {
                 if ack_set.contains(packet_number) {
                     id_info.status = PendingRetirement(true);

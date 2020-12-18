@@ -196,6 +196,7 @@ impl<CC: CongestionController> Manager<CC> {
         retire_prior_to: u32,
         stateless_reset_token: &[u8],
     ) -> Result<(), TransportError> {
+        // Register the new connection ID
         self.peer_id_registry.on_new_connection_id(
             connection_id,
             sequence_number,
@@ -208,6 +209,11 @@ impl<CC: CongestionController> Manager<CC> {
         //      are more than one we should decide what to do if there aren't enough new connection
         //      IDs available for all paths.
         //      See https://github.com/awslabs/s2n-quic/issues/358
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2
+        //# Upon receipt of an increased Retire Prior To field, the peer MUST
+        //# stop using the corresponding connection IDs and retire them with
+        //# RETIRE_CONNECTION_ID frames before adding the newly provided
+        //# connection ID to the set of active connection IDs.
         // Ensure all paths are not using a newly retired connection ID
         for path in self.paths.iter_mut() {
             path.peer_connection_id = self
@@ -248,6 +254,7 @@ mod tests {
     use super::*;
     use core::time::Duration;
     use s2n_quic_core::{
+        frame::new_connection_id::STATELESS_RESET_TOKEN_LEN,
         inet::{DatagramInfo, ExplicitCongestionNotification},
         recovery::{congestion_controller::testing::Unlimited, RTTEstimator},
         time::Timestamp,
@@ -358,5 +365,32 @@ mod tests {
             true
         );
         assert_eq!(manager.paths.len(), 2);
+    }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2
+    //= type=test
+    //# Upon receipt of an increased Retire Prior To field, the peer MUST
+    //# stop using the corresponding connection IDs and retire them with
+    //# RETIRE_CONNECTION_ID frames before adding the newly provided
+    //# connection ID to the set of active connection IDs.
+    #[test]
+    fn stop_using_a_retired_connection_id() {
+        let id_1 = connection::PeerId::try_from_bytes(b"id01").unwrap();
+        let first_path = Path::new(
+            SocketAddress::default(),
+            id_1,
+            RTTEstimator::new(Duration::from_millis(30)),
+            Unlimited::default(),
+            false,
+        );
+        let peer_id_registry = PeerIdRegistry::new(&first_path.peer_connection_id, None);
+        let mut manager = Manager::new(first_path, peer_id_registry);
+
+        let id_2 = connection::PeerId::try_from_bytes(b"id02").unwrap();
+        assert!(manager
+            .on_new_connection_id(&id_2, 1, 1, &[1 as u8; STATELESS_RESET_TOKEN_LEN])
+            .is_ok());
+
+        assert_eq!(id_2, manager.paths[0].peer_connection_id);
     }
 }
