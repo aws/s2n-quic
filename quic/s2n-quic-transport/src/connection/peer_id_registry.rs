@@ -1,6 +1,9 @@
 use crate::{
     connection::peer_id_registry::{
-        PeerIdRegistrationError::{ExceededActiveConnectionIdLimit, InvalidNewConnectionId},
+        PeerIdRegistrationError::{
+            ExceededActiveConnectionIdLimit, ExceededRetiredConnectionIdLimit,
+            InvalidNewConnectionId,
+        },
         PeerIdStatus::{
             InUse, InUsePendingNewConnectionId, New, PendingAcknowledgement, PendingRetirement,
         },
@@ -26,6 +29,11 @@ const NR_STATIC_REGISTRABLE_IDS: usize = 5;
 //# parameter, and those received in NEW_CONNECTION_ID frames.  The value
 //# of the active_connection_id_limit parameter MUST be at least 2.
 pub const ACTIVE_CONNECTION_ID_LIMIT: u8 = 3;
+
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2
+//# An endpoint SHOULD allow for sending and tracking a number of
+//# RETIRE_CONNECTION_ID frames of at least twice the active_connection_id limit.
+const RETIRED_CONNECTION_ID_LIMIT: u8 = ACTIVE_CONNECTION_ID_LIMIT * 2;
 
 #[derive(Debug)]
 pub struct PeerIdRegistry {
@@ -101,11 +109,29 @@ pub enum PeerIdRegistrationError {
     InvalidNewConnectionId,
     /// The active_connection_id_limit was exceeded
     ExceededActiveConnectionIdLimit,
+    /// Too many connection IDs are pending retirement
+    ExceededRetiredConnectionIdLimit,
+}
+
+impl PeerIdRegistrationError {
+    fn message(&self) -> &'static str {
+        match self {
+            PeerIdRegistrationError::InvalidNewConnectionId => {
+                "The new connection ID had an invalid sequence_number or stateless_reset_token"
+            }
+            PeerIdRegistrationError::ExceededActiveConnectionIdLimit => {
+                "The active_connection_id_limit has been exceeded"
+            }
+            PeerIdRegistrationError::ExceededRetiredConnectionIdLimit => {
+                "Too many connection IDs have been retired without acknowledgement from the peer"
+            }
+        }
+    }
 }
 
 impl From<PeerIdRegistrationError> for TransportError {
     fn from(err: PeerIdRegistrationError) -> Self {
-        match err {
+        let transport_error = match err {
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
             //# If an endpoint receives a NEW_CONNECTION_ID frame that repeats a
             //# previously issued connection ID with a different Stateless Reset
@@ -122,7 +148,16 @@ impl From<PeerIdRegistrationError> for TransportError {
             PeerIdRegistrationError::ExceededActiveConnectionIdLimit => {
                 TransportError::CONNECTION_ID_LIMIT_ERROR
             }
-        }
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2
+            //# An endpoint MUST NOT forget a connection ID without retiring it,
+            //# though it MAY choose to treat having connection IDs in need of
+            //# retirement that exceed this limit as a connection error of type
+            //# CONNECTION_ID_LIMIT_ERROR.
+            PeerIdRegistrationError::ExceededRetiredConnectionIdLimit => {
+                TransportError::CONNECTION_ID_LIMIT_ERROR
+            }
+        };
+        transport_error.with_reason(err.message())
     }
 }
 
@@ -259,8 +294,8 @@ impl PeerIdRegistry {
         //# treat having connection IDs in need of retirement that exceed this
         //# limit as a connection error of type CONNECTION_ID_LIMIT_ERROR.
         let retired_id_count = self.registered_ids.len() - active_id_count;
-        if retired_id_count > ACTIVE_CONNECTION_ID_LIMIT as usize * 2 {
-            return Err(ExceededActiveConnectionIdLimit);
+        if retired_id_count > RETIRED_CONNECTION_ID_LIMIT as usize {
+            return Err(ExceededRetiredConnectionIdLimit);
         }
 
         Ok(())
@@ -361,5 +396,53 @@ impl transmission::interest::Provider for PeerIdRegistry {
         } else {
             transmission::Interest::None
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::connection::{
+        peer_id_registry::{
+            PeerIdRegistrationError::ExceededRetiredConnectionIdLimit, RETIRED_CONNECTION_ID_LIMIT,
+        },
+        PeerIdRegistry,
+    };
+    use s2n_quic_core::{connection, frame::new_connection_id::STATELESS_RESET_TOKEN_LEN};
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2
+    //= type=test
+    //# An endpoint SHOULD limit the number of connection IDs it has retired
+    //# locally and have not yet been acknowledged. An endpoint SHOULD allow
+    //# for sending and tracking a number of RETIRE_CONNECTION_ID frames of
+    //# at least twice the active_connection_id limit.  An endpoint MUST NOT
+    //# forget a connection ID without retiring it, though it MAY choose to
+    //# treat having connection IDs in need of retirement that exceed this
+    //# limit as a connection error of type CONNECTION_ID_LIMIT_ERROR.
+    #[test]
+    fn error_when_too_many_pending_retirement() {
+        let id_1 = connection::PeerId::try_from_bytes(b"id01").unwrap();
+        let mut reg = PeerIdRegistry::new(&id_1, None);
+
+        // Register 6 more new IDs for a total of 7, with 6 retired
+        for i in 2u32..=(RETIRED_CONNECTION_ID_LIMIT + 1).into() {
+            assert!(reg
+                .on_new_connection_id(
+                    &connection::PeerId::try_from_bytes(&i.to_ne_bytes()).unwrap(),
+                    i,
+                    i,
+                    &[i as u8; STATELESS_RESET_TOKEN_LEN],
+                )
+                .is_ok());
+        }
+
+        // Retiring one more ID exceeds the limit
+        let result = reg.on_new_connection_id(
+            &connection::PeerId::try_from_bytes(b"id08").unwrap(),
+            8,
+            8,
+            &[8 as u8; STATELESS_RESET_TOKEN_LEN],
+        );
+
+        assert_eq!(Some(ExceededRetiredConnectionIdLimit), result.err());
     }
 }
