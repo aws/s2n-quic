@@ -152,11 +152,15 @@ impl Interop {
     }
 
     fn server(&self) -> Result<Server> {
-        let certificate = self.certificate()?;
         let private_key = self.private_key()?;
 
+        // The server builder defaults to a chain because this allows certs to just work, whether
+        // the PEM contains a single cert or a chain
         let tls = s2n_quic::provider::tls::default::Server::builder()
-            .with_certificate(&certificate, &private_key)?
+            .with_certificate_chain(
+                &self.certificate.as_ref().unwrap().to_path_buf(),
+                &private_key,
+            )?
             .with_alpn_protocols(self.alpn_protocols.iter().map(String::as_bytes))?
             .build()?;
 
@@ -179,14 +183,6 @@ impl Interop {
         eprintln!("Server listening on port {}", self.port);
 
         Ok(server)
-    }
-
-    fn certificate(&self) -> Result<Vec<u8>> {
-        Ok(if let Some(path) = self.certificate.as_ref() {
-            std::fs::read(path)?
-        } else {
-            include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/certs/cert.der")).to_vec()
-        })
     }
 
     fn private_key(&self) -> Result<Vec<u8>> {
@@ -213,6 +209,7 @@ impl Interop {
             Some("ecn") => false,
             Some("rebind-addr") => false,
             Some("crosstraffic") => true,
+            Some("amplificationlimit") => true,
             None => true,
             _ => false,
         };
