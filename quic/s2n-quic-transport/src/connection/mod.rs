@@ -27,6 +27,7 @@ mod connection_trait;
 mod errors;
 pub(crate) mod finalization;
 mod internal_connection_id;
+pub(crate) mod peer_id_registry;
 mod shared_state;
 pub(crate) mod transmission;
 
@@ -37,6 +38,7 @@ pub(crate) use connection_interests::ConnectionInterests;
 pub(crate) use connection_timers::{ConnectionTimerEntry, ConnectionTimers};
 pub(crate) use connection_trait::ConnectionTrait as Trait;
 pub(crate) use internal_connection_id::{InternalConnectionId, InternalConnectionIdGenerator};
+pub(crate) use peer_id_registry::PeerIdRegistry;
 pub(crate) use shared_state::{SharedConnectionState, SynchronizedSharedConnectionState};
 pub(crate) use transmission::{ConnectionTransmission, ConnectionTransmissionContext};
 

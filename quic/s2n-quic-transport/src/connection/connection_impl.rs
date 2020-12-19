@@ -244,7 +244,20 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
             parameters.congestion_controller,
             peer_validated,
         );
-        let path_manager = path::Manager::new(initial_path);
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
+        //= type=TODO
+        //= tracking-issue=195
+        //= feature=Stateless Reset
+        //# Servers can also specify a stateless_reset_token transport
+        //# parameter during the handshake that applies to the connection ID that
+        //# it selected during the handshake; clients cannot use this transport
+        //# parameter because their transport parameters do not have
+        //# confidentiality protection.
+        let stateless_reset_token = None;
+        let peer_id_registry =
+            connection::PeerIdRegistry::new(initial_path.peer_connection_id, stateless_reset_token);
+        let path_manager = path::Manager::new(initial_path, peer_id_registry);
 
         Self {
             config: parameters.connection_config,
@@ -599,7 +612,8 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                 packet.packet_number,
                 packet.payload,
                 datagram,
-                &mut self.path_manager[path_id],
+                path_id,
+                &mut self.path_manager,
                 handshake_status,
                 &mut self.connection_id_mapper_registration,
             )? {
@@ -654,7 +668,8 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                 packet.packet_number,
                 packet.payload,
                 datagram,
-                &mut self.path_manager[path_id],
+                path_id,
+                &mut self.path_manager,
                 handshake_status,
                 &mut self.connection_id_mapper_registration,
             )? {
@@ -752,7 +767,8 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                 packet.packet_number,
                 packet.payload,
                 datagram,
-                &mut self.path_manager[path_id],
+                path_id,
+                &mut self.path_manager,
                 handshake_status,
                 &mut self.connection_id_mapper_registration,
             )? {

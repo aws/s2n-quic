@@ -1,5 +1,6 @@
 use crate::{
     connection::{self, ConnectionIdMapperRegistration, ConnectionTransmissionContext},
+    path,
     processed_packet::ProcessedPacket,
     recovery,
     space::{rx_packet_numbers::AckManager, HandshakeStatus, PacketSpace, TxPacketNumbers},
@@ -386,74 +387,37 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
         Ok(())
     }
 
-    fn handle_stream_frame(
-        &mut self,
-        frame: StreamRef,
-        _datagram: &DatagramInfo,
-        _path: &mut Path<Config::CongestionController>,
-    ) -> Result<(), TransportError> {
+    fn handle_stream_frame(&mut self, frame: StreamRef) -> Result<(), TransportError> {
         self.stream_manager.on_data(&frame)
     }
 
-    fn handle_data_blocked_frame(
-        &mut self,
-        frame: DataBlocked,
-        _datagram: &DatagramInfo,
-        _path: &mut Path<Config::CongestionController>,
-    ) -> Result<(), TransportError> {
+    fn handle_data_blocked_frame(&mut self, frame: DataBlocked) -> Result<(), TransportError> {
         self.stream_manager.on_data_blocked(frame)
     }
 
-    fn handle_max_data_frame(
-        &mut self,
-        frame: MaxData,
-        _datagram: &DatagramInfo,
-        _path: &mut Path<Config::CongestionController>,
-    ) -> Result<(), TransportError> {
+    fn handle_max_data_frame(&mut self, frame: MaxData) -> Result<(), TransportError> {
         self.stream_manager.on_max_data(frame)
     }
 
-    fn handle_max_stream_data_frame(
-        &mut self,
-        frame: MaxStreamData,
-        _datagram: &DatagramInfo,
-        _path: &mut Path<Config::CongestionController>,
-    ) -> Result<(), TransportError> {
+    fn handle_max_stream_data_frame(&mut self, frame: MaxStreamData) -> Result<(), TransportError> {
         self.stream_manager.on_max_stream_data(&frame)
     }
 
-    fn handle_max_streams_frame(
-        &mut self,
-        frame: MaxStreams,
-        _datagram: &DatagramInfo,
-        _path: &mut Path<Config::CongestionController>,
-    ) -> Result<(), TransportError> {
+    fn handle_max_streams_frame(&mut self, frame: MaxStreams) -> Result<(), TransportError> {
         self.stream_manager.on_max_streams(&frame)
     }
 
-    fn handle_reset_stream_frame(
-        &mut self,
-        frame: ResetStream,
-        _datagram: &DatagramInfo,
-        _path: &mut Path<Config::CongestionController>,
-    ) -> Result<(), TransportError> {
+    fn handle_reset_stream_frame(&mut self, frame: ResetStream) -> Result<(), TransportError> {
         self.stream_manager.on_reset_stream(&frame)
     }
 
-    fn handle_stop_sending_frame(
-        &mut self,
-        frame: StopSending,
-        _datagram: &DatagramInfo,
-        _path: &mut Path<Config::CongestionController>,
-    ) -> Result<(), TransportError> {
+    fn handle_stop_sending_frame(&mut self, frame: StopSending) -> Result<(), TransportError> {
         self.stream_manager.on_stop_sending(&frame)
     }
 
     fn handle_stream_data_blocked_frame(
         &mut self,
         frame: StreamDataBlocked,
-        _datagram: &DatagramInfo,
-        _path: &mut Path<Config::CongestionController>,
     ) -> Result<(), TransportError> {
         self.stream_manager.on_stream_data_blocked(&frame)
     }
@@ -461,18 +425,11 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
     fn handle_streams_blocked_frame(
         &mut self,
         frame: StreamsBlocked,
-        _datagram: &DatagramInfo,
-        _path: &mut Path<Config::CongestionController>,
     ) -> Result<(), TransportError> {
         self.stream_manager.on_streams_blocked(&frame)
     }
 
-    fn handle_new_token_frame(
-        &mut self,
-        frame: NewToken,
-        _datagram: &DatagramInfo,
-        _path: &mut Path<Config::CongestionController>,
-    ) -> Result<(), TransportError> {
+    fn handle_new_token_frame(&mut self, frame: NewToken) -> Result<(), TransportError> {
         // TODO
         eprintln!("UNIMPLEMENTED APPLICATION FRAME {:?}", frame);
         Ok(())
@@ -482,11 +439,35 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
         &mut self,
         frame: NewConnectionID,
         _datagram: &DatagramInfo,
-        _path: &mut Path<Config::CongestionController>,
+        path_manager: &mut path::Manager<Config::CongestionController>,
     ) -> Result<(), TransportError> {
-        // TODO
-        eprintln!("UNIMPLEMENTED APPLICATION FRAME {:?}", frame);
-        Ok(())
+        if path_manager.active_path().1.peer_connection_id.is_empty() {
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
+            //# An endpoint that is sending packets with a zero-length Destination
+            //# Connection ID MUST treat receipt of a NEW_CONNECTION_ID frame as a
+            //# connection error of type PROTOCOL_VIOLATION.
+            return Err(TransportError::PROTOCOL_VIOLATION);
+        }
+
+        let peer_id = connection::PeerId::try_from_bytes(frame.connection_id)
+            .expect("Length is validated when decoding the frame");
+        let sequence_number = frame
+            .sequence_number
+            .as_u64()
+            .try_into()
+            .map_err(|_err| TransportError::PROTOCOL_VIOLATION)?;
+        let retire_prior_to = frame
+            .retire_prior_to
+            .as_u64()
+            .try_into()
+            .map_err(|_err| TransportError::PROTOCOL_VIOLATION)?;
+
+        path_manager.on_new_connection_id(
+            &peer_id,
+            sequence_number,
+            retire_prior_to,
+            frame.stateless_reset_token,
+        )
     }
 
     fn handle_retire_connection_id_frame(
@@ -525,23 +506,13 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
             .map_err(|err| TransportError::PROTOCOL_VIOLATION.with_reason(err.message()))
     }
 
-    fn handle_path_challenge_frame(
-        &mut self,
-        frame: PathChallenge,
-        _datagram: &DatagramInfo,
-        _path: &mut Path<Config::CongestionController>,
-    ) -> Result<(), TransportError> {
+    fn handle_path_challenge_frame(&mut self, frame: PathChallenge) -> Result<(), TransportError> {
         // TODO
         eprintln!("UNIMPLEMENTED APPLICATION FRAME {:?}", frame);
         Ok(())
     }
 
-    fn handle_path_response_frame(
-        &mut self,
-        frame: PathResponse,
-        _datagram: &DatagramInfo,
-        _path: &mut Path<Config::CongestionController>,
-    ) -> Result<(), TransportError> {
+    fn handle_path_response_frame(&mut self, frame: PathResponse) -> Result<(), TransportError> {
         // TODO map this frame to a Path
         eprintln!("UNIMPLEMENTED APPLICATION FRAME {:?}", frame);
         Ok(())

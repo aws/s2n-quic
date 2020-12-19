@@ -44,7 +44,7 @@ macro_rules! new_connection_id_tag {
 //#    stateless reset when the associated connection ID is used; see
 //#    Section 10.3.
 
-const STATELESS_RESET_TOKEN_LEN: usize = size_of::<u128>();
+pub const STATELESS_RESET_TOKEN_LEN: usize = size_of::<u128>();
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct NewConnectionID<'a> {
@@ -75,10 +75,26 @@ decoder_parameterized_value!(
             let (sequence_number, buffer) = buffer.decode()?;
             let (retire_prior_to, buffer) = buffer.decode()?;
 
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
+            //# The Retire Prior To field MUST be less
+            //# than or equal to the Sequence Number field.
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
+            //# Receiving a value greater than the Sequence Number MUST be treated
+            //# as a connection error of type FRAME_ENCODING_ERROR.
+            decoder_invariant!(
+                retire_prior_to <= sequence_number,
+                "invalid retire prior to value"
+            );
+
             let (connection_id_len, buffer) = buffer.decode::<u8>()?;
 
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
+            //# Values less than 1 and greater than 20 are invalid
+            //# and MUST be treated as a connection error of type
+            //# FRAME_ENCODING_ERROR.
             decoder_invariant!(
-                (1..20).contains(&connection_id_len),
+                (1..=20).contains(&connection_id_len),
                 "invalid connection id length"
             );
 

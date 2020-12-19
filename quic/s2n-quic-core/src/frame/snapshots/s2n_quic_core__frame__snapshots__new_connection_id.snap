@@ -6,10 +6,10 @@ expression: frames
     NewConnectionID(
         NewConnectionID {
             sequence_number: VarInt(
-                1,
+                2,
             ),
             retire_prior_to: VarInt(
-                2,
+                1,
             ),
             connection_id: [
                 1,

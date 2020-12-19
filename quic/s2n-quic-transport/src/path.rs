@@ -1,6 +1,6 @@
 //! This module contains the Manager implementation
 
-use crate::space::EARLY_ACK_SETTINGS;
+use crate::{connection::PeerIdRegistry, space::EARLY_ACK_SETTINGS};
 use s2n_quic_core::{
     connection,
     inet::{DatagramInfo, SocketAddress},
@@ -22,14 +22,18 @@ pub struct Manager<CC: CongestionController> {
     /// Path array
     paths: SmallVec<[Path<CC>; INLINE_PATH_LEN]>,
 
+    /// Registry of `connection::PeerId`s
+    peer_id_registry: PeerIdRegistry,
+
     /// Index to the active path
     active: usize,
 }
 
 impl<CC: CongestionController> Manager<CC> {
-    pub fn new(initial_path: Path<CC>) -> Self {
+    pub fn new(initial_path: Path<CC>, peer_id_registry: PeerIdRegistry) -> Self {
         Manager {
             paths: SmallVec::from_elem(initial_path, 1),
+            peer_id_registry,
             active: 0,
         }
     }
@@ -119,8 +123,9 @@ impl<CC: CongestionController> Manager<CC> {
             // The existing peer connection id may only be reused if the destination
             // connection ID on this packet had not been used before (this would happen
             // when the peer's remote address gets changed due to circumstances out of their
-            // control). Otherwise we will need to consume a new connection::PeerId or ignore
-            // the request if we don't have any connection::PeerIds to use.
+            // control). Otherwise we will need to consume a new connection::PeerId by calling
+            // PeerIdRegistry::consume_new_id_if_necessary(None) and ignoring the request if
+            // no new connection::PeerId is available to use.
             self.active_path().1.peer_connection_id,
             RTTEstimator::new(EARLY_ACK_SETTINGS.max_ack_delay),
             new_congestion_controller(),
@@ -184,7 +189,45 @@ impl<CC: CongestionController> Manager<CC> {
         // TODO invalidate any tokens issued under this connection id
     }
 
-    pub fn on_connection_id_new(&self, _connection_id: &connection::LocalId) {}
+    /// Called when a NEW_CONNECTION_ID frame is received from the peer
+    pub fn on_new_connection_id(
+        &mut self,
+        connection_id: &connection::PeerId,
+        sequence_number: u32,
+        retire_prior_to: u32,
+        stateless_reset_token: &[u8],
+    ) -> Result<(), TransportError> {
+        // Register the new connection ID
+        self.peer_id_registry.on_new_connection_id(
+            connection_id,
+            sequence_number,
+            retire_prior_to,
+            stateless_reset_token,
+        )?;
+
+        // TODO This new connection ID may retire IDs in use by multiple paths. Since we are not
+        //      currently supporting connection migration, there is only one path, but once there
+        //      are more than one we should decide what to do if there aren't enough new connection
+        //      IDs available for all paths.
+        //      See https://github.com/awslabs/s2n-quic/issues/358
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2
+        //# Upon receipt of an increased Retire Prior To field, the peer MUST
+        //# stop using the corresponding connection IDs and retire them with
+        //# RETIRE_CONNECTION_ID frames before adding the newly provided
+        //# connection ID to the set of active connection IDs.
+        // Ensure all paths are not using a newly retired connection ID
+        for path in self.paths.iter_mut() {
+            path.peer_connection_id = self
+                .peer_id_registry
+                .consume_new_id_if_necessary(Some(&path.peer_connection_id))
+                .expect(
+                    "There is only one path maintained currently and since a new ID was \
+                delivered, there will always be a new ID available to consume if necessary",
+                );
+        }
+
+        Ok(())
+    }
 
     pub fn on_packet_received(&mut self) {}
 }
@@ -212,6 +255,7 @@ mod tests {
     use super::*;
     use core::time::Duration;
     use s2n_quic_core::{
+        frame::new_connection_id::STATELESS_RESET_TOKEN_LEN,
         inet::{DatagramInfo, ExplicitCongestionNotification},
         recovery::{congestion_controller::testing::Unlimited, RTTEstimator},
         time::Timestamp,
@@ -229,7 +273,8 @@ mod tests {
             false,
         );
 
-        let manager = Manager::new(first_path);
+        let peer_id_registry = PeerIdRegistry::new(first_path.peer_connection_id, None);
+        let manager = Manager::new(first_path, peer_id_registry);
         assert_eq!(manager.paths.len(), 1);
 
         let (_id, matched_path) = manager.path(&SocketAddress::default()).unwrap();
@@ -248,7 +293,8 @@ mod tests {
         );
         first_path.challenge = Some([0u8; 8]);
 
-        let mut manager = Manager::new(first_path);
+        let peer_id_registry = PeerIdRegistry::new(first_path.peer_connection_id, None);
+        let mut manager = Manager::new(first_path, peer_id_registry);
         assert_eq!(manager.paths.len(), 1);
         {
             let (_id, first_path) = manager.path(&first_path.peer_socket_address).unwrap();
@@ -274,7 +320,8 @@ mod tests {
             Unlimited::default(),
             false,
         );
-        let mut manager = Manager::new(first_path);
+        let peer_id_registry = PeerIdRegistry::new(first_path.peer_connection_id, None);
+        let mut manager = Manager::new(first_path, peer_id_registry);
         assert_eq!(manager.paths.len(), 1);
         let new_addr: SocketAddr = "127.0.0.1:80".parse().unwrap();
         let new_addr = SocketAddress::from(new_addr);
@@ -319,5 +366,32 @@ mod tests {
             true
         );
         assert_eq!(manager.paths.len(), 2);
+    }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2
+    //= type=test
+    //# Upon receipt of an increased Retire Prior To field, the peer MUST
+    //# stop using the corresponding connection IDs and retire them with
+    //# RETIRE_CONNECTION_ID frames before adding the newly provided
+    //# connection ID to the set of active connection IDs.
+    #[test]
+    fn stop_using_a_retired_connection_id() {
+        let id_1 = connection::PeerId::try_from_bytes(b"id01").unwrap();
+        let first_path = Path::new(
+            SocketAddress::default(),
+            id_1,
+            RTTEstimator::new(Duration::from_millis(30)),
+            Unlimited::default(),
+            false,
+        );
+        let peer_id_registry = PeerIdRegistry::new(first_path.peer_connection_id, None);
+        let mut manager = Manager::new(first_path, peer_id_registry);
+
+        let id_2 = connection::PeerId::try_from_bytes(b"id02").unwrap();
+        assert!(manager
+            .on_new_connection_id(&id_2, 1, 1, &[1 as u8; STATELESS_RESET_TOKEN_LEN])
+            .is_ok());
+
+        assert_eq!(id_2, manager.paths[0].peer_connection_id);
     }
 }
