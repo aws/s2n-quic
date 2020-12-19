@@ -29,6 +29,8 @@ const NR_STATIC_REGISTRABLE_IDS: usize = 5;
 //# during the handshake, that received in the preferred_address transport
 //# parameter, and those received in NEW_CONNECTION_ID frames.  The value
 //# of the active_connection_id_limit parameter MUST be at least 2.
+// A value of 3 is sufficient for a client to probe multiple paths and for a server to respond
+// to connection migrations from a client.
 pub const ACTIVE_CONNECTION_ID_LIMIT: u8 = 3;
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2
