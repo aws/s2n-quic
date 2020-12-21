@@ -19,7 +19,7 @@ use s2n_quic_ring::{
 };
 use std::fs;
 use std::io::BufReader;
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::Arc;
 use webpki::DNSNameRef;
 
@@ -99,6 +99,32 @@ impl AsCertificate for &Vec<u8> {
 impl AsCertificate for &[u8] {
     fn as_certificate(self) -> Vec<Certificate> {
         vec![Certificate(self.to_vec())]
+    }
+}
+
+fn load_certs(path: &Path) -> Result<Vec<rustls::Certificate>, TLSError> {
+    match fs::File::open(path) {
+        Ok(certfile) => {
+            let mut reader = BufReader::new(certfile);
+            match rustls::internal::pemfile::certs(&mut reader) {
+                Ok(certs) => Ok(certs),
+                Err(_) => Err(TLSError::General(
+                    "Could not parse certificates".to_string(),
+                )),
+            }
+        }
+        Err(_) => Err(TLSError::General(
+            "Could not open certificate file".to_string(),
+        )),
+    }
+}
+
+impl AsCertificate for &Path {
+    fn as_certificate(self) -> Vec<Certificate> {
+        match load_certs(&self) {
+            Ok(certs) => certs,
+            Err(_) => vec![],
+        }
     }
 }
 
@@ -398,12 +424,6 @@ pub mod server {
         }
     }
 
-    fn load_certs(path: &PathBuf) -> Vec<rustls::Certificate> {
-        let certfile = fs::File::open(path).expect("cannot open certificate file");
-        let mut reader = BufReader::new(certfile);
-        rustls::internal::pemfile::certs(&mut reader).unwrap()
-    }
-
     impl Builder {
         pub fn new() -> Self {
             let mut config = ServerConfig::new(rustls::NoClientAuth::new());
@@ -415,18 +435,6 @@ pub mod server {
             config.alpn_protocols = vec![b"h3".to_vec()];
 
             Self { config }
-        }
-
-        pub fn with_certificate_chain<PK: AsPrivateKey>(
-            mut self,
-            cert_chain: &PathBuf,
-            key: PK,
-        ) -> Result<Self, TLSError> {
-            let roots = load_certs(cert_chain);
-            self.config
-                .set_single_cert(roots, key.as_private_key())
-                .expect("bad certificates/private key");
-            Ok(self)
         }
 
         pub fn with_certificate<C: AsCertificate, PK: AsPrivateKey>(

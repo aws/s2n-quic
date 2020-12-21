@@ -28,7 +28,7 @@ if [ -d "/certs" ]; then
     openssl x509 -outform der -in /certs/ca.pem -out /tmp/ca.der
 
     # Default to the PEM format because our server can support single certs OR cert chains through PEM
-    CERT_ARGS="--private-key /tmp/key.der --certificate /certs/cert.pem"
+    CERT_ARGS="--private-key /tmp/key.der"
 fi
 
 if [ "$ROLE" == "client" ]; then

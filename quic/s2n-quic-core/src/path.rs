@@ -75,6 +75,7 @@ impl<CC: CongestionController> Path<CC> {
 
     /// Called when bytes have been transmitted on this path
     pub fn on_bytes_transmitted(&mut self, bytes: usize) {
+        println!("On TX {:?} {}", self.state, bytes);
         if let State::Pending { tx_bytes, .. } = &mut self.state {
             *tx_bytes += bytes as u32;
         }
@@ -126,10 +127,12 @@ impl<CC: CongestionController> Path<CC> {
         match self.state {
             State::Validated => requested_size.min(self.mtu as usize),
             State::Pending { tx_bytes, rx_bytes } => {
+                println!("RX {} TX {}", rx_bytes, tx_bytes);
                 let limit = rx_bytes
                     .checked_mul(3)
                     .and_then(|v| v.checked_sub(tx_bytes))
                     .unwrap_or(0);
+                println!("LIMIT IS {}", limit);
                 requested_size.min(limit as usize).min(self.mtu as usize)
             }
         }
