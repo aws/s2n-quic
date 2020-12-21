@@ -81,49 +81,42 @@ impl<Session> InnerSession<Session> {
 }
 
 pub trait AsCertificate {
-    fn as_certificate(self) -> Vec<Certificate>;
+    fn as_certificate(self) -> Result<Vec<Certificate>, TLSError>;
 }
 
 impl AsCertificate for Vec<u8> {
-    fn as_certificate(self) -> Vec<Certificate> {
-        vec![Certificate(self)]
+    fn as_certificate(self) -> Result<Vec<Certificate>, TLSError> {
+        Ok(vec![Certificate(self)])
     }
 }
 
 impl AsCertificate for &Vec<u8> {
-    fn as_certificate(self) -> Vec<Certificate> {
-        vec![Certificate(self.to_vec())]
+    fn as_certificate(self) -> Result<Vec<Certificate>, TLSError> {
+        Ok(vec![Certificate(self.to_vec())])
     }
 }
 
 impl AsCertificate for &[u8] {
-    fn as_certificate(self) -> Vec<Certificate> {
-        vec![Certificate(self.to_vec())]
-    }
-}
-
-fn load_certs(path: &Path) -> Result<Vec<rustls::Certificate>, TLSError> {
-    match fs::File::open(path) {
-        Ok(certfile) => {
-            let mut reader = BufReader::new(certfile);
-            match rustls::internal::pemfile::certs(&mut reader) {
-                Ok(certs) => Ok(certs),
-                Err(_) => Err(TLSError::General(
-                    "Could not parse certificates".to_string(),
-                )),
-            }
-        }
-        Err(_) => Err(TLSError::General(
-            "Could not open certificate file".to_string(),
-        )),
+    fn as_certificate(self) -> Result<Vec<Certificate>, TLSError> {
+        Ok(vec![Certificate(self.to_vec())])
     }
 }
 
 impl AsCertificate for &Path {
-    fn as_certificate(self) -> Vec<Certificate> {
-        match load_certs(&self) {
-            Ok(certs) => certs,
-            Err(_) => vec![],
+    fn as_certificate(self) -> Result<Vec<Certificate>, TLSError> {
+        match fs::File::open(self) {
+            Ok(certfile) => {
+                let mut reader = BufReader::new(certfile);
+                match rustls::internal::pemfile::certs(&mut reader) {
+                    Ok(certs) => Ok(certs),
+                    Err(_) => Err(TLSError::General(
+                        "Could not parse certificates".to_string(),
+                    )),
+                }
+            }
+            Err(_) => Err(TLSError::General(
+                "Could not open certificate file".to_string(),
+            )),
         }
     }
 }
@@ -442,8 +435,9 @@ pub mod server {
             cert: C,
             key: PK,
         ) -> Result<Self, TLSError> {
+            let certificate = cert.as_certificate()?;
             self.config
-                .set_single_cert(cert.as_certificate(), key.as_private_key())?;
+                .set_single_cert(certificate, key.as_private_key())?;
             Ok(self)
         }
 
