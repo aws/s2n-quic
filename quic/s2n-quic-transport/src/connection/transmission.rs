@@ -53,7 +53,6 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
         let space_manager = &mut shared_state.space_manager;
 
         let mtu = self.context.path.clamp_mtu(buffer.len());
-        println!(" -- MTU {}", mtu);
         debug_assert_ne!(
             mtu, 0,
             "the amplification limit should be checked before trying to transmit"

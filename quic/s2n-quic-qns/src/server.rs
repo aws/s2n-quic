@@ -187,6 +187,7 @@ impl Interop {
         Ok(if let Some(path) = self.certificate.as_ref() {
             path
         } else {
+            // Default assumes a host environment, not a Docker QNS environment
             Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/certs/cert.der"))
         })
     }
@@ -195,6 +196,7 @@ impl Interop {
         Ok(if let Some(path) = self.private_key.as_ref() {
             std::fs::read(path)?
         } else {
+            // Default assumes a host environment, not a Docker QNS environment
             include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/certs/key.der")).to_vec()
         })
     }

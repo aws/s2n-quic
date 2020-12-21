@@ -18,7 +18,7 @@ use s2n_quic_ring::{
     RingCryptoSuite, SecretPair,
 };
 use std::fs;
-use std::io::BufReader;
+use std::io::{BufReader, Read};
 use std::path::Path;
 use std::sync::Arc;
 use webpki::DNSNameRef;
@@ -145,8 +145,12 @@ fn load_pem(path: &Path) -> Result<Vec<Certificate>, TLSError> {
 fn load_der(path: &Path) -> Result<Vec<Certificate>, TLSError> {
     match fs::File::open(path) {
         Ok(certfile) => {
-            let reader = BufReader::new(certfile);
-            Ok(vec![Certificate(reader.buffer().to_vec())])
+            let mut reader = BufReader::new(certfile);
+            let mut cert = Vec::new();
+            match reader.read_to_end(&mut cert) {
+                Ok(_) => Ok(vec![Certificate(cert)]),
+                Err(_) => Err(TLSError::General("Could not parse certificate".to_string())),
+            }
         }
         Err(_) => Err(TLSError::General(
             "Could not open certificate file".to_string(),
