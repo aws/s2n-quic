@@ -1,12 +1,11 @@
 #![forbid(unsafe_code)]
 
 use core::fmt;
-pub use rustls;
+pub use rustls::{self, Certificate, PrivateKey};
 use rustls::{
     quic::{ClientQuicExt, QuicExt, Secrets, ServerQuicExt},
     ClientConfig, ProtocolVersion, ServerConfig, SupportedCipherSuite, TLSError,
 };
-pub use rustls::{Certificate, PrivateKey};
 use s2n_codec::{EncoderBuffer, EncoderValue};
 use s2n_quic_core::{
     self,
@@ -17,12 +16,14 @@ use s2n_quic_ring::{
     handshake::RingHandshakeCrypto, one_rtt::RingOneRTTCrypto, zero_rtt::RingZeroRTTCrypto, Prk,
     RingCryptoSuite, SecretPair,
 };
-use std::convert::TryFrom;
-use std::ffi::OsStr;
-use std::fs;
-use std::io::{BufReader, Read};
-use std::path::Path;
-use std::sync::Arc;
+use std::{
+    convert::TryFrom,
+    ffi::OsStr,
+    fs,
+    io::{BufReader, Read},
+    path::Path,
+    sync::Arc,
+};
 use webpki::DNSNameRef;
 
 //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.3

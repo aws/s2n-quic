@@ -2,8 +2,14 @@ use crate::{file::File, Result};
 use bytes::Bytes;
 use core::convert::TryInto;
 use futures::stream::StreamExt;
-use s2n_quic::provider::tls::rustls::{AsCertificate, AsPrivateKey, Certificate, PrivateKey};
-use s2n_quic::{provider::endpoint_limits, stream::BidirectionalStream, Connection, Server};
+use s2n_quic::{
+    provider::{
+        endpoint_limits,
+        tls::rustls::{AsCertificate, AsPrivateKey, Certificate, PrivateKey},
+    },
+    stream::BidirectionalStream,
+    Connection, Server,
+};
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
