@@ -4,9 +4,9 @@ use core::fmt;
 pub use rustls;
 use rustls::{
     quic::{ClientQuicExt, QuicExt, Secrets, ServerQuicExt},
-    Certificate, ClientConfig, PrivateKey, ProtocolVersion, ServerConfig, SupportedCipherSuite,
-    TLSError,
+    ClientConfig, ProtocolVersion, ServerConfig, SupportedCipherSuite, TLSError,
 };
+pub use rustls::{Certificate, PrivateKey};
 use s2n_codec::{EncoderBuffer, EncoderValue};
 use s2n_quic_core::{
     self,
@@ -17,6 +17,8 @@ use s2n_quic_ring::{
     handshake::RingHandshakeCrypto, one_rtt::RingOneRTTCrypto, zero_rtt::RingZeroRTTCrypto, Prk,
     RingCryptoSuite, SecretPair,
 };
+use std::convert::TryFrom;
+use std::ffi::OsStr;
 use std::fs;
 use std::io::{BufReader, Read};
 use std::path::Path;
@@ -80,6 +82,36 @@ impl<Session> InnerSession<Session> {
     }
 }
 
+enum FileExtension {
+    Pem,
+    Der,
+}
+
+impl TryFrom<&Path> for FileExtension {
+    type Error = TLSError;
+
+    fn try_from(path: &Path) -> Result<Self, Self::Error> {
+        match path.extension().and_then(OsStr::to_str) {
+            Some("pem") => Ok(FileExtension::Pem),
+            Some("der") => Ok(FileExtension::Der),
+            _ => Err(TLSError::General(
+                "Unknown certificate extension".to_string(),
+            )),
+        }
+    }
+}
+
+fn load_file(path: &Path) -> Result<BufReader<fs::File>, TLSError> {
+    if let Ok(file) = fs::File::open(path) {
+        Ok(BufReader::new(file))
+    } else {
+        Err(TLSError::General(format!(
+            "Could not open file at {:?}",
+            path
+        )))
+    }
+}
+
 pub trait AsCertificate {
     fn as_certificate(self) -> Result<Vec<Certificate>, TLSError>;
 }
@@ -102,93 +134,101 @@ impl AsCertificate for &[u8] {
     }
 }
 
-enum CertificateExtension {
-    Pem,
-    Der,
-    Unknown,
-}
-
-impl From<&Path> for CertificateExtension {
-    fn from(path: &Path) -> Self {
-        match path.extension() {
-            Some(ext) => {
-                if ext == "pem" {
-                    CertificateExtension::Pem
-                } else if ext == "der" {
-                    CertificateExtension::Der
-                } else {
-                    CertificateExtension::Unknown
-                }
-            }
-            None => CertificateExtension::Unknown,
-        }
+fn load_pem_certificate(path: &Path) -> Result<Vec<Certificate>, TLSError> {
+    let mut file_reader = load_file(path)?;
+    match rustls::internal::pemfile::certs(&mut file_reader) {
+        Ok(certs) => Ok(certs),
+        Err(_) => Err(TLSError::General("Could not parse PEM".to_string())),
     }
 }
 
-fn load_pem(path: &Path) -> Result<Vec<Certificate>, TLSError> {
-    match fs::File::open(path) {
-        Ok(certfile) => {
-            let mut reader = BufReader::new(certfile);
-            match rustls::internal::pemfile::certs(&mut reader) {
-                Ok(certs) => Ok(certs),
-                Err(_) => Err(TLSError::General(
-                    "Could not parse certificates".to_string(),
-                )),
-            }
-        }
-        Err(_) => Err(TLSError::General(
-            "Could not open certificate file".to_string(),
-        )),
+fn load_der_certificate(path: &Path) -> Result<Vec<Certificate>, TLSError> {
+    let mut file_reader = load_file(path)?;
+    let mut cert = Vec::new();
+    match file_reader.read_to_end(&mut cert) {
+        Ok(_) => Ok(vec![Certificate(cert)]),
+        Err(_) => Err(TLSError::General("Could not read DER".to_string())),
     }
 }
 
-fn load_der(path: &Path) -> Result<Vec<Certificate>, TLSError> {
-    match fs::File::open(path) {
-        Ok(certfile) => {
-            let mut reader = BufReader::new(certfile);
-            let mut cert = Vec::new();
-            match reader.read_to_end(&mut cert) {
-                Ok(_) => Ok(vec![Certificate(cert)]),
-                Err(_) => Err(TLSError::General("Could not parse certificate".to_string())),
-            }
-        }
-        Err(_) => Err(TLSError::General(
-            "Could not open certificate file".to_string(),
-        )),
+impl AsCertificate for Vec<Certificate> {
+    fn as_certificate(self) -> Result<Vec<Certificate>, TLSError> {
+        Ok(self)
     }
 }
 
 impl AsCertificate for &Path {
     fn as_certificate(self) -> Result<Vec<Certificate>, TLSError> {
-        match CertificateExtension::from(self) {
-            CertificateExtension::Pem => load_pem(self),
-            CertificateExtension::Der => load_der(self),
-            CertificateExtension::Unknown => Err(TLSError::General(
-                "Unknown certificate extension".to_string(),
-            )),
+        let cert = FileExtension::try_from(self)?;
+        match cert {
+            FileExtension::Pem => load_pem_certificate(self),
+            FileExtension::Der => load_der_certificate(self),
         }
     }
 }
 
 pub trait AsPrivateKey {
-    fn as_private_key(self) -> PrivateKey;
+    fn as_private_key(self) -> Result<PrivateKey, TLSError>;
 }
 
 impl AsPrivateKey for Vec<u8> {
-    fn as_private_key(self) -> PrivateKey {
-        PrivateKey(self)
+    fn as_private_key(self) -> Result<PrivateKey, TLSError> {
+        Ok(PrivateKey(self))
     }
 }
 
 impl AsPrivateKey for &Vec<u8> {
-    fn as_private_key(self) -> PrivateKey {
-        PrivateKey(self.to_vec())
+    fn as_private_key(self) -> Result<PrivateKey, TLSError> {
+        Ok(PrivateKey(self.to_vec()))
     }
 }
 
 impl AsPrivateKey for &[u8] {
-    fn as_private_key(self) -> PrivateKey {
-        PrivateKey(self.to_vec())
+    fn as_private_key(self) -> Result<PrivateKey, TLSError> {
+        Ok(PrivateKey(self.to_vec()))
+    }
+}
+
+fn load_pem_key(path: &Path) -> Result<PrivateKey, TLSError> {
+    let mut file_reader = load_file(path)?;
+
+    // Only the first private key is returned from a pemfile because there can be only one key
+    // valid for the certificates presented by this server
+    match rustls::internal::pemfile::rsa_private_keys(&mut file_reader) {
+        Ok(mut keys) => {
+            if keys.len() != 1 {
+                return Err(TLSError::General(
+                    "Unexpected number of keys (only 1 supported)".to_string(),
+                ));
+            }
+            Ok(keys.pop().unwrap())
+        }
+        Err(_) => Err(TLSError::General("Could not parse PEM".to_string())),
+    }
+}
+
+fn load_der_key(path: &Path) -> Result<PrivateKey, TLSError> {
+    let mut file_reader = load_file(path)?;
+    let mut key = Vec::new();
+    match file_reader.read_to_end(&mut key) {
+        Ok(_) => Ok(PrivateKey(key)),
+        Err(_) => Err(TLSError::General("Could not read DER".to_string())),
+    }
+}
+
+impl AsPrivateKey for &Path {
+    fn as_private_key(self) -> Result<PrivateKey, TLSError> {
+        let key = FileExtension::try_from(self)?;
+        match key {
+            FileExtension::Pem => load_pem_key(self),
+            FileExtension::Der => load_der_key(self),
+        }
+    }
+}
+
+impl AsPrivateKey for PrivateKey {
+    fn as_private_key(self) -> Result<PrivateKey, TLSError> {
+        Ok(self)
     }
 }
 
@@ -485,8 +525,8 @@ pub mod server {
             key: PK,
         ) -> Result<Self, TLSError> {
             let certificate = cert.as_certificate()?;
-            self.config
-                .set_single_cert(certificate, key.as_private_key())?;
+            let key = key.as_private_key()?;
+            self.config.set_single_cert(certificate, key)?;
             Ok(self)
         }
 

@@ -2,6 +2,7 @@ use crate::{file::File, Result};
 use bytes::Bytes;
 use core::convert::TryInto;
 use futures::stream::StreamExt;
+use s2n_quic::provider::tls::rustls::{AsCertificate, AsPrivateKey, Certificate, PrivateKey};
 use s2n_quic::{provider::endpoint_limits, stream::BidirectionalStream, Connection, Server};
 use std::{
     path::{Path, PathBuf},
@@ -158,7 +159,7 @@ impl Interop {
         // The server builder defaults to a chain because this allows certs to just work, whether
         // the PEM contains a single cert or a chain
         let tls = s2n_quic::provider::tls::default::Server::builder()
-            .with_certificate(certificate, &private_key)?
+            .with_certificate(certificate, private_key)?
             .with_alpn_protocols(self.alpn_protocols.iter().map(String::as_bytes))?
             .build()?;
 
@@ -183,21 +184,21 @@ impl Interop {
         Ok(server)
     }
 
-    fn certificate(&self) -> Result<&Path> {
-        Ok(if let Some(path) = self.certificate.as_ref() {
-            path
+    fn certificate(&self) -> Result<Vec<Certificate>> {
+        Ok(if let Some(pathbuf) = self.certificate.as_ref() {
+            pathbuf.as_certificate()?
         } else {
-            // Default assumes a host environment, not a Docker QNS environment
-            Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/certs/cert.der"))
+            include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/certs/cert.der"))
+                .as_certificate()?
         })
     }
 
-    fn private_key(&self) -> Result<Vec<u8>> {
-        Ok(if let Some(path) = self.private_key.as_ref() {
-            std::fs::read(path)?
+    fn private_key(&self) -> Result<PrivateKey> {
+        Ok(if let Some(pathbuf) = self.private_key.as_ref() {
+            pathbuf.as_private_key()?
         } else {
-            // Default assumes a host environment, not a Docker QNS environment
-            include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/certs/key.der")).to_vec()
+            include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/certs/key.der"))
+                .as_private_key()?
         })
     }
 

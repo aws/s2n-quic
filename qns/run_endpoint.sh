@@ -23,12 +23,10 @@ fi
 CERT_ARGS=""
 
 if [ -d "/certs" ]; then
-    openssl rsa -outform der -in /certs/priv.key -out /tmp/key.der
-    openssl x509 -outform der -in /certs/cert.pem -out /tmp/cert.der
-    openssl x509 -outform der -in /certs/ca.pem -out /tmp/ca.der
+    # Rustls only reads RSA private keys, not the PKCS#8 private key format
+    openssl rsa -in /certs/priv.key -outform pem -out /tmp/rsa_priv_key.pem
 
-    # Default to the PEM format because our server can support single certs OR cert chains through PEM
-    CERT_ARGS="--private-key /tmp/key.der --certificate /certs/cert.pem"
+    CERT_ARGS="--private-key /tmp/rsa_priv_key.pem --certificate /certs/cert.pem"
 fi
 
 if [ "$ROLE" == "client" ]; then
