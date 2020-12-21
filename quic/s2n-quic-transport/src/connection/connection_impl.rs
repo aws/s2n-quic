@@ -892,8 +892,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
 
                 let mut transmission = Interest::default();
 
-                // TODO ask path manager if it wants to transmit for path probes
-                // transmission += self.path_manager.transmission_interest();
+                transmission += self.path_manager.transmission_interest();
 
                 let (_, path) = self.path_manager.active_path();
                 let constraint = path.transmission_constraint();
