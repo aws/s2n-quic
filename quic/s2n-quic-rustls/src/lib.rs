@@ -102,20 +102,65 @@ impl AsCertificate for &[u8] {
     }
 }
 
-impl AsCertificate for &Path {
-    fn as_certificate(self) -> Result<Vec<Certificate>, TLSError> {
-        match fs::File::open(self) {
-            Ok(certfile) => {
-                let mut reader = BufReader::new(certfile);
-                match rustls::internal::pemfile::certs(&mut reader) {
-                    Ok(certs) => Ok(certs),
-                    Err(_) => Err(TLSError::General(
-                        "Could not parse certificates".to_string(),
-                    )),
+enum CertificateExtension {
+    Pem,
+    Der,
+    Unknown,
+}
+
+impl From<&Path> for CertificateExtension {
+    fn from(path: &Path) -> Self {
+        match path.extension() {
+            Some(ext) => {
+                if ext == "pem" {
+                    CertificateExtension::Pem
+                } else if ext == "der" {
+                    CertificateExtension::Der
+                } else {
+                    CertificateExtension::Unknown
                 }
             }
-            Err(_) => Err(TLSError::General(
-                "Could not open certificate file".to_string(),
+            None => CertificateExtension::Unknown,
+        }
+    }
+}
+
+fn load_pem(path: &Path) -> Result<Vec<Certificate>, TLSError> {
+    match fs::File::open(path) {
+        Ok(certfile) => {
+            let mut reader = BufReader::new(certfile);
+            match rustls::internal::pemfile::certs(&mut reader) {
+                Ok(certs) => Ok(certs),
+                Err(_) => Err(TLSError::General(
+                    "Could not parse certificates".to_string(),
+                )),
+            }
+        }
+        Err(_) => Err(TLSError::General(
+            "Could not open certificate file".to_string(),
+        )),
+    }
+}
+
+fn load_der(path: &Path) -> Result<Vec<Certificate>, TLSError> {
+    match fs::File::open(path) {
+        Ok(certfile) => {
+            let reader = BufReader::new(certfile);
+            Ok(vec![Certificate(reader.buffer().to_vec())])
+        }
+        Err(_) => Err(TLSError::General(
+            "Could not open certificate file".to_string(),
+        )),
+    }
+}
+
+impl AsCertificate for &Path {
+    fn as_certificate(self) -> Result<Vec<Certificate>, TLSError> {
+        match CertificateExtension::from(self) {
+            CertificateExtension::Pem => load_pem(self),
+            CertificateExtension::Der => load_der(self),
+            CertificateExtension::Unknown => Err(TLSError::General(
+                "Unknown certificate extension".to_string(),
             )),
         }
     }
