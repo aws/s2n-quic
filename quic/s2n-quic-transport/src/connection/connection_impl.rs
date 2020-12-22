@@ -404,7 +404,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                     shared_state,
                 }) {
                     count += 1;
-                    if active_path.at_amplification_limit() {
+                    if self.path_manager.active_path().at_amplification_limit() {
                         break;
                     }
                 }

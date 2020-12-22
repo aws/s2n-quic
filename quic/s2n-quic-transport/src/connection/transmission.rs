@@ -30,10 +30,7 @@ pub struct ConnectionTransmission<'a, Config: connection::Config> {
 
 impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, Config> {
     fn remote_address(&mut self) -> SocketAddress {
-        self.context
-            .path_manager
-            .active_path()
-            .peer_socket_address
+        self.context.path_manager.active_path().peer_socket_address
     }
 
     fn ecn(&mut self) -> ExplicitCongestionNotification {
@@ -140,8 +137,7 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
                     //# Handshake packet
 
                     if Config::ENDPOINT_TYPE.is_client() {
-                        space_manager
-                            .discard_initial(self.context.path_manager.active_path_mut());
+                        space_manager.discard_initial(self.context.path_manager.active_path_mut());
                     }
 
                     encoder
@@ -207,7 +203,10 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
         };
 
         let datagram_len = initial_capacity - encoder.capacity();
-        self.context.path.on_bytes_transmitted(datagram_len);
+        self.context
+            .path_manager
+            .active_path_mut()
+            .on_bytes_transmitted(datagram_len);
 
         datagram_len
     }
