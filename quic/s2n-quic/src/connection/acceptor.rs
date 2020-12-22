@@ -104,7 +104,7 @@ macro_rules! impl_acceptor_api {
 }
 
 #[derive(Debug)]
-pub struct StreamAcceptor(s2n_quic_transport::connection::Connection);
+pub struct StreamAcceptor(pub(crate) s2n_quic_transport::connection::Connection);
 
 impl StreamAcceptor {
     impl_acceptor_api!(|acceptor, call| call!(acceptor));
@@ -117,7 +117,9 @@ impl StreamAcceptor {
     /// // TODO
     /// ```
     pub fn split(self) -> (BidirectionalStreamAcceptor, ReceiveStreamAcceptor) {
-        todo!()
+        let bidi = BidirectionalStreamAcceptor(self.0.clone());
+        let recv = ReceiveStreamAcceptor(self.0);
+        (bidi, recv)
     }
 }
 
@@ -138,9 +140,7 @@ impl futures::stream::Stream for StreamAcceptor {
 }
 
 #[derive(Debug)]
-pub struct BidirectionalStreamAcceptor {
-    // TODO
-}
+pub struct BidirectionalStreamAcceptor(s2n_quic_transport::connection::Connection);
 
 impl BidirectionalStreamAcceptor {
     /// TODO
@@ -183,9 +183,7 @@ impl futures::stream::Stream for BidirectionalStreamAcceptor {
 }
 
 #[derive(Debug)]
-pub struct ReceiveStreamAcceptor {
-    // TODO
-}
+pub struct ReceiveStreamAcceptor(s2n_quic_transport::connection::Connection);
 
 impl ReceiveStreamAcceptor {
     /// TODO

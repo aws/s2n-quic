@@ -46,6 +46,8 @@ impl Connection {
     /// // TODO
     /// ```
     pub fn split(self) -> (Handle, StreamAcceptor) {
-        todo!()
+        let handle = Handle(self.0.clone());
+        let acceptor = StreamAcceptor(self.0);
+        (handle, acceptor)
     }
 }
