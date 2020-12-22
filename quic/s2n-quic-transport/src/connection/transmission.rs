@@ -2,7 +2,7 @@ use crate::{
     connection::{
         self, connection_id_mapper::ConnectionIdMapperRegistration, SharedConnectionState,
     },
-    transmission,
+    path, transmission,
 };
 use core::time::Duration;
 use s2n_codec::{Encoder, EncoderBuffer};
@@ -18,10 +18,21 @@ use s2n_quic_core::{
 pub struct ConnectionTransmissionContext<'a, Config: connection::Config> {
     pub quic_version: u32,
     pub timestamp: Timestamp,
-    pub path: &'a mut Path<Config::CongestionController>,
+    pub path_id: path::Id,
+    pub path_manager: &'a mut path::Manager<Config::CongestionController>,
     pub connection_id_mapper_registration: &'a mut ConnectionIdMapperRegistration,
     pub source_connection_id: &'a connection::LocalId,
     pub ecn: ExplicitCongestionNotification,
+}
+
+impl<'a, Config: connection::Config> ConnectionTransmissionContext<'a, Config> {
+    pub fn path(&self) -> &Path<Config::CongestionController> {
+        &self.path_manager[self.path_id]
+    }
+
+    pub fn path_mut(&mut self) -> &mut Path<Config::CongestionController> {
+        &mut self.path_manager[self.path_id]
+    }
 }
 
 pub struct ConnectionTransmission<'a, Config: connection::Config> {
@@ -31,7 +42,7 @@ pub struct ConnectionTransmission<'a, Config: connection::Config> {
 
 impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, Config> {
     fn remote_address(&mut self) -> SocketAddress {
-        self.context.path.peer_socket_address
+        self.context.path().peer_socket_address
     }
 
     fn ecn(&mut self) -> ExplicitCongestionNotification {
@@ -52,7 +63,7 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
         let shared_state = &mut self.shared_state;
         let space_manager = &mut shared_state.space_manager;
 
-        let mtu = self.context.path.clamp_mtu(buffer.len());
+        let mtu = self.context.path().clamp_mtu(buffer.len());
         debug_assert_ne!(
             mtu, 0,
             "the amplification limit should be checked before trying to transmit"
@@ -84,7 +95,7 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
             //# Probe packets MUST NOT be blocked by the congestion controller.
             transmission::Constraint::None
         } else {
-            self.context.path.transmission_constraint()
+            self.context.path().transmission_constraint()
         };
 
         //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4
@@ -131,7 +142,7 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
                     //# Handshake packet
 
                     if Config::ENDPOINT_TYPE.is_client() {
-                        space_manager.discard_initial(self.context.path);
+                        space_manager.discard_initial(self.context.path_mut());
                     }
 
                     encoder
@@ -154,7 +165,7 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
             //# An endpoint MUST discard its handshake keys when the TLS handshake is
             //# confirmed (Section 4.1.2).
             if space_manager.is_handshake_confirmed() {
-                space_manager.discard_handshake(self.context.path);
+                space_manager.discard_handshake(self.context.path_mut());
             }
 
             encoder
@@ -197,7 +208,7 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
         };
 
         let datagram_len = initial_capacity - encoder.capacity();
-        self.context.path.on_bytes_transmitted(datagram_len);
+        self.context.path_mut().on_bytes_transmitted(datagram_len);
 
         datagram_len
     }

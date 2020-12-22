@@ -1,6 +1,6 @@
 //! This module contains the Manager implementation
 
-use crate::{connection::PeerIdRegistry, space::EARLY_ACK_SETTINGS};
+use crate::{connection::PeerIdRegistry, space::EARLY_ACK_SETTINGS, transmission};
 use s2n_quic_core::{
     connection,
     inet::{DatagramInfo, SocketAddress},
@@ -9,6 +9,8 @@ use s2n_quic_core::{
 };
 use smallvec::SmallVec;
 
+use crate::transmission::{Interest, WriteContext};
+use s2n_quic_core::ack_set::AckSet;
 /// re-export core
 pub use s2n_quic_core::path::*;
 
@@ -39,17 +41,18 @@ impl<CC: CongestionController> Manager<CC> {
     }
 
     /// Return the active path
-    pub fn active_path(&self) -> (Id, &Path<CC>) {
-        let id = Id(self.active);
-        let path = &self.paths[self.active];
-        (id, path)
+    pub fn active_path(&self) -> &Path<CC> {
+        &self.paths[self.active]
     }
 
     /// Return a mutable reference to the active path
-    pub fn active_path_mut(&mut self) -> (Id, &mut Path<CC>) {
-        let id = Id(self.active);
-        let path = &mut self.paths[self.active];
-        (id, path)
+    pub fn active_path_mut(&mut self) -> &mut Path<CC> {
+        &mut self.paths[self.active]
+    }
+
+    /// Return the Id of the active path
+    pub fn active_path_id(&self) -> Id {
+        Id(self.active)
     }
 
     /// Returns the Path for the provided address if the PathManager knows about it
@@ -126,7 +129,7 @@ impl<CC: CongestionController> Manager<CC> {
             // control). Otherwise we will need to consume a new connection::PeerId by calling
             // PeerIdRegistry::consume_new_id_if_necessary(None) and ignoring the request if
             // no new connection::PeerId is available to use.
-            self.active_path().1.peer_connection_id,
+            self.active_path().peer_connection_id,
             RTTEstimator::new(EARLY_ACK_SETTINGS.max_ack_delay),
             new_congestion_controller(),
             true,
@@ -134,6 +137,21 @@ impl<CC: CongestionController> Manager<CC> {
         let id = Id(self.paths.len());
         self.paths.push(path);
         Ok((id, false))
+    }
+
+    /// Writes any frames the path manager wishes to transmit to the given context
+    pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
+        self.peer_id_registry.on_transmit(context)
+    }
+
+    /// Called when packets are acknowledged
+    pub fn on_packet_ack<A: AckSet>(&mut self, ack_set: &A) {
+        self.peer_id_registry.on_packet_ack(ack_set)
+    }
+
+    /// Called when packets are lost
+    pub fn on_packet_loss<A: AckSet>(&mut self, ack_set: &A) {
+        self.peer_id_registry.on_packet_loss(ack_set)
     }
 
     //TODO= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.4
@@ -230,6 +248,13 @@ impl<CC: CongestionController> Manager<CC> {
     }
 
     pub fn on_packet_received(&mut self) {}
+}
+
+impl<CC: CongestionController> transmission::interest::Provider for Manager<CC> {
+    // TODO Add transmission interests for path probes
+    fn transmission_interest(&self) -> Interest {
+        self.peer_id_registry.transmission_interest()
+    }
 }
 
 /// Internal Id of a path in the manager

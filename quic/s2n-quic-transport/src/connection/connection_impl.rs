@@ -134,10 +134,9 @@ impl<ConfigType: connection::Config> ConnectionImpl<ConfigType> {
         datagram: &DatagramInfo,
     ) -> Result<(), TransportError> {
         let space_manager = &mut shared_state.space_manager;
-        let (_, path) = self.path_manager.active_path();
         space_manager.poll_crypto(
             &self.config,
-            path,
+            self.path_manager.active_path(),
             &mut self.connection_id_mapper_registration,
             datagram.timestamp,
         )?;
@@ -324,10 +323,10 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
 
         shared_state
             .space_manager
-            .discard_initial(self.path_manager.active_path_mut().1);
+            .discard_initial(self.path_manager.active_path_mut());
         shared_state
             .space_manager
-            .discard_handshake(self.path_manager.active_path_mut().1);
+            .discard_handshake(self.path_manager.active_path_mut());
         shared_state.space_manager.discard_zero_rtt_crypto();
         if let Some((application, _handshake_status)) = shared_state.space_manager.application_mut()
         {
@@ -355,8 +354,8 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
             .connection_id_interest()
         {
             Interest::New(mut count) => {
-                let (_path_id, active_path) = self.path_manager.active_path();
-                let connection_info = ConnectionInfo::new(&active_path.peer_socket_address);
+                let connection_info =
+                    ConnectionInfo::new(&self.path_manager.active_path().peer_socket_address);
 
                 while count > 0 {
                     let id = connection_id_format.generate(&connection_info);
@@ -381,7 +380,6 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         timestamp: Timestamp,
     ) -> Result<(), ConnectionOnTransmitError> {
         let mut count = 0;
-        let (_path_id, active_path) = self.path_manager.active_path_mut();
 
         match self.state {
             ConnectionState::Handshaking | ConnectionState::Active => {
@@ -389,7 +387,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                 let ecn = Default::default();
 
                 debug_assert!(
-                    !active_path.at_amplification_limit(),
+                    !self.path_manager.active_path().at_amplification_limit(),
                     "connection should not express transmission interest if amplification limited"
                 );
 
@@ -397,7 +395,8 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                     context: ConnectionTransmissionContext {
                         quic_version: self.quic_version,
                         timestamp,
-                        path: active_path,
+                        path_id: self.path_manager.active_path_id(),
+                        path_manager: &mut self.path_manager,
                         source_connection_id: &self.local_connection_id,
                         connection_id_mapper_registration: &mut self
                             .connection_id_mapper_registration,
@@ -406,7 +405,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                     shared_state,
                 }) {
                     count += 1;
-                    if active_path.at_amplification_limit() {
+                    if self.path_manager.active_path().at_amplification_limit() {
                         break;
                     }
                 }
@@ -471,8 +470,8 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         self.connection_id_mapper_registration.on_timeout(timestamp);
 
         shared_state.space_manager.on_timeout(
-            self.path_manager.active_path_mut().1,
             &mut self.connection_id_mapper_registration,
+            &mut self.path_manager,
             timestamp,
         );
     }
@@ -685,7 +684,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                 //# successfully processes a Handshake packet.
                 shared_state
                     .space_manager
-                    .discard_initial(self.path_manager.active_path_mut().1);
+                    .discard_initial(self.path_manager.active_path_mut());
 
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1
                 //# Once the server has successfully processed a
@@ -890,11 +889,9 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
 
                 let mut transmission = Interest::default();
 
-                // TODO ask path manager if it wants to transmit for path probes
-                // transmission += self.path_manager.transmission_interest();
+                transmission += self.path_manager.transmission_interest();
 
-                let (_, path) = self.path_manager.active_path();
-                let constraint = path.transmission_constraint();
+                let constraint = self.path_manager.active_path().transmission_constraint();
 
                 // don't iterate over everything if we can't send anyway
                 if !constraint.is_amplification_limited() {
