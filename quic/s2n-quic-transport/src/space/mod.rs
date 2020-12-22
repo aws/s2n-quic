@@ -175,10 +175,12 @@ impl<Config: connection::Config> PacketSpaceManager<Config> {
     /// Called when the connection timer expired
     pub fn on_timeout(
         &mut self,
-        path: &mut Path<Config::CongestionController>,
         connection_id_mapper_registration: &mut ConnectionIdMapperRegistration,
+        path_manager: &mut path::Manager<Config::CongestionController>,
         timestamp: Timestamp,
     ) {
+        let path = path_manager.active_path_mut().1;
+
         if let Some((space, handshake_status)) = self.initial_mut() {
             space.on_timeout(path, handshake_status, timestamp)
         }
@@ -187,7 +189,7 @@ impl<Config: connection::Config> PacketSpaceManager<Config> {
         }
         if let Some((space, handshake_status)) = self.application_mut() {
             space.on_timeout(
-                path,
+                path_manager,
                 handshake_status,
                 connection_id_mapper_registration,
                 timestamp,
@@ -304,7 +306,8 @@ pub trait PacketSpace<Config: connection::Config> {
         &mut self,
         frame: Ack<A>,
         datagram: &DatagramInfo,
-        path: &mut Path<Config::CongestionController>,
+        path_id: path::Id,
+        path_manager: &mut path::Manager<Config::CongestionController>,
         handshake_status: &mut HandshakeStatus,
         connection_id_mapper_registration: &mut ConnectionIdMapperRegistration,
     ) -> Result<(), TransportError>;
@@ -433,7 +436,8 @@ pub trait PacketSpace<Config: connection::Config> {
                     self.handle_ack_frame(
                         frame,
                         datagram,
-                        &mut path_manager[path_id],
+                        path_id,
+                        path_manager,
                         handshake_status,
                         connection_id_mapper_registration,
                     )

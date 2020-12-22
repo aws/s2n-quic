@@ -128,6 +128,9 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
 
         let mut outcome = transmission::Outcome::default();
 
+        let (path_id, path) = context.path_manager.active_path();
+        let destination_connection_id = path.peer_connection_id;
+
         let payload = transmission::Transmission {
             ack_manager: &mut self.ack_manager,
             config: <PhantomData<Config>>::default(),
@@ -138,6 +141,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
                 ping: &mut self.ping,
                 stream_manager: &mut self.stream_manager,
                 connection_id_mapper_registration: context.connection_id_mapper_registration,
+                path_manager: context.path_manager,
             },
             recovery_manager: &mut self.recovery_manager,
             timestamp: context.timestamp,
@@ -146,7 +150,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         };
 
         let packet = Short {
-            destination_connection_id: context.path.peer_connection_id.as_ref(),
+            destination_connection_id: destination_connection_id.as_ref(),
             spin_bit: self.spin_bit,
             key_phase: self.key_phase,
             packet_number,
@@ -156,14 +160,17 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         let (_protected_packet, buffer) =
             packet.encode_packet(&self.crypto, packet_number_encoder, buffer)?;
 
-        let (recovery_manager, recovery_context) =
-            self.recovery(handshake_status, context.connection_id_mapper_registration);
+        let (recovery_manager, mut recovery_context) = self.recovery(
+            handshake_status,
+            context.connection_id_mapper_registration,
+            path_id,
+            context.path_manager,
+        );
         recovery_manager.on_packet_sent(
             packet_number,
             outcome,
             context.timestamp,
-            context.path,
-            &recovery_context,
+            &mut recovery_context,
         );
 
         Ok(buffer)
@@ -220,16 +227,22 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
     /// Called when the connection timer expired
     pub fn on_timeout(
         &mut self,
-        path: &mut Path<Config::CongestionController>,
+        path_manager: &mut path::Manager<Config::CongestionController>,
         handshake_status: &mut HandshakeStatus,
         connection_id_mapper_registration: &mut ConnectionIdMapperRegistration,
         timestamp: Timestamp,
     ) {
         self.ack_manager.on_timeout(timestamp);
 
-        let (recovery_manager, mut context) =
-            self.recovery(handshake_status, connection_id_mapper_registration);
-        recovery_manager.on_timeout(path, timestamp, &mut context)
+        let (path_id, _path) = path_manager.active_path_mut();
+
+        let (recovery_manager, mut context) = self.recovery(
+            handshake_status,
+            connection_id_mapper_registration,
+            path_id,
+            path_manager,
+        );
+        recovery_manager.on_timeout(timestamp, &mut context)
     }
 
     /// Returns the Packet Number to be used when decoding incoming packets
@@ -256,6 +269,8 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         &'a mut self,
         handshake_status: &'a mut HandshakeStatus,
         connection_id_mapper_registration: &'a mut ConnectionIdMapperRegistration,
+        path_id: path::Id,
+        path_manager: &'a mut path::Manager<Config::CongestionController>,
     ) -> (&'a mut recovery::Manager, RecoveryContext<'a, Config>) {
         (
             &mut self.recovery_manager,
@@ -265,6 +280,8 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
                 ping: &mut self.ping,
                 stream_manager: &mut self.stream_manager,
                 connection_id_mapper_registration,
+                path_id,
+                path_manager,
                 tx_packet_numbers: &mut self.tx_packet_numbers,
             },
         )
@@ -293,14 +310,26 @@ struct RecoveryContext<'a, Config: connection::Config> {
     ping: &'a mut flag::Ping,
     stream_manager: &'a mut AbstractStreamManager<Config::Stream>,
     connection_id_mapper_registration: &'a mut ConnectionIdMapperRegistration,
+    path_id: path::Id,
+    path_manager: &'a mut path::Manager<Config::CongestionController>,
     tx_packet_numbers: &'a mut TxPacketNumbers,
 }
 
-impl<'a, Config: connection::Config> recovery::Context for RecoveryContext<'a, Config> {
+impl<'a, Config: connection::Config> recovery::Context<Config::CongestionController>
+    for RecoveryContext<'a, Config>
+{
     const ENDPOINT_TYPE: endpoint::Type = Config::ENDPOINT_TYPE;
 
     fn is_handshake_confirmed(&self) -> bool {
         self.handshake_status.is_confirmed()
+    }
+
+    fn path(&self) -> &Path<Config::CongestionController> {
+        &self.path_manager[self.path_id]
+    }
+
+    fn path_mut(&mut self) -> &mut Path<Config::CongestionController> {
+        &mut self.path_manager[self.path_id]
     }
 
     fn validate_packet_ack(
@@ -322,6 +351,7 @@ impl<'a, Config: connection::Config> recovery::Context for RecoveryContext<'a, C
         self.stream_manager.on_packet_ack(packet_number_range);
         self.connection_id_mapper_registration
             .on_packet_ack(packet_number_range);
+        self.path_manager.on_packet_ack(packet_number_range);
     }
 
     fn on_packet_ack(&mut self, datagram: &DatagramInfo, packet_number_range: &PacketNumberRange) {
@@ -336,6 +366,7 @@ impl<'a, Config: connection::Config> recovery::Context for RecoveryContext<'a, C
         self.stream_manager.on_packet_loss(packet_number_range);
         self.connection_id_mapper_registration
             .on_packet_loss(packet_number_range);
+        self.path_manager.on_packet_loss(packet_number_range);
     }
 }
 
@@ -362,7 +393,8 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
         &mut self,
         frame: Ack<A>,
         datagram: &DatagramInfo,
-        path: &mut Path<Config::CongestionController>,
+        path_id: path::Id,
+        path_manager: &mut path::Manager<Config::CongestionController>,
         handshake_status: &mut HandshakeStatus,
         connection_id_mapper_registration: &mut ConnectionIdMapperRegistration,
     ) -> Result<(), TransportError> {
@@ -372,10 +404,15 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
         //# A client MAY consider the handshake to be confirmed when it receives
         //# an acknowledgement for a 1-RTT packet.
 
+        let path = &mut path_manager[path_id];
         path.on_peer_validated();
-        let (recovery_manager, mut context) =
-            self.recovery(handshake_status, connection_id_mapper_registration);
-        recovery_manager.on_ack_frame(datagram, frame, path, &mut context)
+        let (recovery_manager, mut context) = self.recovery(
+            handshake_status,
+            connection_id_mapper_registration,
+            path_id,
+            path_manager,
+        );
+        recovery_manager.on_ack_frame(datagram, frame, &mut context)
     }
 
     fn handle_connection_close_frame(

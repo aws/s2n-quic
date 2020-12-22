@@ -9,7 +9,8 @@ use s2n_quic_core::{
 };
 use smallvec::SmallVec;
 
-use crate::transmission::Interest;
+use crate::transmission::{Interest, WriteContext};
+use s2n_quic_core::ack_set::AckSet;
 /// re-export core
 pub use s2n_quic_core::path::*;
 
@@ -135,6 +136,21 @@ impl<CC: CongestionController> Manager<CC> {
         let id = Id(self.paths.len());
         self.paths.push(path);
         Ok((id, false))
+    }
+
+    /// Writes any frames the path manager wishes to transmit to the given context
+    pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
+        self.peer_id_registry.on_transmit(context)
+    }
+
+    /// Called when packets are acknowledged
+    pub fn on_packet_ack<A: AckSet>(&mut self, ack_set: &A) {
+        self.peer_id_registry.on_packet_ack(ack_set)
+    }
+
+    /// Called when packets are lost
+    pub fn on_packet_loss<A: AckSet>(&mut self, ack_set: &A) {
+        self.peer_id_registry.on_packet_loss(ack_set)
     }
 
     //TODO= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.4

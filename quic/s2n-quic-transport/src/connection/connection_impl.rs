@@ -397,7 +397,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                     context: ConnectionTransmissionContext {
                         quic_version: self.quic_version,
                         timestamp,
-                        path: active_path,
+                        path_manager: &mut self.path_manager,
                         source_connection_id: &self.local_connection_id,
                         connection_id_mapper_registration: &mut self
                             .connection_id_mapper_registration,
@@ -406,9 +406,12 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                     shared_state,
                 }) {
                     count += 1;
-                    active_path.on_bytes_transmitted(bytes_transmitted);
+                    self.path_manager
+                        .active_path_mut()
+                        .1
+                        .on_bytes_transmitted(bytes_transmitted);
 
-                    if active_path.at_amplification_limit() {
+                    if self.path_manager.active_path().1.at_amplification_limit() {
                         break;
                     }
                 }
@@ -473,8 +476,8 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         self.connection_id_mapper_registration.on_timeout(timestamp);
 
         shared_state.space_manager.on_timeout(
-            self.path_manager.active_path_mut().1,
             &mut self.connection_id_mapper_registration,
+            &mut self.path_manager,
             timestamp,
         );
     }
