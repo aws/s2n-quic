@@ -457,9 +457,14 @@ impl ConnectionIdMapperRegistration {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
         //# An endpoint MUST NOT
         //# provide more connection IDs than the peer's limit.
+
         let new_connection_id_count = self.active_connection_id_limit - active_connection_id_count;
 
         if new_connection_id_count > 0 {
+            self.check_active_connection_id_limit(
+                active_connection_id_count,
+                new_connection_id_count,
+            );
             connection::id::Interest::New(new_connection_id_count)
         } else {
             connection::id::Interest::None
@@ -571,6 +576,30 @@ impl ConnectionIdMapperRegistration {
             assert_eq!(
                 self.expiration_timer.iter().next().cloned(),
                 self.next_status_change_time()
+            );
+        }
+    }
+
+    fn check_active_connection_id_limit(&self, active_count: u8, new_count: u8) {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
+        //# An endpoint MAY
+        //# send connection IDs that temporarily exceed a peer's limit if the
+        //# NEW_CONNECTION_ID frame also requires the retirement of any excess,
+        //# by including a sufficiently large value in the Retire Prior To field.
+        if cfg!(debug_assertions) {
+            let retired_count = self
+                .registered_ids
+                .iter()
+                .filter(|id_info| id_info.sequence_number < self.retire_prior_to)
+                .count() as u8;
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
+            //# An endpoint MAY
+            //# send connection IDs that temporarily exceed a peer's limit if the
+            //# NEW_CONNECTION_ID frame also requires the retirement of any excess,
+            //# by including a sufficiently large value in the Retire Prior To field.
+            assert!(
+                (active_count + new_count).saturating_sub(retired_count)
+                    <= self.active_connection_id_limit
             );
         }
     }
@@ -915,6 +944,44 @@ mod tests {
 
         // Panics because we are inserting more than the limit
         let _ = reg1.register_connection_id(&ext_id_3, None);
+    }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
+    //= type=test
+    //# An endpoint MAY
+    //# send connection IDs that temporarily exceed a peer's limit if the
+    //# NEW_CONNECTION_ID frame also requires the retirement of any excess,
+    //# by including a sufficiently large value in the Retire Prior To field.
+    #[test]
+    fn endpoint_may_exceed_limit_temporarily() {
+        let mut id_generator = InternalConnectionIdGenerator::new();
+        let mut mapper = ConnectionIdMapper::new();
+
+        let id1 = id_generator.generate_id();
+
+        let ext_id_1 = connection::LocalId::try_from_bytes(b"id01").unwrap();
+        let ext_id_2 = connection::LocalId::try_from_bytes(b"id02").unwrap();
+        let ext_id_3 = connection::LocalId::try_from_bytes(b"id03").unwrap();
+
+        let now = s2n_quic_platform::time::now();
+
+        let mut reg1 = mapper.create_registration(id1, &ext_id_1);
+        reg1.set_active_connection_id_limit(2);
+
+        assert_eq!(
+            connection::id::Interest::New(1),
+            reg1.connection_id_interest()
+        );
+
+        assert!(reg1.register_connection_id(&ext_id_2, None).is_ok());
+        reg1.retire_all(now + EXPIRATION_BUFFER);
+
+        // We can register another ID because the retire_prior_to field retires old IDs
+        assert_eq!(
+            connection::id::Interest::New(2),
+            reg1.connection_id_interest()
+        );
+        assert!(reg1.register_connection_id(&ext_id_3, None).is_ok());
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
