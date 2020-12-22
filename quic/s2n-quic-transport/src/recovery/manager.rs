@@ -1560,7 +1560,7 @@ mod test {
         context.path = Path::new(
             Default::default(),
             connection::PeerId::TEST_ID,
-            context.path.rtt_estimator,
+            RTTEstimator::new(manager.max_ack_delay),
             MockCongestionController::default(),
             false,
         );
