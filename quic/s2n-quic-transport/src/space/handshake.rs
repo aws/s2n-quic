@@ -115,11 +115,7 @@ impl<Config: connection::Config> HandshakeSpace<Config> {
 
         let packet = Handshake {
             version: context.quic_version,
-            destination_connection_id: context
-                .path_manager
-                .active_path()
-                .peer_connection_id
-                .as_ref(),
+            destination_connection_id: context.path().peer_connection_id.as_ref(),
             source_connection_id: context.source_connection_id.as_ref(),
             packet_number,
             payload,
@@ -128,14 +124,10 @@ impl<Config: connection::Config> HandshakeSpace<Config> {
         let (_protected_packet, buffer) =
             packet.encode_packet(&self.crypto, packet_number_encoder, buffer)?;
 
+        let time_sent = context.timestamp;
         let (recovery_manager, mut recovery_context) =
-            self.recovery(context.path_manager.active_path_mut(), handshake_status);
-        recovery_manager.on_packet_sent(
-            packet_number,
-            outcome,
-            context.timestamp,
-            &mut recovery_context,
-        );
+            self.recovery(context.path_mut(), handshake_status);
+        recovery_manager.on_packet_sent(packet_number, outcome, time_sent, &mut recovery_context);
 
         Ok(buffer)
     }

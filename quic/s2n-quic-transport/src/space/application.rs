@@ -128,7 +128,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
 
         let mut outcome = transmission::Outcome::default();
 
-        let destination_connection_id = context.path_manager.active_path().peer_connection_id;
+        let destination_connection_id = context.path().peer_connection_id;
 
         let payload = transmission::Transmission {
             ack_manager: &mut self.ack_manager,
@@ -162,7 +162,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         let (recovery_manager, mut recovery_context) = self.recovery(
             handshake_status,
             context.connection_id_mapper_registration,
-            context.path_manager.active_path_id(),
+            context.path_id,
             context.path_manager,
         );
         recovery_manager.on_packet_sent(

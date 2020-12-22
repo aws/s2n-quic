@@ -395,6 +395,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                     context: ConnectionTransmissionContext {
                         quic_version: self.quic_version,
                         timestamp,
+                        path_id: self.path_manager.active_path_id(),
                         path_manager: &mut self.path_manager,
                         source_connection_id: &self.local_connection_id,
                         connection_id_mapper_registration: &mut self
