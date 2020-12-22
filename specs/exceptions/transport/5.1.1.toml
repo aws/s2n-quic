@@ -1,15 +1,29 @@
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1"
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1"
 
 [[exception]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1"
 quote = '''
 If an endpoint provided fewer connection IDs than the
 peer's active_connection_id_limit, it MAY supply a new connection ID
 when it receives a packet with a previously unused connection ID.
 '''
 reason = '''
-s2n-QUIC proactively supplies connection IDs up to the minimum of the
+s2n-quic proactively supplies connection IDs up to the minimum of the
 peer's active_connection_id_limit and a hardcoded MAX_ACTIVE_CONNECTION_ID_LIMIT,
 so the maximum amount of  connection IDs will already be issued by the time a
 peer uses them.
+'''
+
+[[exception]]
+quote = '''
+An
+endpoint MAY limit the total number of connection IDs issued for each
+connection to avoid the risk of running out of connection IDs; see
+Section 10.3.2.
+'''
+reason = '''
+s2n-quic requires connection ID providers to provide connection IDs of at
+least 4 bytes in length, which allows for at least 4 billion possible connection
+IDs. s2n-quic allows limits the number of concurrent connection IDs issued,
+as well as their minimum lifetime, so the risk of running out of connection IDs
+is sufficiently mitigated.
 '''
