@@ -11,15 +11,6 @@ tracking-issue = "239"
 
 [[TODO]]
 quote = '''
-The endpoint SHOULD continue to
-accept the previously issued connection IDs until they are retired by
-the peer.
-'''
-feature = "Local Connection ID Management"
-tracking-issue = "238"
-
-[[TODO]]
-quote = '''
 If the endpoint can no longer process the indicated
 connection IDs, it MAY close the connection.
 '''

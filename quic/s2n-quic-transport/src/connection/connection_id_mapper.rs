@@ -402,6 +402,11 @@ impl ConnectionIdMapperRegistration {
     //# carry this connection ID for the duration of the connection or until
     //# its peer invalidates the connection ID via a RETIRE_CONNECTION_ID
     //# frame (Section 19.16).
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2
+    //# The endpoint SHOULD continue to
+    //# accept the previously issued connection IDs until they are retired by
+    //# the peer.
     /// Handles the retirement of a sequence_number received from a RETIRE_CONNECTION_ID frame
     pub fn on_retire_connection_id(
         &mut self,
@@ -881,6 +886,12 @@ mod tests {
         //# carry this connection ID for the duration of the connection or until
         //# its peer invalidates the connection ID via a RETIRE_CONNECTION_ID
         //# frame (Section 19.16).
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2
+        //= type=test
+        //# The endpoint SHOULD continue to
+        //# accept the previously issued connection IDs until they are retired by
+        //# the peer.
         reg1.unregister_expired_ids(now + rtt * RTT_MULTIPLIER);
         assert!(mapper.lookup_internal_connection_id(&ext_id_2).is_none());
     }
