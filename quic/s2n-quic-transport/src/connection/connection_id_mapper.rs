@@ -118,6 +118,12 @@ impl ConnectionIdMapper {
 /// The amount of ConnectionIds we can register without dynamic memory allocation
 const NR_STATIC_REGISTRABLE_IDS: usize = 5;
 
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
+//# An endpoint that initiates migration and requires non-zero-length
+//# connection IDs SHOULD ensure that the pool of connection IDs
+//# available to its peer allows the peer to use a new connection ID on
+//# migration, as the peer will be unable to respond if the pool is
+//# exhausted.
 /// Limit on the number of connection IDs issued to the peer to reduce the amount
 /// of per-path state maintained. Increasing this value allows peers to probe
 /// more paths simultaneously at the expense of additional state to maintain.
@@ -458,6 +464,9 @@ impl ConnectionIdMapperRegistration {
         //# An endpoint MUST NOT
         //# provide more connection IDs than the peer's limit.
 
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
+        //# An endpoint SHOULD supply a new connection ID when the peer retires a
+        //# connection ID.
         let new_connection_id_count = self.active_connection_id_limit - active_connection_id_count;
 
         if new_connection_id_count > 0 {
@@ -811,7 +820,7 @@ mod tests {
         let now = s2n_quic_platform::time::now();
 
         let mut reg1 = mapper.create_registration(id1, &ext_id_1);
-        reg1.set_active_connection_id_limit(3);
+        reg1.set_active_connection_id_limit(2);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.16
         //= type=test
@@ -859,6 +868,15 @@ mod tests {
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
         //= type=test
+        //# An endpoint SHOULD supply a new connection ID when the peer retires a
+        //# connection ID.
+        assert_eq!(
+            connection::id::Interest::New(1),
+            reg1.connection_id_interest()
+        );
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
+        //= type=test
         //# When an endpoint issues a connection ID, it MUST accept packets that
         //# carry this connection ID for the duration of the connection or until
         //# its peer invalidates the connection ID via a RETIRE_CONNECTION_ID
@@ -866,6 +884,14 @@ mod tests {
         reg1.unregister_expired_ids(now + rtt * RTT_MULTIPLIER);
         assert!(mapper.lookup_internal_connection_id(&ext_id_2).is_none());
     }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
+    //= type=test
+    //# An endpoint that initiates migration and requires non-zero-length
+    //# connection IDs SHOULD ensure that the pool of connection IDs
+    //# available to its peer allows the peer to use a new connection ID on
+    //# migration, as the peer will be unable to respond if the pool is
+    //# exhausted.
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
     //= type=test
