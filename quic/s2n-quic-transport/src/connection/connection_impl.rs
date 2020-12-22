@@ -391,7 +391,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                     "connection should not express transmission interest if amplification limited"
                 );
 
-                while let Ok(bytes_transmitted) = queue.push(ConnectionTransmission {
+                while let Ok(_idx) = queue.push(ConnectionTransmission {
                     context: ConnectionTransmissionContext {
                         quic_version: self.quic_version,
                         timestamp,
@@ -404,11 +404,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                     shared_state,
                 }) {
                     count += 1;
-                    self.path_manager
-                        .active_path_mut()
-                        .on_bytes_transmitted(bytes_transmitted);
-
-                    if self.path_manager.active_path().at_amplification_limit() {
+                    if active_path.at_amplification_limit() {
                         break;
                     }
                 }

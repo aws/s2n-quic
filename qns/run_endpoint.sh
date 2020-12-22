@@ -23,9 +23,10 @@ fi
 CERT_ARGS=""
 
 if [ -d "/certs" ]; then
-    openssl rsa -outform der -in /certs/priv.key -out /tmp/key.der
-    openssl x509 -outform der -in /certs/cert.pem -out /tmp/cert.der
-    CERT_ARGS="--private-key /tmp/key.der --certificate /tmp/cert.der"
+    # Rustls only reads RSA private keys, not the PKCS#8 private key format
+    openssl rsa -in /certs/priv.key -outform pem -out /tmp/rsa_priv_key.pem
+
+    CERT_ARGS="--private-key /tmp/rsa_priv_key.pem --certificate /certs/cert.pem"
 fi
 
 if [ "$ROLE" == "client" ]; then

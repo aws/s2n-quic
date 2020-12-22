@@ -206,6 +206,9 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
             encoder
         };
 
-        initial_capacity - encoder.capacity()
+        let datagram_len = initial_capacity - encoder.capacity();
+        self.context.path.on_bytes_transmitted(datagram_len);
+
+        datagram_len
     }
 }
