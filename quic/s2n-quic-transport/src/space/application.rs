@@ -128,8 +128,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
 
         let mut outcome = transmission::Outcome::default();
 
-        let (path_id, path) = context.path_manager.active_path();
-        let destination_connection_id = path.peer_connection_id;
+        let destination_connection_id = context.path_manager.active_path().peer_connection_id;
 
         let payload = transmission::Transmission {
             ack_manager: &mut self.ack_manager,
@@ -163,7 +162,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         let (recovery_manager, mut recovery_context) = self.recovery(
             handshake_status,
             context.connection_id_mapper_registration,
-            path_id,
+            context.path_manager.active_path_id(),
             context.path_manager,
         );
         recovery_manager.on_packet_sent(
@@ -234,12 +233,10 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
     ) {
         self.ack_manager.on_timeout(timestamp);
 
-        let (path_id, _path) = path_manager.active_path_mut();
-
         let (recovery_manager, mut context) = self.recovery(
             handshake_status,
             connection_id_mapper_registration,
-            path_id,
+            path_manager.active_path_id(),
             path_manager,
         );
         recovery_manager.on_timeout(timestamp, &mut context)
@@ -478,7 +475,7 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
         _datagram: &DatagramInfo,
         path_manager: &mut path::Manager<Config::CongestionController>,
     ) -> Result<(), TransportError> {
-        if path_manager.active_path().1.peer_connection_id.is_empty() {
+        if path_manager.active_path().peer_connection_id.is_empty() {
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
             //# An endpoint that is sending packets with a zero-length Destination
             //# Connection ID MUST treat receipt of a NEW_CONNECTION_ID frame as a

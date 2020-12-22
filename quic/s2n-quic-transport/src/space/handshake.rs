@@ -118,7 +118,6 @@ impl<Config: connection::Config> HandshakeSpace<Config> {
             destination_connection_id: context
                 .path_manager
                 .active_path()
-                .1
                 .peer_connection_id
                 .as_ref(),
             source_connection_id: context.source_connection_id.as_ref(),
@@ -130,7 +129,7 @@ impl<Config: connection::Config> HandshakeSpace<Config> {
             packet.encode_packet(&self.crypto, packet_number_encoder, buffer)?;
 
         let (recovery_manager, mut recovery_context) =
-            self.recovery(context.path_manager.active_path_mut().1, handshake_status);
+            self.recovery(context.path_manager.active_path_mut(), handshake_status);
         recovery_manager.on_packet_sent(
             packet_number,
             outcome,

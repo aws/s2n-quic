@@ -179,7 +179,7 @@ impl<Config: connection::Config> PacketSpaceManager<Config> {
         path_manager: &mut path::Manager<Config::CongestionController>,
         timestamp: Timestamp,
     ) {
-        let path = path_manager.active_path_mut().1;
+        let path = path_manager.active_path_mut();
 
         if let Some((space, handshake_status)) = self.initial_mut() {
             space.on_timeout(path, handshake_status, timestamp)

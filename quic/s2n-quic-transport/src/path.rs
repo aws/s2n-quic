@@ -41,17 +41,18 @@ impl<CC: CongestionController> Manager<CC> {
     }
 
     /// Return the active path
-    pub fn active_path(&self) -> (Id, &Path<CC>) {
-        let id = Id(self.active);
-        let path = &self.paths[self.active];
-        (id, path)
+    pub fn active_path(&self) -> &Path<CC> {
+        &self.paths[self.active]
     }
 
     /// Return a mutable reference to the active path
-    pub fn active_path_mut(&mut self) -> (Id, &mut Path<CC>) {
-        let id = Id(self.active);
-        let path = &mut self.paths[self.active];
-        (id, path)
+    pub fn active_path_mut(&mut self) -> &mut Path<CC> {
+        &mut self.paths[self.active]
+    }
+
+    /// Return the Id of the active path
+    pub fn active_path_id(&self) -> Id {
+        Id(self.active)
     }
 
     /// Returns the Path for the provided address if the PathManager knows about it
@@ -128,7 +129,7 @@ impl<CC: CongestionController> Manager<CC> {
             // control). Otherwise we will need to consume a new connection::PeerId by calling
             // PeerIdRegistry::consume_new_id_if_necessary(None) and ignoring the request if
             // no new connection::PeerId is available to use.
-            self.active_path().1.peer_connection_id,
+            self.active_path().peer_connection_id,
             RTTEstimator::new(EARLY_ACK_SETTINGS.max_ack_delay),
             new_congestion_controller(),
             true,

@@ -33,7 +33,6 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
         self.context
             .path_manager
             .active_path()
-            .1
             .peer_socket_address
     }
 
@@ -59,7 +58,6 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
             .context
             .path_manager
             .active_path()
-            .1
             .clamp_mtu(buffer.len());
         debug_assert_ne!(
             mtu, 0,
@@ -95,7 +93,6 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
             self.context
                 .path_manager
                 .active_path()
-                .1
                 .transmission_constraint()
         };
 
@@ -144,7 +141,7 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
 
                     if Config::ENDPOINT_TYPE.is_client() {
                         space_manager
-                            .discard_initial(self.context.path_manager.active_path_mut().1);
+                            .discard_initial(self.context.path_manager.active_path_mut());
                     }
 
                     encoder
@@ -167,7 +164,7 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
             //# An endpoint MUST discard its handshake keys when the TLS handshake is
             //# confirmed (Section 4.1.2).
             if space_manager.is_handshake_confirmed() {
-                space_manager.discard_handshake(self.context.path_manager.active_path_mut().1);
+                space_manager.discard_handshake(self.context.path_manager.active_path_mut());
             }
 
             encoder
