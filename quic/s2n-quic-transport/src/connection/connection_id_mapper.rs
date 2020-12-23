@@ -6,6 +6,7 @@ use crate::{
             ConnectionIdMapperRegistrationError::{ConnectionIdInUse, InvalidSequenceNumber},
             LocalConnectionIdStatus::{
                 Active, PendingAcknowledgement, PendingIssuance, PendingReissue, PendingRemoval,
+                PendingRetirementConfirmation,
             },
         },
         InternalConnectionId,
@@ -191,13 +192,9 @@ struct LocalConnectionIdInfo {
 
 impl LocalConnectionIdInfo {
     // The time the connection ID next needs to change status (either to
-    // PendingRemoval, or removal altogether)
+    // PendingRetirementConfirmation, or removal altogether)
     fn next_status_change_time(&self) -> Option<Timestamp> {
-        if let PendingRemoval(removal_time) = self.status {
-            Some(removal_time)
-        } else {
-            self.retirement_time
-        }
+        self.removal_time().or(self.retirement_time)
     }
 
     // Returns true if the connection ID should be moved to PendingRemoval
@@ -210,23 +207,33 @@ impl LocalConnectionIdInfo {
 
     // Returns true if the connection ID has been retired and is pending removal
     fn is_retired(&self) -> bool {
-        matches!(self.status, PendingRemoval(_))
+        match self.status {
+            PendingRetirementConfirmation(_) => true,
+            PendingRemoval(_) => true,
+            _ => false,
+        }
     }
 
     // Returns true if the connection ID should no longer be used
     fn is_expired(&self, timestamp: Timestamp) -> bool {
-        if let PendingRemoval(removal_time) = self.status {
-            return removal_time <= timestamp;
-        }
+        self.removal_time()
+            .map_or(false, |removal_time| removal_time <= timestamp)
+    }
 
-        false
+    // The time this connection ID should be removed
+    fn removal_time(&self) -> Option<Timestamp> {
+        match self.status {
+            PendingRetirementConfirmation(removal_time) => Some(removal_time),
+            PendingRemoval(removal_time) => Some(removal_time),
+            _ => None,
+        }
     }
 
     // Changes the status of the connection ID to PendingRemoval with a removal
     // time incorporating the EXPIRATION_BUFFER
     fn retire(&mut self, timestamp: Timestamp) {
         debug_assert!(!self.is_retired());
-        self.status = PendingRemoval(timestamp + EXPIRATION_BUFFER)
+        self.status = PendingRetirementConfirmation(timestamp + EXPIRATION_BUFFER)
     }
 }
 
@@ -247,16 +254,27 @@ enum LocalConnectionIdStatus {
     /// peer has acknowledged the ID, it enters the `Active` status.
     /// The initial connection ID starts in this status.
     Active,
-    /// Connection IDs are put in the `PendingRemoval` status
+    /// Connection IDs are put in the `PendingRetirementConfirmation` status
     /// upon retirement, until confirmation of the retirement
-    /// is received from the peer.
+    /// is received from the peer. If the removal_time indicated in this status
+    /// is exceeded, the connection ID will be removed without confirmation from
+    /// the peer.
+    PendingRetirementConfirmation(Timestamp),
+    /// Connection IDs are put in the `PendingRemoval` status
+    /// when the peer has confirmed the retirement by sending a
+    /// RETIRE_CONNECTION_ID_FRAME. This status exists to allow for a brief
+    /// period before the Id is removed to account for packet reordering.
     PendingRemoval(Timestamp),
 }
 
 impl LocalConnectionIdStatus {
     /// Returns true if this status counts towards the active_connection_id_limit
     fn counts_towards_limit(&self) -> bool {
-        !matches!(self, PendingRemoval(_))
+        match self {
+            PendingRetirementConfirmation(_) => false,
+            PendingRemoval(_) => false,
+            _ => true,
+        }
     }
 
     /// Returns true if this status allows for transmission based on the transmission constraint
@@ -423,14 +441,12 @@ impl ConnectionIdMapperRegistration {
             return Err(ConnectionIdMapperRegistrationError::InvalidSequenceNumber);
         }
 
-        // Calculate a removal time based on RTT to give sufficient time for out of
-        // order packets using the retired connection ID to be received
-        let removal_time = timestamp + rtt * RTT_MULTIPLIER;
-
         let id_info = self
             .registered_ids
             .iter_mut()
-            .filter(|id_info| !id_info.is_retired())
+            // Filter out IDs that are already PendingRemoval, indicating this was a duplicate
+            // RETIRE_CONNECTION_ID frame
+            .filter(|id_info| !matches!(id_info.status, PendingRemoval(_)))
             .find(|id_info| id_info.sequence_number == sequence_number);
 
         if let Some(mut id_info) = id_info {
@@ -445,6 +461,10 @@ impl ConnectionIdMapperRegistration {
                 //# connection error of type PROTOCOL_VIOLATION.
                 return Err(ConnectionIdMapperRegistrationError::InvalidSequenceNumber);
             }
+
+            // Calculate a removal time based on RTT to give sufficient time for out of
+            // order packets using the retired connection ID to be received
+            let removal_time = timestamp + rtt * RTT_MULTIPLIER;
 
             id_info.status = PendingRemoval(removal_time);
             self.update_timers();
@@ -801,8 +821,16 @@ mod tests {
         assert_eq!(None, mapper.lookup_internal_connection_id(&ext_id_3));
         assert_eq!(Some(id2), mapper.lookup_internal_connection_id(&ext_id_4));
 
+        reg2.get_connection_id_info_mut(&ext_id_4).unwrap().status =
+            PendingRetirementConfirmation(now);
+        reg2.unregister_expired_ids(now);
+        assert_eq!(None, mapper.lookup_internal_connection_id(&ext_id_4));
+
+        // Put back ID3 and ID4 to test drop behavior
         assert!(reg1.register_connection_id(&ext_id_3, None).is_ok());
+        assert!(reg2.register_connection_id(&ext_id_4, None).is_ok());
         assert_eq!(Some(id1), mapper.lookup_internal_connection_id(&ext_id_3));
+        assert_eq!(Some(id2), mapper.lookup_internal_connection_id(&ext_id_4));
 
         // If a registration is dropped all entries are removed
         drop(reg1);
@@ -894,6 +922,50 @@ mod tests {
         //# the peer.
         reg1.unregister_expired_ids(now + rtt * RTT_MULTIPLIER);
         assert!(mapper.lookup_internal_connection_id(&ext_id_2).is_none());
+    }
+
+    #[test]
+    fn on_retire_connection_id_pending_removal() {
+        let mut id_generator = InternalConnectionIdGenerator::new();
+        let mut mapper = ConnectionIdMapper::new();
+
+        let id1 = id_generator.generate_id();
+
+        let ext_id_1 = connection::LocalId::try_from_bytes(b"id01").unwrap();
+        let ext_id_2 = connection::LocalId::try_from_bytes(b"id02").unwrap();
+
+        let now = s2n_quic_platform::time::now();
+
+        let mut reg1 = mapper.create_registration(id1, &ext_id_1);
+        reg1.set_active_connection_id_limit(2);
+
+        assert!(reg1.register_connection_id(&ext_id_2, None).is_ok());
+
+        reg1.retire_all(now);
+
+        assert_eq!(
+            PendingRetirementConfirmation(now + EXPIRATION_BUFFER),
+            reg1.get_connection_id_info(&ext_id_1).unwrap().status
+        );
+        assert_eq!(
+            PendingRetirementConfirmation(now + EXPIRATION_BUFFER),
+            reg1.get_connection_id_info(&ext_id_2).unwrap().status
+        );
+
+        let rtt = Duration::from_millis(500);
+
+        assert!(reg1.on_retire_connection_id(1, &ext_id_1, rtt, now).is_ok());
+
+        assert_eq!(
+            PendingRetirementConfirmation(now + EXPIRATION_BUFFER),
+            reg1.get_connection_id_info(&ext_id_1).unwrap().status
+        );
+        // When the ON_RETIRE_CONNECTION_ID frame is received from the peer, the
+        // removal time for the retired connection ID is updated
+        assert_eq!(
+            PendingRemoval(now + rtt * RTT_MULTIPLIER),
+            reg1.get_connection_id_info(&ext_id_2).unwrap().status
+        );
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
@@ -1359,9 +1431,9 @@ mod tests {
 
         reg1.on_timeout(expiration_2 - EXPIRATION_BUFFER);
 
-        // ID 2 is moved into pending removal
+        // ID 2 is moved into pending retirement confirmation
         assert_eq!(
-            PendingRemoval(expiration_2),
+            PendingRetirementConfirmation(expiration_2),
             reg1.get_connection_id_info(&ext_id_2).unwrap().status
         );
         // Expiration timer is set to the expiration time of ID 2

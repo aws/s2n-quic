@@ -15,6 +15,5 @@ Endpoints SHOULD NOT issue updates of the Retire Prior To field
 before receiving RETIRE_CONNECTION_ID frames that retire all
 connection IDs indicated by the previous Retire Prior To value.
 '''
-feature = "Peer Connection ID Management"
-tracking-issue = "239"
+tracking-issue = "380"
 
