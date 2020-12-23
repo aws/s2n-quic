@@ -30,7 +30,6 @@ pub(crate) mod rx_packet_numbers;
 mod session_context;
 mod tx_packet_numbers;
 
-use crate::connection::ConnectionIdMapperRegistration;
 pub(crate) use application::ApplicationSpace;
 pub(crate) use crypto_stream::CryptoStream;
 pub(crate) use handshake::HandshakeSpace;
@@ -135,7 +134,7 @@ impl<Config: connection::Config> PacketSpaceManager<Config> {
         &mut self,
         connection_config: &Config,
         path: &Path<Config::CongestionController>,
-        connection_id_mapper_registration: &mut ConnectionIdMapperRegistration,
+        local_id_registry: &mut connection::LocalIdRegistry,
         now: Timestamp,
     ) -> Result<(), TransportError> {
         if let Some(session) = self.session.as_mut() {
@@ -148,7 +147,7 @@ impl<Config: connection::Config> PacketSpaceManager<Config> {
                 path,
                 connection_config,
                 handshake_status: &mut self.handshake_status,
-                connection_id_mapper_registration,
+                local_id_registry,
             };
 
             session.poll(&mut context)?;
@@ -175,7 +174,7 @@ impl<Config: connection::Config> PacketSpaceManager<Config> {
     /// Called when the connection timer expired
     pub fn on_timeout(
         &mut self,
-        connection_id_mapper_registration: &mut ConnectionIdMapperRegistration,
+        local_id_registry: &mut connection::LocalIdRegistry,
         path_manager: &mut path::Manager<Config::CongestionController>,
         timestamp: Timestamp,
     ) {
@@ -188,12 +187,7 @@ impl<Config: connection::Config> PacketSpaceManager<Config> {
             space.on_timeout(path, handshake_status, timestamp)
         }
         if let Some((space, handshake_status)) = self.application_mut() {
-            space.on_timeout(
-                path_manager,
-                handshake_status,
-                connection_id_mapper_registration,
-                timestamp,
-            )
+            space.on_timeout(path_manager, handshake_status, local_id_registry, timestamp)
         }
     }
 
@@ -309,7 +303,7 @@ pub trait PacketSpace<Config: connection::Config> {
         path_id: path::Id,
         path_manager: &mut path::Manager<Config::CongestionController>,
         handshake_status: &mut HandshakeStatus,
-        connection_id_mapper_registration: &mut ConnectionIdMapperRegistration,
+        local_id_registry: &mut connection::LocalIdRegistry,
     ) -> Result<(), TransportError>;
 
     fn handle_connection_close_frame(
@@ -324,7 +318,7 @@ pub trait PacketSpace<Config: connection::Config> {
         frame: HandshakeDone,
         _datagram: &DatagramInfo,
         _path: &mut Path<Config::CongestionController>,
-        _connection_id_mapper_registration: &mut ConnectionIdMapperRegistration,
+        _local_id_registry: &mut connection::LocalIdRegistry,
         _handshake_status: &mut HandshakeStatus,
     ) -> Result<(), TransportError> {
         Err(TransportError::PROTOCOL_VIOLATION
@@ -337,7 +331,7 @@ pub trait PacketSpace<Config: connection::Config> {
         frame: RetireConnectionID,
         _datagram: &DatagramInfo,
         _path: &mut Path<Config::CongestionController>,
-        _connection_id_mapper_registration: &mut ConnectionIdMapperRegistration,
+        _local_id_registry: &mut connection::LocalIdRegistry,
     ) -> Result<(), TransportError> {
         Err(TransportError::PROTOCOL_VIOLATION
             .with_reason(Self::INVALID_FRAME_ERROR)
@@ -383,7 +377,7 @@ pub trait PacketSpace<Config: connection::Config> {
         path_id: path::Id,
         path_manager: &mut path::Manager<Config::CongestionController>,
         handshake_status: &mut HandshakeStatus,
-        connection_id_mapper_registration: &mut ConnectionIdMapperRegistration,
+        local_id_registry: &mut connection::LocalIdRegistry,
     ) -> Result<Option<frame::ConnectionClose<'a>>, TransportError> {
         use s2n_quic_core::{
             frame::{Frame, FrameMut},
@@ -439,7 +433,7 @@ pub trait PacketSpace<Config: connection::Config> {
                         path_id,
                         path_manager,
                         handshake_status,
-                        connection_id_mapper_registration,
+                        local_id_registry,
                     )
                     .map_err(on_error)?;
                 }
@@ -518,7 +512,7 @@ pub trait PacketSpace<Config: connection::Config> {
                         frame,
                         datagram,
                         &mut path_manager[path_id],
-                        connection_id_mapper_registration,
+                        local_id_registry,
                     )
                     .map_err(on_error)?;
                 }
@@ -539,7 +533,7 @@ pub trait PacketSpace<Config: connection::Config> {
                         frame,
                         datagram,
                         &mut path_manager[path_id],
-                        connection_id_mapper_registration,
+                        local_id_registry,
                         handshake_status,
                     )
                     .map_err(on_error)?;

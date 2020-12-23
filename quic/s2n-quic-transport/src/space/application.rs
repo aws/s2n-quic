@@ -1,5 +1,5 @@
 use crate::{
-    connection::{self, ConnectionIdMapperRegistration, ConnectionTransmissionContext},
+    connection::{self, ConnectionTransmissionContext},
     path,
     processed_packet::ProcessedPacket,
     recovery,
@@ -139,7 +139,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
                 handshake_status,
                 ping: &mut self.ping,
                 stream_manager: &mut self.stream_manager,
-                connection_id_mapper_registration: context.connection_id_mapper_registration,
+                local_id_registry: context.local_id_registry,
                 path_manager: context.path_manager,
             },
             recovery_manager: &mut self.recovery_manager,
@@ -161,7 +161,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
 
         let (recovery_manager, mut recovery_context) = self.recovery(
             handshake_status,
-            context.connection_id_mapper_registration,
+            context.local_id_registry,
             context.path_id,
             context.path_manager,
         );
@@ -201,11 +201,11 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
     pub fn on_handshake_done(
         &mut self,
         path: &Path<Config::CongestionController>,
-        connection_id_mapper_registration: &mut ConnectionIdMapperRegistration,
+        local_id_registry: &mut connection::LocalIdRegistry,
         timestamp: Timestamp,
     ) {
         // Retire all local connection IDs used during the handshake to reduce linkability
-        connection_id_mapper_registration.retire_all(timestamp);
+        local_id_registry.retire_all(timestamp);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
         //# A sender SHOULD restart its PTO timer every time an ack-eliciting
@@ -228,14 +228,14 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         &mut self,
         path_manager: &mut path::Manager<Config::CongestionController>,
         handshake_status: &mut HandshakeStatus,
-        connection_id_mapper_registration: &mut ConnectionIdMapperRegistration,
+        local_id_registry: &mut connection::LocalIdRegistry,
         timestamp: Timestamp,
     ) {
         self.ack_manager.on_timeout(timestamp);
 
         let (recovery_manager, mut context) = self.recovery(
             handshake_status,
-            connection_id_mapper_registration,
+            local_id_registry,
             path_manager.active_path_id(),
             path_manager,
         );
@@ -265,7 +265,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
     fn recovery<'a>(
         &'a mut self,
         handshake_status: &'a mut HandshakeStatus,
-        connection_id_mapper_registration: &'a mut ConnectionIdMapperRegistration,
+        local_id_registry: &'a mut connection::LocalIdRegistry,
         path_id: path::Id,
         path_manager: &'a mut path::Manager<Config::CongestionController>,
     ) -> (&'a mut recovery::Manager, RecoveryContext<'a, Config>) {
@@ -276,7 +276,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
                 handshake_status,
                 ping: &mut self.ping,
                 stream_manager: &mut self.stream_manager,
-                connection_id_mapper_registration,
+                local_id_registry,
                 path_id,
                 path_manager,
                 tx_packet_numbers: &mut self.tx_packet_numbers,
@@ -306,7 +306,7 @@ struct RecoveryContext<'a, Config: connection::Config> {
     handshake_status: &'a mut HandshakeStatus,
     ping: &'a mut flag::Ping,
     stream_manager: &'a mut AbstractStreamManager<Config::Stream>,
-    connection_id_mapper_registration: &'a mut ConnectionIdMapperRegistration,
+    local_id_registry: &'a mut connection::LocalIdRegistry,
     path_id: path::Id,
     path_manager: &'a mut path::Manager<Config::CongestionController>,
     tx_packet_numbers: &'a mut TxPacketNumbers,
@@ -346,8 +346,7 @@ impl<'a, Config: connection::Config> recovery::Context<Config::CongestionControl
         self.handshake_status.on_packet_ack(packet_number_range);
         self.ping.on_packet_ack(packet_number_range);
         self.stream_manager.on_packet_ack(packet_number_range);
-        self.connection_id_mapper_registration
-            .on_packet_ack(packet_number_range);
+        self.local_id_registry.on_packet_ack(packet_number_range);
         self.path_manager.on_packet_ack(packet_number_range);
     }
 
@@ -361,8 +360,7 @@ impl<'a, Config: connection::Config> recovery::Context<Config::CongestionControl
         self.handshake_status.on_packet_loss(packet_number_range);
         self.ping.on_packet_loss(packet_number_range);
         self.stream_manager.on_packet_loss(packet_number_range);
-        self.connection_id_mapper_registration
-            .on_packet_loss(packet_number_range);
+        self.local_id_registry.on_packet_loss(packet_number_range);
         self.path_manager.on_packet_loss(packet_number_range);
     }
 }
@@ -393,7 +391,7 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
         path_id: path::Id,
         path_manager: &mut path::Manager<Config::CongestionController>,
         handshake_status: &mut HandshakeStatus,
-        connection_id_mapper_registration: &mut ConnectionIdMapperRegistration,
+        local_id_registry: &mut connection::LocalIdRegistry,
     ) -> Result<(), TransportError> {
         //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.1.2
         //= type=TODO
@@ -403,12 +401,8 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
 
         let path = &mut path_manager[path_id];
         path.on_peer_validated();
-        let (recovery_manager, mut context) = self.recovery(
-            handshake_status,
-            connection_id_mapper_registration,
-            path_id,
-            path_manager,
-        );
+        let (recovery_manager, mut context) =
+            self.recovery(handshake_status, local_id_registry, path_id, path_manager);
         recovery_manager.on_ack_frame(datagram, frame, &mut context)
     }
 
@@ -509,7 +503,7 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
         frame: RetireConnectionID,
         datagram: &DatagramInfo,
         path: &mut Path<Config::CongestionController>,
-        connection_id_mapper_registration: &mut ConnectionIdMapperRegistration,
+        local_id_registry: &mut connection::LocalIdRegistry,
     ) -> Result<(), TransportError> {
         let sequence_number = frame
             .sequence_number
@@ -530,7 +524,7 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
         //# Receipt of a RETIRE_CONNECTION_ID frame containing a sequence number
         //# greater than any previously sent to the peer MUST be treated as a
         //# connection error of type PROTOCOL_VIOLATION.
-        connection_id_mapper_registration
+        local_id_registry
             .on_retire_connection_id(
                 sequence_number,
                 &datagram.destination_connection_id,
@@ -557,7 +551,7 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
         frame: HandshakeDone,
         datagram: &DatagramInfo,
         path: &mut Path<Config::CongestionController>,
-        connection_id_mapper_registration: &mut ConnectionIdMapperRegistration,
+        local_id_registry: &mut connection::LocalIdRegistry,
         handshake_status: &mut HandshakeStatus,
     ) -> Result<(), TransportError> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.20
@@ -572,7 +566,7 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
         }
 
         handshake_status.on_handshake_done_received();
-        self.on_handshake_done(path, connection_id_mapper_registration, datagram.timestamp);
+        self.on_handshake_done(path, local_id_registry, datagram.timestamp);
 
         Ok(())
     }

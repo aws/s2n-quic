@@ -33,7 +33,7 @@ pub(crate) mod transmission;
 
 pub(crate) use api_provider::{ConnectionApi, ConnectionApiProvider};
 pub(crate) use connection_container::{ConnectionContainer, ConnectionContainerIterationResult};
-pub(crate) use connection_id_mapper::{ConnectionIdMapper, ConnectionIdMapperRegistration};
+pub(crate) use connection_id_mapper::{ConnectionIdMapper, LocalIdRegistry};
 pub(crate) use connection_interests::ConnectionInterests;
 pub(crate) use connection_timers::{ConnectionTimerEntry, ConnectionTimers};
 pub(crate) use connection_trait::ConnectionTrait as Trait;
@@ -76,8 +76,8 @@ pub struct Parameters<Cfg: Config> {
     pub connection_config: Cfg,
     /// The [`Connection`]s internal identifier
     pub internal_connection_id: InternalConnectionId,
-    /// The connection ID mapper registration which should be utilized by the connection
-    pub connection_id_mapper_registration: ConnectionIdMapperRegistration,
+    /// The local ID registry which should be utilized by the connection
+    pub local_id_registry: LocalIdRegistry,
     /// The per-connection timer
     pub timer: ConnectionTimerEntry,
     /// The last utilized remote Connection ID

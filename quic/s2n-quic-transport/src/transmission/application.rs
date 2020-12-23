@@ -1,5 +1,5 @@
 use crate::{
-    connection::ConnectionIdMapperRegistration,
+    connection,
     contexts::WriteContext,
     path,
     space::HandshakeStatus,
@@ -14,7 +14,7 @@ pub struct Payload<'a, S: Stream, CC: CongestionController> {
     pub handshake_status: &'a mut HandshakeStatus,
     pub ping: &'a mut Ping,
     pub stream_manager: &'a mut AbstractStreamManager<S>,
-    pub connection_id_mapper_registration: &'a mut ConnectionIdMapperRegistration,
+    pub local_id_registry: &'a mut connection::LocalIdRegistry,
     pub path_manager: &'a mut path::Manager<CC>,
 }
 
@@ -29,7 +29,7 @@ impl<'a, S: Stream, CC: CongestionController> super::Payload for Payload<'a, S, 
         // soon as possible
         let _ = self.handshake_status.on_transmit(context);
 
-        self.connection_id_mapper_registration.on_transmit(context);
+        self.local_id_registry.on_transmit(context);
 
         self.path_manager.on_transmit(context);
 
@@ -52,9 +52,7 @@ impl<'a, S: Stream, CC: CongestionController> transmission::interest::Provider
         transmission::Interest::default()
             + self.handshake_status.transmission_interest()
             + self.stream_manager.transmission_interest()
-            + self
-                .connection_id_mapper_registration
-                .transmission_interest()
+            + self.local_id_registry.transmission_interest()
             + self.path_manager.transmission_interest()
     }
 }

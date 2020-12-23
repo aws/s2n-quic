@@ -1,7 +1,5 @@
 use crate::{
-    connection::{
-        self, connection_id_mapper::ConnectionIdMapperRegistration, SharedConnectionState,
-    },
+    connection::{self, SharedConnectionState},
     path, transmission,
 };
 use core::time::Duration;
@@ -20,7 +18,7 @@ pub struct ConnectionTransmissionContext<'a, Config: connection::Config> {
     pub timestamp: Timestamp,
     pub path_id: path::Id,
     pub path_manager: &'a mut path::Manager<Config::CongestionController>,
-    pub connection_id_mapper_registration: &'a mut ConnectionIdMapperRegistration,
+    pub local_id_registry: &'a mut connection::LocalIdRegistry,
     pub source_connection_id: &'a connection::LocalId,
     pub ecn: ExplicitCongestionNotification,
 }

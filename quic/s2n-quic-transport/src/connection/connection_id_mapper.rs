@@ -3,8 +3,8 @@
 use crate::{
     connection::{
         connection_id_mapper::{
-            ConnectionIdMapperRegistrationError::{ConnectionIdInUse, InvalidSequenceNumber},
-            LocalConnectionIdStatus::{
+            LocalIdRegistrationError::{ConnectionIdInUse, InvalidSequenceNumber},
+            LocalIdStatus::{
                 Active, PendingAcknowledgement, PendingIssuance, PendingReissue, PendingRemoval,
                 PendingRetirementConfirmation,
             },
@@ -75,15 +75,15 @@ impl ConnectionIdMapper {
         guard.connection_map.get(connection_id).map(Clone::clone)
     }
 
-    /// Creates a registration for a new internal connection ID, which allows that
+    /// Creates a `LocalIdRegistry` for a new internal connection ID, which allows that
     /// connection to modify the mappings of it's Connection ID aliases. The provided
-    /// `initial_connection_id` will be registered in the returned registration.
-    pub fn create_registration(
+    /// `initial_connection_id` will be registered in the returned registry.
+    pub fn create_registry(
         &mut self,
         internal_id: InternalConnectionId,
         initial_connection_id: &connection::LocalId,
-    ) -> ConnectionIdMapperRegistration {
-        let mut registration = ConnectionIdMapperRegistration {
+    ) -> LocalIdRegistry {
+        let mut registration = LocalIdRegistry {
             internal_id,
             state: self.state.clone(),
             registered_ids: SmallVec::new(),
@@ -161,13 +161,13 @@ const RTT_MULTIPLIER: u32 = 3;
 /// It allows to add and remove external QUIC Connection IDs which are mapped to
 /// internal IDs.
 #[derive(Debug)]
-pub struct ConnectionIdMapperRegistration {
+pub struct LocalIdRegistry {
     /// The internal connection ID for this registration
     internal_id: InternalConnectionId,
     /// The shared state between mapper and registration
     state: Rc<RefCell<ConnectionIdMapperState>>,
     /// The connection IDs which are currently registered at the ConnectionIdMapper
-    registered_ids: SmallVec<[LocalConnectionIdInfo; NR_STATIC_REGISTRABLE_IDS]>,
+    registered_ids: SmallVec<[LocalIdInfo; NR_STATIC_REGISTRABLE_IDS]>,
     /// The sequence number to use the next time a new connection ID is registered
     next_sequence_number: u32,
     /// The current sequence number below which all connection IDs are considered retired
@@ -179,7 +179,7 @@ pub struct ConnectionIdMapperRegistration {
 }
 
 #[derive(Debug)]
-struct LocalConnectionIdInfo {
+struct LocalIdInfo {
     id: connection::LocalId,
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
     //# Each Connection ID has an associated sequence number to assist in
@@ -187,10 +187,10 @@ struct LocalConnectionIdInfo {
     //# to the same value.
     sequence_number: u32,
     retirement_time: Option<Timestamp>,
-    status: LocalConnectionIdStatus,
+    status: LocalIdStatus,
 }
 
-impl LocalConnectionIdInfo {
+impl LocalIdInfo {
     // The time the connection ID next needs to change status (either to
     // PendingRetirementConfirmation, or removal altogether)
     fn next_status_change_time(&self) -> Option<Timestamp> {
@@ -239,7 +239,7 @@ impl LocalConnectionIdInfo {
 
 /// The current status of the connection ID.
 #[derive(Debug, PartialEq)]
-enum LocalConnectionIdStatus {
+enum LocalIdStatus {
     /// New Connection IDs are put in the `PendingIssuance` status
     /// upon creation until a NEW_CONNECTION_ID frame has been sent
     /// to the peer to communicate the new connection ID.
@@ -267,7 +267,7 @@ enum LocalConnectionIdStatus {
     PendingRemoval(Timestamp),
 }
 
-impl LocalConnectionIdStatus {
+impl LocalIdStatus {
     /// Returns true if this status counts towards the active_connection_id_limit
     fn counts_towards_limit(&self) -> bool {
         match self {
@@ -288,14 +288,14 @@ impl LocalConnectionIdStatus {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum ConnectionIdMapperRegistrationError {
+pub enum LocalIdRegistrationError {
     /// The Connection ID had already been registered
     ConnectionIdInUse,
     /// An invalid sequence number was specified
     InvalidSequenceNumber,
 }
 
-impl ConnectionIdMapperRegistrationError {
+impl LocalIdRegistrationError {
     pub fn message(&self) -> &'static str {
         match self {
             ConnectionIdInUse => "Connection ID already in use",
@@ -304,7 +304,7 @@ impl ConnectionIdMapperRegistrationError {
     }
 }
 
-impl Drop for ConnectionIdMapperRegistration {
+impl Drop for LocalIdRegistry {
     fn drop(&mut self) {
         let mut guard = self.state.borrow_mut();
 
@@ -315,7 +315,7 @@ impl Drop for ConnectionIdMapperRegistration {
     }
 }
 
-impl ConnectionIdMapperRegistration {
+impl LocalIdRegistry {
     /// Returns the associated internal connection ID
     pub fn internal_connection_id(&self) -> InternalConnectionId {
         self.internal_id
@@ -341,12 +341,12 @@ impl ConnectionIdMapperRegistration {
         &mut self,
         id: &connection::LocalId,
         expiration: Option<Timestamp>,
-    ) -> Result<(), ConnectionIdMapperRegistrationError> {
+    ) -> Result<(), LocalIdRegistrationError> {
         if self.registered_ids.iter().any(|id_info| id_info.id == *id) {
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1
             //# As a trivial example, this means the same connection ID
             //# MUST NOT be issued more than once on the same connection.
-            return Err(ConnectionIdMapperRegistrationError::ConnectionIdInUse);
+            return Err(LocalIdRegistrationError::ConnectionIdInUse);
         }
 
         debug_assert!(
@@ -370,7 +370,7 @@ impl ConnectionIdMapperRegistration {
             let retirement_time = expiration.map(|expiration| expiration - EXPIRATION_BUFFER);
 
             // Track the inserted connection ID info
-            self.registered_ids.push(LocalConnectionIdInfo {
+            self.registered_ids.push(LocalIdInfo {
                 id: *id,
                 sequence_number,
                 retirement_time,
@@ -388,7 +388,7 @@ impl ConnectionIdMapperRegistration {
 
             Ok(())
         } else {
-            Err(ConnectionIdMapperRegistrationError::ConnectionIdInUse)
+            Err(LocalIdRegistrationError::ConnectionIdInUse)
         }
     }
 
@@ -432,13 +432,13 @@ impl ConnectionIdMapperRegistration {
         destination_connection_id: &connection::LocalId,
         rtt: Duration,
         timestamp: Timestamp,
-    ) -> Result<(), ConnectionIdMapperRegistrationError> {
+    ) -> Result<(), LocalIdRegistrationError> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.16
         //# Receipt of a RETIRE_CONNECTION_ID frame containing a sequence number
         //# greater than any previously sent to the peer MUST be treated as a
         //# connection error of type PROTOCOL_VIOLATION.
         if sequence_number >= self.next_sequence_number {
-            return Err(ConnectionIdMapperRegistrationError::InvalidSequenceNumber);
+            return Err(LocalIdRegistrationError::InvalidSequenceNumber);
         }
 
         let id_info = self
@@ -459,7 +459,7 @@ impl ConnectionIdMapperRegistration {
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.16
                 //# The peer MAY treat this as a
                 //# connection error of type PROTOCOL_VIOLATION.
-                return Err(ConnectionIdMapperRegistrationError::InvalidSequenceNumber);
+                return Err(LocalIdRegistrationError::InvalidSequenceNumber);
             }
 
             // Calculate a removal time based on RTT to give sufficient time for out of
@@ -639,7 +639,7 @@ impl ConnectionIdMapperRegistration {
     }
 }
 
-impl transmission::interest::Provider for ConnectionIdMapperRegistration {
+impl transmission::interest::Provider for LocalIdRegistry {
     fn transmission_interest(&self) -> transmission::Interest {
         let has_ids_pending_reissue = self
             .registered_ids
@@ -679,18 +679,15 @@ mod tests {
         varint::VarInt,
     };
 
-    impl ConnectionIdMapperRegistration {
-        fn get_connection_id_info(
-            &self,
-            id: &connection::LocalId,
-        ) -> Option<&LocalConnectionIdInfo> {
+    impl LocalIdRegistry {
+        fn get_connection_id_info(&self, id: &connection::LocalId) -> Option<&LocalIdInfo> {
             self.registered_ids.iter().find(|id_info| id_info.id == *id)
         }
 
         fn get_connection_id_info_mut(
             &mut self,
             id: &connection::LocalId,
-        ) -> Option<&mut LocalConnectionIdInfo> {
+        ) -> Option<&mut LocalIdInfo> {
             self.registered_ids
                 .iter_mut()
                 .find(|id_info| id_info.id == *id)
@@ -710,7 +707,7 @@ mod tests {
 
         let expiration = s2n_quic_platform::time::now() + MIN_LIFETIME;
 
-        let mut reg1 = mapper.create_registration(id1, &ext_id_1);
+        let mut reg1 = mapper.create_registry(id1, &ext_id_1);
         reg1.set_active_connection_id_limit(3);
         assert!(reg1
             .register_connection_id(&ext_id_2, Some(expiration))
@@ -731,10 +728,10 @@ mod tests {
     fn same_connection_id_must_not_be_issued_for_same_connection() {
         let ext_id = connection::LocalId::try_from_bytes(b"id01").unwrap();
         let mut reg = ConnectionIdMapper::new()
-            .create_registration(InternalConnectionIdGenerator::new().generate_id(), &ext_id);
+            .create_registry(InternalConnectionIdGenerator::new().generate_id(), &ext_id);
 
         assert_eq!(
-            Err(ConnectionIdMapperRegistrationError::ConnectionIdInUse),
+            Err(LocalIdRegistrationError::ConnectionIdInUse),
             reg.register_connection_id(&ext_id, None)
         );
     }
@@ -748,7 +745,7 @@ mod tests {
         let ext_id_1 = connection::LocalId::try_from_bytes(b"id01").unwrap();
         let ext_id_2 = connection::LocalId::try_from_bytes(b"id02").unwrap();
 
-        let mut reg = ConnectionIdMapper::new().create_registration(
+        let mut reg = ConnectionIdMapper::new().create_registry(
             InternalConnectionIdGenerator::new().generate_id(),
             &ext_id_1,
         );
@@ -780,8 +777,8 @@ mod tests {
         let ext_id_3 = connection::LocalId::try_from_bytes(b"id03").unwrap();
         let ext_id_4 = connection::LocalId::try_from_bytes(b"id04").unwrap();
 
-        let mut reg1 = mapper.create_registration(id1, &ext_id_1);
-        let mut reg2 = mapper.create_registration(id2, &ext_id_3);
+        let mut reg1 = mapper.create_registry(id1, &ext_id_1);
+        let mut reg2 = mapper.create_registry(id2, &ext_id_3);
 
         let now = s2n_quic_platform::time::now();
 
@@ -797,7 +794,7 @@ mod tests {
         assert_eq!(Some(id1), mapper.lookup_internal_connection_id(&ext_id_1));
 
         assert_eq!(
-            Err(ConnectionIdMapperRegistrationError::ConnectionIdInUse),
+            Err(LocalIdRegistrationError::ConnectionIdInUse),
             reg2.register_connection_id(&ext_id_1, None)
         );
 
@@ -852,7 +849,7 @@ mod tests {
 
         let now = s2n_quic_platform::time::now();
 
-        let mut reg1 = mapper.create_registration(id1, &ext_id_1);
+        let mut reg1 = mapper.create_registry(id1, &ext_id_1);
         reg1.set_active_connection_id_limit(2);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.16
@@ -861,7 +858,7 @@ mod tests {
         //# greater than any previously sent to the peer MUST be treated as a
         //# connection error of type PROTOCOL_VIOLATION.
         assert_eq!(
-            Some(ConnectionIdMapperRegistrationError::InvalidSequenceNumber),
+            Some(LocalIdRegistrationError::InvalidSequenceNumber),
             reg1.on_retire_connection_id(1, &ext_id_1, Duration::default(), now)
                 .err()
         );
@@ -881,7 +878,7 @@ mod tests {
         //# The peer MAY treat this as a
         //# connection error of type PROTOCOL_VIOLATION.
         assert_eq!(
-            Some(ConnectionIdMapperRegistrationError::InvalidSequenceNumber),
+            Some(LocalIdRegistrationError::InvalidSequenceNumber),
             reg1.on_retire_connection_id(1, &ext_id_2, Duration::default(), now)
                 .err()
         );
@@ -936,7 +933,7 @@ mod tests {
 
         let now = s2n_quic_platform::time::now();
 
-        let mut reg1 = mapper.create_registration(id1, &ext_id_1);
+        let mut reg1 = mapper.create_registry(id1, &ext_id_1);
         reg1.set_active_connection_id_limit(2);
 
         assert!(reg1.register_connection_id(&ext_id_2, None).is_ok());
@@ -991,7 +988,7 @@ mod tests {
         let ext_id_2 = connection::LocalId::try_from_bytes(b"id02").unwrap();
         let ext_id_3 = connection::LocalId::try_from_bytes(b"id03").unwrap();
 
-        let mut reg1 = mapper.create_registration(id1, &ext_id_1);
+        let mut reg1 = mapper.create_registry(id1, &ext_id_1);
 
         // Active connection ID limit starts at 1, so there is no interest initially
         assert_eq!(
@@ -1041,7 +1038,7 @@ mod tests {
         let ext_id_2 = connection::LocalId::try_from_bytes(b"id02").unwrap();
         let ext_id_3 = connection::LocalId::try_from_bytes(b"id03").unwrap();
 
-        let mut reg1 = mapper.create_registration(id1, &ext_id_1);
+        let mut reg1 = mapper.create_registry(id1, &ext_id_1);
         reg1.set_active_connection_id_limit(2);
 
         assert_eq!(
@@ -1074,7 +1071,7 @@ mod tests {
 
         let now = s2n_quic_platform::time::now();
 
-        let mut reg1 = mapper.create_registration(id1, &ext_id_1);
+        let mut reg1 = mapper.create_registry(id1, &ext_id_1);
         reg1.set_active_connection_id_limit(2);
 
         assert_eq!(
@@ -1108,7 +1105,7 @@ mod tests {
 
         let ext_id_1 = connection::LocalId::try_from_bytes(b"id01").unwrap();
 
-        let mut reg1 = mapper.create_registration(id1, &ext_id_1);
+        let mut reg1 = mapper.create_registry(id1, &ext_id_1);
         reg1.set_active_connection_id_limit(100);
 
         assert_eq!(
@@ -1130,7 +1127,7 @@ mod tests {
 
         let now = s2n_quic_platform::time::now();
 
-        let mut reg1 = mapper.create_registration(id1, &ext_id_1);
+        let mut reg1 = mapper.create_registry(id1, &ext_id_1);
         reg1.set_active_connection_id_limit(3);
 
         assert_eq!(transmission::Interest::None, reg1.transmission_interest());
@@ -1214,7 +1211,7 @@ mod tests {
         let ext_id_2 = connection::LocalId::try_from_bytes(b"id02").unwrap();
         let ext_id_3 = connection::LocalId::try_from_bytes(b"id03").unwrap();
 
-        let mut reg1 = mapper.create_registration(id1, &ext_id_1);
+        let mut reg1 = mapper.create_registry(id1, &ext_id_1);
         reg1.set_active_connection_id_limit(3);
 
         assert_eq!(transmission::Interest::None, reg1.transmission_interest());
@@ -1281,7 +1278,7 @@ mod tests {
         let ext_id_1 = connection::LocalId::try_from_bytes(b"id01").unwrap();
         let ext_id_2 = connection::LocalId::try_from_bytes(b"id02").unwrap();
 
-        let mut reg1 = mapper.create_registration(id1, &ext_id_1);
+        let mut reg1 = mapper.create_registry(id1, &ext_id_1);
         reg1.set_active_connection_id_limit(3);
 
         assert!(reg1.register_connection_id(&ext_id_2, None).is_ok());
@@ -1328,7 +1325,7 @@ mod tests {
         let ext_id_1 = connection::LocalId::try_from_bytes(b"id01").unwrap();
         let ext_id_2 = connection::LocalId::try_from_bytes(b"id02").unwrap();
 
-        let mut reg1 = mapper.create_registration(id1, &ext_id_1);
+        let mut reg1 = mapper.create_registry(id1, &ext_id_1);
         reg1.set_active_connection_id_limit(3);
 
         // No timer set for the initial connection ID
@@ -1387,7 +1384,7 @@ mod tests {
         let ext_id_2 = connection::LocalId::try_from_bytes(b"id02").unwrap();
         let ext_id_3 = connection::LocalId::try_from_bytes(b"id03").unwrap();
 
-        let mut reg1 = mapper.create_registration(id1, &ext_id_1);
+        let mut reg1 = mapper.create_registry(id1, &ext_id_1);
         reg1.set_active_connection_id_limit(3);
 
         let now = s2n_quic_platform::time::now();
@@ -1464,7 +1461,7 @@ mod tests {
         let ext_id_2 = connection::LocalId::try_from_bytes(b"id02").unwrap();
         let ext_id_3 = connection::LocalId::try_from_bytes(b"id03").unwrap();
 
-        let mut reg1 = mapper.create_registration(id1, &ext_id_1);
+        let mut reg1 = mapper.create_registry(id1, &ext_id_1);
         reg1.set_active_connection_id_limit(3);
 
         assert!(reg1.register_connection_id(&ext_id_2, None).is_ok());
