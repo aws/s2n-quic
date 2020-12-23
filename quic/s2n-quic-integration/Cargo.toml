@@ -1,0 +1,21 @@
+[package]
+name = "s2n-quic-integration"
+version = "0.1.0"
+authors = ["Cameron Bytheway <bythewc@amazon.com>"]
+edition = "2018"
+license = "Apache-2.0"
+publish = false
+
+[dependencies]
+anyhow = "1"
+arr_macro = "0.1"
+bytes = { version = "0.6", default-features = false }
+futures = "0.3"
+lazy_static = "1"
+s2n-quic = { path = "../s2n-quic", features = ["std"] }
+s2n-quic-core = { path = "../s2n-quic-core", features = ["std"] }
+s2n-quic-platform = { path = "../s2n-quic-platform" }
+tokio = { version = "0.2", features = ["full"] }
+
+[dev-dependencies]
+bolero = "0.6"
