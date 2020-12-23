@@ -2,7 +2,7 @@
 
 use crate::{
     connection::{
-        self, connection_id_mapper::ConnectionIdMapperRegistrationError,
+        self, connection_id_mapper::LocalIdRegistrationError,
         connection_interests::ConnectionInterests, id::ConnectionInfo,
         internal_connection_id::InternalConnectionId, shared_state::SharedConnectionState,
         CloseReason as ConnectionCloseReason, Parameters as ConnectionParameters,
@@ -68,7 +68,7 @@ pub trait ConnectionTrait: Sized {
         &mut self,
         connection_id_format: &mut ConnectionIdFormat,
         timestamp: Timestamp,
-    ) -> Result<(), ConnectionIdMapperRegistrationError>;
+    ) -> Result<(), LocalIdRegistrationError>;
 
     /// Queries the connection for outgoing packets
     fn on_transmit<Tx: tx::Queue>(

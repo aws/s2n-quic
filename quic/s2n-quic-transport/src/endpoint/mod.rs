@@ -356,7 +356,12 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     }
                 }
                 _ => {
-                    // If the connection was not found, issue a stateless reset
+                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
+                    //= type=TODO
+                    //= tracking-issue=195
+                    //= feature=Stateless Reset
+                    //# An endpoint MAY send a stateless reset in response to receiving a packet
+                    //# that it cannot associate with an active connection.
                     self.enqueue_stateless_reset(datagram, packet.destination_connection_id());
                 }
             }

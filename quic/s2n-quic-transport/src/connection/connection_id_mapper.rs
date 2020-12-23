@@ -3,9 +3,10 @@
 use crate::{
     connection::{
         connection_id_mapper::{
-            ConnectionIdMapperRegistrationError::{ConnectionIdInUse, InvalidSequenceNumber},
-            LocalConnectionIdStatus::{
+            LocalIdRegistrationError::{ConnectionIdInUse, InvalidSequenceNumber},
+            LocalIdStatus::{
                 Active, PendingAcknowledgement, PendingIssuance, PendingReissue, PendingRemoval,
+                PendingRetirementConfirmation,
             },
         },
         InternalConnectionId,
@@ -74,15 +75,15 @@ impl ConnectionIdMapper {
         guard.connection_map.get(connection_id).map(Clone::clone)
     }
 
-    /// Creates a registration for a new internal connection ID, which allows that
+    /// Creates a `LocalIdRegistry` for a new internal connection ID, which allows that
     /// connection to modify the mappings of it's Connection ID aliases. The provided
-    /// `initial_connection_id` will be registered in the returned registration.
-    pub fn create_registration(
+    /// `initial_connection_id` will be registered in the returned registry.
+    pub fn create_registry(
         &mut self,
         internal_id: InternalConnectionId,
         initial_connection_id: &connection::LocalId,
-    ) -> ConnectionIdMapperRegistration {
-        let mut registration = ConnectionIdMapperRegistration {
+    ) -> LocalIdRegistry {
+        let mut registration = LocalIdRegistry {
             internal_id,
             state: self.state.clone(),
             registered_ids: SmallVec::new(),
@@ -118,6 +119,12 @@ impl ConnectionIdMapper {
 /// The amount of ConnectionIds we can register without dynamic memory allocation
 const NR_STATIC_REGISTRABLE_IDS: usize = 5;
 
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
+//# An endpoint that initiates migration and requires non-zero-length
+//# connection IDs SHOULD ensure that the pool of connection IDs
+//# available to its peer allows the peer to use a new connection ID on
+//# migration, as the peer will be unable to respond if the pool is
+//# exhausted.
 /// Limit on the number of connection IDs issued to the peer to reduce the amount
 /// of per-path state maintained. Increasing this value allows peers to probe
 /// more paths simultaneously at the expense of additional state to maintain.
@@ -154,13 +161,13 @@ const RTT_MULTIPLIER: u32 = 3;
 /// It allows to add and remove external QUIC Connection IDs which are mapped to
 /// internal IDs.
 #[derive(Debug)]
-pub struct ConnectionIdMapperRegistration {
+pub struct LocalIdRegistry {
     /// The internal connection ID for this registration
     internal_id: InternalConnectionId,
     /// The shared state between mapper and registration
     state: Rc<RefCell<ConnectionIdMapperState>>,
     /// The connection IDs which are currently registered at the ConnectionIdMapper
-    registered_ids: SmallVec<[LocalConnectionIdInfo; NR_STATIC_REGISTRABLE_IDS]>,
+    registered_ids: SmallVec<[LocalIdInfo; NR_STATIC_REGISTRABLE_IDS]>,
     /// The sequence number to use the next time a new connection ID is registered
     next_sequence_number: u32,
     /// The current sequence number below which all connection IDs are considered retired
@@ -172,7 +179,7 @@ pub struct ConnectionIdMapperRegistration {
 }
 
 #[derive(Debug)]
-struct LocalConnectionIdInfo {
+struct LocalIdInfo {
     id: connection::LocalId,
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
     //# Each Connection ID has an associated sequence number to assist in
@@ -180,18 +187,14 @@ struct LocalConnectionIdInfo {
     //# to the same value.
     sequence_number: u32,
     retirement_time: Option<Timestamp>,
-    status: LocalConnectionIdStatus,
+    status: LocalIdStatus,
 }
 
-impl LocalConnectionIdInfo {
+impl LocalIdInfo {
     // The time the connection ID next needs to change status (either to
-    // PendingRemoval, or removal altogether)
+    // PendingRetirementConfirmation, or removal altogether)
     fn next_status_change_time(&self) -> Option<Timestamp> {
-        if let PendingRemoval(removal_time) = self.status {
-            Some(removal_time)
-        } else {
-            self.retirement_time
-        }
+        self.removal_time().or(self.retirement_time)
     }
 
     // Returns true if the connection ID should be moved to PendingRemoval
@@ -204,29 +207,39 @@ impl LocalConnectionIdInfo {
 
     // Returns true if the connection ID has been retired and is pending removal
     fn is_retired(&self) -> bool {
-        matches!(self.status, PendingRemoval(_))
+        match self.status {
+            PendingRetirementConfirmation(_) => true,
+            PendingRemoval(_) => true,
+            _ => false,
+        }
     }
 
     // Returns true if the connection ID should no longer be used
     fn is_expired(&self, timestamp: Timestamp) -> bool {
-        if let PendingRemoval(removal_time) = self.status {
-            return removal_time <= timestamp;
-        }
+        self.removal_time()
+            .map_or(false, |removal_time| removal_time <= timestamp)
+    }
 
-        false
+    // The time this connection ID should be removed
+    fn removal_time(&self) -> Option<Timestamp> {
+        match self.status {
+            PendingRetirementConfirmation(removal_time) => Some(removal_time),
+            PendingRemoval(removal_time) => Some(removal_time),
+            _ => None,
+        }
     }
 
     // Changes the status of the connection ID to PendingRemoval with a removal
     // time incorporating the EXPIRATION_BUFFER
     fn retire(&mut self, timestamp: Timestamp) {
         debug_assert!(!self.is_retired());
-        self.status = PendingRemoval(timestamp + EXPIRATION_BUFFER)
+        self.status = PendingRetirementConfirmation(timestamp + EXPIRATION_BUFFER)
     }
 }
 
 /// The current status of the connection ID.
 #[derive(Debug, PartialEq)]
-enum LocalConnectionIdStatus {
+enum LocalIdStatus {
     /// New Connection IDs are put in the `PendingIssuance` status
     /// upon creation until a NEW_CONNECTION_ID frame has been sent
     /// to the peer to communicate the new connection ID.
@@ -241,16 +254,27 @@ enum LocalConnectionIdStatus {
     /// peer has acknowledged the ID, it enters the `Active` status.
     /// The initial connection ID starts in this status.
     Active,
-    /// Connection IDs are put in the `PendingRemoval` status
+    /// Connection IDs are put in the `PendingRetirementConfirmation` status
     /// upon retirement, until confirmation of the retirement
-    /// is received from the peer.
+    /// is received from the peer. If the removal_time indicated in this status
+    /// is exceeded, the connection ID will be removed without confirmation from
+    /// the peer.
+    PendingRetirementConfirmation(Timestamp),
+    /// Connection IDs are put in the `PendingRemoval` status
+    /// when the peer has confirmed the retirement by sending a
+    /// RETIRE_CONNECTION_ID_FRAME. This status exists to allow for a brief
+    /// period before the Id is removed to account for packet reordering.
     PendingRemoval(Timestamp),
 }
 
-impl LocalConnectionIdStatus {
+impl LocalIdStatus {
     /// Returns true if this status counts towards the active_connection_id_limit
     fn counts_towards_limit(&self) -> bool {
-        !matches!(self, PendingRemoval(_))
+        match self {
+            PendingRetirementConfirmation(_) => false,
+            PendingRemoval(_) => false,
+            _ => true,
+        }
     }
 
     /// Returns true if this status allows for transmission based on the transmission constraint
@@ -264,14 +288,14 @@ impl LocalConnectionIdStatus {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum ConnectionIdMapperRegistrationError {
+pub enum LocalIdRegistrationError {
     /// The Connection ID had already been registered
     ConnectionIdInUse,
     /// An invalid sequence number was specified
     InvalidSequenceNumber,
 }
 
-impl ConnectionIdMapperRegistrationError {
+impl LocalIdRegistrationError {
     pub fn message(&self) -> &'static str {
         match self {
             ConnectionIdInUse => "Connection ID already in use",
@@ -280,7 +304,7 @@ impl ConnectionIdMapperRegistrationError {
     }
 }
 
-impl Drop for ConnectionIdMapperRegistration {
+impl Drop for LocalIdRegistry {
     fn drop(&mut self) {
         let mut guard = self.state.borrow_mut();
 
@@ -291,7 +315,7 @@ impl Drop for ConnectionIdMapperRegistration {
     }
 }
 
-impl ConnectionIdMapperRegistration {
+impl LocalIdRegistry {
     /// Returns the associated internal connection ID
     pub fn internal_connection_id(&self) -> InternalConnectionId {
         self.internal_id
@@ -317,12 +341,12 @@ impl ConnectionIdMapperRegistration {
         &mut self,
         id: &connection::LocalId,
         expiration: Option<Timestamp>,
-    ) -> Result<(), ConnectionIdMapperRegistrationError> {
+    ) -> Result<(), LocalIdRegistrationError> {
         if self.registered_ids.iter().any(|id_info| id_info.id == *id) {
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1
             //# As a trivial example, this means the same connection ID
             //# MUST NOT be issued more than once on the same connection.
-            return Err(ConnectionIdMapperRegistrationError::ConnectionIdInUse);
+            return Err(LocalIdRegistrationError::ConnectionIdInUse);
         }
 
         debug_assert!(
@@ -346,7 +370,7 @@ impl ConnectionIdMapperRegistration {
             let retirement_time = expiration.map(|expiration| expiration - EXPIRATION_BUFFER);
 
             // Track the inserted connection ID info
-            self.registered_ids.push(LocalConnectionIdInfo {
+            self.registered_ids.push(LocalIdInfo {
                 id: *id,
                 sequence_number,
                 retirement_time,
@@ -364,7 +388,7 @@ impl ConnectionIdMapperRegistration {
 
             Ok(())
         } else {
-            Err(ConnectionIdMapperRegistrationError::ConnectionIdInUse)
+            Err(LocalIdRegistrationError::ConnectionIdInUse)
         }
     }
 
@@ -391,6 +415,16 @@ impl ConnectionIdMapperRegistration {
         self.update_timers()
     }
 
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
+    //# When an endpoint issues a connection ID, it MUST accept packets that
+    //# carry this connection ID for the duration of the connection or until
+    //# its peer invalidates the connection ID via a RETIRE_CONNECTION_ID
+    //# frame (Section 19.16).
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2
+    //# The endpoint SHOULD continue to
+    //# accept the previously issued connection IDs until they are retired by
+    //# the peer.
     /// Handles the retirement of a sequence_number received from a RETIRE_CONNECTION_ID frame
     pub fn on_retire_connection_id(
         &mut self,
@@ -398,23 +432,21 @@ impl ConnectionIdMapperRegistration {
         destination_connection_id: &connection::LocalId,
         rtt: Duration,
         timestamp: Timestamp,
-    ) -> Result<(), ConnectionIdMapperRegistrationError> {
+    ) -> Result<(), LocalIdRegistrationError> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.16
         //# Receipt of a RETIRE_CONNECTION_ID frame containing a sequence number
         //# greater than any previously sent to the peer MUST be treated as a
         //# connection error of type PROTOCOL_VIOLATION.
         if sequence_number >= self.next_sequence_number {
-            return Err(ConnectionIdMapperRegistrationError::InvalidSequenceNumber);
+            return Err(LocalIdRegistrationError::InvalidSequenceNumber);
         }
-
-        // Calculate a removal time based on RTT to give sufficient time for out of
-        // order packets using the retired connection ID to be received
-        let removal_time = timestamp + rtt * RTT_MULTIPLIER;
 
         let id_info = self
             .registered_ids
             .iter_mut()
-            .filter(|id_info| !id_info.is_retired())
+            // Filter out IDs that are already PendingRemoval, indicating this was a duplicate
+            // RETIRE_CONNECTION_ID frame
+            .filter(|id_info| !matches!(id_info.status, PendingRemoval(_)))
             .find(|id_info| id_info.sequence_number == sequence_number);
 
         if let Some(mut id_info) = id_info {
@@ -427,8 +459,12 @@ impl ConnectionIdMapperRegistration {
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.16
                 //# The peer MAY treat this as a
                 //# connection error of type PROTOCOL_VIOLATION.
-                return Err(ConnectionIdMapperRegistrationError::InvalidSequenceNumber);
+                return Err(LocalIdRegistrationError::InvalidSequenceNumber);
             }
+
+            // Calculate a removal time based on RTT to give sufficient time for out of
+            // order packets using the retired connection ID to be received
+            let removal_time = timestamp + rtt * RTT_MULTIPLIER;
 
             id_info.status = PendingRemoval(removal_time);
             self.update_timers();
@@ -452,9 +488,17 @@ impl ConnectionIdMapperRegistration {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
         //# An endpoint MUST NOT
         //# provide more connection IDs than the peer's limit.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
+        //# An endpoint SHOULD supply a new connection ID when the peer retires a
+        //# connection ID.
         let new_connection_id_count = self.active_connection_id_limit - active_connection_id_count;
 
         if new_connection_id_count > 0 {
+            self.check_active_connection_id_limit(
+                active_connection_id_count,
+                new_connection_id_count,
+            );
             connection::id::Interest::New(new_connection_id_count)
         } else {
             connection::id::Interest::None
@@ -569,9 +613,33 @@ impl ConnectionIdMapperRegistration {
             );
         }
     }
+
+    fn check_active_connection_id_limit(&self, active_count: u8, new_count: u8) {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
+        //# An endpoint MAY
+        //# send connection IDs that temporarily exceed a peer's limit if the
+        //# NEW_CONNECTION_ID frame also requires the retirement of any excess,
+        //# by including a sufficiently large value in the Retire Prior To field.
+        if cfg!(debug_assertions) {
+            let retired_count = self
+                .registered_ids
+                .iter()
+                .filter(|id_info| id_info.sequence_number < self.retire_prior_to)
+                .count() as u8;
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
+            //# An endpoint MAY
+            //# send connection IDs that temporarily exceed a peer's limit if the
+            //# NEW_CONNECTION_ID frame also requires the retirement of any excess,
+            //# by including a sufficiently large value in the Retire Prior To field.
+            assert!(
+                (active_count + new_count).saturating_sub(retired_count)
+                    <= self.active_connection_id_limit
+            );
+        }
+    }
 }
 
-impl transmission::interest::Provider for ConnectionIdMapperRegistration {
+impl transmission::interest::Provider for LocalIdRegistry {
     fn transmission_interest(&self) -> transmission::Interest {
         let has_ids_pending_reissue = self
             .registered_ids
@@ -611,18 +679,15 @@ mod tests {
         varint::VarInt,
     };
 
-    impl ConnectionIdMapperRegistration {
-        fn get_connection_id_info(
-            &self,
-            id: &connection::LocalId,
-        ) -> Option<&LocalConnectionIdInfo> {
+    impl LocalIdRegistry {
+        fn get_connection_id_info(&self, id: &connection::LocalId) -> Option<&LocalIdInfo> {
             self.registered_ids.iter().find(|id_info| id_info.id == *id)
         }
 
         fn get_connection_id_info_mut(
             &mut self,
             id: &connection::LocalId,
-        ) -> Option<&mut LocalConnectionIdInfo> {
+        ) -> Option<&mut LocalIdInfo> {
             self.registered_ids
                 .iter_mut()
                 .find(|id_info| id_info.id == *id)
@@ -642,7 +707,7 @@ mod tests {
 
         let expiration = s2n_quic_platform::time::now() + MIN_LIFETIME;
 
-        let mut reg1 = mapper.create_registration(id1, &ext_id_1);
+        let mut reg1 = mapper.create_registry(id1, &ext_id_1);
         reg1.set_active_connection_id_limit(3);
         assert!(reg1
             .register_connection_id(&ext_id_2, Some(expiration))
@@ -663,10 +728,10 @@ mod tests {
     fn same_connection_id_must_not_be_issued_for_same_connection() {
         let ext_id = connection::LocalId::try_from_bytes(b"id01").unwrap();
         let mut reg = ConnectionIdMapper::new()
-            .create_registration(InternalConnectionIdGenerator::new().generate_id(), &ext_id);
+            .create_registry(InternalConnectionIdGenerator::new().generate_id(), &ext_id);
 
         assert_eq!(
-            Err(ConnectionIdMapperRegistrationError::ConnectionIdInUse),
+            Err(LocalIdRegistrationError::ConnectionIdInUse),
             reg.register_connection_id(&ext_id, None)
         );
     }
@@ -680,7 +745,7 @@ mod tests {
         let ext_id_1 = connection::LocalId::try_from_bytes(b"id01").unwrap();
         let ext_id_2 = connection::LocalId::try_from_bytes(b"id02").unwrap();
 
-        let mut reg = ConnectionIdMapper::new().create_registration(
+        let mut reg = ConnectionIdMapper::new().create_registry(
             InternalConnectionIdGenerator::new().generate_id(),
             &ext_id_1,
         );
@@ -712,8 +777,8 @@ mod tests {
         let ext_id_3 = connection::LocalId::try_from_bytes(b"id03").unwrap();
         let ext_id_4 = connection::LocalId::try_from_bytes(b"id04").unwrap();
 
-        let mut reg1 = mapper.create_registration(id1, &ext_id_1);
-        let mut reg2 = mapper.create_registration(id2, &ext_id_3);
+        let mut reg1 = mapper.create_registry(id1, &ext_id_1);
+        let mut reg2 = mapper.create_registry(id2, &ext_id_3);
 
         let now = s2n_quic_platform::time::now();
 
@@ -729,7 +794,7 @@ mod tests {
         assert_eq!(Some(id1), mapper.lookup_internal_connection_id(&ext_id_1));
 
         assert_eq!(
-            Err(ConnectionIdMapperRegistrationError::ConnectionIdInUse),
+            Err(LocalIdRegistrationError::ConnectionIdInUse),
             reg2.register_connection_id(&ext_id_1, None)
         );
 
@@ -753,8 +818,16 @@ mod tests {
         assert_eq!(None, mapper.lookup_internal_connection_id(&ext_id_3));
         assert_eq!(Some(id2), mapper.lookup_internal_connection_id(&ext_id_4));
 
+        reg2.get_connection_id_info_mut(&ext_id_4).unwrap().status =
+            PendingRetirementConfirmation(now);
+        reg2.unregister_expired_ids(now);
+        assert_eq!(None, mapper.lookup_internal_connection_id(&ext_id_4));
+
+        // Put back ID3 and ID4 to test drop behavior
         assert!(reg1.register_connection_id(&ext_id_3, None).is_ok());
+        assert!(reg2.register_connection_id(&ext_id_4, None).is_ok());
         assert_eq!(Some(id1), mapper.lookup_internal_connection_id(&ext_id_3));
+        assert_eq!(Some(id2), mapper.lookup_internal_connection_id(&ext_id_4));
 
         // If a registration is dropped all entries are removed
         drop(reg1);
@@ -776,8 +849,8 @@ mod tests {
 
         let now = s2n_quic_platform::time::now();
 
-        let mut reg1 = mapper.create_registration(id1, &ext_id_1);
-        reg1.set_active_connection_id_limit(3);
+        let mut reg1 = mapper.create_registry(id1, &ext_id_1);
+        reg1.set_active_connection_id_limit(2);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.16
         //= type=test
@@ -785,7 +858,7 @@ mod tests {
         //# greater than any previously sent to the peer MUST be treated as a
         //# connection error of type PROTOCOL_VIOLATION.
         assert_eq!(
-            Some(ConnectionIdMapperRegistrationError::InvalidSequenceNumber),
+            Some(LocalIdRegistrationError::InvalidSequenceNumber),
             reg1.on_retire_connection_id(1, &ext_id_1, Duration::default(), now)
                 .err()
         );
@@ -805,7 +878,7 @@ mod tests {
         //# The peer MAY treat this as a
         //# connection error of type PROTOCOL_VIOLATION.
         assert_eq!(
-            Some(ConnectionIdMapperRegistrationError::InvalidSequenceNumber),
+            Some(LocalIdRegistrationError::InvalidSequenceNumber),
             reg1.on_retire_connection_id(1, &ext_id_2, Duration::default(), now)
                 .err()
         );
@@ -822,7 +895,83 @@ mod tests {
             Active,
             reg1.get_connection_id_info(&ext_id_1).unwrap().status
         );
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
+        //= type=test
+        //# An endpoint SHOULD supply a new connection ID when the peer retires a
+        //# connection ID.
+        assert_eq!(
+            connection::id::Interest::New(1),
+            reg1.connection_id_interest()
+        );
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
+        //= type=test
+        //# When an endpoint issues a connection ID, it MUST accept packets that
+        //# carry this connection ID for the duration of the connection or until
+        //# its peer invalidates the connection ID via a RETIRE_CONNECTION_ID
+        //# frame (Section 19.16).
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2
+        //= type=test
+        //# The endpoint SHOULD continue to
+        //# accept the previously issued connection IDs until they are retired by
+        //# the peer.
+        reg1.unregister_expired_ids(now + rtt * RTT_MULTIPLIER);
+        assert!(mapper.lookup_internal_connection_id(&ext_id_2).is_none());
     }
+
+    #[test]
+    fn on_retire_connection_id_pending_removal() {
+        let mut id_generator = InternalConnectionIdGenerator::new();
+        let mut mapper = ConnectionIdMapper::new();
+
+        let id1 = id_generator.generate_id();
+
+        let ext_id_1 = connection::LocalId::try_from_bytes(b"id01").unwrap();
+        let ext_id_2 = connection::LocalId::try_from_bytes(b"id02").unwrap();
+
+        let now = s2n_quic_platform::time::now();
+
+        let mut reg1 = mapper.create_registry(id1, &ext_id_1);
+        reg1.set_active_connection_id_limit(2);
+
+        assert!(reg1.register_connection_id(&ext_id_2, None).is_ok());
+
+        reg1.retire_all(now);
+
+        assert_eq!(
+            PendingRetirementConfirmation(now + EXPIRATION_BUFFER),
+            reg1.get_connection_id_info(&ext_id_1).unwrap().status
+        );
+        assert_eq!(
+            PendingRetirementConfirmation(now + EXPIRATION_BUFFER),
+            reg1.get_connection_id_info(&ext_id_2).unwrap().status
+        );
+
+        let rtt = Duration::from_millis(500);
+
+        assert!(reg1.on_retire_connection_id(1, &ext_id_1, rtt, now).is_ok());
+
+        assert_eq!(
+            PendingRetirementConfirmation(now + EXPIRATION_BUFFER),
+            reg1.get_connection_id_info(&ext_id_1).unwrap().status
+        );
+        // When the ON_RETIRE_CONNECTION_ID frame is received from the peer, the
+        // removal time for the retired connection ID is updated
+        assert_eq!(
+            PendingRemoval(now + rtt * RTT_MULTIPLIER),
+            reg1.get_connection_id_info(&ext_id_2).unwrap().status
+        );
+    }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
+    //= type=test
+    //# An endpoint that initiates migration and requires non-zero-length
+    //# connection IDs SHOULD ensure that the pool of connection IDs
+    //# available to its peer allows the peer to use a new connection ID on
+    //# migration, as the peer will be unable to respond if the pool is
+    //# exhausted.
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
     //= type=test
@@ -839,7 +988,7 @@ mod tests {
         let ext_id_2 = connection::LocalId::try_from_bytes(b"id02").unwrap();
         let ext_id_3 = connection::LocalId::try_from_bytes(b"id03").unwrap();
 
-        let mut reg1 = mapper.create_registration(id1, &ext_id_1);
+        let mut reg1 = mapper.create_registry(id1, &ext_id_1);
 
         // Active connection ID limit starts at 1, so there is no interest initially
         assert_eq!(
@@ -889,7 +1038,7 @@ mod tests {
         let ext_id_2 = connection::LocalId::try_from_bytes(b"id02").unwrap();
         let ext_id_3 = connection::LocalId::try_from_bytes(b"id03").unwrap();
 
-        let mut reg1 = mapper.create_registration(id1, &ext_id_1);
+        let mut reg1 = mapper.create_registry(id1, &ext_id_1);
         reg1.set_active_connection_id_limit(2);
 
         assert_eq!(
@@ -901,6 +1050,44 @@ mod tests {
 
         // Panics because we are inserting more than the limit
         let _ = reg1.register_connection_id(&ext_id_3, None);
+    }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
+    //= type=test
+    //# An endpoint MAY
+    //# send connection IDs that temporarily exceed a peer's limit if the
+    //# NEW_CONNECTION_ID frame also requires the retirement of any excess,
+    //# by including a sufficiently large value in the Retire Prior To field.
+    #[test]
+    fn endpoint_may_exceed_limit_temporarily() {
+        let mut id_generator = InternalConnectionIdGenerator::new();
+        let mut mapper = ConnectionIdMapper::new();
+
+        let id1 = id_generator.generate_id();
+
+        let ext_id_1 = connection::LocalId::try_from_bytes(b"id01").unwrap();
+        let ext_id_2 = connection::LocalId::try_from_bytes(b"id02").unwrap();
+        let ext_id_3 = connection::LocalId::try_from_bytes(b"id03").unwrap();
+
+        let now = s2n_quic_platform::time::now();
+
+        let mut reg1 = mapper.create_registry(id1, &ext_id_1);
+        reg1.set_active_connection_id_limit(2);
+
+        assert_eq!(
+            connection::id::Interest::New(1),
+            reg1.connection_id_interest()
+        );
+
+        assert!(reg1.register_connection_id(&ext_id_2, None).is_ok());
+        reg1.retire_all(now + EXPIRATION_BUFFER);
+
+        // We can register another ID because the retire_prior_to field retires old IDs
+        assert_eq!(
+            connection::id::Interest::New(2),
+            reg1.connection_id_interest()
+        );
+        assert!(reg1.register_connection_id(&ext_id_3, None).is_ok());
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
@@ -918,7 +1105,7 @@ mod tests {
 
         let ext_id_1 = connection::LocalId::try_from_bytes(b"id01").unwrap();
 
-        let mut reg1 = mapper.create_registration(id1, &ext_id_1);
+        let mut reg1 = mapper.create_registry(id1, &ext_id_1);
         reg1.set_active_connection_id_limit(100);
 
         assert_eq!(
@@ -940,7 +1127,7 @@ mod tests {
 
         let now = s2n_quic_platform::time::now();
 
-        let mut reg1 = mapper.create_registration(id1, &ext_id_1);
+        let mut reg1 = mapper.create_registry(id1, &ext_id_1);
         reg1.set_active_connection_id_limit(3);
 
         assert_eq!(transmission::Interest::None, reg1.transmission_interest());
@@ -1024,7 +1211,7 @@ mod tests {
         let ext_id_2 = connection::LocalId::try_from_bytes(b"id02").unwrap();
         let ext_id_3 = connection::LocalId::try_from_bytes(b"id03").unwrap();
 
-        let mut reg1 = mapper.create_registration(id1, &ext_id_1);
+        let mut reg1 = mapper.create_registry(id1, &ext_id_1);
         reg1.set_active_connection_id_limit(3);
 
         assert_eq!(transmission::Interest::None, reg1.transmission_interest());
@@ -1091,7 +1278,7 @@ mod tests {
         let ext_id_1 = connection::LocalId::try_from_bytes(b"id01").unwrap();
         let ext_id_2 = connection::LocalId::try_from_bytes(b"id02").unwrap();
 
-        let mut reg1 = mapper.create_registration(id1, &ext_id_1);
+        let mut reg1 = mapper.create_registry(id1, &ext_id_1);
         reg1.set_active_connection_id_limit(3);
 
         assert!(reg1.register_connection_id(&ext_id_2, None).is_ok());
@@ -1138,7 +1325,7 @@ mod tests {
         let ext_id_1 = connection::LocalId::try_from_bytes(b"id01").unwrap();
         let ext_id_2 = connection::LocalId::try_from_bytes(b"id02").unwrap();
 
-        let mut reg1 = mapper.create_registration(id1, &ext_id_1);
+        let mut reg1 = mapper.create_registry(id1, &ext_id_1);
         reg1.set_active_connection_id_limit(3);
 
         // No timer set for the initial connection ID
@@ -1197,7 +1384,7 @@ mod tests {
         let ext_id_2 = connection::LocalId::try_from_bytes(b"id02").unwrap();
         let ext_id_3 = connection::LocalId::try_from_bytes(b"id03").unwrap();
 
-        let mut reg1 = mapper.create_registration(id1, &ext_id_1);
+        let mut reg1 = mapper.create_registry(id1, &ext_id_1);
         reg1.set_active_connection_id_limit(3);
 
         let now = s2n_quic_platform::time::now();
@@ -1241,9 +1428,9 @@ mod tests {
 
         reg1.on_timeout(expiration_2 - EXPIRATION_BUFFER);
 
-        // ID 2 is moved into pending removal
+        // ID 2 is moved into pending retirement confirmation
         assert_eq!(
-            PendingRemoval(expiration_2),
+            PendingRetirementConfirmation(expiration_2),
             reg1.get_connection_id_info(&ext_id_2).unwrap().status
         );
         // Expiration timer is set to the expiration time of ID 2
@@ -1274,7 +1461,7 @@ mod tests {
         let ext_id_2 = connection::LocalId::try_from_bytes(b"id02").unwrap();
         let ext_id_3 = connection::LocalId::try_from_bytes(b"id03").unwrap();
 
-        let mut reg1 = mapper.create_registration(id1, &ext_id_1);
+        let mut reg1 = mapper.create_registry(id1, &ext_id_1);
         reg1.set_active_connection_id_limit(3);
 
         assert!(reg1.register_connection_id(&ext_id_2, None).is_ok());

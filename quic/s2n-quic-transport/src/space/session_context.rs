@@ -1,6 +1,5 @@
 use crate::{
     connection,
-    connection::ConnectionIdMapperRegistration,
     space::{
         rx_packet_numbers::{AckManager, DEFAULT_ACK_RANGES_LIMIT, EARLY_ACK_SETTINGS},
         ApplicationSpace, HandshakeSpace, HandshakeStatus, InitialSpace,
@@ -26,7 +25,7 @@ pub struct SessionContext<'a, Config: connection::Config> {
     pub application: &'a mut Option<Box<ApplicationSpace<Config>>>,
     pub zero_rtt_crypto: &'a mut Option<Box<<Config::TLSSession as CryptoSuite>::ZeroRTTCrypto>>,
     pub handshake_status: &'a mut HandshakeStatus,
-    pub connection_id_mapper_registration: &'a mut ConnectionIdMapperRegistration,
+    pub local_id_registry: &'a mut connection::LocalIdRegistry,
 }
 
 impl<'a, Config: connection::Config> tls::Context<Config::TLSSession>
@@ -169,7 +168,7 @@ impl<'a, Config: connection::Config> tls::Context<Config::TLSSession>
             alpn,
         )));
 
-        self.connection_id_mapper_registration
+        self.local_id_registry
             .set_active_connection_id_limit(peer_parameters.active_connection_id_limit.as_u64());
 
         Ok(())
@@ -191,11 +190,7 @@ impl<'a, Config: connection::Config> tls::Context<Config::TLSSession>
 
                 // All of the other spaces are discarded by the time the handshake is confirmed so
                 // we only need to notify the application space
-                application.on_handshake_done(
-                    &self.path,
-                    self.connection_id_mapper_registration,
-                    self.now,
-                );
+                application.on_handshake_done(&self.path, self.local_id_registry, self.now);
             }
             Ok(())
         } else {

@@ -1,5 +1,5 @@
 use crate::{
-    connection::{self, ConnectionIdMapperRegistration, ConnectionTransmissionContext},
+    connection::{self, ConnectionTransmissionContext},
     path,
     processed_packet::ProcessedPacket,
     recovery,
@@ -312,7 +312,7 @@ impl<Config: connection::Config> PacketSpace<Config> for InitialSpace<Config> {
         path_id: path::Id,
         path_manager: &mut path::Manager<Config::CongestionController>,
         handshake_status: &mut HandshakeStatus,
-        _connection_id_mapper_registration: &mut ConnectionIdMapperRegistration,
+        _local_id_registry: &mut connection::LocalIdRegistry,
     ) -> Result<(), TransportError> {
         let (recovery_manager, mut context) =
             self.recovery(&mut path_manager[path_id], handshake_status);

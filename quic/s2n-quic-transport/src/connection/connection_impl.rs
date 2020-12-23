@@ -2,11 +2,10 @@
 
 use crate::{
     connection::{
-        self, connection_id_mapper::ConnectionIdMapperRegistrationError, id::ConnectionInfo,
-        CloseReason as ConnectionCloseReason, ConnectionIdMapperRegistration, ConnectionInterests,
-        ConnectionTimerEntry, ConnectionTimers, ConnectionTransmission,
-        ConnectionTransmissionContext, InternalConnectionId, Parameters as ConnectionParameters,
-        SharedConnectionState,
+        self, connection_id_mapper::LocalIdRegistrationError, id::ConnectionInfo,
+        CloseReason as ConnectionCloseReason, ConnectionInterests, ConnectionTimerEntry,
+        ConnectionTimers, ConnectionTransmission, ConnectionTransmissionContext,
+        InternalConnectionId, Parameters as ConnectionParameters, SharedConnectionState,
     },
     contexts::ConnectionOnTransmitError,
     path,
@@ -102,8 +101,8 @@ pub struct ConnectionImpl<Config: connection::Config> {
     internal_connection_id: InternalConnectionId,
     /// The connection ID to send packets from
     local_connection_id: connection::LocalId,
-    /// The connection ID mapper registration which should be utilized by the connection
-    connection_id_mapper_registration: ConnectionIdMapperRegistration,
+    /// The local ID registry which should be utilized by the connection
+    local_id_registry: connection::LocalIdRegistry,
     /// The timers which are used within the connection
     timers: ConnectionTimers,
     /// The timer entry in the endpoint timer list
@@ -137,7 +136,7 @@ impl<ConfigType: connection::Config> ConnectionImpl<ConfigType> {
         space_manager.poll_crypto(
             &self.config,
             self.path_manager.active_path(),
-            &mut self.connection_id_mapper_registration,
+            &mut self.local_id_registry,
             datagram.timestamp,
         )?;
 
@@ -262,7 +261,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
             config: parameters.connection_config,
             internal_connection_id: parameters.internal_connection_id,
             local_connection_id: parameters.local_connection_id,
-            connection_id_mapper_registration: parameters.connection_id_mapper_registration,
+            local_id_registry: parameters.local_id_registry,
             timers: Default::default(),
             timer_entry: parameters.timer,
             quic_version: parameters.quic_version,
@@ -348,11 +347,8 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         &mut self,
         connection_id_format: &mut ConnectionIdFormat,
         timestamp: Timestamp,
-    ) -> Result<(), ConnectionIdMapperRegistrationError> {
-        match self
-            .connection_id_mapper_registration
-            .connection_id_interest()
-        {
+    ) -> Result<(), LocalIdRegistrationError> {
+        match self.local_id_registry.connection_id_interest() {
             Interest::New(mut count) => {
                 let connection_info =
                     ConnectionInfo::new(&self.path_manager.active_path().peer_socket_address);
@@ -362,7 +358,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                     let expiration = connection_id_format
                         .lifetime()
                         .map(|duration| timestamp + duration);
-                    self.connection_id_mapper_registration
+                    self.local_id_registry
                         .register_connection_id(&id, expiration)?;
                     count -= 1;
                 }
@@ -398,8 +394,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                         path_id: self.path_manager.active_path_id(),
                         path_manager: &mut self.path_manager,
                         source_connection_id: &self.local_connection_id,
-                        connection_id_mapper_registration: &mut self
-                            .connection_id_mapper_registration,
+                        local_id_registry: &mut self.local_id_registry,
                         ecn,
                     },
                     shared_state,
@@ -467,10 +462,10 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
             }
         }
 
-        self.connection_id_mapper_registration.on_timeout(timestamp);
+        self.local_id_registry.on_timeout(timestamp);
 
         shared_state.space_manager.on_timeout(
-            &mut self.connection_id_mapper_registration,
+            &mut self.local_id_registry,
             &mut self.path_manager,
             timestamp,
         );
@@ -489,7 +484,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         let earliest = core::iter::empty()
             .chain(self.timers.iter())
             .chain(shared_state.space_manager.timers())
-            .chain(self.connection_id_mapper_registration.timers())
+            .chain(self.local_id_registry.timers())
             .min()
             .cloned();
 
@@ -612,7 +607,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                 path_id,
                 &mut self.path_manager,
                 handshake_status,
-                &mut self.connection_id_mapper_registration,
+                &mut self.local_id_registry,
             )? {
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2
                 //# An
@@ -668,7 +663,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                 path_id,
                 &mut self.path_manager,
                 handshake_status,
-                &mut self.connection_id_mapper_registration,
+                &mut self.local_id_registry,
             )? {
                 self.close(
                     shared_state,
@@ -767,7 +762,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                 path_id,
                 &mut self.path_manager,
                 handshake_status,
-                &mut self.connection_id_mapper_registration,
+                &mut self.local_id_registry,
             )? {
                 self.close(
                     shared_state,
@@ -896,15 +891,11 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                 // don't iterate over everything if we can't send anyway
                 if !constraint.is_amplification_limited() {
                     transmission += shared_state.space_manager.transmission_interest();
-                    transmission += self
-                        .connection_id_mapper_registration
-                        .transmission_interest();
+                    transmission += self.local_id_registry.transmission_interest();
                 }
 
                 interests.transmission = transmission.can_transmit(constraint);
-                interests.new_connection_id = self
-                    .connection_id_mapper_registration
-                    .connection_id_interest()
+                interests.new_connection_id = self.local_id_registry.connection_id_interest()
                     != connection::id::Interest::None;
             }
             ConnectionState::Closing => {

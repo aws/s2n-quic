@@ -11,27 +11,9 @@ tracking-issue = "239"
 
 [[TODO]]
 quote = '''
-The endpoint SHOULD continue to
-accept the previously issued connection IDs until they are retired by
-the peer.
-'''
-feature = "Local Connection ID Management"
-tracking-issue = "238"
-
-[[TODO]]
-quote = '''
-If the endpoint can no longer process the indicated
-connection IDs, it MAY close the connection.
-'''
-feature = "Local Connection ID Management"
-tracking-issue = "238"
-
-[[TODO]]
-quote = '''
 Endpoints SHOULD NOT issue updates of the Retire Prior To field
 before receiving RETIRE_CONNECTION_ID frames that retire all
 connection IDs indicated by the previous Retire Prior To value.
 '''
-feature = "Peer Connection ID Management"
-tracking-issue = "239"
+tracking-issue = "380"
 

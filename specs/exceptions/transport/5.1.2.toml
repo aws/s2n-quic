@@ -1,0 +1,14 @@
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2"
+
+[[exception]]
+quote = '''
+If the endpoint can no longer process the indicated
+connection IDs, it MAY close the connection.
+'''
+reason = '''
+Before removing a retired connection ID, s2n-quic gives the peer time to
+stop using the connection ID. If after that time the peer is still using
+the connection ID, s2n-quic will respond with a stateless reset instead of
+closing the connection. Therefore, there is no need to proactively close the
+connection when a connection ID is removed.
+'''
