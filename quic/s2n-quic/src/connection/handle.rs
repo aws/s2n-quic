@@ -201,7 +201,7 @@ macro_rules! impl_handle_api {
 }
 
 #[derive(Clone, Debug)]
-pub struct Handle(s2n_quic_transport::connection::Connection);
+pub struct Handle(pub(crate) s2n_quic_transport::connection::Connection);
 
 impl Handle {
     impl_handle_api!(|handle, call| call!(handle));
