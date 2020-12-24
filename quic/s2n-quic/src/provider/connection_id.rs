@@ -26,9 +26,12 @@ pub mod random {
         time::Duration,
     };
     use rand::prelude::*;
-    use s2n_quic_core::connection::{
-        self,
-        id::{ConnectionInfo, Generator, Validator},
+    use s2n_quic_core::{
+        connection::{
+            self,
+            id::{ConnectionInfo, Generator, StatelessReset, Validator},
+        },
+        stateless_reset_token::StatelessResetToken,
     };
 
     #[derive(Debug, Default)]
@@ -144,6 +147,15 @@ pub mod random {
             } else {
                 None
             }
+        }
+    }
+
+    impl StatelessReset for Format {
+        fn stateless_reset_token(
+            &mut self,
+            _connection_id: &connection::LocalId,
+        ) -> Option<StatelessResetToken> {
+            None
         }
     }
 

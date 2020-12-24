@@ -1,7 +1,7 @@
 use crate::{
     connection::{
         self,
-        id::{ConnectionInfo, Generator as _},
+        id::{ConnectionInfo, Generator as _, StatelessReset as _},
         SynchronizedSharedConnectionState, Trait as _,
     },
     endpoint,
@@ -97,9 +97,17 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
 
         let internal_connection_id = self.connection_id_generator.generate_id();
 
-        let local_id_registry = self
-            .connection_id_mapper
-            .create_registry(internal_connection_id, &initial_connection_id);
+        let stateless_reset_token = self
+            .config
+            .context()
+            .connection_id_format
+            .stateless_reset_token(&initial_connection_id);
+
+        let local_id_registry = self.connection_id_mapper.create_registry(
+            internal_connection_id,
+            &initial_connection_id,
+            stateless_reset_token,
+        );
 
         let timer = self.timer_manager.create_timer(
             internal_connection_id,

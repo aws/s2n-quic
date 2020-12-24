@@ -1,6 +1,9 @@
 //! Defines the QUIC connection ID
 
-use crate::{inet::SocketAddress, transport::error::TransportError};
+use crate::{
+    inet::SocketAddress, stateless_reset_token::StatelessResetToken,
+    transport::error::TransportError,
+};
 use core::{
     convert::{TryFrom, TryInto},
     time::Duration,
@@ -229,10 +232,10 @@ impl<'a> ConnectionInfo<'a> {
 }
 
 /// Format for connection IDs
-pub trait Format: Validator + Generator {}
+pub trait Format: Validator + Generator + StatelessReset {}
 
 /// Implement Format for all types that implement the required subtraits
-impl<T: Validator + Generator> Format for T {}
+impl<T: Validator + Generator + StatelessReset> Format for T {}
 
 /// A validator for a connection ID format
 pub trait Validator {
@@ -274,6 +277,14 @@ pub trait Generator {
     fn lifetime(&self) -> Option<core::time::Duration> {
         None
     }
+}
+
+/// A generator for a stateless reset token
+pub trait StatelessReset {
+    /// Generates a stateless reset token.
+    ///
+    /// The stateless reset token MUST be difficult to guess.
+    fn stateless_reset_token(&mut self, connection_id: &LocalId) -> Option<StatelessResetToken>;
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -373,6 +384,15 @@ pub mod testing {
             let id = (&self.0.to_be_bytes()[..]).try_into().unwrap();
             self.0 += 1;
             id
+        }
+    }
+
+    impl StatelessReset for Format {
+        fn stateless_reset_token(
+            &mut self,
+            _connection_id: &LocalId,
+        ) -> Option<StatelessResetToken> {
+            None
         }
     }
 }
