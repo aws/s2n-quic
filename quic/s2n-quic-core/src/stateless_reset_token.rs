@@ -68,7 +68,16 @@ impl EncoderValue for StatelessResetToken {
 pub mod testing {
     use crate::stateless_reset_token::StatelessResetToken;
 
-    pub const TEST_TOKEN: StatelessResetToken = StatelessResetToken {
-        0: 1234565789u128.to_be_bytes(),
+    pub const TEST_TOKEN_1: StatelessResetToken = StatelessResetToken {
+        0: 11111111123456578987654321u128.to_be_bytes(),
+    };
+    pub const TEST_TOKEN_2: StatelessResetToken = StatelessResetToken {
+        0: 222222222123456578987654321u128.to_be_bytes(),
+    };
+    pub const TEST_TOKEN_3: StatelessResetToken = StatelessResetToken {
+        0: 333333333123456578987654321u128.to_be_bytes(),
+    };
+    pub const TEST_TOKEN_4: StatelessResetToken = StatelessResetToken {
+        0: 444444444123456578987654321u128.to_be_bytes(),
     };
 }

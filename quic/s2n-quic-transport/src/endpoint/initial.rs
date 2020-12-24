@@ -1,7 +1,7 @@
 use crate::{
     connection::{
         self,
-        id::{ConnectionInfo, Generator as _, StatelessReset as _},
+        id::{ConnectionInfo, Generator as _, StatelessResetTokenGenerator as _},
         SynchronizedSharedConnectionState, Trait as _,
     },
     endpoint,

@@ -232,13 +232,18 @@ impl<'a> ConnectionInfo<'a> {
 }
 
 /// Format for connection IDs
-pub trait Format: Validator + Generator + StatelessReset {}
+pub trait Format: Validator + Generator + StatelessResetTokenGenerator {}
 
 /// Implement Format for all types that implement the required subtraits
-impl<T: Validator + Generator + StatelessReset> Format for T {}
+impl<T: Validator + Generator + StatelessResetTokenGenerator> Format for T {}
 
 /// A validator for a connection ID format
 pub trait Validator {
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.2
+    //# An endpoint that uses this design MUST
+    //# either use the same connection ID length for all connections or
+    //# encode the length of the connection ID such that it can be recovered
+    //# without state.
     /// Validates a connection ID from a buffer
     ///
     /// Implementations should handle situations where the buffer will include extra
@@ -280,10 +285,13 @@ pub trait Generator {
 }
 
 /// A generator for a stateless reset token
-pub trait StatelessReset {
+pub trait StatelessResetTokenGenerator {
     /// Generates a stateless reset token.
     ///
     /// The stateless reset token MUST be difficult to guess.
+    ///
+    /// To enable stateless reset functionality, the stateless reset token must
+    /// be generated the same for a given `LocalId` before and after loss of state.
     fn stateless_reset_token(&mut self, connection_id: &LocalId) -> StatelessResetToken;
 }
 
@@ -390,7 +398,7 @@ pub mod testing {
         }
     }
 
-    impl StatelessReset for Format {
+    impl StatelessResetTokenGenerator for Format {
         fn stateless_reset_token(&mut self, connection_id: &LocalId) -> StatelessResetToken {
             let mut token = [0; STATELESS_RESET_TOKEN_LEN];
 

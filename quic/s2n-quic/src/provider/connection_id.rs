@@ -29,7 +29,7 @@ pub mod random {
     use s2n_quic_core::{
         connection::{
             self,
-            id::{ConnectionInfo, Generator, StatelessReset, Validator},
+            id::{ConnectionInfo, Generator, StatelessResetTokenGenerator, Validator},
         },
         frame::new_connection_id::STATELESS_RESET_TOKEN_LEN,
         stateless_reset_token::StatelessResetToken,
@@ -151,7 +151,12 @@ pub mod random {
         }
     }
 
-    impl StatelessReset for Format {
+    impl StatelessResetTokenGenerator for Format {
+        /// This stateless reset token generator produces a random token on each call, and
+        /// thus does not enable stateless reset functionality, as the token provided to the
+        /// peer with a new connection ID will be different than the token sent in a stateless
+        /// reset. To enable stateless reset functionality, the stateless reset token must
+        /// be generated the same for a given `LocalId` before and after loss of state.
         fn stateless_reset_token(
             &mut self,
             _connection_id: &connection::LocalId,
@@ -204,5 +209,18 @@ pub mod random {
                 .with_lifetime(connection::id::MIN_LIFETIME - Duration::from_millis(1))
                 .err()
         );
+    }
+
+    #[test]
+    fn stateless_reset_token_test() {
+        let mut format = Format::builder().build().unwrap();
+        let remote_address = &s2n_quic_core::inet::SocketAddress::default();
+        let connection_info = ConnectionInfo::new(remote_address);
+        let id = format.generate(&connection_info);
+
+        let token_1 = format.stateless_reset_token(&id);
+        let token_2 = format.stateless_reset_token(&id);
+
+        assert_ne!(token_1, token_2);
     }
 }
