@@ -284,7 +284,7 @@ pub trait StatelessReset {
     /// Generates a stateless reset token.
     ///
     /// The stateless reset token MUST be difficult to guess.
-    fn stateless_reset_token(&mut self, connection_id: &LocalId) -> Option<StatelessResetToken>;
+    fn stateless_reset_token(&mut self, connection_id: &LocalId) -> StatelessResetToken;
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -368,7 +368,10 @@ mod tests {
 #[cfg(any(test, feature = "testing"))]
 pub mod testing {
     use super::*;
+    use crate::frame::new_connection_id::STATELESS_RESET_TOKEN_LEN;
     use core::convert::TryInto;
+
+    const KEY: u8 = 123;
 
     #[derive(Debug, Default)]
     pub struct Format(u64);
@@ -388,11 +391,14 @@ pub mod testing {
     }
 
     impl StatelessReset for Format {
-        fn stateless_reset_token(
-            &mut self,
-            _connection_id: &LocalId,
-        ) -> Option<StatelessResetToken> {
-            None
+        fn stateless_reset_token(&mut self, connection_id: &LocalId) -> StatelessResetToken {
+            let mut token = [0; STATELESS_RESET_TOKEN_LEN];
+
+            for (index, byte) in connection_id.bytes.iter().enumerate() {
+                token[index] = byte ^ KEY;
+            }
+
+            token.into()
         }
     }
 }

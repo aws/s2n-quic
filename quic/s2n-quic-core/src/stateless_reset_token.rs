@@ -63,3 +63,12 @@ impl EncoderValue for StatelessResetToken {
         self.as_ref().encode(encoder)
     }
 }
+
+#[cfg(any(test, feature = "testing"))]
+pub mod testing {
+    use crate::stateless_reset_token::StatelessResetToken;
+
+    pub const TEST_TOKEN: StatelessResetToken = StatelessResetToken {
+        0: 1234565789u128.to_be_bytes(),
+    };
+}

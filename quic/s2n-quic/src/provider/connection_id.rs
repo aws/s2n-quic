@@ -31,6 +31,7 @@ pub mod random {
             self,
             id::{ConnectionInfo, Generator, StatelessReset, Validator},
         },
+        frame::new_connection_id::STATELESS_RESET_TOKEN_LEN,
         stateless_reset_token::StatelessResetToken,
     };
 
@@ -154,8 +155,10 @@ pub mod random {
         fn stateless_reset_token(
             &mut self,
             _connection_id: &connection::LocalId,
-        ) -> Option<StatelessResetToken> {
-            None
+        ) -> StatelessResetToken {
+            let mut token = [0u8; STATELESS_RESET_TOKEN_LEN];
+            rand::thread_rng().fill_bytes(&mut token);
+            (&token[..]).try_into().expect("length already checked")
         }
     }
 

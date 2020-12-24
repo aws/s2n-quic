@@ -16,10 +16,9 @@ use crate::{
 };
 use alloc::rc::Rc;
 use core::{cell::RefCell, time::Duration};
-use rand::prelude::*;
 use s2n_quic_core::{
-    ack_set::AckSet, connection, frame, frame::new_connection_id::STATELESS_RESET_TOKEN_LEN,
-    packet::number::PacketNumber, stateless_reset_token::StatelessResetToken, time::Timestamp,
+    ack_set::AckSet, connection, frame, packet::number::PacketNumber,
+    stateless_reset_token::StatelessResetToken, time::Timestamp,
 };
 use smallvec::SmallVec;
 use std::{
@@ -87,7 +86,7 @@ impl ConnectionIdMapper {
         &mut self,
         internal_id: InternalConnectionId,
         initial_connection_id: &connection::LocalId,
-        stateless_reset_token: Option<StatelessResetToken>,
+        stateless_reset_token: StatelessResetToken,
     ) -> LocalIdRegistry {
         let mut registration = LocalIdRegistry {
             internal_id,
@@ -349,7 +348,7 @@ impl LocalIdRegistry {
         &mut self,
         id: &connection::LocalId,
         expiration: Option<Timestamp>,
-        stateless_reset_token: Option<StatelessResetToken>,
+        stateless_reset_token: StatelessResetToken,
     ) -> Result<(), LocalIdRegistrationError> {
         if self.registered_ids.iter().any(|id_info| id_info.id == *id) {
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1
@@ -377,8 +376,6 @@ impl LocalIdRegistry {
         {
             let sequence_number = self.next_sequence_number;
             let retirement_time = expiration.map(|expiration| expiration - EXPIRATION_BUFFER);
-            let stateless_reset_token =
-                stateless_reset_token.unwrap_or_else(Self::generate_random_stateless_reset_token);
 
             // Track the inserted connection ID info
             self.registered_ids.push(LocalIdInfo {
@@ -656,12 +653,6 @@ impl LocalIdRegistry {
             );
         }
     }
-
-    fn generate_random_stateless_reset_token() -> StatelessResetToken {
-        let mut token = [0u8; STATELESS_RESET_TOKEN_LEN];
-        rand::thread_rng().fill_bytes(&mut token);
-        (&token[..]).try_into().expect("length already checked")
-    }
 }
 
 impl transmission::interest::Provider for LocalIdRegistry {
@@ -688,22 +679,6 @@ impl transmission::interest::Provider for LocalIdRegistry {
     }
 }
 
-#[cfg(feature = "rand")]
-pub mod random {
-    use rand::prelude::*;
-    use s2n_quic_core::{
-        frame::new_connection_id::STATELESS_RESET_TOKEN_LEN,
-        stateless_reset_token::StatelessResetToken,
-    };
-    use std::convert::TryInto;
-
-    fn generate_random_stateless_reset_token() -> StatelessResetToken {
-        let mut token = [0u8; STATELESS_RESET_TOKEN_LEN];
-        rand::thread_rng().fill_bytes(&mut token);
-        (&token[..]).try_into().expect("length already checked")
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -717,6 +692,7 @@ mod tests {
         connection::id::MIN_LIFETIME,
         frame::{Frame, NewConnectionID},
         packet::number::PacketNumberRange,
+        stateless_reset_token::testing::TEST_TOKEN,
         varint::VarInt,
     };
 
@@ -748,10 +724,10 @@ mod tests {
 
         let expiration = s2n_quic_platform::time::now() + MIN_LIFETIME;
 
-        let mut reg1 = mapper.create_registry(id1, &ext_id_1, None);
+        let mut reg1 = mapper.create_registry(id1, &ext_id_1, TEST_TOKEN);
         reg1.set_active_connection_id_limit(3);
         assert!(reg1
-            .register_connection_id(&ext_id_2, Some(expiration), None)
+            .register_connection_id(&ext_id_2, Some(expiration), TEST_TOKEN)
             .is_ok());
         assert_eq!(
             Some(expiration - EXPIRATION_BUFFER),
@@ -771,12 +747,12 @@ mod tests {
         let mut reg = ConnectionIdMapper::new().create_registry(
             InternalConnectionIdGenerator::new().generate_id(),
             &ext_id,
-            None,
+            TEST_TOKEN,
         );
 
         assert_eq!(
             Err(LocalIdRegistrationError::ConnectionIdInUse),
-            reg.register_connection_id(&ext_id, None, None)
+            reg.register_connection_id(&ext_id, None, TEST_TOKEN)
         );
     }
 
@@ -792,10 +768,11 @@ mod tests {
         let mut reg = ConnectionIdMapper::new().create_registry(
             InternalConnectionIdGenerator::new().generate_id(),
             &ext_id_1,
-            None,
+            TEST_TOKEN,
         );
         reg.set_active_connection_id_limit(3);
-        reg.register_connection_id(&ext_id_2, None, None).unwrap();
+        reg.register_connection_id(&ext_id_2, None, TEST_TOKEN)
+            .unwrap();
 
         let seq_num_1 = reg
             .get_connection_id_info(&ext_id_1)
@@ -822,8 +799,8 @@ mod tests {
         let ext_id_3 = connection::LocalId::try_from_bytes(b"id03").unwrap();
         let ext_id_4 = connection::LocalId::try_from_bytes(b"id04").unwrap();
 
-        let mut reg1 = mapper.create_registry(id1, &ext_id_1, None);
-        let mut reg2 = mapper.create_registry(id2, &ext_id_3, None);
+        let mut reg1 = mapper.create_registry(id1, &ext_id_1, TEST_TOKEN);
+        let mut reg2 = mapper.create_registry(id2, &ext_id_3, TEST_TOKEN);
 
         let now = s2n_quic_platform::time::now();
 
@@ -840,13 +817,13 @@ mod tests {
 
         assert_eq!(
             Err(LocalIdRegistrationError::ConnectionIdInUse),
-            reg2.register_connection_id(&ext_id_1, None, None)
+            reg2.register_connection_id(&ext_id_1, None, TEST_TOKEN)
         );
 
         let exp_2 = now + Duration::from_secs(60);
 
         assert!(reg1
-            .register_connection_id(&ext_id_2, Some(exp_2), None)
+            .register_connection_id(&ext_id_2, Some(exp_2), TEST_TOKEN)
             .is_ok());
         assert_eq!(
             Some(exp_2 - EXPIRATION_BUFFER),
@@ -854,7 +831,9 @@ mod tests {
                 .unwrap()
                 .retirement_time
         );
-        assert!(reg2.register_connection_id(&ext_id_4, None, None).is_ok());
+        assert!(reg2
+            .register_connection_id(&ext_id_4, None, TEST_TOKEN)
+            .is_ok());
         assert_eq!(Some(id1), mapper.lookup_internal_connection_id(&ext_id_2));
         assert_eq!(Some(id2), mapper.lookup_internal_connection_id(&ext_id_3));
         assert_eq!(Some(id2), mapper.lookup_internal_connection_id(&ext_id_4));
@@ -871,8 +850,12 @@ mod tests {
         assert_eq!(None, mapper.lookup_internal_connection_id(&ext_id_4));
 
         // Put back ID3 and ID4 to test drop behavior
-        assert!(reg1.register_connection_id(&ext_id_3, None, None).is_ok());
-        assert!(reg2.register_connection_id(&ext_id_4, None, None).is_ok());
+        assert!(reg1
+            .register_connection_id(&ext_id_3, None, TEST_TOKEN)
+            .is_ok());
+        assert!(reg2
+            .register_connection_id(&ext_id_4, None, TEST_TOKEN)
+            .is_ok());
         assert_eq!(Some(id1), mapper.lookup_internal_connection_id(&ext_id_3));
         assert_eq!(Some(id2), mapper.lookup_internal_connection_id(&ext_id_4));
 
@@ -896,7 +879,7 @@ mod tests {
 
         let now = s2n_quic_platform::time::now();
 
-        let mut reg1 = mapper.create_registry(id1, &ext_id_1, None);
+        let mut reg1 = mapper.create_registry(id1, &ext_id_1, TEST_TOKEN);
         reg1.set_active_connection_id_limit(2);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.16
@@ -910,7 +893,9 @@ mod tests {
                 .err()
         );
 
-        assert!(reg1.register_connection_id(&ext_id_2, None, None).is_ok());
+        assert!(reg1
+            .register_connection_id(&ext_id_2, None, TEST_TOKEN)
+            .is_ok());
 
         let rtt = Duration::from_millis(500);
 
@@ -980,10 +965,12 @@ mod tests {
 
         let now = s2n_quic_platform::time::now();
 
-        let mut reg1 = mapper.create_registry(id1, &ext_id_1, None);
+        let mut reg1 = mapper.create_registry(id1, &ext_id_1, TEST_TOKEN);
         reg1.set_active_connection_id_limit(2);
 
-        assert!(reg1.register_connection_id(&ext_id_2, None, None).is_ok());
+        assert!(reg1
+            .register_connection_id(&ext_id_2, None, TEST_TOKEN)
+            .is_ok());
 
         reg1.retire_all(now);
 
@@ -1035,7 +1022,7 @@ mod tests {
         let ext_id_2 = connection::LocalId::try_from_bytes(b"id02").unwrap();
         let ext_id_3 = connection::LocalId::try_from_bytes(b"id03").unwrap();
 
-        let mut reg1 = mapper.create_registry(id1, &ext_id_1, None);
+        let mut reg1 = mapper.create_registry(id1, &ext_id_1, TEST_TOKEN);
 
         // Active connection ID limit starts at 1, so there is no interest initially
         assert_eq!(
@@ -1054,14 +1041,18 @@ mod tests {
             reg1.connection_id_interest()
         );
 
-        assert!(reg1.register_connection_id(&ext_id_2, None, None).is_ok());
+        assert!(reg1
+            .register_connection_id(&ext_id_2, None, TEST_TOKEN)
+            .is_ok());
 
         assert_eq!(
             connection::id::Interest::New(reg1.active_connection_id_limit - 2),
             reg1.connection_id_interest()
         );
 
-        assert!(reg1.register_connection_id(&ext_id_3, None, None).is_ok());
+        assert!(reg1
+            .register_connection_id(&ext_id_3, None, TEST_TOKEN)
+            .is_ok());
 
         assert_eq!(
             connection::id::Interest::None,
@@ -1085,7 +1076,7 @@ mod tests {
         let ext_id_2 = connection::LocalId::try_from_bytes(b"id02").unwrap();
         let ext_id_3 = connection::LocalId::try_from_bytes(b"id03").unwrap();
 
-        let mut reg1 = mapper.create_registry(id1, &ext_id_1, None);
+        let mut reg1 = mapper.create_registry(id1, &ext_id_1, TEST_TOKEN);
         reg1.set_active_connection_id_limit(2);
 
         assert_eq!(
@@ -1093,10 +1084,12 @@ mod tests {
             reg1.connection_id_interest()
         );
 
-        assert!(reg1.register_connection_id(&ext_id_2, None, None).is_ok());
+        assert!(reg1
+            .register_connection_id(&ext_id_2, None, TEST_TOKEN)
+            .is_ok());
 
         // Panics because we are inserting more than the limit
-        let _ = reg1.register_connection_id(&ext_id_3, None, None);
+        let _ = reg1.register_connection_id(&ext_id_3, None, TEST_TOKEN);
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
@@ -1118,7 +1111,7 @@ mod tests {
 
         let now = s2n_quic_platform::time::now();
 
-        let mut reg1 = mapper.create_registry(id1, &ext_id_1, None);
+        let mut reg1 = mapper.create_registry(id1, &ext_id_1, TEST_TOKEN);
         reg1.set_active_connection_id_limit(2);
 
         assert_eq!(
@@ -1126,7 +1119,9 @@ mod tests {
             reg1.connection_id_interest()
         );
 
-        assert!(reg1.register_connection_id(&ext_id_2, None, None).is_ok());
+        assert!(reg1
+            .register_connection_id(&ext_id_2, None, TEST_TOKEN)
+            .is_ok());
         reg1.retire_all(now + EXPIRATION_BUFFER);
 
         // We can register another ID because the retire_prior_to field retires old IDs
@@ -1134,7 +1129,9 @@ mod tests {
             connection::id::Interest::New(2),
             reg1.connection_id_interest()
         );
-        assert!(reg1.register_connection_id(&ext_id_3, None, None).is_ok());
+        assert!(reg1
+            .register_connection_id(&ext_id_3, None, TEST_TOKEN)
+            .is_ok());
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
@@ -1152,7 +1149,7 @@ mod tests {
 
         let ext_id_1 = connection::LocalId::try_from_bytes(b"id01").unwrap();
 
-        let mut reg1 = mapper.create_registry(id1, &ext_id_1, None);
+        let mut reg1 = mapper.create_registry(id1, &ext_id_1, TEST_TOKEN);
         reg1.set_active_connection_id_limit(100);
 
         assert_eq!(
@@ -1174,12 +1171,14 @@ mod tests {
 
         let now = s2n_quic_platform::time::now();
 
-        let mut reg1 = mapper.create_registry(id1, &ext_id_1, None);
+        let mut reg1 = mapper.create_registry(id1, &ext_id_1, TEST_TOKEN);
         reg1.set_active_connection_id_limit(3);
 
         assert_eq!(transmission::Interest::None, reg1.transmission_interest());
 
-        assert!(reg1.register_connection_id(&ext_id_2, None, None).is_ok());
+        assert!(reg1
+            .register_connection_id(&ext_id_2, None, TEST_TOKEN)
+            .is_ok());
 
         assert_eq!(
             transmission::Interest::NewData,
@@ -1213,7 +1212,9 @@ mod tests {
 
         // Retire everything
         reg1.retire_all(now);
-        assert!(reg1.register_connection_id(&ext_id_3, None, None).is_ok());
+        assert!(reg1
+            .register_connection_id(&ext_id_3, None, TEST_TOKEN)
+            .is_ok());
 
         assert_eq!(
             transmission::Interest::NewData,
@@ -1258,13 +1259,17 @@ mod tests {
         let ext_id_2 = connection::LocalId::try_from_bytes(b"id02").unwrap();
         let ext_id_3 = connection::LocalId::try_from_bytes(b"id03").unwrap();
 
-        let mut reg1 = mapper.create_registry(id1, &ext_id_1, None);
+        let mut reg1 = mapper.create_registry(id1, &ext_id_1, TEST_TOKEN);
         reg1.set_active_connection_id_limit(3);
 
         assert_eq!(transmission::Interest::None, reg1.transmission_interest());
 
-        assert!(reg1.register_connection_id(&ext_id_2, None, None).is_ok());
-        assert!(reg1.register_connection_id(&ext_id_3, None, None).is_ok());
+        assert!(reg1
+            .register_connection_id(&ext_id_2, None, TEST_TOKEN)
+            .is_ok());
+        assert!(reg1
+            .register_connection_id(&ext_id_3, None, TEST_TOKEN)
+            .is_ok());
 
         assert_eq!(
             transmission::Interest::NewData,
@@ -1325,10 +1330,12 @@ mod tests {
         let ext_id_1 = connection::LocalId::try_from_bytes(b"id01").unwrap();
         let ext_id_2 = connection::LocalId::try_from_bytes(b"id02").unwrap();
 
-        let mut reg1 = mapper.create_registry(id1, &ext_id_1, None);
+        let mut reg1 = mapper.create_registry(id1, &ext_id_1, TEST_TOKEN);
         reg1.set_active_connection_id_limit(3);
 
-        assert!(reg1.register_connection_id(&ext_id_2, None, None).is_ok());
+        assert!(reg1
+            .register_connection_id(&ext_id_2, None, TEST_TOKEN)
+            .is_ok());
 
         let mut frame_buffer = OutgoingFrameBuffer::new();
         let mut write_context = MockWriteContext::new(
@@ -1372,7 +1379,7 @@ mod tests {
         let ext_id_1 = connection::LocalId::try_from_bytes(b"id01").unwrap();
         let ext_id_2 = connection::LocalId::try_from_bytes(b"id02").unwrap();
 
-        let mut reg1 = mapper.create_registry(id1, &ext_id_1, None);
+        let mut reg1 = mapper.create_registry(id1, &ext_id_1, TEST_TOKEN);
         reg1.set_active_connection_id_limit(3);
 
         // No timer set for the initial connection ID
@@ -1382,7 +1389,7 @@ mod tests {
         let expiration = now + Duration::from_secs(60);
 
         assert!(reg1
-            .register_connection_id(&ext_id_2, Some(expiration), None)
+            .register_connection_id(&ext_id_2, Some(expiration), TEST_TOKEN)
             .is_ok());
 
         // Expiration timer is armed based on retire time
@@ -1431,7 +1438,7 @@ mod tests {
         let ext_id_2 = connection::LocalId::try_from_bytes(b"id02").unwrap();
         let ext_id_3 = connection::LocalId::try_from_bytes(b"id03").unwrap();
 
-        let mut reg1 = mapper.create_registry(id1, &ext_id_1, None);
+        let mut reg1 = mapper.create_registry(id1, &ext_id_1, TEST_TOKEN);
         reg1.set_active_connection_id_limit(3);
 
         let now = s2n_quic_platform::time::now();
@@ -1461,10 +1468,10 @@ mod tests {
         let expiration_3 = now + Duration::from_secs(120);
 
         assert!(reg1
-            .register_connection_id(&ext_id_2, Some(expiration_2), None)
+            .register_connection_id(&ext_id_2, Some(expiration_2), TEST_TOKEN)
             .is_ok());
         assert!(reg1
-            .register_connection_id(&ext_id_3, Some(expiration_3), None)
+            .register_connection_id(&ext_id_3, Some(expiration_3), TEST_TOKEN)
             .is_ok());
 
         // Expiration timer is set based on the retirement time of ID 2
@@ -1508,11 +1515,15 @@ mod tests {
         let ext_id_2 = connection::LocalId::try_from_bytes(b"id02").unwrap();
         let ext_id_3 = connection::LocalId::try_from_bytes(b"id03").unwrap();
 
-        let mut reg1 = mapper.create_registry(id1, &ext_id_1, None);
+        let mut reg1 = mapper.create_registry(id1, &ext_id_1, TEST_TOKEN);
         reg1.set_active_connection_id_limit(3);
 
-        assert!(reg1.register_connection_id(&ext_id_2, None, None).is_ok());
-        assert!(reg1.register_connection_id(&ext_id_3, None, None).is_ok());
+        assert!(reg1
+            .register_connection_id(&ext_id_2, None, TEST_TOKEN)
+            .is_ok());
+        assert!(reg1
+            .register_connection_id(&ext_id_3, None, TEST_TOKEN)
+            .is_ok());
 
         reg1.retire_all(s2n_quic_platform::time::now());
 
