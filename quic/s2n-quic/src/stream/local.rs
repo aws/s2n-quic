@@ -21,10 +21,7 @@ impl LocalStream {
         LocalStream::Send(stream) => dispatch!(stream),
     });
 
-    impl_splittable_stream_api!(|stream| match stream {
-        LocalStream::Bidirectional(stream) => stream.split(),
-        LocalStream::Send(stream) => stream.split(),
-    });
+    impl_splittable_stream_api!();
 
     impl_connection_api!(|stream| match stream {
         LocalStream::Bidirectional(stream) => stream.connection(),
@@ -41,8 +38,8 @@ impl_send_stream_trait!(LocalStream, |stream, dispatch| match stream {
     LocalStream::Send(stream) => dispatch!(stream),
 });
 impl_splittable_stream_trait!(LocalStream, |stream| match stream {
-    LocalStream::Bidirectional(stream) => stream.split(),
-    LocalStream::Send(stream) => stream.split(),
+    LocalStream::Bidirectional(stream) => super::SplittableStream::split(stream),
+    LocalStream::Send(stream) => super::SplittableStream::split(stream),
 });
 
 impl From<SendStream> for LocalStream {

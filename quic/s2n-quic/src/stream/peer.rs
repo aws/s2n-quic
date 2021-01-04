@@ -21,10 +21,7 @@ impl PeerStream {
         PeerStream::Receive(_stream) => dispatch!(),
     });
 
-    impl_splittable_stream_api!(|stream| match stream {
-        PeerStream::Bidirectional(stream) => stream.split(),
-        PeerStream::Receive(stream) => stream.split(),
-    });
+    impl_splittable_stream_api!();
 
     impl_connection_api!(|stream| match stream {
         PeerStream::Bidirectional(stream) => stream.connection(),
@@ -41,8 +38,8 @@ impl_send_stream_trait!(PeerStream, |stream, dispatch| match stream {
     PeerStream::Receive(_stream) => dispatch!(),
 });
 impl_splittable_stream_trait!(PeerStream, |stream| match stream {
-    PeerStream::Bidirectional(stream) => stream.split(),
-    PeerStream::Receive(stream) => stream.split(),
+    PeerStream::Bidirectional(stream) => super::SplittableStream::split(stream),
+    PeerStream::Receive(stream) => super::SplittableStream::split(stream),
 });
 
 impl From<ReceiveStream> for PeerStream {
