@@ -132,12 +132,7 @@ enum PeerIdStatus {
 impl PeerIdStatus {
     /// Returns true if this PeerId may be used to send packets to the peer
     fn is_active(&self) -> bool {
-        match self {
-            New => true,
-            InUse => true,
-            InUsePendingNewConnectionId => true,
-            _ => false,
-        }
+        matches!(self, New | InUse | InUsePendingNewConnectionId)
     }
 
     /// Returns true if the status of this ID allows for transmission
@@ -577,7 +572,7 @@ mod tests {
 
         // Retiring one more ID exceeds the limit
         let result =
-            reg.on_new_connection_id(&id(b"id08"), 8, 8, &[8 as u8; STATELESS_RESET_TOKEN_LEN]);
+            reg.on_new_connection_id(&id(b"id08"), 8, 8, &[8_u8; STATELESS_RESET_TOKEN_LEN]);
 
         assert_eq!(Some(ExceededRetiredConnectionIdLimit), result.err());
     }
@@ -609,7 +604,7 @@ mod tests {
 
         // Adding one more ID exceeds the limit
         let result =
-            reg.on_new_connection_id(&id(b"id07"), 8, 0, &[8 as u8; STATELESS_RESET_TOKEN_LEN]);
+            reg.on_new_connection_id(&id(b"id07"), 8, 0, &[8_u8; STATELESS_RESET_TOKEN_LEN]);
 
         assert_eq!(Some(ExceededActiveConnectionIdLimit), result.err());
     }

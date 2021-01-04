@@ -414,7 +414,7 @@ mod tests {
 
         let id_2 = connection::PeerId::try_from_bytes(b"id02").unwrap();
         assert!(manager
-            .on_new_connection_id(&id_2, 1, 1, &[1 as u8; STATELESS_RESET_TOKEN_LEN])
+            .on_new_connection_id(&id_2, 1, 1, &[1_u8; STATELESS_RESET_TOKEN_LEN])
             .is_ok());
 
         assert_eq!(id_2, manager.paths[0].peer_connection_id);
