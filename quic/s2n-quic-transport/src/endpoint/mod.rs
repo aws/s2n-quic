@@ -259,6 +259,13 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     //# An endpoint MUST
                     //# perform path validation (Section 8.2) if it detects any change to a
                     //# peer's address, unless it has previously validated that address.
+
+                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.4
+                    //= type=TODO
+                    //= tracking-issue=391
+                    //# If the client IP address has changed, the server MUST
+                    //# adhere to the anti-amplification limits found in Section 8.1.
+
                     if let Err(err) = conn.handle_packet(shared_state, datagram, path_id, packet) {
                         conn.handle_transport_error(shared_state, datagram, err);
                         return Err(());
@@ -371,6 +378,41 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 }
             }
         } else {
+            match packet {
+                ProtectedPacket::Initial(_packet) => {
+                    // TODO determine how to handle Initial Packets
+                }
+                ProtectedPacket::Retry(_packet) => {
+                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.5.1
+                    //= type=TODO
+                    //= tracking-issue=396
+                    //# A client MUST
+                    //# discard a Retry packet that contains a Source Connection ID field
+                    //# that is identical to the Destination Connection ID field of its
+                    //# Initial packet.
+
+                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.5.2
+                    //= type=TODO
+                    //= tracking-issue=396
+                    //# A client MUST accept and process at most one Retry packet for each
+                    //# connection attempt.
+
+                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.5.2
+                    //= type=TODO
+                    //= tracking-issue=396
+                    //# Clients MUST discard Retry packets that have a Retry Integrity Tag
+                    //# that cannot be validated; see the Retry Packet Integrity section of
+                    //# [QUIC-TLS].
+
+                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.5.2
+                    //= type=TODO
+                    //= tracking-issue=397
+                    //# After the client has received and processed an
+                    //# Initial or Retry packet from the server, it MUST discard any
+                    //# subsequent Retry packets that it receives.
+                }
+                _ => {}
+            }
             // TODO: Find out what is required for the client. It seems like
             // those should at least send stateless resets on Initial packets
         }

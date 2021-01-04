@@ -53,3 +53,43 @@ pub use server::Server;
 mod extensions;
 #[cfg(feature = "protocol-extensions")]
 pub use extensions::Extensions;
+
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.3
+//= type=TODO
+//= tracking-issue=389
+//# A client SHOULD NOT reuse a NEW_TOKEN token for different connection
+//# attempts.
+
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.7
+//= type=TODO
+//= tracking-issue=395
+//# Clients MUST NOT send NEW_TOKEN frames.
+
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.3
+//= type=TODO
+//= tracking-issue=390
+//# A client MUST NOT include
+//# a token that is not applicable to the server that it is connecting
+//# to, unless the client has the knowledge that the server that issued
+//# the token and the server the client is connecting to are jointly
+//# managing the tokens.
+
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.3
+//= type=TODO
+//= tracking-issue=390
+//# When connecting to a server for
+//# which the client retains an applicable and unused token, it SHOULD
+//# include that token in the Token field of its Initial packet.
+
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.3
+//= type=TODO
+//= tracking-issue=390
+//# A client MAY use a token from any previous
+//# connection to that server.
+
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1
+//= type=TODO
+//= tracking-issue=392
+//# Clients MUST ensure that UDP datagrams containing Initial packets
+//# have UDP payloads of at least 1200 bytes, adding PADDING frames as
+//# necessary.
