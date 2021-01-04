@@ -615,13 +615,9 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
             //# This token MUST be repeated by the client in all
             //# Initial packets it sends for that connection after it receives the
             //# Retry packet.
-
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.3
-            //= type=TODO
-            //= tracking-issue=393
-            //# The client
-            //# MUST include the token in all Initial packets it sends, unless a
-            //# Retry replaces the token with a newer one.
+            // This can be checked on the server side by setting a value in the connection if a
+            // token is received in the first Initial Packet. If that value is set, it should be
+            // verified in all subsequent packets.
 
             if let Some(close) = space.handle_cleartext_payload(
                 packet.packet_number,
@@ -872,12 +868,14 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.3
         //= type=TODO
         //= tracking-issue=386
+        //= feature=Client Retry
         //# The client MUST NOT use
         //# the token provided in a Retry for future connections.
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.3
         //= type=TODO
         //= tracking-issue=386
+        //= feature=Client Retry
         //# In comparison, a
         //# token obtained in a Retry packet MUST be used immediately during the
         //# connection attempt and cannot be used in subsequent connection
@@ -886,6 +884,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.3
         //= type=TODO
         //= tracking-issue=393
+        //= feature=Client Retry
         //# The client
         //# MUST include the token in all Initial packets it sends, unless a
         //# Retry replaces the token with a newer one.
