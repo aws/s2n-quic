@@ -260,12 +260,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     //# perform path validation (Section 8.2) if it detects any change to a
                     //# peer's address, unless it has previously validated that address.
 
-                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.4
-                    //= type=TODO
-                    //= tracking-issue=391
-                    //# If the client IP address has changed, the server MUST
-                    //# adhere to the anti-amplification limits found in Section 8.1.
-
                     if let Err(err) = conn.handle_packet(shared_state, datagram, path_id, packet) {
                         conn.handle_transport_error(shared_state, datagram, err);
                         return Err(());

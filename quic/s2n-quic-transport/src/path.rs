@@ -132,11 +132,6 @@ impl<CC: CongestionController> Manager<CC> {
             self.active_path().peer_connection_id,
             RTTEstimator::new(EARLY_ACK_SETTINGS.max_ack_delay),
             new_congestion_controller(),
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.4
-            //= type=TODO
-            //= tracking-issue=391
-            //# If the client IP address has changed, the server MUST
-            //# adhere to the anti-amplification limits found in Section 8.1.
             false,
         );
         let id = Id(self.paths.len());
