@@ -132,7 +132,7 @@ impl<CC: CongestionController> Manager<CC> {
             self.active_path().peer_connection_id,
             RTTEstimator::new(EARLY_ACK_SETTINGS.max_ack_delay),
             new_congestion_controller(),
-            false,
+            true,
         );
         let id = Id(self.paths.len());
         self.paths.push(path);
