@@ -1,7 +1,9 @@
 //! Configuration parameters for `Endpoint`s
 
 use crate::connection;
-use s2n_quic_core::{crypto::tls, endpoint, recovery::congestion_controller};
+use s2n_quic_core::{
+    crypto::tls, endpoint, recovery::congestion_controller, stateless_reset_token,
+};
 
 /// Configuration paramters for a QUIC endpoint
 pub trait Config: Sized {
@@ -19,6 +21,8 @@ pub trait Config: Sized {
     type Connection: connection::Trait<Config = Self::ConnectionConfig>;
     /// The connection ID format
     type ConnectionIdFormat: connection::id::Format;
+    /// The stateless reset token generator
+    type StatelessResetTokenGenerator: stateless_reset_token::Generator;
     /// The validation token format
     type TokenFormat: s2n_quic_core::token::Format;
     /// The endpoint limits
@@ -41,6 +45,9 @@ pub struct Context<'a, Cfg: Config> {
 
     /// The connection id format associated with the endpoint config
     pub connection_id_format: &'a mut Cfg::ConnectionIdFormat,
+
+    /// The stateless reset token generator associated with the endpoint config
+    pub stateless_reset_token_generator: &'a mut Cfg::StatelessResetTokenGenerator,
 
     /// The TLS endpoint associated with the endpoint config
     pub tls: &'a mut Cfg::TLSEndpoint,

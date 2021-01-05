@@ -26,13 +26,9 @@ pub mod random {
         time::Duration,
     };
     use rand::prelude::*;
-    use s2n_quic_core::{
-        connection::{
-            self,
-            id::{ConnectionInfo, Generator, StatelessResetTokenGenerator, Validator},
-        },
-        frame::new_connection_id::STATELESS_RESET_TOKEN_LEN,
-        stateless_reset_token::StatelessResetToken,
+    use s2n_quic_core::connection::{
+        self,
+        id::{ConnectionInfo, Generator, Validator},
     };
 
     #[derive(Debug, Default)]
@@ -151,76 +147,52 @@ pub mod random {
         }
     }
 
-    impl StatelessResetTokenGenerator for Format {
-        /// This stateless reset token generator produces a random token on each call, and
-        /// thus does not enable stateless reset functionality, as the token provided to the
-        /// peer with a new connection ID will be different than the token sent in a stateless
-        /// reset. To enable stateless reset functionality, the stateless reset token must
-        /// be generated the same for a given `LocalId` before and after loss of state.
-        fn stateless_reset_token(
-            &mut self,
-            _connection_id: &connection::LocalId,
-        ) -> StatelessResetToken {
-            let mut token = [0u8; STATELESS_RESET_TOKEN_LEN];
-            rand::thread_rng().fill_bytes(&mut token);
-            (&token[..]).try_into().expect("length already checked")
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn generator_test() {
+            let remote_address = &s2n_quic_core::inet::SocketAddress::default();
+            let connection_info = ConnectionInfo::new(remote_address);
+
+            for len in connection::LocalId::MIN_LEN..connection::id::MAX_LEN {
+                let mut format = Format::builder().with_len(len).unwrap().build().unwrap();
+
+                let id = format.generate(&connection_info);
+                assert_eq!(format.validate(&connection_info, id.as_ref()), Some(len));
+                assert_eq!(id.len(), len);
+                assert_eq!(format.lifetime(), None);
+            }
+
+            assert_eq!(
+                Some(connection::id::Error::InvalidLength),
+                Format::builder()
+                    .with_len(connection::id::MAX_LEN + 1)
+                    .err()
+            );
+
+            assert_eq!(
+                Some(connection::id::Error::InvalidLength),
+                Format::builder()
+                    .with_len(connection::LocalId::MIN_LEN - 1)
+                    .err()
+            );
+
+            let lifetime = Duration::from_secs(1000);
+            let format = Format::builder()
+                .with_lifetime(lifetime)
+                .unwrap()
+                .build()
+                .unwrap();
+            assert_eq!(Some(lifetime), format.lifetime());
+
+            assert_eq!(
+                Some(connection::id::Error::InvalidLifetime),
+                Format::builder()
+                    .with_lifetime(connection::id::MIN_LIFETIME - Duration::from_millis(1))
+                    .err()
+            );
         }
-    }
-
-    #[test]
-    fn generator_test() {
-        let remote_address = &s2n_quic_core::inet::SocketAddress::default();
-        let connection_info = ConnectionInfo::new(remote_address);
-
-        for len in connection::LocalId::MIN_LEN..connection::id::MAX_LEN {
-            let mut format = Format::builder().with_len(len).unwrap().build().unwrap();
-
-            let id = format.generate(&connection_info);
-            assert_eq!(format.validate(&connection_info, id.as_ref()), Some(len));
-            assert_eq!(id.len(), len);
-            assert_eq!(format.lifetime(), None);
-        }
-
-        assert_eq!(
-            Some(connection::id::Error::InvalidLength),
-            Format::builder()
-                .with_len(connection::id::MAX_LEN + 1)
-                .err()
-        );
-
-        assert_eq!(
-            Some(connection::id::Error::InvalidLength),
-            Format::builder()
-                .with_len(connection::LocalId::MIN_LEN - 1)
-                .err()
-        );
-
-        let lifetime = Duration::from_secs(1000);
-        let format = Format::builder()
-            .with_lifetime(lifetime)
-            .unwrap()
-            .build()
-            .unwrap();
-        assert_eq!(Some(lifetime), format.lifetime());
-
-        assert_eq!(
-            Some(connection::id::Error::InvalidLifetime),
-            Format::builder()
-                .with_lifetime(connection::id::MIN_LIFETIME - Duration::from_millis(1))
-                .err()
-        );
-    }
-
-    #[test]
-    fn stateless_reset_token_test() {
-        let mut format = Format::builder().build().unwrap();
-        let remote_address = &s2n_quic_core::inet::SocketAddress::default();
-        let connection_info = ConnectionInfo::new(remote_address);
-        let id = format.generate(&connection_info);
-
-        let token_1 = format.stateless_reset_token(&id);
-        let token_2 = format.stateless_reset_token(&id);
-
-        assert_ne!(token_1, token_2);
     }
 }

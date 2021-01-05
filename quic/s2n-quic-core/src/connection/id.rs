@@ -1,9 +1,6 @@
 //! Defines the QUIC connection ID
 
-use crate::{
-    inet::SocketAddress, stateless_reset_token::StatelessResetToken,
-    transport::error::TransportError,
-};
+use crate::{inet::SocketAddress, transport::error::TransportError};
 use core::{
     convert::{TryFrom, TryInto},
     time::Duration,
@@ -232,10 +229,10 @@ impl<'a> ConnectionInfo<'a> {
 }
 
 /// Format for connection IDs
-pub trait Format: Validator + Generator + StatelessResetTokenGenerator {}
+pub trait Format: Validator + Generator {}
 
 /// Implement Format for all types that implement the required subtraits
-impl<T: Validator + Generator + StatelessResetTokenGenerator> Format for T {}
+impl<T: Validator + Generator> Format for T {}
 
 /// A validator for a connection ID format
 pub trait Validator {
@@ -282,17 +279,6 @@ pub trait Generator {
     fn lifetime(&self) -> Option<core::time::Duration> {
         None
     }
-}
-
-/// A generator for a stateless reset token
-pub trait StatelessResetTokenGenerator {
-    /// Generates a stateless reset token.
-    ///
-    /// The stateless reset token MUST be difficult to guess.
-    ///
-    /// To enable stateless reset functionality, the stateless reset token must
-    /// be generated the same for a given `LocalId` before and after loss of state.
-    fn stateless_reset_token(&mut self, connection_id: &LocalId) -> StatelessResetToken;
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -376,10 +362,7 @@ mod tests {
 #[cfg(any(test, feature = "testing"))]
 pub mod testing {
     use super::*;
-    use crate::frame::new_connection_id::STATELESS_RESET_TOKEN_LEN;
     use core::convert::TryInto;
-
-    const KEY: u8 = 123;
 
     #[derive(Debug, Default)]
     pub struct Format(u64);
@@ -395,18 +378,6 @@ pub mod testing {
             let id = (&self.0.to_be_bytes()[..]).try_into().unwrap();
             self.0 += 1;
             id
-        }
-    }
-
-    impl StatelessResetTokenGenerator for Format {
-        fn stateless_reset_token(&mut self, connection_id: &LocalId) -> StatelessResetToken {
-            let mut token = [0; STATELESS_RESET_TOKEN_LEN];
-
-            for (index, byte) in connection_id.bytes.iter().enumerate() {
-                token[index] = byte ^ KEY;
-            }
-
-            token.into()
         }
     }
 }

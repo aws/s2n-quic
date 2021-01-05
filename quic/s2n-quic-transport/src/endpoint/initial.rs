@@ -1,7 +1,7 @@
 use crate::{
     connection::{
         self,
-        id::{ConnectionInfo, Generator as _, StatelessResetTokenGenerator as _},
+        id::{ConnectionInfo, Generator as _},
         SynchronizedSharedConnectionState, Trait as _,
     },
     endpoint,
@@ -15,6 +15,7 @@ use s2n_quic_core::{
     crypto::{tls::Endpoint as TLSEndpoint, CryptoSuite, InitialCrypto},
     inet::DatagramInfo,
     packet::initial::ProtectedInitial,
+    stateless_reset_token::Generator as _,
     transport::{error::TransportError, parameters::ServerTransportParameters},
 };
 
@@ -100,8 +101,8 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         let stateless_reset_token = self
             .config
             .context()
-            .connection_id_format
-            .stateless_reset_token(&initial_connection_id);
+            .stateless_reset_token_generator
+            .generate(&initial_connection_id);
 
         let local_id_registry = self.connection_id_mapper.create_registry(
             internal_connection_id,
