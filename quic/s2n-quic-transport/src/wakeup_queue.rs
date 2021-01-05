@@ -229,6 +229,6 @@ mod tests {
         handle2.wakeup();
         assert_eq!(counter, 2);
         let pending = queue.poll_pending_wakeups(pending, &Context::from_waker(&waker));
-        assert_eq!(vec_deque2![2u32], pending);
+        assert_eq!(vec_deque![2u32], pending);
     }
 }
