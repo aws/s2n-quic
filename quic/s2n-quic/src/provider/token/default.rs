@@ -239,6 +239,20 @@ impl super::Format for Format {
         //# A token issued with NEW_TOKEN MUST NOT include information that would
         //# allow values to be linked by an observer to the connection on which
         //# it was issued.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.3
+        //= type=TODO
+        //= tracking-issue=387
+        //# A server MUST ensure that every NEW_TOKEN frame it sends
+        //# is unique across all clients, with the exception of those sent to
+        //# repair losses of previously sent NEW_TOKEN frames.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.3
+        //= type=TODO
+        //= tracking-issue=394
+        //# A server MAY provide clients with an address validation token during
+        //# one connection that can be used on a subsequent connection.
+
         None
     }
 
@@ -321,6 +335,12 @@ impl super::Format for Format {
         //# Tokens that are provided in NEW_TOKEN frames (Section 19.7) need to
         //# be valid for longer, but SHOULD NOT be accepted multiple times in a
         //# short period.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.3
+        //= type=TODO
+        //= tracking-issue=388
+        //# Clients that want to break continuity of identity with a server MAY
+        //# discard tokens provided using the NEW_TOKEN frame.
     }
 }
 
