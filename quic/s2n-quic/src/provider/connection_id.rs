@@ -99,7 +99,7 @@ pub mod random {
     impl Builder {
         /// Sets the length of the generated connection Id
         pub fn with_len(mut self, len: usize) -> Result<Self, connection::id::Error> {
-            if len < connection::LocalId::MIN_LEN || len > connection::id::MAX_LEN {
+            if !(connection::LocalId::MIN_LEN..=connection::id::MAX_LEN).contains(&len) {
                 return Err(connection::id::Error::InvalidLength);
             }
             self.len = len;

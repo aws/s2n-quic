@@ -214,11 +214,10 @@ impl LocalIdInfo {
 
     // Returns true if the connection ID has been retired and is pending removal
     fn is_retired(&self) -> bool {
-        match self.status {
-            PendingRetirementConfirmation(_) => true,
-            PendingRemoval(_) => true,
-            _ => false,
-        }
+        matches!(
+            self.status,
+            PendingRetirementConfirmation(_) | PendingRemoval(_)
+        )
     }
 
     // Returns true if the connection ID should no longer be used
@@ -277,11 +276,7 @@ enum LocalIdStatus {
 impl LocalIdStatus {
     /// Returns true if this status counts towards the active_connection_id_limit
     fn counts_towards_limit(&self) -> bool {
-        match self {
-            PendingRetirementConfirmation(_) => false,
-            PendingRemoval(_) => false,
-            _ => true,
-        }
+        !matches!(self, PendingRetirementConfirmation(_) | PendingRemoval(_))
     }
 
     /// Returns true if this status allows for transmission based on the transmission constraint

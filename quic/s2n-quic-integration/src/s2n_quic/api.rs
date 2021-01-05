@@ -41,7 +41,7 @@ impl api::Acceptor for StreamAcceptor {
 impl crate::api::Handle for Handle {
     type BidiStream = stream::BidirectionalStream;
     type SendStream = stream::SendStream;
-    type Error = stream::Error;
+    type Error = connection::Error;
 
     fn poll_open_send(&mut self, cx: &mut Context) -> Poll<Result<Self::SendStream, Self::Error>> {
         Handle::poll_open_send_stream(self, cx)

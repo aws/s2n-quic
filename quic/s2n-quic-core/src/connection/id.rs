@@ -106,7 +106,7 @@ macro_rules! id {
 
             fn try_from(slice: &[u8]) -> Result<Self, Self::Error> {
                 let len = slice.len();
-                if len < $type::MIN_LEN || len > MAX_LEN {
+                if !($type::MIN_LEN..=MAX_LEN).contains(&len) {
                     return Err(Error::InvalidLength);
                 }
                 let mut bytes = [0; MAX_LEN];
