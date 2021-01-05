@@ -82,6 +82,12 @@ pub trait Generator {
     fn generate(&mut self, connection_id: &LocalId) -> StatelessResetToken;
 }
 
+/// A generator of unpredictable bits
+pub trait UnpredictableBits {
+    /// Fills `dest` with unpredictable bits
+    fn fill(&mut self, dest: &mut [u8]);
+}
+
 #[cfg(any(test, feature = "testing"))]
 pub mod testing {
     use crate::{
@@ -106,7 +112,7 @@ pub mod testing {
     const KEY: u8 = 123;
 
     #[derive(Debug, Default)]
-    pub struct Generator();
+    pub struct Generator(u8);
 
     impl stateless_reset_token::Generator for Generator {
         fn generate(&mut self, connection_id: &LocalId) -> StatelessResetToken {
@@ -117,6 +123,18 @@ pub mod testing {
             }
 
             token.into()
+        }
+    }
+
+    impl stateless_reset_token::UnpredictableBits for Generator {
+        fn fill(&mut self, dest: &mut [u8]) {
+            let seed = self.0;
+
+            for (i, elem) in dest.iter_mut().enumerate() {
+                *elem = seed ^ i as u8;
+            }
+
+            self.0 += 1
         }
     }
 }

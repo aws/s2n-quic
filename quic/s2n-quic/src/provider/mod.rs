@@ -13,3 +13,4 @@ pub mod stateless_reset_token;
 pub mod sync;
 pub mod tls;
 pub mod token;
+pub mod stateless_reset;

@@ -23,6 +23,8 @@ pub trait Config: Sized {
     type ConnectionIdFormat: connection::id::Format;
     /// The stateless reset token generator
     type StatelessResetTokenGenerator: stateless_reset_token::Generator;
+    /// The unpredictable bits generator for a stateless reset
+    type StatelessResetUnpredictableBitsGenerator: stateless_reset_token::UnpredictableBits;
     /// The validation token format
     type TokenFormat: s2n_quic_core::token::Format;
     /// The endpoint limits

@@ -526,6 +526,7 @@ pub mod testing {
         type EndpointLimits = Limits;
         type ConnectionIdFormat = connection::id::testing::Format;
         type StatelessResetTokenGenerator = stateless_reset_token::testing::Generator;
+        type StatelessResetUnpredictableBitsGenerator = stateless_reset_token::testing::Generator;
         type TokenFormat = s2n_quic_core::token::testing::Format;
 
         fn create_connection_config(&mut self) -> Self::ConnectionConfig {
@@ -548,6 +549,7 @@ pub mod testing {
         type EndpointLimits = Limits;
         type ConnectionIdFormat = connection::id::testing::Format;
         type StatelessResetTokenGenerator = stateless_reset_token::testing::Generator;
+        type StatelessResetUnpredictableBitsGenerator = stateless_reset_token::testing::Generator;
         type TokenFormat = s2n_quic_core::token::testing::Format;
 
         fn create_connection_config(&mut self) -> Self::ConnectionConfig {
