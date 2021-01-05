@@ -236,6 +236,11 @@ impl<T: Validator + Generator> Format for T {}
 
 /// A validator for a connection ID format
 pub trait Validator {
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.2
+    //# An endpoint that uses this design MUST
+    //# either use the same connection ID length for all connections or
+    //# encode the length of the connection ID such that it can be recovered
+    //# without state.
     /// Validates a connection ID from a buffer
     ///
     /// Implementations should handle situations where the buffer will include extra

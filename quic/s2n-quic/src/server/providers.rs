@@ -10,6 +10,7 @@ impl_providers_state! {
         clock: Clock,
         congestion_controller: CongestionController,
         connection_id: ConnectionID,
+        stateless_reset_token: StatelessResetToken,
         endpoint_limits: EndpointLimits,
         limits: Limits,
         log: Log,
@@ -28,6 +29,7 @@ impl<
         Clock: clock::Provider,
         CongestionController: congestion_controller::Provider,
         ConnectionID: connection_id::Provider,
+        StatelessResetToken: stateless_reset_token::Provider,
         EndpointLimits: endpoint_limits::Provider,
         Limits: limits::Provider,
         Log: log::Provider,
@@ -41,6 +43,7 @@ impl<
         Clock,
         CongestionController,
         ConnectionID,
+        StatelessResetToken,
         EndpointLimits,
         Limits,
         Log,
@@ -58,6 +61,7 @@ impl<
             clock,
             congestion_controller,
             connection_id,
+            stateless_reset_token,
             endpoint_limits,
             limits,
             log,
@@ -71,6 +75,7 @@ impl<
         let clock = clock.start().map_err(StartError::new)?;
         let congestion_controller = congestion_controller.start().map_err(StartError::new)?;
         let connection_id = connection_id.start().map_err(StartError::new)?;
+        let stateless_reset_token = stateless_reset_token.start().map_err(StartError::new)?;
         let endpoint_limits = endpoint_limits.start().map_err(StartError::new)?;
         let limits = limits.start().map_err(StartError::new)?;
         let log = log.start().map_err(StartError::new)?;
@@ -95,6 +100,7 @@ impl<
         let endpoint_config = EndpointConfig {
             congestion_controller,
             connection_id,
+            stateless_reset_token,
             endpoint_limits,
             limits,
             log,
@@ -188,6 +194,7 @@ impl<
 struct EndpointConfig<
     CongestionController,
     ConnectionID,
+    StatelessResetToken,
     EndpointLimits,
     Limits,
     Log,
@@ -197,6 +204,7 @@ struct EndpointConfig<
 > {
     congestion_controller: CongestionController,
     connection_id: ConnectionID,
+    stateless_reset_token: StatelessResetToken,
     endpoint_limits: EndpointLimits,
     limits: Limits,
     log: Log,
@@ -208,6 +216,7 @@ struct EndpointConfig<
 impl<
         CongestionController: congestion_controller::Endpoint,
         ConnectionID: connection::id::Format,
+        StatelessResetToken: stateless_reset_token::Generator,
         EndpointLimits: s2n_quic_core::endpoint::Limits,
         Limits,
         Log,
@@ -218,6 +227,7 @@ impl<
     for EndpointConfig<
         CongestionController,
         ConnectionID,
+        StatelessResetToken,
         EndpointLimits,
         Limits,
         Log,
@@ -229,6 +239,7 @@ impl<
     type ConnectionConfig =
         ConnectionConfig<CongestionController::CongestionController, Tls::Session>;
     type ConnectionIdFormat = ConnectionID;
+    type StatelessResetTokenGenerator = StatelessResetToken;
     type Connection = connection::Implementation<Self::ConnectionConfig>;
     type CongestionControllerEndpoint = CongestionController;
     type EndpointLimits = EndpointLimits;
@@ -246,6 +257,7 @@ impl<
         endpoint::Context {
             congestion_controller: &mut self.congestion_controller,
             connection_id_format: &mut self.connection_id,
+            stateless_reset_token_generator: &mut self.stateless_reset_token,
             tls: &mut self.tls,
             endpoint_limits: &mut self.endpoint_limits,
             token: &mut self.token,

@@ -24,6 +24,7 @@ use s2n_quic_core::{
         zero_rtt::ProtectedZeroRTT,
         ProtectedPacket,
     },
+    stateless_reset_token,
     time::Timestamp,
     transport::error::TransportError,
 };
@@ -63,10 +64,15 @@ pub trait ConnectionTrait: Sized {
     /// no longer be signalled.
     fn mark_as_accepted(&mut self);
 
-    /// Generates and registers new connection IDs using the given `ConnectionIdFormat`
-    fn on_new_connection_id<ConnectionIdFormat: connection::id::Format>(
+    /// Generates and registers new connection IDs using the given `ConnectionIdFormat` and
+    /// `StatelessResetTokenGenerator`
+    fn on_new_connection_id<
+        ConnectionIdFormat: connection::id::Format,
+        StatelessResetTokenGenerator: stateless_reset_token::Generator,
+    >(
         &mut self,
         connection_id_format: &mut ConnectionIdFormat,
+        stateless_reset_token_generator: &mut StatelessResetTokenGenerator,
         timestamp: Timestamp,
     ) -> Result<(), LocalIdRegistrationError>;
 

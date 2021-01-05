@@ -1,0 +1,20 @@
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.2"
+
+[[exception]]
+quote = '''
+The stateless reset token MUST be difficult to guess.
+'''
+reason = '''
+The stateless reset token is implemented through a provider and is unenforceable
+by s2n-quic.
+'''
+
+[[exception]]
+quote = '''
+The same Stateless Reset Token MUST NOT be used for multiple
+connection IDs.
+'''
+reason = '''
+The stateless reset token is implemented through a provider and is unenforceable
+by s2n-quic.
+'''

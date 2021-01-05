@@ -2,23 +2,6 @@ target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.2"
 
 [[TODO]]
 quote = '''
-The stateless reset token MUST be difficult to guess.
-'''
-feature = "Stateless Reset Token key based provider"
-tracking-issue = "240"
-
-[[TODO]]
-quote = '''
-An endpoint that uses this design MUST
-either use the same connection ID length for all connections or
-encode the length of the connection ID such that it can be recovered
-without state.
-'''
-feature = "Stateless Reset Token key based provider"
-tracking-issue = "240"
-
-[[TODO]]
-quote = '''
 This method for
 choosing the Stateless Reset Token means that the combination of
 connection ID and static key MUST NOT be used for another connection.
@@ -34,20 +17,3 @@ NOT be reused for new connections at nodes that share a static key.
 '''
 feature = "Stateless Reset Token key based provider"
 tracking-issue = "240"
-
-[[TODO]]
-quote = '''
-The same Stateless Reset Token MUST NOT be used for multiple
-connection IDs.
-'''
-feature = "Stateless Reset"
-tracking-issue = "195"
-
-[[TODO]]
-quote = '''
-Endpoints are not required to compare new values
-against all previous values, but a duplicate value MAY be treated as
-a connection error of type PROTOCOL_VIOLATION.
-'''
-feature = "Stateless Reset"
-tracking-issue = "195"

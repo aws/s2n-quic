@@ -147,47 +147,52 @@ pub mod random {
         }
     }
 
-    #[test]
-    fn generator_test() {
-        let remote_address = &s2n_quic_core::inet::SocketAddress::default();
-        let connection_info = ConnectionInfo::new(remote_address);
+    #[cfg(test)]
+    mod tests {
+        use super::*;
 
-        for len in connection::LocalId::MIN_LEN..connection::id::MAX_LEN {
-            let mut format = Format::builder().with_len(len).unwrap().build().unwrap();
+        #[test]
+        fn generator_test() {
+            let remote_address = &s2n_quic_core::inet::SocketAddress::default();
+            let connection_info = ConnectionInfo::new(remote_address);
 
-            let id = format.generate(&connection_info);
-            assert_eq!(format.validate(&connection_info, id.as_ref()), Some(len));
-            assert_eq!(id.len(), len);
-            assert_eq!(format.lifetime(), None);
+            for len in connection::LocalId::MIN_LEN..connection::id::MAX_LEN {
+                let mut format = Format::builder().with_len(len).unwrap().build().unwrap();
+
+                let id = format.generate(&connection_info);
+                assert_eq!(format.validate(&connection_info, id.as_ref()), Some(len));
+                assert_eq!(id.len(), len);
+                assert_eq!(format.lifetime(), None);
+            }
+
+            assert_eq!(
+                Some(connection::id::Error::InvalidLength),
+                Format::builder()
+                    .with_len(connection::id::MAX_LEN + 1)
+                    .err()
+            );
+
+            assert_eq!(
+                Some(connection::id::Error::InvalidLength),
+                Format::builder()
+                    .with_len(connection::LocalId::MIN_LEN - 1)
+                    .err()
+            );
+
+            let lifetime = Duration::from_secs(1000);
+            let format = Format::builder()
+                .with_lifetime(lifetime)
+                .unwrap()
+                .build()
+                .unwrap();
+            assert_eq!(Some(lifetime), format.lifetime());
+
+            assert_eq!(
+                Some(connection::id::Error::InvalidLifetime),
+                Format::builder()
+                    .with_lifetime(connection::id::MIN_LIFETIME - Duration::from_millis(1))
+                    .err()
+            );
         }
-
-        assert_eq!(
-            Some(connection::id::Error::InvalidLength),
-            Format::builder()
-                .with_len(connection::id::MAX_LEN + 1)
-                .err()
-        );
-
-        assert_eq!(
-            Some(connection::id::Error::InvalidLength),
-            Format::builder()
-                .with_len(connection::LocalId::MIN_LEN - 1)
-                .err()
-        );
-
-        let lifetime = Duration::from_secs(1000);
-        let format = Format::builder()
-            .with_lifetime(lifetime)
-            .unwrap()
-            .build()
-            .unwrap();
-        assert_eq!(Some(lifetime), format.lifetime());
-
-        assert_eq!(
-            Some(connection::id::Error::InvalidLifetime),
-            Format::builder()
-                .with_lifetime(connection::id::MIN_LIFETIME - Duration::from_millis(1))
-                .err()
-        );
     }
 }

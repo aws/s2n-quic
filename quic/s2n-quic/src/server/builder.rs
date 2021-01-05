@@ -111,6 +111,30 @@ impl<Providers: ServerProviders> Builder<Providers> {
     );
 
     impl_provider_method!(
+        /// Sets the stateless reset token provider for the [`Server`]
+        ///
+        /// # Examples
+        ///
+        /// Sets a custom stateless reset token provider for the server
+        ///
+        /// ```rust,ignore
+        /// # use std::error::Error;
+        /// use s2n_quic::Server;
+        /// #
+        /// # #[tokio::main]
+        /// # async fn main() -> Result<(), Box<dyn Error>> {
+        /// let server = Server::builder()
+        ///     .with_stateless_reset_token(MyStatelessResetTokenGenerator::new())?
+        ///     .start()?;
+        /// #
+        /// #    Ok(())
+        /// # }
+        /// ```
+        with_stateless_reset_token,
+        stateless_reset_token
+    );
+
+    impl_provider_method!(
         /// Sets the limits provider for the [`Server`]
         ///
         /// # Examples

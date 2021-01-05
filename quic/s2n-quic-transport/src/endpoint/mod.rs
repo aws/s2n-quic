@@ -32,7 +32,10 @@ mod version;
 pub use config::{Config, Context};
 use connection::id::ConnectionInfo;
 pub use s2n_quic_core::endpoint::*;
-use s2n_quic_core::inet::{ExplicitCongestionNotification, SocketAddress};
+use s2n_quic_core::{
+    inet::{ExplicitCongestionNotification, SocketAddress},
+    stateless_reset_token::Generator as _,
+};
 
 /// A QUIC `Endpoint`
 pub struct Endpoint<Cfg: Config> {
@@ -362,7 +365,9 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     //= feature=Stateless Reset
                     //# An endpoint MAY send a stateless reset in response to receiving a packet
                     //# that it cannot associate with an active connection.
-                    self.enqueue_stateless_reset(datagram, packet.destination_connection_id());
+                    if Cfg::StatelessResetTokenGenerator::ENABLED {
+                        self.enqueue_stateless_reset(datagram, packet.destination_connection_id());
+                    }
                 }
             }
         } else {
@@ -389,11 +394,15 @@ impl<Cfg: Config> Endpoint<Cfg> {
     /// Queries the endpoint for connections requiring new connection IDs
     pub fn issue_new_connection_ids(&mut self, timestamp: Timestamp) {
         // Iterate over all connections which need new connection IDs
-        let connection_id_format = self.config.context().connection_id_format;
+        let context = self.config.context();
 
         self.connections
             .iterate_new_connection_id_list(|connection, _shared_state| {
-                let result = connection.on_new_connection_id(connection_id_format, timestamp);
+                let result = connection.on_new_connection_id(
+                    context.connection_id_format,
+                    context.stateless_reset_token_generator,
+                    timestamp,
+                );
                 if result.is_ok() {
                     ConnectionContainerIterationResult::Continue
                 } else {
@@ -504,7 +513,7 @@ impl<'a, Cfg: Config> core::future::Future for PendingWakeups<'a, Cfg> {
 #[cfg(any(test, feature = "testing"))]
 pub mod testing {
     use super::*;
-    use s2n_quic_core::endpoint;
+    use s2n_quic_core::{endpoint, stateless_reset_token};
 
     #[derive(Debug)]
     pub struct Server;
@@ -516,6 +525,7 @@ pub mod testing {
         type Connection = connection::Implementation<Self::ConnectionConfig>;
         type EndpointLimits = Limits;
         type ConnectionIdFormat = connection::id::testing::Format;
+        type StatelessResetTokenGenerator = stateless_reset_token::testing::Generator;
         type TokenFormat = s2n_quic_core::token::testing::Format;
 
         fn create_connection_config(&mut self) -> Self::ConnectionConfig {
@@ -537,6 +547,7 @@ pub mod testing {
         type Connection = connection::Implementation<Self::ConnectionConfig>;
         type EndpointLimits = Limits;
         type ConnectionIdFormat = connection::id::testing::Format;
+        type StatelessResetTokenGenerator = stateless_reset_token::testing::Generator;
         type TokenFormat = s2n_quic_core::token::testing::Format;
 
         fn create_connection_config(&mut self) -> Self::ConnectionConfig {
