@@ -26,6 +26,13 @@ pub const NONCE_BYTES: [u8; 12] = hex!("e54930f97f2136f0530a8c1c");
 pub mod example {
     use super::*;
 
+    pub const INVALID_PACKET_NO_TOKEN_LEN: usize = 31;
+    pub const INVALID_PACKET_NO_TOKEN: [u8; INVALID_PACKET_NO_TOKEN_LEN] = hex!(
+        "
+    ff ff000020 00 08 f067a5502a4262b5 59756519dd6cc85bd90e33a9
+    34d2ff85
+    "
+    );
     pub const PACKET_LEN: usize = 36;
 
     //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#A.4

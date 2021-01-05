@@ -260,6 +260,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     //# An endpoint MUST
                     //# perform path validation (Section 8.2) if it detects any change to a
                     //# peer's address, unless it has previously validated that address.
+
                     if let Err(err) = conn.handle_packet(shared_state, datagram, path_id, packet) {
                         conn.handle_transport_error(shared_state, datagram, err);
                         return Err(());

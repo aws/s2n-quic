@@ -32,7 +32,7 @@ macro_rules! impl_handle_api {
             Ok(
                 match futures::ready!(self.0.poll_open_stream(stream_type, cx))? {
                     stream if stream_type == StreamType::Unidirectional => {
-                        SendStream::new(stream).into()
+                        SendStream::new(stream.into()).into()
                     }
                     stream => BidirectionalStream::new(stream).into(),
                 },
@@ -101,7 +101,7 @@ macro_rules! impl_handle_api {
 
             let stream = futures::ready!(self.0.poll_open_stream(StreamType::Unidirectional, cx))?;
 
-            Ok(SendStream::new(stream)).into()
+            Ok(SendStream::new(stream.into())).into()
         }
 
         /// Returns the local address that this connection is bound to.

@@ -1,0 +1,123 @@
+[[TODO]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.3"
+quote = '''
+A client SHOULD NOT reuse a NEW_TOKEN token for different connection
+attempts.
+'''
+tracking-issue = "389"
+feature = "Client Retry" 
+
+[[TODO]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.3"
+quote = '''
+A client MUST NOT include
+a token that is not applicable to the server that it is connecting
+to, unless the client has the knowledge that the server that issued
+the token and the server the client is connecting to are jointly
+managing the tokens.
+'''
+tracking-issue = "390"
+feature = "Client Retry" 
+
+[[TODO]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.3"
+quote = '''
+When connecting to a server for
+which the client retains an applicable and unused token, it SHOULD
+include that token in the Token field of its Initial packet.
+'''
+tracking-issue = "390"
+feature = "Client Retry" 
+
+[[TODO]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.3"
+quote = '''
+A client MAY use a token from any previous
+connection to that server.
+'''
+tracking-issue = "390"
+feature = "Client Retry" 
+
+[[TODO]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1"
+quote = '''
+Clients MUST ensure that UDP datagrams containing Initial packets
+have UDP payloads of at least 1200 bytes, adding PADDING frames as
+necessary.
+'''
+tracking-issue = "392"
+feature = "Client Retry" 
+
+[[TODO]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1"
+tracking-issue = "415"
+quote = '''
+Clients MUST ensure that UDP datagrams containing Initial packets
+have UDP payloads of at least 1200 bytes, adding PADDING frames as
+necessary.
+'''
+
+[[TODO]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1"
+tracking-issue = "416"
+quote = '''
+To
+prevent this deadlock, clients MUST send a packet on a probe timeout
+(PTO, see Section 6.2 of [QUIC-RECOVERY]).
+'''
+
+[[TODO]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1"
+tracking-issue = "416"
+quote = '''
+Specifically, the client
+MUST send an Initial packet in a UDP datagram that contains at least
+1200 bytes if it does not have Handshake keys, and otherwise send a
+Handshake packet.
+'''
+
+[[TODO]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.3"
+tracking-issue = "417"
+quote = '''
+When connecting to a server for
+which the client retains an applicable and unused token, it SHOULD
+include that token in the Token field of its Initial packet.
+'''
+
+[[TODO]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.3"
+tracking-issue = "419"
+quote = '''
+A client MAY use a token from any previous
+connection to that server.
+'''
+
+[[TODO]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.3"
+tracking-issue = "420"
+quote = '''
+A client MUST NOT include
+a token that is not applicable to the server that it is connecting
+to, unless the client has the knowledge that the server that issued
+the token and the server the client is connecting to are jointly
+managing the tokens.
+'''
+
+[[TODO]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.3"
+tracking-issue = "421"
+quote = '''
+A client SHOULD NOT reuse a NEW_TOKEN token for different connection
+attempts.
+'''
+
+[[TODO]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.3"
+tracking-issue = "422"
+quote = '''
+In comparison, a
+token obtained in a Retry packet MUST be used immediately during the
+connection attempt and cannot be used in subsequent connection
+attempts.
+'''

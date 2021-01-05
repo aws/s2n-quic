@@ -13,16 +13,21 @@ pub use s2n_quic_core::{
     stream::{ops, StreamError, StreamId, StreamType},
 };
 
-struct StreamState {
-    shared_state: ConnectionApi,
+#[derive(Clone)]
+struct State {
+    connection: ConnectionApi,
     stream_id: StreamId,
+    is_rx_open: bool,
+    is_tx_open: bool,
 }
 
-impl StreamState {
-    fn new(shared_state: ConnectionApi, stream_id: StreamId) -> Self {
+impl State {
+    fn new(connection: ConnectionApi, stream_id: StreamId) -> Self {
         Self {
-            shared_state,
+            connection,
             stream_id,
+            is_rx_open: true,
+            is_tx_open: true,
         }
     }
 
@@ -32,7 +37,41 @@ impl StreamState {
         context: Option<&Context>,
     ) -> Result<ops::Response, StreamError> {
         let id = self.stream_id;
-        self.shared_state.poll_request(id, request, context)
+        self.connection.poll_request(id, request, context)
+    }
+
+    fn request(&mut self) -> Request {
+        Request {
+            state: self,
+            request: ops::Request::default(),
+        }
+    }
+}
+
+impl Drop for State {
+    fn drop(&mut self) {
+        let is_rx_open = self.is_rx_open;
+        let is_tx_open = self.is_tx_open;
+
+        if is_rx_open || is_tx_open {
+            let mut request = self.request();
+
+            if is_tx_open {
+                // Dropping a send stream will automatically finish the stream
+                //
+                // This is to stay consistent with std::net::TcpStream
+                request.finish();
+            }
+
+            if is_rx_open {
+                // Send a STOP_SENDING message on the receiving half of the `Stream`,
+                // for the case the application did not consume all data.
+                // If that already happened, this will be a noop.
+                request.stop_sending(ApplicationErrorCode::UNKNOWN);
+            }
+
+            let _ = request.poll(None);
+        }
     }
 }
 
@@ -248,17 +287,14 @@ macro_rules! rx_stream_apis {
 }
 
 /// A readable and writeable QUIC stream
-pub struct Stream {
-    state: StreamState,
-    is_open: bool,
-}
+pub struct Stream(State);
 
 impl fmt::Debug for Stream {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let is_alternate = f.alternate();
 
         let mut s = f.debug_struct("Stream");
-        s.field("id", &self.state.stream_id);
+        s.field("id", &self.id());
 
         // return additional information
         if is_alternate {
@@ -269,59 +305,32 @@ impl fmt::Debug for Stream {
     }
 }
 
-impl Drop for Stream {
-    fn drop(&mut self) {
-        if self.is_open {
-            let _ = self
-                .request()
-                // Dropping a send stream will automatically finish the stream
-                //
-                // This is to stay consistent with std::net::TcpStream
-                .finish()
-                // Send a STOP_SENDING message on the receiving half of the `Stream`,
-                // for the case the application did not consume all data.
-                // If that already happened, this will be a noop.
-                .stop_sending(ApplicationErrorCode::UNKNOWN)
-                .poll(None);
-        }
-    }
-}
-
 impl Stream {
     /// Creates a `Stream` instance, which represents a QUIC stream with the
     /// given ID. All interactions with the `Stream` will be performed through
     /// the provided [`SynchronizedSharedConnectionState`].
     pub(crate) fn new(shared_state: ConnectionApi, stream_id: StreamId) -> Self {
-        Self {
-            state: StreamState::new(shared_state, stream_id),
-            is_open: true,
-        }
+        Self(State::new(shared_state, stream_id))
     }
 
     pub fn id(&self) -> StreamId {
-        self.state.stream_id
+        self.0.stream_id
     }
 
     pub fn request(&mut self) -> Request {
-        Request {
-            state: &mut self.state,
-            is_open: &mut self.is_open,
-            request: ops::Request::default(),
-        }
+        self.0.request()
     }
 
     pub fn tx_request(&mut self) -> Result<TxRequest, StreamError> {
         Ok(TxRequest {
-            state: &mut self.state,
-            is_open: &mut self.is_open,
+            state: &mut self.0,
             request: ops::Request::default(),
         })
     }
 
     pub fn rx_request(&mut self) -> Result<RxRequest, StreamError> {
         Ok(RxRequest {
-            state: &mut self.state,
-            is_open: &mut self.is_open,
+            state: &mut self.0,
             request: ops::Request::default(),
         })
     }
@@ -333,34 +342,27 @@ impl Stream {
     ///
     /// One half can be used to read data from the Stream.
     /// The other half can be used to send data.
-    pub fn split(mut self) -> (ReceiveStream, SendStream) {
-        // This is not the most efficient implementation, since we bump and
-        // decrease the refcount and need an extra field. However all
-        // implementations which directly reuse `self.shared_state` by moving out of
-        // it require a certain amount of unsafe code, since the `Stream::drop`
-        // will by default be called at the end of this method.
-        let readable_stream =
-            ReceiveStream::new(self.state.shared_state.clone(), self.state.stream_id);
-        let writable_stream =
-            SendStream::new(self.state.shared_state.clone(), self.state.stream_id);
+    pub fn split(self) -> (ReceiveStream, SendStream) {
+        let mut rx_state = self.0;
+        let mut tx_state = rx_state.clone();
 
-        self.is_open = false;
-        (readable_stream, writable_stream)
+        // close the opposite sides
+        rx_state.is_tx_open = false;
+        tx_state.is_rx_open = false;
+
+        (ReceiveStream(rx_state), SendStream(tx_state))
     }
 }
 
 /// A writeable QUIC stream
-pub struct SendStream {
-    state: StreamState,
-    is_open: bool,
-}
+pub struct SendStream(State);
 
 impl fmt::Debug for SendStream {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let is_alternate = f.alternate();
 
         let mut s = f.debug_struct("SendStream");
-        s.field("id", &self.state.stream_id);
+        s.field("id", &self.id());
 
         // return additional information
         if is_alternate {
@@ -371,36 +373,14 @@ impl fmt::Debug for SendStream {
     }
 }
 
-impl Drop for SendStream {
-    fn drop(&mut self) {
-        if self.is_open {
-            // Dropping a send stream will automatically finish the stream
-            //
-            // This is to stay consistent with std::net::TcpStream
-            let _ = self.tx_request().unwrap().finish().poll(None);
-        }
-    }
-}
-
 impl SendStream {
-    /// Creates a `Stream` instance, which represents a QUIC stream with the
-    /// given ID. All interactions with the `Stream` will be performed through
-    /// the provided [`SynchronizedSharedConnectionState`].
-    pub(crate) fn new(shared_state: ConnectionApi, stream_id: StreamId) -> Self {
-        Self {
-            state: StreamState::new(shared_state, stream_id),
-            is_open: true,
-        }
-    }
-
     pub fn id(&self) -> StreamId {
-        self.state.stream_id
+        self.0.stream_id
     }
 
     pub fn tx_request(&mut self) -> Result<TxRequest, StreamError> {
         Ok(TxRequest {
-            state: &mut self.state,
-            is_open: &mut self.is_open,
+            state: &mut self.0,
             request: ops::Request::default(),
         })
     }
@@ -408,18 +388,21 @@ impl SendStream {
     tx_stream_apis!();
 }
 
-/// A readable QUIC stream
-pub struct ReceiveStream {
-    state: StreamState,
-    is_open: bool,
+impl From<Stream> for SendStream {
+    fn from(stream: Stream) -> Self {
+        Self(stream.0)
+    }
 }
+
+/// A readable QUIC stream
+pub struct ReceiveStream(State);
 
 impl fmt::Debug for ReceiveStream {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let is_alternate = f.alternate();
 
         let mut s = f.debug_struct("ReceiveStream");
-        s.field("id", &self.state.stream_id);
+        s.field("id", &self.id());
 
         // return additional information
         if is_alternate {
@@ -430,40 +413,14 @@ impl fmt::Debug for ReceiveStream {
     }
 }
 
-impl Drop for ReceiveStream {
-    fn drop(&mut self) {
-        if self.is_open {
-            // Send a STOP_SENDING message on the receiving half of the `Stream`,
-            // for the case the application did not consume all data.
-            // If that already happened, this will be a noop.
-            let _ = self
-                .rx_request()
-                .unwrap()
-                .stop_sending(ApplicationErrorCode::UNKNOWN)
-                .poll(None);
-        }
-    }
-}
-
 impl ReceiveStream {
-    /// Creates a `Stream` instance, which represents a QUIC stream with the
-    /// given ID. All interactions with the `Stream` will be performed through
-    /// the provided [`SynchronizedSharedConnectionState`].
-    pub(crate) fn new(shared_state: ConnectionApi, stream_id: StreamId) -> Self {
-        Self {
-            state: StreamState::new(shared_state, stream_id),
-            is_open: true,
-        }
-    }
-
     pub fn id(&self) -> StreamId {
-        self.state.stream_id
+        self.0.stream_id
     }
 
     pub fn rx_request(&mut self) -> Result<RxRequest, StreamError> {
         Ok(RxRequest {
-            state: &mut self.state,
-            is_open: &mut self.is_open,
+            state: &mut self.0,
             request: ops::Request::default(),
         })
     }
@@ -471,14 +428,20 @@ impl ReceiveStream {
     rx_stream_apis!();
 }
 
+impl From<Stream> for ReceiveStream {
+    fn from(stream: Stream) -> Self {
+        Self(stream.0)
+    }
+}
+
 macro_rules! tx_request_apis {
     () => {
-        pub fn send(mut self, chunks: &'chunks mut [Bytes]) -> Self {
+        pub fn send(&mut self, chunks: &'chunks mut [Bytes]) -> &mut Self {
             self.request.send(chunks);
             self
         }
 
-        pub fn send_readiness(mut self) -> Self {
+        pub fn send_readiness(&mut self) -> &mut Self {
             // express interest in tx
             if self.request.tx.is_none() {
                 self.request.tx = Some(Default::default());
@@ -486,17 +449,17 @@ macro_rules! tx_request_apis {
             self
         }
 
-        pub fn finish(mut self) -> Self {
+        pub fn finish(&mut self) -> &mut Self {
             self.request.finish();
             self
         }
 
-        pub fn reset(mut self, error_code: ApplicationErrorCode) -> Self {
+        pub fn reset(&mut self, error_code: ApplicationErrorCode) -> &mut Self {
             self.request.reset(error_code);
             self
         }
 
-        pub fn flush(mut self) -> Self {
+        pub fn flush(&mut self) -> &mut Self {
             self.request.flush();
             self
         }
@@ -505,27 +468,27 @@ macro_rules! tx_request_apis {
 
 macro_rules! rx_request_apis {
     () => {
-        pub fn receive(mut self, chunks: &'chunks mut [Bytes]) -> Self {
+        pub fn receive(&mut self, chunks: &'chunks mut [Bytes]) -> &mut Self {
             self.request.receive(chunks);
             self
         }
 
-        pub fn with_watermark(mut self, low: usize, high: usize) -> Self {
+        pub fn with_watermark(&mut self, low: usize, high: usize) -> &mut Self {
             self.request.with_watermark(low, high);
             self
         }
 
-        pub fn with_low_watermark(mut self, low: usize) -> Self {
+        pub fn with_low_watermark(&mut self, low: usize) -> &mut Self {
             self.request.with_low_watermark(low);
             self
         }
 
-        pub fn with_high_watermark(mut self, high: usize) -> Self {
+        pub fn with_high_watermark(&mut self, high: usize) -> &mut Self {
             self.request.with_high_watermark(high);
             self
         }
 
-        pub fn stop_sending(mut self, error_code: ApplicationErrorCode) -> Self {
+        pub fn stop_sending(&mut self, error_code: ApplicationErrorCode) -> &mut Self {
             self.request.stop_sending(error_code);
             self
         }
@@ -533,8 +496,7 @@ macro_rules! rx_request_apis {
 }
 
 pub struct Request<'state, 'chunks> {
-    state: &'state mut StreamState,
-    is_open: &'state mut bool,
+    state: &'state mut State,
     request: ops::Request<'chunks>,
 }
 
@@ -545,10 +507,13 @@ impl<'state, 'chunks> Request<'state, 'chunks> {
     pub fn poll(&mut self, context: Option<&Context>) -> Result<ops::Response, StreamError> {
         let response = self.state.poll_request(&mut self.request, context)?;
 
-        *self.is_open = core::iter::empty()
-            .chain(response.rx().map(|rx| rx.is_open()))
-            .chain(response.tx().map(|tx| tx.is_open()))
-            .any(|is_open| is_open);
+        if let Some(rx) = response.rx() {
+            self.state.is_rx_open = rx.is_open();
+        }
+
+        if let Some(tx) = response.tx() {
+            self.state.is_tx_open = tx.is_open();
+        }
 
         Ok(response)
     }
@@ -566,8 +531,7 @@ impl<'state, 'chunks> Future for Request<'state, 'chunks> {
 }
 
 pub struct TxRequest<'state, 'chunks> {
-    state: &'state mut StreamState,
-    is_open: &'state mut bool,
+    state: &'state mut State,
     request: ops::Request<'chunks>,
 }
 
@@ -581,7 +545,7 @@ impl<'state, 'chunks> TxRequest<'state, 'chunks> {
             .tx
             .expect("invalid response");
 
-        *self.is_open = response.is_open();
+        self.state.is_tx_open = response.is_open();
 
         Ok(response)
     }
@@ -599,8 +563,7 @@ impl<'state, 'chunks> Future for TxRequest<'state, 'chunks> {
 }
 
 pub struct RxRequest<'state, 'chunks> {
-    state: &'state mut StreamState,
-    is_open: &'state mut bool,
+    state: &'state mut State,
     request: ops::Request<'chunks>,
 }
 
@@ -614,7 +577,7 @@ impl<'state, 'chunks> RxRequest<'state, 'chunks> {
             .rx
             .expect("invalid response");
 
-        *self.is_open = response.is_open();
+        self.state.is_rx_open = response.is_open();
 
         Ok(response)
     }

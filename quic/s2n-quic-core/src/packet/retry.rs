@@ -333,6 +333,19 @@ mod tests {
     }
 
     #[test]
+    fn test_decode_no_token() {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.5.2
+        //= type=test
+        //# A client MUST discard a Retry packet with a zero-length
+        //# Retry Token field.
+        let mut buf = retry::example::INVALID_PACKET_NO_TOKEN;
+        let decoder = DecoderBufferMut::new(&mut buf);
+        let remote_address = inet::ip::SocketAddress::default();
+        let connection_info = connection::id::ConnectionInfo::new(&remote_address);
+        assert!(packet::ProtectedPacket::decode(decoder, &connection_info, &20).is_err());
+    }
+
+    #[test]
     fn test_pseudo_decode() {
         let mut buf = retry::example::PACKET;
         let decoder = DecoderBufferMut::new(&mut buf);

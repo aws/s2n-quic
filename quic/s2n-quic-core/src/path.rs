@@ -63,6 +63,10 @@ impl<CC: CongestionController> Path<CC> {
             rtt_estimator,
             congestion_controller,
             pto_backoff: INITIAL_PTO_BACKOFF,
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.4
+            //# If the client IP address has changed, the server MUST
+            //# adhere to the anti-amplification limits found in Section 8.1.
+            // Start each path in State::Pending until it has been validated.
             state: State::Pending {
                 tx_bytes: 0,
                 rx_bytes: 0,
@@ -181,12 +185,25 @@ mod tests {
 
     #[test]
     fn amplification_limit_test() {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.4
+        //= type=test
+        //# If the client IP address has changed, the server MUST
+        //# adhere to the anti-amplification limits found in Section 8.1.
+        // This is tested here by verifying a new Path starts in State::Pending
+
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1
         //= type=test
         //# For the purposes of
         //# avoiding amplification prior to address validation, servers MUST
         //# count all of the payload bytes received in datagrams that are
         //# uniquely attributed to a single connection.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.4
+        //= type=test
+        //# If the client IP address has changed, the server MUST
+        //# adhere to the anti-amplification limits found in Section 8.1.
+        // This tests the IP change because a new path is created when a new peer_address is
+        // detected. This new path should always start in State::Pending.
         let mut path = Path::new(
             SocketAddress::default(),
             connection::PeerId::try_from_bytes(&[]).unwrap(),

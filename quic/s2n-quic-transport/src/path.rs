@@ -154,7 +154,10 @@ impl<CC: CongestionController> Manager<CC> {
         self.peer_id_registry.on_packet_loss(ack_set)
     }
 
-    //TODO= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.4
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
+    //= type=TODO
+    //= tracking-issue=404
+    //= feature=Client connection migration
     //# On receiving a PATH_CHALLENGE frame, an endpoint MUST respond by
     //# echoing the data contained in the PATH_CHALLENGE frame in a
     //# PATH_RESPONSE frame.
@@ -163,6 +166,20 @@ impl<CC: CongestionController> Manager<CC> {
         _peer_address: &SocketAddress,
         _challenge: s2n_quic_core::frame::PathChallenge,
     ) {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
+        //= type=TODO
+        //= tracking-issue=406
+        //= feature=Connection migration
+        //# An endpoint MUST NOT delay transmission of a
+        //# packet containing a PATH_RESPONSE frame unless constrained by
+        //# congestion control.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
+        //= type=TODO
+        //= tracking-issue=407
+        //= feature=Connection migration
+        //# An endpoint MUST NOT send more than one PATH_RESPONSE frame in
+        //# response to one PATH_CHALLENGE frame; see Section 13.3.
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.3
@@ -248,6 +265,23 @@ impl<CC: CongestionController> Manager<CC> {
     }
 
     pub fn on_packet_received(&mut self) {}
+
+    pub fn on_timeout(&mut self) {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.4
+        //= type=TODO
+        //= tracking-issue=412
+        //= feature=Connection migration
+        //# Endpoints SHOULD abandon path validation based on a timer.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.4
+        //= type=TODO
+        //= tracking-issue=412
+        //= feature=Connection migration
+        //# A value of
+        //# three times the larger of the current Probe Timeout (PTO) or the
+        //# initial timeout (that is, 2*kInitialRtt) as defined in
+        //# [QUIC-RECOVERY] is RECOMMENDED.
+    }
 }
 
 impl<CC: CongestionController> transmission::interest::Provider for Manager<CC> {

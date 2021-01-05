@@ -458,6 +458,15 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
     }
 
     fn handle_new_token_frame(&mut self, frame: NewToken) -> Result<(), TransportError> {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.7
+        //# Servers MUST treat receipt
+        //# of a NEW_TOKEN frame as a connection error of type
+        //# PROTOCOL_VIOLATION.
+        if Config::ENDPOINT_TYPE.is_server() {
+            return Err(TransportError::PROTOCOL_VIOLATION
+                .with_reason(Self::INVALID_FRAME_ERROR)
+                .with_frame_type(frame.tag().into()));
+        }
         // TODO
         eprintln!("UNIMPLEMENTED APPLICATION FRAME {:?}", frame);
         Ok(())
