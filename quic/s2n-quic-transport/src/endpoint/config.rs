@@ -49,6 +49,10 @@ pub struct Context<'a, Cfg: Config> {
     /// The stateless reset token generator associated with the endpoint config
     pub stateless_reset_token_generator: &'a mut Cfg::StatelessResetTokenGenerator,
 
+    /// The stateless reset unpredictable bits generator associated with the endpoint config
+    pub stateless_reset_unpredictable_bits_generator:
+        &'a mut Cfg::StatelessResetUnpredictableBitsGenerator,
+
     /// The TLS endpoint associated with the endpoint config
     pub tls: &'a mut Cfg::TLSEndpoint,
 

@@ -269,6 +269,7 @@ impl<
             congestion_controller: &mut self.congestion_controller,
             connection_id_format: &mut self.connection_id,
             stateless_reset_token_generator: &mut self.stateless_reset_token,
+            stateless_reset_unpredictable_bits_generator: &mut self.stateless_reset,
             tls: &mut self.tls,
             endpoint_limits: &mut self.endpoint_limits,
             token: &mut self.token,

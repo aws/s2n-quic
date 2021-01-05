@@ -33,6 +33,7 @@ pub use config::{Config, Context};
 use connection::id::ConnectionInfo;
 pub use s2n_quic_core::endpoint::*;
 use s2n_quic_core::{
+    connection::LocalId,
     inet::{ExplicitCongestionNotification, SocketAddress},
     stateless_reset::token::Generator as _,
 };
@@ -366,7 +367,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     //# An endpoint MAY send a stateless reset in response to receiving a packet
                     //# that it cannot associate with an active connection.
                     if Cfg::StatelessResetTokenGenerator::ENABLED {
-                        self.enqueue_stateless_reset(datagram, packet.destination_connection_id());
+                        self.enqueue_stateless_reset(datagram, &destination_connection_id);
                     }
                 }
             }
@@ -385,7 +386,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
     fn enqueue_stateless_reset(
         &mut self,
         _datagram: &DatagramInfo,
-        _destination_connection_id: &[u8],
+        _destination_connection_id: &LocalId,
     ) {
         // TODO: Implement me
         dbg!("stateless reset triggered");
