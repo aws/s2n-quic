@@ -19,29 +19,27 @@ use s2n_quic_core::{
 /// Sets up a Test environment for Streams where only the sending half of
 /// the Stream is open
 fn setup_send_only_test_env() -> TestEnvironment {
-    let mut test_env_config: TestEnvironmentConfig =
-        TestEnvironmentConfig::new(endpoint::Type::Server);
-    test_env_config.stream_id = StreamId::initial(
-        test_env_config.local_endpoint_type,
-        StreamType::Unidirectional,
-    );
+    let test_env_config = TestEnvironmentConfig {
+        stream_id: StreamId::initial(endpoint::Type::Server, StreamType::Unidirectional),
+        ..Default::default()
+    };
     setup_stream_test_env_with_config(test_env_config)
 }
 
 #[test]
 fn remotely_initiated_unidirectional_stream_can_not_be_sent_to() {
     for local_endpoint_type in &[endpoint::Type::Client, endpoint::Type::Server] {
-        let initator_endpoint_type = if *local_endpoint_type == endpoint::Type::Client {
+        let initiator_endpoint_type = if *local_endpoint_type == endpoint::Type::Client {
             endpoint::Type::Server
         } else {
             endpoint::Type::Client
         };
 
-        let mut test_env_config: TestEnvironmentConfig =
-            TestEnvironmentConfig::new(endpoint::Type::Server);
-        test_env_config.stream_id =
-            StreamId::initial(initator_endpoint_type, StreamType::Unidirectional);
-        test_env_config.local_endpoint_type = *local_endpoint_type;
+        let test_env_config = TestEnvironmentConfig {
+            local_endpoint_type: *local_endpoint_type,
+            stream_id: StreamId::initial(initiator_endpoint_type, StreamType::Unidirectional),
+            ..Default::default()
+        };
         let mut test_env = setup_stream_test_env_with_config(test_env_config);
 
         let data = Bytes::from_static(b"1");
@@ -63,10 +61,11 @@ fn bidirectional_and_locally_initiated_unidirectional_streams_can_be_written_to(
                     continue;
                 }
 
-                let mut test_env_config: TestEnvironmentConfig =
-                    TestEnvironmentConfig::new(endpoint::Type::Server);
-                test_env_config.stream_id = StreamId::initial(*initiator, *stream_type);
-                test_env_config.local_endpoint_type = *local_endpoint_type;
+                let test_env_config = TestEnvironmentConfig {
+                    local_endpoint_type: *local_endpoint_type,
+                    stream_id: StreamId::initial(*initiator, *stream_type),
+                    ..Default::default()
+                };
                 let mut test_env = setup_stream_test_env_with_config(test_env_config);
 
                 let data = Bytes::from_static(b"a");
@@ -374,10 +373,11 @@ fn can_not_enqueue_data_if_max_buffer_size_has_been_reached() {
     ];
 
     for test_config in test_configs.iter() {
-        let mut test_env_config: TestEnvironmentConfig =
-            TestEnvironmentConfig::new(endpoint::Type::Server);
-        test_env_config.max_send_buffer_size = MAX_BUFFER_SIZE;
-        test_env_config.initial_send_window = RECEIVE_WINDOW;
+        let test_env_config = TestEnvironmentConfig {
+            max_send_buffer_size: MAX_BUFFER_SIZE,
+            initial_send_window: RECEIVE_WINDOW,
+            ..Default::default()
+        };
         let mut test_env = setup_stream_test_env_with_config(test_env_config);
 
         execute_instructions(&mut test_env, &test_config[..]);
@@ -407,9 +407,10 @@ fn zero_sized_buffers_can_always_be_enqueued() {
     ];
 
     for test_config in test_configs.iter() {
-        let mut test_env_config: TestEnvironmentConfig =
-            TestEnvironmentConfig::new(endpoint::Type::Server);
-        test_env_config.max_send_buffer_size = MAX_BUFFER_SIZE;
+        let test_env_config = TestEnvironmentConfig {
+            max_send_buffer_size: MAX_BUFFER_SIZE,
+            ..Default::default()
+        };
         let mut test_env = setup_stream_test_env_with_config(test_env_config);
 
         execute_instructions(&mut test_env, &test_config[..]);
@@ -504,10 +505,11 @@ fn multiple_stream_frames_are_sent_in_a_packet() {
     ];
 
     for test_config in test_configs.iter() {
-        let mut test_env_config: TestEnvironmentConfig =
-            TestEnvironmentConfig::new(endpoint::Type::Server);
-        test_env_config.max_send_buffer_size = MAX_BUFFER_SIZE;
-        test_env_config.initial_send_window = RECEIVE_WINDOW;
+        let test_env_config = TestEnvironmentConfig {
+            max_send_buffer_size: MAX_BUFFER_SIZE,
+            initial_send_window: RECEIVE_WINDOW,
+            ..Default::default()
+        };
         let mut test_env = setup_stream_test_env_with_config(test_env_config);
 
         execute_instructions(&mut test_env, &test_config[..]);
@@ -561,10 +563,11 @@ fn bigger_data_is_split_across_packets() {
     ];
 
     for test_config in test_configs.iter() {
-        let mut test_env_config: TestEnvironmentConfig =
-            TestEnvironmentConfig::new(endpoint::Type::Server);
-        test_env_config.max_send_buffer_size = 16 * 1024;
-        test_env_config.initial_send_window = 16 * 1024;
+        let test_env_config = TestEnvironmentConfig {
+            max_send_buffer_size: 16 * 1024,
+            initial_send_window: 16 * 1024,
+            ..Default::default()
+        };
         let mut test_env = setup_stream_test_env_with_config(test_env_config);
         test_env
             .sent_frames
@@ -775,10 +778,11 @@ fn lost_data_is_retransmitted() {
     ];
 
     for test_config in test_configs.iter() {
-        let mut test_env_config: TestEnvironmentConfig =
-            TestEnvironmentConfig::new(endpoint::Type::Server);
-        test_env_config.max_send_buffer_size = 10 * MAX_PACKET_SIZE;
-        test_env_config.initial_send_window = 10 * MAX_PACKET_SIZE as u64;
+        let test_env_config = TestEnvironmentConfig {
+            max_send_buffer_size: 10 * MAX_PACKET_SIZE,
+            initial_send_window: 10 * MAX_PACKET_SIZE as u64,
+            ..Default::default()
+        };
         let mut test_env = setup_stream_test_env_with_config(test_env_config);
         test_env
             .sent_frames
@@ -802,9 +806,10 @@ fn can_not_transmit_data_when_congestion_limited() {
         Instruction::CheckNoTx,
     ];
 
-    let mut test_env_config: TestEnvironmentConfig =
-        TestEnvironmentConfig::new(endpoint::Type::Server);
-    test_env_config.transmission_constraint = transmission::Constraint::CongestionLimited;
+    let test_env_config = TestEnvironmentConfig {
+        transmission_constraint: transmission::Constraint::CongestionLimited,
+        ..Default::default()
+    };
     let mut test_env = setup_stream_test_env_with_config(test_env_config);
     test_env
         .sent_frames
@@ -827,7 +832,7 @@ fn only_lost_data_is_sent_when_constrained_to_retransmission_only() {
         Instruction::CheckInterests(stream_interests(&["lost"])),
     ];
 
-    let test_env_config: TestEnvironmentConfig = TestEnvironmentConfig::new(endpoint::Type::Server);
+    let test_env_config: TestEnvironmentConfig = Default::default();
     let mut test_env = setup_stream_test_env_with_config(test_env_config);
     test_env
         .sent_frames
@@ -861,7 +866,7 @@ fn only_lost_reset_is_sent_when_constrained_to_retransmission_only() {
         Instruction::NackPacket(pn(0)),
     ];
 
-    let test_env_config: TestEnvironmentConfig = TestEnvironmentConfig::new(endpoint::Type::Server);
+    let test_env_config: TestEnvironmentConfig = Default::default();
     let mut test_env = setup_stream_test_env_with_config(test_env_config);
     test_env
         .sent_frames
@@ -947,10 +952,11 @@ fn retransmitted_data_is_sent_in_same_packets_as_new_data() {
     ];
 
     for test_config in test_configs.iter() {
-        let mut test_env_config: TestEnvironmentConfig =
-            TestEnvironmentConfig::new(endpoint::Type::Server);
-        test_env_config.max_send_buffer_size = 10 * MAX_PACKET_SIZE;
-        test_env_config.initial_send_window = 10 * MAX_PACKET_SIZE as u64;
+        let test_env_config = TestEnvironmentConfig {
+            max_send_buffer_size: 10 * MAX_PACKET_SIZE,
+            initial_send_window: 10 * MAX_PACKET_SIZE as u64,
+            ..Default::default()
+        };
         let mut test_env = setup_stream_test_env_with_config(test_env_config);
         test_env
             .sent_frames
@@ -1018,10 +1024,11 @@ fn writes_not_more_than_max_stream_data_even_if_more_data_is_enqueued() {
     ][..]];
 
     for test_config in test_configs.iter() {
-        let mut test_env_config: TestEnvironmentConfig =
-            TestEnvironmentConfig::new(endpoint::Type::Server);
-        test_env_config.max_send_buffer_size = MAX_BUFFER_SIZE;
-        test_env_config.initial_send_window = WINDOW_SIZE as u64;
+        let test_env_config = TestEnvironmentConfig {
+            max_send_buffer_size: MAX_BUFFER_SIZE,
+            initial_send_window: WINDOW_SIZE as u64,
+            ..Default::default()
+        };
         let mut test_env = setup_stream_test_env_with_config(test_env_config);
         test_env
             .sent_frames
@@ -1073,10 +1080,11 @@ fn blocked_on_stream_flow_control_does_not_prevent_retransmissions() {
     ][..]];
 
     for test_config in test_configs.iter() {
-        let mut test_env_config: TestEnvironmentConfig =
-            TestEnvironmentConfig::new(endpoint::Type::Server);
-        test_env_config.max_send_buffer_size = MAX_BUFFER_SIZE;
-        test_env_config.initial_send_window = WINDOW_SIZE as u64;
+        let test_env_config = TestEnvironmentConfig {
+            max_send_buffer_size: MAX_BUFFER_SIZE,
+            initial_send_window: WINDOW_SIZE as u64,
+            ..Default::default()
+        };
         let mut test_env = setup_stream_test_env_with_config(test_env_config);
         test_env
             .sent_frames
@@ -1145,11 +1153,12 @@ fn writes_not_more_than_max_data_even_if_more_data_is_enqueued() {
     ][..]];
 
     for test_config in test_configs.iter() {
-        let mut test_env_config: TestEnvironmentConfig =
-            TestEnvironmentConfig::new(endpoint::Type::Server);
-        test_env_config.max_send_buffer_size = MAX_BUFFER_SIZE;
-        test_env_config.initial_send_window = STREAM_WINDOW_SIZE as u64;
-        test_env_config.initial_connection_send_window_size = CONN_WINDOW_SIZE as u64;
+        let test_env_config = TestEnvironmentConfig {
+            max_send_buffer_size: MAX_BUFFER_SIZE,
+            initial_send_window: STREAM_WINDOW_SIZE as u64,
+            initial_connection_send_window_size: CONN_WINDOW_SIZE as u64,
+            ..Default::default()
+        };
         let mut test_env = setup_stream_test_env_with_config(test_env_config);
         test_env
             .sent_frames
@@ -1202,11 +1211,12 @@ fn blocked_on_connection_flow_control_does_not_prevent_retransmissions() {
     ][..]];
 
     for test_config in test_configs.iter() {
-        let mut test_env_config: TestEnvironmentConfig =
-            TestEnvironmentConfig::new(endpoint::Type::Server);
-        test_env_config.max_send_buffer_size = MAX_BUFFER_SIZE;
-        test_env_config.initial_send_window = STREAM_WINDOW_SIZE as u64;
-        test_env_config.initial_connection_send_window_size = CONN_WINDOW_SIZE as u64;
+        let test_env_config = TestEnvironmentConfig {
+            max_send_buffer_size: MAX_BUFFER_SIZE,
+            initial_send_window: STREAM_WINDOW_SIZE as u64,
+            initial_connection_send_window_size: CONN_WINDOW_SIZE as u64,
+            ..Default::default()
+        };
         let mut test_env = setup_stream_test_env_with_config(test_env_config);
         test_env
             .sent_frames
@@ -1561,9 +1571,10 @@ fn transmit_fin_in_packet_which_gets_split() {
     ][..]];
 
     for test_config in test_configs.iter() {
-        let mut test_env_config: TestEnvironmentConfig =
-            TestEnvironmentConfig::new(endpoint::Type::Server);
-        test_env_config.initial_send_window = 2000;
+        let test_env_config = TestEnvironmentConfig {
+            initial_send_window: 2000,
+            ..Default::default()
+        };
         let mut test_env = setup_stream_test_env_with_config(test_env_config);
         test_env.sent_frames.set_max_packet_size(Some(1000));
         execute_instructions(&mut test_env, &test_config[..]);
@@ -1724,12 +1735,12 @@ fn transmit_fin_while_outstanding_data_exceeds_stream_flow_control_window() {
     ];
 
     for test_config in test_configs.iter() {
-        let mut test_env_config: TestEnvironmentConfig =
-            TestEnvironmentConfig::new(endpoint::Type::Server);
-        test_env_config.initial_send_window = 2000;
-        test_env_config.stream_id =
-            StreamId::initial(endpoint::Type::Server, StreamType::Unidirectional);
-        test_env_config.local_endpoint_type = endpoint::Type::Server;
+        let test_env_config = TestEnvironmentConfig {
+            initial_send_window: 2000,
+            stream_id: StreamId::initial(endpoint::Type::Server, StreamType::Unidirectional),
+            local_endpoint_type: endpoint::Type::Server,
+            ..Default::default()
+        };
         let mut test_env = setup_stream_test_env_with_config(test_env_config);
         test_env.sent_frames.set_max_packet_size(Some(1000));
         execute_instructions(&mut test_env, &test_config[..]);
@@ -1817,13 +1828,13 @@ fn transmit_fin_while_outstanding_data_exceeds_connection_flow_control_window() 
     ];
 
     for test_config in test_configs.iter() {
-        let mut test_env_config: TestEnvironmentConfig =
-            TestEnvironmentConfig::new(endpoint::Type::Server);
-        test_env_config.initial_send_window = 200 * 1024;
-        test_env_config.initial_connection_send_window_size = 2000;
-        test_env_config.stream_id =
-            StreamId::initial(endpoint::Type::Server, StreamType::Unidirectional);
-        test_env_config.local_endpoint_type = endpoint::Type::Server;
+        let test_env_config = TestEnvironmentConfig {
+            initial_send_window: 200 * 1024,
+            initial_connection_send_window_size: 2000,
+            stream_id: StreamId::initial(endpoint::Type::Server, StreamType::Unidirectional),
+            local_endpoint_type: endpoint::Type::Server,
+            ..Default::default()
+        };
         let mut test_env = setup_stream_test_env_with_config(test_env_config);
         test_env.sent_frames.set_max_packet_size(Some(1000));
         execute_instructions(&mut test_env, &test_config[..]);
@@ -1955,12 +1966,12 @@ fn stop_sending_while_waiting_for_fin_to_get_acknowledged_leads_to_a_reset() {
 #[test]
 fn stop_sending_while_sending_data_leads_to_a_reset() {
     for require_wakeup in &[true, false] {
-        let mut test_env_config: TestEnvironmentConfig =
-            TestEnvironmentConfig::new(endpoint::Type::Server);
-        test_env_config.max_send_buffer_size = 1000;
-        test_env_config.local_endpoint_type = endpoint::Type::Server;
-        test_env_config.stream_id =
-            StreamId::initial(endpoint::Type::Server, StreamType::Unidirectional);
+        let test_env_config = TestEnvironmentConfig {
+            max_send_buffer_size: 1000,
+            stream_id: StreamId::initial(endpoint::Type::Server, StreamType::Unidirectional),
+            local_endpoint_type: endpoint::Type::Server,
+            ..Default::default()
+        };
         let mut test_env = setup_stream_test_env_with_config(test_env_config);
 
         execute_instructions(
@@ -2256,12 +2267,12 @@ fn resetting_the_stream_does_does_trigger_a_reset_frame_and_reset_errors() {
         ResetReason::InternalReset,
     ] {
         for is_finishing in &[true, false] {
-            let mut test_env_config: TestEnvironmentConfig =
-                TestEnvironmentConfig::new(endpoint::Type::Server);
-            test_env_config.max_send_buffer_size = 1000;
-            test_env_config.local_endpoint_type = endpoint::Type::Client;
-            test_env_config.stream_id =
-                StreamId::initial(endpoint::Type::Client, StreamType::Unidirectional);
+            let test_env_config = TestEnvironmentConfig {
+                max_send_buffer_size: 1000,
+                stream_id: StreamId::initial(endpoint::Type::Client, StreamType::Unidirectional),
+                local_endpoint_type: endpoint::Type::Client,
+                ..Default::default()
+            };
             let mut test_env = setup_stream_test_env_with_config(test_env_config);
 
             let reset_error_code = ApplicationErrorCode::new(0x3333_4444).unwrap();
@@ -2388,13 +2399,13 @@ fn stream_does_not_try_to_acquire_connection_flow_control_credits_after_reset() 
         ResetReason::InternalReset,
     ] {
         for is_finishing in &[true, false] {
-            let mut test_env_config: TestEnvironmentConfig =
-                TestEnvironmentConfig::new(endpoint::Type::Server);
-            test_env_config.max_send_buffer_size = 1500;
-            test_env_config.initial_connection_send_window_size = 1000;
-            test_env_config.local_endpoint_type = endpoint::Type::Client;
-            test_env_config.stream_id =
-                StreamId::initial(endpoint::Type::Client, StreamType::Unidirectional);
+            let test_env_config = TestEnvironmentConfig {
+                max_send_buffer_size: 1500,
+                initial_connection_send_window_size: 1000,
+                stream_id: StreamId::initial(endpoint::Type::Client, StreamType::Unidirectional),
+                local_endpoint_type: endpoint::Type::Client,
+                ..Default::default()
+            };
             let mut test_env = setup_stream_test_env_with_config(test_env_config);
 
             let reset_error_code = ApplicationErrorCode::new(0x3333_4444).unwrap();
@@ -2532,14 +2543,14 @@ fn stream_does_not_try_to_acquire_connection_flow_control_credits_after_reset() 
 
 #[test]
 fn stream_reports_stream_size_based_on_acquired_connection_window() {
-    let mut test_env_config: TestEnvironmentConfig =
-        TestEnvironmentConfig::new(endpoint::Type::Server);
-    test_env_config.max_send_buffer_size = 1500;
-    test_env_config.initial_send_window = 100 * 1024;
-    test_env_config.initial_connection_send_window_size = 1000;
-    test_env_config.local_endpoint_type = endpoint::Type::Client;
-    test_env_config.stream_id =
-        StreamId::initial(endpoint::Type::Client, StreamType::Unidirectional);
+    let test_env_config = TestEnvironmentConfig {
+        max_send_buffer_size: 1500,
+        initial_send_window: 100 * 1024,
+        initial_connection_send_window_size: 1000,
+        stream_id: StreamId::initial(endpoint::Type::Client, StreamType::Unidirectional),
+        local_endpoint_type: endpoint::Type::Client,
+        ..Default::default()
+    };
     let mut test_env = setup_stream_test_env_with_config(test_env_config);
 
     let reset_error_code = ApplicationErrorCode::new(0x3333_4444).unwrap();
@@ -2671,12 +2682,15 @@ fn can_send_multiple_chunks() {
         for finish in [false, true].iter().cloned() {
             for flush in [false, true].iter().cloned() {
                 for with_context in [false, true].iter().cloned() {
-                    let mut test_env_config: TestEnvironmentConfig =
-                        TestEnvironmentConfig::new(endpoint::Type::Server);
-                    test_env_config.max_send_buffer_size = max_send_buffer_size;
-                    test_env_config.local_endpoint_type = endpoint::Type::Client;
-                    test_env_config.stream_id =
-                        StreamId::initial(endpoint::Type::Client, StreamType::Unidirectional);
+                    let test_env_config = TestEnvironmentConfig {
+                        max_send_buffer_size,
+                        stream_id: StreamId::initial(
+                            endpoint::Type::Client,
+                            StreamType::Unidirectional,
+                        ),
+                        local_endpoint_type: endpoint::Type::Client,
+                        ..Default::default()
+                    };
                     let mut test_env = setup_stream_test_env_with_config(test_env_config);
                     let mut expected_buffer_size = max_send_buffer_size;
 
@@ -2794,12 +2808,12 @@ fn can_query_stream_readiness() {
     let max_send_buffer_size = 1500;
     for size in [None, Some(1000usize), Some(2000)].iter().cloned() {
         for with_context in [false, true].iter().cloned() {
-            let mut test_env_config: TestEnvironmentConfig =
-                TestEnvironmentConfig::new(endpoint::Type::Server);
-            test_env_config.max_send_buffer_size = max_send_buffer_size;
-            test_env_config.local_endpoint_type = endpoint::Type::Client;
-            test_env_config.stream_id =
-                StreamId::initial(endpoint::Type::Client, StreamType::Unidirectional);
+            let test_env_config = TestEnvironmentConfig {
+                max_send_buffer_size,
+                stream_id: StreamId::initial(endpoint::Type::Client, StreamType::Unidirectional),
+                local_endpoint_type: endpoint::Type::Client,
+                ..Default::default()
+            };
             let mut test_env = setup_stream_test_env_with_config(test_env_config);
 
             dbg!(size);
