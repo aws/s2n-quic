@@ -84,7 +84,6 @@ pub mod random {
             let token_2 = generator.generate(&id);
 
             assert_ne!(token_1, token_2);
-            assert!(!Generator::ENABLED)
         }
     }
 }
