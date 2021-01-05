@@ -17,8 +17,8 @@ use crate::{
 use alloc::rc::Rc;
 use core::{cell::RefCell, time::Duration};
 use s2n_quic_core::{
-    ack_set::AckSet, connection, frame, packet::number::PacketNumber,
-    stateless_reset::token::StatelessResetToken, time::Timestamp,
+    ack_set::AckSet, connection, frame, packet::number::PacketNumber, stateless_reset,
+    time::Timestamp,
 };
 use smallvec::SmallVec;
 use std::{
@@ -86,7 +86,7 @@ impl ConnectionIdMapper {
         &mut self,
         internal_id: InternalConnectionId,
         initial_connection_id: &connection::LocalId,
-        stateless_reset_token: StatelessResetToken,
+        stateless_reset_token: stateless_reset::Token,
     ) -> LocalIdRegistry {
         let mut registration = LocalIdRegistry {
             internal_id,
@@ -193,7 +193,7 @@ struct LocalIdInfo {
     //# to the same value.
     sequence_number: u32,
     retirement_time: Option<Timestamp>,
-    stateless_reset_token: StatelessResetToken,
+    stateless_reset_token: stateless_reset::Token,
     status: LocalIdStatus,
 }
 
@@ -343,7 +343,7 @@ impl LocalIdRegistry {
         &mut self,
         id: &connection::LocalId,
         expiration: Option<Timestamp>,
-        stateless_reset_token: StatelessResetToken,
+        stateless_reset_token: stateless_reset::Token,
     ) -> Result<(), LocalIdRegistrationError> {
         if self.registered_ids.iter().any(|id_info| id_info.id == *id) {
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1
@@ -557,7 +557,7 @@ impl LocalIdRegistry {
                     id_info.status = Active;
                     // Once the NEW_CONNECTION_ID is acknowledged, we don't need the
                     // stateless reset token anymore.
-                    id_info.stateless_reset_token = StatelessResetToken::ZEROED;
+                    id_info.stateless_reset_token = stateless_reset::Token::ZEROED;
                 }
             }
         }
@@ -641,7 +641,7 @@ impl LocalIdRegistry {
         }
     }
 
-    fn validate_new_connection_id(&self, new_token: StatelessResetToken) {
+    fn validate_new_connection_id(&self, new_token: stateless_reset::Token) {
         if cfg!(debug_assertions) {
             assert!(
                 self.registered_ids
@@ -1389,7 +1389,7 @@ mod tests {
             reg1.get_connection_id_info(&ext_id_2).unwrap().status
         );
         assert_eq!(
-            StatelessResetToken::ZEROED,
+            stateless_reset::Token::ZEROED,
             reg1.get_connection_id_info(&ext_id_2)
                 .unwrap()
                 .stateless_reset_token

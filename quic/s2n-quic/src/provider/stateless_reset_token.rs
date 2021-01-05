@@ -24,7 +24,6 @@ pub mod random {
     use rand::prelude::*;
     use s2n_quic_core::{
         connection, frame::new_connection_id::STATELESS_RESET_TOKEN_LEN, stateless_reset,
-        stateless_reset::token::StatelessResetToken,
     };
 
     #[derive(Debug, Default)]
@@ -61,7 +60,7 @@ pub mod random {
         /// peer with a new connection ID will be different than the token sent in a stateless
         /// reset. To enable stateless reset functionality, the stateless reset token must
         /// be generated the same for a given `LocalId` before and after loss of state.
-        fn generate(&mut self, _connection_id: &connection::LocalId) -> StatelessResetToken {
+        fn generate(&mut self, _connection_id: &connection::LocalId) -> stateless_reset::Token {
             let mut token = [0u8; STATELESS_RESET_TOKEN_LEN];
             rand::thread_rng().fill_bytes(&mut token);
             token.into()

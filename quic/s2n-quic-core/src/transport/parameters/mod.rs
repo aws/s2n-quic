@@ -1,7 +1,7 @@
 use crate::{
     connection, endpoint,
     inet::{SocketAddressV4, SocketAddressV6, Unspecified},
-    stateless_reset::token::StatelessResetToken,
+    stateless_reset,
     stream::{StreamId, StreamType},
     varint::VarInt,
 };
@@ -419,9 +419,9 @@ impl Into<Duration> for MaxIdleTimeout {
 //#    (Section 10.3) for the connection ID negotiated during the
 //#    handshake.
 
-optional_transport_parameter!(StatelessResetToken);
+optional_transport_parameter!(stateless_reset::Token);
 
-impl TransportParameter for StatelessResetToken {
+impl TransportParameter for stateless_reset::Token {
     type CodecValue = Self;
 
     const ID: TransportParameterId = TransportParameterId::from_u8(0x02);
@@ -439,7 +439,7 @@ impl TransportParameter for StatelessResetToken {
     }
 }
 
-impl TransportParameterValidator for StatelessResetToken {}
+impl TransportParameterValidator for stateless_reset::Token {}
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2
 //# max_udp_payload_size (0x03):  The maximum UDP payload size parameter
@@ -803,7 +803,7 @@ pub struct PreferredAddress {
     pub ipv4_address: Option<SocketAddressV4>,
     pub ipv6_address: Option<SocketAddressV6>,
     pub connection_id: crate::connection::UnboundedId,
-    pub stateless_reset_token: crate::stateless_reset::token::StatelessResetToken,
+    pub stateless_reset_token: crate::stateless_reset::Token,
 }
 
 impl Unspecified for PreferredAddress {
@@ -1049,7 +1049,7 @@ pub use disabled_parameter::DisabledParameter;
 /// Specific TransportParameters sent by the client endpoint
 pub type ClientTransportParameters = TransportParameters<
     DisabledParameter<OriginalDestinationConnectionId>,
-    DisabledParameter<StatelessResetToken>,
+    DisabledParameter<stateless_reset::Token>,
     DisabledParameter<PreferredAddress>,
     DisabledParameter<RetrySourceConnectionId>,
 >;
@@ -1057,7 +1057,7 @@ pub type ClientTransportParameters = TransportParameters<
 /// Specific TransportParameters sent by the server endpoint
 pub type ServerTransportParameters = TransportParameters<
     Option<OriginalDestinationConnectionId>,
-    Option<StatelessResetToken>,
+    Option<stateless_reset::Token>,
     Option<PreferredAddress>,
     Option<RetrySourceConnectionId>,
 >;
