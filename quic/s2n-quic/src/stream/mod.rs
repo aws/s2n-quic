@@ -47,11 +47,7 @@ impl Stream {
         Stream::Send(stream) => dispatch!(stream),
     });
 
-    impl_splittable_stream_api!(|stream| match stream {
-        Stream::Bidirectional(stream) => stream.split(),
-        Stream::Receive(stream) => stream.split(),
-        Stream::Send(stream) => stream.split(),
-    });
+    impl_splittable_stream_api!();
 
     impl_connection_api!(|stream| match stream {
         Stream::Bidirectional(stream) => stream.connection(),
@@ -71,7 +67,7 @@ impl_send_stream_trait!(Stream, |stream, dispatch| match stream {
     Stream::Send(stream) => dispatch!(stream),
 });
 impl_splittable_stream_trait!(Stream, |stream| match stream {
-    Stream::Bidirectional(stream) => stream.split(),
-    Stream::Receive(stream) => stream.split(),
-    Stream::Send(stream) => stream.split(),
+    Stream::Bidirectional(stream) => SplittableStream::split(stream),
+    Stream::Receive(stream) => SplittableStream::split(stream),
+    Stream::Send(stream) => SplittableStream::split(stream),
 });

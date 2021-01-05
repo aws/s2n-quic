@@ -16,7 +16,7 @@ pub trait SplittableStream {
 }
 
 macro_rules! impl_splittable_stream_api {
-    (| $self:ident | $convert:expr) => {
+    () => {
         /// Splits the stream into [`ReceiveStream`] and [`SendStream`] halves
         ///
         /// # Examples
@@ -30,8 +30,7 @@ macro_rules! impl_splittable_stream_api {
             Option<$crate::stream::ReceiveStream>,
             Option<$crate::stream::SendStream>,
         ) {
-            let $self = self;
-            $convert
+            $crate::stream::SplittableStream::split(self)
         }
     };
 }
@@ -45,7 +44,8 @@ macro_rules! impl_splittable_stream_trait {
                 Option<$crate::stream::ReceiveStream>,
                 Option<$crate::stream::SendStream>,
             ) {
-                Self::split(self)
+                let $self = self;
+                $convert
             }
         }
     };

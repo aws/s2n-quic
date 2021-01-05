@@ -35,7 +35,7 @@ macro_rules! impl_accept_api {
             Ok(
                 futures::ready!(self.0.poll_accept(None, cx))?.map(|stream| {
                     match stream.id().stream_type() {
-                        StreamType::Unidirectional => ReceiveStream::new(stream).into(),
+                        StreamType::Unidirectional => ReceiveStream::new(stream.into()).into(),
                         StreamType::Bidirectional => BidirectionalStream::new(stream).into(),
                     }
                 }),
@@ -113,7 +113,7 @@ macro_rules! impl_accept_receive_api {
             Ok(futures::ready!(self
                 .0
                 .poll_accept(Some(s2n_quic_core::stream::StreamType::Unidirectional), cx))?
-            .map($crate::stream::ReceiveStream::new))
+            .map(|stream| $crate::stream::ReceiveStream::new(stream.into())))
             .into()
         }
     };

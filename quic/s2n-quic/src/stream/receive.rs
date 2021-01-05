@@ -1,11 +1,11 @@
-use s2n_quic_transport::stream::Stream;
+use s2n_quic_transport::stream;
 
 /// A QUIC stream that is only allowed to receive data.
 ///
 /// The [`ReceiveStream`] implements the required operations receive described in the
 /// [QUIC Transport RFC](https://tools.ietf.org/html/draft-ietf-quic-transport-28#section-2)
 #[derive(Debug)]
-pub struct ReceiveStream(Stream);
+pub struct ReceiveStream(stream::ReceiveStream);
 
 macro_rules! impl_receive_stream_api {
     (| $stream:ident, $dispatch:ident | $dispatch_body:expr) => {
@@ -260,16 +260,14 @@ macro_rules! impl_receive_stream_trait {
 }
 
 impl ReceiveStream {
-    pub(crate) const fn new(stream: Stream) -> Self {
+    pub(crate) const fn new(stream: stream::ReceiveStream) -> Self {
         Self(stream)
     }
 
     impl_receive_stream_api!(|stream, dispatch| dispatch!(stream.0));
 
-    impl_splittable_stream_api!(|stream| (Some(stream), None));
-
     impl_connection_api!(|_stream| todo!());
 }
 
-impl_splittable_stream_trait!(ReceiveStream, |stream| (None, Some(stream)));
+impl_splittable_stream_trait!(ReceiveStream, |stream| (Some(stream), None));
 impl_receive_stream_trait!(ReceiveStream, |stream, dispatch| dispatch!(stream.0));
