@@ -10,7 +10,7 @@ macro_rules! impl_handle_api {
         pub async fn open_stream(
             &mut self,
             stream_type: $crate::stream::Type,
-        ) -> $crate::stream::Result<$crate::stream::LocalStream> {
+        ) -> $crate::connection::Result<$crate::stream::LocalStream> {
             futures::future::poll_fn(|cx| self.poll_open_stream(stream_type, cx)).await
         }
 
@@ -25,7 +25,7 @@ macro_rules! impl_handle_api {
             &mut self,
             stream_type: $crate::stream::Type,
             cx: &mut core::task::Context,
-        ) -> core::task::Poll<$crate::stream::Result<$crate::stream::LocalStream>> {
+        ) -> core::task::Poll<$crate::connection::Result<$crate::stream::LocalStream>> {
             use s2n_quic_core::stream::StreamType;
             use $crate::stream::{BidirectionalStream, SendStream};
 
@@ -49,7 +49,7 @@ macro_rules! impl_handle_api {
         /// ```
         pub async fn open_bidirectional_stream(
             &mut self,
-        ) -> $crate::stream::Result<$crate::stream::BidirectionalStream> {
+        ) -> $crate::connection::Result<$crate::stream::BidirectionalStream> {
             futures::future::poll_fn(|cx| self.poll_open_bidirectional_stream(cx)).await
         }
 
@@ -63,7 +63,7 @@ macro_rules! impl_handle_api {
         pub fn poll_open_bidirectional_stream(
             &mut self,
             cx: &mut core::task::Context,
-        ) -> core::task::Poll<$crate::stream::Result<$crate::stream::BidirectionalStream>> {
+        ) -> core::task::Poll<$crate::connection::Result<$crate::stream::BidirectionalStream>> {
             use s2n_quic_core::stream::StreamType;
             use $crate::stream::BidirectionalStream;
 
@@ -81,7 +81,7 @@ macro_rules! impl_handle_api {
         /// ```
         pub async fn open_send_stream(
             &mut self,
-        ) -> $crate::stream::Result<$crate::stream::SendStream> {
+        ) -> $crate::connection::Result<$crate::stream::SendStream> {
             futures::future::poll_fn(|cx| self.poll_open_send_stream(cx)).await
         }
 
@@ -95,7 +95,7 @@ macro_rules! impl_handle_api {
         pub fn poll_open_send_stream(
             &mut self,
             cx: &mut core::task::Context,
-        ) -> core::task::Poll<$crate::stream::Result<$crate::stream::SendStream>> {
+        ) -> core::task::Poll<$crate::connection::Result<$crate::stream::SendStream>> {
             use s2n_quic_core::stream::StreamType;
             use $crate::stream::SendStream;
 

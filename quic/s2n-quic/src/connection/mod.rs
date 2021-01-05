@@ -35,7 +35,7 @@ impl Connection {
         Self(inner)
     }
 
-    impl_acceptor_api!(|handle, call| call!(handle));
+    impl_accept_api!();
     impl_handle_api!(|handle, call| call!(handle));
 
     /// TODO
