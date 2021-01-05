@@ -172,10 +172,10 @@ mod tests {
     use super::*;
     use futures_test::task::new_count_waker;
 
-    macro_rules! vec_deque_u32 {
+    macro_rules! vec_deque {
     ($($value:expr),*) => {{
         #[allow(unused_mut)]
-        let mut value: VecDeque<u32> = VecDeque::new();
+        let mut value = VecDeque::new();
         $(
             value.push_back($value);
         )*
@@ -195,7 +195,7 @@ mod tests {
 
         // Initially no wakeup should be signalled - but the Waker should be stored
         let pending = queue.poll_pending_wakeups(pending, &Context::from_waker(&waker));
-        assert_eq!(vec_deque_u32![], pending);
+        assert!(pending.is_empty());
 
         // After a wakeup the waker should be notified
         handle1.wakeup();
@@ -210,17 +210,17 @@ mod tests {
 
         // The pending wakeups should be signaled
         let pending = queue.poll_pending_wakeups(pending, &Context::from_waker(&waker));
-        assert_eq!(vec_deque_u32![1u32, 2u32], pending);
+        assert_eq!(vec_deque![1u32, 2u32], pending);
 
         // In the next query no wakeups should be signaled
         let pending = queue.poll_pending_wakeups(pending, &Context::from_waker(&waker));
-        assert_eq!(vec_deque_u32![], pending);
+        assert!(pending.is_empty());
 
         // As long as wakeups are not handled, no new ones are enqueued
         handle2.wakeup();
         assert_eq!(counter, 1);
         let pending = queue.poll_pending_wakeups(pending, &Context::from_waker(&waker));
-        assert_eq!(vec_deque_u32![], pending);
+        assert!(pending.is_empty());
 
         // If wakeups are handled, wakeups are forwarded again
         handle1.wakeup_handled();
@@ -229,6 +229,6 @@ mod tests {
         handle2.wakeup();
         assert_eq!(counter, 2);
         let pending = queue.poll_pending_wakeups(pending, &Context::from_waker(&waker));
-        assert_eq!(vec_deque_u32![2u32], pending);
+        assert_eq!(vec_deque![2u32], pending);
     }
 }
