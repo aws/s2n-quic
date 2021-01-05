@@ -17,7 +17,8 @@ use s2n_quic_core::{
 #[test]
 fn locally_initiated_unidirectional_stream_can_not_be_read() {
     for local_endpoint_type in &[endpoint::Type::Client, endpoint::Type::Server] {
-        let mut test_env_config: TestEnvironmentConfig = Default::default();
+        let mut test_env_config: TestEnvironmentConfig =
+            TestEnvironmentConfig::new(endpoint::Type::Server);
         test_env_config.stream_id =
             StreamId::initial(*local_endpoint_type, StreamType::Unidirectional);
         test_env_config.local_endpoint_type = *local_endpoint_type;
@@ -39,7 +40,8 @@ fn bidirectional_and_remotely_initiated_unidirectional_streams_can_be_read() {
                 }
 
                 let stream_id = StreamId::initial(*initiator, *stream_type);
-                let mut test_env_config: TestEnvironmentConfig = Default::default();
+                let mut test_env_config: TestEnvironmentConfig =
+                    TestEnvironmentConfig::new(endpoint::Type::Server);
                 test_env_config.stream_id = stream_id;
                 test_env_config.local_endpoint_type = *local_endpoint_type;
                 let mut test_env = setup_stream_test_env_with_config(test_env_config);
@@ -52,7 +54,8 @@ fn bidirectional_and_remotely_initiated_unidirectional_streams_can_be_read() {
 /// Sets up a Test environment for Streams where only the receiving half of
 /// the Stream is open
 fn setup_receive_only_test_env() -> TestEnvironment {
-    let mut test_env_config: TestEnvironmentConfig = Default::default();
+    let mut test_env_config: TestEnvironmentConfig =
+        TestEnvironmentConfig::new(endpoint::Type::Server);
     test_env_config.stream_id = StreamId::initial(
         test_env_config.local_endpoint_type.peer_type(),
         StreamType::Unidirectional,

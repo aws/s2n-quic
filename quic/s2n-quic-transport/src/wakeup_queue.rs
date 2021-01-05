@@ -170,7 +170,6 @@ impl<T: Copy> WakeupHandle<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use core::iter::FromIterator;
     use futures_test::task::new_count_waker;
 
     #[test]
@@ -185,7 +184,8 @@ mod tests {
 
         // Initially no wakeup should be signalled - but the Waker should be stored
         let pending = queue.poll_pending_wakeups(pending, &Context::from_waker(&waker));
-        assert_eq!(VecDeque::<u32>::from_iter(&mut [].iter().cloned()), pending);
+        //assert_eq!(VecDeque::<u32>::from_iter(&mut [].iter().cloned()), pending);
+        assert_eq!(&mut [].iter().cloned().collect::<VecDeque<u32>>(), &pending);
 
         // After a wakeup the waker should be notified
         handle1.wakeup();
@@ -201,19 +201,19 @@ mod tests {
         // The pending wakeups should be signaled
         let pending = queue.poll_pending_wakeups(pending, &Context::from_waker(&waker));
         assert_eq!(
-            VecDeque::<u32>::from_iter(&mut [1u32, 2u32].iter().cloned()),
-            pending
+            &mut [1u32, 2u32].iter().cloned().collect::<VecDeque<u32>>(),
+            &pending
         );
 
         // In the next query no wakeups should be signaled
         let pending = queue.poll_pending_wakeups(pending, &Context::from_waker(&waker));
-        assert_eq!(VecDeque::<u32>::from_iter(&mut [].iter().cloned()), pending);
+        assert_eq!(&mut [].iter().cloned().collect::<VecDeque<u32>>(), &pending);
 
         // As long as wakeups are not handled, no new ones are enqueued
         handle2.wakeup();
         assert_eq!(counter, 1);
         let pending = queue.poll_pending_wakeups(pending, &Context::from_waker(&waker));
-        assert_eq!(VecDeque::<u32>::from_iter(&mut [].iter().cloned()), pending);
+        assert_eq!(&mut [].iter().cloned().collect::<VecDeque<u32>>(), &pending);
 
         // If wakeups are handled, wakeups are forwarded again
         handle1.wakeup_handled();
@@ -223,8 +223,8 @@ mod tests {
         assert_eq!(counter, 2);
         let pending = queue.poll_pending_wakeups(pending, &Context::from_waker(&waker));
         assert_eq!(
-            VecDeque::<u32>::from_iter(&mut [2u32].iter().cloned()),
-            pending
+            &mut [2u32].iter().cloned().collect::<VecDeque<u32>>(),
+            &pending
         );
     }
 }

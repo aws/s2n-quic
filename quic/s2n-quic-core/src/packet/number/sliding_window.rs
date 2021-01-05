@@ -227,14 +227,14 @@ mod test {
             window,
             window_width_minus_1,
             Ok(()),
-            (1 as u128) << 127,
+            (1_u128) << 127,
             window_width_minus_1
         );
         assert_window!(
             window,
             window_width_minus_1,
             Err(Duplicate),
-            (1 as u128) << 127,
+            (1_u128) << 127,
             window_width_minus_1
         );
         assert_window!(window, window_width, Ok(()), 0b1, window_width);
