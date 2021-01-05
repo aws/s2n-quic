@@ -18,7 +18,7 @@ use alloc::rc::Rc;
 use core::{cell::RefCell, time::Duration};
 use s2n_quic_core::{
     ack_set::AckSet, connection, frame, packet::number::PacketNumber,
-    stateless_reset_token::StatelessResetToken, time::Timestamp,
+    stateless_reset::token::StatelessResetToken, time::Timestamp,
 };
 use smallvec::SmallVec;
 use std::{
@@ -702,7 +702,7 @@ mod tests {
         connection::id::MIN_LIFETIME,
         frame::{Frame, NewConnectionID},
         packet::number::PacketNumberRange,
-        stateless_reset_token::testing::*,
+        stateless_reset::token::testing::*,
         varint::VarInt,
     };
 

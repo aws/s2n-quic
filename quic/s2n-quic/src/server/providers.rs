@@ -225,7 +225,7 @@ impl<
         CongestionController: congestion_controller::Endpoint,
         ConnectionID: connection::id::Format,
         StatelessResetToken: stateless_reset_token::Generator,
-        StatelessReset: s2n_quic_core::stateless_reset_token::UnpredictableBits,
+        StatelessReset: s2n_quic_core::stateless_reset::UnpredictableBits,
         EndpointLimits: s2n_quic_core::endpoint::Limits,
         Limits,
         Log,

@@ -1,9 +1,7 @@
 //! Configuration parameters for `Endpoint`s
 
 use crate::connection;
-use s2n_quic_core::{
-    crypto::tls, endpoint, recovery::congestion_controller, stateless_reset_token,
-};
+use s2n_quic_core::{crypto::tls, endpoint, recovery::congestion_controller, stateless_reset};
 
 /// Configuration paramters for a QUIC endpoint
 pub trait Config: Sized {
@@ -22,9 +20,9 @@ pub trait Config: Sized {
     /// The connection ID format
     type ConnectionIdFormat: connection::id::Format;
     /// The stateless reset token generator
-    type StatelessResetTokenGenerator: stateless_reset_token::Generator;
+    type StatelessResetTokenGenerator: stateless_reset::token::Generator;
     /// The unpredictable bits generator for a stateless reset
-    type StatelessResetUnpredictableBitsGenerator: stateless_reset_token::UnpredictableBits;
+    type StatelessResetUnpredictableBitsGenerator: stateless_reset::UnpredictableBits;
     /// The validation token format
     type TokenFormat: s2n_quic_core::token::Format;
     /// The endpoint limits

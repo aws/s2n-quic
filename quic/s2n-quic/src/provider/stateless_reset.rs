@@ -1,4 +1,4 @@
-pub use s2n_quic_core::stateless_reset_token::UnpredictableBits;
+pub use s2n_quic_core::stateless_reset::UnpredictableBits;
 
 /// Provides stateless reset unpredictable bits support for an endpoint
 pub trait Provider: 'static {
@@ -22,7 +22,7 @@ impl_provider_utils!();
 pub mod random {
     use core::convert::Infallible;
     use rand::prelude::*;
-    use s2n_quic_core::stateless_reset_token;
+    use s2n_quic_core::stateless_reset;
 
     #[derive(Debug, Default)]
     pub struct Provider(Generator);
@@ -49,7 +49,7 @@ pub mod random {
     #[derive(Debug, Default)]
     pub struct Generator {}
 
-    impl stateless_reset_token::UnpredictableBits for Generator {
+    impl stateless_reset::UnpredictableBits for Generator {
         fn fill(&mut self, dest: &mut [u8]) {
             rand::thread_rng().fill_bytes(dest)
         }
@@ -58,7 +58,7 @@ pub mod random {
     #[cfg(test)]
     mod tests {
         use super::*;
-        use s2n_quic_core::stateless_reset_token::UnpredictableBits;
+        use s2n_quic_core::stateless_reset::UnpredictableBits;
 
         #[test]
         fn unpredictable_bits_test() {

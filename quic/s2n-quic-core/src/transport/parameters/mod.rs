@@ -1,7 +1,7 @@
 use crate::{
     connection, endpoint,
     inet::{SocketAddressV4, SocketAddressV6, Unspecified},
-    stateless_reset_token::StatelessResetToken,
+    stateless_reset::token::StatelessResetToken,
     stream::{StreamId, StreamType},
     varint::VarInt,
 };
@@ -803,7 +803,7 @@ pub struct PreferredAddress {
     pub ipv4_address: Option<SocketAddressV4>,
     pub ipv6_address: Option<SocketAddressV6>,
     pub connection_id: crate::connection::UnboundedId,
-    pub stateless_reset_token: crate::stateless_reset_token::StatelessResetToken,
+    pub stateless_reset_token: crate::stateless_reset::token::StatelessResetToken,
 }
 
 impl Unspecified for PreferredAddress {

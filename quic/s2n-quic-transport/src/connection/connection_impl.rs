@@ -27,7 +27,7 @@ use s2n_quic_core::{
         version_negotiation::ProtectedVersionNegotiation,
         zero_rtt::ProtectedZeroRTT,
     },
-    stateless_reset_token,
+    stateless_reset,
     time::Timestamp,
     transport::error::TransportError,
 };
@@ -346,7 +346,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
     /// Generates and registers new connection IDs using the given `ConnectionIdFormat`
     fn on_new_connection_id<
         ConnectionIdFormat: connection::id::Format,
-        StatelessResetTokenGenerator: stateless_reset_token::Generator,
+        StatelessResetTokenGenerator: stateless_reset::token::Generator,
     >(
         &mut self,
         connection_id_format: &mut ConnectionIdFormat,

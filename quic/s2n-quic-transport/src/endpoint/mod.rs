@@ -34,7 +34,7 @@ use connection::id::ConnectionInfo;
 pub use s2n_quic_core::endpoint::*;
 use s2n_quic_core::{
     inet::{ExplicitCongestionNotification, SocketAddress},
-    stateless_reset_token::Generator as _,
+    stateless_reset::token::Generator as _,
 };
 
 /// A QUIC `Endpoint`
@@ -513,7 +513,7 @@ impl<'a, Cfg: Config> core::future::Future for PendingWakeups<'a, Cfg> {
 #[cfg(any(test, feature = "testing"))]
 pub mod testing {
     use super::*;
-    use s2n_quic_core::{endpoint, stateless_reset_token};
+    use s2n_quic_core::{endpoint, stateless_reset};
 
     #[derive(Debug)]
     pub struct Server;
@@ -525,8 +525,8 @@ pub mod testing {
         type Connection = connection::Implementation<Self::ConnectionConfig>;
         type EndpointLimits = Limits;
         type ConnectionIdFormat = connection::id::testing::Format;
-        type StatelessResetTokenGenerator = stateless_reset_token::testing::Generator;
-        type StatelessResetUnpredictableBitsGenerator = stateless_reset_token::testing::Generator;
+        type StatelessResetTokenGenerator = stateless_reset::token::testing::Generator;
+        type StatelessResetUnpredictableBitsGenerator = stateless_reset::testing::Generator;
         type TokenFormat = s2n_quic_core::token::testing::Format;
 
         fn create_connection_config(&mut self) -> Self::ConnectionConfig {
@@ -548,8 +548,8 @@ pub mod testing {
         type Connection = connection::Implementation<Self::ConnectionConfig>;
         type EndpointLimits = Limits;
         type ConnectionIdFormat = connection::id::testing::Format;
-        type StatelessResetTokenGenerator = stateless_reset_token::testing::Generator;
-        type StatelessResetUnpredictableBitsGenerator = stateless_reset_token::testing::Generator;
+        type StatelessResetTokenGenerator = stateless_reset::token::testing::Generator;
+        type StatelessResetUnpredictableBitsGenerator = stateless_reset::testing::Generator;
         type TokenFormat = s2n_quic_core::token::testing::Format;
 
         fn create_connection_config(&mut self) -> Self::ConnectionConfig {

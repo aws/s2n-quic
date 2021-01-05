@@ -1,4 +1,4 @@
-pub use s2n_quic_core::stateless_reset_token::Generator;
+pub use s2n_quic_core::stateless_reset::token::Generator;
 
 /// Provides stateless reset token support for an endpoint
 pub trait Provider: 'static {
@@ -23,8 +23,8 @@ pub mod random {
     use core::convert::Infallible;
     use rand::prelude::*;
     use s2n_quic_core::{
-        connection, frame::new_connection_id::STATELESS_RESET_TOKEN_LEN, stateless_reset_token,
-        stateless_reset_token::StatelessResetToken,
+        connection, frame::new_connection_id::STATELESS_RESET_TOKEN_LEN, stateless_reset,
+        stateless_reset::token::StatelessResetToken,
     };
 
     #[derive(Debug, Default)]
@@ -52,7 +52,7 @@ pub mod random {
     #[derive(Debug, Default)]
     pub struct Generator {}
 
-    impl stateless_reset_token::Generator for Generator {
+    impl stateless_reset::token::Generator for Generator {
         /// Since a random stateless reset token will not be recognized by the peer, this generator
         /// is not enabled and no stateless reset packet will be sent to the peer.
         const ENABLED: bool = false;
@@ -71,7 +71,7 @@ pub mod random {
     #[cfg(test)]
     mod tests {
         use super::*;
-        use s2n_quic_core::stateless_reset_token::Generator as _;
+        use s2n_quic_core::stateless_reset::token::Generator as _;
 
         #[test]
         fn stateless_reset_token_test() {

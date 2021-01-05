@@ -15,7 +15,7 @@ use s2n_quic_core::{
     crypto::{tls::Endpoint as TLSEndpoint, CryptoSuite, InitialCrypto},
     inet::DatagramInfo,
     packet::initial::ProtectedInitial,
-    stateless_reset_token::Generator as _,
+    stateless_reset::token::Generator as _,
     transport::{error::TransportError, parameters::ServerTransportParameters},
 };
 
