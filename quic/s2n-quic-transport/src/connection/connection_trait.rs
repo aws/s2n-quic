@@ -24,7 +24,7 @@ use s2n_quic_core::{
         zero_rtt::ProtectedZeroRTT,
         ProtectedPacket,
     },
-    stateless_reset_token,
+    stateless_reset,
     time::Timestamp,
     transport::error::TransportError,
 };
@@ -68,7 +68,7 @@ pub trait ConnectionTrait: Sized {
     /// `StatelessResetTokenGenerator`
     fn on_new_connection_id<
         ConnectionIdFormat: connection::id::Format,
-        StatelessResetTokenGenerator: stateless_reset_token::Generator,
+        StatelessResetTokenGenerator: stateless_reset::token::Generator,
     >(
         &mut self,
         connection_id_format: &mut ConnectionIdFormat,

@@ -33,8 +33,9 @@ pub use config::{Config, Context};
 use connection::id::ConnectionInfo;
 pub use s2n_quic_core::endpoint::*;
 use s2n_quic_core::{
+    connection::LocalId,
     inet::{ExplicitCongestionNotification, SocketAddress},
-    stateless_reset_token::Generator as _,
+    stateless_reset::token::Generator as _,
 };
 
 /// A QUIC `Endpoint`
@@ -367,7 +368,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     //# An endpoint MAY send a stateless reset in response to receiving a packet
                     //# that it cannot associate with an active connection.
                     if Cfg::StatelessResetTokenGenerator::ENABLED {
-                        self.enqueue_stateless_reset(datagram, packet.destination_connection_id());
+                        self.enqueue_stateless_reset(datagram, &destination_connection_id);
                     }
                 }
             }
@@ -386,7 +387,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
     fn enqueue_stateless_reset(
         &mut self,
         _datagram: &DatagramInfo,
-        _destination_connection_id: &[u8],
+        _destination_connection_id: &LocalId,
     ) {
         // TODO: Implement me
         dbg!("stateless reset triggered");
@@ -514,7 +515,7 @@ impl<'a, Cfg: Config> core::future::Future for PendingWakeups<'a, Cfg> {
 #[cfg(any(test, feature = "testing"))]
 pub mod testing {
     use super::*;
-    use s2n_quic_core::{endpoint, stateless_reset_token};
+    use s2n_quic_core::{endpoint, stateless_reset};
 
     #[derive(Debug)]
     pub struct Server;
@@ -526,7 +527,8 @@ pub mod testing {
         type Connection = connection::Implementation<Self::ConnectionConfig>;
         type EndpointLimits = Limits;
         type ConnectionIdFormat = connection::id::testing::Format;
-        type StatelessResetTokenGenerator = stateless_reset_token::testing::Generator;
+        type StatelessResetTokenGenerator = stateless_reset::token::testing::Generator;
+        type StatelessResetUnpredictableBitsGenerator = stateless_reset::testing::Generator;
         type TokenFormat = s2n_quic_core::token::testing::Format;
 
         fn create_connection_config(&mut self) -> Self::ConnectionConfig {
@@ -548,7 +550,8 @@ pub mod testing {
         type Connection = connection::Implementation<Self::ConnectionConfig>;
         type EndpointLimits = Limits;
         type ConnectionIdFormat = connection::id::testing::Format;
-        type StatelessResetTokenGenerator = stateless_reset_token::testing::Generator;
+        type StatelessResetTokenGenerator = stateless_reset::token::testing::Generator;
+        type StatelessResetUnpredictableBitsGenerator = stateless_reset::testing::Generator;
         type TokenFormat = s2n_quic_core::token::testing::Format;
 
         fn create_connection_config(&mut self) -> Self::ConnectionConfig {

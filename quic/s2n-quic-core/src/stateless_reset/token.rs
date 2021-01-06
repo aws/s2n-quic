@@ -10,24 +10,23 @@ use s2n_codec::{decoder_value, Encoder, EncoderValue};
 //#   Unpredictable Bits (38..),
 //#   Stateless Reset Token (128),
 //# }
-
-const STATELESS_RESET_TOKEN_LEN: usize = 128 / 8;
+const LEN: usize = 128 / 8;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct StatelessResetToken([u8; STATELESS_RESET_TOKEN_LEN]);
+pub struct Token([u8; LEN]);
 
-impl StatelessResetToken {
+impl Token {
     /// A zeroed out stateless reset token
-    pub const ZEROED: Self = Self([0; STATELESS_RESET_TOKEN_LEN]);
+    pub const ZEROED: Self = Self([0; LEN]);
 }
 
-impl From<[u8; STATELESS_RESET_TOKEN_LEN]> for StatelessResetToken {
-    fn from(bytes: [u8; STATELESS_RESET_TOKEN_LEN]) -> Self {
+impl From<[u8; LEN]> for Token {
+    fn from(bytes: [u8; LEN]) -> Self {
         Self(bytes)
     }
 }
 
-impl TryFrom<&[u8]> for StatelessResetToken {
+impl TryFrom<&[u8]> for Token {
     type Error = core::array::TryFromSliceError;
 
     fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
@@ -36,28 +35,33 @@ impl TryFrom<&[u8]> for StatelessResetToken {
     }
 }
 
-impl AsRef<[u8]> for StatelessResetToken {
+impl AsRef<[u8]> for Token {
     fn as_ref(&self) -> &[u8] {
         &self.0[..]
     }
 }
 
-decoder_value!(
-    impl<'a> StatelessResetToken {
-        fn decode(buffer: Buffer) -> Result<Self> {
-            let (value, buffer) = buffer.decode_slice(STATELESS_RESET_TOKEN_LEN)?;
-            let value: &[u8] = value.into_less_safe_slice();
-            let connection_id =
-                StatelessResetToken::try_from(value).expect("slice len already verified");
+impl AsMut<[u8]> for Token {
+    fn as_mut(&mut self) -> &mut [u8] {
+        self.0.as_mut()
+    }
+}
 
-            Ok((connection_id, buffer))
+decoder_value!(
+    impl<'a> Token {
+        fn decode(buffer: Buffer) -> Result<Self> {
+            let (value, buffer) = buffer.decode_slice(LEN)?;
+            let value: &[u8] = value.into_less_safe_slice();
+            let token = Token::try_from(value).expect("slice len already verified");
+
+            Ok((token, buffer))
         }
     }
 );
 
-impl EncoderValue for StatelessResetToken {
+impl EncoderValue for Token {
     fn encoding_size(&self) -> usize {
-        STATELESS_RESET_TOKEN_LEN
+        LEN
     }
 
     fn encode<E: Encoder>(&self, encoder: &mut E) {
@@ -79,27 +83,27 @@ pub trait Generator {
     ///
     /// To enable stateless reset functionality, the stateless reset token must
     /// be generated the same for a given `LocalId` before and after loss of state.
-    fn generate(&mut self, connection_id: &LocalId) -> StatelessResetToken;
+    fn generate(&mut self, connection_id: &LocalId) -> Token;
 }
 
 #[cfg(any(test, feature = "testing"))]
 pub mod testing {
     use crate::{
         connection::LocalId,
-        stateless_reset_token,
-        stateless_reset_token::{StatelessResetToken, STATELESS_RESET_TOKEN_LEN},
+        stateless_reset,
+        stateless_reset::token::{Token, LEN},
     };
 
-    pub const TEST_TOKEN_1: StatelessResetToken = StatelessResetToken {
+    pub const TEST_TOKEN_1: Token = Token {
         0: 11111111123456578987654321u128.to_be_bytes(),
     };
-    pub const TEST_TOKEN_2: StatelessResetToken = StatelessResetToken {
+    pub const TEST_TOKEN_2: Token = Token {
         0: 222222222123456578987654321u128.to_be_bytes(),
     };
-    pub const TEST_TOKEN_3: StatelessResetToken = StatelessResetToken {
+    pub const TEST_TOKEN_3: Token = Token {
         0: 333333333123456578987654321u128.to_be_bytes(),
     };
-    pub const TEST_TOKEN_4: StatelessResetToken = StatelessResetToken {
+    pub const TEST_TOKEN_4: Token = Token {
         0: 444444444123456578987654321u128.to_be_bytes(),
     };
 
@@ -108,9 +112,9 @@ pub mod testing {
     #[derive(Debug, Default)]
     pub struct Generator();
 
-    impl stateless_reset_token::Generator for Generator {
-        fn generate(&mut self, connection_id: &LocalId) -> StatelessResetToken {
-            let mut token = [0; STATELESS_RESET_TOKEN_LEN];
+    impl stateless_reset::token::Generator for Generator {
+        fn generate(&mut self, connection_id: &LocalId) -> Token {
+            let mut token = [0; LEN];
 
             for (index, byte) in connection_id.as_ref().iter().enumerate() {
                 token[index] = byte ^ KEY;
