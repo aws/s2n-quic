@@ -52,9 +52,9 @@ decoder_value!(
         fn decode(buffer: Buffer) -> Result<Self> {
             let (value, buffer) = buffer.decode_slice(LEN)?;
             let value: &[u8] = value.into_less_safe_slice();
-            let connection_id = Token::try_from(value).expect("slice len already verified");
+            let token = Token::try_from(value).expect("slice len already verified");
 
-            Ok((connection_id, buffer))
+            Ok((token, buffer))
         }
     }
 );
