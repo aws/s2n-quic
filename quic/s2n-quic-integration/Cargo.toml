@@ -6,9 +6,13 @@ edition = "2018"
 license = "Apache-2.0"
 publish = false
 
+[features]
+default = []
+
 [dependencies]
 anyhow = "1"
 arr_macro = "0.1"
+bolero-generator = "0.6"
 bytes = { version = "0.6", default-features = false }
 futures = "0.3"
 lazy_static = "1"
@@ -19,3 +23,4 @@ tokio = { version = "0.2", features = ["full"] }
 
 [dev-dependencies]
 bolero = "0.6"
+flume = "0.9"

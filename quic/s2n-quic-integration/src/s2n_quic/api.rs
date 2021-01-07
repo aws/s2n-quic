@@ -19,27 +19,45 @@ impl api::Connection for Connection {
 }
 
 impl api::Acceptor for StreamAcceptor {
-    type BidiStream = stream::BidirectionalStream;
+    type ReceiveStreamAcceptor = connection::ReceiveStreamAcceptor;
+    type BidirectionalStreamAcceptor = connection::BidirectionalStreamAcceptor;
+
+    fn split(
+        self,
+    ) -> (
+        Self::BidirectionalStreamAcceptor,
+        Self::ReceiveStreamAcceptor,
+    ) {
+        Self::split(self)
+    }
+}
+
+impl api::ReceiveStreamAcceptor for connection::ReceiveStreamAcceptor {
     type ReceiveStream = stream::ReceiveStream;
     type Error = connection::Error;
-
-    fn poll_accept_bidi(
-        &mut self,
-        cx: &mut Context,
-    ) -> Poll<Result<Option<Self::BidiStream>, Self::Error>> {
-        StreamAcceptor::poll_accept_bidirectional_stream(self, cx)
-    }
 
     fn poll_accept_receive(
         &mut self,
         cx: &mut Context,
     ) -> Poll<Result<Option<Self::ReceiveStream>, Self::Error>> {
-        StreamAcceptor::poll_accept_receive_stream(self, cx)
+        Self::poll_accept_receive_stream(self, cx)
+    }
+}
+
+impl api::BidirectionalStreamAcceptor for connection::BidirectionalStreamAcceptor {
+    type BidirectionalStream = stream::BidirectionalStream;
+    type Error = connection::Error;
+
+    fn poll_accept_bidirectional(
+        &mut self,
+        cx: &mut Context,
+    ) -> Poll<Result<Option<Self::BidirectionalStream>, Self::Error>> {
+        Self::poll_accept_bidirectional_stream(self, cx)
     }
 }
 
 impl crate::api::Handle for Handle {
-    type BidiStream = stream::BidirectionalStream;
+    type BidirectionalStream = stream::BidirectionalStream;
     type SendStream = stream::SendStream;
     type Error = connection::Error;
 
@@ -47,8 +65,15 @@ impl crate::api::Handle for Handle {
         Handle::poll_open_send_stream(self, cx)
     }
 
-    fn poll_open_bidi(&mut self, cx: &mut Context) -> Poll<Result<Self::BidiStream, Self::Error>> {
+    fn poll_open_bidirectional(
+        &mut self,
+        cx: &mut Context,
+    ) -> Poll<Result<Self::BidirectionalStream, Self::Error>> {
         Handle::poll_open_bidirectional_stream(self, cx)
+    }
+
+    fn close(&mut self) {
+        // TODO
     }
 }
 
@@ -100,3 +125,12 @@ macro_rules! receive_stream {
 
 receive_stream!(ReceiveStream);
 receive_stream!(BidirectionalStream);
+
+impl api::BidirectionalStream for stream::BidirectionalStream {
+    type SendStream = stream::SendStream;
+    type ReceiveStream = stream::ReceiveStream;
+
+    fn split(self) -> (Self::ReceiveStream, Self::SendStream) {
+        stream::BidirectionalStream::split(self)
+    }
+}
