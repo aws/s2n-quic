@@ -80,6 +80,8 @@ pub struct Parameters<Cfg: Config> {
     pub internal_connection_id: InternalConnectionId,
     /// The local ID registry which should be utilized by the connection
     pub local_id_registry: LocalIdRegistry,
+    /// The peer ID registry which should be utilized by the connection
+    pub peer_id_registry: PeerIdRegistry,
     /// The per-connection timer
     pub timer: ConnectionTimerEntry,
     /// The last utilized remote Connection ID

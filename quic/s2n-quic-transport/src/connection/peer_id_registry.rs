@@ -207,7 +207,7 @@ impl From<PeerIdRegistrationError> for TransportError {
 impl PeerIdRegistry {
     /// Constructs a new `PeerIdRegistry`. The provided `initial_connection_id` will be registered
     /// in the returned registry, with the optional associated `stateless_reset_token`.
-    pub fn new(
+    pub(crate) fn new(
         initial_connection_id: connection::PeerId,
         stateless_reset_token: Option<[u8; STATELESS_RESET_TOKEN_LEN]>,
     ) -> Self {

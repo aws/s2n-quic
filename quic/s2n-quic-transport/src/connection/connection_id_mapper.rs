@@ -6,7 +6,8 @@ use std::collections::hash_map::{Entry, HashMap};
 
 use s2n_quic_core::{connection, stateless_reset};
 
-use crate::connection::{local_id_registry::LocalIdRegistry, InternalConnectionId};
+use crate::connection::{local_id_registry::LocalIdRegistry, InternalConnectionId, PeerIdRegistry};
+use s2n_quic_core::frame::new_connection_id::STATELESS_RESET_TOKEN_LEN;
 
 #[derive(Debug)]
 pub(crate) struct ConnectionIdMapperState {
@@ -80,6 +81,21 @@ impl ConnectionIdMapper {
         LocalIdRegistry::new(
             internal_id,
             self.state.clone(),
+            initial_connection_id,
+            stateless_reset_token,
+        )
+    }
+
+    /// Creates a `PeerIdRegistry` for a new internal connection ID, which allows that
+    /// connection to modify the mappings of it's Connection ID aliases. The provided
+    /// `initial_connection_id` will be registered in the returned registry.
+    pub fn create_peer_id_registry(
+        &mut self,
+        _internal_id: InternalConnectionId,
+        initial_connection_id: connection::PeerId,
+        stateless_reset_token: Option<[u8; STATELESS_RESET_TOKEN_LEN]>,
+    ) -> PeerIdRegistry {
+        PeerIdRegistry::new(
             initial_connection_id,
             stateless_reset_token,
         )

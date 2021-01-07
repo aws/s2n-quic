@@ -110,6 +110,22 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             stateless_reset_token,
         );
 
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
+        //= type=TODO
+        //= tracking-issue=195
+        //= feature=Stateless Reset
+        //# Servers can also specify a stateless_reset_token transport
+        //# parameter during the handshake that applies to the connection ID that
+        //# it selected during the handshake; clients cannot use this transport
+        //# parameter because their transport parameters do not have
+        //# confidentiality protection.
+        let stateless_reset_token = None;
+        let peer_id_registry = self.connection_id_mapper.create_peer_id_registry(
+            internal_connection_id,
+            source_connection_id,
+            stateless_reset_token,
+        );
+
         let timer = self.timer_manager.create_timer(
             internal_connection_id,
             datagram.timestamp + Duration::from_secs(3600),
@@ -193,6 +209,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             connection_config,
             internal_connection_id,
             local_id_registry,
+            peer_id_registry,
             timer,
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.2
             //# A server MUST set the Destination Connection ID it
