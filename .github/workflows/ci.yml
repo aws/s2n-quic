@@ -61,6 +61,8 @@ jobs:
   clippy:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v2
+
       - uses: actions-rs/toolchain@v1
         id: toolchain
         with:
@@ -71,8 +73,6 @@ jobs:
 
       - uses: camshaft/rust-cache@v1
 
-      - uses: actions/checkout@v2
-
       - name: Run cargo clippy
         uses: actions-rs/clippy-check@v1
         with:
@@ -82,6 +82,8 @@ jobs:
   udeps:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v2
+
       - uses: actions-rs/toolchain@v1
         id: toolchain
         with:
@@ -97,8 +99,6 @@ jobs:
           use-tool-cache: true
           version: latest
 
-      - uses: actions/checkout@v2
-
       - name: Run cargo udeps
         run: cargo udeps --workspace --all-targets
         env:
@@ -107,6 +107,8 @@ jobs:
   doc:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v2
+
       - uses: actions-rs/toolchain@v1
         id: toolchain
         with:
@@ -115,8 +117,6 @@ jobs:
           override: true
       
       - uses: camshaft/rust-cache@v1
-
-      - uses: actions/checkout@v2
 
       - name: Run cargo doc
         uses: actions-rs/cargo@v1
@@ -137,6 +137,10 @@ jobs:
         rust: ${{ fromJson(needs.env.outputs.rust-versions) }}
         os: [ubuntu-latest, macOS-latest, windows-latest]
     steps:
+      - uses: actions/checkout@v2
+        with:
+          lfs: true
+
       - uses: actions-rs/toolchain@v1
         id: toolchain
         with:
@@ -144,10 +148,6 @@ jobs:
           override: true
 
       - uses: camshaft/rust-cache@v1
-
-      - uses: actions/checkout@v2
-        with:
-          lfs: true
 
       - name: Restore fuzz corpus
         shell: bash
@@ -165,6 +165,8 @@ jobs:
       matrix:
         crate: [quic/s2n-quic-core]
     steps:
+      - uses: actions/checkout@v2
+
       - uses: actions-rs/toolchain@v1
         id: toolchain
         with:
@@ -173,8 +175,6 @@ jobs:
           components: miri
 
       - uses: camshaft/rust-cache@v1
-
-      - uses: actions/checkout@v2
 
       - name: ${{ matrix.crate }}
         run: cd ${{ matrix.crate }} && cargo miri test
@@ -185,6 +185,8 @@ jobs:
   no_std:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v2
+
       - uses: actions-rs/toolchain@v1
         id: toolchain
         with:
@@ -193,8 +195,6 @@ jobs:
           target: thumbv7m-none-eabi
 
       - uses: camshaft/rust-cache@v1
-
-      - uses: actions/checkout@v2
 
       # see https://github.com/rust-lang/cargo/issues/7916
       - name: Run cargo build
@@ -327,6 +327,8 @@ jobs:
       matrix:
         example: [examples/quic-echo-server]
     steps:
+      - uses: actions/checkout@v2
+
       - uses: actions-rs/toolchain@v1
         id: toolchain
         with:
@@ -334,8 +336,6 @@ jobs:
           override: true
 
       - uses: camshaft/rust-cache@v1
-
-      - uses: actions/checkout@v2
 
       - name: ${{ matrix.example }}
         working-directory: ${{ matrix.example }}
@@ -348,6 +348,8 @@ jobs:
       matrix:
         script: [server]
     steps:
+      - uses: actions/checkout@v2
+
       - uses: actions-rs/toolchain@v1
         id: toolchain
         with:
@@ -355,8 +357,6 @@ jobs:
           override: true
 
       - uses: camshaft/rust-cache@v1
-
-      - uses: actions/checkout@v2
 
       - name: Install inferno
         uses: actions-rs/install@v0.1

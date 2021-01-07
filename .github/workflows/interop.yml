@@ -60,6 +60,8 @@ jobs:
       matrix:
         mode: ["debug", "release"]
     steps:
+      - uses: actions/checkout@v2
+
       - uses: actions-rs/toolchain@v1
         id: toolchain
         with:
@@ -68,8 +70,6 @@ jobs:
           override: true
 
       - uses: camshaft/rust-cache@v1
-
-      - uses: actions/checkout@v2
 
       - name: Run cargo build
         uses: actions-rs/cargo@v1
