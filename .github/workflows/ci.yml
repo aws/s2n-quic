@@ -69,7 +69,7 @@ jobs:
           override: true
           components: clippy
 
-      - uses: Swatinem/rust-cache@v1
+      - uses: camshaft/rust-cache@v1
 
       - uses: actions/checkout@v2
 
@@ -89,7 +89,7 @@ jobs:
           profile: minimal
           override: true
 
-      - uses: Swatinem/rust-cache@v1
+      - uses: camshaft/rust-cache@v1
 
       - uses: actions-rs/install@v0.1
         with:
@@ -112,7 +112,7 @@ jobs:
           profile: minimal
           override: true
       
-      - uses: Swatinem/rust-cache@v1
+      - uses: camshaft/rust-cache@v1
 
       - uses: actions/checkout@v2
 
@@ -141,7 +141,7 @@ jobs:
           toolchain: ${{ matrix.rust }}
           override: true
 
-      - uses: Swatinem/rust-cache@v1
+      - uses: camshaft/rust-cache@v1
 
       - uses: actions/checkout@v2
         with:
@@ -170,7 +170,7 @@ jobs:
           override: true
           components: miri
 
-      - uses: Swatinem/rust-cache@v1
+      - uses: camshaft/rust-cache@v1
 
       - uses: actions/checkout@v2
 
@@ -190,7 +190,7 @@ jobs:
           override: true
           target: thumbv7m-none-eabi
 
-      - uses: Swatinem/rust-cache@v1
+      - uses: camshaft/rust-cache@v1
 
       - uses: actions/checkout@v2
 
@@ -214,7 +214,7 @@ jobs:
           toolchain: ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
           override: true
 
-      - uses: Swatinem/rust-cache@v1
+      - uses: camshaft/rust-cache@v1
 
       - name: Cache cargo-compliance
         uses: actions/cache@v2
@@ -275,7 +275,7 @@ jobs:
           toolchain: ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
           override: true
 
-      - uses: Swatinem/rust-cache@v1
+      - uses: camshaft/rust-cache@v1
 
       - name: Install grcov
         uses: actions-rs/install@v0.1
@@ -331,7 +331,7 @@ jobs:
           toolchain: stable
           override: true
 
-      - uses: Swatinem/rust-cache@v1
+      - uses: camshaft/rust-cache@v1
 
       - uses: actions/checkout@v2
 
@@ -352,7 +352,7 @@ jobs:
           toolchain: stable
           override: true
 
-      - uses: Swatinem/rust-cache@v1
+      - uses: camshaft/rust-cache@v1
 
       - uses: actions/checkout@v2
 

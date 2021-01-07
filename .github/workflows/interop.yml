@@ -67,7 +67,7 @@ jobs:
           profile: minimal
           override: true
 
-      - uses: Swatinem/rust-cache@v1
+      - uses: camshaft/rust-cache@v1
 
       - uses: actions/checkout@v2
 
