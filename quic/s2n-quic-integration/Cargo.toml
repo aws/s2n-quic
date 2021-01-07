@@ -23,4 +23,4 @@ tokio = { version = "0.2", features = ["full"] }
 
 [dev-dependencies]
 bolero = "0.6"
-flume = "0.9"
+flume = { version = "0.10", default-features = false, features = ["async"] }
