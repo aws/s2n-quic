@@ -101,6 +101,8 @@ jobs:
 
       - name: Run cargo udeps
         run: cargo udeps --workspace --all-targets
+        env:
+          RUSTC_WRAPPER: ''
 
   doc:
     runs-on: ubuntu-latest
