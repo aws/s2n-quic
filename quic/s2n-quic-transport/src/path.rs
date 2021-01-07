@@ -312,6 +312,7 @@ impl<CC: CongestionController> core::ops::IndexMut<Id> for Manager<CC> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::connection::{ConnectionIdMapper, InternalConnectionIdGenerator};
     use core::time::Duration;
     use s2n_quic_core::{
         frame::new_connection_id::STATELESS_RESET_TOKEN_LEN,
@@ -320,6 +321,20 @@ mod tests {
         time::Timestamp,
     };
     use std::net::SocketAddr;
+
+    // Helper function to easily create a PathManager
+    fn manager<CC: CongestionController>(
+        first_path: Path<CC>,
+        initial_id: connection::PeerId,
+        stateless_reset_token: Option<[u8; STATELESS_RESET_TOKEN_LEN]>,
+    ) -> Manager<CC> {
+        let peer_id_registry = ConnectionIdMapper::new().create_peer_id_registry(
+            InternalConnectionIdGenerator::new().generate_id(),
+            initial_id,
+            stateless_reset_token,
+        );
+        Manager::new(first_path, peer_id_registry)
+    }
 
     #[test]
     fn get_path_by_address_test() {
@@ -332,8 +347,7 @@ mod tests {
             false,
         );
 
-        let peer_id_registry = PeerIdRegistry::new(first_path.peer_connection_id, None);
-        let manager = Manager::new(first_path, peer_id_registry);
+        let manager = manager(first_path, first_path.peer_connection_id, None);
         assert_eq!(manager.paths.len(), 1);
 
         let (_id, matched_path) = manager.path(&SocketAddress::default()).unwrap();
@@ -352,8 +366,7 @@ mod tests {
         );
         first_path.challenge = Some([0u8; 8]);
 
-        let peer_id_registry = PeerIdRegistry::new(first_path.peer_connection_id, None);
-        let mut manager = Manager::new(first_path, peer_id_registry);
+        let mut manager = manager(first_path, first_path.peer_connection_id, None);
         assert_eq!(manager.paths.len(), 1);
         {
             let (_id, first_path) = manager.path(&first_path.peer_socket_address).unwrap();
@@ -379,8 +392,7 @@ mod tests {
             Unlimited::default(),
             false,
         );
-        let peer_id_registry = PeerIdRegistry::new(first_path.peer_connection_id, None);
-        let mut manager = Manager::new(first_path, peer_id_registry);
+        let mut manager = manager(first_path, first_path.peer_connection_id, None);
         assert_eq!(manager.paths.len(), 1);
         let new_addr: SocketAddr = "127.0.0.1:80".parse().unwrap();
         let new_addr = SocketAddress::from(new_addr);
@@ -443,8 +455,7 @@ mod tests {
             Unlimited::default(),
             false,
         );
-        let peer_id_registry = PeerIdRegistry::new(first_path.peer_connection_id, None);
-        let mut manager = Manager::new(first_path, peer_id_registry);
+        let mut manager = manager(first_path, first_path.peer_connection_id, None);
 
         let id_2 = connection::PeerId::try_from_bytes(b"id02").unwrap();
         assert!(manager

@@ -91,11 +91,13 @@ impl ConnectionIdMapper {
     /// `initial_connection_id` will be registered in the returned registry.
     pub fn create_peer_id_registry(
         &mut self,
-        _internal_id: InternalConnectionId,
+        internal_id: InternalConnectionId,
         initial_connection_id: connection::PeerId,
         stateless_reset_token: Option<[u8; STATELESS_RESET_TOKEN_LEN]>,
     ) -> PeerIdRegistry {
         PeerIdRegistry::new(
+            internal_id,
+            self.state.clone(),
             initial_connection_id,
             stateless_reset_token,
         )

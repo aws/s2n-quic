@@ -1,6 +1,6 @@
-use std::{cell::RefCell, convert::TryInto};
-
-use smallvec::{alloc::rc::Rc, SmallVec};
+use alloc::rc::Rc;
+use core::{cell::RefCell, convert::TryInto};
+use smallvec::SmallVec;
 
 use s2n_quic_core::{
     ack_set::AckSet,
