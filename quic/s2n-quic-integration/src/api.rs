@@ -7,6 +7,9 @@ use core::{
     task::{Context, Poll},
 };
 
+#[cfg(test)]
+pub(crate) mod test;
+
 pub trait Connection {
     type Acceptor: Acceptor;
     type Handle: Handle;
@@ -15,25 +18,78 @@ pub trait Connection {
 }
 
 pub trait Acceptor: Sized {
-    type ReceiveStream: ReceiveStream;
-    type BidiStream: SendStream + ReceiveStream;
-    type Error;
+    type ReceiveStreamAcceptor: ReceiveStreamAcceptor;
+    type BidirectionalStreamAcceptor: BidirectionalStreamAcceptor;
 
-    fn poll_accept_bidi(
-        &mut self,
-        cx: &mut Context,
-    ) -> Poll<Result<Option<Self::BidiStream>, Self::Error>>;
+    fn split(
+        self,
+    ) -> (
+        Self::BidirectionalStreamAcceptor,
+        Self::ReceiveStreamAcceptor,
+    );
+}
+
+pub trait ReceiveStreamAcceptor: Sized + Send {
+    type ReceiveStream: ReceiveStream;
+    type Error: Error;
 
     fn poll_accept_receive(
         &mut self,
         cx: &mut Context,
     ) -> Poll<Result<Option<Self::ReceiveStream>, Self::Error>>;
+
+    fn accept_receive(&mut self) -> AcceptReceiveFuture<Self> {
+        AcceptReceiveFuture(self)
+    }
 }
 
-pub trait Handle: Clone + Sized {
+pub trait BidirectionalStreamAcceptor: Sized + Send {
+    type BidirectionalStream: BidirectionalStream;
+    type Error: Error;
+
+    fn poll_accept_bidirectional(
+        &mut self,
+        cx: &mut Context,
+    ) -> Poll<Result<Option<Self::BidirectionalStream>, Self::Error>>;
+
+    fn accept_bidirectional(&mut self) -> AcceptBidirectionalFuture<Self> {
+        AcceptBidirectionalFuture(self)
+    }
+}
+
+macro_rules! accept_future {
+    ($name:ident, $handle:ident, $ty:ident, $call:ident) => {
+        #[must_use]
+        pub struct $name<'a, H: $handle>(&'a mut H);
+
+        impl<'a, H: $handle> Future for $name<'a, H> {
+            type Output = Result<Option<H::$ty>, H::Error>;
+
+            fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+                (self.0).$call(cx)
+            }
+        }
+    };
+}
+
+accept_future!(
+    AcceptReceiveFuture,
+    ReceiveStreamAcceptor,
+    ReceiveStream,
+    poll_accept_receive
+);
+
+accept_future!(
+    AcceptBidirectionalFuture,
+    BidirectionalStreamAcceptor,
+    BidirectionalStream,
+    poll_accept_bidirectional
+);
+
+pub trait Handle: Clone + Sized + Send {
     type SendStream: SendStream;
-    type BidiStream: SendStream + ReceiveStream;
-    type Error;
+    type BidirectionalStream: BidirectionalStream;
+    type Error: Error;
 
     fn poll_open_send(&mut self, cx: &mut Context) -> Poll<Result<Self::SendStream, Self::Error>>;
 
@@ -41,11 +97,16 @@ pub trait Handle: Clone + Sized {
         OpenSendFuture(self)
     }
 
-    fn poll_open_bidi(&mut self, cx: &mut Context) -> Poll<Result<Self::BidiStream, Self::Error>>;
+    fn poll_open_bidirectional(
+        &mut self,
+        cx: &mut Context,
+    ) -> Poll<Result<Self::BidirectionalStream, Self::Error>>;
 
-    fn open_bidi(&mut self) -> OpenBidiFuture<Self> {
-        OpenBidiFuture(self)
+    fn open_bidirectional(&mut self) -> OpenBidirectionalFuture<Self> {
+        OpenBidirectionalFuture(self)
     }
+
+    fn close(&mut self);
 }
 
 macro_rules! open_future {
@@ -64,10 +125,14 @@ macro_rules! open_future {
 }
 
 open_future!(OpenSendFuture, SendStream, poll_open_send);
-open_future!(OpenBidiFuture, BidiStream, poll_open_bidi);
+open_future!(
+    OpenBidirectionalFuture,
+    BidirectionalStream,
+    poll_open_bidirectional
+);
 
-pub trait SendStream: Sized {
-    type Error;
+pub trait SendStream: Sized + Send {
+    type Error: Error;
 
     fn send(&mut self, data: Bytes) -> SendFuture<Self> {
         SendFuture(self, data)
@@ -107,8 +172,8 @@ impl<'a, S: SendStream> Future for FinishFuture<'a, S> {
     }
 }
 
-pub trait ReceiveStream: Sized {
-    type Error;
+pub trait ReceiveStream: Sized + Send {
+    type Error: Error;
 
     fn receive(&mut self) -> ReceiveFuture<Self> {
         ReceiveFuture(self)
@@ -129,3 +194,14 @@ impl<'a, S: ReceiveStream> Future for ReceiveFuture<'a, S> {
         self.0.poll_receive(cx)
     }
 }
+
+pub trait BidirectionalStream: Send {
+    type SendStream: SendStream;
+    type ReceiveStream: ReceiveStream;
+
+    fn split(self) -> (Self::ReceiveStream, Self::SendStream);
+}
+
+pub trait Error: 'static + Send + Sync + std::error::Error {}
+
+impl<T: 'static + Send + Sync + std::error::Error> Error for T {}

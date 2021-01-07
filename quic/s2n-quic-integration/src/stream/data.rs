@@ -1,5 +1,6 @@
 //! A model that ensures stream data is correctly sent and received between peers
 
+use bolero_generator::{constant, TypeGenerator};
 use bytes::Bytes;
 use lazy_static::lazy_static;
 
@@ -17,9 +18,11 @@ const DATA_LEN: usize = DEFAULT_STREAM_LEN * 8;
 const DEFAULT_STREAM_LEN: usize = 1024;
 const DATA_MOD: usize = 256; // Only the first 256 offsets of DATA are unique
 
-#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord, TypeGenerator)]
 pub struct Data {
+    #[generator(0..=DEFAULT_STREAM_LEN)]
     len: usize,
+    #[generator(constant(0))]
     offset: usize,
 }
 
@@ -59,7 +62,7 @@ impl Data {
     }
 
     pub fn is_finished(&self) -> bool {
-        self.len == self.offset
+        self.len <= self.offset
     }
 
     /// Asks the data what chunks should be sent next
