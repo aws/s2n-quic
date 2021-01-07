@@ -93,11 +93,9 @@ jobs:
 
       - uses: camshaft/rust-cache@v1
 
-      - uses: actions-rs/install@v0.1
+      - uses: camshaft/install@v1
         with:
           crate: cargo-udeps
-          use-tool-cache: true
-          version: latest
 
       - name: Run cargo udeps
         run: cargo udeps --workspace --all-targets
@@ -175,6 +173,10 @@ jobs:
           components: miri
 
       - uses: camshaft/rust-cache@v1
+
+      - uses: camshaft/install@v1
+        with:
+          crate: xargo
 
       - name: ${{ matrix.crate }}
         run: cd ${{ matrix.crate }} && cargo miri test
@@ -280,18 +282,14 @@ jobs:
       - uses: camshaft/rust-cache@v1
 
       - name: Install grcov
-        uses: actions-rs/install@v0.1
+        uses: camshaft/install@v1
         with:
           crate: grcov
-          use-tool-cache: true
-          version: latest
 
       - name: Install covfix
-        uses: actions-rs/install@v0.1
+        uses: camshaft/install@v1
         with:
           crate: rust-covfix
-          use-tool-cache: true
-          version: latest
 
       - name: Run cargo test
         uses: actions-rs/cargo@v1
@@ -359,11 +357,9 @@ jobs:
       - uses: camshaft/rust-cache@v1
 
       - name: Install inferno
-        uses: actions-rs/install@v0.1
+        uses: camshaft/install@v1
         with:
           crate: inferno
-          use-tool-cache: true
-          version: latest
 
       - name: Build
         run: ./scripts/${{ matrix.script }}-perf/build
