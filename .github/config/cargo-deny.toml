@@ -6,6 +6,7 @@ yanked = "deny"
 ignore = [
     "RUSTSEC-2019-0031", # ring currently uses 'spin' for feature detection
     "RUSTSEC-2020-0016", # mio 0.6 uses 'net2' (removed in 0.7) but tokio is still pinned to 0.6
+    "RUSTSEC-2020-0095", # insta (a dev dependency) uses `difference`
 ]
 
 [bans]
