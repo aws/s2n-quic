@@ -15,7 +15,7 @@ env:
   RUST_BACKTRACE: 1
   # Pin the nightly toolchain to prevent breakage.
   # This should be occasionally updated.
-  RUST_NIGHTLY_TOOLCHAIN: nightly-2020-11-09
+  RUST_NIGHTLY_TOOLCHAIN: nightly-2021-01-06
 
 jobs:
   env:
@@ -173,10 +173,6 @@ jobs:
           components: miri
 
       - uses: camshaft/rust-cache@v1
-
-      - uses: camshaft/install@v1
-        with:
-          crate: xargo
 
       - name: ${{ matrix.crate }}
         run: cd ${{ matrix.crate }} && cargo miri test
