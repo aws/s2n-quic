@@ -104,7 +104,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             .stateless_reset_token_generator
             .generate(&initial_connection_id);
 
-        let local_id_registry = self.connection_id_mapper.create_registry(
+        let local_id_registry = self.connection_id_mapper.create_local_id_registry(
             internal_connection_id,
             &initial_connection_id,
             stateless_reset_token,

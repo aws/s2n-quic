@@ -2,7 +2,7 @@
 
 use crate::{
     connection::{
-        self, connection_id_mapper::LocalIdRegistrationError, id::ConnectionInfo,
+        self, id::ConnectionInfo, local_id_registry::LocalIdRegistrationError,
         CloseReason as ConnectionCloseReason, ConnectionInterests, ConnectionTimerEntry,
         ConnectionTimers, ConnectionTransmission, ConnectionTransmissionContext,
         InternalConnectionId, Parameters as ConnectionParameters, SharedConnectionState,
