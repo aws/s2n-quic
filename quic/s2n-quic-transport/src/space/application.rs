@@ -475,7 +475,7 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
     fn handle_new_connection_id_frame(
         &mut self,
         frame: NewConnectionID,
-        _datagram: &DatagramInfo,
+        datagram: &DatagramInfo,
         path_manager: &mut path::Manager<Config::CongestionController>,
     ) -> Result<(), TransportError> {
         if path_manager.active_path().peer_connection_id.is_empty() {
@@ -503,7 +503,8 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
             &peer_id,
             sequence_number,
             retire_prior_to,
-            frame.stateless_reset_token,
+            (*frame.stateless_reset_token).into(),
+            datagram.remote_address,
         )
     }
 
