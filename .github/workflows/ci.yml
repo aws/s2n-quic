@@ -142,9 +142,9 @@ jobs:
       - name: Upload to S3
         id: s3
         run: |
-          PATH="${{ github.sha }}/doc"
-          aws s3 cp target/doc "s3://s2n-quic-ci-artifacts/$PATH" --acl private --follow-symlinks
-          URL="$CDN/$PATH/s2n_quic/index.html"
+          TARGET="${{ github.sha }}/doc"
+          aws s3 cp target/doc "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
+          URL="$CDN/$TARGET/s2n_quic/index.html"
           echo "::set-output name=URL::$URL"
 
       - uses: ouzi-dev/commit-status-updater@v1.1.0
@@ -269,9 +269,9 @@ jobs:
       - name: Upload to S3
         id: s3
         run: |
-          PATH="${{ github.sha }}/compliance.html"
-          aws s3 cp target/compliance/report.html "s3://s2n-quic-ci-artifacts/$PATH" --acl private --follow-symlinks
-          URL="$CDN/$PATH"
+          TARGET="${{ github.sha }}/compliance.html"
+          aws s3 cp target/compliance/report.html "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
+          URL="$CDN/$TARGET"
           echo "::set-output name=URL::$URL"
 
       - uses: ouzi-dev/commit-status-updater@v1.1.0
@@ -397,9 +397,9 @@ jobs:
       - name: Upload results
         id: s3
         run: |
-          PATH="${{ github.sha }}/perf/${{ matrix.svg }}"
-          aws s3 cp target/perf/1G.svg "s3://s2n-quic-ci-artifacts/$PATH" --acl private --follow-symlinks
-          URL="$CDN/$PATH"
+          TARGET="${{ github.sha }}/perf/${{ matrix.svg }}"
+          aws s3 cp target/perf/1G.svg "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
+          URL="$CDN/$TARGET"
           echo "::set-output name=URL::$URL"
 
       - uses: ouzi-dev/commit-status-updater@v1.1.0

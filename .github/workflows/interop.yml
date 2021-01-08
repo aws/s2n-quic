@@ -263,9 +263,9 @@ jobs:
       - name: Upload to S3
         id: s3
         run: |
-          PATH="${{ github.sha }}/interop"
-          aws s3 sync web "s3://s2n-quic-ci-artifacts/$PATH" --acl private --follow-symlinks
-          URL="$CDN/$PATH/index.html"
+          TARGET="${{ github.sha }}/interop"
+          aws s3 sync web "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
+          URL="$CDN/$TARGET/index.html"
           echo "::set-output name=URL::$URL"
 
       - uses: ouzi-dev/commit-status-updater@v1.1.0
