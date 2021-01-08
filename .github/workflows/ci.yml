@@ -143,7 +143,7 @@ jobs:
         id: s3
         run: |
           TARGET="${{ github.sha }}/doc"
-          aws s3 cp target/doc "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
+          aws s3 sync target/doc "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
           URL="$CDN/$TARGET/s2n_quic/index.html"
           echo "::set-output name=URL::$URL"
 
