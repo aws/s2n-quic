@@ -13,15 +13,13 @@ env:
   CARGO_NET_RETRY: 10
   RUSTUP_MAX_RETRIES: 10
   RUST_BACKTRACE: 1
-  SCCACHE_CACHE_SIZE: 300M
-  SCCACHE_DIR: ${{ github.workspace }}/.sccache
-  SCCACHE_IDLE_TIMEOUT: 0
   # This kept breaking builds so we're pinning for now. We should do our best to keep
   # up with the changes, though.
   INTEROP_RUNNER_REF: 3d292c252e0c0159db93b62292abcf6b040a7060
   NETWORK_SIMULATOR_REF: sha256:d36e1ffd9369e41e9fd5cb8d2af5fb69d4bfaf1b1983fc538a5a3bf7777af4ba
   IPERF_ENDPOINT_REF: sha256:cb50cc8019d45d9cad5faecbe46a3c21dd5e871949819a5175423755a9045106
   WIRESHARK_VERSION: 3.4.0rc1
+  CDN: https://dnglbrstg7yg.cloudfront.net
 
 jobs:
   env:
@@ -63,6 +61,8 @@ jobs:
       matrix:
         mode: ["debug", "release"]
     steps:
+      - uses: actions/checkout@v2
+
       - uses: actions-rs/toolchain@v1
         id: toolchain
         with:
@@ -70,44 +70,15 @@ jobs:
           profile: minimal
           override: true
 
-      - uses: actions/checkout@v2
-
-      - name: Install sccache
-        uses: actions-rs/install@v0.1
+      - uses: camshaft/rust-cache@v1
         with:
-          crate: sccache
-          use-tool-cache: true
-          version: latest
-
-      - name: Generate Cargo.lock
-        run: cargo update
-
-      - name: Cache cargo registry
-        uses: actions/cache@v2
-        continue-on-error: true
-        with:
-          path: ~/.cargo/registry/cache
-          key: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-${{ matrix.mode }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-${{ matrix.mode }}-cargo-registry-
-
-      - name: Cache sccache output
-        uses: actions/cache@v2
-        continue-on-error: true
-        with:
-          path: ${{ github.workspace }}/.sccache
-          key: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-${{ matrix.mode }}-sccache-${{ hashFiles('**/Cargo.*') }}
-          restore-keys: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-${{ matrix.mode }}-sccache-
-
-      - name: Start sccache
-        run: sccache --start-server
+          key: ${{ matrix.mode }}
 
       - name: Run cargo build
         uses: actions-rs/cargo@v1
         with:
           command: build
           args: --bin s2n-quic-qns ${{ matrix.mode == 'release' && '--release' || '' }}
-        env:
-          RUSTC_WRAPPER: sccache
 
       - name: Prepare artifact
         run: |
@@ -118,9 +89,6 @@ jobs:
         with:
           name: s2n-quic-qns-${{ matrix.mode }}
           path: s2n-quic-qns/
-
-      - name: Stop sccache
-        run: sccache --stop-server
 
   tshark:
     runs-on: ubuntu-latest
@@ -297,10 +265,9 @@ jobs:
       - name: Upload to S3
         id: s3
         run: |
-          TARGET="s3://s2n-quic-ci-artifacts/${{ github.sha }}/interop"
-          aws s3 sync web $TARGET --acl private --follow-symlinks
-          # generate a presigned url that is valid for 30 days
-          URL=$(aws s3 presign $TARGET/index.html --expires-in 2592000)
+          TARGET="${{ github.sha }}/interop"
+          aws s3 sync web "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
+          URL="$CDN/$TARGET/index.html"
           echo "::set-output name=URL::$URL"
 
       - uses: ouzi-dev/commit-status-updater@v1.1.0
