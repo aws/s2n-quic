@@ -34,12 +34,9 @@ jobs:
           profile: minimal
           override: true
 
-      - uses: actions-rs/install@v0.1
+      - uses: camshaft/install@v1
         with:
           crate: cargo-audit
-          # this job hangs when using cache
-          # use-tool-cache: true
-          version: latest
 
       - uses: actions-rs/audit-check@v1
         with:
