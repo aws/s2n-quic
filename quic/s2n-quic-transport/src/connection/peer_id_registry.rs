@@ -1,6 +1,6 @@
 use crate::{
     connection::{
-        connection_id_mapper::{ConnectionIdMapperState, StatelessResetMap},
+        connection_id_mapper::{ConnectionIdMapperState, StatelessResetHandle},
         peer_id_registry::{
             PeerIdRegistrationError::{
                 ExceededActiveConnectionIdLimit, ExceededRetiredConnectionIdLimit,
@@ -63,9 +63,9 @@ struct PeerIdInfo {
     //# detecting when NEW_CONNECTION_ID or RETIRE_CONNECTION_ID frames refer
     //# to the same value.
     sequence_number: u32,
-    // A hash of the stateless reset token and remote address for looking up
-    // if a particularly token and remote address are in the shared state.
-    stateless_reset_key: Option<u64>,
+    // A handle to the mapping of stateless reset token + remote address to internal
+    // connection ID.
+    stateless_reset_handle: Option<StatelessResetHandle>,
     // The current status of the connection ID
     status: PeerIdStatus,
 }
@@ -85,22 +85,22 @@ impl PeerIdInfo {
     fn validate_new_connection_id(
         &self,
         new_id: &connection::PeerId,
-        stateless_reset_key: u64,
+        stateless_reset_handle: StatelessResetHandle,
         sequence_number: u32,
     ) -> Result<bool, PeerIdRegistrationError> {
-        let reset_key_is_equal = self
-            .stateless_reset_key
-            .map_or(false, |key| key == stateless_reset_key);
+        let reset_token_is_equal = self
+            .stateless_reset_handle
+            .map_or(false, |handle| handle == stateless_reset_handle);
         let sequence_number_is_equal = self.sequence_number == sequence_number;
 
         if self.id == *new_id {
-            if !reset_key_is_equal || !sequence_number_is_equal {
+            if !reset_token_is_equal || !sequence_number_is_equal {
                 return Err(InvalidNewConnectionId);
             }
 
             // This was a valid duplicate new connection ID
             return Ok(true);
-        } else if sequence_number_is_equal || reset_key_is_equal {
+        } else if sequence_number_is_equal || reset_token_is_equal {
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.2
             //# Endpoints are not required to compare new values
             //# against all previous values, but a duplicate value MAY be treated as
@@ -217,12 +217,12 @@ impl Drop for PeerIdRegistry {
         let mut guard = self.state.borrow_mut();
 
         // Stop tracking all associated stateless reset tokens
-        for key in self
+        for handle in self
             .registered_ids
             .iter()
-            .flat_map(|id_info| id_info.stateless_reset_key)
+            .flat_map(|id_info| id_info.stateless_reset_handle)
         {
-            guard.remove_stateless_reset_key(key);
+            guard.remove_stateless_reset_token(handle);
         }
     }
 }
@@ -244,13 +244,13 @@ impl PeerIdRegistry {
             retire_prior_to: 0,
         };
 
-        let stateless_reset_key = stateless_reset_token.map(|token| {
-            let key = StatelessResetMap::stateless_reset_key(&token, &remote_address);
+        let stateless_reset_handle = stateless_reset_token.map(|token| {
+            let handle = StatelessResetHandle::handle(&token, &remote_address);
             registry
                 .state
                 .borrow_mut()
-                .insert_stateless_reset_key(key, internal_id);
-            key
+                .insert_stateless_reset_token(handle, internal_id);
+            handle
         });
 
         registry.registered_ids.push(PeerIdInfo {
@@ -258,7 +258,7 @@ impl PeerIdRegistry {
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
             //# The sequence number of the initial connection ID is 0.
             sequence_number: 0,
-            stateless_reset_key,
+            stateless_reset_handle,
             // Start the initial PeerId in ActivePendingNewConnectionId so the ID used
             // during the handshake is rotated as soon as the peer sends a new connection ID
             status: PeerIdStatus::InUsePendingNewConnectionId,
@@ -285,13 +285,16 @@ impl PeerIdRegistry {
         let mut is_duplicate = false;
         let mut id_pending_new_connection_id = None;
 
-        let stateless_reset_key =
-            StatelessResetMap::stateless_reset_key(stateless_reset_token, remote_address);
+        let stateless_reset_handle =
+            StatelessResetHandle::handle(stateless_reset_token, remote_address);
 
         // Iterate over all registered IDs, retiring any as necessary
         for id_info in self.registered_ids.iter_mut() {
-            is_duplicate |=
-                id_info.validate_new_connection_id(new_id, stateless_reset_key, sequence_number)?;
+            is_duplicate |= id_info.validate_new_connection_id(
+                new_id,
+                stateless_reset_handle,
+                sequence_number,
+            )?;
 
             if id_info.is_retire_ready(self.retire_prior_to) {
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2
@@ -320,7 +323,7 @@ impl PeerIdRegistry {
             let mut new_id_info = PeerIdInfo {
                 id: *new_id,
                 sequence_number,
-                stateless_reset_key: Some(stateless_reset_key),
+                stateless_reset_handle: Some(stateless_reset_handle),
                 status: New,
             };
 
@@ -390,13 +393,13 @@ impl PeerIdRegistry {
         self.registered_ids.retain(|id_info| {
             if let PendingAcknowledgement(packet_number) = id_info.status {
                 if ack_set.contains(packet_number) {
-                    if let Some(key) = id_info.stateless_reset_key {
+                    if let Some(handle) = id_info.stateless_reset_handle {
                         // Stop tracking the stateless reset token
                         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1
                         //# An endpoint MUST NOT check for any Stateless Reset Tokens associated
                         //# with connection IDs it has not used or for connection IDs that have
                         //# been retired.
-                        mapper_state.remove_stateless_reset_key(key);
+                        mapper_state.remove_stateless_reset_token(handle);
                     }
                     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2
                     //# An endpoint MUST NOT forget a connection ID without retiring it
@@ -445,10 +448,10 @@ impl PeerIdRegistry {
                 //# An endpoint MUST NOT check for any Stateless Reset Tokens associated
                 //# with connection IDs it has not used or for connection IDs that have
                 //# been retired.
-                if let Some(key) = id_info.stateless_reset_key {
+                if let Some(handle) = id_info.stateless_reset_handle {
                     self.state
                         .borrow_mut()
-                        .insert_stateless_reset_key(key, self.internal_id);
+                        .insert_stateless_reset_token(handle, self.internal_id);
                 }
 
                 // Consume the new id
@@ -534,8 +537,8 @@ impl PeerIdRegistry {
             registered_id_copy.sort_by_key(|id_info| id_info.id);
             registered_id_copy.dedup_by_key(|id_info| id_info.id);
             assert_eq!(before_count, registered_id_copy.len());
-            registered_id_copy.sort_by_key(|id_info| id_info.stateless_reset_key);
-            registered_id_copy.dedup_by_key(|id_info| id_info.stateless_reset_key);
+            registered_id_copy.sort_by_key(|id_info| id_info.stateless_reset_handle);
+            registered_id_copy.dedup_by_key(|id_info| id_info.stateless_reset_handle);
             assert_eq!(before_count, registered_id_copy.len());
         }
     }

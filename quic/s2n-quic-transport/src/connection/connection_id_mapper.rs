@@ -9,13 +9,38 @@ use siphasher::sip::SipHasher13;
 use s2n_quic_core::{connection, stateless_reset};
 
 use crate::connection::{local_id_registry::LocalIdRegistry, InternalConnectionId, PeerIdRegistry};
-use core::hash::{Hash, Hasher};
+use core::{
+    hash::{Hash, Hasher},
+    num::NonZeroU64,
+};
 use s2n_quic_core::inet::SocketAddress;
+
+#[derive(Debug, Clone, Copy, Eq, PartialOrd, PartialEq, Ord)]
+pub struct StatelessResetHandle(NonZeroU64);
+
+impl StatelessResetHandle {
+    /// A prechecked value of 1 used if the hash happens to be zero
+    const ONE: NonZeroU64 = unsafe { NonZeroU64::new_unchecked(1) };
+
+    /// Creates a handle to an entry in the stateless reset map by hashing the given stateless
+    /// reset token and remote address
+    pub fn handle(
+        token: &stateless_reset::Token,
+        remote_address: &SocketAddress,
+    ) -> StatelessResetHandle {
+        let mut hasher = SipHasher13::new();
+        token.hash(&mut hasher);
+        remote_address.hash(&mut hasher);
+        Self {
+            0: NonZeroU64::new(hasher.finish()).unwrap_or(Self::ONE),
+        }
+    }
+}
 
 #[derive(Debug)]
 pub(crate) struct StatelessResetMap {
     /// Maps from a hash of peer stateless reset token and remote address to internal connection IDs
-    map: HashMap<u64, InternalConnectionId, HashBuildHasher>,
+    map: HashMap<NonZeroU64, InternalConnectionId, HashBuildHasher>,
 }
 
 impl StatelessResetMap {
@@ -35,32 +60,20 @@ impl StatelessResetMap {
         token: &stateless_reset::Token,
         remote_address: &SocketAddress,
     ) -> Option<InternalConnectionId> {
-        let key = StatelessResetMap::stateless_reset_key(token, remote_address);
+        let handle = StatelessResetHandle::handle(token, remote_address);
 
-        self.map.get(&key).map(Clone::clone)
+        self.map.get(&handle.0).map(Clone::clone)
     }
 
     /// Inserts a hash of the given stateless reset token and remote address, and the given
     /// internal connection ID into the stateless reset map.
-    fn insert(&mut self, key: u64, internal_id: InternalConnectionId) {
-        self.map.insert(key, internal_id);
+    fn insert(&mut self, handle: StatelessResetHandle, internal_id: InternalConnectionId) {
+        self.map.insert(handle.0, internal_id);
     }
 
     /// Removes the mapping for the given key
-    fn remove(&mut self, key: u64) -> Option<InternalConnectionId> {
-        self.map.remove(&key)
-    }
-
-    /// Creates a key for the stateless reset map by hashing the given stateless
-    /// reset token and remote address
-    pub(crate) fn stateless_reset_key(
-        token: &stateless_reset::Token,
-        remote_address: &SocketAddress,
-    ) -> u64 {
-        let mut hasher = SipHasher13::new();
-        token.hash(&mut hasher);
-        remote_address.hash(&mut hasher);
-        hasher.finish()
+    fn remove(&mut self, handle: StatelessResetHandle) -> Option<InternalConnectionId> {
+        self.map.remove(&handle.0)
     }
 }
 
@@ -97,12 +110,12 @@ impl ConnectionIdMapperState {
 
     /// Inserts a hash of the given stateless reset token and remote address, and the given
     /// internal connection ID into the stateless reset map.
-    pub(crate) fn insert_stateless_reset_key(
+    pub(crate) fn insert_stateless_reset_token(
         &mut self,
-        key: u64,
+        handle: StatelessResetHandle,
         internal_id: InternalConnectionId,
     ) {
-        self.stateless_reset_map.insert(key, internal_id);
+        self.stateless_reset_map.insert(handle, internal_id);
     }
 
     pub(crate) fn remove_local_id(
@@ -112,8 +125,11 @@ impl ConnectionIdMapperState {
         self.local_id_map.remove(external_id)
     }
 
-    pub(crate) fn remove_stateless_reset_key(&mut self, key: u64) -> Option<InternalConnectionId> {
-        self.stateless_reset_map.remove(key)
+    pub(crate) fn remove_stateless_reset_token(
+        &mut self,
+        handle: StatelessResetHandle,
+    ) -> Option<InternalConnectionId> {
+        self.stateless_reset_map.remove(handle)
     }
 }
 
@@ -242,8 +258,11 @@ mod tests {
             )
         );
 
-        let key = StatelessResetMap::stateless_reset_key(&TEST_TOKEN_1, &remote_address);
-        mapper.state.borrow_mut().remove_stateless_reset_key(key);
+        let handle = StatelessResetHandle::handle(&TEST_TOKEN_1, &remote_address);
+        mapper
+            .state
+            .borrow_mut()
+            .remove_stateless_reset_token(handle);
 
         assert_eq!(
             None,
