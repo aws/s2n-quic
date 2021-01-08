@@ -403,7 +403,7 @@ jobs:
       - name: Upload results
         id: s3
         run: |
-          TARGET="${{ github.sha }}/perf/${{ matrix.svg }}"
+          TARGET="${{ github.sha }}/perf/${{ matrix.script }}.svg"
           aws s3 cp target/perf/1G.svg "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
           URL="$CDN/$TARGET"
           echo "::set-output name=URL::$URL"
