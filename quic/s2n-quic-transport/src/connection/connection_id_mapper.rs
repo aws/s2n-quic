@@ -59,10 +59,7 @@ impl ConnectionIdMapperState {
         self.local_id_map.remove(external_id)
     }
 
-    pub(crate) fn remove_stateless_reset_key(
-        &mut self,
-        key: u64,
-    ) -> Option<InternalConnectionId> {
+    pub(crate) fn remove_stateless_reset_key(&mut self, key: u64) -> Option<InternalConnectionId> {
         self.stateless_reset_map.remove(&key)
     }
 
