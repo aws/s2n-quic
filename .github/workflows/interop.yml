@@ -19,6 +19,7 @@ env:
   NETWORK_SIMULATOR_REF: sha256:d36e1ffd9369e41e9fd5cb8d2af5fb69d4bfaf1b1983fc538a5a3bf7777af4ba
   IPERF_ENDPOINT_REF: sha256:cb50cc8019d45d9cad5faecbe46a3c21dd5e871949819a5175423755a9045106
   WIRESHARK_VERSION: 3.4.0rc1
+  CDN: https://dnglbrstg7yg.cloudfront.net
 
 jobs:
   env:
@@ -262,10 +263,9 @@ jobs:
       - name: Upload to S3
         id: s3
         run: |
-          TARGET="s3://s2n-quic-ci-artifacts/${{ github.sha }}/interop"
-          aws s3 sync web $TARGET --acl private --follow-symlinks
-          # generate a presigned url that is valid for 30 days
-          URL=$(aws s3 presign $TARGET/index.html --expires-in 2592000)
+          PATH="${{ github.sha }}/interop"
+          aws s3 sync web "s3://s2n-quic-ci-artifacts/$PATH" --acl private --follow-symlinks
+          URL="$CDN/$PATH/index.html"
           echo "::set-output name=URL::$URL"
 
       - uses: ouzi-dev/commit-status-updater@v1.1.0

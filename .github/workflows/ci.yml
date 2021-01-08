@@ -16,6 +16,7 @@ env:
   # Pin the nightly toolchain to prevent breakage.
   # This should be occasionally updated.
   RUST_NIGHTLY_TOOLCHAIN: nightly-2021-01-06
+  CDN: https://dnglbrstg7yg.cloudfront.net
 
 jobs:
   env:
@@ -37,6 +38,11 @@ jobs:
       - uses: ouzi-dev/commit-status-updater@v1.1.0
         with:
           name: 'compliance / report'
+          status: 'pending'
+
+      - uses: ouzi-dev/commit-status-updater@v1.1.0
+        with:
+          name: 'doc / report'
           status: 'pending'
 
   rustfmt:
@@ -126,6 +132,26 @@ jobs:
         with:
           name: docs
           path: target/doc
+
+      - uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-west-1
+
+      - name: Upload to S3
+        id: s3
+        run: |
+          PATH="${{ github.sha }}/doc"
+          aws s3 cp target/doc "s3://s2n-quic-ci-artifacts/$PATH" --acl private --follow-symlinks
+          URL="$CDN/$PATH/s2n_quic/index.html"
+          echo "::set-output name=URL::$URL"
+
+      - uses: ouzi-dev/commit-status-updater@v1.1.0
+        with:
+          name: 'doc / report'
+          status: 'success'
+          url: "${{ steps.s3.outputs.URL }}"
 
   test:
     runs-on: ${{ matrix.os }}
@@ -243,10 +269,9 @@ jobs:
       - name: Upload to S3
         id: s3
         run: |
-          TARGET="s3://s2n-quic-ci-artifacts/${{ github.sha }}/compliance.html"
-          aws s3 cp target/compliance/report.html $TARGET --acl private --follow-symlinks
-          # generate a presigned url that is valid for 30 days
-          URL=$(aws s3 presign $TARGET --expires-in 2592000)
+          PATH="${{ github.sha }}/compliance.html"
+          aws s3 cp target/compliance/report.html "s3://s2n-quic-ci-artifacts/$PATH" --acl private --follow-symlinks
+          URL="$CDN/$PATH"
           echo "::set-output name=URL::$URL"
 
       - uses: ouzi-dev/commit-status-updater@v1.1.0
@@ -372,10 +397,9 @@ jobs:
       - name: Upload results
         id: s3
         run: |
-          TARGET="s3://s2n-quic-ci-artifacts/${{ github.sha }}/perf/${{ matrix.script }}.svg"
-          aws s3 cp target/perf/1G.svg $TARGET --acl private --follow-symlinks
-          # generate a presigned url that is valid for 30 days
-          URL=$(aws s3 presign $TARGET --expires-in 2592000)
+          PATH="${{ github.sha }}/perf/${{ matrix.svg }}"
+          aws s3 cp target/perf/1G.svg "s3://s2n-quic-ci-artifacts/$PATH" --acl private --follow-symlinks
+          URL="$CDN/$PATH"
           echo "::set-output name=URL::$URL"
 
       - uses: ouzi-dev/commit-status-updater@v1.1.0
