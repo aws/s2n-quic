@@ -2,8 +2,9 @@
 
 use alloc::rc::Rc;
 use core::cell::RefCell;
-use hash_hasher::HashedMap;
-use std::collections::hash_map::{DefaultHasher, Entry, HashMap};
+use hash_hasher::HashBuildHasher;
+use hashbrown::hash_map::{Entry, HashMap};
+use siphasher::sip::SipHasher13;
 
 use s2n_quic_core::{connection, stateless_reset};
 
@@ -12,18 +13,70 @@ use core::hash::{Hash, Hasher};
 use s2n_quic_core::inet::SocketAddress;
 
 #[derive(Debug)]
+pub(crate) struct StatelessResetMap {
+    /// Maps from a hash of peer stateless reset token and remote address to internal connection IDs
+    map: HashMap<u64, InternalConnectionId, HashBuildHasher>,
+}
+
+impl StatelessResetMap {
+    /// Constructs a new `StatelessResetMap`
+    fn new() -> Self {
+        Self {
+            // The `HashBuildHasher`, which doesn't perform additional hashing on the key, is used
+            // since the key is already a hash of Stateless Reset Token and Remote Address
+            map: HashMap::with_hasher(HashBuildHasher::default()),
+        }
+    }
+
+    /// Gets the `InternalConnectionId` (if any) associated with the given stateless reset token
+    /// and remote address
+    fn get(
+        &self,
+        token: &stateless_reset::Token,
+        remote_address: &SocketAddress,
+    ) -> Option<InternalConnectionId> {
+        let key = StatelessResetMap::stateless_reset_key(token, remote_address);
+
+        self.map.get(&key).map(Clone::clone)
+    }
+
+    /// Inserts a hash of the given stateless reset token and remote address, and the given
+    /// internal connection ID into the stateless reset map.
+    fn insert(&mut self, key: u64, internal_id: InternalConnectionId) {
+        self.map.insert(key, internal_id);
+    }
+
+    /// Removes the mapping for the given key
+    fn remove(&mut self, key: u64) -> Option<InternalConnectionId> {
+        self.map.remove(&key)
+    }
+
+    /// Creates a key for the stateless reset map by hashing the given stateless
+    /// reset token and remote address
+    pub(crate) fn stateless_reset_key(
+        token: &stateless_reset::Token,
+        remote_address: &SocketAddress,
+    ) -> u64 {
+        let mut hasher = SipHasher13::new();
+        token.hash(&mut hasher);
+        remote_address.hash(&mut hasher);
+        hasher.finish()
+    }
+}
+
+#[derive(Debug)]
 pub(crate) struct ConnectionIdMapperState {
     /// Maps from external to internal connection IDs
     local_id_map: HashMap<connection::LocalId, InternalConnectionId>,
     /// Maps from a hash of peer stateless reset token and remote address to internal connection IDs
-    stateless_reset_map: HashedMap<u64, InternalConnectionId>,
+    stateless_reset_map: StatelessResetMap,
 }
 
 impl ConnectionIdMapperState {
     fn new() -> Self {
         Self {
             local_id_map: HashMap::new(),
-            stateless_reset_map: HashedMap::default(),
+            stateless_reset_map: StatelessResetMap::new(),
         }
     }
 
@@ -60,19 +113,7 @@ impl ConnectionIdMapperState {
     }
 
     pub(crate) fn remove_stateless_reset_key(&mut self, key: u64) -> Option<InternalConnectionId> {
-        self.stateless_reset_map.remove(&key)
-    }
-
-    /// Creates a key for the stateless reset map by hashing the given stateless
-    /// reset token and remote address
-    pub(crate) fn stateless_reset_key(
-        token: &stateless_reset::Token,
-        remote_address: &SocketAddress,
-    ) -> u64 {
-        let mut hasher = DefaultHasher::new();
-        token.hash(&mut hasher);
-        remote_address.hash(&mut hasher);
-        hasher.finish()
+        self.stateless_reset_map.remove(key)
     }
 }
 
@@ -108,10 +149,6 @@ impl ConnectionIdMapper {
         peer_stateless_reset_token: &stateless_reset::Token,
         remote_address: &SocketAddress,
     ) -> Option<InternalConnectionId> {
-        let key = ConnectionIdMapperState::stateless_reset_key(
-            peer_stateless_reset_token,
-            remote_address,
-        );
         let guard = self.state.borrow();
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1
         //# When comparing a datagram to Stateless Reset Token values, endpoints
@@ -121,7 +158,9 @@ impl ConnectionIdMapper {
         // looking it up in a HashMap, which will perform a hashing function on the
         // key regardless of its value. Since the token is a fixed length, this will
         // be constant time.
-        guard.stateless_reset_map.get(&key).map(Clone::clone)
+        guard
+            .stateless_reset_map
+            .get(peer_stateless_reset_token, remote_address)
     }
 
     /// Creates a `LocalIdRegistry` for a new internal connection ID, which allows that
@@ -203,7 +242,7 @@ mod tests {
             )
         );
 
-        let key = ConnectionIdMapperState::stateless_reset_key(&TEST_TOKEN_1, &remote_address);
+        let key = StatelessResetMap::stateless_reset_key(&TEST_TOKEN_1, &remote_address);
         mapper.state.borrow_mut().remove_stateless_reset_key(key);
 
         assert_eq!(

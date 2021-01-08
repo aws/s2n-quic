@@ -1,6 +1,6 @@
 use crate::{
     connection::{
-        connection_id_mapper::ConnectionIdMapperState,
+        connection_id_mapper::{ConnectionIdMapperState, StatelessResetMap},
         peer_id_registry::{
             PeerIdRegistrationError::{
                 ExceededActiveConnectionIdLimit, ExceededRetiredConnectionIdLimit,
@@ -245,7 +245,7 @@ impl PeerIdRegistry {
         };
 
         let stateless_reset_key = stateless_reset_token.map(|token| {
-            let key = ConnectionIdMapperState::stateless_reset_key(&token, &remote_address);
+            let key = StatelessResetMap::stateless_reset_key(&token, &remote_address);
             registry
                 .state
                 .borrow_mut()
@@ -286,7 +286,7 @@ impl PeerIdRegistry {
         let mut id_pending_new_connection_id = None;
 
         let stateless_reset_key =
-            ConnectionIdMapperState::stateless_reset_key(stateless_reset_token, remote_address);
+            StatelessResetMap::stateless_reset_key(stateless_reset_token, remote_address);
 
         // Iterate over all registered IDs, retiring any as necessary
         for id_info in self.registered_ids.iter_mut() {
