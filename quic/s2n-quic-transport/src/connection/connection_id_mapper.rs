@@ -102,7 +102,6 @@ impl ConnectionIdMapper {
 
     /// Looks up the internal Connection ID which is associated with a stateless
     /// reset token and remote address.
-    #[allow(dead_code)] //TODO: Remove when used
     pub fn lookup_internal_connection_id_by_stateless_reset_token(
         &self,
         peer_stateless_reset_token: &stateless_reset::Token,
@@ -158,5 +157,60 @@ impl ConnectionIdMapper {
             peer_stateless_reset_token,
             remote_address,
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::connection::{peer_id_registry::tests::id, InternalConnectionIdGenerator};
+    use s2n_quic_core::stateless_reset::token::testing::*;
+
+    #[test]
+    fn lookup_internal_connection_id_by_stateless_reset_token_test() {
+        let mut mapper = ConnectionIdMapper::new();
+        let internal_id = InternalConnectionIdGenerator::new().generate_id();
+        let peer_id = id(b"id01");
+        let remote_address = SocketAddress::default();
+
+        let _registry = mapper.create_peer_id_registry(
+            internal_id,
+            peer_id,
+            Some(TEST_TOKEN_1),
+            remote_address,
+        );
+
+        assert_eq!(
+            Some(internal_id),
+            mapper.lookup_internal_connection_id_by_stateless_reset_token(
+                &TEST_TOKEN_1,
+                &remote_address
+            )
+        );
+        assert_eq!(
+            None,
+            mapper.lookup_internal_connection_id_by_stateless_reset_token(
+                &TEST_TOKEN_2,
+                &remote_address
+            )
+        );
+        assert_eq!(
+            None,
+            mapper.lookup_internal_connection_id_by_stateless_reset_token(
+                &TEST_TOKEN_1,
+                &SocketAddress::IPv6(Default::default())
+            )
+        );
+
+        let key = ConnectionIdMapperState::stateless_reset_key(&TEST_TOKEN_1, &remote_address);
+        mapper.state.borrow_mut().remove_stateless_reset_key(key);
+
+        assert_eq!(
+            None,
+            mapper.lookup_internal_connection_id_by_stateless_reset_token(
+                &TEST_TOKEN_1,
+                &remote_address
+            )
+        );
     }
 }

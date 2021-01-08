@@ -565,7 +565,7 @@ impl transmission::interest::Provider for PeerIdRegistry {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use crate::{
         connection::{
             peer_id_registry::{
@@ -601,7 +601,7 @@ mod tests {
     };
 
     // Helper function to easily generate a PeerId from bytes
-    fn id(bytes: &[u8]) -> connection::PeerId {
+    pub fn id(bytes: &[u8]) -> connection::PeerId {
         connection::PeerId::try_from_bytes(bytes).unwrap()
     }
 
