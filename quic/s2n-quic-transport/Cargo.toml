@@ -7,6 +7,7 @@ license = "Apache-2.0"
 
 [dependencies]
 bytes = { version = "0.6", default-features = false }
+hash_hasher = "2.0"
 s2n-codec = { version = "0.1", path = "../../common/s2n-codec", default-features = false }
 s2n-quic-core = { version = "0.1", path = "../s2n-quic-core", default-features = false }
 intrusive-collections = "0.9"

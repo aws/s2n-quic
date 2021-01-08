@@ -63,12 +63,9 @@ struct PeerIdInfo {
     //# detecting when NEW_CONNECTION_ID or RETIRE_CONNECTION_ID frames refer
     //# to the same value.
     sequence_number: u32,
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
-    //# A 128-bit value that will be used for a stateless reset when the
-    //# associated connection ID is used.
-    stateless_reset_token: Option<stateless_reset::Token>,
-    // The remote address associated with this peer ID
-    remote_address: SocketAddress,
+    // A hash of the stateless reset token and remote address for looking up
+    // if a particularly token and remote address are in the shared state.
+    stateless_reset_key: Option<u64>,
     // The current status of the connection ID
     status: PeerIdStatus,
 }
@@ -88,22 +85,22 @@ impl PeerIdInfo {
     fn validate_new_connection_id(
         &self,
         new_id: &connection::PeerId,
-        stateless_reset_token: stateless_reset::Token,
+        stateless_reset_key: u64,
         sequence_number: u32,
     ) -> Result<bool, PeerIdRegistrationError> {
-        let reset_token_is_equal = self
-            .stateless_reset_token
-            .map_or(false, |token| token == stateless_reset_token);
+        let reset_key_is_equal = self
+            .stateless_reset_key
+            .map_or(false, |key| key == stateless_reset_key);
         let sequence_number_is_equal = self.sequence_number == sequence_number;
 
         if self.id == *new_id {
-            if !reset_token_is_equal || !sequence_number_is_equal {
+            if !reset_key_is_equal || !sequence_number_is_equal {
                 return Err(InvalidNewConnectionId);
             }
 
             // This was a valid duplicate new connection ID
             return Ok(true);
-        } else if sequence_number_is_equal || reset_token_is_equal {
+        } else if sequence_number_is_equal || reset_key_is_equal {
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.2
             //# Endpoints are not required to compare new values
             //# against all previous values, but a duplicate value MAY be treated as
@@ -220,14 +217,12 @@ impl Drop for PeerIdRegistry {
         let mut guard = self.state.borrow_mut();
 
         // Stop tracking all associated stateless reset tokens
-        for (stateless_reset_token, remote_address) in
-            self.registered_ids.iter().filter_map(|id_info| {
-                id_info
-                    .stateless_reset_token
-                    .map(|token| (token, id_info.remote_address))
-            })
+        for key in self
+            .registered_ids
+            .iter()
+            .flat_map(|id_info| id_info.stateless_reset_key)
         {
-            guard.remove_stateless_reset_token(stateless_reset_token, remote_address);
+            guard.remove_stateless_reset_key(key);
         }
     }
 }
@@ -248,25 +243,26 @@ impl PeerIdRegistry {
             registered_ids: SmallVec::new(),
             retire_prior_to: 0,
         };
+
+        let stateless_reset_key = stateless_reset_token.map(|token| {
+            let key = ConnectionIdMapperState::stateless_reset_key(&token, &remote_address);
+            registry
+                .state
+                .borrow_mut()
+                .insert_stateless_reset_key(key, internal_id);
+            key
+        });
+
         registry.registered_ids.push(PeerIdInfo {
             id: initial_connection_id,
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
             //# The sequence number of the initial connection ID is 0.
             sequence_number: 0,
-            stateless_reset_token,
-            remote_address,
+            stateless_reset_key,
             // Start the initial PeerId in ActivePendingNewConnectionId so the ID used
             // during the handshake is rotated as soon as the peer sends a new connection ID
             status: PeerIdStatus::InUsePendingNewConnectionId,
         });
-
-        if let Some(token) = stateless_reset_token {
-            registry.state.borrow_mut().insert_stateless_reset_token(
-                token,
-                remote_address,
-                internal_id,
-            );
-        }
 
         registry
     }
@@ -277,8 +273,8 @@ impl PeerIdRegistry {
         new_id: &connection::PeerId,
         sequence_number: u32,
         retire_prior_to: u32,
-        stateless_reset_token: stateless_reset::Token,
-        remote_address: SocketAddress,
+        stateless_reset_token: &stateless_reset::Token,
+        remote_address: &SocketAddress,
     ) -> Result<(), PeerIdRegistrationError> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
         //# A receiver MUST ignore any Retire Prior To fields that do not
@@ -289,13 +285,13 @@ impl PeerIdRegistry {
         let mut is_duplicate = false;
         let mut id_pending_new_connection_id = None;
 
+        let stateless_reset_key =
+            ConnectionIdMapperState::stateless_reset_key(stateless_reset_token, remote_address);
+
         // Iterate over all registered IDs, retiring any as necessary
         for id_info in self.registered_ids.iter_mut() {
-            is_duplicate |= id_info.validate_new_connection_id(
-                new_id,
-                stateless_reset_token,
-                sequence_number,
-            )?;
+            is_duplicate |=
+                id_info.validate_new_connection_id(new_id, stateless_reset_key, sequence_number)?;
 
             if id_info.is_retire_ready(self.retire_prior_to) {
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2
@@ -324,8 +320,7 @@ impl PeerIdRegistry {
             let mut new_id_info = PeerIdInfo {
                 id: *new_id,
                 sequence_number,
-                stateless_reset_token: Some(stateless_reset_token),
-                remote_address,
+                stateless_reset_key: Some(stateless_reset_key),
                 status: New,
             };
 
@@ -395,16 +390,13 @@ impl PeerIdRegistry {
         self.registered_ids.retain(|id_info| {
             if let PendingAcknowledgement(packet_number) = id_info.status {
                 if ack_set.contains(packet_number) {
-                    if let Some(stateless_reset_token) = id_info.stateless_reset_token {
+                    if let Some(key) = id_info.stateless_reset_key {
                         // Stop tracking the stateless reset token
                         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1
                         //# An endpoint MUST NOT check for any Stateless Reset Tokens associated
                         //# with connection IDs it has not used or for connection IDs that have
                         //# been retired.
-                        mapper_state.remove_stateless_reset_token(
-                            stateless_reset_token,
-                            id_info.remote_address,
-                        );
+                        mapper_state.remove_stateless_reset_key(key);
                     }
                     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2
                     //# An endpoint MUST NOT forget a connection ID without retiring it
@@ -453,12 +445,10 @@ impl PeerIdRegistry {
                 //# An endpoint MUST NOT check for any Stateless Reset Tokens associated
                 //# with connection IDs it has not used or for connection IDs that have
                 //# been retired.
-                if let Some(stateless_reset_token) = id_info.stateless_reset_token {
-                    self.state.borrow_mut().insert_stateless_reset_token(
-                        stateless_reset_token,
-                        id_info.remote_address,
-                        self.internal_id,
-                    );
+                if let Some(key) = id_info.stateless_reset_key {
+                    self.state
+                        .borrow_mut()
+                        .insert_stateless_reset_key(key, self.internal_id);
                 }
 
                 // Consume the new id
@@ -544,8 +534,8 @@ impl PeerIdRegistry {
             registered_id_copy.sort_by_key(|id_info| id_info.id);
             registered_id_copy.dedup_by_key(|id_info| id_info.id);
             assert_eq!(before_count, registered_id_copy.len());
-            registered_id_copy.sort_by_key(|id_info| id_info.stateless_reset_token);
-            registered_id_copy.dedup_by_key(|id_info| id_info.stateless_reset_token);
+            registered_id_copy.sort_by_key(|id_info| id_info.stateless_reset_key);
+            registered_id_copy.dedup_by_key(|id_info| id_info.stateless_reset_key);
             assert_eq!(before_count, registered_id_copy.len());
         }
     }
@@ -649,8 +639,8 @@ mod tests {
                     &id(&i.to_ne_bytes()),
                     i,
                     i,
-                    [i as u8; STATELESS_RESET_TOKEN_LEN].into(),
-                    SocketAddress::default(),
+                    &[i as u8; STATELESS_RESET_TOKEN_LEN].into(),
+                    &SocketAddress::default(),
                 )
                 .is_ok());
         }
@@ -660,8 +650,8 @@ mod tests {
             &id(b"id08"),
             8,
             8,
-            [8_u8; STATELESS_RESET_TOKEN_LEN].into(),
-            SocketAddress::default(),
+            &[8_u8; STATELESS_RESET_TOKEN_LEN].into(),
+            &SocketAddress::default(),
         );
 
         assert_eq!(Some(ExceededRetiredConnectionIdLimit), result.err());
@@ -687,8 +677,8 @@ mod tests {
                     &id(&i.to_ne_bytes()),
                     i,
                     4,
-                    [i as u8; STATELESS_RESET_TOKEN_LEN].into(),
-                    SocketAddress::default(),
+                    &[i as u8; STATELESS_RESET_TOKEN_LEN].into(),
+                    &SocketAddress::default(),
                 )
                 .is_ok());
         }
@@ -698,8 +688,8 @@ mod tests {
             &id(b"id07"),
             8,
             0,
-            [8_u8; STATELESS_RESET_TOKEN_LEN].into(),
-            SocketAddress::default(),
+            &[8_u8; STATELESS_RESET_TOKEN_LEN].into(),
+            &SocketAddress::default(),
         );
 
         assert_eq!(Some(ExceededActiveConnectionIdLimit), result.err());
@@ -716,14 +706,14 @@ mod tests {
 
         let id_2 = id(b"id02");
         assert!(reg
-            .on_new_connection_id(&id_2, 1, 0, TEST_TOKEN_1, SocketAddress::default())
+            .on_new_connection_id(&id_2, 1, 0, &TEST_TOKEN_1, &SocketAddress::default())
             .is_ok());
 
         assert_eq!(2, reg.registered_ids.len());
         reg.registered_ids[1].status = PendingRetirement;
 
         assert!(reg
-            .on_new_connection_id(&id_2, 1, 0, TEST_TOKEN_1, SocketAddress::default())
+            .on_new_connection_id(&id_2, 1, 0, &TEST_TOKEN_1, &SocketAddress::default())
             .is_ok());
         assert_eq!(2, reg.registered_ids.len());
         assert_eq!(PendingRetirement, reg.registered_ids[1].status);
@@ -739,12 +729,12 @@ mod tests {
 
         let id_2 = id(b"id02");
         assert!(reg
-            .on_new_connection_id(&id_2, 1, 0, TEST_TOKEN_1, SocketAddress::default())
+            .on_new_connection_id(&id_2, 1, 0, &TEST_TOKEN_1, &SocketAddress::default())
             .is_ok());
 
         let id_3 = id(b"id03");
         assert!(reg
-            .on_new_connection_id(&id_3, 2, 0, TEST_TOKEN_2, SocketAddress::default())
+            .on_new_connection_id(&id_3, 2, 0, &TEST_TOKEN_2, &SocketAddress::default())
             .is_ok());
 
         assert_eq!(
@@ -770,16 +760,16 @@ mod tests {
 
         let id_2 = id(b"id02");
         assert!(reg
-            .on_new_connection_id(&id_2, 1, 0, TEST_TOKEN_1, SocketAddress::default())
+            .on_new_connection_id(&id_2, 1, 0, &TEST_TOKEN_1, &SocketAddress::default())
             .is_ok());
 
         // Change the sequence number
         let mut result =
-            reg.on_new_connection_id(&id_2, 2, 0, TEST_TOKEN_1, SocketAddress::default());
+            reg.on_new_connection_id(&id_2, 2, 0, &TEST_TOKEN_1, &SocketAddress::default());
         assert_eq!(Some(InvalidNewConnectionId), result.err());
 
         // Change the stateless reset token
-        result = reg.on_new_connection_id(&id_2, 1, 0, TEST_TOKEN_2, SocketAddress::default());
+        result = reg.on_new_connection_id(&id_2, 1, 0, &TEST_TOKEN_2, &SocketAddress::default());
         assert_eq!(Some(InvalidNewConnectionId), result.err());
     }
 
@@ -798,12 +788,12 @@ mod tests {
         let id_2 = id(b"id02");
         let id_3 = id(b"id03");
         assert!(reg
-            .on_new_connection_id(&id_2, 1, 0, TEST_TOKEN_1, SocketAddress::default())
+            .on_new_connection_id(&id_2, 1, 0, &TEST_TOKEN_1, &SocketAddress::default())
             .is_ok());
 
         // Same sequence number
         let mut result =
-            reg.on_new_connection_id(&id_3, 1, 0, TEST_TOKEN_2, SocketAddress::default());
+            reg.on_new_connection_id(&id_3, 1, 0, &TEST_TOKEN_2, &SocketAddress::default());
         assert_eq!(Some(InvalidNewConnectionId), result.err());
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.2
@@ -812,7 +802,7 @@ mod tests {
         //# against all previous values, but a duplicate value MAY be treated as
         //# a connection error of type PROTOCOL_VIOLATION.
         // Same stateless reset token
-        result = reg.on_new_connection_id(&id_3, 2, 0, TEST_TOKEN_1, SocketAddress::default());
+        result = reg.on_new_connection_id(&id_3, 2, 0, &TEST_TOKEN_1, &SocketAddress::default());
         assert_eq!(Some(InvalidNewConnectionId), result.err());
     }
 
@@ -829,14 +819,14 @@ mod tests {
         let id_3 = id(b"id03");
         let id_4 = id(b"id04");
         assert!(reg
-            .on_new_connection_id(&id_2, 1, 0, TEST_TOKEN_2, SocketAddress::default())
+            .on_new_connection_id(&id_2, 1, 0, &TEST_TOKEN_2, &SocketAddress::default())
             .is_ok());
         assert!(reg
-            .on_new_connection_id(&id_3, 2, 1, TEST_TOKEN_3, SocketAddress::default())
+            .on_new_connection_id(&id_3, 2, 1, &TEST_TOKEN_3, &SocketAddress::default())
             .is_ok());
         assert_eq!(1, reg.retire_prior_to);
         assert!(reg
-            .on_new_connection_id(&id_4, 3, 0, TEST_TOKEN_4, SocketAddress::default())
+            .on_new_connection_id(&id_4, 3, 0, &TEST_TOKEN_4, &SocketAddress::default())
             .is_ok());
         assert_eq!(1, reg.retire_prior_to);
     }
@@ -854,7 +844,7 @@ mod tests {
 
         let id_2 = id(b"id02");
         assert!(reg
-            .on_new_connection_id(&id_2, 1, 1, TEST_TOKEN_2, SocketAddress::default())
+            .on_new_connection_id(&id_2, 1, 1, &TEST_TOKEN_2, &SocketAddress::default())
             .is_ok());
 
         assert_eq!(PendingRetirement, reg.registered_ids[0].status);
@@ -925,14 +915,14 @@ mod tests {
 
         let id_2 = id(b"id02");
         assert!(reg
-            .on_new_connection_id(&id_2, 10, 10, TEST_TOKEN_2, SocketAddress::default())
+            .on_new_connection_id(&id_2, 10, 10, &TEST_TOKEN_2, &SocketAddress::default())
             .is_ok());
         assert_eq!(PendingRetirement, reg.registered_ids[0].status);
         assert_eq!(New, reg.registered_ids[1].status);
 
         let id_3 = id(b"id03");
         assert!(reg
-            .on_new_connection_id(&id_3, 1, 0, TEST_TOKEN_3, SocketAddress::default())
+            .on_new_connection_id(&id_3, 1, 0, &TEST_TOKEN_3, &SocketAddress::default())
             .is_ok());
 
         assert_eq!(New, reg.registered_ids[1].status);
@@ -948,7 +938,7 @@ mod tests {
 
         let id_2 = id(b"id02");
         assert!(reg
-            .on_new_connection_id(&id_2, 1, 0, TEST_TOKEN_2, SocketAddress::default())
+            .on_new_connection_id(&id_2, 1, 0, &TEST_TOKEN_2, &SocketAddress::default())
             .is_ok());
 
         assert_eq!(PendingRetirement, reg.registered_ids[0].status);
@@ -963,14 +953,14 @@ mod tests {
 
         let id_2 = id(b"id02");
         assert!(reg
-            .on_new_connection_id(&id_2, 1, 0, TEST_TOKEN_2, SocketAddress::default())
+            .on_new_connection_id(&id_2, 1, 0, &TEST_TOKEN_2, &SocketAddress::default())
             .is_ok());
 
         assert_eq!(Some(id_2), reg.consume_new_id_if_necessary(None));
 
         let id_3 = id(b"id03");
         assert!(reg
-            .on_new_connection_id(&id_3, 2, 0, TEST_TOKEN_3, SocketAddress::default())
+            .on_new_connection_id(&id_3, 2, 0, &TEST_TOKEN_3, &SocketAddress::default())
             .is_ok());
 
         // ID 3 is not retired, so it is not necessary to consume a new ID
@@ -978,7 +968,7 @@ mod tests {
 
         let id_4 = id(b"id04");
         assert!(reg
-            .on_new_connection_id(&id_4, 3, 3, TEST_TOKEN_4, SocketAddress::default())
+            .on_new_connection_id(&id_4, 3, 3, &TEST_TOKEN_4, &SocketAddress::default())
             .is_ok());
 
         // ID 2 is retired, so it is necessary to consume a new ID

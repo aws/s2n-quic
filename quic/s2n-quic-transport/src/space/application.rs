@@ -498,13 +498,14 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
             .as_u64()
             .try_into()
             .map_err(|_err| TransportError::PROTOCOL_VIOLATION)?;
+        let stateless_reset_token = (*frame.stateless_reset_token).into();
 
         path_manager.on_new_connection_id(
             &peer_id,
             sequence_number,
             retire_prior_to,
-            (*frame.stateless_reset_token).into(),
-            datagram.remote_address,
+            &stateless_reset_token,
+            &datagram.remote_address,
         )
     }
 

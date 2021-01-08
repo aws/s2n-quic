@@ -2,27 +2,28 @@
 
 use alloc::rc::Rc;
 use core::cell::RefCell;
-use std::collections::hash_map::{Entry, HashMap};
+use hash_hasher::HashedMap;
+use std::collections::hash_map::{DefaultHasher, Entry, HashMap};
 
 use s2n_quic_core::{connection, stateless_reset};
 
 use crate::connection::{local_id_registry::LocalIdRegistry, InternalConnectionId, PeerIdRegistry};
+use core::hash::{Hash, Hasher};
 use s2n_quic_core::inet::SocketAddress;
 
 #[derive(Debug)]
 pub(crate) struct ConnectionIdMapperState {
     /// Maps from external to internal connection IDs
-    connection_map: HashMap<connection::LocalId, InternalConnectionId>,
-    /// Maps from a tuple of peer stateless reset token and remote address to internal connection IDs
-    stateless_reset_token_map:
-        HashMap<(stateless_reset::Token, SocketAddress), InternalConnectionId>,
+    local_id_map: HashMap<connection::LocalId, InternalConnectionId>,
+    /// Maps from a hash of peer stateless reset token and remote address to internal connection IDs
+    stateless_reset_map: HashedMap<u64, InternalConnectionId>,
 }
 
 impl ConnectionIdMapperState {
     fn new() -> Self {
         Self {
-            connection_map: HashMap::new(),
-            stateless_reset_token_map: HashMap::new(),
+            local_id_map: HashMap::new(),
+            stateless_reset_map: HashedMap::default(),
         }
     }
 
@@ -31,7 +32,7 @@ impl ConnectionIdMapperState {
         external_id: &connection::LocalId,
         internal_id: InternalConnectionId,
     ) -> Result<(), ()> {
-        let entry = self.connection_map.entry(*external_id);
+        let entry = self.local_id_map.entry(*external_id);
         match entry {
             Entry::Occupied(_) => Err(()),
             Entry::Vacant(entry) => {
@@ -41,30 +42,40 @@ impl ConnectionIdMapperState {
         }
     }
 
-    pub(crate) fn insert_stateless_reset_token(
+    /// Inserts a hash of the given stateless reset token and remote address, and the given
+    /// internal connection ID into the stateless reset map.
+    pub(crate) fn insert_stateless_reset_key(
         &mut self,
-        token: stateless_reset::Token,
-        remote_address: SocketAddress,
+        key: u64,
         internal_id: InternalConnectionId,
     ) {
-        self.stateless_reset_token_map
-            .insert((token, remote_address), internal_id);
+        self.stateless_reset_map.insert(key, internal_id);
     }
 
     pub(crate) fn remove_local_id(
         &mut self,
         external_id: &connection::LocalId,
     ) -> Option<InternalConnectionId> {
-        self.connection_map.remove(external_id)
+        self.local_id_map.remove(external_id)
     }
 
-    pub(crate) fn remove_stateless_reset_token(
+    pub(crate) fn remove_stateless_reset_key(
         &mut self,
-        token: stateless_reset::Token,
-        remote_address: SocketAddress,
+        key: u64,
     ) -> Option<InternalConnectionId> {
-        self.stateless_reset_token_map
-            .remove(&(token, remote_address))
+        self.stateless_reset_map.remove(&key)
+    }
+
+    /// Creates a key for the stateless reset map by hashing the given stateless
+    /// reset token and remote address
+    pub(crate) fn stateless_reset_key(
+        token: &stateless_reset::Token,
+        remote_address: &SocketAddress,
+    ) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        token.hash(&mut hasher);
+        remote_address.hash(&mut hasher);
+        hasher.finish()
     }
 }
 
@@ -89,7 +100,7 @@ impl ConnectionIdMapper {
         connection_id: &connection::LocalId,
     ) -> Option<InternalConnectionId> {
         let guard = self.state.borrow();
-        guard.connection_map.get(connection_id).map(Clone::clone)
+        guard.local_id_map.get(connection_id).map(Clone::clone)
     }
 
     /// Looks up the internal Connection ID which is associated with a stateless
@@ -97,9 +108,13 @@ impl ConnectionIdMapper {
     #[allow(dead_code)] //TODO: Remove when used
     pub fn lookup_internal_connection_id_by_stateless_reset_token(
         &self,
-        peer_stateless_reset_token: stateless_reset::Token,
-        remote_address: SocketAddress,
+        peer_stateless_reset_token: &stateless_reset::Token,
+        remote_address: &SocketAddress,
     ) -> Option<InternalConnectionId> {
+        let key = ConnectionIdMapperState::stateless_reset_key(
+            peer_stateless_reset_token,
+            remote_address,
+        );
         let guard = self.state.borrow();
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1
         //# When comparing a datagram to Stateless Reset Token values, endpoints
@@ -109,10 +124,7 @@ impl ConnectionIdMapper {
         // looking it up in a HashMap, which will perform a hashing function on the
         // key regardless of its value. Since the token is a fixed length, this will
         // be constant time.
-        guard
-            .stateless_reset_token_map
-            .get(&(peer_stateless_reset_token, remote_address))
-            .map(Clone::clone)
+        guard.stateless_reset_map.get(&key).map(Clone::clone)
     }
 
     /// Creates a `LocalIdRegistry` for a new internal connection ID, which allows that
