@@ -840,11 +840,18 @@ pub(crate) mod tests {
     #[test]
     fn retire_connection_id_when_retire_prior_to_increases() {
         let id_1 = id(b"id01");
-        let mut reg = reg(id_1, None);
+        let remote_address = SocketAddress::default();
+        let mut mapper = ConnectionIdMapper::new();
+        let mut reg = mapper.create_peer_id_registry(
+            InternalConnectionIdGenerator::new().generate_id(),
+            id_1,
+            Some(TEST_TOKEN_1),
+            remote_address,
+        );
 
         let id_2 = id(b"id02");
         assert!(reg
-            .on_new_connection_id(&id_2, 1, 1, &TEST_TOKEN_2, &SocketAddress::default())
+            .on_new_connection_id(&id_2, 1, 1, &TEST_TOKEN_2, &remote_address)
             .is_ok());
 
         assert_eq!(PendingRetirement, reg.registered_ids[0].status);
@@ -892,11 +899,31 @@ pub(crate) mod tests {
         let packet_number = write_context.packet_number();
         reg.on_transmit(&mut write_context);
 
+        assert_eq!(
+            Some(reg.internal_id),
+            mapper.lookup_internal_connection_id_by_stateless_reset_token(
+                &TEST_TOKEN_1,
+                &remote_address
+            )
+        );
+
         reg.on_packet_ack(&PacketNumberRange::new(packet_number, packet_number));
 
         // ID 1 was removed
         assert_eq!(reg.registered_ids.len(), 1);
         assert_eq!(id_2, reg.registered_ids[0].id);
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1
+        //= type=test
+        //# An endpoint MUST NOT check for any Stateless Reset Tokens associated
+        //# with connection IDs it has not used or for connection IDs that have
+        //# been retired.
+        assert_eq!(
+            None,
+            mapper.lookup_internal_connection_id_by_stateless_reset_token(
+                &TEST_TOKEN_1,
+                &remote_address
+            )
+        );
 
         assert_eq!(transmission::Interest::None, reg.transmission_interest());
     }
@@ -947,32 +974,86 @@ pub(crate) mod tests {
     #[test]
     fn consume_new_id_if_necessary() {
         let id_1 = id(b"id01");
-        let mut reg = reg(id_1, None);
+        let remote_address = SocketAddress::default();
+        let mut mapper = ConnectionIdMapper::new();
+        let mut reg = mapper.create_peer_id_registry(
+            InternalConnectionIdGenerator::new().generate_id(),
+            id_1,
+            Some(TEST_TOKEN_1),
+            remote_address,
+        );
 
         assert_eq!(InUsePendingNewConnectionId, reg.registered_ids[0].status);
+        assert_eq!(
+            Some(reg.internal_id),
+            mapper.lookup_internal_connection_id_by_stateless_reset_token(
+                &TEST_TOKEN_1,
+                &remote_address
+            )
+        );
 
         let id_2 = id(b"id02");
         assert!(reg
-            .on_new_connection_id(&id_2, 1, 0, &TEST_TOKEN_2, &SocketAddress::default())
+            .on_new_connection_id(&id_2, 1, 0, &TEST_TOKEN_2, &remote_address)
             .is_ok());
 
+        assert_eq!(
+            None,
+            mapper.lookup_internal_connection_id_by_stateless_reset_token(
+                &TEST_TOKEN_2,
+                &remote_address
+            )
+        );
         assert_eq!(Some(id_2), reg.consume_new_id_if_necessary(None));
+        assert_eq!(
+            Some(reg.internal_id),
+            mapper.lookup_internal_connection_id_by_stateless_reset_token(
+                &TEST_TOKEN_2,
+                &remote_address
+            )
+        );
 
         let id_3 = id(b"id03");
         assert!(reg
-            .on_new_connection_id(&id_3, 2, 0, &TEST_TOKEN_3, &SocketAddress::default())
+            .on_new_connection_id(&id_3, 2, 0, &TEST_TOKEN_3, &remote_address)
             .is_ok());
 
         // ID 3 is not retired, so it is not necessary to consume a new ID
         assert_eq!(Some(id_3), reg.consume_new_id_if_necessary(Some(&id_3)));
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1
+        //= type=test
+        //# An endpoint MUST NOT check for any Stateless Reset Tokens associated
+        //# with connection IDs it has not used or for connection IDs that have
+        //# been retired.
+        assert_eq!(
+            None,
+            mapper.lookup_internal_connection_id_by_stateless_reset_token(
+                &TEST_TOKEN_3,
+                &remote_address
+            )
+        );
 
         let id_4 = id(b"id04");
         assert!(reg
-            .on_new_connection_id(&id_4, 3, 3, &TEST_TOKEN_4, &SocketAddress::default())
+            .on_new_connection_id(&id_4, 3, 3, &TEST_TOKEN_4, &remote_address)
             .is_ok());
+        assert_eq!(
+            None,
+            mapper.lookup_internal_connection_id_by_stateless_reset_token(
+                &TEST_TOKEN_4,
+                &remote_address
+            )
+        );
 
         // ID 2 is retired, so it is necessary to consume a new ID
         assert_eq!(Some(id_4), reg.consume_new_id_if_necessary(Some(&id_2)));
+        assert_eq!(
+            Some(reg.internal_id),
+            mapper.lookup_internal_connection_id_by_stateless_reset_token(
+                &TEST_TOKEN_4,
+                &remote_address
+            )
+        );
 
         // There are no new IDs left, so None is returned
         assert_eq!(None, reg.consume_new_id_if_necessary(Some(&id_3)));

@@ -102,6 +102,7 @@ impl ConnectionIdMapper {
 
     /// Looks up the internal Connection ID which is associated with a stateless
     /// reset token and remote address.
+    #[allow(dead_code)] //TODO: Remove when used
     pub fn lookup_internal_connection_id_by_stateless_reset_token(
         &self,
         peer_stateless_reset_token: &stateless_reset::Token,
