@@ -199,6 +199,8 @@ jobs:
           components: miri
 
       - uses: camshaft/rust-cache@v1
+        with:
+          key: ${{ matrix.crate }}
 
       - name: ${{ matrix.crate }}
         run: cd ${{ matrix.crate }} && cargo miri test
@@ -355,6 +357,8 @@ jobs:
           override: true
 
       - uses: camshaft/rust-cache@v1
+        with:
+          key: ${{ matrix.example }}
 
       - name: ${{ matrix.example }}
         working-directory: ${{ matrix.example }}
@@ -376,6 +380,8 @@ jobs:
           override: true
 
       - uses: camshaft/rust-cache@v1
+        with:
+          key: ${{ matrix.script }}
 
       - name: Install inferno
         uses: camshaft/install@v1

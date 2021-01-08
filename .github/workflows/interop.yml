@@ -71,6 +71,8 @@ jobs:
           override: true
 
       - uses: camshaft/rust-cache@v1
+        with:
+          key: ${{ matrix.mode }}
 
       - name: Run cargo build
         uses: actions-rs/cargo@v1
