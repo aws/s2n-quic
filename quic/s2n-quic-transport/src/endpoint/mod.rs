@@ -68,15 +68,21 @@ unsafe impl<Cfg: Config> Send for Endpoint<Cfg> {}
 
 impl<Cfg: Config> Endpoint<Cfg> {
     /// Creates a new QUIC endpoint using the given configuration
-    pub fn new(config: Cfg) -> (Self, Acceptor) {
+    pub fn new(mut config: Cfg) -> (Self, Acceptor) {
         let (connection_sender, connection_receiver) = unbounded_channel::channel();
         let acceptor = Acceptor::new(connection_receiver);
+
+        let connection_id_mapper = ConnectionIdMapper::new(
+            config
+                .context()
+                .stateless_reset_unpredictable_bits_generator,
+        );
 
         let endpoint = Self {
             config,
             connections: ConnectionContainer::new(connection_sender),
             connection_id_generator: InternalConnectionIdGenerator::new(),
-            connection_id_mapper: ConnectionIdMapper::new(),
+            connection_id_mapper,
             timer_manager: TimerManager::new(),
             wakeup_queue: WakeupQueue::new(),
             dequeued_wakeups: VecDeque::new(),

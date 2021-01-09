@@ -332,12 +332,14 @@ mod tests {
         initial_id: connection::PeerId,
         stateless_reset_token: Option<stateless_reset::Token>,
     ) -> Manager<CC> {
-        let peer_id_registry = ConnectionIdMapper::new().create_peer_id_registry(
-            InternalConnectionIdGenerator::new().generate_id(),
-            initial_id,
-            stateless_reset_token,
-            first_path.peer_socket_address,
-        );
+        let mut unpredictable_bits_generator = stateless_reset::testing::Generator(123);
+        let peer_id_registry = ConnectionIdMapper::new(&mut unpredictable_bits_generator)
+            .create_peer_id_registry(
+                InternalConnectionIdGenerator::new().generate_id(),
+                initial_id,
+                stateless_reset_token,
+                first_path.peer_socket_address,
+            );
         Manager::new(first_path, peer_id_registry)
     }
 

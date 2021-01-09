@@ -20,7 +20,7 @@ pub mod testing {
     use crate::stateless_reset;
 
     #[derive(Debug, Default)]
-    pub struct Generator(u8);
+    pub struct Generator(pub u8);
 
     impl stateless_reset::UnpredictableBits for Generator {
         fn fill(&mut self, dest: &mut [u8]) {

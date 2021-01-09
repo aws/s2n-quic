@@ -672,20 +672,31 @@ mod tests {
         connection::LocalId::try_from_bytes(bytes).unwrap()
     }
 
+    // Helper function to easily create a LocalIdRegistry and Mapper
+    fn mapper(
+        initial_id: connection::LocalId,
+        token: stateless_reset::Token,
+    ) -> (ConnectionIdMapper, LocalIdRegistry) {
+        let mut unpredictable_bits_generator = stateless_reset::testing::Generator(123);
+
+        let mut mapper = ConnectionIdMapper::new(&mut unpredictable_bits_generator);
+        let registry = mapper.create_local_id_registry(
+            InternalConnectionIdGenerator::new().generate_id(),
+            &initial_id,
+            token,
+        );
+        (mapper, registry)
+    }
+
     // Verify that an expiration with the earliest possible time results in a valid retirement time
     #[test]
     fn minimum_lifetime() {
-        let mut id_generator = InternalConnectionIdGenerator::new();
-        let mut mapper = ConnectionIdMapper::new();
-
-        let id1 = id_generator.generate_id();
-
         let ext_id_1 = id(b"id01");
         let ext_id_2 = id(b"id02");
 
         let expiration = s2n_quic_platform::time::now() + MIN_LIFETIME;
 
-        let mut reg1 = mapper.create_local_id_registry(id1, &ext_id_1, TEST_TOKEN_1);
+        let (_mapper, mut reg1) = mapper(ext_id_1, TEST_TOKEN_1);
         reg1.set_active_connection_id_limit(3);
         assert!(reg1
             .register_connection_id(&ext_id_2, Some(expiration), TEST_TOKEN_2)
@@ -705,11 +716,7 @@ mod tests {
     #[test]
     fn same_connection_id_must_not_be_issued_for_same_connection() {
         let ext_id = id(b"id01");
-        let mut reg = ConnectionIdMapper::new().create_local_id_registry(
-            InternalConnectionIdGenerator::new().generate_id(),
-            &ext_id,
-            TEST_TOKEN_1,
-        );
+        let (_, mut reg) = mapper(ext_id, TEST_TOKEN_1);
 
         assert_eq!(
             Err(LocalIdRegistrationError::ConnectionIdInUse),
@@ -726,11 +733,7 @@ mod tests {
         let ext_id_1 = id(b"id01");
         let ext_id_2 = id(b"id02");
 
-        let mut reg = ConnectionIdMapper::new().create_local_id_registry(
-            InternalConnectionIdGenerator::new().generate_id(),
-            &ext_id_1,
-            TEST_TOKEN_1,
-        );
+        let (_, mut reg) = mapper(ext_id_1, TEST_TOKEN_1);
         reg.set_active_connection_id_limit(3);
         reg.register_connection_id(&ext_id_2, None, TEST_TOKEN_2)
             .unwrap();
@@ -750,7 +753,8 @@ mod tests {
     #[test]
     fn connection_mapper_test() {
         let mut id_generator = InternalConnectionIdGenerator::new();
-        let mut mapper = ConnectionIdMapper::new();
+        let mut unpredictable_bits_generator = stateless_reset::testing::Generator(123);
+        let mut mapper = ConnectionIdMapper::new(&mut unpredictable_bits_generator);
 
         let id1 = id_generator.generate_id();
         let id2 = id_generator.generate_id();
@@ -836,17 +840,12 @@ mod tests {
 
     #[test]
     fn on_retire_connection_id() {
-        let mut id_generator = InternalConnectionIdGenerator::new();
-        let mut mapper = ConnectionIdMapper::new();
-
-        let id1 = id_generator.generate_id();
-
         let ext_id_1 = id(b"id01");
         let ext_id_2 = id(b"id02");
 
         let now = s2n_quic_platform::time::now();
+        let (mapper, mut reg1) = mapper(ext_id_1, TEST_TOKEN_1);
 
-        let mut reg1 = mapper.create_local_id_registry(id1, &ext_id_1, TEST_TOKEN_1);
         reg1.set_active_connection_id_limit(2);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.16
@@ -922,17 +921,12 @@ mod tests {
 
     #[test]
     fn on_retire_connection_id_pending_removal() {
-        let mut id_generator = InternalConnectionIdGenerator::new();
-        let mut mapper = ConnectionIdMapper::new();
-
-        let id1 = id_generator.generate_id();
-
         let ext_id_1 = id(b"id01");
         let ext_id_2 = id(b"id02");
 
         let now = s2n_quic_platform::time::now();
 
-        let mut reg1 = mapper.create_local_id_registry(id1, &ext_id_1, TEST_TOKEN_1);
+        let (_, mut reg1) = mapper(ext_id_1, TEST_TOKEN_1);
         reg1.set_active_connection_id_limit(2);
 
         assert!(reg1
@@ -980,16 +974,11 @@ mod tests {
     //# available and unused connection IDs.
     #[test]
     fn connection_id_interest() {
-        let mut id_generator = InternalConnectionIdGenerator::new();
-        let mut mapper = ConnectionIdMapper::new();
-
-        let id1 = id_generator.generate_id();
-
         let ext_id_1 = id(b"id01");
         let ext_id_2 = id(b"id02");
         let ext_id_3 = id(b"id03");
 
-        let mut reg1 = mapper.create_local_id_registry(id1, &ext_id_1, TEST_TOKEN_1);
+        let (_, mut reg1) = mapper(ext_id_1, TEST_TOKEN_1);
 
         // Active connection ID limit starts at 1, so there is no interest initially
         assert_eq!(
@@ -1034,16 +1023,12 @@ mod tests {
     #[test]
     #[should_panic]
     fn endpoint_must_not_provide_more_ids_than_peer_limit() {
-        let mut id_generator = InternalConnectionIdGenerator::new();
-        let mut mapper = ConnectionIdMapper::new();
-
-        let id1 = id_generator.generate_id();
-
         let ext_id_1 = id(b"id01");
         let ext_id_2 = id(b"id02");
         let ext_id_3 = id(b"id03");
 
-        let mut reg1 = mapper.create_local_id_registry(id1, &ext_id_1, TEST_TOKEN_1);
+        let (_, mut reg1) = mapper(ext_id_1, TEST_TOKEN_1);
+
         reg1.set_active_connection_id_limit(2);
 
         assert_eq!(
@@ -1067,18 +1052,13 @@ mod tests {
     //# by including a sufficiently large value in the Retire Prior To field.
     #[test]
     fn endpoint_may_exceed_limit_temporarily() {
-        let mut id_generator = InternalConnectionIdGenerator::new();
-        let mut mapper = ConnectionIdMapper::new();
-
-        let id1 = id_generator.generate_id();
-
         let ext_id_1 = id(b"id01");
         let ext_id_2 = id(b"id02");
         let ext_id_3 = id(b"id03");
 
         let now = s2n_quic_platform::time::now();
 
-        let mut reg1 = mapper.create_local_id_registry(id1, &ext_id_1, TEST_TOKEN_1);
+        let (_, mut reg1) = mapper(ext_id_1, TEST_TOKEN_1);
         reg1.set_active_connection_id_limit(2);
 
         assert_eq!(
@@ -1109,14 +1089,8 @@ mod tests {
     //# over as many paths as there are issued connection IDs.
     #[test]
     fn endpoint_may_limit_connection_ids() {
-        let mut id_generator = InternalConnectionIdGenerator::new();
-        let mut mapper = ConnectionIdMapper::new();
-
-        let id1 = id_generator.generate_id();
-
         let ext_id_1 = id(b"id01");
-
-        let mut reg1 = mapper.create_local_id_registry(id1, &ext_id_1, TEST_TOKEN_1);
+        let (_, mut reg1) = mapper(ext_id_1, TEST_TOKEN_1);
         reg1.set_active_connection_id_limit(100);
 
         assert_eq!(
@@ -1127,18 +1101,14 @@ mod tests {
 
     #[test]
     fn on_transmit() {
-        let mut id_generator = InternalConnectionIdGenerator::new();
-        let mut mapper = ConnectionIdMapper::new();
-
-        let id1 = id_generator.generate_id();
-
         let ext_id_1 = id(b"id01");
         let ext_id_2 = id(b"id02");
         let ext_id_3 = id(b"id03");
 
         let now = s2n_quic_platform::time::now();
 
-        let mut reg1 = mapper.create_local_id_registry(id1, &ext_id_1, TEST_TOKEN_1);
+        let (_, mut reg1) = mapper(ext_id_1, TEST_TOKEN_1);
+
         reg1.set_active_connection_id_limit(3);
 
         assert_eq!(transmission::Interest::None, reg1.transmission_interest());
@@ -1217,16 +1187,12 @@ mod tests {
 
     #[test]
     fn on_transmit_constrained() {
-        let mut id_generator = InternalConnectionIdGenerator::new();
-        let mut mapper = ConnectionIdMapper::new();
-
-        let id1 = id_generator.generate_id();
-
         let ext_id_1 = id(b"id01");
         let ext_id_2 = id(b"id02");
         let ext_id_3 = id(b"id03");
 
-        let mut reg1 = mapper.create_local_id_registry(id1, &ext_id_1, TEST_TOKEN_1);
+        let (_, mut reg1) = mapper(ext_id_1, TEST_TOKEN_1);
+
         reg1.set_active_connection_id_limit(3);
 
         assert_eq!(transmission::Interest::None, reg1.transmission_interest());
@@ -1289,15 +1255,11 @@ mod tests {
 
     #[test]
     fn on_packet_ack_and_loss() {
-        let mut id_generator = InternalConnectionIdGenerator::new();
-        let mut mapper = ConnectionIdMapper::new();
-
-        let id1 = id_generator.generate_id();
-
         let ext_id_1 = id(b"id01");
         let ext_id_2 = id(b"id02");
 
-        let mut reg1 = mapper.create_local_id_registry(id1, &ext_id_1, TEST_TOKEN_1);
+        let (_, mut reg1) = mapper(ext_id_1, TEST_TOKEN_1);
+
         reg1.set_active_connection_id_limit(3);
 
         assert!(reg1
@@ -1344,15 +1306,10 @@ mod tests {
 
     #[test]
     fn timers() {
-        let mut id_generator = InternalConnectionIdGenerator::new();
-        let mut mapper = ConnectionIdMapper::new();
-
-        let id1 = id_generator.generate_id();
-
         let ext_id_1 = id(b"id01");
         let ext_id_2 = id(b"id02");
 
-        let mut reg1 = mapper.create_local_id_registry(id1, &ext_id_1, TEST_TOKEN_1);
+        let (_, mut reg1) = mapper(ext_id_1, TEST_TOKEN_1);
         reg1.set_active_connection_id_limit(3);
 
         // No timer set for the initial connection ID
@@ -1402,16 +1359,11 @@ mod tests {
 
     #[test]
     fn on_timeout() {
-        let mut id_generator = InternalConnectionIdGenerator::new();
-        let mut mapper = ConnectionIdMapper::new();
-
-        let id1 = id_generator.generate_id();
-
         let ext_id_1 = id(b"id01");
         let ext_id_2 = id(b"id02");
         let ext_id_3 = id(b"id03");
 
-        let mut reg1 = mapper.create_local_id_registry(id1, &ext_id_1, TEST_TOKEN_1);
+        let (_, mut reg1) = mapper(ext_id_1, TEST_TOKEN_1);
         reg1.set_active_connection_id_limit(3);
 
         let now = s2n_quic_platform::time::now();
@@ -1479,16 +1431,12 @@ mod tests {
 
     #[test]
     fn retire_all() {
-        let mut id_generator = InternalConnectionIdGenerator::new();
-        let mut mapper = ConnectionIdMapper::new();
-
-        let id1 = id_generator.generate_id();
-
         let ext_id_1 = id(b"id01");
         let ext_id_2 = id(b"id02");
         let ext_id_3 = id(b"id03");
 
-        let mut reg1 = mapper.create_local_id_registry(id1, &ext_id_1, TEST_TOKEN_1);
+        let (_, mut reg1) = mapper(ext_id_1, TEST_TOKEN_1);
+
         reg1.set_active_connection_id_limit(3);
 
         assert!(reg1

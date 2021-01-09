@@ -245,11 +245,9 @@ impl PeerIdRegistry {
         };
 
         let stateless_reset_handle = stateless_reset_token.map(|token| {
-            let handle = StatelessResetHandle::handle(&token, &remote_address);
-            registry
-                .state
-                .borrow_mut()
-                .insert_stateless_reset_token(handle, internal_id);
+            let mut state = registry.state.borrow_mut();
+            let handle = state.stateless_reset_handle(&token, &remote_address);
+            state.insert_stateless_reset_token(handle, internal_id);
             handle
         });
 
@@ -285,8 +283,10 @@ impl PeerIdRegistry {
         let mut is_duplicate = false;
         let mut id_pending_new_connection_id = None;
 
-        let stateless_reset_handle =
-            StatelessResetHandle::handle(stateless_reset_token, remote_address);
+        let stateless_reset_handle = self
+            .state
+            .borrow()
+            .stateless_reset_handle(stateless_reset_token, remote_address);
 
         // Iterate over all registered IDs, retiring any as necessary
         for id_info in self.registered_ids.iter_mut() {
@@ -613,7 +613,9 @@ pub(crate) mod tests {
         initial_id: connection::PeerId,
         stateless_reset_token: Option<stateless_reset::Token>,
     ) -> PeerIdRegistry {
-        ConnectionIdMapper::new().create_peer_id_registry(
+        let mut unpredictable_bits_generator = stateless_reset::testing::Generator(123);
+
+        ConnectionIdMapper::new(&mut unpredictable_bits_generator).create_peer_id_registry(
             InternalConnectionIdGenerator::new().generate_id(),
             initial_id,
             stateless_reset_token,
@@ -844,7 +846,8 @@ pub(crate) mod tests {
     fn retire_connection_id_when_retire_prior_to_increases() {
         let id_1 = id(b"id01");
         let remote_address = SocketAddress::default();
-        let mut mapper = ConnectionIdMapper::new();
+        let mut unpredictable_bits_generator = stateless_reset::testing::Generator(123);
+        let mut mapper = ConnectionIdMapper::new(&mut unpredictable_bits_generator);
         let mut reg = mapper.create_peer_id_registry(
             InternalConnectionIdGenerator::new().generate_id(),
             id_1,
@@ -978,7 +981,8 @@ pub(crate) mod tests {
     fn consume_new_id_if_necessary() {
         let id_1 = id(b"id01");
         let remote_address = SocketAddress::default();
-        let mut mapper = ConnectionIdMapper::new();
+        let mut unpredictable_bits_generator = stateless_reset::testing::Generator(123);
+        let mut mapper = ConnectionIdMapper::new(&mut unpredictable_bits_generator);
         let mut reg = mapper.create_peer_id_registry(
             InternalConnectionIdGenerator::new().generate_id(),
             id_1,
