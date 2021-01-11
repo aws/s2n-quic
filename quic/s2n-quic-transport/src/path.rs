@@ -232,7 +232,6 @@ impl<CC: CongestionController> Manager<CC> {
         sequence_number: u32,
         retire_prior_to: u32,
         stateless_reset_token: &stateless_reset::Token,
-        remote_address: &SocketAddress,
     ) -> Result<(), TransportError> {
         // Register the new connection ID
         self.peer_id_registry.on_new_connection_id(
@@ -240,7 +239,6 @@ impl<CC: CongestionController> Manager<CC> {
             sequence_number,
             retire_prior_to,
             stateless_reset_token,
-            remote_address,
         )?;
 
         // TODO This new connection ID may retire IDs in use by multiple paths. Since we are not
@@ -338,7 +336,6 @@ mod tests {
                 InternalConnectionIdGenerator::new().generate_id(),
                 initial_id,
                 stateless_reset_token,
-                first_path.peer_socket_address,
             );
         Manager::new(first_path, peer_id_registry)
     }
@@ -466,7 +463,7 @@ mod tests {
 
         let id_2 = connection::PeerId::try_from_bytes(b"id02").unwrap();
         assert!(manager
-            .on_new_connection_id(&id_2, 1, 1, &TEST_TOKEN_1, &first_path.peer_socket_address)
+            .on_new_connection_id(&id_2, 1, 1, &TEST_TOKEN_1)
             .is_ok());
 
         assert_eq!(id_2, manager.paths[0].peer_connection_id);

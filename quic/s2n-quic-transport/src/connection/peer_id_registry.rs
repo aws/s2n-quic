@@ -19,8 +19,8 @@ use crate::{
 use alloc::rc::Rc;
 use core::cell::RefCell;
 use s2n_quic_core::{
-    ack_set::AckSet, connection, frame, inet::SocketAddress, packet::number::PacketNumber,
-    stateless_reset, transport::error::TransportError,
+    ack_set::AckSet, connection, frame, packet::number::PacketNumber, stateless_reset,
+    transport::error::TransportError,
 };
 use smallvec::SmallVec;
 
@@ -63,8 +63,7 @@ struct PeerIdInfo {
     //# detecting when NEW_CONNECTION_ID or RETIRE_CONNECTION_ID frames refer
     //# to the same value.
     sequence_number: u32,
-    // A handle to the mapping of stateless reset token + remote address to internal
-    // connection ID.
+    // A handle to the mapping of stateless reset token to internal connection ID.
     stateless_reset_handle: Option<StatelessResetHandle>,
     // The current status of the connection ID
     status: PeerIdStatus,
@@ -235,7 +234,6 @@ impl PeerIdRegistry {
         state: Rc<RefCell<ConnectionIdMapperState>>,
         initial_connection_id: connection::PeerId,
         stateless_reset_token: Option<stateless_reset::Token>,
-        remote_address: SocketAddress,
     ) -> Self {
         let mut registry = Self {
             internal_id,
@@ -246,7 +244,7 @@ impl PeerIdRegistry {
 
         let stateless_reset_handle = stateless_reset_token.map(|token| {
             let mut state = registry.state.borrow_mut();
-            let handle = state.stateless_reset_handle(&token, &remote_address);
+            let handle = state.stateless_reset_handle(&token);
             state.insert_stateless_reset_token(handle, internal_id);
             handle
         });
@@ -272,7 +270,6 @@ impl PeerIdRegistry {
         sequence_number: u32,
         retire_prior_to: u32,
         stateless_reset_token: &stateless_reset::Token,
-        remote_address: &SocketAddress,
     ) -> Result<(), PeerIdRegistrationError> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
         //# A receiver MUST ignore any Retire Prior To fields that do not
@@ -286,7 +283,7 @@ impl PeerIdRegistry {
         let stateless_reset_handle = self
             .state
             .borrow()
-            .stateless_reset_handle(stateless_reset_token, remote_address);
+            .stateless_reset_handle(stateless_reset_token);
 
         // Iterate over all registered IDs, retiring any as necessary
         for id_info in self.registered_ids.iter_mut() {
@@ -595,7 +592,6 @@ pub(crate) mod tests {
     use s2n_quic_core::{
         connection, endpoint,
         frame::{new_connection_id::STATELESS_RESET_TOKEN_LEN, Frame, RetireConnectionID},
-        inet::SocketAddress,
         packet::number::PacketNumberRange,
         stateless_reset,
         stateless_reset::token::testing::*,
@@ -619,7 +615,6 @@ pub(crate) mod tests {
             InternalConnectionIdGenerator::new().generate_id(),
             initial_id,
             stateless_reset_token,
-            SocketAddress::default(),
         )
     }
 
@@ -644,8 +639,7 @@ pub(crate) mod tests {
                     &id(&i.to_ne_bytes()),
                     i,
                     i,
-                    &[i as u8; STATELESS_RESET_TOKEN_LEN].into(),
-                    &SocketAddress::default(),
+                    &[i as u8; STATELESS_RESET_TOKEN_LEN].into()
                 )
                 .is_ok());
         }
@@ -656,7 +650,6 @@ pub(crate) mod tests {
             8,
             8,
             &[8_u8; STATELESS_RESET_TOKEN_LEN].into(),
-            &SocketAddress::default(),
         );
 
         assert_eq!(Some(ExceededRetiredConnectionIdLimit), result.err());
@@ -682,8 +675,7 @@ pub(crate) mod tests {
                     &id(&i.to_ne_bytes()),
                     i,
                     4,
-                    &[i as u8; STATELESS_RESET_TOKEN_LEN].into(),
-                    &SocketAddress::default(),
+                    &[i as u8; STATELESS_RESET_TOKEN_LEN].into()
                 )
                 .is_ok());
         }
@@ -694,7 +686,6 @@ pub(crate) mod tests {
             8,
             0,
             &[8_u8; STATELESS_RESET_TOKEN_LEN].into(),
-            &SocketAddress::default(),
         );
 
         assert_eq!(Some(ExceededActiveConnectionIdLimit), result.err());
@@ -710,16 +701,12 @@ pub(crate) mod tests {
         let mut reg = reg(id_1, None);
 
         let id_2 = id(b"id02");
-        assert!(reg
-            .on_new_connection_id(&id_2, 1, 0, &TEST_TOKEN_1, &SocketAddress::default())
-            .is_ok());
+        assert!(reg.on_new_connection_id(&id_2, 1, 0, &TEST_TOKEN_1).is_ok());
 
         assert_eq!(2, reg.registered_ids.len());
         reg.registered_ids[1].status = PendingRetirement;
 
-        assert!(reg
-            .on_new_connection_id(&id_2, 1, 0, &TEST_TOKEN_1, &SocketAddress::default())
-            .is_ok());
+        assert!(reg.on_new_connection_id(&id_2, 1, 0, &TEST_TOKEN_1).is_ok());
         assert_eq!(2, reg.registered_ids.len());
         assert_eq!(PendingRetirement, reg.registered_ids[1].status);
     }
@@ -733,14 +720,10 @@ pub(crate) mod tests {
         let mut reg = reg(id_1, None);
 
         let id_2 = id(b"id02");
-        assert!(reg
-            .on_new_connection_id(&id_2, 1, 0, &TEST_TOKEN_1, &SocketAddress::default())
-            .is_ok());
+        assert!(reg.on_new_connection_id(&id_2, 1, 0, &TEST_TOKEN_1).is_ok());
 
         let id_3 = id(b"id03");
-        assert!(reg
-            .on_new_connection_id(&id_3, 2, 0, &TEST_TOKEN_2, &SocketAddress::default())
-            .is_ok());
+        assert!(reg.on_new_connection_id(&id_3, 2, 0, &TEST_TOKEN_2).is_ok());
 
         assert_eq!(
             2,
@@ -764,17 +747,14 @@ pub(crate) mod tests {
         let mut reg = reg(id_1, None);
 
         let id_2 = id(b"id02");
-        assert!(reg
-            .on_new_connection_id(&id_2, 1, 0, &TEST_TOKEN_1, &SocketAddress::default())
-            .is_ok());
+        assert!(reg.on_new_connection_id(&id_2, 1, 0, &TEST_TOKEN_1).is_ok());
 
         // Change the sequence number
-        let mut result =
-            reg.on_new_connection_id(&id_2, 2, 0, &TEST_TOKEN_1, &SocketAddress::default());
+        let mut result = reg.on_new_connection_id(&id_2, 2, 0, &TEST_TOKEN_1);
         assert_eq!(Some(InvalidNewConnectionId), result.err());
 
         // Change the stateless reset token
-        result = reg.on_new_connection_id(&id_2, 1, 0, &TEST_TOKEN_2, &SocketAddress::default());
+        result = reg.on_new_connection_id(&id_2, 1, 0, &TEST_TOKEN_2);
         assert_eq!(Some(InvalidNewConnectionId), result.err());
     }
 
@@ -792,13 +772,10 @@ pub(crate) mod tests {
 
         let id_2 = id(b"id02");
         let id_3 = id(b"id03");
-        assert!(reg
-            .on_new_connection_id(&id_2, 1, 0, &TEST_TOKEN_1, &SocketAddress::default())
-            .is_ok());
+        assert!(reg.on_new_connection_id(&id_2, 1, 0, &TEST_TOKEN_1).is_ok());
 
         // Same sequence number
-        let mut result =
-            reg.on_new_connection_id(&id_3, 1, 0, &TEST_TOKEN_2, &SocketAddress::default());
+        let mut result = reg.on_new_connection_id(&id_3, 1, 0, &TEST_TOKEN_2);
         assert_eq!(Some(InvalidNewConnectionId), result.err());
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.2
@@ -807,7 +784,7 @@ pub(crate) mod tests {
         //# against all previous values, but a duplicate value MAY be treated as
         //# a connection error of type PROTOCOL_VIOLATION.
         // Same stateless reset token
-        result = reg.on_new_connection_id(&id_3, 2, 0, &TEST_TOKEN_1, &SocketAddress::default());
+        result = reg.on_new_connection_id(&id_3, 2, 0, &TEST_TOKEN_1);
         assert_eq!(Some(InvalidNewConnectionId), result.err());
     }
 
@@ -823,16 +800,10 @@ pub(crate) mod tests {
         let id_2 = id(b"id02");
         let id_3 = id(b"id03");
         let id_4 = id(b"id04");
-        assert!(reg
-            .on_new_connection_id(&id_2, 1, 0, &TEST_TOKEN_2, &SocketAddress::default())
-            .is_ok());
-        assert!(reg
-            .on_new_connection_id(&id_3, 2, 1, &TEST_TOKEN_3, &SocketAddress::default())
-            .is_ok());
+        assert!(reg.on_new_connection_id(&id_2, 1, 0, &TEST_TOKEN_2).is_ok());
+        assert!(reg.on_new_connection_id(&id_3, 2, 1, &TEST_TOKEN_3).is_ok());
         assert_eq!(1, reg.retire_prior_to);
-        assert!(reg
-            .on_new_connection_id(&id_4, 3, 0, &TEST_TOKEN_4, &SocketAddress::default())
-            .is_ok());
+        assert!(reg.on_new_connection_id(&id_4, 3, 0, &TEST_TOKEN_4).is_ok());
         assert_eq!(1, reg.retire_prior_to);
     }
 
@@ -845,20 +816,16 @@ pub(crate) mod tests {
     #[test]
     fn retire_connection_id_when_retire_prior_to_increases() {
         let id_1 = id(b"id01");
-        let remote_address = SocketAddress::default();
         let mut unpredictable_bits_generator = stateless_reset::testing::Generator(123);
         let mut mapper = ConnectionIdMapper::new(&mut unpredictable_bits_generator);
         let mut reg = mapper.create_peer_id_registry(
             InternalConnectionIdGenerator::new().generate_id(),
             id_1,
             Some(TEST_TOKEN_1),
-            remote_address,
         );
 
         let id_2 = id(b"id02");
-        assert!(reg
-            .on_new_connection_id(&id_2, 1, 1, &TEST_TOKEN_2, &remote_address)
-            .is_ok());
+        assert!(reg.on_new_connection_id(&id_2, 1, 1, &TEST_TOKEN_2).is_ok());
 
         assert_eq!(PendingRetirement, reg.registered_ids[0].status);
         assert_eq!(transmission::Interest::NewData, reg.transmission_interest());
@@ -907,10 +874,7 @@ pub(crate) mod tests {
 
         assert_eq!(
             Some(reg.internal_id),
-            mapper.lookup_internal_connection_id_by_stateless_reset_token(
-                &TEST_TOKEN_1,
-                &remote_address
-            )
+            mapper.lookup_internal_connection_id_by_stateless_reset_token(&TEST_TOKEN_1)
         );
 
         reg.on_packet_ack(&PacketNumberRange::new(packet_number, packet_number));
@@ -925,10 +889,7 @@ pub(crate) mod tests {
         //# been retired.
         assert_eq!(
             None,
-            mapper.lookup_internal_connection_id_by_stateless_reset_token(
-                &TEST_TOKEN_1,
-                &remote_address
-            )
+            mapper.lookup_internal_connection_id_by_stateless_reset_token(&TEST_TOKEN_1)
         );
 
         assert_eq!(transmission::Interest::None, reg.transmission_interest());
@@ -948,15 +909,13 @@ pub(crate) mod tests {
 
         let id_2 = id(b"id02");
         assert!(reg
-            .on_new_connection_id(&id_2, 10, 10, &TEST_TOKEN_2, &SocketAddress::default())
+            .on_new_connection_id(&id_2, 10, 10, &TEST_TOKEN_2)
             .is_ok());
         assert_eq!(PendingRetirement, reg.registered_ids[0].status);
         assert_eq!(New, reg.registered_ids[1].status);
 
         let id_3 = id(b"id03");
-        assert!(reg
-            .on_new_connection_id(&id_3, 1, 0, &TEST_TOKEN_3, &SocketAddress::default())
-            .is_ok());
+        assert!(reg.on_new_connection_id(&id_3, 1, 0, &TEST_TOKEN_3).is_ok());
 
         assert_eq!(New, reg.registered_ids[1].status);
         assert_eq!(PendingRetirement, reg.registered_ids[2].status);
@@ -970,9 +929,7 @@ pub(crate) mod tests {
         assert_eq!(InUsePendingNewConnectionId, reg.registered_ids[0].status);
 
         let id_2 = id(b"id02");
-        assert!(reg
-            .on_new_connection_id(&id_2, 1, 0, &TEST_TOKEN_2, &SocketAddress::default())
-            .is_ok());
+        assert!(reg.on_new_connection_id(&id_2, 1, 0, &TEST_TOKEN_2).is_ok());
 
         assert_eq!(PendingRetirement, reg.registered_ids[0].status);
     }
@@ -980,50 +937,35 @@ pub(crate) mod tests {
     #[test]
     fn consume_new_id_if_necessary() {
         let id_1 = id(b"id01");
-        let remote_address = SocketAddress::default();
         let mut unpredictable_bits_generator = stateless_reset::testing::Generator(123);
         let mut mapper = ConnectionIdMapper::new(&mut unpredictable_bits_generator);
         let mut reg = mapper.create_peer_id_registry(
             InternalConnectionIdGenerator::new().generate_id(),
             id_1,
             Some(TEST_TOKEN_1),
-            remote_address,
         );
 
         assert_eq!(InUsePendingNewConnectionId, reg.registered_ids[0].status);
         assert_eq!(
             Some(reg.internal_id),
-            mapper.lookup_internal_connection_id_by_stateless_reset_token(
-                &TEST_TOKEN_1,
-                &remote_address
-            )
+            mapper.lookup_internal_connection_id_by_stateless_reset_token(&TEST_TOKEN_1)
         );
 
         let id_2 = id(b"id02");
-        assert!(reg
-            .on_new_connection_id(&id_2, 1, 0, &TEST_TOKEN_2, &remote_address)
-            .is_ok());
+        assert!(reg.on_new_connection_id(&id_2, 1, 0, &TEST_TOKEN_2).is_ok());
 
         assert_eq!(
             None,
-            mapper.lookup_internal_connection_id_by_stateless_reset_token(
-                &TEST_TOKEN_2,
-                &remote_address
-            )
+            mapper.lookup_internal_connection_id_by_stateless_reset_token(&TEST_TOKEN_2)
         );
         assert_eq!(Some(id_2), reg.consume_new_id_if_necessary(None));
         assert_eq!(
             Some(reg.internal_id),
-            mapper.lookup_internal_connection_id_by_stateless_reset_token(
-                &TEST_TOKEN_2,
-                &remote_address
-            )
+            mapper.lookup_internal_connection_id_by_stateless_reset_token(&TEST_TOKEN_2,)
         );
 
         let id_3 = id(b"id03");
-        assert!(reg
-            .on_new_connection_id(&id_3, 2, 0, &TEST_TOKEN_3, &remote_address)
-            .is_ok());
+        assert!(reg.on_new_connection_id(&id_3, 2, 0, &TEST_TOKEN_3).is_ok());
 
         // ID 3 is not retired, so it is not necessary to consume a new ID
         assert_eq!(Some(id_3), reg.consume_new_id_if_necessary(Some(&id_3)));
@@ -1034,32 +976,21 @@ pub(crate) mod tests {
         //# been retired.
         assert_eq!(
             None,
-            mapper.lookup_internal_connection_id_by_stateless_reset_token(
-                &TEST_TOKEN_3,
-                &remote_address
-            )
+            mapper.lookup_internal_connection_id_by_stateless_reset_token(&TEST_TOKEN_3)
         );
 
         let id_4 = id(b"id04");
-        assert!(reg
-            .on_new_connection_id(&id_4, 3, 3, &TEST_TOKEN_4, &remote_address)
-            .is_ok());
+        assert!(reg.on_new_connection_id(&id_4, 3, 3, &TEST_TOKEN_4).is_ok());
         assert_eq!(
             None,
-            mapper.lookup_internal_connection_id_by_stateless_reset_token(
-                &TEST_TOKEN_4,
-                &remote_address
-            )
+            mapper.lookup_internal_connection_id_by_stateless_reset_token(&TEST_TOKEN_4)
         );
 
         // ID 2 is retired, so it is necessary to consume a new ID
         assert_eq!(Some(id_4), reg.consume_new_id_if_necessary(Some(&id_2)));
         assert_eq!(
             Some(reg.internal_id),
-            mapper.lookup_internal_connection_id_by_stateless_reset_token(
-                &TEST_TOKEN_4,
-                &remote_address
-            )
+            mapper.lookup_internal_connection_id_by_stateless_reset_token(&TEST_TOKEN_4)
         );
 
         // There are no new IDs left, so None is returned
