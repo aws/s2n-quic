@@ -84,6 +84,7 @@ impl TargetPath {
                         .build()?
                         .get(url.as_str())
                         .header("user-agent", "https://crates.io/crates/cargo-compliance")
+                        .header("accept", "text/plain")
                         .send()?
                         .error_for_status()?
                         .copy_to(&mut std::fs::File::create(&path)?)?;
