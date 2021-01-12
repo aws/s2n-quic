@@ -9,7 +9,7 @@ pub mod io;
 pub mod limits;
 pub mod log;
 pub mod runtime;
-pub mod stateless_reset;
+pub mod random;
 pub mod stateless_reset_token;
 pub mod sync;
 pub mod tls;

@@ -586,15 +586,7 @@ pub(crate) mod tests {
         transmission,
         transmission::interest::Provider,
     };
-    use s2n_quic_core::{
-        connection, endpoint,
-        frame::{new_connection_id::STATELESS_RESET_TOKEN_LEN, Frame, RetireConnectionID},
-        packet::number::PacketNumberRange,
-        stateless_reset,
-        stateless_reset::token::testing::*,
-        transport::error::TransportError,
-        varint::VarInt,
-    };
+    use s2n_quic_core::{connection, endpoint, frame::{new_connection_id::STATELESS_RESET_TOKEN_LEN, Frame, RetireConnectionID}, packet::number::PacketNumberRange, stateless_reset, stateless_reset::token::testing::*, transport::error::TransportError, varint::VarInt, random};
 
     // Helper function to easily generate a PeerId from bytes
     pub fn id(bytes: &[u8]) -> connection::PeerId {
@@ -606,9 +598,9 @@ pub(crate) mod tests {
         initial_id: connection::PeerId,
         stateless_reset_token: Option<stateless_reset::Token>,
     ) -> PeerIdRegistry {
-        let mut unpredictable_bits_generator = stateless_reset::testing::Generator(123);
+        let mut random_generator = random::testing::Generator(123);
 
-        ConnectionIdMapper::new(&mut unpredictable_bits_generator).create_peer_id_registry(
+        ConnectionIdMapper::new(&mut random_generator).create_peer_id_registry(
             InternalConnectionIdGenerator::new().generate_id(),
             initial_id,
             stateless_reset_token,
@@ -813,8 +805,8 @@ pub(crate) mod tests {
     #[test]
     fn retire_connection_id_when_retire_prior_to_increases() {
         let id_1 = id(b"id01");
-        let mut unpredictable_bits_generator = stateless_reset::testing::Generator(123);
-        let mut mapper = ConnectionIdMapper::new(&mut unpredictable_bits_generator);
+        let mut random_generator = random::testing::Generator(123);
+        let mut mapper = ConnectionIdMapper::new(&mut random_generator);
         let mut reg = mapper.create_peer_id_registry(
             InternalConnectionIdGenerator::new().generate_id(),
             id_1,
@@ -934,8 +926,8 @@ pub(crate) mod tests {
     #[test]
     fn consume_new_id_if_necessary() {
         let id_1 = id(b"id01");
-        let mut unpredictable_bits_generator = stateless_reset::testing::Generator(123);
-        let mut mapper = ConnectionIdMapper::new(&mut unpredictable_bits_generator);
+        let mut random_generator = random::testing::Generator(123);
+        let mut mapper = ConnectionIdMapper::new(&mut random_generator);
         let mut reg = mapper.create_peer_id_registry(
             InternalConnectionIdGenerator::new().generate_id(),
             id_1,

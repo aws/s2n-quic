@@ -317,6 +317,7 @@ mod tests {
     use core::time::Duration;
     use s2n_quic_core::{
         inet::{DatagramInfo, ExplicitCongestionNotification},
+        random,
         recovery::{congestion_controller::testing::Unlimited, RTTEstimator},
         stateless_reset,
         stateless_reset::token::testing::TEST_TOKEN_1,
@@ -330,8 +331,8 @@ mod tests {
         initial_id: connection::PeerId,
         stateless_reset_token: Option<stateless_reset::Token>,
     ) -> Manager<CC> {
-        let mut unpredictable_bits_generator = stateless_reset::testing::Generator(123);
-        let peer_id_registry = ConnectionIdMapper::new(&mut unpredictable_bits_generator)
+        let mut random_generator = random::testing::Generator(123);
+        let peer_id_registry = ConnectionIdMapper::new(&mut random_generator)
             .create_peer_id_registry(
                 InternalConnectionIdGenerator::new().generate_id(),
                 initial_id,

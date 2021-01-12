@@ -4,7 +4,7 @@ use crate::connection::{local_id_registry::LocalIdRegistry, InternalConnectionId
 use alloc::rc::Rc;
 use core::{cell::RefCell, hash::BuildHasher, num::NonZeroU64};
 use hashbrown::hash_map::{Entry, HashMap};
-use s2n_quic_core::{connection, stateless_reset};
+use s2n_quic_core::{connection, random, stateless_reset};
 use siphasher::sip::SipHasher13;
 
 // Since the input to the hash function (stateless reset token) come from the peer, we need to
@@ -23,16 +23,13 @@ pub struct HashState {
 }
 
 impl HashState {
-    /// Generates hash state by using the given unpredictable bits generator to produce
-    /// random keys.
-    fn new<U: stateless_reset::UnpredictableBits>(
-        unpredictable_bits_generator: &mut U,
-    ) -> HashState {
+    /// Generates hash state by using the given random generator to produce random keys.
+    fn new<R: random::Generator>(random_generator: &mut R) -> HashState {
         let mut k0 = [0u8; core::mem::size_of::<u64>()];
         let mut k1 = [0u8; core::mem::size_of::<u64>()];
 
-        unpredictable_bits_generator.fill(&mut k0);
-        unpredictable_bits_generator.fill(&mut k1);
+        random_generator.private_random_fill(&mut k0);
+        random_generator.private_random_fill(&mut k1);
 
         Self {
             k0: u64::from_be_bytes(k0),
@@ -150,10 +147,8 @@ pub struct ConnectionIdMapper {
 
 impl ConnectionIdMapper {
     /// Creates a new `ConnectionIdMapper`
-    pub fn new<U: stateless_reset::UnpredictableBits>(
-        unpredictable_bits_generator: &mut U,
-    ) -> Self {
-        let random_state = HashState::new(unpredictable_bits_generator);
+    pub fn new<R: random::Generator>(random_generator: &mut R) -> Self {
+        let random_state = HashState::new(random_generator);
 
         Self {
             state: Rc::new(RefCell::new(ConnectionIdMapperState::new(random_state))),
@@ -235,8 +230,8 @@ mod tests {
 
     #[test]
     fn lookup_internal_connection_id_by_stateless_reset_token_test() {
-        let mut unpredictable_bits_generator = stateless_reset::testing::Generator(123);
-        let mut mapper = ConnectionIdMapper::new(&mut unpredictable_bits_generator);
+        let mut random_generator = random::testing::Generator(123);
+        let mut mapper = ConnectionIdMapper::new(&mut random_generator);
         let internal_id = InternalConnectionIdGenerator::new().generate_id();
         let peer_id = id(b"id01");
 

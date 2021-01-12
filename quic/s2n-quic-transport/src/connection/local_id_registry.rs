@@ -628,14 +628,7 @@ impl crate::transmission::interest::Provider for LocalIdRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use s2n_quic_core::{
-        connection,
-        connection::id::MIN_LIFETIME,
-        frame::{Frame, NewConnectionID},
-        packet::number::PacketNumberRange,
-        stateless_reset::token::testing::*,
-        varint::VarInt,
-    };
+    use s2n_quic_core::{connection, connection::id::MIN_LIFETIME, frame::{Frame, NewConnectionID}, packet::number::PacketNumberRange, stateless_reset::token::testing::*, varint::VarInt, random};
 
     use crate::{
         connection::{
@@ -677,9 +670,9 @@ mod tests {
         initial_id: connection::LocalId,
         token: stateless_reset::Token,
     ) -> (ConnectionIdMapper, LocalIdRegistry) {
-        let mut unpredictable_bits_generator = stateless_reset::testing::Generator(123);
+        let mut random_generator = random::testing::Generator(123);
 
-        let mut mapper = ConnectionIdMapper::new(&mut unpredictable_bits_generator);
+        let mut mapper = ConnectionIdMapper::new(&mut random_generator);
         let registry = mapper.create_local_id_registry(
             InternalConnectionIdGenerator::new().generate_id(),
             &initial_id,
@@ -753,8 +746,8 @@ mod tests {
     #[test]
     fn connection_mapper_test() {
         let mut id_generator = InternalConnectionIdGenerator::new();
-        let mut unpredictable_bits_generator = stateless_reset::testing::Generator(123);
-        let mut mapper = ConnectionIdMapper::new(&mut unpredictable_bits_generator);
+        let mut random_generator = random::testing::Generator(123);
+        let mut mapper = ConnectionIdMapper::new(&mut random_generator);
 
         let id1 = id_generator.generate_id();
         let id2 = id_generator.generate_id();

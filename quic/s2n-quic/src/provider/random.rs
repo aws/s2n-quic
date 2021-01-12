@@ -1,16 +1,16 @@
-pub use s2n_quic_core::stateless_reset::UnpredictableBits;
+pub use s2n_quic_core::random::Generator;
 
-/// Provides stateless reset unpredictable bits support for an endpoint
+/// Provides random number generation support for an endpoint
 pub trait Provider: 'static {
-    type UnpredictableBits: 'static + UnpredictableBits;
+    type Generator: 'static + Generator;
     type Error: core::fmt::Display;
 
-    fn start(self) -> Result<Self::UnpredictableBits, Self::Error>;
+    fn start(self) -> Result<Self::Generator, Self::Error>;
 }
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "rand")] {
-        pub use random::Provider as Default;
+        pub use thread_local::Provider as Default;
     } else {
         // TODO implement stub that panics
     }
@@ -19,19 +19,19 @@ cfg_if::cfg_if! {
 impl_provider_utils!();
 
 #[cfg(feature = "rand")]
-pub mod random {
+pub mod thread_local {
     use core::convert::Infallible;
     use rand::prelude::*;
-    use s2n_quic_core::stateless_reset;
+    use s2n_quic_core::random;
 
     #[derive(Debug, Default)]
     pub struct Provider(Generator);
 
     impl super::Provider for Provider {
-        type UnpredictableBits = Generator;
+        type Generator = Generator;
         type Error = Infallible;
 
-        fn start(self) -> Result<Self::UnpredictableBits, Self::Error> {
+        fn start(self) -> Result<Self::Generator, Self::Error> {
             Ok(self.0)
         }
     }
@@ -49,26 +49,34 @@ pub mod random {
     #[derive(Debug, Default)]
     pub struct Generator {}
 
-    impl stateless_reset::UnpredictableBits for Generator {
-        fn fill(&mut self, dest: &mut [u8]) {
+    impl random::Generator for Generator {
+        fn public_random_fill(&mut self, dest: &mut [u8]) {
+            rand::thread_rng().fill_bytes(dest)
+        }
+
+        fn private_random_fill(&mut self, dest: &mut [u8]) {
             rand::thread_rng().fill_bytes(dest)
         }
     }
 
     #[cfg(test)]
     mod tests {
-        use super::*;
-        use s2n_quic_core::stateless_reset::UnpredictableBits;
+        use s2n_quic_core::random::Generator;
 
         #[test]
-        fn unpredictable_bits_test() {
-            let mut generator = Generator::default();
+        fn generator_test() {
+            let mut generator = super::Generator::default();
 
             let mut dest_1 = [0; 20];
             let mut dest_2 = [0; 20];
 
-            generator.fill(&mut dest_1);
-            generator.fill(&mut dest_2);
+            generator.public_random_fill(&mut dest_1);
+            generator.public_random_fill(&mut dest_2);
+
+            assert_ne!(dest_1, dest_2);
+
+            generator.private_random_fill(&mut dest_1);
+            generator.private_random_fill(&mut dest_2);
 
             assert_ne!(dest_1, dest_2);
         }
