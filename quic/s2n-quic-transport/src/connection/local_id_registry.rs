@@ -208,7 +208,7 @@ impl Drop for LocalIdRegistry {
 
         // Unregister all previously registered IDs
         for id_info in &self.registered_ids {
-            guard.remove_local_id(&id_info.id);
+            guard.local_id_map.remove(&id_info.id);
         }
     }
 }
@@ -294,7 +294,8 @@ impl LocalIdRegistry {
         if self
             .state
             .borrow_mut()
-            .try_insert_local_id(id, self.internal_id)
+            .local_id_map
+            .try_insert(id, self.internal_id)
             .is_ok()
         {
             let sequence_number = self.next_sequence_number;
@@ -331,7 +332,7 @@ impl LocalIdRegistry {
 
             self.registered_ids.retain(|id_info| {
                 if id_info.is_expired(timestamp) {
-                    let remove_result = mapper_state.remove_local_id(&id_info.id);
+                    let remove_result = mapper_state.local_id_map.remove(&id_info.id);
                     debug_assert!(
                         remove_result.is_some(),
                         "Connection ID should have been stored in mapper"

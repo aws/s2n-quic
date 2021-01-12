@@ -62,18 +62,22 @@ impl StatelessResetMap {
     }
 
     /// Gets the `InternalConnectionId` (if any) associated with the given stateless reset token
-    fn get(&self, token: &stateless_reset::Token) -> Option<InternalConnectionId> {
+    pub(crate) fn get(&self, token: &stateless_reset::Token) -> Option<InternalConnectionId> {
         self.map.get(&token).copied()
     }
 
     /// Inserts the given stateless reset token and the given
     /// internal connection ID into the stateless reset map.
-    fn insert(&mut self, token: stateless_reset::Token, internal_id: InternalConnectionId) {
+    pub(crate) fn insert(
+        &mut self,
+        token: stateless_reset::Token,
+        internal_id: InternalConnectionId,
+    ) {
         self.map.insert(token, internal_id);
     }
 
     /// Removes the mapping for the given key
-    fn remove(&mut self, token: stateless_reset::Token) -> Option<InternalConnectionId> {
+    pub(crate) fn remove(&mut self, token: stateless_reset::Token) -> Option<InternalConnectionId> {
         self.map.remove(&token)
     }
 }
@@ -93,13 +97,13 @@ impl LocalIdMap {
     }
 
     /// Gets the `InternalConnectionId` (if any) associated with the given local id
-    fn get(&self, local_id: &connection::LocalId) -> Option<InternalConnectionId> {
+    pub(crate) fn get(&self, local_id: &connection::LocalId) -> Option<InternalConnectionId> {
         self.map.get(&local_id).copied()
     }
 
     /// Inserts the given `LocalId` into the map if it is not already in the map,
     /// otherwise returns an Err
-    fn try_insert(
+    pub(crate) fn try_insert(
         &mut self,
         local_id: &connection::LocalId,
         internal_id: InternalConnectionId,
@@ -115,7 +119,10 @@ impl LocalIdMap {
     }
 
     /// Removes the given `LocalId` from the map
-    fn remove(&mut self, local_id: &connection::LocalId) -> Option<InternalConnectionId> {
+    pub(crate) fn remove(
+        &mut self,
+        local_id: &connection::LocalId,
+    ) -> Option<InternalConnectionId> {
         self.map.remove(local_id)
     }
 }
@@ -123,9 +130,9 @@ impl LocalIdMap {
 #[derive(Debug)]
 pub(crate) struct ConnectionIdMapperState {
     /// Maps from external to internal connection IDs
-    local_id_map: LocalIdMap,
+    pub(crate) local_id_map: LocalIdMap,
     /// Maps from a hash of peer stateless reset token to internal connection IDs
-    stateless_reset_map: StatelessResetMap,
+    pub(crate) stateless_reset_map: StatelessResetMap,
 }
 
 impl ConnectionIdMapperState {
@@ -134,42 +141,6 @@ impl ConnectionIdMapperState {
             local_id_map: LocalIdMap::new(HashState::new(random_generator)),
             stateless_reset_map: StatelessResetMap::new(HashState::new(random_generator)),
         }
-    }
-
-    /// Inserts the given `LocalId` into the map if it is not already in the map,
-    /// otherwise returns an Err
-    pub(crate) fn try_insert_local_id(
-        &mut self,
-        external_id: &connection::LocalId,
-        internal_id: InternalConnectionId,
-    ) -> Result<(), ()> {
-        self.local_id_map.try_insert(external_id, internal_id)
-    }
-
-    /// Inserts the given stateless reset token and the given
-    /// internal connection ID into the stateless reset map.
-    pub(crate) fn insert_stateless_reset_token(
-        &mut self,
-        token: stateless_reset::Token,
-        internal_id: InternalConnectionId,
-    ) {
-        self.stateless_reset_map.insert(token, internal_id);
-    }
-
-    /// Removes the given `LocalId` from the local ID map
-    pub(crate) fn remove_local_id(
-        &mut self,
-        external_id: &connection::LocalId,
-    ) -> Option<InternalConnectionId> {
-        self.local_id_map.remove(external_id)
-    }
-
-    /// Removes the stateless reset token from the stateless reset map.
-    pub(crate) fn remove_stateless_reset_token(
-        &mut self,
-        token: stateless_reset::Token,
-    ) -> Option<InternalConnectionId> {
-        self.stateless_reset_map.remove(token)
     }
 }
 
@@ -281,7 +252,8 @@ mod tests {
         mapper
             .state
             .borrow_mut()
-            .remove_stateless_reset_token(TEST_TOKEN_1);
+            .stateless_reset_map
+            .remove(TEST_TOKEN_1);
 
         assert_eq!(
             None,

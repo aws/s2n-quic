@@ -223,7 +223,7 @@ impl Drop for PeerIdRegistry {
             .iter()
             .flat_map(|id_info| id_info.stateless_reset_token)
         {
-            guard.remove_stateless_reset_token(token);
+            guard.stateless_reset_map.remove(token);
         }
     }
 }
@@ -259,7 +259,8 @@ impl PeerIdRegistry {
             registry
                 .state
                 .borrow_mut()
-                .insert_stateless_reset_token(token, internal_id);
+                .stateless_reset_map
+                .insert(token, internal_id);
         }
 
         registry
@@ -393,7 +394,7 @@ impl PeerIdRegistry {
                         //# An endpoint MUST NOT check for any Stateless Reset Tokens associated
                         //# with connection IDs it has not used or for connection IDs that have
                         //# been retired.
-                        mapper_state.remove_stateless_reset_token(token);
+                        mapper_state.stateless_reset_map.remove(token);
                     }
                     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2
                     //# An endpoint MUST NOT forget a connection ID without retiring it
@@ -445,7 +446,8 @@ impl PeerIdRegistry {
                 if let Some(token) = id_info.stateless_reset_token {
                     self.state
                         .borrow_mut()
-                        .insert_stateless_reset_token(token, self.internal_id);
+                        .stateless_reset_map
+                        .insert(token, self.internal_id);
                 }
 
                 // Consume the new id
