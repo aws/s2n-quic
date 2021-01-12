@@ -2,7 +2,7 @@
 
 use crate::connection::{local_id_registry::LocalIdRegistry, InternalConnectionId, PeerIdRegistry};
 use alloc::rc::Rc;
-use core::{cell::RefCell, hash::BuildHasher, num::NonZeroU64};
+use core::{cell::RefCell, hash::BuildHasher};
 use hashbrown::hash_map::{Entry, HashMap};
 use s2n_quic_core::{connection, random, stateless_reset};
 use siphasher::sip::SipHasher13;
@@ -16,7 +16,7 @@ use siphasher::sip::SipHasher13;
 // to protect against such attacks. We implement this explicitly to ensure this map continues to
 // provide this protection even if future versions of `std::collections::HashMap` do not and to
 // make the hash algorithm used explicit.
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct HashState {
     k0: u64,
     k1: u64,
@@ -46,10 +46,6 @@ impl BuildHasher for HashState {
         SipHasher13::new_with_keys(self.k0, self.k1)
     }
 }
-
-/// A handle to an entry in the `StatelessResetMap`
-#[derive(Debug, Clone, Copy, Eq, PartialOrd, PartialEq, Ord)]
-pub struct StatelessResetHandle(NonZeroU64);
 
 #[derive(Debug)]
 pub(crate) struct StatelessResetMap {
@@ -83,27 +79,32 @@ impl StatelessResetMap {
 }
 
 #[derive(Debug)]
-pub(crate) struct ConnectionIdMapperState {
+pub(crate) struct LocalIdMap {
     /// Maps from external to internal connection IDs
-    local_id_map: HashMap<connection::LocalId, InternalConnectionId>,
-    /// Maps from a hash of peer stateless reset token to internal connection IDs
-    stateless_reset_map: StatelessResetMap,
+    map: HashMap<connection::LocalId, InternalConnectionId, HashState>,
 }
 
-impl ConnectionIdMapperState {
+impl LocalIdMap {
+    /// Constructs a new `LocalIdMap`
     fn new(hash_state: HashState) -> Self {
         Self {
-            local_id_map: HashMap::new(),
-            stateless_reset_map: StatelessResetMap::new(hash_state),
+            map: HashMap::with_hasher(hash_state),
         }
     }
 
-    pub(crate) fn try_insert_local_id(
+    /// Gets the `InternalConnectionId` (if any) associated with the given local id
+    fn get(&self, local_id: &connection::LocalId) -> Option<InternalConnectionId> {
+        self.map.get(&local_id).copied()
+    }
+
+    /// Inserts the given `LocalId` into the map if it is not already in the map,
+    /// otherwise returns an Err
+    fn try_insert(
         &mut self,
-        external_id: &connection::LocalId,
+        local_id: &connection::LocalId,
         internal_id: InternalConnectionId,
     ) -> Result<(), ()> {
-        let entry = self.local_id_map.entry(*external_id);
+        let entry = self.map.entry(*local_id);
         match entry {
             Entry::Occupied(_) => Err(()),
             Entry::Vacant(entry) => {
@@ -111,6 +112,38 @@ impl ConnectionIdMapperState {
                 Ok(())
             }
         }
+    }
+
+    /// Removes the given `LocalId` from the map
+    fn remove(&mut self, local_id: &connection::LocalId) -> Option<InternalConnectionId> {
+        self.map.remove(local_id)
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct ConnectionIdMapperState {
+    /// Maps from external to internal connection IDs
+    local_id_map: LocalIdMap,
+    /// Maps from a hash of peer stateless reset token to internal connection IDs
+    stateless_reset_map: StatelessResetMap,
+}
+
+impl ConnectionIdMapperState {
+    fn new(hash_state: HashState) -> Self {
+        Self {
+            local_id_map: LocalIdMap::new(hash_state),
+            stateless_reset_map: StatelessResetMap::new(hash_state),
+        }
+    }
+
+    /// Inserts the given `LocalId` into the map if it is not already in the map,
+    /// otherwise returns an Err
+    pub(crate) fn try_insert_local_id(
+        &mut self,
+        external_id: &connection::LocalId,
+        internal_id: InternalConnectionId,
+    ) -> Result<(), ()> {
+        self.local_id_map.try_insert(external_id, internal_id)
     }
 
     /// Inserts the given stateless reset token and the given
@@ -123,6 +156,7 @@ impl ConnectionIdMapperState {
         self.stateless_reset_map.insert(token, internal_id);
     }
 
+    /// Removes the given `LocalId` from the local ID map
     pub(crate) fn remove_local_id(
         &mut self,
         external_id: &connection::LocalId,
@@ -162,7 +196,7 @@ impl ConnectionIdMapper {
         connection_id: &connection::LocalId,
     ) -> Option<InternalConnectionId> {
         let guard = self.state.borrow();
-        guard.local_id_map.get(connection_id).copied()
+        guard.local_id_map.get(connection_id)
     }
 
     /// Looks up the internal Connection ID which is associated with a stateless
