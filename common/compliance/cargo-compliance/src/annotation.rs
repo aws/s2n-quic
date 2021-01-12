@@ -75,7 +75,12 @@ impl Annotation {
     }
 
     pub fn target_section(&self) -> Option<&str> {
-        self.target.splitn(2, '#').nth(1)
+        self.target.splitn(2, '#').nth(1).map(|section| {
+            // allow references to specify a #section-123 instead of #123
+            section
+                .trim_start_matches("section-")
+                .trim_start_matches("appendix-")
+        })
     }
 
     pub fn resolve_file(&self, file: &Path) -> Result<PathBuf, Error> {
