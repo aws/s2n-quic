@@ -2,12 +2,7 @@
 
 use crate::connection::{local_id_registry::LocalIdRegistry, InternalConnectionId, PeerIdRegistry};
 use alloc::rc::Rc;
-use core::{
-    cell::RefCell,
-    hash::{Hash, Hasher},
-    num::NonZeroU64,
-};
-use hash_hasher::HashBuildHasher;
+use core::{cell::RefCell, hash::BuildHasher, num::NonZeroU64};
 use hashbrown::hash_map::{Entry, HashMap};
 use s2n_quic_core::{connection, stateless_reset};
 use siphasher::sip::SipHasher13;
@@ -18,7 +13,9 @@ use siphasher::sip::SipHasher13;
 // initialized, and use those keys each time the hash function is called. The resulting computed
 // hash values are thus not completely based on external input making it difficult to craft values
 // that would result in poor bucketing. This is the same process `std::collections::HashMap` performs
-// to protect against such attacks.
+// to protect against such attacks. We implement this explicitly to ensure this map continues to
+// provide this protection even if future versions of `std::collections::HashMap` do not and to
+// make the hash algorithm used explicit.
 #[derive(Debug)]
 pub struct HashState {
     k0: u64,
@@ -42,9 +39,13 @@ impl HashState {
             k1: u64::from_be_bytes(k1),
         }
     }
+}
+
+impl BuildHasher for HashState {
+    type Hasher = SipHasher13;
 
     /// Builds a hasher using the hash state keys
-    fn build_hasher(&self) -> SipHasher13 {
+    fn build_hasher(&self) -> Self::Hasher {
         SipHasher13::new_with_keys(self.k0, self.k1)
     }
 }
@@ -56,51 +57,31 @@ pub struct StatelessResetHandle(NonZeroU64);
 #[derive(Debug)]
 pub(crate) struct StatelessResetMap {
     /// Maps from a hash of peer stateless reset token to internal connection IDs
-    map: HashMap<NonZeroU64, InternalConnectionId, HashBuildHasher>,
-    /// Hash state for use when initializing the hash function
-    hash_state: HashState,
+    map: HashMap<stateless_reset::Token, InternalConnectionId, HashState>,
 }
 
 impl StatelessResetMap {
-    /// A prechecked value of 1 used if the hash happens to be zero
-    const ONE: NonZeroU64 = unsafe { NonZeroU64::new_unchecked(1) };
-
     /// Constructs a new `StatelessResetMap`
     fn new(hash_state: HashState) -> Self {
         Self {
-            // The `HashBuildHasher`, which doesn't perform additional hashing on the key, is used
-            // since the key is already a hash of Stateless Reset Token
-            map: HashMap::with_hasher(HashBuildHasher::default()),
-            hash_state,
+            map: HashMap::with_hasher(hash_state),
         }
     }
 
     /// Gets the `InternalConnectionId` (if any) associated with the given stateless reset token
     fn get(&self, token: &stateless_reset::Token) -> Option<InternalConnectionId> {
-        let handle = self.handle(token);
-
-        self.map.get(&handle.0).copied()
+        self.map.get(&token).copied()
     }
 
-    /// Inserts a hash of the given stateless reset token and the given
+    /// Inserts the given stateless reset token and the given
     /// internal connection ID into the stateless reset map.
-    fn insert(&mut self, handle: StatelessResetHandle, internal_id: InternalConnectionId) {
-        self.map.insert(handle.0, internal_id);
+    fn insert(&mut self, token: stateless_reset::Token, internal_id: InternalConnectionId) {
+        self.map.insert(token, internal_id);
     }
 
     /// Removes the mapping for the given key
-    fn remove(&mut self, handle: StatelessResetHandle) -> Option<InternalConnectionId> {
-        self.map.remove(&handle.0)
-    }
-
-    /// Creates a handle to an entry in the stateless reset map by hashing the given stateless
-    /// reset token.
-    fn handle(&self, token: &stateless_reset::Token) -> StatelessResetHandle {
-        let mut hasher = self.hash_state.build_hasher();
-        token.hash(&mut hasher);
-        StatelessResetHandle {
-            0: NonZeroU64::new(hasher.finish()).unwrap_or(Self::ONE),
-        }
+    fn remove(&mut self, token: stateless_reset::Token) -> Option<InternalConnectionId> {
+        self.map.remove(&token)
     }
 }
 
@@ -135,14 +116,14 @@ impl ConnectionIdMapperState {
         }
     }
 
-    /// Inserts a hash of the given stateless reset token and the given
+    /// Inserts the given stateless reset token and the given
     /// internal connection ID into the stateless reset map.
     pub(crate) fn insert_stateless_reset_token(
         &mut self,
-        handle: StatelessResetHandle,
+        token: stateless_reset::Token,
         internal_id: InternalConnectionId,
     ) {
-        self.stateless_reset_map.insert(handle, internal_id);
+        self.stateless_reset_map.insert(token, internal_id);
     }
 
     pub(crate) fn remove_local_id(
@@ -152,22 +133,12 @@ impl ConnectionIdMapperState {
         self.local_id_map.remove(external_id)
     }
 
-    /// Removes the stateless reset token associated with the given `StatelessResetHandle` from
-    /// the stateless reset map.
+    /// Removes the stateless reset token from the stateless reset map.
     pub(crate) fn remove_stateless_reset_token(
         &mut self,
-        handle: StatelessResetHandle,
+        token: stateless_reset::Token,
     ) -> Option<InternalConnectionId> {
-        self.stateless_reset_map.remove(handle)
-    }
-
-    /// Creates a handle to an entry in the stateless reset map by hashing the given stateless
-    /// reset token
-    pub(crate) fn stateless_reset_handle(
-        &self,
-        token: &stateless_reset::Token,
-    ) -> StatelessResetHandle {
-        self.stateless_reset_map.handle(token)
+        self.stateless_reset_map.remove(token)
     }
 }
 
@@ -276,45 +247,15 @@ mod tests {
             None,
             mapper.lookup_internal_connection_id_by_stateless_reset_token(&TEST_TOKEN_2)
         );
-        assert_eq!(
-            None,
-            mapper.lookup_internal_connection_id_by_stateless_reset_token(&TEST_TOKEN_1)
-        );
 
-        let handle = mapper.state.borrow().stateless_reset_handle(&TEST_TOKEN_1);
         mapper
             .state
             .borrow_mut()
-            .remove_stateless_reset_token(handle);
+            .remove_stateless_reset_token(TEST_TOKEN_1);
 
         assert_eq!(
             None,
             mapper.lookup_internal_connection_id_by_stateless_reset_token(&TEST_TOKEN_1)
         );
-    }
-
-    #[test]
-    fn stateless_reset_handle_test() {
-        let mut unpredictable_bits_generator = stateless_reset::testing::Generator(123);
-        let mapper = ConnectionIdMapper::new(&mut unpredictable_bits_generator);
-        let mapper = mapper.state.borrow();
-
-        let handle_1 = mapper.stateless_reset_handle(&TEST_TOKEN_1);
-        let handle_2 = mapper.stateless_reset_handle(&TEST_TOKEN_1);
-
-        assert_eq!(handle_1, handle_2);
-
-        let handle_3 = mapper.stateless_reset_handle(&TEST_TOKEN_2);
-
-        assert_ne!(handle_1, handle_3);
-
-        let mapper_2 = ConnectionIdMapper::new(&mut unpredictable_bits_generator);
-        let mapper_2 = mapper_2.state.borrow();
-
-        let handle_4 = mapper_2.stateless_reset_handle(&TEST_TOKEN_1);
-        let handle_5 = mapper_2.stateless_reset_handle(&TEST_TOKEN_1);
-
-        assert_eq!(handle_4, handle_5);
-        assert_ne!(handle_1, handle_4);
     }
 }

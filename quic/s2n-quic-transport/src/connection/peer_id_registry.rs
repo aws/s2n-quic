@@ -1,6 +1,6 @@
 use crate::{
     connection::{
-        connection_id_mapper::{ConnectionIdMapperState, StatelessResetHandle},
+        connection_id_mapper::ConnectionIdMapperState,
         peer_id_registry::{
             PeerIdRegistrationError::{
                 ExceededActiveConnectionIdLimit, ExceededRetiredConnectionIdLimit,
@@ -63,8 +63,10 @@ struct PeerIdInfo {
     //# detecting when NEW_CONNECTION_ID or RETIRE_CONNECTION_ID frames refer
     //# to the same value.
     sequence_number: u32,
-    // A handle to the mapping of stateless reset token to internal connection ID.
-    stateless_reset_handle: Option<StatelessResetHandle>,
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
+    //# A 128-bit value that will be used for a stateless reset when the
+    //# associated connection ID is used.
+    stateless_reset_token: Option<stateless_reset::Token>,
     // The current status of the connection ID
     status: PeerIdStatus,
 }
@@ -84,12 +86,12 @@ impl PeerIdInfo {
     fn validate_new_connection_id(
         &self,
         new_id: &connection::PeerId,
-        stateless_reset_handle: StatelessResetHandle,
+        stateless_reset_token: &stateless_reset::Token,
         sequence_number: u32,
     ) -> Result<bool, PeerIdRegistrationError> {
         let reset_token_is_equal = self
-            .stateless_reset_handle
-            .map_or(false, |handle| handle == stateless_reset_handle);
+            .stateless_reset_token
+            .map_or(false, |token| token == *stateless_reset_token);
         let sequence_number_is_equal = self.sequence_number == sequence_number;
 
         if self.id == *new_id {
@@ -216,12 +218,12 @@ impl Drop for PeerIdRegistry {
         let mut guard = self.state.borrow_mut();
 
         // Stop tracking all associated stateless reset tokens
-        for handle in self
+        for token in self
             .registered_ids
             .iter()
-            .flat_map(|id_info| id_info.stateless_reset_handle)
+            .flat_map(|id_info| id_info.stateless_reset_token)
         {
-            guard.remove_stateless_reset_token(handle);
+            guard.remove_stateless_reset_token(token);
         }
     }
 }
@@ -242,23 +244,23 @@ impl PeerIdRegistry {
             retire_prior_to: 0,
         };
 
-        let stateless_reset_handle = stateless_reset_token.map(|token| {
-            let mut state = registry.state.borrow_mut();
-            let handle = state.stateless_reset_handle(&token);
-            state.insert_stateless_reset_token(handle, internal_id);
-            handle
-        });
-
         registry.registered_ids.push(PeerIdInfo {
             id: initial_connection_id,
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
             //# The sequence number of the initial connection ID is 0.
             sequence_number: 0,
-            stateless_reset_handle,
+            stateless_reset_token,
             // Start the initial PeerId in ActivePendingNewConnectionId so the ID used
             // during the handshake is rotated as soon as the peer sends a new connection ID
             status: PeerIdStatus::InUsePendingNewConnectionId,
         });
+
+        if let Some(token) = stateless_reset_token {
+            registry
+                .state
+                .borrow_mut()
+                .insert_stateless_reset_token(token, internal_id);
+        }
 
         registry
     }
@@ -280,16 +282,11 @@ impl PeerIdRegistry {
         let mut is_duplicate = false;
         let mut id_pending_new_connection_id = None;
 
-        let stateless_reset_handle = self
-            .state
-            .borrow()
-            .stateless_reset_handle(stateless_reset_token);
-
         // Iterate over all registered IDs, retiring any as necessary
         for id_info in self.registered_ids.iter_mut() {
             is_duplicate |= id_info.validate_new_connection_id(
                 new_id,
-                stateless_reset_handle,
+                stateless_reset_token,
                 sequence_number,
             )?;
 
@@ -320,7 +317,7 @@ impl PeerIdRegistry {
             let mut new_id_info = PeerIdInfo {
                 id: *new_id,
                 sequence_number,
-                stateless_reset_handle: Some(stateless_reset_handle),
+                stateless_reset_token: Some(*stateless_reset_token),
                 status: New,
             };
 
@@ -390,13 +387,13 @@ impl PeerIdRegistry {
         self.registered_ids.retain(|id_info| {
             if let PendingAcknowledgement(packet_number) = id_info.status {
                 if ack_set.contains(packet_number) {
-                    if let Some(handle) = id_info.stateless_reset_handle {
+                    if let Some(token) = id_info.stateless_reset_token {
                         // Stop tracking the stateless reset token
                         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1
                         //# An endpoint MUST NOT check for any Stateless Reset Tokens associated
                         //# with connection IDs it has not used or for connection IDs that have
                         //# been retired.
-                        mapper_state.remove_stateless_reset_token(handle);
+                        mapper_state.remove_stateless_reset_token(token);
                     }
                     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2
                     //# An endpoint MUST NOT forget a connection ID without retiring it
@@ -445,10 +442,10 @@ impl PeerIdRegistry {
                 //# An endpoint MUST NOT check for any Stateless Reset Tokens associated
                 //# with connection IDs it has not used or for connection IDs that have
                 //# been retired.
-                if let Some(handle) = id_info.stateless_reset_handle {
+                if let Some(token) = id_info.stateless_reset_token {
                     self.state
                         .borrow_mut()
-                        .insert_stateless_reset_token(handle, self.internal_id);
+                        .insert_stateless_reset_token(token, self.internal_id);
                 }
 
                 // Consume the new id
@@ -534,8 +531,8 @@ impl PeerIdRegistry {
             registered_id_copy.sort_by_key(|id_info| id_info.id);
             registered_id_copy.dedup_by_key(|id_info| id_info.id);
             assert_eq!(before_count, registered_id_copy.len());
-            registered_id_copy.sort_by_key(|id_info| id_info.stateless_reset_handle);
-            registered_id_copy.dedup_by_key(|id_info| id_info.stateless_reset_handle);
+            registered_id_copy.sort_by_key(|id_info| id_info.stateless_reset_token);
+            registered_id_copy.dedup_by_key(|id_info| id_info.stateless_reset_token);
             assert_eq!(before_count, registered_id_copy.len());
         }
     }
