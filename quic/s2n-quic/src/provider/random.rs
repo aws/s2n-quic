@@ -10,7 +10,7 @@ pub trait Provider: 'static {
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "rand")] {
-        pub use default::Provider as Default;
+        pub use self::rand::Provider as Default;
     } else {
         // TODO implement stub that panics
     }
@@ -19,7 +19,7 @@ cfg_if::cfg_if! {
 impl_provider_utils!();
 
 #[cfg(feature = "rand-provider")]
-pub mod default {
+pub mod rand {
     use core::convert::Infallible;
     use rand::{
         prelude::*,
