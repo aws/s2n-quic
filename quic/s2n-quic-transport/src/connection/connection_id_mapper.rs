@@ -16,7 +16,7 @@ use siphasher::sip::SipHasher13;
 // to protect against such attacks. We implement this explicitly to ensure this map continues to
 // provide this protection even if future versions of `std::collections::HashMap` do not and to
 // make the hash algorithm used explicit.
-#[derive(Clone, Copy, Debug)]
+#[derive(Debug)]
 pub struct HashState {
     k0: u64,
     k1: u64,
@@ -129,10 +129,10 @@ pub(crate) struct ConnectionIdMapperState {
 }
 
 impl ConnectionIdMapperState {
-    fn new(hash_state: HashState) -> Self {
+    fn new<R: random::Generator>(random_generator: &mut R) -> Self {
         Self {
-            local_id_map: LocalIdMap::new(hash_state),
-            stateless_reset_map: StatelessResetMap::new(hash_state),
+            local_id_map: LocalIdMap::new(HashState::new(random_generator)),
+            stateless_reset_map: StatelessResetMap::new(HashState::new(random_generator)),
         }
     }
 
@@ -182,10 +182,8 @@ pub struct ConnectionIdMapper {
 impl ConnectionIdMapper {
     /// Creates a new `ConnectionIdMapper`
     pub fn new<R: random::Generator>(random_generator: &mut R) -> Self {
-        let random_state = HashState::new(random_generator);
-
         Self {
-            state: Rc::new(RefCell::new(ConnectionIdMapperState::new(random_state))),
+            state: Rc::new(RefCell::new(ConnectionIdMapperState::new(random_generator))),
         }
     }
 
