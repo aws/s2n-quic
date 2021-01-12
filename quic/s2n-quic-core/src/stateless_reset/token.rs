@@ -12,6 +12,10 @@ use s2n_codec::{decoder_value, Encoder, EncoderValue};
 //# }
 const LEN: usize = 128 / 8;
 
+// The implemented PartialEq will have the same results as
+// a derived version, except it is constant-time. Therefore
+// Hash can still be derived.
+#[allow(clippy::derive_hash_xor_eq)]
 #[derive(Copy, Clone, Debug, Eq, PartialOrd, Ord, Hash)]
 pub struct Token([u8; LEN]);
 
@@ -151,13 +155,13 @@ mod tests {
     //# value of the token.
     #[test]
     fn equality_test() {
-        let token_1 = TEST_TOKEN_1.clone();
-        let token_2 = TEST_TOKEN_1.clone();
+        let token_1 = TEST_TOKEN_1;
+        let token_2 = TEST_TOKEN_1;
 
         assert_eq!(token_1, token_2);
 
         for i in 0..LEN {
-            let mut token = TEST_TOKEN_1.clone();
+            let mut token = TEST_TOKEN_1;
             token.0[i] = !TEST_TOKEN_1.0[i];
 
             assert_ne!(TEST_TOKEN_1, token);
