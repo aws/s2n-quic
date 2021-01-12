@@ -182,10 +182,13 @@ impl ConnectionIdMapper {
         //# When comparing a datagram to Stateless Reset Token values, endpoints
         //# MUST perform the comparison without leaking information about the
         //# value of the token.
-        // The given token is compared to the known Stateless Reset Token values by
-        // looking it up in a HashMap, which will perform a hashing function on the
-        // key regardless of its value. Since the token is a fixed length, this will
-        // be constant time.
+        // The given value is hashed using SipHash13 which is a secure PRF and
+        // randomly keyed for each instance. This means that looking up on and comparing
+        // against this hash gives no useful timing information to an observer. (Namely,
+        // it will leak if there is a stateless reset token with the same hashed value,
+        // but no information about the reset token itself.) Actual equality checks for
+        // stateless reset tokens are implemented in stateless_reset::Token in
+        // a constant-time manner.
         guard.stateless_reset_map.get(peer_stateless_reset_token)
     }
 
