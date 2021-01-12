@@ -586,7 +586,15 @@ pub(crate) mod tests {
         transmission,
         transmission::interest::Provider,
     };
-    use s2n_quic_core::{connection, endpoint, frame::{new_connection_id::STATELESS_RESET_TOKEN_LEN, Frame, RetireConnectionID}, packet::number::PacketNumberRange, stateless_reset, stateless_reset::token::testing::*, transport::error::TransportError, varint::VarInt, random};
+    use s2n_quic_core::{
+        connection, endpoint,
+        frame::{new_connection_id::STATELESS_RESET_TOKEN_LEN, Frame, RetireConnectionID},
+        packet::number::PacketNumberRange,
+        random, stateless_reset,
+        stateless_reset::token::testing::*,
+        transport::error::TransportError,
+        varint::VarInt,
+    };
 
     // Helper function to easily generate a PeerId from bytes
     pub fn id(bytes: &[u8]) -> connection::PeerId {

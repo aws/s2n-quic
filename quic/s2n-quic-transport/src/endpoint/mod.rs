@@ -72,11 +72,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
         let (connection_sender, connection_receiver) = unbounded_channel::channel();
         let acceptor = Acceptor::new(connection_receiver);
 
-        let connection_id_mapper = ConnectionIdMapper::new(
-            config
-                .context()
-                .random_generator,
-        );
+        let connection_id_mapper = ConnectionIdMapper::new(config.context().random_generator);
 
         let endpoint = Self {
             config,
@@ -521,7 +517,7 @@ impl<'a, Cfg: Config> core::future::Future for PendingWakeups<'a, Cfg> {
 #[cfg(any(test, feature = "testing"))]
 pub mod testing {
     use super::*;
-    use s2n_quic_core::{endpoint, stateless_reset, random};
+    use s2n_quic_core::{endpoint, random, stateless_reset};
 
     #[derive(Debug)]
     pub struct Server;

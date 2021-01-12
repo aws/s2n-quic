@@ -628,7 +628,15 @@ impl crate::transmission::interest::Provider for LocalIdRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use s2n_quic_core::{connection, connection::id::MIN_LIFETIME, frame::{Frame, NewConnectionID}, packet::number::PacketNumberRange, stateless_reset::token::testing::*, varint::VarInt, random};
+    use s2n_quic_core::{
+        connection,
+        connection::id::MIN_LIFETIME,
+        frame::{Frame, NewConnectionID},
+        packet::number::PacketNumberRange,
+        random,
+        stateless_reset::token::testing::*,
+        varint::VarInt,
+    };
 
     use crate::{
         connection::{
