@@ -16,12 +16,17 @@ const LEN: usize = 128 / 8;
 // a derived version, except it is constant-time. Therefore
 // Hash can still be derived.
 #[allow(clippy::derive_hash_xor_eq)]
-#[derive(Copy, Clone, Debug, Eq, PartialOrd, Ord, Hash)]
+#[derive(Copy, Clone, Debug, Eq, Hash)]
 pub struct Token([u8; LEN]);
 
 impl Token {
     /// A zeroed out stateless reset token
     pub const ZEROED: Self = Self([0; LEN]);
+
+    /// Unwraps this token, returning the underlying array
+    pub fn into_inner(self) -> [u8; LEN] {
+        self.0
+    }
 }
 
 impl From<[u8; LEN]> for Token {

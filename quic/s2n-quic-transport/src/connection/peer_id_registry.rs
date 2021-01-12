@@ -533,7 +533,11 @@ impl PeerIdRegistry {
             registered_id_copy.sort_by_key(|id_info| id_info.id);
             registered_id_copy.dedup_by_key(|id_info| id_info.id);
             assert_eq!(before_count, registered_id_copy.len());
-            registered_id_copy.sort_by_key(|id_info| id_info.stateless_reset_token);
+            registered_id_copy.sort_by_key(|id_info| {
+                id_info
+                    .stateless_reset_token
+                    .map(|token| token.into_inner())
+            });
             registered_id_copy.dedup_by_key(|id_info| id_info.stateless_reset_token);
             assert_eq!(before_count, registered_id_copy.len());
         }
