@@ -3,6 +3,7 @@
 use crate::connection::LocalId;
 use core::convert::{TryFrom, TryInto};
 use s2n_codec::{decoder_value, Encoder, EncoderValue};
+use subtle::ConstantTimeEq;
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
 //# Stateless Reset {
@@ -62,12 +63,7 @@ impl PartialEq for Token {
     //# MUST perform the comparison without leaking information about the
     //# value of the token.
     fn eq(&self, other: &Self) -> bool {
-        let mut equal = 0;
-
-        for i in 0..LEN {
-            equal |= self.0[i] ^ other.0[i]
-        }
-        equal == 0
+        self.0.ct_eq(&other.0).into()
     }
 }
 
