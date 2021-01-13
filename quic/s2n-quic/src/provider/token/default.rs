@@ -47,6 +47,9 @@ impl BaseKey {
     fn poll_key(&mut self) -> Option<hmac::Key> {
         let now = s2n_quic_platform::time::now();
 
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#21.2
+        //# Servers SHOULD provide mitigations for this attack by limiting the
+        //# usage and lifetime of address validation tokens; see Section 8.1.3.
         if let Some((expires_at, key)) = self.key.as_ref() {
             if expires_at > &now {
                 // key is still valid
@@ -630,6 +633,10 @@ mod tests {
             .generate_retry_token(&addr, &conn_id, &orig_conn_id, &mut buf)
             .unwrap();
 
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#21.2
+        //= type=test
+        //# Servers SHOULD provide mitigations for this attack by limiting the
+        //# usage and lifetime of address validation tokens; see Section 8.1.3.
         // Validation should fail because multiple rotation periods have elapsed
         clock.adjust_by(TEST_KEY_ROTATION_PERIOD * 2);
         assert!(format.validate_token(&addr, &conn_id, &buf).is_none());

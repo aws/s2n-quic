@@ -37,6 +37,11 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         //# Initial packets to at least the smallest allowed maximum datagram
         //# size of 1200 bytes
 
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.1
+        //# A server MUST discard an Initial packet that is carried in a UDP
+        //# datagram with a payload that is smaller than the smallest allowed
+        //# maximum datagram size of 1200 bytes.
+
         //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#9.3
         //# First, the packet
         //# containing a ClientHello MUST be padded to a minimum size.
