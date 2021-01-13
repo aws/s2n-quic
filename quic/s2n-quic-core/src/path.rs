@@ -126,6 +126,9 @@ impl<CC: CongestionController> Path<CC> {
     //# Prior to validating the client address, servers MUST NOT send more
     //# than three times as many bytes as the number of bytes they have
     //# received.
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.1
+    //# The server MUST also limit the number of bytes it sends before
+    //# validating the address of the client; see Section 8.
     pub fn clamp_mtu(&self, requested_size: usize) -> usize {
         match self.state {
             State::Validated => requested_size.min(self.mtu as usize),
@@ -246,6 +249,10 @@ mod tests {
         //# Prior to validating the client address, servers MUST NOT send more
         //# than three times as many bytes as the number of bytes they have
         //# received.
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.1
+        //= type=test
+        //# The server MUST also limit the number of bytes it sends before
+        //# validating the address of the client; see Section 8.
         // TODO this would work better as a fuzz test
         let mut path = Path::new(
             SocketAddress::default(),
