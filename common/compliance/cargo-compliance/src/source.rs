@@ -20,12 +20,18 @@ impl<'a> SourceFile<'a> {
         match self {
             Self::Object(file) => {
                 let bytes = std::fs::read(file)?;
-                crate::object::extract(&bytes, &mut annotations)?;
+                if let Err(e) = crate::object::extract(&bytes, &mut annotations) {
+                    println!("File Error {:?} in {:?}", e, file);
+                    return Err(e);
+                }
                 Ok(annotations)
             }
             Self::Text(pattern, file) => {
                 let text = std::fs::read_to_string(file)?;
-                pattern.extract(&text, &file, &mut annotations)?;
+                if let Err(e) = pattern.extract(&text, &file, &mut annotations) {
+                    println!("Text error {:?} in {:?}", e, file);
+                    return Err(e);
+                }
                 Ok(annotations)
             }
             Self::Spec(file) => {
