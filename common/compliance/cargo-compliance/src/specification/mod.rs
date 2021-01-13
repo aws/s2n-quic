@@ -1,4 +1,5 @@
 use crate::{sourcemap::Str, Error};
+use anyhow::anyhow;
 use core::{
     cmp::Ordering,
     fmt,
@@ -65,7 +66,7 @@ impl FromStr for Format {
         match v {
             "AUTO" => Ok(Self::Auto),
             "IETF" => Ok(Self::IETF),
-            _ => Err(format!("Invalid spec type {:?}", v).into()),
+            _ => Err(anyhow!(format!("Invalid spec type {:?}", v))),
         }
     }
 }

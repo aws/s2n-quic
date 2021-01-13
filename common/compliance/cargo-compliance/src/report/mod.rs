@@ -5,6 +5,7 @@ use crate::{
     target::Target,
     Error,
 };
+use anyhow::anyhow;
 use core::fmt;
 use rayon::prelude::*;
 use std::{
@@ -228,7 +229,9 @@ impl Report {
                 eprintln!("{}", error);
             }
 
-            return Err("source errors were found. no reports were generated".into());
+            return Err(anyhow!(
+                "source errors were found. no reports were generated"
+            ));
         }
 
         report
