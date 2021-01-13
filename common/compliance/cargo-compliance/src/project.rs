@@ -163,7 +163,7 @@ impl Project {
         pattern: &'a str,
         files: &mut HashSet<SourceFile<'a>>,
     ) -> Result<(), Error> {
-        let (compliance_pattern, file_pattern) = if pattern.starts_with('(') {
+        let (compliance_pattern, file_pattern) = if let Some(pattern) = pattern.strip_prefix('(') {
             let mut parts = pattern.splitn(2, ')');
             let pattern = parts.next().expect("invalid pattern");
             let file_pattern = parts.next().expect("invalid pattern");
