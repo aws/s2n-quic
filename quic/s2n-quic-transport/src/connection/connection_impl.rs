@@ -2,7 +2,7 @@
 
 use crate::{
     connection::{
-        self, connection_id_mapper::LocalIdRegistrationError, id::ConnectionInfo,
+        self, id::ConnectionInfo, local_id_registry::LocalIdRegistrationError,
         CloseReason as ConnectionCloseReason, ConnectionInterests, ConnectionTimerEntry,
         ConnectionTimers, ConnectionTransmission, ConnectionTransmissionContext,
         InternalConnectionId, Parameters as ConnectionParameters, SharedConnectionState,
@@ -244,19 +244,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
             peer_validated,
         );
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
-        //= type=TODO
-        //= tracking-issue=195
-        //= feature=Stateless Reset
-        //# Servers can also specify a stateless_reset_token transport
-        //# parameter during the handshake that applies to the connection ID that
-        //# it selected during the handshake; clients cannot use this transport
-        //# parameter because their transport parameters do not have
-        //# confidentiality protection.
-        let stateless_reset_token = None;
-        let peer_id_registry =
-            connection::PeerIdRegistry::new(initial_path.peer_connection_id, stateless_reset_token);
-        let path_manager = path::Manager::new(initial_path, peer_id_registry);
+        let path_manager = path::Manager::new(initial_path, parameters.peer_id_registry);
 
         Self {
             config: parameters.connection_config,

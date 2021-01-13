@@ -3,6 +3,7 @@
 use crate::connection::LocalId;
 use core::convert::{TryFrom, TryInto};
 use s2n_codec::{decoder_value, Encoder, EncoderValue};
+use subtle::ConstantTimeEq;
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
 //# Stateless Reset {
@@ -12,12 +13,21 @@ use s2n_codec::{decoder_value, Encoder, EncoderValue};
 //# }
 const LEN: usize = 128 / 8;
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+// The implemented PartialEq will have the same results as
+// a derived version, except it is constant-time. Therefore
+// Hash can still be derived.
+#[allow(clippy::derive_hash_xor_eq)]
+#[derive(Copy, Clone, Debug, Eq, Hash)]
 pub struct Token([u8; LEN]);
 
 impl Token {
     /// A zeroed out stateless reset token
     pub const ZEROED: Self = Self([0; LEN]);
+
+    /// Unwraps this token, returning the underlying array
+    pub fn into_inner(self) -> [u8; LEN] {
+        self.0
+    }
 }
 
 impl From<[u8; LEN]> for Token {
@@ -44,6 +54,16 @@ impl AsRef<[u8]> for Token {
 impl AsMut<[u8]> for Token {
     fn as_mut(&mut self) -> &mut [u8] {
         self.0.as_mut()
+    }
+}
+
+impl PartialEq for Token {
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1
+    //# When comparing a datagram to Stateless Reset Token values, endpoints
+    //# MUST perform the comparison without leaking information about the
+    //# value of the token.
+    fn eq(&self, other: &Self) -> bool {
+        self.0.ct_eq(&other.0).into()
     }
 }
 
@@ -121,6 +141,31 @@ pub mod testing {
             }
 
             token.into()
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::stateless_reset::token::{testing::TEST_TOKEN_1, LEN};
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1
+    //= type=test
+    //# When comparing a datagram to Stateless Reset Token values, endpoints
+    //# MUST perform the comparison without leaking information about the
+    //# value of the token.
+    #[test]
+    fn equality_test() {
+        let token_1 = TEST_TOKEN_1;
+        let token_2 = TEST_TOKEN_1;
+
+        assert_eq!(token_1, token_2);
+
+        for i in 0..LEN {
+            let mut token = TEST_TOKEN_1;
+            token.0[i] = !TEST_TOKEN_1.0[i];
+
+            assert_ne!(TEST_TOKEN_1, token);
         }
     }
 }

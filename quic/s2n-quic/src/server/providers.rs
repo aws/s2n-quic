@@ -11,7 +11,7 @@ impl_providers_state! {
         congestion_controller: CongestionController,
         connection_id: ConnectionID,
         stateless_reset_token: StatelessResetToken,
-        stateless_reset: StatelessReset,
+        random: Random,
         endpoint_limits: EndpointLimits,
         limits: Limits,
         log: Log,
@@ -31,7 +31,7 @@ impl<
         CongestionController: congestion_controller::Provider,
         ConnectionID: connection_id::Provider,
         StatelessResetToken: stateless_reset_token::Provider,
-        StatelessReset: stateless_reset::Provider,
+        Random: random::Provider,
         EndpointLimits: endpoint_limits::Provider,
         Limits: limits::Provider,
         Log: log::Provider,
@@ -46,7 +46,7 @@ impl<
         CongestionController,
         ConnectionID,
         StatelessResetToken,
-        StatelessReset,
+        Random,
         EndpointLimits,
         Limits,
         Log,
@@ -65,7 +65,7 @@ impl<
             congestion_controller,
             connection_id,
             stateless_reset_token,
-            stateless_reset,
+            random,
             endpoint_limits,
             limits,
             log,
@@ -80,7 +80,7 @@ impl<
         let congestion_controller = congestion_controller.start().map_err(StartError::new)?;
         let connection_id = connection_id.start().map_err(StartError::new)?;
         let stateless_reset_token = stateless_reset_token.start().map_err(StartError::new)?;
-        let stateless_reset = stateless_reset.start().map_err(StartError::new)?;
+        let random = random.start().map_err(StartError::new)?;
         let endpoint_limits = endpoint_limits.start().map_err(StartError::new)?;
         let limits = limits.start().map_err(StartError::new)?;
         let log = log.start().map_err(StartError::new)?;
@@ -106,7 +106,7 @@ impl<
             congestion_controller,
             connection_id,
             stateless_reset_token,
-            stateless_reset,
+            random,
             endpoint_limits,
             limits,
             log,
@@ -201,7 +201,7 @@ struct EndpointConfig<
     CongestionController,
     ConnectionID,
     StatelessResetToken,
-    StatelessReset,
+    Random,
     EndpointLimits,
     Limits,
     Log,
@@ -212,7 +212,7 @@ struct EndpointConfig<
     congestion_controller: CongestionController,
     connection_id: ConnectionID,
     stateless_reset_token: StatelessResetToken,
-    stateless_reset: StatelessReset,
+    random: Random,
     endpoint_limits: EndpointLimits,
     limits: Limits,
     log: Log,
@@ -225,7 +225,7 @@ impl<
         CongestionController: congestion_controller::Endpoint,
         ConnectionID: connection::id::Format,
         StatelessResetToken: stateless_reset_token::Generator,
-        StatelessReset: s2n_quic_core::stateless_reset::UnpredictableBits,
+        Random: s2n_quic_core::random::Generator,
         EndpointLimits: s2n_quic_core::endpoint::Limits,
         Limits,
         Log,
@@ -237,7 +237,7 @@ impl<
         CongestionController,
         ConnectionID,
         StatelessResetToken,
-        StatelessReset,
+        Random,
         EndpointLimits,
         Limits,
         Log,
@@ -250,7 +250,7 @@ impl<
         ConnectionConfig<CongestionController::CongestionController, Tls::Session>;
     type ConnectionIdFormat = ConnectionID;
     type StatelessResetTokenGenerator = StatelessResetToken;
-    type StatelessResetUnpredictableBitsGenerator = StatelessReset;
+    type RandomGenerator = Random;
     type Connection = connection::Implementation<Self::ConnectionConfig>;
     type CongestionControllerEndpoint = CongestionController;
     type EndpointLimits = EndpointLimits;
@@ -269,7 +269,7 @@ impl<
             congestion_controller: &mut self.congestion_controller,
             connection_id_format: &mut self.connection_id,
             stateless_reset_token_generator: &mut self.stateless_reset_token,
-            stateless_reset_unpredictable_bits_generator: &mut self.stateless_reset,
+            random_generator: &mut self.random,
             tls: &mut self.tls,
             endpoint_limits: &mut self.endpoint_limits,
             token: &mut self.token,

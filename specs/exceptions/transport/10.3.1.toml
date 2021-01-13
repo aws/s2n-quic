@@ -1,0 +1,19 @@
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1"
+
+[[exception]]
+quote = '''
+The endpoint identifies a
+received datagram as a stateless reset by comparing the last 16 bytes
+of the datagram with all Stateless Reset Tokens associated with the
+remote address on which the datagram was received.
+'''
+reason = '''
+s2n-quic maintains a hash map of all Stateless Reset Tokens to the connection
+they are associated with. Since the hash map provides constant time lookups by
+using SipHash initialized with random state, it is not necessary to use remote
+address to reduce the potential pool of matching Stateless Reset Tokens before
+performing the comparison. In addition, validating the remote address matches the
+remote address associated with the Stateless Reset Token provides minimal additional
+security benefit given the ease of spoofing remote addresses and the difficult of
+forging a valid Stateless Reset Token.
+'''

@@ -68,15 +68,17 @@ unsafe impl<Cfg: Config> Send for Endpoint<Cfg> {}
 
 impl<Cfg: Config> Endpoint<Cfg> {
     /// Creates a new QUIC endpoint using the given configuration
-    pub fn new(config: Cfg) -> (Self, Acceptor) {
+    pub fn new(mut config: Cfg) -> (Self, Acceptor) {
         let (connection_sender, connection_receiver) = unbounded_channel::channel();
         let acceptor = Acceptor::new(connection_receiver);
+
+        let connection_id_mapper = ConnectionIdMapper::new(config.context().random_generator);
 
         let endpoint = Self {
             config,
             connections: ConnectionContainer::new(connection_sender),
             connection_id_generator: InternalConnectionIdGenerator::new(),
-            connection_id_mapper: ConnectionIdMapper::new(),
+            connection_id_mapper,
             timer_manager: TimerManager::new(),
             wakeup_queue: WakeupQueue::new(),
             dequeued_wakeups: VecDeque::new(),
@@ -515,7 +517,7 @@ impl<'a, Cfg: Config> core::future::Future for PendingWakeups<'a, Cfg> {
 #[cfg(any(test, feature = "testing"))]
 pub mod testing {
     use super::*;
-    use s2n_quic_core::{endpoint, stateless_reset};
+    use s2n_quic_core::{endpoint, random, stateless_reset};
 
     #[derive(Debug)]
     pub struct Server;
@@ -528,7 +530,7 @@ pub mod testing {
         type EndpointLimits = Limits;
         type ConnectionIdFormat = connection::id::testing::Format;
         type StatelessResetTokenGenerator = stateless_reset::token::testing::Generator;
-        type StatelessResetUnpredictableBitsGenerator = stateless_reset::testing::Generator;
+        type RandomGenerator = random::testing::Generator;
         type TokenFormat = s2n_quic_core::token::testing::Format;
 
         fn create_connection_config(&mut self) -> Self::ConnectionConfig {
@@ -551,7 +553,7 @@ pub mod testing {
         type EndpointLimits = Limits;
         type ConnectionIdFormat = connection::id::testing::Format;
         type StatelessResetTokenGenerator = stateless_reset::token::testing::Generator;
-        type StatelessResetUnpredictableBitsGenerator = stateless_reset::testing::Generator;
+        type RandomGenerator = random::testing::Generator;
         type TokenFormat = s2n_quic_core::token::testing::Format;
 
         fn create_connection_config(&mut self) -> Self::ConnectionConfig {

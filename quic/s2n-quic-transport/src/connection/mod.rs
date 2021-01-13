@@ -27,17 +27,19 @@ mod connection_trait;
 mod errors;
 pub(crate) mod finalization;
 mod internal_connection_id;
+pub(crate) mod local_id_registry;
 pub(crate) mod peer_id_registry;
 mod shared_state;
 pub(crate) mod transmission;
 
 pub(crate) use api_provider::{ConnectionApi, ConnectionApiProvider};
 pub(crate) use connection_container::{ConnectionContainer, ConnectionContainerIterationResult};
-pub(crate) use connection_id_mapper::{ConnectionIdMapper, LocalIdRegistry};
+pub(crate) use connection_id_mapper::ConnectionIdMapper;
 pub(crate) use connection_interests::ConnectionInterests;
 pub(crate) use connection_timers::{ConnectionTimerEntry, ConnectionTimers};
 pub(crate) use connection_trait::ConnectionTrait as Trait;
 pub(crate) use internal_connection_id::{InternalConnectionId, InternalConnectionIdGenerator};
+pub(crate) use local_id_registry::LocalIdRegistry;
 pub(crate) use peer_id_registry::PeerIdRegistry;
 pub(crate) use shared_state::{SharedConnectionState, SynchronizedSharedConnectionState};
 pub(crate) use transmission::{ConnectionTransmission, ConnectionTransmissionContext};
@@ -78,6 +80,8 @@ pub struct Parameters<Cfg: Config> {
     pub internal_connection_id: InternalConnectionId,
     /// The local ID registry which should be utilized by the connection
     pub local_id_registry: LocalIdRegistry,
+    /// The peer ID registry which should be utilized by the connection
+    pub peer_id_registry: PeerIdRegistry,
     /// The per-connection timer
     pub timer: ConnectionTimerEntry,
     /// The last utilized remote Connection ID

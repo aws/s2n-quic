@@ -2,10 +2,10 @@
 
 use crate::{
     connection::{
-        self, connection_id_mapper::LocalIdRegistrationError,
-        connection_interests::ConnectionInterests, id::ConnectionInfo,
-        internal_connection_id::InternalConnectionId, shared_state::SharedConnectionState,
-        CloseReason as ConnectionCloseReason, Parameters as ConnectionParameters,
+        self, connection_interests::ConnectionInterests, id::ConnectionInfo,
+        internal_connection_id::InternalConnectionId, local_id_registry::LocalIdRegistrationError,
+        shared_state::SharedConnectionState, CloseReason as ConnectionCloseReason,
+        Parameters as ConnectionParameters,
     },
     contexts::ConnectionOnTransmitError,
     path,

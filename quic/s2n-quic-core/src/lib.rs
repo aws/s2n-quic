@@ -12,6 +12,7 @@ pub mod io;
 pub mod number;
 pub mod packet;
 pub mod path;
+pub mod random;
 pub mod recovery;
 pub mod slice;
 pub mod stateless_reset;
