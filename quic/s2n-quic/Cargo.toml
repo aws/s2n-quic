@@ -21,7 +21,7 @@ cuckoofilter = "0.5"
 futures = { version = "0.3", default-features = false, features = ["async-await"] }
 hash_hasher = "2.0"
 rand = { version = "0.8", optional = true }
-rand_chacha = { version = "0.3.0", optional = true }
+rand_chacha = { version = "0.3", optional = true }
 ring = { version = "0.16", optional = true, default-features = false }
 s2n-codec = { version = "0.1", path = "../../common/s2n-codec", default-features = false }
 s2n-quic-core = { version = "0.1", path = "../s2n-quic-core", default-features = false }
