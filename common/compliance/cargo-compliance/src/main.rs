@@ -12,7 +12,7 @@ mod sourcemap;
 mod specification;
 mod target;
 
-pub type Error = Box<dyn std::error::Error + 'static>;
+pub use anyhow::Error;
 
 fn main() {
     if let Err(err) = Arguments::from_args().exec() {

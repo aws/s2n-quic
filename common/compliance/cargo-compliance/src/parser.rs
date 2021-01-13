@@ -3,6 +3,7 @@ use crate::{
     specification::Format,
     Error,
 };
+use anyhow::anyhow;
 use core::convert::TryInto;
 
 pub struct Parser<'a>(pub &'a [u8]);
@@ -44,7 +45,7 @@ impl<'a> ParsedAnnotation<'a> {
         let (version, mut chunk) = read_u32!(chunk);
 
         if version != 0 {
-            return Err(format!("Invalid version {:?}", version).into());
+            return Err(anyhow!(format!("Invalid version {:?}", version)));
         }
 
         while !chunk.is_empty() {

@@ -1,4 +1,5 @@
 use crate::{annotation::AnnotationSet, parser::Parser, Error};
+use anyhow::anyhow;
 use goblin::{
     archive::Archive,
     elf::Elf,
@@ -25,7 +26,7 @@ impl<'a> AnnoObject for (&Object<'a>, &'a [u8]) {
             Object::PE(obj) => (obj, self.1).load(annotations),
             Object::Mach(obj) => (obj, self.1).load(annotations),
             Object::Archive(obj) => (obj, self.1).load(annotations),
-            _ => Err("Unknown file format".to_string().into()),
+            _ => Err(anyhow!("Unknown file format".to_string())),
         }
     }
 }
