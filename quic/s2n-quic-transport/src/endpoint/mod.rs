@@ -198,7 +198,12 @@ impl<Cfg: Config> Endpoint<Cfg> {
             // TODO: Potentially add a metric
             dbg!("invalid packet received");
 
-            // The packet may be a stateless reset though, so check before returning.
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
+            //# However, endpoints MUST treat any packet ending
+            //# in a valid stateless reset token as a stateless reset, as other QUIC
+            //# versions might allow the use of a long header.
+
+            // The packet may be a stateless reset, check before returning.
             self.check_stateless_reset(payload, timestamp);
             return;
         };
@@ -284,10 +289,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
                                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1
                                 //# Endpoints MAY skip this check if any packet from a datagram is
-                                //# successfully processed.
-
-                                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1
-                                //# However, the comparison MUST be performed
+                                //# successfully processed.  However, the comparison MUST be performed
                                 //# when the first packet in an incoming datagram either cannot be
                                 //# associated with a connection, or cannot be decrypted.
                                 check_for_stateless_reset = true;
@@ -396,10 +398,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 ProtectedPacket::Short(_packet) => {
                     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1
                     //# Endpoints MAY skip this check if any packet from a datagram is
-                    //# successfully processed.
-
-                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1
-                    //# However, the comparison MUST be performed
+                    //# successfully processed.  However, the comparison MUST be performed
                     //# when the first packet in an incoming datagram either cannot be
                     //# associated with a connection, or cannot be decrypted.
                     self.check_stateless_reset(payload, timestamp);
