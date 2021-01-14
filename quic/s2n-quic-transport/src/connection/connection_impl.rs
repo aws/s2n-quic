@@ -136,6 +136,45 @@ impl<Config: connection::Config> Drop for ConnectionImpl<Config> {
     }
 }
 
+/// Unprotects and decrypts packets for the given space.
+///
+/// This is a macro instead of a function because it removes the need to have a
+/// complex trait with a bunch of generics for each of the packet spaces.
+macro_rules! packet_validator {
+    ($packet:ident, $space:expr $(, $inspect:expr)?) => {{
+        if let Some((space, handshake_status)) = $space {
+            let crypto = &space.crypto;
+            let packet_number_decoder = space.packet_number_decoder();
+
+            // TODO ensure this is all side-channel free and reserved bits are 0
+            // https://github.com/awslabs/s2n-quic/issues/212
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.5
+            //# Failure to unprotect a packet does not necessarily indicate the
+            //# existence of a protocol error in a peer or an attack.
+
+            // In this case we silently drop the packet
+            let $packet = $packet.unprotect(crypto, packet_number_decoder)?;
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.3
+            //# A receiver MUST discard a newly unprotected packet unless it is
+            //# certain that it has not processed another packet with the same packet
+            //# number from the same packet number space.
+            if space.is_duplicate($packet.packet_number) {
+                None
+            } else {
+                $($inspect)?
+
+                let packet = $packet.decrypt(crypto)?;
+
+                Some((packet, space, handshake_status))
+            }
+        } else {
+            None
+        }
+    }};
+}
+
 impl<ConfigType: connection::Config> ConnectionImpl<ConfigType> {
     fn update_crypto_state(
         &mut self,
@@ -537,31 +576,9 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         path_id: path::Id,
         packet: ProtectedInitial,
     ) -> Result<(), ProcessingError> {
-        if let Some((space, _handshake_status)) = shared_state.space_manager.initial_mut() {
-            let crypto = &space.crypto;
-            let packet_number_decoder = space.packet_number_decoder();
-
-            // TODO ensure this is all side-channel free and reserved bits are 0
-            // https://github.com/awslabs/s2n-quic/issues/212
-
-            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.5
-            //# Failure to unprotect a packet does not necessarily indicate the
-            //# existence of a protocol error in a peer or an attack.
-
-            // It may indicate the packet is a stateless reset however, so we will bubble
-            // up the error to allow the caller to handle it.
-            let packet = packet.unprotect(crypto, packet_number_decoder)?;
-
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.3
-            //# A receiver MUST discard a newly unprotected packet unless it is
-            //# certain that it has not processed another packet with the same packet
-            //# number from the same packet number space.
-            if space.is_duplicate(packet.packet_number) {
-                return Ok(());
-            }
-
-            let packet = packet.decrypt(crypto)?;
-
+        if let Some((packet, _space, _handshake_status)) =
+            packet_validator!(packet, shared_state.space_manager.initial_mut())
+        {
             self.handle_cleartext_initial_packet(shared_state, datagram, path_id, packet)?;
 
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.1
@@ -650,31 +667,9 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         //# receiving a server response, so servers SHOULD ignore any such
         //# packets.
 
-        if let Some((space, handshake_status)) = shared_state.space_manager.handshake_mut() {
-            let crypto = &space.crypto;
-            let packet_number_decoder = space.packet_number_decoder();
-
-            // TODO ensure this is all side-channel free and reserved bits are 0
-            // https://github.com/awslabs/s2n-quic/issues/212
-
-            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.5
-            //# Failure to unprotect a packet does not necessarily indicate the
-            //# existence of a protocol error in a peer or an attack.
-
-            // It may indicate the packet is a stateless reset however, so we will bubble
-            // up the error to allow the caller to handle it.
-            let packet = packet.unprotect(crypto, packet_number_decoder)?;
-
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.3
-            //# A receiver MUST discard a newly unprotected packet unless it is
-            //# certain that it has not processed another packet with the same packet
-            //# number from the same packet number space.
-            if space.is_duplicate(packet.packet_number) {
-                return Ok(());
-            }
-
-            let packet = packet.decrypt(crypto)?;
-
+        if let Some((packet, space, handshake_status)) =
+            packet_validator!(packet, shared_state.space_manager.handshake_mut())
+        {
             if let Some(close) = space.handle_cleartext_payload(
                 packet.packet_number,
                 packet.payload,
@@ -764,33 +759,14 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
             return Ok(());
         }
 
-        if let Some((space, handshake_status)) = shared_state.space_manager.application_mut() {
-            let crypto = &space.crypto;
-            let packet_number_decoder = space.packet_number_decoder();
-
-            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.5
-            //# Failure to unprotect a packet does not necessarily indicate the
-            //# existence of a protocol error in a peer or an attack.
-
-            // In this case we drop the packet, but allow the error to bubble up as it may indicate
-            // this packet is actually a stateless reset.
-            let packet = packet.unprotect(crypto, packet_number_decoder)?;
-
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.3
-            //# A receiver MUST discard a newly unprotected packet unless it is
-            //# certain that it has not processed another packet with the same packet
-            //# number from the same packet number space.
-            if space.is_duplicate(packet.packet_number) {
-                return Ok(());
-            }
-
-            if packet.key_phase != Default::default() {
-                dbg!("key updates are not currently implemented");
-                return Err(CryptoError::INTERNAL_ERROR.into());
-            }
-
-            let packet = packet.decrypt(crypto)?;
-
+        if let Some((packet, space, handshake_status)) =
+            packet_validator!(packet, shared_state.space_manager.application_mut(), {
+                if packet.key_phase != Default::default() {
+                    dbg!("key updates are not currently implemented");
+                    return Err(CryptoError::INTERNAL_ERROR.into());
+                }
+            })
+        {
             if let Some(close) = space.handle_cleartext_payload(
                 packet.packet_number,
                 packet.payload,
