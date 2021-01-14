@@ -29,3 +29,5 @@ bindgen \
   -- \
   -I$S2N/api \
   -D_S2N_QUIC_SUPPORT
+
+# TODO replace '::std::os::raw' with '::libc'
