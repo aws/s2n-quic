@@ -5,7 +5,7 @@ use crate::{
         self, connection_interests::ConnectionInterests, id::ConnectionInfo,
         internal_connection_id::InternalConnectionId, local_id_registry::LocalIdRegistrationError,
         shared_state::SharedConnectionState, CloseReason as ConnectionCloseReason,
-        Parameters as ConnectionParameters,
+        Parameters as ConnectionParameters, ProcessingError,
     },
     contexts::ConnectionOnTransmitError,
     path,
@@ -141,7 +141,7 @@ pub trait ConnectionTrait: Sized {
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedShort,
-    ) -> Result<(), TransportError>;
+    ) -> Result<(), ProcessingError>;
 
     /// Is called when a version negotiation packet had been received
     fn handle_version_negotiation_packet(
@@ -203,7 +203,7 @@ pub trait ConnectionTrait: Sized {
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedPacket,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), ProcessingError> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2.1
         //# If a client receives a packet that uses a different version than it
         //# initially selected, it MUST discard that packet.
@@ -224,21 +224,21 @@ pub trait ConnectionTrait: Sized {
             ProtectedPacket::Short(packet) => {
                 self.handle_short_packet(shared_state, datagram, path_id, packet)
             }
-            ProtectedPacket::VersionNegotiation(packet) => {
-                self.handle_version_negotiation_packet(shared_state, datagram, path_id, packet)
-            }
-            ProtectedPacket::Initial(packet) => {
-                self.handle_initial_packet(shared_state, datagram, path_id, packet)
-            }
-            ProtectedPacket::ZeroRTT(packet) => {
-                self.handle_zero_rtt_packet(shared_state, datagram, path_id, packet)
-            }
-            ProtectedPacket::Handshake(packet) => {
-                self.handle_handshake_packet(shared_state, datagram, path_id, packet)
-            }
-            ProtectedPacket::Retry(packet) => {
-                self.handle_retry_packet(shared_state, datagram, path_id, packet)
-            }
+            ProtectedPacket::VersionNegotiation(packet) => self
+                .handle_version_negotiation_packet(shared_state, datagram, path_id, packet)
+                .map_err(|err| err.into()),
+            ProtectedPacket::Initial(packet) => self
+                .handle_initial_packet(shared_state, datagram, path_id, packet)
+                .map_err(|err| err.into()),
+            ProtectedPacket::ZeroRTT(packet) => self
+                .handle_zero_rtt_packet(shared_state, datagram, path_id, packet)
+                .map_err(|err| err.into()),
+            ProtectedPacket::Handshake(packet) => self
+                .handle_handshake_packet(shared_state, datagram, path_id, packet)
+                .map_err(|err| err.into()),
+            ProtectedPacket::Retry(packet) => self
+                .handle_retry_packet(shared_state, datagram, path_id, packet)
+                .map_err(|err| err.into()),
         }
     }
 
@@ -271,11 +271,15 @@ pub trait ConnectionTrait: Sized {
                     break;
                 }
 
-                // Packet processing should silently discard packets that fail decryption
-                // but this method could return an error on protocol violations which would result
-                // in shutting down the connection anyway. In this case this will return early
-                // without processing the remaining packets.
-                self.handle_packet(shared_state, datagram, path_id, packet)?;
+                let result = self.handle_packet(shared_state, datagram, path_id, packet);
+
+                if let Some(ProcessingError::TransportError(err)) = result.err() {
+                    // CryptoErrors returned as a result of a packet failing decryption will be
+                    // silently discarded, but this method could return an error on protocol
+                    // violations which would result in shutting down the connection anyway. In this
+                    // case this will return early without processing the remaining packets.
+                    return Err(err);
+                }
             } else {
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.2
                 //# Every QUIC packet that is coalesced into a single UDP datagram is

@@ -5,7 +5,8 @@ use crate::{
         self, id::ConnectionInfo, local_id_registry::LocalIdRegistrationError,
         CloseReason as ConnectionCloseReason, ConnectionInterests, ConnectionTimerEntry,
         ConnectionTimers, ConnectionTransmission, ConnectionTransmissionContext,
-        InternalConnectionId, Parameters as ConnectionParameters, SharedConnectionState,
+        InternalConnectionId, Parameters as ConnectionParameters, ProcessingError,
+        SharedConnectionState,
     },
     contexts::ConnectionOnTransmitError,
     path,
@@ -17,6 +18,7 @@ use core::time::Duration;
 use s2n_quic_core::{
     application::ApplicationErrorExt,
     connection::id::Interest,
+    crypto::CryptoError,
     inet::DatagramInfo,
     io::tx,
     packet::{
@@ -89,6 +91,13 @@ impl<'a> From<ConnectionCloseReason<'a>> for ConnectionState {
                 // Since the local side observes the error, it initiates the close
                 // Therefore this is similar to an application initiated close
                 ConnectionState::Closing
+            }
+            ConnectionCloseReason::StatelessReset => {
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1
+                //# If the last 16 bytes of the datagram are identical in value to a
+                //# Stateless Reset Token, the endpoint MUST enter the draining period
+                //# and not send any further packets on this connection.
+                ConnectionState::Draining
             }
         }
     }
@@ -714,7 +723,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedShort,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), ProcessingError> {
         //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.7
         //# Endpoints in either role MUST NOT decrypt 1-RTT packets from
         //# their peer prior to completing the handshake.
@@ -752,16 +761,33 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
             return Ok(());
         }
 
-        if let Some((packet, space, handshake_status)) = shared_state
-            .space_manager
-            .application_mut()
-            .and_then(packet_validator!(packet, {
-                if packet.key_phase != Default::default() {
-                    dbg!("key updates are not currently implemented");
-                    return None;
-                }
-            }))
-        {
+        if let Some((space, handshake_status)) = shared_state.space_manager.application_mut() {
+            let crypto = &space.crypto;
+            let packet_number_decoder = space.packet_number_decoder();
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.5
+            //# Failure to unprotect a packet does not necessarily indicate the
+            //# existence of a protocol error in a peer or an attack.
+
+            // In this case we drop the packet, but allow the error to bubble up as it may indicate
+            // this packet is actually a stateless reset.
+            let packet = packet.unprotect(crypto, packet_number_decoder)?;
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.3
+            //# A receiver MUST discard a newly unprotected packet unless it is
+            //# certain that it has not processed another packet with the same packet
+            //# number from the same packet number space.
+            if space.is_duplicate(packet.packet_number) {
+                return Ok(());
+            }
+
+            if packet.key_phase != Default::default() {
+                dbg!("key updates are not currently implemented");
+                return Err(CryptoError::INTERNAL_ERROR.into());
+            }
+
+            let packet = packet.decrypt(crypto)?;
+
             if let Some(close) = space.handle_cleartext_payload(
                 packet.packet_number,
                 packet.payload,
@@ -786,7 +812,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
 
             // Currently, the application space does not have any crypto state.
             // If, at some point, we decide to add it, we need to call `update_crypto_state` here.
-        };
+        }
 
         Ok(())
     }

@@ -49,6 +49,7 @@ pub use connection_impl::ConnectionImpl as Implementation;
 use core::fmt::Debug;
 /// re-export core
 pub use s2n_quic_core::connection::*;
+use s2n_quic_core::crypto::CryptoError;
 
 /// Stores configuration parameters for a connection which might be shared
 /// between multiple connections of the same type.
@@ -111,6 +112,9 @@ pub enum CloseReason<'a> {
     /// The connection closed due to a transport error, which requires sending
     /// CONNECTION_CLOSE to the peer
     LocalObservedTransportErrror(TransportError),
+    /// The connection closed because the peer requested it by sending a
+    /// stateless reset
+    StatelessReset,
 }
 
 impl<'a> Into<Error> for CloseReason<'a> {
@@ -120,6 +124,7 @@ impl<'a> Into<Error> for CloseReason<'a> {
             Self::PeerImmediateClose(error) => error.into(),
             Self::LocalImmediateClose(error) => error.into(),
             Self::LocalObservedTransportErrror(error) => error.into(),
+            Self::StatelessReset => Error::Closed,
         }
     }
 }
@@ -141,6 +146,25 @@ pub struct Limits {
     // TODO remove this field when more fields are added to increase the size
     // temporary field to supress clippy::trivially_copy_pass_by_ref warnings
     pub(crate) _padding: u64,
+}
+
+/// Some connection methods may need to indicate both `TransportError`s and `CryptoError`s. This
+/// enum is used to allow for either error type to be returned as appropriate.
+pub enum ProcessingError {
+    TransportError(TransportError),
+    CryptoError(CryptoError),
+}
+
+impl From<TransportError> for ProcessingError {
+    fn from(inner_error: TransportError) -> Self {
+        ProcessingError::TransportError(inner_error)
+    }
+}
+
+impl From<CryptoError> for ProcessingError {
+    fn from(inner_error: CryptoError) -> Self {
+        ProcessingError::CryptoError(inner_error)
+    }
 }
 
 #[cfg(any(test, feature = "testing"))]

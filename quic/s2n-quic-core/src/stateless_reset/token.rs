@@ -11,7 +11,7 @@ use subtle::ConstantTimeEq;
 //#   Unpredictable Bits (38..),
 //#   Stateless Reset Token (128),
 //# }
-const LEN: usize = 128 / 8;
+pub const LEN: usize = 128 / 8;
 
 // The implemented PartialEq will have the same results as
 // a derived version, except it is constant-time. Therefore
