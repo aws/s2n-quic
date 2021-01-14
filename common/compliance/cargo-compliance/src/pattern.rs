@@ -4,6 +4,7 @@ use crate::{
     sourcemap::{LinesIter, Str},
     Error,
 };
+use anyhow::anyhow;
 use std::path::Path;
 
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord, Hash)]
@@ -26,7 +27,7 @@ impl<'a> Pattern<'a> {
         let mut parts = arg.split(' ').filter(|p| !p.is_empty());
         let meta = parts.next().expect("should have at least one pattern");
         if meta.is_empty() {
-            return Err("compliance pattern cannot be empty".to_string().into());
+            return Err(anyhow!("compliance pattern cannot be empty"));
         }
 
         let content = parts.next().unwrap();
@@ -81,7 +82,7 @@ impl<'a> Pattern<'a> {
                 }
                 ParserState::CapturingContent(mut capture) => {
                     if content.starts_with(self.meta) {
-                        return Err("cannot set metadata while parsing content".into());
+                        return Err(anyhow!("cannot set metadata while parsing content"));
                     } else if let Some(content) = content.strip_prefix(self.content) {
                         capture.push_content(content);
                         state = ParserState::CapturingContent(capture);
@@ -142,9 +143,9 @@ impl<'a> Capture<'a> {
             ("tracking-issue", Some(value)) if self.annotation.anno == AnnotationType::Todo => {
                 self.annotation.tracking_issue = value
             }
-            (key, Some(_)) => return Err(format!("invalid metadata field {}", key).into()),
+            (key, Some(_)) => return Err(anyhow!(format!("invalid metadata field {}", key))),
             (value, None) if self.annotation.target.is_empty() => self.annotation.target = value,
-            (_, None) => return Err("annotation source already specified".into()),
+            (_, None) => return Err(anyhow!("annotation source already specified")),
         }
 
         Ok(())
@@ -173,7 +174,7 @@ impl<'a> Capture<'a> {
         }
 
         if annotation.target.is_empty() {
-            return Err("missing source information".into());
+            return Err(anyhow!("missing source information"));
         }
 
         Ok(annotation)

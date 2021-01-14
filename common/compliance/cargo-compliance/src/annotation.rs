@@ -3,6 +3,7 @@ use crate::{
     target::{Target, TargetSet},
     Error,
 };
+use anyhow::anyhow;
 use core::{fmt, ops::Range, str::FromStr};
 use serde::Serialize;
 use std::{
@@ -96,7 +97,7 @@ impl Annotation {
             }
         }
 
-        Err(format!("Could not resolve file {:?}", file).into())
+        Err(anyhow!(format!("Could not resolve file {:?}", file)))
     }
 
     pub fn quote_range(&self, contents: &str) -> Option<Range<usize>> {
@@ -148,7 +149,7 @@ impl FromStr for AnnotationType {
             "CITATION" | "citation" => Ok(Self::Citation),
             "EXCEPTION" | "exception" => Ok(Self::Exception),
             "TODO" | "todo" => Ok(Self::Todo),
-            _ => Err(format!("Invalid annotation type {:?}", v).into()),
+            _ => Err(anyhow!(format!("Invalid annotation type {:?}", v))),
         }
     }
 }
@@ -209,7 +210,7 @@ impl FromStr for AnnotationLevel {
             "RECOMMENDED" => Ok(Self::RECOMMENDED),
             "MAY" => Ok(Self::MAY),
             "OPTIONAL" => Ok(Self::OPTIONAL),
-            _ => Err(format!("Invalid annotation level {:?}", v).into()),
+            _ => Err(anyhow!(format!("Invalid annotation level {:?}", v))),
         }
     }
 }

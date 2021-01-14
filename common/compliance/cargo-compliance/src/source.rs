@@ -4,6 +4,7 @@ use crate::{
     specification::Format,
     Error,
 };
+use anyhow::{anyhow, Context};
 use serde::Deserialize;
 use std::{collections::BTreeSet, path::PathBuf};
 
@@ -20,12 +21,15 @@ impl<'a> SourceFile<'a> {
         match self {
             Self::Object(file) => {
                 let bytes = std::fs::read(file)?;
-                crate::object::extract(&bytes, &mut annotations)?;
+                crate::object::extract(&bytes, &mut annotations)
+                    .with_context(|| file.display().to_string())?;
                 Ok(annotations)
             }
             Self::Text(pattern, file) => {
                 let text = std::fs::read_to_string(file)?;
-                pattern.extract(&text, &file, &mut annotations)?;
+                pattern
+                    .extract(&text, &file, &mut annotations)
+                    .with_context(|| file.display().to_string())?;
                 Ok(annotations)
             }
             Self::Spec(file) => {
@@ -89,7 +93,7 @@ impl<'a> Spec<'a> {
             target: self
                 .target
                 .or_else(|| default_target.as_ref().cloned())
-                .ok_or("missing target")?,
+                .ok_or_else(|| anyhow!("missing target"))?,
             quote: self.quote.trim().replace('\n', " "),
             comment: self.quote.to_string(),
             manifest_dir: source.clone(),
@@ -135,7 +139,7 @@ impl<'a> Exception<'a> {
             target: self
                 .target
                 .or_else(|| default_target.as_ref().cloned())
-                .ok_or("missing target")?,
+                .ok_or_else(|| anyhow!("missing target"))?,
             quote: self.quote.trim().replace('\n', " "),
             comment: self.reason,
             manifest_dir: source.clone(),
@@ -178,7 +182,7 @@ impl<'a> Todo<'a> {
             target: self
                 .target
                 .or_else(|| default_target.as_ref().cloned())
-                .ok_or("missing target")?,
+                .ok_or_else(|| anyhow!("missing target"))?,
             quote: self.quote.trim().replace('\n', " "),
             comment: self.reason.unwrap_or_default(),
             manifest_dir: source.clone(),
