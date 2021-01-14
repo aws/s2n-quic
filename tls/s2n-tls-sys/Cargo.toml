@@ -1,0 +1,17 @@
+[package]
+name = "s2n-tls-sys"
+version = "0.1.0"
+authors = ["Cameron Bytheway <bythewc@amazon.com>"]
+edition = "2018"
+
+[features]
+default = ["vendored"]
+vendored = ["openssl-sys/vendored"]
+
+[dependencies]
+libc = "0.2"
+openssl-sys = { version = "0.9" }
+
+[build-dependencies]
+bindgen = "0.56"
+cmake = "0.1"
