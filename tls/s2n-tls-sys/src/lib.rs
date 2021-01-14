@@ -6,8 +6,6 @@
     dead_code
 )]
 
-use libc::{iovec, FILE};
-
 #[cfg(vendored)]
 include!("./vendored.rs");
 
@@ -21,7 +19,7 @@ mod tests {
     #[test]
     fn new_connection() {
         unsafe {
-            let connection = s2n_connection_new(s2n_mode_S2N_SERVER);
+            let connection = s2n_connection_new(s2n_mode::Server);
             let config = s2n_config_new();
             s2n_config_enable_quic(config);
             s2n_connection_set_config(connection, config);

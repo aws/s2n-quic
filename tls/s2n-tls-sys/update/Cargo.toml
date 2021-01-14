@@ -1,0 +1,12 @@
+[package]
+name = "update"
+version = "0.1.0"
+authors = ["Cameron Bytheway <bytheway.cameron@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+bindgen = "0.56"
+heck = "0.3"
+
+[workspace]
+members = ["."]

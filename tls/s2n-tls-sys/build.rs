@@ -1,14 +1,25 @@
-use std::{env, path::Path};
+use std::path::Path;
+
+include!("update/src/lib.rs");
+
+fn env(name: &str) -> Option<String> {
+    println!("cargo:rerun-if-env-changed={}", name);
+    std::env::var(name).ok()
+}
 
 fn is_vendored() -> bool {
-    env::var("CARGO_FEATURE_VENDORED").is_ok() && !env::var("S2N_EXTERNAL_BUILD").is_ok()
+    env("CARGO_FEATURE_VENDORED").is_some() && env("S2N_EXTERNAL_BUILD").is_none()
 }
 
 fn main() -> Result<(), Box<dyn 'static + std::error::Error>> {
     // if we've using vendored bindings then this doesn't need to be built
 
     if is_vendored() {
-        let dst = cmake::Config::new("s2n").register_dep("openssl").build();
+        let dst = cmake::Config::new("s2n")
+            .register_dep("openssl")
+            .build_arg("BUILD_TESTING=off")
+            .build();
+
         println!(
             "cargo:rustc-link-search=native={}",
             dst.join("build").join("lib").display()
@@ -19,13 +30,11 @@ fn main() -> Result<(), Box<dyn 'static + std::error::Error>> {
 
         println!("cargo:rerun-if-changed=s2n-sys.h");
 
-        let bindings = bindgen::Builder::default()
-            .header("s2n-sys.h")
-            .parse_callbacks(Box::new(bindgen::CargoCallbacks))
+        let bindings = s2n_bindings(None)
             .generate()
             .map_err(|_| "failed to generate bindings")?;
 
-        let output = Path::new(&env::var("OUT_DIR").unwrap()).join("bindings.rs");
+        let output = Path::new(&env("OUT_DIR").unwrap()).join("bindings.rs");
         bindings.write_to_file(output)?;
     }
 
