@@ -193,43 +193,6 @@ impl<ConfigType: connection::Config> ConnectionImpl<ConfigType> {
     }
 }
 
-/// Creates a closure which unprotects and decrypts packets for a given space.
-///
-/// This is a macro instead of a function because it removes the need to have a
-/// complex trait with a bunch of generics for each of the packet spaces.
-macro_rules! packet_validator {
-    ($packet:ident $(, $inspect:expr)?) => {
-        move |(space, handshake_status)| {
-            let crypto = &space.crypto;
-            let packet_number_decoder = space.packet_number_decoder();
-
-            // TODO ensure this is all side-channel free and reserved bits are 0
-            // https://github.com/awslabs/s2n-quic/issues/212
-
-            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.5
-            //# Failure to unprotect a packet does not necessarily indicate the
-            //# existence of a protocol error in a peer or an attack.
-
-            // In this case we silently drop the packet
-            let $packet = $packet.unprotect(crypto, packet_number_decoder).ok()?;
-
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.3
-            //# A receiver MUST discard a newly unprotected packet unless it is
-            //# certain that it has not processed another packet with the same packet
-            //# number from the same packet number space.
-            if space.is_duplicate($packet.packet_number) {
-                return None;
-            }
-
-            $($inspect)?
-
-            let packet = $packet.decrypt(crypto).ok()?;
-
-            Some((packet, space, handshake_status))
-        }
-    };
-}
-
 impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
     /// Static configuration of a connection
     type Config = Config;
@@ -573,12 +536,32 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedInitial,
-    ) -> Result<(), TransportError> {
-        if let Some((packet, _space, _handshake_status)) = shared_state
-            .space_manager
-            .initial_mut()
-            .and_then(packet_validator!(packet))
-        {
+    ) -> Result<(), ProcessingError> {
+        if let Some((space, _handshake_status)) = shared_state.space_manager.initial_mut() {
+            let crypto = &space.crypto;
+            let packet_number_decoder = space.packet_number_decoder();
+
+            // TODO ensure this is all side-channel free and reserved bits are 0
+            // https://github.com/awslabs/s2n-quic/issues/212
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.5
+            //# Failure to unprotect a packet does not necessarily indicate the
+            //# existence of a protocol error in a peer or an attack.
+
+            // It may indicate the packet is a stateless reset however, so we will bubble
+            // up the error to allow the caller to handle it.
+            let packet = packet.unprotect(crypto, packet_number_decoder)?;
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.3
+            //# A receiver MUST discard a newly unprotected packet unless it is
+            //# certain that it has not processed another packet with the same packet
+            //# number from the same packet number space.
+            if space.is_duplicate(packet.packet_number) {
+                return Ok(());
+            }
+
+            let packet = packet.decrypt(crypto)?;
+
             self.handle_cleartext_initial_packet(shared_state, datagram, path_id, packet)?;
 
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.1
@@ -653,7 +636,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedHandshake,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), ProcessingError> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2.1
         //= type=TODO
         //= tracking-issue=337
@@ -667,11 +650,31 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         //# receiving a server response, so servers SHOULD ignore any such
         //# packets.
 
-        if let Some((packet, space, handshake_status)) = shared_state
-            .space_manager
-            .handshake_mut()
-            .and_then(packet_validator!(packet))
-        {
+        if let Some((space, handshake_status)) = shared_state.space_manager.handshake_mut() {
+            let crypto = &space.crypto;
+            let packet_number_decoder = space.packet_number_decoder();
+
+            // TODO ensure this is all side-channel free and reserved bits are 0
+            // https://github.com/awslabs/s2n-quic/issues/212
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.5
+            //# Failure to unprotect a packet does not necessarily indicate the
+            //# existence of a protocol error in a peer or an attack.
+
+            // It may indicate the packet is a stateless reset however, so we will bubble
+            // up the error to allow the caller to handle it.
+            let packet = packet.unprotect(crypto, packet_number_decoder)?;
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.3
+            //# A receiver MUST discard a newly unprotected packet unless it is
+            //# certain that it has not processed another packet with the same packet
+            //# number from the same packet number space.
+            if space.is_duplicate(packet.packet_number) {
+                return Ok(());
+            }
+
+            let packet = packet.decrypt(crypto)?;
+
             if let Some(close) = space.handle_cleartext_payload(
                 packet.packet_number,
                 packet.payload,
@@ -711,7 +714,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
 
             // try to move the crypto state machine forward
             self.update_crypto_state(shared_state, datagram)?;
-        };
+        }
 
         Ok(())
     }
@@ -824,7 +827,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         _datagram: &DatagramInfo,
         _path_id: path::Id,
         _packet: ProtectedVersionNegotiation,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), ProcessingError> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#6.2
         //= type=TODO
         //= feature=Version negotiation handler
@@ -859,7 +862,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         _datagram: &DatagramInfo,
         _path_id: path::Id,
         _packet: ProtectedZeroRTT,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), ProcessingError> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2.2
         //= type=TODO
         //= tracking-issue=339
@@ -878,7 +881,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         _datagram: &DatagramInfo,
         _path_id: path::Id,
         _packet: ProtectedRetry,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), ProcessingError> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.3
         //= type=TODO
         //= tracking-issue=386

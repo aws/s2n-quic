@@ -114,7 +114,7 @@ pub trait ConnectionTrait: Sized {
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedHandshake,
-    ) -> Result<(), TransportError>;
+    ) -> Result<(), ProcessingError>;
 
     /// Is called when a initial packet had been received
     fn handle_initial_packet(
@@ -123,7 +123,7 @@ pub trait ConnectionTrait: Sized {
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedInitial,
-    ) -> Result<(), TransportError>;
+    ) -> Result<(), ProcessingError>;
 
     /// Is called when an unprotected initial packet had been received
     fn handle_cleartext_initial_packet(
@@ -150,7 +150,7 @@ pub trait ConnectionTrait: Sized {
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedVersionNegotiation,
-    ) -> Result<(), TransportError>;
+    ) -> Result<(), ProcessingError>;
 
     /// Is called when a zero rtt packet had been received
     fn handle_zero_rtt_packet(
@@ -159,7 +159,7 @@ pub trait ConnectionTrait: Sized {
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedZeroRTT,
-    ) -> Result<(), TransportError>;
+    ) -> Result<(), ProcessingError>;
 
     /// Is called when a retry packet had been received
     fn handle_retry_packet(
@@ -168,7 +168,7 @@ pub trait ConnectionTrait: Sized {
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedRetry,
-    ) -> Result<(), TransportError>;
+    ) -> Result<(), ProcessingError>;
 
     /// Handles a transport error that occurred during packet reception
     fn handle_transport_error(
@@ -224,21 +224,21 @@ pub trait ConnectionTrait: Sized {
             ProtectedPacket::Short(packet) => {
                 self.handle_short_packet(shared_state, datagram, path_id, packet)
             }
-            ProtectedPacket::VersionNegotiation(packet) => self
-                .handle_version_negotiation_packet(shared_state, datagram, path_id, packet)
-                .map_err(|err| err.into()),
-            ProtectedPacket::Initial(packet) => self
-                .handle_initial_packet(shared_state, datagram, path_id, packet)
-                .map_err(|err| err.into()),
-            ProtectedPacket::ZeroRTT(packet) => self
-                .handle_zero_rtt_packet(shared_state, datagram, path_id, packet)
-                .map_err(|err| err.into()),
-            ProtectedPacket::Handshake(packet) => self
-                .handle_handshake_packet(shared_state, datagram, path_id, packet)
-                .map_err(|err| err.into()),
-            ProtectedPacket::Retry(packet) => self
-                .handle_retry_packet(shared_state, datagram, path_id, packet)
-                .map_err(|err| err.into()),
+            ProtectedPacket::VersionNegotiation(packet) => {
+                self.handle_version_negotiation_packet(shared_state, datagram, path_id, packet)
+            }
+            ProtectedPacket::Initial(packet) => {
+                self.handle_initial_packet(shared_state, datagram, path_id, packet)
+            }
+            ProtectedPacket::ZeroRTT(packet) => {
+                self.handle_zero_rtt_packet(shared_state, datagram, path_id, packet)
+            }
+            ProtectedPacket::Handshake(packet) => {
+                self.handle_handshake_packet(shared_state, datagram, path_id, packet)
+            }
+            ProtectedPacket::Retry(packet) => {
+                self.handle_retry_packet(shared_state, datagram, path_id, packet)
+            }
         }
     }
 

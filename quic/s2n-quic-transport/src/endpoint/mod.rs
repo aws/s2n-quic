@@ -204,7 +204,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             //# versions might allow the use of a long header.
 
             // The packet may be a stateless reset, check before returning.
-            self.check_stateless_reset(payload, timestamp);
+            self.close_on_matching_stateless_reset(payload, timestamp);
             return;
         };
 
@@ -312,7 +312,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 });
 
             if check_for_stateless_reset {
-                self.check_stateless_reset(payload, timestamp);
+                self.close_on_matching_stateless_reset(payload, timestamp);
             }
 
             return;
@@ -395,22 +395,27 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         dbg!(err);
                     }
                 }
-                ProtectedPacket::Short(_packet) => {
+                _ => {
                     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1
                     //# Endpoints MAY skip this check if any packet from a datagram is
                     //# successfully processed.  However, the comparison MUST be performed
                     //# when the first packet in an incoming datagram either cannot be
                     //# associated with a connection, or cannot be decrypted.
-                    self.check_stateless_reset(payload, timestamp);
-                }
-                _ => {
+
+                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
+                    //# However, endpoints MUST treat any packet ending
+                    //# in a valid stateless reset token as a stateless reset, as other QUIC
+                    //# versions might allow the use of a long header.
+                    let is_stateless_reset =
+                        self.close_on_matching_stateless_reset(payload, timestamp);
+
                     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
                     //= type=TODO
                     //= tracking-issue=195
                     //= feature=Stateless Reset
                     //# An endpoint MAY send a stateless reset in response to receiving a packet
                     //# that it cannot associate with an active connection.
-                    if Cfg::StatelessResetTokenGenerator::ENABLED {
+                    if !is_stateless_reset && Cfg::StatelessResetTokenGenerator::ENABLED {
                         self.enqueue_stateless_reset(datagram, &destination_connection_id);
                     }
                 }
@@ -436,8 +441,12 @@ impl<Cfg: Config> Endpoint<Cfg> {
     }
 
     /// Checks if the given payload contains a stateless reset token matching a known token.
-    /// If there is a match, the matching connection will be closed.
-    fn check_stateless_reset(&mut self, payload: &mut [u8], timestamp: Timestamp) {
+    /// If there is a match, the matching connection will be closed and true will be returned.
+    fn close_on_matching_stateless_reset(
+        &mut self,
+        payload: &mut [u8],
+        timestamp: Timestamp,
+    ) -> bool {
         let buffer = DecoderBuffer::new(payload);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1
@@ -468,7 +477,11 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         timestamp,
                     )
                 });
+
+            return true;
         }
+
+        false
     }
 
     /// Queries the endpoint for connections requiring new connection IDs
