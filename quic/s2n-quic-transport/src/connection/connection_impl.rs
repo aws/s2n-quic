@@ -153,7 +153,8 @@ macro_rules! packet_validator {
             //# Failure to unprotect a packet does not necessarily indicate the
             //# existence of a protocol error in a peer or an attack.
 
-            // In this case we silently drop the packet
+            // It may indicate the packet is a stateless reset however, so we will bubble
+            // up the error to allow the caller to handle it.
             let $packet = $packet.unprotect(crypto, packet_number_decoder)?;
 
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.3
