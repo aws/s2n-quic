@@ -3,6 +3,7 @@ name = "s2n-tls-sys"
 version = "0.1.0"
 authors = ["Cameron Bytheway <bythewc@amazon.com>"]
 edition = "2018"
+license = "Apache-2.0"
 
 [features]
 default = ["vendored"]
