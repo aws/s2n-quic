@@ -17,3 +17,7 @@ openssl-sys = { version = "0.9" }
 bindgen = "0.56"
 cmake = "0.1"
 heck = "0.3"
+
+# we implicitly use openssl
+[package.metadata.cargo-udeps.ignore]
+normal = [ "openssl-sys" ]
