@@ -191,7 +191,8 @@ jobs:
       - name: Run cargo test
         uses: actions-rs/cargo@v1
         with:
-          command: test
+          # s2n-tls doesn't currently build on windows
+          command: test ${{ matrix.os == 'windows-latest' && '--exclude s2n-tls-sys' || '' }}
 
   miri:
     runs-on: ubuntu-latest
