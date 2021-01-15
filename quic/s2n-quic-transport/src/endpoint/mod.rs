@@ -3,8 +3,9 @@
 use crate::{
     acceptor::Acceptor,
     connection::{
-        self, ConnectionContainer, ConnectionContainerIterationResult, ConnectionIdMapper,
-        InternalConnectionId, InternalConnectionIdGenerator, Trait as _,
+        self, CloseReason as ConnectionCloseReason, ConnectionContainer,
+        ConnectionContainerIterationResult, ConnectionIdMapper, InternalConnectionId,
+        InternalConnectionIdGenerator, Trait as _,
     },
     timer::TimerManager,
     unbounded_channel,
@@ -12,7 +13,7 @@ use crate::{
 };
 use alloc::collections::VecDeque;
 use core::task::{self, Poll};
-use s2n_codec::DecoderBufferMut;
+use s2n_codec::{DecoderBuffer, DecoderBufferMut};
 use s2n_quic_core::{
     connection::id::Generator,
     crypto::{tls, CryptoSuite},
@@ -20,6 +21,7 @@ use s2n_quic_core::{
     inet::DatagramInfo,
     io::{rx, tx},
     packet::{initial::ProtectedInitial, ProtectedPacket},
+    stateless_reset,
     time::Timestamp,
     token::Format,
 };
@@ -29,6 +31,7 @@ mod initial;
 mod retry;
 mod version;
 
+use crate::connection::ProcessingError;
 pub use config::{Config, Context};
 use connection::id::ConnectionInfo;
 pub use s2n_quic_core::endpoint::*;
@@ -193,7 +196,14 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
             // Packet is not decodable. Skip it.
             // TODO: Potentially add a metric
-            dbg!("invalid packet received");
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
+            //# However, endpoints MUST treat any packet ending
+            //# in a valid stateless reset token as a stateless reset, as other QUIC
+            //# versions might allow the use of a long header.
+
+            // The packet may be a stateless reset, check before returning.
+            self.close_on_matching_stateless_reset(payload, timestamp);
             return;
         };
 
@@ -234,6 +244,8 @@ impl<Cfg: Config> Endpoint<Cfg> {
             .connection_id_mapper
             .lookup_internal_connection_id(&datagram.destination_connection_id)
         {
+            let mut check_for_stateless_reset = false;
+
             let _ = self
                 .connections
                 .with_connection(internal_id, |conn, shared_state| {
@@ -264,8 +276,24 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     //# peer's address, unless it has previously validated that address.
 
                     if let Err(err) = conn.handle_packet(shared_state, datagram, path_id, packet) {
-                        conn.handle_transport_error(shared_state, datagram, err);
-                        return Err(());
+                        match err {
+                            ProcessingError::TransportError(err) => {
+                                conn.handle_transport_error(shared_state, datagram, err);
+                                return Err(());
+                            }
+                            ProcessingError::CryptoError(_) => {
+                                // CryptoErrors returned as a result of a packet failing decryption
+                                // will be silently discarded, but are a potential indication of a
+                                // stateless reset from the peer
+
+                                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1
+                                //# Endpoints MAY skip this check if any packet from a datagram is
+                                //# successfully processed.  However, the comparison MUST be performed
+                                //# when the first packet in an incoming datagram either cannot be
+                                //# associated with a connection, or cannot be decrypted.
+                                check_for_stateless_reset = true;
+                            }
+                        }
                     }
 
                     if let Err(err) = conn.handle_remaining_packets(
@@ -281,6 +309,10 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
                     Ok(())
                 });
+
+            if check_for_stateless_reset {
+                self.close_on_matching_stateless_reset(payload, timestamp);
+            }
 
             return;
         }
@@ -363,13 +395,27 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     }
                 }
                 _ => {
+                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1
+                    //# Endpoints MAY skip this check if any packet from a datagram is
+                    //# successfully processed.  However, the comparison MUST be performed
+                    //# when the first packet in an incoming datagram either cannot be
+                    //# associated with a connection, or cannot be decrypted.
+
+                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
+                    //# However, endpoints MUST treat any packet ending
+                    //# in a valid stateless reset token as a stateless reset, as other QUIC
+                    //# versions might allow the use of a long header.
+                    let is_stateless_reset = self
+                        .close_on_matching_stateless_reset(payload, timestamp)
+                        .is_some();
+
                     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
                     //= type=TODO
                     //= tracking-issue=195
                     //= feature=Stateless Reset
                     //# An endpoint MAY send a stateless reset in response to receiving a packet
                     //# that it cannot associate with an active connection.
-                    if Cfg::StatelessResetTokenGenerator::ENABLED {
+                    if !is_stateless_reset && Cfg::StatelessResetTokenGenerator::ENABLED {
                         self.enqueue_stateless_reset(datagram, &destination_connection_id);
                     }
                 }
@@ -379,7 +425,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
             // those should at least send stateless resets on Initial packets
         }
 
-        // TODO: If short packet could not be decoded, check if it's a stateless reset token
         // TODO: Handle version negotiation packets
     }
 
@@ -393,6 +438,44 @@ impl<Cfg: Config> Endpoint<Cfg> {
     ) {
         // TODO: Implement me
         dbg!("stateless reset triggered");
+    }
+
+    /// Checks if the given payload contains a stateless reset token matching a known token.
+    /// If there is a match, the matching connection will be closed and the `InternalConnectionId`
+    /// will be returned.
+    fn close_on_matching_stateless_reset(
+        &mut self,
+        payload: &mut [u8],
+        timestamp: Timestamp,
+    ) -> Option<InternalConnectionId> {
+        let buffer = DecoderBuffer::new(payload);
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1
+        //# The endpoint identifies a
+        //# received datagram as a stateless reset by comparing the last 16 bytes
+        //# of the datagram with all Stateless Reset Tokens associated with the
+        //# remote address on which the datagram was received.
+        let token_index = payload.len().checked_sub(stateless_reset::token::LEN)?;
+        let buffer = buffer.skip(token_index).ok()?;
+        let (token, _) = buffer.decode().ok()?;
+        let internal_id = self
+            .connection_id_mapper
+            .remove_internal_connection_id_by_stateless_reset_token(&token)?;
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1
+        //# If the last 16 bytes of the datagram are identical in value to a
+        //# Stateless Reset Token, the endpoint MUST enter the draining period
+        //# and not send any further packets on this connection.
+        self.connections
+            .with_connection(internal_id, |conn, shared_state| {
+                conn.close(
+                    shared_state,
+                    ConnectionCloseReason::StatelessReset,
+                    timestamp,
+                )
+            });
+
+        Some(internal_id)
     }
 
     /// Queries the endpoint for connections requiring new connection IDs

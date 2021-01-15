@@ -223,7 +223,7 @@ impl Drop for PeerIdRegistry {
             .iter()
             .flat_map(|id_info| id_info.stateless_reset_token)
         {
-            guard.stateless_reset_map.remove(token);
+            guard.stateless_reset_map.remove(&token);
         }
     }
 }
@@ -394,7 +394,7 @@ impl PeerIdRegistry {
                         //# An endpoint MUST NOT check for any Stateless Reset Tokens associated
                         //# with connection IDs it has not used or for connection IDs that have
                         //# been retired.
-                        mapper_state.stateless_reset_map.remove(token);
+                        mapper_state.stateless_reset_map.remove(&token);
                     }
                     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2
                     //# An endpoint MUST NOT forget a connection ID without retiring it
@@ -877,7 +877,7 @@ pub(crate) mod tests {
 
         assert_eq!(
             Some(reg.internal_id),
-            mapper.lookup_internal_connection_id_by_stateless_reset_token(&TEST_TOKEN_1)
+            mapper.remove_internal_connection_id_by_stateless_reset_token(&TEST_TOKEN_1)
         );
 
         reg.on_packet_ack(&PacketNumberRange::new(packet_number, packet_number));
@@ -892,7 +892,7 @@ pub(crate) mod tests {
         //# been retired.
         assert_eq!(
             None,
-            mapper.lookup_internal_connection_id_by_stateless_reset_token(&TEST_TOKEN_1)
+            mapper.remove_internal_connection_id_by_stateless_reset_token(&TEST_TOKEN_1)
         );
 
         assert_eq!(transmission::Interest::None, reg.transmission_interest());
@@ -951,7 +951,7 @@ pub(crate) mod tests {
         assert_eq!(InUsePendingNewConnectionId, reg.registered_ids[0].status);
         assert_eq!(
             Some(reg.internal_id),
-            mapper.lookup_internal_connection_id_by_stateless_reset_token(&TEST_TOKEN_1)
+            mapper.remove_internal_connection_id_by_stateless_reset_token(&TEST_TOKEN_1)
         );
 
         let id_2 = id(b"id02");
@@ -959,12 +959,12 @@ pub(crate) mod tests {
 
         assert_eq!(
             None,
-            mapper.lookup_internal_connection_id_by_stateless_reset_token(&TEST_TOKEN_2)
+            mapper.remove_internal_connection_id_by_stateless_reset_token(&TEST_TOKEN_2)
         );
         assert_eq!(Some(id_2), reg.consume_new_id_if_necessary(None));
         assert_eq!(
             Some(reg.internal_id),
-            mapper.lookup_internal_connection_id_by_stateless_reset_token(&TEST_TOKEN_2,)
+            mapper.remove_internal_connection_id_by_stateless_reset_token(&TEST_TOKEN_2,)
         );
 
         let id_3 = id(b"id03");
@@ -979,21 +979,21 @@ pub(crate) mod tests {
         //# been retired.
         assert_eq!(
             None,
-            mapper.lookup_internal_connection_id_by_stateless_reset_token(&TEST_TOKEN_3)
+            mapper.remove_internal_connection_id_by_stateless_reset_token(&TEST_TOKEN_3)
         );
 
         let id_4 = id(b"id04");
         assert!(reg.on_new_connection_id(&id_4, 3, 3, &TEST_TOKEN_4).is_ok());
         assert_eq!(
             None,
-            mapper.lookup_internal_connection_id_by_stateless_reset_token(&TEST_TOKEN_4)
+            mapper.remove_internal_connection_id_by_stateless_reset_token(&TEST_TOKEN_4)
         );
 
         // ID 2 is retired, so it is necessary to consume a new ID
         assert_eq!(Some(id_4), reg.consume_new_id_if_necessary(Some(&id_2)));
         assert_eq!(
             Some(reg.internal_id),
-            mapper.lookup_internal_connection_id_by_stateless_reset_token(&TEST_TOKEN_4)
+            mapper.remove_internal_connection_id_by_stateless_reset_token(&TEST_TOKEN_4)
         );
 
         // There are no new IDs left, so None is returned

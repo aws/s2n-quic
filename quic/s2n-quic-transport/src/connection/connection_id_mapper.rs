@@ -61,11 +61,6 @@ impl StatelessResetMap {
         }
     }
 
-    /// Gets the `InternalConnectionId` (if any) associated with the given stateless reset token
-    pub(crate) fn get(&self, token: &stateless_reset::Token) -> Option<InternalConnectionId> {
-        self.map.get(&token).copied()
-    }
-
     /// Inserts the given stateless reset token and the given
     /// internal connection ID into the stateless reset map.
     pub(crate) fn insert(
@@ -76,9 +71,13 @@ impl StatelessResetMap {
         self.map.insert(token, internal_id);
     }
 
-    /// Removes the mapping for the given key
-    pub(crate) fn remove(&mut self, token: stateless_reset::Token) -> Option<InternalConnectionId> {
-        self.map.remove(&token)
+    /// Removes the mapping for the given key, returning the
+    /// `InternalConnection` if it was in the map.
+    pub(crate) fn remove(
+        &mut self,
+        token: &stateless_reset::Token,
+    ) -> Option<InternalConnectionId> {
+        self.map.remove(token)
     }
 }
 
@@ -169,13 +168,13 @@ impl ConnectionIdMapper {
     }
 
     /// Looks up the internal Connection ID which is associated with a stateless
-    /// reset token.
-    #[allow(dead_code)] //TODO: Remove when used
-    pub fn lookup_internal_connection_id_by_stateless_reset_token(
-        &self,
+    /// reset token and removes it from the map if it was found.
+    #[must_use]
+    pub fn remove_internal_connection_id_by_stateless_reset_token(
+        &mut self,
         peer_stateless_reset_token: &stateless_reset::Token,
     ) -> Option<InternalConnectionId> {
-        let guard = self.state.borrow();
+        let mut guard = self.state.borrow_mut();
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1
         //# When comparing a datagram to Stateless Reset Token values, endpoints
         //# MUST perform the comparison without leaking information about the
@@ -187,7 +186,7 @@ impl ConnectionIdMapper {
         // but no information about the reset token itself.) Actual equality checks for
         // stateless reset tokens are implemented in stateless_reset::Token in
         // a constant-time manner.
-        guard.stateless_reset_map.get(peer_stateless_reset_token)
+        guard.stateless_reset_map.remove(peer_stateless_reset_token)
     }
 
     /// Creates a `LocalIdRegistry` for a new internal connection ID, which allows that
@@ -232,7 +231,7 @@ mod tests {
     use s2n_quic_core::stateless_reset::token::testing::*;
 
     #[test]
-    fn lookup_internal_connection_id_by_stateless_reset_token_test() {
+    fn remove_internal_connection_id_by_stateless_reset_token_test() {
         let mut random_generator = random::testing::Generator(123);
         let mut mapper = ConnectionIdMapper::new(&mut random_generator);
         let internal_id = InternalConnectionIdGenerator::new().generate_id();
@@ -242,22 +241,28 @@ mod tests {
 
         assert_eq!(
             Some(internal_id),
-            mapper.lookup_internal_connection_id_by_stateless_reset_token(&TEST_TOKEN_1)
+            mapper.remove_internal_connection_id_by_stateless_reset_token(&TEST_TOKEN_1)
         );
         assert_eq!(
             None,
-            mapper.lookup_internal_connection_id_by_stateless_reset_token(&TEST_TOKEN_2)
+            mapper.remove_internal_connection_id_by_stateless_reset_token(&TEST_TOKEN_1)
         );
+        assert_eq!(
+            None,
+            mapper.remove_internal_connection_id_by_stateless_reset_token(&TEST_TOKEN_2)
+        );
+
+        let _registry = mapper.create_peer_id_registry(internal_id, peer_id, Some(TEST_TOKEN_3));
 
         mapper
             .state
             .borrow_mut()
             .stateless_reset_map
-            .remove(TEST_TOKEN_1);
+            .remove(&TEST_TOKEN_3);
 
         assert_eq!(
             None,
-            mapper.lookup_internal_connection_id_by_stateless_reset_token(&TEST_TOKEN_1)
+            mapper.remove_internal_connection_id_by_stateless_reset_token(&TEST_TOKEN_3)
         );
     }
 }
