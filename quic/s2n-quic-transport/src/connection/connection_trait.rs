@@ -273,7 +273,7 @@ pub trait ConnectionTrait: Sized {
 
                 let result = self.handle_packet(shared_state, datagram, path_id, packet);
 
-                if let Some(ProcessingError::TransportError(err)) = result.err() {
+                if let Err(ProcessingError::TransportError(err)) = result {
                     // CryptoErrors returned as a result of a packet failing decryption will be
                     // silently discarded, but this method could return an error on protocol
                     // violations which would result in shutting down the connection anyway. In this
