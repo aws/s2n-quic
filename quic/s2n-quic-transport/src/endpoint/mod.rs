@@ -196,7 +196,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
             // Packet is not decodable. Skip it.
             // TODO: Potentially add a metric
-            dbg!("invalid packet received");
 
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
             //# However, endpoints MUST treat any packet ending
@@ -406,8 +405,9 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     //# However, endpoints MUST treat any packet ending
                     //# in a valid stateless reset token as a stateless reset, as other QUIC
                     //# versions might allow the use of a long header.
-                    let is_stateless_reset =
-                        self.close_on_matching_stateless_reset(payload, timestamp);
+                    let is_stateless_reset = self
+                        .close_on_matching_stateless_reset(payload, timestamp)
+                        .is_some();
 
                     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
                     //= type=TODO
@@ -441,12 +441,13 @@ impl<Cfg: Config> Endpoint<Cfg> {
     }
 
     /// Checks if the given payload contains a stateless reset token matching a known token.
-    /// If there is a match, the matching connection will be closed and true will be returned.
+    /// If there is a match, the matching connection will be closed and the `InternalConnectionId`
+    /// will be returned.
     fn close_on_matching_stateless_reset(
         &mut self,
         payload: &mut [u8],
         timestamp: Timestamp,
-    ) -> bool {
+    ) -> Option<InternalConnectionId> {
         let buffer = DecoderBuffer::new(payload);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1
@@ -454,34 +455,27 @@ impl<Cfg: Config> Endpoint<Cfg> {
         //# received datagram as a stateless reset by comparing the last 16 bytes
         //# of the datagram with all Stateless Reset Tokens associated with the
         //# remote address on which the datagram was received.
-        if let Some(internal_id) = buffer
-            .skip(payload.len().saturating_sub(stateless_reset::token::LEN))
-            .and_then(|buffer| buffer.decode())
-            .ok()
-            .and_then(|(token, _)| {
-                self.connection_id_mapper
-                    .remove_internal_connection_id_by_stateless_reset_token(&token)
-            })
-        {
-            dbg!("stateless reset received");
+        let token_index = payload.len().checked_sub(stateless_reset::token::LEN)?;
+        let buffer = buffer.skip(token_index).ok()?;
+        let (token, _) = buffer.decode().ok()?;
+        let internal_id = self
+            .connection_id_mapper
+            .remove_internal_connection_id_by_stateless_reset_token(&token)?;
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1
-            //# If the last 16 bytes of the datagram are identical in value to a
-            //# Stateless Reset Token, the endpoint MUST enter the draining period
-            //# and not send any further packets on this connection.
-            self.connections
-                .with_connection(internal_id, |conn, shared_state| {
-                    conn.close(
-                        shared_state,
-                        ConnectionCloseReason::StatelessReset,
-                        timestamp,
-                    )
-                });
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1
+        //# If the last 16 bytes of the datagram are identical in value to a
+        //# Stateless Reset Token, the endpoint MUST enter the draining period
+        //# and not send any further packets on this connection.
+        self.connections
+            .with_connection(internal_id, |conn, shared_state| {
+                conn.close(
+                    shared_state,
+                    ConnectionCloseReason::StatelessReset,
+                    timestamp,
+                )
+            });
 
-            return true;
-        }
-
-        false
+        Some(internal_id)
     }
 
     /// Queries the endpoint for connections requiring new connection IDs
