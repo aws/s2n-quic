@@ -128,6 +128,10 @@ impl Key for FuzzCrypto {
     fn tag_len(&self) -> usize {
         0
     }
+
+    fn encrypted_packets(&self) -> usize {
+        0
+    }
 }
 
 /// `FuzzCrypto` uses the first 5 bytes of the payload as the protection mask

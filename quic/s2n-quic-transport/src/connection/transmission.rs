@@ -180,6 +180,14 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
         // frames are only allowed in the ApplicationData space, which will always be the highest
         // current-available encryption level.
 
+        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
+        //= type=TODO
+        //= tracking-issue=450
+        //= feature=AEAD limits
+        //# Endpoints MUST initiate a key update
+        //# before sending more protected packets than the confidentiality limit
+        //# for the selected AEAD permits.
+
         let encoder = if let Some((space, handshake_status)) = space_manager.application_mut() {
             match space.on_transmit(
                 &mut self.context,
@@ -199,7 +207,13 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
                 Err(PacketEncodingError::EmptyPayload(encoder)) => {
                     // move to the next packet space
                     encoder
-                }
+                } //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
+                  //= type=TODO
+                  //= tracking-issue=450
+                  //= feature=AEAD limits
+                  //# If the total number of encrypted packets with the same key
+                  //# exceeds the confidentiality limit for the selected AEAD, the endpoint
+                  //# MUST stop using those keys.
             }
         } else {
             encoder

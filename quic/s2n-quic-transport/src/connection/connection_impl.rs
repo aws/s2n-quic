@@ -125,6 +125,15 @@ pub struct ConnectionImpl<Config: connection::Config> {
     state: ConnectionState,
     /// Manage the paths that the connection could use
     path_manager: path::Manager<Config::CongestionController>,
+    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
+    //= type=TODO
+    //= tracking-issue=449
+    //= feature=AEAD Limits
+    //# In addition to counting packets sent, endpoints MUST count the number
+    //# of received packets that fail authentication during the lifetime of a
+    //# connection.
+    // TODO this could be a single "decrypted failure" counter, or a limits manager
+    // "on_decrypt_failure" call.
 }
 
 #[cfg(debug_assertions)]
@@ -790,8 +799,37 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
             //# received and processed successfully.
             self.restart_peer_idle_timer(datagram.timestamp);
 
-            // Currently, the application space does not have any crypto state.
-            // If, at some point, we decide to add it, we need to call `update_crypto_state` here.
+        // Currently, the application space does not have any crypto state.
+        // If, at some point, we decide to add it, we need to call `update_crypto_state` here.
+        // (note this comment is indented incorrectly by rustfmt. It applies above, not below. How
+        // to fix?)
+        } else {
+            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
+            //= type=TODO
+            //= tracking-issue=449
+            //= feature=AEAD Limits
+            //# In addition to counting packets sent, endpoints MUST count the number
+            //# of received packets that fail authentication during the lifetime of a
+            //# connection.
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
+            //= type=TODO
+            //= tracking-issue=448
+            //= feature=AEAD Limits
+            //# If the total number of received packets that fail
+            //# authentication within the connection, across all keys, exceeds the
+            //# integrity limit for the selected AEAD, the endpoint MUST immediately
+            //# close the connection with a connection error of type
+            //# AEAD_LIMIT_REACHED and not process any more packets.
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
+            //= type=TODO
+            //= tracking-issue=451
+            //= feature=AEAD Limits
+            //# If a key update is not possible or
+            //# integrity limits are reached, the endpoint MUST stop using the
+            //# connection and only send stateless resets in response to receiving
+            //# packets.
         }
 
         Ok(())

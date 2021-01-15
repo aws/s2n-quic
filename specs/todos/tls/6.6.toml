@@ -2,19 +2,11 @@ target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6"
 
 [[TODO]]
 quote = '''
-Endpoints MUST count the number of encrypted packets for each set of
-keys.
-'''
-tracking-issue = "322"
-feature = "AEAD limits"
-
-[[TODO]]
-quote = '''
 If the total number of encrypted packets with the same key
 exceeds the confidentiality limit for the selected AEAD, the endpoint
 MUST stop using those keys.
 '''
-tracking-issue = "322"
+tracking-issue = "450"
 feature = "AEAD limits"
 
 [[TODO]]
@@ -23,17 +15,7 @@ Endpoints MUST initiate a key update
 before sending more protected packets than the confidentiality limit
 for the selected AEAD permits.
 '''
-tracking-issue = "322"
-feature = "AEAD limits"
-
-[[TODO]]
-quote = '''
-If a key update is not possible or
-integrity limits are reached, the endpoint MUST stop using the
-connection and only send stateless resets in response to receiving
-packets.
-'''
-tracking-issue = "322"
+tracking-issue = "450"
 feature = "AEAD limits"
 
 [[TODO]]
@@ -47,37 +29,8 @@ feature = "AEAD limits"
 
 [[TODO]]
 quote = '''
-In addition to counting packets sent, endpoints MUST count the number
-of received packets that fail authentication during the lifetime of a
-connection.
-'''
-tracking-issue = "322"
-feature = "AEAD limits"
-
-[[TODO]]
-quote = '''
-If the total number of received packets that fail
-authentication within the connection, across all keys, exceeds the
-integrity limit for the selected AEAD, the endpoint MUST immediately
-close the connection with a connection error of type
-AEAD_LIMIT_REACHED and not process any more packets.
-'''
-tracking-issue = "322"
-feature = "AEAD limits"
-
-[[TODO]]
-quote = '''
 Endpoints that limit the size of packets MAY use higher
 confidentiality and integrity limits; see Appendix B for details.
 '''
 tracking-issue = "322"
 feature = "AEAD limits"
-
-[[TODO]]
-quote = '''
-Future analyses and specifications MAY relax confidentiality or
-integrity limits for an AEAD.
-'''
-tracking-issue = "322"
-feature = "AEAD limits"
-

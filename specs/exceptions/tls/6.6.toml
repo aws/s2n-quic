@@ -12,3 +12,14 @@ reason = '''
 s2n-quic does not define any cipher suites beyond what is available in the
 TLS provider. In the end this means it is unenforceable by s2n-quic itself.
 '''
+
+[[exception]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6"
+quote = '''
+Future analyses and specifications MAY relax confidentiality or
+integrity limits for an AEAD.
+'''
+reason = '''
+No plans to implement until said future analyses have been written and evaluated.
+'''
+

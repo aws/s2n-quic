@@ -81,6 +81,10 @@ impl Key for RingInitialCrypto {
     fn tag_len(&self) -> usize {
         self.sealer.tag_len()
     }
+
+    fn encrypted_packets(&self) -> usize {
+        todo!()
+    }
 }
 
 impl HeaderCrypto for RingInitialCrypto {
