@@ -200,6 +200,10 @@ impl Key for NullCrypto {
     fn tag_len(&self) -> usize {
         0
     }
+
+    fn encrypted_packets(&self) -> usize {
+        0
+    }
 }
 
 #[test]

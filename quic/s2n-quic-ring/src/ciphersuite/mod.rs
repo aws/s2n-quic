@@ -194,6 +194,10 @@ macro_rules! impl_ciphersuite {
             fn tag_len(&self) -> usize {
                 $cipher.tag_len()
             }
+
+            fn encrypted_packets(&self) -> usize {
+                todo!()
+            }
         }
 
         impl HeaderCrypto for $name {

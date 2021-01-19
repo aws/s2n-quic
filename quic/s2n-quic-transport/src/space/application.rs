@@ -114,6 +114,14 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
     ) -> Result<EncoderBuffer<'a>, PacketEncodingError<'a>> {
         let mut packet_number = self.tx_packet_numbers.next();
 
+        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
+        //= type=TODO
+        //= tracking-issue=450
+        //= feature=AEAD limits
+        //# If the total number of encrypted packets with the same key
+        //# exceeds the confidentiality limit for the selected AEAD, the endpoint
+        //# MUST stop using those keys.
+
         if self.recovery_manager.requires_probe() {
             //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
             //# If the sender wants to elicit a faster acknowledgement on PTO, it can

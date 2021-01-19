@@ -65,6 +65,10 @@ impl Key for RingNegotiatedCrypto {
     fn tag_len(&self) -> usize {
         self.sealer.tag_len()
     }
+
+    fn encrypted_packets(&self) -> usize {
+        todo!()
+    }
 }
 
 impl HeaderCrypto for RingNegotiatedCrypto {
@@ -139,6 +143,10 @@ macro_rules! negotiated_crypto {
 
             fn tag_len(&self) -> usize {
                 self.0.tag_len()
+            }
+
+            fn encrypted_packets(&self) -> usize {
+                todo!()
             }
         }
 

@@ -35,6 +35,10 @@ impl Key for RingZeroRTTCrypto {
     fn tag_len(&self) -> usize {
         self.0.tag_len()
     }
+
+    fn encrypted_packets(&self) -> usize {
+        todo!()
+    }
 }
 
 impl HeaderCrypto for RingZeroRTTCrypto {
