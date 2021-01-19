@@ -30,7 +30,7 @@ fn main() -> Result<(), Box<dyn 'static + std::error::Error>> {
 
         println!("cargo:rerun-if-changed=s2n-sys.h");
 
-        let bindings = s2n_bindings(None)
+        let bindings = s2n_tls_bindings(None)
             .generate()
             .map_err(|_| "failed to generate bindings")?;
 

@@ -7,7 +7,7 @@ fn main() {
 
     let s2n_dir = cwd.join("s2n").display().to_string();
 
-    let bindings = lib::s2n_bindings(Some(&s2n_dir))
+    let bindings = lib::s2n_tls_bindings(Some(&s2n_dir))
         .rustfmt_bindings(true)
         .generate()
         .expect("could not generate bindings");

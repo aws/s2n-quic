@@ -4,7 +4,15 @@ const ENTRY: &str = r#"
 #include "s2n/tls/s2n_quic_support.h"
 "#;
 
-pub fn s2n_bindings(s2n_dir: Option<&str>) -> bindgen::Builder {
+const PRELUDE: &str = r#"
+// This file needs to be generated any time the s2n-tls API changes.
+//
+// In order to regenerate the bindings, run the `update.sh` script.
+
+use libc::{iovec, FILE};
+"#;
+
+pub fn s2n_tls_bindings(s2n_dir: Option<&str>) -> bindgen::Builder {
     let builder = bindgen::Builder::default()
         .use_core()
         .detect_include_paths(true)
@@ -25,8 +33,7 @@ pub fn s2n_bindings(s2n_dir: Option<&str>) -> bindgen::Builder {
         .whitelist_function("s2n_.*")
         .whitelist_var("s2n_.*")
         .rustified_enum("s2n_.*")
-        // import the required types for the platform
-        .raw_line("use libc::{iovec, FILE};\n")
+        .raw_line(PRELUDE)
         .ctypes_prefix("::libc")
         .parse_callbacks(Box::new(S2nCallbacks::default()));
 
