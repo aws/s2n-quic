@@ -26,6 +26,13 @@ This project is licensed under the Apache-2.0 License.
 - Install [rustup](https://rustup.rs/)
 - Run `rustup component add rustfmt clippy rls rust-analysis`
 
+### Initialization
+
+```sh
+# Initialize the project's submodules
+$ git submodule update --init
+```
+
 ### Running a fuzz target
 
 You'll need to have `cargo-bolero` installed first.

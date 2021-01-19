@@ -6,6 +6,7 @@ ARG release="false"
 COPY Cargo.* /s2n-quic/
 COPY common /s2n-quic/common
 COPY quic /s2n-quic/quic
+COPY tls /s2n-quic/tls
 WORKDIR /s2n-quic
 
 # build runner
