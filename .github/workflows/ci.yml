@@ -26,6 +26,7 @@ jobs:
       msrv: ${{ steps.definitions.outputs.msrv }}
     steps:
       - uses: actions/checkout@v2
+
       - name: Evaluate definitions
         id: definitions
         run: |
@@ -49,6 +50,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+        with:
+          submodules: true
 
       - uses: actions-rs/toolchain@v1
         id: toolchain
@@ -68,6 +71,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+        with:
+          submodules: true
 
       - uses: actions-rs/toolchain@v1
         id: toolchain
@@ -89,6 +94,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+        with:
+          submodules: true
 
       - uses: actions-rs/toolchain@v1
         id: toolchain
@@ -112,6 +119,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+        with:
+          submodules: true
 
       - uses: actions-rs/toolchain@v1
         id: toolchain
@@ -164,6 +173,7 @@ jobs:
       - uses: actions/checkout@v2
         with:
           lfs: true
+          submodules: true
 
       - uses: actions-rs/toolchain@v1
         id: toolchain
@@ -182,6 +192,8 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
+          # s2n-tls doesn't currently build on windows
+          args: ${{ matrix.os == 'windows-latest' && '--workspace --exclude s2n-tls-sys' || '' }}
 
   miri:
     runs-on: ubuntu-latest
@@ -190,6 +202,8 @@ jobs:
         crate: [quic/s2n-quic-core]
     steps:
       - uses: actions/checkout@v2
+        with:
+          submodules: true
 
       - uses: actions-rs/toolchain@v1
         id: toolchain
@@ -212,6 +226,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+        with:
+          submodules: true
 
       - uses: actions-rs/toolchain@v1
         id: toolchain
@@ -235,6 +251,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v1
+        with:
+          submodules: true
 
       - uses: actions-rs/toolchain@v1
         id: toolchain
@@ -291,6 +309,7 @@ jobs:
       - uses: actions/checkout@v2
         with:
           lfs: true
+          submodules: true
 
       - name: Restore fuzz corpus
         run: |
@@ -349,6 +368,8 @@ jobs:
         example: [examples/quic-echo-server]
     steps:
       - uses: actions/checkout@v2
+        with:
+          submodules: true
 
       - uses: actions-rs/toolchain@v1
         id: toolchain
@@ -372,6 +393,8 @@ jobs:
         script: [server]
     steps:
       - uses: actions/checkout@v2
+        with:
+          submodules: true
 
       - uses: actions-rs/toolchain@v1
         id: toolchain
