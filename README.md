@@ -23,8 +23,17 @@ This project is licensed under the Apache-2.0 License.
 
 ### Prerequisites
 
+- GCC / CLang (some CC), Make, and CMake. Installation of these
+  items depends on your package manager.
 - Install [rustup](https://rustup.rs/)
-- Run `rustup component add rustfmt clippy rls rust-analysis`
+
+```sh
+# Install components to test and analyze code
+rustup component add rustfmt clippy rust-analysis
+
+# Install the nightly toolchain for testing
+rustup toolchain install nightly
+```
 
 ### Initialization
 
