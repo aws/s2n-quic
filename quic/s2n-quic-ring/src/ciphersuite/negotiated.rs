@@ -97,13 +97,6 @@ impl Key for NegotiatedCiphersuite {
         header: &[u8],
         payload: &mut [u8],
     ) -> Result<(), CryptoError> {
-        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
-        //= type=TODO
-        //= tracking-issue=449
-        //= feature=AEAD limits
-        //# Endpoints MUST count the number of encrypted packets for each set of
-        //# keys.
-
         dispatch!(self, |cipher| cipher.encrypt(
             packet_number,
             header,
@@ -115,8 +108,12 @@ impl Key for NegotiatedCiphersuite {
         dispatch!(self, |cipher| cipher.tag_len())
     }
 
-    fn encrypted_packets(&self) -> usize {
-        todo!()
+    fn aead_confidentiality_limit(&self) -> usize {
+        dispatch!(self, |cipher| cipher.aead_confidentiality_limit())
+    }
+
+    fn aead_integrity_limit(&self) -> usize {
+        dispatch!(self, |cipher| cipher.aead_integrity_limit())
     }
 }
 

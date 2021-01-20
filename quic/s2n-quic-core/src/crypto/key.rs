@@ -21,14 +21,11 @@ pub trait Key {
     /// Length of the appended tag
     fn tag_len(&self) -> usize;
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
-    //= type=TODO
-    //= tracking-issue=449
-    //= feature=AEAD limits
-    //# Endpoints MUST count the number of encrypted packets for each set of
-    //# keys.
-    /// Return total number of packets encrypted with this key
-    fn encrypted_packets(&self) -> usize;
+    /// Maximum number of packets a key can encrypt
+    fn aead_confidentiality_limit(&self) -> usize;
+
+    /// Maximum number of decryption failures allowed for a ciphersuite
+    fn aead_integrity_limit(&self) -> usize;
 }
 
 #[cfg(any(test, feature = "testing"))]
@@ -68,8 +65,12 @@ pub mod testing {
             0
         }
 
-        fn encrypted_packets(&self) -> usize {
-            todo!()
+        fn aead_confidentiality_limit(&self) -> usize {
+            0
+        }
+
+        fn aead_integrity_limit(&self) -> usize {
+            0
         }
     }
 

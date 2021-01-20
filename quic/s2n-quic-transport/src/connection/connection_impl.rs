@@ -18,7 +18,7 @@ use core::time::Duration;
 use s2n_quic_core::{
     application::ApplicationErrorExt,
     connection::id::Interest,
-    crypto::CryptoError,
+    crypto::{CryptoError, Key},
     inet::DatagramInfo,
     io::tx,
     packet::{
@@ -126,14 +126,10 @@ pub struct ConnectionImpl<Config: connection::Config> {
     /// Manage the paths that the connection could use
     path_manager: path::Manager<Config::CongestionController>,
     //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
-    //= type=TODO
-    //= tracking-issue=449
-    //= feature=AEAD Limits
     //# In addition to counting packets sent, endpoints MUST count the number
     //# of received packets that fail authentication during the lifetime of a
     //# connection.
-    // TODO this could be a single "decrypted failure" counter, or a limits manager
-    // "on_decrypt_failure" call.
+    packet_decryption_failures: usize,
 }
 
 #[cfg(debug_assertions)]
@@ -150,7 +146,7 @@ impl<Config: connection::Config> Drop for ConnectionImpl<Config> {
 /// This is a macro instead of a function because it removes the need to have a
 /// complex trait with a bunch of generics for each of the packet spaces.
 macro_rules! packet_validator {
-    ($packet:ident, $space:expr $(, $inspect:expr)?) => {{
+    ($conn:ident, $packet:ident, $space:expr $(, $inspect:expr)?) => {{
         if let Some((space, handshake_status)) = $space {
             let crypto = &space.crypto;
             let packet_number_decoder = space.packet_number_decoder();
@@ -175,9 +171,27 @@ macro_rules! packet_validator {
             } else {
                 $($inspect)?
 
-                let packet = $packet.decrypt(crypto)?;
+                match $packet.decrypt(crypto) {
+                    Ok(packet) => Some((packet, space, handshake_status)),
+                    Err(e) => {
+                        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
+                        //# In addition to counting packets sent, endpoints MUST count the number
+                        //# of received packets that fail authentication during the lifetime of a
+                        //# connection.
+                        $conn.packet_decryption_failures += 1;
+                        if $conn.packet_decryption_failures > crypto.aead_integrity_limit() {
+                            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
+                            //# If the total number of received packets that fail
+                            //# authentication within the connection, across all keys, exceeds the
+                            //# integrity limit for the selected AEAD, the endpoint MUST immediately
+                            //# close the connection with a connection error of type
+                            //# AEAD_LIMIT_REACHED and not process any more packets.
+                            return Err(ProcessingError::TransportError(TransportError::AEAD_LIMIT_REACHED));
+                        }
 
-                Some((packet, space, handshake_status))
+                        return Err(ProcessingError::CryptoError(e));
+                    },
+                }
             }
         } else {
             None
@@ -278,6 +292,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
             accept_state: AcceptState::Handshaking,
             state: ConnectionState::Handshaking,
             path_manager,
+            packet_decryption_failures: 0,
         }
     }
 
@@ -587,7 +602,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         packet: ProtectedInitial,
     ) -> Result<(), ProcessingError> {
         if let Some((packet, _space, _handshake_status)) =
-            packet_validator!(packet, shared_state.space_manager.initial_mut())
+            packet_validator!(self, packet, shared_state.space_manager.initial_mut())
         {
             self.handle_cleartext_initial_packet(shared_state, datagram, path_id, packet)?;
 
@@ -678,7 +693,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         //# packets.
 
         if let Some((packet, space, handshake_status)) =
-            packet_validator!(packet, shared_state.space_manager.handshake_mut())
+            packet_validator!(self, packet, shared_state.space_manager.handshake_mut())
         {
             if let Some(close) = space.handle_cleartext_payload(
                 packet.packet_number,
@@ -769,14 +784,17 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
             return Ok(());
         }
 
-        if let Some((packet, space, handshake_status)) =
-            packet_validator!(packet, shared_state.space_manager.application_mut(), {
+        if let Some((packet, space, handshake_status)) = packet_validator!(
+            self,
+            packet,
+            shared_state.space_manager.application_mut(),
+            {
                 if packet.key_phase != Default::default() {
                     dbg!("key updates are not currently implemented");
                     return Err(CryptoError::INTERNAL_ERROR.into());
                 }
-            })
-        {
+            }
+        ) {
             if let Some(close) = space.handle_cleartext_payload(
                 packet.packet_number,
                 packet.payload,
@@ -804,14 +822,6 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         // (note this comment is indented incorrectly by rustfmt. It applies above, not below. How
         // to fix?)
         } else {
-            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
-            //= type=TODO
-            //= tracking-issue=449
-            //= feature=AEAD Limits
-            //# In addition to counting packets sent, endpoints MUST count the number
-            //# of received packets that fail authentication during the lifetime of a
-            //# connection.
-
             //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
             //= type=TODO
             //= tracking-issue=448

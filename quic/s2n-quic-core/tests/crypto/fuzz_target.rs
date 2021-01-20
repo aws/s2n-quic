@@ -129,7 +129,11 @@ impl Key for FuzzCrypto {
         0
     }
 
-    fn encrypted_packets(&self) -> usize {
+    fn aead_confidentiality_limit(&self) -> usize {
+        0
+    }
+
+    fn aead_integrity_limit(&self) -> usize {
         0
     }
 }

@@ -122,6 +122,7 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
                     // move to the next packet space
                     encoder
                 }
+                Err(PacketEncodingError::AeadLimitReached(encoder)) => encoder,
             }
         } else {
             encoder
@@ -157,6 +158,7 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
                     // move to the next packet space
                     encoder
                 }
+                Err(PacketEncodingError::AeadLimitReached(encoder)) => encoder,
             };
 
             //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9.2
@@ -216,6 +218,7 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
                     // move to the next packet space
                     encoder
                 }
+                Err(PacketEncodingError::AeadLimitReached(encoder)) => encoder,
             }
         } else {
             encoder

@@ -26,6 +26,8 @@ macro_rules! impl_ciphersuite {
         $iv_label:expr,
         $hp_label:expr,
         $key_update_label:expr,
+        $confidentiality_limit:expr,
+        $integrity_limit:expr,
         $test_name:ident
     ) => {
         #[allow(non_camel_case_types)]
@@ -195,8 +197,16 @@ macro_rules! impl_ciphersuite {
                 $cipher.tag_len()
             }
 
-            fn encrypted_packets(&self) -> usize {
-                todo!()
+            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
+            //# Any TLS cipher suite that is specified for use with QUIC MUST define
+            //# limits on the use of the associated AEAD function that preserves
+            //# margins for confidentiality and integrity.
+            fn aead_confidentiality_limit(&self) -> usize {
+                $confidentiality_limit
+            }
+
+            fn aead_integrity_limit(&self) -> usize {
+                $integrity_limit
             }
         }
 
@@ -263,6 +273,9 @@ macro_rules! impl_ciphersuite {
     };
 }
 
+//= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
+//# For AEAD_AES_128_GCM and AEAD_AES_256_GCM, the confidentiality limit
+//# is 2^23 encrypted packets; see Appendix B.1.
 impl_ciphersuite!(
     TLS_AES_256_GCM_SHA384,
     hkdf::HKDF_SHA384,
@@ -273,9 +286,15 @@ impl_ciphersuite!(
     label::QUIC_IV_12,
     label::QUIC_HP_32,
     label::QUIC_KU_32,
+    2 ^ 23, // Confidentiality limit
+    2 ^ 52, // Integrity limit
     tls_aes_256_gcm_sha384_test
 );
 
+//= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
+//# For
+//# AEAD_CHACHA20_POLY1305, the confidentiality limit is greater than the
+//# number of possible packets (2^62) and so can be disregarded.
 impl_ciphersuite!(
     TLS_CHACHA20_POLY1305_SHA256,
     hkdf::HKDF_SHA256,
@@ -286,9 +305,12 @@ impl_ciphersuite!(
     label::QUIC_IV_12,
     label::QUIC_HP_32,
     label::QUIC_KU_32,
+    2 ^ 62, // Confidentiality limit even though specification notes it can be disregarded
+    2 ^ 36, // Integrity limit
     tls_chacha20_poly1305_sha256_test
 );
 
+// See above annotation regarding AEAD_AES_128 and AEAD_AES_256
 impl_ciphersuite!(
     TLS_AES_128_GCM_SHA256,
     hkdf::HKDF_SHA256,
@@ -299,5 +321,7 @@ impl_ciphersuite!(
     label::QUIC_IV_12,
     label::QUIC_HP_16,
     label::QUIC_KU_16,
+    2 ^ 23, // Confidentiality limit
+    2 ^ 52, // Integrity limit
     tls_aes_128_gcm_sha256_test
 );

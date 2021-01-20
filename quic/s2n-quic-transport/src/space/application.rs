@@ -12,7 +12,7 @@ use bytes::Bytes;
 use core::{convert::TryInto, marker::PhantomData};
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
-    crypto::CryptoSuite,
+    crypto::{CryptoSuite, Key},
     endpoint,
     frame::{
         ack::AckRanges, crypto::CryptoRef, stream::StreamRef, Ack, ConnectionClose, DataBlocked,
@@ -60,6 +60,10 @@ pub struct ApplicationSpace<Config: connection::Config> {
     ping: flag::Ping,
     processed_packet_numbers: SlidingWindow,
     recovery_manager: recovery::Manager,
+    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
+    //# Endpoints MUST count the number of encrypted packets for each set of
+    //# keys.
+    packets_sent: usize,
 }
 
 impl<Config: connection::Config> ApplicationSpace<Config> {
@@ -87,6 +91,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
                 PacketNumberSpace::ApplicationData,
                 max_ack_delay,
             ),
+            packets_sent: 0,
         }
     }
 
@@ -115,12 +120,12 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         let mut packet_number = self.tx_packet_numbers.next();
 
         //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
-        //= type=TODO
-        //= tracking-issue=450
-        //= feature=AEAD limits
         //# If the total number of encrypted packets with the same key
         //# exceeds the confidentiality limit for the selected AEAD, the endpoint
         //# MUST stop using those keys.
+        if self.packets_sent > self.crypto.aead_confidentiality_limit() {
+            return Err(PacketEncodingError::AeadLimitReached(buffer));
+        }
 
         if self.recovery_manager.requires_probe() {
             //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
@@ -166,6 +171,11 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
 
         let (_protected_packet, buffer) =
             packet.encode_packet(&self.crypto, packet_number_encoder, buffer)?;
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
+        //# Endpoints MUST count the number of encrypted packets for each set of
+        //# keys.
+        self.packets_sent += 1;
 
         let (recovery_manager, mut recovery_context) = self.recovery(
             handshake_status,
