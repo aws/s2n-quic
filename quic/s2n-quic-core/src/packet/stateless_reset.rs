@@ -24,70 +24,66 @@ const TAG_OFFSET: u8 = 2;
 const SHORT_HEADER_LEN: usize =
     core::mem::size_of::<Tag>() + PacketNumberLen::MAX_LEN + DESTINATION_CONNECTION_ID_MAX_LEN;
 
-#[derive(Debug)]
-pub struct StatelessReset {}
+/// Encodes a stateless reset packet into the given packet buffer.
+pub fn encode_packet<R: random::Generator>(
+    token: stateless_reset::Token,
+    max_tag_len: usize,
+    triggering_packet_len: usize,
+    random_generator: &mut R,
+    packet_buf: &mut [u8],
+) -> Option<usize> {
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
+    //# These values assume that the Stateless Reset Token is the same length
+    //# as the minimum expansion of the packet protection AEAD. Additional
+    //# unpredictable bytes are necessary if the endpoint could have negotiated
+    //# a packet protection scheme with a larger minimum expansion.
+    // The tag length for all cipher suites defined in TLS 1.3 is 16 bytes, but
+    // we will calculate based on a given max tag length to allow for future cipher
+    // suites with larger tags. One additional byte is added to represent the minimum
+    // valid payload size.
+    let min_len = SHORT_HEADER_LEN + max_tag_len + 1;
 
-impl StatelessReset {
-    pub fn encode_packet<R: random::Generator>(
-        token: stateless_reset::Token,
-        max_tag_len: usize,
-        triggering_packet_len: usize,
-        random_generator: &mut R,
-        packet_buf: &mut [u8],
-    ) -> Option<usize> {
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
-        //# These values assume that the Stateless Reset Token is the same length
-        //# as the minimum expansion of the packet protection AEAD. Additional
-        //# unpredictable bytes are necessary if the endpoint could have negotiated
-        //# a packet protection scheme with a larger minimum expansion.
-        // The tag length for all cipher suites defined in TLS 1.3 is 16 bytes, but
-        // we will calculate based on a given max tag length to allow for future cipher
-        // suites with larger tags. One additional byte is added to represent the minimum
-        // valid payload size.
-        let min_len = SHORT_HEADER_LEN + max_tag_len + 1;
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
+    //# An endpoint MUST NOT send a stateless reset that is three times or
+    //# more larger than the packet it receives to avoid being used for
+    //# amplification.
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
-        //# An endpoint MUST NOT send a stateless reset that is three times or
-        //# more larger than the packet it receives to avoid being used for
-        //# amplification.
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.3
+    //# An endpoint MUST ensure that every Stateless Reset that it sends is
+    //# smaller than the packet that triggered it, unless it maintains state
+    //# sufficient to prevent looping.
+    let max_len = (triggering_packet_len - 1).min(packet_buf.len());
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.3
-        //# An endpoint MUST ensure that every Stateless Reset that it sends is
-        //# smaller than the packet that triggered it, unless it maintains state
-        //# sufficient to prevent looping.
-        let max_len = (triggering_packet_len - 1).min(packet_buf.len());
-
-        // The packet that triggered this stateless reset was too small to send a stateless reset
-        // that would be indistinguishable from a valid short header packet, so we'll just drop the
-        // packet instead of sending a stateless reset.
-        if max_len < min_len {
-            return None;
-        }
-
-        // Generate unpredictable bits, leaving room for the stateless reset token
-        let unpredictable_bits_min_len = min_len - stateless_reset::token::LEN;
-        let unpredictable_bits_max_len = max_len - stateless_reset::token::LEN;
-
-        let unpredictable_bits_len = generate_unpredictable_bits(
-            random_generator,
-            unpredictable_bits_min_len,
-            &mut packet_buf[..=unpredictable_bits_max_len],
-        );
-        // Write the short header tag over the first two bits
-        packet_buf[0] = packet_buf[0] >> TAG_OFFSET | TAG;
-
-        let packet_len = unpredictable_bits_len + stateless_reset::token::LEN;
-
-        packet_buf[unpredictable_bits_len..packet_len].copy_from_slice(token.as_ref());
-
-        if cfg!(debug_assertions) {
-            assert!(packet_len >= min_len);
-            assert!(packet_len <= max_len);
-            assert!(packet_len < triggering_packet_len);
-        }
-
-        Some(packet_len)
+    // The packet that triggered this stateless reset was too small to send a stateless reset
+    // that would be indistinguishable from a valid short header packet, so we'll just drop the
+    // packet instead of sending a stateless reset.
+    if max_len < min_len {
+        return None;
     }
+
+    // Generate unpredictable bits, leaving room for the stateless reset token
+    let unpredictable_bits_min_len = min_len - stateless_reset::token::LEN;
+    let unpredictable_bits_max_len = max_len - stateless_reset::token::LEN;
+
+    let unpredictable_bits_len = generate_unpredictable_bits(
+        random_generator,
+        unpredictable_bits_min_len,
+        &mut packet_buf[..=unpredictable_bits_max_len],
+    );
+    // Write the short header tag over the first two bits
+    packet_buf[0] = packet_buf[0] >> TAG_OFFSET | TAG;
+
+    let packet_len = unpredictable_bits_len + stateless_reset::token::LEN;
+
+    packet_buf[unpredictable_bits_len..packet_len].copy_from_slice(token.as_ref());
+
+    if cfg!(debug_assertions) {
+        assert!(packet_len >= min_len);
+        assert!(packet_len <= max_len);
+        assert!(packet_len < triggering_packet_len);
+    }
+
+    Some(packet_len)
 }
 
 /// Fills the given buffer with a random amount of random data at least of the
@@ -183,7 +179,7 @@ mod tests {
 
         let mut buffer = [0; MINIMUM_MTU as usize];
 
-        let packet_len = StatelessReset::encode_packet(
+        let packet_len = encode_packet(
             TEST_TOKEN_1,
             max_tag_len,
             triggering_packet_len,
@@ -224,7 +220,7 @@ mod tests {
         let mut generator = random::testing::Generator(123);
         let mut buffer = [0; MINIMUM_MTU as usize];
 
-        let packet_len = StatelessReset::encode_packet(
+        let packet_len = encode_packet(
             TEST_TOKEN_1,
             max_tag_len,
             triggering_packet_len,
@@ -236,7 +232,7 @@ mod tests {
 
         triggering_packet_len -= 1;
 
-        let packet_len = StatelessReset::encode_packet(
+        let packet_len = encode_packet(
             TEST_TOKEN_1,
             max_tag_len,
             triggering_packet_len,
@@ -254,7 +250,7 @@ mod tests {
         let mut generator = random::testing::Generator(123);
         let mut buffer = [0; MINIMUM_MTU as usize];
 
-        let packet_len = StatelessReset::encode_packet(
+        let packet_len = encode_packet(
             TEST_TOKEN_1,
             max_tag_len,
             triggering_packet_len,

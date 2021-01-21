@@ -81,7 +81,7 @@ impl Transmission {
     ) -> Option<Self> {
         let mut packet_buf = [0u8; MINIMUM_MTU as usize];
 
-        let packet_len = packet::stateless_reset::StatelessReset::encode_packet(
+        let packet_len = packet::stateless_reset::encode_packet(
             token,
             max_tag_len,
             triggering_packet_len,
