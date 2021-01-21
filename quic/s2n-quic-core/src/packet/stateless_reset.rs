@@ -289,12 +289,12 @@ mod tests {
     #[test]
     fn packet_encoding_test() {
         let mut buffer = [0; MINIMUM_MTU as usize];
-        let mut generator = random::testing::Generator(123);
 
         bolero::check!()
-            .with_type::<(usize, u16)>()
+            .with_type::<(u8, usize, u16)>()
             .cloned()
-            .for_each(|(triggering_packet_len, max_tag_len)| {
+            .for_each(|(seed, triggering_packet_len, max_tag_len)| {
+                let mut generator = random::testing::Generator(seed);
                 let packet_len = encode_packet(
                     TEST_TOKEN_1,
                     max_tag_len.into(),
