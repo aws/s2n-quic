@@ -129,7 +129,7 @@ pub struct ConnectionImpl<Config: connection::Config> {
     //# In addition to counting packets sent, endpoints MUST count the number
     //# of received packets that fail authentication during the lifetime of a
     //# connection.
-    packet_decryption_failures: usize,
+    packet_decryption_failures: u64,
 }
 
 #[cfg(debug_assertions)]
@@ -148,7 +148,7 @@ impl<Config: connection::Config> Drop for ConnectionImpl<Config> {
 macro_rules! packet_validator {
     ($conn:ident, $packet:ident, $space:expr $(, $inspect:expr)?) => {{
         if let Some((space, handshake_status)) = $space {
-            let crypto = &space.crypto;
+            let packet_space_crypto = &space.crypto;
             let packet_number_decoder = space.packet_number_decoder();
 
             // TODO ensure this is all side-channel free and reserved bits are 0
@@ -160,7 +160,7 @@ macro_rules! packet_validator {
 
             // It may indicate the packet is a stateless reset however, so we will bubble
             // up the error to allow the caller to handle it.
-            let $packet = $packet.unprotect(crypto, packet_number_decoder)?;
+            let $packet = $packet.unprotect(packet_space_crypto.key(), packet_number_decoder)?;
 
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.3
             //# A receiver MUST discard a newly unprotected packet unless it is
@@ -171,7 +171,7 @@ macro_rules! packet_validator {
             } else {
                 $($inspect)?
 
-                match $packet.decrypt(crypto) {
+                match $packet.decrypt(packet_space_crypto.key()) {
                     Ok(packet) => Some((packet, space, handshake_status)),
                     Err(e) => {
                         //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
@@ -179,7 +179,7 @@ macro_rules! packet_validator {
                         //# of received packets that fail authentication during the lifetime of a
                         //# connection.
                         $conn.packet_decryption_failures += 1;
-                        if $conn.packet_decryption_failures > crypto.aead_integrity_limit() {
+                        if $conn.packet_decryption_failures > packet_space_crypto.key().aead_integrity_limit() {
                             //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
                             //# If the total number of received packets that fail
                             //# authentication within the connection, across all keys, exceeds the

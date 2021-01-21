@@ -36,11 +36,11 @@ impl Key for RingZeroRTTCrypto {
         self.0.tag_len()
     }
 
-    fn aead_confidentiality_limit(&self) -> usize {
+    fn aead_confidentiality_limit(&self) -> u64 {
         self.0.aead_confidentiality_limit()
     }
 
-    fn aead_integrity_limit(&self) -> usize {
+    fn aead_integrity_limit(&self) -> u64 {
         self.0.aead_integrity_limit()
     }
 }

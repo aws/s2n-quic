@@ -201,11 +201,11 @@ macro_rules! impl_ciphersuite {
             //# Any TLS cipher suite that is specified for use with QUIC MUST define
             //# limits on the use of the associated AEAD function that preserves
             //# margins for confidentiality and integrity.
-            fn aead_confidentiality_limit(&self) -> usize {
+            fn aead_confidentiality_limit(&self) -> u64 {
                 $confidentiality_limit
             }
 
-            fn aead_integrity_limit(&self) -> usize {
+            fn aead_integrity_limit(&self) -> u64 {
                 $integrity_limit
             }
         }

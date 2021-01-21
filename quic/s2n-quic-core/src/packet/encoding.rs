@@ -60,9 +60,6 @@ pub enum PacketEncodingError<'a> {
 
     /// The payload did not write anything
     EmptyPayload(EncoderBuffer<'a>),
-
-    /// AEAD Limits reached, could not encrypt payload
-    AeadLimitReached(EncoderBuffer<'a>),
 }
 
 impl<'a> PacketEncodingError<'a> {
@@ -72,7 +69,6 @@ impl<'a> PacketEncodingError<'a> {
             Self::PacketNumberTruncationError(buffer) => buffer,
             Self::InsufficientSpace(buffer) => buffer,
             Self::EmptyPayload(buffer) => buffer,
-            Self::AeadLimitReached(buffer) => buffer,
         }
     }
 }

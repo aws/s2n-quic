@@ -108,11 +108,11 @@ impl Key for NegotiatedCiphersuite {
         dispatch!(self, |cipher| cipher.tag_len())
     }
 
-    fn aead_confidentiality_limit(&self) -> usize {
+    fn aead_confidentiality_limit(&self) -> u64 {
         dispatch!(self, |cipher| cipher.aead_confidentiality_limit())
     }
 
-    fn aead_integrity_limit(&self) -> usize {
+    fn aead_integrity_limit(&self) -> u64 {
         dispatch!(self, |cipher| cipher.aead_integrity_limit())
     }
 }

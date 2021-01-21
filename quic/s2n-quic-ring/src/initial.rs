@@ -82,11 +82,11 @@ impl Key for RingInitialCrypto {
         self.sealer.tag_len()
     }
 
-    fn aead_confidentiality_limit(&self) -> usize {
+    fn aead_confidentiality_limit(&self) -> u64 {
         self.sealer.aead_confidentiality_limit()
     }
 
-    fn aead_integrity_limit(&self) -> usize {
+    fn aead_integrity_limit(&self) -> u64 {
         self.sealer.aead_integrity_limit()
     }
 }

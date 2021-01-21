@@ -22,10 +22,10 @@ pub trait Key {
     fn tag_len(&self) -> usize;
 
     /// Maximum number of packets a key can encrypt
-    fn aead_confidentiality_limit(&self) -> usize;
+    fn aead_confidentiality_limit(&self) -> u64;
 
     /// Maximum number of decryption failures allowed for a ciphersuite
-    fn aead_integrity_limit(&self) -> usize;
+    fn aead_integrity_limit(&self) -> u64;
 }
 
 #[cfg(any(test, feature = "testing"))]
@@ -65,11 +65,11 @@ pub mod testing {
             0
         }
 
-        fn aead_confidentiality_limit(&self) -> usize {
+        fn aead_confidentiality_limit(&self) -> u64 {
             0
         }
 
-        fn aead_integrity_limit(&self) -> usize {
+        fn aead_integrity_limit(&self) -> u64 {
             0
         }
     }

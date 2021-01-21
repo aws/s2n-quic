@@ -3,7 +3,10 @@ use crate::{
     path,
     processed_packet::ProcessedPacket,
     recovery,
-    space::{rx_packet_numbers::AckManager, HandshakeStatus, PacketSpace, TxPacketNumbers},
+    space::{
+        rx_packet_numbers::AckManager, HandshakeStatus, PacketSpace, PacketSpaceCrypto,
+        TxPacketNumbers,
+    },
     stream::AbstractStreamManager,
     sync::flag,
     transmission,
@@ -47,7 +50,7 @@ pub struct ApplicationSpace<Config: connection::Config> {
     pub spin_bit: SpinBit,
     /// The crypto suite for application data
     /// TODO: What about ZeroRtt?
-    pub crypto: <Config::TLSSession as CryptoSuite>::OneRTTCrypto,
+    pub crypto: PacketSpaceCrypto<<Config::TLSSession as CryptoSuite>::OneRTTCrypto>,
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7
     //# Endpoints MUST explicitly negotiate an application protocol.
 
@@ -60,10 +63,6 @@ pub struct ApplicationSpace<Config: connection::Config> {
     ping: flag::Ping,
     processed_packet_numbers: SlidingWindow,
     recovery_manager: recovery::Manager,
-    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
-    //# Endpoints MUST count the number of encrypted packets for each set of
-    //# keys.
-    packets_sent: usize,
 }
 
 impl<Config: connection::Config> ApplicationSpace<Config> {
@@ -82,7 +81,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
             key_phase: KeyPhase::Zero,
             spin_bit: SpinBit::Zero,
             stream_manager,
-            crypto,
+            crypto: PacketSpaceCrypto::new(crypto),
             sni,
             alpn,
             ping: flag::Ping::default(),
@@ -91,7 +90,6 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
                 PacketNumberSpace::ApplicationData,
                 max_ack_delay,
             ),
-            packets_sent: 0,
         }
     }
 
@@ -123,8 +121,8 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         //# If the total number of encrypted packets with the same key
         //# exceeds the confidentiality limit for the selected AEAD, the endpoint
         //# MUST stop using those keys.
-        if self.packets_sent > self.crypto.aead_confidentiality_limit() {
-            return Err(PacketEncodingError::AeadLimitReached(buffer));
+        if self.crypto.encrypted_packets > self.crypto.key().aead_confidentiality_limit() {
+            return Err(PacketEncodingError::EmptyPayload(buffer));
         }
 
         if self.recovery_manager.requires_probe() {
@@ -170,12 +168,12 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         };
 
         let (_protected_packet, buffer) =
-            packet.encode_packet(&self.crypto, packet_number_encoder, buffer)?;
+            packet.encode_packet(self.crypto.key(), packet_number_encoder, buffer)?;
 
         //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
         //# Endpoints MUST count the number of encrypted packets for each set of
         //# keys.
-        self.packets_sent += 1;
+        self.crypto.encrypted_packets += 1;
 
         let (recovery_manager, mut recovery_context) = self.recovery(
             handshake_status,

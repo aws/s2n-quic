@@ -4,7 +4,8 @@ use crate::{
     processed_packet::ProcessedPacket,
     recovery,
     space::{
-        rx_packet_numbers::AckManager, CryptoStream, HandshakeStatus, PacketSpace, TxPacketNumbers,
+        rx_packet_numbers::AckManager, CryptoStream, HandshakeStatus, PacketSpace,
+        PacketSpaceCrypto, TxPacketNumbers,
     },
     transmission,
 };
@@ -32,7 +33,7 @@ pub struct HandshakeSpace<Config: connection::Config> {
     //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4
     //# If QUIC needs to retransmit that data, it MUST use
     //# the same keys even if TLS has already updated to newer keys.
-    pub crypto: <Config::TLSSession as CryptoSuite>::HandshakeCrypto,
+    pub crypto: PacketSpaceCrypto<<Config::TLSSession as CryptoSuite>::HandshakeCrypto>,
     //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9
     //# If packets from a lower encryption level contain
     //# CRYPTO frames, frames that retransmit that data MUST be sent at the
@@ -52,7 +53,7 @@ impl<Config: connection::Config> HandshakeSpace<Config> {
         let max_ack_delay = ack_manager.ack_settings.max_ack_delay;
         Self {
             ack_manager,
-            crypto,
+            crypto: PacketSpaceCrypto::new(crypto),
             crypto_stream: CryptoStream::new(),
             tx_packet_numbers: TxPacketNumbers::new(PacketNumberSpace::Handshake, now),
             processed_packet_numbers: SlidingWindow::default(),
@@ -122,7 +123,7 @@ impl<Config: connection::Config> HandshakeSpace<Config> {
         };
 
         let (_protected_packet, buffer) =
-            packet.encode_packet(&self.crypto, packet_number_encoder, buffer)?;
+            packet.encode_packet(self.crypto.key(), packet_number_encoder, buffer)?;
 
         let time_sent = context.timestamp;
         let (recovery_manager, mut recovery_context) =
