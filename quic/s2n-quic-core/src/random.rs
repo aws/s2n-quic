@@ -28,7 +28,7 @@ pub mod testing {
                 *elem = seed ^ i as u8;
             }
 
-            self.0 = self.0.overflowing_add(1).0
+            self.0 = self.0.wrapping_add(1)
         }
 
         fn private_random_fill(&mut self, dest: &mut [u8]) {
@@ -38,7 +38,7 @@ pub mod testing {
                 *elem = seed ^ i as u8;
             }
 
-            self.0 = self.0.overflowing_add(1).0
+            self.0 = self.0.wrapping_add(1)
         }
     }
 }

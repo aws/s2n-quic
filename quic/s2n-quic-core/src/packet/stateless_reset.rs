@@ -124,7 +124,7 @@ fn gen_range<R: random::Generator>(
     random_generator.public_random_fill(&mut dest);
     let result = usize::from_le_bytes(dest);
 
-    let max_variance = range.end() - range.start() + 1;
+    let max_variance = (range.end() - range.start()).saturating_add(1);
     range.start() + result % max_variance
 }
 
@@ -135,32 +135,41 @@ mod tests {
 
     #[test]
     fn gen_range_test() {
-        let min = 100;
-        let max = 1000;
-
-        let mut generator = random::testing::Generator(123);
-
-        for _ in 0..1000 {
-            let result = gen_range(&mut generator, min..=max);
-            assert!(result >= min);
-            assert!(result <= max);
-        }
+        bolero::check!()
+            .with_type()
+            .cloned()
+            .for_each(|(seed, mut min, mut max)| {
+                if min > max {
+                    core::mem::swap(&mut min, &mut max);
+                }
+                let mut generator = random::testing::Generator(seed);
+                let result = gen_range(&mut generator, min..=max);
+                assert!(result >= min);
+                assert!(result <= max);
+            });
     }
 
     #[test]
     fn generate_unpredictable_bits_test() {
+        bolero::check!()
+            .with_type::<(u8, u16, u16)>()
+            .cloned()
+            .for_each(|(seed, mut min, mut max)| {
+                if min > max {
+                    core::mem::swap(&mut min, &mut max);
+                }
+                let mut generator = random::testing::Generator(seed);
+                let mut buffer = vec![0; max.into()];
+                let len = generate_unpredictable_bits(&mut generator, min.into(), &mut buffer);
+                assert!(len >= min.into());
+                assert!(len <= max.into());
+            });
+
         const MIN_LEN: usize = 100;
         const MAX_LEN: usize = 1000;
 
         let mut generator = random::testing::Generator(123);
         let mut buffer = [0; MAX_LEN];
-
-        for _ in 0..1000 {
-            let len = generate_unpredictable_bits(&mut generator, MIN_LEN, &mut buffer);
-            assert!(len >= MIN_LEN);
-            assert!(len <= MAX_LEN);
-        }
-
         let mut buffer_2 = [0; MAX_LEN];
         generate_unpredictable_bits(&mut generator, MIN_LEN, &mut buffer);
         generate_unpredictable_bits(&mut generator, MIN_LEN, &mut buffer_2);
@@ -275,5 +284,47 @@ mod tests {
         assert!(packet_len.is_some());
 
         assert!(packet_len.unwrap() <= MINIMUM_MTU as usize);
+    }
+
+    #[test]
+    fn packet_encoding_test() {
+        let mut buffer = [0; MINIMUM_MTU as usize];
+        let mut generator = random::testing::Generator(123);
+
+        bolero::check!()
+            .with_type::<(usize, u16)>()
+            .cloned()
+            .for_each(|(triggering_packet_len, max_tag_len)| {
+                let packet_len = encode_packet(
+                    TEST_TOKEN_1,
+                    max_tag_len.into(),
+                    triggering_packet_len,
+                    &mut generator,
+                    &mut buffer,
+                );
+
+                let min_len = SHORT_HEADER_LEN + max_tag_len as usize + 1;
+                let max_len = triggering_packet_len.saturating_sub(1).min(buffer.len());
+
+                if min_len <= max_len {
+                    assert!(packet_len.is_some());
+                    let packet_len = packet_len.unwrap();
+                    assert!(packet_len <= max_len);
+                    assert!(packet_len >= min_len);
+
+                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
+                    //= type=test
+                    //# Endpoints MUST send stateless reset packets formatted as a packet
+                    //# with a short header.
+                    assert!(matches!(&buffer[0] >> 4, short_tag!()));
+
+                    assert_eq!(
+                        TEST_TOKEN_1.into_inner(),
+                        buffer[packet_len - stateless_reset::token::LEN..packet_len]
+                    );
+                } else {
+                    assert!(packet_len.is_none());
+                }
+            })
     }
 }
