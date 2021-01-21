@@ -18,8 +18,6 @@ pub struct Negotiator<C> {
     config: PhantomData<C>,
 }
 
-const DEFAULT_MAX_PEERS: usize = 1024;
-
 const SUPPORTED_VERSIONS: &[u32] = &[
     0xff00_0020, // draft-32 (https://github.com/quicwg/base-drafts/wiki/20th-Implementation-Draft)
     0xff00_001f, // draft-31
@@ -38,7 +36,7 @@ macro_rules! is_supported {
 
 impl<Config: endpoint::Config> Default for Negotiator<Config> {
     fn default() -> Self {
-        Self::new(DEFAULT_MAX_PEERS)
+        Self::new(endpoint::DEFAULT_MAX_PEERS)
     }
 }
 

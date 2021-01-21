@@ -11,3 +11,17 @@ until connection establishment is complete or near completion,
 ignoring an unknown packet with a long header might be as effective
 as sending a stateless reset.
 '''
+
+[[exception]]
+quote = '''
+An
+endpoint that sends a stateless reset in response to a packet that is
+43 bytes or shorter SHOULD send a stateless reset that is one byte
+shorter than the packet it responds to.
+'''
+reason = '''
+The stateless resets that s2n-quic sends are always smaller than the packet
+it responds to. The size is randomly determined between the smallest value
+that is indistinguishable from a valid short packet and the size of the triggering
+packet. This is sufficient to prevent stateless reset looping.
+'''

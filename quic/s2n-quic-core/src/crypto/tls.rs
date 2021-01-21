@@ -65,6 +65,9 @@ pub trait Endpoint: Sized {
         transport_parameters: &Params,
         sni: &[u8],
     ) -> Self::Session;
+
+    /// The maximum length of a tag for any algorithm that may be negotiated
+    fn max_tag_length(&self) -> usize;
 }
 
 pub trait Session: CryptoSuite + Sized + Send + Debug {
@@ -75,6 +78,8 @@ pub trait Session: CryptoSuite + Sized + Send + Debug {
 pub mod testing {
     use super::*;
     use crate::crypto::key::testing::Key;
+
+    const MAX_TAG_LENGTH: usize = 16;
 
     #[derive(Debug)]
     pub struct Endpoint;
@@ -95,6 +100,10 @@ pub mod testing {
             _sni: &[u8],
         ) -> Self::Session {
             Session
+        }
+
+        fn max_tag_length(&self) -> usize {
+            MAX_TAG_LENGTH
         }
     }
 

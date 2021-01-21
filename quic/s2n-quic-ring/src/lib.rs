@@ -5,7 +5,7 @@ mod ciphersuite;
 #[macro_use]
 mod negotiated;
 
-pub use ring::{aead::Algorithm, hkdf::Prk};
+pub use ring::{aead::Algorithm, hkdf::Prk, aead::MAX_TAG_LEN};
 use s2n_quic_core::crypto::CryptoSuite;
 
 #[derive(Clone)]
