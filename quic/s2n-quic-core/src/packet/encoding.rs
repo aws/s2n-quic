@@ -1,4 +1,5 @@
 use crate::{
+    connection,
     crypto::{HeaderCrypto, Key as CryptoKey, ProtectedPayload},
     packet::number::{PacketNumber, PacketNumberLen},
 };
@@ -132,9 +133,24 @@ pub trait PacketEncoder<Crypto: HeaderCrypto + CryptoKey, Payload: PacketPayload
         // view of remaining capacity.
         estimator.write_repeated(crypto.tag_len(), 0);
 
-        // This is derived from the requirements of packet protection sampling
-        let minimum_packet_len =
-            header_len + PacketNumberLen::MAX_LEN + crypto.sealing_sample_len();
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
+        //# To achieve that end,
+        //# the endpoint SHOULD ensure that all packets it sends are at least 22
+        //# bytes longer than the minimum connection ID length that it requests
+        //# the peer to include in its packets, adding PADDING frames as
+        //# necessary.
+        // This is derived from the requirements of packet protection sampling and stateless reset.
+        // Since the connection ID length is determined by a provider, connection::id::MAX_LEN is
+        // used to ensure all packets are large enough such that a stateless reset sent in response
+        // is indistinguishable from a valid packet regardless of the connection ID length the
+        // provider uses. Two additional bytes are added so that a stateless reset sent in response
+        // is large enough to be indistinguishable from a packet with the minimum payload size of
+        // 1 byte.
+        let minimum_packet_len = header_len
+            + PacketNumberLen::MAX_LEN
+            + crypto.sealing_sample_len()
+            + connection::id::MAX_LEN
+            + 2;
 
         // Compute how much the payload will need to write to satisfy the
         // minimum_packet_len

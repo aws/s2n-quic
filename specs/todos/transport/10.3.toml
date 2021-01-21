@@ -2,17 +2,6 @@ target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3"
 
 [[TODO]]
 quote = '''
-To achieve that end,
-the endpoint SHOULD ensure that all packets it sends are at least 22
-bytes longer than the minimum connection ID length that it requests
-the peer to include in its packets, adding PADDING frames as
-necessary.
-'''
-feature = "Stateless Reset"
-tracking-issue = "195"
-
-[[TODO]]
-quote = '''
 Endpoints MUST discard packets that are too small to be valid QUIC
 packets.
 '''
