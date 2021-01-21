@@ -52,7 +52,9 @@ pub fn encode_packet<R: random::Generator>(
     //# An endpoint MUST ensure that every Stateless Reset that it sends is
     //# smaller than the packet that triggered it, unless it maintains state
     //# sufficient to prevent looping.
-    let max_len = (triggering_packet_len - 1).min(packet_buf.len());
+    let max_len = triggering_packet_len
+        .saturating_sub(1)
+        .min(packet_buf.len());
 
     // The packet that triggered this stateless reset was too small to send a stateless reset
     // that would be indistinguishable from a valid short header packet, so we'll just drop the
@@ -68,7 +70,7 @@ pub fn encode_packet<R: random::Generator>(
     let unpredictable_bits_len = generate_unpredictable_bits(
         random_generator,
         unpredictable_bits_min_len,
-        &mut packet_buf[..=unpredictable_bits_max_len],
+        &mut packet_buf[..unpredictable_bits_max_len],
     );
     // Write the short header tag over the first two bits
     packet_buf[0] = packet_buf[0] >> TAG_OFFSET | TAG;
@@ -120,7 +122,7 @@ fn gen_range<R: random::Generator>(
 
     let mut dest = [0; core::mem::size_of::<usize>()];
     random_generator.public_random_fill(&mut dest);
-    let result = usize::from_be_bytes(dest);
+    let result = usize::from_le_bytes(dest);
 
     let max_variance = range.end() - range.start() + 1;
     range.start() + result % max_variance
@@ -231,6 +233,18 @@ mod tests {
         assert!(packet_len.is_some());
 
         triggering_packet_len -= 1;
+
+        let packet_len = encode_packet(
+            TEST_TOKEN_1,
+            max_tag_len,
+            triggering_packet_len,
+            &mut generator,
+            &mut buffer,
+        );
+
+        assert!(packet_len.is_none());
+
+        triggering_packet_len = 0;
 
         let packet_len = encode_packet(
             TEST_TOKEN_1,
