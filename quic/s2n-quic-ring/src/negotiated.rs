@@ -66,8 +66,12 @@ impl Key for RingNegotiatedCrypto {
         self.sealer.tag_len()
     }
 
-    fn encrypted_packets(&self) -> usize {
-        todo!()
+    fn aead_confidentiality_limit(&self) -> u64 {
+        self.sealer.aead_confidentiality_limit()
+    }
+
+    fn aead_integrity_limit(&self) -> u64 {
+        self.sealer.aead_integrity_limit()
     }
 }
 
@@ -145,8 +149,12 @@ macro_rules! negotiated_crypto {
                 self.0.tag_len()
             }
 
-            fn encrypted_packets(&self) -> usize {
-                todo!()
+            fn aead_confidentiality_limit(&self) -> u64 {
+                self.0.aead_confidentiality_limit()
+            }
+
+            fn aead_integrity_limit(&self) -> u64 {
+                self.0.aead_integrity_limit()
             }
         }
 
