@@ -1,10 +1,8 @@
 use crate::{
     packet::{long::DESTINATION_CONNECTION_ID_MAX_LEN, number::PacketNumberLen, Tag},
-    path::MINIMUM_MTU,
     random, stateless_reset,
 };
 use core::ops::RangeInclusive;
-use s2n_codec::{Encoder, EncoderValue};
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
 //# Stateless Reset {
@@ -27,18 +25,16 @@ const SHORT_HEADER_LEN: usize =
     core::mem::size_of::<Tag>() + PacketNumberLen::MAX_LEN + DESTINATION_CONNECTION_ID_MAX_LEN;
 
 #[derive(Debug)]
-pub struct StatelessReset {
-    pub unpredictable_bits: Vec<u8>,
-    pub token: stateless_reset::Token,
-}
+pub struct StatelessReset {}
 
 impl StatelessReset {
-    pub fn new<R: random::Generator>(
+    pub fn encode_packet<R: random::Generator>(
         token: stateless_reset::Token,
         max_tag_len: usize,
         triggering_packet_len: usize,
         random_generator: &mut R,
-    ) -> Option<StatelessReset> {
+        packet_buf: &mut [u8],
+    ) -> Option<usize> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
         //# These values assume that the Stateless Reset Token is the same length
         //# as the minimum expansion of the packet protection AEAD. Additional
@@ -59,7 +55,7 @@ impl StatelessReset {
         //# An endpoint MUST ensure that every Stateless Reset that it sends is
         //# smaller than the packet that triggered it, unless it maintains state
         //# sufficient to prevent looping.
-        let max_len = (triggering_packet_len - 1).min(MINIMUM_MTU as usize);
+        let max_len = (triggering_packet_len - 1).min(packet_buf.len());
 
         // The packet that triggered this stateless reset was too small to send a stateless reset
         // that would be indistinguishable from a valid short header packet, so we'll just drop the
@@ -68,45 +64,51 @@ impl StatelessReset {
             return None;
         }
 
-        let unpredictable_bits = generate_unpredictable_bits(random_generator, min_len..=max_len);
+        // Generate unpredictable bits, leaving room for the stateless reset token
+        let unpredictable_bits_min_len = min_len - stateless_reset::token::LEN;
+        let unpredictable_bits_max_len = max_len - stateless_reset::token::LEN;
+
+        let unpredictable_bits_len = generate_unpredictable_bits(
+            random_generator,
+            unpredictable_bits_min_len,
+            &mut packet_buf[..=unpredictable_bits_max_len],
+        );
+        // Write the short header tag over the first two bits
+        packet_buf[0] = packet_buf[0] >> TAG_OFFSET | TAG;
+
+        let packet_len = unpredictable_bits_len + stateless_reset::token::LEN;
+
+        packet_buf[unpredictable_bits_len..packet_len].copy_from_slice(token.as_ref());
 
         if cfg!(debug_assertions) {
-            let len = unpredictable_bits.len() + token.encoding_size();
-            assert!(len >= min_len);
-            assert!(len <= max_len);
-            assert!(len < triggering_packet_len);
+            assert!(packet_len >= min_len);
+            assert!(packet_len <= max_len);
+            assert!(packet_len < triggering_packet_len);
         }
 
-        Some(Self {
-            unpredictable_bits,
-            token,
-        })
+        Some(packet_len)
     }
 }
 
-/// Generates a random amount of random data within the given inclusive
-/// range of packet lengths, leaving room for the stateless reset token.
+/// Fills the given buffer with a random amount of random data at least of the
+/// given `min_len`. Returns the length of the unpredictable bits that were generated.
 fn generate_unpredictable_bits<R: random::Generator>(
     random_generator: &mut R,
-    total_len_range: RangeInclusive<usize>,
-) -> Vec<u8> {
-    let min_len = total_len_range.start() - stateless_reset::token::LEN;
-    let max_len = total_len_range.end() - stateless_reset::token::LEN;
-
+    min_len: usize,
+    buffer: &mut [u8],
+) -> usize {
     // Generate a random amount of unpredictable bits within the valid range
     // to further decrease the likelihood a stateless reset could be distinguished
     // from a valid packet.
-    let len = gen_range(random_generator, min_len..=max_len);
-
-    let mut unpredictatable_bits = vec![0u8; len];
+    let len = gen_range(random_generator, min_len..=buffer.len());
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
     //# The remainder of the first byte
     //# and an arbitrary number of bytes following it are set to values that
     //# SHOULD be indistinguishable from random.
-    random_generator.public_random_fill(&mut unpredictatable_bits);
+    random_generator.public_random_fill(&mut buffer[..len]);
 
-    unpredictatable_bits
+    len
 }
 
 /// Generates a random usize within the given inclusive range. Note that this
@@ -128,20 +130,10 @@ fn gen_range<R: random::Generator>(
     range.start() + result % max_variance
 }
 
-impl EncoderValue for StatelessReset {
-    fn encode<E: Encoder>(&self, encoder: &mut E) {
-        // Write the short header tag over the first two bits
-        (self.unpredictable_bits[0] >> TAG_OFFSET | TAG).encode(encoder);
-        (&self.unpredictable_bits[1..]).encode(encoder);
-        self.token.encode(encoder);
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{path::MINIMUM_MTU, stateless_reset::token::testing::TEST_TOKEN_1};
-    use s2n_codec::EncoderBuffer;
 
     #[test]
     fn gen_range_test() {
@@ -159,39 +151,44 @@ mod tests {
 
     #[test]
     fn generate_unpredictable_bits_test() {
-        let min = 100;
-        let max = 1000;
+        const MIN_LEN: usize = 100;
+        const MAX_LEN: usize = 1000;
 
         let mut generator = random::testing::Generator(123);
+        let mut buffer = [0; MAX_LEN];
 
         for _ in 0..1000 {
-            let result = generate_unpredictable_bits(&mut generator, min..=max);
-            assert!(result.len() + stateless_reset::token::LEN >= min);
-            assert!(result.len() + stateless_reset::token::LEN <= max);
+            let len = generate_unpredictable_bits(&mut generator, MIN_LEN, &mut buffer);
+            assert!(len >= MIN_LEN);
+            assert!(len <= MAX_LEN);
         }
 
-        let bits_1 = generate_unpredictable_bits(&mut generator, min..=max);
-        let bits_2 = generate_unpredictable_bits(&mut generator, min..=max);
+        let mut buffer_2 = [0; MAX_LEN];
+        generate_unpredictable_bits(&mut generator, MIN_LEN, &mut buffer);
+        generate_unpredictable_bits(&mut generator, MIN_LEN, &mut buffer_2);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
         //= type=test
         //# The remainder of the first byte
         //# and an arbitrary number of bytes following it are set to values that
         //# SHOULD be indistinguishable from random.
-        assert_ne!(bits_1, bits_2);
+        assert_ne!(buffer[0..32], buffer_2[0..32]);
     }
 
     #[test]
-    fn encode_test() {
+    fn encode_packet_test() {
         let max_tag_len = 16;
         let triggering_packet_len = 600;
         let mut generator = random::testing::Generator(123);
 
-        let stateless_reset = StatelessReset::new(
+        let mut buffer = [0; MINIMUM_MTU as usize];
+
+        let packet_len = StatelessReset::encode_packet(
             TEST_TOKEN_1,
             max_tag_len,
             triggering_packet_len,
             &mut generator,
+            &mut buffer,
         )
         .unwrap();
 
@@ -206,24 +203,17 @@ mod tests {
         //# An endpoint MUST ensure that every Stateless Reset that it sends is
         //# smaller than the packet that triggered it, unless it maintains state
         //# sufficient to prevent looping.
-        assert!(stateless_reset.encoding_size() < triggering_packet_len);
-
-        let mut buf = [0; MINIMUM_MTU as usize];
-        let mut encoder = EncoderBuffer::new(&mut buf);
-
-        stateless_reset.encode(&mut encoder);
-
-        let packet_len = encoder.len();
+        assert!(packet_len < triggering_packet_len);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
         //= type=test
         //# Endpoints MUST send stateless reset packets formatted as a packet
         //# with a short header.
-        assert!(matches!(&buf[0] >> 4, short_tag!()));
+        assert!(matches!(&buffer[0] >> 4, short_tag!()));
 
         assert_eq!(
             TEST_TOKEN_1.into_inner(),
-            buf[packet_len - stateless_reset::token::LEN..packet_len]
+            buffer[packet_len - stateless_reset::token::LEN..packet_len]
         );
     }
 
@@ -232,26 +222,29 @@ mod tests {
         let max_tag_len = 16;
         let mut triggering_packet_len = SHORT_HEADER_LEN + max_tag_len + 1 + 1;
         let mut generator = random::testing::Generator(123);
+        let mut buffer = [0; MINIMUM_MTU as usize];
 
-        let stateless_reset = StatelessReset::new(
+        let packet_len = StatelessReset::encode_packet(
             TEST_TOKEN_1,
             max_tag_len,
             triggering_packet_len,
             &mut generator,
+            &mut buffer,
         );
 
-        assert!(stateless_reset.is_some());
+        assert!(packet_len.is_some());
 
         triggering_packet_len -= 1;
 
-        let stateless_reset = StatelessReset::new(
+        let packet_len = StatelessReset::encode_packet(
             TEST_TOKEN_1,
             max_tag_len,
             triggering_packet_len,
             &mut generator,
+            &mut buffer,
         );
 
-        assert!(stateless_reset.is_none());
+        assert!(packet_len.is_none());
     }
 
     #[test]
@@ -259,16 +252,18 @@ mod tests {
         let max_tag_len = 16;
         let triggering_packet_len = (MINIMUM_MTU * 2) as usize;
         let mut generator = random::testing::Generator(123);
+        let mut buffer = [0; MINIMUM_MTU as usize];
 
-        let stateless_reset = StatelessReset::new(
+        let packet_len = StatelessReset::encode_packet(
             TEST_TOKEN_1,
             max_tag_len,
             triggering_packet_len,
             &mut generator,
+            &mut buffer,
         );
 
-        assert!(stateless_reset.is_some());
+        assert!(packet_len.is_some());
 
-        assert!(stateless_reset.unwrap().encoding_size() <= MINIMUM_MTU as usize);
+        assert!(packet_len.unwrap() <= MINIMUM_MTU as usize);
     }
 }

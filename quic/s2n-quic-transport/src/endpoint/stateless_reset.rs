@@ -1,6 +1,5 @@
 use crate::endpoint;
 use alloc::collections::VecDeque;
-use s2n_codec::{Encoder, EncoderBuffer, EncoderValue};
 use s2n_quic_core::{
     inet::{DatagramInfo, ExplicitCongestionNotification, SocketAddress},
     io::tx,
@@ -80,17 +79,15 @@ impl Transmission {
         triggering_packet_len: usize,
         random_generator: &mut R,
     ) -> Option<Self> {
-        let stateless_reset_packet = packet::stateless_reset::StatelessReset::new(
+        let mut packet_buf = [0u8; MINIMUM_MTU as usize];
+
+        let packet_len = packet::stateless_reset::StatelessReset::encode_packet(
             token,
             max_tag_len,
             triggering_packet_len,
             random_generator,
+            &mut packet_buf,
         )?;
-
-        let mut packet_buf = [0u8; MINIMUM_MTU as usize];
-        let mut buffer = EncoderBuffer::new(&mut packet_buf);
-        stateless_reset_packet.encode(&mut buffer);
-        let packet_len = buffer.len();
 
         Some(Self {
             remote_address,
