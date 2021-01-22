@@ -286,8 +286,8 @@ impl_ciphersuite!(
     label::QUIC_IV_12,
     label::QUIC_HP_32,
     label::QUIC_KU_32,
-    2 ^ 23, // Confidentiality limit
-    2 ^ 52, // Integrity limit
+    u64::pow(2, 23), // Confidentiality limit
+    u64::pow(2, 52), // Integrity limit
     tls_aes_256_gcm_sha384_test
 );
 
@@ -305,8 +305,8 @@ impl_ciphersuite!(
     label::QUIC_IV_12,
     label::QUIC_HP_32,
     label::QUIC_KU_32,
-    2 ^ 62, // Confidentiality limit even though specification notes it can be disregarded
-    2 ^ 36, // Integrity limit
+    u64::pow(2, 62), // Confidentiality limit even though specification notes it can be disregarded
+    u64::pow(2, 36), // Integrity limit
     tls_chacha20_poly1305_sha256_test
 );
 
@@ -321,7 +321,7 @@ impl_ciphersuite!(
     label::QUIC_IV_12,
     label::QUIC_HP_16,
     label::QUIC_KU_16,
-    2 ^ 23, // Confidentiality limit
-    2 ^ 52, // Integrity limit
+    u64::pow(2, 23), // Confidentiality limit
+    u64::pow(2, 52), // Integrity limit
     tls_aes_128_gcm_sha256_test
 );
