@@ -243,6 +243,14 @@ macro_rules! impl_ciphersuite {
             }
 
             insta::assert_debug_snapshot!(stringify!($test_name), core::mem::size_of::<$name>());
+            insta::assert_debug_snapshot!(
+                concat!("integrity_", stringify!($test_name)),
+                $integrity_limit
+            );
+            insta::assert_debug_snapshot!(
+                concat!("confidentiality_", stringify!($test_name)),
+                $confidentiality_limit
+            );
 
             assert_eq!($name::KEY_LEN, $cipher.key_len(), "key len mismatch");
 
