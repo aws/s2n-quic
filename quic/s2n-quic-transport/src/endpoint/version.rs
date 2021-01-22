@@ -322,7 +322,7 @@ mod tests {
         negotiator: &mut Negotiator<C>,
     ) -> Result<(), TransportError> {
         let mut payload = vec![1u8, 2, 3, 4, 5];
-        payload.append(&mut DUMMY_TAG.to_vec());
+        payload.extend_from_slice(&DUMMY_TAG[..]);
 
         on_packet!(
             negotiator,
@@ -346,7 +346,7 @@ mod tests {
         negotiator: &mut Negotiator<C>,
     ) -> Result<(), TransportError> {
         let mut payload = vec![1u8, 2, 3, 4, 5];
-        payload.append(&mut DUMMY_TAG.to_vec());
+        payload.extend_from_slice(&DUMMY_TAG[..]);
 
         on_packet!(
             negotiator,
@@ -368,7 +368,7 @@ mod tests {
         negotiator: &mut Negotiator<C>,
     ) -> Result<(), TransportError> {
         let mut payload = vec![1u8, 2, 3, 4, 5];
-        payload.append(&mut DUMMY_TAG.to_vec());
+        payload.extend_from_slice(&DUMMY_TAG[..]);
 
         on_packet!(
             negotiator,
@@ -406,7 +406,7 @@ mod tests {
         negotiator: &mut Negotiator<C>,
     ) -> Result<(), TransportError> {
         let mut payload = vec![1u8, 2, 3, 4, 5];
-        payload.append(&mut DUMMY_TAG.to_vec());
+        payload.extend_from_slice(&DUMMY_TAG[..]);
 
         on_packet!(
             negotiator,
