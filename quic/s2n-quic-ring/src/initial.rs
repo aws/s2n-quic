@@ -87,7 +87,7 @@ impl Key for RingInitialCrypto {
     }
 
     fn aead_integrity_limit(&self) -> u64 {
-        self.sealer.aead_integrity_limit()
+        self.opener.aead_integrity_limit()
     }
 }
 
