@@ -35,11 +35,6 @@ use zero_rtt::ProtectedZeroRTT;
 
 pub type RemainingBuffer<'a> = Option<DecoderBufferMut<'a>>;
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
-//# With the set of AEAD functions defined in [QUIC-TLS],
-//# packets that are smaller than 21 bytes are never valid.
-const MIN_PACKET_LEN: usize = 21;
-
 #[derive(Debug)]
 pub enum ProtectedPacket<'a> {
     Short(ProtectedShort<'a>),
@@ -56,21 +51,7 @@ impl<'a> ProtectedPacket<'a> {
         connection_info: &ConnectionInfo,
         connection_id_validator: &Validator,
     ) -> DecoderBufferMutResult<'a, Self> {
-        let buffer_len = buffer.len();
-
-        let (packet, remaining) =
-            BasicPacketDecoder.decode_packet(buffer, connection_info, connection_id_validator)?;
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
-        //# Endpoints MUST discard packets that are too small to be valid QUIC
-        //# packets.   With the set of AEAD functions defined in [QUIC-TLS],
-        //# packets that are smaller than 21 bytes are never valid.
-        decoder_invariant!(
-            buffer_len - remaining.len() >= MIN_PACKET_LEN,
-            "too small packet"
-        );
-
-        Ok((packet, remaining))
+        BasicPacketDecoder.decode_packet(buffer, connection_info, connection_id_validator)
     }
 
     /// Returns the packets destination connection ID

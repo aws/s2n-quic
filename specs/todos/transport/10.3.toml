@@ -1,0 +1,8 @@
+[[TODO]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3"
+tracking-issue = "463"
+feature = "Discard too small packets"
+quote = '''
+Endpoints MUST discard packets that are too small to be valid QUIC
+packets.
+'''
