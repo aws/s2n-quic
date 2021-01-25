@@ -111,7 +111,11 @@ fn generate_unpredictable_bits<R: random::Generator>(
 
 /// Generates a random usize within the given inclusive range. Note that this
 /// will have slight bias towards the lower end of the range, but this bias
-/// does not result in any reduction in security for this usage.
+/// does not result in any reduction in security for this usage and is actually
+/// welcome as it results in reaching the minimal stateless reset size and thus
+/// existing stateless reset loops sooner. Other usages that require uniform
+/// sampling should implement rejection sampling or other methodologies and not
+/// copy this implementation.
 fn gen_range<R: random::Generator>(
     random_generator: &mut R,
     range: RangeInclusive<usize>,
@@ -164,7 +168,15 @@ mod tests {
                 assert!(len >= min.into());
                 assert!(len <= max.into());
             });
+    }
 
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
+    //= type=test
+    //# The remainder of the first byte
+    //# and an arbitrary number of bytes following it are set to values that
+    //# SHOULD be indistinguishable from random.
+    #[test]
+    fn unpredictable_bits_are_indistinguishable_from_random() {
         const MIN_LEN: usize = 100;
         const MAX_LEN: usize = 1000;
 
@@ -174,11 +186,6 @@ mod tests {
         generate_unpredictable_bits(&mut generator, MIN_LEN, &mut buffer);
         generate_unpredictable_bits(&mut generator, MIN_LEN, &mut buffer_2);
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
-        //= type=test
-        //# The remainder of the first byte
-        //# and an arbitrary number of bytes following it are set to values that
-        //# SHOULD be indistinguishable from random.
         assert_ne!(buffer[0..32], buffer_2[0..32]);
     }
 
@@ -239,7 +246,7 @@ mod tests {
             &mut buffer,
         );
 
-        assert!(packet_len.is_some());
+        assert_eq!(packet_len, Some(triggering_packet_len - 1));
 
         triggering_packet_len -= 1;
 
