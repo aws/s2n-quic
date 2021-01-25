@@ -1,15 +1,10 @@
-mod sent_packets;
-pub use sent_packets::*;
-
-mod cubic;
-mod hybrid_slow_start;
-mod manager;
-
-pub use cubic::*;
 pub use manager::*;
-
 /// re-export core
 pub use s2n_quic_core::recovery::*;
+pub use sent_packets::*;
+
+mod manager;
+mod sent_packets;
 
 #[cfg(any(test, feature = "testing"))]
 pub mod testing {

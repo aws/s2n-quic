@@ -176,7 +176,7 @@ pub mod testing {
 
     impl Config for Server {
         type Stream = crate::stream::StreamImpl;
-        type CongestionController = crate::recovery::CubicCongestionController;
+        type CongestionController = s2n_quic_core::recovery::CubicCongestionController;
         type TLSSession = tls::testing::Session;
         const ENDPOINT_TYPE: endpoint::Type = endpoint::Type::Server;
 
@@ -198,7 +198,7 @@ pub mod testing {
 
     impl Config for Client {
         type Stream = crate::stream::StreamImpl;
-        type CongestionController = crate::recovery::CubicCongestionController;
+        type CongestionController = s2n_quic_core::recovery::CubicCongestionController;
         type TLSSession = tls::testing::Session;
         const ENDPOINT_TYPE: endpoint::Type = endpoint::Type::Client;
 

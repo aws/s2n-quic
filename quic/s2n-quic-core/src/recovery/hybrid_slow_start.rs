@@ -1,5 +1,5 @@
+use crate::time::Timestamp;
 use core::time::Duration;
-use s2n_quic_core::time::Timestamp;
 
 /// An implementation of the Hybrid Slow Start algorithm described in
 /// "Hybrid Slow Start for High-Bandwidth and Long-Distance Networks"
@@ -11,7 +11,7 @@ pub struct HybridSlowStart {
     sample_count: usize,
     last_min_rtt: Option<Duration>,
     cur_min_rtt: Option<Duration>,
-    pub(super) threshold: u32,
+    pub threshold: u32,
     max_datagram_size: u16,
     rtt_round_end_time: Option<Timestamp>,
 }
@@ -32,7 +32,7 @@ const THRESHOLD_DIVIDEND: u32 = 8;
 impl HybridSlowStart {
     /// Constructs a new `HybridSlowStart`. `max_datagram_size` is used for determining
     /// the minimum slow start threshold.
-    pub(super) fn new(max_datagram_size: u16) -> Self {
+    pub fn new(max_datagram_size: u16) -> Self {
         Self {
             sample_count: 0,
             last_min_rtt: None,
@@ -51,7 +51,7 @@ impl HybridSlowStart {
     /// a number of samples has increased since the last
     /// round of samples and if so will set the slow start
     /// threshold.
-    pub(super) fn on_rtt_update(
+    pub fn on_rtt_update(
         &mut self,
         congestion_window: u32,
         time_sent: Timestamp,
@@ -107,7 +107,7 @@ impl HybridSlowStart {
     /// slow start threshold to the minimum of the Hybrid Slow Start threshold
     /// and the given congestion window. This will ensure we exit slow start
     /// early enough to avoid further congestion.
-    pub(super) fn on_congestion_event(&mut self, ssthresh: u32) {
+    pub fn on_congestion_event(&mut self, ssthresh: u32) {
         self.threshold = self.threshold.min(ssthresh).max(self.low_ssthresh());
     }
 
@@ -118,7 +118,10 @@ impl HybridSlowStart {
 
 #[cfg(test)]
 mod test {
-    use crate::recovery::hybrid_slow_start::HybridSlowStart;
+    use crate::{
+        recovery::hybrid_slow_start::HybridSlowStart,
+        time::{Clock, NoopClock},
+    };
     use core::time::Duration;
 
     #[test]
@@ -149,7 +152,7 @@ mod test {
     #[test]
     fn on_rtt_update_above_threshold() {
         let mut slow_start = HybridSlowStart::new(10);
-        let time_zero = s2n_quic_platform::time::now();
+        let time_zero = NoopClock.get_time();
         slow_start.threshold = 500;
 
         assert_eq!(slow_start.sample_count, 0);
@@ -165,7 +168,7 @@ mod test {
 
         assert_eq!(slow_start.sample_count, 0);
 
-        let time_zero = s2n_quic_platform::time::now() + Duration::from_secs(10);
+        let time_zero = NoopClock.get_time() + Duration::from_secs(10);
 
         // -- Round 1 --
 

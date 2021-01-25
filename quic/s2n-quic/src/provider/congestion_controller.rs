@@ -1,8 +1,10 @@
 pub use s2n_quic_core::{
     inet::SocketAddress,
-    recovery::congestion_controller::{CongestionController, Endpoint, PathInfo},
+    recovery::{
+        congestion_controller::{CongestionController, Endpoint, PathInfo},
+        CubicCongestionController,
+    },
 };
-pub use s2n_quic_transport::recovery::CubicCongestionController;
 
 /// Provides congestion controller support for an endpoint
 pub trait Provider {
@@ -17,7 +19,7 @@ pub use default::Provider as Default;
 impl_provider_utils!();
 
 pub mod default {
-    use s2n_quic_transport::recovery::CubicCongestionController;
+    use s2n_quic_core::recovery::CubicCongestionController;
 
     #[derive(Debug, Default)]
     pub struct Provider;

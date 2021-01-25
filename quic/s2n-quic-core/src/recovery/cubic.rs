@@ -1,13 +1,18 @@
-use crate::recovery::{
-    congestion_controller::CongestionController,
-    cubic::{FastRetransmission::*, State::*},
-    hybrid_slow_start::HybridSlowStart,
-};
 use core::{
     cmp::{max, min},
     time::Duration,
 };
-use s2n_quic_core::{counter::Counter, recovery::RTTEstimator, time::Timestamp};
+
+use crate::{
+    counter::Counter,
+    recovery::{
+        congestion_controller::CongestionController,
+        cubic::{FastRetransmission::*, State::*},
+        hybrid_slow_start::HybridSlowStart,
+        RTTEstimator,
+    },
+    time::Timestamp,
+};
 
 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3
 //#                 New Path or      +------------+
@@ -563,18 +568,12 @@ impl Cubic {
 
 #[cfg(test)]
 mod test {
-    use crate::recovery::{
-        cubic::{
-            BytesInFlight, Cubic, CubicCongestionController,
-            FastRetransmission::{Idle, RequiresTransmission},
-            State::{CongestionAvoidance, Recovery, SlowStart},
-            BETA_CUBIC,
-        },
-        CongestionController,
+    use super::*;
+    use crate::{
+        packet::number::PacketNumberSpace,
+        time::{Clock, NoopClock},
     };
-    use s2n_quic_core::{
-        packet::number::PacketNumberSpace, recovery::RTTEstimator, time::Duration,
-    };
+    use core::time::Duration;
 
     macro_rules! assert_delta {
         ($x:expr, $y:expr, $d:expr) => {
@@ -739,7 +738,7 @@ mod test {
     fn on_packet_sent() {
         let mut cc = CubicCongestionController::new(1000);
         let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(0));
-        let now = s2n_quic_platform::time::now();
+        let now = NoopClock.get_time();
 
         cc.congestion_window = 100_000;
 
@@ -793,7 +792,7 @@ mod test {
     #[test]
     fn on_packet_sent_application_limited() {
         let mut cc = CubicCongestionController::new(1000);
-        let now = s2n_quic_platform::time::now();
+        let now = NoopClock.get_time();
 
         cc.congestion_window = 100_000;
         cc.bytes_in_flight = BytesInFlight::new(96_500);
@@ -833,7 +832,7 @@ mod test {
     #[test]
     fn on_packet_sent_fast_retransmission() {
         let mut cc = CubicCongestionController::new(1000);
-        let now = s2n_quic_platform::time::now();
+        let now = NoopClock.get_time();
 
         cc.congestion_window = 100_000;
         cc.bytes_in_flight = BytesInFlight::new(99900);
@@ -853,7 +852,7 @@ mod test {
     #[test]
     fn congestion_avoidance_after_idle_period() {
         let mut cc = CubicCongestionController::new(1000);
-        let now = s2n_quic_platform::time::now();
+        let now = NoopClock.get_time();
         let rtt_estimator = &RTTEstimator::new(Duration::from_secs(0));
 
         cc.congestion_window = 3000;
@@ -890,7 +889,7 @@ mod test {
     fn congestion_avoidance_after_fast_convergence() {
         let max_datagram_size = 1200;
         let mut cc = CubicCongestionController::new(max_datagram_size);
-        let now = s2n_quic_platform::time::now();
+        let now = NoopClock.get_time();
         cc.bytes_in_flight = BytesInFlight::new(100);
         cc.congestion_window = 80_000;
         cc.cubic.w_last_max = bytes_to_packets(100_000, max_datagram_size);
@@ -927,7 +926,7 @@ mod test {
     #[test]
     fn on_packet_lost() {
         let mut cc = CubicCongestionController::new(1000);
-        let now = s2n_quic_platform::time::now();
+        let now = NoopClock.get_time();
         cc.congestion_window = 100_000;
         cc.bytes_in_flight = BytesInFlight::new(100_000);
         cc.state = SlowStart;
@@ -957,7 +956,7 @@ mod test {
     #[test]
     fn on_packet_lost_below_minimum_window() {
         let mut cc = CubicCongestionController::new(1000);
-        let now = s2n_quic_platform::time::now();
+        let now = NoopClock.get_time();
         cc.congestion_window = cc.minimum_window();
         cc.bytes_in_flight = BytesInFlight::new(cc.minimum_window());
         cc.state = CongestionAvoidance(now);
@@ -970,7 +969,7 @@ mod test {
     #[test]
     fn on_packet_lost_already_in_recovery() {
         let mut cc = CubicCongestionController::new(1000);
-        let now = s2n_quic_platform::time::now();
+        let now = NoopClock.get_time();
         cc.congestion_window = 10000;
         cc.bytes_in_flight = BytesInFlight::new(1000);
         cc.state = Recovery(now, Idle);
@@ -990,7 +989,7 @@ mod test {
     #[test]
     fn on_packet_lost_persistent_congestion() {
         let mut cc = CubicCongestionController::new(1000);
-        let now = s2n_quic_platform::time::now();
+        let now = NoopClock.get_time();
         cc.congestion_window = 10000;
         cc.bytes_in_flight = BytesInFlight::new(1000);
         cc.state = Recovery(now, Idle);
@@ -1059,7 +1058,7 @@ mod test {
     #[test]
     fn on_packet_ack_limited() {
         let mut cc = CubicCongestionController::new(5000);
-        let now = s2n_quic_platform::time::now();
+        let now = NoopClock.get_time();
         cc.congestion_window = 100_000;
         cc.bytes_in_flight = BytesInFlight::new(10000);
         cc.state = SlowStart;
@@ -1079,7 +1078,7 @@ mod test {
     #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.2")]
     fn on_packet_ack_recovery_to_congestion_avoidance() {
         let mut cc = CubicCongestionController::new(5000);
-        let now = s2n_quic_platform::time::now();
+        let now = NoopClock.get_time();
 
         cc.cubic.w_max = bytes_to_packets(25000, 5000);
         cc.state = Recovery(now, Idle);
@@ -1102,7 +1101,7 @@ mod test {
     #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.2")]
     fn on_packet_ack_slow_start_to_congestion_avoidance() {
         let mut cc = CubicCongestionController::new(5000);
-        let now = s2n_quic_platform::time::now();
+        let now = NoopClock.get_time();
 
         cc.state = SlowStart;
         cc.congestion_window = 10000;
@@ -1128,7 +1127,7 @@ mod test {
     #[test]
     fn on_packet_ack_recovery() {
         let mut cc = CubicCongestionController::new(5000);
-        let now = s2n_quic_platform::time::now();
+        let now = NoopClock.get_time();
 
         cc.state = Recovery(now, Idle);
         cc.congestion_window = 10000;
@@ -1151,7 +1150,7 @@ mod test {
         let max_datagram_size = 5000;
         let mut cc = CubicCongestionController::new(max_datagram_size);
         let mut cc2 = CubicCongestionController::new(max_datagram_size);
-        let now = s2n_quic_platform::time::now();
+        let now = NoopClock.get_time();
 
         cc.state = CongestionAvoidance(now + Duration::from_millis(3300));
         cc.congestion_window = 10000;
