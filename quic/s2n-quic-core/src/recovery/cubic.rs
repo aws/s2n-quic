@@ -86,6 +86,10 @@ pub struct CubicCongestionController {
 type BytesInFlight = Counter<u32>;
 
 impl CongestionController for CubicCongestionController {
+    fn congestion_window(&self) -> u32 {
+        self.congestion_window
+    }
+
     fn is_congestion_limited(&self) -> bool {
         let available_congestion_window =
             self.congestion_window.saturating_sub(*self.bytes_in_flight);
