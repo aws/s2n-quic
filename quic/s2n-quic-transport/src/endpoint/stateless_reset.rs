@@ -1,20 +1,15 @@
 use crate::endpoint;
 use alloc::collections::VecDeque;
-use core::ops::Range;
 use s2n_quic_core::{
-    connection,
-    crypto::RetryCrypto,
     inet::{DatagramInfo, ExplicitCongestionNotification, SocketAddress},
     io::tx,
     packet,
     path::MINIMUM_MTU,
-    time, token,
+    random, stateless_reset, time,
 };
 
 #[derive(Debug)]
 pub struct Dispatch {
-    // TODO: Find a better datastructure capable of handling delays in transmission
-    // https://github.com/awslabs/s2n-quic/issues/280
     transmissions: VecDeque<Transmission>,
 }
 
@@ -31,19 +26,20 @@ impl Dispatch {
         }
     }
 
-    #[allow(dead_code)]
-    pub fn queue<T: token::Format, C: RetryCrypto>(
+    pub fn queue<R: random::Generator>(
         &mut self,
+        token: stateless_reset::Token,
+        max_tag_len: usize,
+        triggering_packet_len: usize,
+        random_generator: &mut R,
         datagram: &DatagramInfo,
-        packet: &packet::initial::ProtectedInitial,
-        local_connection_id: connection::LocalId,
-        token_format: &mut T,
     ) {
-        if let Some(transmission) = Transmission::new::<_, C>(
+        if let Some(transmission) = Transmission::new(
             datagram.remote_address,
-            packet,
-            local_connection_id,
-            token_format,
+            token,
+            max_tag_len,
+            triggering_packet_len,
+            random_generator,
         ) {
             self.transmissions.push_back(transmission);
         }
@@ -62,45 +58,48 @@ impl Dispatch {
 pub struct Transmission {
     remote_address: SocketAddress,
     packet: [u8; MINIMUM_MTU as usize],
-    packet_range: Range<usize>,
+    packet_len: usize,
 }
 
 impl core::fmt::Debug for Transmission {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Transmission")
             .field("remote_address", &self.remote_address)
-            .field("packet", &&self.packet[self.packet_range.clone()])
+            .field("packet_len", &self.packet_len)
+            .field("packet", &&self.packet[0..self.packet_len])
             .finish()
     }
 }
 
 impl Transmission {
-    pub fn new<T: token::Format, C: RetryCrypto>(
+    pub fn new<R: random::Generator>(
         remote_address: SocketAddress,
-        packet: &packet::initial::ProtectedInitial,
-        local_connection_id: connection::LocalId,
-        token_format: &mut T,
+        token: stateless_reset::Token,
+        max_tag_len: usize,
+        triggering_packet_len: usize,
+        random_generator: &mut R,
     ) -> Option<Self> {
         let mut packet_buf = [0u8; MINIMUM_MTU as usize];
-        let packet_range = packet::retry::Retry::encode_packet::<_, C>(
-            &remote_address,
-            packet,
-            &local_connection_id,
-            token_format,
+
+        let packet_len = packet::stateless_reset::encode_packet(
+            token,
+            max_tag_len,
+            triggering_packet_len,
+            random_generator,
             &mut packet_buf,
         )?;
 
         Some(Self {
             remote_address,
             packet: packet_buf,
-            packet_range,
+            packet_len,
         })
     }
 }
 
 impl AsRef<[u8]> for Transmission {
     fn as_ref(&self) -> &[u8] {
-        &self.packet[self.packet_range.clone()]
+        &self.packet[..self.packet_len]
     }
 }
 

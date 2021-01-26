@@ -1,73 +1,8 @@
+[[TODO]]
 target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3"
-
-[[TODO]]
-quote = '''
-An endpoint that wishes to communicate a fatal
-connection error MUST use a CONNECTION_CLOSE frame if it is able.
-'''
-feature = "Connection Close"
-tracking-issue = "194"
-
-[[TODO]]
-quote = '''
-The remainder of the first byte
-and an arbitrary number of bytes following it are set to values that
-SHOULD be indistinguishable from random.
-'''
-feature = "Stateless Reset"
-tracking-issue = "195"
-
-[[TODO]]
-quote = '''
-To achieve that end,
-the endpoint SHOULD ensure that all packets it sends are at least 22
-bytes longer than the minimum connection ID length that it requests
-the peer to include in its packets, adding PADDING frames as
-necessary.
-'''
-feature = "Stateless Reset"
-tracking-issue = "195"
-
-[[TODO]]
-quote = '''
-An
-endpoint that sends a stateless reset in response to a packet that is
-43 bytes or shorter SHOULD send a stateless reset that is one byte
-shorter than the packet it responds to.
-'''
-feature = "Stateless Reset"
-tracking-issue = "195"
-
-[[TODO]]
-quote = '''
-An endpoint MUST NOT send a stateless reset that is three times or
-more larger than the packet it receives to avoid being used for
-amplification.
-'''
-feature = "Stateless Reset"
-tracking-issue = "195"
-
-[[TODO]]
+tracking-issue = "463"
+feature = "Discard too small packets"
 quote = '''
 Endpoints MUST discard packets that are too small to be valid QUIC
 packets.
 '''
-feature = "Stateless Reset"
-tracking-issue = "195"
-
-[[TODO]]
-quote = '''
-Endpoints MUST send stateless reset packets formatted as a packet
-with a short header.
-'''
-feature = "Stateless Reset"
-tracking-issue = "195"
-
-[[TODO]]
-quote = '''
-However, endpoints MUST treat any packet ending
-in a valid stateless reset token as a stateless reset, as other QUIC
-versions might allow the use of a long header.
-'''
-feature = "Stateless Reset"
-tracking-issue = "195"

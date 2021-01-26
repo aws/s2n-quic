@@ -563,6 +563,10 @@ pub mod server {
         ) -> Self::Session {
             panic!("cannot create a client session from a server config");
         }
+
+        fn max_tag_length(&self) -> usize {
+            s2n_quic_ring::MAX_TAG_LEN
+        }
     }
 
     impl Session {
@@ -617,6 +621,10 @@ pub mod client {
             let sni = DNSNameRef::try_from_ascii(sni).expect("sni hostname should be valid");
             let session = rustls::ClientSession::new_quic(&self.config, sni, params);
             Self::Session::new(session)
+        }
+
+        fn max_tag_length(&self) -> usize {
+            s2n_quic_ring::MAX_TAG_LEN
         }
     }
 

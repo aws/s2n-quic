@@ -21,6 +21,7 @@ pub mod encoding;
 pub mod long;
 
 pub mod number;
+pub mod stateless_reset;
 
 use connection::id::ConnectionInfo;
 use handshake::ProtectedHandshake;

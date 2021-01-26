@@ -18,3 +18,27 @@ reason = '''
 The stateless reset token is implemented through a provider and is unenforceable
 by s2n-quic.
 '''
+
+[[exception]]
+quote = '''
+This method for
+choosing the Stateless Reset Token means that the combination of
+connection ID and static key MUST NOT be used for another connection.
+'''
+reason = '''
+s2n-quic always requests a new connection ID for each connection, but since
+connection IDs are implemented through a provider this requirement is
+unenforceable.
+'''
+
+[[exception]]
+quote = '''
+A connection ID from a
+connection that is reset by revealing the Stateless Reset Token MUST
+NOT be reused for new connections at nodes that share a static key.
+'''
+reason = '''
+s2n-quic always requests a new connection ID for each connection, but since
+connection IDs are implemented through a provider this requirement is
+unenforceable.
+'''

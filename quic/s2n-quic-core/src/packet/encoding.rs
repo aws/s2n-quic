@@ -1,6 +1,9 @@
 use crate::{
     crypto::{HeaderCrypto, Key as CryptoKey, ProtectedPayload},
-    packet::number::{PacketNumber, PacketNumberLen},
+    packet::{
+        number::{PacketNumber, PacketNumberLen},
+        stateless_reset,
+    },
 };
 use s2n_codec::{Encoder, EncoderBuffer, EncoderLenEstimator, EncoderValue};
 
@@ -132,9 +135,18 @@ pub trait PacketEncoder<Crypto: HeaderCrypto + CryptoKey, Payload: PacketPayload
         // view of remaining capacity.
         estimator.write_repeated(crypto.tag_len(), 0);
 
-        // This is derived from the requirements of packet protection sampling
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
+        //# To achieve that end,
+        //# the endpoint SHOULD ensure that all packets it sends are at least 22
+        //# bytes longer than the minimum connection ID length that it requests
+        //# the peer to include in its packets, adding PADDING frames as
+        //# necessary.
+        // This is derived from the requirements of packet protection sampling and stateless reset.
+        // One additional byte is added so that a stateless reset sent in response to this packet
+        // (which is required to be smaller than this packet) is large enough to be
+        // indistinguishable from a valid packet.
         let minimum_packet_len =
-            header_len + PacketNumberLen::MAX_LEN + crypto.sealing_sample_len();
+            stateless_reset::min_indistinguishable_packet_len(crypto.sealing_sample_len()) + 1;
 
         // Compute how much the payload will need to write to satisfy the
         // minimum_packet_len
