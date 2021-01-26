@@ -15,7 +15,7 @@ use bytes::Bytes;
 use core::{convert::TryInto, marker::PhantomData};
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
-    crypto::{CryptoSuite, Key},
+    crypto::CryptoSuite,
     endpoint,
     frame::{
         ack::AckRanges, crypto::CryptoRef, stream::StreamRef, Ack, ConnectionClose, DataBlocked,
@@ -117,14 +117,6 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
     ) -> Result<EncoderBuffer<'a>, PacketEncodingError<'a>> {
         let mut packet_number = self.tx_packet_numbers.next();
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
-        //# If the total number of encrypted packets with the same key
-        //# exceeds the confidentiality limit for the selected AEAD, the endpoint
-        //# MUST stop using those keys.
-        if self.crypto.encrypted_packets > self.crypto.key().aead_confidentiality_limit() {
-            return Err(PacketEncodingError::EmptyPayload(buffer));
-        }
-
         if self.recovery_manager.requires_probe() {
             //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
             //# If the sender wants to elicit a faster acknowledgement on PTO, it can
@@ -167,13 +159,9 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
             payload,
         };
 
-        let (_protected_packet, buffer) =
-            packet.encode_packet(self.crypto.key(), packet_number_encoder, buffer)?;
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
-        //# Endpoints MUST count the number of encrypted packets for each set of
-        //# keys.
-        self.crypto.encrypted_packets += 1;
+        let (_protected_packet, buffer) = self.crypto.encode_packet(buffer, |buffer, key| {
+            packet.encode_packet(key, packet_number_encoder, buffer)
+        })?;
 
         let (recovery_manager, mut recovery_context) = self.recovery(
             handshake_status,

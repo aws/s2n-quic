@@ -18,7 +18,7 @@ use core::time::Duration;
 use s2n_quic_core::{
     application::ApplicationErrorExt,
     connection::id::Interest,
-    crypto::{CryptoError, Key},
+    crypto::CryptoError,
     inet::DatagramInfo,
     io::tx,
     packet::{
@@ -160,8 +160,9 @@ macro_rules! packet_validator {
 
             // It may indicate the packet is a stateless reset however, so we will bubble
             // up the error to allow the caller to handle it.
-            let $packet = $packet.unprotect(packet_space_crypto.key(), packet_number_decoder)?;
-
+            let $packet = packet_space_crypto.unprotect_packet(|key|
+                $packet.unprotect(key, packet_number_decoder)
+            )?;
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.3
             //# A receiver MUST discard a newly unprotected packet unless it is
             //# certain that it has not processed another packet with the same packet
@@ -171,26 +172,11 @@ macro_rules! packet_validator {
             } else {
                 $($inspect)?
 
-                match $packet.decrypt(packet_space_crypto.key()) {
+                match packet_space_crypto.decrypt_packet($conn, |key| {
+                    $packet.decrypt(key)
+                }) {
                     Ok(packet) => Some((packet, space, handshake_status)),
-                    Err(e) => {
-                        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
-                        //# In addition to counting packets sent, endpoints MUST count the number
-                        //# of received packets that fail authentication during the lifetime of a
-                        //# connection.
-                        $conn.packet_decryption_failures += 1;
-                        if $conn.packet_decryption_failures > packet_space_crypto.key().aead_integrity_limit() {
-                            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
-                            //# If the total number of received packets that fail
-                            //# authentication within the connection, across all keys, exceeds the
-                            //# integrity limit for the selected AEAD, the endpoint MUST immediately
-                            //# close the connection with a connection error of type
-                            //# AEAD_LIMIT_REACHED and not process any more packets.
-                            return Err(ProcessingError::TransportError(TransportError::AEAD_LIMIT_REACHED));
-                        }
-
-                        return Err(ProcessingError::CryptoError(e));
-                    },
+                    Err(e) => return Err(e),
                 }
             }
         } else {
@@ -259,6 +245,14 @@ impl<ConfigType: connection::Config> ConnectionImpl<ConfigType> {
 impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
     /// Static configuration of a connection
     type Config = Config;
+
+    fn on_decryption_failure(&mut self) {
+        self.packet_decryption_failures += 1
+    }
+
+    fn decryption_failures(&self) -> u64 {
+        self.packet_decryption_failures
+    }
 
     fn is_handshaking(&self) -> bool {
         self.accept_state == AcceptState::Handshaking

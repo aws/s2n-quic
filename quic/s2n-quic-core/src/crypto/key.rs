@@ -37,7 +37,19 @@ pub mod testing {
     };
 
     #[derive(Debug)]
-    pub struct Key;
+    pub struct Key {
+        confidentiality_limit: u64,
+        integrity_limit: u64,
+    }
+
+    impl Key {
+        pub fn new(confidentiality_limit: u64, integrity_limit: u64) -> Self {
+            Self {
+                confidentiality_limit,
+                integrity_limit,
+            }
+        }
+    }
 
     impl super::Key for Key {
         /// Decrypt a payload
@@ -100,11 +112,11 @@ pub mod testing {
 
     impl InitialCrypto for Key {
         fn new_server(_connection_id: &[u8]) -> Self {
-            Key
+            Key::new(0, 0)
         }
 
         fn new_client(_connection_id: &[u8]) -> Self {
-            Key
+            Key::new(0, 0)
         }
     }
     impl HandshakeCrypto for Key {}
