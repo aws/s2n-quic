@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, Benchmark, Criterion, Throughput};
+use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 use s2n_codec::{DecoderBufferMut, Encoder, EncoderBuffer, EncoderValue};
 use s2n_quic_core::frame::FrameMut;
 
@@ -20,30 +20,28 @@ fn decode(c: &mut Criterion) {
                 })
             }
 
-            c.bench(
-                concat!("decode ", $name),
-                Benchmark::new(concat!("decode ", $name), move |b| {
-                    b.iter(move || {
-                        let mut test = get_test();
-                        let buffer = DecoderBufferMut::new(&mut test);
-                        let _ = black_box(buffer.decode::<FrameMut>().unwrap());
-                    });
-                })
-                .throughput(Throughput::Bytes(get_test().len() as u64)),
-            );
+            let mut group = c.benchmark_group($name);
 
-            c.bench(
-                concat!("encode ", $name),
-                Benchmark::new(concat!("encode ", $name), move |b| {
+            group.throughput(Throughput::Bytes(get_test().len() as u64));
+
+            group.bench_function(concat!("decode ", $name), move |b| {
+                b.iter(move || {
                     let mut test = get_test();
                     let buffer = DecoderBufferMut::new(&mut test);
-                    let (frame, _remaining) = buffer.decode::<FrameMut>().unwrap();
-                    let mut out_data = vec![0; frame.encoding_size()];
+                    let _ = black_box(buffer.decode::<FrameMut>().unwrap());
+                });
+            });
 
-                    b.iter(move || EncoderBuffer::new(&mut out_data).encode(&frame));
-                })
-                .throughput(Throughput::Bytes(get_test().len() as u64)),
-            );
+            group.bench_function(concat!("encode ", $name), move |b| {
+                let mut test = get_test();
+                let buffer = DecoderBufferMut::new(&mut test);
+                let (frame, _remaining) = buffer.decode::<FrameMut>().unwrap();
+                let mut out_data = vec![0; frame.encoding_size()];
+
+                b.iter(move || EncoderBuffer::new(&mut out_data).encode(&frame));
+            });
+
+            group.finish();
         }};
     }
 

@@ -6,7 +6,7 @@ use crate::{
 };
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
-    crypto::{tls::Session as TLSSession, CryptoSuite},
+    crypto::{tls::Session as TLSSession, CryptoSuite, Key},
     endpoint,
     frame::{
         self, ack::AckRanges, crypto::CryptoRef, stream::StreamRef, Ack, ConnectionClose,
@@ -557,5 +557,26 @@ pub trait PacketSpace<Config: connection::Config> {
         self.on_processed_packet(processed_packet)?;
 
         Ok(None)
+    }
+}
+
+//= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
+//# Endpoints MUST count the number of encrypted packets for each set of
+//# keys.
+pub struct PacketSpaceCrypto<Key> {
+    pub key: Key,
+    pub encrypted_packets: u64,
+}
+
+impl<K: Key> PacketSpaceCrypto<K> {
+    pub fn new(key: K) -> Self {
+        PacketSpaceCrypto {
+            key,
+            encrypted_packets: 0,
+        }
+    }
+
+    pub fn key(&self) -> &K {
+        &self.key
     }
 }

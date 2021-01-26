@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, Benchmark, Criterion, Throughput};
+use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{connection::id::ConnectionInfo, inet::SocketAddress, packet::ProtectedPacket};
 
@@ -11,9 +11,12 @@ fn decoding(c: &mut Criterion) {
                 $name,
                 ".bin"
             ));
-            c.bench(
-                $name,
-                Benchmark::new($name, move |b| {
+            let mut group = c.benchmark_group($name);
+
+            group.throughput(Throughput::Bytes(test.len() as u64));
+
+            group.bench_function($name, move |b| {
+                {
                     b.iter(move || {
                         // The decoder doesn't actually mutate the slice.
                         // Instead of testing the performance of memcpy we'll copy the mut slice
@@ -28,9 +31,10 @@ fn decoding(c: &mut Criterion) {
                             ProtectedPacket::decode(buffer, &connection_info, &20).unwrap(),
                         );
                     })
-                })
-                .throughput(Throughput::Bytes(test.len() as u64)),
-            );
+                }
+            });
+
+            group.finish();
         }};
     }
 
