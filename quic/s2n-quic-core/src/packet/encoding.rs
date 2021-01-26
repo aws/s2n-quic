@@ -1,7 +1,9 @@
 use crate::{
-    connection,
     crypto::{HeaderCrypto, Key as CryptoKey, ProtectedPayload},
-    packet::number::{PacketNumber, PacketNumberLen},
+    packet::{
+        number::{PacketNumber, PacketNumberLen},
+        stateless_reset,
+    },
 };
 use s2n_codec::{Encoder, EncoderBuffer, EncoderLenEstimator, EncoderValue};
 
@@ -140,17 +142,11 @@ pub trait PacketEncoder<Crypto: HeaderCrypto + CryptoKey, Payload: PacketPayload
         //# the peer to include in its packets, adding PADDING frames as
         //# necessary.
         // This is derived from the requirements of packet protection sampling and stateless reset.
-        // Since the connection ID length is determined by a provider, connection::id::MAX_LEN is
-        // used to ensure all packets are large enough such that a stateless reset sent in response
-        // is indistinguishable from a valid packet regardless of the connection ID length the
-        // provider uses. Two additional bytes are added so that a stateless reset sent in response
-        // is large enough to be indistinguishable from a packet with the minimum payload size of
-        // 1 byte.
-        let minimum_packet_len = header_len
-            + PacketNumberLen::MAX_LEN
-            + crypto.sealing_sample_len()
-            + connection::id::MAX_LEN
-            + 2;
+        // One additional byte is added so that a stateless reset sent in response to this packet
+        // (which is required to be smaller than this packet) is large enough to be
+        // indistinguishable from a valid packet.
+        let minimum_packet_len =
+            stateless_reset::min_indistinguishable_packet_len(crypto.sealing_sample_len()) + 1;
 
         // Compute how much the payload will need to write to satisfy the
         // minimum_packet_len

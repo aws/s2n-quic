@@ -1,5 +1,6 @@
 use crate::{
-    packet::{long::DESTINATION_CONNECTION_ID_MAX_LEN, number::PacketNumberLen, Tag},
+    connection,
+    packet::{number::PacketNumberLen, Tag},
     random, stateless_reset,
 };
 use core::ops::RangeInclusive;
@@ -17,12 +18,19 @@ use core::ops::RangeInclusive;
 const TAG: u8 = 0b0100_0000;
 const TAG_OFFSET: u8 = 2;
 
-// Since the length of the destination connection ID is determined by the peer, we use the maximum
-// destination connection ID length when determining the minimum stateless reset packet size so
-// that stateless resets are indistinguishable from a valid short header packet no matter what
-// length connection ID the peer decides to use.
-const SHORT_HEADER_LEN: usize =
-    core::mem::size_of::<Tag>() + PacketNumberLen::MAX_LEN + DESTINATION_CONNECTION_ID_MAX_LEN;
+// This value represents the minimum packet size of a packet that will be indistinguishable from
+// valid QUIC version 1 packets, including one byte for the minimal payload and excluding the
+// authentication tag (which may be variable and should be added to this constant). Since the
+// connection ID length is either determined by a provider or by the peer, connection::id::MAX_LEN
+// is used to ensure this value is valid no matter what length connection ID is used.
+const MIN_INDISTINGUISHABLE_PACKET_LEN_WITHOUT_TAG: usize =
+    core::mem::size_of::<Tag>() + PacketNumberLen::MAX_LEN + connection::id::MAX_LEN + 1;
+
+/// Calculates the minimum packet length required such that a packet is indistinguishable from
+/// other valid QUIC version 1 packets.
+pub fn min_indistinguishable_packet_len(max_tag_len: usize) -> usize {
+    MIN_INDISTINGUISHABLE_PACKET_LEN_WITHOUT_TAG + max_tag_len
+}
 
 /// Encodes a stateless reset packet into the given packet buffer.
 pub fn encode_packet<R: random::Generator>(
@@ -39,9 +47,8 @@ pub fn encode_packet<R: random::Generator>(
     //# a packet protection scheme with a larger minimum expansion.
     // The tag length for all cipher suites defined in TLS 1.3 is 16 bytes, but
     // we will calculate based on a given max tag length to allow for future cipher
-    // suites with larger tags. One additional byte is added to represent the minimum
-    // valid payload size.
-    let min_len = SHORT_HEADER_LEN + max_tag_len + 1;
+    // suites with larger tags.
+    let min_len = min_indistinguishable_packet_len(max_tag_len);
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
     //# An endpoint MUST NOT send a stateless reset that is three times or
@@ -98,7 +105,7 @@ fn generate_unpredictable_bits<R: random::Generator>(
     // Generate a random amount of unpredictable bits within the valid range
     // to further decrease the likelihood a stateless reset could be distinguished
     // from a valid packet.
-    let len = gen_range(random_generator, min_len..=buffer.len());
+    let len = gen_range_biased(random_generator, min_len..=buffer.len());
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
     //# The remainder of the first byte
@@ -116,7 +123,7 @@ fn generate_unpredictable_bits<R: random::Generator>(
 /// existing stateless reset loops sooner. Other usages that require uniform
 /// sampling should implement rejection sampling or other methodologies and not
 /// copy this implementation.
-fn gen_range<R: random::Generator>(
+fn gen_range_biased<R: random::Generator>(
     random_generator: &mut R,
     range: RangeInclusive<usize>,
 ) -> usize {
@@ -138,7 +145,7 @@ mod tests {
     use crate::{path::MINIMUM_MTU, stateless_reset::token::testing::TEST_TOKEN_1};
 
     #[test]
-    fn gen_range_test() {
+    fn gen_range_biased_test() {
         bolero::check!()
             .with_type()
             .cloned()
@@ -147,7 +154,7 @@ mod tests {
                     core::mem::swap(&mut min, &mut max);
                 }
                 let mut generator = random::testing::Generator(seed);
-                let result = gen_range(&mut generator, min..=max);
+                let result = gen_range_biased(&mut generator, min..=max);
                 assert!(result >= min);
                 assert!(result <= max);
             });
@@ -234,7 +241,7 @@ mod tests {
     #[test]
     fn min_packet_test() {
         let max_tag_len = 16;
-        let mut triggering_packet_len = SHORT_HEADER_LEN + max_tag_len + 1 + 1;
+        let mut triggering_packet_len = min_indistinguishable_packet_len(max_tag_len) + 1;
         let mut generator = random::testing::Generator(123);
         let mut buffer = [0; MINIMUM_MTU as usize];
 
@@ -310,7 +317,7 @@ mod tests {
                     &mut buffer,
                 );
 
-                let min_len = SHORT_HEADER_LEN + max_tag_len as usize + 1;
+                let min_len = MIN_INDISTINGUISHABLE_PACKET_LEN_WITHOUT_TAG + max_tag_len as usize;
                 let max_len = triggering_packet_len.saturating_sub(1).min(buffer.len());
 
                 if min_len <= max_len {
