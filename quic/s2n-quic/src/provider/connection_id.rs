@@ -160,6 +160,13 @@ pub mod random {
                 let mut format = Format::builder().with_len(len).unwrap().build().unwrap();
 
                 let id = format.generate(&connection_info);
+
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.2
+                //= type=test
+                //# An endpoint that uses this design MUST
+                //# either use the same connection ID length for all connections or
+                //# encode the length of the connection ID such that it can be recovered
+                //# without state.
                 assert_eq!(format.validate(&connection_info, id.as_ref()), Some(len));
                 assert_eq!(id.len(), len);
                 assert_eq!(format.lifetime(), None);

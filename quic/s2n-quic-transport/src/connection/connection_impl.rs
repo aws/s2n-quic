@@ -447,6 +447,12 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                 //  TODO send probe for MTU changes
             }
             ConnectionState::Closing => {
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
+                //= type=TODO
+                //= tracking-issue=194
+                //= feature=Connection Close
+                //# An endpoint that wishes to communicate a fatal
+                //# connection error MUST use a CONNECTION_CLOSE frame if it is able.
                 // We are only allowed to send CONNECTION_CLOSE frames in this
                 // state.
                 // TODO: Ask the ConnectionCloseSender to send data

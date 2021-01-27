@@ -21,7 +21,7 @@ use s2n_quic_core::{
     inet::DatagramInfo,
     io::{rx, tx},
     packet::{initial::ProtectedInitial, ProtectedPacket},
-    stateless_reset,
+    stateless_reset::token::LEN as StatelessResetTokenLen,
     time::Timestamp,
     token::Format,
 };
@@ -29,6 +29,7 @@ use s2n_quic_core::{
 mod config;
 mod initial;
 mod retry;
+mod stateless_reset;
 mod version;
 
 use crate::connection::ProcessingError;
@@ -37,9 +38,12 @@ use connection::id::ConnectionInfo;
 pub use s2n_quic_core::endpoint::*;
 use s2n_quic_core::{
     connection::LocalId,
+    crypto::tls::Endpoint as _,
     inet::{ExplicitCongestionNotification, SocketAddress},
     stateless_reset::token::Generator as _,
 };
+
+const DEFAULT_MAX_PEERS: usize = 1024;
 
 /// A QUIC `Endpoint`
 pub struct Endpoint<Cfg: Config> {
@@ -62,6 +66,7 @@ pub struct Endpoint<Cfg: Config> {
     dequeued_wakeups: VecDeque<InternalConnectionId>,
     version_negotiator: version::Negotiator<Cfg>,
     retry_dispatch: retry::Dispatch,
+    stateless_reset_dispatch: stateless_reset::Dispatch,
 }
 
 // Safety: The endpoint is marked as `!Send`, because the struct contains `Rc`s.
@@ -87,6 +92,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             dequeued_wakeups: VecDeque::new(),
             version_negotiator: version::Negotiator::default(),
             retry_dispatch: retry::Dispatch::default(),
+            stateless_reset_dispatch: stateless_reset::Dispatch::default(),
         };
 
         (endpoint, acceptor)
@@ -395,6 +401,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     }
                 }
                 _ => {
+                    let is_short_header_packet = matches!(packet, ProtectedPacket::Short(_));
                     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1
                     //# Endpoints MAY skip this check if any packet from a datagram is
                     //# successfully processed.  However, the comparison MUST be performed
@@ -410,12 +417,18 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         .is_some();
 
                     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
-                    //= type=TODO
-                    //= tracking-issue=195
-                    //= feature=Stateless Reset
                     //# An endpoint MAY send a stateless reset in response to receiving a packet
                     //# that it cannot associate with an active connection.
-                    if !is_stateless_reset && Cfg::StatelessResetTokenGenerator::ENABLED {
+
+                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
+                    //# Because the stateless reset token is not available
+                    //# until connection establishment is complete or near completion,
+                    //# ignoring an unknown packet with a long header might be as effective
+                    //# as sending a stateless reset.
+                    if !is_stateless_reset
+                        && Cfg::StatelessResetTokenGenerator::ENABLED
+                        && is_short_header_packet
+                    {
                         self.enqueue_stateless_reset(datagram, &destination_connection_id);
                     }
                 }
@@ -433,11 +446,27 @@ impl<Cfg: Config> Endpoint<Cfg> {
     /// Sending the reset was caused through the passed `datagram`.
     fn enqueue_stateless_reset(
         &mut self,
-        _datagram: &DatagramInfo,
-        _destination_connection_id: &LocalId,
+        datagram: &DatagramInfo,
+        destination_connection_id: &LocalId,
     ) {
-        // TODO: Implement me
-        dbg!("stateless reset triggered");
+        let token = self
+            .config
+            .context()
+            .stateless_reset_token_generator
+            .generate(destination_connection_id);
+        let max_tag_length = self.config.context().tls.max_tag_length();
+        // The datagram payload length is used as the packet length since
+        // a stateless reset is only sent if the first packet in a datagram is
+        // a short header packet and a short header packet must be the last packet
+        // in a datagram; thus the entire datagram is one packet.
+        let triggering_packet_len = datagram.payload_len;
+        self.stateless_reset_dispatch.queue(
+            token,
+            max_tag_length,
+            triggering_packet_len,
+            self.config.context().random_generator,
+            datagram,
+        );
     }
 
     /// Checks if the given payload contains a stateless reset token matching a known token.
@@ -455,7 +484,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
         //# received datagram as a stateless reset by comparing the last 16 bytes
         //# of the datagram with all Stateless Reset Tokens associated with the
         //# remote address on which the datagram was received.
-        let token_index = payload.len().checked_sub(stateless_reset::token::LEN)?;
+        let token_index = payload.len().checked_sub(StatelessResetTokenLen)?;
         let buffer = buffer.skip(token_index).ok()?;
         let (token, _) = buffer.decode().ok()?;
         let internal_id = self
@@ -520,6 +549,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
         if transmit_result.is_ok() {
             self.version_negotiator.on_transmit(&mut queue);
             self.retry_dispatch.on_transmit(&mut queue);
+            self.stateless_reset_dispatch.on_transmit(&mut queue);
         }
     }
 

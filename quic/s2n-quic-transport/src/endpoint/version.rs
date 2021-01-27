@@ -18,8 +18,6 @@ pub struct Negotiator<C> {
     config: PhantomData<C>,
 }
 
-const DEFAULT_MAX_PEERS: usize = 1024;
-
 const SUPPORTED_VERSIONS: &[u32] = &[
     0xff00_0020, // draft-32 (https://github.com/quicwg/base-drafts/wiki/20th-Implementation-Draft)
     0xff00_001f, // draft-31
@@ -38,7 +36,7 @@ macro_rules! is_supported {
 
 impl<Config: endpoint::Config> Default for Negotiator<Config> {
     fn default() -> Self {
-        Self::new(DEFAULT_MAX_PEERS)
+        Self::new(endpoint::DEFAULT_MAX_PEERS)
     }
 }
 
@@ -268,6 +266,10 @@ mod tests {
     type Server = Negotiator<crate::endpoint::testing::Server>;
     type Client = Negotiator<crate::endpoint::testing::Client>;
 
+    // TAG to append to packet payloads to ensure they meet the minimum packet size
+    // that would be expected had they undergone packet protection.
+    const DUMMY_TAG: [u8; 16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+
     fn datagram_info(payload_len: usize) -> DatagramInfo {
         DatagramInfo {
             timestamp: s2n_quic_platform::time::now(),
@@ -319,6 +321,9 @@ mod tests {
         version: u32,
         negotiator: &mut Negotiator<C>,
     ) -> Result<(), TransportError> {
+        let mut payload = vec![1u8, 2, 3, 4, 5];
+        payload.extend_from_slice(&DUMMY_TAG[..]);
+
         on_packet!(
             negotiator,
             datagram_info.remote_address,
@@ -330,7 +335,7 @@ mod tests {
                 source_connection_id: &[2u8; size_of::<u8>()][..],
                 token: &[][..],
                 packet_number: pn(PacketNumberSpace::Initial),
-                payload: &[1u8, 2, 3, 4, 5][..],
+                payload: payload.as_slice(),
             }
         )
     }
@@ -340,6 +345,9 @@ mod tests {
         version: u32,
         negotiator: &mut Negotiator<C>,
     ) -> Result<(), TransportError> {
+        let mut payload = vec![1u8, 2, 3, 4, 5];
+        payload.extend_from_slice(&DUMMY_TAG[..]);
+
         on_packet!(
             negotiator,
             datagram_info.remote_address,
@@ -349,7 +357,7 @@ mod tests {
                 destination_connection_id: &[1u8, 2, 3][..],
                 source_connection_id: &[4u8, 5, 6][..],
                 packet_number: pn(PacketNumberSpace::ApplicationData),
-                payload: &[1u8, 2, 3, 4, 5][..],
+                payload: payload.as_slice(),
             }
         )
     }
@@ -359,6 +367,9 @@ mod tests {
         version: u32,
         negotiator: &mut Negotiator<C>,
     ) -> Result<(), TransportError> {
+        let mut payload = vec![1u8, 2, 3, 4, 5];
+        payload.extend_from_slice(&DUMMY_TAG[..]);
+
         on_packet!(
             negotiator,
             datagram_info.remote_address,
@@ -368,7 +379,7 @@ mod tests {
                 destination_connection_id: &[1u8, 2, 3][..],
                 source_connection_id: &[4u8, 5, 6][..],
                 packet_number: pn(PacketNumberSpace::ApplicationData),
-                payload: &[1u8, 2, 3, 4, 5][..],
+                payload: payload.as_slice(),
             }
         )
     }
@@ -394,6 +405,9 @@ mod tests {
         datagram_info: DatagramInfo,
         negotiator: &mut Negotiator<C>,
     ) -> Result<(), TransportError> {
+        let mut payload = vec![1u8, 2, 3, 4, 5];
+        payload.extend_from_slice(&DUMMY_TAG[..]);
+
         on_packet!(
             negotiator,
             datagram_info.remote_address,
@@ -403,7 +417,7 @@ mod tests {
                 key_phase: Default::default(),
                 spin_bit: Default::default(),
                 packet_number: pn(PacketNumberSpace::ApplicationData),
-                payload: &[1u8, 2, 3, 4, 5][..],
+                payload: payload.as_slice(),
             }
         )
     }
