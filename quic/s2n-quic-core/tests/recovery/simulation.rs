@@ -1,4 +1,5 @@
 use core::{ops::Range, time::Duration};
+use insta::assert_debug_snapshot;
 use plotters::prelude::*;
 use s2n_quic_core::{
     packet::number::PacketNumberSpace,
@@ -15,13 +16,16 @@ fn main() {
 
     let simulation = slow_start_unlimited(cc, 12);
     simulation.plot("slow_start_unlimited.png");
+    simulation.assert_snapshot();
 }
 
+#[derive(Debug)]
 struct Simulation {
     name: &'static str,
     rounds: Vec<Round>,
 }
 
+#[derive(Debug)]
 struct Round {
     number: usize,
     cwnd: u32,
@@ -62,6 +66,11 @@ impl Simulation {
         let max = self.rounds.iter().map(|r| r.cwnd as i32).max().unwrap_or(0);
 
         0..max + MINIMUM_MTU as i32
+    }
+
+    fn assert_snapshot(&self) {
+        let snapshot_name = self.name.split_whitespace().collect::<String>();
+        assert_debug_snapshot!(snapshot_name, self);
     }
 }
 
