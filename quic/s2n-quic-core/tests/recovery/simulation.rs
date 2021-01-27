@@ -32,7 +32,7 @@ struct Round {
 }
 
 impl Simulation {
-    fn plot<'a, T: AsRef<Path> + ?Sized>(&self, path: &'a T) {
+    fn plot<T: AsRef<Path> + ?Sized>(&self, path: &T) {
         let root_area = BitMapBackend::new(path, CHART_DIMENSIONS).into_drawing_area();
         root_area.fill(&WHITE).expect("Could not fill chart");
 
