@@ -38,8 +38,8 @@ pub mod testing {
 
     #[derive(Debug)]
     pub struct Key {
-        confidentiality_limit: u64,
-        integrity_limit: u64,
+        pub confidentiality_limit: u64,
+        pub integrity_limit: u64,
     }
 
     impl Key {
@@ -47,6 +47,17 @@ pub mod testing {
             Self {
                 confidentiality_limit,
                 integrity_limit,
+            }
+        }
+    }
+
+    impl Default for Key {
+        fn default() -> Self {
+            // These default values are simply to make it easy to create this object and pass
+            // tests. There is no reason for the actual values beyond that.
+            Self {
+                confidentiality_limit: 64,
+                integrity_limit: 64,
             }
         }
     }

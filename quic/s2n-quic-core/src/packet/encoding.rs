@@ -64,6 +64,7 @@ pub enum PacketEncodingError<'a> {
     /// The payload did not write anything
     EmptyPayload(EncoderBuffer<'a>),
 
+    /// The key used to encrypt the buffer has exceeded the confidentiality limit
     AeadLimitReached(EncoderBuffer<'a>),
 }
 
