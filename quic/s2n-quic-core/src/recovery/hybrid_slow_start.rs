@@ -11,7 +11,7 @@ pub struct HybridSlowStart {
     sample_count: usize,
     last_min_rtt: Option<Duration>,
     cur_min_rtt: Option<Duration>,
-    pub threshold: u32,
+    pub(super) threshold: u32,
     max_datagram_size: u16,
     rtt_round_end_time: Option<Timestamp>,
 }

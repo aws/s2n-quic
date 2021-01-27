@@ -1,8 +1,3 @@
-use core::{
-    cmp::{max, min},
-    time::Duration,
-};
-
 use crate::{
     counter::Counter,
     recovery::{
@@ -13,6 +8,11 @@ use crate::{
     },
     time::Timestamp,
 };
+use core::{
+    cmp::{max, min},
+    time::Duration,
+};
+use num_traits::Float;
 
 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3
 //#                 New Path or      +------------+

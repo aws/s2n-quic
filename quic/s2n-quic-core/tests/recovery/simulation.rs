@@ -114,7 +114,7 @@ fn slow_start_unlimited<CC: CongestionController>(
     let time_zero = NoopClock.get_time();
     let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(0));
     let mut rounds = Vec::with_capacity(num_rounds);
-    let packet_size = 600;
+    let packet_size = MINIMUM_MTU as usize;
 
     for round in 0..num_rounds {
         rounds.push(Round {
