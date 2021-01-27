@@ -78,11 +78,11 @@ pub mod testing {
         }
 
         fn aead_confidentiality_limit(&self) -> u64 {
-            0
+            self.confidentiality_limit
         }
 
         fn aead_integrity_limit(&self) -> u64 {
-            0
+            self.integrity_limit
         }
     }
 

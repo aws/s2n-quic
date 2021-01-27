@@ -29,6 +29,14 @@ use s2n_quic_core::{
     transport::error::TransportError,
 };
 
+pub trait AeadIntegrityLimitTracking {
+    /// Called when a decryption failure occurs
+    fn on_decryption_error(&mut self);
+
+    /// Returns the number of decryption failures this connection has experienced
+    fn decryption_error_count(&self) -> u64;
+}
+
 /// A trait which represents an internally used `Connection`
 pub trait ConnectionTrait: Sized {
     /// Static configuration of a connection
@@ -195,12 +203,6 @@ pub trait ConnectionTrait: Sized {
 
     /// Returns the QUIC version selected for the current connection
     fn quic_version(&self) -> u32;
-
-    /// Returns the number of decryption failures this connection has experienced
-    fn decryption_failures(&self) -> u64;
-
-    /// Called when a decryption failure occurs
-    fn on_decryption_failure(&mut self);
 
     /// Handles reception of a single QUIC packet
     fn handle_packet(
