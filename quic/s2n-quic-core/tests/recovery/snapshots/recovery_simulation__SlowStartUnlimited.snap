@@ -1,0 +1,57 @@
+---
+source: quic/s2n-quic-core/tests/recovery/simulation.rs
+expression: simulation
+---
+Simulation {
+    name: "Slow Start Unlimited",
+    rounds: [
+        Round {
+            number: 0,
+            cwnd: 12000,
+        },
+        Round {
+            number: 1,
+            cwnd: 13200,
+        },
+        Round {
+            number: 2,
+            cwnd: 14400,
+        },
+        Round {
+            number: 3,
+            cwnd: 15600,
+        },
+        Round {
+            number: 4,
+            cwnd: 16800,
+        },
+        Round {
+            number: 5,
+            cwnd: 18000,
+        },
+        Round {
+            number: 6,
+            cwnd: 19200,
+        },
+        Round {
+            number: 7,
+            cwnd: 20400,
+        },
+        Round {
+            number: 8,
+            cwnd: 21600,
+        },
+        Round {
+            number: 9,
+            cwnd: 22800,
+        },
+        Round {
+            number: 10,
+            cwnd: 24000,
+        },
+        Round {
+            number: 11,
+            cwnd: 25200,
+        },
+    ],
+}
