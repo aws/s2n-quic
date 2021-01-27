@@ -3,8 +3,8 @@
 set -e
 
 OUT=${1:-target/recovery-sim}
-OUT=$(realpath $OUT)
 mkdir -p $OUT
+OUT=$(realpath $OUT)
 
 RECOVERY_SIM_DIR=$OUT cargo test -p s2n-quic-core --test recovery-simulation -- --nocapture
 
