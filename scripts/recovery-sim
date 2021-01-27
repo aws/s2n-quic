@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+
+set -e
+
+OUT=${1:-target/recovery-sim}
+mkdir -p $OUT
+OUT=$(realpath $OUT)
+
+RECOVERY_SIM_DIR=$OUT cargo test -p s2n-quic-core --test recovery-simulation -- --nocapture
+
+cd $OUT
+tree -H "." -L 1 --noreport --charset utf-8 > $OUT/index.html

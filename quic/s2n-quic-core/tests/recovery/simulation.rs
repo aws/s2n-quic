@@ -1,4 +1,4 @@
-use core::{ops::Range, time::Duration};
+use core::{fmt, ops::Range, time::Duration};
 use insta::assert_debug_snapshot;
 use plotters::prelude::*;
 use s2n_quic_core::{
@@ -7,40 +7,60 @@ use s2n_quic_core::{
     recovery::{CongestionController, CubicCongestionController, RTTEstimator},
     time::{Clock, NoopClock},
 };
-use std::path::Path;
+use std::{
+    env,
+    path::{Path, PathBuf},
+};
 
 const CHART_DIMENSIONS: (u32, u32) = (1024, 768);
 
-fn main() {
+#[test]
+fn slow_start_unlimited_test() {
     let cc = CubicCongestionController::new(MINIMUM_MTU);
 
-    let simulation = slow_start_unlimited(cc, 12);
-    simulation.plot("slow_start_unlimited.png");
-    simulation.assert_snapshot();
+    slow_start_unlimited(cc, 12).finish();
 }
 
 #[derive(Debug)]
 struct Simulation {
     name: &'static str,
+    cc: &'static str,
     rounds: Vec<Round>,
 }
 
-#[derive(Debug)]
 struct Round {
     number: usize,
     cwnd: u32,
 }
 
+impl fmt::Debug for Round {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:>3}: cwnd: {}", self.number, self.cwnd)
+    }
+}
+
 impl Simulation {
+    fn finish(&self) {
+        if let Ok(dir) = env::var("RECOVERY_SIM_DIR") {
+            let mut path = PathBuf::new();
+            path.push(dir);
+            path.push(self.filename());
+            path.set_extension("svg");
+            self.plot(&path);
+        } else {
+            self.assert_snapshot();
+        }
+    }
+
     fn plot<T: AsRef<Path> + ?Sized>(&self, path: &T) {
-        let root_area = BitMapBackend::new(path, CHART_DIMENSIONS).into_drawing_area();
+        let root_area = SVGBackend::new(path, CHART_DIMENSIONS).into_drawing_area();
         root_area.fill(&WHITE).expect("Could not fill chart");
 
         let mut ctx = ChartBuilder::on(&root_area)
             .set_label_area_size(LabelAreaPosition::Left, 100)
             .set_label_area_size(LabelAreaPosition::Bottom, 60)
             .margin(20)
-            .caption(self.name, ("sans-serif", 40))
+            .caption(self.name(), ("sans-serif", 40))
             .build_cartesian_2d(self.x_spec(), self.y_spec())
             .expect("Could not build chart");
 
@@ -69,8 +89,19 @@ impl Simulation {
     }
 
     fn assert_snapshot(&self) {
-        let snapshot_name = self.name.split_whitespace().collect::<String>();
-        assert_debug_snapshot!(snapshot_name, self);
+        assert_debug_snapshot!(self.filename(), self);
+    }
+
+    fn name(&self) -> String {
+        let mut name = String::new();
+        name.push_str(self.name);
+        name.push_str(" - ");
+        name.push_str(self.cc.split("::").last().unwrap());
+        name
+    }
+
+    fn filename(&self) -> String {
+        self.name().split_whitespace().collect()
     }
 }
 
@@ -123,6 +154,7 @@ fn slow_start_unlimited<CC: CongestionController>(
 
     Simulation {
         name: "Slow Start Unlimited",
+        cc: core::any::type_name::<CC>(),
         rounds,
     }
 }
