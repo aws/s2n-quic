@@ -12,7 +12,8 @@ use core::{
     cmp::{max, min},
     time::Duration,
 };
-use num_traits::Float;
+#[cfg(not(feature = "std"))]
+use num_traits::Float as _;
 
 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3
 //#                 New Path or      +------------+

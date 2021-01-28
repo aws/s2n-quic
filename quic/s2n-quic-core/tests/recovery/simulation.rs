@@ -48,6 +48,10 @@ impl Simulation {
             path.set_extension("svg");
             self.plot(&path);
         } else {
+            if cfg!(miri) {
+                // snapshot tests don't work on miri
+                return;
+            }
             self.assert_snapshot();
         }
     }
