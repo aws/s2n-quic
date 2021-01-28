@@ -9,4 +9,6 @@ OUT=$(realpath $OUT)
 RECOVERY_SIM_DIR=$OUT cargo test -p s2n-quic-core --test recovery-simulation -- --nocapture
 
 cd $OUT
-tree -H "." -L 1 --noreport --charset utf-8 > $OUT/index.html
+# Generate an html file with a directory listing of all recovery simulations. -I is used to exclude
+# html files so index.html itself doesn't show up in the output.
+tree -H "." -L 1 -T "Recovery Simulations" --noreport --charset utf-8 -I "*.html" > $OUT/index.html
