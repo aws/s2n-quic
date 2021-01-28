@@ -231,7 +231,7 @@ fn loss_at_3mb<CC: CongestionController>(
     }
 }
 
-/// Acknowledge a full congestion window of packets
+/// Acknowledge a full congestion window of packets using the given congestion controller
 fn ack_cwnd<CC: CongestionController>(
     congestion_controller: &mut CC,
     rtt_estimator: &RTTEstimator,
