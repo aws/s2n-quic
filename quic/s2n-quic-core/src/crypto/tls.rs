@@ -3,6 +3,9 @@ pub use bytes::{Bytes, BytesMut};
 use core::fmt::Debug;
 use s2n_codec::EncoderValue;
 
+#[cfg(any(test, feature = "testing"))]
+pub mod testing;
+
 /// Holds all application parameters which are exchanged within the TLS handshake.
 #[derive(Debug)]
 pub struct ApplicationParameters<'a> {
@@ -38,9 +41,23 @@ pub trait Context<Crypto: CryptoSuite> {
 
     fn on_handshake_done(&mut self) -> Result<(), TransportError>;
 
-    fn receive_initial(&mut self) -> Option<Bytes>;
-    fn receive_handshake(&mut self) -> Option<Bytes>;
-    fn receive_application(&mut self) -> Option<Bytes>;
+    /// Receives data from the initial packet space
+    ///
+    /// A `max_len` may be provided to indicate how many bytes the TLS implementation
+    /// is willing to buffer.
+    fn receive_initial(&mut self, max_len: Option<usize>) -> Option<Bytes>;
+
+    /// Receives data from the handshake packet space
+    ///
+    /// A `max_len` may be provided to indicate how many bytes the TLS implementation
+    /// is willing to buffer.
+    fn receive_handshake(&mut self, max_len: Option<usize>) -> Option<Bytes>;
+
+    /// Receives data from the application packet space
+    ///
+    /// A `max_len` may be provided to indicate how many bytes the TLS implementation
+    /// is willing to buffer.
+    fn receive_application(&mut self, max_len: Option<usize>) -> Option<Bytes>;
 
     fn can_send_initial(&self) -> bool;
     fn send_initial(&mut self, transmission: Bytes);
@@ -72,55 +89,4 @@ pub trait Endpoint: Sized {
 
 pub trait Session: CryptoSuite + Sized + Send + Debug {
     fn poll<C: Context<Self>>(&mut self, context: &mut C) -> Result<(), TransportError>;
-}
-
-#[cfg(any(test, feature = "testing"))]
-pub mod testing {
-    use super::*;
-    use crate::crypto::key::testing::Key;
-
-    const MAX_TAG_LENGTH: usize = 16;
-
-    #[derive(Debug)]
-    pub struct Endpoint;
-
-    impl super::Endpoint for Endpoint {
-        type Session = Session;
-
-        fn new_server_session<Params: EncoderValue>(
-            &mut self,
-            _transport_parameters: &Params,
-        ) -> Self::Session {
-            Session
-        }
-
-        fn new_client_session<Params: EncoderValue>(
-            &mut self,
-            _transport_parameters: &Params,
-            _sni: &[u8],
-        ) -> Self::Session {
-            Session
-        }
-
-        fn max_tag_length(&self) -> usize {
-            MAX_TAG_LENGTH
-        }
-    }
-
-    #[derive(Debug)]
-    pub struct Session;
-
-    impl super::Session for Session {
-        fn poll<C: Context<Self>>(&mut self, _context: &mut C) -> Result<(), TransportError> {
-            todo!("implement dummy handshake")
-        }
-    }
-
-    impl CryptoSuite for Session {
-        type HandshakeCrypto = Key;
-        type InitialCrypto = Key;
-        type ZeroRTTCrypto = Key;
-        type OneRTTCrypto = Key;
-        type RetryCrypto = Key;
-    }
 }
