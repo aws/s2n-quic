@@ -70,6 +70,7 @@ struct InnerSession<Session> {
     rx_phase: HandshakePhase,
     tx_phase: HandshakePhase,
     emitted_early_secret: bool,
+    emitted_handshake_done: bool,
 }
 
 impl<Session> InnerSession<Session> {
@@ -79,6 +80,7 @@ impl<Session> InnerSession<Session> {
             tx_phase: Default::default(),
             rx_phase: Default::default(),
             emitted_early_secret: false,
+            emitted_handshake_done: false,
         }
     }
 }
@@ -276,25 +278,35 @@ macro_rules! impl_tls {
             ) -> Result<(), TransportError> {
                 use rustls::Session;
 
+                let mut has_looped = false;
+
                 loop {
                     let crypto_data = match self.0.rx_phase {
-                        HandshakePhase::Initial => context.receive_initial(),
-                        HandshakePhase::Handshake => context.receive_handshake(),
-                        HandshakePhase::Application => context.receive_application(),
+                        HandshakePhase::Initial => context.receive_initial(None),
+                        HandshakePhase::Handshake => context.receive_handshake(None),
+                        HandshakePhase::Application => context.receive_application(None),
                     };
 
                     // receive anything in the incoming buffer
                     if let Some(crypto_data) = crypto_data {
                         self.receive(&crypto_data)?;
-                    } else {
+                    } else if has_looped {
                         // If there's nothing to receive then we're done for now
                         return Ok(());
                     }
 
+                    has_looped = true;
+
                     // we're done with the handshake!
-                    if !self.0.session.is_handshaking() {
-                        self.0.rx_phase.transition();
-                        context.on_handshake_done()?;
+                    if self.0.tx_phase == HandshakePhase::Application
+                        && !self.0.session.is_handshaking()
+                    {
+                        if !self.0.emitted_handshake_done {
+                            self.0.rx_phase.transition();
+                            context.on_handshake_done()?;
+                        }
+
+                        self.0.emitted_handshake_done = true;
                         return Ok(());
                     }
 
@@ -658,6 +670,16 @@ pub mod client {
             Ok(self)
         }
 
+        pub fn with_certificate<C: AsCertificate>(mut self, cert: C) -> Result<Self, TLSError> {
+            let certificates = cert.as_certificate()?;
+            let certificate = certificates.iter().next().unwrap();
+            self.config
+                .root_store
+                .add(&certificate)
+                .map_err(|err| TLSError::General(err.to_string()))?;
+            Ok(self)
+        }
+
         pub fn build(self) -> Result<Client, TLSError> {
             Ok(Client::new(self.config))
         }
@@ -665,6 +687,7 @@ pub mod client {
 
     impl Session {
         fn sni(&self) -> Option<&[u8]> {
+            // TODO return the specified sni value
             None
         }
     }
@@ -694,6 +717,16 @@ fn tls_error_reason(error: TLSError) -> &'static str {
         TLSError::HandshakeNotComplete => "handshake not complete",
         TLSError::PeerSentOversizedRecord => "peer sent excess record size",
         TLSError::NoApplicationProtocol => "peer doesn't support any known protocol",
+        TLSError::General(msg) => {
+            // rustls doesn't provide a specialized variant for these so we'll need to match on the `String` itself
+            // and try and map it to a `&'static str`
+            match msg.as_str() {
+                "no server certificate chain resolved" => "no server certificate chain resolved",
+                _ => "unexpected error",
+            }
+        }
+        // rustls may add a new variant in the future that breaks us so do a wildcard
+        #[allow(unreachable_patterns)]
         _ => "unexpected error",
     }
 }
@@ -709,4 +742,38 @@ fn encode_transport_params<Params: EncoderValue>(params: &Params) -> Vec<u8> {
 fn session_size() {
     assert_eq!(core::mem::size_of::<server::Session>(), 8);
     assert_eq!(core::mem::size_of::<client::Session>(), 8);
+}
+
+#[test]
+fn client_server_test() {
+    use tls::{testing::Context, Endpoint, Session};
+
+    let mut client = client::Builder::new()
+        .with_certificate(&include_bytes!("../../s2n-quic-qns/certs/cert.der")[..])
+        .unwrap()
+        .build()
+        .unwrap();
+
+    let mut server = server::Builder::new()
+        .with_certificate(
+            &include_bytes!("../../s2n-quic-qns/certs/cert.der")[..],
+            &include_bytes!("../../s2n-quic-qns/certs/key.der")[..],
+        )
+        .unwrap()
+        .build()
+        .unwrap();
+
+    let mut client = client.new_client_session(&(), b"localhost");
+    let mut server = server.new_server_session(&());
+
+    let mut client_context = Context::default();
+    let mut server_context = Context::default();
+
+    while !server_context.handshake_done {
+        client.poll(&mut client_context).unwrap();
+        server.poll(&mut server_context).unwrap();
+        client_context.transfer(&mut server_context);
+    }
+
+    client_context.finish(&server_context);
 }

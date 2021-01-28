@@ -199,27 +199,27 @@ impl<'a, Config: connection::Config> tls::Context<Config::TLSSession>
         }
     }
 
-    fn receive_initial(&mut self) -> Option<Bytes> {
+    fn receive_initial(&mut self, max_len: Option<usize>) -> Option<Bytes> {
         self.initial
             .as_mut()
             .map(Box::as_mut)?
             .crypto_stream
             .rx
-            .pop()
+            .pop_watermarked(max_len.unwrap_or(usize::MAX))
             .map(|bytes| bytes.freeze())
     }
 
-    fn receive_handshake(&mut self) -> Option<Bytes> {
+    fn receive_handshake(&mut self, max_len: Option<usize>) -> Option<Bytes> {
         self.handshake
             .as_mut()
             .map(Box::as_mut)?
             .crypto_stream
             .rx
-            .pop()
+            .pop_watermarked(max_len.unwrap_or(usize::MAX))
             .map(|bytes| bytes.freeze())
     }
 
-    fn receive_application(&mut self) -> Option<Bytes> {
+    fn receive_application(&mut self, _max_len: Option<usize>) -> Option<Bytes> {
         // Application doesn't currently have a buffer
         None
     }

@@ -21,7 +21,11 @@ impl RingNegotiatedCrypto {
         Self::new(endpoint::Type::Client, algorithm, secrets)
     }
 
-    fn new(endpoint: endpoint::Type, algorithm: &Algorithm, secrets: SecretPair) -> Option<Self> {
+    pub fn new(
+        endpoint: endpoint::Type,
+        algorithm: &Algorithm,
+        secrets: SecretPair,
+    ) -> Option<Self> {
         let (sealer_secret, opener_secret) = match endpoint {
             endpoint::Type::Client => (secrets.client, secrets.server),
             endpoint::Type::Server => (secrets.server, secrets.client),
@@ -116,6 +120,17 @@ macro_rules! negotiated_crypto {
             ) -> Option<Self> {
                 Some(Self(crate::negotiated::RingNegotiatedCrypto::new_client(
                     algorithm, secrets,
+                )?))
+            }
+
+            /// Create a client ciphersuite with a given negotiated algorithm and secret
+            pub fn new(
+                endpoint: s2n_quic_core::endpoint::Type,
+                algorithm: &$crate::Algorithm,
+                secrets: $crate::SecretPair,
+            ) -> Option<Self> {
+                Some(Self(crate::negotiated::RingNegotiatedCrypto::new(
+                    endpoint, algorithm, secrets,
                 )?))
             }
 

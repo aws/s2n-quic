@@ -11,3 +11,6 @@ s2n-quic-core = { version = "0.1", path = "../s2n-quic-core", default-features =
 s2n-quic-ring = { version = "0.1", path = "../s2n-quic-ring", default-features = false }
 rustls = { version = "0.17", features = ["quic"] }
 webpki = "0.21"
+
+[dev-dependencies]
+s2n-quic-core = { version = "0.1", path = "../s2n-quic-core", features = ["testing"] }

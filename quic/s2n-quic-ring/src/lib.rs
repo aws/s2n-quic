@@ -6,9 +6,11 @@ mod ciphersuite;
 mod negotiated;
 
 pub use ring::{
+    self,
     aead::{Algorithm, MAX_TAG_LEN},
     hkdf::Prk,
 };
+
 use s2n_quic_core::crypto::CryptoSuite;
 
 #[derive(Clone)]
