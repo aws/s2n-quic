@@ -672,10 +672,12 @@ pub mod client {
 
         pub fn with_certificate<C: AsCertificate>(mut self, cert: C) -> Result<Self, TLSError> {
             let certificates = cert.as_certificate()?;
-            let certificate = certificates.iter().next().unwrap();
+            let root_certificate = certificates.get(0).ok_or_else(|| {
+                TLSError::General("Certificate chain needs to have at least one entry".to_string())
+            })?;
             self.config
                 .root_store
-                .add(&certificate)
+                .add(&root_certificate)
                 .map_err(|err| TLSError::General(err.to_string()))?;
             Ok(self)
         }
@@ -746,8 +748,6 @@ fn session_size() {
 
 #[test]
 fn client_server_test() {
-    use tls::{testing::Context, Endpoint, Session};
-
     let mut client = client::Builder::new()
         .with_certificate(&include_bytes!("../../s2n-quic-qns/certs/cert.der")[..])
         .unwrap()
@@ -763,17 +763,11 @@ fn client_server_test() {
         .build()
         .unwrap();
 
-    let mut client = client.new_client_session(&(), b"localhost");
-    let mut server = server.new_server_session(&());
+    let mut pair = tls::testing::Pair::new(&mut server, &mut client, b"localhost");
 
-    let mut client_context = Context::default();
-    let mut server_context = Context::default();
-
-    while !server_context.handshake_done {
-        client.poll(&mut client_context).unwrap();
-        server.poll(&mut server_context).unwrap();
-        client_context.transfer(&mut server_context);
+    while pair.is_handshaking() {
+        pair.poll().unwrap();
     }
 
-    client_context.finish(&server_context);
+    pair.finish();
 }

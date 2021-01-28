@@ -50,6 +50,83 @@ impl CryptoSuite for Session {
     type RetryCrypto = crate::crypto::key::testing::Key;
 }
 
+/// A pair of TLS sessions and contexts being driven to completion
+#[derive(Debug)]
+pub struct Pair<S: tls::Session, C: tls::Session> {
+    pub server: (S, Context<S>),
+    pub client: (C, Context<C>),
+    pub iterations: usize,
+    pub sni: Vec<u8>,
+}
+
+const TEST_SERVER_TRANSPORT_PARAMS: &[u8] = &[1, 2, 3];
+const TEST_CLIENT_TRANSPORT_PARAMS: &[u8] = &[3, 2, 1];
+
+impl<S: tls::Session, C: tls::Session> Pair<S, C> {
+    pub fn new<SE, CE>(server_endpoint: &mut SE, client_endpoint: &mut CE, sni: &[u8]) -> Self
+    where
+        SE: tls::Endpoint<Session = S>,
+        CE: tls::Endpoint<Session = C>,
+    {
+        use crate::crypto::InitialCrypto;
+
+        let server = server_endpoint.new_server_session(&TEST_SERVER_TRANSPORT_PARAMS);
+        let mut server_context = Context::default();
+        server_context.initial.crypto = Some(S::InitialCrypto::new_server(sni));
+
+        let client = client_endpoint.new_client_session(&TEST_CLIENT_TRANSPORT_PARAMS, sni);
+        let mut client_context = Context::default();
+        client_context.initial.crypto = Some(C::InitialCrypto::new_client(sni));
+
+        Self {
+            server: (server, server_context),
+            client: (client, client_context),
+            iterations: 0,
+            sni: sni.to_vec(),
+        }
+    }
+
+    /// Returns true if `poll` should be called
+    pub fn is_handshaking(&self) -> bool {
+        !(self.server.1.handshake_done && self.client.1.handshake_done)
+    }
+
+    /// Continues progress of the handshake
+    pub fn poll(&mut self) -> Result<(), TransportError> {
+        assert!(
+            self.iterations < 10,
+            "handshake has iterated too many times: {:#?}",
+            self,
+        );
+        self.client.0.poll(&mut self.client.1)?;
+        self.server.0.poll(&mut self.server.1)?;
+        self.client.1.transfer(&mut self.server.1);
+        self.iterations += 1;
+        Ok(())
+    }
+
+    /// Finished the test
+    pub fn finish(&self) {
+        self.client.1.finish(&self.server.1);
+
+        assert_eq!(
+            self.client.1.transport_parameters.as_ref().unwrap(),
+            TEST_SERVER_TRANSPORT_PARAMS,
+            "client did not receive the server transport parameters"
+        );
+        assert_eq!(
+            self.server.1.transport_parameters.as_ref().unwrap(),
+            TEST_CLIENT_TRANSPORT_PARAMS,
+            "server did not receive the client transport parameters"
+        );
+        // TODO fix sni bug in s2n-quic-rustls
+        // assert_eq!(self.client.1.sni.as_ref().unwrap(), &self.sni[..]);
+        assert_eq!(self.server.1.sni.as_ref().unwrap(), &self.sni[..]);
+
+        // TODO check 0-rtt keys
+    }
+}
+
 /// Harness to ensure a TLS implementation adheres to the session contract
 pub struct Context<C: CryptoSuite> {
     pub initial: Space<C::InitialCrypto>,
@@ -93,16 +170,19 @@ impl<C: CryptoSuite> fmt::Debug for Context<C> {
 }
 
 impl<C: CryptoSuite> Context<C> {
+    /// Transfers incoming and outgoing buffers between two contexts
     pub fn transfer<O: CryptoSuite>(&mut self, other: &mut Context<O>) {
         self.initial.transfer(&mut other.initial);
         self.handshake.transfer(&mut other.handshake);
         self.application.transfer(&mut other.application);
     }
 
+    /// Finishes the test and asserts consistency
     pub fn finish<O: CryptoSuite>(&self, other: &Context<O>) {
         self.assert_done();
         other.assert_done();
 
+        // TODO fix sni bug in s2n-quic-rustls
         //assert_eq!(
         //    self.sni, other.sni,
         //    "sni is not consistent between endpoints"
@@ -118,10 +198,13 @@ impl<C: CryptoSuite> Context<C> {
             "0-rtt keys are not consistent between endpoints"
         );
 
-        // TODO make sure the keys actually encrypt/decrypt with each other
+        self.initial.finish(&other.initial);
+        self.handshake.finish(&other.handshake);
+        self.application.finish(&other.application);
     }
 
     fn assert_done(&self) {
+        assert!(self.initial.crypto.is_some());
         assert!(self.handshake.crypto.is_some());
         assert!(self.application.crypto.is_some());
         assert!(self.handshake_done);
@@ -189,6 +272,36 @@ impl<K: Key> Space<K> {
             return Some(chunk);
         }
     }
+
+    fn finish<O: Key>(&self, other: &Space<O>) {
+        let crypto_a = self.crypto.as_ref().unwrap();
+        let crypto_b = other.crypto.as_ref().unwrap();
+
+        seal_open(crypto_a, crypto_b);
+        seal_open(crypto_b, crypto_a);
+    }
+}
+
+fn seal_open<S: Key, O: Key>(sealer: &S, opener: &O) {
+    let packet_number = 123;
+    let header = &[1, 2, 3, 4, 5, 6];
+
+    let cleartext_payload = (0u16..1200).map(|i| i as u8).collect::<Vec<_>>();
+
+    let mut encrypted_payload = cleartext_payload.clone();
+    encrypted_payload.resize(cleartext_payload.len() + sealer.tag_len(), 0);
+
+    sealer
+        .encrypt(packet_number, header, &mut encrypted_payload)
+        .unwrap();
+    opener
+        .decrypt(packet_number, header, &mut encrypted_payload)
+        .unwrap();
+
+    assert_eq!(
+        cleartext_payload[..],
+        encrypted_payload[..cleartext_payload.len()]
+    );
 }
 
 impl<C: CryptoSuite> tls::Context<C> for Context<C> {
