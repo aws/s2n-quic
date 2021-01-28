@@ -123,7 +123,7 @@ macro_rules! negotiated_crypto {
                 )?))
             }
 
-            /// Create a client ciphersuite with a given negotiated algorithm and secret
+            /// Create a ciphersuite for an endpoint type with a given negotiated algorithm and secret
             pub fn new(
                 endpoint: s2n_quic_core::endpoint::Type,
                 algorithm: &$crate::Algorithm,

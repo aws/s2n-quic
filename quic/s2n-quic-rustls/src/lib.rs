@@ -278,7 +278,8 @@ macro_rules! impl_tls {
             ) -> Result<(), TransportError> {
                 use rustls::Session;
 
-                let mut has_looped = false;
+                // Tracks if we have attempted to receive data at least once
+                let mut has_tried_receive = false;
 
                 loop {
                     let crypto_data = match self.0.rx_phase {
@@ -290,12 +291,14 @@ macro_rules! impl_tls {
                     // receive anything in the incoming buffer
                     if let Some(crypto_data) = crypto_data {
                         self.receive(&crypto_data)?;
-                    } else if has_looped {
+                    } else if has_tried_receive {
                         // If there's nothing to receive then we're done for now
                         return Ok(());
                     }
 
-                    has_looped = true;
+                    // mark that we tried to receive some data so we know next time we loop
+                    // to bail if nothing changed
+                    has_tried_receive = true;
 
                     // we're done with the handshake!
                     if self.0.tx_phase == HandshakePhase::Application
