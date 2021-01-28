@@ -14,7 +14,9 @@ use std::{
 
 const CHART_DIMENSIONS: (u32, u32) = (1024, 768);
 
+// These simulations are too slow for Miri
 #[test]
+#[cfg_attr(miri, ignore)]
 fn slow_start_unlimited_test() {
     let cc = CubicCongestionController::new(MINIMUM_MTU);
 
@@ -22,6 +24,7 @@ fn slow_start_unlimited_test() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)]
 fn loss_at_3mb_test() {
     let cc = CubicCongestionController::new(MINIMUM_MTU);
 
@@ -55,10 +58,6 @@ impl Simulation {
             path.set_extension("svg");
             self.plot(&path);
         } else {
-            if cfg!(miri) {
-                // snapshot tests don't work on miri
-                return;
-            }
             self.assert_snapshot();
         }
     }
