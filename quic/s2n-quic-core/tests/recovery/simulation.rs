@@ -5,7 +5,7 @@ use s2n_quic_core::{
     packet::number::PacketNumberSpace,
     path::MINIMUM_MTU,
     recovery::{CongestionController, CubicCongestionController, RTTEstimator},
-    time::{Clock, NoopClock},
+    time::{Clock, NoopClock, Timestamp},
 };
 use std::{
     env,
@@ -22,10 +22,10 @@ fn slow_start_unlimited_test() {
 }
 
 #[test]
-fn five_mb_loss_test() {
+fn loss_at_3mb_test() {
     let cc = CubicCongestionController::new(MINIMUM_MTU);
 
-    five_mb_loss(cc, 150).finish();
+    loss_at_3mb(cc, 135).finish();
 }
 
 #[derive(Debug)]
@@ -170,8 +170,8 @@ fn slow_start_unlimited<CC: CongestionController>(
     }
 }
 
-/// Simulates a network that experienced loss at a 5MB congestion window
-fn five_mb_loss<CC: CongestionController>(
+/// Simulates a network that experienced loss at a 3MB congestion window
+fn loss_at_3mb<CC: CongestionController>(
     mut congestion_controller: CC,
     num_rounds: usize,
 ) -> Simulation {
@@ -179,19 +179,10 @@ fn five_mb_loss<CC: CongestionController>(
     let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(0));
     let mut rounds = Vec::with_capacity(num_rounds);
 
-    // Ensure the congestion window is always fully utilized
+    // Ensure the congestion window is fully utilized
     congestion_controller.on_packet_sent(time_zero, u32::MAX as usize);
 
-    // Start the window at 5MB
-    congestion_controller.on_packet_ack(time_zero, 5_000_000, &rtt_estimator, time_zero);
-
-    // Exit slow start
-    congestion_controller.on_congestion_event(time_zero);
-
     let mut ack_receive_time = time_zero + Duration::from_millis(1);
-
-    // Exit recovery
-    congestion_controller.on_packet_ack(ack_receive_time, 1, &rtt_estimator, ack_receive_time);
 
     // Update the rtt with 200 ms
     rtt_estimator.update_rtt(
@@ -202,7 +193,26 @@ fn five_mb_loss<CC: CongestionController>(
         PacketNumberSpace::ApplicationData,
     );
 
-    for round in 0..num_rounds {
+    let mut slow_start_round = 0;
+
+    while congestion_controller.congestion_window() < 3_000_000 && slow_start_round < num_rounds {
+        ack_receive_time += Duration::from_millis(200);
+
+        // Ack the full congestion window
+        ack_cwnd(&mut congestion_controller, &rtt_estimator, ack_receive_time);
+
+        rounds.push(Round {
+            number: slow_start_round,
+            cwnd: congestion_controller.congestion_window(),
+        });
+
+        slow_start_round += 1;
+    }
+
+    // Lose a packet to exit slow start
+    congestion_controller.on_packets_lost(MINIMUM_MTU as u32, false, ack_receive_time);
+
+    for round in slow_start_round..num_rounds {
         rounds.push(Round {
             number: round,
             cwnd: congestion_controller.congestion_window(),
@@ -210,26 +220,34 @@ fn five_mb_loss<CC: CongestionController>(
 
         ack_receive_time += Duration::from_millis(200);
 
-        let mut cwnd = congestion_controller.congestion_window();
-
         // Ack the full congestion window
-        while cwnd > MINIMUM_MTU as u32 {
-            congestion_controller.on_packet_ack(
-                ack_receive_time,
-                MINIMUM_MTU as usize,
-                &rtt_estimator,
-                ack_receive_time,
-            );
-            cwnd -= MINIMUM_MTU as u32;
-            // Ensure the congestion window is always fully utilized by sending a packet the
-            // same size as the one that we just acked.
-            congestion_controller.on_packet_sent(ack_receive_time, MINIMUM_MTU as usize);
-        }
+        ack_cwnd(&mut congestion_controller, &rtt_estimator, ack_receive_time);
     }
 
     Simulation {
-        name: "5MB Loss",
+        name: "Loss at 3MB",
         cc: core::any::type_name::<CC>(),
         rounds,
+    }
+}
+
+/// Acknowledge a full congestion window of packets
+fn ack_cwnd<CC: CongestionController>(
+    congestion_controller: &mut CC,
+    rtt_estimator: &RTTEstimator,
+    timestamp: Timestamp,
+) {
+    let mut cwnd = congestion_controller.congestion_window();
+    while cwnd >= MINIMUM_MTU as u32 {
+        congestion_controller.on_packet_ack(
+            timestamp,
+            MINIMUM_MTU as usize,
+            rtt_estimator,
+            timestamp,
+        );
+        cwnd -= MINIMUM_MTU as u32;
+        // Ensure the congestion window is always fully utilized by sending a packet the
+        // same size as the one that we just acked.
+        congestion_controller.on_packet_sent(timestamp, MINIMUM_MTU as usize);
     }
 }
