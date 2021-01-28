@@ -6,6 +6,8 @@
     dead_code
 )]
 
+pub use libc::c_int as s2n_status_code;
+
 #[cfg(vendored)]
 include!("./vendored.rs");
 

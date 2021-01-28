@@ -9,7 +9,11 @@ use libc::{iovec, FILE};
 
 
 extern "C" {
-    pub static mut s2n_errno: ::libc::c_int;
+    #[doc = " Returns the address of the thread-local `s2n_errno` variable"]
+    #[doc = ""]
+    #[doc = " This function can be used instead of trying to resolve `s2n_errno` directly"]
+    #[doc = " in runtimes where thread-local variables may not be easily accessible."]
+    pub fn s2n_errno_location() -> *mut ::libc::c_int;
 }
 #[repr(u32)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]

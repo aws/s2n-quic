@@ -571,6 +571,7 @@ impl StreamReceiveBuffer {
     }
 
     /// Pops a buffer from the front of the receive queue if available
+    #[allow(dead_code)] // This isn't used anywhere in the codebase, but is still good to have around
     pub fn pop(&mut self) -> Option<BytesMut> {
         self.pop_transform(|buffer| core::mem::replace(buffer, BytesMut::new()))
     }

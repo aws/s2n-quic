@@ -29,6 +29,9 @@ pub fn s2n_tls_bindings(s2n_dir: Option<&str>) -> bindgen::Builder {
         .blacklist_type("FILE")
         .blacklist_type("_IO_.*")
         .blacklist_type("__.*")
+        // rust can't access thread-local variables
+        // https://github.com/rust-lang/rust/issues/29594
+        .blacklist_item("s2n_errno")
         .whitelist_type("s2n_.*")
         .whitelist_function("s2n_.*")
         .whitelist_var("s2n_.*")
