@@ -122,6 +122,10 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
                     // move to the next packet space
                     encoder
                 }
+                Err(PacketEncodingError::AeadLimitReached(encoder)) => {
+                    // move to the next packet space
+                    encoder
+                }
             }
         } else {
             encoder
@@ -154,6 +158,10 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
                     encoder
                 }
                 Err(PacketEncodingError::EmptyPayload(encoder)) => {
+                    // move to the next packet space
+                    encoder
+                }
+                Err(PacketEncodingError::AeadLimitReached(encoder)) => {
                     // move to the next packet space
                     encoder
                 }
@@ -197,6 +205,10 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
                     encoder
                 }
                 Err(PacketEncodingError::EmptyPayload(encoder)) => {
+                    // move to the next packet space
+                    encoder
+                }
+                Err(PacketEncodingError::AeadLimitReached(encoder)) => {
                     // move to the next packet space
                     encoder
                 }

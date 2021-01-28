@@ -122,8 +122,9 @@ impl<Config: connection::Config> HandshakeSpace<Config> {
             payload,
         };
 
-        let (_protected_packet, buffer) =
-            packet.encode_packet(self.crypto.key(), packet_number_encoder, buffer)?;
+        let (_protected_packet, buffer) = self.crypto.encode_packet(buffer, |buffer, key| {
+            packet.encode_packet(key, packet_number_encoder, buffer)
+        })?;
 
         let time_sent = context.timestamp;
         let (recovery_manager, mut recovery_context) =

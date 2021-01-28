@@ -37,7 +37,7 @@ pub(crate) use connection_container::{ConnectionContainer, ConnectionContainerIt
 pub(crate) use connection_id_mapper::ConnectionIdMapper;
 pub(crate) use connection_interests::ConnectionInterests;
 pub(crate) use connection_timers::{ConnectionTimerEntry, ConnectionTimers};
-pub(crate) use connection_trait::ConnectionTrait as Trait;
+pub(crate) use connection_trait::{AeadIntegrityLimitTracking, ConnectionTrait as Trait};
 pub(crate) use internal_connection_id::{InternalConnectionId, InternalConnectionIdGenerator};
 pub(crate) use local_id_registry::LocalIdRegistry;
 pub(crate) use peer_id_registry::PeerIdRegistry;

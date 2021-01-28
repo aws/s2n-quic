@@ -37,7 +37,30 @@ pub mod testing {
     };
 
     #[derive(Debug)]
-    pub struct Key;
+    pub struct Key {
+        pub confidentiality_limit: u64,
+        pub integrity_limit: u64,
+    }
+
+    impl Key {
+        pub fn new(confidentiality_limit: u64, integrity_limit: u64) -> Self {
+            Self {
+                confidentiality_limit,
+                integrity_limit,
+            }
+        }
+    }
+
+    impl Default for Key {
+        fn default() -> Self {
+            // These default values are simply to make it easy to create this object and pass
+            // tests. There is no reason for the actual values beyond that.
+            Self {
+                confidentiality_limit: 64,
+                integrity_limit: 64,
+            }
+        }
+    }
 
     impl super::Key for Key {
         /// Decrypt a payload
@@ -66,11 +89,11 @@ pub mod testing {
         }
 
         fn aead_confidentiality_limit(&self) -> u64 {
-            0
+            self.confidentiality_limit
         }
 
         fn aead_integrity_limit(&self) -> u64 {
-            0
+            self.integrity_limit
         }
     }
 
@@ -100,11 +123,11 @@ pub mod testing {
 
     impl InitialCrypto for Key {
         fn new_server(_connection_id: &[u8]) -> Self {
-            Key
+            Key::new(0, 0)
         }
 
         fn new_client(_connection_id: &[u8]) -> Self {
-            Key
+            Key::new(0, 0)
         }
     }
     impl HandshakeCrypto for Key {}
