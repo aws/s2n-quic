@@ -11,7 +11,7 @@ pub struct HybridSlowStart {
     sample_count: usize,
     last_min_rtt: Option<Duration>,
     cur_min_rtt: Option<Duration>,
-    pub(super) threshold: u32,
+    pub(super) threshold: f32,
     max_datagram_size: u16,
     rtt_round_end_time: Option<Timestamp>,
 }
@@ -40,7 +40,7 @@ impl HybridSlowStart {
             //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.1
             //# A sender begins in slow start because the slow start threshold
             //# is initialized to an infinite value.
-            threshold: u32::max_value(),
+            threshold: f32::MAX,
             max_datagram_size,
             rtt_round_end_time: None,
         }
@@ -53,7 +53,7 @@ impl HybridSlowStart {
     /// threshold.
     pub fn on_rtt_update(
         &mut self,
-        congestion_window: u32,
+        congestion_window: f32,
         time_sent: Timestamp,
         time_of_last_sent_packet: Timestamp,
         rtt: Duration,
@@ -107,18 +107,19 @@ impl HybridSlowStart {
     /// slow start threshold to the minimum of the Hybrid Slow Start threshold
     /// and the given congestion window. This will ensure we exit slow start
     /// early enough to avoid further congestion.
-    pub fn on_congestion_event(&mut self, ssthresh: u32) {
+    pub fn on_congestion_event(&mut self, ssthresh: f32) {
         self.threshold = self.threshold.min(ssthresh).max(self.low_ssthresh());
     }
 
-    fn low_ssthresh(&self) -> u32 {
-        (LOW_SSTHRESH * self.max_datagram_size) as u32
+    fn low_ssthresh(&self) -> f32 {
+        (LOW_SSTHRESH * self.max_datagram_size) as f32
     }
 }
 
 #[cfg(test)]
 mod test {
     use crate::{
+        assert_delta,
         recovery::hybrid_slow_start::HybridSlowStart,
         time::{Clock, NoopClock},
     };
@@ -127,38 +128,38 @@ mod test {
     #[test]
     fn on_congestion_event() {
         let mut slow_start = HybridSlowStart::new(10);
-        slow_start.threshold = 501;
+        slow_start.threshold = 501.0;
 
         // Setting a threshold lower than the current threshold
         // will override the current threshold
-        slow_start.on_congestion_event(500);
-        assert_eq!(slow_start.threshold, 500);
+        slow_start.on_congestion_event(500.0);
+        assert_delta!(slow_start.threshold, 500.0, 0.001);
 
-        slow_start.threshold = 501;
+        slow_start.threshold = 501.0;
 
         // Setting a threshold higher than the current threshold
         // keeps the current threshold intact
-        slow_start.on_congestion_event(502);
-        assert_eq!(slow_start.threshold, 501);
+        slow_start.on_congestion_event(502.0);
+        assert_delta!(slow_start.threshold, 501.0, 0.001);
 
-        slow_start.threshold = 501;
+        slow_start.threshold = 501.0;
 
         // Setting a threshold lower than low_ssthresh
         // sets the threshold to low_ssthresh
-        slow_start.on_congestion_event(slow_start.low_ssthresh() - 1);
-        assert_eq!(slow_start.threshold, slow_start.low_ssthresh());
+        slow_start.on_congestion_event(slow_start.low_ssthresh() - 1.0);
+        assert_delta!(slow_start.threshold, slow_start.low_ssthresh(), 0.001);
     }
 
     #[test]
     fn on_rtt_update_above_threshold() {
         let mut slow_start = HybridSlowStart::new(10);
         let time_zero = NoopClock.get_time();
-        slow_start.threshold = 500;
+        slow_start.threshold = 500.0;
 
         assert_eq!(slow_start.sample_count, 0);
-        slow_start.on_rtt_update(750, time_zero, time_zero, Duration::from_secs(1));
+        slow_start.on_rtt_update(750.0, time_zero, time_zero, Duration::from_secs(1));
 
-        assert_eq!(slow_start.threshold, 500);
+        assert_delta!(slow_start.threshold, 500.0, 0.001);
         assert_eq!(slow_start.sample_count, 0);
     }
 
@@ -178,7 +179,7 @@ mod test {
         // t=10: Acknowledge packets #1-7 all with RTT 200
         for i in 0..=6 {
             slow_start.on_rtt_update(
-                1000,
+                1000.0,
                 time_zero + Duration::from_millis(i),
                 time_of_last_sent_packet,
                 Duration::from_millis(200),
@@ -194,7 +195,7 @@ mod test {
 
         // t=11: Acknowledge packet #8 with RTT 100
         slow_start.on_rtt_update(
-            1000,
+            1000.0,
             time_zero + Duration::from_millis(7),
             time_of_last_sent_packet,
             Duration::from_millis(100),
@@ -205,7 +206,7 @@ mod test {
 
         // t=11: Acknowledge packet #9 with RTT 50
         slow_start.on_rtt_update(
-            1000,
+            1000.0,
             time_zero + Duration::from_millis(8),
             time_of_last_sent_packet,
             Duration::from_millis(50),
@@ -221,7 +222,7 @@ mod test {
 
         // t=30: Acknowledge packet #10 with RTT 400, ending the first round and starting the second
         slow_start.on_rtt_update(
-            1000,
+            1000.0,
             time_zero + Duration::from_millis(9),
             time_of_last_sent_packet,
             Duration::from_millis(400),
@@ -240,7 +241,7 @@ mod test {
         // t=31: Acknowledge packets #11-16 all with RTT 500
         for i in 20..=25 {
             slow_start.on_rtt_update(
-                1000,
+                1000.0,
                 time_zero + Duration::from_millis(i),
                 time_of_last_sent_packet,
                 Duration::from_millis(500),
@@ -250,7 +251,7 @@ mod test {
 
         // t=32: Acknowledge packet #17, the 8th sample in Round 2
         slow_start.on_rtt_update(
-            2000,
+            2000.0,
             time_zero + Duration::from_millis(27),
             time_of_last_sent_packet,
             Duration::from_millis(112),
@@ -260,7 +261,7 @@ mod test {
         assert_eq!(slow_start.cur_min_rtt, Some(Duration::from_millis(112)));
         // The last ack was the 8th sample, but since the min rtt increased below the threshold,
         // the slow start threshold remains the same
-        assert_eq!(slow_start.threshold, u32::max_value());
+        assert_delta!(slow_start.threshold, f32::MAX, 0.001);
 
         // -- Round 3 --
 
@@ -270,7 +271,7 @@ mod test {
         // t=50: Acknowledge packets 21-27
         for i in 40..=46 {
             slow_start.on_rtt_update(
-                1000,
+                1000.0,
                 time_zero + Duration::from_millis(i),
                 time_of_last_sent_packet,
                 Duration::from_millis(500),
@@ -279,7 +280,7 @@ mod test {
         }
         // t=51: Acknowledge packet 28, the 8th sample in Round 3
         slow_start.on_rtt_update(
-            5000,
+            5000.0,
             time_zero + Duration::from_millis(38),
             time_of_last_sent_packet,
             Duration::from_millis(126),
@@ -289,6 +290,6 @@ mod test {
         assert_eq!(slow_start.cur_min_rtt, Some(Duration::from_millis(126)));
         // The last ack was the 8th sample, and since the min rtt increased above the threshold,
         // the slow start threshold was set to the current congestion window
-        assert_eq!(slow_start.threshold, 5000);
+        assert_delta!(slow_start.threshold, 5000.0, 0.001);
     }
 }
