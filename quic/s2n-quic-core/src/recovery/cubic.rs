@@ -848,13 +848,13 @@ mod test {
         let now = NoopClock.get_time();
 
         cc.congestion_window = 100_000.0;
-        cc.bytes_in_flight = BytesInFlight::new(96_500);
+        cc.bytes_in_flight = BytesInFlight::new(92_500);
         cc.state = SlowStart;
 
         // t0: Send a packet in Slow Start
         cc.on_packet_sent(now, 1000);
 
-        assert_eq!(cc.bytes_in_flight, 97_500);
+        assert_eq!(cc.bytes_in_flight, 93_500);
         assert_eq!(cc.time_of_last_sent_packet, Some(now));
 
         // t10: Enter Congestion Avoidance
@@ -863,7 +863,7 @@ mod test {
         // t15: Send a packet in Congestion Avoidance
         cc.on_packet_sent(now + Duration::from_secs(15), 1000);
 
-        assert_eq!(cc.bytes_in_flight, 98_500);
+        assert_eq!(cc.bytes_in_flight, 94_500);
         assert_eq!(
             cc.time_of_last_sent_packet,
             Some(now + Duration::from_secs(15))
@@ -872,7 +872,7 @@ mod test {
         // so the CongestionAvoidance increases by the time from avoidance start to now
         assert_eq!(cc.state, CongestionAvoidance(now + Duration::from_secs(15)));
 
-        cc.bytes_in_flight = BytesInFlight::new(97500);
+        cc.bytes_in_flight = BytesInFlight::new(93500);
 
         // t25: Send a packet in Congestion Avoidance
         cc.on_packet_sent(now + Duration::from_secs(25), 1000);
@@ -908,7 +908,7 @@ mod test {
         let now = NoopClock.get_time();
         let rtt_estimator = &RTTEstimator::new(Duration::from_secs(0));
 
-        cc.congestion_window = 3000.0;
+        cc.congestion_window = 6000.0;
         cc.bytes_in_flight = BytesInFlight::new(0);
         cc.state = SlowStart;
 
@@ -922,9 +922,11 @@ mod test {
 
         // t15: Send a packet in Congestion Avoidance while under utilized
         cc.on_packet_sent(now + Duration::from_secs(15), 1000);
+        assert!(cc.is_congestion_window_under_utilized());
 
         // t15: Send a packet in Congestion Avoidance while not under utilized
         cc.on_packet_sent(now + Duration::from_secs(15), 1000);
+        assert!(!cc.is_congestion_window_under_utilized());
 
         assert_eq!(cc.bytes_in_flight, 3000);
 
