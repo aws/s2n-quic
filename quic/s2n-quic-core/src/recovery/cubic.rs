@@ -82,6 +82,7 @@ pub struct CubicCongestionController {
     //# congestion feedback.
     bytes_in_flight: BytesInFlight,
     time_of_last_sent_packet: Option<Timestamp>,
+    time_last_utilized: Option<Timestamp>,
 }
 
 type BytesInFlight = Counter<u32>;
@@ -92,15 +93,10 @@ impl CongestionController for CubicCongestionController {
     }
 
     fn is_congestion_limited(&self) -> bool {
-        const MAX_BURST_MULTIPLIER: u32 = 3;
-        if matches!(self.state, SlowStart) && self.bytes_in_flight > self.congestion_window() / 2 {
-            return true;
-        }
-
         let available_congestion_window = self
             .congestion_window()
             .saturating_sub(*self.bytes_in_flight);
-        available_congestion_window <= self.max_datagram_size as u32 * MAX_BURST_MULTIPLIER
+        available_congestion_window < self.max_datagram_size as u32
     }
 
     fn requires_fast_retransmission(&self) -> bool {
@@ -162,13 +158,28 @@ impl CongestionController for CubicCongestionController {
         ack_receive_time: Timestamp,
     ) {
         // Check if the congestion window is under utilized before updating bytes in flight
-        let under_utilized = self.is_congestion_window_under_utilized();
+        let utilized = !self.is_congestion_window_under_utilized();
 
         self.bytes_in_flight
             .try_sub(sent_bytes)
             .expect("sent bytes should not exceed u32::MAX");
 
-        if under_utilized {
+        if utilized {
+            // Update the time last utilized to this ack receive time since the window
+            // is currently utilized.
+            self.time_last_utilized = Some(ack_receive_time);
+        } else if self.time_last_utilized.map_or(true, |time_last_utilized| {
+            // Once the congestion window is utilized within an RTT round, we consider it utilized
+            // until the end of the round. Otherwise, subsequent acks received in the round prior to
+            // the application sending any more data would decrease bytes in flight to a degree that
+            // the congestion window may not be considered utilized. This would prevent the congestion
+            // window from growing even if the application has enough data to send to utilize the
+            // congestion window. See https://github.com/awslabs/s2n-quic/issues/458
+            ack_receive_time - time_last_utilized > rtt_estimator.smoothed_rtt()
+        }) {
+            // It's been more than 1 rtt since the congestion window was utilized, so the
+            // congestion window should not be increased further.
+
             //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.8
             //# When bytes in flight is smaller than the congestion window and
             //# sending is not pacing limited, the congestion window is under-
@@ -336,6 +347,7 @@ impl CubicCongestionController {
             state: SlowStart,
             bytes_in_flight: Counter::new(0),
             time_of_last_sent_packet: None,
+            time_last_utilized: None,
         }
     }
 
