@@ -158,17 +158,17 @@ impl CongestionController for CubicCongestionController {
         ack_receive_time: Timestamp,
     ) {
         // Check if the congestion window is under utilized before updating bytes in flight
-        let utilized = !self.is_congestion_window_under_utilized();
+        if !self.is_congestion_window_under_utilized() {
+            // Update the time last utilized to this ack receive time since the window
+            // is currently utilized.
+            self.time_last_utilized = Some(ack_receive_time);
+        }
 
         self.bytes_in_flight
             .try_sub(sent_bytes)
             .expect("sent bytes should not exceed u32::MAX");
 
-        if utilized {
-            // Update the time last utilized to this ack receive time since the window
-            // is currently utilized.
-            self.time_last_utilized = Some(ack_receive_time);
-        } else if self.time_last_utilized.map_or(true, |time_last_utilized| {
+        let under_utilized = self.time_last_utilized.map_or(true, |time_last_utilized| {
             // Once the congestion window is utilized within an RTT round, we consider it utilized
             // until the end of the round. Otherwise, subsequent acks received in the round prior to
             // the application sending any more data would decrease bytes in flight to a degree that
@@ -176,10 +176,9 @@ impl CongestionController for CubicCongestionController {
             // window from growing even if the application has enough data to send to utilize the
             // congestion window. See https://github.com/awslabs/s2n-quic/issues/458
             ack_receive_time - time_last_utilized > rtt_estimator.smoothed_rtt()
-        }) {
-            // It's been more than 1 rtt since the congestion window was utilized, so the
-            // congestion window should not be increased further.
+        });
 
+        if under_utilized {
             //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.8
             //# When bytes in flight is smaller than the congestion window and
             //# sending is not pacing limited, the congestion window is under-
@@ -746,6 +745,32 @@ mod test {
         cc.bytes_in_flight = BytesInFlight::new(2000);
 
         assert!(cc.is_congestion_limited());
+    }
+
+    #[test]
+    fn is_congestion_window_under_utilized() {
+        let max_datagram_size = 1200;
+        let mut cc = CubicCongestionController::new(max_datagram_size);
+        cc.congestion_window = 12000.0;
+
+        // In Slow Start, the window is under utilized if it is less than half full
+        cc.bytes_in_flight = BytesInFlight::new(5999);
+        cc.state = SlowStart;
+        assert!(cc.is_congestion_window_under_utilized());
+
+        cc.bytes_in_flight = BytesInFlight::new(6000);
+        assert!(!cc.is_congestion_window_under_utilized());
+
+        cc.state = CongestionAvoidance(NoopClock.get_time());
+        assert!(cc.is_congestion_window_under_utilized());
+
+        // In Congestion Avoidance, the window is under utilized if there are more than
+        // 3 * MTU bytes available in the congestion window (12000 - 3 * 1200 = 8400)
+        cc.bytes_in_flight = BytesInFlight::new(8399);
+        assert!(cc.is_congestion_window_under_utilized());
+
+        cc.bytes_in_flight = BytesInFlight::new(8400);
+        assert!(!cc.is_congestion_window_under_utilized());
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.2
