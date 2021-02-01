@@ -1156,6 +1156,41 @@ mod test {
     }
 
     #[test]
+    fn on_packet_ack_utilized_for_one_rtt() {
+        let mut cc = CubicCongestionController::new(5000);
+        let now = NoopClock.get_time();
+        let mut rtt_estimator = RTTEstimator::new(Duration::from_secs(0));
+        rtt_estimator.update_rtt(
+            Duration::from_secs(0),
+            Duration::from_millis(200),
+            now,
+            true,
+            PacketNumberSpace::ApplicationData,
+        );
+        cc.congestion_window = 100_000.0;
+        cc.bytes_in_flight = BytesInFlight::new(60_000);
+        cc.state = SlowStart;
+
+        cc.on_packet_ack(now, 50_000, &rtt_estimator, now);
+        let cwnd = cc.congestion_window();
+
+        assert_eq!(Some(now), cc.time_last_utilized);
+        assert!(cwnd > 100_000);
+
+        // Now the window is under utilized, but we still grow the window for 1 rtt (200ms)
+        assert!(cc.is_congestion_window_under_utilized());
+        cc.on_packet_ack(now, 1200, &rtt_estimator, now + Duration::from_millis(100));
+        assert!(cc.congestion_window() > cwnd);
+        assert_eq!(Some(now), cc.time_last_utilized);
+
+        let cwnd = cc.congestion_window();
+
+        // Now its been too long since the window was utilized, so it stops growing
+        cc.on_packet_ack(now, 1200, &rtt_estimator, now + Duration::from_millis(201));
+        assert_eq!(cc.congestion_window(), cwnd);
+    }
+
+    #[test]
     #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.2")]
     fn on_packet_ack_recovery_to_congestion_avoidance() {
         let mut cc = CubicCongestionController::new(5000);
