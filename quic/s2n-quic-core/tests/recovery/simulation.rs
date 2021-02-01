@@ -178,10 +178,7 @@ fn loss_at_3mb<CC: CongestionController>(
     let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(0));
     let mut rounds = Vec::with_capacity(num_rounds);
 
-    // Ensure the congestion window is fully utilized
-    congestion_controller.on_packet_sent(time_zero, u32::MAX as usize);
-
-    let mut ack_receive_time = time_zero + Duration::from_millis(1);
+    let mut round_start = time_zero + Duration::from_millis(1);
 
     // Update the rtt with 200 ms
     rtt_estimator.update_rtt(
@@ -195,10 +192,10 @@ fn loss_at_3mb<CC: CongestionController>(
     let mut slow_start_round = 0;
 
     while congestion_controller.congestion_window() < 3_000_000 && slow_start_round < num_rounds {
-        ack_receive_time += Duration::from_millis(200);
+        round_start += Duration::from_millis(200);
 
-        // Ack the full congestion window
-        ack_cwnd(&mut congestion_controller, &rtt_estimator, ack_receive_time);
+        // Send and ack the full congestion window
+        send_and_ack_cwnd(&mut congestion_controller, &rtt_estimator, round_start);
 
         rounds.push(Round {
             number: slow_start_round,
@@ -209,7 +206,8 @@ fn loss_at_3mb<CC: CongestionController>(
     }
 
     // Lose a packet to exit slow start
-    congestion_controller.on_packets_lost(MINIMUM_MTU as u32, false, ack_receive_time);
+    congestion_controller.on_packet_sent(round_start, MINIMUM_MTU as usize);
+    congestion_controller.on_packets_lost(MINIMUM_MTU as u32, false, round_start);
 
     for round in slow_start_round..num_rounds {
         rounds.push(Round {
@@ -217,10 +215,10 @@ fn loss_at_3mb<CC: CongestionController>(
             cwnd: congestion_controller.congestion_window(),
         });
 
-        ack_receive_time += Duration::from_millis(200);
+        round_start += Duration::from_millis(200);
 
-        // Ack the full congestion window
-        ack_cwnd(&mut congestion_controller, &rtt_estimator, ack_receive_time);
+        // Send and ack the full congestion window
+        send_and_ack_cwnd(&mut congestion_controller, &rtt_estimator, round_start);
     }
 
     Simulation {
@@ -231,22 +229,25 @@ fn loss_at_3mb<CC: CongestionController>(
 }
 
 /// Acknowledge a full congestion window of packets using the given congestion controller
-fn ack_cwnd<CC: CongestionController>(
+fn send_and_ack_cwnd<CC: CongestionController>(
     congestion_controller: &mut CC,
     rtt_estimator: &RTTEstimator,
     timestamp: Timestamp,
 ) {
     let mut cwnd = congestion_controller.congestion_window();
+
+    // Send a congestion window full of bytes
+    congestion_controller.on_packet_sent(timestamp, cwnd as usize);
+
+    let ack_receive_time = timestamp + rtt_estimator.min_rtt() / 2;
+
     while cwnd >= MINIMUM_MTU as u32 {
         congestion_controller.on_packet_ack(
-            timestamp,
+            ack_receive_time,
             MINIMUM_MTU as usize,
             rtt_estimator,
-            timestamp,
+            ack_receive_time,
         );
         cwnd -= MINIMUM_MTU as u32;
-        // Ensure the congestion window is always fully utilized by sending a packet the
-        // same size as the one that we just acked.
-        congestion_controller.on_packet_sent(timestamp, MINIMUM_MTU as usize);
     }
 }
