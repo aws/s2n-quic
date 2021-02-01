@@ -67,7 +67,7 @@ impl Simulation {
         root_area.fill(&WHITE).expect("Could not fill chart");
 
         let mut ctx = ChartBuilder::on(&root_area)
-            .set_label_area_size(LabelAreaPosition::Left, 100)
+            .set_label_area_size(LabelAreaPosition::Left, 120)
             .set_label_area_size(LabelAreaPosition::Bottom, 60)
             .margin(20)
             .caption(self.name(), ("sans-serif", 40))
