@@ -92,10 +92,15 @@ impl CongestionController for CubicCongestionController {
     }
 
     fn is_congestion_limited(&self) -> bool {
+        const MAX_BURST_MULTIPLIER: u32 = 3;
+        if matches!(self.state, SlowStart) && self.bytes_in_flight > self.congestion_window() / 2 {
+            return true;
+        }
+
         let available_congestion_window = self
             .congestion_window()
             .saturating_sub(*self.bytes_in_flight);
-        available_congestion_window < self.max_datagram_size as u32
+        available_congestion_window <= self.max_datagram_size as u32 * MAX_BURST_MULTIPLIER
     }
 
     fn requires_fast_retransmission(&self) -> bool {
@@ -107,7 +112,7 @@ impl CongestionController for CubicCongestionController {
             .try_add(bytes_sent)
             .expect("bytes sent should not exceed u32::MAX");
 
-        if !self.is_congestion_limited() {
+        if self.is_congestion_window_under_utilized() {
             if let CongestionAvoidance(ref mut avoidance_start_time) = self.state {
                 //= https://tools.ietf.org/rfc/rfc8312#5.8
                 //# CUBIC does not raise its congestion window size if the flow is
@@ -157,7 +162,8 @@ impl CongestionController for CubicCongestionController {
         ack_receive_time: Timestamp,
     ) {
         // Check if the congestion window is under utilized before updating bytes in flight
-        let under_utilized = !self.is_congestion_limited();
+        let under_utilized = self.is_congestion_window_under_utilized();
+
         self.bytes_in_flight
             .try_sub(sent_bytes)
             .expect("sent bytes should not exceed u32::MAX");
@@ -429,6 +435,28 @@ impl CubicCongestionController {
 
     fn packets_to_bytes(&self, cwnd: f32) -> f32 {
         cwnd * self.max_datagram_size as f32
+    }
+
+    /// Returns true if the congestion window is under utilized and should not grow larger
+    /// without further evidence of the stability of the current window.
+    fn is_congestion_window_under_utilized(&self) -> bool {
+        const MAX_BURST_MULTIPLIER: u32 = 3;
+
+        if self.is_congestion_limited() {
+            return false;
+        }
+
+        // In slow start, allow the congestion window to increase as long as half of it is
+        // being used. This allows for the window to increase rapidly.
+        if matches!(self.state, SlowStart) && self.bytes_in_flight >= self.congestion_window() / 2 {
+            return false;
+        }
+
+        // Otherwise allow the window to increase up to MAX_BURST_MULTIPLIER packets
+        let available_congestion_window = self
+            .congestion_window()
+            .saturating_sub(*self.bytes_in_flight);
+        available_congestion_window > self.max_datagram_size as u32 * MAX_BURST_MULTIPLIER
     }
 }
 
