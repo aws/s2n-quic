@@ -451,6 +451,8 @@ impl CubicCongestionController {
     /// Returns true if the congestion window is under utilized and should not grow larger
     /// without further evidence of the stability of the current window.
     fn is_congestion_window_under_utilized(&self) -> bool {
+        // This value is based on kMaxBurstBytes from Chromium
+        // https://source.chromium.org/chromium/chromium/src/+/master:net/third_party/quiche/src/quic/core/congestion_control/tcp_cubic_sender_bytes.cc;l=23
         const MAX_BURST_MULTIPLIER: u32 = 3;
 
         if self.is_congestion_limited() {
@@ -463,7 +465,8 @@ impl CubicCongestionController {
             return false;
         }
 
-        // Otherwise allow the window to increase up to MAX_BURST_MULTIPLIER packets
+        // Otherwise allow the window to increase while MAX_BURST_MULTIPLIER packets are available
+        // in the window.
         let available_congestion_window = self
             .congestion_window()
             .saturating_sub(*self.bytes_in_flight);
