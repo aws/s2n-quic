@@ -14,7 +14,7 @@ libc = "0.2"
 openssl-sys = { version = "0.9" }
 
 [build-dependencies]
-bindgen = "0.56"
+bindgen = "0.57"
 cmake = "0.1"
 heck = "0.3"
 
