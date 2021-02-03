@@ -437,7 +437,7 @@ impl CubicCongestionController {
     /// without further evidence of the stability of the current window.
     fn is_congestion_window_under_utilized(&self) -> bool {
         // This value is based on kMaxBurstBytes from Chromium
-        // https://source.chromium.org/chromium/chromium/src/+/master:net/third_party/quiche/src/quic/core/congestion_control/tcp_cubic_sender_bytes.cc;l=23
+        // https://source.chromium.org/chromium/chromium/src/+/master:net/third_party/quiche/src/quic/core/congestion_control/tcp_cubic_sender_bytes.cc;l=23;drc=f803516d2656ed829e54b2e819731763ca6cf4d9
         const MAX_BURST_MULTIPLIER: u32 = 3;
 
         if self.is_congestion_limited() {

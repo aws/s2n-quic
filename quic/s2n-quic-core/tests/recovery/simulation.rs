@@ -346,7 +346,7 @@ fn send_and_ack<CC: CongestionController>(
 ) {
     congestion_controller.on_packet_sent(timestamp, bytes);
 
-    let ack_receive_time = timestamp + rtt_estimator.min_rtt() / 2;
+    let ack_receive_time = timestamp + rtt_estimator.min_rtt();
 
     let mut remaining = bytes;
 
