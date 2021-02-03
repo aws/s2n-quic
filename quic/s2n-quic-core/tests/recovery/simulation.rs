@@ -31,9 +31,18 @@ fn loss_at_3mb_test() {
     loss_at_3mb(cc, 135).finish();
 }
 
+#[test]
+#[cfg_attr(miri, ignore)]
+fn app_limited_1mb_test() {
+    let cc = CubicCongestionController::new(MINIMUM_MTU);
+
+    app_limited_1mb(cc, 120).finish();
+}
+
 #[derive(Debug)]
 struct Simulation {
     name: &'static str,
+    description: &'static str,
     cc: &'static str,
     rounds: Vec<Round>,
 }
@@ -65,12 +74,16 @@ impl Simulation {
     fn plot<T: AsRef<Path> + ?Sized>(&self, path: &T) {
         let root_area = SVGBackend::new(path, CHART_DIMENSIONS).into_drawing_area();
         root_area.fill(&WHITE).expect("Could not fill chart");
+        root_area
+            .titled(&*self.name(), ("sans-serif", 40))
+            .expect("Could not add title");
 
         let mut ctx = ChartBuilder::on(&root_area)
             .set_label_area_size(LabelAreaPosition::Left, 120)
             .set_label_area_size(LabelAreaPosition::Bottom, 60)
             .margin(20)
-            .caption(self.name(), ("sans-serif", 40))
+            .margin_top(40)
+            .caption(self.description, ("sans-serif", 20))
             .build_cartesian_2d(self.x_spec(), self.y_spec())
             .expect("Could not build chart");
 
@@ -93,9 +106,12 @@ impl Simulation {
     }
 
     fn y_spec(&self) -> Range<i32> {
-        let max = self.rounds.iter().map(|r| r.cwnd as i32).max().unwrap_or(0);
+        let mut max = self.rounds.iter().map(|r| r.cwnd as i32).max().unwrap_or(0);
 
-        0..max + MINIMUM_MTU as i32
+        // Add a 5% buffer
+        max = (max as f32 * 1.05) as i32;
+
+        0..max
     }
 
     fn assert_snapshot(&self) {
@@ -164,6 +180,7 @@ fn slow_start_unlimited<CC: CongestionController>(
 
     Simulation {
         name: "Slow Start Unlimited",
+        description: "Full congestion window utilization with no congestion experienced",
         cc: core::any::type_name::<CC>(),
         rounds,
     }
@@ -194,8 +211,15 @@ fn loss_at_3mb<CC: CongestionController>(
     while congestion_controller.congestion_window() < 3_000_000 && slow_start_round < num_rounds {
         round_start += Duration::from_millis(200);
 
+        let send_bytes = congestion_controller.congestion_window() as usize;
+
         // Send and ack the full congestion window
-        send_and_ack_cwnd(&mut congestion_controller, &rtt_estimator, round_start);
+        send_and_ack(
+            &mut congestion_controller,
+            &rtt_estimator,
+            round_start,
+            send_bytes,
+        );
 
         rounds.push(Round {
             number: slow_start_round,
@@ -217,37 +241,124 @@ fn loss_at_3mb<CC: CongestionController>(
 
         round_start += Duration::from_millis(200);
 
+        let send_bytes = congestion_controller.congestion_window() as usize;
+
         // Send and ack the full congestion window
-        send_and_ack_cwnd(&mut congestion_controller, &rtt_estimator, round_start);
+        send_and_ack(
+            &mut congestion_controller,
+            &rtt_estimator,
+            round_start,
+            send_bytes,
+        );
     }
 
     Simulation {
         name: "Loss at 3MB",
+        description: "Full congestion window utilization with loss encountered at ~3MB",
+        cc: core::any::type_name::<CC>(),
+        rounds,
+    }
+}
+
+/// Simulates a network that experiences loss at a 750KB congestion window with the application
+/// sending at most 1MB of data per round.
+fn app_limited_1mb<CC: CongestionController>(
+    mut congestion_controller: CC,
+    num_rounds: usize,
+) -> Simulation {
+    let time_zero = NoopClock.get_time();
+    let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(0));
+    let mut rounds = Vec::with_capacity(num_rounds);
+
+    let mut round_start = time_zero + Duration::from_millis(1);
+
+    const APP_LIMIT_BYTES: usize = 1_000_000;
+
+    // Update the rtt with 200 ms
+    rtt_estimator.update_rtt(
+        Duration::from_millis(0),
+        Duration::from_millis(200),
+        time_zero,
+        true,
+        PacketNumberSpace::ApplicationData,
+    );
+
+    let mut slow_start_round = 0;
+
+    while congestion_controller.congestion_window() < 750_000 && slow_start_round < num_rounds {
+        round_start += Duration::from_millis(200);
+
+        // Send and ack the full congestion window
+        let cwnd = congestion_controller.congestion_window() as usize;
+
+        send_and_ack(
+            &mut congestion_controller,
+            &rtt_estimator,
+            round_start,
+            cwnd,
+        );
+
+        rounds.push(Round {
+            number: slow_start_round,
+            cwnd: congestion_controller.congestion_window(),
+        });
+
+        slow_start_round += 1;
+    }
+
+    // Lose a packet to exit slow start
+    congestion_controller.on_packet_sent(round_start, MINIMUM_MTU as usize);
+    congestion_controller.on_packets_lost(MINIMUM_MTU as u32, false, round_start);
+
+    for round in slow_start_round..num_rounds {
+        rounds.push(Round {
+            number: round,
+            cwnd: congestion_controller.congestion_window(),
+        });
+
+        round_start += Duration::from_millis(200);
+
+        // Send and ack up to APP_LIMIT_BYTES
+        let send_bytes = (congestion_controller.congestion_window() as usize).min(APP_LIMIT_BYTES);
+
+        send_and_ack(
+            &mut congestion_controller,
+            &rtt_estimator,
+            round_start,
+            send_bytes,
+        );
+    }
+
+    Simulation {
+        name: "App Limited 1MB",
+        description: "App limited to 1MB per round with loss encountered at ~750KB",
         cc: core::any::type_name::<CC>(),
         rounds,
     }
 }
 
 /// Acknowledge a full congestion window of packets using the given congestion controller
-fn send_and_ack_cwnd<CC: CongestionController>(
+fn send_and_ack<CC: CongestionController>(
     congestion_controller: &mut CC,
     rtt_estimator: &RTTEstimator,
     timestamp: Timestamp,
+    bytes: usize,
 ) {
-    let mut cwnd = congestion_controller.congestion_window();
-
-    // Send a congestion window full of bytes
-    congestion_controller.on_packet_sent(timestamp, cwnd as usize);
+    congestion_controller.on_packet_sent(timestamp, bytes);
 
     let ack_receive_time = timestamp + rtt_estimator.min_rtt() / 2;
 
-    while cwnd >= MINIMUM_MTU as u32 {
+    let mut remaining = bytes;
+
+    while remaining > 0 {
+        let bytes_sent = remaining.min(MINIMUM_MTU as usize);
+
         congestion_controller.on_packet_ack(
             ack_receive_time,
-            MINIMUM_MTU as usize,
+            bytes_sent,
             rtt_estimator,
             ack_receive_time,
         );
-        cwnd -= MINIMUM_MTU as u32;
+        remaining -= bytes_sent;
     }
 }

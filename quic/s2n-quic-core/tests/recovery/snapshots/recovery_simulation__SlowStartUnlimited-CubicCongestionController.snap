@@ -4,6 +4,7 @@ expression: self
 ---
 Simulation {
     name: "Slow Start Unlimited",
+    description: "Full congestion window utilization with no congestion experienced",
     cc: "s2n_quic_core::recovery::cubic::CubicCongestionController",
     rounds: [
           0: cwnd: 12000,
