@@ -82,6 +82,7 @@ pub struct CubicCongestionController {
     //# congestion feedback.
     bytes_in_flight: BytesInFlight,
     time_of_last_sent_packet: Option<Timestamp>,
+    under_utilized: bool,
 }
 
 type BytesInFlight = Counter<u32>;
@@ -107,7 +108,9 @@ impl CongestionController for CubicCongestionController {
             .try_add(bytes_sent)
             .expect("bytes sent should not exceed u32::MAX");
 
-        if !self.is_congestion_limited() {
+        self.under_utilized = self.is_congestion_window_under_utilized();
+
+        if self.under_utilized {
             if let CongestionAvoidance(ref mut avoidance_start_time) = self.state {
                 //= https://tools.ietf.org/rfc/rfc8312#5.8
                 //# CUBIC does not raise its congestion window size if the flow is
@@ -156,13 +159,11 @@ impl CongestionController for CubicCongestionController {
         rtt_estimator: &RTTEstimator,
         ack_receive_time: Timestamp,
     ) {
-        // Check if the congestion window is under utilized before updating bytes in flight
-        let under_utilized = !self.is_congestion_limited();
         self.bytes_in_flight
             .try_sub(sent_bytes)
             .expect("sent bytes should not exceed u32::MAX");
 
-        if under_utilized {
+        if self.under_utilized {
             //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.8
             //# When bytes in flight is smaller than the congestion window and
             //# sending is not pacing limited, the congestion window is under-
@@ -330,6 +331,7 @@ impl CubicCongestionController {
             state: SlowStart,
             bytes_in_flight: Counter::new(0),
             time_of_last_sent_packet: None,
+            under_utilized: true,
         }
     }
 
@@ -429,6 +431,31 @@ impl CubicCongestionController {
 
     fn packets_to_bytes(&self, cwnd: f32) -> f32 {
         cwnd * self.max_datagram_size as f32
+    }
+
+    /// Returns true if the congestion window is under utilized and should not grow larger
+    /// without further evidence of the stability of the current window.
+    fn is_congestion_window_under_utilized(&self) -> bool {
+        // This value is based on kMaxBurstBytes from Chromium
+        // https://source.chromium.org/chromium/chromium/src/+/master:net/third_party/quiche/src/quic/core/congestion_control/tcp_cubic_sender_bytes.cc;l=23;drc=f803516d2656ed829e54b2e819731763ca6cf4d9
+        const MAX_BURST_MULTIPLIER: u32 = 3;
+
+        if self.is_congestion_limited() {
+            return false;
+        }
+
+        // In slow start, allow the congestion window to increase as long as half of it is
+        // being used. This allows for the window to increase rapidly.
+        if matches!(self.state, SlowStart) && self.bytes_in_flight >= self.congestion_window() / 2 {
+            return false;
+        }
+
+        // Otherwise allow the window to increase while MAX_BURST_MULTIPLIER packets are available
+        // in the window.
+        let available_congestion_window = self
+            .congestion_window()
+            .saturating_sub(*self.bytes_in_flight);
+        available_congestion_window > self.max_datagram_size as u32 * MAX_BURST_MULTIPLIER
     }
 }
 
@@ -708,6 +735,32 @@ mod test {
         assert!(cc.is_congestion_limited());
     }
 
+    #[test]
+    fn is_congestion_window_under_utilized() {
+        let max_datagram_size = 1200;
+        let mut cc = CubicCongestionController::new(max_datagram_size);
+        cc.congestion_window = 12000.0;
+
+        // In Slow Start, the window is under utilized if it is less than half full
+        cc.bytes_in_flight = BytesInFlight::new(5999);
+        cc.state = SlowStart;
+        assert!(cc.is_congestion_window_under_utilized());
+
+        cc.bytes_in_flight = BytesInFlight::new(6000);
+        assert!(!cc.is_congestion_window_under_utilized());
+
+        cc.state = CongestionAvoidance(NoopClock.get_time());
+        assert!(cc.is_congestion_window_under_utilized());
+
+        // In Congestion Avoidance, the window is under utilized if there are more than
+        // 3 * MTU bytes available in the congestion window (12000 - 3 * 1200 = 8400)
+        cc.bytes_in_flight = BytesInFlight::new(8399);
+        assert!(cc.is_congestion_window_under_utilized());
+
+        cc.bytes_in_flight = BytesInFlight::new(8400);
+        assert!(!cc.is_congestion_window_under_utilized());
+    }
+
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.2
     //= type=test
     //# Endpoints SHOULD use an initial congestion
@@ -808,13 +861,13 @@ mod test {
         let now = NoopClock.get_time();
 
         cc.congestion_window = 100_000.0;
-        cc.bytes_in_flight = BytesInFlight::new(96_500);
+        cc.bytes_in_flight = BytesInFlight::new(92_500);
         cc.state = SlowStart;
 
         // t0: Send a packet in Slow Start
         cc.on_packet_sent(now, 1000);
 
-        assert_eq!(cc.bytes_in_flight, 97_500);
+        assert_eq!(cc.bytes_in_flight, 93_500);
         assert_eq!(cc.time_of_last_sent_packet, Some(now));
 
         // t10: Enter Congestion Avoidance
@@ -823,7 +876,7 @@ mod test {
         // t15: Send a packet in Congestion Avoidance
         cc.on_packet_sent(now + Duration::from_secs(15), 1000);
 
-        assert_eq!(cc.bytes_in_flight, 98_500);
+        assert_eq!(cc.bytes_in_flight, 94_500);
         assert_eq!(
             cc.time_of_last_sent_packet,
             Some(now + Duration::from_secs(15))
@@ -832,7 +885,7 @@ mod test {
         // so the CongestionAvoidance increases by the time from avoidance start to now
         assert_eq!(cc.state, CongestionAvoidance(now + Duration::from_secs(15)));
 
-        cc.bytes_in_flight = BytesInFlight::new(97500);
+        cc.bytes_in_flight = BytesInFlight::new(93500);
 
         // t25: Send a packet in Congestion Avoidance
         cc.on_packet_sent(now + Duration::from_secs(25), 1000);
@@ -868,7 +921,7 @@ mod test {
         let now = NoopClock.get_time();
         let rtt_estimator = &RTTEstimator::new(Duration::from_secs(0));
 
-        cc.congestion_window = 3000.0;
+        cc.congestion_window = 6000.0;
         cc.bytes_in_flight = BytesInFlight::new(0);
         cc.state = SlowStart;
 
@@ -882,9 +935,11 @@ mod test {
 
         // t15: Send a packet in Congestion Avoidance while under utilized
         cc.on_packet_sent(now + Duration::from_secs(15), 1000);
+        assert!(cc.is_congestion_window_under_utilized());
 
         // t15: Send a packet in Congestion Avoidance while not under utilized
         cc.on_packet_sent(now + Duration::from_secs(15), 1000);
+        assert!(!cc.is_congestion_window_under_utilized());
 
         assert_eq!(cc.bytes_in_flight, 3000);
 
@@ -1075,6 +1130,7 @@ mod test {
         let now = NoopClock.get_time();
         cc.congestion_window = 100_000.0;
         cc.bytes_in_flight = BytesInFlight::new(10000);
+        cc.under_utilized = true;
         cc.state = SlowStart;
 
         cc.on_packet_ack(now, 1, &RTTEstimator::new(Duration::from_secs(0)), now);
@@ -1089,6 +1145,43 @@ mod test {
     }
 
     #[test]
+    fn on_packet_ack_utilized_then_under_utilized() {
+        let mut cc = CubicCongestionController::new(5000);
+        let now = NoopClock.get_time();
+        let mut rtt_estimator = RTTEstimator::new(Duration::from_secs(0));
+        rtt_estimator.update_rtt(
+            Duration::from_secs(0),
+            Duration::from_millis(200),
+            now,
+            true,
+            PacketNumberSpace::ApplicationData,
+        );
+        cc.congestion_window = 100_000.0;
+        cc.state = SlowStart;
+
+        cc.on_packet_sent(now, 60_000);
+        cc.on_packet_ack(now, 50_000, &rtt_estimator, now);
+        let cwnd = cc.congestion_window();
+
+        assert!(!cc.under_utilized);
+        assert!(cwnd > 100_000);
+
+        // Now the window is under utilized, but we still grow the window until more packets are sent
+        assert!(cc.is_congestion_window_under_utilized());
+        cc.on_packet_ack(now, 1200, &rtt_estimator, now + Duration::from_millis(100));
+        assert!(cc.congestion_window() > cwnd);
+
+        let cwnd = cc.congestion_window();
+
+        // Now the application has had a chance to send more data, but it didn't send enough to
+        // utilize the congestion window, so the window does not grow.
+        cc.on_packet_sent(now, 1200);
+        assert!(cc.under_utilized);
+        cc.on_packet_ack(now, 1200, &rtt_estimator, now + Duration::from_millis(201));
+        assert_eq!(cc.congestion_window(), cwnd);
+    }
+
+    #[test]
     #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.2")]
     fn on_packet_ack_recovery_to_congestion_avoidance() {
         let mut cc = CubicCongestionController::new(5000);
@@ -1097,6 +1190,7 @@ mod test {
         cc.cubic.w_max = bytes_to_packets(25000.0, 5000);
         cc.state = Recovery(now, Idle);
         cc.bytes_in_flight = BytesInFlight::new(25000);
+        cc.under_utilized = false;
 
         cc.on_packet_ack(
             now + Duration::from_millis(1),
@@ -1121,6 +1215,7 @@ mod test {
         cc.congestion_window = 10000.0;
         cc.bytes_in_flight = BytesInFlight::new(10000);
         cc.slow_start.threshold = 10050.0;
+        cc.under_utilized = false;
 
         cc.on_packet_ack(
             now,
@@ -1174,6 +1269,7 @@ mod test {
         cc.congestion_window = 10000.0;
         cc.bytes_in_flight = BytesInFlight::new(10000);
         cc.cubic.w_max = bytes_to_packets(10000.0, max_datagram_size);
+        cc.under_utilized = false;
 
         cc2.congestion_window = 10000.0;
         cc2.bytes_in_flight = BytesInFlight::new(10000);
