@@ -367,7 +367,9 @@ impl CubicCongestionController {
             //# or less than W_max), CUBIC checks whether W_cubic(t) is less than
             //# W_est(t).  If so, CUBIC is in the TCP-friendly region and cwnd SHOULD
             //# be set to W_est(t) at each reception of an ACK.
-            self.congestion_window = self.packets_to_bytes(w_est);
+            self.congestion_window = self
+                .packets_to_bytes(w_est)
+                .max(self.minimum_window() as f32);
         } else {
             //= https://tools.ietf.org/rfc/rfc8312#4.1
             //# Upon receiving an ACK during congestion avoidance, CUBIC computes the
