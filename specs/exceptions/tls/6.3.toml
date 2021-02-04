@@ -8,6 +8,8 @@ updates happen and thus the value of the Key Phase bit in certain
 packets.
 '''
 reason = '''
-We are not performing key generations as part of packet processing.
+We are not performing key generations as part of packet processing, so we do not
+expose any timing signal to an attacker. Therefore this MAY does not apply to our
+implementation.
 '''
 

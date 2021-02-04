@@ -30,7 +30,6 @@ tracking-issue = "478"
 feature = "Key update"
 
 [[TODO]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.3"
 quote = '''
 Once generated, the next set of packet protection keys SHOULD be
 retained, even if the packet that was received was subsequently
