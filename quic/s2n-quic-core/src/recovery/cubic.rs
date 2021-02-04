@@ -246,6 +246,7 @@ impl CongestionController for CubicCongestionController {
         if persistent_congestion {
             self.congestion_window = self.minimum_window() as f32;
             self.state = State::SlowStart;
+            self.cubic.reset();
         }
     }
 
@@ -500,6 +501,13 @@ impl Cubic {
             k: Duration::default(),
             max_datagram_size,
         }
+    }
+
+    /// Reset to the original state
+    pub fn reset(&mut self) {
+        self.w_max = 0.0;
+        self.w_last_max = 0.0;
+        self.k = Duration::default();
     }
 
     //= https://tools.ietf.org/rfc/rfc8312#4.1
@@ -1068,6 +1076,9 @@ mod test {
 
         assert_eq!(cc.state, SlowStart);
         assert_delta!(cc.congestion_window, cc.minimum_window() as f32, 0.001);
+        assert_delta!(cc.cubic.w_max, 0.0, 0.001);
+        assert_delta!(cc.cubic.w_last_max, 0.0, 0.001);
+        assert_eq!(cc.cubic.k, Duration::from_millis(0));
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.2
