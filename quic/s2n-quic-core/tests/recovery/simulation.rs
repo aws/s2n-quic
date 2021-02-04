@@ -39,6 +39,14 @@ fn app_limited_1mb_test() {
     app_limited_1mb(cc, 120).finish();
 }
 
+#[test]
+#[cfg_attr(miri, ignore)]
+fn minimum_window_test() {
+    let cc = CubicCongestionController::new(MINIMUM_MTU);
+
+    minimum_window(cc, 10).finish();
+}
+
 #[derive(Debug)]
 struct Simulation {
     name: &'static str,
@@ -337,7 +345,61 @@ fn app_limited_1mb<CC: CongestionController>(
     }
 }
 
-/// Acknowledge a full congestion window of packets using the given congestion controller
+/// Simulates a network starting from the minimum window size with no further congestion
+fn minimum_window<CC: CongestionController>(
+    mut congestion_controller: CC,
+    num_rounds: usize,
+) -> Simulation {
+    let time_zero = NoopClock.get_time();
+    let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(0));
+    let mut rounds = Vec::with_capacity(num_rounds);
+
+    let mut round_start = time_zero + Duration::from_millis(1);
+
+    // Update the rtt with 200 ms
+    rtt_estimator.update_rtt(
+        Duration::from_millis(0),
+        Duration::from_millis(200),
+        time_zero,
+        true,
+        PacketNumberSpace::ApplicationData,
+    );
+
+    congestion_controller.on_packet_sent(round_start, MINIMUM_MTU as usize);
+    // Experience persistent congestion to drop to the minimum window
+    congestion_controller.on_packets_lost(MINIMUM_MTU as u32, true, round_start);
+    congestion_controller.on_packet_sent(round_start, MINIMUM_MTU as usize);
+    // Lose a packet to exit slow start
+    congestion_controller.on_packets_lost(MINIMUM_MTU as u32, false, round_start);
+
+    for round in 0..num_rounds {
+        rounds.push(Round {
+            number: round,
+            cwnd: congestion_controller.congestion_window(),
+        });
+
+        round_start += Duration::from_millis(200);
+
+        let send_bytes = congestion_controller.congestion_window() as usize;
+
+        // Ack the full congestion window
+        send_and_ack(
+            &mut congestion_controller,
+            &rtt_estimator,
+            round_start,
+            send_bytes,
+        );
+    }
+
+    Simulation {
+        name: "Minimum Window",
+        description: "Full congestion window utilization after starting from the minimum window",
+        cc: core::any::type_name::<CC>(),
+        rounds,
+    }
+}
+
+/// Send and acknowledge the given amount of bytes using the given congestion controller
 fn send_and_ack<CC: CongestionController>(
     congestion_controller: &mut CC,
     rtt_estimator: &RTTEstimator,
