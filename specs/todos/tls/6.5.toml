@@ -7,14 +7,14 @@ An endpoint MAY allow a period of approximately the Probe Timeout
 key generation before it creates the next set of packet protection
 keys.
 '''
-tracking-issue = "318"
+tracking-issue = "478"
 feature = "Key update"
 
 [[TODO]]
 quote = '''
 These updated keys MAY replace the previous keys at that time.
 '''
-tracking-issue = "318"
+tracking-issue = "478"
 feature = "Key update"
 
 [[TODO]]
@@ -23,7 +23,7 @@ Endpoints SHOULD wait three times the PTO
 before initiating a key update after receiving an acknowledgment that
 confirms that the previous key update was received.
 '''
-tracking-issue = "318"
+tracking-issue = "478"
 feature = "Key update"
 
 [[TODO]]
@@ -31,7 +31,7 @@ quote = '''
 An endpoint SHOULD retain old read keys for no more than three times
 the PTO after having received a packet protected using the new keys.
 '''
-tracking-issue = "318"
+tracking-issue = "478"
 feature = "Key update"
 
 [[TODO]]
@@ -39,6 +39,6 @@ quote = '''
 After this period, old read keys and their corresponding secrets
 SHOULD be discarded.
 '''
-tracking-issue = "318"
+tracking-issue = "478"
 feature = "Key update"
 

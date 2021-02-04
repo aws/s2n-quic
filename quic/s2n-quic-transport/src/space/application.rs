@@ -50,7 +50,21 @@ pub struct ApplicationSpace<Config: connection::Config> {
     pub spin_bit: SpinBit,
     /// The crypto suite for application data
     /// TODO: What about ZeroRtt?
+    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.3
+    //= type=TODO
+    //= tracking-issue=471
+    //= feature=Key update
+    //# For this reason, endpoints MUST be able to retain two sets of packet
+    //# protection keys for receiving packets: the current and the next.
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.1
+    //= type=TODO
+    //= tracking-issue=471
+    //= feature=Key update
+    //# An endpoint MUST retain old keys until it has successfully
+    //# unprotected a packet sent using the new keys.
     pub crypto: PacketSpaceCrypto<<Config::TLSSession as CryptoSuite>::OneRTTCrypto>,
+
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7
     //# Endpoints MUST explicitly negotiate an application protocol.
 

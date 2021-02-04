@@ -22,7 +22,7 @@ quote = '''
 An endpoint MUST retain old keys until it has successfully
 unprotected a packet sent using the new keys.
 '''
-tracking-issue = "318"
+tracking-issue = "478"
 feature = "Key update"
 
 [[TODO]]
@@ -31,6 +31,6 @@ An endpoint SHOULD
 retain old keys for some time after unprotecting a packet sent using
 the new keys.
 '''
-tracking-issue = "318"
+tracking-issue = "478"
 feature = "Key update"
 

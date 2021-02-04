@@ -172,7 +172,23 @@ macro_rules! packet_validator {
             } else {
                 $($inspect)?
 
+
                 match packet_space_crypto.decrypt_packet($conn, |key| {
+                    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.4
+                    //= type=TODO
+                    //= tracking-issue=479
+                    //= feature=Key update
+                    //# An endpoint that successfully removes protection with old
+                    //# keys when newer keys were used for packets with lower packet numbers
+                    //# MUST treat this as a connection error of type KEY_UPDATE_ERROR.
+
+                    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.4
+                    //= type=TODO
+                    //= tracking-issue=479
+                    //= feature=Key update
+                    //# Packets with higher packet numbers MUST be protected with either the
+                    //# same or newer packet protection keys than packets with lower packet
+                    //# numbers.
                     $packet.decrypt(key)
                 }) {
                     Ok(packet) => Some((packet, space, handshake_status)),
@@ -791,6 +807,29 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
             packet,
             shared_state.space_manager.application_mut(),
             {
+                //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.2
+                //= type=TODO
+                //= tracking-issue=478
+                //= feature=Key update
+                //# The endpoint MUST update its
+                //# send keys to the corresponding key phase in response, as described in
+                //# Section 6.1.
+
+                //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.2
+                //= type=TODO
+                //= tracking-issue=478
+                //= feature=Key update
+                //# Sending keys MUST be updated before sending an
+                //# acknowledgement for the packet that was received with updated keys.
+
+                //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.2
+                //= type=TODO
+                //= tracking-issue=479
+                //= feature=Key update
+                //# An endpoint
+                //# MAY treat consecutive key updates as a connection error of type
+                //# KEY_UPDATE_ERROR.
+
                 if packet.key_phase != Default::default() {
                     dbg!("key updates are not currently implemented");
                     return Err(CryptoError::INTERNAL_ERROR.into());

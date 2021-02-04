@@ -26,7 +26,7 @@ Endpoints MAY instead defer the creation of the next set of
 receive packet protection keys until some time after a key update
 completes, up to three times the PTO; see Section 6.5.
 '''
-tracking-issue = "318"
+tracking-issue = "478"
 feature = "Key update"
 
 [[TODO]]
@@ -35,14 +35,6 @@ Once generated, the next set of packet protection keys SHOULD be
 retained, even if the packet that was received was subsequently
 discarded.
 '''
-tracking-issue = "318"
-feature = "Key update"
-
-[[TODO]]
-quote = '''
-For this reason, endpoints MUST be able to retain two sets of packet
-protection keys for receiving packets: the current and the next.
-'''
-tracking-issue = "318"
+tracking-issue = "478"
 feature = "Key update"
 
