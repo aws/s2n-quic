@@ -26,9 +26,7 @@ pub trait Behavior {
 /// Behavior for the Occupied Slice
 ///
 /// After being successfully consumed an occupied message
-/// should reset its payload_len to MTU. Additionaly, if enabled
-/// with the `wipe` feature, the payload will be wiped to prevent
-/// sensitive data from persisting in memory.
+/// should reset its payload_len to MTU.
 ///
 /// Cancelling is a no-op.
 #[derive(Debug)]
@@ -37,6 +35,48 @@ pub struct Occupied {
 }
 
 impl Behavior for Occupied {
+    /// Because the primary and secondary messages point to the same
+    /// payloads in memory, only wiping the first is required
+    fn advance<Message: message::Message>(
+        &self,
+        primary: &mut [Message],
+        secondary: &mut [Message],
+        start: usize,
+        end: usize,
+        overflow: usize,
+    ) {
+        reset(&mut primary[start..end], self.mtu);
+        reset(&mut primary[..overflow], self.mtu);
+        reset(&mut secondary[start..end], self.mtu);
+        reset(&mut secondary[..overflow], self.mtu);
+    }
+
+    /// Cancelling an occupied message doesn't mutate any state
+    fn cancel<Message: message::Message>(
+        &self,
+        _primary: &mut [Message],
+        _secondary: &mut [Message],
+        _start: usize,
+        _end: usize,
+        _overflow: usize,
+    ) {
+    }
+}
+
+/// Behavior for the Occupied Slice, with optional wiping
+///
+/// After being successfully consumed an occupied message
+/// should reset its payload_len to MTU. Additionaly, if enabled
+/// with the `wipe` feature, the payload will be wiped to prevent
+/// sensitive data from persisting in memory.
+///
+/// Cancelling is a no-op.
+#[derive(Debug)]
+pub struct OccupiedWipe {
+    pub(crate) mtu: usize,
+}
+
+impl Behavior for OccupiedWipe {
     /// Because the primary and secondary messages point to the same
     /// payloads in memory, only wiping the first is required
     fn advance<Message: message::Message>(

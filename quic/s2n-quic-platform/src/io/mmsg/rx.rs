@@ -23,11 +23,11 @@ impl_socket_mio_delegate!(
 impl<'a, Buffer: buffer::Buffer, Socket: AsRaw + socket::Socket<Error = io::Error>> rx::Rx<'a>
     for Rx<Buffer, Socket>
 {
-    type Queue = queue::Occupied<'a, Message>;
+    type Queue = queue::OccupiedWipe<'a, Message>;
     type Error = io::Error;
 
     fn queue(&'a mut self) -> Self::Queue {
-        self.queue.occupied_mut()
+        self.queue.occupied_wipe_mut()
     }
 
     fn len(&self) -> usize {

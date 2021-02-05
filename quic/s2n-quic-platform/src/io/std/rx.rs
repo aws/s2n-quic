@@ -26,11 +26,11 @@ impl<
         Socket: socket::Simple<Error = io::Error> + socket::Socket<Error = io::Error>,
     > rx::Rx<'a> for Rx<Buffer, Socket>
 {
-    type Queue = queue::Occupied<'a, Message>;
+    type Queue = queue::OccupiedWipe<'a, Message>;
     type Error = io::Error;
 
     fn queue(&'a mut self) -> Self::Queue {
-        self.queue.occupied_mut()
+        self.queue.occupied_wipe_mut()
     }
 
     fn len(&self) -> usize {
