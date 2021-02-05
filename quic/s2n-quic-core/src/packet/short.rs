@@ -106,6 +106,15 @@ impl Default for KeyPhase {
     }
 }
 
+impl From<KeyPhase> for usize {
+    fn from(key_phase: KeyPhase) -> usize {
+        match key_phase {
+            KeyPhase::Zero => 0,
+            KeyPhase::One => 1,
+        }
+    }
+}
+
 impl KeyPhase {
     fn from_tag(tag: Tag) -> Self {
         if tag & KEY_PHASE_MASK == KEY_PHASE_MASK {
@@ -253,6 +262,11 @@ impl<'a> EncryptedShort<'a> {
             packet_number,
             payload,
         })
+    }
+
+    #[inline]
+    pub fn key_phase(&self) -> usize {
+        self.key_phase.into()
     }
 
     #[inline]

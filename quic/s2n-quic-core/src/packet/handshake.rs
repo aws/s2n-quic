@@ -172,6 +172,12 @@ impl<'a> EncryptedHandshake<'a> {
             .get_checked_range(&self.source_connection_id)
             .into_less_safe_slice()
     }
+
+    // HandshakePackets do not have a KeyPhase
+    #[inline]
+    pub fn key_phase(&self) -> usize {
+        0
+    }
 }
 
 impl<'a> CleartextHandshake<'a> {

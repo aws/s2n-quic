@@ -210,6 +210,12 @@ impl<'a> EncryptedInitial<'a> {
             .get_checked_range(&self.token)
             .into_less_safe_slice()
     }
+
+    // InitialPackets do not have a KeyPhase
+    #[inline]
+    pub fn key_phase(&self) -> usize {
+        0
+    }
 }
 
 impl<'a> CleartextInitial<'a> {

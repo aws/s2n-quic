@@ -662,12 +662,6 @@ impl<K: Key> PacketSpaceCrypto<K> {
     }
 }
 
-pub trait PhasedCrypto {
-    type K;
-
-    fn phased_crypto(&self) -> &PacketSpaceCrypto<Self::K>;
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -5,7 +5,7 @@ use crate::{
     recovery,
     space::{
         rx_packet_numbers::AckManager, HandshakeStatus, PacketSpace, PacketSpaceCrypto,
-        PhasedCrypto, TxPacketNumbers,
+        TxPacketNumbers,
     },
     stream::AbstractStreamManager,
     sync::flag,
@@ -77,14 +77,6 @@ pub struct ApplicationSpace<Config: connection::Config> {
     recovery_manager: recovery::Manager,
 }
 
-impl<Config: connection::Config> PhasedCrypto for ApplicationSpace<Config> {
-    type K = <Config::TLSSession as CryptoSuite>::OneRTTCrypto;
-
-    fn phased_crypto(&self) -> &PacketSpaceCrypto<Self::K> {
-        &self.crypto[self.key_phase as usize]
-    }
-}
-
 impl<Config: connection::Config> ApplicationSpace<Config> {
     pub fn new(
         crypto: <Config::TLSSession as CryptoSuite>::OneRTTCrypto,
@@ -122,6 +114,23 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
                 max_ack_delay,
             ),
         }
+    }
+
+    pub fn header_protection_crypto(
+        &self,
+    ) -> &PacketSpaceCrypto<<Config::TLSSession as CryptoSuite>::OneRTTCrypto> {
+        &self.crypto[0]
+    }
+
+    pub fn packet_protection_crypto(
+        &self,
+        key_phase: usize,
+    ) -> &PacketSpaceCrypto<<Config::TLSSession as CryptoSuite>::OneRTTCrypto> {
+        &self.crypto[key_phase]
+    }
+
+    pub fn key_phase(&self) -> usize {
+        self.key_phase.into()
     }
 
     /// Returns true if the packet number has already been processed

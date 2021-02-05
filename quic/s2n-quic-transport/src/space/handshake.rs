@@ -5,7 +5,7 @@ use crate::{
     recovery,
     space::{
         rx_packet_numbers::AckManager, CryptoStream, HandshakeStatus, PacketSpace,
-        PacketSpaceCrypto, PhasedCrypto, TxPacketNumbers,
+        PacketSpaceCrypto, TxPacketNumbers,
     },
     transmission,
 };
@@ -59,6 +59,25 @@ impl<Config: connection::Config> HandshakeSpace<Config> {
             processed_packet_numbers: SlidingWindow::default(),
             recovery_manager: recovery::Manager::new(PacketNumberSpace::Handshake, max_ack_delay),
         }
+    }
+
+    // HandshakeSpace does not have a key phase
+    pub fn header_protection_crypto(
+        &self,
+    ) -> &PacketSpaceCrypto<<Config::TLSSession as CryptoSuite>::HandshakeCrypto> {
+        &self.crypto
+    }
+
+    // HandshakeSpace does not have a key phase
+    pub fn packet_protection_crypto(
+        &self,
+        _key_phase: usize,
+    ) -> &PacketSpaceCrypto<<Config::TLSSession as CryptoSuite>::HandshakeCrypto> {
+        &self.crypto
+    }
+
+    pub fn key_phase(&self) -> usize {
+        0
     }
 
     /// Returns true if the packet number has already been processed
@@ -211,14 +230,6 @@ impl<Config: connection::Config> HandshakeSpace<Config> {
                 path,
             },
         )
-    }
-}
-
-impl<Config: connection::Config> PhasedCrypto for HandshakeSpace<Config> {
-    type K = <Config::TLSSession as CryptoSuite>::HandshakeCrypto;
-
-    fn phased_crypto(&self) -> &PacketSpaceCrypto<Self::K> {
-        &self.crypto
     }
 }
 

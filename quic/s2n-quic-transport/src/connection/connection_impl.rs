@@ -11,7 +11,7 @@ use crate::{
     contexts::ConnectionOnTransmitError,
     path,
     recovery::{congestion_controller, RTTEstimator},
-    space::{PacketSpace, PhasedCrypto, EARLY_ACK_SETTINGS},
+    space::{PacketSpace, EARLY_ACK_SETTINGS},
     transmission,
 };
 use core::time::Duration;
@@ -148,9 +148,7 @@ impl<Config: connection::Config> Drop for ConnectionImpl<Config> {
 macro_rules! packet_validator {
     ($conn:ident, $packet:ident, $space:expr $(, $inspect:expr)?) => {{
         if let Some((space, handshake_status)) = $space {
-            // The ApplicationSpace has phased keys. phased_crypto() gives us the proper key regardless
-            // of which Space we are working with.
-            let packet_space_crypto = space.phased_crypto();
+            let header_protection_crypto = space.header_protection_crypto();
             let packet_number_decoder = space.packet_number_decoder();
 
             // TODO ensure this is all side-channel free and reserved bits are 0
@@ -162,7 +160,7 @@ macro_rules! packet_validator {
 
             // It may indicate the packet is a stateless reset however, so we will bubble
             // up the error to allow the caller to handle it.
-            let $packet = packet_space_crypto.unprotect_packet(|key|
+            let $packet = header_protection_crypto.unprotect_packet(|key|
                 $packet.unprotect(key, packet_number_decoder)
             )?;
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.3
@@ -173,28 +171,31 @@ macro_rules! packet_validator {
                 None
             } else {
                 $($inspect)?
-
+                let packet_space_crypto = space.packet_protection_crypto($packet.key_phase());
 
                 match packet_space_crypto.decrypt_packet($conn, |key| {
-                    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.4
-                    //= type=TODO
-                    //= tracking-issue=479
-                    //= feature=Key update
-                    //# An endpoint that successfully removes protection with old
-                    //# keys when newer keys were used for packets with lower packet numbers
-                    //# MUST treat this as a connection error of type KEY_UPDATE_ERROR.
-
-                    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.4
-                    //= type=TODO
-                    //= tracking-issue=479
-                    //= feature=Key update
-                    //# Packets with higher packet numbers MUST be protected with either the
-                    //# same or newer packet protection keys than packets with lower packet
-                    //# numbers.
                     $packet.decrypt(key)
                 }) {
-                    Ok(packet) => Some((packet, space, handshake_status)),
-                    Err(e) => return Err(e),
+                    Ok(packet) => {
+                        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.4
+                        //= feature=Key update
+                        //# An endpoint that successfully removes protection with old
+                        //# keys when newer keys were used for packets with lower packet numbers
+                        //# MUST treat this as a connection error of type KEY_UPDATE_ERROR.
+                        // We haven't switched ApplicationSpace keys, so this decrypt should
+                        // have failed.
+                        Some((packet, space, handshake_status))
+                    }
+                    Err(e) => {
+                        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.4
+                        //= type=TODO
+                        //= tracking-issue=479
+                        //= feature=Key update
+                        //# Packets with higher packet numbers MUST be protected with either the
+                        //# same or newer packet protection keys than packets with lower packet
+                        //# numbers.
+                        return Err(e)
+                    }
                 }
             }
         } else {

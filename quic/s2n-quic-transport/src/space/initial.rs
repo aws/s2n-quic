@@ -5,7 +5,7 @@ use crate::{
     recovery,
     space::{
         rx_packet_numbers::AckManager, CryptoStream, HandshakeStatus, PacketSpace,
-        PacketSpaceCrypto, PhasedCrypto, TxPacketNumbers,
+        PacketSpaceCrypto, TxPacketNumbers,
     },
     transmission,
 };
@@ -44,14 +44,6 @@ pub struct InitialSpace<Config: connection::Config> {
     recovery_manager: recovery::Manager,
 }
 
-impl<Config: connection::Config> PhasedCrypto for InitialSpace<Config> {
-    type K = <Config::TLSSession as CryptoSuite>::InitialCrypto;
-
-    fn phased_crypto(&self) -> &PacketSpaceCrypto<Self::K> {
-        &self.crypto
-    }
-}
-
 impl<Config: connection::Config> InitialSpace<Config> {
     pub fn new(
         crypto: <Config::TLSSession as CryptoSuite>::InitialCrypto,
@@ -67,6 +59,25 @@ impl<Config: connection::Config> InitialSpace<Config> {
             processed_packet_numbers: SlidingWindow::default(),
             recovery_manager: recovery::Manager::new(PacketNumberSpace::Initial, max_ack_delay),
         }
+    }
+
+    // InitialSpace does not have a key phase
+    pub fn header_protection_crypto(
+        &self,
+    ) -> &PacketSpaceCrypto<<Config::TLSSession as CryptoSuite>::InitialCrypto> {
+        &self.crypto
+    }
+
+    // InitialSpace does not have a key phase
+    pub fn packet_protection_crypto(
+        &self,
+        _key_phase: usize,
+    ) -> &PacketSpaceCrypto<<Config::TLSSession as CryptoSuite>::InitialCrypto> {
+        &self.crypto
+    }
+
+    pub fn key_phase(&self) -> usize {
+        0
     }
 
     /// Returns true if the packet number has already been processed
