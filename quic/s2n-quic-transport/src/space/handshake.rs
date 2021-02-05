@@ -77,10 +77,6 @@ impl<Config: connection::Config> HandshakeSpace<Config> {
         &self.crypto
     }
 
-    pub fn key_phase(&self) -> KeyPhase {
-        KeyPhase::Zero
-    }
-
     /// Returns true if the packet number has already been processed
     pub fn is_duplicate(&self, _packet_number: PacketNumber) -> bool {
         match self.processed_packet_numbers.check(_packet_number) {

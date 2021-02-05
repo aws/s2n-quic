@@ -120,6 +120,11 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
     pub fn header_protection_crypto(
         &self,
     ) -> &PacketSpaceCrypto<<Config::TLSSession as CryptoSuite>::OneRTTCrypto> {
+        //# https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.4
+        // The same header protection key is used for the duration of the
+        // connection, with the value not changing after a key update (see
+        // Section 6).  This allows header protection to be used to protect the
+        // key phase.
         &self.crypto[0]
     }
 
@@ -131,10 +136,6 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
             KeyPhase::Zero => &self.crypto[0],
             KeyPhase::One => &self.crypto[1],
         }
-    }
-
-    pub fn key_phase(&self) -> KeyPhase {
-        self.key_phase
     }
 
     /// Returns true if the packet number has already been processed
