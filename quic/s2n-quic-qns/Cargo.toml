@@ -13,5 +13,6 @@ default = []
 bytes = { version = "0.6", default-features = false }
 futures = "0.3"
 s2n-quic = { path = "../s2n-quic" }
+s2n-quic-integration = { path = "../s2n-quic-integration" }
 structopt = "0.3"
 tokio = { version = "0.2", features = ["full"] }
