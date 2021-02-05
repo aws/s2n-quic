@@ -35,8 +35,6 @@ pub struct Occupied {
 }
 
 impl Behavior for Occupied {
-    /// Because the primary and secondary messages point to the same
-    /// payloads in memory, only wiping the first is required
     fn advance<Message: message::Message>(
         &self,
         primary: &mut [Message],
@@ -77,8 +75,6 @@ pub struct OccupiedWipe {
 }
 
 impl Behavior for OccupiedWipe {
-    /// Because the primary and secondary messages point to the same
-    /// payloads in memory, only wiping the first is required
     fn advance<Message: message::Message>(
         &self,
         primary: &mut [Message],
@@ -87,6 +83,8 @@ impl Behavior for OccupiedWipe {
         end: usize,
         overflow: usize,
     ) {
+        // Because the primary and secondary messages point to the same
+        // payloads in memory, only wiping the first is required
         wipe(&mut primary[start..end], self.mtu);
         wipe(&mut primary[..overflow], self.mtu);
         reset(&mut secondary[start..end], self.mtu);
