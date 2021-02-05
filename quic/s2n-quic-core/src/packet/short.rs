@@ -9,7 +9,7 @@ use crate::{
             PacketNumber, PacketNumberLen, PacketNumberSpace, ProtectedPacketNumber,
             TruncatedPacketNumber,
         },
-        Tag,
+        KeyPhase, ProtectedKeyPhase, Tag,
     },
 };
 use s2n_codec::{CheckedRange, DecoderBufferMut, DecoderBufferMutResult, Encoder, EncoderValue};
@@ -83,54 +83,6 @@ impl SpinBit {
 //# Reserved Bits:  The next two bits (those with a mask of 0x18) of byte
 //#    0 are reserved.  These bits are protected using header protection;
 //#    see Section 5.4 of [QUIC-TLS].
-
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.3
-//# Key Phase:  The next bit (0x04) of byte 0 indicates the key phase,
-//#    which allows a recipient of a packet to identify the packet
-//#    protection keys that are used to protect the packet.
-
-const KEY_PHASE_MASK: u8 = 0x04;
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct ProtectedKeyPhase;
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum KeyPhase {
-    Zero,
-    One,
-}
-
-impl Default for KeyPhase {
-    fn default() -> Self {
-        Self::Zero
-    }
-}
-
-impl From<KeyPhase> for usize {
-    fn from(key_phase: KeyPhase) -> usize {
-        match key_phase {
-            KeyPhase::Zero => 0,
-            KeyPhase::One => 1,
-        }
-    }
-}
-
-impl KeyPhase {
-    fn from_tag(tag: Tag) -> Self {
-        if tag & KEY_PHASE_MASK == KEY_PHASE_MASK {
-            Self::One
-        } else {
-            Self::Zero
-        }
-    }
-
-    fn into_packet_tag_mask(self) -> u8 {
-        match self {
-            Self::One => KEY_PHASE_MASK,
-            Self::Zero => 0,
-        }
-    }
-}
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.3
 //# Packet Number Length:  The least significant two bits (those with a
@@ -265,8 +217,8 @@ impl<'a> EncryptedShort<'a> {
     }
 
     #[inline]
-    pub fn key_phase(&self) -> usize {
-        self.key_phase.into()
+    pub fn key_phase(&self) -> KeyPhase {
+        self.key_phase
     }
 
     #[inline]

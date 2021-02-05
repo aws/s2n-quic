@@ -29,7 +29,8 @@ use s2n_quic_core::{
         number::{
             PacketNumber, PacketNumberRange, PacketNumberSpace, SlidingWindow, SlidingWindowError,
         },
-        short::{KeyPhase, Short, SpinBit},
+        short::{Short, SpinBit},
+        KeyPhase,
     },
     path::Path,
     time::Timestamp,
@@ -124,13 +125,16 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
 
     pub fn packet_protection_crypto(
         &self,
-        key_phase: usize,
+        key_phase: KeyPhase,
     ) -> &PacketSpaceCrypto<<Config::TLSSession as CryptoSuite>::OneRTTCrypto> {
-        &self.crypto[key_phase]
+        match key_phase {
+            KeyPhase::Zero => &self.crypto[0],
+            KeyPhase::One => &self.crypto[1],
+        }
     }
 
-    pub fn key_phase(&self) -> usize {
-        self.key_phase.into()
+    pub fn key_phase(&self) -> KeyPhase {
+        self.key_phase
     }
 
     /// Returns true if the packet number has already been processed

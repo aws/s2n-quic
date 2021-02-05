@@ -11,7 +11,7 @@ use crate::{
             PacketNumber, PacketNumberLen, PacketNumberSpace, ProtectedPacketNumber,
             TruncatedPacketNumber,
         },
-        Tag,
+        KeyPhase, Tag,
     },
     varint::VarInt,
 };
@@ -175,8 +175,8 @@ impl<'a> EncryptedHandshake<'a> {
 
     // HandshakePackets do not have a KeyPhase
     #[inline]
-    pub fn key_phase(&self) -> usize {
-        0
+    pub fn key_phase(&self) -> KeyPhase {
+        KeyPhase::Zero
     }
 }
 

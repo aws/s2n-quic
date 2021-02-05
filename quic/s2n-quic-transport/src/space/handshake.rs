@@ -22,6 +22,7 @@ use s2n_quic_core::{
         number::{
             PacketNumber, PacketNumberRange, PacketNumberSpace, SlidingWindow, SlidingWindowError,
         },
+        KeyPhase,
     },
     path::Path,
     time::Timestamp,
@@ -71,13 +72,13 @@ impl<Config: connection::Config> HandshakeSpace<Config> {
     // HandshakeSpace does not have a key phase
     pub fn packet_protection_crypto(
         &self,
-        _key_phase: usize,
+        _key_phase: KeyPhase,
     ) -> &PacketSpaceCrypto<<Config::TLSSession as CryptoSuite>::HandshakeCrypto> {
         &self.crypto
     }
 
-    pub fn key_phase(&self) -> usize {
-        0
+    pub fn key_phase(&self) -> KeyPhase {
+        KeyPhase::Zero
     }
 
     /// Returns true if the packet number has already been processed
