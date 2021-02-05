@@ -20,6 +20,8 @@ pub struct Perf {
     #[structopt(long)]
     private_key: Option<PathBuf>,
 
+    //= https://tools.ietf.org/id/draft-banks-quic-performance-00.txt#2.1
+    //# The ALPN used by the QUIC performance protocol is "perf".
     #[structopt(long, default_value = "perf")]
     alpn_protocols: Vec<String>,
 }
@@ -34,39 +36,78 @@ impl Perf {
         }
 
         async fn handle_connection(connection: Connection) {
-            let (_handle, acceptor) = connection.split();
+            let (mut handle, acceptor) = connection.split();
             let (mut bidi, mut uni) = acceptor.split();
 
-            macro_rules! accept {
-                ($stream:expr, $onstream:ident) => {
-                    tokio::spawn(async move {
-                        loop {
-                            match $stream.await? {
-                                Some(stream) => {
-                                    // spawn a task per stream
-                                    tokio::spawn(async move {
-                                        // ignore stream errors
-                                        let _ = $onstream(stream).await;
-                                    });
-                                }
-                                None => {
-                                    // the connection was closed without an error
-                                    return <Result<()>>::Ok(());
-                                }
-                            }
+            let bidi = tokio::spawn(async move {
+                loop {
+                    match bidi.accept_bidirectional_stream().await? {
+                        Some(stream) => {
+                            // spawn a task per stream
+                            tokio::spawn(async move {
+                                //= https://tools.ietf.org/id/draft-banks-quic-performance-00.txt#2.3.1
+                                //# On the server side, any stream that is closed before all 8 bytes are
+                                //# received should just be ignored, and gracefully closed on its end (if
+                                //# applicable).
+                                let _ = handle_bidi_stream(stream).await;
+                            });
                         }
-                    })
-                };
-            }
+                        None => {
+                            // the connection was closed without an error
+                            return <Result<()>>::Ok(());
+                        }
+                    }
+                }
+            });
 
-            let bidi = accept!(bidi.accept_bidirectional_stream(), handle_bidi_stream);
-            let uni = accept!(uni.accept_receive_stream(), handle_receive_stream);
+            let uni = tokio::spawn(async move {
+                loop {
+                    match uni.accept_receive_stream().await? {
+                        Some(receiver) => {
+                            let sender = handle.open_send_stream().await?;
+                            // spawn a task per stream
+                            tokio::spawn(async move {
+                                //= https://tools.ietf.org/id/draft-banks-quic-performance-00.txt#2.3.1
+                                //# On the server side, any stream that is closed before all 8 bytes are
+                                //# received should just be ignored, and gracefully closed on its end (if
+                                //# applicable).
+                                let _ = handle_uni_stream(receiver, sender).await;
+                            });
+                        }
+                        None => {
+                            // the connection was closed without an error
+                            return <Result<()>>::Ok(());
+                        }
+                    }
+                }
+            });
 
             let _ = futures::try_join!(bidi, uni);
         }
 
+        //= https://tools.ietf.org/id/draft-banks-quic-performance-00.txt#2.3.2
+        //# When a client uses a bidirectional stream to request a response
+        //# payload from the server, the server sends the requested data on the
+        //# same stream.  If no data is requested by the client, the server
+        //# merely closes its side of the stream.
         async fn handle_bidi_stream(stream: BidirectionalStream) -> Result<()> {
             let (mut receiver, sender) = stream.split();
+            let (size, _prelude) = read_stream_size(&mut receiver).await?;
+
+            let receiver = tokio::spawn(async move { handle_receive_stream(receiver).await });
+            let sender = tokio::spawn(async move { handle_send_stream(sender, size).await });
+
+            let _ = futures::try_join!(receiver, sender);
+
+            Ok(())
+        }
+
+        //= https://tools.ietf.org/id/draft-banks-quic-performance-00.txt#2.3.2
+        //# When a client uses a unidirectional stream to request a response
+        //# payload from the server, the server opens a new unidirectional stream
+        //# to send the requested data.  If no data is requested by the client,
+        //# the server need take no action.
+        async fn handle_uni_stream(mut receiver: ReceiveStream, sender: SendStream) -> Result<()> {
             let (size, _prelude) = read_stream_size(&mut receiver).await?;
 
             let receiver = tokio::spawn(async move { handle_receive_stream(receiver).await });
@@ -98,6 +139,14 @@ impl Perf {
 
         async fn handle_send_stream(mut stream: SendStream, len: u64) -> Result<()> {
             let mut chunks = vec![Bytes::new(); 16];
+
+            //= https://tools.ietf.org/id/draft-banks-quic-performance-00.txt#4.1
+            //# Since the goal here is to measure the efficiency of the QUIC
+            //# implementation and not any application protocol, the performance
+            //# application layer should be as light-weight as possible.  To this
+            //# end, the client and server application layer may use a single
+            //# preallocated and initialized buffer that it queues to send when any
+            //# payload needs to be sent out.
             let mut data = s2n_quic_integration::stream::Data::new(len as usize);
 
             loop {
@@ -115,6 +164,11 @@ impl Perf {
             Ok(())
         }
 
+        //= https://tools.ietf.org/id/draft-banks-quic-performance-00.txt#2.3.1
+        //# Every stream opened by the client uses the first 8 bytes of the
+        //# stream data to encode a 64-bit unsigned integer in network byte order
+        //# to indicate the length of data the client wishes the server to
+        //# respond with.
         async fn read_stream_size(stream: &mut ReceiveStream) -> Result<(u64, Bytes)> {
             let mut chunk = Bytes::new();
             let mut offset = 0;
