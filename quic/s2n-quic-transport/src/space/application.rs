@@ -5,7 +5,7 @@ use crate::{
     recovery,
     space::{
         rx_packet_numbers::AckManager, HandshakeStatus, PacketSpace, PacketSpaceCrypto,
-        TxPacketNumbers,
+        PhasedCrypto, TxPacketNumbers,
     },
     stream::AbstractStreamManager,
     sync::flag,
@@ -15,7 +15,7 @@ use bytes::Bytes;
 use core::{convert::TryInto, marker::PhantomData};
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
-    crypto::CryptoSuite,
+    crypto::{CryptoSuite, OneRTTCrypto},
     endpoint,
     frame::{
         ack::AckRanges, crypto::CryptoRef, stream::StreamRef, Ack, ConnectionClose, DataBlocked,
@@ -51,8 +51,6 @@ pub struct ApplicationSpace<Config: connection::Config> {
     /// The crypto suite for application data
     /// TODO: What about ZeroRtt?
     //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.3
-    //= type=TODO
-    //= tracking-issue=471
     //= feature=Key update
     //# For this reason, endpoints MUST be able to retain two sets of packet
     //# protection keys for receiving packets: the current and the next.
@@ -63,7 +61,7 @@ pub struct ApplicationSpace<Config: connection::Config> {
     //= feature=Key update
     //# An endpoint MUST retain old keys until it has successfully
     //# unprotected a packet sent using the new keys.
-    pub crypto: PacketSpaceCrypto<<Config::TLSSession as CryptoSuite>::OneRTTCrypto>,
+    pub crypto: [PacketSpaceCrypto<<Config::TLSSession as CryptoSuite>::OneRTTCrypto>; 2],
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7
     //# Endpoints MUST explicitly negotiate an application protocol.
@@ -79,6 +77,14 @@ pub struct ApplicationSpace<Config: connection::Config> {
     recovery_manager: recovery::Manager,
 }
 
+impl<Config: connection::Config> PhasedCrypto for ApplicationSpace<Config> {
+    type K = <Config::TLSSession as CryptoSuite>::OneRTTCrypto;
+
+    fn phased_crypto(&self) -> &PacketSpaceCrypto<Self::K> {
+        &self.crypto[self.key_phase as usize]
+    }
+}
+
 impl<Config: connection::Config> ApplicationSpace<Config> {
     pub fn new(
         crypto: <Config::TLSSession as CryptoSuite>::OneRTTCrypto,
@@ -88,14 +94,25 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         sni: Option<Bytes>,
         alpn: Bytes,
     ) -> Self {
+        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.3
+        //# Endpoints responding to an apparent key update MUST NOT generate a
+        //# timing side-channel signal that might indicate that the Key Phase bit
+        //# was invalid (see Section 9.4).
+        // By pre-generating the next key, we can respond to a KeyUpdate without exposing a timing
+        // side channel.
+        let next_key = PacketSpaceCrypto::new(crypto.derive_next_key());
+        let active_key = PacketSpaceCrypto::new(crypto);
         let max_ack_delay = ack_manager.ack_settings.max_ack_delay;
+
         Self {
             tx_packet_numbers: TxPacketNumbers::new(PacketNumberSpace::ApplicationData, now),
             ack_manager,
             key_phase: KeyPhase::Zero,
             spin_bit: SpinBit::Zero,
             stream_manager,
-            crypto: PacketSpaceCrypto::new(crypto),
+            // The KeyPhase is initialized to KeyPhase::Zero, so the active key is placed in the
+            // first slot.
+            crypto: [active_key, next_key],
             sni,
             alpn,
             ping: flag::Ping::default(),
@@ -173,9 +190,10 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
             payload,
         };
 
-        let (_protected_packet, buffer) = self.crypto.encode_packet(buffer, |buffer, key| {
-            packet.encode_packet(key, packet_number_encoder, buffer)
-        })?;
+        let (_protected_packet, buffer) = self.crypto[self.key_phase as usize]
+            .encode_packet(buffer, |buffer, key| {
+                packet.encode_packet(key, packet_number_encoder, buffer)
+            })?;
 
         let (recovery_manager, mut recovery_context) = self.recovery(
             handshake_status,

@@ -265,7 +265,11 @@ pub type NullHandshakeCrypto = NullCrypto;
 impl HandshakeCrypto for NullCrypto {}
 
 pub type NullOneRTTCrypto = NullCrypto;
-impl OneRTTCrypto for NullCrypto {}
+impl OneRTTCrypto for NullCrypto {
+    fn derive_next_key(&self) -> Self {
+        Self {}
+    }
+}
 
 pub type NullZeroRTTCrypto = NullCrypto;
 impl ZeroRTTCrypto for NullCrypto {}

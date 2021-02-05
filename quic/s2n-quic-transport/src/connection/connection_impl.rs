@@ -11,7 +11,7 @@ use crate::{
     contexts::ConnectionOnTransmitError,
     path,
     recovery::{congestion_controller, RTTEstimator},
-    space::{PacketSpace, EARLY_ACK_SETTINGS},
+    space::{PacketSpace, PhasedCrypto, EARLY_ACK_SETTINGS},
     transmission,
 };
 use core::time::Duration;
@@ -148,7 +148,9 @@ impl<Config: connection::Config> Drop for ConnectionImpl<Config> {
 macro_rules! packet_validator {
     ($conn:ident, $packet:ident, $space:expr $(, $inspect:expr)?) => {{
         if let Some((space, handshake_status)) = $space {
-            let packet_space_crypto = &space.crypto;
+            // The ApplicationSpace has phased keys. phased_crypto() gives us the proper key regardless
+            // of which Space we are working with.
+            let packet_space_crypto = space.phased_crypto();
             let packet_number_decoder = space.packet_number_decoder();
 
             // TODO ensure this is all side-channel free and reserved bits are 0

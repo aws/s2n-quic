@@ -5,4 +5,6 @@ use crate::crypto::{HeaderCrypto, Key};
 /// This marker trait ensures only 1-RTT-level keys
 /// are used with Short packets. Any key misuses are
 /// caught by the type system.
-pub trait OneRTTCrypto: Key + HeaderCrypto {}
+pub trait OneRTTCrypto: Key + HeaderCrypto {
+    fn derive_next_key(&self) -> Self;
+}

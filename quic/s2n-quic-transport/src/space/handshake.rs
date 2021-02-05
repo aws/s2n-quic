@@ -5,7 +5,7 @@ use crate::{
     recovery,
     space::{
         rx_packet_numbers::AckManager, CryptoStream, HandshakeStatus, PacketSpace,
-        PacketSpaceCrypto, TxPacketNumbers,
+        PacketSpaceCrypto, PhasedCrypto, TxPacketNumbers,
     },
     transmission,
 };
@@ -211,6 +211,14 @@ impl<Config: connection::Config> HandshakeSpace<Config> {
                 path,
             },
         )
+    }
+}
+
+impl<Config: connection::Config> PhasedCrypto for HandshakeSpace<Config> {
+    type K = <Config::TLSSession as CryptoSuite>::HandshakeCrypto;
+
+    fn phased_crypto(&self) -> &PacketSpaceCrypto<Self::K> {
+        &self.crypto
     }
 }
 

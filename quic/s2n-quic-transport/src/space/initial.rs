@@ -5,7 +5,7 @@ use crate::{
     recovery,
     space::{
         rx_packet_numbers::AckManager, CryptoStream, HandshakeStatus, PacketSpace,
-        PacketSpaceCrypto, TxPacketNumbers,
+        PacketSpaceCrypto, PhasedCrypto, TxPacketNumbers,
     },
     transmission,
 };
@@ -42,6 +42,14 @@ pub struct InitialSpace<Config: connection::Config> {
     pub tx_packet_numbers: TxPacketNumbers,
     processed_packet_numbers: SlidingWindow,
     recovery_manager: recovery::Manager,
+}
+
+impl<Config: connection::Config> PhasedCrypto for InitialSpace<Config> {
+    type K = <Config::TLSSession as CryptoSuite>::InitialCrypto;
+
+    fn phased_crypto(&self) -> &PacketSpaceCrypto<Self::K> {
+        &self.crypto
+    }
 }
 
 impl<Config: connection::Config> InitialSpace<Config> {
