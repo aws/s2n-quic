@@ -234,6 +234,7 @@ impl<ConfigType: connection::Config> ConnectionImpl<ConfigType> {
     /// Returns the idle timeout based on transport parameters of both peers
     fn get_idle_timer_duration(&self) -> Duration {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.1
+        //= type=TODO
         //# Each endpoint advertises a max_idle_timeout, but the effective value
         //# at an endpoint is computed as the minimum of the two advertised
         //# values.  By announcing a max_idle_timeout, an endpoint commits to
@@ -241,6 +242,7 @@ impl<ConfigType: connection::Config> ConnectionImpl<ConfigType> {
         //# connection prior to the effective value.
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.1
+        //= type=TODO
         //# To avoid excessively small idle timeout periods, endpoints MUST
         //# increase the idle timeout period to be at least three times the
         //# current Probe Timeout (PTO).  This allows for multiple PTOs to

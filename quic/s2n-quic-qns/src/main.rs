@@ -6,7 +6,7 @@ mod client;
 mod file;
 mod server;
 
-#[tokio::main]
+#[tokio::main(basic_scheduler)]
 async fn main() -> Result<()> {
     Arguments::from_args().run().await
 }
@@ -14,12 +14,14 @@ async fn main() -> Result<()> {
 #[derive(Debug, StructOpt)]
 enum Arguments {
     Interop(Interop),
+    Perf(Perf),
 }
 
 impl Arguments {
     pub async fn run(&self) -> Result<()> {
         match self {
-            Self::Interop(interop) => interop.run().await,
+            Self::Interop(subject) => subject.run().await,
+            Self::Perf(subject) => subject.run().await,
         }
     }
 }
@@ -33,8 +35,23 @@ enum Interop {
 impl Interop {
     pub async fn run(&self) -> Result<()> {
         match self {
-            Self::Server(server) => server.run().await,
-            Self::Client(client) => client.run().await,
+            Self::Server(subject) => subject.run().await,
+            Self::Client(subject) => subject.run().await,
+        }
+    }
+}
+
+#[derive(Debug, StructOpt)]
+enum Perf {
+    Server(server::Perf),
+    Client(client::Perf),
+}
+
+impl Perf {
+    pub async fn run(&self) -> Result<()> {
+        match self {
+            Self::Server(subject) => subject.run().await,
+            Self::Client(subject) => subject.run().await,
         }
     }
 }
