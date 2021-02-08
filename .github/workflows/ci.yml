@@ -263,7 +263,7 @@ jobs:
       - uses: camshaft/rust-cache@v1
 
       - name: Cache cargo-compliance
-        uses: actions/cache@v2
+        uses: actions/cache@v2.1.4
         continue-on-error: true
         with:
           path: target/release/cargo-compliance
