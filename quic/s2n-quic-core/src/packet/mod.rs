@@ -18,10 +18,13 @@ pub mod retry;
 
 pub mod decoding;
 pub mod encoding;
+pub mod key_phase;
 pub mod long;
 
 pub mod number;
 pub mod stateless_reset;
+
+pub use key_phase::{KeyPhase, ProtectedKeyPhase};
 
 use connection::id::ConnectionInfo;
 use handshake::ProtectedHandshake;
@@ -226,45 +229,6 @@ pub trait PacketDecoder<'a> {
             handshake_tag!() => long_packet!(ProtectedHandshake, handle_handshake_packet),
             retry_tag!() => long_packet!(ProtectedRetry, handle_retry_packet),
             _ => Err(DecoderError::InvariantViolation("invalid packet").into()),
-        }
-    }
-}
-
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.3
-//# Key Phase:  The next bit (0x04) of byte 0 indicates the key phase,
-//#    which allows a recipient of a packet to identify the packet
-//#    protection keys that are used to protect the packet.
-
-const KEY_PHASE_MASK: u8 = 0x04;
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct ProtectedKeyPhase;
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum KeyPhase {
-    Zero,
-    One,
-}
-
-impl Default for KeyPhase {
-    fn default() -> Self {
-        Self::Zero
-    }
-}
-
-impl KeyPhase {
-    fn from_tag(tag: Tag) -> Self {
-        if tag & KEY_PHASE_MASK == KEY_PHASE_MASK {
-            Self::One
-        } else {
-            Self::Zero
-        }
-    }
-
-    fn into_packet_tag_mask(self) -> u8 {
-        match self {
-            Self::One => KEY_PHASE_MASK,
-            Self::Zero => 0,
         }
     }
 }

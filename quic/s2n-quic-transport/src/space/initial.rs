@@ -62,15 +62,12 @@ impl<Config: connection::Config> InitialSpace<Config> {
         }
     }
 
-    // InitialSpace does not have a key phase
-    pub fn header_protection_crypto(
-        &self,
-    ) -> &PacketSpaceCrypto<<Config::TLSSession as CryptoSuite>::InitialCrypto> {
+    pub fn crypto(&self) -> &PacketSpaceCrypto<<Config::TLSSession as CryptoSuite>::InitialCrypto> {
         &self.crypto
     }
 
     // InitialSpace does not have a key phase
-    pub fn packet_protection_crypto(
+    pub fn crypto_for_phase(
         &self,
         _key_phase: KeyPhase,
     ) -> &PacketSpaceCrypto<<Config::TLSSession as CryptoSuite>::InitialCrypto> {

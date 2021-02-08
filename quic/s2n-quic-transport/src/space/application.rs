@@ -44,8 +44,6 @@ pub struct ApplicationSpace<Config: connection::Config> {
     pub ack_manager: AckManager,
     /// All streams that are managed through this connection
     pub stream_manager: AbstractStreamManager<Config::Stream>,
-    /// The current [`KeyPhase`]
-    pub key_phase: KeyPhase,
     /// The current state of the Spin bit
     /// TODO: Spin me
     pub spin_bit: SpinBit,
@@ -62,7 +60,7 @@ pub struct ApplicationSpace<Config: connection::Config> {
     //= feature=Key update
     //# An endpoint MUST retain old keys until it has successfully
     //# unprotected a packet sent using the new keys.
-    pub crypto: [PacketSpaceCrypto<<Config::TLSSession as CryptoSuite>::OneRTTCrypto>; 2],
+    crypto: ApplicationKeySet<<Config::TLSSession as CryptoSuite>::OneRTTCrypto>,
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7
     //# Endpoints MUST explicitly negotiate an application protocol.
@@ -95,17 +93,17 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         // side channel.
         let next_key = PacketSpaceCrypto::new(crypto.derive_next_key());
         let active_key = PacketSpaceCrypto::new(crypto);
+        let keyset = ApplicationKeySet::new(active_key, next_key);
         let max_ack_delay = ack_manager.ack_settings.max_ack_delay;
 
         Self {
             tx_packet_numbers: TxPacketNumbers::new(PacketNumberSpace::ApplicationData, now),
             ack_manager,
-            key_phase: KeyPhase::Zero,
             spin_bit: SpinBit::Zero,
             stream_manager,
             // The KeyPhase is initialized to KeyPhase::Zero, so the active key is placed in the
             // first slot.
-            crypto: [active_key, next_key],
+            crypto: keyset,
             sni,
             alpn,
             ping: flag::Ping::default(),
@@ -117,25 +115,24 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         }
     }
 
-    pub fn header_protection_crypto(
-        &self,
-    ) -> &PacketSpaceCrypto<<Config::TLSSession as CryptoSuite>::OneRTTCrypto> {
+    /// Returns the active key which is suitable for encrypting packets or unprotecting packet
+    /// headers.
+    pub fn crypto(&self) -> &PacketSpaceCrypto<<Config::TLSSession as CryptoSuite>::OneRTTCrypto> {
         //# https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.4
         // The same header protection key is used for the duration of the
         // connection, with the value not changing after a key update (see
         // Section 6).  This allows header protection to be used to protect the
         // key phase.
-        &self.crypto[0]
+        self.crypto.active_key()
     }
 
-    pub fn packet_protection_crypto(
+    /// Returns the key for a particular Phase. This should be used for decrypting packets from a
+    /// peer.
+    pub fn crypto_for_phase(
         &self,
         key_phase: KeyPhase,
     ) -> &PacketSpaceCrypto<<Config::TLSSession as CryptoSuite>::OneRTTCrypto> {
-        match key_phase {
-            KeyPhase::Zero => &self.crypto[0],
-            KeyPhase::One => &self.crypto[1],
-        }
+        self.crypto.key_for_phase(key_phase)
     }
 
     /// Returns true if the packet number has already been processed
@@ -199,12 +196,12 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         let packet = Short {
             destination_connection_id: destination_connection_id.as_ref(),
             spin_bit: self.spin_bit,
-            key_phase: self.key_phase,
+            key_phase: self.crypto.key_phase(),
             packet_number,
             payload,
         };
 
-        let (_protected_packet, buffer) = self.crypto[self.key_phase as usize]
+        let (_protected_packet, buffer) = self.crypto.crypto[self.crypto.key_phase as usize]
             .encode_packet(buffer, |buffer, key| {
                 packet.encode_packet(key, packet_number_encoder, buffer)
             })?;
@@ -640,5 +637,122 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
             .insert(processed_packet.packet_number)
             .expect("packet number was already checked");
         Ok(())
+    }
+}
+
+struct ApplicationKeySet<Key> {
+    /// The current [`KeyPhase`]
+    key_phase: KeyPhase,
+
+    // Set of keys for the current and next phase
+    pub crypto: [PacketSpaceCrypto<Key>; 2],
+}
+
+impl<Key> ApplicationKeySet<Key> {
+    fn new(phase_zero: PacketSpaceCrypto<Key>, phase_one: PacketSpaceCrypto<Key>) -> Self {
+        Self {
+            key_phase: KeyPhase::Zero,
+            crypto: [phase_zero, phase_one],
+        }
+    }
+
+    fn key_phase(&self) -> KeyPhase {
+        self.key_phase
+    }
+
+    fn active_key(&self) -> &PacketSpaceCrypto<Key> {
+        match self.key_phase {
+            KeyPhase::Zero => &self.crypto[0],
+            KeyPhase::One => &self.crypto[1],
+        }
+    }
+
+    fn key_for_phase(&self, key_phase: KeyPhase) -> &PacketSpaceCrypto<Key> {
+        match key_phase {
+            KeyPhase::Zero => &self.crypto[0],
+            KeyPhase::One => &self.crypto[1],
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use s2n_quic_core::crypto::{
+        header_crypto::{HeaderCrypto, HeaderProtectionMask},
+        CryptoError, Key, OneRTTCrypto,
+    };
+
+    #[derive(Default)]
+    struct NullKey {
+        pub value: u64,
+    }
+
+    impl Key for NullKey {
+        fn decrypt(
+            &self,
+            _packet_number: u64,
+            _header: &[u8],
+            _payload: &mut [u8],
+        ) -> Result<(), CryptoError> {
+            Ok(())
+        }
+
+        fn encrypt(
+            &self,
+            _packet_number: u64,
+            _header: &[u8],
+            _payload: &mut [u8],
+        ) -> Result<(), CryptoError> {
+            Ok(())
+        }
+
+        fn tag_len(&self) -> usize {
+            0
+        }
+
+        fn aead_confidentiality_limit(&self) -> u64 {
+            0
+        }
+
+        fn aead_integrity_limit(&self) -> u64 {
+            0
+        }
+    }
+
+    impl HeaderCrypto for NullKey {
+        fn opening_header_protection_mask(&self, _sample: &[u8]) -> HeaderProtectionMask {
+            [0; 5]
+        }
+
+        fn opening_sample_len(&self) -> usize {
+            0
+        }
+
+        fn sealing_header_protection_mask(&self, _sample: &[u8]) -> HeaderProtectionMask {
+            [0; 5]
+        }
+
+        fn sealing_sample_len(&self) -> usize {
+            0
+        }
+    }
+
+    impl OneRTTCrypto for NullKey {
+        fn derive_next_key(&self) -> Self {
+            Self {
+                value: self.value + 1,
+            }
+        }
+    }
+
+    #[test]
+    fn test_key_set() {
+        let current_key = PacketSpaceCrypto::new(NullKey::default());
+        let next_key = PacketSpaceCrypto::new(current_key.key.derive_next_key());
+        let keyset = ApplicationKeySet::new(current_key, next_key);
+
+        assert_eq!(keyset.active_key().key.value, 0);
+        assert_eq!(keyset.key_for_phase(KeyPhase::One).key.value, 1);
     }
 }
