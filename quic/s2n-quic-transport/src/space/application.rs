@@ -50,16 +50,8 @@ pub struct ApplicationSpace<Config: connection::Config> {
     /// The crypto suite for application data
     /// TODO: What about ZeroRtt?
     //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.3
-    //= feature=Key update
     //# For this reason, endpoints MUST be able to retain two sets of packet
     //# protection keys for receiving packets: the current and the next.
-
-    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.1
-    //= type=TODO
-    //= tracking-issue=471
-    //= feature=Key update
-    //# An endpoint MUST retain old keys until it has successfully
-    //# unprotected a packet sent using the new keys.
     crypto: ApplicationKeySet<<Config::TLSSession as CryptoSuite>::OneRTTCrypto>,
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7
@@ -101,8 +93,6 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
             ack_manager,
             spin_bit: SpinBit::Zero,
             stream_manager,
-            // The KeyPhase is initialized to KeyPhase::Zero, so the active key is placed in the
-            // first slot.
             crypto: keyset,
             sni,
             alpn,
@@ -118,11 +108,11 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
     /// Returns the active key which is suitable for encrypting packets or unprotecting packet
     /// headers.
     pub fn crypto(&self) -> &PacketSpaceCrypto<<Config::TLSSession as CryptoSuite>::OneRTTCrypto> {
-        //# https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.4
-        // The same header protection key is used for the duration of the
-        // connection, with the value not changing after a key update (see
-        // Section 6).  This allows header protection to be used to protect the
-        // key phase.
+        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.4
+        //# The same header protection key is used for the duration of the
+        //# connection, with the value not changing after a key update (see
+        //# Section 6).  This allows header protection to be used to protect the
+        //# key phase.
         self.crypto.active_key()
     }
 
@@ -644,17 +634,17 @@ struct ApplicationKeySet<Key> {
     /// The current [`KeyPhase`]
     key_phase: KeyPhase,
 
-    // Set of keys for the current and next phase
+    /// Set of keys for the current and next phase
     pub crypto: [PacketSpaceCrypto<Key>; 2],
 }
 
 impl<Key> ApplicationKeySet<Key> {
     fn new(phase_zero: PacketSpaceCrypto<Key>, phase_one: PacketSpaceCrypto<Key>) -> Self {
+        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6
+        //# The Key Phase bit is initially set to 0 for the
+        //# first set of 1-RTT packets and toggled to signal each subsequent key
+        //# update.
         Self {
-            //# https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6
-            //= The Key Phase bit is initially set to 0 for the
-            //= first set of 1-RTT packets and toggled to signal each subsequent key
-            //= update.
             key_phase: KeyPhase::Zero,
             crypto: [phase_zero, phase_one],
         }
@@ -749,6 +739,11 @@ mod tests {
 
     #[test]
     fn test_key_set() {
+        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.3
+        //= type=test
+        //# For this reason, endpoints MUST be able to retain two sets of packet
+        //# protection keys for receiving packets: the current and the next.
+
         let current_key = PacketSpaceCrypto::new(NullKey::default());
         let next_key = PacketSpaceCrypto::new(current_key.key.derive_next_key());
         let keyset = ApplicationKeySet::new(current_key, next_key);
