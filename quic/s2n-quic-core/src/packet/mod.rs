@@ -18,10 +18,13 @@ pub mod retry;
 
 pub mod decoding;
 pub mod encoding;
+pub mod key_phase;
 pub mod long;
 
 pub mod number;
 pub mod stateless_reset;
+
+pub use key_phase::{KeyPhase, ProtectedKeyPhase};
 
 use connection::id::ConnectionInfo;
 use handshake::ProtectedHandshake;

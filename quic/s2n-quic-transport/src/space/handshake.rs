@@ -22,6 +22,7 @@ use s2n_quic_core::{
         number::{
             PacketNumber, PacketNumberRange, PacketNumberSpace, SlidingWindow, SlidingWindowError,
         },
+        KeyPhase,
     },
     path::Path,
     time::Timestamp,
@@ -59,6 +60,20 @@ impl<Config: connection::Config> HandshakeSpace<Config> {
             processed_packet_numbers: SlidingWindow::default(),
             recovery_manager: recovery::Manager::new(PacketNumberSpace::Handshake, max_ack_delay),
         }
+    }
+
+    pub fn crypto(
+        &self,
+    ) -> &PacketSpaceCrypto<<Config::TLSSession as CryptoSuite>::HandshakeCrypto> {
+        &self.crypto
+    }
+
+    // HandshakeSpace does not have a key phase
+    pub fn crypto_for_phase(
+        &self,
+        _key_phase: KeyPhase,
+    ) -> &PacketSpaceCrypto<<Config::TLSSession as CryptoSuite>::HandshakeCrypto> {
+        &self.crypto
     }
 
     /// Returns true if the packet number has already been processed

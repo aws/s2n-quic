@@ -11,7 +11,7 @@ use crate::{
             PacketNumber, PacketNumberLen, PacketNumberSpace, ProtectedPacketNumber,
             TruncatedPacketNumber,
         },
-        Tag,
+        KeyPhase, Tag,
     },
     varint::VarInt,
 };
@@ -209,6 +209,12 @@ impl<'a> EncryptedInitial<'a> {
         self.payload
             .get_checked_range(&self.token)
             .into_less_safe_slice()
+    }
+
+    // InitialPackets do not have a KeyPhase
+    #[inline]
+    pub fn key_phase(&self) -> KeyPhase {
+        KeyPhase::Zero
     }
 }
 

@@ -148,7 +148,7 @@ impl<Config: connection::Config> Drop for ConnectionImpl<Config> {
 macro_rules! packet_validator {
     ($conn:ident, $packet:ident, $space:expr $(, $inspect:expr)?) => {{
         if let Some((space, handshake_status)) = $space {
-            let packet_space_crypto = &space.crypto;
+            let crypto = space.crypto();
             let packet_number_decoder = space.packet_number_decoder();
 
             // TODO ensure this is all side-channel free and reserved bits are 0
@@ -160,7 +160,7 @@ macro_rules! packet_validator {
 
             // It may indicate the packet is a stateless reset however, so we will bubble
             // up the error to allow the caller to handle it.
-            let $packet = packet_space_crypto.unprotect_packet(|key|
+            let $packet = crypto.unprotect_packet(|key|
                 $packet.unprotect(key, packet_number_decoder)
             )?;
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.3
@@ -171,28 +171,31 @@ macro_rules! packet_validator {
                 None
             } else {
                 $($inspect)?
+                let phased_crypto = space.crypto_for_phase($packet.key_phase());
 
-
-                match packet_space_crypto.decrypt_packet($conn, |key| {
-                    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.4
-                    //= type=TODO
-                    //= tracking-issue=479
-                    //= feature=Key update
-                    //# An endpoint that successfully removes protection with old
-                    //# keys when newer keys were used for packets with lower packet numbers
-                    //# MUST treat this as a connection error of type KEY_UPDATE_ERROR.
-
-                    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.4
-                    //= type=TODO
-                    //= tracking-issue=479
-                    //= feature=Key update
-                    //# Packets with higher packet numbers MUST be protected with either the
-                    //# same or newer packet protection keys than packets with lower packet
-                    //# numbers.
+                match phased_crypto.decrypt_packet($conn, |key| {
                     $packet.decrypt(key)
                 }) {
-                    Ok(packet) => Some((packet, space, handshake_status)),
-                    Err(e) => return Err(e),
+                    Ok(packet) => {
+                        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.4
+                        //= type=TODO
+                        //= tracking-issue=479
+                        //= feature=Key update
+                        //# An endpoint that successfully removes protection with old
+                        //# keys when newer keys were used for packets with lower packet numbers
+                        //# MUST treat this as a connection error of type KEY_UPDATE_ERROR.
+                        Some((packet, space, handshake_status))
+                    }
+                    Err(e) => {
+                        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.4
+                        //= type=TODO
+                        //= tracking-issue=479
+                        //= feature=Key update
+                        //# Packets with higher packet numbers MUST be protected with either the
+                        //# same or newer packet protection keys than packets with lower packet
+                        //# numbers.
+                        return Err(e)
+                    }
                 }
             }
         } else {

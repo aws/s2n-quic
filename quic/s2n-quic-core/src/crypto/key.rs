@@ -131,7 +131,14 @@ pub mod testing {
         }
     }
     impl HandshakeCrypto for Key {}
-    impl OneRTTCrypto for Key {}
+    impl OneRTTCrypto for Key {
+        fn derive_next_key(&self) -> Self {
+            Self {
+                confidentiality_limit: 0,
+                integrity_limit: 0,
+            }
+        }
+    }
     impl ZeroRTTCrypto for Key {}
     impl RetryCrypto for Key {
         fn generate_tag(_payload: &[u8]) -> IntegrityTag {
