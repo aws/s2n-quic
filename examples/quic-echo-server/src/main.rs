@@ -1,8 +1,8 @@
 use s2n_quic::Server;
 use std::error::Error;
 
-const CERT: &[u8] = include_bytes!("../../../quic/s2n-quic-qns/certs/cert.der");
-const KEY: &[u8] = include_bytes!("../../../quic/s2n-quic-qns/certs/key.der");
+const CERT: &str = include_str!("../../../quic/s2n-quic-qns/certs/cert.pem");
+const KEY: &str = include_str!("../../../quic/s2n-quic-qns/certs/key.pem");
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {

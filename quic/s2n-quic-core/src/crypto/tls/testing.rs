@@ -120,8 +120,11 @@ impl<S: tls::Session, C: tls::Session> Pair<S, C> {
             "server did not receive the client transport parameters"
         );
         // TODO fix sni bug in s2n-quic-rustls
-        // assert_eq!(self.client.1.sni.as_ref().unwrap(), &self.sni[..]);
-        assert_eq!(self.server.1.sni.as_ref().unwrap(), &self.sni[..]);
+        // assert_eq!(self.client.1.sni.as_ref().expect("missing SNI on client"), &self.sni[..]);
+        assert_eq!(
+            self.server.1.sni.as_ref().expect("missing SNI on server"),
+            &self.sni[..]
+        );
 
         // TODO check 0-rtt keys
     }
@@ -204,9 +207,12 @@ impl<C: CryptoSuite> Context<C> {
     }
 
     fn assert_done(&self) {
-        assert!(self.initial.crypto.is_some());
-        assert!(self.handshake.crypto.is_some());
-        assert!(self.application.crypto.is_some());
+        assert!(self.initial.crypto.is_some(), "missing initial crypto");
+        assert!(self.handshake.crypto.is_some(), "missing handshake crypto");
+        assert!(
+            self.application.crypto.is_some(),
+            "missing application crypto"
+        );
         assert!(self.handshake_done);
         assert!(self.alpn.is_some());
         assert!(self.transport_parameters.is_some());
@@ -274,8 +280,8 @@ impl<K: Key> Space<K> {
     }
 
     fn finish<O: Key>(&self, other: &Space<O>) {
-        let crypto_a = self.crypto.as_ref().unwrap();
-        let crypto_b = other.crypto.as_ref().unwrap();
+        let crypto_a = self.crypto.as_ref().expect("missing crypto");
+        let crypto_b = other.crypto.as_ref().expect("missing crypto");
 
         seal_open(crypto_a, crypto_b);
         seal_open(crypto_b, crypto_a);

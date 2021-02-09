@@ -1,7 +1,9 @@
 use crate::Result;
 use bytes::Bytes;
 use s2n_quic::{
-    provider::tls::default::{AsCertificate, AsPrivateKey, Certificate, PrivateKey},
+    provider::tls::default::certificate::{
+        Certificate, IntoCertificate, IntoPrivateKey, PrivateKey,
+    },
     stream::{BidirectionalStream, ReceiveStream, SendStream},
     Connection, Server,
 };
@@ -216,21 +218,21 @@ impl Perf {
         Ok(server)
     }
 
-    fn certificate(&self) -> Result<Vec<Certificate>> {
+    fn certificate(&self) -> Result<Certificate> {
         Ok(if let Some(pathbuf) = self.certificate.as_ref() {
-            pathbuf.as_certificate()?
+            pathbuf.into_certificate()?
         } else {
-            include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/certs/cert.der"))
-                .as_certificate()?
+            include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/certs/cert.pem"))
+                .into_certificate()?
         })
     }
 
     fn private_key(&self) -> Result<PrivateKey> {
         Ok(if let Some(pathbuf) = self.private_key.as_ref() {
-            pathbuf.as_private_key()?
+            pathbuf.into_private_key()?
         } else {
-            include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/certs/key.der"))
-                .as_private_key()?
+            include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/certs/key.pem"))
+                .into_private_key()?
         })
     }
 }
