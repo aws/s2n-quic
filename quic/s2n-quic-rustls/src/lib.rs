@@ -602,17 +602,16 @@ fn session_size() {
 
 #[test]
 fn client_server_test() {
+    use s2n_quic_core::crypto::tls::testing::certificates::*;
+
     let mut client = client::Builder::new()
-        .with_certificate(&include_bytes!("../../s2n-quic-qns/certs/cert.der")[..])
+        .with_certificate(CERT_PEM)
         .unwrap()
         .build()
         .unwrap();
 
     let mut server = server::Builder::new()
-        .with_certificate(
-            &include_bytes!("../../s2n-quic-qns/certs/cert.der")[..],
-            &include_bytes!("../../s2n-quic-qns/certs/key.der")[..],
-        )
+        .with_certificate(CERT_PEM, KEY_PEM)
         .unwrap()
         .build()
         .unwrap();

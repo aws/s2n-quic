@@ -98,15 +98,32 @@ mod pem {
 
     pub fn into_private_key(contents: &[u8]) -> Result<rustls::PrivateKey, Error> {
         let mut cursor = std::io::Cursor::new(contents);
-        let mut keys = rustls::internal::pemfile::rsa_private_keys(&mut cursor)
-            .map_err(|_| Error::General("Could not read private key".to_string()))?;
-        if keys.len() != 1 {
-            return Err(Error::General(format!(
-                "Unexpected number of keys: {} (only 1 supported)",
-                keys.len()
-            )));
+
+        let parsers = [
+            rustls::internal::pemfile::rsa_private_keys,
+            rustls::internal::pemfile::pkcs8_private_keys,
+        ];
+
+        for parser in parsers.iter() {
+            cursor.set_position(0);
+
+            match parser(&mut cursor) {
+                Ok(keys) if keys.is_empty() => continue,
+                Ok(mut keys) if keys.len() == 1 => return Ok(keys.pop().unwrap()),
+                Ok(keys) => {
+                    return Err(Error::General(format!(
+                        "Unexpected number of keys: {} (only 1 supported)",
+                        keys.len()
+                    )));
+                }
+                // try the next parser
+                Err(_) => continue,
+            }
         }
-        Ok(keys.pop().unwrap())
+
+        Err(Error::General(
+            "could not load any valid private keys".to_string(),
+        ))
     }
 }
 
@@ -120,5 +137,20 @@ mod der {
 
     pub fn into_private_key(contents: Vec<u8>) -> Result<rustls::PrivateKey, Error> {
         Ok(rustls::PrivateKey(contents))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use s2n_quic_core::crypto::tls::testing::certificates::*;
+
+    #[test]
+    fn load() {
+        let _ = CERT_PEM.into_certificate().unwrap();
+        let _ = CERT_DER.into_certificate().unwrap();
+
+        let _ = KEY_PEM.into_private_key().unwrap();
+        let _ = KEY_DER.into_private_key().unwrap();
     }
 }

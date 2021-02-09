@@ -7,6 +7,26 @@ use core::fmt;
 use s2n_codec::EncoderValue;
 use std::collections::VecDeque;
 
+pub mod certificates {
+    macro_rules! pem {
+        ($name:ident, $path:expr) => {
+            pub static $name: &str =
+                include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/certs/", $path));
+        };
+    }
+    macro_rules! der {
+        ($name:ident, $path:expr) => {
+            pub static $name: &[u8] =
+                include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/certs/", $path));
+        };
+    }
+
+    pem!(KEY_PEM, "key.pem");
+    pem!(CERT_PEM, "cert.pem");
+    der!(KEY_DER, "key.der");
+    der!(CERT_DER, "cert.der");
+}
+
 #[derive(Debug)]
 pub struct Endpoint;
 

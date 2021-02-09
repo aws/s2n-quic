@@ -194,8 +194,7 @@ impl Interop {
         Ok(if let Some(pathbuf) = self.certificate.as_ref() {
             pathbuf.into_certificate()?
         } else {
-            include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/certs/cert.pem"))
-                .into_certificate()?
+            s2n_quic_core::crypto::tls::testing::certificates::CERT_PEM.into_certificate()?
         })
     }
 
@@ -203,8 +202,7 @@ impl Interop {
         Ok(if let Some(pathbuf) = self.private_key.as_ref() {
             pathbuf.into_private_key()?
         } else {
-            include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/certs/key.pem"))
-                .into_private_key()?
+            s2n_quic_core::crypto::tls::testing::certificates::KEY_PEM.into_private_key()?
         })
     }
 
