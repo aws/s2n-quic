@@ -29,6 +29,9 @@ mod tests {
     const INVALID_SECRET: [u8; 32] =
         hex!("0000000000000000000000000000000000000000000000000000000000000000");
 
+    /// Return ChaCha20 ciphers because these are the ciphers given in the RFC. The other cipher
+    /// implementations don't have RFC values we can test.
+    /// This is not exhaustive, but it does show that we are using the KDF and label correctly.
     fn generate_ciphers(
         secret: &[u8],
         next_secret: &[u8],
