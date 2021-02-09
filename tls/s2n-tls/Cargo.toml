@@ -1,0 +1,14 @@
+[package]
+name = "s2n-tls"
+version = "0.1.0"
+authors = ["Cameron Bytheway <bythewc@amazon.com>"]
+edition = "2018"
+license = "Apache-2.0"
+
+[features]
+default = []
+quic = []
+
+[dependencies]
+libc = "0.2"
+s2n-tls-sys = { version = "0.1", path = "../s2n-tls-sys" }

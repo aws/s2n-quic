@@ -352,6 +352,20 @@ extern "C" {
     ) -> ::libc::c_int;
 }
 extern "C" {
+    #[doc = " Appends the provided application protocol to the preference list"]
+    #[doc = ""]
+    #[doc = " The data provided in `protocol` parameter will be copied into an internal buffer"]
+    #[doc = ""]
+    #[doc = " @param config The configuration object being updated"]
+    #[doc = " @param protocol A pointer to a byte array value"]
+    #[doc = " @param protocol_len The length of bytes that should be read from `protocol`. Note: this value cannot be 0, otherwise an error will be returned."]
+    pub fn s2n_config_append_protocol_preference(
+        config: *mut s2n_config,
+        protocol: *const u8,
+        protocol_len: u8,
+    ) -> ::libc::c_int;
+}
+extern "C" {
     pub fn s2n_config_set_protocol_preferences(
         config: *mut s2n_config,
         protocols: *const *const ::libc::c_char,
@@ -628,6 +642,20 @@ extern "C" {
     pub fn s2n_connection_set_cipher_preferences(
         conn: *mut s2n_connection,
         version: *const ::libc::c_char,
+    ) -> ::libc::c_int;
+}
+extern "C" {
+    #[doc = " Appends the provided application protocol to the preference list"]
+    #[doc = ""]
+    #[doc = " The data provided in `protocol` parameter will be copied into an internal buffer"]
+    #[doc = ""]
+    #[doc = " @param conn The connection object being updated"]
+    #[doc = " @param protocol A pointer to a slice of bytes"]
+    #[doc = " @param protocol_len The length of bytes that should be read from `protocol`. Note: this value cannot be 0, otherwise an error will be returned."]
+    pub fn s2n_connection_append_protocol_preference(
+        conn: *mut s2n_connection,
+        protocol: *const u8,
+        protocol_len: u8,
     ) -> ::libc::c_int;
 }
 extern "C" {

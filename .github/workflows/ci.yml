@@ -193,7 +193,7 @@ jobs:
         with:
           command: test
           # s2n-tls doesn't currently build on windows
-          args: ${{ matrix.os == 'windows-latest' && '--workspace --exclude s2n-tls-sys' || '' }}
+          args: ${{ matrix.os == 'windows-latest' && '--workspace --exclude s2n-tls-sys --exclude s2n-tls' || '' }}
 
   miri:
     runs-on: ubuntu-latest
