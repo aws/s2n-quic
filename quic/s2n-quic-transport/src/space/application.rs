@@ -651,6 +651,10 @@ struct ApplicationKeySet<Key> {
 impl<Key> ApplicationKeySet<Key> {
     fn new(phase_zero: PacketSpaceCrypto<Key>, phase_one: PacketSpaceCrypto<Key>) -> Self {
         Self {
+            //# https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6
+            //= The Key Phase bit is initially set to 0 for the
+            //= first set of 1-RTT packets and toggled to signal each subsequent key
+            //= update.
             key_phase: KeyPhase::Zero,
             crypto: [phase_zero, phase_one],
         }
@@ -661,10 +665,7 @@ impl<Key> ApplicationKeySet<Key> {
     }
 
     fn active_key(&self) -> &PacketSpaceCrypto<Key> {
-        match self.key_phase {
-            KeyPhase::Zero => &self.crypto[0],
-            KeyPhase::One => &self.crypto[1],
-        }
+        self.key_for_phase(self.key_phase)
     }
 
     fn key_for_phase(&self, key_phase: KeyPhase) -> &PacketSpaceCrypto<Key> {
