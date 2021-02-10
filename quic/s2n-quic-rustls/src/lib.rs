@@ -402,6 +402,11 @@ pub mod server {
             Ok(self)
         }
 
+        pub fn with_key_logging(mut self) -> Result<Self, TLSError> {
+            self.config.key_log = Arc::new(rustls::KeyLogFile::new());
+            Ok(self)
+        }
+
         pub fn build(self) -> Result<Server, TLSError> {
             Ok(Server::new(self.config))
         }
