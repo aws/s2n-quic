@@ -15,7 +15,7 @@ checked-counters = []
 [dependencies]
 bolero-generator = { version = "0.6", default-features = false, optional = true }
 byteorder = { version = "1.1", default-features = false }
-bytes = { version = "0.6", default-features = false }
+bytes = { version = "1", default-features = false }
 displaydoc = { version = "0.1", default-features = false }
 hex-literal = "0.3"
 num-traits = { version = "0.2", default-features = false, features = ["libm"] }

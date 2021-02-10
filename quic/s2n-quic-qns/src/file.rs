@@ -34,7 +34,7 @@ impl Stream for File {
         }
 
         let n = {
-            let bytes = self.buf.bytes_mut();
+            let bytes = self.buf.chunk_mut();
             let dst = unsafe { core::slice::from_raw_parts_mut(bytes.as_mut_ptr(), bytes.len()) };
             ready!(AsyncRead::poll_read(Pin::new(&mut self.file), cx, dst)?)
         };
