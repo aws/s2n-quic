@@ -10,7 +10,7 @@ publish = false
 default = []
 
 [dependencies]
-bytes = { version = "0.6", default-features = false }
+bytes = { version = "1", default-features = false }
 futures = "0.3"
 s2n-quic = { path = "../s2n-quic" }
 s2n-quic-core = { path = "../s2n-quic-core", features = ["testing"] }

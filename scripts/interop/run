@@ -11,7 +11,7 @@ if [ ! -d $INTEROP_DIR ]; then
   git clone https://github.com/marten-seemann/quic-interop-runner $INTEROP_DIR
   # make sure to keep this up to date with the interop workflow
   cd $INTEROP_DIR
-  git checkout 3d292c252e0c0159db93b62292abcf6b040a7060
+  git checkout 7221a219e9a0070bfd82b23bdfde3d1b56a7b6a5
   git apply --3way ../../.github/interop/runner.patch
   cd ../../
 fi
