@@ -41,7 +41,7 @@ mod tests {
     //#       1a826c9ecdf3c7148684b36b714881f9
     const SECRET: [u8; 32] =
         hex!("9ac312a7f877468ebe69422748ad00a15443f18203a07d6060f688f30f21632b");
-    const UPDATED_SECRET: [u8; 32] =
+    const KU_SECRET: [u8; 32] =
         hex!("1223504755036d556342ee9361d253421a826c9ecdf3c7148684b36b714881f9");
 
     // Prevent trivial success
@@ -71,7 +71,7 @@ mod tests {
 
     #[test]
     fn test_key_update() {
-        let (next_cipher, expected_next_cipher) = generate_ciphers(&SECRET, &UPDATED_SECRET);
+        let (next_cipher, expected_next_cipher) = generate_ciphers(&SECRET, &KU_SECRET);
 
         // Encrypt two empty blocks to verify the ciphers are the same
         let mut next_cipher_output = [0; 32];
@@ -88,8 +88,7 @@ mod tests {
 
     #[test]
     fn test_key_update_failure() {
-        let (next_cipher, expected_next_cipher) =
-            generate_ciphers(&INVALID_SECRET, &UPDATED_SECRET);
+        let (next_cipher, expected_next_cipher) = generate_ciphers(&INVALID_SECRET, &KU_SECRET);
 
         // Encrypt two empty blocks to verify the ciphers are the same
         let mut next_cipher_output = [0; 32];
