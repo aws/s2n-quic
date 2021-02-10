@@ -15,7 +15,7 @@ rustls = ["s2n-quic-rustls"]
 tokio-runtime = ["tokio", "s2n-quic-platform/tokio-runtime"]
 
 [dependencies]
-bytes = { version = "0.6", default-features = false }
+bytes = { version = "1", default-features = false }
 cfg-if = "1.0"
 cuckoofilter = "0.5"
 futures = { version = "0.3", default-features = false, features = ["async-await"] }
