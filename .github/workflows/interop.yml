@@ -15,10 +15,10 @@ env:
   RUST_BACKTRACE: 1
   # This kept breaking builds so we're pinning for now. We should do our best to keep
   # up with the changes, though.
-  INTEROP_RUNNER_REF: 3d292c252e0c0159db93b62292abcf6b040a7060
+  INTEROP_RUNNER_REF: 7221a219e9a0070bfd82b23bdfde3d1b56a7b6a5
   NETWORK_SIMULATOR_REF: sha256:d36e1ffd9369e41e9fd5cb8d2af5fb69d4bfaf1b1983fc538a5a3bf7777af4ba
   IPERF_ENDPOINT_REF: sha256:cb50cc8019d45d9cad5faecbe46a3c21dd5e871949819a5175423755a9045106
-  WIRESHARK_VERSION: 3.4.0rc1
+  WIRESHARK_VERSION: 3.4.3
   CDN: https://dnglbrstg7yg.cloudfront.net
 
 jobs:
@@ -112,7 +112,7 @@ jobs:
       - name: Build tshark
         if: steps.cache.outputs.cache-hit != 'true'
         run: |
-          wget https://www.wireshark.org/download/src/wireshark-${{ env.WIRESHARK_VERSION }}.tar.xz
+          wget https://www.wireshark.org/download/src/all-versions/wireshark-${{ env.WIRESHARK_VERSION }}.tar.xz
           tar xf wireshark-${{ env.WIRESHARK_VERSION }}.tar.xz
           cd wireshark-${{ env.WIRESHARK_VERSION }}
           cmake -GNinja -DBUILD_wireshark=0 -DBUILD_qtshark=0 -DBUILD_editcap=0 -DBUILD_capinfos=0 -DBUILD_text2pcap=0 -DBUILD_rawshark=0 -DBUILD_sdjournal=0 -DBUILD_sshdump=0 -DBUILD_ciscodump=0 -DENABLE_STATIC=1 -DENABLE_PLUGINS=0 -DENABLE_LIBXML2=0 -DUSE_STATIC=1 -DENABLE_GNUTLS=1 .
