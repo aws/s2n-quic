@@ -1,13 +1,9 @@
 use anyhow::{Context, Result};
 use byte_unit::Byte;
+use s2n_quic_core::crypto::tls::testing::certificates::CERT_DER;
 use std::time::Instant;
 use structopt::StructOpt;
 use url::Url;
-
-static CERT: &[u8] = include_bytes!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../../quic/s2n-quic-qns/certs/cert.der"
-));
 
 #[derive(Debug, StructOpt)]
 struct Args {
@@ -22,7 +18,7 @@ struct Args {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let cert = quinn::Certificate::from_der(CERT).unwrap();
+    let cert = quinn::Certificate::from_der(CERT_DER).unwrap();
 
     let args = Args::from_args();
     let download = Byte::from_str(&args.download).unwrap().get_bytes() as u64;

@@ -5,7 +5,7 @@ use futures::stream::StreamExt;
 use s2n_quic::{
     provider::{
         endpoint_limits,
-        tls::rustls::{AsCertificate, AsPrivateKey, Certificate, PrivateKey},
+        tls::default::certificate::{Certificate, IntoCertificate, IntoPrivateKey, PrivateKey},
     },
     stream::BidirectionalStream,
     Connection, Server,
@@ -190,21 +190,19 @@ impl Interop {
         Ok(server)
     }
 
-    fn certificate(&self) -> Result<Vec<Certificate>> {
+    fn certificate(&self) -> Result<Certificate> {
         Ok(if let Some(pathbuf) = self.certificate.as_ref() {
-            pathbuf.as_certificate()?
+            pathbuf.into_certificate()?
         } else {
-            include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/certs/cert.der"))
-                .as_certificate()?
+            s2n_quic_core::crypto::tls::testing::certificates::CERT_PEM.into_certificate()?
         })
     }
 
     fn private_key(&self) -> Result<PrivateKey> {
         Ok(if let Some(pathbuf) = self.private_key.as_ref() {
-            pathbuf.as_private_key()?
+            pathbuf.into_private_key()?
         } else {
-            include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/certs/key.der"))
-                .as_private_key()?
+            s2n_quic_core::crypto::tls::testing::certificates::KEY_PEM.into_private_key()?
         })
     }
 

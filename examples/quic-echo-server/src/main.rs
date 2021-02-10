@@ -1,13 +1,11 @@
 use s2n_quic::Server;
+use s2n_quic_core::crypto::tls::testing::certificates::{CERT_PEM, KEY_PEM};
 use std::error::Error;
-
-const CERT: &[u8] = include_bytes!("../../../quic/s2n-quic-qns/certs/cert.der");
-const KEY: &[u8] = include_bytes!("../../../quic/s2n-quic-qns/certs/key.der");
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let mut server = Server::builder()
-        .with_tls((CERT, KEY))?
+        .with_tls((CERT_PEM, KEY_PEM))?
         .with_io("127.0.0.1:4433")?
         .start()?;
 

@@ -16,15 +16,10 @@ use s2n_quic_ring::{
     handshake::RingHandshakeCrypto, one_rtt::RingOneRTTCrypto, zero_rtt::RingZeroRTTCrypto, Prk,
     RingCryptoSuite, SecretPair,
 };
-use std::{
-    convert::TryFrom,
-    ffi::OsStr,
-    fs,
-    io::{BufReader, Read},
-    path::Path,
-    sync::Arc,
-};
+use std::sync::Arc;
 use webpki::DNSNameRef;
+
+pub mod certificate;
 
 //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.3
 //# A cipher suite MUST NOT be
@@ -82,156 +77,6 @@ impl<Session> InnerSession<Session> {
             emitted_early_secret: false,
             emitted_handshake_done: false,
         }
-    }
-}
-
-enum FileExtension {
-    Pem,
-    Der,
-}
-
-impl TryFrom<&Path> for FileExtension {
-    type Error = TLSError;
-
-    fn try_from(path: &Path) -> Result<Self, Self::Error> {
-        match path.extension().and_then(OsStr::to_str) {
-            Some("pem") => Ok(FileExtension::Pem),
-            Some("der") => Ok(FileExtension::Der),
-            _ => Err(TLSError::General(
-                "Unknown certificate extension".to_string(),
-            )),
-        }
-    }
-}
-
-fn load_file(path: &Path) -> Result<BufReader<fs::File>, TLSError> {
-    if let Ok(file) = fs::File::open(path) {
-        Ok(BufReader::new(file))
-    } else {
-        Err(TLSError::General(format!(
-            "Could not open file at {:?}",
-            path
-        )))
-    }
-}
-
-pub trait AsCertificate {
-    fn as_certificate(self) -> Result<Vec<Certificate>, TLSError>;
-}
-
-impl AsCertificate for Vec<u8> {
-    fn as_certificate(self) -> Result<Vec<Certificate>, TLSError> {
-        Ok(vec![Certificate(self)])
-    }
-}
-
-impl AsCertificate for &Vec<u8> {
-    fn as_certificate(self) -> Result<Vec<Certificate>, TLSError> {
-        Ok(vec![Certificate(self.to_vec())])
-    }
-}
-
-impl AsCertificate for &[u8] {
-    fn as_certificate(self) -> Result<Vec<Certificate>, TLSError> {
-        Ok(vec![Certificate(self.to_vec())])
-    }
-}
-
-fn load_pem_certificate(path: &Path) -> Result<Vec<Certificate>, TLSError> {
-    let mut file_reader = load_file(path)?;
-    match rustls::internal::pemfile::certs(&mut file_reader) {
-        Ok(certs) => Ok(certs),
-        Err(_) => Err(TLSError::General("Could not parse PEM".to_string())),
-    }
-}
-
-fn load_der_certificate(path: &Path) -> Result<Vec<Certificate>, TLSError> {
-    let mut file_reader = load_file(path)?;
-    let mut cert = Vec::new();
-    match file_reader.read_to_end(&mut cert) {
-        Ok(_) => Ok(vec![Certificate(cert)]),
-        Err(_) => Err(TLSError::General("Could not read DER".to_string())),
-    }
-}
-
-impl AsCertificate for Vec<Certificate> {
-    fn as_certificate(self) -> Result<Vec<Certificate>, TLSError> {
-        Ok(self)
-    }
-}
-
-impl AsCertificate for &Path {
-    fn as_certificate(self) -> Result<Vec<Certificate>, TLSError> {
-        let cert = FileExtension::try_from(self)?;
-        match cert {
-            FileExtension::Pem => load_pem_certificate(self),
-            FileExtension::Der => load_der_certificate(self),
-        }
-    }
-}
-
-pub trait AsPrivateKey {
-    fn as_private_key(self) -> Result<PrivateKey, TLSError>;
-}
-
-impl AsPrivateKey for Vec<u8> {
-    fn as_private_key(self) -> Result<PrivateKey, TLSError> {
-        Ok(PrivateKey(self))
-    }
-}
-
-impl AsPrivateKey for &Vec<u8> {
-    fn as_private_key(self) -> Result<PrivateKey, TLSError> {
-        Ok(PrivateKey(self.to_vec()))
-    }
-}
-
-impl AsPrivateKey for &[u8] {
-    fn as_private_key(self) -> Result<PrivateKey, TLSError> {
-        Ok(PrivateKey(self.to_vec()))
-    }
-}
-
-fn load_pem_key(path: &Path) -> Result<PrivateKey, TLSError> {
-    let mut file_reader = load_file(path)?;
-
-    // Only the first private key is returned from a pemfile because there can be only one key
-    // valid for the certificates presented by this server
-    match rustls::internal::pemfile::rsa_private_keys(&mut file_reader) {
-        Ok(mut keys) => {
-            if keys.len() != 1 {
-                return Err(TLSError::General(
-                    "Unexpected number of keys (only 1 supported)".to_string(),
-                ));
-            }
-            Ok(keys.pop().unwrap())
-        }
-        Err(_) => Err(TLSError::General("Could not parse PEM".to_string())),
-    }
-}
-
-fn load_der_key(path: &Path) -> Result<PrivateKey, TLSError> {
-    let mut file_reader = load_file(path)?;
-    let mut key = Vec::new();
-    match file_reader.read_to_end(&mut key) {
-        Ok(_) => Ok(PrivateKey(key)),
-        Err(_) => Err(TLSError::General("Could not read DER".to_string())),
-    }
-}
-
-impl AsPrivateKey for &Path {
-    fn as_private_key(self) -> Result<PrivateKey, TLSError> {
-        let key = FileExtension::try_from(self)?;
-        match key {
-            FileExtension::Pem => load_pem_key(self),
-            FileExtension::Der => load_der_key(self),
-        }
-    }
-}
-
-impl AsPrivateKey for PrivateKey {
-    fn as_private_key(self) -> Result<PrivateKey, TLSError> {
-        Ok(self)
     }
 }
 
@@ -535,22 +380,25 @@ pub mod server {
             Self { config }
         }
 
-        pub fn with_certificate<C: AsCertificate, PK: AsPrivateKey>(
+        pub fn with_certificate<
+            C: certificate::IntoCertificate,
+            PK: certificate::IntoPrivateKey,
+        >(
             mut self,
-            cert: C,
-            key: PK,
+            certificate: C,
+            private_key: PK,
         ) -> Result<Self, TLSError> {
-            let certificate = cert.as_certificate()?;
-            let key = key.as_private_key()?;
-            self.config.set_single_cert(certificate, key)?;
+            let certificate = certificate.into_certificate()?;
+            let private_key = private_key.into_private_key()?;
+            self.config.set_single_cert(certificate.0, private_key.0)?;
             Ok(self)
         }
 
-        pub fn with_alpn_protocols<'a, P: Iterator<Item = &'a [u8]>>(
+        pub fn with_alpn_protocols<P: Iterator<Item = I>, I: AsRef<[u8]>>(
             mut self,
             protocols: P,
         ) -> Result<Self, TLSError> {
-            self.config.alpn_protocols = protocols.map(|p| p.to_vec()).collect();
+            self.config.alpn_protocols = protocols.map(|p| p.as_ref().to_vec()).collect();
             Ok(self)
         }
 
@@ -673,9 +521,12 @@ pub mod client {
             Ok(self)
         }
 
-        pub fn with_certificate<C: AsCertificate>(mut self, cert: C) -> Result<Self, TLSError> {
-            let certificates = cert.as_certificate()?;
-            let root_certificate = certificates.get(0).ok_or_else(|| {
+        pub fn with_certificate<C: certificate::IntoCertificate>(
+            mut self,
+            cert: C,
+        ) -> Result<Self, TLSError> {
+            let certificates = cert.into_certificate()?;
+            let root_certificate = certificates.0.get(0).ok_or_else(|| {
                 TLSError::General("Certificate chain needs to have at least one entry".to_string())
             })?;
             self.config
@@ -751,17 +602,16 @@ fn session_size() {
 
 #[test]
 fn client_server_test() {
+    use s2n_quic_core::crypto::tls::testing::certificates::*;
+
     let mut client = client::Builder::new()
-        .with_certificate(&include_bytes!("../../s2n-quic-qns/certs/cert.der")[..])
+        .with_certificate(CERT_PEM)
         .unwrap()
         .build()
         .unwrap();
 
     let mut server = server::Builder::new()
-        .with_certificate(
-            &include_bytes!("../../s2n-quic-qns/certs/cert.der")[..],
-            &include_bytes!("../../s2n-quic-qns/certs/key.der")[..],
-        )
+        .with_certificate(CERT_PEM, KEY_PEM)
         .unwrap()
         .build()
         .unwrap();

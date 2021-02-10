@@ -50,11 +50,8 @@ impl Provider for (&std::path::Path, &std::path::Path) {
     type Error = Box<dyn std::error::Error>;
 
     fn start_server(self) -> Result<Self::Server, Self::Error> {
-        let cert = std::fs::read(self.0)?;
-        let key = std::fs::read(self.1)?;
-
         let server = default::Server::builder()
-            .with_certificate(cert, key)?
+            .with_certificate(self.0, self.1)?
             .build()?;
 
         Ok(server)
@@ -71,11 +68,26 @@ impl Provider for (&[u8], &[u8]) {
     type Error = Box<dyn std::error::Error>;
 
     fn start_server(self) -> Result<Self::Server, Self::Error> {
-        let cert = self.0.to_vec();
-        let key = self.1.to_vec();
-
         let server = default::Server::builder()
-            .with_certificate(cert, key)?
+            .with_certificate(self.0, self.1)?
+            .build()?;
+
+        Ok(server)
+    }
+
+    fn start_client(self) -> Result<Self::Client, Self::Error> {
+        Ok(default::Client::default())
+    }
+}
+
+impl Provider for (&str, &str) {
+    type Server = <Default as Provider>::Server;
+    type Client = <Default as Provider>::Client;
+    type Error = Box<dyn std::error::Error>;
+
+    fn start_server(self) -> Result<Self::Server, Self::Error> {
+        let server = default::Server::builder()
+            .with_certificate(self.0, self.1)?
             .build()?;
 
         Ok(server)
@@ -88,12 +100,12 @@ impl Provider for (&[u8], &[u8]) {
 
 #[cfg(feature = "rustls")]
 pub mod rustls {
-    pub use s2n_quic_rustls::{rustls::TLSError, *};
+    pub use s2n_quic_rustls::*;
 
     impl super::Provider for Server {
         type Server = Self;
         type Client = Client;
-        type Error = TLSError;
+        type Error = core::convert::Infallible;
 
         fn start_server(self) -> Result<Self::Server, Self::Error> {
             Ok(self)
@@ -107,7 +119,7 @@ pub mod rustls {
     impl super::Provider for Client {
         type Server = Server;
         type Client = Self;
-        type Error = TLSError;
+        type Error = core::convert::Infallible;
 
         fn start_server(self) -> Result<Self::Server, Self::Error> {
             panic!("cannot create a server from a client");
