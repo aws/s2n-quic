@@ -96,18 +96,7 @@ impl Error {
     pub fn kind(&self) -> s2n_error_type {
         match self {
             Self::InvalidInput => s2n_error_type::Usage,
-            Self::Code(code) => match unsafe { s2n_error_get_type(*code) } {
-                0 => s2n_error_type::Ok,
-                1 => s2n_error_type::Io,
-                2 => s2n_error_type::Closed,
-                3 => s2n_error_type::Blocked,
-                4 => s2n_error_type::Alert,
-                5 => s2n_error_type::Proto,
-                6 => s2n_error_type::Internal,
-                7 => s2n_error_type::Usage,
-                // if the type doesn't match just return an internal error
-                _ => s2n_error_type::Internal,
-            },
+            Self::Code(code) => unsafe { s2n_error_get_type(*code) }.into(),
         }
     }
 }

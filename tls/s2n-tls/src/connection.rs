@@ -31,7 +31,9 @@ impl Connection {
         }
     }
 
-    /// can be used to configure s2n to either use built-in blinding (set blinding to S2N_BUILT_IN_BLINDING) or self-service blinding (set blinding to S2N_SELF_SERVICE_BLINDING).
+    /// can be used to configure s2n to either use built-in blinding (set blinding
+    /// to S2N_BUILT_IN_BLINDING) or self-service blinding (set blinding to
+    /// S2N_SELF_SERVICE_BLINDING).
     pub fn set_blinding(&mut self, blinding: s2n_blinding) -> Result<(), Error> {
         call!(s2n_connection_set_blinding(self.connection, blinding))?;
         Ok(())
@@ -39,7 +41,9 @@ impl Connection {
 
     /// Sets whether or not a Client Certificate should be required to complete the TLS Connection.
     ///
-    /// If this is set to S2N_CERT_AUTH_OPTIONAL the server will request a client certificate but allow the client to not provide one. Rejecting a client certificate when using S2N_CERT_AUTH_OPTIONAL will terminate the handshake.
+    /// If this is set to S2N_CERT_AUTH_OPTIONAL the server will request a client certificate
+    /// but allow the client to not provide one. Rejecting a client certificate when using
+    /// S2N_CERT_AUTH_OPTIONAL will terminate the handshake.
     pub fn set_client_auth_type(
         &mut self,
         client_auth_type: s2n_cert_auth_type,
@@ -63,7 +67,9 @@ impl Connection {
 
     /// provides a smooth transition from s2n_connection_prefer_low_latency to s2n_connection_prefer_throughput.
     ///
-    /// s2n_send uses small TLS records that fit into a single TCP segment for the resize_threshold bytes (cap to 8M) of data and reset record size back to a single segment after timeout_threshold seconds of inactivity.
+    /// s2n_send uses small TLS records that fit into a single TCP segment for the resize_threshold
+    /// bytes (cap to 8M) of data and reset record size back to a single segment after timeout_threshold
+    /// seconds of inactivity.
     pub fn set_dynamic_record_threshold(
         &mut self,
         resize_threshold: u32,
@@ -79,7 +85,11 @@ impl Connection {
 
     /// sets the application protocol preferences on an s2n_connection object.
     ///
-    /// protocols is a list in order of preference, with most preferred protocol first, and of length protocol_count. When acting as an S2N_CLIENT the protocol list is included in the Client Hello message as the ALPN extension. As an S2N_SERVER, the list is used to negotiate a mutual application protocol with the client. After the negotiation for the connection has completed, the agreed upon protocol can be retrieved with s2n_get_application_protocol
+    /// protocols is a list in order of preference, with most preferred protocol first, and of
+    /// length protocol_count. When acting as an S2N_CLIENT the protocol list is included in the
+    /// Client Hello message as the ALPN extension. As an S2N_SERVER, the list is used to negotiate
+    /// a mutual application protocol with the client. After the negotiation for the connection has
+    /// completed, the agreed upon protocol can be retrieved with s2n_get_application_protocol
     pub fn set_alpn_preference<P: IntoIterator<Item = I>, I: AsRef<[u8]>>(
         &mut self,
         protocols: P,
@@ -135,7 +145,8 @@ impl Connection {
         Ok(())
     }
 
-    /// Connections prefering low latency will be encrypted using small record sizes that can be decrypted sooner by the recipient.
+    /// Connections prefering low latency will be encrypted using small record sizes that
+    /// can be decrypted sooner by the recipient.
     pub fn prefer_low_latency(&mut self) -> Result<(), Error> {
         call!(s2n_connection_prefer_low_latency(self.connection))?;
         Ok(())
@@ -149,7 +160,8 @@ impl Connection {
 
     /// wipes and free the in and out buffers associated with a connection.
     ///
-    /// This function may be called when a connection is in keep-alive or idle state to reduce memory overhead of long lived connections.
+    /// This function may be called when a connection is in keep-alive or idle state to
+    /// reduce memory overhead of long lived connections.
     pub fn release_buffers(&mut self) -> Result<(), Error> {
         call!(s2n_connection_release_buffers(self.connection))?;
         Ok(())
@@ -162,7 +174,10 @@ impl Connection {
 
     /// wipes an existing connection and allows it to be reused.
     ///
-    /// This method erases all data associated with a connection including pending reads. This function should be called after all I/O is completed and s2n_shutdown has been called. Reusing the same connection handle(s) is more performant than repeatedly calling s2n_connection_new and s2n_connection_free
+    /// This method erases all data associated with a connection including pending reads.
+    /// This function should be called after all I/O is completed and s2n_shutdown has been
+    /// called. Reusing the same connection handle(s) is more performant than repeatedly
+    /// calling s2n_connection_new and s2n_connection_free
     pub fn wipe(&mut self) -> Result<(), Error> {
         call!(s2n_connection_wipe(self.connection))?;
         Ok(())
@@ -180,7 +195,7 @@ impl Connection {
     }
 
     /// Returns the TLS alert code, if any
-    pub fn get_alert(&self) -> Option<u8> {
+    pub fn alert(&self) -> Option<u8> {
         let alert = call!(s2n_connection_get_alert(self.connection)).ok()?;
         Some(alert as u8)
     }
@@ -204,7 +219,7 @@ impl Connection {
         Ok(())
     }
 
-    pub fn get_quic_transport_parameters(&mut self) -> Result<&[u8], Error> {
+    pub fn quic_transport_parameters(&mut self) -> Result<&[u8], Error> {
         let mut ptr = core::ptr::null();
         let mut len = 0;
         call!(s2n_connection_get_quic_transport_parameters(

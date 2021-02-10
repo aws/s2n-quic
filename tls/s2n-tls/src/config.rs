@@ -55,7 +55,7 @@ impl Builder {
         Default::default()
     }
 
-    pub fn with_alert_behavior(&mut self, value: s2n_alert_behavior) -> Result<&mut Self, Error> {
+    pub fn set_alert_behavior(&mut self, value: s2n_alert_behavior) -> Result<&mut Self, Error> {
         call!(s2n_config_set_alert_behavior(self.as_mut_ptr(), value))?;
         Ok(self)
     }
@@ -71,7 +71,12 @@ impl Builder {
 
     /// sets the application protocol preferences on an s2n_config object.
     ///
-    /// protocols is a list in order of preference, with most preferred protocol first, and of length protocol_count. When acting as an S2N_CLIENT the protocol list is included in the Client Hello message as the ALPN extension. As an S2N_SERVER, the list is used to negotiate a mutual application protocol with the client. After the negotiation for the connection has completed, the agreed upon protocol can be retrieved with s2n_get_application_protocol
+    /// protocols is a list in order of preference, with most preferred protocol first,
+    /// and of length protocol_count. When acting as an S2N_CLIENT the protocol list is
+    /// included in the Client Hello message as the ALPN extension. As an S2N_SERVER, the
+    /// list is used to negotiate a mutual application protocol with the client. After
+    /// the negotiation for the connection has completed, the agreed upon protocol can
+    /// be retrieved with s2n_get_application_protocol
     pub fn set_alpn_preference<P: IntoIterator<Item = I>, I: AsRef<[u8]>>(
         &mut self,
         protocols: P,
