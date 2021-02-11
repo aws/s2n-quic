@@ -3,17 +3,29 @@ use crate::number::{
 };
 use core::{cmp::Ordering, convert::TryFrom, marker::PhantomData, ops};
 
-/// A counter that panics on overflow and saturates rather than wraps without debug_assertions
+/// A checked-overflow counter
 ///
 /// Rather than silently wrapping, we want to ensure counting errors stay somewhat isolated so the
-/// counter will saturate rather than wrap. The `checked-counters` feature flag can be passed in
-/// order to always check for overflow.
+/// counter will saturate rather than wrap. The counter operates in 3 modes:
+///
+/// * If `debug_assertions` are enabled, the counter will panic on overflow
+/// * If the `checked-counters` feature flag is defined, the counter will panic on overflow, even in
+///   release builds.
+/// * Otherwise, the counter will saturate
+///
+/// The counter can also be configured to always saturate by passing the `Saturating` behavior:
+///
+/// ```rust
+/// use s2n_quic_core::counter::{Counter, Saturating};
+///
+/// let counter: Counter<u32, Saturating> = Default::default();
+/// ```
 #[derive(Clone, Copy, Debug, Default, Hash)]
 pub struct Counter<T, Behavior = ()>(T, PhantomData<Behavior>);
 
 /// Overrides the behavior of a counter to always saturate
 #[derive(Clone, Copy, Debug, Default, Hash)]
-struct Saturating;
+pub struct Saturating;
 
 impl<T, Behavior> Counter<T, Behavior> {
     /// Creates a new counter with an initial value
