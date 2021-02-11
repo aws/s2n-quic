@@ -1,9 +1,9 @@
 FROM martenseemann/quic-network-simulator-endpoint:latest
 
-# install openssl to convert PEM to DER
+# install libcrypto
 RUN set -eux; \
   apt-get update; \
-  apt-get -y install openssl; \
+  apt-get -y install libssl-dev; \
   rm -rf /var/lib/apt/lists/*; \
   apt-get clean; \
   rm -rf /tmp/*; \
@@ -15,15 +15,15 @@ RUN chmod +x run_endpoint.sh
 
 # copy runner
 COPY s2n-quic-qns-debug /usr/bin/s2n-quic-qns
-COPY s2n-quic-qns-release /usr/bin/s2n-quic-qns-perf
+COPY s2n-quic-qns-release /usr/bin/s2n-quic-qns-release
 
 RUN set -eux; \
   chmod +x /usr/bin/s2n-quic-qns; \
-  chmod +x /usr/bin/s2n-quic-qns-perf; \
+  chmod +x /usr/bin/s2n-quic-qns-release; \
   ldd /usr/bin/s2n-quic-qns; \
   # ensure the binary works \
   s2n-quic-qns --help; \
-  s2n-quic-qns-perf --help; \
+  s2n-quic-qns-release --help; \
   echo done
 
 # help with debugging

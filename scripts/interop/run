@@ -5,7 +5,7 @@ set -e
 INTEROP_DIR=target/quic-interop-runner
 
 # Setup the s2n-quic docker image
-sudo docker build . --file qns/Dockerfile.build --tag awslabs/s2n-quic-qns
+sudo docker build . --file quic/s2n-quic-qns/etc/Dockerfile.build --tag awslabs/s2n-quic-qns
 
 if [ ! -d $INTEROP_DIR ]; then
   git clone https://github.com/marten-seemann/quic-interop-runner $INTEROP_DIR

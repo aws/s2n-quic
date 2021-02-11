@@ -1,9 +1,9 @@
 FROM martenseemann/quic-network-simulator-endpoint:latest
 
-# install openssl to convert PEM to DER
+# install libcrypto
 RUN set -eux; \
   apt-get update; \
-  apt-get -y install openssl; \
+  apt-get -y install libssl-dev; \
   rm -rf /var/lib/apt/lists/*; \
   apt-get clean; \
   rm -rf /tmp/*; \

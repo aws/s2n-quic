@@ -53,20 +53,16 @@ macro_rules! cert_type {
         impl $trait for &std::path::Path {
             fn $method(self) -> Result<$name, Error> {
                 match self.extension() {
-                    Some(ext) if ext == "pem" => {
-                        let pem = std::fs::read_to_string(self)
-                            .map_err(|err| Error::General(err.to_string()))?;
-                        pem.$method()
-                    }
                     Some(ext) if ext == "der" => {
                         let pem =
                             std::fs::read(self).map_err(|err| Error::General(err.to_string()))?;
                         pem.$method()
                     }
-                    Some(ext) => Err(Error::General(format!("unknown extension: {:?}", ext))),
-                    None => Err(Error::General(
-                        "cannot not infer certificate type without extension".to_string(),
-                    )),
+                    _ => {
+                        let pem = std::fs::read_to_string(self)
+                            .map_err(|err| Error::General(err.to_string()))?;
+                        pem.$method()
+                    }
                 }
             }
         }

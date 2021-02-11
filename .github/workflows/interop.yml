@@ -152,7 +152,7 @@ jobs:
         working-directory: s2n-quic-qns
         run: |
           cp ../s2n-quic/.github/interop/Dockerfile .
-          cp ../s2n-quic/qns/run_endpoint.sh .
+          cp ../s2n-quic/quic/s2n-quic-qns/etc/run_endpoint.sh .
 
       - name: Run docker build
         working-directory: s2n-quic-qns
