@@ -175,7 +175,7 @@ pub fn protect<'a, K: HeaderCrypto>(
     let sample = payload.header_protection_sample(crypto.sealing_sample_len())?;
     let mask = crypto.sealing_header_protection_mask(sample);
 
-    apply_header_protection(mask, payload)
+    Ok(apply_header_protection(mask, payload))
 }
 
 /// Removes packet protection from a `ProtectedPayload` into a `EncryptedPayload`

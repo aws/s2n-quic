@@ -75,7 +75,7 @@ fn xor_mask(payload: &mut [u8], mask: &[u8]) {
 pub(crate) fn apply_header_protection(
     mask: HeaderProtectionMask,
     payload: EncryptedPayload,
-) -> Result<ProtectedPayload, DecoderError> {
+) -> ProtectedPayload {
     let header_len = payload.header_len;
     let packet_number_len = payload.packet_number_len;
     let payload = payload.buffer.into_less_safe_slice();
@@ -86,7 +86,7 @@ pub(crate) fn apply_header_protection(
     let packet_number_bytes = &mut payload[header_len..header_with_pn_len];
     xor_mask(packet_number_bytes, &mask);
 
-    Ok(ProtectedPayload::new(header_len, payload))
+    ProtectedPayload::new(header_len, payload)
 }
 
 pub(crate) fn remove_header_protection(

@@ -314,8 +314,7 @@ fn header_protection_test_helper(
     apply_header_protection(
         mask,
         EncryptedPayload::new(header_len, packet_number_len, &mut subject),
-    )
-    .unwrap();
+    );
 
     assert_eq!(
         protected_header,
