@@ -1,20 +1,36 @@
 use crate::number::{
     CheckedAddAssign, CheckedSubAssign, SaturatingAddAssign, SaturatingSubAssign, UpcastFrom,
 };
-use core::{cmp::Ordering, convert::TryFrom, ops};
+use core::{cmp::Ordering, convert::TryFrom, marker::PhantomData, ops};
 
-/// A counter that panics on overflow and saturates rather than wraps without debug_assertions
+/// A checked-overflow counter
 ///
 /// Rather than silently wrapping, we want to ensure counting errors stay somewhat isolated so the
-/// counter will saturate rather than wrap. The `checked-counters` feature flag can be passed in
-/// order to always check for overflow.
+/// counter will saturate rather than wrap. The counter operates in 3 modes:
+///
+/// * If `debug_assertions` are enabled, the counter will panic on overflow
+/// * If the `checked-counters` feature flag is defined, the counter will panic on overflow, even in
+///   release builds.
+/// * Otherwise, the counter will saturate
+///
+/// The counter can also be configured to always saturate by passing the `Saturating` behavior:
+///
+/// ```rust
+/// use s2n_quic_core::counter::{Counter, Saturating};
+///
+/// let counter: Counter<u32, Saturating> = Default::default();
+/// ```
 #[derive(Clone, Copy, Debug, Default, Hash)]
-pub struct Counter<T>(T);
+pub struct Counter<T, Behavior = ()>(T, PhantomData<Behavior>);
 
-impl<T> Counter<T> {
+/// Overrides the behavior of a counter to always saturate
+#[derive(Clone, Copy, Debug, Default, Hash)]
+pub struct Saturating;
+
+impl<T, Behavior> Counter<T, Behavior> {
     /// Creates a new counter with an initial value
     pub const fn new(value: T) -> Self {
-        Self(value)
+        Self(value, PhantomData)
     }
 
     /// Tries to convert V to T and add it to the current counter value
@@ -50,7 +66,7 @@ macro_rules! assign_trait {
         $checked_trait:ident,
         $checked:ident
     ) => {
-        impl<T, R> ops::$op<R> for Counter<T>
+        impl<T, R> ops::$op<R> for Counter<T, ()>
         where
             T: $saturating_trait<R> + $checked_trait<R> + ops::$op + UpcastFrom<R>,
         {
@@ -62,6 +78,15 @@ macro_rules! assign_trait {
                 } else {
                     (self.0).$saturating_method(rhs);
                 }
+            }
+        }
+
+        impl<T, R> ops::$op<R> for Counter<T, Saturating>
+        where
+            T: $saturating_trait<R>,
+        {
+            fn $method(&mut self, rhs: R) {
+                (self.0).$saturating_method(rhs);
             }
         }
     };
@@ -85,22 +110,22 @@ assign_trait!(
     checked_sub_assign
 );
 
-impl<T> UpcastFrom<Counter<T>> for T {
-    fn upcast_from(value: Counter<T>) -> Self {
+impl<T, B> UpcastFrom<Counter<T, B>> for T {
+    fn upcast_from(value: Counter<T, B>) -> Self {
         value.0
     }
 }
 
-impl<T> UpcastFrom<&Counter<T>> for T
+impl<T, B> UpcastFrom<&Counter<T, B>> for T
 where
     T: for<'a> UpcastFrom<&'a T>,
 {
-    fn upcast_from(value: &Counter<T>) -> Self {
+    fn upcast_from(value: &Counter<T, B>) -> Self {
         T::upcast_from(&value.0)
     }
 }
 
-impl<T> ops::Deref for Counter<T> {
+impl<T, B> ops::Deref for Counter<T, B> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -108,7 +133,7 @@ impl<T> ops::Deref for Counter<T> {
     }
 }
 
-impl<T, R> PartialEq<R> for Counter<T>
+impl<T, B, R> PartialEq<R> for Counter<T, B>
 where
     Self: PartialOrd<R>,
 {
@@ -117,7 +142,7 @@ where
     }
 }
 
-impl<T> PartialOrd<T> for Counter<T>
+impl<T, B> PartialOrd<T> for Counter<T, B>
 where
     T: PartialOrd<T>,
 {
@@ -126,7 +151,7 @@ where
     }
 }
 
-impl<T> PartialOrd for Counter<T>
+impl<T, B> PartialOrd for Counter<T, B>
 where
     T: PartialOrd<T>,
 {
@@ -135,9 +160,9 @@ where
     }
 }
 
-impl<T> Eq for Counter<T> where Self: Ord {}
+impl<T, B> Eq for Counter<T, B> where Self: Ord {}
 
-impl<T> Ord for Counter<T>
+impl<T, B> Ord for Counter<T, B>
 where
     T: Ord,
 {
@@ -152,12 +177,22 @@ mod tests {
 
     #[test]
     fn automatic_upcast() {
-        let mut a = Counter::new(0u32);
+        let mut a: Counter<u32> = Counter::new(0);
         a += 1u8;
         a += 2u16;
         a += 3u32;
 
         assert_eq!(a, Counter::new(6));
         assert_eq!(a, 6u32);
+    }
+
+    #[test]
+    fn saturating() {
+        let mut a: Counter<u8, Saturating> = Counter::new(0);
+        a += 250;
+        a += 250;
+        a += 123;
+
+        assert_eq!(a, Counter::new(255));
     }
 }
