@@ -15,18 +15,15 @@ LOG=$LOG_DIR/logs.txt
 
 QNS_BIN="s2n-quic-qns"
 
-if [ "$TEST_TYPE" == "MEASUREMENT" ] && [ -x "$(command -v s2n-quic-qns-perf)" ]; then
+if [ "$TEST_TYPE" == "MEASUREMENT" ] && [ -x "$(command -v s2n-quic-qns-release)" ]; then
     echo "using optimized build"
-    QNS_BIN="s2n-quic-qns-perf"
+    QNS_BIN="s2n-quic-qns-release"
 fi
 
 CERT_ARGS=""
 
 if [ -d "/certs" ]; then
-    # Rustls only reads RSA private keys, not the PKCS#8 private key format
-    openssl rsa -in /certs/priv.key -outform pem -out /tmp/rsa_priv_key.pem
-
-    CERT_ARGS="--private-key /tmp/rsa_priv_key.pem --certificate /certs/cert.pem"
+    CERT_ARGS="--private-key /certs/priv.key --certificate /certs/cert.pem"
 fi
 
 if [ "$ROLE" == "client" ]; then

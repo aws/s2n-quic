@@ -182,14 +182,14 @@ impl StreamReceiveBuffer {
     /// Allocates a buffer of the configured buffer size.
     /// This currently just allocates from the heap. In the future it could use a custom allocator
     /// or object pool.
-    fn allocate_buffer(&mut self) -> Result<BytesMut, StreamReceiveBufferError> {
+    fn allocate_buffer(&mut self) -> BytesMut {
         let mut b = BytesMut::with_capacity(self.buffer_size);
         // Unfortunately it seems like at the current point of time we have to
         // initialize a BytesMut, in order to be able to properly split it later
         // on. split_off works based on stored size - not based on capacity. And
         // the size will be 0 if no data is stored in it yet.
         b.resize(self.buffer_size, 0);
-        Ok(b)
+        b
     }
 
     /// Tries to merge a buffer on the given Positon to the buffer of it's left side
@@ -310,11 +310,11 @@ impl StreamReceiveBuffer {
     /// The method allows to create Gaps between slots. Therefore an
     /// `aligned_offset` (which must be a mulitple of `buffer_size`) must be
     /// provided.
-    fn push_back_buffer_at(&mut self, aligned_offset: u64) -> Result<(), StreamReceiveBufferError> {
+    fn push_back_buffer_at(&mut self, aligned_offset: u64) {
         // Allocate the buffer before we do any slot
         // manipulation, so things stay consistent if it
         // would fail.
-        let buffer = self.allocate_buffer()?;
+        let buffer = self.allocate_buffer();
         // If the aligned data_offset is not adjacent to the already covered
         // slot range we need a gap and a buffer. Otherwise we only need a buffer.
         let gap_size: u64 = aligned_offset - self.end_offset;
@@ -326,8 +326,6 @@ impl StreamReceiveBuffer {
         let slot = SlotState::Allocated(buffer);
         self.slots.push_back(slot);
         self.end_offset = Into::<u64>::into(aligned_offset) + self.buffer_size as u64;
-
-        Ok(())
     }
 
     /// Allocate a buffer inside the gap.
@@ -341,7 +339,7 @@ impl StreamReceiveBuffer {
         gap_start: u64,
         gap_size: u64,
         desired_buffer_offset: u64,
-    ) -> Result<SlotPosition, StreamReceiveBufferError> {
+    ) -> SlotPosition {
         debug_assert!(gap_start % self.buffer_size as u64 == 0u64);
         debug_assert!(gap_size % self.buffer_size as u64 == 0u64);
         debug_assert!(desired_buffer_offset % self.buffer_size as u64 == 0u64);
@@ -354,7 +352,7 @@ impl StreamReceiveBuffer {
         // Allocate the buffer before we do any slot
         // manipulation, so things stay consistent if it
         // would fail.
-        let buffer = self.allocate_buffer()?;
+        let buffer = self.allocate_buffer();
         if new_gap_before > 0u64 {
             self.slots
                 .insert(buffer_index, SlotState::Gap(new_gap_before));
@@ -366,10 +364,10 @@ impl StreamReceiveBuffer {
         }
         self.slots[buffer_index] = SlotState::Allocated(buffer);
 
-        Ok(SlotPosition {
+        SlotPosition {
             index: buffer_index,
             offset: desired_buffer_offset,
-        })
+        }
     }
 
     /// Ensures that a buffer is available for the given offset, and returns the
@@ -383,10 +381,7 @@ impl StreamReceiveBuffer {
     ///   offset
     /// - or the index of a slot which has a buffer ready to store new data,
     ///   and covers the offset.
-    fn get_or_create_buffer_at_offset(
-        &mut self,
-        data_offset: u64,
-    ) -> Result<SlotPosition, StreamReceiveBufferError> {
+    fn get_or_create_buffer_at_offset(&mut self, data_offset: u64) -> SlotPosition {
         // In order to determine whether slots already have been created for the
         // offset, we need align the offset to our buffer size. Slots will
         // always be created to cover full buffer sizes.
@@ -394,11 +389,11 @@ impl StreamReceiveBuffer {
         if aligned_offset >= self.end_offset {
             // Create a new buffer behind all our available slots.
             // The newly created buffer will be in the last slot
-            self.push_back_buffer_at(aligned_offset)?;
-            return Ok(SlotPosition {
+            self.push_back_buffer_at(aligned_offset);
+            return SlotPosition {
                 offset: aligned_offset,
                 index: self.slots.len() - 1,
-            });
+            };
         }
 
         // We need to search the slot which will hold the data.
@@ -426,10 +421,10 @@ impl StreamReceiveBuffer {
                 }
                 SlotState::Received(b) | SlotState::Allocated(b) => {
                     if data_offset < slot_start + b.capacity() as u64 {
-                        return Ok(SlotPosition {
+                        return SlotPosition {
                             offset: current_offset,
                             index,
-                        });
+                        };
                     }
                     current_offset += b.capacity() as u64;
                 }
@@ -477,7 +472,7 @@ impl StreamReceiveBuffer {
         // Therefore we loop until all data has been written.
         while !data.is_empty() {
             // Search for the slot where we &data[0] needs to go
-            let mut slot_pos = self.get_or_create_buffer_at_offset(data_offset)?;
+            let mut slot_pos = self.get_or_create_buffer_at_offset(data_offset);
             let slot = &mut self.slots[slot_pos.index];
             match slot {
                 SlotState::Allocated(slot_buffer) => {
