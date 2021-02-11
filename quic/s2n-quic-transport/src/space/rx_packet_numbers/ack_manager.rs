@@ -155,7 +155,8 @@ impl AckManager {
             {
                 is_ack_eliciting = true;
             } else {
-                self.transmissions_since_elicitation += 1;
+                self.transmissions_since_elicitation =
+                    self.transmissions_since_elicitation.saturating_add(1);
             }
         }
 
