@@ -37,6 +37,7 @@ impl Default for Builder {
     fn default() -> Self {
         let mut config = config::Builder::default();
         config.enable_quic().unwrap();
+        // https://github.com/awslabs/s2n/blob/main/docs/USAGE-GUIDE.md#s2n_config_set_cipher_preferences
         config.set_cipher_preference("default_tls13").unwrap();
         config.set_alpn_preference(&[b"h3"]).unwrap();
 

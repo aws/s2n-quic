@@ -85,15 +85,15 @@ macro_rules! cert_type {
         impl $trait for &std::path::Path {
             fn $method(self) -> Result<$name, Error> {
                 match self.extension() {
-                    Some(ext) if ext == "pem" => {
-                        let pem = std::fs::read_to_string(self).map_err(|_| Error::InvalidInput)?;
-                        pem.$method()
-                    }
                     Some(ext) if ext == "der" => {
                         let pem = std::fs::read(self).map_err(|_| Error::InvalidInput)?;
                         pem.$method()
                     }
-                    _ => Err(Error::InvalidInput),
+                    // assume it's in pem format
+                    _ => {
+                        let pem = std::fs::read_to_string(self).map_err(|_| Error::InvalidInput)?;
+                        pem.$method()
+                    }
                 }
             }
         }

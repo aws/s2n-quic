@@ -54,20 +54,18 @@ where
     /// * The Callback struct must live at least as long as the connection
     /// * or the `unset` method should be called if it doesn't
     pub unsafe fn set(&mut self, connection: &mut Connection) {
-        // We use unwrap here since s2n will just check if connection is not null
+        let context = self as *mut Self as *mut c_void;
+
+        // We use unwrap here since s2n-tls will just check if connection is not null
         connection
-            .set_secret_callback(Some(Self::secret_cb), self as *mut _ as *mut _)
+            .set_secret_callback(Some(Self::secret_cb), context)
             .unwrap();
         connection.set_send_callback(Some(Self::send_cb)).unwrap();
-        connection
-            .set_send_context(self as *mut _ as *mut _)
-            .unwrap();
+        connection.set_send_context(context).unwrap();
         connection
             .set_receive_callback(Some(Self::recv_cb))
             .unwrap();
-        connection
-            .set_receive_context(self as *mut _ as *mut _)
-            .unwrap();
+        connection.set_receive_context(context).unwrap();
     }
 
     /// Removes all of the callback and context pointers from the connection
@@ -99,7 +97,7 @@ where
                 -1
             }
 
-            // We use unwrap here since s2n will just check if connection is not null
+            // We use unwrap here since s2n-tls will just check if connection is not null
             connection
                 .set_secret_callback(Some(secret_cb), core::ptr::null_mut())
                 .unwrap();
@@ -259,7 +257,8 @@ where
         let data = core::slice::from_raw_parts_mut(data, len as _);
         match context.on_read(data) {
             0 => {
-                // s2n wants us to set the global errno to signal blocked
+                // https://github.com/awslabs/s2n/blob/main/docs/USAGE-GUIDE.md#s2n_connection_set_send_cb
+                // s2n-tls wants us to set the global errno to signal blocked
                 errno::set_errno(errno::Errno(libc::EWOULDBLOCK));
                 -1
             }
