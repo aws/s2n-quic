@@ -14,7 +14,7 @@ cfg_if! {
     }
 }
 
-#[cfg(feature = "std")]
+#[cfg(any(feature = "std", test))]
 mod if_std {
     //! This module implements the clock functionality for the "std" feature
     //! and environment. In this environment we are directly using `Instant`
@@ -39,6 +39,7 @@ mod if_std {
 
 // The no-std version allows to set a global clock manually.
 // It is not possible to overwrite the clock at runtime.
+#[cfg(any(not(feature = "std"), test))]
 mod if_no_std {
     //! This module implements the clock functionality for the "no-std"
     //! environments. In those environments we allow to configure a global clock
@@ -64,19 +65,20 @@ mod if_no_std {
     /// The global clock can only be set once.
     pub fn init_global_clock(clock: &'static dyn Clock) -> Result<(), ()> {
         unsafe {
-            match CLOCK_STATE.compare_and_swap(
+            match CLOCK_STATE.compare_exchange(
                 CLOCK_UNINITIALIZED,
                 CLOCK_INITIALIZING,
                 Ordering::SeqCst,
+                Ordering::SeqCst,
             ) {
-                CLOCK_UNINITIALIZED => {
+                Ok(_) => {
                     GLOBAL_CLOCK = clock;
                     CLOCK_STATE.store(CLOCK_INITIALIZED, Ordering::SeqCst);
                     Ok(())
                 }
-                CLOCK_INITIALIZING => {
+                Err(err) if err == CLOCK_INITIALIZING => {
                     // Wait until a different thread has initialized the clock
-                    while CLOCK_STATE.load(Ordering::SeqCst) == CLOCK_INITIALIZING {}
+                    while CLOCK_STATE.load(Ordering::SeqCst) != CLOCK_INITIALIZED {}
                     Err(())
                 }
                 _ => Err(()),
