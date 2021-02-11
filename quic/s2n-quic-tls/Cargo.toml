@@ -1,0 +1,20 @@
+[package]
+name = "s2n-quic-tls"
+version = "0.1.0"
+authors = ["Cameron Bytheway <bythewc@amazon.com>"]
+edition = "2018"
+license = "Apache-2.0"
+
+[dependencies]
+bytes = { version = "1", default-features = false }
+errno = "0.2"
+libc = "0.2"
+s2n-codec = { version = "0.1", path = "../../common/s2n-codec", default-features = false }
+s2n-quic-core = { version = "0.1", path = "../s2n-quic-core", default-features = false }
+s2n-quic-ring = { version = "0.1", path = "../s2n-quic-ring", default-features = false }
+s2n-tls = { version = "0.1", path = "../../tls/s2n-tls", features = ["quic"] }
+
+[dev-dependencies]
+checkers = "0.5"
+s2n-quic-core = { version = "0.1", path = "../s2n-quic-core", features = ["testing"] }
+s2n-quic-rustls = { version = "0.1", path = "../s2n-quic-rustls" }
