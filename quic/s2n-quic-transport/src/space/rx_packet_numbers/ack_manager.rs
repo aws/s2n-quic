@@ -12,6 +12,7 @@ use crate::{
 use core::time::Duration;
 use s2n_quic_core::{
     ack_set::AckSet,
+    counter::{Counter, Saturating},
     frame::{Ack, Ping},
     inet::DatagramInfo,
     packet::number::{PacketNumber, PacketNumberSpace},
@@ -57,10 +58,10 @@ pub struct AckManager {
     largest_received_packet_number_at: Option<Timestamp>,
 
     /// The number of processed packets since transmission
-    processed_packets_since_transmission: u8,
+    processed_packets_since_transmission: Counter<u8, Saturating>,
 
     /// The number of transmissions since the last ACK-eliciting packet was sent
-    transmissions_since_elicitation: u8,
+    transmissions_since_elicitation: Counter<u8, Saturating>,
 
     /// Used to transition through transmission/retransmission states
     transmission_state: AckTransmissionState,
@@ -105,8 +106,8 @@ impl AckManager {
             largest_received_packet_number_acked: packet_space
                 .new_packet_number(VarInt::from_u8(0)),
             largest_received_packet_number_at: None,
-            processed_packets_since_transmission: 0,
-            transmissions_since_elicitation: 0,
+            processed_packets_since_transmission: Counter::new(0),
+            transmissions_since_elicitation: Counter::new(0),
             transmission_state: AckTransmissionState::default(),
         }
     }
@@ -166,7 +167,7 @@ impl AckManager {
 
         if is_ack_eliciting {
             // reset the counter
-            self.transmissions_since_elicitation = 0;
+            self.transmissions_since_elicitation = Counter::new(0);
 
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2.4
             //# When a packet containing an ACK frame is sent, the largest
@@ -182,7 +183,7 @@ impl AckManager {
         self.transmission_state.on_transmit();
 
         // reset the number of packets since transmission
-        self.processed_packets_since_transmission = 0;
+        self.processed_packets_since_transmission = Counter::new(0);
     }
 
     /// Called when a set of packets was acknowledged
@@ -241,8 +242,7 @@ impl AckManager {
 
         // Notify the state that the ack_ranges have changed
         self.transmission_state.on_update(&self.ack_ranges);
-        self.processed_packets_since_transmission =
-            self.processed_packets_since_transmission.saturating_add(1);
+        self.processed_packets_since_transmission += 1;
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2.5
         //# An endpoint measures the delays intentionally introduced between the
@@ -386,7 +386,7 @@ mod tests {
             PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u8(1)),
         );
         manager.transmission_state = AckTransmissionState::Active { retransmissions: 0 };
-        manager.transmissions_since_elicitation = ACK_ELICITATION_INTERVAL;
+        manager.transmissions_since_elicitation = Counter::new(ACK_ELICITATION_INTERVAL);
 
         manager.on_transmit_complete(&mut write_context);
 
@@ -401,7 +401,7 @@ mod tests {
         );
 
         manager.transmission_state = AckTransmissionState::Active { retransmissions: 0 };
-        manager.transmissions_since_elicitation = ACK_ELICITATION_INTERVAL;
+        manager.transmissions_since_elicitation = Counter::new(ACK_ELICITATION_INTERVAL);
         write_context.frame_buffer.clear();
         write_context.transmission_constraint = transmission::Constraint::CongestionLimited;
 
@@ -412,7 +412,7 @@ mod tests {
         );
 
         manager.transmission_state = AckTransmissionState::Active { retransmissions: 0 };
-        manager.transmissions_since_elicitation = ACK_ELICITATION_INTERVAL;
+        manager.transmissions_since_elicitation = Counter::new(ACK_ELICITATION_INTERVAL);
         write_context.frame_buffer.clear();
         write_context.transmission_constraint = transmission::Constraint::RetransmissionOnly;
 
@@ -425,6 +425,37 @@ mod tests {
                 .as_frame(),
             Frame::Ping(ping::Ping),
             "Ping should be written when transmission is retransmission only"
+        );
+    }
+
+    #[test]
+    fn on_transmit_complete_many_transmissions_since_elicitation() {
+        let mut manager = AckManager::new(
+            PacketNumberSpace::ApplicationData,
+            AckSettings::default(),
+            1,
+        );
+        let mut frame_buffer = OutgoingFrameBuffer::new();
+        let mut write_context = MockWriteContext::new(
+            s2n_quic_platform::time::now(),
+            &mut frame_buffer,
+            transmission::Constraint::None,
+            endpoint::Type::Server,
+        );
+        write_context.transmission_constraint = transmission::Constraint::CongestionLimited;
+
+        manager.ack_ranges = AckRanges::default();
+        manager.ack_ranges.insert_packet_number(
+            PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u8(1)),
+        );
+        manager.transmission_state = AckTransmissionState::Active { retransmissions: 0 };
+        manager.transmissions_since_elicitation = Counter::new(u8::max_value());
+
+        manager.on_transmit_complete(&mut write_context);
+
+        assert_eq!(
+            manager.transmissions_since_elicitation,
+            Counter::new(u8::max_value())
         );
     }
 
