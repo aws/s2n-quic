@@ -429,6 +429,37 @@ mod tests {
     }
 
     #[test]
+    fn on_transmit_complete_many_transmissions_since_elicitation() {
+        let mut manager = AckManager::new(
+            PacketNumberSpace::ApplicationData,
+            AckSettings::default(),
+            1,
+        );
+        let mut frame_buffer = OutgoingFrameBuffer::new();
+        let mut write_context = MockWriteContext::new(
+            s2n_quic_platform::time::now(),
+            &mut frame_buffer,
+            transmission::Constraint::None,
+            endpoint::Type::Server,
+        );
+        write_context.transmission_constraint = transmission::Constraint::CongestionLimited;
+
+        manager.ack_ranges = AckRanges::default();
+        manager.ack_ranges.insert_packet_number(
+            PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u8(1)),
+        );
+        manager.transmission_state = AckTransmissionState::Active { retransmissions: 0 };
+        manager.transmissions_since_elicitation = Counter::new(u8::max_value());
+
+        manager.on_transmit_complete(&mut write_context);
+
+        assert_eq!(
+            manager.transmissions_since_elicitation,
+            Counter::new(u8::max_value())
+        );
+    }
+
+    #[test]
     fn size_of_snapshots() {
         assert_debug_snapshot!("AckManager", size_of::<AckManager>());
     }
