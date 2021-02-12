@@ -112,6 +112,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         let local_id_registry = self.connection_id_mapper.create_local_id_registry(
             internal_connection_id,
             &initial_connection_id,
+            &datagram.destination_connection_id,
             stateless_reset_token,
         );
 

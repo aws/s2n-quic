@@ -196,8 +196,17 @@ impl ConnectionIdMapper {
         &mut self,
         internal_id: InternalConnectionId,
         initial_connection_id: &connection::LocalId,
+        initial_random_id: &connection::LocalId,
         local_stateless_reset_token: stateless_reset::Token,
     ) -> LocalIdRegistry {
+        if initial_random_id != initial_connection_id {
+            let _ = self
+                .state
+                .borrow_mut()
+                .local_id_map
+                .try_insert(initial_random_id, internal_id);
+        }
+
         LocalIdRegistry::new(
             internal_id,
             self.state.clone(),
