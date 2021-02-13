@@ -340,4 +340,36 @@ mod tests {
             mapper.remove_internal_connection_id_by_stateless_reset_token(&TEST_TOKEN_3)
         );
     }
+
+    #[test]
+    fn initial_id_map() {
+        let mut random_generator = random::testing::Generator(123);
+        let mut mapper = ConnectionIdMapper::new(&mut random_generator);
+        let internal_id = InternalConnectionIdGenerator::new().generate_id();
+        let initial_id = connection::InitialId::try_from_bytes(b"id000001").unwrap();
+
+        assert_eq!(
+            None,
+            mapper.lookup_internal_connection_id_by_initial_id(&initial_id)
+        );
+
+        assert!(mapper
+            .try_insert_initial_id(initial_id, internal_id)
+            .is_ok());
+        assert!(mapper
+            .try_insert_initial_id(initial_id, internal_id)
+            .is_err());
+
+        assert_eq!(
+            Some(internal_id),
+            mapper.lookup_internal_connection_id_by_initial_id(&initial_id)
+        );
+
+        assert_eq!(Some(initial_id), mapper.remove_initial_id(&internal_id));
+
+        assert_eq!(
+            None,
+            mapper.lookup_internal_connection_id_by_initial_id(&initial_id)
+        );
+    }
 }
