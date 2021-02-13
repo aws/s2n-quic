@@ -860,6 +860,26 @@ extern "C" {
     pub fn s2n_connection_get_cipher(conn: *mut s2n_connection) -> *const ::libc::c_char;
 }
 extern "C" {
+    #[doc = " Returns the IANA value for the connection's negotiated cipher suite."]
+    #[doc = ""]
+    #[doc = " The value is returned in the form of `first,second`, in order to closely match"]
+    #[doc = " the values defined in the [IANA Registry](https://www.iana.org/assignments/tls-parameters/tls-parameters.xhtml#table-tls-parameters-4)."]
+    #[doc = " For example if the connection's negotiated cipher suite is `TLS_AES_128_GCM_SHA256`,"]
+    #[doc = " which is registered as `0x13,0x01`, then `first = 0x13` and `second = 0x01`."]
+    #[doc = ""]
+    #[doc = " This method will only succeed after the cipher suite has been negotiated with the peer."]
+    #[doc = ""]
+    #[doc = " @param conn A pointer to the connection being read"]
+    #[doc = " @param first A pointer to a single byte, which will be updated with the first byte in the registered IANA value."]
+    #[doc = " @param second A pointer to a single byte, which will be updated with the second byte in the registered IANA value."]
+    #[doc = " @return A POSIX error signal. If an error was returned, the values contained in `first` and `second` should be considered invalid."]
+    pub fn s2n_connection_get_cipher_iana_value(
+        conn: *mut s2n_connection,
+        first: *mut u8,
+        second: *mut u8,
+    ) -> ::libc::c_int;
+}
+extern "C" {
     pub fn s2n_connection_is_valid_for_cipher_preferences(
         conn: *mut s2n_connection,
         version: *const ::libc::c_char,

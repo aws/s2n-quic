@@ -11,14 +11,7 @@ use s2n_quic_ring::{
     ring::{aead, hkdf},
     Prk, RingCryptoSuite, SecretPair,
 };
-use s2n_tls::{
-    call,
-    connection::Connection,
-    raw::{
-        s2n_connection, s2n_connection_get_cipher, s2n_connection_get_quic_transport_parameters,
-        s2n_get_application_protocol, s2n_get_server_name, s2n_secret_type_t, s2n_status_code,
-    },
-};
+use s2n_tls::{call, connection::Connection, raw::*};
 
 /// The preallocated size of the outgoing buffer
 ///
@@ -330,16 +323,46 @@ impl Default for Secrets {
 fn get_algo_type(
     connection: *mut s2n_connection,
 ) -> Option<(hkdf::Algorithm, &'static aead::Algorithm)> {
-    let cipher = call!(s2n_connection_get_cipher(connection)).ok()?;
+    let mut cipher = [0, 0];
+    call!(s2n_connection_get_cipher_iana_value(
+        connection,
+        &mut cipher[0],
+        &mut cipher[1]
+    ))
+    .ok()?;
 
-    let cipher = unsafe { get_cstr_slice(cipher)? };
+    //= https://tools.ietf.org/rfc/rfc8446#appendix-B.4
+    //# This specification defines the following cipher suites for use with
+    //# TLS 1.3.
+    //#
+    //#              +------------------------------+-------------+
+    //#              | Description                  | Value       |
+    //#              +------------------------------+-------------+
+    //#              | TLS_AES_128_GCM_SHA256       | {0x13,0x01} |
+    //#              |                              |             |
+    //#              | TLS_AES_256_GCM_SHA384       | {0x13,0x02} |
+    //#              |                              |             |
+    //#              | TLS_CHACHA20_POLY1305_SHA256 | {0x13,0x03} |
+    //#              |                              |             |
+    //#              | TLS_AES_128_CCM_SHA256       | {0x13,0x04} |
+    //#              |                              |             |
+    //#              | TLS_AES_128_CCM_8_SHA256     | {0x13,0x05} |
+    //#              +------------------------------+-------------+
+    const TLS_AES_128_GCM_SHA256: [u8; 2] = [0x13, 0x01];
+    const TLS_AES_256_GCM_SHA384: [u8; 2] = [0x13, 0x02];
+    const TLS_CHACHA20_POLY1305_SHA256: [u8; 2] = [0x13, 0x03];
 
-    // TODO use the IANA code instead
-    // https://github.com/awslabs/s2n/pull/2550
+    // NOTE: we don't have CCM support implemented currently
+
+    // NOTE: CCM_8 is not allowed by QUIC
+    //= https://tools.ietf.org/id/draft-ietf-quic-tls-34.txt#5.3
+    //# QUIC can use any of the cipher suites defined in [TLS13] with the
+    //# exception of TLS_AES_128_CCM_8_SHA256.
+
     match cipher {
-        b"TLS_AES_128_GCM_SHA256" => Some((hkdf::HKDF_SHA256, &aead::AES_128_GCM)),
-        b"TLS_AES_256_GCM_SHA384" => Some((hkdf::HKDF_SHA384, &aead::AES_256_GCM)),
-        b"TLS_CHACHA20_POLY1305_SHA256" => Some((hkdf::HKDF_SHA256, &aead::CHACHA20_POLY1305)),
+        TLS_AES_128_GCM_SHA256 => Some((hkdf::HKDF_SHA256, &aead::AES_128_GCM)),
+        TLS_AES_256_GCM_SHA384 => Some((hkdf::HKDF_SHA384, &aead::AES_256_GCM)),
+        TLS_CHACHA20_POLY1305_SHA256 => Some((hkdf::HKDF_SHA256, &aead::CHACHA20_POLY1305)),
         _ => None,
     }
 }
