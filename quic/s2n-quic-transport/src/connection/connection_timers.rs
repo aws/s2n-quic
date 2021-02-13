@@ -22,6 +22,8 @@ pub struct ConnectionTimers {
     /// The timer which is used to send packets to the peer before the idle
     /// timeout expires
     pub local_idle_timer: VirtualTimer,
+    /// The timer for removing an initial id mapping
+    pub initial_id_timer: VirtualTimer,
 }
 
 impl ConnectionTimers {
@@ -31,5 +33,6 @@ impl ConnectionTimers {
             .iter()
             .chain(self.local_idle_timer.iter())
             .chain(self.peer_idle_timer.iter())
+            .chain(self.initial_id_timer.iter())
     }
 }

@@ -5,7 +5,7 @@ use crate::{
         self, connection_interests::ConnectionInterests, id::ConnectionInfo,
         internal_connection_id::InternalConnectionId, local_id_registry::LocalIdRegistrationError,
         shared_state::SharedConnectionState, CloseReason as ConnectionCloseReason,
-        Parameters as ConnectionParameters, ProcessingError,
+        ConnectionIdMapper, Parameters as ConnectionParameters, ProcessingError,
     },
     contexts::ConnectionOnTransmitError,
     path,
@@ -98,6 +98,7 @@ pub trait ConnectionTrait: Sized {
     fn on_timeout(
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
+        connection_id_mapper: &mut ConnectionIdMapper,
         timestamp: Timestamp,
     );
 

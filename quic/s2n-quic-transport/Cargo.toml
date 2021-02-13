@@ -6,6 +6,7 @@ edition = "2018"
 license = "Apache-2.0"
 
 [dependencies]
+bimap = { version = "0.6", default-features = false }
 bytes = { version = "1", default-features = false }
 hashbrown = "0.9"
 s2n-codec = { version = "0.1", path = "../../common/s2n-codec", default-features = false }

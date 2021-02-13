@@ -2,6 +2,7 @@
 
 use crate::connection::{local_id_registry::LocalIdRegistry, InternalConnectionId, PeerIdRegistry};
 use alloc::rc::Rc;
+use bimap::BiMap;
 use core::{cell::RefCell, hash::BuildHasher};
 use hashbrown::hash_map::{Entry, HashMap};
 use s2n_quic_core::{connection, random, stateless_reset};
@@ -127,11 +128,54 @@ impl LocalIdMap {
 }
 
 #[derive(Debug)]
+pub(crate) struct InitialIdMap {
+    /// Maps from initial id to internal connection ID and
+    /// internal connection ID to initial ID
+    map: bimap::BiMap<connection::InitialId, InternalConnectionId>,
+}
+
+impl InitialIdMap {
+    /// Constructs a new `InitialIdMap`
+    fn new() -> Self {
+        Self { map: BiMap::new() }
+    }
+
+    /// Gets the `InternalConnectionId` (if any) associated with the given initial id
+    fn get(&self, initial_id: &connection::InitialId) -> Option<InternalConnectionId> {
+        self.map.get_by_left(&initial_id).copied()
+    }
+
+    /// Inserts the given `InitialId` into the map if it is not already in the map,
+    /// otherwise returns an Err
+    fn try_insert(
+        &mut self,
+        initial_id: connection::InitialId,
+        internal_id: InternalConnectionId,
+    ) -> Result<(), ()> {
+        self.map
+            .insert_no_overwrite(initial_id, internal_id)
+            .map_err(|_| ())
+    }
+
+    /// Removes the `InitialId` associated with the given `InternalConnectionId` from the map
+    pub(crate) fn remove(
+        &mut self,
+        internal_id: &InternalConnectionId,
+    ) -> Option<connection::InitialId> {
+        self.map
+            .remove_by_right(internal_id)
+            .map(|(initial_id, _)| initial_id)
+    }
+}
+
+#[derive(Debug)]
 pub(crate) struct ConnectionIdMapperState {
     /// Maps from external to internal connection IDs
     pub(crate) local_id_map: LocalIdMap,
     /// Maps from a hash of peer stateless reset token to internal connection IDs
     pub(crate) stateless_reset_map: StatelessResetMap,
+    /// Maps from initial id to internal connection IDs
+    pub(crate) initial_id_map: InitialIdMap,
 }
 
 impl ConnectionIdMapperState {
@@ -139,6 +183,7 @@ impl ConnectionIdMapperState {
         Self {
             local_id_map: LocalIdMap::new(HashState::new(random_generator)),
             stateless_reset_map: StatelessResetMap::new(HashState::new(random_generator)),
+            initial_id_map: InitialIdMap::new(),
         }
     }
 }
@@ -167,6 +212,27 @@ impl ConnectionIdMapper {
         guard.local_id_map.get(connection_id)
     }
 
+    /// Looks up the internal Connection ID which is associated with an initial
+    /// connection ID
+    pub fn lookup_internal_connection_id_by_initial_id(
+        &self,
+        initial_id: &connection::InitialId,
+    ) -> Option<InternalConnectionId> {
+        let guard = self.state.borrow();
+        guard.initial_id_map.get(initial_id)
+    }
+
+    /// Inserts the given `InitialId` into the map if it is not already in the map,
+    /// otherwise returns an Err
+    pub fn try_insert_initial_id(
+        &mut self,
+        initial_id: connection::InitialId,
+        internal_id: InternalConnectionId,
+    ) -> Result<(), ()> {
+        let mut guard = self.state.borrow_mut();
+        guard.initial_id_map.try_insert(initial_id, internal_id)
+    }
+
     /// Looks up the internal Connection ID which is associated with a stateless
     /// reset token and removes it from the map if it was found.
     #[must_use]
@@ -189,6 +255,15 @@ impl ConnectionIdMapper {
         guard.stateless_reset_map.remove(peer_stateless_reset_token)
     }
 
+    /// Removes the initial id mapping associated with the given internal ID
+    pub fn remove_initial_id(
+        &mut self,
+        internal_id: &InternalConnectionId,
+    ) -> Option<connection::InitialId> {
+        let mut guard = self.state.borrow_mut();
+        guard.initial_id_map.remove(internal_id)
+    }
+
     /// Creates a `LocalIdRegistry` for a new internal connection ID, which allows that
     /// connection to modify the mappings of it's Connection ID aliases. The provided
     /// `initial_connection_id` will be registered in the returned registry.
@@ -196,17 +271,8 @@ impl ConnectionIdMapper {
         &mut self,
         internal_id: InternalConnectionId,
         initial_connection_id: &connection::LocalId,
-        initial_random_id: &connection::LocalId,
         local_stateless_reset_token: stateless_reset::Token,
     ) -> LocalIdRegistry {
-        if initial_random_id != initial_connection_id {
-            let _ = self
-                .state
-                .borrow_mut()
-                .local_id_map
-                .try_insert(initial_random_id, internal_id);
-        }
-
         LocalIdRegistry::new(
             internal_id,
             self.state.clone(),

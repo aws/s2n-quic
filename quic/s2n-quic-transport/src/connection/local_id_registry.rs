@@ -210,6 +210,9 @@ impl Drop for LocalIdRegistry {
         for id_info in &self.registered_ids {
             guard.local_id_map.remove(&id_info.id);
         }
+
+        // Also clean up the initial ID if it had not already been removed
+        guard.initial_id_map.remove(&self.internal_id);
     }
 }
 
