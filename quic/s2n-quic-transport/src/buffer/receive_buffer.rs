@@ -66,7 +66,7 @@ fn align_offset(offset: u64, alignment: usize) -> u64 {
 /// ordered stream, which might arrive out of order.
 ///
 /// `StreamReceiveBuffer` will accumulate the bytes, and provide them to its users
-/// once a contiguos range of bytes at the current position of the stream had
+/// once a contiguous range of bytes at the current position of the stream has
 /// been accumulated.
 ///
 /// `StreamReceiveBuffer` is optmized for minimizing memory allocations and for
@@ -82,8 +82,8 @@ fn align_offset(offset: u64, alignment: usize) -> u64 {
 /// When users want to consume data from the buffer, the consumable part of the
 /// internal receive buffer is split off and passed back to the caller. Due to
 /// this chunk beeing a view onto a reference-counted internal buffer of type
-/// [`BytesMut`] this is also efficient and does not require another an
-/// additional memory allocation or copy.
+/// [`BytesMut`] this is also efficient and does not require additional memory
+/// allocation or copy.
 ///
 /// ## Usage
 ///
