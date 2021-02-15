@@ -541,6 +541,11 @@ pub mod client {
             Ok(self)
         }
 
+        pub fn with_key_logging(mut self) -> Result<Self, TLSError> {
+            self.config.key_log = Arc::new(rustls::KeyLogFile::new());
+            Ok(self)
+        }
+
         pub fn build(self) -> Result<Client, TLSError> {
             Ok(Client::new(self.config))
         }

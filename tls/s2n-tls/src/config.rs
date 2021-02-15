@@ -140,6 +140,22 @@ impl Builder {
         Ok(self)
     }
 
+    /// # Safety
+    ///
+    /// The `context` pointer must live at least as long as the config
+    pub unsafe fn set_key_log_callback(
+        &mut self,
+        callback: s2n_key_log_fn,
+        context: *mut core::ffi::c_void,
+    ) -> Result<&mut Self, Error> {
+        call!(s2n_config_set_key_log_cb(
+            self.as_mut_ptr(),
+            callback,
+            context
+        ))?;
+        Ok(self)
+    }
+
     pub fn build(self) -> Result<Config, Error> {
         Ok(Config(Rc::new(self.0)))
     }

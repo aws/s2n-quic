@@ -1,5 +1,6 @@
 use crate::{
     certificate::{IntoCertificate, IntoPrivateKey},
+    keylog::KeyLogHandle,
     params::Params,
     session::Session,
 };
@@ -9,9 +10,12 @@ use s2n_tls::{
     config::{self, Config},
     error::Error,
 };
+use std::sync::Arc;
 
 pub struct Server {
     config: Config,
+    #[allow(dead_code)] // we need to hold on to the handle to ensure it is cleaned up correctly
+    keylog: Option<KeyLogHandle>,
     params: Params,
 }
 
@@ -31,6 +35,7 @@ impl Default for Server {
 
 pub struct Builder {
     config: config::Builder,
+    keylog: Option<KeyLogHandle>,
 }
 
 impl Default for Builder {
@@ -41,7 +46,10 @@ impl Default for Builder {
         config.set_cipher_preference("default_tls13").unwrap();
         config.set_alpn_preference(&[b"h3"]).unwrap();
 
-        Self { config }
+        Self {
+            config,
+            keylog: None,
+        }
     }
 }
 
@@ -74,9 +82,30 @@ impl Builder {
         Ok(self)
     }
 
+    pub fn with_key_logging(mut self) -> Result<Self, Error> {
+        use crate::keylog::KeyLog;
+
+        self.keylog = KeyLog::try_open();
+
+        unsafe {
+            // Safety: the KeyLog is stored on `self` to ensure it outlives `config`
+            if let Some(keylog) = self.keylog.as_ref() {
+                self.config
+                    .set_key_log_callback(Some(KeyLog::callback), Arc::as_ptr(&keylog) as *mut _)?;
+            } else {
+                // disable key logging if it failed to create a file
+                self.config
+                    .set_key_log_callback(None, core::ptr::null_mut())?;
+            }
+        }
+
+        Ok(self)
+    }
+
     pub fn build(self) -> Result<Server, Error> {
         Ok(Server {
             config: self.config.build()?,
+            keylog: self.keylog,
             params: Default::default(),
         })
     }
