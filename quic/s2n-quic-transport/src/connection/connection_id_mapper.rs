@@ -2,7 +2,6 @@
 
 use crate::connection::{local_id_registry::LocalIdRegistry, InternalConnectionId, PeerIdRegistry};
 use alloc::rc::Rc;
-use bimap::BiMap;
 use core::{cell::RefCell, hash::BuildHasher};
 use hashbrown::hash_map::{Entry, HashMap};
 use s2n_quic_core::{connection, random, stateless_reset};
@@ -17,7 +16,7 @@ use siphasher::sip::SipHasher13;
 // to protect against such attacks. We implement this explicitly to ensure this map continues to
 // provide this protection even if future versions of `std::collections::HashMap` do not and to
 // make the hash algorithm used explicit.
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct HashState {
     k0: u64,
     k1: u64,
@@ -127,22 +126,27 @@ impl LocalIdMap {
     }
 }
 
+/// Bidirectional map for mapping from initial ID to internal connection ID and vice-versa
 #[derive(Debug)]
 pub(crate) struct InitialIdMap {
-    /// Maps from initial id to internal connection ID and
-    /// internal connection ID to initial ID
-    map: bimap::BiMap<connection::InitialId, InternalConnectionId>,
+    /// Maps from initial id to internal connection ID
+    initial_to_internal_id_map: HashMap<connection::InitialId, InternalConnectionId, HashState>,
+    /// Maps from internal connection ID to initial ID
+    internal_to_initial_id_map: HashMap<InternalConnectionId, connection::InitialId, HashState>,
 }
 
 impl InitialIdMap {
     /// Constructs a new `InitialIdMap`
-    fn new() -> Self {
-        Self { map: BiMap::new() }
+    fn new(hash_state: HashState) -> Self {
+        Self {
+            initial_to_internal_id_map: HashMap::with_hasher(hash_state),
+            internal_to_initial_id_map: HashMap::with_hasher(hash_state),
+        }
     }
 
     /// Gets the `InternalConnectionId` (if any) associated with the given initial id
     fn get(&self, initial_id: &connection::InitialId) -> Option<InternalConnectionId> {
-        self.map.get_by_left(&initial_id).copied()
+        self.initial_to_internal_id_map.get(initial_id).copied()
     }
 
     /// Inserts the given `InitialId` into the map if it is not already in the map,
@@ -152,9 +156,17 @@ impl InitialIdMap {
         initial_id: connection::InitialId,
         internal_id: InternalConnectionId,
     ) -> Result<(), ()> {
-        self.map
-            .insert_no_overwrite(initial_id, internal_id)
-            .map_err(|_| ())
+        let initial_to_internal_id_entry = self.initial_to_internal_id_map.entry(initial_id);
+        let internal_to_initial_id_entry = self.internal_to_initial_id_map.entry(internal_id);
+
+        match (initial_to_internal_id_entry, internal_to_initial_id_entry) {
+            (Entry::Occupied(_), _) | (_, Entry::Occupied(_)) => Err(()),
+            (Entry::Vacant(initial_entry), Entry::Vacant(internal_entry)) => {
+                initial_entry.insert(internal_id);
+                internal_entry.insert(initial_id);
+                Ok(())
+            }
+        }
     }
 
     /// Removes the `InitialId` associated with the given `InternalConnectionId` from the map
@@ -162,9 +174,9 @@ impl InitialIdMap {
         &mut self,
         internal_id: &InternalConnectionId,
     ) -> Option<connection::InitialId> {
-        self.map
-            .remove_by_right(internal_id)
-            .map(|(initial_id, _)| initial_id)
+        let initial_id = self.internal_to_initial_id_map.remove(internal_id)?;
+        self.initial_to_internal_id_map.remove(&initial_id);
+        Some(initial_id)
     }
 }
 
@@ -183,7 +195,7 @@ impl ConnectionIdMapperState {
         Self {
             local_id_map: LocalIdMap::new(HashState::new(random_generator)),
             stateless_reset_map: StatelessResetMap::new(HashState::new(random_generator)),
-            initial_id_map: InitialIdMap::new(),
+            initial_id_map: InitialIdMap::new(HashState::new(random_generator)),
         }
     }
 }
