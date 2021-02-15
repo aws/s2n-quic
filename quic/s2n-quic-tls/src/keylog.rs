@@ -44,6 +44,10 @@ impl KeyLog {
         let mut file = self.0.lock().ok()?;
         file.write_all(logline).ok()?;
         file.write_all(b"\n").ok()?;
+
+        // ensure keys are immediately written so tools can use them
+        file.flush().ok()?;
+
         Some(())
     }
 }
