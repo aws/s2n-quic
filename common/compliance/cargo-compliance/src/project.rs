@@ -152,7 +152,7 @@ impl Project {
         Ok(())
     }
 
-    #[allow(clippy::unnecessary_wraps)] // this function will eventually return something
+    #[allow(clippy::unnecessary_unwrap)] // this function will eventually return something
     fn cargo_files(&self, _files: &mut HashSet<SourceFile>) -> Result<(), Error> {
         if self.no_cargo {
             return Ok(());
