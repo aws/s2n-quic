@@ -205,6 +205,11 @@ jobs:
         run: |
           find . -name 'corpus.tar.gz' -exec dirname {} ';' | xargs -L 1 bash -c 'cd "$0" && rm -rf corpus && tar xf corpus.tar.gz'
 
+      - name: Enable ipv6
+        if: ${{ matrix.os == 'ubuntu-latest' }}
+        shell: bash
+        run: sudo modprobe ip6table_filter
+
       # Build the tests before running to improve cross compilation speed
       - name: Run cargo build
         uses: actions-rs/cargo@v1
