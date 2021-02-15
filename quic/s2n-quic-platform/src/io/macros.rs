@@ -38,24 +38,24 @@ macro_rules! impl_io_rx_tests {
     () => {
         use crate::{buffer::default::Buffer, socket::tokio::Socket};
         use s2n_quic_core::io::rx::{Entry, Queue, Rx as RxTrait};
-        use std::{collections::HashSet, net::IpAddr};
+        use std::{collections::HashSet, io, net::IpAddr};
         use tokio::net::UdpSocket;
 
         type Rx = super::Rx<Buffer, Socket>;
 
-        async fn pair(addr: IpAddr) -> (UdpSocket, Rx) {
-            let client = UdpSocket::bind((addr, 0u16)).await.unwrap();
+        async fn pair(addr: IpAddr) -> io::Result<(UdpSocket, Rx)> {
+            let client = UdpSocket::bind((addr, 0u16)).await?;
 
             let rx_buffer = Buffer::default();
-            let rx_socket = Socket::bind((addr, 0u16)).unwrap();
+            let rx_socket = Socket::bind((addr, 0u16))?;
             let server = Rx::new(rx_buffer, rx_socket);
 
-            (client, server)
+            Ok((client, server))
         }
 
-        async fn test(addr: &str) {
+        async fn test(addr: &str) -> io::Result<()> {
             let addr: IpAddr = addr.parse().unwrap();
-            let (mut client, mut server) = pair(addr).await;
+            let (mut client, mut server) = pair(addr).await?;
             let server_port = server.local_addr().unwrap().port();
             let server_addr = (addr, server_port);
             let capacity = 64;
@@ -84,7 +84,7 @@ macro_rules! impl_io_rx_tests {
                 queue.finish(len);
 
                 if messages.is_empty() {
-                    return;
+                    return Ok(());
                 }
             }
 
@@ -99,14 +99,22 @@ macro_rules! impl_io_rx_tests {
         #[tokio::test]
         #[cfg_attr(windows, ignore)] // windows isn't currently working reliably
         async fn ipv4_test() {
-            test("127.0.0.1").await
+            test("127.0.0.1")
+                .await
+                .expect("ipv4 tests should always work");
         }
 
         #[cfg(feature = "ipv6")]
         #[tokio::test]
         #[cfg_attr(windows, ignore)] // windows isn't currently working reliably
-        async fn ipv6_test() {
-            test("::1").await
+        async fn ipv6_test() -> io::Result<()> {
+            match test("::1").await {
+                Err(err) if err.kind() == io::ErrorKind::AddrNotAvailable => {
+                    eprintln!("The current environment does not support IPv6; skipping");
+                    Ok(())
+                }
+                other => other,
+            }
         }
     };
 }
@@ -117,25 +125,25 @@ macro_rules! impl_io_tx_tests {
         use crate::{buffer::default::Buffer, socket::tokio::Socket};
         use core::time::Duration;
         use s2n_quic_core::io::tx::{Queue, Tx as TxTrait};
-        use std::{collections::HashSet, net::IpAddr};
+        use std::{collections::HashSet, io, net::IpAddr};
         use tokio::{net::UdpSocket, time::timeout};
 
         type Tx = super::Tx<Buffer, Socket>;
 
-        async fn pair(addr: &str) -> (Tx, UdpSocket) {
+        async fn pair(addr: &str) -> io::Result<(Tx, UdpSocket)> {
             let addr: IpAddr = addr.parse().unwrap();
 
-            let server = UdpSocket::bind((addr, 0u16)).await.unwrap();
+            let server = UdpSocket::bind((addr, 0u16)).await?;
 
             let tx_buffer = Buffer::default();
-            let tx_socket = Socket::bind((addr, 0u16)).unwrap();
+            let tx_socket = Socket::bind((addr, 0u16))?;
             let client = Tx::new(tx_buffer, tx_socket);
 
-            (client, server)
+            Ok((client, server))
         }
 
-        async fn test(addr: &str) {
-            let (mut client, mut server) = pair(addr).await;
+        async fn test(addr: &str) -> io::Result<()> {
+            let (mut client, mut server) = pair(addr).await?;
             let server_addr = server.local_addr().unwrap();
 
             let mut buffer = [0u8; 512];
@@ -165,7 +173,7 @@ macro_rules! impl_io_tx_tests {
                 }
 
                 if messages.is_empty() {
-                    return;
+                    return Ok(());
                 }
             }
 
@@ -180,14 +188,22 @@ macro_rules! impl_io_tx_tests {
         #[tokio::test]
         #[cfg_attr(windows, ignore)] // windows isn't currently working reliably
         async fn ipv4_test() {
-            test("127.0.0.1").await
+            test("127.0.0.1")
+                .await
+                .expect("ipv4 tests should always work")
         }
 
         #[cfg(feature = "ipv6")]
         #[tokio::test]
         #[cfg_attr(windows, ignore)] // windows isn't currently working reliably
-        async fn ipv6_test() {
-            test("::1").await
+        async fn ipv6_test() -> io::Result<()> {
+            match test("::1").await {
+                Err(err) if err.kind() == io::ErrorKind::AddrNotAvailable => {
+                    eprintln!("The current environment does not support IPv6; skipping");
+                    Ok(())
+                }
+                other => other,
+            }
         }
     };
 }
