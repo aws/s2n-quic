@@ -6,13 +6,13 @@ if ! command -v "inferno-collapse-perf" &> /dev/null; then
   cargo install inferno
 fi
 
-RUSTFLAGS="-g -Ctarget-cpu=native" cargo \
+RUSTFLAGS="-g" cargo \
   +stable \
   build \
   --bin s2n-quic-qns \
   --release
 
 cd ./scripts/server-perf/client
-RUSTFLAGS="-Ctarget-cpu=native" cargo +stable build --release
+cargo +stable build --release
 cd ../../../
 
