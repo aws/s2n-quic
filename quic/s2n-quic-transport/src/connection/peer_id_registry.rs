@@ -614,11 +614,12 @@ pub(crate) mod tests {
     ) -> PeerIdRegistry {
         let mut random_generator = random::testing::Generator(123);
 
-        ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server).create_peer_id_registry(
-            InternalConnectionIdGenerator::new().generate_id(),
-            initial_id,
-            stateless_reset_token,
-        )
+        ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server)
+            .create_peer_id_registry(
+                InternalConnectionIdGenerator::new().generate_id(),
+                initial_id,
+                stateless_reset_token,
+            )
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2

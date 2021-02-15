@@ -80,7 +80,8 @@ impl<Cfg: Config> Endpoint<Cfg> {
         let (connection_sender, connection_receiver) = unbounded_channel::channel();
         let acceptor = Acceptor::new(connection_receiver);
 
-        let connection_id_mapper = ConnectionIdMapper::new(config.context().random_generator, Cfg::ENDPOINT_TYPE);
+        let connection_id_mapper =
+            ConnectionIdMapper::new(config.context().random_generator, Cfg::ENDPOINT_TYPE);
 
         let endpoint = Self {
             config,
