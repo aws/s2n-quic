@@ -233,7 +233,9 @@ impl<ConfigType: connection::Config> ConnectionImpl<ConfigType> {
             // We don't expect any further initial packets on this connection, so start
             // a timer to remove the mapping from the initial ID to the internal connection ID
             // to give time for any delayed initial packets to arrive.
-            self.start_initial_id_timer(datagram.timestamp);
+            if ConfigType::ENDPOINT_TYPE.is_server() {
+                self.start_initial_id_timer(datagram.timestamp);
+            }
         }
 
         Ok(())

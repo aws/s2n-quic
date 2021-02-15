@@ -2,9 +2,9 @@
 
 use crate::connection::{local_id_registry::LocalIdRegistry, InternalConnectionId, PeerIdRegistry};
 use alloc::rc::Rc;
-use core::{cell::RefCell, hash::BuildHasher};
+use core::{cell::RefCell, convert::TryFrom as _, hash::BuildHasher};
 use hashbrown::hash_map::{Entry, HashMap};
-use s2n_quic_core::{connection, random, stateless_reset};
+use s2n_quic_core::{connection, endpoint, random, stateless_reset};
 use siphasher::sip::SipHasher13;
 
 // Since the input to the hash function (stateless reset token) come from the peer, we need to
@@ -204,13 +204,19 @@ impl ConnectionIdMapperState {
 pub struct ConnectionIdMapper {
     /// The shared state between mapper and registration
     state: Rc<RefCell<ConnectionIdMapperState>>,
+    /// The endpoint type for the endpoint using this mapper
+    endpoint_type: endpoint::Type,
 }
 
 impl ConnectionIdMapper {
     /// Creates a new `ConnectionIdMapper`
-    pub fn new<R: random::Generator>(random_generator: &mut R) -> Self {
+    pub fn new<R: random::Generator>(
+        random_generator: &mut R,
+        endpoint_type: endpoint::Type,
+    ) -> Self {
         Self {
             state: Rc::new(RefCell::new(ConnectionIdMapperState::new(random_generator))),
+            endpoint_type,
         }
     }
 
@@ -221,17 +227,17 @@ impl ConnectionIdMapper {
         connection_id: &connection::LocalId,
     ) -> Option<InternalConnectionId> {
         let guard = self.state.borrow();
-        guard.local_id_map.get(connection_id)
-    }
-
-    /// Looks up the internal Connection ID which is associated with an initial
-    /// connection ID
-    pub fn lookup_internal_connection_id_by_initial_id(
-        &self,
-        initial_id: &connection::InitialId,
-    ) -> Option<InternalConnectionId> {
-        let guard = self.state.borrow();
-        guard.initial_id_map.get(initial_id)
+        guard.local_id_map.get(connection_id).or_else(|| {
+            if self.endpoint_type.is_server() {
+                // The ID wasn't in the local ID map, so we'll check the initial ID
+                // map in case this ID was from a duplicate initial packet
+                connection::InitialId::try_from(*connection_id)
+                    .ok()
+                    .and_then(|initial_id| guard.initial_id_map.get(&initial_id))
+            } else {
+                None
+            }
+        })
     }
 
     /// Inserts the given `InitialId` into the map if it is not already in the map,
@@ -241,6 +247,7 @@ impl ConnectionIdMapper {
         initial_id: connection::InitialId,
         internal_id: InternalConnectionId,
     ) -> Result<(), ()> {
+        debug_assert!(self.endpoint_type.is_server());
         let mut guard = self.state.borrow_mut();
         guard.initial_id_map.try_insert(initial_id, internal_id)
     }
@@ -272,6 +279,7 @@ impl ConnectionIdMapper {
         &mut self,
         internal_id: &InternalConnectionId,
     ) -> Option<connection::InitialId> {
+        debug_assert!(self.endpoint_type.is_server());
         let mut guard = self.state.borrow_mut();
         guard.initial_id_map.remove(internal_id)
     }
@@ -320,7 +328,7 @@ mod tests {
     #[test]
     fn remove_internal_connection_id_by_stateless_reset_token_test() {
         let mut random_generator = random::testing::Generator(123);
-        let mut mapper = ConnectionIdMapper::new(&mut random_generator);
+        let mut mapper = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server);
         let internal_id = InternalConnectionIdGenerator::new().generate_id();
         let peer_id = id(b"id01");
 
@@ -356,14 +364,12 @@ mod tests {
     #[test]
     fn initial_id_map() {
         let mut random_generator = random::testing::Generator(123);
-        let mut mapper = ConnectionIdMapper::new(&mut random_generator);
+        let mut mapper = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server);
         let internal_id = InternalConnectionIdGenerator::new().generate_id();
-        let initial_id = connection::InitialId::try_from_bytes(b"id000001").unwrap();
+        let local_id = connection::LocalId::try_from_bytes(b"id000001").unwrap();
+        let initial_id = connection::InitialId::try_from(local_id).unwrap();
 
-        assert_eq!(
-            None,
-            mapper.lookup_internal_connection_id_by_initial_id(&initial_id)
-        );
+        assert_eq!(None, mapper.lookup_internal_connection_id(&local_id));
 
         assert!(mapper
             .try_insert_initial_id(initial_id, internal_id)
@@ -374,14 +380,44 @@ mod tests {
 
         assert_eq!(
             Some(internal_id),
-            mapper.lookup_internal_connection_id_by_initial_id(&initial_id)
+            mapper.lookup_internal_connection_id(&local_id)
         );
 
         assert_eq!(Some(initial_id), mapper.remove_initial_id(&internal_id));
 
-        assert_eq!(
-            None,
-            mapper.lookup_internal_connection_id_by_initial_id(&initial_id)
-        );
+        assert_eq!(None, mapper.lookup_internal_connection_id(&local_id));
+    }
+
+    #[test]
+    #[should_panic]
+    fn initial_id_map_client_insert() {
+        let mut random_generator = random::testing::Generator(123);
+        let mut mapper = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Client);
+        let internal_id = InternalConnectionIdGenerator::new().generate_id();
+        let local_id = connection::LocalId::try_from_bytes(b"id000001").unwrap();
+        let initial_id = connection::InitialId::try_from(local_id).unwrap();
+
+        assert_eq!(None, mapper.lookup_internal_connection_id(&local_id));
+
+        let _ = mapper.try_insert_initial_id(initial_id, internal_id);
+    }
+
+    #[test]
+    #[should_panic]
+    fn initial_id_map_client_remove() {
+        let mut random_generator = random::testing::Generator(123);
+        let mut mapper = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Client);
+        let internal_id = InternalConnectionIdGenerator::new().generate_id();
+
+        mapper.remove_initial_id(&internal_id);
+    }
+
+    #[test]
+    fn initial_id_map_client_lookup() {
+        let mut random_generator = random::testing::Generator(123);
+        let mapper = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Client);
+        let local_id = connection::LocalId::try_from_bytes(b"id000001").unwrap();
+
+        assert_eq!(None, mapper.lookup_internal_connection_id(&local_id));
     }
 }

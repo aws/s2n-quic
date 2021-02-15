@@ -82,16 +82,6 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                 .generate(&connection_info);
         }
 
-        if self
-            .connection_id_mapper
-            .lookup_internal_connection_id_by_initial_id(&original_destination_connection_id)
-            .is_some()
-        {
-            // We've already processed an initial packet using this initial connection ID,
-            // so drop this packet as it is a duplicate.
-            return Ok(());
-        }
-
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2
         //# Endpoints that receive a version 1 long header
         //# with a value larger than 20 MUST drop the packet.
@@ -287,9 +277,15 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             //# clients with a validated address.
         }
 
-        self.connection_id_mapper
-            .try_insert_initial_id(original_destination_connection_id, internal_connection_id)
-            .map_err(|_| TransportError::INTERNAL_ERROR)?;
+        let result = self
+            .connection_id_mapper
+            .try_insert_initial_id(original_destination_connection_id, internal_connection_id);
+
+        debug_assert!(
+            result.is_ok(),
+            "Initial ID {:?} was already in the map",
+            original_destination_connection_id
+        );
 
         // Only persist the connection if everything is good.
         // Otherwise the connection will automatically get dropped. This
