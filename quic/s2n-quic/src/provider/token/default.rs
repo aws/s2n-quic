@@ -461,8 +461,7 @@ mod tests {
     use super::*;
     use s2n_quic_core::token::{Format as FormatTrait, Source};
     use s2n_quic_platform::time;
-    use std::net::SocketAddr;
-    use std::sync::Arc;
+    use std::{net::SocketAddr, sync::Arc};
 
     const TEST_KEY_ROTATION_PERIOD: Duration = Duration::from_millis(1000);
 
