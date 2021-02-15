@@ -169,6 +169,14 @@ jobs:
       matrix:
         rust: ${{ fromJson(needs.env.outputs.rust-versions) }}
         os: [ubuntu-latest, macOS-latest, windows-latest]
+        target: [native]
+        include:
+          - os: windows-latest
+            # s2n-tls doesn't currently build on windows
+            exclude: --workspace --exclude s2n-tls-sys --exclude s2n-tls --exclude s2n-quic-tls
+          - rust: stable
+            os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
     steps:
       - uses: actions/checkout@v2
         with:
@@ -180,20 +188,37 @@ jobs:
         with:
           toolchain: ${{ matrix.rust }}
           override: true
+          target: ${{ matrix.target != 'native' && matrix.target || '' }}
+
+      - name: Install cross
+        if: ${{ matrix.target != 'native' }}
+        uses: camshaft/install@v1
+        with:
+          crate: cross
 
       - uses: camshaft/rust-cache@v1
+        with:
+          key: ${{ matrix.target }}
 
       - name: Restore fuzz corpus
         shell: bash
         run: |
           find . -name 'corpus.tar.gz' -exec dirname {} ';' | xargs -L 1 bash -c 'cd "$0" && rm -rf corpus && tar xf corpus.tar.gz'
 
+      # Build the tests before running to improve cross compilation speed
+      - name: Run cargo build
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --tests ${{ matrix.exclude }} ${{ matrix.target != 'native' && format('--target {0}', matrix.target) || '' }}
+          use-cross: ${{ matrix.target != 'native' }}
+
       - name: Run cargo test
         uses: actions-rs/cargo@v1
         with:
           command: test
-          # s2n-tls doesn't currently build on windows
-          args: ${{ matrix.os == 'windows-latest' && '--workspace --exclude s2n-tls-sys --exclude s2n-tls --exclude s2n-quic-tls' || '' }}
+          args: ${{ matrix.exclude }} ${{ matrix.target != 'native' && format('--target {0}', matrix.target) || '' }}
+          use-cross: ${{ matrix.target != 'native' }}
 
   miri:
     runs-on: ubuntu-latest
