@@ -171,6 +171,9 @@ jobs:
         os: [ubuntu-latest, macOS-latest, windows-latest]
         target: [native]
         include:
+          - os: windows-latest
+            # s2n-tls doesn't currently build on windows
+            exclude: --workspace --exclude s2n-tls-sys --exclude s2n-tls --exclude s2n-quic-tls
           - rust: stable
             os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
@@ -202,12 +205,19 @@ jobs:
         run: |
           find . -name 'corpus.tar.gz' -exec dirname {} ';' | xargs -L 1 bash -c 'cd "$0" && rm -rf corpus && tar xf corpus.tar.gz'
 
+      # Build the tests before running to improve cross compilation speed
+      - name: Run cargo build
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --tests ${{ matrix.exclude }} ${{ matrix.target != 'native' && format('--target {0}', matrix.target) || '' }}
+          use-cross: ${{ matrix.target != 'native' }}
+
       - name: Run cargo test
         uses: actions-rs/cargo@v1
         with:
           command: test
-          # s2n-tls doesn't currently build on windows
-          args: ${{ matrix.os == 'windows-latest' && '--workspace --exclude s2n-tls-sys --exclude s2n-tls --exclude s2n-quic-tls' || '' }} ${{ matrix.target != 'native' && format('--target {0}', matrix.target) || '' }}
+          args: ${{ matrix.exclude }} ${{ matrix.target != 'native' && format('--target {0}', matrix.target) || '' }}
           use-cross: ${{ matrix.target != 'native' }}
 
   miri:

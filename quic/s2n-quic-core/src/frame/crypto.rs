@@ -161,6 +161,6 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)] // snapshot tests don't work on miri
     fn max_frame_size_snapshot() {
-        assert_debug_snapshot!(CryptoRef::get_max_frame_size(16));
+        assert_debug_snapshot!("max_frame_size_snapshot", CryptoRef::get_max_frame_size(16));
     }
 }
