@@ -400,12 +400,12 @@ unsafe fn get_application_params<'a>(
 
 unsafe fn get_sni<'a>(connection: *mut s2n_connection) -> Option<&'a [u8]> {
     let ptr = call!(s2n_get_server_name(connection)).ok()?;
-    get_cstr_slice(ptr)
+    get_cstr_slice(ptr as *const _)
 }
 
 unsafe fn get_alpn<'a>(connection: *mut s2n_connection) -> Option<&'a [u8]> {
     let ptr = call!(s2n_get_application_protocol(connection)).ok()?;
-    get_cstr_slice(ptr)
+    get_cstr_slice(ptr as *const _)
 }
 
 unsafe fn get_transport_parameters<'a>(connection: *mut s2n_connection) -> Option<&'a [u8]> {
@@ -421,7 +421,7 @@ unsafe fn get_transport_parameters<'a>(connection: *mut s2n_connection) -> Optio
 }
 
 unsafe fn get_cstr_slice<'a>(ptr: *const i8) -> Option<&'a [u8]> {
-    let len = libc::strlen(ptr);
+    let len = libc::strlen(ptr as *const _);
     get_slice(ptr as *const _, len)
 }
 
