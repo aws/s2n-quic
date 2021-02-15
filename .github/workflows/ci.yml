@@ -169,6 +169,10 @@ jobs:
       matrix:
         rust: ${{ fromJson(needs.env.outputs.rust-versions) }}
         os: [ubuntu-latest, macOS-latest, windows-latest]
+        include:
+          - rust: stable
+            os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
     steps:
       - uses: actions/checkout@v2
         with:
@@ -180,6 +184,13 @@ jobs:
         with:
           toolchain: ${{ matrix.rust }}
           override: true
+          target: ${{ matrix.target }}
+
+      - name: Install cross
+        if: ${{ matrix.target }}
+        uses: camshaft/install@v1
+        with:
+          crate: cross
 
       - uses: camshaft/rust-cache@v1
 
@@ -193,7 +204,8 @@ jobs:
         with:
           command: test
           # s2n-tls doesn't currently build on windows
-          args: ${{ matrix.os == 'windows-latest' && '--workspace --exclude s2n-tls-sys --exclude s2n-tls --exclude s2n-quic-tls' || '' }}
+          args: ${{ matrix.os == 'windows-latest' && '--workspace --exclude s2n-tls-sys --exclude s2n-tls --exclude s2n-quic-tls' || '' }} ${{ matrix.target && format('--target {0}', matrix.target) || '' }}
+          use-cross: ${{ matrix.target && true }}
 
   miri:
     runs-on: ubuntu-latest
