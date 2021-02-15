@@ -169,6 +169,7 @@ jobs:
       matrix:
         rust: ${{ fromJson(needs.env.outputs.rust-versions) }}
         os: [ubuntu-latest, macOS-latest, windows-latest]
+        target: [native]
         include:
           - rust: stable
             os: ubuntu-latest
@@ -184,15 +185,17 @@ jobs:
         with:
           toolchain: ${{ matrix.rust }}
           override: true
-          target: ${{ matrix.target }}
+          target: ${{ matrix.target != 'native' && matrix.target || '' }}
 
       - name: Install cross
-        if: ${{ matrix.target }}
+        if: ${{ matrix.target != 'native' }}
         uses: camshaft/install@v1
         with:
           crate: cross
 
       - uses: camshaft/rust-cache@v1
+        with:
+          key: ${{ matrix.target }}
 
       - name: Restore fuzz corpus
         shell: bash
@@ -204,8 +207,8 @@ jobs:
         with:
           command: test
           # s2n-tls doesn't currently build on windows
-          args: ${{ matrix.os == 'windows-latest' && '--workspace --exclude s2n-tls-sys --exclude s2n-tls --exclude s2n-quic-tls' || '' }} ${{ matrix.target && format('--target {0}', matrix.target) || '' }}
-          use-cross: ${{ matrix.target && true }}
+          args: ${{ matrix.os == 'windows-latest' && '--workspace --exclude s2n-tls-sys --exclude s2n-tls --exclude s2n-quic-tls' || '' }} ${{ matrix.target != 'native' && format('--target {0}', matrix.target) || '' }}
+          use-cross: ${{ matrix.target != 'native' }}
 
   miri:
     runs-on: ubuntu-latest
