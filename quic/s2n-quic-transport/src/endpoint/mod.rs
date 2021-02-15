@@ -80,7 +80,8 @@ impl<Cfg: Config> Endpoint<Cfg> {
         let (connection_sender, connection_receiver) = unbounded_channel::channel();
         let acceptor = Acceptor::new(connection_receiver);
 
-        let connection_id_mapper = ConnectionIdMapper::new(config.context().random_generator);
+        let connection_id_mapper =
+            ConnectionIdMapper::new(config.context().random_generator, Cfg::ENDPOINT_TYPE);
 
         let endpoint = Self {
             config,
@@ -556,10 +557,12 @@ impl<Cfg: Config> Endpoint<Cfg> {
     /// Handles all timer events. This should be called when a timer expired
     /// according to [`next_timer_expiration()`].
     pub fn handle_timers(&mut self, now: Timestamp) {
+        let connection_id_mapper = &mut self.connection_id_mapper;
+
         for internal_id in self.timer_manager.expirations(now) {
             self.connections
                 .with_connection(internal_id, |conn, shared_state| {
-                    conn.on_timeout(shared_state, now);
+                    conn.on_timeout(shared_state, connection_id_mapper, now);
                 });
         }
     }

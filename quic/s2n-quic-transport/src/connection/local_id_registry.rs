@@ -210,6 +210,9 @@ impl Drop for LocalIdRegistry {
         for id_info in &self.registered_ids {
             guard.local_id_map.remove(&id_info.id);
         }
+
+        // Also clean up the initial ID if it had not already been removed
+        guard.initial_id_map.remove(&self.internal_id);
     }
 }
 
@@ -681,7 +684,7 @@ mod tests {
     ) -> (ConnectionIdMapper, LocalIdRegistry) {
         let mut random_generator = random::testing::Generator(123);
 
-        let mut mapper = ConnectionIdMapper::new(&mut random_generator);
+        let mut mapper = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server);
         let registry = mapper.create_local_id_registry(
             InternalConnectionIdGenerator::new().generate_id(),
             &initial_id,
@@ -756,7 +759,7 @@ mod tests {
     fn connection_mapper_test() {
         let mut id_generator = InternalConnectionIdGenerator::new();
         let mut random_generator = random::testing::Generator(123);
-        let mut mapper = ConnectionIdMapper::new(&mut random_generator);
+        let mut mapper = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server);
 
         let id1 = id_generator.generate_id();
         let id2 = id_generator.generate_id();

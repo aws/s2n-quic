@@ -614,11 +614,12 @@ pub(crate) mod tests {
     ) -> PeerIdRegistry {
         let mut random_generator = random::testing::Generator(123);
 
-        ConnectionIdMapper::new(&mut random_generator).create_peer_id_registry(
-            InternalConnectionIdGenerator::new().generate_id(),
-            initial_id,
-            stateless_reset_token,
-        )
+        ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server)
+            .create_peer_id_registry(
+                InternalConnectionIdGenerator::new().generate_id(),
+                initial_id,
+                stateless_reset_token,
+            )
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2
@@ -820,7 +821,7 @@ pub(crate) mod tests {
     fn retire_connection_id_when_retire_prior_to_increases() {
         let id_1 = id(b"id01");
         let mut random_generator = random::testing::Generator(123);
-        let mut mapper = ConnectionIdMapper::new(&mut random_generator);
+        let mut mapper = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server);
         let mut reg = mapper.create_peer_id_registry(
             InternalConnectionIdGenerator::new().generate_id(),
             id_1,
@@ -941,7 +942,7 @@ pub(crate) mod tests {
     fn consume_new_id_if_necessary() {
         let id_1 = id(b"id01");
         let mut random_generator = random::testing::Generator(123);
-        let mut mapper = ConnectionIdMapper::new(&mut random_generator);
+        let mut mapper = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server);
         let mut reg = mapper.create_peer_id_registry(
             InternalConnectionIdGenerator::new().generate_id(),
             id_1,

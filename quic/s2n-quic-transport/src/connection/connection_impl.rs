@@ -3,10 +3,10 @@
 use crate::{
     connection::{
         self, id::ConnectionInfo, local_id_registry::LocalIdRegistrationError,
-        CloseReason as ConnectionCloseReason, ConnectionInterests, ConnectionTimerEntry,
-        ConnectionTimers, ConnectionTransmission, ConnectionTransmissionContext,
-        InternalConnectionId, Parameters as ConnectionParameters, ProcessingError,
-        SharedConnectionState,
+        CloseReason as ConnectionCloseReason, ConnectionIdMapper, ConnectionInterests,
+        ConnectionTimerEntry, ConnectionTimers, ConnectionTransmission,
+        ConnectionTransmissionContext, InternalConnectionId, Parameters as ConnectionParameters,
+        ProcessingError, SharedConnectionState,
     },
     contexts::ConnectionOnTransmitError,
     path,
@@ -229,6 +229,13 @@ impl<ConfigType: connection::Config> ConnectionImpl<ConfigType> {
 
             // Since we now have all transport parameters, we start the idle timer
             self.restart_peer_idle_timer(datagram.timestamp);
+
+            // We don't expect any further initial packets on this connection, so start
+            // a timer to remove the mapping from the initial ID to the internal connection ID
+            // to give time for any delayed initial packets to arrive.
+            if ConfigType::ENDPOINT_TYPE.is_server() {
+                self.start_initial_id_timer(datagram.timestamp);
+            }
         }
 
         Ok(())
@@ -259,6 +266,12 @@ impl<ConfigType: connection::Config> ConnectionImpl<ConfigType> {
     fn restart_peer_idle_timer(&mut self, timestamp: Timestamp) {
         self.timers
             .peer_idle_timer
+            .set(timestamp + self.get_idle_timer_duration())
+    }
+
+    fn start_initial_id_timer(&mut self, timestamp: Timestamp) {
+        self.timers
+            .initial_id_expiration_timer
             .set(timestamp + self.get_idle_timer_duration())
     }
 }
@@ -492,6 +505,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
     fn on_timeout(
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
+        connection_id_mapper: &mut ConnectionIdMapper,
         timestamp: Timestamp,
     ) {
         if self
@@ -516,6 +530,15 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
             if let ConnectionState::Closing | ConnectionState::Draining = self.state {
                 self.state = ConnectionState::Finished;
             }
+        }
+
+        if self
+            .timers
+            .initial_id_expiration_timer
+            .poll_expiration(timestamp)
+            .is_ready()
+        {
+            connection_id_mapper.remove_initial_id(&self.internal_connection_id);
         }
 
         self.local_id_registry.on_timeout(timestamp);

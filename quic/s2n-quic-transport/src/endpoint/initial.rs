@@ -277,6 +277,16 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             //# clients with a validated address.
         }
 
+        let result = self
+            .connection_id_mapper
+            .try_insert_initial_id(original_destination_connection_id, internal_connection_id);
+
+        debug_assert!(
+            result.is_ok(),
+            "Initial ID {:?} was already in the map",
+            original_destination_connection_id
+        );
+
         // Only persist the connection if everything is good.
         // Otherwise the connection will automatically get dropped. This
         // will also clean up all state which was already allocated for

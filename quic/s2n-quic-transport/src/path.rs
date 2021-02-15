@@ -316,6 +316,7 @@ mod tests {
     use crate::connection::{ConnectionIdMapper, InternalConnectionIdGenerator};
     use core::time::Duration;
     use s2n_quic_core::{
+        endpoint,
         inet::{DatagramInfo, ExplicitCongestionNotification},
         random,
         recovery::{congestion_controller::testing::Unlimited, RTTEstimator},
@@ -332,12 +333,13 @@ mod tests {
         stateless_reset_token: Option<stateless_reset::Token>,
     ) -> Manager<CC> {
         let mut random_generator = random::testing::Generator(123);
-        let peer_id_registry = ConnectionIdMapper::new(&mut random_generator)
-            .create_peer_id_registry(
-                InternalConnectionIdGenerator::new().generate_id(),
-                initial_id,
-                stateless_reset_token,
-            );
+        let peer_id_registry =
+            ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server)
+                .create_peer_id_registry(
+                    InternalConnectionIdGenerator::new().generate_id(),
+                    initial_id,
+                    stateless_reset_token,
+                );
         Manager::new(first_path, peer_id_registry)
     }
 
