@@ -271,7 +271,7 @@ impl<ConfigType: connection::Config> ConnectionImpl<ConfigType> {
 
     fn start_initial_id_timer(&mut self, timestamp: Timestamp) {
         self.timers
-            .initial_id_timer
+            .initial_id_expiration_timer
             .set(timestamp + self.get_idle_timer_duration())
     }
 }
@@ -534,7 +534,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
 
         if self
             .timers
-            .initial_id_timer
+            .initial_id_expiration_timer
             .poll_expiration(timestamp)
             .is_ready()
         {

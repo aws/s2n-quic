@@ -16,7 +16,7 @@ use siphasher::sip::SipHasher13;
 // to protect against such attacks. We implement this explicitly to ensure this map continues to
 // provide this protection even if future versions of `std::collections::HashMap` do not and to
 // make the hash algorithm used explicit.
-#[derive(Clone, Copy, Debug)]
+#[derive(Debug)]
 pub struct HashState {
     k0: u64,
     k1: u64,
@@ -137,10 +137,13 @@ pub(crate) struct InitialIdMap {
 
 impl InitialIdMap {
     /// Constructs a new `InitialIdMap`
-    fn new(hash_state: HashState) -> Self {
+    fn new(
+        initial_to_internal_hash_state: HashState,
+        internal_to_initial_hash_state: HashState,
+    ) -> Self {
         Self {
-            initial_to_internal_id_map: HashMap::with_hasher(hash_state),
-            internal_to_initial_id_map: HashMap::with_hasher(hash_state),
+            initial_to_internal_id_map: HashMap::with_hasher(initial_to_internal_hash_state),
+            internal_to_initial_id_map: HashMap::with_hasher(internal_to_initial_hash_state),
         }
     }
 
@@ -195,7 +198,10 @@ impl ConnectionIdMapperState {
         Self {
             local_id_map: LocalIdMap::new(HashState::new(random_generator)),
             stateless_reset_map: StatelessResetMap::new(HashState::new(random_generator)),
-            initial_id_map: InitialIdMap::new(HashState::new(random_generator)),
+            initial_id_map: InitialIdMap::new(
+                HashState::new(random_generator),
+                HashState::new(random_generator),
+            ),
         }
     }
 }

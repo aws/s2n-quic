@@ -23,7 +23,7 @@ pub struct ConnectionTimers {
     /// timeout expires
     pub local_idle_timer: VirtualTimer,
     /// The timer for removing an initial id mapping
-    pub initial_id_timer: VirtualTimer,
+    pub initial_id_expiration_timer: VirtualTimer,
 }
 
 impl ConnectionTimers {
@@ -33,6 +33,6 @@ impl ConnectionTimers {
             .iter()
             .chain(self.local_idle_timer.iter())
             .chain(self.peer_idle_timer.iter())
-            .chain(self.initial_id_timer.iter())
+            .chain(self.initial_id_expiration_timer.iter())
     }
 }
