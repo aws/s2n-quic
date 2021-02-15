@@ -421,7 +421,7 @@ unsafe fn get_transport_parameters<'a>(connection: *mut s2n_connection) -> Optio
 }
 
 unsafe fn get_cstr_slice<'a>(ptr: *const libc::c_char) -> Option<&'a [u8]> {
-    let len = libc::strlen(ptr as *const _);
+    let len = libc::strlen(ptr);
     get_slice(ptr as *const _, len)
 }
 
