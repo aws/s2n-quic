@@ -11,13 +11,11 @@ use bolero_generator::*;
 //# QUIC packets and frames commonly use a variable-length encoding for
 //# non-negative integer values.  This encoding ensures that smaller
 //# integer values need fewer bytes to encode.
-//#
+
 //# The QUIC variable-length integer encoding reserves the two most
 //# significant bits of the first byte to encode the base 2 logarithm of
 //# the integer encoding length in bytes.  The integer value is encoded
 //# on the remaining bits, in network byte order.
-
-use byteorder::{ByteOrder, NetworkEndian};
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#16
 //# This means that integers are encoded on 1, 2, 4, or 8 bytes and can
@@ -230,7 +228,35 @@ impl VarInt {
         encoder: &mut E,
     ) {
         encoder.write_sized(len, |buffer| {
-            NetworkEndian::write_uint(buffer, two_bit << usable_bits | self.0, len);
+            let bytes = (two_bit << usable_bits | self.0).to_be_bytes();
+
+            unsafe {
+                match two_bit & 0b11 {
+                    0b00 => {
+                        debug_assert_eq!(buffer.len(), 1);
+                        *buffer.get_unchecked_mut(0) = *bytes.get_unchecked(7);
+                    }
+                    0b01 => {
+                        debug_assert_eq!(buffer.len(), 2);
+                        buffer
+                            .get_unchecked_mut(..2)
+                            .copy_from_slice(bytes.get_unchecked(6..));
+                    }
+                    0b10 => {
+                        debug_assert_eq!(buffer.len(), 4);
+                        buffer
+                            .get_unchecked_mut(..4)
+                            .copy_from_slice(bytes.get_unchecked(4..));
+                    }
+                    0b11 => {
+                        debug_assert_eq!(buffer.len(), 8);
+                        buffer
+                            .get_unchecked_mut(..8)
+                            .copy_from_slice(bytes.get_unchecked(..8));
+                    }
+                    _ => unreachable!(),
+                }
+            }
         })
     }
 
@@ -252,7 +278,7 @@ decoder_value!(
         fn decode(buffer: Buffer) -> Result<Self> {
             let header = buffer.peek_byte(0)?;
 
-            Ok(match header >> 6 {
+            Ok(match (header >> 6) & 0b11 {
                 0b00 => {
                     let value = header & (2u8.pow(6) - 1);
                     let buffer = buffer.skip(1)?;

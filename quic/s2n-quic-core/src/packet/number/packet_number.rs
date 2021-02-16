@@ -47,21 +47,21 @@ impl Hash for PacketNumber {
 
 impl PartialEq for PacketNumber {
     fn eq(&self, other: &Self) -> bool {
-        self.space().assert_eq(other.space());
-        self.0.eq(&other.0)
+        self.cmp(other) == Ordering::Equal
     }
 }
 
 impl PartialOrd for PacketNumber {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.space().assert_eq(other.space());
-        self.0.partial_cmp(&other.0)
+        Some(self.cmp(other))
     }
 }
 
 impl Ord for PacketNumber {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.space().assert_eq(other.space());
+        if cfg!(debug_assertions) {
+            self.space().assert_eq(other.space());
+        }
         self.0.cmp(&other.0)
     }
 }
