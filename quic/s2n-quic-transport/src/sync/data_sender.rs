@@ -99,12 +99,13 @@ enum ChunkTransmissionState {
 }
 
 impl ChunkTransmissionState {
-    fn can_transmit(&self, constraint: transmission::Constraint) -> bool {
-        match self {
-            Self::Enqueued if constraint.can_transmit() => true,
-            Self::Lost if constraint.can_retransmit() => true,
-            _ => false,
-        }
+    fn can_transmit(self, constraint: transmission::Constraint) -> bool {
+        matches!(
+            (self, constraint),
+            (Self::Enqueued, transmission::Constraint::None)
+                | (Self::Lost, transmission::Constraint::None)
+                | (Self::Lost, transmission::Constraint::RetransmissionOnly)
+        )
     }
 }
 

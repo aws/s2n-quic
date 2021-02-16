@@ -10,6 +10,8 @@ DIR=$(mktemp -d -t s2n-quic-perf-XXXXXXXXXX)
 
 mkdir -p ./target/perf
 
+sudo echo "starting"
+
 sudo sh -c "perf record \
   --output $DIR/$SIZE.perf \
   --call-graph dwarf \
