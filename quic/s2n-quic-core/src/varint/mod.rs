@@ -231,24 +231,44 @@ impl VarInt {
             let bytes = (two_bit << usable_bits | self.0).to_be_bytes();
 
             unsafe {
+                // Safety: the encoder will have checked the buffer size
+                //         before passing it so we don't need to pay the bounds
+                //         check cost twice.
+
+                // This code looks a little scary so here's some comments describing what
+                // is happening.
+
+                // We bitwise-and the two bit value to ensure the compiler can prove the
+                // `unreachable` is actually unreachable.
                 match two_bit & 0b11 {
                     0b00 => {
+                        // If the two bit value is 0b00 it means we only have 1 byte to
+                        // encode so we copy the last byte from our big endian encoded value
+                        // into the first byte of the buffer
                         debug_assert_eq!(buffer.len(), 1);
                         *buffer.get_unchecked_mut(0) = *bytes.get_unchecked(7);
                     }
                     0b01 => {
+                        // If the two bit value is 0b01 it means we have a 2 byte value to
+                        // encode so we copy the last 2 bytes from our big endian encoded value
+                        // into the first 2 bytes of the buffer
                         debug_assert_eq!(buffer.len(), 2);
                         buffer
                             .get_unchecked_mut(..2)
                             .copy_from_slice(bytes.get_unchecked(6..));
                     }
                     0b10 => {
+                        // If the two bit value is 0b10 it means we have a 4 byte value to
+                        // encode so we copy the last 4 bytes from our big endian encoded value
+                        // into the first 4 bytes of the buffer
                         debug_assert_eq!(buffer.len(), 4);
                         buffer
                             .get_unchecked_mut(..4)
                             .copy_from_slice(bytes.get_unchecked(4..));
                     }
                     0b11 => {
+                        // If the two bit value is 0b11 it means we have a 8 byte value to
+                        // encode so we copy all of the bytes into the buffer
                         debug_assert_eq!(buffer.len(), 8);
                         buffer
                             .get_unchecked_mut(..8)
