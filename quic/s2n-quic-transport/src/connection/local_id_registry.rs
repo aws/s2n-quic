@@ -217,11 +217,11 @@ impl Drop for LocalIdRegistry {
 }
 
 impl LocalIdRegistry {
-    /// Constructs a new `LocalIdRegistry` and registers provided `initial_connection_id`
+    /// Constructs a new `LocalIdRegistry` and registers the provided `handshake_connection_id`
     pub(crate) fn new(
         internal_id: InternalConnectionId,
         state: Rc<RefCell<ConnectionIdMapperState>>,
-        initial_connection_id: &connection::LocalId,
+        handshake_connection_id: &connection::LocalId,
         stateless_reset_token: stateless_reset::Token,
     ) -> Self {
         let mut registry = Self {
@@ -236,23 +236,24 @@ impl LocalIdRegistry {
             expiration_timer: VirtualTimer::default(),
         };
 
-        // The initial connection ID will be retired after the handshake has completed
+        // The handshake connection ID will be retired after the handshake has completed
         // so an explicit expiration timestamp is not needed.
-        let _ = registry.register_connection_id(initial_connection_id, None, stateless_reset_token);
+        let _ =
+            registry.register_connection_id(handshake_connection_id, None, stateless_reset_token);
 
-        let initial_connection_id_info = registry
+        let handshake_connection_id_info = registry
             .registered_ids
             .iter_mut()
             .next()
             .expect("initial id added above");
 
-        // The initial connection ID is sent in the Initial packet,
+        // The handshake connection ID is sent in the Initial packet,
         // so it starts in the `Active` status.
-        initial_connection_id_info.status = Active;
+        handshake_connection_id_info.status = Active;
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
         //# The sequence number of the initial connection ID is 0.
-        debug_assert_eq!(initial_connection_id_info.sequence_number, 0);
+        debug_assert_eq!(handshake_connection_id_info.sequence_number, 0);
 
         registry
     }
@@ -514,20 +515,19 @@ impl LocalIdRegistry {
         }
     }
 
-    /// Retires the connection id first registered in this registry
-    pub fn retire_initial_id(&mut self, timestamp: Timestamp) {
-        // Retiring the connection ID with the highest sequence
-        // number retires all connection ids prior to it as well.
-        for id_info in self
+    /// Retires the connection id used during the handshake
+    pub fn retire_handshake_connection_id(&mut self, timestamp: Timestamp) {
+        if let Some(handshake_id_info) = self
             .registered_ids
             .iter_mut()
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
             //# The sequence number of the initial connection ID is 0.
-            .filter(|id_info| id_info.sequence_number == 0)
-            .filter(|id_info| !id_info.is_retired())
+            .find(|id_info| id_info.sequence_number == 0 && !id_info.is_retired())
         {
-            id_info.retire(timestamp);
-            self.retire_prior_to = self.retire_prior_to.max(id_info.sequence_number + 1);
+            handshake_id_info.retire(timestamp);
+            self.retire_prior_to = self
+                .retire_prior_to
+                .max(handshake_id_info.sequence_number + 1);
         }
 
         self.update_timers();
@@ -682,7 +682,7 @@ mod tests {
 
     // Helper function to easily create a LocalIdRegistry and Mapper
     fn mapper(
-        initial_id: connection::LocalId,
+        handshake_id: connection::LocalId,
         token: stateless_reset::Token,
     ) -> (ConnectionIdMapper, LocalIdRegistry) {
         let mut random_generator = random::testing::Generator(123);
@@ -690,7 +690,7 @@ mod tests {
         let mut mapper = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server);
         let registry = mapper.create_local_id_registry(
             InternalConnectionIdGenerator::new().generate_id(),
-            &initial_id,
+            &handshake_id,
             token,
         );
         (mapper, registry)
@@ -941,7 +941,7 @@ mod tests {
             .register_connection_id(&ext_id_2, Some(now), TEST_TOKEN_2)
             .is_ok());
 
-        reg1.retire_initial_id(now);
+        reg1.retire_handshake_connection_id(now);
         reg1.on_timeout(now);
 
         assert_eq!(
@@ -1078,7 +1078,7 @@ mod tests {
         assert!(reg1
             .register_connection_id(&ext_id_2, Some(now + EXPIRATION_BUFFER), TEST_TOKEN_2)
             .is_ok());
-        reg1.retire_initial_id(now + EXPIRATION_BUFFER);
+        reg1.retire_handshake_connection_id(now + EXPIRATION_BUFFER);
         reg1.on_timeout(now + EXPIRATION_BUFFER);
 
         // We can register another ID because the retire_prior_to field retires old IDs
@@ -1158,7 +1158,7 @@ mod tests {
         assert_eq!(transmission::Interest::None, reg1.transmission_interest());
 
         // Retire everything
-        reg1.retire_initial_id(now);
+        reg1.retire_handshake_connection_id(now);
         reg1.on_timeout(now);
         assert!(reg1
             .register_connection_id(&ext_id_3, None, TEST_TOKEN_3)
@@ -1323,7 +1323,7 @@ mod tests {
         let (_, mut reg1) = mapper(ext_id_1, TEST_TOKEN_1);
         reg1.set_active_connection_id_limit(3);
 
-        // No timer set for the initial connection ID
+        // No timer set for the handshake connection ID
         assert_eq!(0, reg1.timers().count());
 
         let now = s2n_quic_platform::time::now();
@@ -1379,15 +1379,15 @@ mod tests {
 
         let now = s2n_quic_platform::time::now();
 
-        // No timer set for the initial connection ID
+        // No timer set for the handshake connection ID
         assert_eq!(0, reg1.timers().count());
 
-        reg1.retire_initial_id(now);
+        reg1.retire_handshake_connection_id(now);
 
         // Too early, no timer is ready
         reg1.on_timeout(now);
 
-        // Initial connection ID has an expiration set based on now
+        // Handshake connection ID has an expiration set based on now
         assert_eq!(
             Some(now + EXPIRATION_BUFFER),
             reg1.expiration_timer.iter().next().cloned()
@@ -1441,7 +1441,7 @@ mod tests {
     }
 
     #[test]
-    fn retire_initial_id() {
+    fn retire_handshake_connection_id() {
         let ext_id_1 = id(b"id01");
         let ext_id_2 = id(b"id02");
         let ext_id_3 = id(b"id03");
@@ -1457,7 +1457,7 @@ mod tests {
             .register_connection_id(&ext_id_3, None, TEST_TOKEN_3)
             .is_ok());
 
-        reg1.retire_initial_id(s2n_quic_platform::time::now());
+        reg1.retire_handshake_connection_id(s2n_quic_platform::time::now());
 
         assert_eq!(3, reg1.registered_ids.iter().count());
 
@@ -1469,8 +1469,8 @@ mod tests {
             }
         }
 
-        // Calling retire_initial_id again does nothing
-        reg1.retire_initial_id(s2n_quic_platform::time::now());
+        // Calling retire_handshake_connection_id again does nothing
+        reg1.retire_handshake_connection_id(s2n_quic_platform::time::now());
 
         assert_eq!(3, reg1.registered_ids.iter().count());
 
