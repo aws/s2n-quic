@@ -131,7 +131,7 @@ impl LocalIdInfo {
         }
     }
 
-    // Changes the status of the connection ID to PendingRemoval with a removal
+    // Changes the status of the connection ID to PendingRetirementConfirmation with a removal
     // time incorporating the EXPIRATION_BUFFER
     fn retire(&mut self, timestamp: Timestamp) {
         debug_assert!(!self.is_retired());
@@ -514,13 +514,16 @@ impl LocalIdRegistry {
         }
     }
 
-    /// Retires all registered connection IDs
-    pub fn retire_all(&mut self, timestamp: Timestamp) {
+    /// Retires the connection id first registered in this registry
+    pub fn retire_initial_id(&mut self, timestamp: Timestamp) {
         // Retiring the connection ID with the highest sequence
         // number retires all connection ids prior to it as well.
         for id_info in self
             .registered_ids
             .iter_mut()
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
+            //# The sequence number of the initial connection ID is 0.
+            .filter(|id_info| id_info.sequence_number == 0)
             .filter(|id_info| !id_info.is_retired())
         {
             id_info.retire(timestamp);
@@ -929,16 +932,17 @@ mod tests {
         let ext_id_1 = id(b"id01");
         let ext_id_2 = id(b"id02");
 
-        let now = s2n_quic_platform::time::now();
+        let now = s2n_quic_platform::time::now() + Duration::from_secs(60);
 
         let (_, mut reg1) = mapper(ext_id_1, TEST_TOKEN_1);
         reg1.set_active_connection_id_limit(2);
 
         assert!(reg1
-            .register_connection_id(&ext_id_2, None, TEST_TOKEN_2)
+            .register_connection_id(&ext_id_2, Some(now), TEST_TOKEN_2)
             .is_ok());
 
-        reg1.retire_all(now);
+        reg1.retire_initial_id(now);
+        reg1.on_timeout(now);
 
         assert_eq!(
             PendingRetirementConfirmation(now + EXPIRATION_BUFFER),
@@ -1072,9 +1076,10 @@ mod tests {
         );
 
         assert!(reg1
-            .register_connection_id(&ext_id_2, None, TEST_TOKEN_2)
+            .register_connection_id(&ext_id_2, Some(now + EXPIRATION_BUFFER), TEST_TOKEN_2)
             .is_ok());
-        reg1.retire_all(now + EXPIRATION_BUFFER);
+        reg1.retire_initial_id(now + EXPIRATION_BUFFER);
+        reg1.on_timeout(now + EXPIRATION_BUFFER);
 
         // We can register another ID because the retire_prior_to field retires old IDs
         assert_eq!(
@@ -1110,7 +1115,7 @@ mod tests {
         let ext_id_2 = id(b"id02");
         let ext_id_3 = id(b"id03");
 
-        let now = s2n_quic_platform::time::now();
+        let now = s2n_quic_platform::time::now() + Duration::from_secs(60);
 
         let (_, mut reg1) = mapper(ext_id_1, TEST_TOKEN_1);
 
@@ -1119,7 +1124,7 @@ mod tests {
         assert_eq!(transmission::Interest::None, reg1.transmission_interest());
 
         assert!(reg1
-            .register_connection_id(&ext_id_2, None, TEST_TOKEN_2)
+            .register_connection_id(&ext_id_2, Some(now), TEST_TOKEN_2)
             .is_ok());
 
         assert_eq!(
@@ -1153,7 +1158,8 @@ mod tests {
         assert_eq!(transmission::Interest::None, reg1.transmission_interest());
 
         // Retire everything
-        reg1.retire_all(now);
+        reg1.retire_initial_id(now);
+        reg1.on_timeout(now);
         assert!(reg1
             .register_connection_id(&ext_id_3, None, TEST_TOKEN_3)
             .is_ok());
@@ -1376,7 +1382,7 @@ mod tests {
         // No timer set for the initial connection ID
         assert_eq!(0, reg1.timers().count());
 
-        reg1.retire_all(now);
+        reg1.retire_initial_id(now);
 
         // Too early, no timer is ready
         reg1.on_timeout(now);
@@ -1435,7 +1441,7 @@ mod tests {
     }
 
     #[test]
-    fn retire_all() {
+    fn retire_initial_id() {
         let ext_id_1 = id(b"id01");
         let ext_id_2 = id(b"id02");
         let ext_id_3 = id(b"id03");
@@ -1451,21 +1457,29 @@ mod tests {
             .register_connection_id(&ext_id_3, None, TEST_TOKEN_3)
             .is_ok());
 
-        reg1.retire_all(s2n_quic_platform::time::now());
+        reg1.retire_initial_id(s2n_quic_platform::time::now());
 
         assert_eq!(3, reg1.registered_ids.iter().count());
 
         for id_info in reg1.registered_ids.iter() {
-            assert!(id_info.is_retired());
+            if id_info.sequence_number == 0 {
+                assert!(id_info.is_retired());
+            } else {
+                assert!(!id_info.is_retired())
+            }
         }
 
-        // Calling retire_all again does nothing
-        reg1.retire_all(s2n_quic_platform::time::now());
+        // Calling retire_initial_id again does nothing
+        reg1.retire_initial_id(s2n_quic_platform::time::now());
 
         assert_eq!(3, reg1.registered_ids.iter().count());
 
         for id_info in reg1.registered_ids.iter() {
-            assert!(id_info.is_retired());
+            if id_info.sequence_number == 0 {
+                assert!(id_info.is_retired());
+            } else {
+                assert!(!id_info.is_retired())
+            }
         }
     }
 }

@@ -241,8 +241,8 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         local_id_registry: &mut connection::LocalIdRegistry,
         timestamp: Timestamp,
     ) {
-        // Retire all local connection IDs used during the handshake to reduce linkability
-        local_id_registry.retire_all(timestamp);
+        // Retire the initial local connection ID used during the handshake to reduce linkability
+        local_id_registry.retire_initial_id(timestamp);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
         //# A sender SHOULD restart its PTO timer every time an ack-eliciting
