@@ -935,6 +935,53 @@ extern "C" {
 extern "C" {
     pub fn s2n_async_pkey_op_free(op: *mut s2n_async_pkey_op) -> ::libc::c_int;
 }
+#[doc = " Callback function for handling key log events"]
+#[doc = ""]
+#[doc = " THIS SHOULD BE USED FOR DEBUGGING PURPOSES ONLY!"]
+#[doc = ""]
+#[doc = " Each log line is formatted with the"]
+#[doc = " [NSS Key Log Format](https://developer.mozilla.org/en-US/docs/Mozilla/Projects/NSS/Key_Log_Format)"]
+#[doc = " without a newline."]
+#[doc = ""]
+#[doc = " # Safety"]
+#[doc = ""]
+#[doc = " * `ctx` MUST be cast into the same type of pointer that was originally created"]
+#[doc = " * `logline` bytes MUST be copied or discarded before this function returns"]
+#[doc = ""]
+#[doc = " @param ctx Context for the callback"]
+#[doc = " @param conn Connection for which the log line is being emitted"]
+#[doc = " @param logline Pointer to the log line data"]
+#[doc = " @param len Length of the log line data"]
+pub type s2n_key_log_fn = ::core::option::Option<
+    unsafe extern "C" fn(
+        ctx: *mut ::libc::c_void,
+        conn: *mut s2n_connection,
+        logline: *mut u8,
+        len: usize,
+    ) -> ::libc::c_int,
+>;
+extern "C" {
+    #[doc = " Sets a key logging callback on the provided config"]
+    #[doc = ""]
+    #[doc = " THIS SHOULD BE USED FOR DEBUGGING PURPOSES ONLY!"]
+    #[doc = ""]
+    #[doc = " Setting this function enables configurations to emit secrets in the"]
+    #[doc = " [NSS Key Log Format](https://developer.mozilla.org/en-US/docs/Mozilla/Projects/NSS/Key_Log_Format)"]
+    #[doc = ""]
+    #[doc = " # Safety"]
+    #[doc = ""]
+    #[doc = " * `callback` MUST cast `ctx` into the same type of pointer that was originally created"]
+    #[doc = " * `ctx` MUST live for at least as long as it is set on the config"]
+    #[doc = ""]
+    #[doc = " @param config Config to set the callback"]
+    #[doc = " @param callback The function that should be called for each secret log entry"]
+    #[doc = " @param ctx The context to be passed when the callback is called"]
+    pub fn s2n_config_set_key_log_cb(
+        config: *mut s2n_config,
+        callback: s2n_key_log_fn,
+        ctx: *mut ::libc::c_void,
+    ) -> ::libc::c_int;
+}
 extern "C" {
     pub fn s2n_config_enable_cert_req_dss_legacy_compat(config: *mut s2n_config) -> ::libc::c_int;
 }

@@ -4,6 +4,7 @@
 static ALLOCATOR: checkers::Allocator = checkers::Allocator::system();
 
 mod callback;
+mod keylog;
 mod params;
 mod session;
 
