@@ -1,11 +1,12 @@
 use bolero::generator::*;
 use core::time::Duration;
-use s2n_quic_core::{inet::ExplicitCongestionNotification, transport::parameters::AckSettings};
+use s2n_quic_core::{ack, inet::ExplicitCongestionNotification};
 
-pub fn gen_ack_settings() -> impl ValueGenerator<Output = AckSettings> {
-    (gen_duration(), 0..20).map(|(max_ack_delay, ack_delay_exponent)| AckSettings {
+pub fn gen_ack_settings() -> impl ValueGenerator<Output = ack::Settings> {
+    (gen_duration(), 0..20).map(|(max_ack_delay, ack_delay_exponent)| ack::Settings {
         max_ack_delay,
         ack_delay_exponent,
+        ..Default::default()
     })
 }
 

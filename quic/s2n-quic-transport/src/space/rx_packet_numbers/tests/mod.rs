@@ -43,7 +43,7 @@ pub use simulation::*;
 #[test]
 fn simulation_harness_test() {
     use core::time::Duration;
-    use s2n_quic_core::transport::parameters::AckSettings;
+    use s2n_quic_core::ack;
 
     let client_transmissions = 100;
     let server_transmissions = 10;
@@ -51,9 +51,10 @@ fn simulation_harness_test() {
     let mut simulation = Simulation {
         network: Network {
             client: Application::new(
-                Endpoint::new(AckSettings {
+                Endpoint::new(ack::Settings {
                     max_ack_delay: Duration::from_millis(25),
                     ack_delay_exponent: 1,
+                    ..Default::default()
                 }),
                 // send an ack-eliciting packet every 5ms, 100 times
                 [Duration::from_millis(5)]
@@ -64,9 +65,10 @@ fn simulation_harness_test() {
             )
             .into(),
             server: Application::new(
-                Endpoint::new(AckSettings {
+                Endpoint::new(ack::Settings {
                     max_ack_delay: Duration::from_millis(25),
                     ack_delay_exponent: 1,
+                    ..Default::default()
                 }),
                 // send an ack-eliciting packet every 800ms, 10 times
                 [Duration::from_millis(800)]

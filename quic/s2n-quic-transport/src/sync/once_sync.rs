@@ -5,7 +5,7 @@ use crate::{
     sync::{DeliveryState, InFlightDelivery, InflightPacketInfo, ValueToFrameWriter},
     transmission,
 };
-use s2n_quic_core::{ack_set::AckSet, stream::StreamId};
+use s2n_quic_core::{ack, stream::StreamId};
 
 /// Synchronizes a value of type `T` exactly once towards the remote peer.
 ///
@@ -65,7 +65,7 @@ impl<T: Copy + Clone + Eq + PartialEq, S: ValueToFrameWriter<T>> OnceSync<T, S> 
     }
 
     /// This method gets called when a packet delivery got acknowledged
-    pub fn on_packet_ack<A: AckSet>(&mut self, ack_set: &A) {
+    pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
         // If the packet containing the frame gets acknowledged, mark the delivery as
         // succeeded.
         if let DeliveryState::InFlight(in_flight) = self.delivery {
@@ -76,7 +76,7 @@ impl<T: Copy + Clone + Eq + PartialEq, S: ValueToFrameWriter<T>> OnceSync<T, S> 
     }
 
     /// This method gets called when a packet loss is reported
-    pub fn on_packet_loss<A: AckSet>(&mut self, ack_set: &A) {
+    pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
         // If the packet containing the frame was lost, remove the in_flight information.
         // This will trigger resending it.
         if let DeliveryState::InFlight(in_flight) = self.delivery {

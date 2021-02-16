@@ -1,12 +1,12 @@
 use crate::{
-    connection, path,
-    processed_packet::ProcessedPacket,
-    space::rx_packet_numbers::{AckManager, DEFAULT_ACK_RANGES_LIMIT},
+    connection, path, processed_packet::ProcessedPacket, space::rx_packet_numbers::AckManager,
     transmission,
 };
 use connection::ProcessingError;
 use s2n_codec::{DecoderBufferMut, EncoderBuffer};
 use s2n_quic_core::{
+    ack,
+    connection::limits::Limits,
     crypto::{tls::Session as TLSSession, CryptoError, CryptoSuite, Key, ProtectedPayload},
     endpoint,
     frame::{
@@ -39,7 +39,6 @@ pub(crate) use crypto_stream::CryptoStream;
 pub(crate) use handshake::HandshakeSpace;
 pub(crate) use handshake_status::HandshakeStatus;
 pub(crate) use initial::InitialSpace;
-pub(crate) use rx_packet_numbers::EARLY_ACK_SETTINGS;
 pub(crate) use session_context::SessionContext;
 pub(crate) use tx_packet_numbers::TxPacketNumbers;
 
@@ -98,11 +97,7 @@ impl<Config: connection::Config> PacketSpaceManager<Config> {
         initial: <Config::TLSSession as CryptoSuite>::InitialCrypto,
         now: Timestamp,
     ) -> Self {
-        let ack_manager = AckManager::new(
-            PacketNumberSpace::Initial,
-            EARLY_ACK_SETTINGS,
-            DEFAULT_ACK_RANGES_LIMIT,
-        );
+        let ack_manager = AckManager::new(PacketNumberSpace::Initial, ack::Settings::EARLY);
 
         Self {
             session: Some(session),
@@ -139,6 +134,7 @@ impl<Config: connection::Config> PacketSpaceManager<Config> {
         connection_config: &Config,
         path: &Path<Config::CongestionController>,
         local_id_registry: &mut connection::LocalIdRegistry,
+        limits: &Limits,
         now: Timestamp,
     ) -> Result<(), TransportError> {
         if let Some(session) = self.session.as_mut() {
@@ -152,6 +148,7 @@ impl<Config: connection::Config> PacketSpaceManager<Config> {
                 connection_config,
                 handshake_status: &mut self.handshake_status,
                 local_id_registry,
+                limits,
             };
 
             session.poll(&mut context)?;

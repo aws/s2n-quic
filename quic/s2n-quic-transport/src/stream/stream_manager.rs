@@ -1,22 +1,22 @@
 //! `StreamManager` manages the lifecycle of all `Stream`s inside a `Connection`
 
 use crate::{
-    connection::{self, Limits as ConnectionLimits},
+    connection,
     contexts::{ConnectionApiCallContext, OnTransmitError, WriteContext},
     stream::{
+        self,
         incoming_connection_flow_controller::IncomingConnectionFlowController,
         outgoing_connection_flow_controller::OutgoingConnectionFlowController,
         stream_container::{StreamContainer, StreamContainerIterationResult},
         stream_events::StreamEvents,
         stream_impl::StreamConfig,
-        StreamError, StreamLimits, StreamTrait,
+        StreamError, StreamTrait,
     },
     transmission::{self, interest::Provider as _},
 };
 use core::task::{Context, Poll, Waker};
 use s2n_quic_core::{
-    ack_set::AckSet,
-    endpoint,
+    ack, endpoint,
     frame::{
         stream::StreamRef, DataBlocked, MaxData, MaxStreamData, MaxStreams, ResetStream,
         StopSending, StreamDataBlocked, StreamsBlocked,
@@ -173,7 +173,7 @@ pub struct StreamManagerState<S> {
     pub(super) accept_state: AcceptState,
     /// Limits for the Stream manager. Since only Stream limits are utilized at
     /// the moment we only store those
-    stream_limits: StreamLimits,
+    stream_limits: stream::Limits,
 }
 
 impl<S: StreamTrait> StreamManagerState<S> {
@@ -369,7 +369,7 @@ unsafe impl<S> Send for AbstractStreamManager<S> {}
 impl<S: StreamTrait> AbstractStreamManager<S> {
     /// Creates a new `StreamManager` using the provided configuration parameters
     pub fn new(
-        limits: &ConnectionLimits,
+        connection_limits: &connection::Limits,
         local_endpoint_type: endpoint::Type,
         initial_local_limits: InitialFlowControlLimits,
         initial_peer_limits: InitialFlowControlLimits,
@@ -395,7 +395,7 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
                 initial_peer_limits,
                 close_reason: None,
                 accept_state: AcceptState::new(local_endpoint_type),
-                stream_limits: limits.stream_limits,
+                stream_limits: connection_limits.stream_limits(),
             },
         }
     }
@@ -531,7 +531,7 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
     }
 
     /// This method gets called when a packet delivery got acknowledged
-    pub fn on_packet_ack<A: AckSet>(&mut self, ack_set: &A) {
+    pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
         self.inner
             .incoming_connection_flow_controller
             .on_packet_ack(ack_set);
@@ -546,7 +546,7 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
     }
 
     /// This method gets called when a packet loss is reported
-    pub fn on_packet_loss<A: AckSet>(&mut self, ack_set: &A) {
+    pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
         self.inner
             .incoming_connection_flow_controller
             .on_packet_loss(ack_set);

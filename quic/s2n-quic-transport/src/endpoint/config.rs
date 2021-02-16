@@ -29,6 +29,8 @@ pub trait Config: Sized {
     type TokenFormat: s2n_quic_core::token::Format;
     /// The endpoint limits
     type EndpointLimits: endpoint::Limits;
+    /// The connection limits
+    type ConnectionLimits: connection::limits::Limiter;
 
     /// The type of the local endpoint
     const ENDPOINT_TYPE: endpoint::Type =
@@ -62,4 +64,6 @@ pub struct Context<'a, Cfg: Config> {
 
     /// Token generator / validator
     pub token: &'a mut Cfg::TokenFormat,
+
+    pub connection_limits: &'a mut Cfg::ConnectionLimits,
 }

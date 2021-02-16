@@ -5,7 +5,7 @@ use crate::{
     transmission,
 };
 use s2n_quic_core::{
-    ack_set::AckSet,
+    ack,
     frame::{crypto::CryptoRef, MaxPayloadSizeForFrame},
     packet::number::PacketNumber,
     transport::error::TransportError,
@@ -150,12 +150,12 @@ impl CryptoStream {
     }
 
     /// This method gets called when a packet delivery got acknowledged
-    pub fn on_packet_ack<A: AckSet>(&mut self, ack_set: &A) {
+    pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
         self.tx.on_packet_ack(ack_set);
     }
 
     /// This method gets called when a packet loss is reported
-    pub fn on_packet_loss<A: AckSet>(&mut self, ack_set: &A) {
+    pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
         self.tx.on_packet_loss(ack_set);
     }
 }

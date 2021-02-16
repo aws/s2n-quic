@@ -19,7 +19,7 @@ use crate::{
 use alloc::rc::Rc;
 use core::cell::RefCell;
 use s2n_quic_core::{
-    ack_set::AckSet, connection, frame, packet::number::PacketNumber, stateless_reset,
+    ack, connection, frame, packet::number::PacketNumber, stateless_reset,
     transport::error::TransportError,
 };
 use smallvec::SmallVec;
@@ -382,7 +382,7 @@ impl PeerIdRegistry {
     }
 
     /// Removes connection IDs that were pending acknowledgement
-    pub fn on_packet_ack<A: AckSet>(&mut self, ack_set: &A) {
+    pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
         let mut mapper_state = self.state.borrow_mut();
 
         self.registered_ids.retain(|id_info| {
@@ -410,7 +410,7 @@ impl PeerIdRegistry {
 
     /// Sets the retransmit flag to true for connection IDs pending acknowledgement with a lost
     /// packet number
-    pub fn on_packet_loss<A: AckSet>(&mut self, ack_set: &A) {
+    pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
         for id_info in self.registered_ids.iter_mut() {
             if let PendingAcknowledgement(packet_number) = id_info.status {
                 if ack_set.contains(packet_number) {
