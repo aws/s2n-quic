@@ -6,12 +6,21 @@ edition = "2018"
 license = "Apache-2.0"
 
 [features]
-default = ["default-token-provider", "std", "protocol-extensions", "rand-provider", "rustls", "tokio-runtime"]
+default = [
+    "default-tls-provider",
+    "default-token-provider",
+    "protocol-extensions",
+    "rand-provider",
+    "std",
+    "tokio-runtime"
+]
 default-token-provider = ["ring", "zerocopy"]
+default-tls-provider = ["s2n-quic-tls-default"]
 protocol-extensions = []
 rand-provider = ["rand", "rand_chacha"]
-std = ["bytes/std", "futures/std", "s2n-quic-core/std", "s2n-quic-platform/std", "thiserror"]
 rustls = ["s2n-quic-rustls"]
+s2n-tls = ["s2n-quic-tls"]
+std = ["bytes/std", "futures/std", "s2n-quic-core/std", "s2n-quic-platform/std", "thiserror"]
 tokio-runtime = ["tokio", "s2n-quic-platform/tokio-runtime"]
 
 [dependencies]
@@ -27,6 +36,8 @@ s2n-codec = { version = "0.1", path = "../../common/s2n-codec", default-features
 s2n-quic-core = { version = "0.1", path = "../s2n-quic-core", default-features = false }
 s2n-quic-platform = { version = "0.1", path = "../s2n-quic-platform", default-features = false }
 s2n-quic-rustls = { version = "0.1", path = "../s2n-quic-rustls", optional = true }
+s2n-quic-tls = { version = "0.1", path = "../s2n-quic-tls", optional = true }
+s2n-quic-tls-default = { version = "0.1", path = "../s2n-quic-tls-default", optional = true }
 s2n-quic-transport = { version = "0.1", path = "../s2n-quic-transport", default-features = false }
 thiserror = { version = "1.0", optional = true }
 tokio = { version = "0.2", optional = true, features = ["rt-core", "time", "udp"] }

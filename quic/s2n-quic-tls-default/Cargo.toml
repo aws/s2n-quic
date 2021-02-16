@@ -1,0 +1,12 @@
+[package]
+name = "s2n-quic-tls-default"
+version = "0.1.0"
+authors = ["Cameron Bytheway <bythewc@amazon.com>"]
+edition = "2018"
+license = "Apache-2.0"
+
+[target.'cfg(unix)'.dependencies]
+s2n-quic-tls = { version = "0.1", path = "../s2n-quic-tls" }
+
+[target.'cfg(not(unix))'.dependencies]
+s2n-quic-rustls = { version = "0.1", path = "../s2n-quic-rustls" }
