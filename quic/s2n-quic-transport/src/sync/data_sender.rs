@@ -5,7 +5,7 @@ use crate::{
 use alloc::collections::VecDeque;
 use bytes::{Buf, Bytes};
 use s2n_quic_core::{
-    ack_set::AckSet, frame::MaxPayloadSizeForFrame, packet::number::PacketNumber, varint::VarInt,
+    ack, frame::MaxPayloadSizeForFrame, packet::number::PacketNumber, varint::VarInt,
 };
 
 /// Manages the outgoing flow control window for a sending data on a particular
@@ -371,7 +371,7 @@ impl<
     }
 
     /// This method gets called when a packet delivery got acknowledged
-    pub fn on_packet_ack<A: AckSet>(&mut self, ack_set: &A) {
+    pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
         // This flag is just an optimization. If we do not get acknowledgements
         // for data at the head of the queue, we not need to dequeue data.
         let mut check_released = false;
@@ -444,7 +444,7 @@ impl<
     }
 
     /// This method gets called when a packet loss is reported
-    pub fn on_packet_loss<A: AckSet>(&mut self, ack_set: &A) {
+    pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
         for chunk in self.tracking.iter_mut() {
             if let ChunkTransmissionState::InFlight(inflight_packet_nr) = chunk.state {
                 if ack_set.contains(inflight_packet_nr) {

@@ -1,14 +1,15 @@
 use crate::{
-    connection,
+    connection::{self, limits::Limits},
     space::{
-        rx_packet_numbers::{AckManager, DEFAULT_ACK_RANGES_LIMIT, EARLY_ACK_SETTINGS},
-        ApplicationSpace, HandshakeSpace, HandshakeStatus, InitialSpace,
+        rx_packet_numbers::AckManager, ApplicationSpace, HandshakeSpace, HandshakeStatus,
+        InitialSpace,
     },
     stream::AbstractStreamManager,
 };
 use bytes::Bytes;
 use s2n_codec::{DecoderBuffer, DecoderValue};
 use s2n_quic_core::{
+    ack,
     crypto::{tls, CryptoSuite},
     packet::number::PacketNumberSpace,
     path::Path,
@@ -26,6 +27,7 @@ pub struct SessionContext<'a, Config: connection::Config> {
     pub zero_rtt_crypto: &'a mut Option<Box<<Config::TLSSession as CryptoSuite>::ZeroRTTCrypto>>,
     pub handshake_status: &'a mut HandshakeStatus,
     pub local_id_registry: &'a mut connection::LocalIdRegistry,
+    pub limits: &'a Limits,
 }
 
 impl<'a, Config: connection::Config> tls::Context<Config::TLSSession>
@@ -46,11 +48,7 @@ impl<'a, Config: connection::Config> tls::Context<Config::TLSSession>
             space.crypto_stream.finish()?;
         }
 
-        let ack_manager = AckManager::new(
-            PacketNumberSpace::Handshake,
-            EARLY_ACK_SETTINGS,
-            DEFAULT_ACK_RANGES_LIMIT,
-        );
+        let ack_manager = AckManager::new(PacketNumberSpace::Handshake, ack::Settings::EARLY);
 
         *self.handshake = Some(Box::new(HandshakeSpace::new(keys, self.now, ack_manager)));
 
@@ -135,23 +133,17 @@ impl<'a, Config: connection::Config> tls::Context<Config::TLSSession>
         //# TRANSPORT_PARAMETER_ERROR or PROTOCOL_VIOLATION:
 
         let peer_flow_control_limits = peer_parameters.flow_control_limits();
-        let local_flow_control_limits = self.connection_config.local_flow_control_limits();
-        let connection_limits = self.connection_config.connection_limits();
 
         let stream_manager = AbstractStreamManager::new(
-            &connection_limits,
+            &self.limits,
             Config::ENDPOINT_TYPE,
-            local_flow_control_limits,
+            self.limits.initial_flow_control_limits(),
             peer_flow_control_limits,
         );
 
-        // TODO ack interval limit configurable
-        let ack_interval_limit = DEFAULT_ACK_RANGES_LIMIT;
-        let ack_settings = self.connection_config.local_ack_settings();
         let ack_manager = AckManager::new(
             PacketNumberSpace::ApplicationData,
-            ack_settings,
-            ack_interval_limit,
+            self.limits.ack_settings(),
         );
 
         // TODO use interning for these values

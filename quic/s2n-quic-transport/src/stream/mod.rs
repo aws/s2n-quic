@@ -2,7 +2,6 @@
 
 mod api;
 mod incoming_connection_flow_controller;
-mod limits;
 mod outgoing_connection_flow_controller;
 mod receive_stream;
 mod send_stream;
@@ -16,7 +15,7 @@ mod stream_manager;
 pub(crate) mod contract;
 
 pub use api::*;
-pub use limits::StreamLimits;
+pub use s2n_quic_core::stream::limits::Limits;
 pub use stream_events::StreamEvents;
 pub use stream_impl::{StreamImpl, StreamTrait};
 pub use stream_manager::AbstractStreamManager;

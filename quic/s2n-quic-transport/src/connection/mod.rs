@@ -1,19 +1,10 @@
 //! This module contains the implementation of QUIC `Connections` and their management
 
-use crate::stream::{StreamLimits, StreamTrait};
+use crate::stream::StreamTrait;
 use s2n_quic_core::{
-    application::ApplicationErrorCode,
-    crypto::tls,
-    endpoint,
-    frame::ConnectionClose,
-    inet::SocketAddress,
-    recovery::CongestionController,
-    stream::StreamError,
-    time::Timestamp,
-    transport::{
-        error::TransportError,
-        parameters::{AckSettings, InitialFlowControlLimits},
-    },
+    application::ApplicationErrorCode, connection, crypto::tls, endpoint, frame::ConnectionClose,
+    inet::SocketAddress, recovery::CongestionController, stream::StreamError, time::Timestamp,
+    transport::error::TransportError,
 };
 
 mod api;
@@ -62,14 +53,6 @@ pub trait Config: 'static + Send + Debug {
     type TLSSession: tls::Session;
 
     const ENDPOINT_TYPE: endpoint::Type;
-
-    /// Our initial flow control limits as advertised in transport parameters.
-    fn local_flow_control_limits(&self) -> InitialFlowControlLimits;
-    /// Our ack settings as advertised in transport parameters.
-    fn local_ack_settings(&self) -> AckSettings;
-    /// Returns the limits for this connection that are not defined through
-    /// transport parameters
-    fn connection_limits(&self) -> Limits;
 }
 
 /// Parameters which are passed to a Connection.
@@ -97,6 +80,8 @@ pub struct Parameters<Cfg: Config> {
     pub timestamp: Timestamp,
     /// The QUIC protocol version which is used for this particular connection
     pub quic_version: u32,
+    /// The limits that were advertised to the peer
+    pub limits: connection::Limits,
 }
 
 /// Enumerates reasons for closing a connection
@@ -136,18 +121,6 @@ impl<'a> Into<StreamError> for CloseReason<'a> {
     }
 }
 
-/// Per-connection limits
-#[derive(Debug, Copy, Clone, Default, PartialEq, Eq)]
-#[non_exhaustive]
-pub struct Limits {
-    /// The limits for streams on this connection
-    pub stream_limits: StreamLimits,
-
-    // TODO remove this field when more fields are added to increase the size
-    // temporary field to supress clippy::trivially_copy_pass_by_ref warnings
-    pub(crate) _padding: u64,
-}
-
 /// Some connection methods may need to indicate both `TransportError`s and `CryptoError`s. This
 /// enum is used to allow for either error type to be returned as appropriate.
 pub enum ProcessingError {
@@ -179,18 +152,6 @@ pub mod testing {
         type CongestionController = s2n_quic_core::recovery::CubicCongestionController;
         type TLSSession = tls::testing::Session;
         const ENDPOINT_TYPE: endpoint::Type = endpoint::Type::Server;
-
-        fn local_flow_control_limits(&self) -> InitialFlowControlLimits {
-            todo!()
-        }
-
-        fn local_ack_settings(&self) -> AckSettings {
-            todo!()
-        }
-
-        fn connection_limits(&self) -> Limits {
-            todo!()
-        }
     }
 
     #[derive(Debug)]
@@ -201,17 +162,5 @@ pub mod testing {
         type CongestionController = s2n_quic_core::recovery::CubicCongestionController;
         type TLSSession = tls::testing::Session;
         const ENDPOINT_TYPE: endpoint::Type = endpoint::Type::Client;
-
-        fn local_flow_control_limits(&self) -> InitialFlowControlLimits {
-            todo!()
-        }
-
-        fn local_ack_settings(&self) -> AckSettings {
-            todo!()
-        }
-
-        fn connection_limits(&self) -> Limits {
-            todo!()
-        }
     }
 }

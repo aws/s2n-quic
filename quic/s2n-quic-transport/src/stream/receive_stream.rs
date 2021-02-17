@@ -15,7 +15,7 @@ use core::{
     task::{Context, Waker},
 };
 use s2n_quic_core::{
-    ack_set::AckSet,
+    ack,
     application::ApplicationErrorCode,
     frame::{stream::StreamRef, MaxStreamData, ResetStream, StopSending, StreamDataBlocked},
     packet::number::PacketNumber,
@@ -620,14 +620,14 @@ impl ReceiveStream {
     }
 
     /// This method gets called when a packet delivery got acknowledged
-    pub fn on_packet_ack<A: AckSet>(&mut self, ack_set: &A) {
+    pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
         self.flow_controller.read_window_sync.on_packet_ack(ack_set);
 
         self.stop_sending_sync.on_packet_ack(ack_set);
     }
 
     /// This method gets called when a packet loss is reported
-    pub fn on_packet_loss<A: AckSet>(&mut self, ack_set: &A) {
+    pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
         self.flow_controller
             .read_window_sync
             .on_packet_loss(ack_set);

@@ -3,8 +3,7 @@ use core::{cell::RefCell, convert::TryInto};
 use smallvec::SmallVec;
 
 use s2n_quic_core::{
-    ack_set::AckSet,
-    connection, frame,
+    ack, connection, frame,
     packet::number::PacketNumber,
     stateless_reset,
     time::{Duration, Timer, Timestamp},
@@ -491,7 +490,7 @@ impl LocalIdRegistry {
     }
 
     /// Activates connection IDs that were pending acknowledgement
-    pub fn on_packet_ack<A: AckSet>(&mut self, ack_set: &A) {
+    pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
         for mut id_info in self.registered_ids.iter_mut() {
             if let PendingAcknowledgement(packet_number) = id_info.status {
                 if ack_set.contains(packet_number) {
@@ -505,7 +504,7 @@ impl LocalIdRegistry {
     }
 
     /// Moves connection IDs pending acknowledgement into pending reissue
-    pub fn on_packet_loss<A: AckSet>(&mut self, ack_set: &A) {
+    pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
         for mut id_info in self.registered_ids.iter_mut() {
             if let PendingAcknowledgement(packet_number) = id_info.status {
                 if ack_set.contains(packet_number) {

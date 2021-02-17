@@ -18,7 +18,7 @@ use core::{
     task::{Context, Waker},
 };
 use s2n_quic_core::{
-    ack_set::AckSet,
+    ack,
     application::ApplicationErrorCode,
     frame::{stream::StreamRef, MaxPayloadSizeForFrame, MaxStreamData, ResetStream, StopSending},
     packet::number::PacketNumber,
@@ -524,7 +524,7 @@ impl SendStream {
     }
 
     /// This method gets called when a packet delivery got acknowledged
-    pub fn on_packet_ack<A: AckSet>(&mut self, ack_set: &A, events: &mut StreamEvents) {
+    pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A, events: &mut StreamEvents) {
         self.data_sender.on_packet_ack(ack_set);
 
         let should_flush = self.write_waiter.as_ref().map_or(false, |w| w.1);
@@ -577,7 +577,7 @@ impl SendStream {
     }
 
     /// This method gets called when a packet loss is reported
-    pub fn on_packet_loss<A: AckSet>(&mut self, ack_set: &A) {
+    pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
         self.data_sender.on_packet_loss(ack_set);
         self.reset_sync.on_packet_loss(ack_set);
     }

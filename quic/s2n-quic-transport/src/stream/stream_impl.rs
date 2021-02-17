@@ -12,8 +12,7 @@ use crate::{
 };
 use core::task::Context;
 use s2n_quic_core::{
-    ack_set::AckSet,
-    endpoint,
+    ack, endpoint,
     frame::{stream::StreamRef, MaxStreamData, ResetStream, StopSending, StreamDataBlocked},
     stream::{ops, StreamId},
     transport::error::TransportError,
@@ -91,10 +90,10 @@ pub trait StreamTrait: StreamInterestProvider {
     ) -> Result<(), TransportError>;
 
     /// This method gets called when a packet delivery got acknowledged
-    fn on_packet_ack<A: AckSet>(&mut self, ack_set: &A, events: &mut StreamEvents);
+    fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A, events: &mut StreamEvents);
 
     /// This method gets called when a packet loss is reported
-    fn on_packet_loss<A: AckSet>(&mut self, ack_set: &A, events: &mut StreamEvents);
+    fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A, events: &mut StreamEvents);
 
     /// This method gets called when a stream gets reset due to a reason that is
     /// not related to a frame. E.g. due to a connection failure.
@@ -214,12 +213,12 @@ impl StreamTrait for StreamImpl {
         self.send_stream.on_stop_sending(frame, events)
     }
 
-    fn on_packet_ack<A: AckSet>(&mut self, ack_set: &A, events: &mut StreamEvents) {
+    fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A, events: &mut StreamEvents) {
         self.receive_stream.on_packet_ack(ack_set);
         self.send_stream.on_packet_ack(ack_set, events);
     }
 
-    fn on_packet_loss<A: AckSet>(&mut self, ack_set: &A, _events: &mut StreamEvents) {
+    fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A, _events: &mut StreamEvents) {
         self.receive_stream.on_packet_loss(ack_set);
         self.send_stream.on_packet_loss(ack_set);
     }

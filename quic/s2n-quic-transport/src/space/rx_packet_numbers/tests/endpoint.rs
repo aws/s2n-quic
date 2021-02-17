@@ -1,18 +1,15 @@
 use super::{generator::gen_ack_settings, Packet, TestEnvironment};
 use crate::{
-    contexts::WriteContext,
-    processed_packet::ProcessedPacket,
-    space::rx_packet_numbers::{ack_manager::AckManager, ack_ranges::DEFAULT_ACK_RANGES_LIMIT},
-    transmission::interest::Provider,
+    contexts::WriteContext, processed_packet::ProcessedPacket,
+    space::rx_packet_numbers::ack_manager::AckManager, transmission::interest::Provider,
 };
 use bolero::generator::*;
 use s2n_quic_core::{
-    connection, endpoint,
+    ack, connection, endpoint,
     frame::{ack_elicitation::AckElicitation, Ack, Frame, Ping},
     inet::DatagramInfo,
     packet::number::PacketNumberSpace,
     time::Timestamp,
-    transport::parameters::AckSettings,
 };
 
 #[derive(Clone, Debug, TypeGenerator)]
@@ -24,16 +21,12 @@ pub struct Endpoint {
     pub ack_manager: AckManager,
 }
 
-fn new_ack_manager(ack_settings: AckSettings) -> AckManager {
-    AckManager::new(
-        PacketNumberSpace::ApplicationData,
-        ack_settings,
-        DEFAULT_ACK_RANGES_LIMIT,
-    )
+fn new_ack_manager(ack_settings: ack::Settings) -> AckManager {
+    AckManager::new(PacketNumberSpace::ApplicationData, ack_settings)
 }
 
 impl Endpoint {
-    pub fn new(ack_settings: AckSettings) -> Self {
+    pub fn new(ack_settings: ack::Settings) -> Self {
         Self {
             env: TestEnvironment::new(),
             ack_manager: new_ack_manager(ack_settings),

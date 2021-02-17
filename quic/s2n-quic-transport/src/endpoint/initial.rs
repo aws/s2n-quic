@@ -2,6 +2,7 @@ use crate::{
     connection::{
         self,
         id::{ConnectionInfo, Generator as _},
+        limits::{ConnectionInfo as LimitsInfo, Limiter as _},
         SynchronizedSharedConnectionState, Trait as _,
     },
     endpoint,
@@ -142,15 +143,13 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
 
         let mut transport_parameters = ServerTransportParameters::default();
 
-        // TODO initialize transport parameters from Limits provider values
-        let max = s2n_quic_core::varint::VarInt::from_u32(core::u32::MAX);
-        transport_parameters.initial_max_data = max.try_into().unwrap();
-        transport_parameters.initial_max_stream_data_bidi_local = max.try_into().unwrap();
-        transport_parameters.initial_max_stream_data_bidi_remote = max.try_into().unwrap();
-        transport_parameters.initial_max_stream_data_bidi_remote = max.try_into().unwrap();
-        transport_parameters.initial_max_stream_data_uni = max.try_into().unwrap();
-        transport_parameters.initial_max_streams_bidi = max.try_into().unwrap();
-        transport_parameters.initial_max_streams_uni = max.try_into().unwrap();
+        let limits = self
+            .config
+            .context()
+            .connection_limits
+            .on_connection(&LimitsInfo::new(&datagram.remote_address));
+
+        transport_parameters.load_limits(&limits);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.3
         //# A server includes the Destination Connection ID field from the first
@@ -225,6 +224,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             congestion_controller,
             timestamp: datagram.timestamp,
             quic_version: packet.version,
+            limits,
         };
 
         let space_manager =

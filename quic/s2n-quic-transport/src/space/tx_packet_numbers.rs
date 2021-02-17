@@ -1,5 +1,5 @@
 use s2n_quic_core::{
-    ack_set::AckSet,
+    ack,
     inet::DatagramInfo,
     packet::number::{PacketNumber, PacketNumberSpace},
     time::Timestamp,
@@ -24,7 +24,7 @@ impl TxPacketNumbers {
     }
 
     /// This method gets called when a packet delivery got acknowledged
-    pub fn on_packet_ack<A: AckSet>(
+    pub fn on_packet_ack<A: ack::Set>(
         &mut self,
         datagram: &DatagramInfo,
         ack_set: &A,
