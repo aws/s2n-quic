@@ -19,6 +19,11 @@ pub type TxCryptoStream = DataSender<CryptoFlowController, CryptoChunkToFrameWri
 pub struct CryptoChunkToFrameWriter {}
 
 impl ChunkToFrameWriter for CryptoChunkToFrameWriter {
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.6
+    //# The stream does not have an explicit end, so CRYPTO frames do not
+    //# have a FIN bit.
+    const WRITES_FIN: bool = false;
+
     type StreamId = ();
 
     fn get_max_frame_size(&self, _stream_id: Self::StreamId, data_size: usize) -> usize {
@@ -43,6 +48,9 @@ impl ChunkToFrameWriter for CryptoChunkToFrameWriter {
         _is_fin: bool,
         context: &mut W,
     ) -> Option<PacketNumber> {
+        // Some versions of QUIC refuse to process empty CRYPTO frames so
+        // make sure we never send them
+        debug_assert!(!data.is_empty());
         context.write_frame(&CryptoRef { offset, data })
     }
 }
