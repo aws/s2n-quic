@@ -459,6 +459,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                         source_connection_id: &self.local_connection_id,
                         local_id_registry: &mut self.local_id_registry,
                         ecn,
+                        min_packet_len: None,
                     },
                     shared_state,
                 }) {

@@ -121,11 +121,13 @@ fn encode_packet<'a>(packet: CleartextPacket, mut encoder: EncoderBuffer<'a>) ->
         Handshake(packet) => packet.encode_packet(
             &NullHandshakeCrypto::new(),
             PacketNumberSpace::Handshake.new_packet_number(Default::default()),
+            None,
             encoder,
         ),
         Initial(packet) => packet.encode_packet(
             &NullInitialCrypto::new(),
             PacketNumberSpace::Initial.new_packet_number(Default::default()),
+            None,
             encoder,
         ),
         Retry(packet) => {
@@ -135,11 +137,13 @@ fn encode_packet<'a>(packet: CleartextPacket, mut encoder: EncoderBuffer<'a>) ->
         Short(packet) => packet.encode_packet(
             &NullOneRTTCrypto::new(),
             PacketNumberSpace::ApplicationData.new_packet_number(Default::default()),
+            None,
             encoder,
         ),
         ZeroRTT(packet) => packet.encode_packet(
             &NullZeroRTTCrypto::new(),
             PacketNumberSpace::ApplicationData.new_packet_number(Default::default()),
+            None,
             encoder,
         ),
         VersionNegotiation(packet) => {

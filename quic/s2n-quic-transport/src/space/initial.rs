@@ -14,7 +14,9 @@ use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
     crypto::CryptoSuite,
     endpoint,
-    frame::{ack::AckRanges, crypto::CryptoRef, Ack, ConnectionClose},
+    frame::{
+        ack::AckRanges, crypto::CryptoRef, Ack, ConnectionClose,
+    },
     inet::DatagramInfo,
     packet::{
         encoding::{PacketEncoder, PacketEncodingError},
@@ -95,7 +97,7 @@ impl<Config: connection::Config> InitialSpace<Config> {
         transmission_constraint: transmission::Constraint,
         handshake_status: &HandshakeStatus,
         buffer: EncoderBuffer<'a>,
-    ) -> Result<EncoderBuffer<'a>, PacketEncodingError<'a>> {
+    ) -> Result<(transmission::Outcome, EncoderBuffer<'a>), PacketEncodingError<'a>> {
         let token = &[][..]; // TODO
         let mut packet_number = self.tx_packet_numbers.next();
 
@@ -138,7 +140,7 @@ impl<Config: connection::Config> InitialSpace<Config> {
         };
 
         let (_protected_packet, buffer) = self.crypto.encode_packet(buffer, |buffer, key| {
-            packet.encode_packet(key, packet_number_encoder, buffer)
+            packet.encode_packet(key, packet_number_encoder, context.min_packet_len, buffer)
         })?;
 
         let time_sent = context.timestamp;
@@ -146,7 +148,7 @@ impl<Config: connection::Config> InitialSpace<Config> {
             self.recovery(context.path_mut(), handshake_status);
         recovery_manager.on_packet_sent(packet_number, outcome, time_sent, &mut recovery_context);
 
-        Ok(buffer)
+        Ok((outcome, buffer))
     }
 
     /// Signals the connection was previously blocked by anti-amplification limits

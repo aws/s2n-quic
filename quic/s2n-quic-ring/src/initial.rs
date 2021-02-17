@@ -164,6 +164,7 @@ mod tests {
                     .encode_packet(
                         sealer,
                         Default::default(),
+                        None,
                         EncoderBuffer::new(&mut output_buffer),
                     )
                     .unwrap();
