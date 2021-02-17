@@ -9,7 +9,7 @@ use crate::{
     contexts::{OnTransmitError, WriteContext},
     transmission,
 };
-use s2n_quic_core::{ack_set::AckSet, packet::number::PacketNumber};
+use s2n_quic_core::{ack, packet::number::PacketNumber};
 
 #[derive(Debug, Default)]
 pub struct Flag<W: Writer> {
@@ -85,7 +85,7 @@ impl<W: Writer> Flag<W> {
     }
 
     /// This method gets called when a packet delivery got acknowledged
-    pub fn on_packet_ack<A: AckSet>(&mut self, ack_set: &A) -> bool {
+    pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) -> bool {
         if let DeliveryState::InFlight { stable, latest } = &self.delivery {
             if ack_set.contains(*stable) || ack_set.contains(*latest) {
                 self.finish();
@@ -97,7 +97,7 @@ impl<W: Writer> Flag<W> {
     }
 
     /// This method gets called when a packet loss is reported
-    pub fn on_packet_loss<A: AckSet>(&mut self, ack_set: &A) {
+    pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
         if let DeliveryState::InFlight { stable, latest } = &mut self.delivery {
             // If stable is lost, fall back on latest
             if ack_set.contains(*stable) {

@@ -1,7 +1,7 @@
 use super::*;
 use core::{marker::PhantomData, time::Duration};
 use futures::{select_biased, FutureExt};
-use s2n_quic_core::{connection::id::Generator, crypto, recovery, transport};
+use s2n_quic_core::{connection::id::Generator, crypto, recovery};
 use s2n_quic_transport::{acceptor::Acceptor, connection, endpoint, stream};
 
 impl_providers_state! {
@@ -227,7 +227,7 @@ impl<
         StatelessResetToken: stateless_reset_token::Generator,
         Random: s2n_quic_core::random::Generator,
         EndpointLimits: s2n_quic_core::endpoint::Limits,
-        Limits,
+        Limits: s2n_quic_core::connection::limits::Limiter,
         Log,
         Sync,
         Tls: 'static + crypto::tls::Endpoint,
@@ -256,6 +256,7 @@ impl<
     type EndpointLimits = EndpointLimits;
     type TLSEndpoint = Tls;
     type TokenFormat = Token;
+    type ConnectionLimits = Limits;
 
     fn create_connection_config(&mut self) -> Self::ConnectionConfig {
         ConnectionConfig {
@@ -273,6 +274,7 @@ impl<
             tls: &mut self.tls,
             endpoint_limits: &mut self.endpoint_limits,
             token: &mut self.token,
+            connection_limits: &mut self.limits,
         }
     }
 }
@@ -291,28 +293,4 @@ impl<CC: recovery::CongestionController, Tls: 'static + crypto::tls::Session> co
     type TLSSession = Tls;
 
     const ENDPOINT_TYPE: endpoint::Type = endpoint::Type::Server;
-
-    fn local_flow_control_limits(&self) -> transport::parameters::InitialFlowControlLimits {
-        // TODO ask the limits provider
-        let max = s2n_quic_core::varint::VarInt::from_u32(core::u32::MAX);
-
-        transport::parameters::InitialFlowControlLimits {
-            stream_limits: transport::parameters::InitialStreamLimits {
-                max_data_bidi_local: max,
-                max_data_bidi_remote: max,
-                max_data_uni: max,
-            },
-            max_data: max,
-            max_streams_bidi: max,
-            max_streams_uni: max,
-        }
-    }
-
-    fn local_ack_settings(&self) -> transport::parameters::AckSettings {
-        Default::default()
-    }
-
-    fn connection_limits(&self) -> connection::Limits {
-        Default::default()
-    }
 }

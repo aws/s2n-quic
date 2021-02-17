@@ -7,8 +7,8 @@ use core::ops::RangeInclusive;
 ///
 /// The implementation of the set is allowed to store packet numbers in
 /// an arbitrary form.
-pub trait AckSet {
-    /// Returns whether the [`AckSet`] contains a given packet number
+pub trait Set {
+    /// Returns whether the [`Set`] contains a given packet number
     fn contains(&self, packet_number: PacketNumber) -> bool;
 
     /// Smallest packet number in the set
@@ -20,7 +20,7 @@ pub trait AckSet {
 
 // A single packet number is also a set
 
-impl AckSet for PacketNumber {
+impl Set for PacketNumber {
     fn contains(&self, packet_number: PacketNumber) -> bool {
         *self == packet_number
     }
@@ -34,7 +34,7 @@ impl AckSet for PacketNumber {
     }
 }
 
-impl AckSet for RangeInclusive<PacketNumber> {
+impl Set for RangeInclusive<PacketNumber> {
     fn contains(&self, packet_number: PacketNumber) -> bool {
         RangeInclusive::contains(self, &packet_number)
     }
@@ -48,7 +48,7 @@ impl AckSet for RangeInclusive<PacketNumber> {
     }
 }
 
-impl AckSet for PacketNumberRange {
+impl Set for PacketNumberRange {
     fn contains(&self, packet_number: PacketNumber) -> bool {
         PacketNumberRange::contains(self, packet_number)
     }

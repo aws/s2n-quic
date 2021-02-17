@@ -8,7 +8,7 @@ use crate::{
 use alloc::rc::Rc;
 use core::cell::RefCell;
 use s2n_quic_core::{
-    ack_set::AckSet, frame::max_data::MaxData, packet::number::PacketNumber, stream::StreamId,
+    ack, frame::max_data::MaxData, packet::number::PacketNumber, stream::StreamId,
     transport::error::TransportError, varint::VarInt,
 };
 
@@ -99,11 +99,11 @@ impl IncomingConnectionFlowControllerImpl {
         Ok(())
     }
 
-    pub fn on_packet_ack<A: AckSet>(&mut self, ack_set: &A) {
+    pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
         self.read_window_sync.on_packet_ack(ack_set)
     }
 
-    pub fn on_packet_loss<A: AckSet>(&mut self, ack_set: &A) {
+    pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
         self.read_window_sync.on_packet_loss(ack_set)
     }
 
@@ -159,12 +159,12 @@ impl IncomingConnectionFlowController {
     }
 
     /// This method gets called when a packet delivery got acknowledged
-    pub fn on_packet_ack<A: AckSet>(&mut self, ack_set: &A) {
+    pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
         self.inner.borrow_mut().on_packet_ack(ack_set)
     }
 
     /// This method gets called when a packet loss is reported
-    pub fn on_packet_loss<A: AckSet>(&mut self, ack_set: &A) {
+    pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
         self.inner.borrow_mut().on_packet_loss(ack_set)
     }
 

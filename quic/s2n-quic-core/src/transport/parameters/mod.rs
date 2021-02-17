@@ -1,5 +1,5 @@
 use crate::{
-    connection, endpoint,
+    ack, connection, endpoint,
     inet::{SocketAddressV4, SocketAddressV6, Unspecified},
     stateless_reset,
     stream::{StreamId, StreamType},
@@ -204,6 +204,9 @@ where
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct ValidationError(&'static str);
 
+const MAX_ENCODABLE_VALUE: ValidationError =
+    ValidationError("provided value exceeds maximum encodable value");
+
 impl core::fmt::Display for ValidationError {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         write!(f, "{}", self.0)
@@ -213,6 +216,25 @@ impl core::fmt::Display for ValidationError {
 impl From<DecoderError> for ValidationError {
     fn from(error: DecoderError) -> Self {
         ValidationError(error.into())
+    }
+}
+
+impl From<crate::varint::VarIntError> for ValidationError {
+    fn from(_: crate::varint::VarIntError) -> Self {
+        MAX_ENCODABLE_VALUE
+    }
+}
+
+impl From<core::num::TryFromIntError> for ValidationError {
+    fn from(_: core::num::TryFromIntError) -> Self {
+        MAX_ENCODABLE_VALUE
+    }
+}
+
+impl From<core::convert::Infallible> for ValidationError {
+    fn from(_: core::convert::Infallible) -> Self {
+        // this won't ever happen since Infallible can't actually be created
+        MAX_ENCODABLE_VALUE
     }
 }
 
@@ -299,6 +321,55 @@ macro_rules! transport_parameter {
     };
 }
 
+macro_rules! varint_transport_parameter {
+    ($name:ident, $tag:expr $(, $default:expr)?) => {
+        transport_parameter!($name(VarInt), $tag $(, $default)?);
+
+        impl TryFrom<u64> for $name {
+            type Error = ValidationError;
+
+            fn try_from(value: u64) -> Result<Self, Self::Error> {
+                let value = VarInt::new(value)?;
+                Self::try_from(value)
+            }
+        }
+
+        impl $name {
+            pub const fn as_varint(self) -> VarInt {
+                self.0
+            }
+        }
+    };
+}
+
+macro_rules! duration_transport_parameter {
+    ($name:ident, $tag:expr $(, $default:expr)?) => {
+        transport_parameter!($name(VarInt), $tag $(, $default)?);
+
+        impl $name {
+            /// Convert idle_timeout into a `core::time::Duration`
+            pub const fn as_duration(self) -> Duration {
+                Duration::from_millis(self.0.as_u64())
+            }
+        }
+
+        impl TryFrom<Duration> for $name {
+            type Error = ValidationError;
+
+            fn try_from(value: Duration) -> Result<Self, Self::Error> {
+                let value: VarInt = value.as_millis().try_into()?;
+                value.try_into()
+            }
+        }
+
+        impl From<$name> for Duration {
+            fn from(value: $name) -> Self {
+                value.as_duration()
+            }
+        }
+    };
+}
+
 /// Implements an optional transport parameter
 macro_rules! optional_transport_parameter {
     ($ty:ty) => {
@@ -379,36 +450,14 @@ optional_transport_parameter!(OriginalDestinationConnectionId);
 //#    Idle timeout is disabled when both endpoints omit this transport
 //#    parameter or specify a value of 0.
 
-transport_parameter!(MaxIdleTimeout(VarInt), 0x01);
-
-impl TransportParameterValidator for MaxIdleTimeout {}
+duration_transport_parameter!(MaxIdleTimeout, 0x01);
 
 impl MaxIdleTimeout {
-    /// Try to convert `core::time::Duration` into an idle_timeout transport parameter
-    pub fn try_from_duration(value: Duration) -> Option<Self> {
-        let value: u64 = value.as_millis().try_into().ok()?;
-        Self::new(value)
-    }
-
-    /// Convert idle_timeout into a `core::time::Duration`
-    pub const fn as_duration(self) -> Duration {
-        Duration::from_millis(self.0.as_u64())
-    }
+    /// Defaults to 15 seconds
+    pub const RECOMMENDED: Self = Self(VarInt::from_u32(15_000));
 }
 
-impl TryFrom<Duration> for MaxIdleTimeout {
-    type Error = ValidationError;
-
-    fn try_from(value: Duration) -> Result<Self, Self::Error> {
-        Self::try_from_duration(value).ok_or(ValidationError("Duration exceeds encodable limit"))
-    }
-}
-
-impl Into<Duration> for MaxIdleTimeout {
-    fn into(self) -> Duration {
-        self.as_duration()
-    }
-}
+impl TransportParameterValidator for MaxIdleTimeout {}
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2
 //# stateless_reset_token (0x02):  A stateless reset token is used in
@@ -463,9 +512,18 @@ impl TransportParameterValidator for MaxUdpPayloadSize {
     fn validate(self) -> Result<Self, DecoderError> {
         decoder_invariant!(
             (1200..=65527).contains(&*self.0),
-            "max_packet_size should be within 1200 and 65527 bytes"
+            "max_udp_payload_size should be within 1200 and 65527 bytes"
         );
         Ok(self)
+    }
+}
+
+impl TryFrom<u16> for MaxUdpPayloadSize {
+    type Error = ValidationError;
+
+    fn try_from(value: u16) -> Result<Self, Self::Error> {
+        let value: VarInt = value.into();
+        value.try_into()
     }
 }
 
@@ -476,7 +534,20 @@ impl TransportParameterValidator for MaxUdpPayloadSize {
 //#    equivalent to sending a MAX_DATA (Section 19.9) for the connection
 //#    immediately after completing the handshake.
 
-transport_parameter!(InitialMaxData(VarInt), 0x04);
+varint_transport_parameter!(InitialMaxData, 0x04);
+
+impl InitialMaxData {
+    /// Tuned for 300MiB/s throughput with a 100ms RTT
+    pub const RECOMMENDED: Self = Self(VarInt::from_u32(
+        // ideal throughput in MiB/s
+        300
+        // scaled to bytes/ms
+        * 1_000
+        // rephrase in terms of bytes/RTT
+        // ideal RTT in ms
+        / 100,
+    ));
+}
 
 impl TransportParameterValidator for InitialMaxData {}
 
@@ -491,7 +562,12 @@ impl TransportParameterValidator for InitialMaxData {}
 //#    this applies to streams with the least significant two bits set to
 //#    0x1.
 
-transport_parameter!(InitialMaxStreamDataBidiLocal(VarInt), 0x05);
+varint_transport_parameter!(InitialMaxStreamDataBidiLocal, 0x05);
+
+impl InitialMaxStreamDataBidiLocal {
+    /// Tuned for 300MiB/s throughput with a 100ms RTT
+    pub const RECOMMENDED: Self = Self(InitialMaxData::RECOMMENDED.0);
+}
 
 impl TransportParameterValidator for InitialMaxStreamDataBidiLocal {}
 
@@ -505,7 +581,12 @@ impl TransportParameterValidator for InitialMaxStreamDataBidiLocal {}
 //#    two bits set to 0x1; in server transport parameters, this applies
 //#    to streams with the least significant two bits set to 0x0.
 
-transport_parameter!(InitialMaxStreamDataBidiRemote(VarInt), 0x06);
+varint_transport_parameter!(InitialMaxStreamDataBidiRemote, 0x06);
+
+impl InitialMaxStreamDataBidiRemote {
+    /// Tuned for 300MiB/s throughput with a 100ms RTT
+    pub const RECOMMENDED: Self = Self(InitialMaxData::RECOMMENDED.0);
+}
 
 impl TransportParameterValidator for InitialMaxStreamDataBidiRemote {}
 
@@ -519,7 +600,12 @@ impl TransportParameterValidator for InitialMaxStreamDataBidiRemote {}
 //#    to 0x3; in server transport parameters, this applies to streams
 //#    with the least significant two bits set to 0x2.
 
-transport_parameter!(InitialMaxStreamDataUni(VarInt), 0x07);
+varint_transport_parameter!(InitialMaxStreamDataUni, 0x07);
+
+impl InitialMaxStreamDataUni {
+    /// Tuned for 300MiB/s throughput with a 100ms RTT
+    pub const RECOMMENDED: Self = Self(InitialMaxData::RECOMMENDED.0);
+}
 
 impl TransportParameterValidator for InitialMaxStreamDataUni {}
 
@@ -532,7 +618,12 @@ impl TransportParameterValidator for InitialMaxStreamDataUni {}
 //#    this parameter is equivalent to sending a MAX_STREAMS
 //#    (Section 19.11) of the corresponding type with the same value.
 
-transport_parameter!(InitialMaxStreamsBidi(VarInt), 0x08);
+varint_transport_parameter!(InitialMaxStreamsBidi, 0x08);
+
+impl InitialMaxStreamsBidi {
+    /// Allow up to 100 concurrent streams at any time
+    pub const RECOMMENDED: Self = Self(VarInt::from_u8(100));
+}
 
 impl TransportParameterValidator for InitialMaxStreamsBidi {
     fn validate(self) -> Result<Self, DecoderError> {
@@ -563,7 +654,12 @@ impl TransportParameterValidator for InitialMaxStreamsBidi {
 //#    this parameter is equivalent to sending a MAX_STREAMS
 //#    (Section 19.11) of the corresponding type with the same value.
 
-transport_parameter!(InitialMaxStreamsUni(VarInt), 0x09);
+varint_transport_parameter!(InitialMaxStreamsUni, 0x09);
+
+impl InitialMaxStreamsUni {
+    /// Allow up to 100 concurrent streams at any time
+    pub const RECOMMENDED: Self = Self(VarInt::from_u8(100));
+}
 
 impl TransportParameterValidator for InitialMaxStreamsUni {
     fn validate(self) -> Result<Self, DecoderError> {
@@ -594,6 +690,15 @@ impl TransportParameterValidator for InitialMaxStreamsUni {
 
 transport_parameter!(AckDelayExponent(u8), 0x0a, 3);
 
+impl AckDelayExponent {
+    /// The recommended value comes from the default of 3
+    pub const RECOMMENDED: Self = Self(3);
+
+    pub const fn as_u8(self) -> u8 {
+        self.0
+    }
+}
+
 impl TransportParameterValidator for AckDelayExponent {
     fn validate(self) -> Result<Self, DecoderError> {
         decoder_invariant!(self.0 <= 20, "ack_delay_exponent cannot be greater than 20");
@@ -612,7 +717,12 @@ impl TransportParameterValidator for AckDelayExponent {
 //#    default of 25 milliseconds is assumed.  Values of 2^14 or greater
 //#    are invalid.
 
-transport_parameter!(MaxAckDelay(VarInt), 0x0b, VarInt::from_u8(25));
+duration_transport_parameter!(MaxAckDelay, 0x0b, VarInt::from_u8(25));
+
+impl MaxAckDelay {
+    /// The recommended value comes from the default of 25ms
+    pub const RECOMMENDED: Self = Self(VarInt::from_u8(25));
+}
 
 impl TransportParameterValidator for MaxAckDelay {
     fn validate(self) -> Result<Self, DecoderError> {
@@ -621,114 +731,6 @@ impl TransportParameterValidator for MaxAckDelay {
             "max_ack_delay cannot be greater than 2^14"
         );
         Ok(self)
-    }
-}
-
-impl MaxAckDelay {
-    /// Try to convert `core::time::Duration` into a max_ack_delay transport parameter
-    pub fn try_from_duration(value: Duration) -> Option<Self> {
-        let value: u64 = value.as_millis().try_into().ok()?;
-        Self::new(value)
-    }
-
-    /// Convert max_ack_delay into a `core::time::Duration`
-    pub const fn as_duration(self) -> Duration {
-        Duration::from_millis(self.0.as_u64())
-    }
-}
-
-impl TryFrom<Duration> for MaxAckDelay {
-    type Error = ValidationError;
-
-    fn try_from(value: Duration) -> Result<Self, Self::Error> {
-        Self::try_from_duration(value).ok_or(ValidationError("Duration exceeds limit of 2^14ms"))
-    }
-}
-
-impl Into<Duration> for MaxAckDelay {
-    fn into(self) -> Duration {
-        self.as_duration()
-    }
-}
-
-/// Settings for ACK frames
-#[derive(Clone, Copy, Debug)]
-pub struct AckSettings {
-    /// The maximum ACK delay indicates the maximum amount of time by which the
-    /// endpoint will delay sending acknowledgments.
-    pub max_ack_delay: Duration,
-    /// The ACK delay exponent is an integer value indicating an exponent used
-    /// to decode the ACK Delay field in the ACK frame
-    pub ack_delay_exponent: u8,
-}
-
-impl Default for AckSettings {
-    fn default() -> Self {
-        Self {
-            max_ack_delay: MaxAckDelay::default_value().into(),
-            ack_delay_exponent: *AckDelayExponent::default_value(),
-        }
-    }
-}
-
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.3
-//# ACK Delay:  A variable-length integer encoding the acknowledgement
-//#    delay in microseconds; see Section 13.2.5.  It is decoded by
-//#    multiplying the value in the field by 2 to the power of the
-//#    ack_delay_exponent transport parameter sent by the sender of the
-//#    ACK frame; see Section 18.2.  Compared to simply expressing the
-//#    delay as an integer, this encoding allows for a larger range of
-//#    values within the same number of bytes, at the cost of lower
-//#    resolution.
-
-impl AckSettings {
-    /// Decodes the peer's `Ack Delay` field
-    pub fn decode_ack_delay(&self, delay: VarInt) -> Duration {
-        Duration::from_micros(*delay) * self.scale()
-    }
-
-    /// Encodes the local `Ack Delay` field
-    pub fn encode_ack_delay(&self, delay: Duration) -> VarInt {
-        let micros = delay.as_micros();
-        let scale = self.scale() as u128;
-        (micros / scale).try_into().unwrap_or(VarInt::MAX)
-    }
-
-    /// Computes the scale from the exponent
-    fn scale(&self) -> u32 {
-        2u32.pow(self.ack_delay_exponent as u32)
-    }
-}
-
-#[cfg(test)]
-mod ack_settings_tests {
-    use super::*;
-
-    #[test]
-    #[cfg_attr(miri, ignore)] // this test is too expensive for miri
-    fn ack_settings_test() {
-        for ack_delay_exponent in 0..=20 {
-            let settings = AckSettings {
-                max_ack_delay: Default::default(),
-                ack_delay_exponent,
-            };
-            // use an epsilon instead of comparing the values directly,
-            // as there will be some precision loss
-            let epsilon = settings.scale() as u128;
-
-            for delay in (0..1000).map(|v| v * 100).map(Duration::from_micros) {
-                let delay_varint = settings.encode_ack_delay(delay);
-                let expected_us = delay.as_micros();
-                let actual_us = settings.decode_ack_delay(delay_varint).as_micros();
-                let actual_difference = expected_us - actual_us;
-                assert!(actual_difference < epsilon);
-            }
-
-            // ensure MAX values are handled correctly and don't overflow
-            let delay = settings.decode_ack_delay(VarInt::MAX);
-            let delay_varint = settings.encode_ack_delay(delay);
-            assert_eq!(VarInt::MAX, delay_varint);
-        }
     }
 }
 
@@ -796,7 +798,7 @@ optional_transport_parameter!(PreferredAddress);
 //#   Stateless Reset Token (128),
 //# }
 
-type CIDLength = u8;
+type CidLength = u8;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PreferredAddress {
@@ -857,7 +859,7 @@ decoder_value!(
             let ipv4_address = ipv4_address.filter_unspecified();
             let (ipv6_address, buffer) = buffer.decode::<SocketAddressV6>()?;
             let ipv6_address = ipv6_address.filter_unspecified();
-            let (connection_id, buffer) = buffer.decode_with_len_prefix::<CIDLength, _>()?;
+            let (connection_id, buffer) = buffer.decode_with_len_prefix::<CidLength, _>()?;
             let (stateless_reset_token, buffer) = buffer.decode()?;
             let preferred_address = Self {
                 ipv4_address,
@@ -883,7 +885,7 @@ impl EncoderValue for PreferredAddress {
         } else {
             buffer.write_repeated(size_of::<SocketAddressV6>(), 0);
         }
-        buffer.encode_with_len_prefix::<CIDLength, _>(&self.connection_id);
+        buffer.encode_with_len_prefix::<CidLength, _>(&self.connection_id);
         buffer.encode(&self.stateless_reset_token);
     }
 }
@@ -903,7 +905,12 @@ impl EncoderValue for PreferredAddress {
 //#    a NEW_CONNECTION_ID frame and therefore ignores the
 //#    active_connection_id_limit value received from its peer.
 
-transport_parameter!(ActiveConnectionIdLimit(VarInt), 0x0e, VarInt::from_u8(2));
+varint_transport_parameter!(ActiveConnectionIdLimit, 0x0e, VarInt::from_u8(2));
+
+impl ActiveConnectionIdLimit {
+    /// The recommended value comes from the default of 2
+    pub const RECOMMENDED: Self = Self(VarInt::from_u8(2));
+}
 
 impl TransportParameterValidator for ActiveConnectionIdLimit {
     fn validate(self) -> Result<Self, DecoderError> {
@@ -1023,15 +1030,17 @@ impl<
     }
 
     // Returns the AckSettings from a set of TransportParameters
-    pub fn ack_settings(&self) -> AckSettings {
+    pub fn ack_settings(&self) -> ack::Settings {
         let Self {
             max_ack_delay,
             ack_delay_exponent,
             ..
         } = self;
-        AckSettings {
+
+        ack::Settings {
             max_ack_delay: max_ack_delay.as_duration(),
             ack_delay_exponent: **ack_delay_exponent,
+            ..Default::default()
         }
     }
 }
@@ -1203,6 +1212,44 @@ impl_transport_parameters!(
         retry_source_connection_id: RetrySourceConnectionId,
     }
 );
+
+impl<
+        OriginalDestinationConnectionId,
+        StatelessResetToken,
+        PreferredAddress,
+        RetrySourceConnectionId,
+    >
+    TransportParameters<
+        OriginalDestinationConnectionId,
+        StatelessResetToken,
+        PreferredAddress,
+        RetrySourceConnectionId,
+    >
+{
+    pub fn load_limits(&mut self, limits: &crate::connection::limits::Limits) {
+        macro_rules! load {
+            ($from:ident, $to:ident) => {
+                self.$to = limits.$from;
+            };
+        }
+
+        load!(max_ack_delay, max_ack_delay);
+        load!(data_window, initial_max_data);
+        load!(
+            bidirectional_local_data_window,
+            initial_max_stream_data_bidi_local
+        );
+        load!(
+            bidirectional_remote_data_window,
+            initial_max_stream_data_bidi_remote
+        );
+        load!(unidirectional_data_window, initial_max_stream_data_uni);
+        load!(max_open_bidirectional_streams, initial_max_streams_bidi);
+        load!(max_open_unidirectional_streams, initial_max_streams_uni);
+        load!(max_ack_delay, max_ack_delay);
+        load!(max_active_connection_ids, active_connection_id_limit);
+    }
+}
 
 #[cfg(test)]
 mod snapshot_tests {

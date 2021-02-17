@@ -11,7 +11,7 @@ use crate::{
     stream::{
         stream_impl::StreamConfig,
         stream_interests::{StreamInterestProvider, StreamInterests},
-        AbstractStreamManager, StreamError, StreamEvents, StreamLimits, StreamTrait,
+        AbstractStreamManager, StreamError, StreamEvents, StreamTrait,
     },
     transmission,
     transmission::interest::Provider as TransmissionInterestProvider,
@@ -22,7 +22,7 @@ use bytes::Bytes;
 use core::task::{Context, Poll, Waker};
 use futures_test::task::new_count_waker;
 use s2n_quic_core::{
-    ack_set::AckSet,
+    ack::Set as AckSet,
     application::ApplicationErrorCode,
     connection,
     frame::{
@@ -339,12 +339,9 @@ fn create_stream_manager(local_ep_type: endpoint::Type) -> AbstractStreamManager
     let initial_local_limits = create_default_initial_flow_control_limits();
     let initial_peer_limits = create_default_initial_flow_control_limits();
 
-    let limits = ConnectionLimits {
-        stream_limits: StreamLimits {
-            max_send_buffer_size: 4096,
-        },
-        ..Default::default()
-    };
+    let limits = ConnectionLimits::default()
+        .with_max_send_buffer_size(4096)
+        .unwrap();
 
     AbstractStreamManager::<MockStream>::new(
         &limits,

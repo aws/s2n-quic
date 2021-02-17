@@ -4,18 +4,16 @@ use core::{
     num::NonZeroUsize,
     ops::{Deref, DerefMut, RangeInclusive},
 };
-use s2n_quic_core::{frame::ack, packet::number::PacketNumber, varint::VarInt};
+use s2n_quic_core::{ack::Settings, frame::ack, packet::number::PacketNumber, varint::VarInt};
 
 #[derive(Clone, Debug)]
 pub struct AckRanges(IntervalSet<PacketNumber>);
 
 impl Default for AckRanges {
     fn default() -> Self {
-        Self::new(DEFAULT_ACK_RANGES_LIMIT)
+        Self::new(Settings::default().ack_ranges_limit as usize)
     }
 }
-
-pub const DEFAULT_ACK_RANGES_LIMIT: usize = 10;
 
 impl AckRanges {
     pub fn new(limit: usize) -> Self {

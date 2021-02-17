@@ -2,7 +2,7 @@
 
 use crate::{
     connection::{
-        self, id::ConnectionInfo, local_id_registry::LocalIdRegistrationError,
+        self, id::ConnectionInfo, limits::Limits, local_id_registry::LocalIdRegistrationError,
         CloseReason as ConnectionCloseReason, ConnectionIdMapper, ConnectionInterests,
         ConnectionTimerEntry, ConnectionTimers, ConnectionTransmission,
         ConnectionTransmissionContext, InternalConnectionId, Parameters as ConnectionParameters,
@@ -11,7 +11,7 @@ use crate::{
     contexts::ConnectionOnTransmitError,
     path,
     recovery::{congestion_controller, RTTEstimator},
-    space::{PacketSpace, EARLY_ACK_SETTINGS},
+    space::PacketSpace,
     transmission,
 };
 use core::time::Duration;
@@ -130,6 +130,8 @@ pub struct ConnectionImpl<Config: connection::Config> {
     //# of received packets that fail authentication during the lifetime of a
     //# connection.
     packet_decryption_failures: u64,
+    /// The limits applied to the current connection
+    limits: Limits,
 }
 
 #[cfg(debug_assertions)]
@@ -215,6 +217,7 @@ impl<ConfigType: connection::Config> ConnectionImpl<ConfigType> {
             &self.config,
             self.path_manager.active_path(),
             &mut self.local_id_registry,
+            &self.limits,
             datagram.timestamp,
         )?;
 
@@ -298,7 +301,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
     fn new(parameters: ConnectionParameters<Self::Config>) -> Self {
         // The path manager always starts with a single path containing the known peer and local
         // connection ids.
-        let rtt_estimator = RTTEstimator::new(EARLY_ACK_SETTINGS.max_ack_delay);
+        let rtt_estimator = RTTEstimator::new(parameters.limits.ack_settings().max_ack_delay);
         // Assume clients validate the server's address implicitly.
         let peer_validated = Self::Config::ENDPOINT_TYPE.is_server();
         let initial_path = path::Path::new(
@@ -323,6 +326,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
             state: ConnectionState::Handshaking,
             path_manager,
             packet_decryption_failures: 0,
+            limits: parameters.limits,
         }
     }
 
@@ -618,13 +622,16 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
     ) -> Result<path::Id, TransportError> {
         let is_handshake_confirmed = shared_state.space_manager.is_handshake_confirmed();
 
-        let (id, unblocked) =
-            self.path_manager
-                .on_datagram_received(datagram, is_handshake_confirmed, || {
-                    let path_info = congestion_controller::PathInfo::new(&datagram.remote_address);
-                    // TODO set alpn if available
-                    congestion_controller_endpoint.new_congestion_controller(path_info)
-                })?;
+        let (id, unblocked) = self.path_manager.on_datagram_received(
+            datagram,
+            &self.limits,
+            is_handshake_confirmed,
+            || {
+                let path_info = congestion_controller::PathInfo::new(&datagram.remote_address);
+                // TODO set alpn if available
+                congestion_controller_endpoint.new_congestion_controller(path_info)
+            },
+        )?;
 
         if unblocked {
             //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.6

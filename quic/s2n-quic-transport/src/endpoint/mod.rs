@@ -648,6 +648,7 @@ pub mod testing {
         type StatelessResetTokenGenerator = stateless_reset::token::testing::Generator;
         type RandomGenerator = random::testing::Generator;
         type TokenFormat = s2n_quic_core::token::testing::Format;
+        type ConnectionLimits = s2n_quic_core::connection::limits::Limits;
 
         fn create_connection_config(&mut self) -> Self::ConnectionConfig {
             todo!()
@@ -671,6 +672,7 @@ pub mod testing {
         type StatelessResetTokenGenerator = stateless_reset::token::testing::Generator;
         type RandomGenerator = random::testing::Generator;
         type TokenFormat = s2n_quic_core::token::testing::Format;
+        type ConnectionLimits = s2n_quic_core::connection::limits::Limits;
 
         fn create_connection_config(&mut self) -> Self::ConnectionConfig {
             todo!()

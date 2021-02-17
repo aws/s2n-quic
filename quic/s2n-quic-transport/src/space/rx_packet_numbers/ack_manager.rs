@@ -9,15 +9,13 @@ use crate::{
     timer::VirtualTimer,
     transmission,
 };
-use core::time::Duration;
 use s2n_quic_core::{
-    ack_set::AckSet,
+    ack,
     counter::{Counter, Saturating},
     frame::{Ack, Ping},
     inet::DatagramInfo,
     packet::number::{PacketNumber, PacketNumberSpace},
     time::Timestamp,
-    transport::parameters::AckSettings,
     varint::VarInt,
 };
 
@@ -49,7 +47,7 @@ pub struct AckManager {
     pub(super) ack_ranges: AckRanges,
 
     /// Peer's AckSettings from the transport parameters
-    pub ack_settings: AckSettings,
+    pub ack_settings: ack::Settings,
 
     /// The largest packet number that we've acked - used for pn decoding
     largest_received_packet_number_acked: PacketNumber,
@@ -67,42 +65,13 @@ pub struct AckManager {
     transmission_state: AckTransmissionState,
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2.1
-//# An endpoint MUST acknowledge all ack-eliciting Initial and Handshake
-//# packets immediately
-pub const EARLY_ACK_SETTINGS: AckSettings = AckSettings {
-    max_ack_delay: Duration::from_secs(0),
-    ack_delay_exponent: 0,
-};
-
-//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2.4
-//# A receiver that sends only non-ack-eliciting packets, such as ACK
-//# frames, might not receive an acknowledgement for a long period of
-//# time.  This could cause the receiver to maintain state for a large
-//# number of ACK frames for a long period of time, and ACK frames it
-//# sends could be unnecessarily large.  In such a case, a receiver could
-//# send a PING or other small ack-eliciting frame occasionally, such as
-//# once per round trip, to elicit an ACK from the peer.
-
-// Originally, this was using a timer derived from RTT. However,
-// there were issues in certain simulations that led to endless looping.
-// Instead, we use a simple counter to elicit ACKs at a desired frequency.
-//
-// After running simulations, this seemed to be a good baseline
-// TODO experiment more with this
-const ACK_ELICITATION_INTERVAL: u8 = 4;
-
 impl AckManager {
-    pub fn new(
-        packet_space: PacketNumberSpace,
-        ack_settings: AckSettings,
-        ack_ranges_limit: usize,
-    ) -> Self {
+    pub fn new(packet_space: PacketNumberSpace, ack_settings: ack::Settings) -> Self {
         Self {
             ack_delay_timer: VirtualTimer::default(),
             ack_eliciting_transmissions: AckElicitingTransmissionSet::default(),
             ack_settings,
-            ack_ranges: AckRanges::new(ack_ranges_limit),
+            ack_ranges: AckRanges::new(ack_settings.ack_ranges_limit as usize),
             largest_received_packet_number_acked: packet_space
                 .new_packet_number(VarInt::from_u8(0)),
             largest_received_packet_number_at: None,
@@ -151,7 +120,8 @@ impl AckManager {
             // retransmission that is not ack eliciting will not help us recover faster.
             if (context.transmission_constraint().can_transmit()
                 || context.transmission_constraint().can_retransmit())
-                && self.transmissions_since_elicitation >= ACK_ELICITATION_INTERVAL
+                && self.transmissions_since_elicitation
+                    >= self.ack_settings.ack_elicitation_interval
                 && context.write_frame(&Ping).is_some()
             {
                 is_ack_eliciting = true;
@@ -187,7 +157,7 @@ impl AckManager {
     }
 
     /// Called when a set of packets was acknowledged
-    pub fn on_packet_ack<A: AckSet>(&mut self, _datagram: &DatagramInfo, ack_set: &A) {
+    pub fn on_packet_ack<A: ack::Set>(&mut self, _datagram: &DatagramInfo, ack_set: &A) {
         if let Some(ack_range) = self.ack_eliciting_transmissions.on_update(ack_set) {
             self.ack_ranges
                 .remove(ack_range)
@@ -199,7 +169,7 @@ impl AckManager {
     }
 
     /// Called when a set of packets was reported lost
-    pub fn on_packet_loss<A: AckSet>(&mut self, ack_set: &A) {
+    pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
         if self
             .ack_eliciting_transmissions
             .on_update(ack_set)
@@ -361,18 +331,14 @@ mod tests {
     };
     use insta::assert_debug_snapshot;
     use s2n_quic_core::{
-        endpoint,
+        ack, endpoint,
         frame::{ping, Frame},
-        transport::parameters::AckSettings,
     };
 
     #[test]
     fn on_transmit_complete_transmission_constrained() {
-        let mut manager = AckManager::new(
-            PacketNumberSpace::ApplicationData,
-            AckSettings::default(),
-            1,
-        );
+        let mut manager =
+            AckManager::new(PacketNumberSpace::ApplicationData, ack::Settings::default());
         let mut frame_buffer = OutgoingFrameBuffer::new();
         let mut write_context = MockWriteContext::new(
             s2n_quic_platform::time::now(),
@@ -386,7 +352,8 @@ mod tests {
             PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u8(1)),
         );
         manager.transmission_state = AckTransmissionState::Active { retransmissions: 0 };
-        manager.transmissions_since_elicitation = Counter::new(ACK_ELICITATION_INTERVAL);
+        manager.transmissions_since_elicitation =
+            Counter::new(ack::Settings::EARLY.ack_elicitation_interval);
 
         manager.on_transmit_complete(&mut write_context);
 
@@ -401,7 +368,8 @@ mod tests {
         );
 
         manager.transmission_state = AckTransmissionState::Active { retransmissions: 0 };
-        manager.transmissions_since_elicitation = Counter::new(ACK_ELICITATION_INTERVAL);
+        manager.transmissions_since_elicitation =
+            Counter::new(ack::Settings::EARLY.ack_elicitation_interval);
         write_context.frame_buffer.clear();
         write_context.transmission_constraint = transmission::Constraint::CongestionLimited;
 
@@ -412,7 +380,8 @@ mod tests {
         );
 
         manager.transmission_state = AckTransmissionState::Active { retransmissions: 0 };
-        manager.transmissions_since_elicitation = Counter::new(ACK_ELICITATION_INTERVAL);
+        manager.transmissions_since_elicitation =
+            Counter::new(ack::Settings::EARLY.ack_elicitation_interval);
         write_context.frame_buffer.clear();
         write_context.transmission_constraint = transmission::Constraint::RetransmissionOnly;
 
@@ -430,11 +399,8 @@ mod tests {
 
     #[test]
     fn on_transmit_complete_many_transmissions_since_elicitation() {
-        let mut manager = AckManager::new(
-            PacketNumberSpace::ApplicationData,
-            AckSettings::default(),
-            1,
-        );
+        let mut manager =
+            AckManager::new(PacketNumberSpace::ApplicationData, ack::Settings::default());
         let mut frame_buffer = OutgoingFrameBuffer::new();
         let mut write_context = MockWriteContext::new(
             s2n_quic_platform::time::now(),
@@ -471,17 +437,19 @@ mod tests {
             Simulation {
                 network: Network {
                     client: Application::new(
-                        Endpoint::new(AckSettings {
+                        Endpoint::new(ack::Settings {
                             max_ack_delay: Duration::from_millis(25),
                             ack_delay_exponent: 1,
+                            ..Default::default()
                         }),
                         [Duration::from_millis(5)].iter().cycle().take(100).cloned(),
                     )
                     .into(),
                     server: Application::new(
-                        Endpoint::new(AckSettings {
+                        Endpoint::new(ack::Settings {
                             max_ack_delay: Duration::from_millis(25),
                             ack_delay_exponent: 1,
+                            ..Default::default()
                         }),
                         empty(),
                     )
@@ -502,17 +470,19 @@ mod tests {
             Simulation {
                 network: Network {
                     client: Application::new(
-                        Endpoint::new(AckSettings {
+                        Endpoint::new(ack::Settings {
                             max_ack_delay: Duration::from_millis(25),
                             ack_delay_exponent: 1,
+                            ..Default::default()
                         }),
                         [Duration::from_millis(5)].iter().cycle().take(100).cloned(),
                     )
                     .into(),
                     server: Application::new(
-                        Endpoint::new(AckSettings {
+                        Endpoint::new(ack::Settings {
                             max_ack_delay: Duration::from_millis(25),
                             ack_delay_exponent: 1,
+                            ..Default::default()
                         }),
                         empty(),
                     )
@@ -534,17 +504,19 @@ mod tests {
             Simulation {
                 network: Network {
                     client: Application::new(
-                        Endpoint::new(AckSettings {
+                        Endpoint::new(ack::Settings {
                             max_ack_delay: Duration::from_millis(25),
                             ack_delay_exponent: 1,
+                            ..Default::default()
                         }),
                         [Duration::from_millis(5)].iter().cycle().take(100).cloned(),
                     )
                     .into(),
                     server: Application::new(
-                        Endpoint::new(AckSettings {
+                        Endpoint::new(ack::Settings {
                             max_ack_delay: Duration::from_millis(100),
                             ack_delay_exponent: 1,
+                            ..Default::default()
                         }),
                         [Duration::from_millis(5)].iter().cycle().take(100).cloned(),
                     )
@@ -566,17 +538,19 @@ mod tests {
             Simulation {
                 network: Network {
                     client: Application::new(
-                        Endpoint::new(AckSettings {
+                        Endpoint::new(ack::Settings {
                             max_ack_delay: Duration::from_millis(25),
                             ack_delay_exponent: 1,
+                            ..Default::default()
                         }),
                         [Duration::from_millis(5)].iter().cycle().take(100).cloned(),
                     )
                     .into(),
                     server: Application::new(
-                        Endpoint::new(AckSettings {
+                        Endpoint::new(ack::Settings {
                             max_ack_delay: Duration::from_millis(100),
                             ack_delay_exponent: 1,
+                            ..Default::default()
                         }),
                         [Duration::from_millis(5)].iter().cycle().take(100).cloned(),
                     )

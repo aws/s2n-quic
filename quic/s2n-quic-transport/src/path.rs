@@ -1,6 +1,6 @@
 //! This module contains the Manager implementation
 
-use crate::{connection::PeerIdRegistry, space::EARLY_ACK_SETTINGS, transmission};
+use crate::{connection::PeerIdRegistry, transmission};
 use s2n_quic_core::{
     connection,
     inet::{DatagramInfo, SocketAddress},
@@ -11,7 +11,7 @@ use s2n_quic_core::{
 use smallvec::SmallVec;
 
 use crate::transmission::{Interest, WriteContext};
-use s2n_quic_core::ack_set::AckSet;
+use s2n_quic_core::ack;
 /// re-export core
 pub use s2n_quic_core::path::*;
 
@@ -83,6 +83,7 @@ impl<CC: CongestionController> Manager<CC> {
     pub fn on_datagram_received<NewCC: FnOnce() -> CC>(
         &mut self,
         datagram: &DatagramInfo,
+        limits: &connection::Limits,
         is_handshake_confirmed: bool,
         new_congestion_controller: NewCC,
     ) -> Result<(Id, bool), TransportError> {
@@ -131,7 +132,7 @@ impl<CC: CongestionController> Manager<CC> {
             // PeerIdRegistry::consume_new_id_if_necessary(None) and ignoring the request if
             // no new connection::PeerId is available to use.
             self.active_path().peer_connection_id,
-            RTTEstimator::new(EARLY_ACK_SETTINGS.max_ack_delay),
+            RTTEstimator::new(limits.ack_settings().max_ack_delay),
             new_congestion_controller(),
             true,
         );
@@ -146,12 +147,12 @@ impl<CC: CongestionController> Manager<CC> {
     }
 
     /// Called when packets are acknowledged
-    pub fn on_packet_ack<A: AckSet>(&mut self, ack_set: &A) {
+    pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
         self.peer_id_registry.on_packet_ack(ack_set)
     }
 
     /// Called when packets are lost
-    pub fn on_packet_loss<A: AckSet>(&mut self, ack_set: &A) {
+    pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
         self.peer_id_registry.on_packet_loss(ack_set)
     }
 
@@ -418,7 +419,12 @@ mod tests {
 
         assert_eq!(
             Err(TransportError::INTERNAL_ERROR),
-            manager.on_datagram_received(&datagram, true, Unlimited::default)
+            manager.on_datagram_received(
+                &datagram,
+                &connection::Limits::default(),
+                true,
+                Unlimited::default
+            )
         );
 
         return;
@@ -439,7 +445,12 @@ mod tests {
 
         assert_eq!(
             manager
-                .on_datagram_received(&datagram, false, Unlimited::default)
+                .on_datagram_received(
+                    &datagram,
+                    &connection::Limits::default(),
+                    false,
+                    Unlimited::default
+                )
                 .is_err(),
             true
         );
