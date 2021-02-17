@@ -5,6 +5,7 @@ use crate::{
 use core::time::Duration;
 use s2n_codec::{Encoder, EncoderBuffer};
 use s2n_quic_core::{
+    frame::Padding,
     inet::{ExplicitCongestionNotification, SocketAddress},
     io::tx,
     packet::encoding::PacketEncodingError,
@@ -102,6 +103,8 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
         //# datagram.
         // here we query all of the spaces to try and fill the current datagram
 
+        let mut contains_initial_packet = false;
+
         let encoder = if let Some((space, handshake_status)) = space_manager.initial_mut() {
             match space.on_transmit(
                 &mut self.context,
@@ -109,7 +112,10 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
                 handshake_status,
                 encoder,
             ) {
-                Ok(encoder) => encoder,
+                Ok(encoder) => {
+                    contains_initial_packet = true;
+                    encoder
+                }
                 Err(PacketEncodingError::PacketNumberTruncationError(encoder)) => {
                     // TODO handle this
                     encoder
@@ -188,7 +194,7 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
         // frames are only allowed in the ApplicationData space, which will always be the highest
         // current-available encryption level.
 
-        let encoder = if let Some((space, handshake_status)) = space_manager.application_mut() {
+        let mut encoder = if let Some((space, handshake_status)) = space_manager.application_mut() {
             match space.on_transmit(
                 &mut self.context,
                 transmission_constraint,
@@ -217,7 +223,27 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
             encoder
         };
 
-        let datagram_len = initial_capacity - encoder.capacity();
+        let mut datagram_len = initial_capacity - encoder.capacity();
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.1
+        //# A client MUST expand the payload of all UDP datagrams carrying
+        //# Initial packets to at least the smallest allowed maximum datagram
+        //# size of 1200 bytes by adding PADDING frames to the Initial packet or
+        //# by coalescing the Initial packet; see Section 12.2.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.1
+        //# Similarly, a
+        //# server MUST expand the payload of all UDP datagrams carrying ack-
+        //# eliciting Initial packets to at least the smallest allowed maximum
+        //# datagram size of 1200 bytes.
+        if contains_initial_packet && datagram_len < mtu {
+            let padding = Padding {
+                length: mtu - datagram_len,
+            };
+            encoder.encode(&padding);
+            datagram_len = mtu;
+        }
+
         self.context.path_mut().on_bytes_transmitted(datagram_len);
 
         datagram_len
