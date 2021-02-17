@@ -34,6 +34,10 @@ pub trait OutgoingDataFlowController {
 
 /// Writes chunks of data into frames.
 pub trait ChunkToFrameWriter: Default {
+    /// Indicates that the chunk writer uses a fin bit to indicate the stream
+    /// has finished
+    const WRITES_FIN: bool = true;
+
     /// The type of the Stream ID which needs to get embedded in outgoing frames.
     /// This is generic, since not all frames use the same Stream identifier.
     /// E.g. crypto streams do not utilize a stream identifier. For those,
@@ -346,28 +350,30 @@ impl<
         }
         self.state = DataSenderState::Finishing;
 
-        let offset = if let Some(last_chunk) = self.tracking.back_mut() {
-            if last_chunk.state == ChunkTransmissionState::Enqueued
-                || last_chunk.state == ChunkTransmissionState::Lost
-            {
-                // The last chunk is currently not submitted we can piggyback
-                // the FIN flag on it
-                last_chunk.fin = true;
-                return;
-            }
-            last_chunk.offset + VarInt::from_u32(last_chunk.len)
-        } else {
-            self.total_acknowledged
-        };
+        if ChunkToFrameWriterType::WRITES_FIN {
+            let offset = if let Some(last_chunk) = self.tracking.back_mut() {
+                if last_chunk.state == ChunkTransmissionState::Enqueued
+                    || last_chunk.state == ChunkTransmissionState::Lost
+                {
+                    // The last chunk is currently not submitted we can piggyback
+                    // the FIN flag on it
+                    last_chunk.fin = true;
+                    return;
+                }
+                last_chunk.offset + VarInt::from_u32(last_chunk.len)
+            } else {
+                self.total_acknowledged
+            };
 
-        self.tracking.push_back(ChunkDescriptor {
-            state: ChunkTransmissionState::Enqueued,
-            len: 0,
-            offset,
-            fin: true,
-        });
-        self.chunks_waiting_for_transmission += 1;
-        self.ensure_counter_consistency();
+            self.tracking.push_back(ChunkDescriptor {
+                state: ChunkTransmissionState::Enqueued,
+                len: 0,
+                offset,
+                fin: true,
+            });
+            self.chunks_waiting_for_transmission += 1;
+            self.ensure_counter_consistency();
+        }
     }
 
     /// This method gets called when a packet delivery got acknowledged
