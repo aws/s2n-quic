@@ -19,6 +19,9 @@ pub type TxCryptoStream = DataSender<CryptoFlowController, CryptoChunkToFrameWri
 pub struct CryptoChunkToFrameWriter {}
 
 impl ChunkToFrameWriter for CryptoChunkToFrameWriter {
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.6
+    //# The stream does not have an explicit end, so CRYPTO frames do not
+    //# have a FIN bit.
     const WRITES_FIN: bool = false;
 
     type StreamId = ();
