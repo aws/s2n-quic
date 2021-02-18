@@ -137,11 +137,6 @@ jobs:
           command: doc
           args: --all-features --no-deps --workspace --exclude cargo-compliance --exclude compliance --exclude s2n-quic-qns
 
-      - uses: actions/upload-artifact@v2
-        with:
-          name: docs
-          path: target/doc
-
       - uses: aws-actions/configure-aws-credentials@v1
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -300,11 +295,6 @@ jobs:
       - name: Run cargo compliance
         run: ./scripts/compliance ${{ github.sha }}
 
-      - uses: actions/upload-artifact@v2
-        with:
-          name: compliance
-          path: compliance
-
       - uses: aws-actions/configure-aws-credentials@v1
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -373,11 +363,6 @@ jobs:
 
       - name: Run covfix
         run: rust-covfix -o coverage.lcov coverage.unfiltered.lcov
-
-      - uses: actions/upload-artifact@v2
-        with:
-          name: unit-tests.lcov
-          path: coverage.lcov
 
       - name: Upload report to codecov
         uses: codecov/codecov-action@v1
@@ -481,11 +466,6 @@ jobs:
       - name: Run simulations
         run: |
           ./scripts/recovery-sim
-
-      - uses: actions/upload-artifact@v2
-        with:
-          name: recovery-simulations
-          path: target/recovery-sim
 
       - uses: aws-actions/configure-aws-credentials@v1
         with:
