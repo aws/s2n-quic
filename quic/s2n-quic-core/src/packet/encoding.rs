@@ -31,7 +31,13 @@ pub trait PacketPayloadEncoder {
     /// Encodes the payload into the buffer. Implementations should ensure
     /// the encoding len is at least the minimum_len, otherwise the packet
     /// writing will panic.
-    fn encode(&mut self, buffer: &mut EncoderBuffer, minimum_len: usize, overhead_len: usize);
+    fn encode(
+        &mut self,
+        buffer: &mut EncoderBuffer,
+        minimum_len: usize,
+        header_len: usize,
+        tag_len: usize,
+    );
 }
 
 impl<T: EncoderValue> PacketPayloadEncoder for T {
@@ -44,7 +50,13 @@ impl<T: EncoderValue> PacketPayloadEncoder for T {
         }
     }
 
-    fn encode(&mut self, buffer: &mut EncoderBuffer, _minimum_len: usize, _overhead_len: usize) {
+    fn encode(
+        &mut self,
+        buffer: &mut EncoderBuffer,
+        _minimum_len: usize,
+        _header_len: usize,
+        _tag_len: usize,
+    ) {
         // the minimum len check is not needed, as it was already performed
         // in encoding_size_hint
         self.encode_mut(buffer);
@@ -206,15 +218,17 @@ pub trait PacketEncoder<Crypto: HeaderCrypto + CryptoKey, Payload: PacketPayload
             // Create a temporary buffer for writing the payload
             let (header_buffer, payload_buffer) = buffer.split_mut();
 
-            let overhead_len = header_buffer.len() + crypto.tag_len();
-
             // Payloads should not be able to write into the crypto tag space
             let payload_len = payload_buffer.len() - crypto.tag_len();
-            let mut payload_buffer = EncoderBuffer::new(&mut payload_buffer[0..payload_len]);
+            let mut payload_buffer = EncoderBuffer::new(&mut payload_buffer[..payload_len]);
 
             // Try to encode the payload into the buffer
-            self.payload()
-                .encode(&mut payload_buffer, minimum_payload_len, overhead_len);
+            self.payload().encode(
+                &mut payload_buffer,
+                minimum_payload_len,
+                header_buffer.len(),
+                crypto.tag_len(),
+            );
 
             // read how much was written
             payload_buffer.len()

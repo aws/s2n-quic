@@ -23,6 +23,7 @@ use s2n_quic_core::{
     packet::{
         encoding::PacketPayloadEncoder,
         number::{PacketNumber, PacketNumberSpace},
+        stateless_reset,
     },
     time::Timestamp,
 };
@@ -56,7 +57,13 @@ impl<'a, Config: connection::Config, P: Payload> PacketPayloadEncoder
         }
     }
 
-    fn encode(&mut self, buffer: &mut EncoderBuffer, minimum_len: usize, overhead_len: usize) {
+    fn encode(
+        &mut self,
+        buffer: &mut EncoderBuffer,
+        minimum_len: usize,
+        header_len: usize,
+        tag_len: usize,
+    ) {
         debug_assert!(
             buffer.is_empty(),
             "the implementation assumes an empty buffer"
@@ -90,13 +97,21 @@ impl<'a, Config: connection::Config, P: Payload> PacketPayloadEncoder
 
         if !context.buffer.is_empty() {
             // Add padding up to minimum_len
-            let length = minimum_len.saturating_sub(context.buffer.len());
+            let mut length = minimum_len.saturating_sub(context.buffer.len());
+
+            // if we've only got a few bytes left in the buffer may as well pad it to full
+            // capacity
+            let remaining_capacity = context.buffer.remaining_capacity();
+            if remaining_capacity < stateless_reset::min_indistinguishable_packet_len(tag_len) {
+                length = remaining_capacity;
+            }
+
             if length > 0 {
                 context.buffer.encode(&Padding { length });
             }
 
             self.tx_packet_numbers.on_transmit(self.packet_number);
-            self.outcome.bytes_sent = overhead_len + buffer.len();
+            self.outcome.bytes_sent = header_len + tag_len + buffer.len();
         }
     }
 }
