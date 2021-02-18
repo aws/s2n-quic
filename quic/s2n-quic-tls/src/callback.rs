@@ -62,7 +62,7 @@ where
     }
 
     /// Removes all of the callback and context pointers from the connection
-    pub fn unset(self, connection: &mut Connection) -> Result<(), TransportError> {
+    pub fn unset(mut self, connection: &mut Connection) -> Result<(), TransportError> {
         unsafe {
             unsafe extern "C" fn secret_cb(
                 _context: *mut c_void,
@@ -100,6 +100,9 @@ where
             connection
                 .set_receive_context(core::ptr::null_mut())
                 .unwrap();
+
+            // Flush the send buffer before returning to the connection
+            self.flush();
 
             if let Some(err) = self.err {
                 return Err(err);
@@ -187,6 +190,9 @@ where
                     }
                 };
 
+                // Flush the send buffer before transitioning to the next phase
+                self.flush();
+
                 match self.state.tx_phase {
                     HandshakePhase::Initial => {
                         let keys = RingHandshakeCrypto::new(self.endpoint, aead_algo, pair)
@@ -229,19 +235,31 @@ where
     /// Called when sending data
     fn on_write(&mut self, data: &[u8]) -> usize {
         if self.send_buffer.capacity() < data.len() {
+            // Flush the send buffer before reallocating it
+            self.flush();
             *self.send_buffer = BytesMut::with_capacity(SEND_BUFFER_CAPACITY);
         }
-        self.send_buffer.extend_from_slice(data);
-        let chunk = self.send_buffer.split_to(data.len());
-        let chunk = chunk.freeze();
 
-        match self.state.tx_phase {
-            HandshakePhase::Initial => self.context.send_initial(chunk),
-            HandshakePhase::Handshake => self.context.send_handshake(chunk),
-            HandshakePhase::Application => self.context.send_application(chunk),
-        }
+        // Write the current data to the send buffer
+        //
+        // NOTE: we don't immediately flush to the packet space since s2n-tls may do
+        //       several small writes in a row.
+        self.send_buffer.extend_from_slice(data);
 
         data.len()
+    }
+
+    /// Flushes the send buffer into the current TX space
+    fn flush(&mut self) {
+        if !self.send_buffer.is_empty() {
+            let chunk = self.send_buffer.split().freeze();
+
+            match self.state.tx_phase {
+                HandshakePhase::Initial => self.context.send_initial(chunk),
+                HandshakePhase::Handshake => self.context.send_handshake(chunk),
+                HandshakePhase::Application => self.context.send_application(chunk),
+            }
+        }
     }
 
     /// The function s2n-tls calls when it wants to receive data
@@ -259,7 +277,7 @@ where
         }
     }
 
-    /// Called when sending data
+    /// Called when receiving data
     fn on_read(&mut self, data: &mut [u8]) -> usize {
         let max_len = Some(data.len());
 
