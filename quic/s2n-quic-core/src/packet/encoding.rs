@@ -156,7 +156,7 @@ pub trait PacketEncoder<Crypto: HeaderCrypto + CryptoKey, Payload: PacketPayload
 
         // Compute how much the payload will need to write to satisfy the
         // minimum_packet_len
-        let minimum_payload_len = minimum_packet_len.saturating_sub(buffer.len());
+        let minimum_payload_len = minimum_packet_len.saturating_sub(estimator.len());
 
         // Try to estimate the payload size - it may be inaccurate
         // but this provides some checks to save writing the packet
