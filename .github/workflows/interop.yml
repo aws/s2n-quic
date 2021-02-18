@@ -253,11 +253,6 @@ jobs:
           cat .github/interop/index.head.html web/logs/latest/result.json .github/interop/index.body.html > \
             web/index.html
 
-      - uses: actions/upload-artifact@v2
-        with:
-          name: report
-          path: web/
-
       - uses: aws-actions/configure-aws-credentials@v1
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
