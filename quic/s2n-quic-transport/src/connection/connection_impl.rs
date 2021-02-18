@@ -132,6 +132,8 @@ pub struct ConnectionImpl<Config: connection::Config> {
     packet_decryption_failures: u64,
     /// The limits applied to the current connection
     limits: Limits,
+    /// Packet timeout to use when deriving new keys
+    pto: Duration,
 }
 
 #[cfg(debug_assertions)]
@@ -264,6 +266,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
             path_manager,
             packet_decryption_failures: 0,
             limits: parameters.limits,
+            pto: parameters.limits.ack_settings().max_ack_delay,
         }
     }
 
@@ -481,6 +484,21 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
             .is_ready()
         {
             connection_id_mapper.remove_initial_id(&self.internal_connection_id);
+        }
+
+        if self
+            .timers
+            .key_derivation_timer
+            .poll_expiration(timestamp)
+            .is_ready()
+        {
+            if let Some((space, _status)) = shared_state.space_manager.application_mut() {
+                //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.5
+                //# An endpoint SHOULD retain old read keys for no more than three times
+                //# the PTO after having received a packet protected using the new keys.
+                space.crypto_derive_and_store_next_key();
+                space.finalize_key_update();
+            }
         }
 
         self.local_id_registry.on_timeout(timestamp);

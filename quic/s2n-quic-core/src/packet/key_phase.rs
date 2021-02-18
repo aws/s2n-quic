@@ -22,6 +22,16 @@ impl Default for KeyPhase {
     }
 }
 
+impl From<u8> for KeyPhase {
+    fn from(v: u8) -> Self {
+        match v & 0x01 {
+            0 => KeyPhase::Zero,
+            1 => KeyPhase::One,
+            _ => KeyPhase::Zero,
+        }
+    }
+}
+
 impl KeyPhase {
     pub fn from_tag(tag: Tag) -> Self {
         if tag & KEY_PHASE_MASK == KEY_PHASE_MASK {

@@ -15,7 +15,7 @@ use bytes::Bytes;
 use core::{convert::TryInto, marker::PhantomData};
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
-    crypto::{CryptoSuite, OneRTTCrypto},
+    crypto::{CryptoSuite, Key, OneRTTCrypto},
     endpoint,
     frame::{
         ack::AckRanges, crypto::CryptoRef, stream::StreamRef, Ack, ConnectionClose, DataBlocked,
@@ -52,7 +52,7 @@ pub struct ApplicationSpace<Config: connection::Config> {
     //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.3
     //# For this reason, endpoints MUST be able to retain two sets of packet
     //# protection keys for receiving packets: the current and the next.
-    crypto: ApplicationKeySet<<Config::TLSSession as CryptoSuite>::OneRTTCrypto>,
+    key_set: ApplicationKeySet<<Config::TLSSession as CryptoSuite>::OneRTTCrypto>,
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7
     //# Endpoints MUST explicitly negotiate an application protocol.
@@ -66,6 +66,7 @@ pub struct ApplicationSpace<Config: connection::Config> {
     ping: flag::Ping,
     processed_packet_numbers: SlidingWindow,
     recovery_manager: recovery::Manager,
+    key_update_in_progress: bool,
 }
 
 impl<Config: connection::Config> ApplicationSpace<Config> {
@@ -85,7 +86,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         // side channel.
         let next_key = PacketSpaceCrypto::new(crypto.derive_next_key());
         let active_key = PacketSpaceCrypto::new(crypto);
-        let keyset = ApplicationKeySet::new(active_key, next_key);
+        let key_set = ApplicationKeySet::new(active_key, next_key);
         let max_ack_delay = ack_manager.ack_settings.max_ack_delay;
 
         Self {
@@ -93,7 +94,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
             ack_manager,
             spin_bit: SpinBit::Zero,
             stream_manager,
-            crypto: keyset,
+            key_set,
             sni,
             alpn,
             ping: flag::Ping::default(),
@@ -102,7 +103,20 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
                 PacketNumberSpace::ApplicationData,
                 max_ack_delay,
             ),
+            key_update_in_progress: false,
         }
+    }
+
+    pub fn key_update_in_progress(&self) -> bool {
+        self.key_update_in_progress
+    }
+
+    pub fn start_key_update(&mut self) {
+        self.key_update_in_progress = true;
+    }
+
+    pub fn finalize_key_update(&mut self) {
+        self.key_update_in_progress = false;
     }
 
     /// Returns the active key which is suitable for encrypting packets or unprotecting packet
@@ -113,7 +127,22 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         //# connection, with the value not changing after a key update (see
         //# Section 6).  This allows header protection to be used to protect the
         //# key phase.
-        self.crypto.active_key()
+        self.key_set.active_key()
+    }
+
+    /// Returns the current phase
+    pub fn crypto_phase(&self) -> KeyPhase {
+        self.key_set.key_phase
+    }
+
+    /// Rotate the key phase in the application space
+    pub fn crypto_rotate_phase(&mut self) {
+        self.key_set.rotate_phase()
+    }
+
+    /// Derive the next key to according to quic-tls, and store it in the correct slot
+    pub fn crypto_derive_and_store_next_key(&mut self) {
+        self.key_set.derive_and_store_next_key()
     }
 
     /// Returns the key for a particular Phase. This should be used for decrypting packets from a
@@ -122,7 +151,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         &self,
         key_phase: KeyPhase,
     ) -> &PacketSpaceCrypto<<Config::TLSSession as CryptoSuite>::OneRTTCrypto> {
-        self.crypto.key_for_phase(key_phase)
+        self.key_set.key_for_phase(key_phase)
     }
 
     /// Returns true if the packet number has already been processed
@@ -186,14 +215,13 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         let packet = Short {
             destination_connection_id: destination_connection_id.as_ref(),
             spin_bit: self.spin_bit,
-            key_phase: self.crypto.key_phase(),
+            key_phase: self.key_set.key_phase(),
             packet_number,
             payload,
         };
 
         let min_packet_len = context.min_packet_len;
-
-        let (_protected_packet, buffer) = self.crypto.crypto[self.crypto.key_phase as usize]
+        let (_protected_packet, buffer) = self.key_set.crypto[self.key_set.key_phase as usize]
             .encode_packet(buffer, |buffer, key| {
                 packet.encode_packet(key, packet_number_encoder, min_packet_len, buffer)
             })?;
@@ -659,8 +687,11 @@ struct ApplicationKeySet<Key> {
     pub crypto: [PacketSpaceCrypto<Key>; 2],
 }
 
-impl<Key> ApplicationKeySet<Key> {
-    fn new(phase_zero: PacketSpaceCrypto<Key>, phase_one: PacketSpaceCrypto<Key>) -> Self {
+impl<K: Key> ApplicationKeySet<K>
+where
+    K: OneRTTCrypto,
+{
+    fn new(phase_zero: PacketSpaceCrypto<K>, phase_one: PacketSpaceCrypto<K>) -> Self {
         //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6
         //# The Key Phase bit is initially set to 0 for the
         //# first set of 1-RTT packets and toggled to signal each subsequent key
@@ -671,19 +702,31 @@ impl<Key> ApplicationKeySet<Key> {
         }
     }
 
+    /// Rotating the phase will switch the active key
+    pub fn rotate_phase(&mut self) {
+        self.key_phase = match self.key_phase {
+            KeyPhase::Zero => KeyPhase::One,
+            KeyPhase::One => KeyPhase::Zero,
+        }
+    }
+
+    /// Derive a new key based on the active key, and store it in the non-active slot
+    pub fn derive_and_store_next_key(&mut self) {
+        let next_key = self.active_key().derive_next_key();
+        let slot_to_store = ((self.key_phase as u8) + 1) % 2;
+        self.crypto[slot_to_store as usize] = PacketSpaceCrypto::new(next_key);
+    }
+
     fn key_phase(&self) -> KeyPhase {
         self.key_phase
     }
 
-    fn active_key(&self) -> &PacketSpaceCrypto<Key> {
+    fn active_key(&self) -> &PacketSpaceCrypto<K> {
         self.key_for_phase(self.key_phase)
     }
 
-    fn key_for_phase(&self, key_phase: KeyPhase) -> &PacketSpaceCrypto<Key> {
-        match key_phase {
-            KeyPhase::Zero => &self.crypto[0],
-            KeyPhase::One => &self.crypto[1],
-        }
+    fn key_for_phase(&self, key_phase: KeyPhase) -> &PacketSpaceCrypto<K> {
+        &self.crypto[(key_phase as u8) as usize]
     }
 }
 
@@ -771,5 +814,28 @@ mod tests {
 
         assert_eq!(keyset.active_key().key.value, 0);
         assert_eq!(keyset.key_for_phase(KeyPhase::One).key.value, 1);
+    }
+
+    #[test]
+    fn test_phase_rotation() {
+        let current_key = PacketSpaceCrypto::new(NullKey::default());
+        let next_key = PacketSpaceCrypto::new(current_key.key.derive_next_key());
+        let mut keyset = ApplicationKeySet::new(current_key, next_key);
+
+        keyset.rotate_phase();
+        assert_eq!(keyset.active_key().key.value, 1);
+    }
+
+    #[test]
+    fn test_key_derivation() {
+        let current_key = PacketSpaceCrypto::new(NullKey::default());
+        let next_key = PacketSpaceCrypto::new(current_key.key.derive_next_key());
+        let mut keyset = ApplicationKeySet::new(current_key, next_key);
+
+        keyset.rotate_phase();
+        keyset.derive_and_store_next_key();
+        keyset.rotate_phase();
+        let next_key = keyset.active_key();
+        assert_eq!(next_key.key.value, 2);
     }
 }

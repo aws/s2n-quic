@@ -7,7 +7,9 @@ use s2n_codec::{DecoderBufferMut, EncoderBuffer};
 use s2n_quic_core::{
     ack,
     connection::limits::Limits,
-    crypto::{tls::Session as TLSSession, CryptoError, CryptoSuite, Key, ProtectedPayload},
+    crypto::{
+        tls::Session as TLSSession, CryptoError, CryptoSuite, Key, OneRTTCrypto, ProtectedPayload,
+    },
     endpoint,
     frame::{
         self, ack::AckRanges, crypto::CryptoRef, stream::StreamRef, Ack, ConnectionClose,
@@ -577,6 +579,13 @@ impl<K: Key> PacketSpaceCrypto<K> {
             key,
             encrypted_packets: 0,
         }
+    }
+
+    pub fn derive_next_key(&self) -> K
+    where
+        K: OneRTTCrypto,
+    {
+        self.key.derive_next_key()
     }
 
     pub fn aead_confidentiality_limit(&self) -> u64 {
