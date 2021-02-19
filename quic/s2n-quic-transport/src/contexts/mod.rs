@@ -21,6 +21,9 @@ pub trait WriteContext {
     /// Returns the transmission constraint for the current packet
     fn transmission_constraint(&self) -> transmission::Constraint;
 
+    /// Returns the number of available bytes remaining in the current payload
+    fn remaining_capacity(&self) -> usize;
+
     /// Attempt to write a frame. If this was successful the number of the packet
     /// that will be used to send the frame will be returned.
     fn write_frame<Frame: EncoderValue + AckElicitable + CongestionControlled>(
@@ -33,12 +36,6 @@ pub trait WriteContext {
 
     /// Returns the packet number for the current packet
     fn packet_number(&self) -> PacketNumber;
-
-    /// Reserves a minimum amount of space for writing a frame. If the reservation
-    /// fails an an error will be returned. If the reserveation succeeds, the
-    /// method will return the actual available space for writing a frame in
-    /// the `Ok` variant.
-    fn reserve_minimum_space_for_frame(&mut self, min_size: usize) -> Result<usize, ()>;
 
     /// Returns the local endpoint type (client or server)
     fn local_endpoint_type(&self) -> endpoint::Type;

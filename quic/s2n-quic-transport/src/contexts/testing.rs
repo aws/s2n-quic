@@ -37,9 +37,9 @@ impl WrittenFrame {
 /// Stores frames which have been written by components
 #[derive(Clone, Debug)]
 pub struct OutgoingFrameBuffer {
-    ack_elicitation: AckElicitation,
+    pub ack_elicitation: AckElicitation,
     /// Frames which had been written so far
-    frames: VecDeque<WrittenFrame>,
+    pub frames: VecDeque<WrittenFrame>,
     /// The PacketNumber which will be returned by the next `write_frame()` call
     next_packet_nr: PacketNumber,
     /// If set, this indicates the maximum packet size
@@ -129,19 +129,11 @@ impl OutgoingFrameBuffer {
         }
     }
 
-    fn reserve_minimum_space_for_frame(&mut self, min_size: usize) -> Result<usize, ()> {
-        if let Some(max_buffer_size) = self.max_buffer_size {
-            if min_size > max_buffer_size {
-                return Err(());
-            }
-
-            if min_size >= self.remaining_packet_space {
-                self.flush();
-            }
-
-            Ok(self.remaining_packet_space)
+    fn remaining_capacity(&self) -> usize {
+        if self.max_buffer_size.is_some() {
+            self.remaining_packet_space
         } else {
-            Ok(core::usize::MAX)
+            core::usize::MAX
         }
     }
 
@@ -249,6 +241,10 @@ impl<'a> WriteContext for MockWriteContext<'a> {
         self.transmission_constraint
     }
 
+    fn remaining_capacity(&self) -> usize {
+        self.frame_buffer.remaining_capacity()
+    }
+
     fn write_frame<Frame: s2n_codec::EncoderValue + AckElicitable>(
         &mut self,
         frame: &Frame,
@@ -262,10 +258,6 @@ impl<'a> WriteContext for MockWriteContext<'a> {
 
     fn packet_number(&self) -> PacketNumber {
         self.frame_buffer.next_packet_nr
-    }
-
-    fn reserve_minimum_space_for_frame(&mut self, min_size: usize) -> Result<usize, ()> {
-        self.frame_buffer.reserve_minimum_space_for_frame(min_size)
     }
 
     fn local_endpoint_type(&self) -> endpoint::Type {

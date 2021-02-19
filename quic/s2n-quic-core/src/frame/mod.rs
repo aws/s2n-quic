@@ -208,18 +208,6 @@ frames! {
     handshake_done_tag => handshake_done, handle_handshake_done_frame, HandshakeDone;
 }
 
-/// The maximum amount of data which can be stored in a given frame,
-/// as indicated by `StreamType::max_payload_size` methods.
-#[derive(Copy, Clone, Debug, Default, PartialEq)]
-pub struct MaxPayloadSizeForFrame {
-    /// The maximum amount of payload data which can be stored when the frame
-    /// is stored as the last frame in a packet - without explicit length information.
-    pub max_payload_as_last_frame: usize,
-    /// The maximum amount of payload data which can be stored in a frame,
-    /// even if the frame carries explicit length information.
-    pub max_payload_in_all_frames: usize,
-}
-
 #[derive(Clone, Copy, Debug, Default)]
 /// Indicates the packet will not fit into the provided capacity
 pub struct FitError;

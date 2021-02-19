@@ -7,8 +7,8 @@ use crate::{
         StreamError,
     },
     sync::{
-        ChunkToFrameWriter, DataSender, DataSenderState, OnceSync, OutgoingDataFlowController,
-        ValueToFrameWriter,
+        data_sender::{self, DataSender, OutgoingDataFlowController},
+        OnceSync, ValueToFrameWriter,
     },
     transmission::interest::Provider as _,
 };
@@ -20,7 +20,7 @@ use core::{
 use s2n_quic_core::{
     ack,
     application::ApplicationErrorCode,
-    frame::{stream::StreamRef, MaxPayloadSizeForFrame, MaxStreamData, ResetStream, StopSending},
+    frame::{MaxStreamData, ResetStream, StopSending},
     packet::number::PacketNumber,
     stream::{ops, StreamId},
     transport::error::TransportError,
@@ -114,45 +114,6 @@ impl ValueToFrameWriter<OutgoingResetData> for ResetStreamToFrameWriter {
     }
 }
 
-/// Serializes and writes `Stream` frames
-#[derive(Default)]
-pub struct StreamChunkToFrameWriter {}
-
-impl ChunkToFrameWriter for StreamChunkToFrameWriter {
-    type StreamId = StreamId;
-
-    fn get_max_frame_size(&self, stream_id: Self::StreamId, data_size: usize) -> usize {
-        StreamRef::get_max_frame_size(stream_id.into(), data_size)
-    }
-
-    fn max_payload_size(
-        &self,
-        stream_id: Self::StreamId,
-        max_frame_size: usize,
-        offset: VarInt,
-    ) -> MaxPayloadSizeForFrame {
-        StreamRef::max_payload_size(max_frame_size, stream_id.into(), offset)
-    }
-
-    fn write_value_as_frame<W: WriteContext>(
-        &self,
-        stream_id: Self::StreamId,
-        offset: VarInt,
-        data: &[u8],
-        is_last_frame: bool,
-        is_fin: bool,
-        context: &mut W,
-    ) -> Option<PacketNumber> {
-        context.write_frame(&StreamRef {
-            stream_id: stream_id.into(),
-            offset,
-            is_last_frame,
-            data,
-            is_fin,
-        })
-    }
-}
-
 /// Identifies the source of a Stream reset.
 /// Streams resets can be initiated
 /// - locally via QUIC Stream API call
@@ -219,6 +180,7 @@ pub(super) enum StreamFlowControllerState {
 ///
 /// In order to adhere to the connection flow control window the controller will
 /// acquire chunks from the connection flow controller whenever necessary.
+#[derive(Debug)]
 pub(super) struct StreamFlowController {
     /// The flow control manager for the whole connection
     connection_flow_controller: OutgoingConnectionFlowController,
@@ -316,7 +278,7 @@ impl StreamFlowController {
 }
 
 impl OutgoingDataFlowController for StreamFlowController {
-    fn acquire_flow_control_window(&mut self, min_offset: VarInt, size: usize) -> VarInt {
+    fn acquire_flow_control_window(&mut self, end_offset: VarInt) -> VarInt {
         debug_assert_ne!(
             StreamFlowControllerState::Finished,
             self.state,
@@ -327,39 +289,37 @@ impl OutgoingDataFlowController for StreamFlowController {
         }
         self.state = StreamFlowControllerState::Ready;
 
-        if min_offset > self.max_stream_data {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.1
+        //= type=TODO
+        //= tracking-issue=333
+        //# A sender SHOULD send a
+        //# STREAM_DATA_BLOCKED or DATA_BLOCKED frame to indicate to the receiver
+        //# that it has data to write but is blocked by flow control limits.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.1
+        //= type=TODO
+        //= tracking-issue=333
+        //# To keep the
+        //# connection from closing, a sender that is flow control limited SHOULD
+        //# periodically send a STREAM_DATA_BLOCKED or DATA_BLOCKED frame when it
+        //# has no ack-eliciting packets in flight.
+
+        if end_offset > self.max_stream_data {
             // Can't send any data due to being blocked on the Stream window
-            // self.state = Some(SenderBlockedReason::StreamFlowControl);
             self.state = StreamFlowControllerState::BlockedOnStreamWindow;
-            return self.available_window();
+            // TODO send STREAM_DATA_BLOCKED
         }
 
-        if min_offset == self.max_stream_data && size > 0 {
-            // Also can't send data due to being blocked on the Stream window
-            // self.blocked = Some(SenderBlockedReason::StreamFlowControl);
-            self.state = StreamFlowControllerState::BlockedOnStreamWindow;
-            return self.available_window();
-        }
-
-        let end_offset = min_offset + size;
         self.highest_requested_connection_flow_control_window = core::cmp::max(
             end_offset,
             self.highest_requested_connection_flow_control_window,
         );
         self.try_acquire_connection_window();
 
-        if min_offset > self.acquired_connection_flow_controller_window {
+        if end_offset > self.acquired_connection_flow_controller_window {
             // Can't send due to being blocked on the connection flow control window
-            // self.blocked = Some(SenderBlockedReason::ConnectionFlowControl);
             self.state = StreamFlowControllerState::BlockedOnConnectionWindow;
-            return self.available_window();
-        }
-
-        if min_offset == self.acquired_connection_flow_controller_window && size > 0 {
-            // Can't send due to being blocked on the connection flow control window
-            // self.blocked = Some(SenderBlockedReason::ConnectionFlowControl);
-            self.state = StreamFlowControllerState::BlockedOnConnectionWindow;
-            return self.available_window();
+            // TODO send DATA_BLOCKED
         }
 
         self.available_window()
@@ -389,7 +349,7 @@ pub struct SendStream {
     /// The current state of the stream
     pub(super) state: SendStreamState,
     /// Transmitter for outgoing data
-    pub(super) data_sender: DataSender<StreamFlowController, StreamChunkToFrameWriter>,
+    pub(super) data_sender: DataSender<StreamFlowController, data_sender::writer::Stream>,
     /// Synchronizes sending a `RESET` to the receiver
     pub(super) reset_sync: OnceSync<OutgoingResetData, ResetStreamToFrameWriter>,
     /// The handle of a task that is currently waiting on new incoming data or
@@ -467,7 +427,7 @@ impl SendStream {
             // were previously not able to do this.
             // Therefore me might want to remove this.
             if self.data_sender.available_buffer_space() > 0
-                && self.data_sender.state() == DataSenderState::Sending
+                && self.data_sender.state() == data_sender::State::Sending
             {
                 if let Some((waker, _should_flush)) = self.write_waiter.take() {
                     events.store_write_waker(waker);
@@ -532,19 +492,22 @@ impl SendStream {
 
         if let SendStreamState::Sending = self.state {
             match self.data_sender.state() {
-                DataSenderState::Sending if should_flush => {
+                data_sender::State::Sending if should_flush => {
                     // In this state, the application wanted to ensure the peer has received
                     // all of the data in the stream before continuing (flushed the stream).
                     should_wake = self.data_sender.enqueued_len() == 0 && self.can_push();
                 }
-                DataSenderState::Sending => {
+                data_sender::State::Sending => {
                     // In this state we have to wake up the user if the they can
                     // queue more data for transmission. This is possible if
                     // acknowledging packets removed them from the send queue and
                     // we got additional space in the send queue.
                     should_wake = self.can_push();
                 }
-                DataSenderState::FinishAcknowledged => {
+                data_sender::State::Finishing(f) => {
+                    should_wake = self.data_sender.enqueued_len() == 0 && f.is_acknowledged();
+                }
+                data_sender::State::Finished => {
                     // If we have already sent a fin and just waiting for it to be
                     // acknowledged, `on_packet_ack` might have moved us into the
                     // final state due.
@@ -589,7 +552,7 @@ impl SendStream {
         context: &mut W,
     ) -> Result<(), OnTransmitError> {
         self.reset_sync.on_transmit(stream_id, context)?;
-        self.data_sender.on_transmit(stream_id, context)
+        self.data_sender.on_transmit(stream_id.into(), context)
     }
 
     /// A reset that is triggered without having received a `RESET` frame.
@@ -743,7 +706,7 @@ impl SendStream {
 
         if request.finish {
             match self.data_sender.state() {
-                DataSenderState::FinishAcknowledged => {
+                data_sender::State::Finished => {
                     // All packets incl. the one with the FIN flag had been acknowledged.
                     // => We are done with this stream!
                     // We just record here that the user actually has retrieved the
@@ -773,19 +736,19 @@ impl SendStream {
         }
 
         match self.data_sender.state() {
-            DataSenderState::Sending => {
+            data_sender::State::Sending => {
                 // inform the caller of the available space to send
                 response.bytes.available = self.data_sender.available_buffer_space();
                 // assume chunks are 1 bytes
                 response.chunks.available = response.bytes.available;
             }
-            DataSenderState::Finishing => {
+            data_sender::State::Finishing(_) => {
                 response.status = ops::Status::Finishing;
             }
-            DataSenderState::FinishAcknowledged => {
+            data_sender::State::Finished => {
                 response.status = ops::Status::Finished;
             }
-            DataSenderState::Cancelled => {
+            data_sender::State::Cancelled => {
                 // TODO determine if the peer has acknowledged the reset
                 response.status = ops::Status::Reset;
             }
@@ -804,7 +767,7 @@ impl SendStream {
     /// Ensures a potential push operation would be valid
     fn validate_push(&self, len: usize) -> Result<(), StreamError> {
         // The user tries to write, even though they previously closed the stream.
-        if self.data_sender.state() != DataSenderState::Sending {
+        if self.data_sender.state() != data_sender::State::Sending {
             return Err(StreamError::SendAfterFinish);
         }
 
@@ -829,7 +792,7 @@ impl SendStream {
                 return InitResetResult::ResetNotNecessary
             }
             SendStreamState::Sending
-                if self.data_sender.state() == DataSenderState::FinishAcknowledged =>
+                if self.data_sender.state() == data_sender::State::Finished =>
             {
                 return InitResetResult::ResetNotNecessary
             }

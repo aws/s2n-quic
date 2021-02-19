@@ -114,8 +114,9 @@ enum Instruction {
 }
 
 fn execute_instructions(test_env: &mut TestEnvironment, instructions: &[Instruction]) {
-    for instruction in instructions {
-        println!("Executing instruction {:?}", instruction);
+    println!("executing {} instructions", instructions.len());
+    for (id, instruction) in instructions.iter().enumerate() {
+        println!("Executing instruction {:?} {:?}", id, instruction);
         match instruction {
             Instruction::EnqueueData(offset, size, expect_success) => {
                 let data = Bytes::from(gen_pattern_test_data(*offset, *size));
@@ -189,8 +190,14 @@ fn execute_instructions(test_env: &mut TestEnvironment, instructions: &[Instruct
                 }
             }
             Instruction::CheckNoTx => {
+                test_env.sent_frames.clear();
                 test_env.assert_write_frames(0);
-                assert_eq!(test_env.sent_frames.len(), 0, "Expected no queued frames");
+                assert_eq!(
+                    test_env.sent_frames.len(),
+                    0,
+                    "Expected no queued frames {:?}",
+                    &test_env.sent_frames
+                );
             }
             Instruction::CheckDataTx(
                 expected_offset,
@@ -245,23 +252,19 @@ fn sent_data_gets_enqueued_as_frames() {
     assert_eq!(test_env.poll_push(data2.clone()), Poll::Ready(Ok(())),);
     assert_eq!(stream_interests(&["tx"]), test_env.stream.interests());
 
-    test_env.assert_write_frames(2);
+    test_env.assert_write_frames(1);
     let mut sent_frame = test_env.sent_frames.pop_front().expect("Frame is written");
     assert_eq!(
         Frame::Stream(stream_data(
             test_env.stream.stream_id,
             VarInt::from_u32(0),
-            DecoderBufferMut::new(&mut data1.to_vec()[..]),
-            false
-        )),
-        sent_frame.as_frame()
-    );
-    let mut sent_frame = test_env.sent_frames.pop_front().expect("Frame is written");
-    assert_eq!(
-        Frame::Stream(stream_data(
-            test_env.stream.stream_id,
-            VarInt::from_u32((data1.len()) as u32),
-            DecoderBufferMut::new(&mut data2.to_vec()[..]),
+            DecoderBufferMut::new(
+                &mut data1
+                    .iter()
+                    .chain(data2.iter())
+                    .copied()
+                    .collect::<Vec<_>>()[..]
+            ),
             false
         )),
         sent_frame.as_frame()
@@ -313,8 +316,7 @@ fn can_not_enqueue_data_if_max_buffer_size_has_been_reached() {
             Instruction::EnqueueData(VarInt::from_u32(128), MAX_BUFFER_SIZE, true),
             Instruction::EnqueueData(max_buffer_size_varint, 1, false),
             // Transmitting data does not increase the window
-            Instruction::CheckDataTx(VarInt::from_u32(0), 128, false, false, pn(0)),
-            Instruction::CheckDataTx(VarInt::from_u32(128), MAX_BUFFER_SIZE, false, false, pn(1)),
+            Instruction::CheckDataTx(VarInt::from_u32(0), 1152, false, false, pn(0)),
             Instruction::EnqueueData(max_buffer_size_varint, 1, false),
         ][..],
         &[
@@ -350,22 +352,18 @@ fn can_not_enqueue_data_if_max_buffer_size_has_been_reached() {
             Instruction::EnqueueData(max_buffer_size_varint * 3 + 512, 1, false),
             Instruction::CheckInterests(stream_interests(&["tx"])),
             // Transmit and ACK data. There should still be no buffer space
-            Instruction::CheckDataTx(max_buffer_size_varint, 512, false, false, pn(1)),
-            Instruction::CheckInterests(stream_interests(&["ack"])),
+            Instruction::CheckDataTx(max_buffer_size_varint, 1196, false, true, pn(1)),
+            Instruction::CheckInterests(stream_interests(&["ack", "tx"])),
             Instruction::AckPacket(pn(1), ExpectWakeup(Some(false))),
-            Instruction::CheckInterests(stream_interests(&["ack"])),
+            Instruction::CheckInterests(stream_interests(&["tx"])),
             Instruction::EnqueueData(max_buffer_size_varint * 3 + 512, 1, false),
-            Instruction::CheckInterests(stream_interests(&["ack"])),
+            Instruction::CheckInterests(stream_interests(&["tx"])),
             // After acknowledging the big chunk, we have capacity again
-            Instruction::CheckDataTx(
-                max_buffer_size_varint + 512,
-                MAX_BUFFER_SIZE * 2,
-                false,
-                false,
-                pn(2),
-            ),
+            Instruction::CheckDataTx(max_buffer_size_varint + 1196, 1196, false, true, pn(2)),
+            Instruction::CheckDataTx(max_buffer_size_varint + 1196 * 2, 168, false, false, pn(3)),
             Instruction::CheckInterests(stream_interests(&["ack"])),
             Instruction::AckPacket(pn(2), ExpectWakeup(Some(true))),
+            Instruction::AckPacket(pn(3), ExpectWakeup(Some(false))),
             Instruction::CheckInterests(stream_interests(&[])),
             Instruction::EnqueueData(max_buffer_size_varint * 3 + 512, 1, true),
             Instruction::CheckInterests(stream_interests(&["tx"])),
@@ -376,6 +374,7 @@ fn can_not_enqueue_data_if_max_buffer_size_has_been_reached() {
         let test_env_config = TestEnvironmentConfig {
             max_send_buffer_size: MAX_BUFFER_SIZE,
             initial_send_window: RECEIVE_WINDOW,
+            max_packet_size: Some(1200),
             ..Default::default()
         };
         let mut test_env = setup_stream_test_env_with_config(test_env_config);
@@ -442,9 +441,8 @@ fn multiple_stream_frames_are_sent_in_a_packet() {
             Instruction::EnqueueData(VarInt::from_u32(128), MAX_BUFFER_SIZE, true),
             Instruction::EnqueueData(max_buffer_size_varint, 1, false),
             // Transmitting data does not increase the window
-            Instruction::CheckDataTx(VarInt::from_u32(0), 128, false, false, pn(0)),
+            Instruction::CheckDataTx(VarInt::from_u32(0), 1152, false, false, pn(0)),
             Instruction::CheckInterests(stream_interests(&["ack"])),
-            Instruction::CheckDataTx(VarInt::from_u32(128), MAX_BUFFER_SIZE, false, false, pn(1)),
             Instruction::EnqueueData(max_buffer_size_varint, 1, false),
             Instruction::CheckInterests(stream_interests(&["ack"])),
         ][..],
@@ -483,21 +481,17 @@ fn multiple_stream_frames_are_sent_in_a_packet() {
             Instruction::EnqueueData(max_buffer_size_varint + 512, 2 * MAX_BUFFER_SIZE, true),
             Instruction::EnqueueData(max_buffer_size_varint * 3 + 512, 1, false),
             // Transmit and ACK data. There should still be no buffer space
-            Instruction::CheckDataTx(max_buffer_size_varint, 512, false, false, pn(1)),
-            Instruction::CheckInterests(stream_interests(&["ack"])),
+            Instruction::CheckDataTx(max_buffer_size_varint, 1196, false, true, pn(1)),
+            Instruction::CheckInterests(stream_interests(&["ack", "tx"])),
             Instruction::AckPacket(pn(1), ExpectWakeup(Some(false))),
-            Instruction::CheckInterests(stream_interests(&["ack"])),
+            Instruction::CheckInterests(stream_interests(&["tx"])),
             Instruction::EnqueueData(max_buffer_size_varint * 3 + 512, 1, false),
-            Instruction::CheckInterests(stream_interests(&["ack"])),
+            Instruction::CheckInterests(stream_interests(&["tx"])),
             // After acknowledging the big chunk, we have capacity again
-            Instruction::CheckDataTx(
-                max_buffer_size_varint + 512,
-                MAX_BUFFER_SIZE * 2,
-                false,
-                false,
-                pn(2),
-            ),
+            Instruction::CheckDataTx(max_buffer_size_varint + 1196, 1196, false, true, pn(2)),
+            Instruction::CheckDataTx(max_buffer_size_varint + 1196 * 2, 168, false, false, pn(3)),
             Instruction::AckPacket(pn(2), ExpectWakeup(Some(true))),
+            Instruction::AckPacket(pn(3), ExpectWakeup(Some(false))),
             Instruction::CheckInterests(stream_interests(&[])),
             Instruction::EnqueueData(max_buffer_size_varint * 3 + 512, 1, true),
             Instruction::CheckInterests(stream_interests(&["tx"])),
@@ -508,6 +502,7 @@ fn multiple_stream_frames_are_sent_in_a_packet() {
         let test_env_config = TestEnvironmentConfig {
             max_send_buffer_size: MAX_BUFFER_SIZE,
             initial_send_window: RECEIVE_WINDOW,
+            max_packet_size: Some(1200),
             ..Default::default()
         };
         let mut test_env = setup_stream_test_env_with_config(test_env_config);
@@ -543,17 +538,14 @@ fn bigger_data_is_split_across_packets() {
             Instruction::EnqueueData(VarInt::from_u32(0), 512, true),
             Instruction::CheckInterests(stream_interests(&["tx"])),
             Instruction::EnqueueData(VarInt::from_u32(512), TOTAL_WRITE_SIZE, true),
-            // The first frame needs 2 byte stream id + 2 byte len. Total: 516 bytes
-            Instruction::CheckDataTx(VarInt::from_u32(0), 512, false, false, pn(0)),
-            // There are 508 bytes left. 2bytes are required for stream ID and offset
-            Instruction::CheckDataTx(VarInt::from_u32(512), 504, false, true, pn(0)),
+            Instruction::CheckDataTx(VarInt::from_u32(0), 1022, false, true, pn(0)),
             // The next frames need a 2 byte stream ID + 2 byte offset
-            Instruction::CheckDataTx(VarInt::from_u32(1016), 1020, false, true, pn(1)),
-            Instruction::CheckDataTx(VarInt::from_u32(2036), 1020, false, true, pn(2)),
-            Instruction::CheckDataTx(VarInt::from_u32(3056), 1020, false, true, pn(3)),
+            Instruction::CheckDataTx(VarInt::from_u32(1022), 1020, false, true, pn(1)),
+            Instruction::CheckDataTx(VarInt::from_u32(2042), 1020, false, true, pn(2)),
+            Instruction::CheckDataTx(VarInt::from_u32(3062), 1020, false, true, pn(3)),
             Instruction::CheckDataTx(
-                VarInt::from_u32(4076),
-                512 + TOTAL_WRITE_SIZE - 4076,
+                VarInt::from_u32(4082),
+                512 + TOTAL_WRITE_SIZE - 4082,
                 false,
                 false,
                 pn(4),
@@ -578,114 +570,6 @@ fn bigger_data_is_split_across_packets() {
 }
 
 #[test]
-fn multiple_frames_can_be_fit_into_a_packet() {
-    const MAX_PACKET_SIZE: usize = 1000;
-
-    // Base test setup is as follows:
-    // - We write one chunk of 200 bytes
-    //   Requires 2 byte Stream ID + 2 byte len => 204 bytes
-    // - We write one chunk of 600 bytes
-    //   Requires 2 byte Stream ID + 2 byte offset + 2 byte len => 606 bytes
-    // - The remaining bytes are: 1000 - 204 - 606 = 190 bytes
-    //   Since the next frame requires a 2 byte stream ID and a 2 byte offset,
-    //   the maximum payload is 186 bytes.
-
-    // From here on:
-    // - When the payload is up (incl) 182 bytes, we should also be able to
-    //   write a length field (since 4 bytes are reserved for it).
-    // - When the payload is between 183 and 186 bytes, we need to write this
-    //   as the last frame without length field, since the length field does no
-    //   longer match
-    // - When the payload is >= 187 bytes, the data needs to go into the next
-    //   packet
-
-    // TODO: This currently only tests the case where we write 2 byte offsets
-    // and 2 byte length fields. We might want to add support for testing 4 byte
-    // offsets and bigger length (4 byte is probably the only reasonable thing).
-
-    let test_configs = &[
-        &[
-            // Length field fits, 1 extra free space
-            Instruction::EnqueueData(VarInt::from_u32(0), 200, true),
-            Instruction::CheckInterests(stream_interests(&["tx"])),
-            Instruction::EnqueueData(VarInt::from_u32(200), 600, true),
-            Instruction::EnqueueData(VarInt::from_u32(800), 181, true),
-            Instruction::EnqueueData(VarInt::from_u32(981), 1, true),
-            Instruction::CheckDataTx(VarInt::from_u32(0), 200, false, false, pn(0)),
-            Instruction::CheckDataTx(VarInt::from_u32(200), 600, false, false, pn(0)),
-            Instruction::CheckDataTx(VarInt::from_u32(800), 181, false, false, pn(0)),
-            Instruction::CheckDataTx(VarInt::from_u32(981), 1, false, false, pn(1)),
-            Instruction::CheckInterests(stream_interests(&["ack"])),
-        ][..],
-        &[
-            // Length field fits, no free space
-            Instruction::EnqueueData(VarInt::from_u32(0), 200, true),
-            Instruction::CheckInterests(stream_interests(&["tx"])),
-            Instruction::EnqueueData(VarInt::from_u32(200), 600, true),
-            Instruction::EnqueueData(VarInt::from_u32(800), 182, true),
-            Instruction::EnqueueData(VarInt::from_u32(982), 1, true),
-            Instruction::CheckDataTx(VarInt::from_u32(0), 200, false, false, pn(0)),
-            Instruction::CheckDataTx(VarInt::from_u32(200), 600, false, false, pn(0)),
-            Instruction::CheckDataTx(VarInt::from_u32(800), 182, false, false, pn(0)),
-            Instruction::CheckDataTx(VarInt::from_u32(982), 1, false, false, pn(1)),
-            Instruction::CheckInterests(stream_interests(&["ack"])),
-        ][..],
-        &[
-            // Length does not fit by 1
-            // This needs to get written as last frame, but the data to write
-            // still does not fill up the frame.
-            Instruction::EnqueueData(VarInt::from_u32(0), 200, true),
-            Instruction::CheckInterests(stream_interests(&["tx"])),
-            Instruction::EnqueueData(VarInt::from_u32(200), 600, true),
-            Instruction::EnqueueData(VarInt::from_u32(800), 183, true),
-            Instruction::EnqueueData(VarInt::from_u32(983), 1, true),
-            Instruction::CheckDataTx(VarInt::from_u32(0), 200, false, false, pn(0)),
-            Instruction::CheckDataTx(VarInt::from_u32(200), 600, false, false, pn(0)),
-            Instruction::CheckDataTx(VarInt::from_u32(800), 183, false, true, pn(0)),
-            Instruction::CheckDataTx(VarInt::from_u32(983), 1, false, false, pn(1)),
-            Instruction::CheckInterests(stream_interests(&["ack"])),
-        ][..],
-        &[
-            // Maximum payload is used
-            Instruction::EnqueueData(VarInt::from_u32(0), 200, true),
-            Instruction::CheckInterests(stream_interests(&["tx"])),
-            Instruction::EnqueueData(VarInt::from_u32(200), 600, true),
-            Instruction::EnqueueData(VarInt::from_u32(800), 186, true),
-            Instruction::EnqueueData(VarInt::from_u32(986), 1, true),
-            Instruction::CheckDataTx(VarInt::from_u32(0), 200, false, false, pn(0)),
-            Instruction::CheckDataTx(VarInt::from_u32(200), 600, false, false, pn(0)),
-            Instruction::CheckDataTx(VarInt::from_u32(800), 186, false, true, pn(0)),
-            Instruction::CheckDataTx(VarInt::from_u32(986), 1, false, false, pn(1)),
-            Instruction::CheckInterests(stream_interests(&["ack"])),
-        ][..],
-        &[
-            // Maximum payload + 1 is used
-            // Some data needs to go into the next packet
-            Instruction::EnqueueData(VarInt::from_u32(0), 200, true),
-            Instruction::CheckInterests(stream_interests(&["tx"])),
-            Instruction::EnqueueData(VarInt::from_u32(200), 600, true),
-            Instruction::EnqueueData(VarInt::from_u32(800), 187, true),
-            Instruction::EnqueueData(VarInt::from_u32(987), 1, true),
-            Instruction::CheckDataTx(VarInt::from_u32(0), 200, false, false, pn(0)),
-            Instruction::CheckDataTx(VarInt::from_u32(200), 600, false, false, pn(0)),
-            Instruction::CheckDataTx(VarInt::from_u32(800), 186, false, true, pn(0)),
-            Instruction::CheckDataTx(VarInt::from_u32(986), 1, false, false, pn(1)),
-            Instruction::CheckDataTx(VarInt::from_u32(987), 1, false, false, pn(1)),
-            Instruction::CheckInterests(stream_interests(&["ack"])),
-        ][..],
-    ];
-
-    for test_config in test_configs.iter() {
-        let mut test_env = setup_send_only_test_env();
-        test_env
-            .sent_frames
-            .set_max_packet_size(Some(MAX_PACKET_SIZE));
-
-        execute_instructions(&mut test_env, &test_config[..]);
-    }
-}
-
-#[test]
 fn lost_data_is_retransmitted() {
     const MAX_PACKET_SIZE: usize = 1000;
 
@@ -695,28 +579,25 @@ fn lost_data_is_retransmitted() {
             Instruction::EnqueueData(VarInt::from_u32(0), 500, true),
             Instruction::CheckInterests(stream_interests(&["tx"])),
             Instruction::EnqueueData(VarInt::from_u32(500), 400, true),
-            Instruction::CheckDataTx(VarInt::from_u32(0), 500, false, false, pn(0)),
-            Instruction::CheckDataTx(VarInt::from_u32(500), 400, false, false, pn(0)),
+            Instruction::CheckDataTx(VarInt::from_u32(0), 900, false, false, pn(0)),
             Instruction::CheckInterests(stream_interests(&["ack"])),
             // These go into the next packet, which will get lost
             Instruction::EnqueueData(VarInt::from_u32(900), 700, true),
             Instruction::CheckInterests(stream_interests(&["ack", "tx"])),
             Instruction::EnqueueData(VarInt::from_u32(1600), 200, true),
-            Instruction::CheckDataTx(VarInt::from_u32(900), 700, false, false, pn(1)),
-            Instruction::CheckDataTx(VarInt::from_u32(1600), 200, false, false, pn(1)),
+            Instruction::CheckDataTx(VarInt::from_u32(900), 900, false, false, pn(1)),
             Instruction::CheckInterests(stream_interests(&["ack"])),
             // The next packet will be good again
-            Instruction::EnqueueData(VarInt::from_u32(1800), 700, true),
+            Instruction::EnqueueData(VarInt::from_u32(1800), 900, true),
             Instruction::CheckInterests(stream_interests(&["ack", "tx"])),
-            Instruction::CheckDataTx(VarInt::from_u32(1800), 700, false, false, pn(2)),
+            Instruction::CheckDataTx(VarInt::from_u32(1800), 900, false, false, pn(2)),
             Instruction::CheckInterests(stream_interests(&["ack"])),
             Instruction::CheckNoTx,
             // Declare the packet as lost.
             // We now expect a retransmission of those segments
             Instruction::NackPacket(pn(1)),
             Instruction::CheckInterests(stream_interests(&["ack", "lost"])),
-            Instruction::CheckDataTx(VarInt::from_u32(900), 700, false, false, pn(3)),
-            Instruction::CheckDataTx(VarInt::from_u32(1600), 200, false, false, pn(3)),
+            Instruction::CheckDataTx(VarInt::from_u32(900), 900, false, false, pn(3)),
             Instruction::CheckInterests(stream_interests(&["ack"])),
             Instruction::AckPacket(pn(3), ExpectWakeup(Some(false))),
             Instruction::CheckInterests(stream_interests(&["ack"])),
@@ -745,24 +626,19 @@ fn lost_data_is_retransmitted() {
             Instruction::EnqueueData(VarInt::from_u32(3200), 1000, true),
             // 106 bytes required in the fifth packet.
             Instruction::EnqueueData(VarInt::from_u32(4200), 100, true),
-            Instruction::CheckDataTx(VarInt::from_u32(0), 500, false, false, pn(0)),
-            Instruction::CheckInterests(stream_interests(&["ack"])),
-            Instruction::CheckDataTx(VarInt::from_u32(500), 400, false, false, pn(0)),
-            Instruction::CheckDataTx(VarInt::from_u32(900), 86, false, true, pn(0)),
-            Instruction::CheckDataTx(VarInt::from_u32(986), 996, false, true, pn(1)),
-            Instruction::CheckDataTx(VarInt::from_u32(1982), 996, false, true, pn(2)),
-            Instruction::CheckDataTx(VarInt::from_u32(2978), 222, false, false, pn(3)),
-            Instruction::CheckDataTx(VarInt::from_u32(3200), 768, false, true, pn(3)),
-            Instruction::CheckDataTx(VarInt::from_u32(3968), 232, false, false, pn(4)),
-            Instruction::CheckDataTx(VarInt::from_u32(4200), 100, false, false, pn(4)),
+            Instruction::CheckDataTx(VarInt::from_u32(0), 998, false, true, pn(0)),
+            Instruction::CheckInterests(stream_interests(&["ack", "tx"])),
+            Instruction::CheckDataTx(VarInt::from_u32(998), 996, false, true, pn(1)),
+            Instruction::CheckDataTx(VarInt::from_u32(1994), 996, false, true, pn(2)),
+            Instruction::CheckDataTx(VarInt::from_u32(2990), 996, false, true, pn(3)),
+            Instruction::CheckDataTx(VarInt::from_u32(3986), 314, false, false, pn(4)),
             // Packet 1 and Packet 3 get lost
             Instruction::NackPacket(pn(1)),
             Instruction::CheckInterests(stream_interests(&["ack", "lost"])),
             Instruction::NackPacket(pn(3)),
             Instruction::CheckInterests(stream_interests(&["ack", "lost"])),
-            Instruction::CheckDataTx(VarInt::from_u32(986), 996, false, true, pn(5)),
-            Instruction::CheckDataTx(VarInt::from_u32(2978), 222, false, false, pn(6)),
-            Instruction::CheckDataTx(VarInt::from_u32(3200), 768, false, true, pn(6)),
+            Instruction::CheckDataTx(VarInt::from_u32(998), 996, false, true, pn(5)),
+            Instruction::CheckDataTx(VarInt::from_u32(2990), 996, false, true, pn(6)),
             Instruction::CheckInterests(stream_interests(&["ack"])),
             Instruction::AckPacket(pn(0), ExpectWakeup(Some(false))),
             Instruction::AckPacket(pn(2), ExpectWakeup(Some(false))),
@@ -907,7 +783,6 @@ fn retransmitted_data_is_sent_in_same_packets_as_new_data() {
             // used for content
             Instruction::CheckDataTx(VarInt::from_u32(0), 500, false, false, pn(1)),
             Instruction::CheckDataTx(VarInt::from_u32(500), 492, false, true, pn(1)),
-            Instruction::CheckDataTx(VarInt::from_u32(992), 508, false, false, pn(2)),
             Instruction::CheckInterests(stream_interests(&["ack"])),
             Instruction::AckPacket(pn(1), ExpectWakeup(Some(false))),
             Instruction::CheckInterests(stream_interests(&["ack"])),
@@ -928,9 +803,8 @@ fn retransmitted_data_is_sent_in_same_packets_as_new_data() {
             Instruction::EnqueueData(VarInt::from_u32(1000), 1000, true),
             Instruction::CheckInterests(stream_interests(&["ack", "tx"])),
             // Requires 506 bytes
-            Instruction::CheckDataTx(VarInt::from_u32(500), 500, false, false, pn(1)),
-            Instruction::CheckDataTx(VarInt::from_u32(1000), 490, false, true, pn(1)),
-            Instruction::CheckDataTx(VarInt::from_u32(1490), 510, false, false, pn(2)),
+            Instruction::CheckDataTx(VarInt::from_u32(500), 996, false, true, pn(1)),
+            Instruction::CheckDataTx(VarInt::from_u32(1496), 504, false, false, pn(2)),
             Instruction::CheckInterests(stream_interests(&["ack"])),
             Instruction::NackPacket(pn(0)),
             Instruction::NackPacket(pn(2)),
@@ -939,8 +813,8 @@ fn retransmitted_data_is_sent_in_same_packets_as_new_data() {
             Instruction::CheckInterests(stream_interests(&["ack", "lost"])),
             // Retransmission of the first chunk requires 504 bytes. 496 left
             Instruction::CheckDataTx(VarInt::from_u32(0), 500, false, false, pn(3)),
-            Instruction::CheckDataTx(VarInt::from_u32(1490), 492, false, true, pn(3)),
-            Instruction::CheckDataTx(VarInt::from_u32(1982), 18, false, false, pn(4)),
+            Instruction::CheckDataTx(VarInt::from_u32(1496), 492, false, true, pn(3)),
+            Instruction::CheckDataTx(VarInt::from_u32(1988), 12, false, false, pn(4)),
             Instruction::CheckDataTx(VarInt::from_u32(2000), 10, false, false, pn(4)),
             Instruction::CheckInterests(stream_interests(&["ack"])),
             Instruction::AckPacket(pn(3), ExpectWakeup(Some(false))),
@@ -1048,7 +922,7 @@ fn blocked_on_stream_flow_control_does_not_prevent_retransmissions() {
 
     let test_configs = &[&[
         // We are able to enqueue data which is bigger than the window
-        Instruction::EnqueueData(VarInt::from_u32(0), 2500, true),
+        Instruction::EnqueueData(VarInt::from_u32(0), 3000, true),
         Instruction::CheckInterests(stream_interests(&["tx"])),
         // Check that we indeed can't enqueue more data
         Instruction::EnqueueData(VarInt::from_u32(2500), 10, false),
@@ -1060,15 +934,15 @@ fn blocked_on_stream_flow_control_does_not_prevent_retransmissions() {
         Instruction::NackPacket(pn(1)),
         Instruction::CheckInterests(stream_interests(&["ack", "lost"])),
         Instruction::CheckDataTx(VarInt::from_u32(998), 996, false, true, pn(3)),
-        Instruction::CheckInterests(stream_interests(&["ack"])),
+        Instruction::CheckInterests(stream_interests(&["ack", "tx"])),
         Instruction::AckPacket(pn(3), ExpectWakeup(Some(false))),
-        Instruction::CheckInterests(stream_interests(&["ack"])),
+        Instruction::CheckInterests(stream_interests(&["ack", "tx"])),
         Instruction::NackPacket(pn(0)),
         Instruction::CheckInterests(stream_interests(&["ack", "lost"])),
         Instruction::CheckDataTx(VarInt::from_u32(0), 998, false, true, pn(4)),
-        Instruction::CheckInterests(stream_interests(&["ack"])),
+        Instruction::CheckInterests(stream_interests(&["ack", "tx"])),
         Instruction::AckPacket(pn(4), ExpectWakeup(Some(true))),
-        Instruction::CheckInterests(stream_interests(&["ack"])),
+        Instruction::CheckInterests(stream_interests(&["ack", "tx"])),
         Instruction::NackPacket(pn(2)),
         Instruction::CheckInterests(stream_interests(&["lost"])),
         Instruction::CheckDataTx(VarInt::from_u32(1994), 6, false, false, pn(5)),
@@ -1083,12 +957,10 @@ fn blocked_on_stream_flow_control_does_not_prevent_retransmissions() {
         let test_env_config = TestEnvironmentConfig {
             max_send_buffer_size: MAX_BUFFER_SIZE,
             initial_send_window: WINDOW_SIZE as u64,
+            max_packet_size: Some(MAX_PACKET_SIZE),
             ..Default::default()
         };
         let mut test_env = setup_stream_test_env_with_config(test_env_config);
-        test_env
-            .sent_frames
-            .set_max_packet_size(Some(MAX_PACKET_SIZE));
 
         execute_instructions(&mut test_env, &test_config[..]);
     }
@@ -1191,15 +1063,15 @@ fn blocked_on_connection_flow_control_does_not_prevent_retransmissions() {
         Instruction::NackPacket(pn(1)),
         Instruction::CheckInterests(stream_interests(&["ack", "lost"])),
         Instruction::CheckDataTx(VarInt::from_u32(998), 996, false, true, pn(3)),
-        Instruction::CheckInterests(stream_interests(&["ack", "cf"])),
+        Instruction::CheckInterests(stream_interests(&["ack", "tx"])),
         Instruction::AckPacket(pn(3), ExpectWakeup(Some(false))),
-        Instruction::CheckInterests(stream_interests(&["ack", "cf"])),
+        Instruction::CheckInterests(stream_interests(&["ack", "tx"])),
         Instruction::NackPacket(pn(0)),
         Instruction::CheckInterests(stream_interests(&["ack", "lost"])),
         Instruction::CheckDataTx(VarInt::from_u32(0), 998, false, true, pn(4)),
-        Instruction::CheckInterests(stream_interests(&["ack", "cf"])),
+        Instruction::CheckInterests(stream_interests(&["ack", "tx"])),
         Instruction::AckPacket(pn(4), ExpectWakeup(Some(true))),
-        Instruction::CheckInterests(stream_interests(&["ack", "cf"])),
+        Instruction::CheckInterests(stream_interests(&["ack", "tx"])),
         Instruction::NackPacket(pn(2)),
         Instruction::CheckInterests(stream_interests(&["lost"])),
         Instruction::CheckDataTx(VarInt::from_u32(1994), 6, false, false, pn(5)),
@@ -1663,7 +1535,7 @@ fn transmit_fin_while_outstanding_data_exceeds_stream_flow_control_window() {
             Instruction::CheckInterests(stream_interests(&["tx"])),
             // Send 3 initial packets, then the flow control window limits us
             Instruction::CheckDataTx(VarInt::from_u32(0), 998, false, true, pn(0)),
-            Instruction::CheckInterests(stream_interests(&["ack"])),
+            Instruction::CheckInterests(stream_interests(&["ack", "tx"])),
             Instruction::CheckDataTx(VarInt::from_u32(998), 996, false, true, pn(1)),
             Instruction::CheckDataTx(VarInt::from_u32(1994), 6, false, false, pn(2)),
             Instruction::CheckInterests(stream_interests(&["ack"])),
@@ -1708,7 +1580,7 @@ fn transmit_fin_while_outstanding_data_exceeds_stream_flow_control_window() {
             Instruction::CheckInterests(stream_interests(&["tx"])),
             // Send 3 initial packets, then the flow control window limits us
             Instruction::CheckDataTx(VarInt::from_u32(0), 998, false, true, pn(0)),
-            Instruction::CheckInterests(stream_interests(&["ack"])),
+            Instruction::CheckInterests(stream_interests(&["ack", "tx"])),
             Instruction::CheckDataTx(VarInt::from_u32(998), 996, false, true, pn(1)),
             Instruction::CheckDataTx(VarInt::from_u32(1994), 6, false, false, pn(2)),
             Instruction::CheckNoTx,
@@ -1756,7 +1628,6 @@ fn transmit_fin_while_outstanding_data_exceeds_connection_flow_control_window() 
             Instruction::CheckInterests(stream_interests(&["tx"])),
             // Send 3 initial packets, then the flow control window limits us
             Instruction::CheckDataTx(VarInt::from_u32(0), 998, false, true, pn(0)),
-            Instruction::CheckInterests(stream_interests(&["ack", "cf"])),
             Instruction::CheckDataTx(VarInt::from_u32(998), 996, false, true, pn(1)),
             Instruction::CheckDataTx(VarInt::from_u32(1994), 6, false, false, pn(2)),
             Instruction::CheckInterests(stream_interests(&["ack", "cf"])),
@@ -1801,7 +1672,7 @@ fn transmit_fin_while_outstanding_data_exceeds_connection_flow_control_window() 
             Instruction::CheckInterests(stream_interests(&["tx"])),
             // Send 3 initial packets, then the flow control window limits us
             Instruction::CheckDataTx(VarInt::from_u32(0), 998, false, true, pn(0)),
-            Instruction::CheckInterests(stream_interests(&["ack", "cf"])),
+            Instruction::CheckInterests(stream_interests(&["ack", "tx"])),
             Instruction::CheckDataTx(VarInt::from_u32(998), 996, false, true, pn(1)),
             Instruction::CheckDataTx(VarInt::from_u32(1994), 6, false, false, pn(2)),
             Instruction::CheckNoTx,
@@ -2761,37 +2632,19 @@ fn can_send_multiple_chunks() {
                         &[Instruction::CheckInterests(stream_interests(&["tx"]))],
                     );
 
-                    let mut offset = VarInt::from_u8(0);
-                    for (idx, size, is_last) in sizes
-                        .iter()
-                        .take(expected_consumed_chunks)
-                        .cloned()
-                        .enumerate()
-                        .map(|(idx, size)| {
-                            let is_last = expected_consumed_chunks - idx == 1;
-                            (idx, size, is_last)
-                        })
-                    {
-                        let is_fin = finish && consumed_all && is_last;
-                        let should_wake = with_context
-                            && if flush && consumed_all {
-                                // if all of the chunks were consumed and we wanted to flush
-                                // it should only wake up on the last chunk
-                                is_last
-                            } else {
-                                // if not all of the chunks were consumed it should only wake
-                                // on the first chunk
-                                !consumed_all && idx == 0
-                            };
-                        execute_instructions(
-                            &mut test_env,
-                            &[
-                                Instruction::CheckDataTx(offset, size, is_fin, false, pn(idx)),
-                                Instruction::AckPacket(pn(idx), ExpectWakeup(Some(should_wake))),
-                            ],
-                        );
-                        offset += size;
+                    let mut offset = 0;
+                    let mut idx = 0;
+                    while let Some(mut frame) = test_env.transmit() {
+                        if let Frame::Stream(stream) = frame.as_frame() {
+                            offset += stream.data.len();
+                            test_env.ack_packet(pn(idx), ExpectWakeup(None));
+                            idx += 1;
+                        } else {
+                            panic!("invalid frame");
+                        }
                     }
+
+                    assert_eq!(expected_consumed_bytes, offset);
 
                     execute_instructions(
                         &mut test_env,

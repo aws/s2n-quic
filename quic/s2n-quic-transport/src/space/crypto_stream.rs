@@ -1,59 +1,13 @@
 use crate::{
     buffer::StreamReceiveBuffer,
-    contexts::WriteContext,
-    sync::{ChunkToFrameWriter, DataSender, OutgoingDataFlowController},
+    sync::data_sender::{self, DataSender, OutgoingDataFlowController},
     transmission,
 };
 use s2n_quic_core::{
-    ack,
-    frame::{crypto::CryptoRef, MaxPayloadSizeForFrame},
-    packet::number::PacketNumber,
-    transport::error::TransportError,
-    varint::VarInt,
+    ack, frame::crypto::CryptoRef, transport::error::TransportError, varint::VarInt,
 };
 
-pub type TxCryptoStream = DataSender<CryptoFlowController, CryptoChunkToFrameWriter>;
-
-/// Serializes and writes `Crypto` frames
-#[derive(Debug, Default)]
-pub struct CryptoChunkToFrameWriter {}
-
-impl ChunkToFrameWriter for CryptoChunkToFrameWriter {
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.6
-    //# The stream does not have an explicit end, so CRYPTO frames do not
-    //# have a FIN bit.
-    const WRITES_FIN: bool = false;
-
-    type StreamId = ();
-
-    fn get_max_frame_size(&self, _stream_id: Self::StreamId, data_size: usize) -> usize {
-        CryptoRef::get_max_frame_size(data_size)
-    }
-
-    fn max_payload_size(
-        &self,
-        _stream_id: Self::StreamId,
-        max_frame_size: usize,
-        offset: VarInt,
-    ) -> MaxPayloadSizeForFrame {
-        CryptoRef::max_payload_size(max_frame_size, offset)
-    }
-
-    fn write_value_as_frame<W: WriteContext>(
-        &self,
-        _stream_id: Self::StreamId,
-        offset: VarInt,
-        data: &[u8],
-        _is_last_frame: bool,
-        _is_fin: bool,
-        context: &mut W,
-    ) -> Option<PacketNumber> {
-        // Some versions of QUIC refuse to process empty CRYPTO frames so
-        // make sure we never send them
-        debug_assert!(!data.is_empty());
-        context.write_frame(&CryptoRef { offset, data })
-    }
-}
+pub type TxCryptoStream = DataSender<CryptoFlowController, data_sender::writer::Crypto>;
 
 /// Serializes and writes `Crypto` frames
 #[derive(Debug, Default)]
@@ -61,7 +15,7 @@ pub struct CryptoFlowController {}
 
 /// There is no control flow for crypto data
 impl OutgoingDataFlowController for CryptoFlowController {
-    fn acquire_flow_control_window(&mut self, _min_offset: VarInt, _size: usize) -> VarInt {
+    fn acquire_flow_control_window(&mut self, _end_offset: VarInt) -> VarInt {
         VarInt::MAX
     }
 
