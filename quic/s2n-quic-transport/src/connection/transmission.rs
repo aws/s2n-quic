@@ -141,7 +141,7 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
         let encoder = if let Some((space, handshake_status)) = space_manager.initial_mut() {
             self.context.min_packet_len = pn_space_to_pad
                 .filter(|pn_space| pn_space.is_initial())
-                .and(Some(encoder.capacity()));
+                .map(|_| encoder.capacity());
 
             match space.on_transmit(
                 &mut self.context,
@@ -188,7 +188,7 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
         let encoder = if let Some((space, handshake_status)) = space_manager.handshake_mut() {
             self.context.min_packet_len = pn_space_to_pad
                 .filter(|pn_space| pn_space.is_handshake())
-                .and(Some(encoder.capacity()));
+                .map(|_| encoder.capacity());
 
             let encoder = match space.on_transmit(
                 &mut self.context,
@@ -249,7 +249,7 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
         let encoder = if let Some((space, handshake_status)) = space_manager.application_mut() {
             self.context.min_packet_len = pn_space_to_pad
                 .filter(|pn_space| pn_space.is_application_data())
-                .and(Some(encoder.capacity()));
+                .map(|_| encoder.capacity());
 
             match space.on_transmit(
                 &mut self.context,

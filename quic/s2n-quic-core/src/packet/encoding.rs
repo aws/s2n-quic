@@ -146,13 +146,12 @@ pub trait PacketEncoder<Crypto: HeaderCrypto + CryptoKey, Payload: PacketPayload
         //# bytes longer than the minimum connection ID length that it requests
         //# the peer to include in its packets, adding PADDING frames as
         //# necessary.
-        // This is derived from the requirements of packet protection sampling and stateless reset.
         // One additional byte is added so that a stateless reset sent in response to this packet
         // (which is required to be smaller than this packet) is large enough to be
         // indistinguishable from a valid packet.
-        let minimum_packet_len = min_packet_len.unwrap_or(0).max(
-            stateless_reset::min_indistinguishable_packet_len(crypto.sealing_sample_len()) + 1,
-        );
+        let minimum_packet_len = min_packet_len
+            .unwrap_or(0)
+            .max(stateless_reset::min_indistinguishable_packet_len(crypto.tag_len()) + 1);
 
         // Compute how much the payload will need to write to satisfy the
         // minimum_packet_len
