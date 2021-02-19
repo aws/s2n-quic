@@ -1,0 +1,58 @@
+[[TODO]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.3.1"
+quote = '''
+The spin bit is an OPTIONAL feature of QUIC.
+'''
+tracking-issue = "517"
+feature = "latency spin bit"
+
+[[TODO]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.3.1"
+quote = '''
+A QUIC stack that
+chooses to support the spin bit MUST implement it as specified in
+this section.
+'''
+tracking-issue = "517"
+feature = "Latency Spin Bit"
+
+[[TODO]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.3.1"
+quote = '''
+Implementations MUST allow administrators
+of clients and servers to disable the spin bit either globally or on
+a per-connection basis.
+'''
+tracking-issue = "517"
+feature = "Latency Spin Bit"
+
+[[TODO]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.3.1"
+quote = '''
+Even when the spin bit is not disabled by
+the administrator, endpoints MUST disable their use of the spin bit
+for a random selection of at least one in every 16 network paths, or
+for one in every 16 connection IDs.
+'''
+tracking-issue = "517"
+feature = "Latency Spin Bit"
+
+[[TODO]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.3.1"
+quote = '''
+When the spin bit is disabled, endpoints MAY set the spin bit to any
+value, and MUST ignore any incoming value.
+'''
+tracking-issue = "517"
+feature = "Latency Spin Bit"
+
+[[TODO]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.3.1"
+quote = '''
+It is RECOMMENDED that
+endpoints set the spin bit to a random value either chosen
+independently for each packet or chosen independently for each
+connection ID.
+'''
+tracking-issue = "517"
+feature = "Latency Spin Bit"
