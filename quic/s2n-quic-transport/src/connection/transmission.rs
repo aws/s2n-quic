@@ -5,9 +5,10 @@ use crate::{
 use core::time::Duration;
 use s2n_codec::{Encoder, EncoderBuffer};
 use s2n_quic_core::{
+    frame::ack_elicitation::AckElicitable,
     inet::{ExplicitCongestionNotification, SocketAddress},
     io::tx,
-    packet::encoding::PacketEncodingError,
+    packet::{encoding::PacketEncodingError, number::PacketNumberSpace},
     path::Path,
     time::Timestamp,
 };
@@ -21,6 +22,7 @@ pub struct ConnectionTransmissionContext<'a, Config: connection::Config> {
     pub local_id_registry: &'a mut connection::LocalIdRegistry,
     pub source_connection_id: &'a connection::LocalId,
     pub ecn: ExplicitCongestionNotification,
+    pub min_packet_len: Option<usize>,
 }
 
 impl<'a, Config: connection::Config> ConnectionTransmissionContext<'a, Config> {
@@ -96,6 +98,40 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
             self.context.path().transmission_constraint()
         };
 
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.1
+        //# A client MUST expand the payload of all UDP datagrams carrying
+        //# Initial packets to at least the smallest allowed maximum datagram
+        //# size of 1200 bytes by adding PADDING frames to the Initial packet or
+        //# by coalescing the Initial packet; see Section 12.2.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.1
+        //# Similarly, a
+        //# server MUST expand the payload of all UDP datagrams carrying ack-
+        //# eliciting Initial packets to at least the smallest allowed maximum
+        //# datagram size of 1200 bytes.
+
+        // If the transmission contains an Initial packet, it must be padded. However, we should
+        // add padding only if necessary, after packets from all packet number spaces have been
+        // coalesced. Therefore, after confirming there will be an Initial packet, we first check
+        // if there will be an ApplicationData packet, since those packets come at the end of the
+        // datagram. If there is no ApplicationData packet, the Handshake packet will come at the
+        // end, so we check that next. Finally, if there is no ApplicationData or Handshake packet
+        // to transmit, the Initial packet itself will be padded.
+        let mut pn_space_to_pad = {
+            if !has_transmission(space_manager.initial(), transmission_constraint) {
+                // There is no Initial packet, so no padding is needed
+                None
+            } else if has_transmission(space_manager.application(), transmission_constraint) {
+                Some(PacketNumberSpace::ApplicationData)
+            } else if has_transmission(space_manager.handshake(), transmission_constraint) {
+                Some(PacketNumberSpace::Handshake)
+            } else {
+                //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9
+                //# These packets MAY also include PADDING frames.
+                Some(PacketNumberSpace::Initial)
+            }
+        };
+
         //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4
         //# When packets of different types need to be sent,
         //# endpoints SHOULD use coalesced packets to send them in the same UDP
@@ -103,13 +139,31 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
         // here we query all of the spaces to try and fill the current datagram
 
         let encoder = if let Some((space, handshake_status)) = space_manager.initial_mut() {
+            self.context.min_packet_len = pn_space_to_pad
+                .filter(|pn_space| pn_space.is_initial())
+                .map(|_| encoder.capacity());
+
             match space.on_transmit(
                 &mut self.context,
                 transmission_constraint,
                 handshake_status,
                 encoder,
             ) {
-                Ok(encoder) => encoder,
+                Ok((outcome, encoder)) => {
+                    if Config::ENDPOINT_TYPE.is_server()
+                        && !outcome.ack_elicitation().is_ack_eliciting()
+                    {
+                        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.1
+                        //# Similarly, a
+                        //# server MUST expand the payload of all UDP datagrams carrying ack-
+                        //# eliciting Initial packets to at least the smallest allowed maximum
+                        //# datagram size of 1200 bytes.
+
+                        // The Initial packet was not ack eliciting so there is no need to pad
+                        pn_space_to_pad = None;
+                    }
+                    encoder
+                }
                 Err(PacketEncodingError::PacketNumberTruncationError(encoder)) => {
                     // TODO handle this
                     encoder
@@ -132,6 +186,10 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
         };
 
         let encoder = if let Some((space, handshake_status)) = space_manager.handshake_mut() {
+            self.context.min_packet_len = pn_space_to_pad
+                .filter(|pn_space| pn_space.is_handshake())
+                .map(|_| encoder.capacity());
+
             let encoder = match space.on_transmit(
                 &mut self.context,
                 transmission_constraint,
@@ -189,6 +247,10 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
         // current-available encryption level.
 
         let encoder = if let Some((space, handshake_status)) = space_manager.application_mut() {
+            self.context.min_packet_len = pn_space_to_pad
+                .filter(|pn_space| pn_space.is_application_data())
+                .map(|_| encoder.capacity());
+
             match space.on_transmit(
                 &mut self.context,
                 transmission_constraint,
@@ -222,4 +284,15 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
 
         datagram_len
     }
+}
+
+fn has_transmission<P: transmission::interest::Provider>(
+    transmission_interest_provider: Option<&P>,
+    transmission_constraint: transmission::Constraint,
+) -> bool {
+    transmission_interest_provider.map_or(false, |provider| {
+        provider
+            .transmission_interest()
+            .can_transmit(transmission_constraint)
+    })
 }

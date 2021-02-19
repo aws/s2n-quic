@@ -99,6 +99,7 @@ pub trait PacketEncoder<Crypto: HeaderCrypto + CryptoKey, Payload: PacketPayload
         mut self,
         crypto: &Crypto,
         largest_acknowledged_packet_number: PacketNumber,
+        min_packet_len: Option<usize>,
         mut buffer: EncoderBuffer<'a>,
     ) -> Result<(ProtectedPayload<'a>, EncoderBuffer<'a>), PacketEncodingError<'a>> {
         let packet_number = self.packet_number();
@@ -145,16 +146,28 @@ pub trait PacketEncoder<Crypto: HeaderCrypto + CryptoKey, Payload: PacketPayload
         //# bytes longer than the minimum connection ID length that it requests
         //# the peer to include in its packets, adding PADDING frames as
         //# necessary.
-        // This is derived from the requirements of packet protection sampling and stateless reset.
         // One additional byte is added so that a stateless reset sent in response to this packet
         // (which is required to be smaller than this packet) is large enough to be
         // indistinguishable from a valid packet.
-        let minimum_packet_len =
-            stateless_reset::min_indistinguishable_packet_len(crypto.sealing_sample_len()) + 1;
+        let minimum_packet_len = min_packet_len
+            .unwrap_or(0)
+            .max(stateless_reset::min_indistinguishable_packet_len(crypto.tag_len()) + 1);
 
         // Compute how much the payload will need to write to satisfy the
         // minimum_packet_len
-        let minimum_payload_len = minimum_packet_len.saturating_sub(buffer.len());
+        let minimum_payload_len = minimum_packet_len.saturating_sub(estimator.len());
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.4.2
+        //# In sampling the packet
+        //# ciphertext, the Packet Number field is assumed to be 4 bytes long
+
+        // Header protection sampling assumes a packet number length of 4 bytes,
+        // but the actual packet number may be smaller than that, so we need to ensure
+        // there is still enough payload to sample from given the actual packet number length.
+        let minimum_payload_len = minimum_payload_len.max(
+            PacketNumberLen::MAX_LEN - truncated_packet_number.len().bytesize()
+                + crypto.sealing_sample_len(),
+        );
 
         // Try to estimate the payload size - it may be inaccurate
         // but this provides some checks to save writing the packet

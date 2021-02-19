@@ -19,12 +19,6 @@ impl<'a> super::Payload for Payload<'a> {
 
     fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
         let _ = self.crypto_stream.tx.on_transmit((), context);
-
-        // TODO add required padding
-        // https://github.com/awslabs/s2n-quic/issues/179
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9
-        //# These packets MAY also include PADDING frames.
     }
 
     fn packet_number_space(&self) -> PacketNumberSpace {

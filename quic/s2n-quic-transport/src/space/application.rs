@@ -191,9 +191,11 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
             payload,
         };
 
+        let min_packet_len = context.min_packet_len;
+
         let (_protected_packet, buffer) = self.crypto.crypto[self.crypto.key_phase as usize]
             .encode_packet(buffer, |buffer, key| {
-                packet.encode_packet(key, packet_number_encoder, buffer)
+                packet.encode_packet(key, packet_number_encoder, min_packet_len, buffer)
             })?;
 
         let (recovery_manager, mut recovery_context) = self.recovery(

@@ -138,7 +138,7 @@ impl<Config: connection::Config> HandshakeSpace<Config> {
         };
 
         let (_protected_packet, buffer) = self.crypto.encode_packet(buffer, |buffer, key| {
-            packet.encode_packet(key, packet_number_encoder, buffer)
+            packet.encode_packet(key, packet_number_encoder, context.min_packet_len, buffer)
         })?;
 
         let time_sent = context.timestamp;
