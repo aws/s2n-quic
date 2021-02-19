@@ -1,7 +1,7 @@
-[[todo]]
+[[TODO]]
 target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.3.1"
 quote = '''
-the spin bit is an optional feature of quic.
+The spin bit is an optional feature of quic.
 '''
 tracking-issue = "517"
 feature = "latency spin bit"
@@ -56,4 +56,3 @@ connection ID.
 '''
 tracking-issue = "517"
 feature = "Latency Spin Bit"
-
