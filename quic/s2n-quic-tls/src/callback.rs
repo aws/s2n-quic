@@ -1,4 +1,4 @@
-use bytes::BytesMut;
+use bytes::{BufMut, BytesMut};
 use core::{ffi::c_void, marker::PhantomData};
 use s2n_quic_core::{
     crypto::{tls, CryptoError, CryptoSuite},
@@ -234,10 +234,28 @@ where
 
     /// Called when sending data
     fn on_write(&mut self, data: &[u8]) -> usize {
-        if self.send_buffer.capacity() < data.len() {
+        let mut should_flush = true;
+
+        // If this write would cause the current send buffer to reallocate,
+        // we should flush and create a new send buffer.
+        should_flush &= self.send_buffer.remaining_mut() < data.len();
+
+        // Only flush the buffer if we've got more than 1/8 capacity,
+        // otherwise we'll just do a small reallocation
+        should_flush &= self.send_buffer.len() > SEND_BUFFER_CAPACITY / 8;
+
+        if should_flush {
             // Flush the send buffer before reallocating it
             self.flush();
-            *self.send_buffer = BytesMut::with_capacity(SEND_BUFFER_CAPACITY);
+
+            // ensure we only do one allocation for this write
+            let len = SEND_BUFFER_CAPACITY.max(data.len());
+
+            debug_assert!(
+                !self.send_buffer.is_empty(),
+                "dropping a send buffer with data will result in data loss"
+            );
+            *self.send_buffer = BytesMut::with_capacity(len);
         }
 
         // Write the current data to the send buffer
