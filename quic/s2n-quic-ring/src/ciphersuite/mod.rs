@@ -273,7 +273,10 @@ macro_rules! impl_ciphersuite {
             );
 
             assert_eq!(
-                compute_vec_label($cipher.key_len(), b"quic ku"),
+                compute_vec_label(
+                    $digest.hmac_algorithm().digest_algorithm().output_len,
+                    b"quic ku"
+                ),
                 $key_update_label,
                 "key update label mismatch"
             );
@@ -293,7 +296,7 @@ impl_ciphersuite!(
     label::QUIC_KEY_32,
     label::QUIC_IV_12,
     label::QUIC_HP_32,
-    label::QUIC_KU_32,
+    label::QUIC_KU_48,
     u64::pow(2, 23), // Confidentiality limit
     u64::pow(2, 52), // Integrity limit
     tls_aes_256_gcm_sha384_test
@@ -328,7 +331,7 @@ impl_ciphersuite!(
     label::QUIC_KEY_16,
     label::QUIC_IV_12,
     label::QUIC_HP_16,
-    label::QUIC_KU_16,
+    label::QUIC_KU_32,
     u64::pow(2, 23), // Confidentiality limit
     u64::pow(2, 52), // Integrity limit
     tls_aes_128_gcm_sha256_test

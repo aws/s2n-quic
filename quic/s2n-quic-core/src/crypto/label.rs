@@ -46,6 +46,9 @@ pub const QUIC_KEY_32: [u8; 18] = hex!("00200e746c7331332071756963206b657900");
 pub const QUIC_HP_32: [u8; 17] = hex!("00200d746c733133207175696320687000");
 pub const QUIC_KU_32: [u8; 17] = hex!("00200d746c7331332071756963206b7500");
 
+// 48-byte labels
+pub const QUIC_KU_48: [u8; 17] = hex!("00300d746c7331332071756963206b7500");
+
 /// Computes the label given the key len
 pub fn compute_label<T: Extend<u8>>(len: usize, label: &[u8], out: &mut T) {
     const TLS_LABEL: &[u8] = b"tls13 ";
@@ -82,6 +85,11 @@ mod tests {
         assert_eq!(compute_vec_label(32, b"quic key"), QUIC_KEY_32);
         assert_eq!(compute_vec_label(32, b"quic hp"), QUIC_HP_32);
         assert_eq!(compute_vec_label(32, b"quic ku"), QUIC_KU_32);
+    }
+
+    #[test]
+    fn len_48_test() {
+        assert_eq!(compute_vec_label(48, b"quic ku"), QUIC_KU_48);
     }
 
     fn compute_vec_label(len: usize, label: &[u8]) -> Vec<u8> {
