@@ -170,6 +170,20 @@ pub trait PacketEncoder<Crypto: HeaderCrypto + CryptoKey, Payload: PacketPayload
             return Err(PacketEncodingError::EmptyPayload(buffer));
         }
 
+        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.4.2
+        //# In sampling the packet
+        //# ciphertext, the Packet Number field is assumed to be 4 bytes long
+
+        // Header protection sampling assumes a packet number length of 4 bytes,
+        // but the actual packet number may be smaller than that, so we need to ensure
+        // there is still enough payload to sample from given the actual packet number length.
+        if estimated_payload_len
+            < PacketNumberLen::MAX_LEN - truncated_packet_number.len().bytesize()
+                + crypto.sealing_sample_len()
+        {
+            return Err(PacketEncodingError::InsufficientSpace(buffer));
+        }
+
         // Use the estimated_payload_len to check if we're
         // going to have enough room for it.
         estimator.write_repeated(estimated_payload_len, 0);
