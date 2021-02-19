@@ -516,6 +516,7 @@ impl LocalIdRegistry {
 
     /// Retires the connection id used during the handshake
     pub fn retire_handshake_connection_id(&mut self, timestamp: Timestamp) {
+        return;
         if let Some(handshake_id_info) = self
             .registered_ids
             .iter_mut()
