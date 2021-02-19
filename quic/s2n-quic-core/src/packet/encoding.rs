@@ -158,6 +158,18 @@ pub trait PacketEncoder<Crypto: HeaderCrypto + CryptoKey, Payload: PacketPayload
         // minimum_packet_len
         let minimum_payload_len = minimum_packet_len.saturating_sub(estimator.len());
 
+        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.4.2
+        //# In sampling the packet
+        //# ciphertext, the Packet Number field is assumed to be 4 bytes long
+
+        // Header protection sampling assumes a packet number length of 4 bytes,
+        // but the actual packet number may be smaller than that, so we need to ensure
+        // there is still enough payload to sample from given the actual packet number length.
+        let minimum_payload_len = minimum_payload_len.max(
+            PacketNumberLen::MAX_LEN - truncated_packet_number.len().bytesize()
+                + crypto.sealing_sample_len(),
+        );
+
         // Try to estimate the payload size - it may be inaccurate
         // but this provides some checks to save writing the packet
         // header
@@ -168,20 +180,6 @@ pub trait PacketEncoder<Crypto: HeaderCrypto + CryptoKey, Payload: PacketPayload
         // The payload is not interested in writing to this packet
         if estimated_payload_len == 0 {
             return Err(PacketEncodingError::EmptyPayload(buffer));
-        }
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.4.2
-        //# In sampling the packet
-        //# ciphertext, the Packet Number field is assumed to be 4 bytes long
-
-        // Header protection sampling assumes a packet number length of 4 bytes,
-        // but the actual packet number may be smaller than that, so we need to ensure
-        // there is still enough payload to sample from given the actual packet number length.
-        if estimated_payload_len
-            < PacketNumberLen::MAX_LEN - truncated_packet_number.len().bytesize()
-                + crypto.sealing_sample_len()
-        {
-            return Err(PacketEncodingError::InsufficientSpace(buffer));
         }
 
         // Use the estimated_payload_len to check if we're
