@@ -19,6 +19,7 @@ macro_rules! impl_ciphersuite {
     (
         $name:ident,
         $digest:path,
+        $digest_len:expr,
         $cipher:path,
         $cipher_key_len:expr,
         $header_protection:path,
@@ -273,7 +274,7 @@ macro_rules! impl_ciphersuite {
             );
 
             assert_eq!(
-                compute_vec_label($cipher.key_len(), b"quic ku"),
+                compute_vec_label($digest_len, b"quic ku"),
                 $key_update_label,
                 "key update label mismatch"
             );
@@ -287,13 +288,14 @@ macro_rules! impl_ciphersuite {
 impl_ciphersuite!(
     TLS_AES_256_GCM_SHA384,
     hkdf::HKDF_SHA384,
+    384 / 8,
     aead::AES_256_GCM,
     256 / 8, // 256-bit key
     aead::quic::AES_256,
     label::QUIC_KEY_32,
     label::QUIC_IV_12,
     label::QUIC_HP_32,
-    label::QUIC_KU_32,
+    label::QUIC_KU_48,
     u64::pow(2, 23), // Confidentiality limit
     u64::pow(2, 52), // Integrity limit
     tls_aes_256_gcm_sha384_test
@@ -306,6 +308,7 @@ impl_ciphersuite!(
 impl_ciphersuite!(
     TLS_CHACHA20_POLY1305_SHA256,
     hkdf::HKDF_SHA256,
+    256 / 8,
     aead::CHACHA20_POLY1305,
     256 / 8, // 256-bit key
     aead::quic::CHACHA20,
@@ -322,13 +325,14 @@ impl_ciphersuite!(
 impl_ciphersuite!(
     TLS_AES_128_GCM_SHA256,
     hkdf::HKDF_SHA256,
+    256 / 8,
     aead::AES_128_GCM,
     128 / 8, // 128-bit key
     aead::quic::AES_128,
     label::QUIC_KEY_16,
     label::QUIC_IV_12,
     label::QUIC_HP_16,
-    label::QUIC_KU_16,
+    label::QUIC_KU_32,
     u64::pow(2, 23), // Confidentiality limit
     u64::pow(2, 52), // Integrity limit
     tls_aes_128_gcm_sha256_test
