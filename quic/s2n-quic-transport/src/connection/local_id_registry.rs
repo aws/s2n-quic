@@ -469,21 +469,21 @@ impl LocalIdRegistry {
     pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
         let constraint = context.transmission_constraint();
 
-        let mut iter = self
+        for mut id_info in self
             .registered_ids
             .iter_mut()
             .filter(|id_info| id_info.status.can_transmit(constraint))
-            .peekable();
-
-        while let Some(id_info) = iter.next() {
+        {
             // Some client implementation are unable to process NEW_CONNECTION_ID frames that
-            // retires all existing connection IDs. To improve interoperability with these clients
-            // we can apply the retire_prior_to value only after previous NEW_CONNECTION_ID frames
-            // have been sent. The overall effect should be the same, but it gives the client a
-            // chance to add some new connection IDs before removing old ones.
+            // retire all existing connection IDs. This means that when the handshake completes and
+            // we request to replace the handshake connection ID, the client fails. To improve
+            // interoperability with these clients we can apply the retire_prior_to value only after
+            // we've given the client a new connection ID to replace the handshake connection ID.
+            // Since the minimum active_connection_id_limit is 2, the client should always have room
+            // for one more ID without having to retire the handshake connection ID.
             // TODO: Remove when client processing of these frames is corrected, see
             //       https://github.com/awslabs/s2n-quic/issues/522
-            let retire_prior_to = if iter.peek().is_some() {
+            let retire_prior_to = if id_info.sequence_number == 1 {
                 0
             } else {
                 self.retire_prior_to
