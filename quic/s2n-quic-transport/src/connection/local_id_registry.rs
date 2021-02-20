@@ -469,14 +469,29 @@ impl LocalIdRegistry {
     pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
         let constraint = context.transmission_constraint();
 
-        for mut id_info in self
+        let mut iter = self
             .registered_ids
             .iter_mut()
             .filter(|id_info| id_info.status.can_transmit(constraint))
-        {
+            .peekable();
+
+        while let Some(id_info) = iter.next() {
+            // Some client implementation are unable to process NEW_CONNECTION_ID frames that
+            // retires all existing connection IDs. To improve interoperability with these clients
+            // we can apply the retire_prior_to value only after previous NEW_CONNECTION_ID frames
+            // have been sent. The overall effect should be the same, but it gives the client a
+            // chance to add some new connection IDs before removing old ones.
+            // TODO: Remove when client processing of these frames is corrected, see
+            //       https://github.com/awslabs/s2n-quic/issues/522
+            let retire_prior_to = if iter.peek().is_some() {
+                0
+            } else {
+                self.retire_prior_to
+            };
+
             if let Some(packet_number) = context.write_frame(&frame::NewConnectionID {
                 sequence_number: id_info.sequence_number.into(),
-                retire_prior_to: self.retire_prior_to.into(),
+                retire_prior_to: retire_prior_to.into(),
                 connection_id: id_info.id.as_bytes(),
                 stateless_reset_token: id_info
                     .stateless_reset_token
