@@ -24,6 +24,8 @@ impl Default for KeyPhase {
 
 impl From<u8> for KeyPhase {
     fn from(v: u8) -> Self {
+        // Will only be 0 or 1. Invalid phases may result in a failed decryption, still in constant
+        // time.
         match v & 0x01 {
             0 => KeyPhase::Zero,
             1 => KeyPhase::One,

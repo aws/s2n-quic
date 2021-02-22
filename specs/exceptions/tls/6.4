@@ -1,0 +1,11 @@
+[[exception]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.4"
+quote = '''
+An endpoint that successfully removes protection with old
+keys when newer keys were used for packets with lower packet numbers
+MUST treat this as a connection error of type KEY_UPDATE_ERROR.
+'''
+reason = '''
+To reduce the possibility of a timing side channel, we do not attempt to remove protection from packets with old keys if the initial attempt failed.
+'''
+

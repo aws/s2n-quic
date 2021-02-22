@@ -133,7 +133,7 @@ pub struct ConnectionImpl<Config: connection::Config> {
     /// The limits applied to the current connection
     limits: Limits,
     /// Packet timeout to use when deriving new keys
-    pto: Duration,
+    key_update_pto: Duration,
 }
 
 #[cfg(debug_assertions)]
@@ -266,7 +266,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
             path_manager,
             packet_decryption_failures: 0,
             limits: parameters.limits,
-            pto: parameters.limits.ack_settings().max_ack_delay,
+            key_update_pto: parameters.limits.ack_settings().max_ack_delay,
         }
     }
 

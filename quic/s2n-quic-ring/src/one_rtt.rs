@@ -4,7 +4,7 @@ negotiated_crypto!(RingOneRTTCrypto);
 
 impl OneRTTCrypto for RingOneRTTCrypto {
     fn derive_next_key(&self) -> Self {
-        self.update()
+        Self(self.0.update())
     }
 }
 
@@ -77,10 +77,10 @@ mod tests {
         let mut next_cipher_output = [0; 32];
         let mut expected_cipher_output = [0; 32];
         next_cipher
-            .encrypt(0, &[1, 2, 3], &mut next_cipher_output[..])
+            .encrypt(0, &[], &mut next_cipher_output[..])
             .unwrap();
         expected_next_cipher
-            .encrypt(0, &[1, 2, 3], &mut expected_cipher_output[..])
+            .encrypt(0, &[], &mut expected_cipher_output[..])
             .unwrap();
 
         assert_eq!(next_cipher_output, expected_cipher_output);
