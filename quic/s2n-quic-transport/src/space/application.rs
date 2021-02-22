@@ -704,10 +704,7 @@ where
 
     /// Rotating the phase will switch the active key
     pub fn rotate_phase(&mut self) {
-        self.key_phase = match self.key_phase {
-            KeyPhase::Zero => KeyPhase::One,
-            KeyPhase::One => KeyPhase::Zero,
-        }
+        self.key_phase = (((self.key_phase as u8) + 1) % 2).into();
     }
 
     /// Derive a new key based on the active key, and store it in the non-active slot
@@ -824,6 +821,8 @@ mod tests {
 
         keyset.rotate_phase();
         assert_eq!(keyset.active_key().key.value, 1);
+        keyset.rotate_phase();
+        assert_eq!(keyset.active_key().key.value, 0);
     }
 
     #[test]
