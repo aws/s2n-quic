@@ -233,7 +233,10 @@ impl Manager {
         if self.space.is_application_data() && !is_handshake_confirmed {
             self.pto.cancel();
         } else {
-            self.pto.update(path, pto_base_timestamp);
+            self.pto.update(
+                path.rtt_estimator.pto_period(path.pto_backoff),
+                pto_base_timestamp,
+            );
         }
     }
 
@@ -734,39 +737,7 @@ impl Pto {
     //# packet is sent or acknowledged, when the handshake is confirmed
     //# (Section 4.1.2 of [QUIC-TLS]), or when Initial or Handshake keys are
     //# discarded (Section 4.9 of [QUIC-TLS]).
-    pub fn update<CC: CongestionController>(&mut self, path: &Path<CC>, base_timestamp: Timestamp) {
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
-        //# When an ack-eliciting packet is transmitted, the sender schedules a
-        //# timer for the PTO period as follows:
-        //#
-        //# PTO = smoothed_rtt + max(4*rttvar, kGranularity) + max_ack_delay
-
-        let mut pto_period = path.rtt_estimator.smoothed_rtt();
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
-        //# The PTO period MUST be at least kGranularity, to avoid the timer
-        //# expiring immediately.
-        pto_period += max(4 * path.rtt_estimator.rttvar(), K_GRANULARITY);
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
-        //# When the PTO is armed for Initial or Handshake packet number spaces,
-        //# the max_ack_delay in the PTO period computation is set to 0, since
-        //# the peer is expected to not delay these packets intentionally; see
-        //# 13.2.1 of [QUIC-TRANSPORT].
-        pto_period += self.max_ack_delay;
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
-        //# Even when there are ack-
-        //# eliciting packets in-flight in multiple packet number spaces, the
-        //# exponential increase in probe timeout occurs across all spaces to
-        //# prevent excess load on the network.  For example, a timeout in the
-        //# Initial packet number space doubles the length of the timeout in the
-        //# Handshake packet number space.
-        pto_period *= path.pto_backoff;
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
-        //# The PTO period is the amount of time that a sender ought to wait for
-        //# an acknowledgement of a sent packet.
+    pub fn update(&mut self, pto_period: Duration, base_timestamp: Timestamp) {
         self.timer.set(base_timestamp + pto_period);
     }
 
@@ -808,6 +779,37 @@ mod test {
         varint::VarInt,
     };
     use std::collections::HashSet;
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.2
+    //= type=test
+    //# When no previous RTT is available, the initial RTT
+    //# SHOULD be set to 333ms, resulting in a 1 second initial timeout, as
+    //# recommended in [RFC6298].
+    #[test]
+    fn one_second_pto_when_no_previous_rtt_available() {
+        let space = PacketNumberSpace::Handshake;
+        let max_ack_delay = Duration::from_millis(0);
+        let mut manager = Manager::new(space, max_ack_delay);
+        let now = s2n_quic_platform::time::now();
+
+        let path = Path::new(
+            Default::default(),
+            connection::PeerId::TEST_ID,
+            RTTEstimator::new(max_ack_delay),
+            Unlimited::default(),
+            false,
+        );
+
+        manager
+            .pto
+            .update(path.rtt_estimator.pto_period(path.pto_backoff), now);
+
+        assert!(manager.pto.timer.is_armed());
+        assert_eq!(
+            manager.pto.timer.iter().next().cloned(),
+            Some(now + Duration::from_millis(999))
+        );
+    }
 
     #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.5")]
     #[test]
@@ -1648,7 +1650,6 @@ mod test {
 
         assert!(manager.pto.timer.is_armed());
     }
-
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
     //= type=test
     //# The PTO period MUST be at least kGranularity, to avoid the timer
@@ -1677,39 +1678,12 @@ mod test {
             space,
         );
 
-        manager.pto.update(&path, now);
+        manager
+            .pto
+            .update(path.rtt_estimator.pto_period(path.pto_backoff), now);
 
         assert!(manager.pto.timer.is_armed());
         assert!(manager.pto.timer.iter().next().cloned().unwrap() >= now + K_GRANULARITY);
-    }
-
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.2
-    //= type=test
-    //# When no previous RTT is available, the initial RTT
-    //# SHOULD be set to 333ms, resulting in a 1 second initial timeout, as
-    //# recommended in [RFC6298].
-    #[test]
-    fn one_second_pto_when_no_previous_rtt_available() {
-        let space = PacketNumberSpace::Handshake;
-        let max_ack_delay = Duration::from_millis(0);
-        let mut manager = Manager::new(space, max_ack_delay);
-        let now = s2n_quic_platform::time::now();
-
-        let path = Path::new(
-            Default::default(),
-            connection::PeerId::TEST_ID,
-            RTTEstimator::new(max_ack_delay),
-            Unlimited::default(),
-            false,
-        );
-
-        manager.pto.update(&path, now);
-
-        assert!(manager.pto.timer.is_armed());
-        assert_eq!(
-            manager.pto.timer.iter().next().cloned(),
-            Some(now + Duration::from_millis(999))
-        );
     }
 
     #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1")]
