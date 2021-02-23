@@ -238,13 +238,11 @@ fn initial_packet_validator<'a, C: connection::Config>(
 
     if space.is_duplicate(packet.packet_number) {
         return Err(ProcessingError::DuplicatePacket);
-    } else {
-        match space.crypto.decrypt_packet(conn, |key| packet.decrypt(key)) {
-            Ok(packet) => {
-                return Ok(packet);
-            }
-            Err(e) => return Err(e),
-        }
+    }
+
+    match space.crypto.decrypt_packet(conn, |key| packet.decrypt(key)) {
+        Ok(packet) => Ok(packet),
+        Err(e) => Err(e),
     }
 }
 
@@ -260,13 +258,11 @@ fn handshake_packet_validator<'a, C: connection::Config>(
 
     if space.is_duplicate(packet.packet_number) {
         return Err(ProcessingError::DuplicatePacket);
-    } else {
-        match space.crypto.decrypt_packet(conn, |key| packet.decrypt(key)) {
-            Ok(packet) => {
-                return Ok(packet);
-            }
-            Err(e) => return Err(e),
-        }
+    }
+
+    match space.crypto.decrypt_packet(conn, |key| packet.decrypt(key)) {
+        Ok(packet) => Ok(packet),
+        Err(e) => Err(e),
     }
 }
 
@@ -281,15 +277,12 @@ fn short_packet_validator<'a, C: connection::Config>(
 
     if space.is_duplicate(packet.packet_number) {
         return Err(ProcessingError::DuplicatePacket);
-    } else {
-        let phased_crypto = space.crypto_for_phase(packet.key_phase());
+    }
 
-        match phased_crypto.decrypt_packet(conn, |key| packet.decrypt(key)) {
-            Ok(packet) => {
-                return Ok(packet);
-            }
-            Err(e) => return Err(e),
-        }
+    let phased_crypto = space.crypto_for_phase(packet.key_phase());
+    match phased_crypto.decrypt_packet(conn, |key| packet.decrypt(key)) {
+        Ok(packet) => Ok(packet),
+        Err(e) => Err(e),
     }
 }
 
@@ -880,7 +873,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                 // If, at some point, we decide to add it, we need to call `update_crypto_state` here.
                 // (note this comment is indented incorrectly by rustfmt. It applies above, not below. How
                 // to fix?)
-                return Ok(());
+                Ok(())
             }
             Err(e) => match e {
                 ProcessingError::DuplicatePacket => Ok(()),
