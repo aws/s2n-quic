@@ -276,8 +276,10 @@ mod test {
         assert_eq!(rtt_estimator.latest_rtt(), Duration::from_millis(0));
         assert_eq!(rtt_estimator.smoothed_rtt(), DEFAULT_INITIAL_RTT);
         assert_eq!(rtt_estimator.rttvar(), DEFAULT_INITIAL_RTT / 2);
-        assert!(rtt_estimator.pto_period(INITIAL_PTO_BACKOFF) >= Duration::from_millis(1000));
-        assert!(rtt_estimator.pto_period(INITIAL_PTO_BACKOFF) < Duration::from_millis(1010));
+        assert_eq!(
+            rtt_estimator.pto_period(INITIAL_PTO_BACKOFF),
+            Duration::from_millis(1009)
+        );
     }
 
     /// Test a zero RTT value is treated as 1 ms
@@ -295,8 +297,10 @@ mod test {
         assert_eq!(rtt_estimator.min_rtt, Duration::from_millis(1));
         assert_eq!(rtt_estimator.latest_rtt(), Duration::from_millis(1));
         assert_eq!(rtt_estimator.first_rtt_sample(), Some(now));
-        assert!(rtt_estimator.pto_period(INITIAL_PTO_BACKOFF) >= Duration::from_millis(12));
-        assert!(rtt_estimator.pto_period(INITIAL_PTO_BACKOFF) < Duration::from_millis(14));
+        assert_eq!(
+            rtt_estimator.pto_period(INITIAL_PTO_BACKOFF),
+            Duration::from_millis(13)
+        );
     }
 
     #[compliance::tests(
@@ -433,8 +437,10 @@ mod test {
             7 * prev_smoothed_rtt / 8 + rtt_sample / 8
         );
         assert_eq!(rtt_estimator.first_rtt_sample, Some(now));
-        assert!(rtt_estimator.pto_period(INITIAL_PTO_BACKOFF) >= Duration::from_millis(1550));
-        assert!(rtt_estimator.pto_period(INITIAL_PTO_BACKOFF) < Duration::from_millis(1560));
+        assert_eq!(
+            rtt_estimator.pto_period(INITIAL_PTO_BACKOFF),
+            Duration::from_nanos(1551249998)
+        );
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3
