@@ -11,7 +11,7 @@ use crate::{
     contexts::ConnectionOnTransmitError,
     path,
     recovery::{congestion_controller, RTTEstimator},
-    space::{ApplicationSpace, HandshakeSpace, InitialSpace, PacketSpace},
+    space::PacketSpace,
     transmission,
 };
 
@@ -22,10 +22,10 @@ use s2n_quic_core::{
     inet::DatagramInfo,
     io::tx,
     packet::{
-        handshake::{CleartextHandshake, ProtectedHandshake},
+        handshake::ProtectedHandshake,
         initial::{CleartextInitial, ProtectedInitial},
         retry::ProtectedRetry,
-        short::{CleartextShort, ProtectedShort},
+        short::ProtectedShort,
         version_negotiation::ProtectedVersionNegotiation,
         zero_rtt::ProtectedZeroRTT,
     },
@@ -223,66 +223,6 @@ impl<Config: connection::Config> connection::AeadIntegrityLimitTracking for Conn
 
     fn decryption_error_count(&self) -> u64 {
         self.packet_decryption_failures
-    }
-}
-
-fn initial_packet_validator<'a, C: connection::Config>(
-    conn: &mut ConnectionImpl<C>,
-    protected: ProtectedInitial<'a>,
-    space: &InitialSpace<C>,
-) -> Result<CleartextInitial<'a>, ProcessingError> {
-    let packet_number_decoder = space.packet_number_decoder();
-    let packet = space
-        .crypto
-        .unprotect_packet(|key| protected.unprotect(key, packet_number_decoder))?;
-
-    if space.is_duplicate(packet.packet_number) {
-        return Err(ProcessingError::DuplicatePacket);
-    }
-
-    match space.crypto.decrypt_packet(conn, |key| packet.decrypt(key)) {
-        Ok(packet) => Ok(packet),
-        Err(e) => Err(e),
-    }
-}
-
-fn handshake_packet_validator<'a, C: connection::Config>(
-    conn: &mut ConnectionImpl<C>,
-    protected: ProtectedHandshake<'a>,
-    space: &HandshakeSpace<C>,
-) -> Result<CleartextHandshake<'a>, ProcessingError> {
-    let packet_number_decoder = space.packet_number_decoder();
-    let packet = space
-        .crypto
-        .unprotect_packet(|key| protected.unprotect(key, packet_number_decoder))?;
-
-    if space.is_duplicate(packet.packet_number) {
-        return Err(ProcessingError::DuplicatePacket);
-    }
-
-    match space.crypto.decrypt_packet(conn, |key| packet.decrypt(key)) {
-        Ok(packet) => Ok(packet),
-        Err(e) => Err(e),
-    }
-}
-
-fn short_packet_validator<'a, C: connection::Config>(
-    conn: &mut ConnectionImpl<C>,
-    protected: ProtectedShort<'a>,
-    space: &ApplicationSpace<C>,
-) -> Result<CleartextShort<'a>, ProcessingError> {
-    let crypto = space.crypto();
-    let packet_number_decoder = space.packet_number_decoder();
-    let packet = crypto.unprotect_packet(|key| protected.unprotect(key, packet_number_decoder))?;
-
-    if space.is_duplicate(packet.packet_number) {
-        return Err(ProcessingError::DuplicatePacket);
-    }
-
-    let phased_crypto = space.crypto_for_phase(packet.key_phase());
-    match phased_crypto.decrypt_packet(conn, |key| packet.decrypt(key)) {
-        Ok(packet) => Ok(packet),
-        Err(e) => Err(e),
     }
 }
 
@@ -653,7 +593,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         packet: ProtectedInitial,
     ) -> Result<(), ProcessingError> {
         let (space, _status) = shared_state.space_manager.initial_mut().unwrap();
-        match initial_packet_validator(self, packet, &space) {
+        match space.validate_and_decrypt_packet(self, packet) {
             Ok(packet) => {
                 self.handle_cleartext_initial_packet(shared_state, datagram, path_id, packet)?;
 
@@ -748,7 +688,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         //# packets.
 
         let (space, handshake_status) = shared_state.space_manager.handshake_mut().unwrap();
-        match handshake_packet_validator(self, packet, &space) {
+        match space.validate_and_decrypt_packet(self, packet) {
             Ok(packet) => {
                 if let Some(close) = space.handle_cleartext_payload(
                     packet.packet_number,
@@ -845,7 +785,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         }
 
         let (space, handshake_status) = shared_state.space_manager.application_mut().unwrap();
-        match short_packet_validator(self, packet, &space) {
+        match space.validate_and_decrypt_packet(self, packet) {
             Ok(packet) => {
                 if let Some(close) = space.handle_cleartext_payload(
                     packet.packet_number,
