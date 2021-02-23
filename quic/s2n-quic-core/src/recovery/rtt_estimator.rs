@@ -263,7 +263,7 @@ mod test {
     use crate::{
         packet::number::PacketNumberSpace,
         path::INITIAL_PTO_BACKOFF,
-        recovery::{RTTEstimator, DEFAULT_INITIAL_RTT},
+        recovery::{RTTEstimator, DEFAULT_INITIAL_RTT, K_GRANULARITY},
         time::{Clock, Duration, NoopClock},
     };
 
@@ -603,5 +603,29 @@ mod test {
         //# persistent congestion is established.
         assert_eq!(rtt_estimator.min_rtt(), rtt_sample);
         assert_eq!(rtt_estimator.smoothed_rtt(), rtt_sample);
+    }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+    //= type=test
+    //# The PTO period MUST be at least kGranularity, to avoid timers
+    //# expiring immediately.
+    #[test]
+    fn pto_must_be_at_least_k_granularity() {
+        let space = PacketNumberSpace::Handshake;
+        let max_ack_delay = Duration::from_millis(0);
+        let now = NoopClock.get_time();
+        let mut rtt_estimator = RTTEstimator::new(max_ack_delay);
+
+        // Update RTT with the smallest possible sample
+        rtt_estimator.update_rtt(
+            Duration::from_millis(0),
+            Duration::from_nanos(1),
+            now,
+            true,
+            space,
+        );
+
+        let pto_period = rtt_estimator.pto_period(INITIAL_PTO_BACKOFF);
+        assert!(pto_period >= K_GRANULARITY);
     }
 }

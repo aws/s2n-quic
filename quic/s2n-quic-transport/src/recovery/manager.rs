@@ -234,8 +234,8 @@ impl Manager {
             self.pto.cancel();
         } else {
             self.pto.update(
-                path.rtt_estimator.pto_period(path.pto_backoff),
                 pto_base_timestamp,
+                path.rtt_estimator.pto_period(path.pto_backoff),
             );
         }
     }
@@ -737,7 +737,7 @@ impl Pto {
     //# packet is sent or acknowledged, when the handshake is confirmed
     //# (Section 4.1.2 of [QUIC-TLS]), or when Initial or Handshake keys are
     //# discarded (Section 4.9 of [QUIC-TLS]).
-    pub fn update(&mut self, pto_period: Duration, base_timestamp: Timestamp) {
+    pub fn update(&mut self, base_timestamp: Timestamp, pto_period: Duration) {
         self.timer.set(base_timestamp + pto_period);
     }
 
@@ -802,7 +802,7 @@ mod test {
 
         manager
             .pto
-            .update(path.rtt_estimator.pto_period(path.pto_backoff), now);
+            .update(now, path.rtt_estimator.pto_period(path.pto_backoff));
 
         assert!(manager.pto.timer.is_armed());
         assert_eq!(
@@ -1650,6 +1650,7 @@ mod test {
 
         assert!(manager.pto.timer.is_armed());
     }
+
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
     //= type=test
     //# The PTO period MUST be at least kGranularity, to avoid the timer
@@ -1680,7 +1681,7 @@ mod test {
 
         manager
             .pto
-            .update(path.rtt_estimator.pto_period(path.pto_backoff), now);
+            .update(now, path.rtt_estimator.pto_period(path.pto_backoff));
 
         assert!(manager.pto.timer.is_armed());
         assert!(manager.pto.timer.iter().next().cloned().unwrap() >= now + K_GRANULARITY);
