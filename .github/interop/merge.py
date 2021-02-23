@@ -9,12 +9,12 @@ quic_draft = None
 quic_version = None
 diff_regression = False
 S2N_QUIC = "s2n-quic"
-S2N_QUIC_DIFF = S2N_QUIC + "-diff"
 s2n_quic_new_version_name = S2N_QUIC
 s2n_quic_prev_version_name = S2N_QUIC
 clients = set()
 servers = set()
 results = {}
+results_diff = {}
 measurements = {}
 tests = {}
 logs = {}
@@ -47,20 +47,18 @@ def diff_result(client, server, test, prev_result):
 
 
 # Sort the implementations, except for s2n-quic being ordered as
-# previous version, new version, diff
+# previous version, new version
 def reorder_implementations(impls):
     sorted_impls = sorted(impls)
 
     if args.prev_version and S2N_QUIC in sorted_impls:
         sorted_impls.remove(s2n_quic_prev_version_name)
         sorted_impls.remove(s2n_quic_new_version_name)
-        sorted_impls.remove(S2N_QUIC_DIFF)
 
         for i, impl in enumerate(sorted_impls):
             if impl > S2N_QUIC:
                 sorted_impls.insert(i, s2n_quic_prev_version_name)
                 sorted_impls.insert(i + 1, s2n_quic_new_version_name)
-                sorted_impls.insert(i + 2, S2N_QUIC_DIFF)
                 break
 
     return sorted_impls
@@ -144,12 +142,11 @@ if args.prev_version:
             if client == S2N_QUIC:
                 # Rename the previous version of s2n-quic (used when pushing to main)
                 client = s2n_quic_prev_version_name
-                results.setdefault(S2N_QUIC_DIFF, {})
-                measurements.setdefault(S2N_QUIC_DIFF, {})
-                clients.add(S2N_QUIC_DIFF)
+                results_diff.setdefault(S2N_QUIC, {})
 
             results.setdefault(client, {})
             measurements.setdefault(client, {})
+            results_diff.setdefault(client, {})
 
             clients.add(client)
 
@@ -157,9 +154,7 @@ if args.prev_version:
                 if server == S2N_QUIC:
                     # Rename the previous version of s2n-quic (used when pushing to main)
                     server = s2n_quic_prev_version_name
-                    results[client].setdefault(S2N_QUIC_DIFF, {})
-                    measurements[client].setdefault(S2N_QUIC_DIFF, {})
-                    servers.add(S2N_QUIC_DIFF)
+                    results_diff[client].setdefault(S2N_QUIC, {})
 
                 # We only need to compare to s2n-quic
                 if client != s2n_quic_prev_version_name and server != s2n_quic_prev_version_name:
@@ -175,6 +170,7 @@ if args.prev_version:
 
                 results[client].setdefault(server, {})
                 measurements[client].setdefault(server, {})
+                results_diff[client].setdefault(server, {})
 
                 for r in result['results'][index]:
                     test = r['abbr']
@@ -185,15 +181,15 @@ if args.prev_version:
                     if client == s2n_quic_prev_version_name and server == s2n_quic_prev_version_name:
                         # diff with new versions of both the s2n-quic client and server
                         diff_output = diff_result(s2n_quic_new_version_name, s2n_quic_new_version_name, test, prev_result)
-                        results[S2N_QUIC_DIFF][S2N_QUIC_DIFF][test] = diff_output
+                        results_diff[S2N_QUIC][S2N_QUIC][test] = diff_output
                     elif server == s2n_quic_prev_version_name:
                         # diff with the new version of the s2n-quic server
                         diff_output = diff_result(client, s2n_quic_new_version_name, test, prev_result)
-                        results[client][S2N_QUIC_DIFF][test] = diff_output
+                        results_diff[client][S2N_QUIC][test] = diff_output
                     elif client == s2n_quic_prev_version_name:
                         # diff with the new version of the s2n-quic client
                         diff_output = diff_result(s2n_quic_new_version_name, server, test, prev_result)
-                        results[S2N_QUIC_DIFF][server][test] = diff_output
+                        results_diff[S2N_QUIC][server][test] = diff_output
 
                     if prev_result == 'succeeded' and diff_output == 'failed':
                         # If any test went from success to failure, count as a regression
@@ -208,15 +204,19 @@ if args.prev_version:
 out = {
     "start_time": start_time,
     "end_time": end_time,
+    "new_version": s2n_quic_new_version_name,
+    "prev_version": s2n_quic_prev_version_name,
     "log_dir": args.interop_log_url,
     "s2n_quic_log_dir": logs,
     "servers": reorder_implementations(servers),
     "clients": reorder_implementations(clients),
+    "all_impls": [],
     "urls": urls,
     "tests": tests,
     "quic_draft": quic_draft,
     "quic_version": quic_version,
     "results": [],
+    "results_diff": {},
     "measurements": [],
 }
 
@@ -242,6 +242,47 @@ for client in out['clients']:
 
         out["results"].append(pair_results)
         out["measurements"].append(pair_measurements)
+
+impls = clients | servers
+impls.discard(s2n_quic_prev_version_name)
+impls.discard(s2n_quic_new_version_name)
+impls.add(S2N_QUIC)
+out['all_impls'] = sorted(impls)
+
+if S2N_QUIC in clients:
+    out["results_diff"].setdefault('client', [])
+
+if S2N_QUIC in servers:
+    out["results_diff"].setdefault('server', [])
+
+for impl in out['all_impls']:
+    pair_results = []
+
+    if 'server' in out["results_diff"]:
+        for test in sorted(tests.keys()):
+            server_diff = results_diff.get(impl, {}).get(S2N_QUIC, {}).get(test)
+            if server_diff:
+                pair_results.append(
+                    {
+                        "abbr": test,
+                        "name": tests[test]['name'],
+                        "result": server_diff,
+                    }
+                )
+        out["results_diff"]["server"].append(pair_results)
+
+    if 'client' in out["results_diff"]:
+        for test in sorted(tests.keys()):
+            client_diff = results_diff.get(S2N_QUIC, {}).get(impl, {}).get(test)
+            if client_diff:
+                pair_results.append(
+                    {
+                        "abbr": test,
+                        "name": tests[test]['name'],
+                        "result": client_diff,
+                    }
+                )
+        out["results_diff"]["client"].append(pair_results)
 
 print(json.dumps(out))
 
