@@ -68,17 +68,28 @@
     ].join(":").replace(/\b(\d)\b/g, "0$1");
   }
 
-  function getLogLink(log_dir, server, client, test, text, res) {
+  function getLogLink(log_dir, s2n_quic_log_dir, server, client, test, text, res) {
     var ttip = "<b>Test:</b> " + test + "<br>" +
                "<b>Client:</b> " + client + "<br>" +
                "<b>Server:</b> " + server + "<br>" +
                "<b>Result: <span class=\"text-" + color_type[res] + "\">" + res + "</span></b>";
+    var log_url_pattern = s2n_quic_log_dir[server];
+
+    if (!log_url_pattern) {
+      log_url_pattern = s2n_quic_log_dir[client]
+    }
+
+    if (!log_url_pattern) {
+      log_url_pattern = log_dir;
+    }
+
+    var log_url = log_url_pattern.replace("SERVER", server).replace("CLIENT", client).replace("TEST", test);
 
     var a = document.createElement("a");
     a.className = "btn btn-xs btn-" + color_type[res] + " " + res + " test-" + text.toLowerCase();
     var ttip_target = a;
     if (res !== "unsupported") {
-      a.href = "logs/" + log_dir + "/" + server + "_" + client + "/" + test + "/output.txt";
+      a.href = log_url;
       a.target = "_blank";
       ttip += "<br><br>(Click for logs.)";
     } else {
@@ -139,7 +150,7 @@
     var appendResult = function(el, res, i, j) {
       result.results[index].forEach(function(item) {
         if(item.result !== res) return;
-        el.appendChild(getLogLink(result.log_dir, result.servers[j], result.clients[i], item.name, item.abbr, res));
+        el.appendChild(getLogLink(result.log_dir, result.s2n_quic_log_dir, result.servers[j], result.clients[i], item.name, item.abbr, res));
       });
     };
 
@@ -174,7 +185,7 @@
         cell.className = "server-" + result.servers[j] + " client-" + result.clients[i];
         for(var k = 0; k < res.length; k++) {
           var measurement = res[k];
-          var link = getLogLink(result.log_dir, result.servers[j], result.clients[i], measurement.name, measurement.abbr, measurement.result);
+          var link = getLogLink(result.log_dir, result.s2n_quic_log_dir, result.servers[j], result.clients[i], measurement.name, measurement.abbr, measurement.result);
           if (measurement.result === "succeeded")
               link.innerHTML += ": " + measurement.details;
           cell.appendChild(link);
