@@ -284,6 +284,9 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
                     if let Err(err) = conn.handle_packet(shared_state, datagram, path_id, packet) {
                         match err {
+                            ProcessingError::DuplicatePacket => {
+                                // We discard duplicate packets
+                            }
                             ProcessingError::TransportError(err) => {
                                 conn.handle_transport_error(shared_state, datagram, err);
                                 return Err(());
