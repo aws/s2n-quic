@@ -121,26 +121,6 @@ impl<'a> Into<StreamError> for CloseReason<'a> {
     }
 }
 
-/*
-pub enum PacketValidationError {
-    DuplicatePacket,
-    CryptoError(CryptoError),
-    ProcessingError(ProcessingError),
-}
-
-impl From<CryptoError> for PacketValidationError {
-    fn from(inner_error: CryptoError) -> Self {
-        PacketValidationError::CryptoError(inner_error)
-    }
-}
-
-impl From<ProcessingError> for PacketValidationError {
-    fn from(inner_error: ProcessingError) -> Self {
-        PacketValidationError::ProcessingError(inner_error)
-    }
-}
-*/
-
 /// Some connection methods may need to indicate both `TransportError`s and `CryptoError`s. This
 /// enum is used to allow for either error type to be returned as appropriate.
 pub enum ProcessingError {

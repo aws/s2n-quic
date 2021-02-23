@@ -45,27 +45,6 @@ pub struct InitialSpace<Config: connection::Config> {
 }
 
 impl<Config: connection::Config> InitialSpace<Config> {
-    /// Validate packets in the Initial packet space
-    pub fn validate_and_decrypt_packet<'a, C: connection::AeadIntegrityLimitTracking>(
-        &self,
-        conn: &mut C,
-        protected: ProtectedInitial<'a>,
-    ) -> Result<CleartextInitial<'a>, ProcessingError> {
-        let packet_number_decoder = self.packet_number_decoder();
-        let packet = self
-            .crypto
-            .unprotect_packet(|key| protected.unprotect(key, packet_number_decoder))?;
-
-        if self.is_duplicate(packet.packet_number) {
-            return Err(ProcessingError::DuplicatePacket);
-        }
-
-        match self.crypto.decrypt_packet(conn, |key| packet.decrypt(key)) {
-            Ok(packet) => Ok(packet),
-            Err(e) => Err(e),
-        }
-    }
-
     pub fn new(
         crypto: <Config::TLSSession as CryptoSuite>::InitialCrypto,
         now: Timestamp,
@@ -234,6 +213,27 @@ impl<Config: connection::Config> InitialSpace<Config> {
                 path,
             },
         )
+    }
+
+    /// Validate packets in the Initial packet space
+    pub fn validate_and_decrypt_packet<'a, C: connection::AeadIntegrityLimitTracking>(
+        &self,
+        conn: &mut C,
+        protected: ProtectedInitial<'a>,
+    ) -> Result<CleartextInitial<'a>, ProcessingError> {
+        let packet_number_decoder = self.packet_number_decoder();
+        let packet = self
+            .crypto
+            .unprotect_packet(|key| protected.unprotect(key, packet_number_decoder))?;
+
+        if self.is_duplicate(packet.packet_number) {
+            return Err(ProcessingError::DuplicatePacket);
+        }
+
+        match self.crypto.decrypt_packet(conn, |key| packet.decrypt(key)) {
+            Ok(packet) => Ok(packet),
+            Err(e) => Err(e),
+        }
     }
 }
 
