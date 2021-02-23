@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="ie=edge">
+  <title>s2n-quic Interop Results</title>
+  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootswatch/4.5.2/flatly/bootstrap.min.css" integrity="sha384-qF/QmIAj5ZaYFAeQcrQ6bfVMAh4zZlrGwTPY7T/M+iTTLJqJBJjwwnsE5Y0mV7QK" crossorigin="anonymous">
+  <style type="text/css">
+.btn-xs {
+  margin: 0 .1rem .1rem 0;
+  padding: .01rem .025rem .01rem .025rem;
+  font-size: .7rem;
+  border-width: 2px;
+  border-radius: 4px;
+  font-weight: bold;
+}
+
+.btn-highlight {
+  background-color: yellow !important;
+  color: black !important;
+}
+
+.hover-xy {
+  background-color: #ecf0f1;
+  color: #e74c3c;
+}
+
+tr.hover-xy > th, th.hover-xy {
+  background-color: #cfd9db;
+  color: #e74c3c;
+}
+  </style>
+</head>
+<body>
+  <nav class="navbar navbar-expand-lg navbar-light bg-light">
+    <a href="https://github.com/awslabs/s2n-quic">
+      <span class="navbar-brand">
+        s2n-quic Interop Results
+      </span>
+    </a>
+    <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="navbarNav">
+      <ul class="navbar-nav">
+        <div class="navbar-text duration px-4">
+          <span class="font-weight-bold">QUIC version</span><br>
+          <span id="quic-vers"></span>
+        </div>
+        <div class="navbar-text end-time px-4">
+          <span class="font-weight-bold">End Time:</span><br>
+          <span id="lastrun-end"></span>
+        </div>
+      </ul>
+    </div>
+  </nav>
+
+  <div class="container-fluid">
+
+    <h3 class="mt-5">Results Filter</h3>
+
+    <div class="mt-2 row">
+      <div class="col-2 col-sm-1">Client:</div>
+      <div id="client" class="col-10 col-sm-11 btn-group flex-wrap btn-group-sm" role="group" aria-label="Filter client implementations"></div>
+    </div>
+
+    <div class="mt-2 row">
+      <div class="col-2 col-sm-1">Server:</div>
+      <div id="server" class="col-10 col-sm-11 btn-group flex-wrap btn-group-sm" role="group" aria-label="Filter server implementations"></div>
+    </div>
+
+    <div class="mt-2 row">
+      <div class="col-2 col-sm-1">Test:</div>
+      <div id="test" class="col-10 col-sm-11 btn-group flex-wrap btn-group-sm" role="group" aria-label="Filter test cases"></div>
+    </div>
+
+    <h3 class="mt-5">Interop Status</h3>
+    <table id="interop" class="result table"></table>
+
+    <h3 class="mt-5">Measurement Results</h3>
+    <table id="measurements" class="result table"></table>
+  </div>
+
+  <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js" integrity="sha384-DfXdz2htPH0lsSSs5nCTpuj/zy4C+OGpamoFVy38MVBnE+IbbVYUew+OrCXaRkfj" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js" integrity="sha384-9/reFTGAW83EW2RDu2S0VKaIzap3H66lZH81PoYlFhbGU+6BZp6G7niu735Sk7lN" crossorigin="anonymous"></script>
+  <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js" integrity="sha384-B4gt1jrGC7Jh4AgTPSdUtOBvfO8shuf57BaghqFfPlYxofvL8/KUEfYiJOMMV+rV" crossorigin="anonymous"></script>
+  <script src="script.js"></script>
+</body>
+</html>
