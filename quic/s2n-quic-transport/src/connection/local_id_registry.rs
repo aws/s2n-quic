@@ -609,25 +609,17 @@ impl LocalIdRegistry {
 
 impl crate::transmission::interest::Provider for LocalIdRegistry {
     fn transmission_interest(&self) -> crate::transmission::Interest {
-        let has_ids_pending_reissue = self
-            .registered_ids
-            .iter()
-            .any(|id_info| id_info.status == PendingReissue);
+        let mut interest = crate::transmission::Interest::None;
 
-        if has_ids_pending_reissue {
-            return crate::transmission::Interest::LostData;
+        for id_info in self.registered_ids.iter() {
+            match id_info.status {
+                PendingReissue => return crate::transmission::Interest::LostData,
+                PendingIssuance => interest = crate::transmission::Interest::NewData,
+                _ => {}
+            }
         }
 
-        let has_ids_pending_issuance = self
-            .registered_ids
-            .iter()
-            .any(|id_info| id_info.status == PendingIssuance);
-
-        if has_ids_pending_issuance {
-            crate::transmission::Interest::NewData
-        } else {
-            crate::transmission::Interest::None
-        }
+        interest
     }
 }
 
