@@ -268,7 +268,6 @@ mod test {
     };
 
     /// Test the initial values before any RTT samples
-    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3")]
     #[test]
     fn initial_rtt() {
         let rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
@@ -303,10 +302,10 @@ mod test {
         );
     }
 
-    #[compliance::tests(
-    /// *  MUST use the lesser of the acknowledgement delay and the peer's
-    //     max_ack_delay after the handshake is confirmed;.
-    "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3")]
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3
+    //= type=test
+    //# *  MUST use the lesser of the acknowledgement delay and the peer's
+    //#    max_ack_delay after the handshake is confirmed;.
     #[test]
     fn max_ack_delay() {
         let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
@@ -366,8 +365,6 @@ mod test {
     }
 
     /// Test several rounds of RTT updates
-    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.2")]
-    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3")]
     #[test]
     fn update_rtt() {
         let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
@@ -537,12 +534,12 @@ mod test {
         );
     }
 
-    #[compliance::tests(
-    /// The persistent congestion duration is computed as follows:
-    /// 
-    /// (smoothed_rtt + max(4*rttvar, kGranularity) + max_ack_delay) *
-    ///    kPersistentCongestionThreshold
-    "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.1")]
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.1
+    //= type=test
+    //# The persistent congestion duration is computed as follows:
+    //#
+    //# (smoothed_rtt + max(4*rttvar, kGranularity) + max_ack_delay) *
+    //#   kPersistentCongestionThreshold
     #[test]
     fn persistent_congestion_duration() {
         let max_ack_delay = Duration::from_millis(10);
@@ -613,7 +610,7 @@ mod test {
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
     //= type=test
-    //# The PTO period MUST be at least kGranularity, to avoid timers
+    //# The PTO period MUST be at least kGranularity, to avoid the timer
     //# expiring immediately.
     #[test]
     fn pto_must_be_at_least_k_granularity() {
