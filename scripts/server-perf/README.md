@@ -13,8 +13,8 @@
 ## Generating a flamegraph with a specific file size
 
 
-first arg is how much data is sent _from_ the server
-second arg is how much data is sent _to_ the server
+first arg is how much data should be downloaded from server
+second arg is how much data should be uploaded to server
 ```bash
 ./scripts/server-perf/run 1MB 2MB
 ```

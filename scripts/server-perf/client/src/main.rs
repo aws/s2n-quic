@@ -50,7 +50,7 @@ async fn client(
         .await
         .context("unable to connect")?;
 
-    let (mut send, recv): (quinn::SendStream, quinn::RecvStream) = connection
+    let (mut send, recv) = connection
         .open_bi()
         .await
         .context("failed to open stream")?;
@@ -66,45 +66,47 @@ async fn client(
     // client is receiving and server is sending
     let receiver = tokio::spawn(async move { handle_recv_stream(recv, download).await });
 
-    // record the response
+    // record the time
     let all = Instant::now();
-    if let Ok(_) = futures::try_join!(receiver, sender) {
-        let duration = all.elapsed();
-        eprintln!("total duration took {:?}", duration,);
-    }
+    let _ = futures::try_join!(receiver, sender)?;
+    let duration = all.elapsed();
+    eprintln!("total duration took {:?}", duration,);
 
     Ok(())
 }
 
 async fn handle_recv_stream(mut recv: quinn::RecvStream, len: Byte) -> Result<()> {
-    // record the response
-    let start = Instant::now();
-
     let mut recv_len = 0usize;
     let mut buf = [0u8; 10_000];
+
+    // record the time
+    let start = Instant::now();
+
     while let Some(len) = recv.read(&mut buf).await? {
         recv_len += len;
     }
     let duration = start.elapsed();
     let bytes_per_sec = (recv_len as f64) / duration.as_secs_f64();
 
-    eprintln!(
-        "received {} data in {:?} - {}/s",
-        len.get_adjusted_unit(ByteUnit::MB),
-        duration,
-        Byte::from(bytes_per_sec as u64).get_appropriate_unit(true)
-    );
+    if recv_len > 0 {
+        eprintln!(
+            "received {} data in {:?} - {}/s",
+            len.get_adjusted_unit(ByteUnit::MB),
+            duration,
+            Byte::from(bytes_per_sec as u64).get_appropriate_unit(true)
+        );
+    }
 
     Ok(())
 }
 
 async fn handle_send_stream(mut send: quinn::SendStream, len: Byte) -> Result<()> {
     let up_len = len.get_bytes() as u64;
-    // record the response
-    let start = Instant::now();
-
-    let mut chunks: Vec<Bytes> = vec![Bytes::new(); 16];
+    let mut chunks = vec![Bytes::new(); 16];
     let mut data = testing::Data::new(up_len);
+
+    // record the time
+    let start = Instant::now();
 
     while let Some(count) = data.send(usize::MAX, &mut chunks) {
         for chunk in chunks.iter_mut().take(count) {
@@ -118,21 +120,14 @@ async fn handle_send_stream(mut send: quinn::SendStream, len: Byte) -> Result<()
     let duration = start.elapsed();
     let bytes_per_sec = (up_len as f64) / duration.as_secs_f64();
 
-    eprintln!(
-        "sent {} data in {:?} - {}/s",
-        len.get_adjusted_unit(ByteUnit::MB),
-        duration,
-        Byte::from(bytes_per_sec as u64).get_appropriate_unit(true)
-    );
+    if up_len > 0 {
+        eprintln!(
+            "sent {} data in {:?} - {}/s",
+            len.get_adjusted_unit(ByteUnit::MB),
+            duration,
+            Byte::from(bytes_per_sec as u64).get_appropriate_unit(true)
+        );
+    }
 
     Ok(())
-}
-
-#[cfg(test)]
-mod test {
-
-    #[test]
-    fn gen_data() {
-        assert!(true);
-    }
 }
