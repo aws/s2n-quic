@@ -593,18 +593,14 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         packet: ProtectedInitial,
     ) -> Result<(), ProcessingError> {
         if let Some((space, _status)) = shared_state.space_manager.initial_mut() {
-            match space.validate_and_decrypt_packet(self, packet) {
-                Ok(packet) => {
-                    self.handle_cleartext_initial_packet(shared_state, datagram, path_id, packet)?;
+            let packet = space.validate_and_decrypt_packet(self, packet)?;
+            self.handle_cleartext_initial_packet(shared_state, datagram, path_id, packet)?;
 
-                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.1
-                    //# An endpoint restarts its idle timer when a packet from its peer is
-                    //# received and processed successfully.
-                    self.restart_peer_idle_timer(datagram.timestamp);
-                    return Ok(());
-                }
-                Err(e) => return Err(e),
-            }
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.1
+            //# An endpoint restarts its idle timer when a packet from its peer is
+            //# received and processed successfully.
+            self.restart_peer_idle_timer(datagram.timestamp);
+            return Ok(());
         }
 
         Ok(())
@@ -688,57 +684,48 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         //# packets.
 
         if let Some((space, handshake_status)) = shared_state.space_manager.handshake_mut() {
-            match space.validate_and_decrypt_packet(self, packet) {
-                Ok(packet) => {
-                    if let Some(close) = space.handle_cleartext_payload(
-                        packet.packet_number,
-                        packet.payload,
-                        datagram,
-                        path_id,
-                        &mut self.path_manager,
-                        handshake_status,
-                        &mut self.local_id_registry,
-                    )? {
-                        self.close(
-                            shared_state,
-                            ConnectionCloseReason::PeerImmediateClose(close),
-                            datagram.timestamp,
-                        );
-                        return Ok(());
-                    }
-
-                    if Self::Config::ENDPOINT_TYPE.is_server() {
-                        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9.1
-                        //# a server MUST discard Initial keys when it first
-                        //# successfully processes a Handshake packet.
-                        shared_state
-                            .space_manager
-                            .discard_initial(self.path_manager.active_path_mut());
-
-                        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1
-                        //# Once the server has successfully processed a
-                        //# Handshake packet from the client, it can consider the client address
-                        //# to have been validated.
-                        self.path_manager[path_id].on_validated();
-                    }
-
-                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.1
-                    //# An endpoint restarts its idle timer when a packet from its peer is
-                    //# received and processed successfully.
-                    self.restart_peer_idle_timer(datagram.timestamp);
-
-                    // try to move the crypto state machine forward
-                    self.update_crypto_state(shared_state, datagram)?;
-
-                    return Ok(());
-                }
-                Err(e) => {
-                    return match e {
-                        ProcessingError::DuplicatePacket => Ok(()),
-                        _ => Err(e),
-                    }
-                }
+            let packet = space.validate_and_decrypt_packet(self, packet)?;
+            if let Some(close) = space.handle_cleartext_payload(
+                packet.packet_number,
+                packet.payload,
+                datagram,
+                path_id,
+                &mut self.path_manager,
+                handshake_status,
+                &mut self.local_id_registry,
+            )? {
+                self.close(
+                    shared_state,
+                    ConnectionCloseReason::PeerImmediateClose(close),
+                    datagram.timestamp,
+                );
+                return Ok(());
             }
+
+            if Self::Config::ENDPOINT_TYPE.is_server() {
+                //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9.1
+                //# a server MUST discard Initial keys when it first
+                //# successfully processes a Handshake packet.
+                shared_state
+                    .space_manager
+                    .discard_initial(self.path_manager.active_path_mut());
+
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1
+                //# Once the server has successfully processed a
+                //# Handshake packet from the client, it can consider the client address
+                //# to have been validated.
+                self.path_manager[path_id].on_validated();
+            }
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.1
+            //# An endpoint restarts its idle timer when a packet from its peer is
+            //# received and processed successfully.
+            self.restart_peer_idle_timer(datagram.timestamp);
+
+            // try to move the crypto state machine forward
+            self.update_crypto_state(shared_state, datagram)?;
+
+            return Ok(());
         }
 
         Ok(())
@@ -790,61 +777,53 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         }
 
         if let Some((space, handshake_status)) = shared_state.space_manager.application_mut() {
-            match space.validate_and_decrypt_packet(self, packet) {
-                Ok(packet) => {
-                    if let Some(close) = space.handle_cleartext_payload(
-                        packet.packet_number,
-                        packet.payload,
-                        datagram,
-                        path_id,
-                        &mut self.path_manager,
-                        handshake_status,
-                        &mut self.local_id_registry,
-                    )? {
-                        self.close(
-                            shared_state,
-                            ConnectionCloseReason::PeerImmediateClose(close),
-                            datagram.timestamp,
-                        );
-                        return Ok(());
-                    }
+            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
+            //= type=TODO
+            //= tracking-issue=448
+            //= feature=AEAD Limits
+            //# If the total number of received packets that fail
+            //# authentication within the connection, across all keys, exceeds the
+            //# integrity limit for the selected AEAD, the endpoint MUST immediately
+            //# close the connection with a connection error of type
+            //# AEAD_LIMIT_REACHED and not process any more packets.
+            let packet = space.validate_and_decrypt_packet(self, packet)?;
 
-                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.1
-                    //# An endpoint restarts its idle timer when a packet from its peer is
-                    //# received and processed successfully.
-                    self.restart_peer_idle_timer(datagram.timestamp);
-
-                    // Currently, the application space does not have any crypto state.
-                    // If, at some point, we decide to add it, we need to call `update_crypto_state` here.
-                    // (note this comment is indented incorrectly by rustfmt. It applies above, not below. How
-                    // to fix?)
-                    return Ok(());
-                }
-                Err(e) => {
-                    return match e {
-                        ProcessingError::DuplicatePacket => Ok(()),
-                        _ => Err(e),
-                    }
-                } //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
-                  //= type=TODO
-                  //= tracking-issue=448
-                  //= feature=AEAD Limits
-                  //# If the total number of received packets that fail
-                  //# authentication within the connection, across all keys, exceeds the
-                  //# integrity limit for the selected AEAD, the endpoint MUST immediately
-                  //# close the connection with a connection error of type
-                  //# AEAD_LIMIT_REACHED and not process any more packets.
-
-                  //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
-                  //= type=TODO
-                  //= tracking-issue=451
-                  //= feature=AEAD Limits
-                  //# If a key update is not possible or
-                  //# integrity limits are reached, the endpoint MUST stop using the
-                  //# connection and only send stateless resets in response to receiving
-                  //# packets.
+            if let Some(close) = space.handle_cleartext_payload(
+                packet.packet_number,
+                packet.payload,
+                datagram,
+                path_id,
+                &mut self.path_manager,
+                handshake_status,
+                &mut self.local_id_registry,
+            )? {
+                self.close(
+                    shared_state,
+                    ConnectionCloseReason::PeerImmediateClose(close),
+                    datagram.timestamp,
+                );
+                return Ok(());
             }
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.1
+            //# An endpoint restarts its idle timer when a packet from its peer is
+            //# received and processed successfully.
+            self.restart_peer_idle_timer(datagram.timestamp);
+
+            // Currently, the application space does not have any crypto state.
+            // If, at some point, we decide to add it, we need to call `update_crypto_state` here.
+            // (note this comment is indented incorrectly by rustfmt. It applies above, not below. How
+            // to fix?)
+            return Ok(());
         }
+        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
+        //= type=TODO
+        //= tracking-issue=451
+        //= feature=AEAD Limits
+        //# If a key update is not possible or
+        //# integrity limits are reached, the endpoint MUST stop using the
+        //# connection and only send stateless resets in response to receiving
+        //# packets.
 
         Ok(())
     }
