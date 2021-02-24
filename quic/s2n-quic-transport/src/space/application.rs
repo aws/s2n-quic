@@ -67,9 +67,6 @@ pub struct ApplicationSpace<Config: connection::Config> {
     ping: flag::Ping,
     processed_packet_numbers: SlidingWindow,
     recovery_manager: recovery::Manager,
-    key_update_in_progress: bool,
-    /// The time for deriving keys after an update
-    key_derivation_timer: VirtualTimer,
 }
 
 impl<Config: connection::Config> ApplicationSpace<Config> {
@@ -106,21 +103,11 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
                 PacketNumberSpace::ApplicationData,
                 max_ack_delay,
             ),
-            key_update_in_progress: false,
-            key_derivation_timer: Default::default(),
         }
     }
 
-    pub fn key_update_in_progress(&self) -> bool {
-        self.key_update_in_progress
-    }
-
-    pub fn start_key_update(&mut self) {
-        self.key_update_in_progress = true;
-    }
-
-    pub fn finalize_key_update(&mut self) {
-        self.key_update_in_progress = false;
+    fn key_update_in_progress(&self) -> bool {
+        self.key_set.key_derivation_timer.is_armed()
     }
 
     /// Returns the active key which is suitable for encrypting packets or unprotecting packet
@@ -142,11 +129,6 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
     /// Rotate the key phase in the application space
     pub fn crypto_rotate_phase(&mut self) {
         self.key_set.rotate_phase()
-    }
-
-    /// Derive the next key to according to quic-tls, and store it in the correct slot
-    pub fn crypto_derive_and_store_next_key(&mut self) {
-        self.key_set.derive_and_store_next_key()
     }
 
     /// Returns the key for a particular Phase. This should be used for decrypting packets from a
@@ -292,7 +274,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         core::iter::empty()
             .chain(self.ack_manager.timers())
             .chain(self.recovery_manager.timers())
-            .chain(self.key_derivation_timer.iter())
+            .chain(self.key_set.timers())
     }
 
     /// Called when the connection timer expired
@@ -304,6 +286,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         timestamp: Timestamp,
     ) {
         self.ack_manager.on_timeout(timestamp);
+        self.key_set.on_timeout(timestamp);
 
         let (recovery_manager, mut context) = self.recovery(
             handshake_status,
@@ -312,19 +295,6 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
             path_manager,
         );
         recovery_manager.on_timeout(timestamp, &mut context);
-
-        // key_derivation_timer
-        if self
-            .key_derivation_timer
-            .poll_expiration(timestamp)
-            .is_ready()
-        {
-            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.5
-            //# An endpoint SHOULD retain old read keys for no more than three times
-            //# the PTO after having received a packet protected using the new keys.
-            self.crypto_derive_and_store_next_key();
-            self.finalize_key_update();
-        }
     }
 
     /// Returns the Packet Number to be used when decoding incoming packets
@@ -390,6 +360,21 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         let mut phase_to_use = self.crypto_phase() as u8;
         let phase_switch = phase_to_use != (packet_phase as u8);
         phase_to_use ^= phase_switch as u8;
+
+        if self.key_update_in_progress() && phase_switch {
+            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.5
+            //# An endpoint MAY allow a period of approximately the Probe Timeout
+            //# (PTO; see [QUIC-RECOVERY]) after receiving a packet that uses the new
+            //# key generation before it creates the next set of packet protection
+            //# keys.
+            // During this PTO we can still process delayed packets, reducing retransmits
+            // required from the peer. We know the packets are delayed because they have a
+            // lower packet number than expected and the old key phase.
+            if packet.packet_number < self.ack_manager.largest_received_packet_number_acked() {
+                phase_to_use = packet.key_phase() as u8;
+            }
+        }
+
         let phased_crypto = self.crypto_for_phase(phase_to_use.into());
 
         match phased_crypto.decrypt_packet(conn, |key| packet.decrypt(key)) {
@@ -415,9 +400,9 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
                     //# (PTO; see [QUIC-RECOVERY]) after receiving a packet that uses the new
                     //# key generation before it creates the next set of packet protection
                     //# keys.
-                    self.start_key_update();
-
-                    self.key_derivation_timer.set(datagram.timestamp + pto);
+                    self.key_set
+                        .key_derivation_timer
+                        .set(datagram.timestamp + pto);
                 }
 
                 //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.4
@@ -430,8 +415,6 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
                 Ok(packet)
             }
             Err(e) => {
-                println!("Failed to decrypt the packet");
-
                 //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.4
                 //= type=TODO
                 //= tracking-issue=479
@@ -439,7 +422,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
                 //# Packets with higher packet numbers MUST be protected with either the
                 //# same or newer packet protection keys than packets with lower packet
                 //# numbers.
-                return Err(e);
+                Err(e)
             }
         }
     }
@@ -757,6 +740,8 @@ struct ApplicationKeySet<Key> {
     /// The current [`KeyPhase`]
     key_phase: KeyPhase,
 
+    key_derivation_timer: VirtualTimer,
+
     /// Set of keys for the current and next phase
     pub crypto: [PacketSpaceCrypto<Key>; 2],
 }
@@ -772,6 +757,7 @@ where
         //# update.
         Self {
             key_phase: KeyPhase::Zero,
+            key_derivation_timer: Default::default(),
             crypto: [phase_zero, phase_one],
         }
     }
@@ -786,6 +772,24 @@ where
         let next_key = self.active_key().derive_next_key();
         let slot_to_store = ((self.key_phase as u8) + 1) % 2;
         self.crypto[slot_to_store as usize] = PacketSpaceCrypto::new(next_key);
+    }
+
+    pub fn timers(&self) -> impl Iterator<Item = &Timestamp> {
+        core::iter::empty().chain(self.key_derivation_timer.iter())
+    }
+
+    pub fn on_timeout(&mut self, timestamp: Timestamp) {
+        // key_derivation_timer
+        if self
+            .key_derivation_timer
+            .poll_expiration(timestamp)
+            .is_ready()
+        {
+            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.5
+            //# An endpoint SHOULD retain old read keys for no more than three times
+            //# the PTO after having received a packet protected using the new keys.
+            self.derive_and_store_next_key();
+        }
     }
 
     fn key_phase(&self) -> KeyPhase {
@@ -808,6 +812,9 @@ mod tests {
         header_crypto::{HeaderCrypto, HeaderProtectionMask},
         CryptoError, Key, OneRTTCrypto,
     };
+    use s2n_quic_core::time::Clock;
+    use s2n_quic_platform::time;
+    use std::sync::Arc;
 
     #[derive(Default)]
     struct NullKey {
@@ -910,5 +917,28 @@ mod tests {
         keyset.rotate_phase();
         let next_key = keyset.active_key();
         assert_eq!(next_key.key.value, 2);
+    }
+
+    #[test]
+    fn test_key_derivation_timer() {
+        let clock = Arc::new(time::testing::MockClock::new());
+        time::testing::set_local_clock(clock.clone());
+        let now = clock.get_time();
+        let current_key = PacketSpaceCrypto::new(NullKey::default());
+        let next_key = PacketSpaceCrypto::new(current_key.key.derive_next_key());
+        let mut keyset = ApplicationKeySet::new(current_key, next_key);
+        keyset.rotate_phase();
+
+        keyset
+            .key_derivation_timer
+            .set(now + Duration::from_millis(10));
+        clock.adjust_by(Duration::from_millis(8));
+
+        keyset.on_timeout(clock.get_time());
+        assert_eq!(keyset.crypto[0].key.value, 0);
+
+        clock.adjust_by(Duration::from_millis(8));
+        keyset.on_timeout(clock.get_time());
+        assert_eq!(keyset.crypto[0].key.value, 2);
     }
 }
