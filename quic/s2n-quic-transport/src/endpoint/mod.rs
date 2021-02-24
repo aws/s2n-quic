@@ -284,7 +284,28 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
                     if let Err(err) = conn.handle_packet(shared_state, datagram, path_id, packet) {
                         match err {
+                            ProcessingError::DuplicatePacket => {
+                                // We discard duplicate packets
+                            }
                             ProcessingError::TransportError(err) => {
+                                //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
+                                //= type=TODO
+                                //= tracking-issue=451
+                                //= feature=AEAD Limits
+                                //# If a key update is not possible or
+                                //# integrity limits are reached, the endpoint MUST stop using the
+                                //# connection and only send stateless resets in response to receiving
+                                //# packets.
+
+                                //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
+                                //= type=TODO
+                                //= tracking-issue=448
+                                //= feature=AEAD Limits
+                                //# If the total number of received packets that fail
+                                //# authentication within the connection, across all keys, exceeds the
+                                //# integrity limit for the selected AEAD, the endpoint MUST immediately
+                                //# close the connection with a connection error of type
+                                //# AEAD_LIMIT_REACHED and not process any more packets.
                                 conn.handle_transport_error(shared_state, datagram, err);
                                 return Err(());
                             }

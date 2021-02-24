@@ -1,5 +1,5 @@
 use crate::{
-    connection::{self, ConnectionTransmissionContext},
+    connection::{self, ConnectionTransmissionContext, ProcessingError},
     path,
     processed_packet::ProcessedPacket,
     recovery,
@@ -29,7 +29,7 @@ use s2n_quic_core::{
         number::{
             PacketNumber, PacketNumberRange, PacketNumberSpace, SlidingWindow, SlidingWindowError,
         },
-        short::{Short, SpinBit},
+        short::{CleartextShort, ProtectedShort, Short, SpinBit},
         KeyPhase,
     },
     path::Path,
@@ -321,6 +321,25 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
                 tx_packet_numbers: &mut self.tx_packet_numbers,
             },
         )
+    }
+
+    /// Validate packets in the Application packet space
+    pub fn validate_and_decrypt_packet<'a, C: connection::AeadIntegrityLimitTracking>(
+        &mut self,
+        conn: &mut C,
+        protected: ProtectedShort<'a>,
+    ) -> Result<CleartextShort<'a>, ProcessingError> {
+        let crypto = self.crypto();
+        let packet_number_decoder = self.packet_number_decoder();
+        let packet =
+            crypto.unprotect_packet(|key| protected.unprotect(key, packet_number_decoder))?;
+
+        if self.is_duplicate(packet.packet_number) {
+            return Err(ProcessingError::DuplicatePacket);
+        }
+
+        let phased_crypto = self.crypto_for_phase(packet.key_phase());
+        phased_crypto.decrypt_packet(conn, |key| packet.decrypt(key))
     }
 }
 

@@ -124,6 +124,7 @@ impl<'a> Into<StreamError> for CloseReason<'a> {
 /// Some connection methods may need to indicate both `TransportError`s and `CryptoError`s. This
 /// enum is used to allow for either error type to be returned as appropriate.
 pub enum ProcessingError {
+    DuplicatePacket,
     TransportError(TransportError),
     CryptoError(CryptoError),
 }

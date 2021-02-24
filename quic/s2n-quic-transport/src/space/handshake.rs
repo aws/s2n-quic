@@ -1,5 +1,5 @@
 use crate::{
-    connection::{self, ConnectionTransmissionContext},
+    connection::{self, ConnectionTransmissionContext, ProcessingError},
     path,
     processed_packet::ProcessedPacket,
     recovery,
@@ -18,11 +18,10 @@ use s2n_quic_core::{
     inet::DatagramInfo,
     packet::{
         encoding::{PacketEncoder, PacketEncodingError},
-        handshake::Handshake,
+        handshake::{CleartextHandshake, Handshake, ProtectedHandshake},
         number::{
             PacketNumber, PacketNumberRange, PacketNumberSpace, SlidingWindow, SlidingWindowError,
         },
-        KeyPhase,
     },
     path::Path,
     time::Timestamp,
@@ -60,20 +59,6 @@ impl<Config: connection::Config> HandshakeSpace<Config> {
             processed_packet_numbers: SlidingWindow::default(),
             recovery_manager: recovery::Manager::new(PacketNumberSpace::Handshake, max_ack_delay),
         }
-    }
-
-    pub fn crypto(
-        &self,
-    ) -> &PacketSpaceCrypto<<Config::TLSSession as CryptoSuite>::HandshakeCrypto> {
-        &self.crypto
-    }
-
-    // HandshakeSpace does not have a key phase
-    pub fn crypto_for_phase(
-        &self,
-        _key_phase: KeyPhase,
-    ) -> &PacketSpaceCrypto<<Config::TLSSession as CryptoSuite>::HandshakeCrypto> {
-        &self.crypto
     }
 
     /// Returns true if the packet number has already been processed
@@ -226,6 +211,24 @@ impl<Config: connection::Config> HandshakeSpace<Config> {
                 path,
             },
         )
+    }
+
+    /// Validate packets in the Handshake packet space
+    pub fn validate_and_decrypt_packet<'a, C: connection::AeadIntegrityLimitTracking>(
+        &self,
+        conn: &mut C,
+        protected: ProtectedHandshake<'a>,
+    ) -> Result<CleartextHandshake<'a>, ProcessingError> {
+        let packet_number_decoder = self.packet_number_decoder();
+        let packet = self
+            .crypto
+            .unprotect_packet(|key| protected.unprotect(key, packet_number_decoder))?;
+
+        if self.is_duplicate(packet.packet_number) {
+            return Err(ProcessingError::DuplicatePacket);
+        }
+
+        self.crypto.decrypt_packet(conn, |key| packet.decrypt(key))
     }
 }
 

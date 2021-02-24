@@ -14,11 +14,11 @@ use crate::{
     space::PacketSpace,
     transmission,
 };
+
 use core::time::Duration;
 use s2n_quic_core::{
     application::ApplicationErrorExt,
     connection::id::Interest,
-    crypto::CryptoError,
     inet::DatagramInfo,
     io::tx,
     packet::{
@@ -141,69 +141,6 @@ impl<Config: connection::Config> Drop for ConnectionImpl<Config> {
             eprintln!("\nLast known connection state: \n {:#?}", self);
         }
     }
-}
-
-/// Unprotects and decrypts packets for the given space.
-///
-/// This is a macro instead of a function because it removes the need to have a
-/// complex trait with a bunch of generics for each of the packet spaces.
-macro_rules! packet_validator {
-    ($conn:ident, $packet:ident, $space:expr $(, $inspect:expr)?) => {{
-        if let Some((space, handshake_status)) = $space {
-            let crypto = space.crypto();
-            let packet_number_decoder = space.packet_number_decoder();
-
-            // TODO ensure this is all side-channel free and reserved bits are 0
-            // https://github.com/awslabs/s2n-quic/issues/212
-
-            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.5
-            //# Failure to unprotect a packet does not necessarily indicate the
-            //# existence of a protocol error in a peer or an attack.
-
-            // It may indicate the packet is a stateless reset however, so we will bubble
-            // up the error to allow the caller to handle it.
-            let $packet = crypto.unprotect_packet(|key|
-                $packet.unprotect(key, packet_number_decoder)
-            )?;
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.3
-            //# A receiver MUST discard a newly unprotected packet unless it is
-            //# certain that it has not processed another packet with the same packet
-            //# number from the same packet number space.
-            if space.is_duplicate($packet.packet_number) {
-                None
-            } else {
-                $($inspect)?
-                let phased_crypto = space.crypto_for_phase($packet.key_phase());
-
-                match phased_crypto.decrypt_packet($conn, |key| {
-                    $packet.decrypt(key)
-                }) {
-                    Ok(packet) => {
-                        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.4
-                        //= type=TODO
-                        //= tracking-issue=479
-                        //= feature=Key update
-                        //# An endpoint that successfully removes protection with old
-                        //# keys when newer keys were used for packets with lower packet numbers
-                        //# MUST treat this as a connection error of type KEY_UPDATE_ERROR.
-                        Some((packet, space, handshake_status))
-                    }
-                    Err(e) => {
-                        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.4
-                        //= type=TODO
-                        //= tracking-issue=479
-                        //= feature=Key update
-                        //# Packets with higher packet numbers MUST be protected with either the
-                        //# same or newer packet protection keys than packets with lower packet
-                        //# numbers.
-                        return Err(e)
-                    }
-                }
-            }
-        } else {
-            None
-        }
-    }};
 }
 
 impl<ConfigType: connection::Config> ConnectionImpl<ConfigType> {
@@ -655,15 +592,15 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         path_id: path::Id,
         packet: ProtectedInitial,
     ) -> Result<(), ProcessingError> {
-        if let Some((packet, _space, _handshake_status)) =
-            packet_validator!(self, packet, shared_state.space_manager.initial_mut())
-        {
+        if let Some((space, _status)) = shared_state.space_manager.initial_mut() {
+            let packet = space.validate_and_decrypt_packet(self, packet)?;
             self.handle_cleartext_initial_packet(shared_state, datagram, path_id, packet)?;
 
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.1
             //# An endpoint restarts its idle timer when a packet from its peer is
             //# received and processed successfully.
             self.restart_peer_idle_timer(datagram.timestamp);
+            return Ok(());
         }
 
         Ok(())
@@ -746,9 +683,8 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         //# receiving a server response, so servers SHOULD ignore any such
         //# packets.
 
-        if let Some((packet, space, handshake_status)) =
-            packet_validator!(self, packet, shared_state.space_manager.handshake_mut())
-        {
+        if let Some((space, handshake_status)) = shared_state.space_manager.handshake_mut() {
+            let packet = space.validate_and_decrypt_packet(self, packet)?;
             if let Some(close) = space.handle_cleartext_payload(
                 packet.packet_number,
                 packet.payload,
@@ -788,6 +724,8 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
 
             // try to move the crypto state machine forward
             self.update_crypto_state(shared_state, datagram)?;
+
+            return Ok(());
         }
 
         Ok(())
@@ -838,40 +776,18 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
             return Ok(());
         }
 
-        if let Some((packet, space, handshake_status)) = packet_validator!(
-            self,
-            packet,
-            shared_state.space_manager.application_mut(),
-            {
-                //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.2
-                //= type=TODO
-                //= tracking-issue=478
-                //= feature=Key update
-                //# The endpoint MUST update its
-                //# send keys to the corresponding key phase in response, as described in
-                //# Section 6.1.
+        if let Some((space, handshake_status)) = shared_state.space_manager.application_mut() {
+            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
+            //= type=TODO
+            //= tracking-issue=448
+            //= feature=AEAD Limits
+            //# If the total number of received packets that fail
+            //# authentication within the connection, across all keys, exceeds the
+            //# integrity limit for the selected AEAD, the endpoint MUST immediately
+            //# close the connection with a connection error of type
+            //# AEAD_LIMIT_REACHED and not process any more packets.
+            let packet = space.validate_and_decrypt_packet(self, packet)?;
 
-                //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.2
-                //= type=TODO
-                //= tracking-issue=478
-                //= feature=Key update
-                //# Sending keys MUST be updated before sending an
-                //# acknowledgement for the packet that was received with updated keys.
-
-                //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.2
-                //= type=TODO
-                //= tracking-issue=479
-                //= feature=Key update
-                //# An endpoint
-                //# MAY treat consecutive key updates as a connection error of type
-                //# KEY_UPDATE_ERROR.
-
-                if packet.key_phase != Default::default() {
-                    dbg!("key updates are not currently implemented");
-                    return Err(CryptoError::INTERNAL_ERROR.into());
-                }
-            }
-        ) {
             if let Some(close) = space.handle_cleartext_payload(
                 packet.packet_number,
                 packet.payload,
@@ -894,30 +810,20 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
             //# received and processed successfully.
             self.restart_peer_idle_timer(datagram.timestamp);
 
-        // Currently, the application space does not have any crypto state.
-        // If, at some point, we decide to add it, we need to call `update_crypto_state` here.
-        // (note this comment is indented incorrectly by rustfmt. It applies above, not below. How
-        // to fix?)
-        } else {
-            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
-            //= type=TODO
-            //= tracking-issue=448
-            //= feature=AEAD Limits
-            //# If the total number of received packets that fail
-            //# authentication within the connection, across all keys, exceeds the
-            //# integrity limit for the selected AEAD, the endpoint MUST immediately
-            //# close the connection with a connection error of type
-            //# AEAD_LIMIT_REACHED and not process any more packets.
-
-            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
-            //= type=TODO
-            //= tracking-issue=451
-            //= feature=AEAD Limits
-            //# If a key update is not possible or
-            //# integrity limits are reached, the endpoint MUST stop using the
-            //# connection and only send stateless resets in response to receiving
-            //# packets.
+            // Currently, the application space does not have any crypto state.
+            // If, at some point, we decide to add it, we need to call `update_crypto_state` here.
+            // (note this comment is indented incorrectly by rustfmt. It applies above, not below. How
+            // to fix?)
+            return Ok(());
         }
+        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
+        //= type=TODO
+        //= tracking-issue=451
+        //= feature=AEAD Limits
+        //# If a key update is not possible or
+        //# integrity limits are reached, the endpoint MUST stop using the
+        //# connection and only send stateless resets in response to receiving
+        //# packets.
 
         Ok(())
     }
