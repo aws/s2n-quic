@@ -808,11 +808,14 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use s2n_quic_core::crypto::{
-        header_crypto::{HeaderCrypto, HeaderProtectionMask},
-        CryptoError, Key, OneRTTCrypto,
+    use s2n_quic_core::{
+        crypto::{
+            header_crypto::{HeaderCrypto, HeaderProtectionMask},
+            CryptoError, Key, OneRTTCrypto,
+        },
+        time::Clock,
     };
-    use s2n_quic_core::time::Clock;
+
     use s2n_quic_platform::time;
     use std::sync::Arc;
 
