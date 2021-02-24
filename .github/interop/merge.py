@@ -77,9 +77,9 @@ parser.add_argument('patterns', nargs='+')
 args = parser.parse_args()
 
 if args.new_version_suffix:
-    s2n_quic_new_version_name += '-' + args.new_version_suffix
+    s2n_quic_new_version_name += '-' + args.new_version_suffix.lower()
 if args.prev_version_suffix:
-    s2n_quic_prev_version_name += '-' + args.prev_version_suffix
+    s2n_quic_prev_version_name += '-' + args.prev_version_suffix.lower()
 if args.new_version_url:
     urls[s2n_quic_new_version_name] = args.new_version_url
 if args.prev_version_url:

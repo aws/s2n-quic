@@ -276,7 +276,7 @@ jobs:
           MAIN_SHA=${{ steps.mainsha.outputs.MAIN_SHA }}
           python3 .github/interop/merge.py \
             --prev_version prev_result.json \
-            --new_version_suffix "PR${{github.event.pull_request.number}}" \
+            --new_version_suffix "pr${{github.event.pull_request.number}}" \
             --new_version_url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/pull/${{github.event.pull_request.number}}" \
             --new_version_log_url "$LOG_URL" \
             --prev_version_log_url "$CDN/$MAIN_SHA/interop/$LOG_URL" \
