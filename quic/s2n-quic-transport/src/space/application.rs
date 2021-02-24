@@ -325,7 +325,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
 
     /// Validate packets in the Application packet space
     pub fn validate_and_decrypt_packet<'a, C: connection::AeadIntegrityLimitTracking>(
-        &self,
+        &mut self,
         conn: &mut C,
         protected: ProtectedShort<'a>,
     ) -> Result<CleartextShort<'a>, ProcessingError> {
@@ -339,10 +339,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         }
 
         let phased_crypto = self.crypto_for_phase(packet.key_phase());
-        match phased_crypto.decrypt_packet(conn, |key| packet.decrypt(key)) {
-            Ok(packet) => Ok(packet),
-            Err(e) => Err(e),
-        }
+        phased_crypto.decrypt_packet(conn, |key| packet.decrypt(key))
     }
 }
 

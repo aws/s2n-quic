@@ -230,10 +230,7 @@ impl<Config: connection::Config> InitialSpace<Config> {
             return Err(ProcessingError::DuplicatePacket);
         }
 
-        match self.crypto.decrypt_packet(conn, |key| packet.decrypt(key)) {
-            Ok(packet) => Ok(packet),
-            Err(e) => Err(e),
-        }
+        self.crypto.decrypt_packet(conn, |key| packet.decrypt(key))
     }
 }
 
