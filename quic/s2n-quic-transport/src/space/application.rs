@@ -9,10 +9,11 @@ use crate::{
     },
     stream::AbstractStreamManager,
     sync::flag,
+    timer::VirtualTimer,
     transmission,
 };
 use bytes::Bytes;
-use core::{convert::TryInto, marker::PhantomData};
+use core::{convert::TryInto, marker::PhantomData, time::Duration};
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
     crypto::{CryptoSuite, Key, OneRTTCrypto},
@@ -67,6 +68,8 @@ pub struct ApplicationSpace<Config: connection::Config> {
     processed_packet_numbers: SlidingWindow,
     recovery_manager: recovery::Manager,
     key_update_in_progress: bool,
+    /// The time for deriving keys after an update
+    key_derivation_timer: VirtualTimer,
 }
 
 impl<Config: connection::Config> ApplicationSpace<Config> {
@@ -104,6 +107,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
                 max_ack_delay,
             ),
             key_update_in_progress: false,
+            key_derivation_timer: Default::default(),
         }
     }
 
@@ -288,6 +292,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         core::iter::empty()
             .chain(self.ack_manager.timers())
             .chain(self.recovery_manager.timers())
+            .chain(self.key_derivation_timer.iter())
     }
 
     /// Called when the connection timer expired
@@ -306,7 +311,20 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
             path_manager.active_path_id(),
             path_manager,
         );
-        recovery_manager.on_timeout(timestamp, &mut context)
+        recovery_manager.on_timeout(timestamp, &mut context);
+
+        // key_derivation_timer
+        if self
+            .key_derivation_timer
+            .poll_expiration(timestamp)
+            .is_ready()
+        {
+            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.5
+            //# An endpoint SHOULD retain old read keys for no more than three times
+            //# the PTO after having received a packet protected using the new keys.
+            self.crypto_derive_and_store_next_key();
+            self.finalize_key_update();
+        }
     }
 
     /// Returns the Packet Number to be used when decoding incoming packets
@@ -356,6 +374,8 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         &mut self,
         conn: &mut C,
         protected: ProtectedShort<'a>,
+        datagram: &DatagramInfo,
+        pto: Duration,
     ) -> Result<CleartextShort<'a>, ProcessingError> {
         let crypto = self.crypto();
         let packet_number_decoder = self.packet_number_decoder();
@@ -366,8 +386,62 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
             return Err(ProcessingError::DuplicatePacket);
         }
 
-        let phased_crypto = self.crypto_for_phase(packet.key_phase());
-        phased_crypto.decrypt_packet(conn, |key| packet.decrypt(key))
+        let packet_phase = packet.key_phase();
+        let mut phase_to_use = self.crypto_phase() as u8;
+        let phase_switch = phase_to_use != (packet_phase as u8);
+        phase_to_use ^= phase_switch as u8;
+        let phased_crypto = self.crypto_for_phase(phase_to_use.into());
+
+        match phased_crypto.decrypt_packet(conn, |key| packet.decrypt(key)) {
+            Ok(packet) => {
+                if packet_phase != self.crypto_phase() {
+                    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.2
+                    //# Sending keys MUST be updated before sending an
+                    //# acknowledgement for the packet that was received with updated keys.
+
+                    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.2
+                    //# The endpoint MUST update its
+                    //# send keys to the corresponding key phase in response, as described in
+                    //# Section 6.1.
+                    self.crypto_rotate_phase();
+
+                    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.3
+                    //# Endpoints responding to an apparent key update MUST NOT generate a
+                    //# timing side-channel signal that might indicate that the Key Phase bit
+                    //# was invalid (see Section 9.4).
+
+                    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.5
+                    //# An endpoint MAY allow a period of approximately the Probe Timeout
+                    //# (PTO; see [QUIC-RECOVERY]) after receiving a packet that uses the new
+                    //# key generation before it creates the next set of packet protection
+                    //# keys.
+                    self.start_key_update();
+
+                    self.key_derivation_timer.set(datagram.timestamp + pto);
+                }
+
+                //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.4
+                //= type=TODO
+                //= tracking-issue=479
+                //= feature=Key update
+                //# An endpoint that successfully removes protection with old
+                //# keys when newer keys were used for packets with lower packet numbers
+                //# MUST treat this as a connection error of type KEY_UPDATE_ERROR.
+                Ok(packet)
+            }
+            Err(e) => {
+                println!("Failed to decrypt the packet");
+
+                //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.4
+                //= type=TODO
+                //= tracking-issue=479
+                //= feature=Key update
+                //# Packets with higher packet numbers MUST be protected with either the
+                //# same or newer packet protection keys than packets with lower packet
+                //# numbers.
+                return Err(e);
+            }
+        }
     }
 }
 

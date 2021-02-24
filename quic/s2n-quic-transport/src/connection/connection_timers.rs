@@ -24,8 +24,6 @@ pub struct ConnectionTimers {
     pub local_idle_timer: VirtualTimer,
     /// The timer for removing an initial id mapping
     pub initial_id_expiration_timer: VirtualTimer,
-    /// The time for deriving keys after an update
-    pub key_derivation_timer: VirtualTimer,
 }
 
 impl ConnectionTimers {
@@ -36,6 +34,5 @@ impl ConnectionTimers {
             .chain(self.local_idle_timer.iter())
             .chain(self.peer_idle_timer.iter())
             .chain(self.initial_id_expiration_timer.iter())
-            .chain(self.key_derivation_timer.iter())
     }
 }
