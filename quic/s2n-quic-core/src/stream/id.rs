@@ -11,15 +11,15 @@ pub struct StreamId(VarInt);
 
 // Stream IDs can be converted into `VarInt` and `u64`
 
-impl Into<VarInt> for StreamId {
-    fn into(self) -> VarInt {
-        self.0
+impl From<StreamId> for VarInt {
+    fn from(id: StreamId) -> Self {
+        id.0
     }
 }
 
-impl Into<u64> for StreamId {
-    fn into(self) -> u64 {
-        self.0.into()
+impl From<StreamId> for u64 {
+    fn from(id: StreamId) -> Self {
+        id.0.as_u64()
     }
 }
 

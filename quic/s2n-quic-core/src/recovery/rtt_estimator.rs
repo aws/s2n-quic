@@ -88,6 +88,44 @@ impl RTTEstimator {
     pub fn first_rtt_sample(&self) -> Option<Timestamp> {
         self.first_rtt_sample
     }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+    //# The PTO period is the amount of time that a sender ought to wait for
+    //# an acknowledgement of a sent packet.
+    pub fn pto_period(&self, pto_backoff: u32) -> Duration {
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+        //# When an ack-eliciting packet is transmitted, the sender schedules a
+        //# timer for the PTO period as follows:
+        //#
+        //# PTO = smoothed_rtt + max(4*rttvar, kGranularity) + max_ack_delay
+        let mut pto_period = self.smoothed_rtt();
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+        //# The PTO period MUST be at least kGranularity, to avoid the timer
+        //# expiring immediately.
+        pto_period += max(4 * self.rttvar(), K_GRANULARITY);
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+        //# When the PTO is armed for Initial or Handshake packet number spaces,
+        //# the max_ack_delay in the PTO period computation is set to 0, since
+        //# the peer is expected to not delay these packets intentionally; see
+        //# 13.2.1 of [QUIC-TRANSPORT].
+        pto_period += self.max_ack_delay;
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+        //# Even when there are ack-
+        //# eliciting packets in-flight in multiple packet number spaces, the
+        //# exponential increase in probe timeout occurs across all spaces to
+        //# prevent excess load on the network.  For example, a timeout in the
+        //# Initial packet number space doubles the length of the timeout in the
+        //# Handshake packet number space.
+        pto_period *= pto_backoff;
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+        //# The PTO period is the amount of time that a sender ought to wait for
+        //# an acknowledgement of a sent packet.
+        pto_period
+    }
 }
 
 impl RTTEstimator {
@@ -224,12 +262,12 @@ fn abs_difference<T: core::ops::Sub + PartialOrd>(a: T, b: T) -> <T as core::ops
 mod test {
     use crate::{
         packet::number::PacketNumberSpace,
-        recovery::{RTTEstimator, DEFAULT_INITIAL_RTT},
+        path::INITIAL_PTO_BACKOFF,
+        recovery::{RTTEstimator, DEFAULT_INITIAL_RTT, K_GRANULARITY},
         time::{Clock, Duration, NoopClock},
     };
 
     /// Test the initial values before any RTT samples
-    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3")]
     #[test]
     fn initial_rtt() {
         let rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
@@ -237,6 +275,10 @@ mod test {
         assert_eq!(rtt_estimator.latest_rtt(), Duration::from_millis(0));
         assert_eq!(rtt_estimator.smoothed_rtt(), DEFAULT_INITIAL_RTT);
         assert_eq!(rtt_estimator.rttvar(), DEFAULT_INITIAL_RTT / 2);
+        assert_eq!(
+            rtt_estimator.pto_period(INITIAL_PTO_BACKOFF),
+            Duration::from_millis(1009)
+        );
     }
 
     /// Test a zero RTT value is treated as 1 ms
@@ -254,12 +296,16 @@ mod test {
         assert_eq!(rtt_estimator.min_rtt, Duration::from_millis(1));
         assert_eq!(rtt_estimator.latest_rtt(), Duration::from_millis(1));
         assert_eq!(rtt_estimator.first_rtt_sample(), Some(now));
+        assert_eq!(
+            rtt_estimator.pto_period(INITIAL_PTO_BACKOFF),
+            Duration::from_millis(13)
+        );
     }
 
-    #[compliance::tests(
-    /// *  MUST use the lesser of the acknowledgement delay and the peer's
-    //     max_ack_delay after the handshake is confirmed;.
-    "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3")]
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3
+    //= type=test
+    //# *  MUST use the lesser of the acknowledgement delay and the peer's
+    //#    max_ack_delay after the handshake is confirmed;.
     #[test]
     fn max_ack_delay() {
         let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
@@ -319,8 +365,6 @@ mod test {
     }
 
     /// Test several rounds of RTT updates
-    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.2")]
-    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3")]
     #[test]
     fn update_rtt() {
         let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
@@ -390,6 +434,10 @@ mod test {
             7 * prev_smoothed_rtt / 8 + rtt_sample / 8
         );
         assert_eq!(rtt_estimator.first_rtt_sample, Some(now));
+        assert_eq!(
+            rtt_estimator.pto_period(INITIAL_PTO_BACKOFF),
+            Duration::from_nanos(1551249998)
+        );
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3
@@ -486,12 +534,12 @@ mod test {
         );
     }
 
-    #[compliance::tests(
-    /// The persistent congestion duration is computed as follows:
-    /// 
-    /// (smoothed_rtt + max(4*rttvar, kGranularity) + max_ack_delay) *
-    ///    kPersistentCongestionThreshold
-    "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.1")]
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.1
+    //= type=test
+    //# The persistent congestion duration is computed as follows:
+    //#
+    //# (smoothed_rtt + max(4*rttvar, kGranularity) + max_ack_delay) *
+    //#   kPersistentCongestionThreshold
     #[test]
     fn persistent_congestion_duration() {
         let max_ack_delay = Duration::from_millis(10);
@@ -558,5 +606,29 @@ mod test {
         //# persistent congestion is established.
         assert_eq!(rtt_estimator.min_rtt(), rtt_sample);
         assert_eq!(rtt_estimator.smoothed_rtt(), rtt_sample);
+    }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+    //= type=test
+    //# The PTO period MUST be at least kGranularity, to avoid the timer
+    //# expiring immediately.
+    #[test]
+    fn pto_must_be_at_least_k_granularity() {
+        let space = PacketNumberSpace::Handshake;
+        let max_ack_delay = Duration::from_millis(0);
+        let now = NoopClock.get_time();
+        let mut rtt_estimator = RTTEstimator::new(max_ack_delay);
+
+        // Update RTT with the smallest possible sample
+        rtt_estimator.update_rtt(
+            Duration::from_millis(0),
+            Duration::from_nanos(1),
+            now,
+            true,
+            space,
+        );
+
+        let pto_period = rtt_estimator.pto_period(INITIAL_PTO_BACKOFF);
+        assert!(pto_period >= K_GRANULARITY);
     }
 }

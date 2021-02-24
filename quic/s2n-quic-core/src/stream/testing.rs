@@ -1,63 +1,77 @@
 //! A model that ensures stream data is correctly sent and received between peers
 
+#[cfg(feature = "generator")]
 use bolero_generator::{constant, TypeGenerator};
 use bytes::Bytes;
-use lazy_static::lazy_static;
 
-lazy_static! {
-    static ref DATA: Bytes = unsafe {
-        static mut INNER: [u8; DATA_LEN] = [0; DATA_LEN];
-        for (idx, byte) in INNER.iter_mut().enumerate() {
-            *byte = idx as u8;
+static DATA: Bytes = {
+    const INNER: [u8; DATA_LEN] = {
+        let mut data = [0; DATA_LEN];
+        let mut idx = 0;
+        while idx < data.len() {
+            data[idx] = idx as u8;
+            idx += 1;
         }
-        Bytes::from_static(&INNER)
+        data
     };
-}
 
-const DATA_LEN: usize = DEFAULT_STREAM_LEN * 8;
-const DEFAULT_STREAM_LEN: usize = 1024;
+    Bytes::from_static(&INNER)
+};
+
+const DATA_LEN: usize = (DEFAULT_STREAM_LEN as usize) * 8;
+const DEFAULT_STREAM_LEN: u64 = 1024;
 const DATA_MOD: usize = 256; // Only the first 256 offsets of DATA are unique
 
-#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord, TypeGenerator)]
+#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord)]
+#[cfg_attr(feature = "generator", derive(TypeGenerator))]
 pub struct Data {
-    #[generator(0..=DEFAULT_STREAM_LEN)]
-    len: usize,
-    #[generator(constant(0))]
-    offset: usize,
+    #[cfg_attr(feature = "generator", generator(0..=DEFAULT_STREAM_LEN))]
+    len: u64,
+    #[cfg_attr(feature = "generator", generator(constant(0)))]
+    offset: u64,
 }
 
 impl Default for Data {
     fn default() -> Self {
-        Self::new(DEFAULT_STREAM_LEN)
+        Self::new(DEFAULT_STREAM_LEN as u64)
     }
 }
 
 impl Data {
-    pub const fn new(len: usize) -> Self {
+    pub const fn new(len: u64) -> Self {
         Self { len, offset: 0 }
     }
 
     /// Notifies the data that a set of chunks were received
     pub fn receive<Chunk: AsRef<[u8]>>(&mut self, chunks: &[Chunk]) {
+        Self::receive_check(&mut self.offset, self.len, chunks)
+    }
+
+    /// Notifies the data that a set of chunks were received
+    pub fn receive_at<Chunk: AsRef<[u8]>>(&self, mut start: u64, chunks: &[Chunk]) {
+        Self::receive_check(&mut start, self.len, chunks)
+    }
+
+    fn receive_check<Chunk: AsRef<[u8]>>(start: &mut u64, len: u64, chunks: &[Chunk]) {
         for mut chunk in chunks.iter().map(AsRef::as_ref) {
             while !chunk.is_empty() {
-                let offset = self.offset % DATA_MOD;
+                let offset = ((*start) % DATA_MOD as u64) as usize;
                 let len = chunk.len().min(DATA.len() - offset);
                 assert_eq!(
                     &chunk[..len],
                     &DATA[offset..offset + len],
                     "receive stream data at offset {} has been corrupted",
-                    self.offset,
+                    *start,
                 );
-                self.offset += len;
+                *start += len as u64;
                 chunk = &chunk[len..];
             }
         }
 
         assert!(
-            self.len >= self.offset,
+            len >= (*start),
             "receive stream data has exceeded beyond the expected amount by {}",
-            self.offset - self.len
+            (*start) - len
         );
     }
 
@@ -66,6 +80,8 @@ impl Data {
     }
 
     /// Asks the data what chunks should be sent next
+    ///
+    /// Returns the number of chunks that were filled
     pub fn send(&mut self, mut amount: usize, chunks: &mut [Bytes]) -> Option<usize> {
         if self.is_finished() {
             return None;
@@ -73,8 +89,8 @@ impl Data {
 
         let mut count = 0;
         for chunk in chunks.iter_mut() {
-            let offset = self.offset % DATA_MOD;
-            let to_send = (self.len - self.offset)
+            let offset = (self.offset % DATA_MOD as u64) as usize;
+            let to_send = ((self.len - self.offset) as usize)
                 .min(amount)
                 .min(DATA.len() - offset);
 
@@ -84,7 +100,7 @@ impl Data {
 
             *chunk = DATA.slice(offset..offset + to_send);
 
-            self.offset += to_send;
+            self.offset += to_send as u64;
             amount -= to_send;
             count += 1;
         }
@@ -96,7 +112,6 @@ impl Data {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use arr_macro::arr;
     use bolero::check;
 
     #[test]
@@ -133,7 +148,7 @@ mod tests {
         let mut sender = Data::new(10);
         assert!(!sender.is_finished());
 
-        let mut output = arr![Bytes::new(); 10];
+        let mut output = vec![Bytes::new(); 10];
 
         assert_eq!(sender.send(3, &mut output), Some(1));
         assert_eq!(output[0].as_ref(), &[0, 1, 2][..]);
@@ -164,11 +179,9 @@ mod tests {
                 let mut sender = Data::new(stream_len);
                 let mut receiver = Data::new(stream_len);
 
-                let mut buf = arr![
-                    Bytes::new(); 5
-                ];
+                let mut buf = vec![Bytes::new(); 5];
 
-                while let Some(count) = sender.send(send_amount, &mut buf[..]) {
+                while let Some(count) = sender.send(send_amount as usize, &mut buf[..]) {
                     assert_ne!(count, 0, "sender should return None if no chunks were sent");
                     receiver.receive(&buf[..count]);
                 }
