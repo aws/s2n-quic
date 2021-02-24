@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
-use byte_unit::Byte;
-use s2n_quic_core::crypto::tls::testing::certificates::CERT_DER;
+use byte_unit::{Byte, ByteUnit};
+use bytes::Bytes;
+use s2n_quic_core::{crypto::tls::testing::certificates::CERT_DER, stream::testing};
 use std::time::Instant;
 use structopt::StructOpt;
 use url::Url;
@@ -9,10 +10,10 @@ use url::Url;
 struct Args {
     url: Url,
 
-    #[structopt(short, long, default_value = "1GB")]
+    #[structopt(short, long, default_value = "0MB")]
     download: String,
 
-    #[structopt(short, long, default_value = "0b")]
+    #[structopt(short, long, default_value = "0MB")]
     upload: String,
 }
 
@@ -21,16 +22,16 @@ async fn main() -> Result<()> {
     let cert = quinn::Certificate::from_der(CERT_DER).unwrap();
 
     let args = Args::from_args();
-    let download = Byte::from_str(&args.download).unwrap().get_bytes() as u64;
-    let upload = Byte::from_str(&args.upload).unwrap().get_bytes() as u64;
+    let download = Byte::from_str(&args.download).unwrap();
+    let upload = Byte::from_str(&args.upload).unwrap();
 
     client(args.url, download, upload, cert).await
 }
 
 async fn client(
     url: Url,
-    download: u64,
-    _upload: u64,
+    download: Byte,
+    upload: Byte,
     server_cert: quinn::Certificate,
 ) -> Result<()> {
     let hostname = url.host_str().expect("missing hostname");
@@ -49,16 +50,33 @@ async fn client(
         .await
         .context("unable to connect")?;
 
-    let (mut send, mut recv) = connection
+    let (mut send, recv): (quinn::SendStream, quinn::RecvStream) = connection
         .open_bi()
         .await
         .context("failed to open stream")?;
 
-    // make the request
-    send.write_all(&u64::to_be_bytes(download)).await?;
-    // TODO do upload
-    send.finish().await.context("failed finishing stream")?;
+    // client is receiving and server is sending
+    // here we send the length of bytes we expect the server to send us back
+    let dl_len = download.get_bytes() as u64;
+    send.write_all(&u64::to_be_bytes(dl_len)).await?;
 
+    // client is sending and server is receiving
+    let sender = tokio::spawn(async move { handle_send_stream(send, upload).await });
+
+    // client is receiving and server is sending
+    let receiver = tokio::spawn(async move { handle_recv_stream(recv, download).await });
+
+    // record the response
+    let all = Instant::now();
+    if let Ok(_) = futures::try_join!(receiver, sender) {
+        let duration = all.elapsed();
+        eprintln!("total duration took {:?}", duration,);
+    }
+
+    Ok(())
+}
+
+async fn handle_recv_stream(mut recv: quinn::RecvStream, len: Byte) -> Result<()> {
     // record the response
     let start = Instant::now();
 
@@ -71,10 +89,50 @@ async fn client(
     let bytes_per_sec = (recv_len as f64) / duration.as_secs_f64();
 
     eprintln!(
-        "response received in {:?} - {}/s",
+        "received {} data in {:?} - {}/s",
+        len.get_adjusted_unit(ByteUnit::MB),
         duration,
         Byte::from(bytes_per_sec as u64).get_appropriate_unit(true)
     );
 
     Ok(())
+}
+
+async fn handle_send_stream(mut send: quinn::SendStream, len: Byte) -> Result<()> {
+    let up_len = len.get_bytes() as u64;
+    // record the response
+    let start = Instant::now();
+
+    let mut chunks: Vec<Bytes> = vec![Bytes::new(); 16];
+    let mut data = testing::Data::new(up_len);
+
+    while let Some(count) = data.send(usize::MAX, &mut chunks) {
+        for chunk in chunks.iter_mut().take(count) {
+            // `take` drops chunk at the end of the loop and replace it with empty Bytes
+            let w_chunk = core::mem::take(chunk);
+            send.write_all(&w_chunk).await?;
+        }
+    }
+    send.finish().await?;
+
+    let duration = start.elapsed();
+    let bytes_per_sec = (up_len as f64) / duration.as_secs_f64();
+
+    eprintln!(
+        "sent {} data in {:?} - {}/s",
+        len.get_adjusted_unit(ByteUnit::MB),
+        duration,
+        Byte::from(bytes_per_sec as u64).get_appropriate_unit(true)
+    );
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod test {
+
+    #[test]
+    fn gen_data() {
+        assert!(true);
+    }
 }

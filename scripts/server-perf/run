@@ -2,18 +2,22 @@
 
 set -e
 
-SIZE=${1:-1G}
+## get amount of data to receive(dl) and send(up) from s2n server
+FILENAME=flame
+DL_SIZE=${1:-1GB}
+UL_SIZE=${2:-0MB}
 
+## init
 DIR=$(mktemp -d -t s2n-quic-perf-XXXXXXXXXX)
 
 ./scripts/server-perf/build
 
 mkdir -p ./target/perf
 
+## launch s2n server with perf enabled
 sudo echo "starting"
-
 sudo sh -c "perf record \
-  --output $DIR/$SIZE.perf \
+  --output $DIR/$FILENAME.perf \
   --call-graph dwarf \
  ./target/release/s2n-quic-qns \
   perf \
@@ -21,6 +25,7 @@ sudo sh -c "perf record \
   --port 4433" &
 SUDO_PID=$!
 
+## note SUDO_PID of s2n server so we can shut it down after test
 function stop_server() {
   SHELL_PID=$(ps --ppid $SUDO_PID -o pid=)
   PERF_PID=$(ps --ppid $SHELL_PID -o pid=)
@@ -36,24 +41,26 @@ function stop_server() {
 echo "waiting for server to boot"
 sleep 3
 
+## launch quic client
 echo "executing request"
 ./scripts/server-perf/client/target/release/perf-client \
-  https://localhost:4433 --download $SIZE || stop_server "failed to finish the request"
+  https://localhost:4433 --download $DL_SIZE --upload $UL_SIZE || stop_server "failed to finish the request"
 
 sleep 1
 stop_server
 
+## process perf results
 sudo perf script \
-  --input $DIR/$SIZE.perf \
+  --input $DIR/$FILENAME.perf \
   2>/dev/null \
   | inferno-collapse-perf \
-  > $DIR/$SIZE.folded
+  > $DIR/$FILENAME.folded
 
-cat $DIR/$SIZE.folded \
+cat $DIR/$FILENAME.folded \
   | inferno-flamegraph \
-  > ./target/perf/$SIZE.svg
+  > ./target/perf/$FILENAME.svg
 
-sudo rm -f $DIR/$SIZE.perf
-sudo rm -f $DIR/$SIZE.folded
+sudo rm -f $DIR/$FILENAME.perf
+sudo rm -f $DIR/$FILENAME.folded
 
-echo "flamegraph available in ./target/perf/$SIZE.svg"
+echo "flamegraph available in ./target/perf/$FILENAME.svg"

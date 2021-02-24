@@ -7,6 +7,8 @@ edition = "2018"
 [dependencies]
 anyhow = "1"
 byte-unit = "4"
+bytes = { version = "1", default-features = false }
+futures = "0.3"
 quinn = { git = "https://github.com/quinn-rs/quinn", rev = "2a8c93bf0f987b4118fdaf1d0d1489c452810e19" }
 s2n-quic-core = { path = "../../../quic/s2n-quic-core", features = ["testing"] }
 structopt = "0.3"
