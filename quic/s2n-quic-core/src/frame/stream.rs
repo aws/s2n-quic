@@ -2,7 +2,7 @@ use crate::{
     frame::{MaxPayloadSizeForFrame, Tag},
     varint::VarInt,
 };
-use core::mem::size_of;
+use core::{convert::TryFrom, mem::size_of};
 use s2n_codec::{
     decoder_parameterized_value, DecoderBuffer, DecoderBufferMut, Encoder, EncoderValue,
 };
@@ -173,6 +173,17 @@ impl<Data> Stream<Data> {
         size_of::<Tag>() + stream_id.encoding_size() +
         8 /* Offset size */ + 4 /* Size of len */ + min_payload
     }
+
+    /// Converts the stream data from one type to another
+    pub fn map_data<F: FnOnce(Data) -> Out, Out>(self, map: F) -> Stream<Out> {
+        Stream {
+            stream_id: self.stream_id,
+            offset: self.offset,
+            is_last_frame: self.is_last_frame,
+            is_fin: self.is_fin,
+            data: map(self.data),
+        }
+    }
 }
 
 decoder_parameterized_value!(
@@ -229,40 +240,53 @@ impl<Data: EncoderValue> EncoderValue for Stream<Data> {
             buffer.encode_with_len_prefix::<VarInt, _>(&self.data);
         }
     }
-}
 
-impl<'a> Into<StreamRef<'a>> for Stream<DecoderBuffer<'a>> {
-    fn into(self) -> StreamRef<'a> {
-        Stream {
-            stream_id: self.stream_id,
-            offset: self.offset,
-            is_last_frame: self.is_last_frame,
-            is_fin: self.is_fin,
-            data: self.data.into_less_safe_slice(),
+    /// We hand optimize this encoding size so we can quickly estimate
+    /// how large a STREAM frame will be
+    fn encoding_size_for_encoder<E: Encoder>(&self, encoder: &E) -> usize {
+        let mut len = 0;
+        len += size_of::<Tag>();
+        len += self.stream_id.encoding_size();
+
+        if *self.offset != 0 {
+            len += self.offset.encoding_size();
         }
+
+        let data_len = self.data.encoding_size_for_encoder(encoder);
+        len += data_len;
+
+        // include the len prefix
+        if !self.is_last_frame {
+            len += VarInt::try_from(data_len).unwrap().encoding_size();
+        }
+
+        // make sure the encoding size matches what we would actually encode
+        if cfg!(debug_assertions) {
+            use s2n_codec::EncoderLenEstimator;
+
+            let mut estimator = EncoderLenEstimator::new(encoder.remaining_capacity());
+            self.encode(&mut estimator);
+            assert_eq!(estimator.len(), len);
+        }
+
+        len
     }
 }
 
-impl<'a> Into<StreamRef<'a>> for Stream<DecoderBufferMut<'a>> {
-    fn into(self) -> StreamRef<'a> {
-        Stream {
-            stream_id: self.stream_id,
-            offset: self.offset,
-            is_last_frame: self.is_last_frame,
-            is_fin: self.is_fin,
-            data: self.data.into_less_safe_slice(),
-        }
+impl<'a> From<Stream<DecoderBuffer<'a>>> for StreamRef<'a> {
+    fn from(s: Stream<DecoderBuffer<'a>>) -> Self {
+        s.map_data(|data| data.into_less_safe_slice())
     }
 }
 
-impl<'a> Into<StreamMut<'a>> for Stream<DecoderBufferMut<'a>> {
-    fn into(self) -> StreamMut<'a> {
-        Stream {
-            stream_id: self.stream_id,
-            offset: self.offset,
-            is_last_frame: self.is_last_frame,
-            is_fin: self.is_fin,
-            data: self.data.into_less_safe_slice(),
-        }
+impl<'a> From<Stream<DecoderBufferMut<'a>>> for StreamRef<'a> {
+    fn from(s: Stream<DecoderBufferMut<'a>>) -> Self {
+        s.map_data(|data| &data.into_less_safe_slice()[..])
+    }
+}
+
+impl<'a> From<Stream<DecoderBufferMut<'a>>> for StreamMut<'a> {
+    fn from(s: Stream<DecoderBufferMut<'a>>) -> Self {
+        s.map_data(|data| data.into_less_safe_slice())
     }
 }

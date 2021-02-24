@@ -116,6 +116,14 @@ impl<Data> Crypto<Data> {
         size_of::<Tag>() +
         8 /* Offset size */ + 4 /* Size of len */ + min_payload
     }
+
+    /// Converts the stream data from one type to another
+    pub fn map_data<F: FnOnce(Data) -> Out, Out>(self, map: F) -> Crypto<Out> {
+        Crypto {
+            offset: self.offset,
+            data: map(self.data),
+        }
+    }
 }
 
 impl<Data: EncoderValue> EncoderValue for Crypto<Data> {
@@ -126,30 +134,21 @@ impl<Data: EncoderValue> EncoderValue for Crypto<Data> {
     }
 }
 
-impl<'a> Into<CryptoRef<'a>> for Crypto<DecoderBuffer<'a>> {
-    fn into(self) -> CryptoRef<'a> {
-        Crypto {
-            offset: self.offset,
-            data: self.data.into_less_safe_slice(),
-        }
+impl<'a> From<Crypto<DecoderBuffer<'a>>> for CryptoRef<'a> {
+    fn from(s: Crypto<DecoderBuffer<'a>>) -> Self {
+        s.map_data(|data| data.into_less_safe_slice())
     }
 }
 
-impl<'a> Into<CryptoRef<'a>> for Crypto<DecoderBufferMut<'a>> {
-    fn into(self) -> CryptoRef<'a> {
-        Crypto {
-            offset: self.offset,
-            data: self.data.into_less_safe_slice(),
-        }
+impl<'a> From<Crypto<DecoderBufferMut<'a>>> for CryptoRef<'a> {
+    fn from(s: Crypto<DecoderBufferMut<'a>>) -> Self {
+        s.map_data(|data| &data.into_less_safe_slice()[..])
     }
 }
 
-impl<'a> Into<CryptoMut<'a>> for Crypto<DecoderBufferMut<'a>> {
-    fn into(self) -> CryptoMut<'a> {
-        Crypto {
-            offset: self.offset,
-            data: self.data.into_less_safe_slice(),
-        }
+impl<'a> From<Crypto<DecoderBufferMut<'a>>> for CryptoMut<'a> {
+    fn from(s: Crypto<DecoderBufferMut<'a>>) -> Self {
+        s.map_data(|data| data.into_less_safe_slice())
     }
 }
 

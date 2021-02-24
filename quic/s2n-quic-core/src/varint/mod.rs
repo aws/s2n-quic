@@ -59,7 +59,34 @@ fn read_table(x: u64) -> (u64, usize, u64) {
             let len = 1 << two_bit;
             let usable_bits = len * 8 - 2;
 
+            debug_assert_eq!(len as usize, encoding_size(x));
+
             (two_bit, len as usize, usable_bits)
+        }};
+    }
+
+    table! {
+        (0b00, 1, 6 , 63);
+        (0b01, 2, 14, 16_383);
+        (0b10, 4, 30, 1_073_741_823);
+    }
+}
+
+fn encoding_size(x: u64) -> usize {
+    debug_assert!(x <= MAX_VARINT_VALUE);
+
+    macro_rules! table {
+        ($(($two_bit:expr, $length:expr, $usable_bits:expr, $max_value:expr);)*) => {{
+            let leading_zeros = x.leading_zeros();
+            let mut len = 1;
+
+            $(
+                if leading_zeros < (64 - $usable_bits) {
+                    len = $length * 2;
+                };
+            )*
+
+            len
         }};
     }
 
@@ -291,6 +318,16 @@ impl EncoderValue for VarInt {
     fn encode<E: Encoder>(&self, encoder: &mut E) {
         self.encode_with_table_entry(self.encoding_table_entry(), encoder);
     }
+
+    #[inline]
+    fn encoding_size(&self) -> usize {
+        encoding_size(self.0)
+    }
+
+    #[inline]
+    fn encoding_size_for_encoder<E: Encoder>(&self, _encoder: &E) -> usize {
+        encoding_size(self.0)
+    }
 }
 
 decoder_value!(
@@ -437,6 +474,7 @@ impl core::ops::Add for VarInt {
     type Output = Self;
 
     #[inline]
+    #[track_caller]
     fn add(self, rhs: Self) -> Self {
         if cfg!(debug_assertions) {
             self.checked_add(rhs).expect("VarInt overflow occurred")
@@ -450,6 +488,7 @@ impl core::ops::Add<usize> for VarInt {
     type Output = Self;
 
     #[inline]
+    #[track_caller]
     fn add(self, rhs: usize) -> Self {
         if cfg!(debug_assertions) {
             self.checked_add(VarInt::new(rhs as u64).expect("VarInt overflow occured"))
@@ -462,6 +501,7 @@ impl core::ops::Add<usize> for VarInt {
 
 impl core::ops::AddAssign<Self> for VarInt {
     #[inline]
+    #[track_caller]
     fn add_assign(&mut self, rhs: Self) {
         if cfg!(debug_assertions) {
             *self = self.checked_add(rhs).expect("VarInt overflow occurred")
@@ -473,6 +513,7 @@ impl core::ops::AddAssign<Self> for VarInt {
 
 impl core::ops::AddAssign<usize> for VarInt {
     #[inline]
+    #[track_caller]
     fn add_assign(&mut self, rhs: usize) {
         if cfg!(debug_assertions) {
             *self = self
@@ -488,6 +529,7 @@ impl core::ops::Sub for VarInt {
     type Output = Self;
 
     #[inline]
+    #[track_caller]
     fn sub(self, rhs: Self) -> Self {
         // Bounds check is inherited from u64
         Self(self.0 - rhs.0)
@@ -498,6 +540,7 @@ impl core::ops::Sub<usize> for VarInt {
     type Output = Self;
 
     #[inline]
+    #[track_caller]
     fn sub(self, rhs: usize) -> Self {
         // Bounds check is inherited from u64
         Self(self.0 - rhs as u64)
@@ -506,6 +549,7 @@ impl core::ops::Sub<usize> for VarInt {
 
 impl core::ops::SubAssign<Self> for VarInt {
     #[inline]
+    #[track_caller]
     fn sub_assign(&mut self, rhs: Self) {
         // Bounds check is inherited from u64
         self.0 -= rhs.0
@@ -514,6 +558,7 @@ impl core::ops::SubAssign<Self> for VarInt {
 
 impl core::ops::SubAssign<usize> for VarInt {
     #[inline]
+    #[track_caller]
     fn sub_assign(&mut self, rhs: usize) {
         // Bounds check is inherited from u64
         self.0 -= rhs as u64
@@ -524,6 +569,7 @@ impl core::ops::Mul for VarInt {
     type Output = Self;
 
     #[inline]
+    #[track_caller]
     fn mul(self, rhs: Self) -> Self {
         if cfg!(debug_assertions) {
             self.checked_mul(rhs).expect("VarInt overflow occurred")
@@ -537,6 +583,7 @@ impl core::ops::Mul<usize> for VarInt {
     type Output = Self;
 
     #[inline]
+    #[track_caller]
     fn mul(self, rhs: usize) -> Self {
         if cfg!(debug_assertions) {
             self.checked_mul(VarInt::new(rhs as u64).expect("VarInt overflow occured"))
@@ -549,6 +596,7 @@ impl core::ops::Mul<usize> for VarInt {
 
 impl core::ops::MulAssign<Self> for VarInt {
     #[inline]
+    #[track_caller]
     fn mul_assign(&mut self, rhs: Self) {
         if cfg!(debug_assertions) {
             *self = self.checked_mul(rhs).expect("VarInt overflow occurred")
@@ -560,6 +608,7 @@ impl core::ops::MulAssign<Self> for VarInt {
 
 impl core::ops::MulAssign<usize> for VarInt {
     #[inline]
+    #[track_caller]
     fn mul_assign(&mut self, rhs: usize) {
         if cfg!(debug_assertions) {
             *self = self
@@ -575,6 +624,7 @@ impl core::ops::Div for VarInt {
     type Output = Self;
 
     #[inline]
+    #[track_caller]
     fn div(self, rhs: Self) -> Self {
         // Bounds check is inherited from u64
         Self(self.0 / rhs.0)
@@ -585,6 +635,7 @@ impl core::ops::Div<usize> for VarInt {
     type Output = Self;
 
     #[inline]
+    #[track_caller]
     fn div(self, rhs: usize) -> Self {
         // Bounds check is inherited from u64
         Self(self.0 / rhs as u64)
@@ -593,6 +644,7 @@ impl core::ops::Div<usize> for VarInt {
 
 impl core::ops::DivAssign<Self> for VarInt {
     #[inline]
+    #[track_caller]
     fn div_assign(&mut self, rhs: Self) {
         // Bounds check is inherited from u64
         self.0 /= rhs.0
@@ -601,6 +653,7 @@ impl core::ops::DivAssign<Self> for VarInt {
 
 impl core::ops::DivAssign<usize> for VarInt {
     #[inline]
+    #[track_caller]
     fn div_assign(&mut self, rhs: usize) {
         // Bounds check is inherited from u64
         self.0 /= rhs as u64
@@ -611,6 +664,7 @@ impl core::ops::Rem for VarInt {
     type Output = Self;
 
     #[inline]
+    #[track_caller]
     fn rem(self, rhs: Self) -> Self {
         // Bounds check is inherited from u64
         Self(self.0.rem(rhs.0))
@@ -621,6 +675,7 @@ impl core::ops::Rem<usize> for VarInt {
     type Output = Self;
 
     #[inline]
+    #[track_caller]
     fn rem(self, rhs: usize) -> Self {
         // Bounds check is inherited from u64
         Self(self.0.rem(rhs as u64))
@@ -629,6 +684,7 @@ impl core::ops::Rem<usize> for VarInt {
 
 impl core::ops::RemAssign<Self> for VarInt {
     #[inline]
+    #[track_caller]
     fn rem_assign(&mut self, rhs: Self) {
         // Bounds check is inherited from u64
         self.0 %= rhs.0
@@ -637,6 +693,7 @@ impl core::ops::RemAssign<Self> for VarInt {
 
 impl core::ops::RemAssign<usize> for VarInt {
     #[inline]
+    #[track_caller]
     fn rem_assign(&mut self, rhs: usize) {
         // Bounds check is inherited from u64
         self.0 %= rhs as u64
