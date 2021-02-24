@@ -149,7 +149,7 @@ impl Perf {
             //# end, the client and server application layer may use a single
             //# preallocated and initialized buffer that it queues to send when any
             //# payload needs to be sent out.
-            let mut data = s2n_quic_integration::stream::Data::new(len as usize);
+            let mut data = s2n_quic_core::stream::testing::Data::new(len);
 
             loop {
                 match data.send(usize::MAX, &mut chunks) {
