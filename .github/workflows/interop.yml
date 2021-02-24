@@ -34,6 +34,7 @@ jobs:
           status: 'pending'
 
       - uses: ouzi-dev/commit-status-updater@v1.1.0
+        if: github.event.pull_request
         with:
           name: 'interop / diff'
           status: 'pending'
@@ -254,6 +255,7 @@ jobs:
 
       - name: Get latest successfull interop commit SHA on main branch
         id: mainsha
+        if: github.event.pull_request
         run: |
           curl \
           --url "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/workflows/interop.yml/runs?branch=main&status=success&per_page=1" \
@@ -264,6 +266,7 @@ jobs:
           echo "::set-output name=MAIN_SHA::$MAIN_SHA"
 
       - name: Download latest main interop result
+        if: github.event.pull_request
         run: |
           rm -f prev_result.json
           wget $CDN/${{ steps.mainsha.outputs.MAIN_SHA }}/interop/logs/latest/result.json || echo '{}' > result.json
@@ -288,14 +291,8 @@ jobs:
         if: github.event.push
         run: |
           mkdir -p web/logs/latest
-          MAIN_SHA=${{ steps.mainsha.outputs.MAIN_SHA }}
-          SHORT_SHA=${MAIN_SHA::7}
           python3 .github/interop/merge.py \
-            --prev_version prev_result.json \
-            --prev_version_suffix "$SHORT_SHA" \
-            --prev_version_url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/commit/$MAIN_SHA" \
             --new_version_log_url "$LOG_URL" \
-            --prev_version_log_url "$CDN/$MAIN_SHA/interop/$LOG_URL" \
             --interop_log_url "${{ steps.download.outputs.INTEROP_LOG_URL }}" \
             latest.json results/**/result.json > \
               web/logs/latest/result.json
@@ -334,6 +331,7 @@ jobs:
           url: "${{ steps.s3.outputs.URL }}"
 
       - uses: ouzi-dev/commit-status-updater@v1.1.0
+        if: github.event.pull_request
         with:
           name: 'interop / diff'
           status: "${{ steps.diffstatus.outputs.DIFF_STATUS }}"
