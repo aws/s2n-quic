@@ -256,9 +256,9 @@ jobs:
         id: mainsha
         run: |
           curl \
-          --url '$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/workflows/interop.yml/runs?branch=main&status=success&per_page=1' \
-          --header 'authorization: Bearer ${{ secrets.GITHUB_TOKEN }}' \
-          --header 'Accept: application/vnd.github.v3+json' > latest_workflow_run.json
+          --url "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/workflows/interop.yml/runs?branch=main&status=success&per_page=1" \
+          --header "authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+          --header "Accept: application/vnd.github.v3+json" > latest_workflow_run.json
           MAIN_SHA=$(jq --raw-output '.workflow_runs[0] | .head_sha' latest_workflow_run.json)
           rm -f latest_workflow_run.json
           echo "::set-output name=MAIN_SHA::$MAIN_SHA"
@@ -269,14 +269,14 @@ jobs:
           wget $CDN/${{ steps.mainsha.outputs.MAIN_SHA }}/interop/logs/latest/result.json || echo '{}' > prev_result.json
 
       - name: Generate report for pull request
-        if: ${{ github.event.issue.pull_request }}
+        if: github.event.pull_request
         run: |
           mkdir -p web/logs/latest
           MAIN_SHA=${{ steps.mainsha.outputs.MAIN_SHA }}
           python3 .github/interop/merge.py \
             --prev_version prev_result.json \
-            --new_version_suffix "PR${{github.event.issue.number}}" \
-            --new_version_url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/pull/${{github.event.issue.number}}" \
+            --new_version_suffix "PR${{github.event.pull_request.number}}" \
+            --new_version_url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/pull/${{github.event.pull_request.number}}" \
             --new_version_log_url "$LOG_URL" \
             --prev_version_log_url "$CDN/$MAIN_SHA/interop/$LOG_URL" \
             --interop_log_url "${{ steps.download.outputs.INTEROP_LOG_URL }}" \
@@ -285,7 +285,7 @@ jobs:
           if [ $? -eq 1 ]; then echo "DIFF_STATUS=failure"; else echo "DIFF_STATUS=success"; fi >> $GITHUB_ENV
 
       - name: Generate report for push to main
-        if: ${{ !github.event.issue.pull_request }}
+        if: github.event.push
         run: |
           mkdir -p web/logs/latest
           MAIN_SHA=${{ steps.mainsha.outputs.MAIN_SHA }}
