@@ -7,7 +7,7 @@ start_time = None
 end_time = None
 quic_draft = None
 quic_version = None
-diff_regression = False
+regression = False
 S2N_QUIC = "s2n-quic"
 s2n_quic_new_version_name = S2N_QUIC
 s2n_quic_prev_version_name = S2N_QUIC
@@ -193,7 +193,7 @@ if args.prev_version:
 
                     if prev_result == 'succeeded' and diff_output == 'failed':
                         # If any test went from success to failure, count as a regression
-                        diff_regression = True
+                        regression = True
 
                 for m in result['measurements'][index]:
                     measurements[client][server][m['abbr']] = m
@@ -206,6 +206,7 @@ out = {
     "end_time": end_time,
     "new_version": s2n_quic_new_version_name,
     "prev_version": s2n_quic_prev_version_name,
+    "regression": regression,
     "log_dir": args.interop_log_url,
     "s2n_quic_log_dir": logs,
     "servers": reorder_implementations(servers),
@@ -285,6 +286,3 @@ for impl in out['all_impls']:
         out["results_diff"]["client"].append(pair_results)
 
 print(json.dumps(out))
-
-if diff_regression:
-    sys.exit(1)

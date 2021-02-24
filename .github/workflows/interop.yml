@@ -283,7 +283,6 @@ jobs:
             --interop_log_url "${{ steps.download.outputs.INTEROP_LOG_URL }}" \
             latest.json results/**/result.json > \
               web/logs/latest/result.json
-          if [ $? -eq 1 ]; then echo "DIFF_STATUS=failure"; else echo "DIFF_STATUS=success"; fi >> $GITHUB_ENV
 
       - name: Generate report for push to main
         if: github.event.push
@@ -300,7 +299,12 @@ jobs:
             --interop_log_url "${{ steps.download.outputs.INTEROP_LOG_URL }}" \
             latest.json results/**/result.json > \
               web/logs/latest/result.json
-          if [ $? -eq 1 ]; then echo "DIFF_STATUS=failure"; else echo "DIFF_STATUS=success"; fi >> $GITHUB_ENV
+
+      - name: Set diff status
+        id: diffstatus
+        run: |
+          DIFF_STATUS=$(jq --raw-output 'if .regression then "failure" else "success" end' web/logs/latest/result.json)
+          echo "::set-output name=DIFF_STATUS::$DIFF_STATUS"
 
       - uses: aws-actions/configure-aws-credentials@v1
         with:
@@ -332,5 +336,5 @@ jobs:
       - uses: ouzi-dev/commit-status-updater@v1.1.0
         with:
           name: 'interop / diff'
-          status: "${{ env.DIFF_STATUS }}"
+          status: "${{ steps.diffstatus.outputs.DIFF_STATUS }}"
           url: "${{ steps.s3.outputs.DIFF_URL }}"
