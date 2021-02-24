@@ -220,7 +220,7 @@
         var cell = document.createElement("th");
         row.appendChild(cell);
         cell.scope = "col";
-        cell.className = "table-light client-any";
+        cell.className = "table-light client-any first-diff-col";
 
         if (result.results_diff.hasOwnProperty('server')) {
             cell = document.createElement("th");
@@ -257,7 +257,7 @@
         var row = tbody.insertRow();
         var cell = document.createElement("th");
         cell.scope = "row";
-        cell.className = "table-light col-sm-1";
+        cell.className = "table-light col-sm-1 first-diff-col";
         if (result.hasOwnProperty("urls"))
             makeClickable(cell, result.urls[impl]);
         cell.innerHTML = impl;
