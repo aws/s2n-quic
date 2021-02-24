@@ -150,6 +150,121 @@
         }
     }
 
+    function fillDiffTable(result) {
+        var index = 0;
+        var appendClientResult = function(el, res, i, server) {
+            result.results_diff['client'][i].forEach(function (item) {
+                if (item.result !== res) return;
+                el.appendChild(getLogLink(result.log_dir, result.s2n_quic_log_dir, server, result.new_version, item.name, item.abbr, res));
+            });
+        };
+        var appendServerResult = function(el, res, i, client) {
+            result.results_diff['server'][i].forEach(function (item) {
+                if (item.result !== res) return;
+                el.appendChild(getLogLink(result.log_dir, result.s2n_quic_log_dir, result.new_version, client, item.name, item.abbr, res));
+            });
+        };
+
+        var t = document.getElementById("diff");
+        t.innerHTML = "";
+
+        if (!result.results_diff['server'] && !result.results_diff['client']) {
+            t.innerHTML = "No difference";
+            return;
+        }
+
+        makeDiffColumnHeaders(t, result);
+        var tbody = t.createTBody();
+        for(var i = 0; i < result.all_impls.length; i++) {
+            var impl = result.all_impls[i];
+
+            if (hasDiffResult(result, i)) {
+                var row = makeDiffRowHeader(tbody, result, impl);
+
+                if (result.results_diff['server']) {
+                    var server_cell = row.insertCell();
+                    server_cell.className = "server-" + result.all_impls[i] + " client-s2n-quic";
+                    appendServerResult(server_cell, "succeeded", i, impl);
+                    appendServerResult(server_cell, "unsupported", i, impl);
+                    appendServerResult(server_cell, "failed", i, impl);
+                }
+
+                if (result.results_diff['client']) {
+                    var client_cell = row.insertCell();
+                    client_cell.className = "server-s2n-quic-client-" + impl;
+                    appendClientResult(client_cell, "succeeded", i, impl);
+                    appendClientResult(client_cell, "unsupported", i, impl);
+                    appendClientResult(client_cell, "failed", i, impl);
+                }
+            }
+
+            index++;
+        }
+    }
+
+    function hasDiffResult(result, i) {
+        if (result.results_diff['server'] && result.results_diff['server'][i].length > 0) {
+            return true;
+        }
+        if (result.results_diff['client'] && result.results_diff['client'][i].length > 0) {
+            return true;
+        }
+        return false;
+    }
+
+    function makeDiffColumnHeaders(t, result) {
+        for(var i = 0; i < result.results_diff.length; i++)
+            t.appendChild(document.createElement("colgroup"));
+        var thead = t.createTHead();
+        var row = thead.insertRow(0);
+        var cell = document.createElement("th");
+        row.appendChild(cell);
+        cell.scope = "col";
+        cell.className = "table-light client-any";
+
+        if (result.results_diff.hasOwnProperty('server')) {
+            cell = document.createElement("th");
+            row.appendChild(cell);
+            cell.scope = "col";
+            cell.className = "table-light col-md-1";
+            if (result.hasOwnProperty("urls"))
+                makeClickable(cell, result.urls[result.new_version]);
+            cell.innerHTML = 's2n-quic Server';
+        }
+
+        if (result.results_diff.hasOwnProperty('client')) {
+            cell = document.createElement("th");
+            row.appendChild(cell);
+            cell.scope = "col";
+            cell.className = "table-light col-md-1";
+            if (result.hasOwnProperty("urls"))
+                makeClickable(cell, result.urls[result.new_version]);
+            cell.innerHTML = 's2n-quic Client';
+        }
+
+        // Add a couple columns so the server and client are more left aligned
+        cell = document.createElement("th");
+        row.appendChild(cell);
+        cell.scope = "col";
+        cell.className = "table-light";
+        cell = document.createElement("th");
+        row.appendChild(cell);
+        cell.scope = "col";
+        cell.className = "table-light";
+    }
+
+    function makeDiffRowHeader(tbody, result, impl) {
+        var row = tbody.insertRow();
+        var cell = document.createElement("th");
+        cell.scope = "row";
+        cell.className = "table-light col-sm-1";
+        if (result.hasOwnProperty("urls"))
+            makeClickable(cell, result.urls[impl]);
+        cell.innerHTML = impl;
+        row.appendChild(cell);
+        return row;
+    }
+
     function dateToString(date) {
         return date.toLocaleDateString("en-US",  { timeZone: 'UTC' }) + " " + date.toLocaleTimeString("en-US", { timeZone: 'UTC', timeZoneName: 'short' });
     }
@@ -256,6 +371,16 @@
         document.getElementById("lastrun-end").innerHTML = dateToString(endTime);
         document.getElementById("quic-vers").innerHTML =
             "<tt>" + result.quic_version + "</tt> (\"draft-" + result.quic_draft + "\")";
+
+        if (result['results_diff']) {
+            var prev_version_url = result.urls[result.prev_version];
+            var new_version_url = result.urls[result.new_version];
+            document.getElementById("diff-title").innerHTML = `Comparing <a href='${prev_version_url}' target='_blank'>${result.prev_version}</a> to <a href='${new_version_url}' target='_blank'>${result.new_version}</a>`;
+            fillDiffTable(result);
+        } else {
+            $("#diff-title").hide();
+        }
+
 
         fillInteropTable(result);
         fillMeasurementTable(result);

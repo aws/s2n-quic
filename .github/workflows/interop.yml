@@ -33,12 +33,6 @@ jobs:
           name: 'interop / report'
           status: 'pending'
 
-      - uses: ouzi-dev/commit-status-updater@v1.1.0
-        if: github.event.pull_request
-        with:
-          name: 'interop / diff'
-          status: 'pending'
-
       - uses: actions/checkout@v2
         with:
           repository: marten-seemann/quic-interop-runner
@@ -320,19 +314,10 @@ jobs:
           TARGET="${{ github.sha }}/interop"
           aws s3 sync web "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
           URL="$CDN/$TARGET/index.html"
-          DIFF_URL="$CDN/$TARGET/diff.html"
           echo "::set-output name=URL::$URL"
-          echo "::set-output name=DIFF_URL::$DIFF_URL"
 
       - uses: ouzi-dev/commit-status-updater@v1.1.0
         with:
           name: 'interop / report'
-          status: 'success'
-          url: "${{ steps.s3.outputs.URL }}"
-
-      - uses: ouzi-dev/commit-status-updater@v1.1.0
-        if: github.event.pull_request
-        with:
-          name: 'interop / diff'
           status: "${{ steps.diffstatus.outputs.DIFF_STATUS }}"
-          url: "${{ steps.s3.outputs.DIFF_URL }}"
+          url: "${{ steps.s3.outputs.URL }}"

@@ -214,11 +214,13 @@ if args.prev_version:
     out['regression'] = regression
     out.setdefault("results_diff", {})
 
-    if S2N_QUIC in clients:
+    if S2N_QUIC in results_diff:
         out["results_diff"].setdefault('client', [])
 
-    if S2N_QUIC in servers:
-        out["results_diff"].setdefault('server', [])
+    for client in results_diff:
+        if S2N_QUIC in results_diff[client]:
+            out["results_diff"].setdefault('server', [])
+            break
 
     for impl in out['all_impls']:
         pair_results = []
