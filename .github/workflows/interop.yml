@@ -266,7 +266,8 @@ jobs:
       - name: Download latest main interop result
         run: |
           rm -f prev_result.json
-          wget $CDN/${{ steps.mainsha.outputs.MAIN_SHA }}/interop/logs/latest/result.json || echo '{}' > prev_result.json
+          wget $CDN/${{ steps.mainsha.outputs.MAIN_SHA }}/interop/logs/latest/result.json || echo '{}' > result.json
+          mv result.json prev_result.json
 
       - name: Generate report for pull request
         if: github.event.pull_request
