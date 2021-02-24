@@ -29,6 +29,15 @@
             log_url_pattern = log_dir;
         }
 
+        // Use original s2n-quic names
+        if (server.startsWith('s2n-quic')) {
+            server = 's2n-quic';
+        }
+
+        if (client.startsWith('s2n-quic')) {
+            client = 's2n-quic';
+        }
+
         var log_url = log_url_pattern.replace("SERVER", server).replace("CLIENT", client).replace("TEST", test);
 
         var a = document.createElement("a");
