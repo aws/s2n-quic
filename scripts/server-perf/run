@@ -3,9 +3,9 @@
 set -e
 
 ## get amount of data to receive(dl) and send(up) from s2n server
-FILENAME=flame
-DL_SIZE=${1:-500MB}
-UL_SIZE=${2:-500MB}
+DL_SIZE=${1:-5MB}
+UL_SIZE=${2:-5MB}
+FILENAME=DL_${DL_SIZE}-UL_${UL_SIZE}
 
 ## init
 DIR=$(mktemp -d -t s2n-quic-perf-XXXXXXXXXX)

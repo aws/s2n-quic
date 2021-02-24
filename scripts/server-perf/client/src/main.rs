@@ -68,7 +68,7 @@ async fn client(
 
     // record the time
     let all = Instant::now();
-    let _ = futures::try_join!(receiver, sender)?;
+    let _ = tokio::try_join!(receiver, sender)?;
     let duration = all.elapsed();
     eprintln!("total duration took {:?}", duration,);
 
