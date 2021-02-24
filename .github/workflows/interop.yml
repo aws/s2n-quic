@@ -20,6 +20,7 @@ env:
   IPERF_ENDPOINT_REF: sha256:cb50cc8019d45d9cad5faecbe46a3c21dd5e871949819a5175423755a9045106
   WIRESHARK_VERSION: 3.4.3
   CDN: https://dnglbrstg7yg.cloudfront.net
+  LOG_URL: logs/latest/SERVER_CLIENT/TEST/output.txt
 
 jobs:
   env:
@@ -30,6 +31,11 @@ jobs:
       - uses: ouzi-dev/commit-status-updater@v1.1.0
         with:
           name: 'interop / report'
+          status: 'pending'
+
+      - uses: ouzi-dev/commit-status-updater@v1.1.0
+        with:
+          name: 'interop / diff'
           status: 'pending'
 
       - uses: actions/checkout@v2
@@ -237,21 +243,63 @@ jobs:
           path: results/
 
       - name: Download latest results
+        id: download
         run: |
           rm -f result.json
-          wget https://interop.seemann.io/logs/latest/result.json || echo '{}' > result.json
+          INTEROP_BASE_URL="https://interop.seemann.io/logs/"
+          wget ${INTEROP_BASE_URL}latest/result.json || echo '{}' > result.json
           mv result.json latest.json
+          INTEROP_LOG_URL=${INTEROP_BASE_URL}$(jq --raw-output '.log_dir' latest.json)/SERVER_CLIENT/TEST/
+          echo "::set-output name=INTEROP_LOG_URL::$INTEROP_LOG_URL"
 
-      - name: Generate report
+      - name: Get latest successfull interop commit SHA on main branch
+        id: mainsha
+        run: |
+          curl \
+          --url '$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/workflows/interop.yml/runs?branch=main&status=success&per_page=1' \
+          --header 'authorization: Bearer ${{ secrets.GITHUB_TOKEN }}' \
+          --header 'Accept: application/vnd.github.v3+json' > latest_workflow_run.json
+          MAIN_SHA=$(jq --raw-output '.workflow_runs[0] | .head_sha' latest_workflow_run.json)
+          rm -f latest_workflow_run.json
+          echo "::set-output name=MAIN_SHA::$MAIN_SHA"
+
+      - name: Download latest main interop result
+        run: |
+          rm -f prev_result.json
+          wget $CDN/${{ steps.mainsha.outputs.MAIN_SHA }}/interop/logs/latest/result.json || echo '{}' > prev_result.json
+
+      - name: Generate report for pull request
+        if: ${{ github.event.issue.pull_request }}
         run: |
           mkdir -p web/logs/latest
-          python3 .github/interop/merge.py latest.json results/**/result.json > \
-            web/logs/latest/result.json
-          find results -maxdepth 3 -type d -wholename '*/logs/*' | while read from; do
-            mv $from web/logs/latest/$(basename $from)
-          done
-          cat .github/interop/index.head.html web/logs/latest/result.json .github/interop/index.body.html > \
-            web/index.html
+          MAIN_SHA=${{ steps.mainsha.outputs.MAIN_SHA }}
+          python3 .github/interop/merge.py \
+            --prev_version prev_result.json \
+            --new_version_suffix "PR${{github.event.issue.number}}" \
+            --new_version_url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/pull/${{github.event.issue.number}}" \
+            --new_version_log_url "$LOG_URL" \
+            --prev_version_log_url "$CDN/$MAIN_SHA/interop/$LOG_URL" \
+            --interop_log_url "${{ steps.download.outputs.INTEROP_LOG_URL }}" \
+            latest.json results/**/result.json > \
+              web/logs/latest/result.json
+          if [ $? -eq 1 ]; then echo "DIFF_STATUS=failure"; else echo "DIFF_STATUS=success"; fi >> $GITHUB_ENV
+
+      - name: Generate report for push to main
+        if: ${{ !github.event.issue.pull_request }}
+        run: |
+          mkdir -p web/logs/latest
+          MAIN_SHA=${{ steps.mainsha.outputs.MAIN_SHA }}
+          SHORT_SHA=${MAIN_SHA::7}
+          python3 .github/interop/merge.py \
+            --prev_version prev_result.json \
+            --prev_version_suffix "$SHORT_SHA" \
+            --prev_version_url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/commit/$MAIN_SHA" \
+            --new_version_log_url "$LOG_URL" \
+            --prev_version_log_url "$CDN/$MAIN_SHA/interop/$LOG_URL" \
+            --interop_log_url "${{ steps.download.outputs.INTEROP_LOG_URL }}" \
+            latest.json results/**/result.json > \
+              web/logs/latest/result.json
+          if [ $? -eq 1 ]; then echo "DIFF_STATUS=failure"; else echo "DIFF_STATUS=success"; fi >> $GITHUB_ENV
 
       - uses: aws-actions/configure-aws-credentials@v1
         with:
@@ -262,13 +310,26 @@ jobs:
       - name: Upload to S3
         id: s3
         run: |
+          find results -maxdepth 3 -type d -wholename '*/logs/*' | while read from; do
+            mv $from web/logs/latest/$(basename $from)
+          done
+          cp .github/interop/*.html web/
+          cp .github/interop/*.js web/
           TARGET="${{ github.sha }}/interop"
           aws s3 sync web "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
           URL="$CDN/$TARGET/index.html"
+          DIFF_URL="$CDN/$TARGET/diff.html"
           echo "::set-output name=URL::$URL"
+          echo "::set-output name=DIFF_URL::$DIFF_URL"
 
       - uses: ouzi-dev/commit-status-updater@v1.1.0
         with:
           name: 'interop / report'
           status: 'success'
           url: "${{ steps.s3.outputs.URL }}"
+
+      - uses: ouzi-dev/commit-status-updater@v1.1.0
+        with:
+          name: 'interop / diff'
+          status: "${{ env.DIFF_STATUS }}"
+          url: "${{ steps.s3.outputs.DIFF_URL }}"
