@@ -94,7 +94,7 @@
         var row = tbody.insertRow();
         var cell = document.createElement("th");
         cell.scope = "row";
-        cell.className = "table-light";
+        cell.className = "table-light impl-row-header";
         if (result.hasOwnProperty("urls"))
             makeClickable(cell, result.urls[impl]);
         cell.innerHTML = impl;
