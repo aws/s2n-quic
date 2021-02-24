@@ -214,11 +214,13 @@ if args.prev_version:
     out['regression'] = regression
     out.setdefault("results_diff", {})
 
-    if S2N_QUIC in results_diff:
-        out["results_diff"].setdefault('client', [])
+    for server in results_diff.get(S2N_QUIC, {}):
+        if len(results_diff.get(S2N_QUIC, {}).get(server, {})) > 0:
+            out["results_diff"].setdefault('client', [])
+            break
 
     for client in results_diff:
-        if S2N_QUIC in results_diff[client]:
+        if len(results_diff.get(client, {}).get(S2N_QUIC, {})) > 0:
             out["results_diff"].setdefault('server', [])
             break
 
