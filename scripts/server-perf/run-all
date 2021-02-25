@@ -9,4 +9,7 @@ set -e
 ./scripts/server-perf/run 0MB 1000MB
 
 OUT=./target/perf
-tree -H "." -L 1 -T "PERFORMANCE Simulations" --noreport --charset utf-8 -I "*.html" > $OUT/index.html
+
+# Generate an html file with a directory listing of all flamegraphs. -I is used to exclude
+# html files so index.html itself doesn't show up in the output.
+tree -H "." -L 1 -T "Performance Simulations" --noreport --charset utf-8 -I "*.html" > index.html
