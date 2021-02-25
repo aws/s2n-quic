@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+
+set -e
+
+
+
+./scripts/server-perf/run 1000MB 0GB
+pids[0]=$!
+./scripts/server-perf/run 750MB 250MB
+pids[1]=$!
+./scripts/server-perf/run 500MB 500MB
+pids[2]=$!
+./scripts/server-perf/run 250MB 750MB
+pids[3]=$!
+./scripts/server-perf/run 0MB 1000MB
+pids[4]=$!
+
+# wait for all pids
+for pid in ${pids[*]}; do
+  wait $pid
+done
+
+
+OUT=./target/perf
+tree -H "." -L 1 -T "BLA" --noreport --charset utf-8 -I "*.html" > $OUT/index.html
