@@ -928,6 +928,15 @@ mod tests {
         pub integrity_limit: u64,
     }
 
+    impl NullKey {
+        fn new(value: u64, integrity_limit: u64) -> Self {
+            Self {
+                value,
+                integrity_limit,
+            }
+        }
+    }
+
     impl Key for NullKey {
         fn decrypt(
             &self,
@@ -1049,8 +1058,7 @@ mod tests {
     //# connection.
     #[test]
     fn test_decryption_failure_counter() {
-        let mut key = NullKey::default();
-        key.integrity_limit = 1;
+        let key = NullKey::new(0, 1);
         let mut keyset = ApplicationKeySet::new(key);
 
         assert_eq!(keyset.decryption_error_count(), 0);
@@ -1072,8 +1080,7 @@ mod tests {
     //# AEAD_LIMIT_REACHED and not process any more packets.
     #[test]
     fn test_decryption_failure_enforced_aead_limit() {
-        let mut key = NullKey::default();
-        key.integrity_limit = 0;
+        let key = NullKey::new(0, 0);
         let mut keyset = ApplicationKeySet::new(key);
 
         assert_eq!(keyset.decryption_error_count(), 0);
@@ -1093,7 +1100,7 @@ mod tests {
     //# keys.
     #[test]
     fn test_encrypted_packet_count_increased() {
-        let key = NullKey::default();
+        let key = NullKey::new(0, 0);
         let mut crypto = PacketSpaceCrypto::new(key);
         let mut encoder_bytes = [0; 512];
         let buffer = EncoderBuffer::new(&mut encoder_bytes);
