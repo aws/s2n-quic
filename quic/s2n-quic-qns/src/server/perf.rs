@@ -1,5 +1,6 @@
 use crate::Result;
 use bytes::Bytes;
+use futures::future::try_join_all;
 use s2n_quic::{
     provider::tls::default::certificate::{
         Certificate, IntoCertificate, IntoPrivateKey, PrivateKey,
@@ -26,15 +27,35 @@ pub struct Perf {
     //# The ALPN used by the QUIC performance protocol is "perf".
     #[structopt(long, default_value = "perf")]
     alpn_protocols: Vec<String>,
+
+    #[structopt(long)]
+    connections: Option<usize>,
 }
 
 impl Perf {
     pub async fn run(&self) -> Result<()> {
         let mut server = self.server()?;
 
-        while let Some(connection) = server.accept().await {
-            // spawn a task per connection
-            spawn(handle_connection(connection));
+        if let Some(limit) = self.connections {
+            let mut connections = vec![];
+
+            while connections.len() < limit {
+                if let Some(connection) = server.accept().await {
+                    // spawn a task per connection
+                    connections.push(spawn(handle_connection(connection)));
+                } else {
+                    break;
+                }
+            }
+
+            try_join_all(connections).await?;
+
+            println!("closing server after {} connections", limit);
+        } else {
+            while let Some(connection) = server.accept().await {
+                // spawn a task per connection
+                spawn(handle_connection(connection));
+            }
         }
 
         async fn handle_connection(connection: Connection) {
