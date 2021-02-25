@@ -4,8 +4,7 @@ use crate::{
     processed_packet::ProcessedPacket,
     recovery,
     space::{
-        rx_packet_numbers::AckManager, CryptoStream, HandshakeStatus, PacketSpace,
-        PacketSpaceCrypto, TxPacketNumbers,
+        rx_packet_numbers::AckManager, CryptoStream, HandshakeStatus, PacketSpace, TxPacketNumbers,
     },
     transmission,
 };
@@ -33,7 +32,7 @@ pub struct InitialSpace<Config: connection::Config> {
     //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4
     //# If QUIC needs to retransmit that data, it MUST use
     //# the same keys even if TLS has already updated to newer keys.
-    pub crypto: PacketSpaceCrypto<<Config::TLSSession as CryptoSuite>::InitialCrypto>,
+    pub crypto: <Config::TLSSession as CryptoSuite>::InitialCrypto,
     //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9
     //# If packets from a lower encryption level contain
     //# CRYPTO frames, frames that retransmit that data MUST be sent at the
@@ -53,7 +52,7 @@ impl<Config: connection::Config> InitialSpace<Config> {
         let max_ack_delay = ack_manager.ack_settings.max_ack_delay;
         Self {
             ack_manager,
-            crypto: PacketSpaceCrypto::new(crypto),
+            crypto,
             crypto_stream: CryptoStream::new(),
             tx_packet_numbers: TxPacketNumbers::new(PacketNumberSpace::Initial, now),
             processed_packet_numbers: SlidingWindow::default(),
@@ -124,9 +123,12 @@ impl<Config: connection::Config> InitialSpace<Config> {
             payload,
         };
 
-        let (_protected_packet, buffer) = self.crypto.encode_packet(buffer, |buffer, key| {
-            packet.encode_packet(key, packet_number_encoder, context.min_packet_len, buffer)
-        })?;
+        let (_protected_packet, buffer) = packet.encode_packet(
+            &self.crypto,
+            packet_number_encoder,
+            context.min_packet_len,
+            buffer,
+        )?;
 
         let time_sent = context.timestamp;
         let (recovery_manager, mut recovery_context) =
@@ -216,21 +218,18 @@ impl<Config: connection::Config> InitialSpace<Config> {
     }
 
     /// Validate packets in the Initial packet space
-    pub fn validate_and_decrypt_packet<'a, C: connection::AeadIntegrityLimitTracking>(
+    pub fn validate_and_decrypt_packet<'a>(
         &self,
-        conn: &mut C,
         protected: ProtectedInitial<'a>,
     ) -> Result<CleartextInitial<'a>, ProcessingError> {
         let packet_number_decoder = self.packet_number_decoder();
-        let packet = self
-            .crypto
-            .unprotect_packet(|key| protected.unprotect(key, packet_number_decoder))?;
+        let packet = protected.unprotect(&self.crypto, packet_number_decoder)?;
 
         if self.is_duplicate(packet.packet_number) {
             return Err(ProcessingError::DuplicatePacket);
         }
 
-        self.crypto.decrypt_packet(conn, |key| packet.decrypt(key))
+        Ok(packet.decrypt(&self.crypto)?)
     }
 }
 

@@ -13,10 +13,10 @@ use crate::{
     transmission,
 };
 use bytes::Bytes;
-use core::{convert::TryInto, marker::PhantomData, time::Duration};
+use core::{convert::TryInto, marker::PhantomData};
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
-    crypto::{CryptoSuite, Key, OneRTTCrypto},
+    crypto::{CryptoError, CryptoSuite, Key, OneRTTCrypto},
     endpoint,
     frame::{
         ack::AckRanges, crypto::CryptoRef, stream::StreamRef, Ack, ConnectionClose, DataBlocked,
@@ -34,6 +34,7 @@ use s2n_quic_core::{
         KeyPhase,
     },
     path::Path,
+    recovery::RTTEstimator,
     time::Timestamp,
     transport::error::TransportError,
 };
@@ -340,12 +341,11 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
     }
 
     /// Validate packets in the Application packet space
-    pub fn validate_and_decrypt_packet<'a, C: connection::AeadIntegrityLimitTracking>(
+    pub fn validate_and_decrypt_packet<'a>(
         &mut self,
-        conn: &mut C,
         protected: ProtectedShort<'a>,
         datagram: &DatagramInfo,
-        pto: Duration,
+        rtt_estimator: &RTTEstimator,
     ) -> Result<CleartextShort<'a>, ProcessingError> {
         let crypto = self.crypto();
         let packet_number_decoder = self.packet_number_decoder();
@@ -375,9 +375,10 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
             }
         }
 
-        let phased_crypto = self.crypto_for_phase(phase_to_use.into());
-
-        match phased_crypto.decrypt_packet(conn, |key| packet.decrypt(key)) {
+        match self
+            .key_set
+            .app_decrypt_packet(phase_to_use.into(), |key| packet.decrypt(key))
+        {
             Ok(packet) => {
                 if packet_phase != self.crypto_phase() {
                     //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.2
@@ -402,7 +403,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
                     //# keys.
                     self.key_set
                         .key_derivation_timer
-                        .set(datagram.timestamp + pto);
+                        .set(datagram.timestamp + rtt_estimator.pto_period(1));
                 }
 
                 //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.4
@@ -736,11 +737,13 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
     }
 }
 
-struct ApplicationKeySet<Key> {
+pub(crate) struct ApplicationKeySet<Key> {
     /// The current [`KeyPhase`]
     key_phase: KeyPhase,
 
     key_derivation_timer: VirtualTimer,
+
+    packet_decryption_failures: u64,
 
     /// Set of keys for the current and next phase
     pub crypto: [PacketSpaceCrypto<Key>; 2],
@@ -758,6 +761,7 @@ where
         Self {
             key_phase: KeyPhase::Zero,
             key_derivation_timer: Default::default(),
+            packet_decryption_failures: 0,
             crypto: [phase_zero, phase_one],
         }
     }
@@ -803,6 +807,50 @@ where
     fn key_for_phase(&self, key_phase: KeyPhase) -> &PacketSpaceCrypto<K> {
         &self.crypto[(key_phase as u8) as usize]
     }
+
+    pub fn on_decryption_error(&mut self) {
+        self.packet_decryption_failures += 1
+    }
+
+    pub fn decryption_error_count(&self) -> u64 {
+        self.packet_decryption_failures
+    }
+
+    pub fn app_decrypt_packet<F, R>(
+        &mut self,
+        phase: KeyPhase,
+        f: F,
+    ) -> Result<R, connection::ProcessingError>
+    where
+        K: OneRTTCrypto,
+        F: FnOnce(&K) -> Result<R, CryptoError>,
+    {
+        match f(&self.crypto[phase as usize].key) {
+            Ok(r) => Ok(r),
+            Err(e) => {
+                //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
+                //# In addition to counting packets sent, endpoints MUST count the number
+                //# of received packets that fail authentication during the lifetime of a
+                //# connection.
+                self.on_decryption_error();
+
+                //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
+                //# If the total number of received packets that fail
+                //# authentication within the connection, across all keys, exceeds the
+                //# integrity limit for the selected AEAD, the endpoint MUST immediately
+                //# close the connection with a connection error of type
+                //# AEAD_LIMIT_REACHED and not process any more packets.
+                if self.decryption_error_count() > 100 {
+                    //self.aead_integrity_limit() {
+                    return Err(ProcessingError::TransportError(
+                        TransportError::AEAD_LIMIT_REACHED,
+                    ));
+                }
+
+                Err(ProcessingError::CryptoError(e))
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -816,6 +864,7 @@ mod tests {
         time::Clock,
     };
 
+    use core::time::Duration;
     use s2n_quic_platform::time;
     use std::sync::Arc;
 

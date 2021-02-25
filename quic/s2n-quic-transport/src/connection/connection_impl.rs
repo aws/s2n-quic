@@ -593,7 +593,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         packet: ProtectedInitial,
     ) -> Result<(), ProcessingError> {
         if let Some((space, _status)) = shared_state.space_manager.initial_mut() {
-            let packet = space.validate_and_decrypt_packet(self, packet)?;
+            let packet = space.validate_and_decrypt_packet(packet)?;
             self.handle_cleartext_initial_packet(shared_state, datagram, path_id, packet)?;
 
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.1
@@ -684,7 +684,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         //# packets.
 
         if let Some((space, handshake_status)) = shared_state.space_manager.handshake_mut() {
-            let packet = space.validate_and_decrypt_packet(self, packet)?;
+            let packet = space.validate_and_decrypt_packet(packet)?;
             if let Some(close) = space.handle_cleartext_payload(
                 packet.packet_number,
                 packet.payload,
@@ -787,10 +787,9 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
             //# close the connection with a connection error of type
             //# AEAD_LIMIT_REACHED and not process any more packets.
             let packet = space.validate_and_decrypt_packet(
-                self,
                 packet,
                 datagram,
-                self.path_manager.active_path().rtt_estimator.pto_period(1),
+                &self.path_manager.active_path().rtt_estimator,
             )?;
 
             if let Some(close) = space.handle_cleartext_payload(
