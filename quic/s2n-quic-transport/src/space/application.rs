@@ -76,16 +76,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         sni: Option<Bytes>,
         alpn: Bytes,
     ) -> Self {
-        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.3
-        //# Endpoints responding to an apparent key update MUST NOT generate a
-        //# timing side-channel signal that might indicate that the Key Phase bit
-        //# was invalid (see Section 9.4).
-        // By pre-generating the next key, we can respond to a KeyUpdate without exposing a timing
-        // side channel.
-        let integrity_limit = crypto.aead_integrity_limit();
-        let next_key = PacketSpaceCrypto::new(crypto.derive_next_key());
-        let active_key = PacketSpaceCrypto::new(crypto);
-        let key_set = ApplicationKeySet::new(active_key, next_key, integrity_limit);
+        let key_set = ApplicationKeySet::new(crypto);
         let max_ack_delay = ack_manager.ack_settings.max_ack_delay;
 
         Self {
@@ -739,21 +730,27 @@ impl<K: Key> ApplicationKeySet<K>
 where
     K: OneRTTCrypto,
 {
-    fn new(
-        phase_zero: PacketSpaceCrypto<K>,
-        phase_one: PacketSpaceCrypto<K>,
-        aead_integrity_limit: u64,
-    ) -> Self {
+    fn new(crypto: K) -> Self {
         //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6
         //# The Key Phase bit is initially set to 0 for the
         //# first set of 1-RTT packets and toggled to signal each subsequent key
         //# update.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.3
+        //# Endpoints responding to an apparent key update MUST NOT generate a
+        //# timing side-channel signal that might indicate that the Key Phase bit
+        //# was invalid (see Section 9.4).
+        // By pre-generating the next key, we can respond to a KeyUpdate without exposing a timing
+        // side channel.
+        let aead_integrity_limit = crypto.aead_integrity_limit();
+        let next_key = PacketSpaceCrypto::new(crypto.derive_next_key());
+        let active_key = PacketSpaceCrypto::new(crypto);
         Self {
             key_phase: KeyPhase::Zero,
             key_derivation_timer: Default::default(),
             packet_decryption_failures: 0,
             aead_integrity_limit,
-            crypto: [phase_zero, phase_one],
+            crypto: [active_key, next_key],
         }
     }
 
@@ -774,7 +771,7 @@ where
     }
 
     fn timers(&self) -> impl Iterator<Item = &Timestamp> {
-        core::iter::empty().chain(self.key_derivation_timer.iter())
+        self.key_derivation_timer.iter()
     }
 
     fn on_timeout(&mut self, timestamp: Timestamp) {
@@ -928,6 +925,7 @@ mod tests {
     #[derive(Default)]
     struct NullKey {
         pub value: u64,
+        pub integrity_limit: u64,
     }
 
     impl Key for NullKey {
@@ -958,7 +956,7 @@ mod tests {
         }
 
         fn aead_integrity_limit(&self) -> u64 {
-            0
+            self.integrity_limit
         }
     }
 
@@ -984,6 +982,7 @@ mod tests {
         fn derive_next_key(&self) -> Self {
             Self {
                 value: self.value + 1,
+                integrity_limit: self.integrity_limit,
             }
         }
     }
@@ -995,9 +994,7 @@ mod tests {
         //# For this reason, endpoints MUST be able to retain two sets of packet
         //# protection keys for receiving packets: the current and the next.
 
-        let current_key = PacketSpaceCrypto::new(NullKey::default());
-        let next_key = PacketSpaceCrypto::new(current_key.key.derive_next_key());
-        let keyset = ApplicationKeySet::new(current_key, next_key, 10);
+        let keyset = ApplicationKeySet::new(NullKey::default());
 
         assert_eq!(keyset.active_key().key.value, 0);
         assert_eq!(keyset.key_for_phase(KeyPhase::One).key.value, 1);
@@ -1005,9 +1002,7 @@ mod tests {
 
     #[test]
     fn test_phase_rotation() {
-        let current_key = PacketSpaceCrypto::new(NullKey::default());
-        let next_key = PacketSpaceCrypto::new(current_key.key.derive_next_key());
-        let mut keyset = ApplicationKeySet::new(current_key, next_key, 10);
+        let mut keyset = ApplicationKeySet::new(NullKey::default());
 
         keyset.rotate_phase();
         assert_eq!(keyset.active_key().key.value, 1);
@@ -1017,9 +1012,7 @@ mod tests {
 
     #[test]
     fn test_key_derivation() {
-        let current_key = PacketSpaceCrypto::new(NullKey::default());
-        let next_key = PacketSpaceCrypto::new(current_key.key.derive_next_key());
-        let mut keyset = ApplicationKeySet::new(current_key, next_key, 10);
+        let mut keyset = ApplicationKeySet::new(NullKey::default());
 
         keyset.rotate_phase();
         keyset.derive_and_store_next_key();
@@ -1033,9 +1026,7 @@ mod tests {
         let clock = Arc::new(time::testing::MockClock::new());
         time::testing::set_local_clock(clock.clone());
         let now = clock.get_time();
-        let current_key = PacketSpaceCrypto::new(NullKey::default());
-        let next_key = PacketSpaceCrypto::new(current_key.key.derive_next_key());
-        let mut keyset = ApplicationKeySet::new(current_key, next_key, 10);
+        let mut keyset = ApplicationKeySet::new(NullKey::default());
         keyset.rotate_phase();
 
         keyset
@@ -1058,9 +1049,9 @@ mod tests {
     //# connection.
     #[test]
     fn test_decryption_failure_counter() {
-        let current_key = PacketSpaceCrypto::new(NullKey::default());
-        let next_key = PacketSpaceCrypto::new(current_key.key.derive_next_key());
-        let mut keyset = ApplicationKeySet::new(current_key, next_key, 1);
+        let mut key = NullKey::default();
+        key.integrity_limit = 1;
+        let mut keyset = ApplicationKeySet::new(key);
 
         assert_eq!(keyset.decryption_error_count(), 0);
         assert!(matches!(
@@ -1081,9 +1072,9 @@ mod tests {
     //# AEAD_LIMIT_REACHED and not process any more packets.
     #[test]
     fn test_decryption_failure_enforced_aead_limit() {
-        let current_key = PacketSpaceCrypto::new(NullKey::default());
-        let next_key = PacketSpaceCrypto::new(current_key.key.derive_next_key());
-        let mut keyset = ApplicationKeySet::new(current_key, next_key, 0);
+        let mut key = NullKey::default();
+        key.integrity_limit = 0;
+        let mut keyset = ApplicationKeySet::new(key);
 
         assert_eq!(keyset.decryption_error_count(), 0);
         assert!(matches!(
