@@ -277,6 +277,7 @@ jobs:
             --new_version_url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/pull/${{github.event.pull_request.number}}" \
             --new_version_log_url "$LOG_URL" \
             --prev_version_log_url "$CDN/$MAIN_SHA/interop/$LOG_URL" \
+            --prev_version_url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/tree/$MAIN_SHA" \
             --interop_log_url "${{ steps.download.outputs.INTEROP_LOG_URL }}" \
             latest.json results/**/result.json > \
               web/logs/latest/result.json
@@ -287,6 +288,7 @@ jobs:
           mkdir -p web/logs/latest
           python3 .github/interop/merge.py \
             --new_version_log_url "$LOG_URL" \
+            --new_version_url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/tree/$GITHUB_SHA" \
             --interop_log_url "${{ steps.download.outputs.INTEROP_LOG_URL }}" \
             latest.json results/**/result.json > \
               web/logs/latest/result.json
