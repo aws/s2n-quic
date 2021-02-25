@@ -434,10 +434,11 @@ jobs:
           aws-region: us-west-1
 
       - name: Upload results
+
         id: s3
         run: |
           TARGET="${{ github.sha }}/perf/${{ matrix.script }}"
-          aws s3 cp target/perf "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
+          aws s3 sync target/perf "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
           URL="$CDN/$TARGET/index.html"
           echo "::set-output name=URL::$URL"
 

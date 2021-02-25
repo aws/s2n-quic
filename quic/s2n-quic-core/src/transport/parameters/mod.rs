@@ -540,7 +540,7 @@ impl InitialMaxData {
     /// Tuned for 300MiB/s throughput with a 100ms RTT
     pub const RECOMMENDED: Self = Self(VarInt::from_u32(
         // ideal throughput in MiB/s
-        300
+        300_000
         // scaled to bytes/ms
         * 1_000
         // rephrase in terms of bytes/RTT
