@@ -212,15 +212,16 @@ impl Insertion {
             }
         };
 
-        if replace_range.start > replace_range.end {
+        let index = replace_range.start;
+        let replace_count = if let Some(count) = replace_range.end.checked_sub(index) {
+            count
+        } else {
             ensure_can_insert()?;
 
+            // add it to the end
             ranges.push_back(range);
             return Ok(prev_len);
-        }
-
-        let replace_count = replace_range.end - replace_range.start;
-        let index = replace_range.start;
+        };
 
         match replace_count {
             0 => {
@@ -231,8 +232,8 @@ impl Insertion {
                 ranges[index] = range;
             }
             2 => {
-                ranges.remove(index);
                 ranges[index] = range;
+                ranges.remove(index + 1);
             }
             _ => {
                 ranges[index] = range;
