@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+use core::fmt;
 use s2n_codec::{
     DecoderBuffer, DecoderBufferMut, DecoderBufferMutResult, DecoderError,
     DecoderParameterizedValueMut, DecoderValueMut, Encoder, EncoderValue,
@@ -217,4 +218,14 @@ pub struct MaxPayloadSizeForFrame {
     /// The maximum amount of payload data which can be stored in a frame,
     /// even if the frame carries explicit length information.
     pub max_payload_in_all_frames: usize,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+/// Indicates the packet will not fit into the provided capacity
+pub struct FitError;
+
+impl fmt::Display for FitError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "the frame could not fit into the provided capacity")
+    }
 }

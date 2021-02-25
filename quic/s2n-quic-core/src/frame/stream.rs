@@ -1,5 +1,5 @@
 use crate::{
-    frame::{MaxPayloadSizeForFrame, Tag},
+    frame::{FitError, MaxPayloadSizeForFrame, Tag},
     varint::VarInt,
 };
 use core::{convert::TryFrom, mem::size_of};
@@ -113,6 +113,17 @@ impl<Data> Stream<Data> {
         tag
     }
 
+    /// Converts the stream data from one type to another
+    pub fn map_data<F: FnOnce(Data) -> Out, Out>(self, map: F) -> Stream<Out> {
+        Stream {
+            stream_id: self.stream_id,
+            offset: self.offset,
+            is_last_frame: self.is_last_frame,
+            is_fin: self.is_fin,
+            data: map(self.data),
+        }
+    }
+
     /// Returns the maximum payload size a frame of a given size can carry
     pub fn max_payload_size(
         max_frame_size: usize,
@@ -173,16 +184,47 @@ impl<Data> Stream<Data> {
         size_of::<Tag>() + stream_id.encoding_size() +
         8 /* Offset size */ + 4 /* Size of len */ + min_payload
     }
+}
 
-    /// Converts the stream data from one type to another
-    pub fn map_data<F: FnOnce(Data) -> Out, Out>(self, map: F) -> Stream<Out> {
-        Stream {
-            stream_id: self.stream_id,
-            offset: self.offset,
-            is_last_frame: self.is_last_frame,
-            is_fin: self.is_fin,
-            data: map(self.data),
+impl<Data: EncoderValue> Stream<Data> {
+    /// Tries to fit the frame into the provided capacity
+    ///
+    /// The `is_last_frame` field will be updated with this call.
+    ///
+    /// If ok, the new payload length is returned, otherwise the frame cannot
+    /// fit.
+    pub fn try_fit(&mut self, capacity: usize) -> Result<usize, FitError> {
+        let mut fixed_len = 0;
+        fixed_len += size_of::<Tag>();
+        fixed_len += self.stream_id.encoding_size();
+
+        if self.offset != 0u64 {
+            fixed_len += self.offset.encoding_size();
         }
+
+        let remaining_capacity = capacity.checked_sub(fixed_len).ok_or(FitError)?;
+
+        let data_len = self.data.encoding_size();
+        let max_data_len = remaining_capacity.min(data_len);
+
+        // If data fits exactly into the capacity, mark it as the last frame
+        if max_data_len == remaining_capacity {
+            self.is_last_frame = true;
+            return Ok(max_data_len);
+        }
+
+        self.is_last_frame = false;
+
+        let len_prefix_size = VarInt::try_from(max_data_len)
+            .map_err(|_| FitError)?
+            .encoding_size();
+
+        let prefixed_data_len = remaining_capacity
+            .checked_sub(len_prefix_size)
+            .ok_or(FitError)?;
+        let data_len = prefixed_data_len.min(data_len);
+
+        Ok(data_len)
     }
 }
 
@@ -288,5 +330,76 @@ impl<'a> From<Stream<DecoderBufferMut<'a>>> for StreamRef<'a> {
 impl<'a> From<Stream<DecoderBufferMut<'a>>> for StreamMut<'a> {
     fn from(s: Stream<DecoderBufferMut<'a>>) -> Self {
         s.map_data(|data| data.into_less_safe_slice())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::frame::Padding;
+    use bolero::check;
+    use core::convert::TryInto;
+
+    fn model(stream_id: VarInt, offset: VarInt, length: VarInt, capacity: usize) {
+        let length = if let Ok(length) = VarInt::try_into(length) {
+            length
+        } else {
+            // if the length cannot be represented by `usize` then bail
+            return;
+        };
+
+        let mut frame = Stream {
+            stream_id,
+            offset,
+            is_last_frame: false,
+            is_fin: false,
+            data: Padding { length },
+        };
+
+        if let Ok(new_length) = frame.try_fit(capacity) {
+            frame.data = Padding { length: new_length };
+            if new_length < length {
+                // the payload was trimmed so we should be at full capacity
+                assert_eq!(
+                    frame.encoding_size(),
+                    capacity,
+                    "should match capacity {:#?}",
+                    frame
+                );
+            } else {
+                // we should never exceed the capacity
+                assert!(
+                    frame.encoding_size() <= capacity,
+                    "the encoding_size should not exceed capacity {:#?}",
+                    frame
+                );
+            }
+
+            if frame.is_last_frame {
+                // the `is_last_frame` should _only_ be set when the encoding size == capacity
+                assert_eq!(
+                    frame.encoding_size(),
+                    capacity,
+                    "should only be the last frame if == capacity {:#?}",
+                    frame
+                );
+            }
+        } else {
+            assert!(
+                frame.encoding_size() > capacity,
+                "rejection should only occur when encoding size > capacity {:#?}",
+                frame
+            );
+        }
+    }
+
+    #[test]
+    fn try_fit_test() {
+        check!()
+            .with_type()
+            .cloned()
+            .for_each(|(stream_id, offset, length, capacity)| {
+                model(stream_id, offset, length, capacity);
+            });
     }
 }

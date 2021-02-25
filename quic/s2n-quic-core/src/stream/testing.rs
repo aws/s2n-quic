@@ -1,7 +1,11 @@
 //! A model that ensures stream data is correctly sent and received between peers
 
 #[cfg(feature = "generator")]
-use bolero_generator::{constant, TypeGenerator};
+use bolero_generator::*;
+
+#[cfg(test)]
+use bolero::generator::*;
+
 use bytes::Bytes;
 
 static DATA: Bytes = {
@@ -23,11 +27,11 @@ const DEFAULT_STREAM_LEN: u64 = 1024;
 const DATA_MOD: usize = 256; // Only the first 256 offsets of DATA are unique
 
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord)]
-#[cfg_attr(feature = "generator", derive(TypeGenerator))]
+#[cfg_attr(any(feature = "generator", test), derive(TypeGenerator))]
 pub struct Data {
-    #[cfg_attr(feature = "generator", generator(0..=DEFAULT_STREAM_LEN))]
+    #[cfg_attr(any(feature = "generator", test), generator(0..=DEFAULT_STREAM_LEN))]
     len: u64,
-    #[cfg_attr(feature = "generator", generator(constant(0)))]
+    #[cfg_attr(any(feature = "generator", test), generator(constant(0)))]
     offset: u64,
 }
 

@@ -62,8 +62,6 @@ decoder_parameterized_value!(
 
 impl EncoderValue for Padding {
     fn encode<E: Encoder>(&self, encoder: &mut E) {
-        // Padding will flex based on the available bytes in the encoder
-        let len = encoder.remaining_capacity().min(self.length);
-        encoder.write_repeated(len, 0)
+        encoder.write_repeated(self.length, 0)
     }
 }
