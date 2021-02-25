@@ -1,8 +1,8 @@
 use crate::{
-    frame::{MaxPayloadSizeForFrame, Tag},
+    frame::{FitError, MaxPayloadSizeForFrame, Tag},
     varint::VarInt,
 };
-use core::mem::size_of;
+use core::{convert::TryFrom, mem::size_of};
 use s2n_codec::{
     decoder_parameterized_value, DecoderBuffer, DecoderBufferMut, Encoder, EncoderValue,
 };
@@ -50,25 +50,15 @@ impl<Data> Crypto<Data> {
     pub const fn tag(&self) -> u8 {
         crypto_tag!()
     }
-}
 
-pub type CryptoRef<'a> = Crypto<&'a [u8]>;
-pub type CryptoMut<'a> = Crypto<&'a mut [u8]>;
-
-decoder_parameterized_value!(
-    impl<'a, Data> Crypto<Data> {
-        fn decode(_tag: Tag, buffer: Buffer) -> Result<Self> {
-            let (offset, buffer) = buffer.decode()?;
-            let (data, buffer) = buffer.decode_with_len_prefix::<VarInt, Data>()?;
-
-            let frame = Crypto { offset, data };
-
-            Ok((frame, buffer))
+    /// Converts the stream data from one type to another
+    pub fn map_data<F: FnOnce(Data) -> Out, Out>(self, map: F) -> Crypto<Out> {
+        Crypto {
+            offset: self.offset,
+            data: map(self.data),
         }
     }
-);
 
-impl<Data> Crypto<Data> {
     /// Returns the maximum payload size a frame of a given size can carry
     pub fn max_payload_size(max_frame_size: usize, offset: VarInt) -> MaxPayloadSizeForFrame {
         // We use a maximum length field size of 4 here, since this will
@@ -116,15 +106,51 @@ impl<Data> Crypto<Data> {
         size_of::<Tag>() +
         8 /* Offset size */ + 4 /* Size of len */ + min_payload
     }
+}
 
-    /// Converts the stream data from one type to another
-    pub fn map_data<F: FnOnce(Data) -> Out, Out>(self, map: F) -> Crypto<Out> {
-        Crypto {
-            offset: self.offset,
-            data: map(self.data),
-        }
+impl<Data: EncoderValue> Crypto<Data> {
+    /// Tries to fit the frame into the provided capacity
+    ///
+    /// If ok, the new payload length is returned, otherwise the frame cannot
+    /// fit.
+    pub fn try_fit(&self, capacity: usize) -> Result<usize, FitError> {
+        let mut fixed_len = 0;
+        fixed_len += size_of::<Tag>();
+        fixed_len += self.offset.encoding_size();
+
+        let remaining_capacity = capacity.checked_sub(fixed_len).ok_or(FitError)?;
+
+        let data_len = self.data.encoding_size();
+        let max_data_len = remaining_capacity.min(data_len);
+
+        let len_prefix_size = VarInt::try_from(max_data_len)
+            .map_err(|_| FitError)?
+            .encoding_size();
+
+        let prefixed_data_len = remaining_capacity
+            .checked_sub(len_prefix_size)
+            .ok_or(FitError)?;
+        let data_len = prefixed_data_len.min(data_len);
+
+        Ok(data_len)
     }
 }
+
+pub type CryptoRef<'a> = Crypto<&'a [u8]>;
+pub type CryptoMut<'a> = Crypto<&'a mut [u8]>;
+
+decoder_parameterized_value!(
+    impl<'a, Data> Crypto<Data> {
+        fn decode(_tag: Tag, buffer: Buffer) -> Result<Self> {
+            let (offset, buffer) = buffer.decode()?;
+            let (data, buffer) = buffer.decode_with_len_prefix::<VarInt, Data>()?;
+
+            let frame = Crypto { offset, data };
+
+            Ok((frame, buffer))
+        }
+    }
+);
 
 impl<Data: EncoderValue> EncoderValue for Crypto<Data> {
     fn encode<E: Encoder>(&self, buffer: &mut E) {
@@ -155,11 +181,57 @@ impl<'a> From<Crypto<DecoderBufferMut<'a>>> for CryptoMut<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use insta::assert_debug_snapshot;
+    use crate::frame::Padding;
+    use bolero::check;
+    use core::convert::TryInto;
+
+    fn model(offset: VarInt, length: VarInt, capacity: usize) {
+        let length = if let Ok(length) = VarInt::try_into(length) {
+            length
+        } else {
+            // if the length cannot be represented by `usize` then bail
+            return;
+        };
+
+        let mut frame = Crypto {
+            offset,
+            data: Padding { length },
+        };
+
+        if let Ok(new_length) = frame.try_fit(capacity) {
+            frame.data = Padding { length: new_length };
+            if new_length < length {
+                // the payload was trimmed so we should be at full capacity
+                assert_eq!(
+                    frame.encoding_size(),
+                    capacity,
+                    "should match capacity {:#?}",
+                    frame
+                );
+            } else {
+                // we should never exceed the capacity
+                assert!(
+                    frame.encoding_size() <= capacity,
+                    "the encoding_size should not exceed capacity {:#?}",
+                    frame
+                );
+            }
+        } else {
+            assert!(
+                frame.encoding_size() > capacity,
+                "rejection should only occur when encoding size > capacity {:#?}",
+                frame
+            );
+        }
+    }
 
     #[test]
-    #[cfg_attr(miri, ignore)] // snapshot tests don't work on miri
-    fn max_frame_size_snapshot() {
-        assert_debug_snapshot!("max_frame_size_snapshot", CryptoRef::get_max_frame_size(16));
+    fn try_fit_test() {
+        check!()
+            .with_type()
+            .cloned()
+            .for_each(|(offset, length, capacity)| {
+                model(offset, length, capacity);
+            });
     }
 }
