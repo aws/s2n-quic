@@ -282,7 +282,7 @@ jobs:
               web/logs/latest/result.json
 
       - name: Generate report for push to main
-        if: github.event.push
+        if: github.event_name == 'push'
         run: |
           mkdir -p web/logs/latest
           python3 .github/interop/merge.py \
