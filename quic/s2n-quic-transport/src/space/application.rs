@@ -369,7 +369,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
 
         match self
             .key_set
-            .app_decrypt_packet(phase_to_use.into(), |key| packet.decrypt(key))
+            .decrypt_packet(phase_to_use.into(), |key| packet.decrypt(key))
         {
             Ok(packet) => {
                 if packet_phase != self.crypto_phase() {
@@ -765,12 +765,12 @@ where
     }
 
     /// Rotating the phase will switch the active key
-    pub fn rotate_phase(&mut self) {
+    fn rotate_phase(&mut self) {
         self.key_phase = (((self.key_phase as u8) + 1) % 2).into();
     }
 
     /// Derive a new key based on the active key, and store it in the non-active slot
-    pub fn derive_and_store_next_key(&mut self) {
+    fn derive_and_store_next_key(&mut self) {
         let next_key = self.active_key().derive_next_key();
         let slot_to_store = ((self.key_phase as u8) + 1) % 2;
         self.crypto[slot_to_store as usize] = PacketSpaceCrypto::new(next_key);
@@ -780,11 +780,11 @@ where
         self.aead_integrity_limit
     }
 
-    pub fn timers(&self) -> impl Iterator<Item = &Timestamp> {
+    fn timers(&self) -> impl Iterator<Item = &Timestamp> {
         core::iter::empty().chain(self.key_derivation_timer.iter())
     }
 
-    pub fn on_timeout(&mut self, timestamp: Timestamp) {
+    fn on_timeout(&mut self, timestamp: Timestamp) {
         // key_derivation_timer
         if self
             .key_derivation_timer
@@ -810,15 +810,15 @@ where
         &self.crypto[(key_phase as u8) as usize]
     }
 
-    pub fn on_decryption_error(&mut self) {
+    fn on_decryption_error(&mut self) {
         self.packet_decryption_failures += 1
     }
 
-    pub fn decryption_error_count(&self) -> u64 {
+    fn decryption_error_count(&self) -> u64 {
         self.packet_decryption_failures
     }
 
-    pub fn app_decrypt_packet<F, R>(
+    fn decrypt_packet<F, R>(
         &mut self,
         phase: KeyPhase,
         f: F,
@@ -1008,7 +1008,7 @@ mod tests {
 
         assert_eq!(keyset.decryption_error_count(), 0);
         assert!(matches!(
-            keyset.app_decrypt_packet(keyset.key_phase(), |_key| -> Result<(), CryptoError> {
+            keyset.decrypt_packet(keyset.key_phase(), |_key| -> Result<(), CryptoError> {
                 Err(CryptoError::DECRYPT_ERROR)
             }),
             Err(ProcessingError::CryptoError(_))
@@ -1031,7 +1031,7 @@ mod tests {
 
         assert_eq!(keyset.decryption_error_count(), 0);
         assert!(matches!(
-            keyset.app_decrypt_packet(keyset.key_phase(), |_key| -> Result<(), CryptoError> {
+            keyset.decrypt_packet(keyset.key_phase(), |_key| -> Result<(), CryptoError> {
                 Err(CryptoError::DECRYPT_ERROR)
             }),
             Err(ProcessingError::TransportError(
