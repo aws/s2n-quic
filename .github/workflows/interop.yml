@@ -20,7 +20,7 @@ env:
   IPERF_ENDPOINT_REF: sha256:cb50cc8019d45d9cad5faecbe46a3c21dd5e871949819a5175423755a9045106
   WIRESHARK_VERSION: 3.4.3
   CDN: https://dnglbrstg7yg.cloudfront.net
-  LOG_URL: logs/latest/SERVER_CLIENT/TEST/output.txt
+  LOG_URL: logs/latest/SERVER_CLIENT/TEST/index.html
 
 jobs:
   env:
@@ -277,6 +277,7 @@ jobs:
             --new_version_url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/pull/${{github.event.pull_request.number}}" \
             --new_version_log_url "$LOG_URL" \
             --prev_version_log_url "$CDN/$MAIN_SHA/interop/$LOG_URL" \
+            --prev_version_url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/tree/$MAIN_SHA" \
             --interop_log_url "${{ steps.download.outputs.INTEROP_LOG_URL }}" \
             latest.json results/**/result.json > \
               web/logs/latest/result.json
@@ -287,6 +288,7 @@ jobs:
           mkdir -p web/logs/latest
           python3 .github/interop/merge.py \
             --new_version_log_url "$LOG_URL" \
+            --new_version_url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/tree/$GITHUB_SHA" \
             --interop_log_url "${{ steps.download.outputs.INTEROP_LOG_URL }}" \
             latest.json results/**/result.json > \
               web/logs/latest/result.json
@@ -309,6 +311,11 @@ jobs:
           find results -maxdepth 3 -type d -wholename '*/logs/*' | while read from; do
             mv $from web/logs/latest/$(basename $from)
           done
+
+          find web -maxdepth 4 -type d -path "*/logs/latest/*/*" | while read from; do
+              tree -H "." -h -L 3 -T "$(basename $from)" --noreport --charset utf-8 -I "*.html" -o $from/index.html $from
+          done
+
           cp .github/interop/*.html web/
           cp .github/interop/*.js web/
           TARGET="${{ github.sha }}/interop"

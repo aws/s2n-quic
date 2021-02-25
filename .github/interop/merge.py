@@ -50,14 +50,13 @@ parser.add_argument('--new_version_url')
 parser.add_argument('--new_version_log_url')
 parser.add_argument('--prev_version_log_url')
 parser.add_argument('--prev_version')
+parser.add_argument('--prev_version_url')
 parser.add_argument('--interop_log_url')
 parser.add_argument('patterns', nargs='+')
 args = parser.parse_args()
 
 if args.new_version_suffix:
     s2n_quic_new_version_name += '-' + args.new_version_suffix.lower()
-if args.new_version_url:
-    urls[s2n_quic_new_version_name] = args.new_version_url
 if args.new_version_log_url:
     logs[s2n_quic_new_version_name] = args.new_version_log_url
 if args.prev_version_log_url:
@@ -165,6 +164,12 @@ if args.prev_version:
                     # TODO diff measurements
 
                 index += 1
+
+# Update s2n-quic urls
+if args.new_version_url:
+    urls[s2n_quic_new_version_name] = args.new_version_url
+if args.prev_version_url:
+    urls[S2N_QUIC] = args.prev_version_url
 
 out = {
     "start_time": start_time,
