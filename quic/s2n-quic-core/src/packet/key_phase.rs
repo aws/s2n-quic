@@ -62,5 +62,11 @@ mod tests {
     }
 
     #[test]
-    fn test_next_phase() {}
+    fn test_next_phase() {
+        for i in 0..254 {
+            let phase = KeyPhase::from(i);
+            let next_phase = KeyPhase::from(i + 1);
+            assert_eq!(phase.next_phase(), next_phase);
+        }
+    }
 }
