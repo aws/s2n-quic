@@ -2,11 +2,11 @@ use crate::{
     connection, path, processed_packet::ProcessedPacket, space::rx_packet_numbers::AckManager,
     transmission,
 };
-use s2n_codec::{DecoderBufferMut, EncoderBuffer};
+use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     ack,
     connection::limits::Limits,
-    crypto::{tls::Session as TLSSession, CryptoSuite, Key, OneRTTCrypto, ProtectedPayload},
+    crypto::{tls::Session as TLSSession, CryptoSuite},
     endpoint,
     frame::{
         self, ack::AckRanges, crypto::CryptoRef, stream::StreamRef, Ack, ConnectionClose,
@@ -15,10 +15,7 @@ use s2n_quic_core::{
         StreamDataBlocked, StreamsBlocked,
     },
     inet::DatagramInfo,
-    packet::{
-        encoding::PacketEncodingError,
-        number::{PacketNumber, PacketNumberSpace},
-    },
+    packet::number::{PacketNumber, PacketNumberSpace},
     path::Path,
     time::Timestamp,
     transport::error::TransportError,
@@ -557,126 +554,5 @@ pub trait PacketSpace<Config: connection::Config> {
         self.on_processed_packet(processed_packet)?;
 
         Ok(None)
-    }
-}
-
-//= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
-//# Endpoints MUST count the number of encrypted packets for each set of
-//# keys.
-pub struct PacketSpaceCrypto<Key> {
-    key: Key,
-    // Keeping encrypted_packets out of the key allow keys to be immutable, which allows optimizations
-    // later on.
-    pub encrypted_packets: u64,
-}
-
-impl<K: Key> PacketSpaceCrypto<K> {
-    pub fn new(key: K) -> Self {
-        PacketSpaceCrypto {
-            key,
-            encrypted_packets: 0,
-        }
-    }
-
-    pub fn derive_next_key(&self) -> K
-    where
-        K: OneRTTCrypto,
-    {
-        self.key.derive_next_key()
-    }
-
-    pub fn aead_confidentiality_limit(&self) -> u64 {
-        self.key.aead_confidentiality_limit()
-    }
-
-    pub fn unprotect_packet<F, R>(&self, f: F) -> R
-    where
-        F: FnOnce(&K) -> R,
-    {
-        f(&self.key)
-    }
-
-    pub fn encode_packet<'a, F>(
-        &mut self,
-        buffer: EncoderBuffer<'a>,
-        f: F,
-    ) -> Result<(ProtectedPayload<'a>, EncoderBuffer<'a>), PacketEncodingError<'a>>
-    where
-        F: FnOnce(
-            EncoderBuffer<'a>,
-            &K,
-        )
-            -> Result<(ProtectedPayload<'a>, EncoderBuffer<'a>), PacketEncodingError<'a>>,
-    {
-        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
-        //# If the total number of encrypted packets with the same key
-        //# exceeds the confidentiality limit for the selected AEAD, the endpoint
-        //# MUST stop using those keys.
-        if self.encrypted_packets > self.aead_confidentiality_limit() {
-            return Err(PacketEncodingError::AeadLimitReached(buffer));
-        }
-
-        let r = f(buffer, &self.key)?;
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
-        //# Endpoints MUST count the number of encrypted packets for each set of
-        //# keys.
-        self.encrypted_packets += 1;
-        Ok(r)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use s2n_quic_core::crypto::key::testing::Key;
-
-    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
-    //= type=test
-    //# Endpoints MUST count the number of encrypted packets for each set of
-    //# keys.
-    #[test]
-    fn test_encrypted_packet_count_increased() {
-        let key = Key::new(1, 1);
-        let mut crypto = PacketSpaceCrypto::new(key);
-        let mut encoder_bytes = [0; 512];
-        let buffer = EncoderBuffer::new(&mut encoder_bytes);
-        let mut decoder_bytes = [0; 512];
-
-        assert_eq!(crypto.encrypted_packets, 0);
-        assert!(crypto
-            .encode_packet(buffer, |buffer, _key| {
-                let payload = ProtectedPayload::new(0, &mut decoder_bytes);
-
-                Ok((payload, buffer))
-            })
-            .is_ok());
-
-        assert_eq!(crypto.encrypted_packets, 1);
-    }
-
-    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
-    //= type=test
-    //# If the total number of encrypted packets with the same key
-    //# exceeds the confidentiality limit for the selected AEAD, the endpoint
-    //# MUST stop using those keys.
-    #[test]
-    fn test_encrypted_packet_count_enforced_aead_limit() {
-        let key = Key::new(0, 0);
-        let mut crypto = PacketSpaceCrypto::new(key);
-        let mut encoder_bytes = [0; 512];
-        let buffer = EncoderBuffer::new(&mut encoder_bytes);
-        let mut decoder_bytes = [0; 512];
-
-        crypto.encrypted_packets = 1;
-        assert!(matches!(
-            crypto.encode_packet(buffer, |buffer, _key| {
-                let payload = ProtectedPayload::new(0, &mut decoder_bytes);
-
-                Ok((payload, buffer))
-            }),
-            Err(PacketEncodingError::AeadLimitReached(_))
-        ));
-        assert_eq!(crypto.encrypted_packets, 1);
     }
 }
