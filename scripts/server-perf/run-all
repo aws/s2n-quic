@@ -22,4 +22,4 @@ done
 
 
 OUT=./target/perf
-tree -H "." -L 1 -T "BLA" --noreport --charset utf-8 -I "*.html" > $OUT/index.html
+tree -H "." -L 1 -T "PERFORMANCE Simulations" --noreport --charset utf-8 -I "*.html" > $OUT/index.html
