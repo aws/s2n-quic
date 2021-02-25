@@ -2,14 +2,11 @@ use crate::{
     connection, path, processed_packet::ProcessedPacket, space::rx_packet_numbers::AckManager,
     transmission,
 };
-use connection::ProcessingError;
 use s2n_codec::{DecoderBufferMut, EncoderBuffer};
 use s2n_quic_core::{
     ack,
     connection::limits::Limits,
-    crypto::{
-        tls::Session as TLSSession, CryptoError, CryptoSuite, Key, OneRTTCrypto, ProtectedPayload,
-    },
+    crypto::{tls::Session as TLSSession, CryptoSuite, Key, OneRTTCrypto, ProtectedPayload},
     endpoint,
     frame::{
         self, ack::AckRanges, crypto::CryptoRef, stream::StreamRef, Ack, ConnectionClose,
@@ -592,10 +589,6 @@ impl<K: Key> PacketSpaceCrypto<K> {
         self.key.aead_confidentiality_limit()
     }
 
-    pub fn aead_integrity_limit(&self) -> u64 {
-        self.key.aead_integrity_limit()
-    }
-
     pub fn unprotect_packet<F, R>(&self, f: F) -> R
     where
         F: FnOnce(&K) -> R,
@@ -631,47 +624,11 @@ impl<K: Key> PacketSpaceCrypto<K> {
         self.encrypted_packets += 1;
         Ok(r)
     }
-
-    pub fn decrypt_packet<F, C, R>(
-        &self,
-        conn: &mut C,
-        f: F,
-    ) -> Result<R, connection::ProcessingError>
-    where
-        C: connection::AeadIntegrityLimitTracking,
-        F: FnOnce(&K) -> Result<R, CryptoError>,
-    {
-        match f(&self.key) {
-            Ok(r) => Ok(r),
-            Err(e) => {
-                //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
-                //# In addition to counting packets sent, endpoints MUST count the number
-                //# of received packets that fail authentication during the lifetime of a
-                //# connection.
-                conn.on_decryption_error();
-
-                //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
-                //# If the total number of received packets that fail
-                //# authentication within the connection, across all keys, exceeds the
-                //# integrity limit for the selected AEAD, the endpoint MUST immediately
-                //# close the connection with a connection error of type
-                //# AEAD_LIMIT_REACHED and not process any more packets.
-                if conn.decryption_error_count() > self.aead_integrity_limit() {
-                    return Err(ProcessingError::TransportError(
-                        TransportError::AEAD_LIMIT_REACHED,
-                    ));
-                }
-
-                Err(ProcessingError::CryptoError(e))
-            }
-        }
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use connection::AeadIntegrityLimitTracking;
     use s2n_quic_core::crypto::key::testing::Key;
 
     //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
@@ -721,66 +678,5 @@ mod tests {
             Err(PacketEncodingError::AeadLimitReached(_))
         ));
         assert_eq!(crypto.encrypted_packets, 1);
-    }
-
-    struct TrackingConn {
-        failures: u64,
-    }
-
-    impl AeadIntegrityLimitTracking for TrackingConn {
-        fn on_decryption_error(&mut self) {
-            self.failures += 1
-        }
-
-        fn decryption_error_count(&self) -> u64 {
-            self.failures
-        }
-    }
-
-    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
-    //= type=test
-    //# In addition to counting packets sent, endpoints MUST count the number
-    //# of received packets that fail authentication during the lifetime of a
-    //# connection.
-    #[test]
-    fn test_decryption_failure_counter() {
-        let mut conn = TrackingConn { failures: 0 };
-        let key = Key::new(0, 1);
-
-        let crypto = PacketSpaceCrypto::new(key);
-
-        assert_eq!(conn.decryption_error_count(), 0);
-        assert!(matches!(
-            crypto.decrypt_packet(&mut conn, |_key| -> Result<(), CryptoError> {
-                Err(CryptoError::DECRYPT_ERROR)
-            }),
-            Err(ProcessingError::CryptoError(_))
-        ));
-        assert_eq!(conn.decryption_error_count(), 1);
-    }
-
-    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
-    //= type=test
-    //# If the total number of received packets that fail
-    //# authentication within the connection, across all keys, exceeds the
-    //# integrity limit for the selected AEAD, the endpoint MUST immediately
-    //# close the connection with a connection error of type
-    //# AEAD_LIMIT_REACHED and not process any more packets.
-    #[test]
-    fn test_decryption_failure_enforced_aead_limit() {
-        let mut conn = TrackingConn { failures: 0 };
-        let key = Key::new(0, 0);
-
-        let crypto = PacketSpaceCrypto::new(key);
-
-        assert_eq!(conn.decryption_error_count(), 0);
-        assert!(matches!(
-            crypto.decrypt_packet(&mut conn, |_key| -> Result<(), CryptoError> {
-                Err(CryptoError::DECRYPT_ERROR)
-            }),
-            Err(ProcessingError::TransportError(
-                TransportError::AEAD_LIMIT_REACHED
-            ))
-        ));
     }
 }

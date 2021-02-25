@@ -85,9 +85,10 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         //# was invalid (see Section 9.4).
         // By pre-generating the next key, we can respond to a KeyUpdate without exposing a timing
         // side channel.
+        let integrity_limit = crypto.aead_integrity_limit();
         let next_key = PacketSpaceCrypto::new(crypto.derive_next_key());
         let active_key = PacketSpaceCrypto::new(crypto);
-        let key_set = ApplicationKeySet::new(active_key, next_key);
+        let key_set = ApplicationKeySet::new(active_key, next_key, integrity_limit);
         let max_ack_delay = ack_manager.ack_settings.max_ack_delay;
 
         Self {
@@ -130,15 +131,6 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
     /// Rotate the key phase in the application space
     pub fn crypto_rotate_phase(&mut self) {
         self.key_set.rotate_phase()
-    }
-
-    /// Returns the key for a particular Phase. This should be used for decrypting packets from a
-    /// peer.
-    pub fn crypto_for_phase(
-        &self,
-        key_phase: KeyPhase,
-    ) -> &PacketSpaceCrypto<<Config::TLSSession as CryptoSuite>::OneRTTCrypto> {
-        self.key_set.key_for_phase(key_phase)
     }
 
     /// Returns true if the packet number has already been processed
@@ -744,6 +736,7 @@ pub(crate) struct ApplicationKeySet<Key> {
     key_derivation_timer: VirtualTimer,
 
     packet_decryption_failures: u64,
+    aead_integrity_limit: u64,
 
     /// Set of keys for the current and next phase
     pub crypto: [PacketSpaceCrypto<Key>; 2],
@@ -753,7 +746,11 @@ impl<K: Key> ApplicationKeySet<K>
 where
     K: OneRTTCrypto,
 {
-    fn new(phase_zero: PacketSpaceCrypto<K>, phase_one: PacketSpaceCrypto<K>) -> Self {
+    fn new(
+        phase_zero: PacketSpaceCrypto<K>,
+        phase_one: PacketSpaceCrypto<K>,
+        aead_integrity_limit: u64,
+    ) -> Self {
         //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6
         //# The Key Phase bit is initially set to 0 for the
         //# first set of 1-RTT packets and toggled to signal each subsequent key
@@ -762,6 +759,7 @@ where
             key_phase: KeyPhase::Zero,
             key_derivation_timer: Default::default(),
             packet_decryption_failures: 0,
+            aead_integrity_limit,
             crypto: [phase_zero, phase_one],
         }
     }
@@ -776,6 +774,10 @@ where
         let next_key = self.active_key().derive_next_key();
         let slot_to_store = ((self.key_phase as u8) + 1) % 2;
         self.crypto[slot_to_store as usize] = PacketSpaceCrypto::new(next_key);
+    }
+
+    fn aead_integrity_limit(&self) -> u64 {
+        self.aead_integrity_limit
     }
 
     pub fn timers(&self) -> impl Iterator<Item = &Timestamp> {
@@ -840,8 +842,7 @@ where
                 //# integrity limit for the selected AEAD, the endpoint MUST immediately
                 //# close the connection with a connection error of type
                 //# AEAD_LIMIT_REACHED and not process any more packets.
-                if self.decryption_error_count() > 100 {
-                    //self.aead_integrity_limit() {
+                if self.decryption_error_count() > self.aead_integrity_limit() {
                     return Err(ProcessingError::TransportError(
                         TransportError::AEAD_LIMIT_REACHED,
                     ));
@@ -940,7 +941,7 @@ mod tests {
 
         let current_key = PacketSpaceCrypto::new(NullKey::default());
         let next_key = PacketSpaceCrypto::new(current_key.key.derive_next_key());
-        let keyset = ApplicationKeySet::new(current_key, next_key);
+        let keyset = ApplicationKeySet::new(current_key, next_key, 10);
 
         assert_eq!(keyset.active_key().key.value, 0);
         assert_eq!(keyset.key_for_phase(KeyPhase::One).key.value, 1);
@@ -950,7 +951,7 @@ mod tests {
     fn test_phase_rotation() {
         let current_key = PacketSpaceCrypto::new(NullKey::default());
         let next_key = PacketSpaceCrypto::new(current_key.key.derive_next_key());
-        let mut keyset = ApplicationKeySet::new(current_key, next_key);
+        let mut keyset = ApplicationKeySet::new(current_key, next_key, 10);
 
         keyset.rotate_phase();
         assert_eq!(keyset.active_key().key.value, 1);
@@ -962,7 +963,7 @@ mod tests {
     fn test_key_derivation() {
         let current_key = PacketSpaceCrypto::new(NullKey::default());
         let next_key = PacketSpaceCrypto::new(current_key.key.derive_next_key());
-        let mut keyset = ApplicationKeySet::new(current_key, next_key);
+        let mut keyset = ApplicationKeySet::new(current_key, next_key, 10);
 
         keyset.rotate_phase();
         keyset.derive_and_store_next_key();
@@ -978,7 +979,7 @@ mod tests {
         let now = clock.get_time();
         let current_key = PacketSpaceCrypto::new(NullKey::default());
         let next_key = PacketSpaceCrypto::new(current_key.key.derive_next_key());
-        let mut keyset = ApplicationKeySet::new(current_key, next_key);
+        let mut keyset = ApplicationKeySet::new(current_key, next_key, 10);
         keyset.rotate_phase();
 
         keyset
@@ -992,5 +993,50 @@ mod tests {
         clock.adjust_by(Duration::from_millis(8));
         keyset.on_timeout(clock.get_time());
         assert_eq!(keyset.crypto[0].key.value, 2);
+    }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
+    //= type=test
+    //# In addition to counting packets sent, endpoints MUST count the number
+    //# of received packets that fail authentication during the lifetime of a
+    //# connection.
+    #[test]
+    fn test_decryption_failure_counter() {
+        let current_key = PacketSpaceCrypto::new(NullKey::default());
+        let next_key = PacketSpaceCrypto::new(current_key.key.derive_next_key());
+        let mut keyset = ApplicationKeySet::new(current_key, next_key, 1);
+
+        assert_eq!(keyset.decryption_error_count(), 0);
+        assert!(matches!(
+            keyset.app_decrypt_packet(keyset.key_phase(), |_key| -> Result<(), CryptoError> {
+                Err(CryptoError::DECRYPT_ERROR)
+            }),
+            Err(ProcessingError::CryptoError(_))
+        ));
+        assert_eq!(keyset.decryption_error_count(), 1);
+    }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
+    //= type=test
+    //# If the total number of received packets that fail
+    //# authentication within the connection, across all keys, exceeds the
+    //# integrity limit for the selected AEAD, the endpoint MUST immediately
+    //# close the connection with a connection error of type
+    //# AEAD_LIMIT_REACHED and not process any more packets.
+    #[test]
+    fn test_decryption_failure_enforced_aead_limit() {
+        let current_key = PacketSpaceCrypto::new(NullKey::default());
+        let next_key = PacketSpaceCrypto::new(current_key.key.derive_next_key());
+        let mut keyset = ApplicationKeySet::new(current_key, next_key, 0);
+
+        assert_eq!(keyset.decryption_error_count(), 0);
+        assert!(matches!(
+            keyset.app_decrypt_packet(keyset.key_phase(), |_key| -> Result<(), CryptoError> {
+                Err(CryptoError::DECRYPT_ERROR)
+            }),
+            Err(ProcessingError::TransportError(
+                TransportError::AEAD_LIMIT_REACHED
+            ))
+        ));
     }
 }

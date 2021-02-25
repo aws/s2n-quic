@@ -216,16 +216,6 @@ impl<ConfigType: connection::Config> ConnectionImpl<ConfigType> {
     }
 }
 
-impl<Config: connection::Config> connection::AeadIntegrityLimitTracking for ConnectionImpl<Config> {
-    fn on_decryption_error(&mut self) {
-        self.packet_decryption_failures += 1
-    }
-
-    fn decryption_error_count(&self) -> u64 {
-        self.packet_decryption_failures
-    }
-}
-
 impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
     /// Static configuration of a connection
     type Config = Config;
