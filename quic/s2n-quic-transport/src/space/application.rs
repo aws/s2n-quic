@@ -105,10 +105,6 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         }
     }
 
-    fn key_update_in_progress(&self) -> bool {
-        self.key_set.key_derivation_timer.is_armed()
-    }
-
     /// Returns the active key which is suitable for encrypting packets or unprotecting packet
     /// headers.
     fn crypto(&self) -> &PacketSpaceCrypto<<Config::TLSSession as CryptoSuite>::OneRTTCrypto> {
@@ -350,7 +346,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         let phase_switch = phase_to_use != (packet_phase as u8);
         phase_to_use ^= phase_switch as u8;
 
-        if self.key_update_in_progress() && phase_switch {
+        if self.key_set.key_update_in_progress() && phase_switch {
             //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.5
             //# An endpoint MAY allow a period of approximately the Probe Timeout
             //# (PTO; see [QUIC-RECOVERY]) after receiving a packet that uses the new
@@ -763,14 +759,14 @@ where
 
     /// Rotating the phase will switch the active key
     fn rotate_phase(&mut self) {
-        self.key_phase = (((self.key_phase as u8) + 1) % 2).into();
+        self.key_phase = KeyPhase::next_phase(self.key_phase)
     }
 
     /// Derive a new key based on the active key, and store it in the non-active slot
     fn derive_and_store_next_key(&mut self) {
-        let next_key = self.active_key().derive_next_key();
-        let slot_to_store = ((self.key_phase as u8) + 1) % 2;
-        self.crypto[slot_to_store as usize] = PacketSpaceCrypto::new(next_key);
+        let next_key = self.active_key().key.derive_next_key();
+        let next_phase = KeyPhase::next_phase(self.key_phase);
+        self.crypto[next_phase as usize] = PacketSpaceCrypto::new(next_key);
     }
 
     fn aead_integrity_limit(&self) -> u64 {
@@ -793,6 +789,10 @@ where
             //# the PTO after having received a packet protected using the new keys.
             self.derive_and_store_next_key();
         }
+    }
+
+    fn key_update_in_progress(&self) -> bool {
+        self.key_derivation_timer.is_armed()
     }
 
     fn key_phase(&self) -> KeyPhase {
@@ -867,13 +867,6 @@ impl<K: Key> PacketSpaceCrypto<K> {
             key,
             encrypted_packets: 0,
         }
-    }
-
-    fn derive_next_key(&self) -> K
-    where
-        K: OneRTTCrypto,
-    {
-        self.key.derive_next_key()
     }
 
     fn aead_confidentiality_limit(&self) -> u64 {
