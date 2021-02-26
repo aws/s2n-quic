@@ -60,6 +60,11 @@ impl<T: IntervalBound> Interval<T> {
         interval_base_len + self.start.steps_between(&self.end)
     }
 
+    pub fn set_len(&mut self, len: usize) {
+        debug_assert_ne!(len, 0, "Intervals cannot be 0 length");
+        self.end = self.start.steps_between_len(len);
+    }
+
     pub fn is_empty(&self) -> bool {
         // Interval always has at least 1
         false
@@ -249,6 +254,7 @@ pub trait IntervalBound: Copy + Ord + Sized {
     fn step_up(self) -> Option<Self>;
     fn step_down(self) -> Option<Self>;
     fn steps_between(&self, upper: &Self) -> usize;
+    fn steps_between_len(&self, len: usize) -> Self;
 
     fn step_up_saturating(self) -> Self {
         self.step_up().unwrap_or(self)
@@ -273,6 +279,12 @@ macro_rules! integer_bounds {
             fn steps_between(&self, upper: &Self) -> usize {
                 use core::convert::TryInto;
                 (upper - self).try_into().unwrap_or(core::usize::MAX)
+            }
+
+            fn steps_between_len(&self, len: usize) -> Self {
+                use core::convert::TryInto;
+                let len: Self = (len - 1).try_into().unwrap();
+                *self + len
             }
         }
     };
@@ -305,6 +317,10 @@ impl IntervalBound for VarInt {
     fn steps_between(&self, upper: &Self) -> usize {
         <u64 as IntervalBound>::steps_between(&*self, &*upper)
     }
+
+    fn steps_between_len(&self, len: usize) -> Self {
+        *self + (len - 1)
+    }
 }
 
 impl IntervalBound for PacketNumber {
@@ -322,5 +338,11 @@ impl IntervalBound for PacketNumber {
         let lower = PacketNumber::as_varint(*self);
         let upper = PacketNumber::as_varint(*upper);
         lower.steps_between(&upper)
+    }
+
+    fn steps_between_len(&self, len: usize) -> Self {
+        let start = PacketNumber::as_varint(*self);
+        let end = start.steps_between_len(len);
+        self.space().new_packet_number(end)
     }
 }
