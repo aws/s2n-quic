@@ -397,7 +397,12 @@ impl CubicCongestionController {
             // is appropriate.
             let target_congestion_window = self.packets_to_bytes(self.cubic.w_cubic(t + rtt));
 
-            debug_assert!(target_congestion_window >= self.congestion_window);
+            // Decreases in the RTT estimate can cause the congestion window to get ahead of the
+            // target. In the case where the congestion window has already exceeded the target,
+            // we return without any further adjustment to the window.
+            if self.congestion_window >= target_congestion_window {
+                return;
+            }
 
             let window_increase_rate =
                 (target_congestion_window - self.congestion_window) / self.congestion_window;
@@ -996,6 +1001,31 @@ mod test {
 
         // Verify congestion window has increased
         assert!(cc.congestion_window > prev_cwnd);
+    }
+
+    #[test]
+    fn congestion_avoidance_after_rtt_improvement() {
+        let max_datagram_size = 1200;
+        let mut cc = CubicCongestionController::new(max_datagram_size);
+        cc.bytes_in_flight = BytesInFlight::new(100);
+        cc.congestion_window = 80_000.0;
+        cc.cubic.w_max = cc.congestion_window / 1200.0;
+
+        // Enter congestion avoidance with a long rtt
+        cc.congestion_avoidance(Duration::from_millis(10), Duration::from_millis(750), 100);
+
+        // At this point the target is less than the congestion window
+        let prev_cwnd = cc.congestion_window;
+        assert!(
+            cc.cubic.w_cubic(Duration::from_secs(0))
+                < bytes_to_packets(prev_cwnd, max_datagram_size)
+        );
+
+        // Receive another ack, now with a short rtt
+        cc.congestion_avoidance(Duration::from_millis(20), Duration::from_millis(10), 100);
+
+        // Verify congestion window did not change
+        assert_delta!(cc.congestion_window, prev_cwnd, 0.001);
     }
 
     #[test]
