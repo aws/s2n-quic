@@ -40,7 +40,6 @@ pub use connection_impl::ConnectionImpl as Implementation;
 use core::fmt::Debug;
 /// re-export core
 pub use s2n_quic_core::connection::*;
-use s2n_quic_core::crypto::CryptoError;
 
 /// Stores configuration parameters for a connection which might be shared
 /// between multiple connections of the same type.
@@ -118,26 +117,6 @@ impl<'a> Into<StreamError> for CloseReason<'a> {
     fn into(self) -> StreamError {
         let error: Error = self.into();
         error.into()
-    }
-}
-
-/// Some connection methods may need to indicate both `TransportError`s and `CryptoError`s. This
-/// enum is used to allow for either error type to be returned as appropriate.
-pub enum ProcessingError {
-    DuplicatePacket,
-    TransportError(TransportError),
-    CryptoError(CryptoError),
-}
-
-impl From<TransportError> for ProcessingError {
-    fn from(inner_error: TransportError) -> Self {
-        ProcessingError::TransportError(inner_error)
-    }
-}
-
-impl From<CryptoError> for ProcessingError {
-    fn from(inner_error: CryptoError) -> Self {
-        ProcessingError::CryptoError(inner_error)
     }
 }
 

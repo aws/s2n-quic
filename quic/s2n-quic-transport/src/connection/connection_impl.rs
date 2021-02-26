@@ -6,7 +6,7 @@ use crate::{
         CloseReason as ConnectionCloseReason, ConnectionIdMapper, ConnectionInterests,
         ConnectionTimerEntry, ConnectionTimers, ConnectionTransmission,
         ConnectionTransmissionContext, InternalConnectionId, Parameters as ConnectionParameters,
-        ProcessingError, SharedConnectionState,
+        SharedConnectionState,
     },
     contexts::ConnectionOnTransmitError,
     path,
@@ -18,7 +18,7 @@ use crate::{
 use core::time::Duration;
 use s2n_quic_core::{
     application::ApplicationErrorExt,
-    connection::id::Interest,
+    connection::{id::Interest, ProcessingError},
     inet::DatagramInfo,
     io::tx,
     packet::{
