@@ -49,10 +49,10 @@ fn minimum_window_test() {
 
 #[test]
 #[cfg_attr(miri, ignore)]
-fn fast_convergence_test() {
+fn loss_at_3mb_and_2_75mb_test() {
     let cc = CubicCongestionController::new(MINIMUM_MTU);
 
-    fast_convergence(cc, 120).finish();
+    loss_at_3mb_and_2_75mb(cc, 120).finish();
 }
 
 #[derive(Debug)]
@@ -217,7 +217,8 @@ fn minimum_window<CC: CongestionController>(
 }
 
 /// Simulates a network that experienced loss at a 3MB congestion window and then at a 2.75MB window
-fn fast_convergence<CC: CongestionController>(
+/// With Cubic this will exercise the fast convergence algorithm
+fn loss_at_3mb_and_2_75mb<CC: CongestionController>(
     mut congestion_controller: CC,
     num_rounds: usize,
 ) -> Simulation {
