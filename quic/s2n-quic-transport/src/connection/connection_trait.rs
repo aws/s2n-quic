@@ -29,14 +29,6 @@ use s2n_quic_core::{
     transport::error::TransportError,
 };
 
-pub trait AeadIntegrityLimitTracking {
-    /// Called when a decryption failure occurs
-    fn on_decryption_error(&mut self);
-
-    /// Returns the number of decryption failures this connection has experienced
-    fn decryption_error_count(&self) -> u64;
-}
-
 /// A trait which represents an internally used `Connection`
 pub trait ConnectionTrait: Sized {
     /// Static configuration of a connection

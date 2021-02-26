@@ -3,19 +3,17 @@ use crate::{
     path,
     processed_packet::ProcessedPacket,
     recovery,
-    space::{
-        rx_packet_numbers::AckManager, HandshakeStatus, PacketSpace, PacketSpaceCrypto,
-        TxPacketNumbers,
-    },
+    space::{rx_packet_numbers::AckManager, HandshakeStatus, PacketSpace, TxPacketNumbers},
     stream::AbstractStreamManager,
     sync::flag,
+    timer::VirtualTimer,
     transmission,
 };
 use bytes::Bytes;
 use core::{convert::TryInto, marker::PhantomData};
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
-    crypto::{CryptoSuite, OneRTTCrypto},
+    crypto::{CryptoError, CryptoSuite, Key, OneRTTCrypto, ProtectedPayload},
     endpoint,
     frame::{
         ack::AckRanges, crypto::CryptoRef, stream::StreamRef, Ack, ConnectionClose, DataBlocked,
@@ -33,6 +31,7 @@ use s2n_quic_core::{
         KeyPhase,
     },
     path::Path,
+    recovery::RTTEstimator,
     time::Timestamp,
     transport::error::TransportError,
 };
@@ -52,7 +51,7 @@ pub struct ApplicationSpace<Config: connection::Config> {
     //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.3
     //# For this reason, endpoints MUST be able to retain two sets of packet
     //# protection keys for receiving packets: the current and the next.
-    crypto: ApplicationKeySet<<Config::TLSSession as CryptoSuite>::OneRTTCrypto>,
+    key_set: ApplicationKeySet<<Config::TLSSession as CryptoSuite>::OneRTTCrypto>,
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7
     //# Endpoints MUST explicitly negotiate an application protocol.
@@ -77,15 +76,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         sni: Option<Bytes>,
         alpn: Bytes,
     ) -> Self {
-        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.3
-        //# Endpoints responding to an apparent key update MUST NOT generate a
-        //# timing side-channel signal that might indicate that the Key Phase bit
-        //# was invalid (see Section 9.4).
-        // By pre-generating the next key, we can respond to a KeyUpdate without exposing a timing
-        // side channel.
-        let next_key = PacketSpaceCrypto::new(crypto.derive_next_key());
-        let active_key = PacketSpaceCrypto::new(crypto);
-        let keyset = ApplicationKeySet::new(active_key, next_key);
+        let key_set = ApplicationKeySet::new(crypto);
         let max_ack_delay = ack_manager.ack_settings.max_ack_delay;
 
         Self {
@@ -93,7 +84,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
             ack_manager,
             spin_bit: SpinBit::Zero,
             stream_manager,
-            crypto: keyset,
+            key_set,
             sni,
             alpn,
             ping: flag::Ping::default(),
@@ -107,22 +98,23 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
 
     /// Returns the active key which is suitable for encrypting packets or unprotecting packet
     /// headers.
-    pub fn crypto(&self) -> &PacketSpaceCrypto<<Config::TLSSession as CryptoSuite>::OneRTTCrypto> {
+    fn crypto(&self) -> &PacketSpaceCrypto<<Config::TLSSession as CryptoSuite>::OneRTTCrypto> {
         //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.4
         //# The same header protection key is used for the duration of the
         //# connection, with the value not changing after a key update (see
         //# Section 6).  This allows header protection to be used to protect the
         //# key phase.
-        self.crypto.active_key()
+        self.key_set.active_key()
     }
 
-    /// Returns the key for a particular Phase. This should be used for decrypting packets from a
-    /// peer.
-    pub fn crypto_for_phase(
-        &self,
-        key_phase: KeyPhase,
-    ) -> &PacketSpaceCrypto<<Config::TLSSession as CryptoSuite>::OneRTTCrypto> {
-        self.crypto.key_for_phase(key_phase)
+    /// Returns the current phase
+    fn crypto_phase(&self) -> KeyPhase {
+        self.key_set.key_phase
+    }
+
+    /// Rotate the key phase in the application space
+    fn crypto_rotate_phase(&mut self) {
+        self.key_set.rotate_phase()
     }
 
     /// Returns true if the packet number has already been processed
@@ -186,14 +178,13 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         let packet = Short {
             destination_connection_id: destination_connection_id.as_ref(),
             spin_bit: self.spin_bit,
-            key_phase: self.crypto.key_phase(),
+            key_phase: self.key_set.key_phase(),
             packet_number,
             payload,
         };
 
         let min_packet_len = context.min_packet_len;
-
-        let (_protected_packet, buffer) = self.crypto.crypto[self.crypto.key_phase as usize]
+        let (_protected_packet, buffer) = self.key_set.crypto[self.key_set.key_phase as usize]
             .encode_packet(buffer, |buffer, key| {
                 packet.encode_packet(key, packet_number_encoder, min_packet_len, buffer)
             })?;
@@ -260,6 +251,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         core::iter::empty()
             .chain(self.ack_manager.timers())
             .chain(self.recovery_manager.timers())
+            .chain(self.key_set.timers())
     }
 
     /// Called when the connection timer expired
@@ -271,6 +263,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         timestamp: Timestamp,
     ) {
         self.ack_manager.on_timeout(timestamp);
+        self.key_set.on_timeout(timestamp);
 
         let (recovery_manager, mut context) = self.recovery(
             handshake_status,
@@ -278,7 +271,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
             path_manager.active_path_id(),
             path_manager,
         );
-        recovery_manager.on_timeout(timestamp, &mut context)
+        recovery_manager.on_timeout(timestamp, &mut context);
     }
 
     /// Returns the Packet Number to be used when decoding incoming packets
@@ -324,10 +317,11 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
     }
 
     /// Validate packets in the Application packet space
-    pub fn validate_and_decrypt_packet<'a, C: connection::AeadIntegrityLimitTracking>(
+    pub fn validate_and_decrypt_packet<'a>(
         &mut self,
-        conn: &mut C,
         protected: ProtectedShort<'a>,
+        datagram: &DatagramInfo,
+        rtt_estimator: &RTTEstimator,
     ) -> Result<CleartextShort<'a>, ProcessingError> {
         let crypto = self.crypto();
         let packet_number_decoder = self.packet_number_decoder();
@@ -338,8 +332,76 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
             return Err(ProcessingError::DuplicatePacket);
         }
 
-        let phased_crypto = self.crypto_for_phase(packet.key_phase());
-        phased_crypto.decrypt_packet(conn, |key| packet.decrypt(key))
+        let packet_phase = packet.key_phase();
+        let mut phase_to_use = self.crypto_phase() as u8;
+        let phase_switch = phase_to_use != (packet_phase as u8);
+        phase_to_use ^= phase_switch as u8;
+
+        if self.key_set.key_update_in_progress() && phase_switch {
+            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.5
+            //# An endpoint MAY allow a period of approximately the Probe Timeout
+            //# (PTO; see [QUIC-RECOVERY]) after receiving a packet that uses the new
+            //# key generation before it creates the next set of packet protection
+            //# keys.
+            // During this PTO we can still process delayed packets, reducing retransmits
+            // required from the peer. We know the packets are delayed because they have a
+            // lower packet number than expected and the old key phase.
+            if packet.packet_number < self.ack_manager.largest_received_packet_number_acked() {
+                phase_to_use = packet.key_phase() as u8;
+            }
+        }
+
+        match self
+            .key_set
+            .decrypt_packet(phase_to_use.into(), |key| packet.decrypt(key))
+        {
+            Ok(packet) => {
+                if packet_phase != self.crypto_phase() {
+                    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.2
+                    //# Sending keys MUST be updated before sending an
+                    //# acknowledgement for the packet that was received with updated keys.
+
+                    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.2
+                    //# The endpoint MUST update its
+                    //# send keys to the corresponding key phase in response, as described in
+                    //# Section 6.1.
+                    self.crypto_rotate_phase();
+
+                    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.3
+                    //# Endpoints responding to an apparent key update MUST NOT generate a
+                    //# timing side-channel signal that might indicate that the Key Phase bit
+                    //# was invalid (see Section 9.4).
+
+                    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.5
+                    //# An endpoint MAY allow a period of approximately the Probe Timeout
+                    //# (PTO; see [QUIC-RECOVERY]) after receiving a packet that uses the new
+                    //# key generation before it creates the next set of packet protection
+                    //# keys.
+                    self.key_set
+                        .key_derivation_timer
+                        .set(datagram.timestamp + rtt_estimator.pto_period(1));
+                }
+
+                //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.4
+                //= type=TODO
+                //= tracking-issue=479
+                //= feature=Key update
+                //# An endpoint that successfully removes protection with old
+                //# keys when newer keys were used for packets with lower packet numbers
+                //# MUST treat this as a connection error of type KEY_UPDATE_ERROR.
+                Ok(packet)
+            }
+            Err(e) => {
+                //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.4
+                //= type=TODO
+                //= tracking-issue=479
+                //= feature=Key update
+                //# Packets with higher packet numbers MUST be protected with either the
+                //# same or newer packet protection keys than packets with lower packet
+                //# numbers.
+                Err(e)
+            }
+        }
     }
 }
 
@@ -655,49 +717,224 @@ struct ApplicationKeySet<Key> {
     /// The current [`KeyPhase`]
     key_phase: KeyPhase,
 
+    key_derivation_timer: VirtualTimer,
+
+    packet_decryption_failures: u64,
+    aead_integrity_limit: u64,
+
     /// Set of keys for the current and next phase
-    pub crypto: [PacketSpaceCrypto<Key>; 2],
+    crypto: [PacketSpaceCrypto<Key>; 2],
 }
 
-impl<Key> ApplicationKeySet<Key> {
-    fn new(phase_zero: PacketSpaceCrypto<Key>, phase_one: PacketSpaceCrypto<Key>) -> Self {
+impl<K: Key> ApplicationKeySet<K>
+where
+    K: OneRTTCrypto,
+{
+    fn new(crypto: K) -> Self {
         //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6
         //# The Key Phase bit is initially set to 0 for the
         //# first set of 1-RTT packets and toggled to signal each subsequent key
         //# update.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.3
+        //# Endpoints responding to an apparent key update MUST NOT generate a
+        //# timing side-channel signal that might indicate that the Key Phase bit
+        //# was invalid (see Section 9.4).
+        // By pre-generating the next key, we can respond to a KeyUpdate without exposing a timing
+        // side channel.
+        let aead_integrity_limit = crypto.aead_integrity_limit();
+        let next_key = PacketSpaceCrypto::new(crypto.derive_next_key());
+        let active_key = PacketSpaceCrypto::new(crypto);
         Self {
             key_phase: KeyPhase::Zero,
-            crypto: [phase_zero, phase_one],
+            key_derivation_timer: Default::default(),
+            packet_decryption_failures: 0,
+            aead_integrity_limit,
+            crypto: [active_key, next_key],
         }
+    }
+
+    /// Rotating the phase will switch the active key
+    fn rotate_phase(&mut self) {
+        self.key_phase = KeyPhase::next_phase(self.key_phase)
+    }
+
+    /// Derive a new key based on the active key, and store it in the non-active slot
+    fn derive_and_store_next_key(&mut self) {
+        let next_key = self.active_key().key.derive_next_key();
+        let next_phase = KeyPhase::next_phase(self.key_phase);
+        self.crypto[next_phase as usize] = PacketSpaceCrypto::new(next_key);
+    }
+
+    fn aead_integrity_limit(&self) -> u64 {
+        self.aead_integrity_limit
+    }
+
+    fn timers(&self) -> impl Iterator<Item = &Timestamp> {
+        self.key_derivation_timer.iter()
+    }
+
+    fn on_timeout(&mut self, timestamp: Timestamp) {
+        // key_derivation_timer
+        if self
+            .key_derivation_timer
+            .poll_expiration(timestamp)
+            .is_ready()
+        {
+            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.5
+            //# An endpoint SHOULD retain old read keys for no more than three times
+            //# the PTO after having received a packet protected using the new keys.
+            self.derive_and_store_next_key();
+        }
+    }
+
+    fn key_update_in_progress(&self) -> bool {
+        self.key_derivation_timer.is_armed()
     }
 
     fn key_phase(&self) -> KeyPhase {
         self.key_phase
     }
 
-    fn active_key(&self) -> &PacketSpaceCrypto<Key> {
+    fn active_key(&self) -> &PacketSpaceCrypto<K> {
         self.key_for_phase(self.key_phase)
     }
 
-    fn key_for_phase(&self, key_phase: KeyPhase) -> &PacketSpaceCrypto<Key> {
-        match key_phase {
-            KeyPhase::Zero => &self.crypto[0],
-            KeyPhase::One => &self.crypto[1],
+    fn key_for_phase(&self, key_phase: KeyPhase) -> &PacketSpaceCrypto<K> {
+        &self.crypto[(key_phase as u8) as usize]
+    }
+
+    fn on_decryption_error(&mut self) {
+        self.packet_decryption_failures += 1
+    }
+
+    fn decryption_error_count(&self) -> u64 {
+        self.packet_decryption_failures
+    }
+
+    fn decrypt_packet<F, R>(
+        &mut self,
+        phase: KeyPhase,
+        f: F,
+    ) -> Result<R, connection::ProcessingError>
+    where
+        K: OneRTTCrypto,
+        F: FnOnce(&K) -> Result<R, CryptoError>,
+    {
+        match f(&self.crypto[phase as usize].key) {
+            Ok(r) => Ok(r),
+            Err(e) => {
+                //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
+                //# In addition to counting packets sent, endpoints MUST count the number
+                //# of received packets that fail authentication during the lifetime of a
+                //# connection.
+                self.on_decryption_error();
+
+                //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
+                //# If the total number of received packets that fail
+                //# authentication within the connection, across all keys, exceeds the
+                //# integrity limit for the selected AEAD, the endpoint MUST immediately
+                //# close the connection with a connection error of type
+                //# AEAD_LIMIT_REACHED and not process any more packets.
+                if self.decryption_error_count() > self.aead_integrity_limit() {
+                    return Err(ProcessingError::TransportError(
+                        TransportError::AEAD_LIMIT_REACHED,
+                    ));
+                }
+
+                Err(ProcessingError::CryptoError(e))
+            }
         }
+    }
+}
+
+//= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
+//# Endpoints MUST count the number of encrypted packets for each set of
+//# keys.
+struct PacketSpaceCrypto<Key> {
+    key: Key,
+    // Keeping encrypted_packets out of the key allow keys to be immutable, which allows optimizations
+    // later on.
+    encrypted_packets: u64,
+}
+
+impl<K: Key> PacketSpaceCrypto<K> {
+    fn new(key: K) -> Self {
+        PacketSpaceCrypto {
+            key,
+            encrypted_packets: 0,
+        }
+    }
+
+    fn aead_confidentiality_limit(&self) -> u64 {
+        self.key.aead_confidentiality_limit()
+    }
+
+    fn unprotect_packet<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(&K) -> R,
+    {
+        f(&self.key)
+    }
+
+    fn encode_packet<'a, F>(
+        &mut self,
+        buffer: EncoderBuffer<'a>,
+        f: F,
+    ) -> Result<(ProtectedPayload<'a>, EncoderBuffer<'a>), PacketEncodingError<'a>>
+    where
+        F: FnOnce(
+            EncoderBuffer<'a>,
+            &K,
+        )
+            -> Result<(ProtectedPayload<'a>, EncoderBuffer<'a>), PacketEncodingError<'a>>,
+    {
+        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
+        //# If the total number of encrypted packets with the same key
+        //# exceeds the confidentiality limit for the selected AEAD, the endpoint
+        //# MUST stop using those keys.
+        if self.encrypted_packets > self.aead_confidentiality_limit() {
+            return Err(PacketEncodingError::AeadLimitReached(buffer));
+        }
+
+        let r = f(buffer, &self.key)?;
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
+        //# Endpoints MUST count the number of encrypted packets for each set of
+        //# keys.
+        self.encrypted_packets += 1;
+        Ok(r)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use s2n_quic_core::crypto::{
-        header_crypto::{HeaderCrypto, HeaderProtectionMask},
-        CryptoError, Key, OneRTTCrypto,
+    use s2n_quic_core::{
+        crypto::{
+            header_crypto::{HeaderCrypto, HeaderProtectionMask},
+            CryptoError, Key, OneRTTCrypto,
+        },
+        time::Clock,
     };
+
+    use core::time::Duration;
+    use s2n_quic_platform::time;
+    use std::sync::Arc;
 
     #[derive(Default)]
     struct NullKey {
         pub value: u64,
+        pub integrity_limit: u64,
+    }
+
+    impl NullKey {
+        fn new(value: u64, integrity_limit: u64) -> Self {
+            Self {
+                value,
+                integrity_limit,
+            }
+        }
     }
 
     impl Key for NullKey {
@@ -728,7 +965,7 @@ mod tests {
         }
 
         fn aead_integrity_limit(&self) -> u64 {
-            0
+            self.integrity_limit
         }
     }
 
@@ -754,6 +991,7 @@ mod tests {
         fn derive_next_key(&self) -> Self {
             Self {
                 value: self.value + 1,
+                integrity_limit: self.integrity_limit,
             }
         }
     }
@@ -765,11 +1003,143 @@ mod tests {
         //# For this reason, endpoints MUST be able to retain two sets of packet
         //# protection keys for receiving packets: the current and the next.
 
-        let current_key = PacketSpaceCrypto::new(NullKey::default());
-        let next_key = PacketSpaceCrypto::new(current_key.key.derive_next_key());
-        let keyset = ApplicationKeySet::new(current_key, next_key);
+        let keyset = ApplicationKeySet::new(NullKey::default());
 
         assert_eq!(keyset.active_key().key.value, 0);
         assert_eq!(keyset.key_for_phase(KeyPhase::One).key.value, 1);
+    }
+
+    #[test]
+    fn test_phase_rotation() {
+        let mut keyset = ApplicationKeySet::new(NullKey::default());
+
+        keyset.rotate_phase();
+        assert_eq!(keyset.active_key().key.value, 1);
+        keyset.rotate_phase();
+        assert_eq!(keyset.active_key().key.value, 0);
+    }
+
+    #[test]
+    fn test_key_derivation() {
+        let mut keyset = ApplicationKeySet::new(NullKey::default());
+
+        keyset.rotate_phase();
+        keyset.derive_and_store_next_key();
+        keyset.rotate_phase();
+        let next_key = keyset.active_key();
+        assert_eq!(next_key.key.value, 2);
+    }
+
+    #[test]
+    fn test_key_derivation_timer() {
+        let clock = Arc::new(time::testing::MockClock::new());
+        time::testing::set_local_clock(clock.clone());
+        let now = clock.get_time();
+        let mut keyset = ApplicationKeySet::new(NullKey::default());
+        keyset.rotate_phase();
+
+        keyset
+            .key_derivation_timer
+            .set(now + Duration::from_millis(10));
+        clock.adjust_by(Duration::from_millis(8));
+
+        keyset.on_timeout(clock.get_time());
+        assert_eq!(keyset.crypto[0].key.value, 0);
+
+        clock.adjust_by(Duration::from_millis(8));
+        keyset.on_timeout(clock.get_time());
+        assert_eq!(keyset.crypto[0].key.value, 2);
+    }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
+    //= type=test
+    //# In addition to counting packets sent, endpoints MUST count the number
+    //# of received packets that fail authentication during the lifetime of a
+    //# connection.
+    #[test]
+    fn test_decryption_failure_counter() {
+        let key = NullKey::new(0, 1);
+        let mut keyset = ApplicationKeySet::new(key);
+
+        assert_eq!(keyset.decryption_error_count(), 0);
+        assert!(matches!(
+            keyset.decrypt_packet(keyset.key_phase(), |_key| -> Result<(), CryptoError> {
+                Err(CryptoError::DECRYPT_ERROR)
+            }),
+            Err(ProcessingError::CryptoError(_))
+        ));
+        assert_eq!(keyset.decryption_error_count(), 1);
+    }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
+    //= type=test
+    //# If the total number of received packets that fail
+    //# authentication within the connection, across all keys, exceeds the
+    //# integrity limit for the selected AEAD, the endpoint MUST immediately
+    //# close the connection with a connection error of type
+    //# AEAD_LIMIT_REACHED and not process any more packets.
+    #[test]
+    fn test_decryption_failure_enforced_aead_limit() {
+        let key = NullKey::new(0, 0);
+        let mut keyset = ApplicationKeySet::new(key);
+
+        assert_eq!(keyset.decryption_error_count(), 0);
+        assert!(matches!(
+            keyset.decrypt_packet(keyset.key_phase(), |_key| -> Result<(), CryptoError> {
+                Err(CryptoError::DECRYPT_ERROR)
+            }),
+            Err(ProcessingError::TransportError(
+                TransportError::AEAD_LIMIT_REACHED
+            ))
+        ));
+    }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
+    //= type=test
+    //# Endpoints MUST count the number of encrypted packets for each set of
+    //# keys.
+    #[test]
+    fn test_encrypted_packet_count_increased() {
+        let key = NullKey::new(0, 0);
+        let mut crypto = PacketSpaceCrypto::new(key);
+        let mut encoder_bytes = [0; 512];
+        let buffer = EncoderBuffer::new(&mut encoder_bytes);
+        let mut decoder_bytes = [0; 512];
+
+        assert_eq!(crypto.encrypted_packets, 0);
+        assert!(crypto
+            .encode_packet(buffer, |buffer, _key| {
+                let payload = ProtectedPayload::new(0, &mut decoder_bytes);
+
+                Ok((payload, buffer))
+            })
+            .is_ok());
+
+        assert_eq!(crypto.encrypted_packets, 1);
+    }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
+    //= type=test
+    //# If the total number of encrypted packets with the same key
+    //# exceeds the confidentiality limit for the selected AEAD, the endpoint
+    //# MUST stop using those keys.
+    #[test]
+    fn test_encrypted_packet_count_enforced_aead_limit() {
+        let key = NullKey::default();
+        let mut crypto = PacketSpaceCrypto::new(key);
+        let mut encoder_bytes = [0; 512];
+        let buffer = EncoderBuffer::new(&mut encoder_bytes);
+        let mut decoder_bytes = [0; 512];
+
+        crypto.encrypted_packets = 1;
+        assert!(matches!(
+            crypto.encode_packet(buffer, |buffer, _key| {
+                let payload = ProtectedPayload::new(0, &mut decoder_bytes);
+
+                Ok((payload, buffer))
+            }),
+            Err(PacketEncodingError::AeadLimitReached(_))
+        ));
+        assert_eq!(crypto.encrypted_packets, 1);
     }
 }
