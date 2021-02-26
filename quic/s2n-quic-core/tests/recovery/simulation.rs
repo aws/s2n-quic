@@ -152,53 +152,11 @@ fn slow_start_unlimited<CC: CongestionController>(
     mut congestion_controller: CC,
     num_rounds: usize,
 ) -> Simulation {
-    let mut bytes_in_flight = 0;
-    let time_zero = NoopClock.get_time();
-    let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(0));
-    let mut rounds = Vec::with_capacity(num_rounds);
-    let packet_size = MINIMUM_MTU as usize;
-
-    for round in 0..num_rounds {
-        rounds.push(Round {
-            number: round,
-            cwnd: congestion_controller.congestion_window(),
-        });
-
-        let sent_time = time_zero + Duration::from_millis(100 * round as u64);
-
-        // Send the full congestion window of bytes
-        while bytes_in_flight <= congestion_controller.congestion_window() {
-            congestion_controller.on_packet_sent(sent_time, packet_size);
-            bytes_in_flight += packet_size as u32;
-        }
-
-        let ack_receive_time = sent_time + Duration::from_millis(50);
-
-        // Ack the full congestion window of bytes
-        while bytes_in_flight > 0 {
-            congestion_controller.on_packet_ack(
-                ack_receive_time,
-                packet_size,
-                &rtt_estimator,
-                ack_receive_time,
-            );
-            bytes_in_flight -= packet_size as u32;
-        }
-
-        rtt_estimator.update_rtt(
-            Duration::from_millis(0),
-            ack_receive_time - sent_time,
-            ack_receive_time,
-            true,
-            PacketNumberSpace::ApplicationData,
-        );
-    }
-
     Simulation {
         name: "Slow Start Unlimited",
         description: "Full congestion window utilization with no congestion experienced",
         cc: core::any::type_name::<CC>(),
-        rounds,
+        rounds: simulate_constant_rtt(&mut congestion_controller, &[], None, num_rounds),
     }
 }
 
@@ -207,72 +165,11 @@ fn loss_at_3mb<CC: CongestionController>(
     mut congestion_controller: CC,
     num_rounds: usize,
 ) -> Simulation {
-    let time_zero = NoopClock.get_time();
-    let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(0));
-    let mut rounds = Vec::with_capacity(num_rounds);
-
-    let mut round_start = time_zero + Duration::from_millis(1);
-
-    // Update the rtt with 200 ms
-    rtt_estimator.update_rtt(
-        Duration::from_millis(0),
-        Duration::from_millis(200),
-        time_zero,
-        true,
-        PacketNumberSpace::ApplicationData,
-    );
-
-    let mut slow_start_round = 0;
-
-    while congestion_controller.congestion_window() < 3_000_000 && slow_start_round < num_rounds {
-        round_start += Duration::from_millis(200);
-
-        let send_bytes = congestion_controller.congestion_window() as usize;
-
-        // Send and ack the full congestion window
-        send_and_ack(
-            &mut congestion_controller,
-            &rtt_estimator,
-            round_start,
-            send_bytes,
-        );
-
-        rounds.push(Round {
-            number: slow_start_round,
-            cwnd: congestion_controller.congestion_window(),
-        });
-
-        slow_start_round += 1;
-    }
-
-    // Lose a packet to exit slow start
-    congestion_controller.on_packet_sent(round_start, MINIMUM_MTU as usize);
-    congestion_controller.on_packets_lost(MINIMUM_MTU as u32, false, round_start);
-
-    for round in slow_start_round..num_rounds {
-        rounds.push(Round {
-            number: round,
-            cwnd: congestion_controller.congestion_window(),
-        });
-
-        round_start += Duration::from_millis(200);
-
-        let send_bytes = congestion_controller.congestion_window() as usize;
-
-        // Send and ack the full congestion window
-        send_and_ack(
-            &mut congestion_controller,
-            &rtt_estimator,
-            round_start,
-            send_bytes,
-        );
-    }
-
     Simulation {
         name: "Loss at 3MB",
         description: "Full congestion window utilization with loss encountered at ~3MB",
         cc: core::any::type_name::<CC>(),
-        rounds,
+        rounds: simulate_constant_rtt(&mut congestion_controller, &[3_000_000], None, num_rounds),
     }
 }
 
@@ -282,74 +179,18 @@ fn app_limited_1mb<CC: CongestionController>(
     mut congestion_controller: CC,
     num_rounds: usize,
 ) -> Simulation {
-    let time_zero = NoopClock.get_time();
-    let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(0));
-    let mut rounds = Vec::with_capacity(num_rounds);
-
-    let mut round_start = time_zero + Duration::from_millis(1);
-
     const APP_LIMIT_BYTES: usize = 1_000_000;
-
-    // Update the rtt with 200 ms
-    rtt_estimator.update_rtt(
-        Duration::from_millis(0),
-        Duration::from_millis(200),
-        time_zero,
-        true,
-        PacketNumberSpace::ApplicationData,
-    );
-
-    let mut slow_start_round = 0;
-
-    while congestion_controller.congestion_window() < 750_000 && slow_start_round < num_rounds {
-        round_start += Duration::from_millis(200);
-
-        // Send and ack the full congestion window
-        let cwnd = congestion_controller.congestion_window() as usize;
-
-        send_and_ack(
-            &mut congestion_controller,
-            &rtt_estimator,
-            round_start,
-            cwnd,
-        );
-
-        rounds.push(Round {
-            number: slow_start_round,
-            cwnd: congestion_controller.congestion_window(),
-        });
-
-        slow_start_round += 1;
-    }
-
-    // Lose a packet to exit slow start
-    congestion_controller.on_packet_sent(round_start, MINIMUM_MTU as usize);
-    congestion_controller.on_packets_lost(MINIMUM_MTU as u32, false, round_start);
-
-    for round in slow_start_round..num_rounds {
-        rounds.push(Round {
-            number: round,
-            cwnd: congestion_controller.congestion_window(),
-        });
-
-        round_start += Duration::from_millis(200);
-
-        // Send and ack up to APP_LIMIT_BYTES
-        let send_bytes = (congestion_controller.congestion_window() as usize).min(APP_LIMIT_BYTES);
-
-        send_and_ack(
-            &mut congestion_controller,
-            &rtt_estimator,
-            round_start,
-            send_bytes,
-        );
-    }
 
     Simulation {
         name: "App Limited 1MB",
         description: "App limited to 1MB per round with loss encountered at ~750KB",
         cc: core::any::type_name::<CC>(),
-        rounds,
+        rounds: simulate_constant_rtt(
+            &mut congestion_controller,
+            &[750_000],
+            Some(APP_LIMIT_BYTES),
+            num_rounds,
+        ),
     }
 }
 
@@ -359,10 +200,50 @@ fn minimum_window<CC: CongestionController>(
     num_rounds: usize,
 ) -> Simulation {
     let time_zero = NoopClock.get_time();
-    let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(0));
-    let mut rounds = Vec::with_capacity(num_rounds);
 
-    let mut round_start = time_zero + Duration::from_millis(1);
+    congestion_controller.on_packet_sent(time_zero, MINIMUM_MTU as usize);
+    // Experience persistent congestion to drop to the minimum window
+    congestion_controller.on_packets_lost(MINIMUM_MTU as u32, true, time_zero);
+    congestion_controller.on_packet_sent(time_zero, MINIMUM_MTU as usize);
+    // Lose a packet to exit slow start
+    congestion_controller.on_packets_lost(MINIMUM_MTU as u32, false, time_zero);
+
+    Simulation {
+        name: "Minimum Window",
+        description: "Full congestion window utilization after starting from the minimum window",
+        cc: core::any::type_name::<CC>(),
+        rounds: simulate_constant_rtt(&mut congestion_controller, &[], None, num_rounds),
+    }
+}
+
+/// Simulates a network that experienced loss at a 3MB congestion window and then at a 2.75MB window
+fn fast_convergence<CC: CongestionController>(
+    mut congestion_controller: CC,
+    num_rounds: usize,
+) -> Simulation {
+    Simulation {
+        name: "Loss at 3MB and 2.75MB",
+        description: "Loss encountered at ~3MB and ~2.75MB",
+        cc: core::any::type_name::<CC>(),
+        rounds: simulate_constant_rtt(
+            &mut congestion_controller,
+            &[3_000_000, 2_750_000],
+            None,
+            num_rounds,
+        ),
+    }
+}
+
+/// Simulate the given number of rounds with drops occurring at the given congestion window sizes
+/// and limited to the given app limit
+fn simulate_constant_rtt<CC: CongestionController>(
+    congestion_controller: &mut CC,
+    drops: &[u32],
+    app_limit: Option<usize>,
+    num_rounds: usize,
+) -> Vec<Round> {
+    let time_zero = NoopClock.get_time();
+    let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(0));
 
     // Update the rtt with 200 ms
     rtt_estimator.update_rtt(
@@ -372,13 +253,9 @@ fn minimum_window<CC: CongestionController>(
         true,
         PacketNumberSpace::ApplicationData,
     );
-
-    congestion_controller.on_packet_sent(round_start, MINIMUM_MTU as usize);
-    // Experience persistent congestion to drop to the minimum window
-    congestion_controller.on_packets_lost(MINIMUM_MTU as u32, true, round_start);
-    congestion_controller.on_packet_sent(round_start, MINIMUM_MTU as usize);
-    // Lose a packet to exit slow start
-    congestion_controller.on_packets_lost(MINIMUM_MTU as u32, false, round_start);
+    let mut round_start = NoopClock.get_time() + Duration::from_millis(1);
+    let mut rounds = Vec::with_capacity(num_rounds);
+    let mut drop_index = 0;
 
     for round in 0..num_rounds {
         rounds.push(Round {
@@ -388,122 +265,28 @@ fn minimum_window<CC: CongestionController>(
 
         round_start += Duration::from_millis(200);
 
-        let send_bytes = congestion_controller.congestion_window() as usize;
+        if drop_index < drops.len()
+            && congestion_controller.congestion_window() >= drops[drop_index]
+        {
+            // Drop a packet
+            congestion_controller.on_packet_sent(round_start, MINIMUM_MTU as usize);
+            congestion_controller.on_packets_lost(MINIMUM_MTU as u32, false, round_start);
+            drop_index += 1;
+        } else {
+            let send_bytes = (congestion_controller.congestion_window() as usize)
+                .min(app_limit.unwrap_or(usize::max_value()));
 
-        // Ack the full congestion window
-        send_and_ack(
-            &mut congestion_controller,
-            &rtt_estimator,
-            round_start,
-            send_bytes,
-        );
+            // Send and ack the full congestion window
+            send_and_ack(
+                congestion_controller,
+                &rtt_estimator,
+                round_start,
+                send_bytes,
+            );
+        }
     }
 
-    Simulation {
-        name: "Minimum Window",
-        description: "Full congestion window utilization after starting from the minimum window",
-        cc: core::any::type_name::<CC>(),
-        rounds,
-    }
-}
-
-/// Simulates a network that experienced loss at a 3MB congestion window and then at a 2.75MB window
-fn fast_convergence<CC: CongestionController>(
-    mut congestion_controller: CC,
-    num_rounds: usize,
-) -> Simulation {
-    let time_zero = NoopClock.get_time();
-    let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(0));
-    let mut rounds = Vec::with_capacity(num_rounds);
-
-    let mut round_start = time_zero + Duration::from_millis(1);
-
-    // Update the rtt with 200 ms
-    rtt_estimator.update_rtt(
-        Duration::from_millis(0),
-        Duration::from_millis(200),
-        time_zero,
-        true,
-        PacketNumberSpace::ApplicationData,
-    );
-
-    let mut round = 0;
-
-    while congestion_controller.congestion_window() < 3_000_000 && round < num_rounds {
-        round_start += Duration::from_millis(200);
-
-        let send_bytes = congestion_controller.congestion_window() as usize;
-
-        // Send and ack the full congestion window
-        send_and_ack(
-            &mut congestion_controller,
-            &rtt_estimator,
-            round_start,
-            send_bytes,
-        );
-
-        rounds.push(Round {
-            number: round,
-            cwnd: congestion_controller.congestion_window(),
-        });
-
-        round += 1;
-    }
-
-    // Lose a packet to exit slow start
-    congestion_controller.on_packet_sent(round_start, MINIMUM_MTU as usize);
-    congestion_controller.on_packets_lost(MINIMUM_MTU as u32, false, round_start);
-
-    while congestion_controller.congestion_window() < 2_750_000 && round < num_rounds {
-        rounds.push(Round {
-            number: round,
-            cwnd: congestion_controller.congestion_window(),
-        });
-
-        round_start += Duration::from_millis(200);
-
-        let send_bytes = congestion_controller.congestion_window() as usize;
-
-        // Send and ack the full congestion window
-        send_and_ack(
-            &mut congestion_controller,
-            &rtt_estimator,
-            round_start,
-            send_bytes,
-        );
-
-        round += 1;
-    }
-
-    // Lose a packet
-    congestion_controller.on_packet_sent(round_start, MINIMUM_MTU as usize);
-    congestion_controller.on_packets_lost(MINIMUM_MTU as u32, false, round_start);
-
-    for round in round..num_rounds {
-        rounds.push(Round {
-            number: round,
-            cwnd: congestion_controller.congestion_window(),
-        });
-
-        round_start += Duration::from_millis(200);
-
-        let send_bytes = congestion_controller.congestion_window() as usize;
-
-        // Send and ack the full congestion window
-        send_and_ack(
-            &mut congestion_controller,
-            &rtt_estimator,
-            round_start,
-            send_bytes,
-        );
-    }
-
-    Simulation {
-        name: "Loss at 3MB and 2.75MB",
-        description: "Loss encountered at ~3MB and ~2.75MB",
-        cc: core::any::type_name::<CC>(),
-        rounds,
-    }
+    rounds
 }
 
 /// Send and acknowledge the given amount of bytes using the given congestion controller
