@@ -47,6 +47,14 @@ fn minimum_window_test() {
     minimum_window(cc, 10).finish();
 }
 
+#[test]
+#[cfg_attr(miri, ignore)]
+fn fast_convergence_test() {
+    let cc = CubicCongestionController::new(MINIMUM_MTU);
+
+    fast_convergence(cc, 120).finish();
+}
+
 #[derive(Debug)]
 struct Simulation {
     name: &'static str,
@@ -135,7 +143,7 @@ impl Simulation {
     }
 
     fn filename(&self) -> String {
-        self.name().split_whitespace().collect()
+        self.name().replace(".", "_").split_whitespace().collect()
     }
 }
 
@@ -394,6 +402,105 @@ fn minimum_window<CC: CongestionController>(
     Simulation {
         name: "Minimum Window",
         description: "Full congestion window utilization after starting from the minimum window",
+        cc: core::any::type_name::<CC>(),
+        rounds,
+    }
+}
+
+/// Simulates a network that experienced loss at a 3MB congestion window and then at a 2.75MB window
+fn fast_convergence<CC: CongestionController>(
+    mut congestion_controller: CC,
+    num_rounds: usize,
+) -> Simulation {
+    let time_zero = NoopClock.get_time();
+    let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(0));
+    let mut rounds = Vec::with_capacity(num_rounds);
+
+    let mut round_start = time_zero + Duration::from_millis(1);
+
+    // Update the rtt with 200 ms
+    rtt_estimator.update_rtt(
+        Duration::from_millis(0),
+        Duration::from_millis(200),
+        time_zero,
+        true,
+        PacketNumberSpace::ApplicationData,
+    );
+
+    let mut round = 0;
+
+    while congestion_controller.congestion_window() < 3_000_000 && round < num_rounds {
+        round_start += Duration::from_millis(200);
+
+        let send_bytes = congestion_controller.congestion_window() as usize;
+
+        // Send and ack the full congestion window
+        send_and_ack(
+            &mut congestion_controller,
+            &rtt_estimator,
+            round_start,
+            send_bytes,
+        );
+
+        rounds.push(Round {
+            number: round,
+            cwnd: congestion_controller.congestion_window(),
+        });
+
+        round += 1;
+    }
+
+    // Lose a packet to exit slow start
+    congestion_controller.on_packet_sent(round_start, MINIMUM_MTU as usize);
+    congestion_controller.on_packets_lost(MINIMUM_MTU as u32, false, round_start);
+
+    while congestion_controller.congestion_window() < 2_750_000 && round < num_rounds {
+        rounds.push(Round {
+            number: round,
+            cwnd: congestion_controller.congestion_window(),
+        });
+
+        round_start += Duration::from_millis(200);
+
+        let send_bytes = congestion_controller.congestion_window() as usize;
+
+        // Send and ack the full congestion window
+        send_and_ack(
+            &mut congestion_controller,
+            &rtt_estimator,
+            round_start,
+            send_bytes,
+        );
+
+        round += 1;
+    }
+
+    // Lose a packet
+    congestion_controller.on_packet_sent(round_start, MINIMUM_MTU as usize);
+    congestion_controller.on_packets_lost(MINIMUM_MTU as u32, false, round_start);
+
+    for round in round..num_rounds {
+        rounds.push(Round {
+            number: round,
+            cwnd: congestion_controller.congestion_window(),
+        });
+
+        round_start += Duration::from_millis(200);
+
+        let send_bytes = congestion_controller.congestion_window() as usize;
+
+        // Send and ack the full congestion window
+        send_and_ack(
+            &mut congestion_controller,
+            &rtt_estimator,
+            round_start,
+            send_bytes,
+        );
+    }
+
+    Simulation {
+        name: "Loss at 3MB and 2.75MB",
+        description: "Loss encountered at ~3MB and ~2.75MB",
         cc: core::any::type_name::<CC>(),
         rounds,
     }
