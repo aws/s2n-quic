@@ -30,7 +30,8 @@ where
         self.key.derive_next_key()
     }
 
-    pub fn unprotect_packet<F, R>(&self, f: F) -> R
+    /// Makes the limited use key available to a callback
+    pub(crate) fn unprotect_packet<F, R>(&self, f: F) -> R
     where
         F: FnOnce(&K) -> R,
     {

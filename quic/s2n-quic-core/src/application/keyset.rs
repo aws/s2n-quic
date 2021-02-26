@@ -65,64 +65,18 @@ where
         self.crypto[next_phase as usize] = LimitedUseCrypto::new(next_key);
     }
 
-    fn aead_integrity_limit(&self) -> u64 {
-        self.aead_integrity_limit
-    }
-
-    pub fn timers(&self) -> impl Iterator<Item = &Timestamp> {
-        self.key_derivation_timer.iter()
-    }
-
-    pub fn set_timer(&mut self, timestamp: Timestamp) {
+    /// Set the timer to derive a new key after timestamp
+    pub fn set_derivation_timer(&mut self, timestamp: Timestamp) {
         self.key_derivation_timer.set(timestamp)
     }
 
-    pub fn on_timeout(&mut self, timestamp: Timestamp) {
-        // key_derivation_timer
-        if self
-            .key_derivation_timer
-            .poll_expiration(timestamp)
-            .is_ready()
-        {
-            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.5
-            //# An endpoint SHOULD retain old read keys for no more than three times
-            //# the PTO after having received a packet protected using the new keys.
-            self.derive_and_store_next_key();
-        }
-    }
-
+    /// Returns whether there is a key update in progress.
     pub fn key_update_in_progress(&self) -> bool {
         self.key_derivation_timer.is_armed()
     }
 
-    pub fn key_phase(&self) -> KeyPhase {
-        self.key_phase
-    }
-
-    pub fn active_key(&mut self) -> &LimitedUseCrypto<K> {
-        self.key_for_phase(self.key_phase)
-    }
-
-    pub fn active_key_mut(&mut self) -> &mut LimitedUseCrypto<K> {
-        self.key_for_phase_mut(self.key_phase)
-    }
-
-    pub fn key_for_phase(&self, key_phase: KeyPhase) -> &LimitedUseCrypto<K> {
-        &self.crypto[(key_phase as u8) as usize]
-    }
-
-    pub fn key_for_phase_mut(&mut self, key_phase: KeyPhase) -> &mut LimitedUseCrypto<K> {
-        &mut self.crypto[(key_phase as u8) as usize]
-    }
-
-    fn on_decryption_error(&mut self) {
-        self.packet_decryption_failures += 1
-    }
-
-    pub fn decryption_error_count(&self) -> u64 {
-        self.packet_decryption_failures
-    }
-
+    /// Passes the key for the the requested phase to a callback function. Integrity limits are
+    /// enforced.
     pub fn decrypt_packet<F, R>(&mut self, phase: KeyPhase, f: F) -> Result<R, ProcessingError>
     where
         K: OneRTTCrypto,
@@ -138,7 +92,7 @@ where
                 //# In addition to counting packets sent, endpoints MUST count the number
                 //# of received packets that fail authentication during the lifetime of a
                 //# connection.
-                self.on_decryption_error();
+                self.packet_decryption_failures += 1;
 
                 //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
                 //# If the total number of received packets that fail
@@ -146,7 +100,7 @@ where
                 //# integrity limit for the selected AEAD, the endpoint MUST immediately
                 //# close the connection with a connection error of type
                 //# AEAD_LIMIT_REACHED and not process any more packets.
-                if self.decryption_error_count() > self.aead_integrity_limit() {
+                if self.decryption_error_count() > self.aead_integrity_limit {
                     return Err(ProcessingError::TransportError(
                         TransportError::AEAD_LIMIT_REACHED,
                     ));
@@ -155,6 +109,47 @@ where
                 Err(ProcessingError::CryptoError(e))
             }
         }
+    }
+
+    pub fn timers(&self) -> impl Iterator<Item = &Timestamp> {
+        self.key_derivation_timer.iter()
+    }
+
+    pub fn on_timeout(&mut self, timestamp: Timestamp) {
+        if self
+            .key_derivation_timer
+            .poll_expiration(timestamp)
+            .is_ready()
+        {
+            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.5
+            //# An endpoint SHOULD retain old read keys for no more than three times
+            //# the PTO after having received a packet protected using the new keys.
+            self.derive_and_store_next_key();
+        }
+    }
+
+    pub fn key_phase(&self) -> KeyPhase {
+        self.key_phase
+    }
+
+    pub fn active_key(&mut self) -> &LimitedUseCrypto<K> {
+        self.key_for_phase(self.key_phase)
+    }
+
+    pub fn active_key_mut(&mut self) -> &mut LimitedUseCrypto<K> {
+        self.key_for_phase_mut(self.key_phase)
+    }
+
+    fn key_for_phase(&self, key_phase: KeyPhase) -> &LimitedUseCrypto<K> {
+        &self.crypto[(key_phase as u8) as usize]
+    }
+
+    fn key_for_phase_mut(&mut self, key_phase: KeyPhase) -> &mut LimitedUseCrypto<K> {
+        &mut self.crypto[(key_phase as u8) as usize]
+    }
+
+    fn decryption_error_count(&self) -> u64 {
+        self.packet_decryption_failures
     }
 }
 

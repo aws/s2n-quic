@@ -304,9 +304,11 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         rtt_estimator: &RTTEstimator,
     ) -> Result<CleartextShort<'a>, ProcessingError> {
         let packet_number_decoder = self.packet_number_decoder();
-        let crypto = self.key_set.active_key();
-        let packet =
-            crypto.unprotect_packet(|key| protected.unprotect(key, packet_number_decoder))?;
+        let packet = self
+            .key_set
+            .decrypt_packet(self.key_set.key_phase(), |key| {
+                protected.unprotect(key, packet_number_decoder)
+            })?;
 
         if self.is_duplicate(packet.packet_number) {
             return Err(ProcessingError::DuplicatePacket);
@@ -358,7 +360,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
                     //# key generation before it creates the next set of packet protection
                     //# keys.
                     self.key_set
-                        .set_timer(datagram.timestamp + rtt_estimator.pto_period(1));
+                        .set_derivation_timer(datagram.timestamp + rtt_estimator.pto_period(1));
                 }
 
                 //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.4
@@ -778,7 +780,7 @@ mod tests {
         let mut keyset = KeySet::new(NullKey::default());
         keyset.rotate_phase();
 
-        keyset.set_timer(now + Duration::from_millis(10));
+        keyset.set_derivation_timer(now + Duration::from_millis(10));
         clock.adjust_by(Duration::from_millis(8));
 
         keyset.on_timeout(clock.get_time());
