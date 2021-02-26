@@ -640,36 +640,32 @@ impl<T: IntervalBound> IntervalSet<T> {
     }
 
     /// Internal check for integrity - only used when debug_assertions are enabled
-    #[cfg(debug_assertions)]
-    fn check_integrity(&self) {
-        let mut prev_end: Option<T> = None;
-
-        for interval in self.intervals.iter() {
-            // make sure that a few items exist
-            for value in interval.clone().take(3) {
-                assert!(self.contains(&value), "set should contain value");
-            }
-            for value in interval.clone().rev().take(3) {
-                assert!(self.contains(&value), "set should contain value");
-            }
-
-            if let Some(prev_end) = prev_end.as_ref() {
-                assert!(
-                    *prev_end < interval.start_exclusive(),
-                    "the previous end should be less than the next start",
-                );
-            }
-
-            assert!(interval.is_valid(), "interval should be valid");
-
-            prev_end = Some(interval.end);
-        }
-    }
-
-    #[cfg(not(debug_assertions))]
     #[inline]
     fn check_integrity(&self) {
-        // noop without debug_assertions
+        if cfg!(debug_assertions) {
+            let mut prev_end: Option<T> = None;
+
+            for interval in self.intervals.iter() {
+                // make sure that a few items exist
+                for value in interval.clone().take(3) {
+                    assert!(self.contains(&value), "set should contain value");
+                }
+                for value in interval.clone().rev().take(3) {
+                    assert!(self.contains(&value), "set should contain value");
+                }
+
+                if let Some(prev_end) = prev_end.as_ref() {
+                    assert!(
+                        *prev_end < interval.start_exclusive(),
+                        "the previous end should be less than the next start",
+                    );
+                }
+
+                assert!(interval.is_valid(), "interval should be valid");
+
+                prev_end = Some(interval.end);
+            }
+        }
     }
 }
 
