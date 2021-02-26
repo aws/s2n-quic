@@ -1,6 +1,7 @@
 ---
 source: quic/s2n-quic-core/tests/recovery/simulation.rs
 expression: self
+
 ---
 Simulation {
     name: "Minimum Window",
@@ -8,8 +9,8 @@ Simulation {
     cc: "s2n_quic_core::recovery::cubic::CubicCongestionController",
     rounds: [
           0: cwnd: 2400,
-          1: cwnd: 2400,
-          2: cwnd: 2400,
+          1: cwnd: 2402,
+          2: cwnd: 2424,
           3: cwnd: 2950,
           4: cwnd: 3585,
           5: cwnd: 4221,

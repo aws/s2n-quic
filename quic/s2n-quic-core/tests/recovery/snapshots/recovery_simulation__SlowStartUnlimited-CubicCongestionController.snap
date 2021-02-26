@@ -1,6 +1,7 @@
 ---
 source: quic/s2n-quic-core/tests/recovery/simulation.rs
 expression: self
+
 ---
 Simulation {
     name: "Slow Start Unlimited",
@@ -8,16 +9,16 @@ Simulation {
     cc: "s2n_quic_core::recovery::cubic::CubicCongestionController",
     rounds: [
           0: cwnd: 12000,
-          1: cwnd: 25200,
-          2: cwnd: 51600,
-          3: cwnd: 104400,
-          4: cwnd: 210000,
-          5: cwnd: 421200,
-          6: cwnd: 843600,
-          7: cwnd: 1688400,
-          8: cwnd: 3378000,
-          9: cwnd: 6757200,
-         10: cwnd: 13515600,
-         11: cwnd: 27032400,
+          1: cwnd: 24000,
+          2: cwnd: 48000,
+          3: cwnd: 96000,
+          4: cwnd: 192000,
+          5: cwnd: 384000,
+          6: cwnd: 768000,
+          7: cwnd: 1536000,
+          8: cwnd: 3072000,
+          9: cwnd: 6144000,
+         10: cwnd: 12288000,
+         11: cwnd: 24576000,
     ],
 }

@@ -225,6 +225,8 @@ impl CongestionController for CubicCongestionController {
                 self.congestion_avoidance(t, rtt, sent_bytes);
             }
         };
+
+        debug_assert!(self.congestion_window >= self.cubic.minimum_window());
     }
 
     fn on_packets_lost(
@@ -244,7 +246,7 @@ impl CongestionController for CubicCongestionController {
         //# (kMinimumWindow), similar to a TCP sender's response on an RTO
         //# ([RFC5681]).
         if persistent_congestion {
-            self.congestion_window = self.minimum_window() as f32;
+            self.congestion_window = self.cubic.minimum_window();
             self.state = State::SlowStart;
             self.cubic.reset();
         }
@@ -280,10 +282,7 @@ impl CongestionController for CubicCongestionController {
         //# The minimum congestion window is the smallest value the congestion
         //# window can decrease to as a response to loss, increase in the peer-
         //# reported ECN-CE count, or persistent congestion.
-        self.congestion_window = self
-            .cubic
-            .multiplicative_decrease(self.congestion_window)
-            .max(self.minimum_window() as f32);
+        self.congestion_window = self.cubic.multiplicative_decrease(self.congestion_window);
 
         // Update Hybrid Slow Start with the decreased congestion window.
         self.slow_start.on_congestion_event(self.congestion_window);
@@ -348,15 +347,6 @@ impl CubicCongestionController {
         )
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.2
-    //# The minimum congestion window is the smallest value the congestion
-    //# window can decrease to as a response to loss, increase in the peer-
-    //# reported ECN-CE count, or persistent congestion.  The RECOMMENDED
-    //# value is 2 * max_datagram_size.
-    fn minimum_window(&self) -> u32 {
-        2 * self.max_datagram_size as u32
-    }
-
     fn congestion_avoidance(&mut self, t: Duration, rtt: Duration, sent_bytes: usize) {
         let w_cubic = self.cubic.w_cubic(t);
         let w_est = self.cubic.w_est(t, rtt);
@@ -368,9 +358,7 @@ impl CubicCongestionController {
             //# or less than W_max), CUBIC checks whether W_cubic(t) is less than
             //# W_est(t).  If so, CUBIC is in the TCP-friendly region and cwnd SHOULD
             //# be set to W_est(t) at each reception of an ACK.
-            self.congestion_window = self
-                .packets_to_bytes(w_est)
-                .max(self.minimum_window() as f32);
+            self.congestion_window = self.packets_to_bytes(w_est);
         } else {
             //= https://tools.ietf.org/rfc/rfc8312#4.1
             //# Upon receiving an ACK during congestion avoidance, CUBIC computes the
@@ -409,14 +397,10 @@ impl CubicCongestionController {
             // is appropriate.
             let target_congestion_window = self.packets_to_bytes(self.cubic.w_cubic(t + rtt));
 
-            // In the case of Fast Convergence, the target congestion window may be lower than the
-            // current congestion window. In this case, we will leave the congestion window as is.
-            // Once enough time has passed, the window will begin increasing again.
-            // TODO: This is slightly different than Linux, which adds a "very small increment" to
-            //       the congestion window in this case. Investigate if this is needed. See
-            //       https://github.com/torvalds/linux/blob/master/net/ipv4/tcp_cubic.c#L293-L297
-            //       Issue: https://github.com/awslabs/s2n-quic/issues/209
-            if target_congestion_window <= self.congestion_window {
+            // Decreases in the RTT estimate can cause the congestion window to get ahead of the
+            // target. In the case where the congestion window has already exceeded the target,
+            // we return without any further adjustment to the window.
+            if self.congestion_window >= target_congestion_window {
                 return;
             }
 
@@ -551,7 +535,7 @@ impl Cubic {
     //#    cwnd = cwnd * beta_cubic;     // window reduction
     // This does not change the units of the congestion window
     fn multiplicative_decrease(&mut self, cwnd: f32) -> f32 {
-        self.w_max = cwnd / self.max_datagram_size as f32;
+        self.w_max = self.bytes_to_packets(cwnd);
 
         //= https://tools.ietf.org/rfc/rfc8312#4.6
         //# To speed up this bandwidth release by
@@ -581,15 +565,35 @@ impl Cubic {
         //# time for the new flow to catch up to its congestion window size.
         if self.w_max < self.w_last_max {
             self.w_last_max = self.w_max;
-            self.w_max = self.w_max * (1.0 + BETA_CUBIC) / 2.0;
+            self.w_max = (self.w_max * (1.0 + BETA_CUBIC) / 2.0)
+                .max(self.bytes_to_packets(self.minimum_window()));
         } else {
             self.w_last_max = self.w_max;
         }
 
-        // Update k since it only depends on w_max
-        self.k = Duration::from_secs_f32((self.w_max * (1.0 - BETA_CUBIC) / C).cbrt());
+        let cwnd_start = (cwnd * BETA_CUBIC).max(self.minimum_window());
 
-        cwnd * BETA_CUBIC
+        //= https://tools.ietf.org/id/draft-eggert-tcpm-rfc8312bis-01#4.2
+        //# _K_ is the time period that the above
+        //# function takes to increase the congestion window size at the
+        //# beginning of the current congestion avoidance stage to _W_(max)_ if
+        //# there are no further congestion events and is calculated using the
+        //# following equation:
+        //#
+        //#                                ________________
+        //#                               /W    - cwnd
+        //#                           3  /  max       start
+        //#                       K = | /  ----------------
+        //#                           |/           C
+        //#
+        //#                                Figure 2
+        //#
+        //# where _cwnd_(start)_ is the congestion window at the beginning of the
+        //# current congestion avoidance stage.
+        self.k =
+            Duration::from_secs_f32(((self.w_max - self.bytes_to_packets(cwnd_start)) / C).cbrt());
+
+        cwnd_start
     }
 
     //= https://tools.ietf.org/rfc/rfc8312#4.8
@@ -601,11 +605,24 @@ impl Cubic {
     //# avoidance, K is set to 0, and W_max is set to the congestion window
     //# size at the beginning of the current congestion avoidance.
     fn on_slow_start_exit(&mut self, cwnd: f32) {
-        self.w_max = cwnd / self.max_datagram_size as f32;
+        self.w_max = self.bytes_to_packets(cwnd);
 
         // We are currently at the w_max, so set k to zero indicating zero
         // seconds to reach the max
         self.k = Duration::from_secs(0);
+    }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.2
+    //# The minimum congestion window is the smallest value the congestion
+    //# window can decrease to as a response to loss, increase in the peer-
+    //# reported ECN-CE count, or persistent congestion.  The RECOMMENDED
+    //# value is 2 * max_datagram_size.
+    fn minimum_window(&self) -> f32 {
+        2.0 * self.max_datagram_size as f32
+    }
+
+    fn bytes_to_packets(&self, bytes: f32) -> f32 {
+        bytes / self.max_datagram_size as f32
     }
 }
 
@@ -807,7 +824,11 @@ mod test {
         let max_datagram_size = 1200;
         let cc = CubicCongestionController::new(max_datagram_size);
 
-        assert_eq!((2 * max_datagram_size) as u32, cc.minimum_window());
+        assert_delta!(
+            (2 * max_datagram_size) as f32,
+            cc.cubic.minimum_window(),
+            0.001
+        );
     }
 
     #[test]
@@ -988,17 +1009,38 @@ mod test {
             0.001
         );
 
-        // At this point the target is less than the congestion window
-        assert!(
-            cc.cubic.w_cubic(Duration::from_secs(0))
-                < bytes_to_packets(cc.congestion_window, max_datagram_size)
-        );
+        let prev_cwnd = cc.congestion_window;
 
         // Enter congestion avoidance
         cc.congestion_avoidance(Duration::from_millis(10), Duration::from_millis(100), 100);
 
+        // Verify congestion window has increased
+        assert!(cc.congestion_window > prev_cwnd);
+    }
+
+    #[test]
+    fn congestion_avoidance_after_rtt_improvement() {
+        let max_datagram_size = 1200;
+        let mut cc = CubicCongestionController::new(max_datagram_size);
+        cc.bytes_in_flight = BytesInFlight::new(100);
+        cc.congestion_window = 80_000.0;
+        cc.cubic.w_max = cc.congestion_window / 1200.0;
+
+        // Enter congestion avoidance with a long rtt
+        cc.congestion_avoidance(Duration::from_millis(10), Duration::from_millis(750), 100);
+
+        // At this point the target is less than the congestion window
+        let prev_cwnd = cc.congestion_window;
+        assert!(
+            cc.cubic.w_cubic(Duration::from_secs(0))
+                < bytes_to_packets(prev_cwnd, max_datagram_size)
+        );
+
+        // Receive another ack, now with a short rtt
+        cc.congestion_avoidance(Duration::from_millis(20), Duration::from_millis(10), 100);
+
         // Verify congestion window did not change
-        assert_delta!(cc.congestion_window, 80_000.0 * BETA_CUBIC, 0.001);
+        assert_delta!(cc.congestion_window, prev_cwnd, 0.001);
     }
 
     #[test]
@@ -1035,13 +1077,13 @@ mod test {
     fn on_packet_lost_below_minimum_window() {
         let mut cc = CubicCongestionController::new(1000);
         let now = NoopClock.get_time();
-        cc.congestion_window = cc.minimum_window() as f32;
-        cc.bytes_in_flight = BytesInFlight::new(cc.minimum_window());
+        cc.congestion_window = cc.cubic.minimum_window();
+        cc.bytes_in_flight = BytesInFlight::new(cc.congestion_window());
         cc.state = CongestionAvoidance(now);
 
         cc.on_packets_lost(100, false, now + Duration::from_secs(10));
 
-        assert_eq!(cc.congestion_window(), cc.minimum_window());
+        assert_delta!(cc.congestion_window, cc.cubic.minimum_window(), 0.001);
     }
 
     #[test]
@@ -1075,7 +1117,7 @@ mod test {
         cc.on_packets_lost(100, true, now);
 
         assert_eq!(cc.state, SlowStart);
-        assert_delta!(cc.congestion_window, cc.minimum_window() as f32, 0.001);
+        assert_delta!(cc.congestion_window, cc.cubic.minimum_window(), 0.001);
         assert_delta!(cc.cubic.w_max, 0.0, 0.001);
         assert_delta!(cc.cubic.w_last_max, 0.0, 0.001);
         assert_eq!(cc.cubic.k, Duration::from_millis(0));
