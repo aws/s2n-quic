@@ -571,14 +571,29 @@ impl Cubic {
             self.w_last_max = self.w_max;
         }
 
-        let cwnd = (cwnd * BETA_CUBIC).max(self.minimum_window());
+        let cwnd_start = (cwnd * BETA_CUBIC).max(self.minimum_window());
 
-        // Update k, the time for the newly reduced cwnd to return back to w_max
-        // This calculation is based on a draft revision of the Cubic RFC.
-        // See https://github.com/NTAP/rfc8312bis/issues/1
-        self.k = Duration::from_secs_f32(((self.w_max - self.bytes_to_packets(cwnd)) / C).cbrt());
+        //= https://tools.ietf.org/id/draft-eggert-tcpm-rfc8312bis-01#4.2
+        //# _K_ is the time period that the above
+        //# function takes to increase the congestion window size at the
+        //# beginning of the current congestion avoidance stage to _W_(max)_ if
+        //# there are no further congestion events and is calculated using the
+        //# following equation:
+        //#
+        //#                                ________________
+        //#                               /W    - cwnd
+        //#                           3  /  max       start
+        //#                       K = | /  ----------------
+        //#                           |/           C
+        //#
+        //#                                Figure 2
+        //#
+        //# where _cwnd_(start)_ is the congestion window at the beginning of the
+        //# current congestion avoidance stage.
+        self.k =
+            Duration::from_secs_f32(((self.w_max - self.bytes_to_packets(cwnd_start)) / C).cbrt());
 
-        cwnd
+        cwnd_start
     }
 
     //= https://tools.ietf.org/rfc/rfc8312#4.8
