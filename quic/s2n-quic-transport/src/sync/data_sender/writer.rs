@@ -91,7 +91,7 @@ impl FrameWriter for Crypto {
             "the data sender should not pass a payload that exceeds the current capacity"
         );
 
-        // Some versions of QUIC refuse to process empty CRYPTO frames so
+        // Some QUIC implementations refuse to process empty CRYPTO frames so
         // make sure we never send them
         debug_assert_ne!(data.len(), 0u64);
 

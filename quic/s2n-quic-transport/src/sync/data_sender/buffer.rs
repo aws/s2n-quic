@@ -291,7 +291,7 @@ impl<'a> EncoderValue for &mut View<'a> {
                 let len = chunk.len();
                 let end = offset + len;
                 unsafe {
-                    // Saftey: we've already checked that the slice has enough
+                    // Safety: we've already checked that the slice has enough
                     // capacity with `write_sized`
                     debug_assert!(slice.len() >= end);
                     core::ptr::copy_nonoverlapping(

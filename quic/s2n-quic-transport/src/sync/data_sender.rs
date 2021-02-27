@@ -192,7 +192,7 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
         self.state
     }
 
-    /// Returns `true` if the delivery is current in progress.
+    /// Returns `true` if the delivery is currently in progress.
     pub fn is_inflight(&self) -> bool {
         !self.transmissions.is_empty() || self.state.is_inflight()
     }
