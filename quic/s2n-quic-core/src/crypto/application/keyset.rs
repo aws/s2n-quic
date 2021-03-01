@@ -1,6 +1,6 @@
 use crate::{
     connection::ProcessingError,
-    crypto::{CryptoError, Key, LimitedUseCrypto, OneRTTCrypto},
+    crypto::{application::limited::Key as LimitedKey, CryptoError, Key, OneRTTCrypto},
     packet::{
         number::PacketNumber,
         short::{CleartextShort, EncryptedShort, ProtectedShort},
@@ -20,7 +20,7 @@ pub struct KeySet<Key> {
     aead_integrity_limit: u64,
 
     /// Set of keys for the current and next phase
-    crypto: [LimitedUseCrypto<Key>; 2],
+    crypto: [LimitedKey<Key>; 2],
 }
 
 impl<K: Key> KeySet<K>
@@ -46,8 +46,8 @@ where
         // By pre-generating the next key, we can respond to a KeyUpdate without exposing a timing
         // side channel.
         let aead_integrity_limit = crypto.aead_integrity_limit();
-        let next_key = LimitedUseCrypto::new(crypto.derive_next_key());
-        let active_key = LimitedUseCrypto::new(crypto);
+        let next_key = LimitedKey::new(crypto.derive_next_key());
+        let active_key = LimitedKey::new(crypto);
         Self {
             key_phase: KeyPhase::Zero,
             key_derivation_timer: Default::default(),
@@ -66,7 +66,7 @@ where
     pub fn derive_and_store_next_key(&mut self) {
         let next_key = self.active_key().derive_next_key();
         let next_phase = KeyPhase::next_phase(self.key_phase);
-        self.crypto[next_phase as usize] = LimitedUseCrypto::new(next_key);
+        self.crypto[next_phase as usize] = LimitedKey::new(next_key);
     }
 
     /// Set the timer to derive a new key after timestamp
@@ -204,20 +204,19 @@ where
         self.key_phase
     }
 
-    pub fn active_key(&mut self) -> &LimitedUseCrypto<K> {
+    pub fn active_key(&mut self) -> &LimitedKey<K> {
         self.key_for_phase(self.key_phase)
     }
 
-    pub fn active_key_mut(&mut self) -> &mut LimitedUseCrypto<K> {
+    pub fn active_key_mut(&mut self) -> &mut LimitedKey<K> {
         self.key_for_phase_mut(self.key_phase)
     }
 
-    /// NOTE: Only public so I can test from transport, which I do so I can access a clock
-    pub fn key_for_phase(&self, key_phase: KeyPhase) -> &LimitedUseCrypto<K> {
+    fn key_for_phase(&self, key_phase: KeyPhase) -> &LimitedKey<K> {
         &self.crypto[(key_phase as u8) as usize]
     }
 
-    fn key_for_phase_mut(&mut self, key_phase: KeyPhase) -> &mut LimitedUseCrypto<K> {
+    fn key_for_phase_mut(&mut self, key_phase: KeyPhase) -> &mut LimitedKey<K> {
         &mut self.crypto[(key_phase as u8) as usize]
     }
 
@@ -231,16 +230,32 @@ mod tests {
     use super::*;
     use crate::{
         connection::id::ConnectionInfo,
-        crypto::{
-            testing::{FailingKey, Key as TestKey},
-            ProtectedPayload,
-        },
+        crypto::{testing::Key as TestKey, ProtectedPayload},
         inet::SocketAddress,
         packet::{encoding::PacketEncodingError, number::PacketNumberSpace, KeyPhase},
-        time::{Clock, NoopClock},
+        time::{testing::Clock, Clock as _},
         varint::VarInt,
     };
+    use core::time::Duration;
     use s2n_codec::{DecoderBufferMut, EncoderBuffer};
+
+    #[test]
+    fn test_key_derivation_timer() {
+        let mut clock = Clock::default();
+        let now = clock.get_time();
+        let mut keyset = KeySet::new(TestKey::default());
+        keyset.rotate_phase();
+
+        keyset.set_derivation_timer(now + Duration::from_millis(10));
+
+        clock.inc_by(Duration::from_millis(8));
+        keyset.on_timeout(clock.get_time());
+        assert_eq!(keyset.key_for_phase(KeyPhase::Zero).key().derivations, 0);
+
+        clock.inc_by(Duration::from_millis(8));
+        keyset.on_timeout(clock.get_time());
+        assert_eq!(keyset.key_for_phase(KeyPhase::Zero).key().derivations, 2);
+    }
 
     #[test]
     fn test_key_set() {
@@ -251,17 +266,17 @@ mod tests {
 
         let keyset = KeySet::new(TestKey::default());
 
-        assert_eq!(keyset.key_for_phase(KeyPhase::Zero).key().value, 0);
-        assert_eq!(keyset.key_for_phase(KeyPhase::One).key().value, 1);
+        assert_eq!(keyset.key_for_phase(KeyPhase::Zero).key().derivations, 0);
+        assert_eq!(keyset.key_for_phase(KeyPhase::One).key().derivations, 1);
     }
 
     #[test]
     fn test_phase_rotation() {
         let mut keyset = KeySet::new(TestKey::default());
 
-        assert_eq!(keyset.active_key().key().value, 0);
+        assert_eq!(keyset.active_key().key().derivations, 0);
         keyset.rotate_phase();
-        assert_eq!(keyset.active_key().key().value, 1);
+        assert_eq!(keyset.active_key().key().derivations, 1);
     }
 
     #[test]
@@ -271,7 +286,7 @@ mod tests {
         keyset.rotate_phase();
         keyset.derive_and_store_next_key();
         keyset.rotate_phase();
-        assert_eq!(keyset.active_key().key().value, 2);
+        assert_eq!(keyset.active_key().key().derivations, 2);
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
@@ -281,8 +296,11 @@ mod tests {
     //# connection.
     #[test]
     fn test_decryption_failure_counter() {
-        let clock = NoopClock {};
-        let key = FailingKey::new(0, 1, 1);
+        let clock = Clock::default();
+        let key = TestKey {
+            fail_on_decrypt: true,
+            ..Default::default()
+        };
         let mut keyset = KeySet::new(key);
         let mut data = [0; 128];
         let remote_address = SocketAddress::default();
@@ -319,8 +337,12 @@ mod tests {
     //# AEAD_LIMIT_REACHED and not process any more packets.
     #[test]
     fn test_decryption_failure_enforced_aead_limit() {
-        let clock = NoopClock {};
-        let key = FailingKey::new(0, 0, 0);
+        let clock = Clock::default();
+        let key = TestKey {
+            integrity_limit: 0,
+            fail_on_decrypt: true,
+            ..Default::default()
+        };
         let mut keyset = KeySet::new(key);
         let mut data = [0; 128];
         let remote_address = SocketAddress::default();
@@ -357,7 +379,7 @@ mod tests {
     #[test]
     fn test_encrypted_packet_count_increased() {
         let key = TestKey::default();
-        let mut crypto = LimitedUseCrypto::new(key);
+        let mut crypto = LimitedKey::new(key);
         let mut encoder_bytes = [0; 512];
         let buffer = EncoderBuffer::new(&mut encoder_bytes);
         let mut decoder_bytes = [0; 512];
@@ -381,8 +403,11 @@ mod tests {
     //# MUST stop using those keys.
     #[test]
     fn test_encrypted_packet_count_enforced_aead_limit() {
-        let key = FailingKey::new(0, 1, 1);
-        let mut crypto = LimitedUseCrypto::new(key);
+        let key = TestKey {
+            confidentiality_limit: 0,
+            ..Default::default()
+        };
+        let mut crypto = LimitedKey::new(key);
         let mut encoder_bytes = [0; 512];
         let buffer = EncoderBuffer::new(&mut encoder_bytes);
         let mut decoder_bytes = [0; 512];

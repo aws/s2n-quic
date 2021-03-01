@@ -12,8 +12,7 @@ use bytes::Bytes;
 use core::{convert::TryInto, marker::PhantomData};
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
-    application::KeySet,
-    crypto::CryptoSuite,
+    crypto::{application::KeySet, CryptoSuite},
     endpoint,
     frame::{
         ack::AckRanges, crypto::CryptoRef, stream::StreamRef, Ack, ConnectionClose, DataBlocked,
@@ -620,34 +619,5 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
             .insert(processed_packet.packet_number)
             .expect("packet number was already checked");
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use core::time::Duration;
-    use s2n_quic_core::{
-        application::KeySet, crypto::testing::Key as TestKey, packet::KeyPhase, time::Clock,
-    };
-    use s2n_quic_platform::time;
-    use std::sync::Arc;
-
-    #[test]
-    fn test_key_derivation_timer() {
-        let clock = Arc::new(time::testing::MockClock::new());
-        time::testing::set_local_clock(clock.clone());
-        let now = clock.get_time();
-        let mut keyset = KeySet::new(TestKey::default());
-        keyset.rotate_phase();
-
-        keyset.set_derivation_timer(now + Duration::from_millis(10));
-
-        clock.adjust_by(Duration::from_millis(8));
-        keyset.on_timeout(clock.get_time());
-        assert_eq!(keyset.key_for_phase(KeyPhase::Zero).key().value, 0);
-
-        clock.adjust_by(Duration::from_millis(8));
-        keyset.on_timeout(clock.get_time());
-        assert_eq!(keyset.key_for_phase(KeyPhase::Zero).key().value, 2);
     }
 }

@@ -1,26 +1,25 @@
 use crate::{
-    crypto::{Key, OneRTTCrypto, ProtectedPayload},
+    crypto::{Key as KeyTrait, OneRTTCrypto, ProtectedPayload},
     packet::encoding::PacketEncodingError,
 };
-
 use s2n_codec::EncoderBuffer;
 
 //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
 //# Endpoints MUST count the number of encrypted packets for each set of
 //# keys.
-pub struct LimitedUseCrypto<Key> {
-    key: Key,
+pub struct Key<K> {
+    key: K,
     // Keeping encrypted_packets out of the key allow keys to be immutable, which allows optimizations
     // later on.
     encrypted_packets: u64,
 }
 
-impl<K: Key> LimitedUseCrypto<K>
+impl<K: KeyTrait> Key<K>
 where
     K: OneRTTCrypto,
 {
     pub fn new(key: K) -> Self {
-        LimitedUseCrypto {
+        Key {
             key,
             encrypted_packets: 0,
         }
