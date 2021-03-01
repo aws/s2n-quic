@@ -16,6 +16,7 @@ pub struct Buffer {
 }
 
 impl Buffer {
+    /// Pushes a chunk of data into to the buffer for transmission
     pub fn push(&mut self, data: Bytes) -> Interval<VarInt> {
         debug_assert!(
             self.capacity().as_u64() >= data.len() as u64,
@@ -33,10 +34,12 @@ impl Buffer {
         (start..=end).into()
     }
 
+    /// Returns the maximum capacity the buffer could ever hold
     pub fn capacity(&self) -> VarInt {
         VarInt::MAX - self.total_len()
     }
 
+    /// Clears and resets the buffer
     pub fn clear(&mut self) {
         self.chunks.clear();
         self.head = VarInt::from_u8(0);
@@ -44,23 +47,38 @@ impl Buffer {
         self.check_integrity();
     }
 
+    /// Returns the total number of bytes the buffer has and is currently holding
     pub fn total_len(&self) -> VarInt {
         self.head + self.pending_len
     }
 
+    /// Returns the head or offset at which the first chunk in the buffer starts
     pub fn head(&self) -> VarInt {
         self.head
     }
 
+    /// Returns the number of bytes enqueue for transmission/retransmission
     pub fn enqueued_len(&self) -> VarInt {
         self.pending_len
     }
 
+    /// Returns true if the buffer is currently empty
+    pub fn is_empty(&self) -> bool {
+        self.pending_len == VarInt::from_u8(0)
+    }
+
+    /// Sets the current offset of the buffer.
+    ///
+    /// This should only be used in testing.
     #[cfg(test)]
     pub fn set_offset(&mut self, head: VarInt) {
         self.head = head;
     }
 
+    /// Releases all of the chunks up to the provided offset in the buffer
+    ///
+    /// This method should be called after a chunk of data has been transmitted
+    /// and acknowledged, as there is no longer a need for it to be buffered.
     pub fn release(&mut self, up_to: VarInt) {
         // we've already released up to this offset
         if up_to <= self.head {
@@ -101,12 +119,16 @@ impl Buffer {
         self.check_integrity();
     }
 
+    /// Releases all of the currently enqueued chunks
     pub fn release_all(&mut self) {
         self.chunks.clear();
         self.head = self.total_len();
         self.pending_len = VarInt::from_u8(0);
+
+        self.check_integrity();
     }
 
+    /// Returns a Viewer for the buffer
     pub fn viewer(&self) -> Viewer {
         Viewer {
             buffer: self,
@@ -125,7 +147,10 @@ impl Buffer {
                 .sum::<usize>()
                 .try_into()
                 .unwrap();
-            assert_eq!(actual, self.pending_len);
+            assert_eq!(
+                actual, self.pending_len,
+                "actual buffer lengths should equal `pending_len`"
+            );
         }
     }
 }
@@ -153,12 +178,13 @@ impl core::ops::Deref for Chunk {
 
 #[derive(Clone, Copy, Debug)]
 pub struct Viewer<'a> {
-    pub buffer: &'a Buffer,
+    buffer: &'a Buffer,
     offset: u64,
     chunk_index: usize,
 }
 
 impl<'a> Viewer<'a> {
+    /// Returns the next view in the buffer for a given range
     pub fn next_view(&mut self, range: Interval<VarInt>, has_fin: bool) -> View<'a> {
         View::new(
             self.buffer,
@@ -242,10 +268,12 @@ impl<'a> View<'a> {
         Ok(())
     }
 
+    /// Returns the number of bytes in the current view
     pub fn len(&self) -> VarInt {
         VarInt::try_from(self.len).expect("len should always fit in a VarInt")
     }
 
+    /// Returns `true` if the view includes the last byte in the stream
     pub fn is_fin(&self) -> bool {
         self.is_fin
     }
@@ -294,6 +322,10 @@ impl<'a> EncoderValue for &mut View<'a> {
                     // Safety: we've already checked that the slice has enough
                     // capacity with `write_sized`
                     debug_assert!(slice.len() >= end);
+
+                    // These copies are critical to performance so use use copy_nonoverlapping
+                    // directly, rather than rely on compiler optimizations to ensure we
+                    // don't pay any additional costs
                     core::ptr::copy_nonoverlapping(
                         chunk.as_ptr(),
                         slice.get_unchecked_mut(offset),

@@ -495,7 +495,7 @@ impl SendStream {
                 data_sender::State::Sending if should_flush => {
                     // In this state, the application wanted to ensure the peer has received
                     // all of the data in the stream before continuing (flushed the stream).
-                    should_wake = self.data_sender.enqueued_len() == 0 && self.can_push();
+                    should_wake = self.data_sender.is_empty() && self.can_push();
                 }
                 data_sender::State::Sending => {
                     // In this state we have to wake up the user if the they can
@@ -505,7 +505,7 @@ impl SendStream {
                     should_wake = self.can_push();
                 }
                 data_sender::State::Finishing(f) => {
-                    should_wake = self.data_sender.enqueued_len() == 0 && f.is_acknowledged();
+                    should_wake = self.data_sender.is_empty() && f.is_acknowledged();
                 }
                 data_sender::State::Finished => {
                     // If we have already sent a fin and just waiting for it to be
@@ -730,7 +730,7 @@ impl SendStream {
                     }
                 }
             }
-        } else if request.flush && self.data_sender.enqueued_len() > 0 {
+        } else if request.flush && !self.data_sender.is_empty() {
             // notify callers once the buffer has been flushed
             store_waker!(true);
         }

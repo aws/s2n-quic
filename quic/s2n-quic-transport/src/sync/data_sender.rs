@@ -43,6 +43,8 @@ impl State {
 
     fn can_transmit_fin(&self, constraint: transmission::Constraint, is_blocked: bool) -> bool {
         match self {
+            // lost frames are not blocked by flow control since we've already aquired those
+            // credits on the initial transmission
             Self::Finishing(FinState::Lost) => constraint.can_retransmit(),
             Self::Finishing(FinState::Pending) => !is_blocked && constraint.can_transmit(),
             _ => false,
@@ -77,12 +79,17 @@ impl FinState {
     }
 
     /// This method gets called when a packet loss is reported
-    fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
+    ///
+    /// Returns `true` if the fin bit was lost
+    fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) -> bool {
         if let Self::InFlight(packet) = self {
             if ack_set.contains(*packet) {
                 *self = Self::Lost;
+                return true;
             }
         }
+
+        false
     }
 
     fn on_transmit(&mut self, packet: PacketNumber) {
@@ -181,10 +188,9 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
         self.buffer.total_len()
     }
 
-    /// Returns the amount of bytes that are currently enqueued for sending on
-    /// this Stream.
-    pub fn enqueued_len(&self) -> usize {
-        self.buffer.enqueued_len().try_into().unwrap()
+    /// Returns true if the data sender doesn't have any data enqueued for sending
+    pub fn is_empty(&self) -> bool {
+        self.buffer.is_empty()
     }
 
     /// Returns the state of the sender
@@ -221,7 +227,7 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
         self.max_buffer_capacity
             .saturating_sub(self.buffer.enqueued_len())
             .try_into()
-            .unwrap()
+            .unwrap_or(usize::MAX)
     }
 
     /// Enqueues the data for transmission.
@@ -322,8 +328,7 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
 
         if Writer::WRITES_FIN {
             if let Some(fin_state) = self.state.fin_state_mut() {
-                fin_state.on_packet_loss(ack_set);
-                any_lost = true;
+                any_lost |= fin_state.on_packet_loss(ack_set);
             }
         }
 

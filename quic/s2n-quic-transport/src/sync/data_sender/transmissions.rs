@@ -136,7 +136,7 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
                 .checked_sub(interval.start)
                 .ok_or(OnTransmitError::CoundNotAcquireEnoughSpace)?
                 .try_into()
-                .unwrap_or(0usize)
+                .unwrap_or_default()
         };
 
         // ensure the window is non-zero
@@ -181,6 +181,11 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
         writer_context: Writer::Context,
         context: &mut W,
     ) -> Result<(), OnTransmitError> {
+        // make sure we're not blocked before transmitting the fin bit
+        if self.flow_controller.is_blocked() {
+            return Err(OnTransmitError::CouldNotWriteFrame);
+        }
+
         if let Some(state) = state.fin_state_mut() {
             if matches!(state, FinState::Pending | FinState::Lost) {
                 let packet_number = context.packet_number();
@@ -192,6 +197,7 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
                 state.on_transmit(packet_number);
             }
         }
+
         Ok(())
     }
 

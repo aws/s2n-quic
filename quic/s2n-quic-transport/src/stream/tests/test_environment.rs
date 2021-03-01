@@ -209,7 +209,7 @@ impl TestEnvironment {
             self.transmission_constraint,
             self.endpoint,
         );
-        let _ = self.stream.on_transmit(&mut write_ctx).is_ok();
+        self.stream.on_transmit(&mut write_ctx).ok()?;
         self.sent_frames.flush();
 
         self.sent_frames.pop_front()

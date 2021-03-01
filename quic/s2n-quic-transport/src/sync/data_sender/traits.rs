@@ -31,6 +31,10 @@ pub trait FrameWriter: Default {
     // A value to be passed to the frame writer
     type Context: Copy;
 
+    /// Indicates that this writer will potentially write a FIN frame, which
+    /// marks the end of a stream.
+    ///
+    /// If set to `false`, FIN tracking will not be performed by the data sender
     const WRITES_FIN: bool = true;
 
     /// The minimum payload size we want to be able to write in a single frame,
@@ -39,6 +43,11 @@ pub trait FrameWriter: Default {
     /// to allocate an associated tracking state on sender and receiver side.
     const MIN_WRITE_SIZE: usize = 32;
 
+    /// Asks the writer to write a frame for the given chunk of data at the offset
+    /// provided. The implementation should ensure the view fits by calling `trim_off`.
+    ///
+    /// If the frame will not fit with the current buffer capacity, a `FitError` should
+    /// be returned.
     fn write_chunk<W: WriteContext>(
         &self,
         offset: VarInt,
@@ -47,6 +56,12 @@ pub trait FrameWriter: Default {
         context: &mut W,
     ) -> Result<(), FitError>;
 
+    /// Asks the writer to write a FIN frame for the given offset.
+    ///
+    /// If the frame will not fit with the current buffer capacity, a `FitError` should
+    /// be returned.
+    ///
+    /// This method will only be called if `WRITES_FIN` is set to `true`.
     fn write_fin<W: WriteContext>(
         &self,
         offset: VarInt,
