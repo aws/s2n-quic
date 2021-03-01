@@ -237,6 +237,7 @@ mod tests {
         },
         inet::SocketAddress,
         packet::{encoding::PacketEncodingError, number::PacketNumberSpace, KeyPhase},
+        time::{Clock, NoopClock},
         varint::VarInt,
     };
     use s2n_codec::{DecoderBufferMut, EncoderBuffer};
@@ -280,6 +281,7 @@ mod tests {
     //# connection.
     #[test]
     fn test_decryption_failure_counter() {
+        let clock = NoopClock {};
         let key = FailingKey::new(0, 1, 1);
         let mut keyset = KeySet::new(key);
         let mut data = [0; 128];
@@ -302,7 +304,7 @@ mod tests {
             .decrypt_packet(
                 encrypted_packet,
                 PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u8(0)),
-                Timestamp::default()
+                clock.get_time(),
             )
             .is_err());
         assert_eq!(keyset.decryption_error_count(), 1);
@@ -317,6 +319,7 @@ mod tests {
     //# AEAD_LIMIT_REACHED and not process any more packets.
     #[test]
     fn test_decryption_failure_enforced_aead_limit() {
+        let clock = NoopClock {};
         let key = FailingKey::new(0, 0, 0);
         let mut keyset = KeySet::new(key);
         let mut data = [0; 128];
@@ -339,7 +342,7 @@ mod tests {
             keyset.decrypt_packet(
                 encrypted_packet,
                 PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u8(0)),
-                Timestamp::default()
+                clock.get_time()
             ),
             Err(ProcessingError::TransportError(
                 TransportError::AEAD_LIMIT_REACHED

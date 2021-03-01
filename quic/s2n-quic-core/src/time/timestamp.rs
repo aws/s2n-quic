@@ -158,13 +158,6 @@ impl core::ops::SubAssign<Duration> for Timestamp {
 }
 
 #[cfg(test)]
-impl Default for Timestamp {
-    fn default() -> Self {
-        Timestamp(NonZeroU64::new(1).unwrap())
-    }
-}
-
-#[cfg(test)]
 mod tests {
     use super::*;
 
