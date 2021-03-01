@@ -164,6 +164,7 @@ impl Default for Timestamp {
     }
 }
 
+#[cfg(test)]
 mod tests {
     use super::*;
 

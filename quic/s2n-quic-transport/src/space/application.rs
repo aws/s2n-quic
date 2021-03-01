@@ -254,11 +254,6 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         recovery_manager.on_timeout(timestamp, &mut context);
     }
 
-    /// Returns the Packet Number to be used when decoding incoming packets
-    pub fn packet_number_decoder(&self) -> PacketNumber {
-        self.ack_manager.largest_received_packet_number_acked()
-    }
-
     /// Returns `true` if the recovery manager for this packet space requires a probe
     /// packet to be sent.
     pub fn requires_probe(&self) -> bool {
@@ -631,8 +626,9 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
 #[cfg(test)]
 mod tests {
     use core::time::Duration;
-    use s2n_quic_core::time::Clock;
-    use s2n_quic_core::{application::KeySet, crypto::testing::Key as TestKey, packet::KeyPhase};
+    use s2n_quic_core::{
+        application::KeySet, crypto::testing::Key as TestKey, packet::KeyPhase, time::Clock,
+    };
     use s2n_quic_platform::time;
     use std::sync::Arc;
 

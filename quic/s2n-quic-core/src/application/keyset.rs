@@ -229,15 +229,17 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::connection::id::ConnectionInfo;
-    use crate::inet::SocketAddress;
-    use crate::varint::VarInt;
     use crate::{
-        crypto::{testing::FailingKey, testing::Key as TestKey, ProtectedPayload},
+        connection::id::ConnectionInfo,
+        crypto::{
+            testing::{FailingKey, Key as TestKey},
+            ProtectedPayload,
+        },
+        inet::SocketAddress,
         packet::{encoding::PacketEncodingError, number::PacketNumberSpace, KeyPhase},
+        varint::VarInt,
     };
-    use s2n_codec::DecoderBufferMut;
-    use s2n_codec::EncoderBuffer;
+    use s2n_codec::{DecoderBufferMut, EncoderBuffer};
 
     #[test]
     fn test_key_set() {
