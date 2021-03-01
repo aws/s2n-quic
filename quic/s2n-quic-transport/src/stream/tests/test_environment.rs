@@ -1,4 +1,6 @@
-use super::{gen_pattern_test_data, stream_data, MockWriteContext, OutgoingFrameBuffer};
+use super::{
+    gen_pattern_test_data, stream_data, MockWriteContext, OutgoingFrameBuffer, WrittenFrame,
+};
 use crate::{
     stream::{
         incoming_connection_flow_controller::IncomingConnectionFlowController,
@@ -190,13 +192,27 @@ impl TestEnvironment {
             .rx_connection_flow_controller
             .on_transmit(&mut write_ctx)
             .is_ok());
-        assert!(self.stream.on_transmit(&mut write_ctx).is_ok());
+        let _ = self.stream.on_transmit(&mut write_ctx);
         self.sent_frames.flush();
         assert_eq!(
             prev_written + expected_frames,
             self.sent_frames.len(),
             "Unexpected amount of written frames"
         );
+    }
+
+    /// Ensures a single frame was written
+    pub fn transmit(&mut self) -> Option<WrittenFrame> {
+        let mut write_ctx = MockWriteContext::new(
+            self.current_time,
+            &mut self.sent_frames,
+            self.transmission_constraint,
+            self.endpoint,
+        );
+        self.stream.on_transmit(&mut write_ctx).ok()?;
+        self.sent_frames.flush();
+
+        self.sent_frames.pop_front()
     }
 
     /// Asserts that a stream data frame for a given offset and size was emitted
@@ -208,16 +224,7 @@ impl TestEnvironment {
         expect_is_last_frame: bool,
         expected_packet_number: PacketNumber,
     ) {
-        let mut write_ctx = MockWriteContext::new(
-            self.current_time,
-            &mut self.sent_frames,
-            self.transmission_constraint,
-            self.endpoint,
-        );
-        assert!(self.stream.on_transmit(&mut write_ctx).is_ok());
-        self.sent_frames.flush();
-
-        let mut sent_frame = self.sent_frames.pop_front().expect("Frame is written");
+        let mut sent_frame = self.transmit().expect("no frame was written");
         assert_eq!(
             expected_packet_number, sent_frame.packet_nr,
             "packet number mismatch"
@@ -251,16 +258,7 @@ impl TestEnvironment {
         expected_packet_number: PacketNumber,
         expected_final_size: VarInt,
     ) {
-        let mut write_ctx = MockWriteContext::new(
-            self.current_time,
-            &mut self.sent_frames,
-            self.transmission_constraint,
-            self.endpoint,
-        );
-        assert!(self.stream.on_transmit(&mut write_ctx).is_ok());
-        self.sent_frames.flush();
-
-        let mut sent_frame = self.sent_frames.pop_front().expect("Frame is written");
+        let mut sent_frame = self.transmit().expect("no frame was written");
         assert_eq!(
             expected_packet_number, sent_frame.packet_nr,
             "packet number mismatch"
@@ -385,6 +383,7 @@ pub struct TestEnvironmentConfig {
     pub max_send_buffer_size: usize,
     pub transmission_constraint: transmission::Constraint,
     pub local_endpoint_type: endpoint::Type,
+    pub max_packet_size: Option<usize>,
 }
 
 impl Default for TestEnvironmentConfig {
@@ -412,6 +411,7 @@ impl TestEnvironmentConfig {
                 TestEnvironment::DEFAULT_INITIAL_CONNECTION_RECEIVE_WINDOW as u32,
             max_send_buffer_size: TestEnvironment::DEFAULT_MAX_SEND_BUFFER_SIZE,
             transmission_constraint: transmission::Constraint::None,
+            max_packet_size: None,
         }
     }
 }
@@ -446,8 +446,12 @@ pub fn setup_stream_test_env_with_config(config: TestEnvironmentConfig) -> TestE
 
     let (waker, wake_counter) = new_count_waker();
 
+    let mut sent_frames = OutgoingFrameBuffer::new();
+
+    sent_frames.set_max_packet_size(config.max_packet_size);
+
     TestEnvironment {
-        sent_frames: OutgoingFrameBuffer::new(),
+        sent_frames,
         stream,
         rx_connection_flow_controller,
         tx_connection_flow_controller,

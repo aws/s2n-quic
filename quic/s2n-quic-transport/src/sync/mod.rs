@@ -3,14 +3,12 @@
 use crate::{contexts::WriteContext, transmission};
 use s2n_quic_core::{packet::number::PacketNumber, stream::StreamId, time::Timestamp};
 
-mod data_sender;
+pub mod data_sender;
 pub mod flag;
 mod incremental_value_sync;
 mod once_sync;
 
-pub use data_sender::{
-    ChunkToFrameWriter, DataSender, DataSenderState, OutgoingDataFlowController,
-};
+pub use data_sender::DataSender;
 pub use flag::Flag;
 pub use incremental_value_sync::IncrementalValueSync;
 pub use once_sync::OnceSync;

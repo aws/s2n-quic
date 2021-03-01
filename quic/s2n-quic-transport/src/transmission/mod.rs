@@ -12,8 +12,7 @@ pub use interest::Interest;
 pub use s2n_quic_core::transmission::*;
 
 use crate::{
-    connection::{self},
-    recovery,
+    connection, recovery,
     space::{rx_packet_numbers::AckManager, TxPacketNumbers},
     transmission::{self, interest::Provider as _},
 };

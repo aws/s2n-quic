@@ -1,188 +1,130 @@
 use crate::{
     contexts::{OnTransmitError, WriteContext},
+    interval_set::IntervalSet,
     transmission,
 };
-use alloc::collections::VecDeque;
-use bytes::{Buf, Bytes};
-use s2n_quic_core::{
-    ack, frame::MaxPayloadSizeForFrame, packet::number::PacketNumber, varint::VarInt,
-};
+use bytes::Bytes;
+use core::convert::TryInto;
+use s2n_quic_core::{ack, packet::number::PacketNumber, varint::VarInt};
 
-/// Manages the outgoing flow control window for a sending data on a particular
-/// data stream.
-pub trait OutgoingDataFlowController {
-    /// Tries to acquire a flow control window for the described chunk of data.
-    /// The implementation must return the **maximum** (exclusive) offset up to
-    /// which the data sender is allowed to send.
-    fn acquire_flow_control_window(&mut self, min_offset: VarInt, size: usize) -> VarInt;
+mod buffer;
+mod traits;
+mod transmissions;
+pub mod writer;
 
-    /// Returns `true` if sending data on the `Stream` was blocked because the
-    /// the call to `acquire_flow_control_window` did not return any available
-    /// window. This means not even the request for the minimum window size could
-    /// be fulfilled.
-    fn is_blocked(&self) -> bool;
-
-    /// Clears the `is_blocked` flag which is stored inside the `FlowController`.
-    /// The next call to `is_blocked` will return `None`, until another call to
-    /// `acquire_flow_control_window` will move it back into the blocked state.
-    fn clear_blocked(&mut self);
-
-    /// Signals the flow controller that no further data will be submitted on
-    /// the stream and therefore no further flow control window will be requested.
-    fn finish(&mut self);
-}
-
-/// Writes chunks of data into frames.
-pub trait ChunkToFrameWriter: Default {
-    /// Indicates that the chunk writer uses a fin bit to indicate the stream
-    /// has finished
-    const WRITES_FIN: bool = true;
-
-    /// The type of the Stream ID which needs to get embedded in outgoing frames.
-    /// This is generic, since not all frames use the same Stream identifier.
-    /// E.g. crypto streams do not utilize a stream identifier. For those,
-    /// `StreamId` could be defined to `()`.
-    type StreamId: Copy;
-
-    /// Provides an upper bound for the frame size which is required to serialize
-    /// a given chunk of data. This is estimation does not not need to be exact.
-    /// The actual frame size might be lower, but is never allowed to be higher.
-    fn get_max_frame_size(&self, stream_id: Self::StreamId, data_size: usize) -> usize;
-
-    // Check how much data we can fit into that amount of space,
-    // given our other known variables. The amount of possible
-    // payload is different between whether this is the last frame
-    // in a packet or another frame, since we do not have to write
-    // length information in the last frame.
-    fn max_payload_size(
-        &self,
-        stream_id: Self::StreamId,
-        max_frame_size: usize,
-        offset: VarInt,
-    ) -> MaxPayloadSizeForFrame;
-
-    /// Creates a QUIC frame out of a chunk of data, and writes it using the
-    /// provided [`WriteContext`].
-    /// The method returns the `PacketNumber` of the packet containing the value
-    /// if the write was successful, and `None` otherwise.
-    fn write_value_as_frame<W: WriteContext>(
-        &self,
-        stream_id: Self::StreamId,
-        offset: VarInt,
-        data: &[u8],
-        is_last_frame: bool,
-        is_fin: bool,
-        context: &mut W,
-    ) -> Option<PacketNumber>;
-}
-
-/// Describes a chunk of bytes which has to be transmitted to the peer
-#[derive(Debug, Copy, Clone, PartialEq)]
-struct ChunkDescriptor {
-    /// The start offset of the chunk within the whole Stream
-    offset: VarInt,
-    /// The length of the chunk
-    len: u32,
-    /// the transmission state of the chunk
-    state: ChunkTransmissionState,
-    /// `true` if this is the final chunk, `false` otherwise
-    fin: bool,
-}
-
-/// Potential transmission states for a chunk
-#[derive(Debug, Copy, Clone, PartialEq)]
-enum ChunkTransmissionState {
-    /// The data had been enqueued, but is not currently being transmitted
-    Enqueued,
-    /// The data had been transmitted, but was lost and needs to be retransmitted
-    Lost,
-    /// The data had been transmitted, but not yet acknowledged by the peer.
-    InFlight(PacketNumber),
-    /// The data had been acknowledged
-    Acknowledged,
-}
-
-impl ChunkTransmissionState {
-    fn can_transmit(self, constraint: transmission::Constraint) -> bool {
-        matches!(
-            (self, constraint),
-            (Self::Enqueued, transmission::Constraint::None)
-                | (Self::Lost, transmission::Constraint::None)
-                | (Self::Lost, transmission::Constraint::RetransmissionOnly)
-        )
-    }
-}
+pub use buffer::View;
+pub use traits::*;
 
 /// Enumerates states of the [`DataSender`]
 #[derive(Debug, Copy, Clone, PartialEq)]
-pub enum DataSenderState {
+pub enum State {
     /// Outgoing data is accepted and transmitted
     Sending,
     /// The finish procedure has been initiated. New outgoing data is no longer
     /// accepted. The stream will continue to transmit data until all outgoing
     /// data has been transmitted and acknowledged successfully.
     /// In that case the `FinishAcknowledged` state will be entered.
-    Finishing,
+    Finishing(FinState),
     /// All outgoing data including the FIN flag had been acknowledged.
     /// The Stream is thereby finalized.
-    FinishAcknowledged,
+    Finished,
     /// Sending data was cancelled due to a Stream RESET.
     Cancelled,
+}
+
+impl State {
+    fn fin_state_mut(&mut self) -> Option<&mut FinState> {
+        if let Self::Finishing(state) = self {
+            Some(state)
+        } else {
+            None
+        }
+    }
+
+    fn can_transmit_fin(&self, constraint: transmission::Constraint, is_blocked: bool) -> bool {
+        match self {
+            // lost frames are not blocked by flow control since we've already aquired those
+            // credits on the initial transmission
+            Self::Finishing(FinState::Lost) => constraint.can_retransmit(),
+            Self::Finishing(FinState::Pending) => !is_blocked && constraint.can_transmit(),
+            _ => false,
+        }
+    }
+
+    fn is_inflight(&self) -> bool {
+        matches!(self, Self::Finishing(FinState::InFlight(_)))
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub enum FinState {
+    Pending,
+    InFlight(PacketNumber),
+    Lost,
+    Acknowledged,
+}
+
+impl FinState {
+    pub fn is_acknowledged(self) -> bool {
+        matches!(self, Self::Acknowledged)
+    }
+
+    /// This method gets called when a packet delivery got acknowledged
+    fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
+        if let Self::InFlight(packet) = self {
+            if ack_set.contains(*packet) {
+                *self = Self::Acknowledged;
+            }
+        }
+    }
+
+    /// This method gets called when a packet loss is reported
+    ///
+    /// Returns `true` if the fin bit was lost
+    fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) -> bool {
+        if let Self::InFlight(packet) = self {
+            if ack_set.contains(*packet) {
+                *self = Self::Lost;
+                return true;
+            }
+        }
+
+        false
+    }
+
+    fn on_transmit(&mut self, packet: PacketNumber) {
+        if matches!(self, Self::Pending | Self::Lost) {
+            *self = Self::InFlight(packet);
+        }
+    }
 }
 
 /// Manages the transmission of all `Stream` and `Crypto` data frames towards
 /// the peer as long as the `Stream` has not been resetted or closed.
 #[derive(Debug)]
-pub struct DataSender<FlowControllerType, ChunkToFrameWriterType> {
+pub struct DataSender<FlowController, ChunkToFrameWriter> {
     /// The data that needs to get transmitted
-    data: VecDeque<Bytes>,
-    /// Tracking information for all data in transmission
-    tracking: VecDeque<ChunkDescriptor>,
-    /// The number of currently enqueued bytes
-    enqueued: u32,
-    /// The number of chunks which are currently in-flight.
-    /// This covers initially transmitted chunks as well as retransmitted ones.
-    chunks_inflight: u32,
-    /// The number of bytes which have already been acknowledged, but which
-    /// are not yet released from the DataSender, since they are stuck behind
-    /// other data which is not yet acknowledged
-    acknowledged: u32,
-    /// The number of chunks which are enqueued and not currently transmitted
-    chunks_waiting_for_transmission: u32,
-    /// The number of chunks which are currently lost not currently retransmitted
-    chunks_waiting_for_retransmission: u32,
-    /// The total amount of bytes which have been transmitted AND acknowledged.
-    /// This is equivalent to the offset at the beginning of our send queue.
-    total_acknowledged: VarInt,
+    buffer: buffer::Buffer,
+    /// The current transmissions for the sender
+    transmissions: transmissions::Transmissions<FlowController, ChunkToFrameWriter>,
+    /// The offset of data waiting to be transmitted for the first time
+    transmission_offset: VarInt,
+    /// All of the intervals in the buffer that are waiting to be transmitted, ACKed or lost
+    pending: IntervalSet<VarInt>,
+    /// All of the intervals that have been declared lost
+    lost: IntervalSet<VarInt>,
     /// The maximum amount of bytes that are buffered within the sending stream.
     /// This capacity will not be exceeded - even if the remote provides us a
     /// bigger flow control window.
-    max_buffer_capacity: u32,
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.4
-    //# Both endpoints MUST maintain flow control state
-    //# for the stream in the unterminated direction until that direction
-    //# enters a terminal state.
-    /// The flow controller which is used to determine whether data chunks can
-    /// be sent.
-    flow_controller: FlowControllerType,
+    max_buffer_capacity: VarInt,
     /// Whether the size of the send stream is known and a FIN flag is already
     /// enqueued.
-    state: DataSenderState,
-    /// Serializes chunks into frames and writes the frames
-    writer: ChunkToFrameWriterType,
+    state: State,
 }
 
-impl<
-        FlowControllerType: OutgoingDataFlowController,
-        ChunkToFrameWriterType: ChunkToFrameWriter,
-    > DataSender<FlowControllerType, ChunkToFrameWriterType>
+impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
+    DataSender<FlowController, Writer>
 {
-    /// The minimum payload size we want to be able to write in a single frame,
-    /// in case the frame would get fragmented due to this.
-    /// We want to avoid writing too small chunks, since every chunk requires us
-    /// to allocate an associated tracking state on sender and receiver side.
-    const MIN_WRITE_SIZE: usize = 32;
-
     /// Creates a new `DataSender` instance.
     ///
     /// `initial_window` denotes the amount of data we are allowed to send to the
@@ -190,39 +132,34 @@ impl<
     /// `maximum_buffer_capacity` is the maximum amount of data the queue will
     /// hold. If users try to enqueue more data, it will be rejected in order to
     /// provide back-pressure on the `Stream`.
-    pub fn new(flow_controller: FlowControllerType, max_buffer_capacity: u32) -> Self {
+    pub fn new(flow_controller: FlowController, max_buffer_capacity: u32) -> Self {
         Self {
-            data: VecDeque::new(),
-            tracking: VecDeque::new(),
-            enqueued: 0,
-            chunks_inflight: 0,
-            acknowledged: 0,
-            chunks_waiting_for_transmission: 0,
-            chunks_waiting_for_retransmission: 0,
-            total_acknowledged: VarInt::from_u8(0),
-            flow_controller,
-            max_buffer_capacity,
-            state: DataSenderState::Sending,
-            writer: ChunkToFrameWriterType::default(),
+            buffer: Default::default(),
+            transmissions: transmissions::Transmissions::new(flow_controller),
+            transmission_offset: VarInt::from_u32(0),
+            pending: IntervalSet::new(),
+            lost: IntervalSet::new(),
+            max_buffer_capacity: VarInt::from_u32(max_buffer_capacity),
+            state: State::Sending,
         }
     }
 
     /// Creates a new `DataSender` instance in its final
     /// [`DataSenderState::FinishAcknowledged`] state.
-    pub fn new_finished(flow_controller: FlowControllerType, max_buffer_capacity: u32) -> Self {
+    pub fn new_finished(flow_controller: FlowController, max_buffer_capacity: u32) -> Self {
         let mut result = Self::new(flow_controller, max_buffer_capacity);
-        result.state = DataSenderState::FinishAcknowledged;
+        result.state = State::Finished;
         result
     }
 
     /// Returns the flow controller for this `DataSender`
-    pub fn flow_controller(&self) -> &FlowControllerType {
-        &self.flow_controller
+    pub fn flow_controller(&self) -> &FlowController {
+        &self.transmissions.flow_controller
     }
 
     /// Returns the flow controller for this `DataSender`
-    pub fn flow_controller_mut(&mut self) -> &mut FlowControllerType {
-        &mut self.flow_controller
+    pub fn flow_controller_mut(&mut self) -> &mut FlowController {
+        &mut self.transmissions.flow_controller
     }
 
     /// Stops sending out outgoing data.
@@ -232,42 +169,38 @@ impl<
     /// Calling the method removes all pending outgoing data as well as
     /// all tracking information from the buffer.
     pub fn stop_sending(&mut self) {
-        if self.state == DataSenderState::FinishAcknowledged {
+        if self.state == State::Finished {
             return;
         }
 
-        self.state = DataSenderState::Cancelled;
-        self.flow_controller_mut().finish();
-        self.data.clear();
-        self.tracking.clear();
-        self.enqueued = 0;
-        self.chunks_inflight = 0;
-        self.acknowledged = 0;
-        self.chunks_waiting_for_transmission = 0;
-        self.chunks_waiting_for_retransmission = 0;
-        self.ensure_counter_consistency();
+        self.state = State::Cancelled;
+        self.buffer.clear();
+        self.pending.clear();
+        self.lost.clear();
+        self.transmissions.finish();
+        self.transmission_offset = VarInt::from_u8(0);
+        self.check_integrity();
     }
 
     /// Returns the amount of bytes that have ever been enqueued for writing on
     /// this Stream. This equals the offset of the highest enqueued byte + 1.
     pub fn total_enqueued_len(&self) -> VarInt {
-        self.total_acknowledged + VarInt::from_u32(self.enqueued)
+        self.buffer.total_len()
     }
 
-    /// Returns the amount of bytes that are currently enqueued for sending on
-    /// this Stream.
-    pub fn enqueued_len(&self) -> usize {
-        self.enqueued as usize
+    /// Returns true if the data sender doesn't have any data enqueued for sending
+    pub fn is_empty(&self) -> bool {
+        self.buffer.is_empty()
     }
 
     /// Returns the state of the sender
-    pub fn state(&self) -> DataSenderState {
+    pub fn state(&self) -> State {
         self.state
     }
 
-    /// Returns `true` if the delivery is current in progress.
+    /// Returns `true` if the delivery is currently in progress.
     pub fn is_inflight(&self) -> bool {
-        self.chunks_inflight > 0
+        !self.transmissions.is_empty() || self.state.is_inflight()
     }
 
     /// Overwrites the amount of total received and acknowledged bytes.
@@ -282,7 +215,7 @@ impl<
             self.total_enqueued_len(),
             "set_total_acknowledged_len can only be called on a new stream"
         );
-        self.total_acknowledged = total_acknowledged;
+        self.buffer.set_offset(total_acknowledged);
     }
 
     /// Returns the amount of data that can be additionally buffered for sending
@@ -291,12 +224,10 @@ impl<
     /// We do not utilize the window size that the peer provides us in order to
     /// avoid excessive buffering in case the peer would provide a very big window.
     pub fn available_buffer_space(&self) -> usize {
-        // We can admit more data than the maximum buffer capacity temporarily
-        if self.enqueued >= self.max_buffer_capacity {
-            return 0;
-        }
-        let available_buffer_window = self.max_buffer_capacity - self.enqueued;
-        available_buffer_window as usize
+        self.max_buffer_capacity
+            .saturating_sub(self.buffer.enqueued_len())
+            .try_into()
+            .unwrap_or(usize::MAX)
     }
 
     /// Enqueues the data for transmission.
@@ -310,7 +241,7 @@ impl<
         //# An endpoint MUST NOT send data on a stream at or beyond the final
         //# size.
         debug_assert!(
-            self.state == DataSenderState::Sending,
+            self.state == State::Sending,
             "Data transmission is not allowed after finish() was called"
         );
         debug_assert!(
@@ -318,412 +249,452 @@ impl<
             "Maximum data size exceeded"
         );
 
-        let data_len = data.len() as u32;
-        self.enqueued += data_len;
-        self.chunks_waiting_for_transmission += 1;
-        self.data.push_back(data);
+        if data.is_empty() {
+            return;
+        }
 
-        // Add tracking state. We can not merge the tracking state with the one
-        // of the last pending buffer currently, because some logic here requires
-        // that each `ChunkDescriptor` only tracks exactly one `Bytes` buffer.
-        // If we merge multiple tracking states, then the resulting merged state
-        // would refer to multiple buffers.
-        let offset = if let Some(ChunkDescriptor { offset, len, .. }) = self.tracking.back() {
-            *offset + VarInt::from_u32(*len)
-        } else {
-            self.total_acknowledged
-        };
+        self.pending
+            .insert(self.buffer.push(data))
+            .expect("pending should not have a limit");
 
-        self.tracking.push_back(ChunkDescriptor {
-            state: ChunkTransmissionState::Enqueued,
-            len: data_len,
-            offset,
-            fin: false,
-        });
-        self.ensure_counter_consistency();
+        self.check_integrity();
     }
 
     /// Starts the finalization process of a `Stream` by enqueuing a `FIN` frame.
     pub fn finish(&mut self) {
-        if self.state != DataSenderState::Sending {
+        if self.state != State::Sending {
             return;
         }
-        self.state = DataSenderState::Finishing;
 
-        if ChunkToFrameWriterType::WRITES_FIN {
-            let offset = if let Some(last_chunk) = self.tracking.back_mut() {
-                if last_chunk.state == ChunkTransmissionState::Enqueued
-                    || last_chunk.state == ChunkTransmissionState::Lost
-                {
-                    // The last chunk is currently not submitted we can piggyback
-                    // the FIN flag on it
-                    last_chunk.fin = true;
-                    return;
-                }
-                last_chunk.offset + VarInt::from_u32(last_chunk.len)
-            } else {
-                self.total_acknowledged
-            };
-
-            self.tracking.push_back(ChunkDescriptor {
-                state: ChunkTransmissionState::Enqueued,
-                len: 0,
-                offset,
-                fin: true,
-            });
-            self.chunks_waiting_for_transmission += 1;
-            self.ensure_counter_consistency();
+        if Writer::WRITES_FIN {
+            self.state = State::Finishing(FinState::Pending);
+        } else {
+            self.state = State::Finishing(FinState::Acknowledged);
         }
+
+        self.check_integrity();
     }
 
     /// This method gets called when a packet delivery got acknowledged
     pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
-        // This flag is just an optimization. If we do not get acknowledgements
-        // for data at the head of the queue, we not need to dequeue data.
-        let mut check_released = false;
+        // If we do not get acknowledgements for any in flight data don't try
+        // to release buffer chunks
 
-        for (index, chunk) in self.tracking.iter_mut().enumerate() {
-            if let ChunkTransmissionState::InFlight(inflight_packet_nr) = chunk.state {
-                if ack_set.contains(inflight_packet_nr) {
-                    // The chunk was acknowledged
-                    chunk.state = ChunkTransmissionState::Acknowledged;
-                    self.chunks_inflight -= 1;
-                    self.acknowledged += chunk.len;
+        let pending = &mut self.pending;
 
-                    if index == 0 {
-                        check_released = true;
-                    }
-                    // No `break` here!
-                    // The same packet number can be used by multiple packets
-                }
+        let any_acked = self.transmissions.on_ack_signal(ack_set, |range| {
+            pending
+                .remove(range)
+                .expect("output should not have a limit");
+        });
+
+        if Writer::WRITES_FIN {
+            if let Some(fin_state) = self.state.fin_state_mut() {
+                fin_state.on_packet_ack(ack_set);
             }
         }
 
-        if !check_released {
-            self.ensure_counter_consistency();
-            return;
-        }
-
-        // Remove all segments which have been fully acknowledged from the
-        // front of the list and record how many bytes have been fully transmitted.
-        let mut released = 0;
-        while !self.tracking.is_empty() {
-            if let Some(first) = self.tracking.front() {
-                if first.state == ChunkTransmissionState::Acknowledged {
-                    released += first.len;
-                    self.acknowledged -= first.len;
-                    self.tracking.pop_front();
-                } else {
-                    break;
-                }
-            }
-        }
-
-        self.enqueued -= released;
-        self.total_acknowledged += VarInt::from_u32(released);
-
-        // Release the associated byte segments
-        // Convert to usize, because the `Bytes` segments use this unit
-        let mut released = released as usize;
-        while released > 0 {
-            let buffer = self.data.front_mut().expect("Buffer must be available");
-            let to_release = core::cmp::min(released, buffer.len());
-            if buffer.len() <= released {
-                // The buffer had been fully consumed and can be released
-                self.data.pop_front();
+        if any_acked {
+            if let Some(first) = self.pending.min_value() {
+                self.buffer.release(first);
             } else {
-                // A part of the buffer had been released.
-                // Slice the remaining buffer.
-                buffer.advance(released);
+                // the pending list was completely cleared
+                self.buffer.release_all();
             }
-            released -= to_release;
         }
 
         // If the FIN was enqueued, and all outgoing data had been transmitted,
         // then we have finalized the stream.
-        if self.tracking.is_empty() && self.state == DataSenderState::Finishing {
-            self.state = DataSenderState::FinishAcknowledged;
+        if matches!(self.state, State::Finishing(FinState::Acknowledged)) && self.is_idle() {
+            self.state = State::Finished;
             self.flow_controller_mut().finish();
+            self.buffer.release_all();
         }
 
-        self.ensure_counter_consistency();
+        self.check_integrity();
+    }
+
+    fn is_idle(&self) -> bool {
+        self.transmissions.is_empty() && self.pending.is_empty() && self.lost.is_empty()
     }
 
     /// This method gets called when a packet loss is reported
     pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
-        for chunk in self.tracking.iter_mut() {
-            if let ChunkTransmissionState::InFlight(inflight_packet_nr) = chunk.state {
-                if ack_set.contains(inflight_packet_nr) {
-                    // If the chunk was lost, mark it as Enqueued again, so that
-                    // it will get sent again.
-                    //
-                    // Potential TODO here: Merge adjacent `Enqueued` states,
-                    // so that we do not waste as much memory for tracking states
-                    // if lots of packets are lost.
-                    // This however will likely only be relevant, if we also
-                    // - shrink the `tracking` list if it gets smaller in order
-                    //   actually release memory.
-                    // - provide a set of packet numbers to `on_packet_loss` and
-                    //   `on_packet_ack`. That way we would actually would change
-                    //   more adjacent blocks, which can then be merged.
-                    // This will also only work if the chunks are derived from the
-                    // same `Bytes` buffer or if we later on implement sending
-                    // chunks from multiple `Bytes` buffers for a single chunk.
-                    chunk.state = ChunkTransmissionState::Lost;
-                    self.chunks_inflight -= 1;
-                    self.chunks_waiting_for_retransmission += 1;
+        let lost = &mut self.lost;
 
-                    // Since a packet needs to get retransmitted, we are
-                    // no longer blocked on waiting for flow control windows
-                    self.flow_controller.clear_blocked();
+        let mut any_lost = self.transmissions.on_ack_signal(ack_set, |range| {
+            lost.insert(range).expect("output should not have a limit");
+        });
 
-                    // More than 1 chunk can use the same Packet number, if
-                    // multiple chunks are written into the same packet.
-                    // Therefore we can not `break` here.
-                    //
-                    // We can also not break if we observe a higher packet number,
-                    // since a packet loss might have caused an old segment
-                    // (earlier in the list) to be retransmitted with a higher
-                    // packet number. In that case chunks later in the list which
-                    // have not yet been retransmitted will use lower numbers.
-                }
+        if Writer::WRITES_FIN {
+            if let Some(fin_state) = self.state.fin_state_mut() {
+                any_lost |= fin_state.on_packet_loss(ack_set);
             }
         }
 
-        self.ensure_counter_consistency();
-    }
-
-    /// Returns the content of the byte buffer which starts at a given
-    /// offset. It is only allowed to call the method for offsets which are
-    /// tracked by the the `DataSender` in an associated `ChunkDescriptor` struct, and
-    /// which are thereby not out of bounds.
-    fn bytes_at_offset(
-        buffers: &VecDeque<Bytes>,
-        first_buffer_offset: VarInt,
-        offset: VarInt,
-    ) -> &[u8] {
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#2.2
-        //# The data at a given offset MUST NOT change if it is sent
-        //# multiple times;
-
-        let mut current_offset = first_buffer_offset;
-        for buffer in buffers.iter() {
-            if offset >= current_offset && offset < (current_offset + buffer.len()) {
-                let buffer_offset = Into::<u64>::into(offset - current_offset) as usize;
-                return &buffer[buffer_offset..];
-            }
-            current_offset += buffer.len();
+        // Since a packet needs to get retransmitted, we are
+        // no longer blocked on waiting for flow control windows
+        if any_lost {
+            self.flow_controller_mut().clear_blocked();
         }
 
-        // The following branch will be entered for finding the associated byte
-        // segment for an empty range - which is only utilized to transmit the
-        // FIN flag. In that case the start offset of the range will line up
-        // with the end of all other enqueued byte buffers.
-        if offset == current_offset {
-            return &[];
-        }
-
-        unreachable!("Did not find associated buffer");
+        self.check_integrity();
     }
 
     /// Queries the component for any outgoing frames that need to get sent
     pub fn on_transmit<W: WriteContext>(
         &mut self,
-        stream_id: ChunkToFrameWriterType::StreamId,
+        writer_context: Writer::Context,
         context: &mut W,
     ) -> Result<(), OnTransmitError> {
-        let mut chunk_index = 0;
-        while chunk_index < self.tracking.len() {
-            let chunk = &mut self.tracking[chunk_index];
+        let initial_capacity = context.remaining_capacity();
 
-            if chunk.state.can_transmit(context.transmission_constraint()) {
-                // We are not allowed to write more than the flow control window.
-                // However it is possible that more data gets enqueued. In order
-                // to make sure we do not violate flow control, chunks are truncated
-                // to the maximum window.
+        match self.on_transmit_impl(writer_context, context) {
+            // only return an error if we didn't write anything
+            Err(_) if context.remaining_capacity() < initial_capacity => Ok(()),
+            other => other,
+        }
+    }
 
-                let chunk_end = chunk.offset + VarInt::from_u32(chunk.len);
+    fn on_transmit_impl<W: WriteContext>(
+        &mut self,
+        writer_context: Writer::Context,
+        context: &mut W,
+    ) -> Result<(), OnTransmitError> {
+        let constraint = context.transmission_constraint();
 
-                let window_end = {
-                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#2.2
-                    //# An endpoint MUST NOT send data on any stream without ensuring that it
-                    //# is within the flow control limits set by its peer.
-
-                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.1
-                    //# Senders MUST NOT send data in excess of either limit.
-                    self.flow_controller
-                        .acquire_flow_control_window(chunk.offset, chunk.len as usize)
-                };
-
-                let truncate_by = Into::<u64>::into(chunk_end.saturating_sub(window_end)) as usize;
-                if truncate_by == (chunk.len as usize) && chunk.len > 0 {
-                    // Can not write anything in this chunk due to being beyond
-                    // the flow control window. In this case we can break.
-                    // This can happen in the very first loop iteration in case
-                    // `on_transmit` is called with no other outstanding data,
-                    // but also when we truncated the previous chunk and still
-                    // continue to iterate.
-                    //
-                    // Chunks are ordered by offset, so we will not be able to
-                    // write a later offset and thereby won't miss anything
-                    // by breaking early.
-
-                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.1
-                    //= type=TODO
-                    //= tracking-issue=333
-                    //# A sender SHOULD send a
-                    //# STREAM_DATA_BLOCKED or DATA_BLOCKED frame to indicate to the receiver
-                    //# that it has data to write but is blocked by flow control limits.
-
-                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.1
-                    //= type=TODO
-                    //= tracking-issue=333
-                    //# To keep the
-                    //# connection from closing, a sender that is flow control limited SHOULD
-                    //# periodically send a STREAM_DATA_BLOCKED or DATA_BLOCKED frame when it
-                    //# has no ack-eliciting packets in flight.
-
-                    // TODO: This might be a place where we could send a
-                    // STREAM_DATA_BLOCKED frame later on. If we are doing this,
-                    // we should make sure that the frame gets emitted only once
-                    // for a given blocked offset. E.g. we could store an
-                    // `Option` variable somewhere that tracks whether we already
-                    // have enqueued such a frame.
-                    break;
-                }
-                // This is the maximum size we intend to send after being limited
-                // to the flow control window.
-                let send_size = chunk.len as usize - truncate_by;
-
-                let available_space = context
-                    .reserve_minimum_space_for_frame(self.writer.get_max_frame_size(
-                        stream_id,
-                        core::cmp::min(Self::MIN_WRITE_SIZE, send_size),
-                    ))
-                    .map_err(|_| OnTransmitError::CoundNotAcquireEnoughSpace)?;
-
-                // Check how much data we can fit into that amount of space,
-                // given our other known variables. The amount of possible
-                // payload is different between whether this is the last frame
-                // in a packet or another frame, since we do not have to write
-                // length information in the last frame. That allows to send us
-                // 1-4 extra bytes (realistically 2, since UDP packets are not
-                // that big).
-                let max_payload_sizes =
-                    self.writer
-                        .max_payload_size(stream_id, available_space, chunk.offset);
-
-                let (send_size, is_last_frame) =
-                    if send_size > max_payload_sizes.max_payload_in_all_frames {
-                        // The chunk would max out the payload size for frames with
-                        // a length field. Therefore we will write it without one.
-                        //
-                        // Note that we still need a `min` expression here, since the chunk
-                        // might not fit into frames with length field, but it might still
-                        // be smaller than the space available in the last frame.
-                        (
-                            core::cmp::min(send_size, max_payload_sizes.max_payload_as_last_frame)
-                                as u32,
-                            true,
-                        )
-                    } else {
-                        // The payload is smaller or equal than the allowed payload
-                        // size in frames with length field. Therefore we can write
-                        // it that way.
-                        (send_size as u32, false)
-                    };
-
-                // We should at least be able to write some bytes, due to requesting
-                // a minimal amount of space. And expect for FINs, we do not have
-                // 0 byte chunks.
-                debug_assert!(
-                    send_size > 0 || chunk.fin,
-                    "Expected to be able to write data"
-                );
-
-                // Find the payload
-                let payload_bytes =
-                    Self::bytes_at_offset(&self.data, self.total_acknowledged, chunk.offset);
-
-                let packet_nr = self
-                    .writer
-                    .write_value_as_frame(
-                        stream_id,
-                        chunk.offset,
-                        &payload_bytes[..send_size as usize],
-                        is_last_frame,
-                        // If not all data in the chunk can be written, the chunk
-                        // gets split and the next chunk will carry the FIN
-                        chunk.fin && send_size == chunk.len,
-                        context,
-                    )
-                    .ok_or(OnTransmitError::CouldNotWriteFrame)?;
-
-                self.chunks_inflight += 1;
-                let prev_state = chunk.state;
-                chunk.state = ChunkTransmissionState::InFlight(packet_nr);
-
-                if send_size != chunk.len {
-                    // Only a part of this chunk could be written into the frame.
-                    // In this case we need to create a new ChunkDescriptor for the remaining
-                    // parts.
-                    let new_range = ChunkDescriptor {
-                        offset: chunk.offset + VarInt::from_u32(send_size),
-                        len: chunk.len - send_size,
-                        state: prev_state,
-                        fin: chunk.fin,
-                    };
-                    chunk.len = send_size;
-                    self.tracking.insert(chunk_index + 1, new_range);
-                } else if prev_state == ChunkTransmissionState::Lost {
-                    self.chunks_waiting_for_retransmission -= 1;
-                } else {
-                    self.chunks_waiting_for_transmission -= 1;
-                }
-            }
-
-            chunk_index += 1;
+        // try to retransmit any lost ranges first
+        if constraint.can_retransmit() {
+            self.transmissions.transmit_set(
+                &self.buffer,
+                &mut self.lost,
+                &mut self.state,
+                writer_context,
+                context,
+            )?;
         }
 
-        self.ensure_counter_consistency();
+        let is_blocked = self.flow_controller().is_blocked();
+
+        // try to transmit the enqueued ranges
+        let total_len = self.buffer.total_len();
+
+        if !is_blocked && constraint.can_transmit() && self.transmission_offset < total_len {
+            let mut viewer = self.buffer.viewer();
+            self.transmission_offset = self
+                .transmissions
+                .transmit_interval(
+                    &mut viewer,
+                    (self.transmission_offset..total_len).into(),
+                    &mut self.state,
+                    writer_context,
+                    context,
+                )?
+                .end_exclusive();
+        }
+
+        if Writer::WRITES_FIN && self.state.can_transmit_fin(constraint, is_blocked) {
+            self.transmissions.transmit_fin(
+                &self.buffer,
+                &mut self.state,
+                writer_context,
+                context,
+            )?;
+        }
+
+        self.check_integrity();
 
         Ok(())
     }
 
-    /// Ensures all of the counters are accurate with the actual tracking chunks state
     #[inline]
-    fn ensure_counter_consistency(&self) {
+    fn check_integrity(&self) {
         if cfg!(debug_assertions) {
-            let mut actual_enqueued = 0;
-            let mut actual_lost = 0;
-            let mut actual_inflight = 0;
-            let mut actual_acknowledged = 0;
-
-            for chunk in self.tracking.iter() {
-                match chunk.state {
-                    ChunkTransmissionState::Enqueued => actual_enqueued += 1,
-                    ChunkTransmissionState::Lost => actual_lost += 1,
-                    ChunkTransmissionState::InFlight(_) => actual_inflight += 1,
-                    ChunkTransmissionState::Acknowledged => actual_acknowledged += chunk.len,
-                }
+            if self.pending.is_empty() {
+                assert!(self.lost.is_empty());
+                assert!(self.transmissions.is_empty());
+                assert_eq!(self.buffer.head(), self.buffer.total_len());
+                assert_eq!(
+                    self.transmission_offset,
+                    self.buffer.total_len(),
+                    "transmission offset should equal buffer length when pending is empty"
+                );
             }
 
-            assert_eq!(self.chunks_waiting_for_transmission, actual_enqueued);
-            assert_eq!(self.chunks_waiting_for_retransmission, actual_lost);
-            assert_eq!(self.chunks_inflight, actual_inflight);
-            assert_eq!(self.acknowledged, actual_acknowledged);
+            if !self.pending.is_empty() {
+                assert!(
+                    !self.lost.is_empty() || self.transmission_offset < self.buffer.total_len() || !self.transmissions.is_empty(),
+                    "pending: {:?}, lost: {:?}, enqueued: {:?}, total_len: {:?}, transmissions: {:?}",
+                    self.pending,
+                    self.lost,
+                    self.transmission_offset,
+                    self.buffer.total_len(),
+                    self.transmissions.is_empty()
+                );
+            }
+
+            if let Some(start) = self.pending.min_value() {
+                assert_eq!(self.buffer.head(), start);
+            }
+
+            if self.flow_controller().is_blocked() {
+                use transmission::interest::{Interest, Provider};
+                assert_ne!(self.transmission_interest(), Interest::NewData);
+            }
         }
     }
 }
 
-impl<F: OutgoingDataFlowController, S> transmission::interest::Provider for DataSender<F, S> {
+impl<F: OutgoingDataFlowController, W: FrameWriter> transmission::interest::Provider
+    for DataSender<F, W>
+{
     fn transmission_interest(&self) -> transmission::Interest {
-        if self.chunks_waiting_for_retransmission > 0 {
+        let mut interest = transmission::Interest::None;
+
+        let is_blocked = self.flow_controller().is_blocked();
+
+        if W::WRITES_FIN {
+            match self.state {
+                State::Finishing(FinState::Lost) => return transmission::Interest::LostData,
+                State::Finishing(FinState::Pending) if !is_blocked => {
+                    interest += transmission::Interest::NewData
+                }
+                _ => {}
+            }
+        };
+
+        interest += if !self.lost.is_empty() {
             transmission::Interest::LostData
-        } else if self.chunks_waiting_for_transmission > 0 && !self.flow_controller.is_blocked() {
+        } else if !is_blocked && self.transmission_offset < self.buffer.total_len() {
             transmission::Interest::NewData
         } else {
             transmission::Interest::None
+        };
+
+        interest
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        contexts::testing::{MockWriteContext, OutgoingFrameBuffer},
+        transmission::{self, interest::Provider as _},
+    };
+    use bolero::{check, generator::*};
+    use s2n_quic_core::{endpoint, frame, stream::testing as stream};
+    use std::collections::HashSet;
+
+    #[derive(Clone, Copy, Debug, TypeGenerator)]
+    enum Event {
+        Push(#[generator(1..)] u16),
+        Finish,
+        Transmit(u16),
+        IncFlowControl(u16),
+        Ack(usize),
+        Loss(usize),
+    }
+
+    #[derive(Debug, Default)]
+    struct TestFlowController {
+        max_offset: VarInt,
+        is_blocked: bool,
+    }
+
+    impl OutgoingDataFlowController for TestFlowController {
+        fn acquire_flow_control_window(&mut self, end_offset: VarInt) -> VarInt {
+            if end_offset > self.max_offset {
+                self.is_blocked = true;
+                self.max_offset
+            } else {
+                end_offset
+            }
         }
+
+        fn is_blocked(&self) -> bool {
+            self.is_blocked
+        }
+
+        fn clear_blocked(&mut self) {
+            self.is_blocked = false;
+        }
+
+        fn finish(&mut self) {}
+    }
+
+    fn check_model(events: &[Event], id: &VarInt) -> OutgoingFrameBuffer {
+        let mut send_data = stream::Data::new(u64::MAX);
+        let mut sender: DataSender<_, writer::Stream> =
+            DataSender::new(TestFlowController::default(), u32::MAX);
+        let mut total_len = 0;
+        let mut frame_buffer = OutgoingFrameBuffer::new();
+        let mut context = MockWriteContext {
+            current_time: s2n_quic_platform::time::now(),
+            frame_buffer: &mut frame_buffer,
+            transmission_constraint: transmission::Constraint::None,
+            endpoint: endpoint::Type::Server,
+        };
+        let mut lost = HashSet::new();
+        let mut pending = HashSet::new();
+        let mut acked = HashSet::new();
+        let mut is_finished = false;
+
+        for event in events.iter().copied() {
+            match event {
+                Event::Push(len) if !is_finished => {
+                    let mut chunks = [Bytes::new(), Bytes::new()];
+                    let count = send_data
+                        .send(len as usize, &mut chunks)
+                        .expect("stream should not end early");
+                    for chunk in chunks.iter_mut().take(count) {
+                        total_len += chunk.len() as u64;
+                        sender.push(core::mem::replace(chunk, Bytes::new()));
+                    }
+                }
+                Event::Finish if total_len > 0 => {
+                    sender.finish();
+                    is_finished = true;
+                }
+                Event::Transmit(capacity) => {
+                    let interest = sender.transmission_interest();
+
+                    let prev_len = context.frame_buffer.len();
+
+                    context
+                        .frame_buffer
+                        .set_max_packet_size(Some(capacity as usize));
+
+                    let _ = sender.on_transmit(*id, &mut context);
+                    context.frame_buffer.flush();
+
+                    if interest.is_none() {
+                        assert_eq!(
+                            context.frame_buffer.len(),
+                            prev_len,
+                            "frames should only transmit with interest"
+                        );
+                    }
+
+                    let packets = context
+                        .frame_buffer
+                        .frames
+                        .iter()
+                        .skip(prev_len)
+                        .map(|frame| frame.packet_nr);
+                    pending.extend(packets);
+                }
+                Event::Ack(index) if !context.frame_buffer.is_empty() => {
+                    let index = index % context.frame_buffer.len();
+                    let packet = context.frame_buffer.frames[index].packet_nr;
+                    sender.on_packet_ack(&packet);
+                    pending.remove(&packet);
+                    acked.insert(packet);
+                }
+                Event::Loss(index) if !context.frame_buffer.is_empty() => {
+                    let index = index % context.frame_buffer.len();
+                    let packet = context.frame_buffer.frames[index].packet_nr;
+                    lost.insert(packet);
+                    sender.on_packet_loss(&packet);
+                }
+                Event::IncFlowControl(amount) => {
+                    let flow_controller = sender.flow_controller_mut();
+                    flow_controller.max_offset = flow_controller
+                        .max_offset
+                        .saturating_add(VarInt::from_u16(amount));
+                }
+                _ => {}
+            }
+        }
+
+        // make sure the stream was finished
+        sender.finish();
+
+        for packet in pending {
+            sender.on_packet_ack(&packet);
+            acked.insert(packet);
+        }
+
+        context.frame_buffer.set_max_packet_size(Some(usize::MAX));
+        context.transmission_constraint = transmission::Constraint::None;
+        sender.flow_controller_mut().clear_blocked();
+        sender.flow_controller_mut().max_offset = VarInt::MAX;
+
+        while !sender.transmission_interest().is_none() {
+            let prev_len = context.frame_buffer.len();
+            let _ = sender.on_transmit(*id, &mut context);
+            context.frame_buffer.flush();
+            let packets = context
+                .frame_buffer
+                .frames
+                .iter()
+                .skip(prev_len)
+                .map(|frame| frame.packet_nr);
+
+            let mut did_transmit = false;
+
+            for packet in packets {
+                sender.on_packet_ack(&packet);
+                acked.insert(packet);
+                did_transmit = true;
+            }
+
+            assert!(
+                did_transmit,
+                "transmission_interest was expressed but sender did not transmit: {:#?}",
+                sender
+            );
+        }
+
+        assert!(
+            !frame_buffer.is_empty(),
+            "the test should transmit at least one frame: {:#?}",
+            sender,
+        );
+
+        let receiver = stream::Data::new(total_len);
+        let mut received_ranges = IntervalSet::new();
+        let mut transmitted_fin = false;
+
+        for frame in &mut frame_buffer.frames {
+            if acked.contains(&frame.packet_nr) {
+                if let frame::Frame::Stream(frame) = frame.as_frame() {
+                    let offset = frame.offset.as_u64();
+                    let len = frame.data.len() as u64;
+                    if len > 0 {
+                        receiver.receive_at(offset, &[frame.data.as_less_safe_slice()]);
+                        received_ranges.insert(offset..offset + len).unwrap();
+                    }
+                    transmitted_fin |= frame.is_fin;
+                } else {
+                    panic!("invalid frame");
+                }
+            }
+        }
+
+        if total_len != 0 {
+            assert_eq!(
+                received_ranges.interval_len(),
+                1,
+                "not all data was transmitted",
+            );
+
+            assert_eq!(received_ranges.max_value(), Some(total_len - 1));
+        } else {
+            assert!(received_ranges.is_empty(), "{:#?}", sender);
+        }
+
+        assert!(transmitted_fin);
+
+        frame_buffer
+    }
+
+    #[test]
+    fn model() {
+        check!()
+            .with_generator((gen(), gen::<Vec<Event>>().with().len(1usize..128)))
+            .for_each(|(id, events)| {
+                check_model(events, id);
+            });
     }
 }

@@ -29,6 +29,10 @@ impl<'a, 'b, Config: connection::Config> WriteContext for Context<'a, 'b, Config
         self.transmission_constraint
     }
 
+    fn remaining_capacity(&self) -> usize {
+        self.buffer.remaining_capacity()
+    }
+
     fn write_frame<Frame: EncoderValue + AckElicitable + CongestionControlled>(
         &mut self,
         frame: &Frame,
@@ -65,15 +69,6 @@ impl<'a, 'b, Config: connection::Config> WriteContext for Context<'a, 'b, Config
         self.packet_number
     }
 
-    fn reserve_minimum_space_for_frame(&mut self, min_size: usize) -> Result<usize, ()> {
-        let cap = self.buffer.remaining_capacity();
-        if cap < min_size {
-            Err(())
-        } else {
-            Ok(cap)
-        }
-    }
-
     fn local_endpoint_type(&self) -> endpoint::Type {
         Config::ENDPOINT_TYPE
     }
@@ -105,6 +100,10 @@ impl<'a, C: WriteContext> WriteContext for RetransmissionContext<'a, C> {
         transmission::Constraint::RetransmissionOnly
     }
 
+    fn remaining_capacity(&self) -> usize {
+        self.context.remaining_capacity()
+    }
+
     fn write_frame<Frame: EncoderValue + AckElicitable + CongestionControlled>(
         &mut self,
         frame: &Frame,
@@ -118,10 +117,6 @@ impl<'a, C: WriteContext> WriteContext for RetransmissionContext<'a, C> {
 
     fn packet_number(&self) -> PacketNumber {
         self.context.packet_number()
-    }
-
-    fn reserve_minimum_space_for_frame(&mut self, min_size: usize) -> Result<usize, ()> {
-        self.context.reserve_minimum_space_for_frame(min_size)
     }
 
     fn local_endpoint_type(&self) -> endpoint::Type {

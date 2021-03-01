@@ -1,5 +1,5 @@
 use crate::{
-    frame::{FitError, MaxPayloadSizeForFrame, Tag},
+    frame::{FitError, Tag},
     varint::VarInt,
 };
 use core::{convert::TryFrom, mem::size_of};
@@ -122,67 +122,6 @@ impl<Data> Stream<Data> {
             is_fin: self.is_fin,
             data: map(self.data),
         }
-    }
-
-    /// Returns the maximum payload size a frame of a given size can carry
-    pub fn max_payload_size(
-        max_frame_size: usize,
-        stream_id: VarInt,
-        offset: VarInt,
-    ) -> MaxPayloadSizeForFrame {
-        let min_required_size = size_of::<Tag>()
-            + stream_id.encoding_size()
-            + if offset == VarInt::from_u8(0) {
-                0
-            } else {
-                offset.encoding_size()
-            };
-
-        if min_required_size >= max_frame_size {
-            return Default::default();
-        }
-
-        // If no length field gets added to the Frame, we have the following
-        // available space. Otherwise there is less space available, depending
-        // on the length of the length field.
-        let max_payload_as_last_frame = max_frame_size - min_required_size;
-
-        let max_payload_in_all_frames = if max_payload_as_last_frame > 4 {
-            // We use a maximum length field size of 4 here, since this will
-            // cover up to 1GB of data. Due to other checks in the library we
-            // will never exceed sending 1GB inside a single frame.
-            // In the current state even 2byte for sending up to 16kB of data
-            // would be sufficient, due to UDP packet size limitations. However
-            // using 4 bytes will lave us prepared for using bigger packet sizes
-            // in case hardware segmentation support is available in the future.
-            //
-            // The 4 byte assumption is a pessimistic estimate at this point,
-            // since we do not know the actual data amount which will get written
-            // to this frame. If it is below 64kB, we undererstimate the amount
-            // of fitting data by 2 bytes. This might lead the implementation
-            // to fragment the frame where it was otherwise not required in some
-            // edge cases.
-            // However since we do not necesarily know how much data to write
-            // until we know how much space is available, the pessimistic
-            // estimate is the best we can do at this point of time.
-            max_payload_as_last_frame - 4
-        } else {
-            0
-        };
-
-        MaxPayloadSizeForFrame {
-            max_payload_as_last_frame,
-            max_payload_in_all_frames,
-        }
-    }
-
-    /// Returns an upper bound for the size of the frame that intends to
-    /// store the given amount of data.
-    ///
-    /// The actual frame size might be lower, but is never allowed to be higher.
-    pub fn get_max_frame_size(stream_id: VarInt, min_payload: usize) -> usize {
-        size_of::<Tag>() + stream_id.encoding_size() +
-        8 /* Offset size */ + 4 /* Size of len */ + min_payload
     }
 }
 
