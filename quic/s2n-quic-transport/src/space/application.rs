@@ -303,86 +303,20 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         datagram: &DatagramInfo,
         rtt_estimator: &RTTEstimator,
     ) -> Result<CleartextShort<'a>, ProcessingError> {
-        let packet_number_decoder = self.packet_number_decoder();
+        let largest_acked = self.ack_manager.largest_received_packet_number_acked();
         let packet = self
             .key_set
-            .decrypt_packet(self.key_set.key_phase(), |key| {
-                protected.unprotect(key, packet_number_decoder)
-            })?;
+            .remove_header_protection(protected, largest_acked)?;
 
         if self.is_duplicate(packet.packet_number) {
             return Err(ProcessingError::DuplicatePacket);
         }
 
-        let packet_phase = packet.key_phase();
-        let mut phase_to_use = self.key_set.key_phase() as u8;
-        let phase_switch = phase_to_use != (packet_phase as u8);
-        phase_to_use ^= phase_switch as u8;
-
-        if self.key_set.key_update_in_progress() && phase_switch {
-            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.5
-            //# An endpoint MAY allow a period of approximately the Probe Timeout
-            //# (PTO; see [QUIC-RECOVERY]) after receiving a packet that uses the new
-            //# key generation before it creates the next set of packet protection
-            //# keys.
-            // During this PTO we can still process delayed packets, reducing retransmits
-            // required from the peer. We know the packets are delayed because they have a
-            // lower packet number than expected and the old key phase.
-            if packet.packet_number < self.ack_manager.largest_received_packet_number_acked() {
-                phase_to_use = packet.key_phase() as u8;
-            }
-        }
-
-        match self
-            .key_set
-            .decrypt_packet(phase_to_use.into(), |key| packet.decrypt(key))
-        {
-            Ok(packet) => {
-                if packet_phase != self.key_set.key_phase() {
-                    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.2
-                    //# Sending keys MUST be updated before sending an
-                    //# acknowledgement for the packet that was received with updated keys.
-
-                    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.2
-                    //# The endpoint MUST update its
-                    //# send keys to the corresponding key phase in response, as described in
-                    //# Section 6.1.
-                    self.key_set.rotate_phase();
-
-                    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.3
-                    //# Endpoints responding to an apparent key update MUST NOT generate a
-                    //# timing side-channel signal that might indicate that the Key Phase bit
-                    //# was invalid (see Section 9.4).
-
-                    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.5
-                    //# An endpoint MAY allow a period of approximately the Probe Timeout
-                    //# (PTO; see [QUIC-RECOVERY]) after receiving a packet that uses the new
-                    //# key generation before it creates the next set of packet protection
-                    //# keys.
-                    self.key_set
-                        .set_derivation_timer(datagram.timestamp + rtt_estimator.pto_period(1));
-                }
-
-                //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.4
-                //= type=TODO
-                //= tracking-issue=479
-                //= feature=Key update
-                //# An endpoint that successfully removes protection with old
-                //# keys when newer keys were used for packets with lower packet numbers
-                //# MUST treat this as a connection error of type KEY_UPDATE_ERROR.
-                Ok(packet)
-            }
-            Err(e) => {
-                //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.4
-                //= type=TODO
-                //= tracking-issue=479
-                //= feature=Key update
-                //# Packets with higher packet numbers MUST be protected with either the
-                //# same or newer packet protection keys than packets with lower packet
-                //# numbers.
-                Err(e)
-            }
-        }
+        self.key_set.decrypt_packet(
+            packet,
+            largest_acked,
+            datagram.timestamp + rtt_estimator.pto_period(1),
+        )
     }
 }
 
@@ -696,111 +630,28 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
 
 #[cfg(test)]
 mod tests {
-    use s2n_quic_core::{
-        application::KeySet,
-        crypto::{CryptoError, HeaderCrypto, HeaderProtectionMask, Key, OneRTTCrypto},
-        packet::KeyPhase,
-    };
-
     use core::time::Duration;
     use s2n_quic_core::time::Clock;
+    use s2n_quic_core::{application::KeySet, crypto::testing::Key as TestKey, packet::KeyPhase};
     use s2n_quic_platform::time;
     use std::sync::Arc;
-
-    #[derive(Default)]
-    struct NullKey {
-        pub value: u64,
-        pub integrity_limit: u64,
-    }
-
-    impl Key for NullKey {
-        fn decrypt(
-            &self,
-            _packet_number: u64,
-            _header: &[u8],
-            _payload: &mut [u8],
-        ) -> Result<(), CryptoError> {
-            Ok(())
-        }
-
-        fn encrypt(
-            &self,
-            _packet_number: u64,
-            _header: &[u8],
-            _payload: &mut [u8],
-        ) -> Result<(), CryptoError> {
-            Ok(())
-        }
-
-        fn tag_len(&self) -> usize {
-            0
-        }
-
-        fn aead_confidentiality_limit(&self) -> u64 {
-            0
-        }
-
-        fn aead_integrity_limit(&self) -> u64 {
-            self.integrity_limit
-        }
-    }
-
-    impl HeaderCrypto for NullKey {
-        fn opening_header_protection_mask(&self, _sample: &[u8]) -> HeaderProtectionMask {
-            [0; 5]
-        }
-
-        fn opening_sample_len(&self) -> usize {
-            0
-        }
-
-        fn sealing_header_protection_mask(&self, _sample: &[u8]) -> HeaderProtectionMask {
-            [0; 5]
-        }
-
-        fn sealing_sample_len(&self) -> usize {
-            0
-        }
-    }
-
-    impl OneRTTCrypto for NullKey {
-        fn derive_next_key(&self) -> Self {
-            Self {
-                value: self.value + 1,
-                integrity_limit: self.integrity_limit,
-            }
-        }
-    }
 
     #[test]
     fn test_key_derivation_timer() {
         let clock = Arc::new(time::testing::MockClock::new());
         time::testing::set_local_clock(clock.clone());
         let now = clock.get_time();
-        let mut keyset = KeySet::new(NullKey::default());
+        let mut keyset = KeySet::new(TestKey::default());
         keyset.rotate_phase();
 
         keyset.set_derivation_timer(now + Duration::from_millis(10));
-        clock.adjust_by(Duration::from_millis(8));
-
-        keyset.on_timeout(clock.get_time());
-        let mut key_value = 0;
-        assert!(keyset
-            .decrypt_packet(KeyPhase::Zero, |key| -> Result<(), CryptoError> {
-                key_value = key.value;
-                Ok(())
-            })
-            .is_ok());
-        assert_eq!(key_value, 0);
 
         clock.adjust_by(Duration::from_millis(8));
         keyset.on_timeout(clock.get_time());
-        assert!(keyset
-            .decrypt_packet(KeyPhase::Zero, |key| -> Result<(), CryptoError> {
-                key_value = key.value;
-                Ok(())
-            })
-            .is_ok());
-        assert_eq!(key_value, 2);
+        assert_eq!(keyset.key_for_phase(KeyPhase::Zero).key().value, 0);
+
+        clock.adjust_by(Duration::from_millis(8));
+        keyset.on_timeout(clock.get_time());
+        assert_eq!(keyset.key_for_phase(KeyPhase::Zero).key().value, 2);
     }
 }

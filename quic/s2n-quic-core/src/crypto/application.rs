@@ -12,7 +12,7 @@ pub struct LimitedUseCrypto<Key> {
     key: Key,
     // Keeping encrypted_packets out of the key allow keys to be immutable, which allows optimizations
     // later on.
-    pub encrypted_packets: u64,
+    encrypted_packets: u64,
 }
 
 impl<K: Key> LimitedUseCrypto<K>
@@ -30,12 +30,12 @@ where
         self.key.derive_next_key()
     }
 
-    /// Makes the limited use key available to a callback
-    pub(crate) fn unprotect_packet<F, R>(&self, f: F) -> R
-    where
-        F: FnOnce(&K) -> R,
-    {
-        f(&self.key)
+    pub fn encrypted_packets(&self) -> u64 {
+        self.encrypted_packets
+    }
+
+    pub fn key(&self) -> &K {
+        &self.key
     }
 
     pub fn encode_packet<'a, F>(

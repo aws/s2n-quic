@@ -114,6 +114,7 @@ impl From<Error> for std::io::ErrorKind {
 
 /// Some connection methods may need to indicate both `TransportError`s and `CryptoError`s. This
 /// enum is used to allow for either error type to be returned as appropriate.
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ProcessingError {
     DuplicatePacket,
     TransportError(TransportError),

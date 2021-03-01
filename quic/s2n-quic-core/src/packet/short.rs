@@ -122,7 +122,7 @@ pub type CleartextShort<'a> = Short<&'a [u8], KeyPhase, PacketNumber, DecoderBuf
 
 impl<'a> ProtectedShort<'a> {
     #[inline]
-    pub(crate) fn decode<Validator: connection::id::Validator>(
+    pub fn decode<Validator: connection::id::Validator>(
         tag: Tag,
         buffer: DecoderBufferMut<'a>,
         connection_info: &ConnectionInfo,
