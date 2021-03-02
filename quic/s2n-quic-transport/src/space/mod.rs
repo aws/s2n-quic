@@ -177,7 +177,7 @@ impl<Config: connection::Config> PacketSpaceManager<Config> {
     ) {
         let path = path_manager.active_path_mut();
 
-        // ensure the backoff doesn't grow too quicly
+        // ensure the backoff doesn't grow too quickly
         let max_backoff = path.pto_backoff * 2;
 
         if let Some((space, handshake_status)) = self.initial_mut() {
@@ -191,7 +191,6 @@ impl<Config: connection::Config> PacketSpaceManager<Config> {
         }
 
         let path = path_manager.active_path_mut();
-
         path.pto_backoff = path.pto_backoff.min(max_backoff);
     }
 

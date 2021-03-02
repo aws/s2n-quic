@@ -125,6 +125,9 @@ impl Manager {
             //# When a PTO timer expires, the PTO backoff MUST be increased,
             //# resulting in the PTO period being set to twice its current value.
             if pto_expired {
+                // Note: the psuedocode updates the pto timer in OnLossDetectionTimeout
+                // (see section A.9). We don't do that here since it will be rearmed in
+                // `on_packet_sent`, which immediately follows a timeout.
                 context.path_mut().pto_backoff *= 2;
             }
         }
