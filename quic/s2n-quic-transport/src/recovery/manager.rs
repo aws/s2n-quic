@@ -126,9 +126,6 @@ impl Manager {
             //# resulting in the PTO period being set to twice its current value.
             if pto_expired {
                 context.path_mut().pto_backoff *= 2;
-                let is_handshake_confirmed = context.is_handshake_confirmed();
-                // Update the PTO timer incorporating the new pto backoff
-                self.update_pto_timer(context.path_mut(), timestamp, is_handshake_confirmed);
             }
         }
     }
