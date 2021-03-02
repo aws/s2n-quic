@@ -128,6 +128,7 @@
 //! ```
 //!
 
+pub mod application;
 pub mod error;
 pub mod handshake;
 pub mod header_crypto;
@@ -141,6 +142,7 @@ pub mod retry;
 pub mod tls;
 pub mod zero_rtt;
 
+pub use application::*;
 pub use error::*;
 pub use handshake::*;
 pub use header_crypto::*;

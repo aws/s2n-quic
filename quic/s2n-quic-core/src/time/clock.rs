@@ -67,3 +67,33 @@ mod std_clock {
 
 #[cfg(any(test, feature = "std"))]
 pub use std_clock::*;
+
+#[cfg(any(test, feature = "testing"))]
+pub mod testing {
+    use super::{Duration, Timestamp};
+
+    #[derive(Clone, Copy, Debug)]
+    pub struct Clock {
+        current_timestamp: Timestamp,
+    }
+
+    impl Default for Clock {
+        fn default() -> Self {
+            Self {
+                current_timestamp: unsafe { Timestamp::from_duration(Duration::from_micros(1)) },
+            }
+        }
+    }
+
+    impl super::Clock for Clock {
+        fn get_time(&self) -> Timestamp {
+            self.current_timestamp
+        }
+    }
+
+    impl Clock {
+        pub fn inc_by(&mut self, duration: Duration) {
+            self.current_timestamp += duration
+        }
+    }
+}

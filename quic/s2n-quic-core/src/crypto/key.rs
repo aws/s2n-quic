@@ -40,24 +40,19 @@ pub mod testing {
     pub struct Key {
         pub confidentiality_limit: u64,
         pub integrity_limit: u64,
-    }
-
-    impl Key {
-        pub fn new(confidentiality_limit: u64, integrity_limit: u64) -> Self {
-            Self {
-                confidentiality_limit,
-                integrity_limit,
-            }
-        }
+        pub derivations: u64,
+        pub fail_on_decrypt: bool,
     }
 
     impl Default for Key {
         fn default() -> Self {
-            // These default values are simply to make it easy to create this object and pass
-            // tests. There is no reason for the actual values beyond that.
+            // These default derivationss are simply to make it easy to create this object and pass
+            // tests. There is no reason for the actual derivationss beyond that.
             Self {
                 confidentiality_limit: 64,
                 integrity_limit: 64,
+                derivations: 0,
+                fail_on_decrypt: false,
             }
         }
     }
@@ -70,6 +65,10 @@ pub mod testing {
             _header: &[u8],
             _payload: &mut [u8],
         ) -> Result<(), CryptoError> {
+            if self.fail_on_decrypt {
+                return Err(CryptoError::DECRYPT_ERROR);
+            }
+
             Ok(())
         }
 
@@ -123,19 +122,21 @@ pub mod testing {
 
     impl InitialCrypto for Key {
         fn new_server(_connection_id: &[u8]) -> Self {
-            Key::new(0, 0)
+            Key::default()
         }
 
         fn new_client(_connection_id: &[u8]) -> Self {
-            Key::new(0, 0)
+            Key::default()
         }
     }
     impl HandshakeCrypto for Key {}
     impl OneRTTCrypto for Key {
         fn derive_next_key(&self) -> Self {
             Self {
-                confidentiality_limit: 0,
-                integrity_limit: 0,
+                integrity_limit: self.integrity_limit,
+                confidentiality_limit: self.confidentiality_limit,
+                derivations: self.derivations + 1,
+                fail_on_decrypt: self.fail_on_decrypt,
             }
         }
     }

@@ -1,5 +1,6 @@
 use crate::{
     application::{ApplicationErrorCode, ApplicationErrorExt},
+    crypto::CryptoError,
     frame::ConnectionClose,
     transport::error::TransportError,
 };
@@ -108,5 +109,26 @@ impl From<Error> for std::io::ErrorKind {
             Error::StreamIdExhausted => ErrorKind::Other,
             Error::Unspecified => ErrorKind::Other,
         }
+    }
+}
+
+/// Some connection methods may need to indicate both `TransportError`s and `CryptoError`s. This
+/// enum is used to allow for either error type to be returned as appropriate.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ProcessingError {
+    DuplicatePacket,
+    TransportError(TransportError),
+    CryptoError(CryptoError),
+}
+
+impl From<TransportError> for ProcessingError {
+    fn from(inner_error: TransportError) -> Self {
+        ProcessingError::TransportError(inner_error)
+    }
+}
+
+impl From<CryptoError> for ProcessingError {
+    fn from(inner_error: CryptoError) -> Self {
+        ProcessingError::CryptoError(inner_error)
     }
 }
