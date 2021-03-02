@@ -177,6 +177,9 @@ impl<Config: connection::Config> PacketSpaceManager<Config> {
     ) {
         let path = path_manager.active_path_mut();
 
+        // ensure the backoff doesn't grow too quickly
+        let max_backoff = path.pto_backoff * 2;
+
         if let Some((space, handshake_status)) = self.initial_mut() {
             space.on_timeout(path, handshake_status, timestamp)
         }
@@ -186,6 +189,9 @@ impl<Config: connection::Config> PacketSpaceManager<Config> {
         if let Some((space, handshake_status)) = self.application_mut() {
             space.on_timeout(path_manager, handshake_status, local_id_registry, timestamp)
         }
+
+        let path = path_manager.active_path_mut();
+        path.pto_backoff = path.pto_backoff.min(max_backoff);
     }
 
     /// Signals the connection was previously blocked by anti-amplification limits
