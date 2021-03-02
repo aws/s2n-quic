@@ -2,6 +2,7 @@ use core::fmt;
 use ring::{aead, hkdf};
 use s2n_codec::{Encoder, EncoderBuffer};
 use s2n_quic_core::crypto::{label, CryptoError, HeaderCrypto, HeaderProtectionMask, Key};
+use zeroize::Zeroizing;
 
 pub mod negotiated;
 
@@ -33,9 +34,12 @@ macro_rules! impl_ciphersuite {
         #[allow(non_camel_case_types)]
         pub struct $name {
             secret: hkdf::Prk,
-            iv: [u8; Self::IV_LEN],
+            iv: Zeroizing<[u8; Self::IV_LEN]>,
             key: aead::LessSafeKey,
-            header_key: (aead::quic::HeaderProtectionKey, [u8; Self::KEY_LEN]),
+            header_key: (
+                aead::quic::HeaderProtectionKey,
+                Zeroizing<[u8; Self::KEY_LEN]>,
+            ),
         }
 
         impl $name {
@@ -112,7 +116,7 @@ macro_rules! impl_ciphersuite {
                 aead::LessSafeKey::new(unbound_key)
             }
 
-            fn new_iv(secret: &hkdf::Prk) -> [u8; Self::IV_LEN] {
+            fn new_iv(secret: &hkdf::Prk) -> Zeroizing<[u8; Self::IV_LEN]> {
                 let mut bytes = [0u8; Self::IV_LEN];
 
                 secret
@@ -121,31 +125,40 @@ macro_rules! impl_ciphersuite {
                     .fill(&mut bytes)
                     .expect("fill size verified");
 
-                bytes
+                Zeroizing::new(bytes)
             }
 
             fn new_header_key(
                 secret: &hkdf::Prk,
-            ) -> (aead::quic::HeaderProtectionKey, [u8; Self::KEY_LEN]) {
-                let mut bytes = [0u8; Self::KEY_LEN];
+            ) -> (
+                aead::quic::HeaderProtectionKey,
+                Zeroizing<[u8; Self::KEY_LEN]>,
+            ) {
+                let mut bytes = Zeroizing::new([0u8; Self::KEY_LEN]);
 
                 secret
                     .expand(&[&$hp_label], &$header_protection)
                     .expect("label size verified")
-                    .fill(&mut bytes)
+                    .fill(bytes.as_mut())
                     .expect("fill size verified");
 
-                let key = aead::quic::HeaderProtectionKey::new(&$header_protection, &bytes)
+                let key = aead::quic::HeaderProtectionKey::new(&$header_protection, bytes.as_ref())
                     .expect("header secret length already checked");
                 (key, bytes)
             }
 
-            fn clone_header_key(&self) -> (aead::quic::HeaderProtectionKey, [u8; Self::KEY_LEN]) {
+            fn clone_header_key(
+                &self,
+            ) -> (
+                aead::quic::HeaderProtectionKey,
+                Zeroizing<[u8; Self::KEY_LEN]>,
+            ) {
                 // TODO make this less expensive
                 //      https://github.com/awslabs/s2n-quic/issues/295
-                let bytes = self.header_key.1;
-                let key = aead::quic::HeaderProtectionKey::new(&$header_protection, &bytes)
-                    .expect("header secret length already checked");
+                let bytes = self.header_key.1.clone();
+                let key =
+                    aead::quic::HeaderProtectionKey::new(&$header_protection, &bytes.as_ref())
+                        .expect("header secret length already checked");
                 (key, bytes)
             }
         }
