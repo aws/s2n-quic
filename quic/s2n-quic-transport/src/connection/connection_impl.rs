@@ -125,11 +125,6 @@ pub struct ConnectionImpl<Config: connection::Config> {
     state: ConnectionState,
     /// Manage the paths that the connection could use
     path_manager: path::Manager<Config::CongestionController>,
-    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
-    //# In addition to counting packets sent, endpoints MUST count the number
-    //# of received packets that fail authentication during the lifetime of a
-    //# connection.
-    packet_decryption_failures: u64,
     /// The limits applied to the current connection
     limits: Limits,
 }
@@ -252,7 +247,6 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
             accept_state: AcceptState::Handshaking,
             state: ConnectionState::Handshaking,
             path_manager,
-            packet_decryption_failures: 0,
             limits: parameters.limits,
         }
     }
@@ -768,9 +762,6 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
 
         if let Some((space, handshake_status)) = shared_state.space_manager.application_mut() {
             //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
-            //= type=TODO
-            //= tracking-issue=448
-            //= feature=AEAD Limits
             //# If the total number of received packets that fail
             //# authentication within the connection, across all keys, exceeds the
             //# integrity limit for the selected AEAD, the endpoint MUST immediately

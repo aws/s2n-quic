@@ -49,6 +49,10 @@ pub struct ApplicationSpace<Config: connection::Config> {
     //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.3
     //# For this reason, endpoints MUST be able to retain two sets of packet
     //# protection keys for receiving packets: the current and the next.
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.1
+    //# An endpoint MUST NOT initiate a key update prior to having confirmed
+    //# the handshake (Section 4.1.2).
     key_set: KeySet<<Config::TLSSession as CryptoSuite>::OneRTTCrypto>,
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7
@@ -155,18 +159,17 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         let packet = Short {
             destination_connection_id: destination_connection_id.as_ref(),
             spin_bit: self.spin_bit,
-            key_phase: self.key_set.key_phase(),
+            key_phase: self.key_set.encryption_phase(),
             packet_number,
             payload,
         };
 
         let min_packet_len = context.min_packet_len;
-        let (_protected_packet, buffer) = self
-            .key_set
-            .active_key_mut()
-            .encode_packet(buffer, |buffer, key| {
-                packet.encode_packet(key, packet_number_encoder, min_packet_len, buffer)
-            })?;
+        let (_protected_packet, buffer) =
+            self.key_set
+                .encrypt_packet(buffer, packet.key_phase, |buffer, key| {
+                    packet.encode_packet(key, packet_number_encoder, min_packet_len, buffer)
+                })?;
 
         let (recovery_manager, mut recovery_context) = self.recovery(
             handshake_status,
@@ -309,6 +312,9 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         self.key_set.decrypt_packet(
             packet,
             largest_acked,
+            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.5
+            //# An endpoint SHOULD retain old read keys for no more than three times
+            //# the PTO after having received a packet protected using the new keys.
             datagram.timestamp + rtt_estimator.pto_period(1),
         )
     }

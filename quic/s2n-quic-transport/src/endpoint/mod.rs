@@ -289,18 +289,12 @@ impl<Cfg: Config> Endpoint<Cfg> {
                             }
                             ProcessingError::TransportError(err) => {
                                 //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
-                                //= type=TODO
-                                //= tracking-issue=451
-                                //= feature=AEAD Limits
                                 //# If a key update is not possible or
                                 //# integrity limits are reached, the endpoint MUST stop using the
                                 //# connection and only send stateless resets in response to receiving
                                 //# packets.
 
                                 //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
-                                //= type=TODO
-                                //= tracking-issue=448
-                                //= feature=AEAD Limits
                                 //# If the total number of received packets that fail
                                 //# authentication within the connection, across all keys, exceeds the
                                 //# integrity limit for the selected AEAD, the endpoint MUST immediately

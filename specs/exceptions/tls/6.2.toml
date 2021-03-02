@@ -9,3 +9,15 @@ reason = '''
 Returning this error would indicate that a key update is in progress, revealing information about the state of the connection.
 '''
 
+[[exception]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.2"
+quote = '''
+An endpoint that receives an acknowledgement that is carried in a
+packet protected with old keys where any acknowledged packet was
+protected with newer keys MAY treat that as a connection error of
+type KEY_UPDATE_ERROR.
+'''
+reason = '''
+We allow packets protected with older keys to be received for 1 PTO, then we derive a new key which prevents us from decrypting the old packets.
+'''
+
