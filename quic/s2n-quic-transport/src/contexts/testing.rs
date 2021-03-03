@@ -5,10 +5,12 @@ use s2n_quic_core::{
     endpoint,
     frame::{
         ack_elicitation::{AckElicitable, AckElicitation},
+        congestion_controlled::CongestionControlled,
         FrameMut,
     },
     packet::number::{PacketNumber, PacketNumberSpace},
     time::Timestamp,
+    transmission,
     transmission::Constraint,
     varint::VarInt,
 };
@@ -245,7 +247,24 @@ impl<'a> WriteContext for MockWriteContext<'a> {
         self.frame_buffer.remaining_capacity()
     }
 
-    fn write_frame<Frame: s2n_codec::EncoderValue + AckElicitable>(
+    fn write_frame<Frame: s2n_codec::EncoderValue + AckElicitable + CongestionControlled>(
+        &mut self,
+        frame: &Frame,
+    ) -> Option<PacketNumber> {
+        match self.transmission_constraint() {
+            transmission::Constraint::AmplificationLimited => {
+                unreachable!("frames should not be written when we're amplification limited")
+            }
+            transmission::Constraint::CongestionLimited => {
+                assert!(!frame.is_congestion_controlled());
+            }
+            transmission::Constraint::RetransmissionOnly => {}
+            transmission::Constraint::None => {}
+        }
+        self.frame_buffer.write_frame(frame)
+    }
+
+    fn write_frame_forced<Frame: s2n_codec::EncoderValue + AckElicitable>(
         &mut self,
         frame: &Frame,
     ) -> Option<PacketNumber> {
