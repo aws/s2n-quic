@@ -317,7 +317,14 @@ impl CongestionController for CubicCongestionController {
     fn on_packet_discarded(&mut self, bytes_sent: usize) {
         self.bytes_in_flight
             .try_sub(bytes_sent)
-            .expect("bytes sent should not exceed u32::MAX")
+            .expect("bytes sent should not exceed u32::MAX");
+
+        if let Recovery(recovery_start_time, RequiresTransmission) = self.state {
+            // If any of the discarded packets were lost, they will no longer be retransmitted
+            // so flip the Recovery status back to Idle so it is not waiting for a
+            // retransmission that may never come.
+            self.state = Recovery(recovery_start_time, Idle);
+        }
     }
 }
 
@@ -1171,6 +1178,13 @@ mod test {
         cc.on_packet_discarded(1000);
 
         assert_eq!(cc.bytes_in_flight, 10000 - 1000);
+
+        let now = NoopClock.get_time();
+        cc.state = Recovery(now, FastRetransmission::RequiresTransmission);
+
+        cc.on_packet_discarded(1000);
+
+        assert_eq!(Recovery(now, FastRetransmission::Idle), cc.state);
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.8
