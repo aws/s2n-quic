@@ -1,7 +1,0 @@
-#!/usr/bin/env bash
-
-set -e
-
-./scripts/server-perf/build
-
-sudo env "PATH=$PATH" ./scripts/server-perf/test $@
