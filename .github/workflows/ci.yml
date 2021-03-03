@@ -439,7 +439,7 @@ jobs:
         id: s3
         run: |
           TARGET="${{ github.sha }}/perf"
-          aws s3 cp target/perf/results "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
+          aws s3 sync target/perf/results "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
           URL="$CDN/$TARGET/index.html"
           echo "::set-output name=URL::$URL"
 
