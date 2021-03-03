@@ -107,7 +107,7 @@ impl<'a, Config: connection::Config, P: Payload> PacketPayloadEncoder
             }
 
             if length > 0 {
-                context.buffer.encode(&Padding { length });
+                context.write_frame(&Padding { length });
             }
 
             self.tx_packet_numbers.on_transmit(self.packet_number);
