@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+
+set -e
+
+if ! command -v "inferno-collapse-perf" &> /dev/null; then
+  cargo install inferno
+fi
+
+if [ ! -f target/perf/quinn/bin/client ]; then
+  mkdir -p target/perf/quinn
+  cargo install \
+    --git https://github.com/quinn-rs/quinn \
+    --rev b7e95fdba758e4def6a202fb5c718bf61415cf72 \
+    --bin client \
+    --root target/perf/quinn \
+    --target-dir target/perf/quinn \
+    perf
+fi
+
+RUSTFLAGS="-g" cargo \
+  +stable \
+  build \
+  --bin s2n-quic-qns \
+  --release
+

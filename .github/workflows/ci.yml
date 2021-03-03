@@ -398,9 +398,6 @@ jobs:
 
   perf:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        script: [server]
     steps:
       - uses: actions/checkout@v2
         with:
@@ -419,8 +416,6 @@ jobs:
           sudo sh -c 'echo -1 >/proc/sys/kernel/perf_event_paranoid'
 
       - uses: camshaft/rust-cache@v1
-        with:
-          key: ${{ matrix.script }}
 
       - name: Install inferno
         uses: camshaft/install@v1
@@ -429,10 +424,10 @@ jobs:
           bins: inferno-collapse-perf,inferno-flamegraph
 
       - name: Build
-        run: ./scripts/${{ matrix.script }}-perf/build
+        run: ./scripts/perf/build
 
       - name: Run script
-        run: sudo env "PATH=$PATH" ./scripts/${{ matrix.script }}-perf/test
+        run: sudo env "PATH=$PATH" ./scripts/perf/test-all
 
       - uses: aws-actions/configure-aws-credentials@v1
         with:
@@ -443,14 +438,14 @@ jobs:
       - name: Upload results
         id: s3
         run: |
-          TARGET="${{ github.sha }}/perf/${{ matrix.script }}.svg"
-          aws s3 cp target/perf/1G.svg "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
-          URL="$CDN/$TARGET"
+          TARGET="${{ github.sha }}/perf"
+          aws s3 cp target/perf/results "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
+          URL="$CDN/$TARGET/index.html"
           echo "::set-output name=URL::$URL"
 
       - uses: ouzi-dev/commit-status-updater@v1.1.0
         with:
-          name: 'perf / report (${{ matrix.script }})'
+          name: 'perf / report'
           status: 'success'
           url: "${{ steps.s3.outputs.URL }}"
 

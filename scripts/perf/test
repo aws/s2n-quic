@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+
+set -e
+
+DOWNLOAD_MB=${1:-1000}
+UPLOAD_MB=${2:-0}
+
+TMP=$(mktemp -d -t s2n-quic-perf-XXXXXXXXXX)
+FILE="${DOWNLOAD_MB}MB-down-${UPLOAD_MB}MB-up"
+TITLE="${DOWNLOAD_MB}MB Download, ${UPLOAD_MB}MB Upload"
+DOWNLOAD_B=$(($DOWNLOAD_MB * 1000000))
+UPLOAD_B=$(($UPLOAD_MB * 1000000))
+OUT=target/perf/results
+
+mkdir -p $OUT
+
+perf record \
+  --output $TMP/$FILE.perf \
+  --call-graph dwarf \
+  --event cycles \
+  -- \
+  ./target/release/s2n-quic-qns \
+  perf \
+  server \
+  --connections 1 \
+  --port 4433 &
+PERF_PID=$!
+
+function stop_server() {
+  echo "shutting down server"
+  kill $PERF_PID
+  echo $1
+  exit 1
+}
+
+echo "waiting for server to boot"
+sleep 3
+
+echo "executing request"
+./target/perf/quinn/bin/client \
+  --download-size "$DOWNLOAD_B" \
+  --upload-size "$UPLOAD_B" \
+  --insecure \
+  --duration 10 \
+  localhost:4433 || stop_server "failed to finish the request"
+
+echo "waiting for server to shut down"
+wait $PERF_PID
+
+echo "folding events"
+perf script \
+  --input $TMP/$FILE.perf \
+  2>/dev/null \
+  | inferno-collapse-perf \
+  > $OUT/$FILE.folded
+
+echo "generating flamegraph"
+mkdir -p target/perf/results
+inferno-flamegraph $OUT/$FILE.folded \
+  --title "$TITLE" \
+  > $OUT/$FILE.svg
+
+rm -rf $TMP
+
+echo "flamegraph available in $OUT/$FILE.svg"
