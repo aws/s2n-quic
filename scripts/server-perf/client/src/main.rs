@@ -76,5 +76,10 @@ async fn client(
         Byte::from(bytes_per_sec as u64).get_appropriate_unit(true)
     );
 
+    connection.close(0u16.into(), b"bye");
+
+    // wait until the connection is fully closed
+    endpoint.wait_idle().await;
+
     Ok(())
 }

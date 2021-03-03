@@ -2,58 +2,6 @@
 
 set -e
 
-SIZE=${1:-1G}
-
-DIR=$(mktemp -d -t s2n-quic-perf-XXXXXXXXXX)
-
 ./scripts/server-perf/build
 
-mkdir -p ./target/perf
-
-sudo echo "starting"
-
-sudo sh -c "perf record \
-  --output $DIR/$SIZE.perf \
-  --call-graph dwarf \
- ./target/release/s2n-quic-qns \
-  perf \
-  server \
-  --port 4433" &
-SUDO_PID=$!
-
-function stop_server() {
-  SHELL_PID=$(ps --ppid $SUDO_PID -o pid=)
-  PERF_PID=$(ps --ppid $SHELL_PID -o pid=)
-  sudo kill -SIGINT $PERF_PID
-
-  wait $SUDO_PID || true
-  if [ ! -z "$1" ]; then
-    echo $1
-    exit 1
-  fi
-}
-
-echo "waiting for server to boot"
-sleep 3
-
-echo "executing request"
-./scripts/server-perf/client/target/release/perf-client \
-  https://localhost:4433 --download $SIZE || stop_server "failed to finish the request"
-
-sleep 1
-stop_server
-
-sudo perf script \
-  --input $DIR/$SIZE.perf \
-  2>/dev/null \
-  | inferno-collapse-perf \
-  > $DIR/$SIZE.folded
-
-cat $DIR/$SIZE.folded \
-  | inferno-flamegraph \
-  > ./target/perf/$SIZE.svg
-
-sudo rm -f $DIR/$SIZE.perf
-sudo rm -f $DIR/$SIZE.folded
-
-echo "flamegraph available in ./target/perf/$SIZE.svg"
+sudo env "PATH=$PATH" ./scripts/server-perf/test $@

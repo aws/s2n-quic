@@ -412,6 +412,12 @@ jobs:
           toolchain: stable
           override: true
 
+      - uses: camshaft/gha-perf@v0.1
+
+      - name: Setup perf
+        run: |
+          sudo sh -c 'echo -1 >/proc/sys/kernel/perf_event_paranoid'
+
       - uses: camshaft/rust-cache@v1
         with:
           key: ${{ matrix.script }}
@@ -420,12 +426,13 @@ jobs:
         uses: camshaft/install@v1
         with:
           crate: inferno
+          bins: inferno-collapse-perf,inferno-flamegraph
 
       - name: Build
         run: ./scripts/${{ matrix.script }}-perf/build
 
       - name: Run script
-        run: ./scripts/${{ matrix.script }}-perf/run
+        run: sudo env "PATH=$PATH" ./scripts/${{ matrix.script }}-perf/test
 
       - uses: aws-actions/configure-aws-credentials@v1
         with:
