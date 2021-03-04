@@ -13,6 +13,7 @@ pub struct Key<K> {
 }
 
 // TODO: This should be configured through the limit provider.
+// https://github.com/awslabs/s2n-quic/issues/322
 const KEY_UPDATE_WINDOW: u64 = 10_000;
 
 impl<K: KeyTrait> Key<K>
@@ -23,24 +24,25 @@ where
         Key {
             // TODO: This should be configured through the limit provider, the default being the
             // key's AEAD limit.
+            // https://github.com/awslabs/s2n-quic/issues/322
             confidentiality_limit: key.aead_confidentiality_limit(),
             key,
             encrypted_packets: 0,
         }
     }
 
-    /// If the key has been used passed the confidentiality_limit, it is expired and may not be
-    /// used. We check >= because we don't want to encrypt an additional packet if the key has
-    /// already been used up to the limit.
+    /// Keys used past the confidentiality_limit are expired
     #[inline]
     pub fn expired(&self) -> bool {
+        // We check >= because we don't want to encrypt an additional packet if the key has
+        // already been used up to the limit.
         self.encrypted_packets >= self.confidentiality_limit
     }
 
     /// If the key is within the update window, an update should be initiated.
     #[inline]
     pub fn needs_update(&self) -> bool {
-        self.encrypted_packets > (self.confidentiality_limit - KEY_UPDATE_WINDOW)
+        self.encrypted_packets > (self.confidentiality_limit.saturating_sub(KEY_UPDATE_WINDOW))
     }
 
     pub fn derive_next_key(&self) -> K {

@@ -161,15 +161,8 @@ where
                     //# was invalid (see Section 9.4).
 
                     //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.5
-                    //# An endpoint MAY allow a period of approximately the Probe Timeout
-                    //# (PTO; see [QUIC-RECOVERY]) after receiving a packet that uses the new
-                    //# key generation before it creates the next set of packet protection
-                    //# keys.
-
-                    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.3
-                    //# Endpoints MAY instead defer the creation of the next set of
-                    //# receive packet protection keys until some time after a key update
-                    //# completes, up to three times the PTO; see Section 6.5.
+                    //# An endpoint SHOULD retain old read keys for no more than three times
+                    //# the PTO after having received a packet protected using the new keys.
 
                     //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.1
                     //# An endpoint SHOULD
@@ -225,16 +218,17 @@ where
     pub fn encrypt_packet<'a, F>(
         &mut self,
         buffer: EncoderBuffer<'a>,
-        phase: KeyPhase,
         f: F,
     ) -> Result<(ProtectedPayload<'a>, EncoderBuffer<'a>), PacketEncodingError<'a>>
     where
         F: FnOnce(
             EncoderBuffer<'a>,
             &K,
+            KeyPhase,
         )
             -> Result<(ProtectedPayload<'a>, EncoderBuffer<'a>), PacketEncodingError<'a>>,
     {
+        let phase = self.encryption_phase();
         if self.key_for_phase(phase).expired() {
             //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
             //# If the total number of encrypted packets with the same key
@@ -249,7 +243,7 @@ where
             return Err(PacketEncodingError::AeadLimitReached(buffer));
         }
 
-        let r = f(buffer, self.key_for_phase(phase).key())?;
+        let r = f(buffer, self.key_for_phase(phase).key(), phase)?;
 
         //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
         //# Endpoints MUST count the number of encrypted packets for each set of
@@ -520,7 +514,7 @@ mod tests {
 
         assert_eq!(keyset.active_key().encrypted_packets(), 0);
         assert!(keyset
-            .encrypt_packet(buffer, KeyPhase::Zero, |buffer, _key| {
+            .encrypt_packet(buffer, |buffer, _key, _phase| {
                 let payload = ProtectedPayload::new(0, &mut decoder_bytes);
 
                 Ok((payload, buffer))
@@ -546,7 +540,7 @@ mod tests {
         assert_eq!(keyset.active_key().encrypted_packets(), 0);
         assert_eq!(keyset.active_key().needs_update(), false);
         assert!(keyset
-            .encrypt_packet(buffer, keyset.encryption_phase(), |buffer, _key| {
+            .encrypt_packet(buffer, |buffer, _key, _phase| {
                 let payload = ProtectedPayload::new(0, &mut decoder_bytes);
 
                 Ok((payload, buffer))
@@ -579,12 +573,14 @@ mod tests {
         let mut keyset = KeySet::new(key);
         let mut encoder_bytes = [0; 512];
 
-        // The first 10,000 should be allowed because they are in the window.
-        for _ in 0..limit {
+        // The KeySet chooses the appropriate key phase. Trying to encrypt one more than the limit
+        // will attempt a key update after the first encryption, and fill the update window of the
+        // next key (because the key update never completes).
+        for _ in 0..limit + 1 {
             let buffer = EncoderBuffer::new(&mut encoder_bytes);
             let mut decoder_bytes = [0; 512];
             assert!(keyset
-                .encrypt_packet(buffer, KeyPhase::Zero, |buffer, _key| {
+                .encrypt_packet(buffer, |buffer, _key, _phase| {
                     let payload = ProtectedPayload::new(0, &mut decoder_bytes);
 
                     Ok((payload, buffer))
@@ -607,12 +603,22 @@ mod tests {
             assert_eq!(keyset.key_phase(), KeyPhase::Zero);
         }
 
+        // The key in KeyPhase::Zero will have encrypted a single packet.
+        // Each additional request will be within the KEY_UPDATE_WINDOW, so the next key phase is
+        // used.
+        assert_eq!(keyset.key_for_phase(KeyPhase::Zero).encrypted_packets(), 1);
+
+        // The next key phase should have limit encryptions
+        assert_eq!(
+            keyset.key_for_phase(KeyPhase::One).encrypted_packets(),
+            limit
+        );
+
         // The final encryption should push us over the AEAD limit and we should fail.
-        assert_eq!(keyset.active_key().encrypted_packets(), limit);
         let buffer = EncoderBuffer::new(&mut encoder_bytes);
         let mut decoder_bytes = [0; 512];
         assert!(matches!(
-            keyset.encrypt_packet(buffer, KeyPhase::Zero, |buffer, _key| {
+            keyset.encrypt_packet(buffer, |buffer, _key, _phase| {
                 let payload = ProtectedPayload::new(0, &mut decoder_bytes);
 
                 Ok((payload, buffer))

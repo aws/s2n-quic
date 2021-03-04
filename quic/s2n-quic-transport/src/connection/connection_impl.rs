@@ -761,12 +761,6 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
         }
 
         if let Some((space, handshake_status)) = shared_state.space_manager.application_mut() {
-            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
-            //# If the total number of received packets that fail
-            //# authentication within the connection, across all keys, exceeds the
-            //# integrity limit for the selected AEAD, the endpoint MUST immediately
-            //# close the connection with a connection error of type
-            //# AEAD_LIMIT_REACHED and not process any more packets.
             let packet = space.validate_and_decrypt_packet(
                 packet,
                 datagram,
@@ -801,14 +795,6 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
             // to fix?)
             return Ok(());
         }
-        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
-        //= type=TODO
-        //= tracking-issue=451
-        //= feature=AEAD Limits
-        //# If a key update is not possible or
-        //# integrity limits are reached, the endpoint MUST stop using the
-        //# connection and only send stateless resets in response to receiving
-        //# packets.
 
         Ok(())
     }

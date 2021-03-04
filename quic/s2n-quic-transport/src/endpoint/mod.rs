@@ -294,12 +294,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
                                 //# connection and only send stateless resets in response to receiving
                                 //# packets.
 
-                                //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
-                                //# If the total number of received packets that fail
-                                //# authentication within the connection, across all keys, exceeds the
-                                //# integrity limit for the selected AEAD, the endpoint MUST immediately
-                                //# close the connection with a connection error of type
-                                //# AEAD_LIMIT_REACHED and not process any more packets.
                                 conn.handle_transport_error(shared_state, datagram, err);
                                 return Err(());
                             }
