@@ -200,7 +200,7 @@ jobs:
           pip3 install wheel
           pip3 install --upgrade -r requirements.txt
 
-      - name: Run quic-interop-server
+      - name: Run quic-interop-runner
         working-directory: quic-interop-runner
         run: |
           mkdir -p results
@@ -219,13 +219,38 @@ jobs:
             mv $from $to
           done
           # remove files we don't do anything with to reduce the artifact size
-          find results -name '*.pcap' -exec rm {} \;
           find results -name '*.qlog' -exec rm {} \;
+
+          # Add index files for easy browsing
+          find results -maxdepth 3 -type d -path "*/logs/*/*" | while read from; do
+              tree -H "." \
+                -h \
+                -L 3 \
+                -I 'index.html' \
+                -T "${{ matrix.client }} client / ${{ matrix.server }} server - $(basename $from)" \
+                --noreport \
+                --charset utf-8 \
+                -o $from/index.html \
+                $from
+          done
+
+      - uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-west-1
+
+      - name: Upload to S3
+        id: s3
+        working-directory: quic-interop-runner
+        run: |
+          TARGET="${{ github.sha }}/interop/logs/latest"
+          aws s3 sync results/logs "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
 
       - uses: actions/upload-artifact@v2
         with:
           name: interop-${{ matrix.client }}-client-${{ matrix.server }}-server
-          path: quic-interop-runner/results/
+          path: quic-interop-runner/results/result.json
 
   generate-report:
     runs-on: ubuntu-latest
@@ -310,14 +335,6 @@ jobs:
       - name: Upload to S3
         id: s3
         run: |
-          find results -maxdepth 3 -type d -wholename '*/logs/*' | while read from; do
-            mv $from web/logs/latest/$(basename $from)
-          done
-
-          find web -maxdepth 4 -type d -path "*/logs/latest/*/*" | while read from; do
-              tree -H "." -h -L 3 -T "$(basename $from)" --noreport --charset utf-8 -I "*.html" -o $from/index.html $from
-          done
-
           cp .github/interop/*.html web/
           cp .github/interop/*.js web/
           TARGET="${{ github.sha }}/interop"
