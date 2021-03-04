@@ -288,12 +288,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
                                 // We discard duplicate packets
                             }
                             ProcessingError::TransportError(err) => {
-                                //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
-                                //# If a key update is not possible or
-                                //# integrity limits are reached, the endpoint MUST stop using the
-                                //# connection and only send stateless resets in response to receiving
-                                //# packets.
-
                                 conn.handle_transport_error(shared_state, datagram, err);
                                 return Err(());
                             }
