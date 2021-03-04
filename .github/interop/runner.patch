@@ -59,7 +59,7 @@ index f621800..06f3595 100644
      "image": "martenseemann/quic-go-interop:latest",
      "url": "https://github.com/lucas-clemente/quic-go",
 diff --git a/interop.py b/interop.py
-index 6ad191c..982cb57 100644
+index 6ad191c..30073df 100644
 --- a/interop.py
 +++ b/interop.py
 @@ -124,6 +124,7 @@ class InteropRunner:
@@ -86,6 +86,19 @@ index 6ad191c..982cb57 100644
              "WWW=" + testcase.www_dir() + " "
              "DOWNLOADS=" + testcase.download_dir() + " "
              "SERVER_LOGS=" + server_log_dir.name + " "
+@@ -473,12 +476,6 @@ class InteropRunner:
+                     client,
+                     self._implementations[client]["image"],
+                 )
+-                if not (
+-                    self._check_impl_is_compliant(server)
+-                    and self._check_impl_is_compliant(client)
+-                ):
+-                    logging.info("Not compliant, skipping")
+-                    continue
+ 
+                 # run the test cases
+                 for testcase in self._tests:
 diff --git a/testcases.py b/testcases.py
 index 4854842..d7fb471 100644
 --- a/testcases.py

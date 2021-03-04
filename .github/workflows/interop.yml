@@ -203,7 +203,7 @@ jobs:
       - name: Run quic-interop-runner
         working-directory: quic-interop-runner
         run: |
-          mkdir -p results
+          mkdir -p results/logs
           # enable IPv6 support
           sudo modprobe ip6table_filter
           python3 run.py --client ${{ matrix.client }} --server ${{ matrix.server }} --json results/result.json --debug --log-dir results/logs || true
