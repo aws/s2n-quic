@@ -37,7 +37,7 @@ pub struct Interop {
     #[structopt(long)]
     private_key: Option<PathBuf>,
 
-    #[structopt(long, default_value = "hq-29")]
+    #[structopt(long, default_value = "hq-interop")]
     alpn_protocols: Vec<String>,
 
     #[structopt(long, default_value = ".")]

@@ -78,7 +78,7 @@ mod tests {
         // creates the retry, source_connection_id of the Initial is set to the destination
         // connection id of the retry.
         let packet = packet::initial::Initial {
-            version: 0xff00_0020,
+            version: 0x01,
             destination_connection_id: &retry::example::ODCID[..],
             source_connection_id: &retry::example::DCID[..],
             token: &retry::example::TOKEN[..],

@@ -48,7 +48,7 @@ diff --git a/implementations.json b/implementations.json
 index 708e1ae..efee168 100644
 --- a/implementations.json
 +++ b/implementations.json
-@@ -1,51 +1,51 @@
+@@ -1,4 +1,9 @@
  {
 +  "s2n-quic": {
 +    "image": "awslabs/s2n-quic-qns:latest",
@@ -56,90 +56,8 @@ index 708e1ae..efee168 100644
 +    "role": "server"
 +  },
    "quic-go": {
--    "image": "martenseemann/quic-go-interop:latest",
-+    "image": "martenseemann/quic-go-interop@sha256:eac3cf0ef25574082bdfbe2bb362d30633ac453270732bdc1e3945aabc39ef2d",
+     "image": "martenseemann/quic-go-interop:latest",
      "url": "https://github.com/lucas-clemente/quic-go",
-     "role": "both"
-   },
-   "quicly": {
--    "image": "h2oserver/quicly-interop-runner:latest",
-+    "image": "h2oserver/quicly-interop-runner@sha256:1b0a7d14cd503bbeafc18b6859df75b1b16ea69358e52d67bf2a1d9674223843",
-     "url": "https://github.com/h2o/quicly",
-     "role": "both"
-   },
-   "ngtcp2": {
--    "image": "ghcr.io/ngtcp2/ngtcp2-interop:latest",
-+    "image": "ghcr.io/ngtcp2/ngtcp2-interop@sha256:5d19ddeb7b321dcb25c08f163ae75efbd01c8f2b6c0f5d70b7ff91d69b4a0782",
-     "url": "https://github.com/ngtcp2/ngtcp2",
-     "role": "both"
-   },
--  "quant": {
--    "image": "ntap/quant:interop",
--    "url": "https://github.com/NTAP/quant",
--    "role": "both"
--  },
-   "mvfst": {
--    "image": "lnicco/mvfst-qns:latest",
-+    "image": "lnicco/mvfst-qns@sha256:2b01c44213e953fd9fb0c179eb98e76e964157570ca49dbd0604435dd798060b",
-     "url": "https://github.com/facebookincubator/mvfst",
-     "role": "both"
-   },
-   "quiche": {
--    "image": "cloudflare/quiche-qns:latest",
-+    "image": "cloudflare/quiche-qns@sha256:474e4690ee0c3a6dea9788f19071c71ae727697eba4b0d9d28ddc33a6e5ae4e2",
-     "url": "https://github.com/cloudflare/quiche",
-     "role": "both"
-   },
-   "kwik": {
--    "image": "peterdoornbosch/kwik_n_flupke-interop",
-+    "image": "peterdoornbosch/kwik_n_flupke-interop@sha256:a40ee969a717bf8522659d67363285466e6b5d7dc4b80bb8e5eb4dab374878e4",
-     "url": "https://github.com/ptrd/kwik",
-     "role": "client"
-   },
-   "picoquic": {
--    "image": "privateoctopus/picoquic:latest",
-+    "image": "privateoctopus/picoquic@sha256:60faeaf8bab1c97805f2197bb46e1de4083869fb415164c4f0dffb3e37d0cd45",
-     "url": "https://github.com/private-octopus/picoquic",
-     "role": "both"
-   },
-   "aioquic": {
--    "image": "aiortc/aioquic-qns:latest",
-+    "image": "aiortc/aioquic-qns@sha256:c3f589a897671eea82a97ed6c47b4f578be182880399467d7892b217b2a6f3d7",
-     "url": "https://github.com/aiortc/aioquic",
-     "role": "both"
-   },
-   "neqo": {
--    "image": "neqoquic/neqo-qns:latest",
-+    "image": "neqoquic/neqo-qns@sha256:9037a742f7b79917835e73ce1585746a59e4db054d614a67606126d5e6862ce2",
-     "url": "https://github.com/mozilla/neqo",
-     "role": "both"
-   },
-@@ -55,7 +55,7 @@
-     "role": "server"
-   },
-   "msquic": {
--    "image": "mcr.microsoft.com/msquic/qns:latest",
-+    "image": "mcr.microsoft.com/msquic/qns@sha256:2849b63f85539d760d54c0a6bbacbb720e6c7573dc54b84573bd8abccd4c53b7",
-     "url": "https://github.com/microsoft/msquic",
-     "role": "both"
-   },
-@@ -65,12 +65,12 @@
-     "role": "client"
-   },
-   "xquic": {
--  "image": "kulsk/xquic:latest",
--  "url": "https://github.com/Kulsk/xquic",
--  "role": "both"
-+    "image": "kulsk/xquic@sha256:9632c70650dd21371730e1fc058e6dbbd10d1d8c74cfa886cde9fa26123229f9",
-+    "url": "https://github.com/Kulsk/xquic",
-+    "role": "both"
-   },
-   "lsquic": {
--    "image": "litespeedtech/lsquic-qir:latest",
-+    "image": "litespeedtech/lsquic-qir@sha256:3641e91ea671b1d04093e639bed9c808d5a0264ea8182916e6b4c70bd92c5e54",
-     "url": "https://github.com/litespeedtech/lsquic",
-     "role": "both"
-   }
 diff --git a/interop.py b/interop.py
 index 4dea51d..6b73371 100644
 --- a/interop.py

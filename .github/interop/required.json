@@ -38,7 +38,7 @@
     "picoquic": [],
     "quic-go": ["client"],
     "quiche": ["client"],
-    "quicly": ["client"],
+    "quicly": [],
     "xquic": []
   },
   "transfer": {
@@ -52,7 +52,7 @@
     "picoquic": ["client"],
     "quic-go": ["client"],
     "quiche": ["client"],
-    "quicly": ["client"],
+    "quicly": [],
     "xquic": []
   },
   "longrtt": {
@@ -66,7 +66,7 @@
     "picoquic": ["client"],
     "quic-go": ["client"],
     "quiche": ["client"],
-    "quicly": ["client"],
+    "quicly": [],
     "xquic": []
   },
   "chacha20": {
@@ -94,7 +94,7 @@
     "picoquic": ["client"],
     "quic-go": ["client"],
     "quiche": ["client"],
-    "quicly": ["client"],
+    "quicly": [],
     "xquic": ["client"]
   },
   "retry": {
@@ -108,7 +108,7 @@
     "picoquic": ["client"],
     "quic-go": ["client"],
     "quiche": ["client"],
-    "quicly": ["client"],
+    "quicly": [],
     "xquic": []
   },
   "resumption": {
@@ -150,7 +150,7 @@
     "picoquic": ["client"],
     "quic-go": ["client"],
     "quiche": ["client"],
-    "quicly": ["client"],
+    "quicly": [],
     "xquic": ["client"]
   },
   "keyupdate": {
@@ -192,7 +192,7 @@
     "picoquic": ["client"],
     "quic-go": ["client"],
     "quiche": [],
-    "quicly": ["client"],
+    "quicly": [],
     "xquic": []
   },
   "handshakeloss": {
@@ -220,7 +220,7 @@
     "picoquic": [],
     "quic-go": ["client"],
     "quiche": ["client"],
-    "quicly": ["client"],
+    "quicly": [],
     "xquic": ["client"]
   },
   "handshakecorruption": {
@@ -248,7 +248,7 @@
     "picoquic": ["client"],
     "quic-go": ["client"],
     "quiche": ["client"],
-    "quicly": ["client"],
+    "quicly": [],
     "xquic": ["client"]
   },
   "rebind-addr": {
