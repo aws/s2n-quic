@@ -37,14 +37,10 @@ impl<'a, 'b, Config: connection::Config> WriteContext for Context<'a, 'b, Config
         &mut self,
         frame: &Frame,
     ) -> Option<PacketNumber> {
-        if frame.encoding_size() > self.buffer.remaining_capacity() {
-            return None;
-        }
-
         if cfg!(debug_assertions) {
             match self.transmission_constraint() {
                 transmission::Constraint::AmplificationLimited => {
-                    unreachable!("frames should not be written when we're amplication limited")
+                    unreachable!("frames should not be written when we're amplification limited")
                 }
                 transmission::Constraint::CongestionLimited => {
                     assert!(!frame.is_congestion_controlled());
@@ -52,6 +48,17 @@ impl<'a, 'b, Config: connection::Config> WriteContext for Context<'a, 'b, Config
                 transmission::Constraint::RetransmissionOnly => {}
                 transmission::Constraint::None => {}
             }
+        }
+
+        self.write_frame_forced(frame)
+    }
+
+    fn write_frame_forced<Frame: EncoderValue + AckElicitable + CongestionControlled>(
+        &mut self,
+        frame: &Frame,
+    ) -> Option<PacketNumber> {
+        if frame.encoding_size() > self.buffer.remaining_capacity() {
+            return None;
         }
 
         self.buffer.encode(frame);
@@ -109,6 +116,13 @@ impl<'a, C: WriteContext> WriteContext for RetransmissionContext<'a, C> {
         frame: &Frame,
     ) -> Option<PacketNumber> {
         self.context.write_frame(frame)
+    }
+
+    fn write_frame_forced<Frame: EncoderValue + AckElicitable + CongestionControlled>(
+        &mut self,
+        frame: &Frame,
+    ) -> Option<PacketNumber> {
+        self.context.write_frame_forced(frame)
     }
 
     fn ack_elicitation(&self) -> AckElicitation {

@@ -715,10 +715,13 @@ impl Pto {
                 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
                 //# All probe packets sent on a PTO MUST be ack-eliciting.
 
+                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.5
+                //# Probe packets MUST NOT be blocked by the congestion controller.
+
                 // The early transmission will automatically ensure all initial packets sent by the
                 // client are padded to 1200 bytes
                 if context.ack_elicitation().is_ack_eliciting()
-                    || context.write_frame(&frame::Ping).is_some()
+                    || context.write_frame_forced(&frame::Ping).is_some()
                 {
                     let remaining = remaining - 1;
                     self.state = if remaining == 0 {
@@ -1846,7 +1849,7 @@ mod test {
 
         // One transmission required, not ack eliciting
         manager.pto.state = RequiresTransmission(1);
-        context.write_frame(&frame::Padding { length: 1 });
+        context.write_frame_forced(&frame::Padding { length: 1 });
         assert!(!context.ack_elicitation().is_ack_eliciting());
         manager.on_transmit(&mut context);
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
@@ -1867,7 +1870,7 @@ mod test {
 
         // One transmission required, ack eliciting
         manager.pto.state = RequiresTransmission(1);
-        context.write_frame(&frame::Ping);
+        context.write_frame_forced(&frame::Ping);
         manager.on_transmit(&mut context);
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
         //= type=test

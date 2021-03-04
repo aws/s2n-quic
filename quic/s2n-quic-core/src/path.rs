@@ -150,20 +150,22 @@ impl<CC: CongestionController> Path<CC> {
             //# than three times as many bytes as the number of bytes they have
             //# received.
             transmission::Constraint::AmplificationLimited
-        } else if self.congestion_controller.requires_fast_retransmission() {
-            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.2
-            //# If the congestion window is reduced immediately, a
-            //# single packet can be sent prior to reduction.  This speeds up loss
-            //# recovery if the data in the lost packet is retransmitted and is
-            //# similar to TCP as described in Section 5 of [RFC6675].
-            transmission::Constraint::RetransmissionOnly
         } else if self.congestion_controller.is_congestion_limited() {
-            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7
-            //# An endpoint MUST NOT send a packet if it would cause bytes_in_flight
-            //# (see Appendix B.2) to be larger than the congestion window, unless
-            //# the packet is sent on a PTO timer expiration (see Section 6.2) or
-            //# when entering recovery (see Section 7.3.2).
-            transmission::Constraint::CongestionLimited
+            if self.congestion_controller.requires_fast_retransmission() {
+                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.2
+                //# If the congestion window is reduced immediately, a
+                //# single packet can be sent prior to reduction.  This speeds up loss
+                //# recovery if the data in the lost packet is retransmitted and is
+                //# similar to TCP as described in Section 5 of [RFC6675].
+                transmission::Constraint::RetransmissionOnly
+            } else {
+                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7
+                //# An endpoint MUST NOT send a packet if it would cause bytes_in_flight
+                //# (see Appendix B.2) to be larger than the congestion window, unless
+                //# the packet is sent on a PTO timer expiration (see Section 6.2) or
+                //# when entering recovery (see Section 7.3.2).
+                transmission::Constraint::CongestionLimited
+            }
         } else {
             transmission::Constraint::None
         }
@@ -184,7 +186,10 @@ impl<CC: CongestionController> Path<CC> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::recovery::congestion_controller::testing::Unlimited;
+    use crate::{
+        recovery::{congestion_controller::testing::Unlimited, CubicCongestionController},
+        time::{Clock, NoopClock},
+    };
     use core::time::Duration;
 
     #[test]
@@ -222,13 +227,25 @@ mod tests {
         assert!(unblocked);
         path.on_bytes_transmitted((1200 * 2) + 1);
         assert_eq!(path.at_amplification_limit(), true);
+        assert_eq!(
+            path.transmission_constraint(),
+            transmission::Constraint::AmplificationLimited
+        );
 
         unblocked = path.on_bytes_received(1200);
         assert_eq!(path.at_amplification_limit(), false);
+        assert_eq!(
+            path.transmission_constraint(),
+            transmission::Constraint::None
+        );
         assert!(unblocked);
 
         path.on_bytes_transmitted((1200 * 6) + 1);
         assert_eq!(path.at_amplification_limit(), true);
+        assert_eq!(
+            path.transmission_constraint(),
+            transmission::Constraint::AmplificationLimited
+        );
         unblocked = path.on_bytes_received(1200);
         assert!(!unblocked);
 
@@ -236,6 +253,10 @@ mod tests {
         path.on_bytes_transmitted(24);
         // Validated paths should always be able to transmit
         assert_eq!(path.at_amplification_limit(), false);
+        assert_eq!(
+            path.transmission_constraint(),
+            transmission::Constraint::None
+        );
 
         // If we were already not amplification limited, receiving
         // more bytes doesn't unblock
@@ -302,5 +323,53 @@ mod tests {
         path.on_peer_validated();
 
         assert!(path.is_peer_validated());
+    }
+
+    #[test]
+    fn transmission_constraint_test() {
+        let mut path = Path::new(
+            SocketAddress::default(),
+            connection::PeerId::try_from_bytes(&[]).unwrap(),
+            RTTEstimator::new(Duration::from_millis(30)),
+            CubicCongestionController::new(MINIMUM_MTU),
+            false,
+        );
+        let now = NoopClock.get_time();
+        path.on_validated();
+
+        assert_eq!(
+            path.transmission_constraint(),
+            transmission::Constraint::None
+        );
+
+        // Fill up the congestion controller
+        path.congestion_controller
+            .on_packet_sent(now, path.congestion_controller.congestion_window() as usize);
+
+        assert_eq!(
+            path.transmission_constraint(),
+            transmission::Constraint::CongestionLimited
+        );
+
+        // Lose a byte to enter recovery
+        path.congestion_controller.on_packets_lost(1, false, now);
+
+        assert_eq!(
+            path.transmission_constraint(),
+            transmission::Constraint::RetransmissionOnly
+        );
+
+        // Lose remaining bytes
+        path.congestion_controller.on_packets_lost(
+            path.congestion_controller.congestion_window(),
+            false,
+            now,
+        );
+
+        // Since we are no longer congestion limited, there is no transmission constraint
+        assert_eq!(
+            path.transmission_constraint(),
+            transmission::Constraint::None
+        );
     }
 }

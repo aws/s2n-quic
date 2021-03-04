@@ -107,7 +107,10 @@ impl<'a, Config: connection::Config, P: Payload> PacketPayloadEncoder
             }
 
             if length > 0 {
-                context.buffer.encode(&Padding { length });
+                // Use `write_frame_forced` to bypass congestion controller checks
+                // since we still want to send this packet despite Padding being
+                // congestion controlled.
+                context.write_frame_forced(&Padding { length });
             }
 
             self.tx_packet_numbers.on_transmit(self.packet_number);

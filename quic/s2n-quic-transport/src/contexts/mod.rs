@@ -31,6 +31,14 @@ pub trait WriteContext {
         frame: &Frame,
     ) -> Option<PacketNumber>;
 
+    /// Attempt to write a frame, bypassing congestion controller constraint checks.
+    /// If this was successful the number of the packet that will be used to send
+    /// the frame will be returned.
+    fn write_frame_forced<Frame: EncoderValue + AckElicitable + CongestionControlled>(
+        &mut self,
+        frame: &Frame,
+    ) -> Option<PacketNumber>;
+
     /// Returns the ack elicitation of the current packet
     fn ack_elicitation(&self) -> AckElicitation;
 
