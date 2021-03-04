@@ -55,7 +55,7 @@ where
     }
 
     #[inline]
-    pub fn inc_packet_count(&mut self) {
+    pub fn on_packet_encryption(&mut self) {
         self.encrypted_packets += 1
     }
 

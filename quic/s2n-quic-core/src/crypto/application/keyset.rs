@@ -248,7 +248,7 @@ where
         //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
         //# Endpoints MUST count the number of encrypted packets for each set of
         //# keys.
-        self.key_for_phase_mut(phase).inc_packet_count();
+        self.key_for_phase_mut(phase).on_packet_encryption();
 
         //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.1
         //# An endpoint MUST NOT initiate a
