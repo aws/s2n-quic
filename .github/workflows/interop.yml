@@ -15,7 +15,7 @@ env:
   RUST_BACKTRACE: 1
   # This kept breaking builds so we're pinning for now. We should do our best to keep
   # up with the changes, though.
-  INTEROP_RUNNER_REF: 7221a219e9a0070bfd82b23bdfde3d1b56a7b6a5
+  INTEROP_RUNNER_REF: cd62367f7cf98d16854551fdd8ef6a48ad89d53d
   NETWORK_SIMULATOR_REF: sha256:d36e1ffd9369e41e9fd5cb8d2af5fb69d4bfaf1b1983fc538a5a3bf7777af4ba
   IPERF_ENDPOINT_REF: sha256:cb50cc8019d45d9cad5faecbe46a3c21dd5e871949819a5175423755a9045106
   WIRESHARK_VERSION: 3.4.3
@@ -200,13 +200,13 @@ jobs:
           pip3 install wheel
           pip3 install --upgrade -r requirements.txt
 
-      - name: Run quic-interop-server
+      - name: Run quic-interop-runner
         working-directory: quic-interop-runner
         run: |
-          mkdir -p results
           # enable IPv6 support
           sudo modprobe ip6table_filter
           python3 run.py --client ${{ matrix.client }} --server ${{ matrix.server }} --json results/result.json --debug --log-dir results/logs || true
+          mkdir -p results/logs
 
       - name: Prepare artifacts
         working-directory: quic-interop-runner
@@ -219,13 +219,38 @@ jobs:
             mv $from $to
           done
           # remove files we don't do anything with to reduce the artifact size
-          find results -name '*.pcap' -exec rm {} \;
           find results -name '*.qlog' -exec rm {} \;
+
+          # Add index files for easy browsing
+          find results -maxdepth 3 -type d -path "*/logs/*/*" | while read from; do
+              tree -H "." \
+                -h \
+                -L 3 \
+                -I 'index.html' \
+                -T "${{ matrix.client }} client / ${{ matrix.server }} server - $(basename $from)" \
+                --noreport \
+                --charset utf-8 \
+                -o $from/index.html \
+                $from
+          done
+
+      - uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-west-1
+
+      - name: Upload to S3
+        id: s3
+        working-directory: quic-interop-runner
+        run: |
+          TARGET="${{ github.sha }}/interop/logs/latest"
+          aws s3 sync results/logs "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
 
       - uses: actions/upload-artifact@v2
         with:
           name: interop-${{ matrix.client }}-client-${{ matrix.server }}-server
-          path: quic-interop-runner/results/
+          path: quic-interop-runner/results/result.json
 
   generate-report:
     runs-on: ubuntu-latest
@@ -310,14 +335,6 @@ jobs:
       - name: Upload to S3
         id: s3
         run: |
-          find results -maxdepth 3 -type d -wholename '*/logs/*' | while read from; do
-            mv $from web/logs/latest/$(basename $from)
-          done
-
-          find web -maxdepth 4 -type d -path "*/logs/latest/*/*" | while read from; do
-              tree -H "." -h -L 3 -T "$(basename $from)" --noreport --charset utf-8 -I "*.html" -o $from/index.html $from
-          done
-
           cp .github/interop/*.html web/
           cp .github/interop/*.js web/
           TARGET="${{ github.sha }}/interop"

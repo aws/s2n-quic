@@ -9,7 +9,7 @@ index b26b2f8..b7652af 100755
  set -e
  
 diff --git a/docker-compose.yml b/docker-compose.yml
-index c203219..83896f5 100644
+index 7541cae..12f9c70 100644
 --- a/docker-compose.yml
 +++ b/docker-compose.yml
 @@ -40,6 +40,7 @@ services:
@@ -17,18 +17,18 @@ index c203219..83896f5 100644
        - QLOGDIR=/logs/qlog/
        - TESTCASE=$TESTCASE_SERVER
 +      - TEST_TYPE=$TEST_TYPE
+       - VERSION=$VERSION
      depends_on:
        - sim
-     cap_add: 
-@@ -67,6 +68,7 @@ services:
+@@ -68,6 +69,7 @@ services:
        - SSLKEYLOGFILE=/logs/keys.log
        - QLOGDIR=/logs/qlog/
        - TESTCASE=$TESTCASE_CLIENT
 +      - TEST_TYPE=$TEST_TYPE
        - REQUESTS=$REQUESTS
+       - VERSION=$VERSION
      depends_on:
-       - sim
-@@ -79,6 +81,7 @@ services:
+@@ -81,6 +83,7 @@ services:
          ipv4_address: 193.167.0.100
          ipv6_address: fd00:cafe:cafe:0::100
      extra_hosts:
@@ -36,7 +36,7 @@ index c203219..83896f5 100644
        - "server4:193.167.100.100"
        - "server6:fd00:cafe:cafe:100::100"
        - "server46:193.167.100.100"
-@@ -124,6 +127,7 @@ services:
+@@ -126,6 +129,7 @@ services:
          ipv4_address: 193.167.0.90
          ipv6_address: fd00:cafe:cafe:0::90
      extra_hosts:
@@ -45,7 +45,7 @@ index c203219..83896f5 100644
        - "server6:fd00:cafe:cafe:100::110"
        - "server46:193.167.100.110"
 diff --git a/implementations.json b/implementations.json
-index f621800..06f3595 100644
+index 708e1ae..b422723 100644
 --- a/implementations.json
 +++ b/implementations.json
 @@ -1,4 +1,9 @@
@@ -59,7 +59,7 @@ index f621800..06f3595 100644
      "image": "martenseemann/quic-go-interop:latest",
      "url": "https://github.com/lucas-clemente/quic-go",
 diff --git a/interop.py b/interop.py
-index 6ad191c..982cb57 100644
+index 4dea51d..1ae8f68 100644
 --- a/interop.py
 +++ b/interop.py
 @@ -124,6 +124,7 @@ class InteropRunner:
@@ -86,8 +86,21 @@ index 6ad191c..982cb57 100644
              "WWW=" + testcase.www_dir() + " "
              "DOWNLOADS=" + testcase.download_dir() + " "
              "SERVER_LOGS=" + server_log_dir.name + " "
+@@ -474,12 +477,6 @@ class InteropRunner:
+                     client,
+                     self._implementations[client]["image"],
+                 )
+-                if not (
+-                    self._check_impl_is_compliant(server)
+-                    and self._check_impl_is_compliant(client)
+-                ):
+-                    logging.info("Not compliant, skipping")
+-                    continue
+ 
+                 # run the test cases
+                 for testcase in self._tests:
 diff --git a/testcases.py b/testcases.py
-index 4854842..d7fb471 100644
+index 1d81d25..4ec44da 100644
 --- a/testcases.py
 +++ b/testcases.py
 @@ -90,6 +90,10 @@ class TestCase(abc.ABC):
