@@ -41,11 +41,6 @@ impl Constraint {
         matches!(self, Self::Probing)
     }
 
-    /// True if there are no constraints
-    pub fn is_none(self) -> bool {
-        matches!(self, Self::None)
-    }
-
     /// True if new data can be transmitted
     pub fn can_transmit(self) -> bool {
         self.is_none() || self.is_probing()
@@ -54,5 +49,10 @@ impl Constraint {
     /// True if lost data can be retransmitted
     pub fn can_retransmit(self) -> bool {
         self.can_transmit() || self.is_retransmission_only()
+    }
+
+    /// True if there are no constraints
+    fn is_none(self) -> bool {
+        matches!(self, Self::None)
     }
 }

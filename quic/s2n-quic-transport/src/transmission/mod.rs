@@ -81,10 +81,9 @@ impl<'a, Config: connection::Config, P: Payload> PacketPayloadEncoder
         let did_send_ack = self.ack_manager.on_transmit(&mut context);
 
         // Payloads can only transmit and retransmit
-        if matches!(
-            context.transmission_constraint(),
-            transmission::Constraint::None | transmission::Constraint::RetransmissionOnly
-        ) {
+        if context.transmission_constraint().can_transmit()
+            || context.transmission_constraint().can_retransmit()
+        {
             self.payload.on_transmit(&mut context);
         }
 

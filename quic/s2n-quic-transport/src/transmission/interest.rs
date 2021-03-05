@@ -30,15 +30,12 @@ impl Interest {
             // a component wants to try to recover so ignore limits
             (Interest::Forced, _) => true,
 
-            // transmit lost data when we're either not limited or we want to do a fast
+            // transmit lost data when we're either not limited, probing, or we want to do a fast
             // retransmission to try to recover
-            (Interest::LostData, Constraint::None) => true,
-            (Interest::LostData, Constraint::RetransmissionOnly) => true,
-            (Interest::LostData, _) => false,
+            (Interest::LostData, _) => limit.can_retransmit(),
 
-            // new data may only be transmitted when we're not limited
-            (Interest::NewData, Constraint::None) => true,
-            (Interest::NewData, _) => false,
+            // new data may only be transmitted when we're not limited or probing
+            (Interest::NewData, _) => limit.can_transmit(),
 
             // nothing is interested in transmitting anything
             (Interest::None, _) => false,
@@ -107,6 +104,12 @@ mod test {
         assert!(!NewData.can_transmit(RetransmissionOnly));
         assert!(LostData.can_transmit(RetransmissionOnly));
         assert!(Forced.can_transmit(RetransmissionOnly));
+
+        // Probing
+        assert!(!None.can_transmit(Constraint::Probing));
+        assert!(NewData.can_transmit(Constraint::Probing));
+        assert!(LostData.can_transmit(Constraint::Probing));
+        assert!(Forced.can_transmit(Constraint::Probing));
 
         // No Constraint
         assert!(!None.can_transmit(Constraint::None));
