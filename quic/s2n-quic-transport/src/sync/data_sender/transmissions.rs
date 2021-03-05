@@ -203,8 +203,14 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
         Ok(())
     }
 
-    pub fn finish(&mut self) {
+    /// Remove all inflight transmissions
+    pub fn clear(&mut self) {
         self.in_flight.clear();
+    }
+
+    /// Remove all inflight transmissions and finish the flow controller
+    pub fn finish(&mut self) {
+        self.clear();
         self.flow_controller.finish();
     }
 }

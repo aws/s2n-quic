@@ -304,6 +304,8 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
             } else {
                 // the pending list was completely cleared
                 self.buffer.release_all();
+                // We don't need to track transmissions for already acked ranges
+                self.transmissions.clear();
             }
         }
 
