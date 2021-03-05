@@ -433,7 +433,7 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
                     break;
                 }
 
-                let interval_end = interval.end_inclusive().min(starting_transmission_offset);
+                let interval_end = interval.end_exclusive().min(starting_transmission_offset);
 
                 self.transmissions.transmit_interval(
                     &mut viewer,
