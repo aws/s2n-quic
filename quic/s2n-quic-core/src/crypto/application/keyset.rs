@@ -250,15 +250,6 @@ where
         //# keys.
         self.key_for_phase_mut(phase).on_packet_encryption();
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.1
-        //# An endpoint MUST NOT initiate a
-        //# subsequent key update unless it has received an acknowledgment for a
-        //# packet that was sent protected with keys from the current key phase.
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.1
-        //# An endpoint MUST retain old keys until it has successfully
-        //# unprotected a packet sent using the new keys.
-
         Ok(r)
     }
 
@@ -318,44 +309,6 @@ mod tests {
     use core::time::Duration;
     use s2n_codec::{DecoderBufferMut, EncoderBuffer};
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.3
-    //= type=test
-    //# Endpoints MAY instead defer the creation of the next set of
-    //# receive packet protection keys until some time after a key update
-    //# completes, up to three times the PTO; see Section 6.5.
-
-    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.3
-    //= type=test
-    //# Endpoints responding to an apparent key update MUST NOT generate a
-    //# timing side-channel signal that might indicate that the Key Phase bit
-    //# was invalid (see Section 9.4).
-
-    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.5
-    //= type=test
-    //# An endpoint MAY allow a period of approximately the Probe Timeout
-    //# (PTO; see [QUIC-RECOVERY]) after receiving a packet that uses the new
-    //# key generation before it creates the next set of packet protection
-    //# keys.
-
-    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.1
-    //= type=test
-    //# An endpoint SHOULD
-    //# retain old keys for some time after unprotecting a packet sent using
-    //# the new keys.
-
-    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.5
-    //= type=test
-    //# After this period, old read keys and their corresponding secrets
-    //# SHOULD be discarded.
-
-    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.5
-    //= type=test
-    //# These updated keys MAY replace the previous keys at that time.
-
-    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.5
-    //= type=test
-    //# An endpoint SHOULD retain old read keys for no more than three times
-    //# the PTO after having received a packet protected using the new keys.
     #[test]
     fn test_key_derivation_timer() {
         let mut clock = Clock::default();
@@ -367,10 +320,20 @@ mod tests {
 
         clock.inc_by(Duration::from_millis(8));
         keyset.on_timeout(clock.get_time());
+        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.1
+        //= type=test
+        //# An endpoint SHOULD
+        //# retain old keys for some time after unprotecting a packet sent using
+        //# the new keys.
         assert_eq!(keyset.key_for_phase(KeyPhase::Zero).key().derivations, 0);
 
         clock.inc_by(Duration::from_millis(8));
         keyset.on_timeout(clock.get_time());
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.5
+        //= type=test
+        //# After this period, old read keys and their corresponding secrets
+        //# SHOULD be discarded.
         assert_eq!(keyset.key_for_phase(KeyPhase::Zero).key().derivations, 2);
     }
 
@@ -396,11 +359,6 @@ mod tests {
         assert_eq!(keyset.active_key().key().derivations, 1);
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.3
-    //= type=test
-    //# Once generated, the next set of packet protection keys SHOULD be
-    //# retained, even if the packet that was received was subsequently
-    //# discarded.
     #[test]
     fn test_key_derivation() {
         let mut keyset = KeySet::new(TestKey::default());
@@ -439,12 +397,6 @@ mod tests {
             )
             .unwrap();
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
-        //= type=test
-        //# If a key update is not possible or
-        //# integrity limits are reached, the endpoint MUST stop using the
-        //# connection and only send stateless resets in response to receiving
-        //# packets.
         assert_eq!(keyset.decryption_error_count(), 0);
         assert!(keyset
             .decrypt_packet(
@@ -586,17 +538,6 @@ mod tests {
                     Ok((payload, buffer))
                 })
                 .is_ok());
-
-            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.1
-            //= type=test
-            //# An endpoint MUST NOT initiate a
-            //# subsequent key update unless it has received an acknowledgment for a
-            //# packet that was sent protected with keys from the current key phase.
-
-            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.1
-            //= type=test
-            //# An endpoint MUST retain old keys until it has successfully
-            //# unprotected a packet sent using the new keys.
 
             // As long as the keyphase is constant, we have not initiated any KeyUpdate, and we
             // have not derived any new keys.
