@@ -20,8 +20,8 @@ if [ ! -d $INTEROP_DIR/.venv ]; then
   cd $INTEROP_DIR
   python3 -m venv .venv
   source .venv/bin/activate
-  pip install --upgrade pip
-  pip install wheel
+  pip3 install --upgrade pip
+  pip3 install wheel
   cd ../../
 fi
 
@@ -50,7 +50,7 @@ pip install --upgrade -r requirements.txt
 
 case "$@" in
    pull)
-     python pull.py
+     python3 pull.py
      exit 0
      ;;
    *)
@@ -58,4 +58,4 @@ case "$@" in
      ;;
 esac
 
-python run.py --server s2n-quic --debug "$@"
+python3 run.py --server s2n-quic --debug "$@"

@@ -46,8 +46,8 @@ pub mod testing {
 
     impl Default for Key {
         fn default() -> Self {
-            // These default derivationss are simply to make it easy to create this object and pass
-            // tests. There is no reason for the actual derivationss beyond that.
+            // These default derivations are simply to make it easy to create this object and pass
+            // tests. There is no reason for the actual derivations beyond that.
             Self {
                 confidentiality_limit: 64,
                 integrity_limit: 64,

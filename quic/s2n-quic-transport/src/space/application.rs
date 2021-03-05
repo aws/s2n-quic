@@ -49,6 +49,10 @@ pub struct ApplicationSpace<Config: connection::Config> {
     //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.3
     //# For this reason, endpoints MUST be able to retain two sets of packet
     //# protection keys for receiving packets: the current and the next.
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.1
+    //# An endpoint MUST NOT initiate a key update prior to having confirmed
+    //# the handshake (Section 4.1.2).
     key_set: KeySet<<Config::TLSSession as CryptoSuite>::OneRTTCrypto>,
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7
@@ -152,21 +156,20 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
             tx_packet_numbers: &mut self.tx_packet_numbers,
         };
 
-        let packet = Short {
-            destination_connection_id: destination_connection_id.as_ref(),
-            spin_bit: self.spin_bit,
-            key_phase: self.key_set.key_phase(),
-            packet_number,
-            payload,
-        };
-
+        let spin_bit = self.spin_bit;
         let min_packet_len = context.min_packet_len;
-        let (_protected_packet, buffer) = self
-            .key_set
-            .active_key_mut()
-            .encode_packet(buffer, |buffer, key| {
-                packet.encode_packet(key, packet_number_encoder, min_packet_len, buffer)
-            })?;
+        let (_protected_packet, buffer) =
+            self.key_set
+                .encrypt_packet(buffer, |buffer, key, key_phase| {
+                    let packet = Short {
+                        destination_connection_id: destination_connection_id.as_ref(),
+                        spin_bit,
+                        key_phase,
+                        packet_number,
+                        payload,
+                    };
+                    packet.encode_packet(key, packet_number_encoder, min_packet_len, buffer)
+                })?;
 
         let (recovery_manager, mut recovery_context) = self.recovery(
             handshake_status,
@@ -309,6 +312,16 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         self.key_set.decrypt_packet(
             packet,
             largest_acked,
+            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.3
+            //# Endpoints MAY instead defer the creation of the next set of
+            //# receive packet protection keys until some time after a key update
+            //# completes, up to three times the PTO; see Section 6.5.
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.5
+            //# An endpoint MAY allow a period of approximately the Probe Timeout
+            //# (PTO; see [QUIC-RECOVERY]) after receiving a packet that uses the new
+            //# key generation before it creates the next set of packet protection
+            //# keys.
             datagram.timestamp + rtt_estimator.pto_period(1),
         )
     }
