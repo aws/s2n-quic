@@ -259,6 +259,7 @@ impl<'a> WriteContext for MockWriteContext<'a> {
                 assert!(!frame.is_congestion_controlled());
             }
             transmission::Constraint::RetransmissionOnly => {}
+            transmission::Constraint::Probing => {}
             transmission::Constraint::None => {}
         }
         self.frame_buffer.write_frame(frame)

@@ -93,7 +93,7 @@ impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, 
 
             //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.5
             //# Probe packets MUST NOT be blocked by the congestion controller.
-            transmission::Constraint::None
+            transmission::Constraint::Probing
         } else {
             self.context.path().transmission_constraint()
         };

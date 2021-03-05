@@ -43,6 +43,13 @@ pub trait FrameWriter: Default {
     /// to allocate an associated tracking state on sender and receiver side.
     const MIN_WRITE_SIZE: usize = 32;
 
+    /// Indicates that this writer will retransmit unacknowledged data in probe
+    /// packets.
+    ///
+    /// If set to `true`, the data sender will retransmit pending data if the
+    /// transmission::Constraint is `PROBING`
+    const RETRANSMIT_IN_PROBE: bool = false;
+
     /// Asks the writer to write a frame for the given chunk of data at the offset
     /// provided. The implementation should ensure the view fits by calling `trim_off`.
     ///

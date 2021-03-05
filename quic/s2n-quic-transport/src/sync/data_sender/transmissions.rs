@@ -69,24 +69,26 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
         state: &mut State,
         writer_context: Writer::Context,
         context: &mut W,
-    ) -> Result<(), OnTransmitError> {
+    ) -> Result<bool, OnTransmitError> {
         // make sure we've got something to transmit
         if set.is_empty() {
-            return Ok(());
+            return Ok(false);
         }
 
         let mut viewer = buffer.viewer();
 
+        let mut has_transmitted = false;
         while let Some(mut interval) = set.pop_min() {
             match self.transmit_interval(&mut viewer, interval, state, writer_context, context) {
                 Ok(transmitted) => {
+                    has_transmitted = true;
                     let len = transmitted.len();
                     if len != interval.len() {
                         // only a part of the range was written so push back what wasn't
                         interval.start += len;
                         debug_assert!(interval.is_valid());
                         set.insert_front(interval).unwrap();
-                        return Ok(());
+                        return Ok(has_transmitted);
                     }
                 }
                 Err(err) => {
@@ -97,7 +99,7 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
             }
         }
 
-        Ok(())
+        Ok(has_transmitted)
     }
 
     pub fn transmit_interval<W: WriteContext>(

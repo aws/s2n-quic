@@ -78,6 +78,15 @@ impl FrameWriter for Crypto {
     //# have a FIN bit.
     const WRITES_FIN: bool = false;
 
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
+    //# When the PTO timer expires, an ack-eliciting packet MUST be sent.  An
+    //# endpoint SHOULD include new data in this packet.  Previously sent
+    //# data MAY be sent if no new data can be sent.
+    // Allow already transmitted, unacked crypto frames to be included in
+    // probe packets in anticipation the crypto frames were lost. This will
+    // help the handshake recover from packet loss.
+    const RETRANSMIT_IN_PROBE: bool = true;
+
     fn write_chunk<W: WriteContext>(
         &self,
         offset: VarInt,

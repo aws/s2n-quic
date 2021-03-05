@@ -295,6 +295,10 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
         }
 
         if any_acked {
+            // Remove any newly acked intervals from lost
+            self.lost
+                .intersection(pending)
+                .expect("lost has no interval limit");
             if let Some(first) = self.pending.min_value() {
                 self.buffer.release(first);
             } else {
@@ -336,6 +340,11 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
         // no longer blocked on waiting for flow control windows
         if any_lost {
             self.flow_controller_mut().clear_blocked();
+            // Remove any lost intervals that had already been sent
+            // and acked in a different packet
+            self.lost
+                .intersection(&self.pending)
+                .expect("lost has no interval limit");
         }
 
         self.check_integrity();
@@ -363,9 +372,10 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
     ) -> Result<(), OnTransmitError> {
         let constraint = context.transmission_constraint();
 
+        let mut transmitted_lost = false;
         // try to retransmit any lost ranges first
         if constraint.can_retransmit() {
-            self.transmissions.transmit_set(
+            transmitted_lost = self.transmissions.transmit_set(
                 &self.buffer,
                 &mut self.lost,
                 &mut self.state,
@@ -378,6 +388,8 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
 
         // try to transmit the enqueued ranges
         let total_len = self.buffer.total_len();
+
+        let starting_transmission_offset = self.transmission_offset;
 
         if !is_blocked && constraint.can_transmit() && self.transmission_offset < total_len {
             let mut viewer = self.buffer.viewer();
@@ -402,6 +414,37 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
             )?;
         }
 
+        // If the current transmission is a probe, we can include some already transmitted,
+        // unacknowledged data in the probe packet since there is a higher likelihood this
+        // data has been lost. If lost data has already been written to the packet, we
+        // skip this feature as an optimization to avoid having to filter out already written
+        // lost data. Since it is unlikely there is lost data requiring retransmission at the
+        // same time as a probe transmission is being sent, this optimization does not have
+        // much impact on the effectiveness of this feature.
+        let retransmit_unacked_data_in_probe =
+            Writer::RETRANSMIT_IN_PROBE && constraint.is_probing() && !transmitted_lost;
+
+        if retransmit_unacked_data_in_probe {
+            let mut viewer = self.buffer.viewer();
+
+            for interval in self.pending.intervals() {
+                if interval.start >= starting_transmission_offset {
+                    // Don't write data we've already written to this packet
+                    break;
+                }
+
+                let interval_end = interval.end_inclusive().min(starting_transmission_offset);
+
+                self.transmissions.transmit_interval(
+                    &mut viewer,
+                    (interval.start..interval_end).into(),
+                    &mut self.state,
+                    writer_context,
+                    context,
+                )?;
+            }
+        }
+
         self.check_integrity();
 
         Ok(())
@@ -410,6 +453,7 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
     #[inline]
     fn check_integrity(&self) {
         if cfg!(debug_assertions) {
+            // TODO: assert!(self.lost.is_subset(&self.pending));
             if self.pending.is_empty() {
                 assert!(self.lost.is_empty());
                 assert!(self.transmissions.is_empty());
@@ -490,7 +534,7 @@ mod tests {
     enum Event {
         Push(#[generator(1..)] u16),
         Finish,
-        Transmit(u16),
+        Transmit(u16, transmission::Constraint),
         IncFlowControl(u16),
         Ack(usize),
         Loss(usize),
@@ -556,10 +600,11 @@ mod tests {
                     sender.finish();
                     is_finished = true;
                 }
-                Event::Transmit(capacity) => {
+                Event::Transmit(capacity, constraint) => {
                     let interest = sender.transmission_interest();
 
                     let prev_len = context.frame_buffer.len();
+                    context.transmission_constraint = constraint;
 
                     context
                         .frame_buffer

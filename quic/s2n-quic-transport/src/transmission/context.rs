@@ -46,6 +46,7 @@ impl<'a, 'b, Config: connection::Config> WriteContext for Context<'a, 'b, Config
                     assert!(!frame.is_congestion_controlled());
                 }
                 transmission::Constraint::RetransmissionOnly => {}
+                transmission::Constraint::Probing => {}
                 transmission::Constraint::None => {}
             }
         }
