@@ -1051,14 +1051,14 @@ mod test {
     }
 
     #[test]
-    fn congestion_avoidance_with_zero_min_rtt() {
+    fn congestion_avoidance_with_small_min_rtt() {
         let max_datagram_size = 1200;
         let mut cc = CubicCongestionController::new(max_datagram_size);
         cc.bytes_in_flight = BytesInFlight::new(100);
         cc.congestion_window = 80_000.0;
         cc.cubic.w_max = cc.congestion_window / 1200.0;
 
-        cc.congestion_avoidance(Duration::from_millis(10), Duration::from_millis(0), 100);
+        cc.congestion_avoidance(Duration::from_millis(100), Duration::from_millis(1), 100);
 
         // Verify the window grew by half the sent bytes
         assert_delta!(cc.congestion_window, 80_050.0, 0.001);
