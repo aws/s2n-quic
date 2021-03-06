@@ -55,8 +55,8 @@ impl RTTEstimator {
         let rttvar = DEFAULT_INITIAL_RTT / 2;
 
         Self {
-            latest_rtt: ZERO_DURATION,
-            min_rtt: ZERO_DURATION,
+            latest_rtt: DEFAULT_INITIAL_RTT,
+            min_rtt: DEFAULT_INITIAL_RTT,
             smoothed_rtt,
             rttvar,
             max_ack_delay,
@@ -271,8 +271,8 @@ mod test {
     #[test]
     fn initial_rtt() {
         let rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
-        assert_eq!(rtt_estimator.min_rtt, Duration::from_millis(0));
-        assert_eq!(rtt_estimator.latest_rtt(), Duration::from_millis(0));
+        assert_eq!(rtt_estimator.min_rtt, DEFAULT_INITIAL_RTT);
+        assert_eq!(rtt_estimator.latest_rtt(), DEFAULT_INITIAL_RTT);
         assert_eq!(rtt_estimator.smoothed_rtt(), DEFAULT_INITIAL_RTT);
         assert_eq!(rtt_estimator.rttvar(), DEFAULT_INITIAL_RTT / 2);
         assert_eq!(
