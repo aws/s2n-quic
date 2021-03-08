@@ -357,6 +357,9 @@ impl CubicCongestionController {
     fn congestion_avoidance(&mut self, t: Duration, rtt: Duration, sent_bytes: usize) {
         let w_cubic = self.cubic.w_cubic(t);
         let w_est = self.cubic.w_est(t, rtt);
+        // limit the window increase to half the acked bytes
+        // as the Linux implementation of Cubic does.
+        let max_cwnd = self.congestion_window + sent_bytes as f32 / 2.0;
 
         if w_cubic < w_est {
             // TCP-Friendly Region
@@ -365,7 +368,7 @@ impl CubicCongestionController {
             //# or less than W_max), CUBIC checks whether W_cubic(t) is less than
             //# W_est(t).  If so, CUBIC is in the TCP-friendly region and cwnd SHOULD
             //# be set to W_est(t) at each reception of an ACK.
-            self.congestion_window = self.packets_to_bytes(w_est);
+            self.congestion_window = self.packets_to_bytes(w_est).min(max_cwnd);
         } else {
             //= https://tools.ietf.org/rfc/rfc8312#4.1
             //# Upon receiving an ACK during congestion avoidance, CUBIC computes the
@@ -413,13 +416,9 @@ impl CubicCongestionController {
 
             let window_increase_rate =
                 (target_congestion_window - self.congestion_window) / self.congestion_window;
-            // Convert the increase rate to bytes and limit to half the acked bytes as the Linux
-            // implementation of Cubic does.
-            let window_increment = self
-                .packets_to_bytes(window_increase_rate)
-                .min(sent_bytes as f32 / 2.0);
+            let window_increment = self.packets_to_bytes(window_increase_rate);
 
-            self.congestion_window += window_increment;
+            self.congestion_window = (self.congestion_window + window_increment).min(max_cwnd);
         }
     }
 
@@ -969,6 +968,7 @@ mod test {
         assert_eq!(cc.bytes_in_flight, 1000);
 
         // t10: Enter Congestion Avoidance
+        cc.cubic.w_max = 6.0;
         cc.state = CongestionAvoidance(now + Duration::from_secs(10));
 
         // t15: Send a packet in Congestion Avoidance while under utilized
@@ -1048,6 +1048,20 @@ mod test {
 
         // Verify congestion window did not change
         assert_delta!(cc.congestion_window, prev_cwnd, 0.001);
+    }
+
+    #[test]
+    fn congestion_avoidance_with_small_min_rtt() {
+        let max_datagram_size = 1200;
+        let mut cc = CubicCongestionController::new(max_datagram_size);
+        cc.bytes_in_flight = BytesInFlight::new(100);
+        cc.congestion_window = 80_000.0;
+        cc.cubic.w_max = cc.congestion_window / 1200.0;
+
+        cc.congestion_avoidance(Duration::from_millis(100), Duration::from_millis(1), 100);
+
+        // Verify the window grew by half the sent bytes
+        assert_delta!(cc.congestion_window, 80_050.0, 0.001);
     }
 
     #[test]
@@ -1372,13 +1386,13 @@ mod test {
         let mut cc = CubicCongestionController::new(5000);
 
         cc.congestion_window = 10000.0;
-        cc.cubic.w_max = 30.0;
+        cc.cubic.w_max = 2.5;
         cc.cubic.k = Duration::from_secs_f32(2.823);
 
-        let t = Duration::from_millis(4400);
-        let rtt = Duration::from_millis(200);
+        let t = Duration::from_millis(300);
+        let rtt = Duration::from_millis(250);
 
-        cc.congestion_avoidance(t, rtt, 1000);
+        cc.congestion_avoidance(t, rtt, 5000);
 
         assert!(cc.cubic.w_cubic(t) < cc.cubic.w_est(t, rtt));
         assert_delta!(cc.congestion_window, cc.cubic.w_est(t, rtt) * 5000.0, 0.001);
