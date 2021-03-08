@@ -235,7 +235,7 @@ impl Manager {
         } else {
             self.pto.update(
                 pto_base_timestamp,
-                path.rtt_estimator.pto_period(path.pto_backoff, &self.space),
+                path.rtt_estimator.pto_period(path.pto_backoff, self.space),
             );
         }
     }
@@ -805,7 +805,7 @@ mod test {
 
         manager
             .pto
-            .update(now, path.rtt_estimator.pto_period(path.pto_backoff, &space));
+            .update(now, path.rtt_estimator.pto_period(path.pto_backoff, space));
 
         assert!(manager.pto.timer.is_armed());
         assert_eq!(
@@ -1684,7 +1684,7 @@ mod test {
 
         manager
             .pto
-            .update(now, path.rtt_estimator.pto_period(path.pto_backoff, &space));
+            .update(now, path.rtt_estimator.pto_period(path.pto_backoff, space));
 
         assert!(manager.pto.timer.is_armed());
         assert!(manager.pto.timer.iter().next().cloned().unwrap() >= now + K_GRANULARITY);

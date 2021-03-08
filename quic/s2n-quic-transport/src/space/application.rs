@@ -322,7 +322,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
             //# (PTO; see [QUIC-RECOVERY]) after receiving a packet that uses the new
             //# key generation before it creates the next set of packet protection
             //# keys.
-            datagram.timestamp + rtt_estimator.pto_period(1, &PacketNumberSpace::ApplicationData),
+            datagram.timestamp + rtt_estimator.pto_period(1, PacketNumberSpace::ApplicationData),
         )
     }
 }

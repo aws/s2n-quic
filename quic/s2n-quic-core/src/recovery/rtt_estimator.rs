@@ -92,7 +92,7 @@ impl RTTEstimator {
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
     //# The PTO period is the amount of time that a sender ought to wait for
     //# an acknowledgement of a sent packet.
-    pub fn pto_period(&self, pto_backoff: u32, space: &PacketNumberSpace) -> Duration {
+    pub fn pto_period(&self, pto_backoff: u32, space: PacketNumberSpace) -> Duration {
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
         //# When an ack-eliciting packet is transmitted, the sender schedules a
         //# timer for the PTO period as follows:
@@ -278,15 +278,15 @@ mod test {
         assert_eq!(rtt_estimator.smoothed_rtt(), DEFAULT_INITIAL_RTT);
         assert_eq!(rtt_estimator.rttvar(), DEFAULT_INITIAL_RTT / 2);
         assert_eq!(
-            rtt_estimator.pto_period(INITIAL_PTO_BACKOFF, &PacketNumberSpace::Initial),
+            rtt_estimator.pto_period(INITIAL_PTO_BACKOFF, PacketNumberSpace::Initial),
             Duration::from_millis(999)
         );
         assert_eq!(
-            rtt_estimator.pto_period(INITIAL_PTO_BACKOFF, &PacketNumberSpace::Handshake),
+            rtt_estimator.pto_period(INITIAL_PTO_BACKOFF, PacketNumberSpace::Handshake),
             Duration::from_millis(999)
         );
         assert_eq!(
-            rtt_estimator.pto_period(INITIAL_PTO_BACKOFF, &PacketNumberSpace::ApplicationData),
+            rtt_estimator.pto_period(INITIAL_PTO_BACKOFF, PacketNumberSpace::ApplicationData),
             Duration::from_millis(1009)
         );
     }
@@ -307,7 +307,7 @@ mod test {
         assert_eq!(rtt_estimator.latest_rtt(), Duration::from_millis(1));
         assert_eq!(rtt_estimator.first_rtt_sample(), Some(now));
         assert_eq!(
-            rtt_estimator.pto_period(INITIAL_PTO_BACKOFF, &PacketNumberSpace::Initial),
+            rtt_estimator.pto_period(INITIAL_PTO_BACKOFF, PacketNumberSpace::Initial),
             Duration::from_millis(3)
         );
     }
@@ -445,7 +445,7 @@ mod test {
         );
         assert_eq!(rtt_estimator.first_rtt_sample, Some(now));
         assert_eq!(
-            rtt_estimator.pto_period(INITIAL_PTO_BACKOFF, &PacketNumberSpace::ApplicationData),
+            rtt_estimator.pto_period(INITIAL_PTO_BACKOFF, PacketNumberSpace::ApplicationData),
             Duration::from_nanos(1551249998)
         );
     }
@@ -638,7 +638,7 @@ mod test {
             space,
         );
 
-        let pto_period = rtt_estimator.pto_period(INITIAL_PTO_BACKOFF, &space);
+        let pto_period = rtt_estimator.pto_period(INITIAL_PTO_BACKOFF, space);
         assert!(pto_period >= K_GRANULARITY);
     }
 }
