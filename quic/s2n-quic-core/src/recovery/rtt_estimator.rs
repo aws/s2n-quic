@@ -269,7 +269,7 @@ mod test {
         time::{Clock, Duration, NoopClock},
     };
 
-    /// Test the initial values before any RTT samples in the Initial and Handshake packet spaces.
+    /// Test the initial values before any RTT samples
     #[test]
     fn initial_rtt_across_spaces() {
         let rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
