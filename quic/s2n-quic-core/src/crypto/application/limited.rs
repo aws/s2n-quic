@@ -14,7 +14,7 @@ pub struct Key<K> {
 
 // TODO: This should be configured through the limit provider.
 // https://github.com/awslabs/s2n-quic/issues/322
-const KEY_UPDATE_WINDOW: u64 = 10_000;
+const KEY_UPDATE_WINDOW: u64 = 10; //10_000;
 
 impl<K: KeyTrait> Key<K>
 where
@@ -25,7 +25,7 @@ where
             // TODO: This should be configured through the limit provider, the default being the
             // key's AEAD limit.
             // https://github.com/awslabs/s2n-quic/issues/322
-            confidentiality_limit: key.aead_confidentiality_limit(),
+            confidentiality_limit: 200, //key.aead_confidentiality_limit(),
             key,
             encrypted_packets: 0,
         }

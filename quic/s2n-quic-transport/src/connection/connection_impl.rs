@@ -565,6 +565,16 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                 .on_amplification_unblocked(&self.path_manager[id], datagram.timestamp);
         }
 
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
+        //= type=TODO
+        //= tracking-issue=https://github.com/awslabs/s2n-quic/issues/271
+        //# An endpoint MUST
+        //# perform path validation (Section 8.2) if it detects any change to a
+        //# peer's address, unless it has previously validated that address.
+        if !self.path_manager[id].is_validated() {
+            println!("Path not yet validated");
+        }
+
         Ok(id)
     }
 

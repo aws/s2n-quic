@@ -275,13 +275,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
                             //# manipulating observed traffic.
                         })?;
 
-                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
-                    //= type=TODO
-                    //= tracking-issue=https://github.com/awslabs/s2n-quic/issues/271
-                    //# An endpoint MUST
-                    //# perform path validation (Section 8.2) if it detects any change to a
-                    //# peer's address, unless it has previously validated that address.
-
                     if let Err(err) = conn.handle_packet(shared_state, datagram, path_id, packet) {
                         match err {
                             ProcessingError::DuplicatePacket => {
