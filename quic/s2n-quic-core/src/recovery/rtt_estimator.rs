@@ -92,7 +92,7 @@ impl RTTEstimator {
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
     //# The PTO period is the amount of time that a sender ought to wait for
     //# an acknowledgement of a sent packet.
-    pub fn pto_period(&self, pto_backoff: u32) -> Duration {
+    pub fn pto_period(&self, pto_backoff: u32, space: &PacketNumberSpace) -> Duration {
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
         //# When an ack-eliciting packet is transmitted, the sender schedules a
         //# timer for the PTO period as follows:
@@ -110,7 +110,9 @@ impl RTTEstimator {
         //# the max_ack_delay in the PTO period computation is set to 0, since
         //# the peer is expected to not delay these packets intentionally; see
         //# 13.2.1 of [QUIC-TRANSPORT].
-        pto_period += self.max_ack_delay;
+        if space.is_application_data() {
+            pto_period += self.max_ack_delay;
+        }
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
         //# Even when there are ack-
@@ -267,16 +269,35 @@ mod test {
         time::{Clock, Duration, NoopClock},
     };
 
-    /// Test the initial values before any RTT samples
+    /// Test the initial values before any RTT samples in the Initial and Handshake packet spaces.
     #[test]
-    fn initial_rtt() {
+    fn initial_and_handshake_rtt() {
         let rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
         assert_eq!(rtt_estimator.min_rtt, DEFAULT_INITIAL_RTT);
         assert_eq!(rtt_estimator.latest_rtt(), DEFAULT_INITIAL_RTT);
         assert_eq!(rtt_estimator.smoothed_rtt(), DEFAULT_INITIAL_RTT);
         assert_eq!(rtt_estimator.rttvar(), DEFAULT_INITIAL_RTT / 2);
         assert_eq!(
-            rtt_estimator.pto_period(INITIAL_PTO_BACKOFF),
+            rtt_estimator.pto_period(INITIAL_PTO_BACKOFF, &PacketNumberSpace::Initial),
+            Duration::from_millis(999)
+        );
+        assert_eq!(
+            rtt_estimator.pto_period(INITIAL_PTO_BACKOFF, &PacketNumberSpace::Handshake),
+            Duration::from_millis(999)
+        );
+    }
+
+    /// Test the initial values before any RTT samples in the Application packet space.
+    /// This space should add the max_ack_delay when calculating the PTO.
+    #[test]
+    fn application_rtt() {
+        let rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
+        assert_eq!(rtt_estimator.min_rtt, DEFAULT_INITIAL_RTT);
+        assert_eq!(rtt_estimator.latest_rtt(), DEFAULT_INITIAL_RTT);
+        assert_eq!(rtt_estimator.smoothed_rtt(), DEFAULT_INITIAL_RTT);
+        assert_eq!(rtt_estimator.rttvar(), DEFAULT_INITIAL_RTT / 2);
+        assert_eq!(
+            rtt_estimator.pto_period(INITIAL_PTO_BACKOFF, &PacketNumberSpace::ApplicationData),
             Duration::from_millis(1009)
         );
     }
@@ -297,8 +318,8 @@ mod test {
         assert_eq!(rtt_estimator.latest_rtt(), Duration::from_millis(1));
         assert_eq!(rtt_estimator.first_rtt_sample(), Some(now));
         assert_eq!(
-            rtt_estimator.pto_period(INITIAL_PTO_BACKOFF),
-            Duration::from_millis(13)
+            rtt_estimator.pto_period(INITIAL_PTO_BACKOFF, &PacketNumberSpace::Initial),
+            Duration::from_millis(3)
         );
     }
 
@@ -435,7 +456,7 @@ mod test {
         );
         assert_eq!(rtt_estimator.first_rtt_sample, Some(now));
         assert_eq!(
-            rtt_estimator.pto_period(INITIAL_PTO_BACKOFF),
+            rtt_estimator.pto_period(INITIAL_PTO_BACKOFF, &PacketNumberSpace::ApplicationData),
             Duration::from_nanos(1551249998)
         );
     }
@@ -628,7 +649,7 @@ mod test {
             space,
         );
 
-        let pto_period = rtt_estimator.pto_period(INITIAL_PTO_BACKOFF);
+        let pto_period = rtt_estimator.pto_period(INITIAL_PTO_BACKOFF, &space);
         assert!(pto_period >= K_GRANULARITY);
     }
 }
