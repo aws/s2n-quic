@@ -271,7 +271,7 @@ mod test {
 
     /// Test the initial values before any RTT samples in the Initial and Handshake packet spaces.
     #[test]
-    fn initial_and_handshake_rtt() {
+    fn initial_rtt_across_spaces() {
         let rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
         assert_eq!(rtt_estimator.min_rtt, DEFAULT_INITIAL_RTT);
         assert_eq!(rtt_estimator.latest_rtt(), DEFAULT_INITIAL_RTT);
@@ -285,17 +285,6 @@ mod test {
             rtt_estimator.pto_period(INITIAL_PTO_BACKOFF, &PacketNumberSpace::Handshake),
             Duration::from_millis(999)
         );
-    }
-
-    /// Test the initial values before any RTT samples in the Application packet space.
-    /// This space should add the max_ack_delay when calculating the PTO.
-    #[test]
-    fn application_rtt() {
-        let rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
-        assert_eq!(rtt_estimator.min_rtt, DEFAULT_INITIAL_RTT);
-        assert_eq!(rtt_estimator.latest_rtt(), DEFAULT_INITIAL_RTT);
-        assert_eq!(rtt_estimator.smoothed_rtt(), DEFAULT_INITIAL_RTT);
-        assert_eq!(rtt_estimator.rttvar(), DEFAULT_INITIAL_RTT / 2);
         assert_eq!(
             rtt_estimator.pto_period(INITIAL_PTO_BACKOFF, &PacketNumberSpace::ApplicationData),
             Duration::from_millis(1009)
