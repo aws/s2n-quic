@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    crypto::{HeaderCrypto, Key as CryptoKey, ProtectedPayload},
+    crypto::{HeaderKey, Key as CryptoKey, ProtectedPayload},
     packet::{
         number::{PacketNumber, PacketNumberLen},
         stateless_reset,
@@ -95,9 +95,7 @@ impl<'a> PacketEncodingError<'a> {
     }
 }
 
-pub trait PacketEncoder<Crypto: HeaderCrypto + CryptoKey, Payload: PacketPayloadEncoder>:
-    Sized
-{
+pub trait PacketEncoder<K: CryptoKey, H: HeaderKey, Payload: PacketPayloadEncoder>: Sized {
     type PayloadLenCursor: PacketPayloadLenCursor;
 
     /// Encodes the current packet's header into the provided encoder
@@ -112,7 +110,8 @@ pub trait PacketEncoder<Crypto: HeaderCrypto + CryptoKey, Payload: PacketPayload
     // Encodes, encrypts, and header-protects a packet into a buffer
     fn encode_packet<'a>(
         mut self,
-        crypto: &Crypto,
+        key: &K,
+        header_key: &H,
         largest_acknowledged_packet_number: PacketNumber,
         min_packet_len: Option<usize>,
         mut buffer: EncoderBuffer<'a>,
@@ -153,7 +152,7 @@ pub trait PacketEncoder<Crypto: HeaderCrypto + CryptoKey, Payload: PacketPayload
         // We want to write this before the payload in the
         // estimator so the payload size hint has an accurate
         // view of remaining capacity.
-        estimator.write_repeated(crypto.tag_len(), 0);
+        estimator.write_repeated(key.tag_len(), 0);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
         //# To achieve that end,
@@ -166,7 +165,7 @@ pub trait PacketEncoder<Crypto: HeaderCrypto + CryptoKey, Payload: PacketPayload
         // indistinguishable from a valid packet.
         let minimum_packet_len = min_packet_len
             .unwrap_or(0)
-            .max(stateless_reset::min_indistinguishable_packet_len(crypto.tag_len()) + 1);
+            .max(stateless_reset::min_indistinguishable_packet_len(key.tag_len()) + 1);
 
         // Compute how much the payload will need to write to satisfy the
         // minimum_packet_len
@@ -181,7 +180,7 @@ pub trait PacketEncoder<Crypto: HeaderCrypto + CryptoKey, Payload: PacketPayload
         // there is still enough payload to sample from given the actual packet number length.
         let minimum_payload_len = minimum_payload_len.max(
             PacketNumberLen::MAX_LEN - truncated_packet_number.len().bytesize()
-                + crypto.sealing_sample_len(),
+                + header_key.sealing_sample_len(),
         );
 
         // Try to estimate the payload size - it may be inaccurate
@@ -222,7 +221,7 @@ pub trait PacketEncoder<Crypto: HeaderCrypto + CryptoKey, Payload: PacketPayload
             let (header_buffer, payload_buffer) = buffer.split_mut();
 
             // Payloads should not be able to write into the crypto tag space
-            let payload_len = payload_buffer.len() - crypto.tag_len();
+            let payload_len = payload_buffer.len() - key.tag_len();
             let mut payload_buffer = EncoderBuffer::new(&mut payload_buffer[..payload_len]);
 
             // Try to encode the payload into the buffer
@@ -230,7 +229,7 @@ pub trait PacketEncoder<Crypto: HeaderCrypto + CryptoKey, Payload: PacketPayload
                 &mut payload_buffer,
                 minimum_payload_len,
                 header_buffer.len(),
-                crypto.tag_len(),
+                key.tag_len(),
             );
 
             // read how much was written
@@ -252,17 +251,17 @@ pub trait PacketEncoder<Crypto: HeaderCrypto + CryptoKey, Payload: PacketPayload
         buffer.advance_position(payload_len);
 
         // Update the payload_len cursor with the actual payload len
-        let actual_payload_len = buffer.len() + crypto.tag_len() - header_len;
+        let actual_payload_len = buffer.len() + key.tag_len() - header_len;
         payload_len_cursor.update(&mut buffer, actual_payload_len);
 
         // Encrypt the written payload. Note that the tag is appended to the
         // buffer in the `encrypt` function.
         let (encrypted_payload, remaining) =
-            crate::crypto::encrypt(crypto, packet_number, packet_number_len, header_len, buffer)
+            crate::crypto::encrypt(key, packet_number, packet_number_len, header_len, buffer)
                 .expect("encryption should always work");
 
         // Protect the packet
-        let protected_payload = crate::crypto::protect(crypto, encrypted_payload)
+        let protected_payload = crate::crypto::protect(header_key, encrypted_payload)
             .expect("header protection should always work");
 
         // SUCCESS!!!

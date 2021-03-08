@@ -7,14 +7,14 @@
 mod ciphersuite;
 #[macro_use]
 mod negotiated;
+#[macro_use]
+mod header_key;
 
 pub use ring::{
     self,
     aead::{Algorithm, MAX_TAG_LEN},
     hkdf::Prk,
 };
-
-use s2n_quic_core::crypto::CryptoSuite;
 
 #[derive(Clone)]
 pub struct SecretPair {
@@ -31,10 +31,14 @@ pub mod zero_rtt;
 #[derive(Clone, Copy, Debug, Default)]
 pub struct RingCryptoSuite;
 
-impl CryptoSuite for RingCryptoSuite {
-    type HandshakeCrypto = handshake::RingHandshakeCrypto;
-    type InitialCrypto = initial::RingInitialCrypto;
-    type OneRTTCrypto = one_rtt::RingOneRTTCrypto;
-    type ZeroRTTCrypto = zero_rtt::RingZeroRTTCrypto;
-    type RetryCrypto = retry::RingRetryCrypto;
+impl s2n_quic_core::crypto::CryptoSuite for RingCryptoSuite {
+    type HandshakeKey = handshake::RingHandshakeKey;
+    type HandshakeHeaderKey = handshake::RingHandshakeHeaderKey;
+    type InitialKey = initial::RingInitialKey;
+    type InitialHeaderKey = initial::RingInitialHeaderKey;
+    type OneRttKey = one_rtt::RingOneRttKey;
+    type OneRttHeaderKey = one_rtt::RingOneRttHeaderKey;
+    type ZeroRttKey = zero_rtt::RingZeroRttKey;
+    type ZeroRttHeaderKey = zero_rtt::RingZeroRttHeaderKey;
+    type RetryKey = retry::RingRetryKey;
 }

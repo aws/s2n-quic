@@ -62,11 +62,15 @@ impl Session {
 }
 
 impl CryptoSuite for Session {
-    type HandshakeCrypto = <RingCryptoSuite as CryptoSuite>::HandshakeCrypto;
-    type InitialCrypto = <RingCryptoSuite as CryptoSuite>::InitialCrypto;
-    type OneRTTCrypto = <RingCryptoSuite as CryptoSuite>::OneRTTCrypto;
-    type ZeroRTTCrypto = <RingCryptoSuite as CryptoSuite>::ZeroRTTCrypto;
-    type RetryCrypto = <RingCryptoSuite as CryptoSuite>::RetryCrypto;
+    type HandshakeKey = <RingCryptoSuite as CryptoSuite>::HandshakeKey;
+    type HandshakeHeaderKey = <RingCryptoSuite as CryptoSuite>::HandshakeHeaderKey;
+    type InitialKey = <RingCryptoSuite as CryptoSuite>::InitialKey;
+    type InitialHeaderKey = <RingCryptoSuite as CryptoSuite>::InitialHeaderKey;
+    type OneRttKey = <RingCryptoSuite as CryptoSuite>::OneRttKey;
+    type OneRttHeaderKey = <RingCryptoSuite as CryptoSuite>::OneRttHeaderKey;
+    type ZeroRttKey = <RingCryptoSuite as CryptoSuite>::ZeroRttKey;
+    type ZeroRttHeaderKey = <RingCryptoSuite as CryptoSuite>::ZeroRttHeaderKey;
+    type RetryKey = <RingCryptoSuite as CryptoSuite>::RetryKey;
 }
 
 impl tls::Session for Session {

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    crypto::{CryptoError, EncryptedPayload, HeaderCrypto, InitialCrypto, ProtectedPayload},
+    crypto::{CryptoError, EncryptedPayload, InitialHeaderKey, InitialKey, ProtectedPayload},
     packet::{
         decoding::HeaderDecoder,
         encoding::{PacketEncoder, PacketPayloadEncoder},
@@ -108,9 +108,9 @@ impl<'a> ProtectedInitial<'a> {
         Ok((packet, remaining))
     }
 
-    pub fn unprotect<C: InitialCrypto>(
+    pub fn unprotect<H: InitialHeaderKey>(
         self,
-        crypto: &C,
+        header_key: &H,
         largest_acknowledged_packet_number: PacketNumber,
     ) -> Result<EncryptedInitial<'a>, CryptoError> {
         let Initial {
@@ -123,7 +123,7 @@ impl<'a> ProtectedInitial<'a> {
         } = self;
 
         let (truncated_packet_number, payload) =
-            crate::crypto::unprotect(crypto, PacketNumberSpace::Initial, payload)?;
+            crate::crypto::unprotect(header_key, PacketNumberSpace::Initial, payload)?;
 
         let packet_number = truncated_packet_number
             .expand(largest_acknowledged_packet_number)
@@ -162,10 +162,7 @@ impl<'a> ProtectedInitial<'a> {
 }
 
 impl<'a> EncryptedInitial<'a> {
-    pub fn decrypt<C: InitialCrypto>(
-        self,
-        crypto: &C,
-    ) -> Result<CleartextInitial<'a>, CryptoError> {
+    pub fn decrypt<C: InitialKey>(self, crypto: &C) -> Result<CleartextInitial<'a>, CryptoError> {
         let Initial {
             version,
             destination_connection_id,
@@ -274,8 +271,9 @@ impl<
         SCID: EncoderValue,
         Token: EncoderValue,
         Payload: PacketPayloadEncoder,
-        Crypto: InitialCrypto + HeaderCrypto,
-    > PacketEncoder<Crypto, Payload> for Initial<DCID, SCID, Token, PacketNumber, Payload>
+        K: InitialKey,
+        H: InitialHeaderKey,
+    > PacketEncoder<K, H, Payload> for Initial<DCID, SCID, Token, PacketNumber, Payload>
 {
     type PayloadLenCursor = LongPayloadLenCursor;
 

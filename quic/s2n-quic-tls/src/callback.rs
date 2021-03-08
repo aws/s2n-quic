@@ -9,8 +9,8 @@ use s2n_quic_core::{
     transport::error::TransportError,
 };
 use s2n_quic_ring::{
-    handshake::RingHandshakeCrypto,
-    one_rtt::RingOneRTTCrypto,
+    handshake::RingHandshakeKey,
+    one_rtt::RingOneRttKey,
     ring::{aead, hkdf},
     Prk, RingCryptoSuite, SecretPair,
 };
@@ -36,11 +36,15 @@ impl<'a, T, C> Callback<'a, T, C>
 where
     T: 'a + tls::Context<C>,
     C: CryptoSuite<
-        HandshakeCrypto = <RingCryptoSuite as CryptoSuite>::HandshakeCrypto,
-        InitialCrypto = <RingCryptoSuite as CryptoSuite>::InitialCrypto,
-        OneRTTCrypto = <RingCryptoSuite as CryptoSuite>::OneRTTCrypto,
-        ZeroRTTCrypto = <RingCryptoSuite as CryptoSuite>::ZeroRTTCrypto,
-        RetryCrypto = <RingCryptoSuite as CryptoSuite>::RetryCrypto,
+        HandshakeKey = <RingCryptoSuite as CryptoSuite>::HandshakeKey,
+        HandshakeHeaderKey = <RingCryptoSuite as CryptoSuite>::HandshakeHeaderKey,
+        InitialKey = <RingCryptoSuite as CryptoSuite>::InitialKey,
+        InitialHeaderKey = <RingCryptoSuite as CryptoSuite>::InitialHeaderKey,
+        OneRttKey = <RingCryptoSuite as CryptoSuite>::OneRttKey,
+        OneRttHeaderKey = <RingCryptoSuite as CryptoSuite>::OneRttHeaderKey,
+        ZeroRttKey = <RingCryptoSuite as CryptoSuite>::ZeroRttKey,
+        ZeroRttHeaderKey = <RingCryptoSuite as CryptoSuite>::ZeroRttHeaderKey,
+        RetryKey = <RingCryptoSuite as CryptoSuite>::RetryKey,
     >,
 {
     /// Initializes the s2n-tls connection with all of the contexts and callbacks
@@ -198,22 +202,24 @@ where
 
                 match self.state.tx_phase {
                     HandshakePhase::Initial => {
-                        let keys = RingHandshakeCrypto::new(self.endpoint, aead_algo, pair)
-                            .expect("invalid cipher");
-                        self.context.on_handshake_keys(keys)?;
+                        let (key, header_key) =
+                            RingHandshakeKey::new(self.endpoint, aead_algo, pair)
+                                .expect("invalid cipher");
+                        self.context.on_handshake_keys(key, header_key)?;
 
                         self.state.tx_phase.transition();
                         self.state.rx_phase.transition();
                     }
                     _ => {
-                        let keys = RingOneRTTCrypto::new(self.endpoint, aead_algo, pair)
-                            .expect("invalid cipher");
+                        let (key, header_key) =
+                            RingOneRttKey::new(self.endpoint, aead_algo, pair.clone())
+                                .expect("invalid cipher");
 
                         let params = unsafe {
                             // Safety: conn needs to outlive params
                             get_application_params(conn)?
                         };
-                        self.context.on_one_rtt_keys(keys, params)?;
+                        self.context.on_one_rtt_keys(key, header_key, params)?;
 
                         self.state.tx_phase.transition();
                     }

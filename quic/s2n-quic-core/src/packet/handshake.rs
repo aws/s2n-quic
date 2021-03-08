@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    crypto::{CryptoError, EncryptedPayload, HandshakeCrypto, HeaderCrypto, ProtectedPayload},
+    crypto::{CryptoError, EncryptedPayload, HandshakeHeaderKey, HandshakeKey, ProtectedPayload},
     packet::{
         decoding::HeaderDecoder,
         encoding::{PacketEncoder, PacketPayloadEncoder},
@@ -89,9 +89,9 @@ impl<'a> ProtectedHandshake<'a> {
         Ok((packet, remaining))
     }
 
-    pub fn unprotect<C: HeaderCrypto>(
+    pub fn unprotect<K: HandshakeHeaderKey>(
         self,
-        crypto: &C,
+        key: &K,
         largest_acknowledged_packet_number: PacketNumber,
     ) -> Result<EncryptedHandshake<'a>, CryptoError> {
         let Handshake {
@@ -103,7 +103,7 @@ impl<'a> ProtectedHandshake<'a> {
         } = self;
 
         let (truncated_packet_number, payload) =
-            crate::crypto::unprotect(crypto, PacketNumberSpace::Handshake, payload)?;
+            crate::crypto::unprotect(key, PacketNumberSpace::Handshake, payload)?;
 
         let packet_number = truncated_packet_number
             .expand(largest_acknowledged_packet_number)
@@ -134,7 +134,7 @@ impl<'a> ProtectedHandshake<'a> {
 }
 
 impl<'a> EncryptedHandshake<'a> {
-    pub fn decrypt<C: HandshakeCrypto>(
+    pub fn decrypt<C: HandshakeKey>(
         self,
         crypto: &C,
     ) -> Result<CleartextHandshake<'a>, CryptoError> {
@@ -228,8 +228,9 @@ impl<
         DCID: EncoderValue,
         SCID: EncoderValue,
         Payload: PacketPayloadEncoder,
-        Crypto: HandshakeCrypto + HeaderCrypto,
-    > PacketEncoder<Crypto, Payload> for Handshake<DCID, SCID, PacketNumber, Payload>
+        K: HandshakeKey,
+        H: HandshakeHeaderKey,
+    > PacketEncoder<K, H, Payload> for Handshake<DCID, SCID, PacketNumber, Payload>
 {
     type PayloadLenCursor = LongPayloadLenCursor;
 

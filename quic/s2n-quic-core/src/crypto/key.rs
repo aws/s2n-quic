@@ -4,7 +4,7 @@
 use crate::crypto::CryptoError;
 
 /// A trait for crypto keys
-pub trait Key {
+pub trait Key: Send {
     /// Decrypt a payload
     fn decrypt(
         &self,
@@ -35,8 +35,9 @@ pub trait Key {
 pub mod testing {
     use crate::crypto::{
         retry::{IntegrityTag, INTEGRITY_TAG_LEN},
-        CryptoError, HandshakeCrypto, HeaderCrypto, HeaderProtectionMask, InitialCrypto,
-        OneRTTCrypto, RetryCrypto, ZeroRTTCrypto,
+        CryptoError, HandshakeHeaderKey, HandshakeKey, HeaderKey as CryptoHeaderKey,
+        HeaderProtectionMask, InitialHeaderKey, InitialKey, OneRttHeaderKey, OneRttKey, RetryKey,
+        ZeroRttHeaderKey, ZeroRttKey,
     };
 
     #[derive(Debug)]
@@ -45,6 +46,12 @@ pub mod testing {
         pub integrity_limit: u64,
         pub derivations: u64,
         pub fail_on_decrypt: bool,
+    }
+
+    impl Key {
+        pub fn new() -> Self {
+            Key::default()
+        }
     }
 
     impl Default for Key {
@@ -99,31 +106,7 @@ pub mod testing {
         }
     }
 
-    impl HeaderCrypto for Key {
-        fn opening_header_protection_mask(
-            &self,
-            _ciphertext_sample: &[u8],
-        ) -> HeaderProtectionMask {
-            Default::default()
-        }
-
-        fn opening_sample_len(&self) -> usize {
-            0
-        }
-
-        fn sealing_header_protection_mask(
-            &self,
-            _ciphertext_sample: &[u8],
-        ) -> HeaderProtectionMask {
-            Default::default()
-        }
-
-        fn sealing_sample_len(&self) -> usize {
-            0
-        }
-    }
-
-    impl InitialCrypto for Key {
+    impl InitialKey for Key {
         fn new_server(_connection_id: &[u8]) -> Self {
             Key::default()
         }
@@ -132,8 +115,8 @@ pub mod testing {
             Key::default()
         }
     }
-    impl HandshakeCrypto for Key {}
-    impl OneRTTCrypto for Key {
+    impl HandshakeKey for Key {}
+    impl OneRttKey for Key {
         fn derive_next_key(&self) -> Self {
             Self {
                 integrity_limit: self.integrity_limit,
@@ -143,8 +126,8 @@ pub mod testing {
             }
         }
     }
-    impl ZeroRTTCrypto for Key {}
-    impl RetryCrypto for Key {
+    impl ZeroRttKey for Key {}
+    impl RetryKey for Key {
         fn generate_tag(_payload: &[u8]) -> IntegrityTag {
             [0u8; INTEGRITY_TAG_LEN]
         }
@@ -152,4 +135,44 @@ pub mod testing {
             Ok(())
         }
     }
+
+    #[derive(Debug, Default)]
+    pub struct HeaderKey {}
+
+    impl HeaderKey {
+        pub fn new() -> Self {
+            HeaderKey::default()
+        }
+    }
+
+    impl CryptoHeaderKey for HeaderKey {
+        fn opening_header_protection_mask(&self, _sample: &[u8]) -> HeaderProtectionMask {
+            [0; 5]
+        }
+
+        fn opening_sample_len(&self) -> usize {
+            0
+        }
+
+        fn sealing_header_protection_mask(&self, _sample: &[u8]) -> HeaderProtectionMask {
+            [0; 5]
+        }
+
+        fn sealing_sample_len(&self) -> usize {
+            0
+        }
+    }
+
+    impl InitialHeaderKey for HeaderKey {
+        fn new_server(_connection_id: &[u8]) -> Self {
+            HeaderKey::default()
+        }
+
+        fn new_client(_connection_id: &[u8]) -> Self {
+            HeaderKey::default()
+        }
+    }
+    impl HandshakeHeaderKey for HeaderKey {}
+    impl OneRttHeaderKey for HeaderKey {}
+    impl ZeroRttHeaderKey for HeaderKey {}
 }

@@ -66,11 +66,15 @@ impl super::Session for Session {
 }
 
 impl CryptoSuite for Session {
-    type HandshakeCrypto = crate::crypto::key::testing::Key;
-    type InitialCrypto = crate::crypto::key::testing::Key;
-    type ZeroRTTCrypto = crate::crypto::key::testing::Key;
-    type OneRTTCrypto = crate::crypto::key::testing::Key;
-    type RetryCrypto = crate::crypto::key::testing::Key;
+    type HandshakeKey = crate::crypto::key::testing::Key;
+    type HandshakeHeaderKey = crate::crypto::key::testing::HeaderKey;
+    type InitialKey = crate::crypto::key::testing::Key;
+    type InitialHeaderKey = crate::crypto::key::testing::HeaderKey;
+    type ZeroRttKey = crate::crypto::key::testing::Key;
+    type ZeroRttHeaderKey = crate::crypto::key::testing::HeaderKey;
+    type OneRttKey = crate::crypto::key::testing::Key;
+    type OneRttHeaderKey = crate::crypto::key::testing::HeaderKey;
+    type RetryKey = crate::crypto::key::testing::Key;
 }
 
 /// A pair of TLS sessions and contexts being driven to completion
@@ -91,15 +95,15 @@ impl<S: tls::Session, C: tls::Session> Pair<S, C> {
         SE: tls::Endpoint<Session = S>,
         CE: tls::Endpoint<Session = C>,
     {
-        use crate::crypto::InitialCrypto;
+        use crate::crypto::InitialKey;
 
         let server = server_endpoint.new_server_session(&TEST_SERVER_TRANSPORT_PARAMS);
         let mut server_context = Context::default();
-        server_context.initial.crypto = Some(S::InitialCrypto::new_server(sni));
+        server_context.initial.crypto = Some(S::InitialKey::new_server(sni));
 
         let client = client_endpoint.new_client_session(&TEST_CLIENT_TRANSPORT_PARAMS, sni);
         let mut client_context = Context::default();
-        client_context.initial.crypto = Some(C::InitialCrypto::new_client(sni));
+        client_context.initial.crypto = Some(C::InitialKey::new_client(sni));
 
         Self {
             server: (server, server_context),
@@ -155,10 +159,10 @@ impl<S: tls::Session, C: tls::Session> Pair<S, C> {
 
 /// Harness to ensure a TLS implementation adheres to the session contract
 pub struct Context<C: CryptoSuite> {
-    pub initial: Space<C::InitialCrypto>,
-    pub handshake: Space<C::HandshakeCrypto>,
-    pub application: Space<C::OneRTTCrypto>,
-    pub zero_rtt_crypto: Option<C::ZeroRTTCrypto>,
+    pub initial: Space<C::InitialKey>,
+    pub handshake: Space<C::HandshakeKey>,
+    pub application: Space<C::OneRttKey>,
+    pub zero_rtt_crypto: Option<C::ZeroRttKey>,
     pub handshake_done: bool,
     pub sni: Option<Bytes>,
     pub alpn: Option<Bytes>,
@@ -334,39 +338,45 @@ fn seal_open<S: Key, O: Key>(sealer: &S, opener: &O) {
 }
 
 impl<C: CryptoSuite> tls::Context<C> for Context<C> {
-    fn on_handshake_keys(&mut self, keys: C::HandshakeCrypto) -> Result<(), TransportError> {
+    fn on_handshake_keys(
+        &mut self,
+        key: C::HandshakeKey,
+        _header_key: C::HandshakeHeaderKey,
+    ) -> Result<(), TransportError> {
         assert!(
             self.handshake.crypto.is_none(),
             "handshake keys emitted multiple times"
         );
-        self.handshake.crypto = Some(keys);
+        self.handshake.crypto = Some(key);
         Ok(())
     }
 
     fn on_zero_rtt_keys(
         &mut self,
-        keys: C::ZeroRTTCrypto,
+        key: C::ZeroRttKey,
+        _header_key: C::ZeroRttHeaderKey,
         params: tls::ApplicationParameters,
     ) -> Result<(), TransportError> {
         assert!(
             self.zero_rtt_crypto.is_none(),
             "0-rtt keys emitted multiple times"
         );
-        self.zero_rtt_crypto = Some(keys);
+        self.zero_rtt_crypto = Some(key);
         self.on_application_params(params);
         Ok(())
     }
 
     fn on_one_rtt_keys(
         &mut self,
-        keys: C::OneRTTCrypto,
+        key: C::OneRttKey,
+        _header_key: C::OneRttHeaderKey,
         params: tls::ApplicationParameters,
     ) -> Result<(), TransportError> {
         assert!(
             self.application.crypto.is_none(),
             "1-rtt keys emitted multiple times"
         );
-        self.application.crypto = Some(keys);
+        self.application.crypto = Some(key);
         self.on_application_params(params);
         Ok(())
     }

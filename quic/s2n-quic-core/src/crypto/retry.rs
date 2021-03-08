@@ -7,7 +7,7 @@ use hex_literal::hex;
 pub const INTEGRITY_TAG_LEN: usize = 16;
 pub type IntegrityTag = [u8; INTEGRITY_TAG_LEN];
 
-pub trait RetryCrypto {
+pub trait RetryKey {
     fn generate_tag(payload: &[u8]) -> IntegrityTag;
     fn validate(payload: &[u8], tag: IntegrityTag) -> Result<(), CryptoError>;
 }

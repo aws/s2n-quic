@@ -4,7 +4,11 @@
 use crate::packet::number::PacketNumberLen;
 use s2n_codec::{CheckedRange, DecoderBuffer, DecoderBufferMut, DecoderError};
 
-/// Type which restricts access to protected and encrypted payloads
+/// Type which restricts access to protected and encrypted payloads.
+///
+/// The `ProtectedPayload` is an `EncryptedPayload` that has had
+/// header protection applied. So to get to the cleartext payload,
+/// first you remove header protection, and then you decrypt the packet
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ProtectedPayload<'a> {
     pub(crate) header_len: usize,

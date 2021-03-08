@@ -54,6 +54,7 @@ harness = false
 name = "packet"
 path = "tests/packet/fuzz_target.rs"
 harness = false
+required-features = ["testing"]
 
 [[test]]
 name = "transport_parameters"

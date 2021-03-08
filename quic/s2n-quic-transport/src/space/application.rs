@@ -56,7 +56,8 @@ pub struct ApplicationSpace<Config: endpoint::Config> {
     //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.1
     //# An endpoint MUST NOT initiate a key update prior to having confirmed
     //# the handshake (Section 4.1.2).
-    key_set: KeySet<<<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::OneRTTCrypto>,
+    key_set: KeySet<<<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::OneRttKey>,
+    header_key: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::OneRttHeaderKey,
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7
     //# Endpoints MUST explicitly negotiate an application protocol.
@@ -74,14 +75,15 @@ pub struct ApplicationSpace<Config: endpoint::Config> {
 
 impl<Config: endpoint::Config> ApplicationSpace<Config> {
     pub fn new(
-        crypto: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::OneRTTCrypto,
+        key: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::OneRttKey,
+        header_key: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::OneRttHeaderKey,
         now: Timestamp,
         stream_manager: AbstractStreamManager<Config::Stream>,
         ack_manager: AckManager,
         sni: Option<Bytes>,
         alpn: Bytes,
     ) -> Self {
-        let key_set = KeySet::new(crypto);
+        let key_set = KeySet::new(key);
         let max_ack_delay = ack_manager.ack_settings.max_ack_delay;
 
         Self {
@@ -90,6 +92,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             spin_bit: SpinBit::Zero,
             stream_manager,
             key_set,
+            header_key,
             sni,
             alpn,
             ping: flag::Ping::default(),
@@ -161,6 +164,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
 
         let spin_bit = self.spin_bit;
         let min_packet_len = context.min_packet_len;
+        let header_key = &self.header_key;
         let (_protected_packet, buffer) =
             self.key_set
                 .encrypt_packet(buffer, |buffer, key, key_phase| {
@@ -171,7 +175,13 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
                         packet_number,
                         payload,
                     };
-                    packet.encode_packet(key, packet_number_encoder, min_packet_len, buffer)
+                    packet.encode_packet(
+                        key,
+                        header_key,
+                        packet_number_encoder,
+                        min_packet_len,
+                        buffer,
+                    )
                 })?;
 
         let (recovery_manager, mut recovery_context) = self.recovery(
@@ -304,9 +314,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         rtt_estimator: &RTTEstimator,
     ) -> Result<CleartextShort<'a>, ProcessingError> {
         let largest_acked = self.ack_manager.largest_received_packet_number_acked();
-        let packet = self
-            .key_set
-            .remove_header_protection(protected, largest_acked)?;
+        let packet = protected.unprotect(&self.header_key, largest_acked)?;
 
         if self.is_duplicate(packet.packet_number) {
             return Err(ProcessingError::DuplicatePacket);

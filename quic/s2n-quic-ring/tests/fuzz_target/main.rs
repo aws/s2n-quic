@@ -7,10 +7,15 @@ use ring::{
     hkdf,
     hkdf::KeyType,
 };
-use s2n_quic_core::crypto::{initial::InitialCrypto, key::Key, CryptoError, HeaderCrypto};
+use s2n_quic_core::crypto::{
+    initial::InitialKey, key::Key, CryptoError, HeaderKey, InitialHeaderKey,
+};
 use s2n_quic_ring::{
-    handshake::RingHandshakeCrypto, initial::RingInitialCrypto, one_rtt::RingOneRTTCrypto,
-    zero_rtt::RingZeroRTTCrypto, Algorithm, Prk, SecretPair,
+    handshake::{RingHandshakeHeaderKey, RingHandshakeKey},
+    initial::{RingInitialHeaderKey, RingInitialKey},
+    one_rtt::{RingOneRttHeaderKey, RingOneRttKey},
+    zero_rtt::{RingZeroRttHeaderKey, RingZeroRttKey},
+    Algorithm, Prk, SecretPair,
 };
 
 fn main() {
@@ -25,86 +30,202 @@ fn main() {
             let packet_number = *packet_number;
             match crypto {
                 CryptoTest::Initial {
-                    ref server,
-                    ref client,
+                    ref server_key,
+                    ref client_key,
+                    ref server_header_key,
+                    ref client_header_key,
                 } => {
-                    assert!(
-                        test_round_trip(server, client, packet_number, &header, &payload).is_ok()
-                    );
-                    assert!(
-                        test_round_trip(client, server, packet_number, &header, &payload).is_ok()
-                    );
+                    assert!(test_round_trip(
+                        server_key,
+                        client_key,
+                        server_header_key,
+                        client_header_key,
+                        packet_number,
+                        &header,
+                        &payload
+                    )
+                    .is_ok());
+                    assert!(test_round_trip(
+                        client_key,
+                        server_key,
+                        client_header_key,
+                        server_header_key,
+                        packet_number,
+                        &header,
+                        &payload
+                    )
+                    .is_ok());
                 }
                 CryptoTest::Handshake {
-                    ref server,
-                    ref client,
+                    ref server_key,
+                    ref client_key,
+                    ref server_header_key,
+                    ref client_header_key,
                 } => {
-                    assert!(
-                        test_round_trip(server, client, packet_number, &header, &payload).is_ok()
-                    );
-                    assert!(
-                        test_round_trip(client, server, packet_number, &header, &payload).is_ok()
-                    );
-                    let server = server.update();
-                    assert!(
-                        test_round_trip(&server, client, packet_number, &header, &payload).is_err()
-                    );
-                    assert!(
-                        test_round_trip(client, &server, packet_number, &header, &payload).is_err()
-                    );
-                    let client = client.update();
-                    assert!(
-                        test_round_trip(&server, &client, packet_number, &header, &payload).is_ok()
-                    );
-                    assert!(
-                        test_round_trip(&client, &server, packet_number, &header, &payload).is_ok()
-                    );
+                    assert!(test_round_trip(
+                        server_key,
+                        client_key,
+                        server_header_key,
+                        client_header_key,
+                        packet_number,
+                        &header,
+                        &payload
+                    )
+                    .is_ok());
+                    assert!(test_round_trip(
+                        client_key,
+                        server_key,
+                        client_header_key,
+                        server_header_key,
+                        packet_number,
+                        &header,
+                        &payload
+                    )
+                    .is_ok());
+                    let server_key = server_key.update();
+                    assert!(test_round_trip(
+                        &server_key,
+                        client_key,
+                        server_header_key,
+                        client_header_key,
+                        packet_number,
+                        &header,
+                        &payload
+                    )
+                    .is_err());
+                    assert!(test_round_trip(
+                        client_key,
+                        &server_key,
+                        client_header_key,
+                        server_header_key,
+                        packet_number,
+                        &header,
+                        &payload
+                    )
+                    .is_err());
+                    let client_key = client_key.update();
+                    assert!(test_round_trip(
+                        &server_key,
+                        &client_key,
+                        server_header_key,
+                        client_header_key,
+                        packet_number,
+                        &header,
+                        &payload
+                    )
+                    .is_ok());
+                    assert!(test_round_trip(
+                        &client_key,
+                        &server_key,
+                        client_header_key,
+                        server_header_key,
+                        packet_number,
+                        &header,
+                        &payload
+                    )
+                    .is_ok());
                 }
                 CryptoTest::OneRTT {
-                    ref server,
-                    ref client,
+                    ref server_key,
+                    ref client_key,
+                    ref server_header_key,
+                    ref client_header_key,
                 } => {
-                    assert!(
-                        test_round_trip(server, client, packet_number, &header, &payload).is_ok()
-                    );
-                    assert!(
-                        test_round_trip(client, server, packet_number, &header, &payload).is_ok()
-                    );
-                    let server = server.update();
-                    assert!(
-                        test_round_trip(&server, client, packet_number, &header, &payload).is_err()
-                    );
-                    assert!(
-                        test_round_trip(client, &server, packet_number, &header, &payload).is_err()
-                    );
-                    let client = client.update();
-                    assert!(
-                        test_round_trip(&server, &client, packet_number, &header, &payload).is_ok()
-                    );
-                    assert!(
-                        test_round_trip(&client, &server, packet_number, &header, &payload).is_ok()
-                    );
+                    assert!(test_round_trip(
+                        server_key,
+                        client_key,
+                        server_header_key,
+                        client_header_key,
+                        packet_number,
+                        &header,
+                        &payload
+                    )
+                    .is_ok());
+                    assert!(test_round_trip(
+                        client_key,
+                        server_key,
+                        client_header_key,
+                        server_header_key,
+                        packet_number,
+                        &header,
+                        &payload
+                    )
+                    .is_ok());
+                    let server_key = server_key.update();
+                    assert!(test_round_trip(
+                        &server_key,
+                        client_key,
+                        server_header_key,
+                        client_header_key,
+                        packet_number,
+                        &header,
+                        &payload
+                    )
+                    .is_err());
+                    assert!(test_round_trip(
+                        client_key,
+                        &server_key,
+                        client_header_key,
+                        server_header_key,
+                        packet_number,
+                        &header,
+                        &payload
+                    )
+                    .is_err());
+                    let client_key = client_key.update();
+                    assert!(test_round_trip(
+                        &server_key,
+                        &client_key,
+                        server_header_key,
+                        client_header_key,
+                        packet_number,
+                        &header,
+                        &payload
+                    )
+                    .is_ok());
+                    assert!(test_round_trip(
+                        &client_key,
+                        &server_key,
+                        client_header_key,
+                        server_header_key,
+                        packet_number,
+                        &header,
+                        &payload
+                    )
+                    .is_ok());
                 }
-                CryptoTest::ZeroRTT { ref crypto } => {
-                    assert!(
-                        test_round_trip(crypto, crypto, packet_number, &header, &payload).is_ok()
-                    );
+                CryptoTest::ZeroRTT {
+                    ref key,
+                    ref header_key,
+                } => {
+                    assert!(test_round_trip(
+                        key,
+                        key,
+                        header_key,
+                        header_key,
+                        packet_number,
+                        &header,
+                        &payload
+                    )
+                    .is_ok());
                 }
             }
         });
 }
 
-fn test_round_trip<C: Key + HeaderCrypto>(
-    sealer: &C,
-    opener: &C,
+fn test_round_trip<K: Key, H: HeaderKey>(
+    sealer_key: &K,
+    opener: &K,
+    sealer_header_key: &H,
+    opener_header_key: &H,
     packet_number: u64,
     header: &[u8],
     orig_payload: &[u8],
 ) -> Result<(), CryptoError> {
     let mut payload = orig_payload.to_vec();
-    payload.resize(orig_payload.len() + sealer.tag_len(), 0);
+    payload.resize(orig_payload.len() + sealer_key.tag_len(), 0);
 
-    sealer
+    sealer_key
         .encrypt(packet_number, header, &mut payload)
         .expect("encryption should always work");
 
@@ -118,10 +239,10 @@ fn test_round_trip<C: Key + HeaderCrypto>(
         "payload should be decrypted"
     );
 
-    let sample_len = opener.opening_sample_len();
+    let sample_len = opener_header_key.opening_sample_len();
     assert_eq!(
-        sealer.sealing_header_protection_mask(&payload[..sample_len]),
-        opener.opening_header_protection_mask(&payload[..sample_len])
+        sealer_header_key.sealing_header_protection_mask(&payload[..sample_len]),
+        opener_header_key.opening_header_protection_mask(&payload[..sample_len])
     );
 
     Ok(())
@@ -131,19 +252,26 @@ fn test_round_trip<C: Key + HeaderCrypto>(
 #[derive(Debug)]
 enum CryptoTest {
     Initial {
-        server: RingInitialCrypto,
-        client: RingInitialCrypto,
+        server_key: RingInitialKey,
+        client_key: RingInitialKey,
+        server_header_key: RingInitialHeaderKey,
+        client_header_key: RingInitialHeaderKey,
     },
     Handshake {
-        server: RingHandshakeCrypto,
-        client: RingHandshakeCrypto,
+        server_key: RingHandshakeKey,
+        client_key: RingHandshakeKey,
+        server_header_key: RingHandshakeHeaderKey,
+        client_header_key: RingHandshakeHeaderKey,
     },
     OneRTT {
-        server: RingOneRTTCrypto,
-        client: RingOneRTTCrypto,
+        server_key: RingOneRttKey,
+        client_key: RingOneRttKey,
+        server_header_key: RingOneRttHeaderKey,
+        client_header_key: RingOneRttHeaderKey,
     },
     ZeroRTT {
-        crypto: RingZeroRTTCrypto,
+        key: RingZeroRttKey,
+        header_key: RingZeroRttHeaderKey,
     },
 }
 
@@ -158,9 +286,16 @@ fn gen_crypto() -> impl ValueGenerator<Output = CryptoTest> {
 
 fn gen_initial() -> impl ValueGenerator<Output = CryptoTest> {
     gen_dcid().map(|dcid| {
-        let server = RingInitialCrypto::new_server(&dcid);
-        let client = RingInitialCrypto::new_client(&dcid);
-        CryptoTest::Initial { server, client }
+        let server_key = RingInitialKey::new_server(&dcid);
+        let client_key = RingInitialKey::new_client(&dcid);
+        let server_header_key = RingInitialHeaderKey::new_server(&dcid);
+        let client_header_key = RingInitialHeaderKey::new_client(&dcid);
+        CryptoTest::Initial {
+            server_key,
+            client_key,
+            server_header_key,
+            client_header_key,
+        }
     })
 }
 
@@ -170,24 +305,36 @@ fn gen_dcid() -> impl ValueGenerator<Output = Vec<u8>> {
 
 fn gen_handshake() -> impl ValueGenerator<Output = CryptoTest> {
     gen_negotiated_secrets().map(|(algo, secrets)| {
-        let server = RingHandshakeCrypto::new_server(&algo, secrets.clone()).unwrap();
-        let client = RingHandshakeCrypto::new_client(&algo, secrets).unwrap();
-        CryptoTest::Handshake { server, client }
+        let (server_key, server_header_key) =
+            RingHandshakeKey::new_server(&algo, secrets.clone()).unwrap();
+        let (client_key, client_header_key) = RingHandshakeKey::new_client(&algo, secrets).unwrap();
+        CryptoTest::Handshake {
+            server_key,
+            client_key,
+            server_header_key,
+            client_header_key,
+        }
     })
 }
 
 fn gen_one_rtt() -> impl ValueGenerator<Output = CryptoTest> {
     gen_negotiated_secrets().map(|(algo, secrets)| {
-        let server = RingOneRTTCrypto::new_server(&algo, secrets.clone()).unwrap();
-        let client = RingOneRTTCrypto::new_client(&algo, secrets).unwrap();
-        CryptoTest::OneRTT { server, client }
+        let (server_key, server_header_key) =
+            RingOneRttKey::new_server(&algo, secrets.clone()).unwrap();
+        let (client_key, client_header_key) = RingOneRttKey::new_client(&algo, secrets).unwrap();
+        CryptoTest::OneRTT {
+            server_key,
+            client_key,
+            server_header_key,
+            client_header_key,
+        }
     })
 }
 
 fn gen_zero_rtt() -> impl ValueGenerator<Output = CryptoTest> {
     gen_secret(hkdf::HKDF_SHA256).map(|secret| {
-        let crypto = RingZeroRTTCrypto::new(secret);
-        CryptoTest::ZeroRTT { crypto }
+        let (key, header_key) = RingZeroRttKey::new(secret);
+        CryptoTest::ZeroRTT { key, header_key }
     })
 }
 

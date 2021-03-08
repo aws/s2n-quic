@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    crypto::{CryptoError, EncryptedPayload, HeaderCrypto, ProtectedPayload, ZeroRTTCrypto},
+    crypto::{CryptoError, EncryptedPayload, ProtectedPayload, ZeroRttHeaderKey, ZeroRttKey},
     packet::{
         decoding::HeaderDecoder,
         encoding::{PacketEncoder, PacketPayloadEncoder},
@@ -89,9 +89,9 @@ impl<'a> ProtectedZeroRTT<'a> {
         Ok((packet, remaining))
     }
 
-    pub fn unprotect<C: ZeroRTTCrypto>(
+    pub fn unprotect<H: ZeroRttHeaderKey>(
         self,
-        crypto: &C,
+        header_key: &H,
         largest_acknowledged_packet_number: PacketNumber,
     ) -> Result<EncryptedZeroRTT<'a>, CryptoError> {
         let ZeroRTT {
@@ -103,7 +103,7 @@ impl<'a> ProtectedZeroRTT<'a> {
         } = self;
 
         let (truncated_packet_number, payload) =
-            crate::crypto::unprotect(crypto, PacketNumberSpace::ApplicationData, payload)?;
+            crate::crypto::unprotect(header_key, PacketNumberSpace::ApplicationData, payload)?;
 
         let packet_number = truncated_packet_number
             .expand(largest_acknowledged_packet_number)
@@ -134,10 +134,7 @@ impl<'a> ProtectedZeroRTT<'a> {
 }
 
 impl<'a> EncryptedZeroRTT<'a> {
-    pub fn decrypt<C: ZeroRTTCrypto>(
-        self,
-        crypto: &C,
-    ) -> Result<CleartextZeroRTT<'a>, CryptoError> {
+    pub fn decrypt<C: ZeroRttKey>(self, crypto: &C) -> Result<CleartextZeroRTT<'a>, CryptoError> {
         let ZeroRTT {
             version,
             destination_connection_id,
@@ -222,8 +219,9 @@ impl<
         DCID: EncoderValue,
         SCID: EncoderValue,
         Payload: PacketPayloadEncoder,
-        Crypto: ZeroRTTCrypto + HeaderCrypto,
-    > PacketEncoder<Crypto, Payload> for ZeroRTT<DCID, SCID, PacketNumber, Payload>
+        K: ZeroRttKey,
+        H: ZeroRttHeaderKey,
+    > PacketEncoder<K, H, Payload> for ZeroRTT<DCID, SCID, PacketNumber, Payload>
 {
     type PayloadLenCursor = LongPayloadLenCursor;
 

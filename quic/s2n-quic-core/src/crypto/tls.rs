@@ -28,17 +28,23 @@ pub struct ApplicationParameters<'a> {
 //# implementation to communicate its buffering limits.
 
 pub trait Context<Crypto: CryptoSuite> {
-    fn on_handshake_keys(&mut self, keys: Crypto::HandshakeCrypto) -> Result<(), TransportError>;
+    fn on_handshake_keys(
+        &mut self,
+        key: Crypto::HandshakeKey,
+        header_key: Crypto::HandshakeHeaderKey,
+    ) -> Result<(), TransportError>;
 
     fn on_zero_rtt_keys(
         &mut self,
-        keys: Crypto::ZeroRTTCrypto,
+        key: Crypto::ZeroRttKey,
+        header_key: Crypto::ZeroRttHeaderKey,
         application_parameters: ApplicationParameters,
     ) -> Result<(), TransportError>;
 
     fn on_one_rtt_keys(
         &mut self,
-        keys: Crypto::OneRTTCrypto,
+        key: Crypto::OneRttKey,
+        header_key: Crypto::OneRttHeaderKey,
         application_parameters: ApplicationParameters,
     ) -> Result<(), TransportError>;
 

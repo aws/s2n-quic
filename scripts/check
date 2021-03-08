@@ -9,7 +9,7 @@
 
 set -e
 
-cargo fmt
+cargo +nightly fmt --all
 cargo +nightly fmt --all -- --check
 cargo +stable clippy --all-features --all-targets -- -D warnings
-cargo test
+cargo check

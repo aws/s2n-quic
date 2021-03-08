@@ -8,7 +8,7 @@ use crate::{
 use s2n_codec::{DecoderBuffer, DecoderError};
 
 /// Types for which are able to perform header cryptography.
-pub trait HeaderCrypto: Send {
+pub trait HeaderKey: Send {
     /// Derives a header protection mask from a sample buffer, to be
     /// used for opening a packet.
     ///
