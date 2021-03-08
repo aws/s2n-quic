@@ -57,7 +57,7 @@ index 708e1ae..6ce3a8b 100644
 +  },
    "quic-go": {
 -    "image": "martenseemann/quic-go-interop:latest",
-+    "image": "martenseemann/quic-go-interop@sha256:f8bb3f8c836899b1f416a1a2bb387b66343f4ffe4eac5b90a62968d34fc05249",
++    "image": "martenseemann/quic-go-interop@sha256:eac3cf0ef25574082bdfbe2bb362d30633ac453270732bdc1e3945aabc39ef2d",
      "url": "https://github.com/lucas-clemente/quic-go",
      "role": "both"
    },
