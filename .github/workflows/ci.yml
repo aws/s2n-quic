@@ -488,3 +488,12 @@ jobs:
           name: 'recovery-simulations / report'
           status: 'success'
           url: "${{ steps.s3.outputs.URL }}"
+
+  copyright:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Check
+        run: |
+          ./scripts/copyright_check
