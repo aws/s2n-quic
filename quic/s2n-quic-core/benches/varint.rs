@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use s2n_codec::{DecoderBuffer, EncoderBuffer, EncoderValue};
 use s2n_quic_core::varint::VarInt;

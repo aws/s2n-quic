@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 use core::task::Waker;
 
 /// Events that are triggered through a state-update on a Stream.

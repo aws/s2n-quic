@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 use s2n_quic_core::io::{rx, tx};
 pub use s2n_quic_core::{inet, io::Duplex};
 use std::io;

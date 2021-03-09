@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 use super::{generator::gen_duration, Network, NetworkEvent, Report};
 use alloc::collections::VecDeque;
 use bolero::generator::*;

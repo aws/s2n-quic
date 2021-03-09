@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 /// The Stream Type defines whether data can be transmitted in both directions
 /// or only in a single direction.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

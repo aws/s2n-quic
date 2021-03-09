@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 //! Default provider for Address Validation tokens
 //!
 //! The default provider will randomly generate a 256 bit key. This key will be used to sign and

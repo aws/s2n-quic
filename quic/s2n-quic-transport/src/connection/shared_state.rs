@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 //! Defines state which is shared between the public Stream and Connection API
 //! and the internal Connection representation
 

@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 use crate::contexts::WriteContext;
 use alloc::collections::VecDeque;
 use s2n_codec::{encoder::EncoderBuffer, DecoderBufferMut};

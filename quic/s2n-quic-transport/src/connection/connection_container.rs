@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 //! `ConnectionContainer` is a container for all Connections. It manages the permanent
 //! map of all active Connections, as well as a variety of dynamic Connection lists.
 

@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 use hex_literal::hex;
 
 //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#A.1

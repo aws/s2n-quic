@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7
 //# Similar to TCP, packets containing only ACK frames do not count
 //# towards bytes in flight and are not congestion controlled.

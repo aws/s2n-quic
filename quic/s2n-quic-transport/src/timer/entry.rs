@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 use crate::timer::shared_state::{TimerNode, TimerSharedState, TimerState};
 use alloc::rc::Rc;
 use core::cell::RefCell;

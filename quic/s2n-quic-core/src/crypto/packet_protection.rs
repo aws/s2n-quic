@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.1
 //# The current encryption level secret and the label "quic key" are
 //# input to the KDF to produce the AEAD key;

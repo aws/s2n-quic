@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 //! `StreamManager` manages the lifecycle of all `Stream`s inside a `Connection`
 
 use crate::{

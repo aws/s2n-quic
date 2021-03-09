@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 use alloc::rc::Rc;
 use core::cell::RefCell;
 use s2n_quic_core::{frame::MaxData, varint::VarInt};

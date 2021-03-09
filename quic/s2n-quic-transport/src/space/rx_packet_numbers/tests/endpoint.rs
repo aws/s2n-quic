@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 use super::{generator::gen_ack_settings, Packet, TestEnvironment};
 use crate::{
     contexts::WriteContext, processed_packet::ProcessedPacket,

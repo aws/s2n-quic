@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 //! Bulk operations performed on streams
 //!
 //! By representing stream operations as structs, callers can request multiple tasks to be

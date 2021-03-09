@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 use crate::interval_set::IntervalSet;
 use alloc::collections::BTreeSet;
 use bolero::{check, generator::*};

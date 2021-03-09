@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 use crate::{
     connection, path, processed_packet::ProcessedPacket, space::rx_packet_numbers::AckManager,
     transmission,

@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 use crate::crypto::{Key as KeyTrait, OneRTTCrypto};
 
 //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6

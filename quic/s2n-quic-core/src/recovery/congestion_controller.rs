@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 use crate::{inet::SocketAddress, path::MINIMUM_MTU, recovery::RTTEstimator, time::Timestamp};
 use core::fmt::Debug;
 

@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 //! Default provider for Address Validation
 //!
 //! Customers will use the default Provider to generate and verify address validation tokens. This

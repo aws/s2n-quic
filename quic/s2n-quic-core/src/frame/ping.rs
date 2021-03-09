@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.2
 //# Endpoints can use PING frames (type=0x01) to verify that their peers
 //# are still alive or to check reachability to the peer.

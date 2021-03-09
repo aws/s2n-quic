@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 use crate::{frame::Tag, varint::VarInt};
 use core::{convert::TryInto, ops::RangeInclusive};
 use s2n_codec::{

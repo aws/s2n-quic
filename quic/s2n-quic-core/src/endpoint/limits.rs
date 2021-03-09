@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 use crate::{inet::SocketAddress, time::Duration};
 
 /// Outcome describes how the library should proceed on a connection attempt. The implementor will

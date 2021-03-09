@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 use crate::ciphersuite::TLS_AES_128_GCM_SHA256 as Ciphersuite;
 use ring::hkdf;
 use s2n_quic_core::{

@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 //! An unbounded multi-producer single-consumer channel
 
 use alloc::{collections::VecDeque, sync::Arc};

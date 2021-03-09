@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 /// Provides logging support for an endpoint
 pub trait Provider {
     type Log: 'static + Send;

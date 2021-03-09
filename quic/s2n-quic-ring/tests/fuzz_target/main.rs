@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 use bolero::{check, generator::*};
 use ring::{
     aead::{AES_128_GCM, AES_256_GCM, CHACHA20_POLY1305},

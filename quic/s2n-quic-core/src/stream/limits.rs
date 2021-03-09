@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 /// The default send buffer size for Streams
 const DEFAULT_STREAM_MAX_SEND_BUFFER_SIZE: u32 = 64 * 1024;
 

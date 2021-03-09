@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 macro_rules! define_inet_type {
     ($($vis:ident)? struct $name:ident {
         $(

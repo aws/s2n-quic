@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 use cfg_if::cfg_if;
 use s2n_quic_core::inet::SocketAddress;
 use std::{io, net::UdpSocket};

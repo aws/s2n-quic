@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 macro_rules! impl_handle_api {
     (| $handle:ident, $dispatch:ident | $dispatch_body:expr) => {
         /// Opens a new stream with a specific type

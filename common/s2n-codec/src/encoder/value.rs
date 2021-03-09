@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 use crate::{
     encoder::{Encoder, EncoderLenEstimator},
     i24, i48, u24, u48, DecoderBuffer, DecoderBufferMut,

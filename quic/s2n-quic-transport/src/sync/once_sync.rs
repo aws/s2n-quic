@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 //! Synchronizes a value of type `T` exactly once towards the remote peer.
 
 use crate::{

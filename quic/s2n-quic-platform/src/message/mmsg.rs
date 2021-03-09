@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 use crate::message::{msg::Ring as MsgRing, Message as MessageTrait};
 use alloc::vec::Vec;
 use core::{fmt, mem::zeroed};

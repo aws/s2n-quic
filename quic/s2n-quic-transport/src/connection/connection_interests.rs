@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 //! A collection of a all the interactions a `Connection` is interested in
 
 /// A collection of a all the interactions a `Connection` is interested in

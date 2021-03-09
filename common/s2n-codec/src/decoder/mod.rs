@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 macro_rules! doc_comment {
     ($($x:expr)*; $($tt:tt)*) => {
         doc_comment!(@doc concat!($($x, "\n",)*), $($tt)*);
