@@ -45,10 +45,10 @@ index 7541cae..12f9c70 100644
        - "server6:fd00:cafe:cafe:100::110"
        - "server46:193.167.100.110"
 diff --git a/implementations.json b/implementations.json
-index 708e1ae..6ce3a8b 100644
+index 708e1ae..aac0f66 100644
 --- a/implementations.json
 +++ b/implementations.json
-@@ -1,51 +1,56 @@
+@@ -1,16 +1,21 @@
  {
 +  "s2n-quic": {
 +    "image": "awslabs/s2n-quic-qns:latest",
@@ -73,10 +73,7 @@ index 708e1ae..6ce3a8b 100644
      "url": "https://github.com/ngtcp2/ngtcp2",
      "role": "both"
    },
-   "quant": {
--    "image": "ntap/quant:interop",
-+    "image": "ntap/quant@sha256:cb50cc8019d45d9cad5faecbe46a3c21dd5e871949819a5175423755a9045106",
-     "url": "https://github.com/NTAP/quant",
+@@ -20,32 +25,32 @@
      "role": "both"
    },
    "mvfst": {
