@@ -29,6 +29,7 @@ use s2n_quic_core::{
         short::{CleartextShort, ProtectedShort, Short, SpinBit},
     },
     path::Path,
+    random,
     recovery::RTTEstimator,
     time::Timestamp,
     transport::error::TransportError,
@@ -113,9 +114,9 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         }
     }
 
-    pub fn on_transmit<'a>(
+    pub fn on_transmit<'a, Rnd: random::Generator>(
         &mut self,
-        context: &mut ConnectionTransmissionContext<Config>,
+        context: &mut ConnectionTransmissionContext<Config, Rnd>,
         transmission_constraint: transmission::Constraint,
         handshake_status: &mut HandshakeStatus,
         buffer: EncoderBuffer<'a>,
@@ -149,6 +150,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
                 stream_manager: &mut self.stream_manager,
                 local_id_registry: context.local_id_registry,
                 path_manager: context.path_manager,
+                random_generator: context.random_generator,
             },
             recovery_manager: &mut self.recovery_manager,
             timestamp: context.timestamp,

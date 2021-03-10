@@ -10,11 +10,12 @@ use s2n_quic_core::{
     io::tx,
     packet::{encoding::PacketEncodingError, number::PacketNumberSpace},
     path::Path,
+    random,
     time::Timestamp,
 };
 
 #[derive(Debug)]
-pub struct ConnectionTransmissionContext<'a, Config: connection::Config> {
+pub struct ConnectionTransmissionContext<'a, Config: connection::Config, Rnd: random::Generator> {
     pub quic_version: u32,
     pub timestamp: Timestamp,
     pub path_id: path::Id,
@@ -23,9 +24,12 @@ pub struct ConnectionTransmissionContext<'a, Config: connection::Config> {
     pub source_connection_id: &'a connection::LocalId,
     pub ecn: ExplicitCongestionNotification,
     pub min_packet_len: Option<usize>,
+    pub random_generator: &'a mut Rnd,
 }
 
-impl<'a, Config: connection::Config> ConnectionTransmissionContext<'a, Config> {
+impl<'a, Config: connection::Config, Rnd: random::Generator>
+    ConnectionTransmissionContext<'a, Config, Rnd>
+{
     pub fn path(&self) -> &Path<Config::CongestionController> {
         &self.path_manager[self.path_id]
     }
@@ -35,12 +39,14 @@ impl<'a, Config: connection::Config> ConnectionTransmissionContext<'a, Config> {
     }
 }
 
-pub struct ConnectionTransmission<'a, Config: connection::Config> {
-    pub context: ConnectionTransmissionContext<'a, Config>,
+pub struct ConnectionTransmission<'a, Config: connection::Config, Rnd: random::Generator> {
+    pub context: ConnectionTransmissionContext<'a, Config, Rnd>,
     pub shared_state: &'a mut SharedConnectionState<Config>,
 }
 
-impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, Config> {
+impl<'a, Config: connection::Config, Rnd: random::Generator> tx::Message
+    for ConnectionTransmission<'a, Config, Rnd>
+{
     fn remote_address(&mut self) -> SocketAddress {
         self.context.path().peer_socket_address
     }

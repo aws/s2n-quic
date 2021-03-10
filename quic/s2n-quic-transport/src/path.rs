@@ -4,6 +4,7 @@ use crate::{connection::PeerIdRegistry, transmission};
 use s2n_quic_core::{
     connection,
     inet::{DatagramInfo, SocketAddress},
+    random,
     recovery::{CongestionController, RTTEstimator},
     stateless_reset,
     transport::error::TransportError,
@@ -122,6 +123,15 @@ impl<CC: CongestionController> Manager<CC> {
         //       connection immediately. https://github.com/awslabs/s2n-quic/issues/317
         return Err(TransportError::INTERNAL_ERROR);
 
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
+        //= type=TODO
+        //= tracking-issue=https://github.com/awslabs/s2n-quic/issues/569
+        //# If the peer sent the disable_active_migration transport parameter, an
+        //# endpoint also MUST NOT send packets (including probing packets; see
+        //# Section 9.1) from a different local address to the address the peer
+        //# used during the handshake, unless the endpoint has acted on a
+        //# preferred_address transport parameter from the peer.
+
         let path = Path::new(
             datagram.remote_address,
             // TODO https://github.com/awslabs/s2n-quic/issues/316
@@ -138,11 +148,24 @@ impl<CC: CongestionController> Manager<CC> {
         );
         let id = Id(self.paths.len());
         self.paths.push(path);
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
+        //= type=TODO
+        //= tracking-issue=https://github.com/awslabs/s2n-quic/issues/271
+        //# An endpoint MUST
+        //# perform path validation (Section 8.2) if it detects any change to a
+        //# peer's address, unless it has previously validated that address.
+
         Ok((id, false))
     }
 
     /// Writes any frames the path manager wishes to transmit to the given context
-    pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
+    pub fn on_transmit<W: WriteContext, Rnd: random::Generator>(
+        &mut self,
+        context: &mut W,
+        _random_generator: &mut Rnd,
+    ) {
+        // TODO generate PATH_CHALLENGE frame
         self.peer_id_registry.on_transmit(context)
     }
 

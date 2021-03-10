@@ -8,17 +8,20 @@ use crate::{
     transmission,
 };
 use core::ops::RangeInclusive;
-use s2n_quic_core::{packet::number::PacketNumberSpace, recovery::CongestionController};
+use s2n_quic_core::{packet::number::PacketNumberSpace, random, recovery::CongestionController};
 
-pub struct Payload<'a, S: Stream, CC: CongestionController> {
+pub struct Payload<'a, S: Stream, CC: CongestionController, Rnd: random::Generator> {
     pub handshake_status: &'a mut HandshakeStatus,
     pub ping: &'a mut Ping,
     pub stream_manager: &'a mut AbstractStreamManager<S>,
     pub local_id_registry: &'a mut connection::LocalIdRegistry,
     pub path_manager: &'a mut path::Manager<CC>,
+    pub random_generator: &'a mut Rnd,
 }
 
-impl<'a, S: Stream, CC: CongestionController> super::Payload for Payload<'a, S, CC> {
+impl<'a, S: Stream, CC: CongestionController, Rnd: random::Generator> super::Payload
+    for Payload<'a, S, CC, Rnd>
+{
     fn size_hint(&self, range: RangeInclusive<usize>) -> usize {
         // We need at least 1 byte to write a HANDSHAKE_DONE or PING frame
         (*range.start()).max(1)
@@ -31,7 +34,8 @@ impl<'a, S: Stream, CC: CongestionController> super::Payload for Payload<'a, S, 
 
         self.local_id_registry.on_transmit(context);
 
-        self.path_manager.on_transmit(context);
+        self.path_manager
+            .on_transmit(context, self.random_generator);
 
         let _ = self.stream_manager.on_transmit(context);
 
@@ -45,8 +49,8 @@ impl<'a, S: Stream, CC: CongestionController> super::Payload for Payload<'a, S, 
     }
 }
 
-impl<'a, S: Stream, CC: CongestionController> transmission::interest::Provider
-    for Payload<'a, S, CC>
+impl<'a, S: Stream, CC: CongestionController, Rnd: random::Generator>
+    transmission::interest::Provider for Payload<'a, S, CC, Rnd>
 {
     fn transmission_interest(&self) -> transmission::Interest {
         transmission::Interest::default()

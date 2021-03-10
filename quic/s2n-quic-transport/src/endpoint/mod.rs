@@ -532,9 +532,10 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
         // Iterate over all connections which want to transmit data
         let mut transmit_result = Ok(());
+        let rng = self.config.context().random_generator;
         self.connections
             .iterate_transmission_list(|connection, shared_state| {
-                transmit_result = connection.on_transmit(shared_state, &mut queue, timestamp);
+                transmit_result = connection.on_transmit(shared_state, &mut queue, timestamp, rng);
                 if transmit_result.is_err() {
                     // If one connection fails, return
                     ConnectionContainerIterationResult::BreakAndInsertAtBack

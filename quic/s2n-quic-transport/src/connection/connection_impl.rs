@@ -29,7 +29,7 @@ use s2n_quic_core::{
         version_negotiation::ProtectedVersionNegotiation,
         zero_rtt::ProtectedZeroRTT,
     },
-    stateless_reset,
+    random, stateless_reset,
     time::Timestamp,
     transport::error::TransportError,
 };
@@ -357,11 +357,12 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Queries the connection for outgoing packets
-    fn on_transmit<Tx: tx::Queue>(
+    fn on_transmit<Tx: tx::Queue, Rnd: random::Generator>(
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         queue: &mut Tx,
         timestamp: Timestamp,
+        random_generator: &mut Rnd,
     ) -> Result<(), ConnectionOnTransmitError> {
         let mut count = 0;
 
@@ -385,6 +386,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                         local_id_registry: &mut self.local_id_registry,
                         ecn,
                         min_packet_len: None,
+                        random_generator,
                     },
                     shared_state,
                 }) {
@@ -563,16 +565,6 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
             shared_state
                 .space_manager
                 .on_amplification_unblocked(&self.path_manager[id], datagram.timestamp);
-        }
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
-        //= type=TODO
-        //= tracking-issue=https://github.com/awslabs/s2n-quic/issues/271
-        //# An endpoint MUST
-        //# perform path validation (Section 8.2) if it detects any change to a
-        //# peer's address, unless it has previously validated that address.
-        if !self.path_manager[id].is_validated() {
-            println!("Path not yet validated");
         }
 
         Ok(id)

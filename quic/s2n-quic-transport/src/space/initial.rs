@@ -23,6 +23,7 @@ use s2n_quic_core::{
         },
     },
     path::Path,
+    random,
     time::Timestamp,
     transport::error::TransportError,
 };
@@ -75,9 +76,9 @@ impl<Config: connection::Config> InitialSpace<Config> {
         }
     }
 
-    pub fn on_transmit<'a>(
+    pub fn on_transmit<'a, Rnd: random::Generator>(
         &mut self,
-        context: &mut ConnectionTransmissionContext<Config>,
+        context: &mut ConnectionTransmissionContext<Config, Rnd>,
         transmission_constraint: transmission::Constraint,
         handshake_status: &HandshakeStatus,
         buffer: EncoderBuffer<'a>,

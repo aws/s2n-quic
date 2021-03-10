@@ -24,7 +24,7 @@ use s2n_quic_core::{
         zero_rtt::ProtectedZeroRTT,
         ProtectedPacket,
     },
-    stateless_reset,
+    random, stateless_reset,
     time::Timestamp,
     transport::error::TransportError,
 };
@@ -77,11 +77,12 @@ pub trait ConnectionTrait: Sized {
     ) -> Result<(), LocalIdRegistrationError>;
 
     /// Queries the connection for outgoing packets
-    fn on_transmit<Tx: tx::Queue>(
+    fn on_transmit<Tx: tx::Queue, Rnd: random::Generator>(
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         context: &mut Tx,
         timestamp: Timestamp,
+        random_generator: &mut Rnd,
     ) -> Result<(), ConnectionOnTransmitError>;
 
     /// Handles all timeouts on the `Connection`.
