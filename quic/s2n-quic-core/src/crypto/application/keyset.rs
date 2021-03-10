@@ -168,7 +168,6 @@ where
                     //# An endpoint SHOULD
                     //# retain old keys for some time after unprotecting a packet sent using
                     //# the new keys.
-                    println!("Setting derivation pto to {}", pto);
                     self.set_derivation_timer(pto);
                 }
 
