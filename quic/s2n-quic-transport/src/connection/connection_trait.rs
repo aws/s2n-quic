@@ -11,7 +11,7 @@ use crate::{
         ConnectionIdMapper, Parameters as ConnectionParameters, ProcessingError,
     },
     contexts::ConnectionOnTransmitError,
-    path,
+    endpoint, path,
     recovery::congestion_controller,
 };
 use s2n_codec::DecoderBufferMut;
@@ -35,13 +35,10 @@ use s2n_quic_core::{
 /// A trait which represents an internally used `Connection`
 pub trait ConnectionTrait: Sized {
     /// Static configuration of a connection
-    type Config: connection::Config;
+    type Config: endpoint::Config;
 
     /// Creates a new `Connection` instance with the given configuration
     fn new(parameters: ConnectionParameters<Self::Config>) -> Self;
-
-    /// Returns the connections configuration
-    fn config(&self) -> &Self::Config;
 
     /// Returns the Connections internal ID
     fn internal_connection_id(&self) -> InternalConnectionId;

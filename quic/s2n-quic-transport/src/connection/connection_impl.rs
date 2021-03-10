@@ -12,13 +12,12 @@ use crate::{
         SharedConnectionState,
     },
     contexts::ConnectionOnTransmitError,
-    path,
+    endpoint, path,
     recovery::{congestion_controller, RTTEstimator},
     space::PacketSpace,
     transmission,
 };
-
-use core::time::Duration;
+use core::{marker::PhantomData, time::Duration};
 use s2n_quic_core::{
     application::ApplicationErrorExt,
     connection::{id::Interest, ProcessingError},
@@ -107,9 +106,9 @@ impl<'a> From<ConnectionCloseReason<'a>> for ConnectionState {
 }
 
 #[derive(Debug)]
-pub struct ConnectionImpl<Config: connection::Config> {
+pub struct ConnectionImpl<Config: endpoint::Config> {
     /// The configuration of this connection
-    config: Config,
+    config: PhantomData<Config>,
     /// The [`Connection`]s internal identifier
     internal_connection_id: InternalConnectionId,
     /// The connection ID to send packets from
@@ -127,7 +126,7 @@ pub struct ConnectionImpl<Config: connection::Config> {
     /// The current state of the connection
     state: ConnectionState,
     /// Manage the paths that the connection could use
-    path_manager: path::Manager<Config::CongestionController>,
+    path_manager: path::Manager<Config::CongestionControllerEndpoint>,
     /// The limits applied to the current connection
     limits: Limits,
 }
@@ -214,7 +213,7 @@ impl<ConfigType: connection::Config> ConnectionImpl<ConfigType> {
     }
 }
 
-impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
+impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     /// Static configuration of a connection
     type Config = Config;
 
@@ -252,11 +251,6 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
             path_manager,
             limits: parameters.limits,
         }
-    }
-
-    /// Returns the connections configuration
-    fn config(&self) -> &Self::Config {
-        &self.config
     }
 
     /// Returns the Connections internal ID
@@ -397,7 +391,7 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
                     }
                 }
                 // TODO  leave the psuedo in comment, TODO send this stuff
-                // for path in path_manager.pending_paths() {
+                // for path_id in path_manager.pending_path_validation() {
                 // queue.push(path transmission context)
                 // need shared_state, look at application_transmission for examples
                 //  prob_path(path) // for mtu discovery or path
@@ -536,13 +530,11 @@ impl<Config: connection::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     // Packet handling
-    fn on_datagram_received<
-        CC: congestion_controller::Endpoint<CongestionController = Config::CongestionController>,
-    >(
+    fn on_datagram_received(
         &mut self,
-        shared_state: &mut SharedConnectionState<Self::Config>,
+        shared_state: &mut SharedConnectionState<Config>,
         datagram: &DatagramInfo,
-        congestion_controller_endpoint: &mut CC,
+        congestion_controller_endpoint: &mut Config::CongestionControllerEndpoint,
     ) -> Result<path::Id, TransportError> {
         let is_handshake_confirmed = shared_state.space_manager.is_handshake_confirmed();
 

@@ -6,8 +6,8 @@
 use crate::stream::StreamTrait;
 use s2n_quic_core::{
     application::ApplicationErrorCode, connection, crypto::tls, endpoint, frame::ConnectionClose,
-    inet::SocketAddress, recovery::CongestionController, stream::StreamError, time::Timestamp,
-    transport::error::TransportError,
+    inet::SocketAddress, random, recovery::CongestionController, stream::StreamError,
+    time::Timestamp, transport::error::TransportError,
 };
 
 mod api;
@@ -53,6 +53,8 @@ pub trait Config: 'static + Send + Debug {
     type Stream: StreamTrait;
     /// Session type
     type TLSSession: tls::Session;
+    /// Random generator
+    type Random: random::Generator;
 
     const ENDPOINT_TYPE: endpoint::Type;
 }

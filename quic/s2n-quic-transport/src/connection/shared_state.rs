@@ -7,6 +7,7 @@
 use crate::{
     connection::{self, ConnectionApi, ConnectionApiProvider, InternalConnectionId},
     contexts::ConnectionApiCallContext,
+    endpoint,
     space::PacketSpaceManager,
     stream::{AbstractStreamManager, Stream, StreamError},
     wakeup_queue::WakeupHandle,
@@ -75,8 +76,8 @@ impl<ConnectionConfigType: connection::Config>
 
 /// Contains all connection state which is shared between the QUIC packet thread
 /// and application threads
-pub struct SharedConnectionState<ConnectionConfigType: connection::Config> {
-    pub space_manager: PacketSpaceManager<ConnectionConfigType>,
+pub struct SharedConnectionState<Config: endpoint::Config> {
+    pub space_manager: PacketSpaceManager<Config>,
     pub wakeup_handle: WakeupHandle<InternalConnectionId>,
 }
 

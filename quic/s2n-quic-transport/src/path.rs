@@ -3,10 +3,13 @@
 
 //! This module contains the Manager implementation
 
+use std::collections::btree_map::Entry;
+
 use crate::{connection::PeerIdRegistry, transmission};
 use s2n_quic_core::{
     connection,
     inet::{DatagramInfo, SocketAddress},
+    recovery::congestion_controller,
     recovery::{CongestionController, RTTEstimator},
     stateless_reset,
     transport::error::TransportError,
@@ -24,7 +27,7 @@ const INLINE_PATH_LEN: usize = 5;
 /// The PathManager handles paths for a specific connection.
 /// It will handle path validation operations, and track the active path for a connection.
 #[derive(Debug)]
-pub struct Manager<CC: CongestionController> {
+pub struct Manager<CC: congestion_controller::Endpoint> {
     /// Path array
     paths: SmallVec<[Path<CC>; INLINE_PATH_LEN]>,
 
@@ -145,7 +148,18 @@ impl<CC: CongestionController> Manager<CC> {
     }
 
     /// Writes any frames the path manager wishes to transmit to the given context
+<<<<<<< Updated upstream
     pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
+=======
+    pub fn on_transmit<W: WriteContext, Rnd: random::Generator>(
+        &mut self,
+        context: &mut W,
+        _random_generator: &mut Rnd,
+    ) {
+        // TODO generate PATH_CHALLENGE frame
+        //
+        //
+>>>>>>> Stashed changes
         self.peer_id_registry.on_transmit(context)
     }
 
