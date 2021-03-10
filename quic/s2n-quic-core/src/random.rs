@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 /// A generator of random data. The two methods provide the same functionality for
 /// different use cases. One for "public" randomly generated data that may appear
 /// in the clear, and one for "private" data that should remain secret. This approach

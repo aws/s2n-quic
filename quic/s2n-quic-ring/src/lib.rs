@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 #![forbid(unsafe_code)]
 #![cfg_attr(not(test), no_std)]
 

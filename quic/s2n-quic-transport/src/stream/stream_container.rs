@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 //! `StreamContainer` is a container for all Streams. It manages the permanent
 //! map of all active Streams, as well as a variety of dynamic Stream lists.
 

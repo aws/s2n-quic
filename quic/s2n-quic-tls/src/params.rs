@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 use s2n_codec::{EncoderBuffer, EncoderValue};
 
 /// A buffer used by an endpoint to encode transport parameters

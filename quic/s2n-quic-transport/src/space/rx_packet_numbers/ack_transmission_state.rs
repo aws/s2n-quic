@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 use crate::{space::rx_packet_numbers::ack_ranges::AckRanges, transmission};
 
 #[derive(Clone, Copy, Debug, PartialEq)]

@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 macro_rules! impl_provider_utils {
     () => {
         /// Converts a value into a `Provider`

@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 use crate::callback::{self, Callback};
 use bytes::BytesMut;
 use core::{marker::PhantomData, task::Poll};

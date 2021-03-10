@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 //! Detects platform capability of:
 //! * https://linux.die.net/man/2/sendmmsg
 //! * https://linux.die.net/man/2/recvmmsg

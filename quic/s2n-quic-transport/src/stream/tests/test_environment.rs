@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 use super::{
     gen_pattern_test_data, stream_data, MockWriteContext, OutgoingFrameBuffer, WrittenFrame,
 };

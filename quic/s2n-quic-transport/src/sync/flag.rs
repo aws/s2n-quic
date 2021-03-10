@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 //! Sends a "flag" frame towards the peer
 //!
 //! This is intended to be used by frames, like PING and HANDSHAKE_DONE, that don't have any

@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 /// Provides synchronization support for an endpoint
 pub trait Provider {
     type Sync: 'static + Send;

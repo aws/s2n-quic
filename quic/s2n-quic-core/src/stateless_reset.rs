@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
 //# Stateless Reset {
 //#   Fixed Bits (2) = 1,

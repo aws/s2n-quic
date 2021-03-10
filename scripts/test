@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 
+#
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+
 # This script runs basic checks to verify code will pass through the CI.
 
 set -e

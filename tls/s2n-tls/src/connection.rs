@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 #![allow(clippy::missing_safety_doc)] // TODO add safety docs
 
 use crate::{config::Config, error::Error};

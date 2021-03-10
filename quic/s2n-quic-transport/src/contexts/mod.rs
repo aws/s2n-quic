@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 //! Defines Context traits, which are passed to various lifecycle callbacks
 //! within the connection in order to collect data
 

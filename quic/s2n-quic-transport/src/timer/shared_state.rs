@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 // Silence the clippy warning that shows up when using the intrusive adapter
 #![allow(clippy::unneeded_field_pattern, clippy::useless_transmute)]
 

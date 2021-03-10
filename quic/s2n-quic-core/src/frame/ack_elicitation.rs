@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 use core::ops::{BitOr, BitOrAssign};
 
 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#2

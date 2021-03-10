@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 #![forbid(unsafe_code)]
 
 compliance::specification!(source = "specs/rfc2616.txt#4.2", level = MUST,);

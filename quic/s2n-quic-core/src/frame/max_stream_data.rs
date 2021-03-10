@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 use crate::varint::VarInt;
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.10

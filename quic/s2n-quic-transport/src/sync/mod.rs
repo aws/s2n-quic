@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 //! Tools for synchronizing data between peers
 
 use crate::{contexts::WriteContext, transmission};

@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 use crate::inet::{
     ipv6::{IPv6Address, SocketAddressV6},
     unspecified::Unspecified,

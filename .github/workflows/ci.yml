@@ -15,7 +15,7 @@ env:
   RUST_BACKTRACE: 1
   # Pin the nightly toolchain to prevent breakage.
   # This should be occasionally updated.
-  RUST_NIGHTLY_TOOLCHAIN: nightly-2021-01-06
+  RUST_NIGHTLY_TOOLCHAIN: nightly-2021-03-08
   CDN: https://dnglbrstg7yg.cloudfront.net
 
 jobs:
@@ -488,3 +488,12 @@ jobs:
           name: 'recovery-simulations / report'
           status: 'success'
           url: "${{ steps.s3.outputs.URL }}"
+
+  copyright:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Check
+        run: |
+          ./scripts/copyright_check

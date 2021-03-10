@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 /// Ensure memory is correctly managed in tests
 #[cfg(test)]
 #[global_allocator]

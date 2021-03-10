@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 //! A queue which allows to wake up a QUIC endpoint which is blocked on packet reception or timers.
 //! This queue is used in case connections inside the endpoint change their readiness state change
 //! their readiness state (e.g. they get ready to write).

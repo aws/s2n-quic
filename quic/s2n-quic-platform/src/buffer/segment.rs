@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 use crate::buffer::Buffer;
 use core::ops::{Deref, DerefMut, Index, IndexMut, Range};
 use s2n_quic_core::path::MINIMUM_MTU;

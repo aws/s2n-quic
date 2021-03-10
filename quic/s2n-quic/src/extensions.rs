@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 /// A type map of protocol extensions.
 ///
 /// Extensions can be used by applications to store extra data derived

@@ -1,4 +1,5 @@
 edition = "2018"
 format_macro_matchers = true
-merge_imports = true
+imports_granularity = "Crate"
 use_field_init_shorthand = true
+license_template_path = "./.license-template"

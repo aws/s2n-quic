@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 use bytes::Bytes;
 use core::task::Context;
 use s2n_quic_core::{

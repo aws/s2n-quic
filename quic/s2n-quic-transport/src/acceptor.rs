@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 //! Allows to accept connections
 
 use crate::{connection::Connection, unbounded_channel::Receiver};

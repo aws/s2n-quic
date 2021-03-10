@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 #![cfg_attr(not(any(test, feature = "std")), no_std)]
 
 pub mod ack;

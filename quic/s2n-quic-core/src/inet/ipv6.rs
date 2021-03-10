@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 use crate::inet::unspecified::Unspecified;
 use core::fmt;
 use s2n_codec::zerocopy::U16;

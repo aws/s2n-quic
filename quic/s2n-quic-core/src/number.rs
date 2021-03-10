@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 /// Generates a generic number operation
 macro_rules! number_trait {
     ($name:ident, $method:ident, $output:ty, $test:stmt) => {
