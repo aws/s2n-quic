@@ -150,7 +150,7 @@ impl Limits {
 }
 
 /// Creates limits for a given connection
-pub trait Limiter {
+pub trait Limiter: 'static {
     fn on_connection(&mut self, info: &ConnectionInfo) -> Limits;
 }
 

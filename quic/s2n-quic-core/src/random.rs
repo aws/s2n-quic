@@ -6,7 +6,7 @@
 /// in the clear, and one for "private" data that should remain secret. This approach
 /// lessens the risk of potential predictability weaknesses in random number generation
 /// algorithms from leaking information across contexts.
-pub trait Generator {
+pub trait Generator: 'static {
     /// Fills `dest` with unpredictable bits that may be
     /// sent over the wire and viewable in the clear.
     fn public_random_fill(&mut self, dest: &mut [u8]);

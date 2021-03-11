@@ -256,15 +256,15 @@ impl<
 
 impl<
         CongestionController: congestion_controller::Endpoint,
-        ConnectionID: 'static + connection::id::Format,
-        StatelessResetToken: 'static + stateless_reset_token::Generator,
-        Random: 'static + s2n_quic_core::random::Generator,
-        EndpointLimits: 'static + s2n_quic_core::endpoint::Limits,
-        Limits: 'static + s2n_quic_core::connection::limits::Limiter,
+        ConnectionID: connection::id::Format,
+        StatelessResetToken: stateless_reset_token::Generator,
+        Random: s2n_quic_core::random::Generator,
+        EndpointLimits: s2n_quic_core::endpoint::Limits,
+        Limits: s2n_quic_core::connection::limits::Limiter,
         Log: 'static,
         Sync: 'static,
-        Tls: 'static + crypto::tls::Endpoint,
-        Token: 'static + token::Format,
+        Tls: crypto::tls::Endpoint,
+        Token: token::Format,
     > endpoint::Config
     for EndpointConfig<
         CongestionController,

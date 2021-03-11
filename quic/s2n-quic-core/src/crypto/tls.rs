@@ -72,7 +72,7 @@ pub trait Context<Crypto: CryptoSuite> {
     fn send_application(&mut self, transmission: Bytes);
 }
 
-pub trait Endpoint: Sized {
+pub trait Endpoint: 'static + Sized {
     type Session: Session;
 
     fn new_server_session<Params: EncoderValue>(
