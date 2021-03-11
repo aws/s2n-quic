@@ -22,16 +22,14 @@ use std::sync::{Mutex, MutexGuard};
 
 /// A synchronized version of all connection state which is shared between
 /// the QUIC packet thread and application threads
-pub struct SynchronizedSharedConnectionState<ConnectionConfigType: connection::Config> {
-    inner: Mutex<SharedConnectionState<ConnectionConfigType>>,
+pub struct SynchronizedSharedConnectionState<EndpointConfig: endpoint::Config> {
+    inner: Mutex<SharedConnectionState<EndpointConfig>>,
 }
 
-impl<ConnectionConfigType: connection::Config>
-    SynchronizedSharedConnectionState<ConnectionConfigType>
-{
+impl<EndpointConfig: endpoint::Config> SynchronizedSharedConnectionState<EndpointConfig> {
     /// Creates a new shared state for the Connection
     pub fn new(
-        space_manager: PacketSpaceManager<ConnectionConfigType>,
+        space_manager: PacketSpaceManager<EndpointConfig>,
         wakeup_handle: WakeupHandle<InternalConnectionId>,
     ) -> Self {
         Self {
@@ -41,7 +39,7 @@ impl<ConnectionConfigType: connection::Config>
 
     /// Locks the shared state of the connection, and returns a guard that allows
     /// to modify the shared state
-    pub fn lock(&self) -> MutexGuard<'_, SharedConnectionState<ConnectionConfigType>> {
+    pub fn lock(&self) -> MutexGuard<'_, SharedConnectionState<EndpointConfig>> {
         self.inner
             .lock()
             .expect("Locking can only fail if locks are poisoned")
@@ -55,7 +53,7 @@ impl<ConnectionConfigType: connection::Config>
     where
         F: FnOnce(
             StreamId,
-            &mut AbstractStreamManager<ConnectionConfigType::Stream>,
+            &mut AbstractStreamManager<EndpointConfig::Stream>,
             &mut ConnectionApiCallContext,
         ) -> R,
     {
@@ -81,10 +79,10 @@ pub struct SharedConnectionState<Config: endpoint::Config> {
     pub wakeup_handle: WakeupHandle<InternalConnectionId>,
 }
 
-impl<ConnectionConfigType: connection::Config> SharedConnectionState<ConnectionConfigType> {
+impl<EndpointConfig: endpoint::Config> SharedConnectionState<EndpointConfig> {
     /// Creates a new shared state for the Connection
     pub fn new(
-        space_manager: PacketSpaceManager<ConnectionConfigType>,
+        space_manager: PacketSpaceManager<EndpointConfig>,
         wakeup_handle: WakeupHandle<InternalConnectionId>,
     ) -> Self {
         Self {
@@ -94,8 +92,8 @@ impl<ConnectionConfigType: connection::Config> SharedConnectionState<ConnectionC
     }
 }
 
-impl<ConnectionConfigType: connection::Config> ConnectionApiProvider
-    for SynchronizedSharedConnectionState<ConnectionConfigType>
+impl<EndpointConfig: endpoint::Config> ConnectionApiProvider
+    for SynchronizedSharedConnectionState<EndpointConfig>
 {
     fn poll_request(
         &self,

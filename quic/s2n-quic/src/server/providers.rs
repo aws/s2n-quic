@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
-use core::{marker::PhantomData, time::Duration};
+use core::time::Duration;
 use futures::{select_biased, FutureExt};
-use s2n_quic_core::{connection::id::Generator, crypto, recovery};
+use s2n_quic_core::{connection::id::Generator, crypto};
 use s2n_quic_transport::{acceptor::Acceptor, connection, endpoint, stream};
 
 impl_providers_state! {
@@ -225,14 +225,46 @@ struct EndpointConfig<
 }
 
 impl<
-        CongestionController: congestion_controller::Endpoint,
-        ConnectionID: connection::id::Format,
-        StatelessResetToken: stateless_reset_token::Generator,
-        Random: s2n_quic_core::random::Generator,
-        EndpointLimits: s2n_quic_core::endpoint::Limits,
-        Limits: s2n_quic_core::connection::limits::Limiter,
+        CongestionController: 'static + congestion_controller::Endpoint,
+        ConnectionID: 'static + connection::id::Format,
+        StatelessResetToken: 'static + stateless_reset_token::Generator,
+        Random: 'static + s2n_quic_core::random::Generator,
+        EndpointLimits: 'static + s2n_quic_core::endpoint::Limits,
+        Limits: 'static + s2n_quic_core::connection::limits::Limiter,
+        Log: 'static,
+        Sync: 'static,
+        Tls: 'static + crypto::tls::Endpoint,
+        Token: 'static + token::Format,
+    > core::fmt::Debug
+    for EndpointConfig<
+        CongestionController,
+        ConnectionID,
+        StatelessResetToken,
+        Random,
+        EndpointLimits,
+        Limits,
         Log,
         Sync,
+        Tls,
+        Token,
+    >
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("endpoint::Config")
+            .field("CC", &self.congestion_controller)
+            .finish()
+    }
+}
+
+impl<
+        CongestionController: 'static + congestion_controller::Endpoint,
+        ConnectionID: 'static + connection::id::Format,
+        StatelessResetToken: 'static + stateless_reset_token::Generator,
+        Random: 'static + s2n_quic_core::random::Generator,
+        EndpointLimits: 'static + s2n_quic_core::endpoint::Limits,
+        Limits: 'static + s2n_quic_core::connection::limits::Limiter,
+        Log: 'static,
+        Sync: 'static,
         Tls: 'static + crypto::tls::Endpoint,
         Token: 'static + token::Format,
     > endpoint::Config
@@ -249,24 +281,18 @@ impl<
         Token,
     >
 {
-    type ConnectionConfig =
-        ConnectionConfig<CongestionController::CongestionController, Tls::Session>;
     type ConnectionIdFormat = ConnectionID;
     type StatelessResetTokenGenerator = StatelessResetToken;
     type RandomGenerator = Random;
-    type Connection = connection::Implementation<Self::ConnectionConfig>;
+    type Connection = connection::Implementation<Self>;
     type CongestionControllerEndpoint = CongestionController;
     type EndpointLimits = EndpointLimits;
     type TLSEndpoint = Tls;
     type TokenFormat = Token;
     type ConnectionLimits = Limits;
+    type Stream = stream::StreamImpl;
 
-    fn create_connection_config(&mut self) -> Self::ConnectionConfig {
-        ConnectionConfig {
-            congestion_controller: PhantomData,
-            tls: PhantomData,
-        }
-    }
+    const ENDPOINT_TYPE: endpoint::Type = endpoint::Type::Server;
 
     fn context(&mut self) -> endpoint::Context<Self> {
         endpoint::Context {
@@ -280,20 +306,4 @@ impl<
             connection_limits: &mut self.limits,
         }
     }
-}
-
-#[derive(Debug)]
-struct ConnectionConfig<CC, Tls> {
-    congestion_controller: PhantomData<CC>,
-    tls: PhantomData<Tls>,
-}
-
-impl<CC: recovery::CongestionController, Tls: 'static + crypto::tls::Session> connection::Config
-    for ConnectionConfig<CC, Tls>
-{
-    type Stream = stream::StreamImpl;
-    type CongestionController = CC;
-    type TLSSession = Tls;
-
-    const ENDPOINT_TYPE: endpoint::Type = endpoint::Type::Server;
 }

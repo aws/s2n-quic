@@ -3,14 +3,12 @@
 
 //! This module contains the Manager implementation
 
-use std::collections::btree_map::Entry;
-
 use crate::{connection::PeerIdRegistry, transmission};
 use s2n_quic_core::{
     connection,
     inet::{DatagramInfo, SocketAddress},
     recovery::congestion_controller,
-    recovery::{CongestionController, RTTEstimator},
+    recovery::RTTEstimator,
     stateless_reset,
     transport::error::TransportError,
 };
@@ -27,9 +25,9 @@ const INLINE_PATH_LEN: usize = 5;
 /// The PathManager handles paths for a specific connection.
 /// It will handle path validation operations, and track the active path for a connection.
 #[derive(Debug)]
-pub struct Manager<CC: congestion_controller::Endpoint> {
+pub struct Manager<CCE: congestion_controller::Endpoint> {
     /// Path array
-    paths: SmallVec<[Path<CC>; INLINE_PATH_LEN]>,
+    paths: SmallVec<[Path<CCE::CongestionController>; INLINE_PATH_LEN]>,
 
     /// Registry of `connection::PeerId`s
     peer_id_registry: PeerIdRegistry,
@@ -38,8 +36,11 @@ pub struct Manager<CC: congestion_controller::Endpoint> {
     active: usize,
 }
 
-impl<CC: CongestionController> Manager<CC> {
-    pub fn new(initial_path: Path<CC>, peer_id_registry: PeerIdRegistry) -> Self {
+impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
+    pub fn new(
+        initial_path: Path<CCE::CongestionController>,
+        peer_id_registry: PeerIdRegistry,
+    ) -> Self {
         Manager {
             paths: SmallVec::from_elem(initial_path, 1),
             peer_id_registry,
@@ -48,12 +49,12 @@ impl<CC: CongestionController> Manager<CC> {
     }
 
     /// Return the active path
-    pub fn active_path(&self) -> &Path<CC> {
+    pub fn active_path(&self) -> &Path<CCE::CongestionController> {
         &self.paths[self.active]
     }
 
     /// Return a mutable reference to the active path
-    pub fn active_path_mut(&mut self) -> &mut Path<CC> {
+    pub fn active_path_mut(&mut self) -> &mut Path<CCE::CongestionController> {
         &mut self.paths[self.active]
     }
 
@@ -63,7 +64,10 @@ impl<CC: CongestionController> Manager<CC> {
     }
 
     /// Returns the Path for the provided address if the PathManager knows about it
-    pub fn path(&self, peer_address: &SocketAddress) -> Option<(Id, &Path<CC>)> {
+    pub fn path(
+        &self,
+        peer_address: &SocketAddress,
+    ) -> Option<(Id, &Path<CCE::CongestionController>)> {
         self.paths
             .iter()
             .enumerate()
@@ -72,7 +76,10 @@ impl<CC: CongestionController> Manager<CC> {
     }
 
     /// Returns the Path for the provided address if the PathManager knows about it
-    pub fn path_mut(&mut self, peer_address: &SocketAddress) -> Option<(Id, &mut Path<CC>)> {
+    pub fn path_mut(
+        &mut self,
+        peer_address: &SocketAddress,
+    ) -> Option<(Id, &mut Path<CCE::CongestionController>)> {
         self.paths
             .iter_mut()
             .enumerate()
@@ -86,12 +93,12 @@ impl<CC: CongestionController> Manager<CC> {
     /// and is now no longer amplification limited.
     #[allow(unreachable_code)]
     #[allow(unused_variables)]
-    pub fn on_datagram_received<NewCC: FnOnce() -> CC>(
+    pub fn on_datagram_received(
         &mut self,
         datagram: &DatagramInfo,
         limits: &connection::Limits,
         is_handshake_confirmed: bool,
-        new_congestion_controller: NewCC,
+        congestion_controller_endpoint: &mut CCE,
     ) -> Result<(Id, bool), TransportError> {
         if let Some((id, path)) = self.path_mut(&datagram.remote_address) {
             let unblocked = path.on_bytes_received(datagram.payload_len);
@@ -128,6 +135,9 @@ impl<CC: CongestionController> Manager<CC> {
         //       connection immediately. https://github.com/awslabs/s2n-quic/issues/317
         return Err(TransportError::INTERNAL_ERROR);
 
+        let path_info = congestion_controller::PathInfo::new(&datagram.remote_address);
+        // TODO set alpn if available
+        let cc = congestion_controller_endpoint.new_congestion_controller(path_info);
         let path = Path::new(
             datagram.remote_address,
             // TODO https://github.com/awslabs/s2n-quic/issues/316
@@ -139,7 +149,7 @@ impl<CC: CongestionController> Manager<CC> {
             // no new connection::PeerId is available to use.
             self.active_path().peer_connection_id,
             RTTEstimator::new(limits.ack_settings().max_ack_delay),
-            new_congestion_controller(),
+            cc,
             true,
         );
         let id = Id(self.paths.len());
@@ -148,18 +158,7 @@ impl<CC: CongestionController> Manager<CC> {
     }
 
     /// Writes any frames the path manager wishes to transmit to the given context
-<<<<<<< Updated upstream
     pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
-=======
-    pub fn on_transmit<W: WriteContext, Rnd: random::Generator>(
-        &mut self,
-        context: &mut W,
-        _random_generator: &mut Rnd,
-    ) {
-        // TODO generate PATH_CHALLENGE frame
-        //
-        //
->>>>>>> Stashed changes
         self.peer_id_registry.on_transmit(context)
     }
 
@@ -233,7 +232,7 @@ impl<CC: CongestionController> Manager<CC> {
     pub fn on_new_token(&self, _peer_address: &SocketAddress, _token: &[u8]) {}
 
     /// Start the validation process for a path
-    pub fn validate_path(&self, _path: Path<CC>) {}
+    pub fn validate_path(&self, _path: Path<CCE::CongestionController>) {}
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
     //# Tokens are
@@ -303,7 +302,7 @@ impl<CC: CongestionController> Manager<CC> {
     }
 }
 
-impl<CC: CongestionController> transmission::interest::Provider for Manager<CC> {
+impl<CCE: congestion_controller::Endpoint> transmission::interest::Provider for Manager<CCE> {
     // TODO Add transmission interests for path probes
     fn transmission_interest(&self) -> Interest {
         self.peer_id_registry.transmission_interest()
@@ -314,15 +313,15 @@ impl<CC: CongestionController> transmission::interest::Provider for Manager<CC> 
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord, Hash)]
 pub struct Id(usize);
 
-impl<CC: CongestionController> core::ops::Index<Id> for Manager<CC> {
-    type Output = Path<CC>;
+impl<CCE: congestion_controller::Endpoint> core::ops::Index<Id> for Manager<CCE> {
+    type Output = Path<CCE::CongestionController>;
 
     fn index(&self, id: Id) -> &Self::Output {
         &self.paths[id.0]
     }
 }
 
-impl<CC: CongestionController> core::ops::IndexMut<Id> for Manager<CC> {
+impl<CCE: congestion_controller::Endpoint> core::ops::IndexMut<Id> for Manager<CCE> {
     fn index_mut(&mut self, id: Id) -> &mut Self::Output {
         &mut self.paths[id.0]
     }
@@ -337,7 +336,7 @@ mod tests {
         endpoint,
         inet::{DatagramInfo, ExplicitCongestionNotification},
         random,
-        recovery::{congestion_controller::testing::Unlimited, RTTEstimator},
+        recovery::{congestion_controller::testing::unlimited, RTTEstimator},
         stateless_reset,
         stateless_reset::token::testing::TEST_TOKEN_1,
         time::Timestamp,
@@ -345,11 +344,11 @@ mod tests {
     use std::net::SocketAddr;
 
     // Helper function to easily create a PathManager
-    fn manager<CC: CongestionController>(
-        first_path: Path<CC>,
+    fn manager(
+        first_path: Path<unlimited::CongestionController>,
         initial_id: connection::PeerId,
         stateless_reset_token: Option<stateless_reset::Token>,
-    ) -> Manager<CC> {
+    ) -> Manager<unlimited::Endpoint> {
         let mut random_generator = random::testing::Generator(123);
         let peer_id_registry =
             ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server)
@@ -368,7 +367,7 @@ mod tests {
             SocketAddress::default(),
             conn_id,
             RTTEstimator::new(Duration::from_millis(30)),
-            Unlimited::default(),
+            Default::default(),
             false,
         );
 
@@ -386,7 +385,7 @@ mod tests {
             SocketAddress::default(),
             first_conn_id,
             RTTEstimator::new(Duration::from_millis(30)),
-            Unlimited::default(),
+            Default::default(),
             false,
         );
         first_path.challenge = Some([0u8; 8]);
@@ -414,7 +413,7 @@ mod tests {
             SocketAddress::default(),
             first_conn_id,
             RTTEstimator::new(Duration::from_millis(30)),
-            Unlimited::default(),
+            Default::default(),
             false,
         );
         let mut manager = manager(first_path, first_path.peer_connection_id, None);
@@ -440,7 +439,7 @@ mod tests {
                 &datagram,
                 &connection::Limits::default(),
                 true,
-                Unlimited::default
+                &mut unlimited::Endpoint::default(),
             )
         );
 
@@ -466,7 +465,7 @@ mod tests {
                     &datagram,
                     &connection::Limits::default(),
                     false,
-                    Unlimited::default
+                    &mut unlimited::Endpoint::default(),
                 )
                 .is_err(),
             true
@@ -487,7 +486,7 @@ mod tests {
             SocketAddress::default(),
             id_1,
             RTTEstimator::new(Duration::from_millis(30)),
-            Unlimited::default(),
+            Default::default(),
             false,
         );
         let mut manager = manager(first_path, first_path.peer_connection_id, None);

@@ -15,10 +15,10 @@ use s2n_quic_core::{
 };
 
 #[derive(Debug)]
-pub struct Negotiator<C> {
+pub struct Negotiator<Cfg> {
     transmissions: VecDeque<Transmission>,
     max_peers: usize,
-    config: PhantomData<C>,
+    config: PhantomData<Cfg>,
 }
 
 const SUPPORTED_VERSIONS: &[u32] = &[
@@ -37,16 +37,16 @@ macro_rules! is_supported {
     };
 }
 
-impl<Config: endpoint::Config> Default for Negotiator<Config> {
+impl<Cfg: endpoint::Config> Default for Negotiator<Cfg> {
     fn default() -> Self {
         Self::new(endpoint::DEFAULT_MAX_PEERS)
     }
 }
 
-impl<Config: endpoint::Config> Negotiator<Config> {
+impl<Cfg: endpoint::Config> Negotiator<Cfg> {
     pub fn new(max_peers: usize) -> Self {
         Self {
-            transmissions: if Config::ENDPOINT_TYPE.is_server() {
+            transmissions: if Cfg::ENDPOINT_TYPE.is_server() {
                 VecDeque::with_capacity(max_peers)
             } else {
                 VecDeque::new()
@@ -63,7 +63,7 @@ impl<Config: endpoint::Config> Negotiator<Config> {
         packet: &ProtectedPacket,
     ) -> Result<(), TransportError> {
         // always forward packets for clients on to connections
-        if Config::ENDPOINT_TYPE.is_client() {
+        if Cfg::ENDPOINT_TYPE.is_client() {
             return Ok(());
         }
 
@@ -136,7 +136,7 @@ impl<Config: endpoint::Config> Negotiator<Config> {
 
     pub fn on_transmit<Tx: tx::Queue>(&mut self, queue: &mut Tx) {
         // clients don't transmit version negotiation packets
-        if Config::ENDPOINT_TYPE.is_client() {
+        if Cfg::ENDPOINT_TYPE.is_client() {
             return;
         }
 

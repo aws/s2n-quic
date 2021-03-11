@@ -18,6 +18,8 @@ use core::{
 #[cfg(not(feature = "std"))]
 use num_traits::Float as _;
 
+use super::congestion_controller;
+
 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3
 //#                 New Path or      +------------+
 //#            persistent congestion |   Slow     |
@@ -632,6 +634,20 @@ impl Cubic {
 
     fn bytes_to_packets(&self, bytes: f32) -> f32 {
         bytes / self.max_datagram_size as f32
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct Endpoint {}
+
+impl congestion_controller::Endpoint for Endpoint {
+    type CongestionController = CubicCongestionController;
+
+    fn new_congestion_controller(
+        &mut self,
+        path_info: congestion_controller::PathInfo,
+    ) -> Self::CongestionController {
+        CubicCongestionController::new(path_info.max_datagram_size)
     }
 }
 

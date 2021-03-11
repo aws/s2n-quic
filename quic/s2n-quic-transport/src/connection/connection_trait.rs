@@ -12,7 +12,6 @@ use crate::{
     },
     contexts::ConnectionOnTransmitError,
     endpoint, path,
-    recovery::congestion_controller,
 };
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
@@ -180,15 +179,11 @@ pub trait ConnectionTrait: Sized {
     );
 
     /// Notifies a connection it has received a datagram from a peer
-    fn on_datagram_received<
-        CC: congestion_controller::Endpoint<
-            CongestionController = <Self::Config as connection::Config>::CongestionController,
-        >,
-    >(
+    fn on_datagram_received(
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
-        congestion_controller_endpoint: &mut CC,
+        congestion_controller_endpoint: &mut <Self::Config as endpoint::Config>::CongestionControllerEndpoint,
     ) -> Result<path::Id, TransportError>;
 
     /// Returns the Connections interests

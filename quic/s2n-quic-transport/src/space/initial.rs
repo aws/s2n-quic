@@ -3,9 +3,10 @@
 
 use crate::{
     connection::{self, ConnectionTransmissionContext, ProcessingError},
-    path,
+    endpoint, path,
     processed_packet::ProcessedPacket,
     recovery,
+    recovery::congestion_controller,
     space::{
         rx_packet_numbers::AckManager, CryptoStream, HandshakeStatus, PacketSpace, TxPacketNumbers,
     },
@@ -14,8 +15,8 @@ use crate::{
 use core::marker::PhantomData;
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
-    crypto::CryptoSuite,
-    endpoint,
+    crypto::{tls, CryptoSuite},
+    endpoint::Type as EndpointType,
     frame::{ack::AckRanges, crypto::CryptoRef, Ack, ConnectionClose},
     inet::DatagramInfo,
     packet::{
@@ -30,12 +31,12 @@ use s2n_quic_core::{
     transport::error::TransportError,
 };
 
-pub struct InitialSpace<Config: connection::Config> {
+pub struct InitialSpace<Config: endpoint::Config> {
     pub ack_manager: AckManager,
     //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4
     //# If QUIC needs to retransmit that data, it MUST use
     //# the same keys even if TLS has already updated to newer keys.
-    pub crypto: <Config::TLSSession as CryptoSuite>::InitialCrypto,
+    pub crypto: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::InitialCrypto,
     //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9
     //# If packets from a lower encryption level contain
     //# CRYPTO frames, frames that retransmit that data MUST be sent at the
@@ -46,9 +47,9 @@ pub struct InitialSpace<Config: connection::Config> {
     recovery_manager: recovery::Manager,
 }
 
-impl<Config: connection::Config> InitialSpace<Config> {
+impl<Config: endpoint::Config> InitialSpace<Config> {
     pub fn new(
-        crypto: <Config::TLSSession as CryptoSuite>::InitialCrypto,
+        crypto: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::InitialCrypto,
         now: Timestamp,
         ack_manager: AckManager,
     ) -> Self {
@@ -145,7 +146,7 @@ impl<Config: connection::Config> InitialSpace<Config> {
     /// but is now no longer limited.
     pub fn on_amplification_unblocked(
         &mut self,
-        path: &Path<Config::CongestionController>,
+        path: &Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
         timestamp: Timestamp,
         is_handshake_confirmed: bool,
     ) {
@@ -173,7 +174,7 @@ impl<Config: connection::Config> InitialSpace<Config> {
     /// Called when the connection timer expired
     pub fn on_timeout(
         &mut self,
-        path: &mut Path<Config::CongestionController>,
+        path: &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
         handshake_status: &HandshakeStatus,
         timestamp: Timestamp,
     ) {
@@ -184,7 +185,10 @@ impl<Config: connection::Config> InitialSpace<Config> {
     }
 
     /// Called before the Initial packet space is discarded
-    pub fn on_discard(&mut self, path: &mut Path<Config::CongestionController>) {
+    pub fn on_discard(
+        &mut self,
+        path: &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
+    ) {
         self.recovery_manager.on_packet_number_space_discarded(path);
     }
 
@@ -204,7 +208,7 @@ impl<Config: connection::Config> InitialSpace<Config> {
 
     fn recovery<'a>(
         &'a mut self,
-        path: &'a mut Path<Config::CongestionController>,
+        path: &'a mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
         handshake_status: &'a HandshakeStatus,
     ) -> (&'a mut recovery::Manager, RecoveryContext<'a, Config>) {
         (
@@ -236,7 +240,7 @@ impl<Config: connection::Config> InitialSpace<Config> {
     }
 }
 
-impl<Config: connection::Config> transmission::interest::Provider for InitialSpace<Config> {
+impl<Config: endpoint::Config> transmission::interest::Provider for InitialSpace<Config> {
     fn transmission_interest(&self) -> transmission::Interest {
         transmission::Interest::default()
             + self.ack_manager.transmission_interest()
@@ -245,36 +249,39 @@ impl<Config: connection::Config> transmission::interest::Provider for InitialSpa
     }
 }
 
-impl<Config: connection::Config> connection::finalization::Provider for InitialSpace<Config> {
+impl<Config: endpoint::Config> connection::finalization::Provider for InitialSpace<Config> {
     fn finalization_status(&self) -> connection::finalization::Status {
         // there's nothing in here that hold up finalizing a connection
         connection::finalization::Status::Idle
     }
 }
 
-struct RecoveryContext<'a, Config: connection::Config> {
+struct RecoveryContext<'a, Config: endpoint::Config> {
     ack_manager: &'a mut AckManager,
     crypto_stream: &'a mut CryptoStream,
     tx_packet_numbers: &'a mut TxPacketNumbers,
     handshake_status: &'a HandshakeStatus,
     config: PhantomData<Config>,
-    path: &'a mut Path<Config::CongestionController>,
+    path: &'a mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
 }
 
-impl<'a, Config: connection::Config> recovery::Context<Config::CongestionController>
+impl<'a, Config: endpoint::Config> recovery::Context<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>
     for RecoveryContext<'a, Config>
 {
-    const ENDPOINT_TYPE: endpoint::Type = Config::ENDPOINT_TYPE;
+    const ENDPOINT_TYPE: EndpointType = Config::ENDPOINT_TYPE;
 
     fn is_handshake_confirmed(&self) -> bool {
         self.handshake_status.is_confirmed()
     }
 
-    fn path(&self) -> &Path<Config::CongestionController> {
+    fn path(
+        &self,
+    ) -> &Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>
+    {
         self.path
     }
 
-    fn path_mut(&mut self) -> &mut Path<Config::CongestionController> {
+fn path_mut(&mut self) -> &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>{
         &mut self.path
     }
 
@@ -313,14 +320,14 @@ impl<'a, Config: connection::Config> recovery::Context<Config::CongestionControl
 //# permitted.  An endpoint that receives an Initial packet containing
 //# other frames can either discard the packet as spurious or treat it as
 //# a connection error.
-impl<Config: connection::Config> PacketSpace<Config> for InitialSpace<Config> {
+impl<Config: endpoint::Config> PacketSpace<Config> for InitialSpace<Config> {
     const INVALID_FRAME_ERROR: &'static str = "invalid frame in initial space";
 
     fn handle_crypto_frame(
         &mut self,
         frame: CryptoRef,
         _datagram: &DatagramInfo,
-        _path: &mut Path<Config::CongestionController>,
+        _path: &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
     ) -> Result<(), TransportError> {
         self.crypto_stream.on_crypto_frame(frame)?;
 
@@ -332,7 +339,7 @@ impl<Config: connection::Config> PacketSpace<Config> for InitialSpace<Config> {
         frame: Ack<A>,
         datagram: &DatagramInfo,
         path_id: path::Id,
-        path_manager: &mut path::Manager<Config::CongestionController>,
+        path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
         handshake_status: &mut HandshakeStatus,
         _local_id_registry: &mut connection::LocalIdRegistry,
     ) -> Result<(), TransportError> {
@@ -345,7 +352,7 @@ impl<Config: connection::Config> PacketSpace<Config> for InitialSpace<Config> {
         &mut self,
         frame: ConnectionClose,
         _datagram: &DatagramInfo,
-        _path: &mut Path<Config::CongestionController>,
+        _path: &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
     ) -> Result<(), TransportError> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.2
         //# CONNECTION_CLOSE frames of type 0x1c are also

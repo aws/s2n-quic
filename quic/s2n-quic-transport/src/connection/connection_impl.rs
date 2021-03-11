@@ -13,11 +13,11 @@ use crate::{
     },
     contexts::ConnectionOnTransmitError,
     endpoint, path,
-    recovery::{congestion_controller, RTTEstimator},
+    recovery::RTTEstimator,
     space::PacketSpace,
     transmission,
 };
-use core::{marker::PhantomData, time::Duration};
+use core::time::Duration;
 use s2n_quic_core::{
     application::ApplicationErrorExt,
     connection::{id::Interest, ProcessingError},
@@ -107,8 +107,6 @@ impl<'a> From<ConnectionCloseReason<'a>> for ConnectionState {
 
 #[derive(Debug)]
 pub struct ConnectionImpl<Config: endpoint::Config> {
-    /// The configuration of this connection
-    config: PhantomData<Config>,
     /// The [`Connection`]s internal identifier
     internal_connection_id: InternalConnectionId,
     /// The connection ID to send packets from
@@ -132,7 +130,7 @@ pub struct ConnectionImpl<Config: endpoint::Config> {
 }
 
 #[cfg(debug_assertions)]
-impl<Config: connection::Config> Drop for ConnectionImpl<Config> {
+impl<Config: endpoint::Config> Drop for ConnectionImpl<Config> {
     fn drop(&mut self) {
         if std::thread::panicking() {
             eprintln!("\nLast known connection state: \n {:#?}", self);
@@ -140,15 +138,14 @@ impl<Config: connection::Config> Drop for ConnectionImpl<Config> {
     }
 }
 
-impl<ConfigType: connection::Config> ConnectionImpl<ConfigType> {
+impl<Config: endpoint::Config> ConnectionImpl<Config> {
     fn update_crypto_state(
         &mut self,
-        shared_state: &mut SharedConnectionState<ConfigType>,
+        shared_state: &mut SharedConnectionState<Config>,
         datagram: &DatagramInfo,
     ) -> Result<(), TransportError> {
         let space_manager = &mut shared_state.space_manager;
         space_manager.poll_crypto(
-            &self.config,
             self.path_manager.active_path(),
             &mut self.local_id_registry,
             &self.limits,
@@ -170,7 +167,7 @@ impl<ConfigType: connection::Config> ConnectionImpl<ConfigType> {
             // We don't expect any further initial packets on this connection, so start
             // a timer to remove the mapping from the initial ID to the internal connection ID
             // to give time for any delayed initial packets to arrive.
-            if ConfigType::ENDPOINT_TYPE.is_server() {
+            if Config::ENDPOINT_TYPE.is_server() {
                 self.start_initial_id_timer(datagram.timestamp);
             }
         }
@@ -239,7 +236,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         let path_manager = path::Manager::new(initial_path, parameters.peer_id_registry);
 
         Self {
-            config: parameters.connection_config,
+            //config: parameters.connection_config,
             internal_connection_id: parameters.internal_connection_id,
             local_connection_id: parameters.local_connection_id,
             local_id_registry: parameters.local_id_registry,
@@ -542,11 +539,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             datagram,
             &self.limits,
             is_handshake_confirmed,
-            || {
-                let path_info = congestion_controller::PathInfo::new(&datagram.remote_address);
-                // TODO set alpn if available
-                congestion_controller_endpoint.new_congestion_controller(path_info)
-            },
+            congestion_controller_endpoint,
         )?;
 
         if unblocked {

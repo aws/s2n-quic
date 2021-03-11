@@ -2,15 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    connection, path, processed_packet::ProcessedPacket, space::rx_packet_numbers::AckManager,
-    transmission,
+    connection, endpoint, path, processed_packet::ProcessedPacket, recovery::congestion_controller,
+    space::rx_packet_numbers::AckManager, transmission,
 };
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     ack,
     connection::limits::Limits,
-    crypto::{tls::Session as TLSSession, CryptoSuite},
-    endpoint,
+    crypto::{tls, tls::Session, CryptoSuite},
+    endpoint::Type as EndpointType,
     frame::{
         self, ack::AckRanges, crypto::CryptoRef, stream::StreamRef, Ack, ConnectionClose,
         DataBlocked, HandshakeDone, MaxData, MaxStreamData, MaxStreams, NewConnectionID, NewToken,
@@ -41,12 +41,14 @@ pub(crate) use initial::InitialSpace;
 pub(crate) use session_context::SessionContext;
 pub(crate) use tx_packet_numbers::TxPacketNumbers;
 
-pub struct PacketSpaceManager<ConnectionConfigType: connection::Config> {
-    session: Option<ConnectionConfigType::TLSSession>,
-    initial: Option<Box<InitialSpace<ConnectionConfigType>>>,
-    handshake: Option<Box<HandshakeSpace<ConnectionConfigType>>>,
-    application: Option<Box<ApplicationSpace<ConnectionConfigType>>>,
-    zero_rtt_crypto: Option<Box<<ConnectionConfigType::TLSSession as CryptoSuite>::ZeroRTTCrypto>>,
+pub struct PacketSpaceManager<Config: endpoint::Config> {
+    session: Option<<Config::TLSEndpoint as tls::Endpoint>::Session>,
+    initial: Option<Box<InitialSpace<Config>>>,
+    handshake: Option<Box<HandshakeSpace<Config>>>,
+    application: Option<Box<ApplicationSpace<Config>>>,
+    zero_rtt_crypto: Option<
+        Box<<<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::ZeroRTTCrypto>,
+    >,
     handshake_status: HandshakeStatus,
 }
 
@@ -67,7 +69,7 @@ macro_rules! packet_space_api {
         }
 
         $(
-            pub fn $discard(&mut self, path: &mut Path<Config::CongestionController>) {
+            pub fn $discard(&mut self, path: &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>) {
                 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.2
                 //# When Initial or Handshake keys are discarded, the PTO and loss
                 //# detection timers MUST be reset, because discarding keys indicates
@@ -90,10 +92,10 @@ macro_rules! packet_space_api {
     };
 }
 
-impl<Config: connection::Config> PacketSpaceManager<Config> {
+impl<Config: endpoint::Config> PacketSpaceManager<Config> {
     pub fn new(
-        session: Config::TLSSession,
-        initial: <Config::TLSSession as CryptoSuite>::InitialCrypto,
+        session: <Config::TLSEndpoint as tls::Endpoint>::Session,
+        initial: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::InitialCrypto,
         now: Timestamp,
     ) -> Self {
         let ack_manager = AckManager::new(PacketNumberSpace::Initial, ack::Settings::EARLY);
@@ -120,7 +122,10 @@ impl<Config: connection::Config> PacketSpaceManager<Config> {
     packet_space_api!(ApplicationSpace<Config>, application, application_mut);
 
     #[allow(dead_code)] // 0RTT hasn't been started yet
-    pub fn zero_rtt_crypto(&self) -> Option<&<Config::TLSSession as CryptoSuite>::ZeroRTTCrypto> {
+    pub fn zero_rtt_crypto(
+        &self,
+    ) -> Option<&<<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::ZeroRTTCrypto>
+    {
         self.zero_rtt_crypto.as_ref().map(Box::as_ref)
     }
 
@@ -130,8 +135,7 @@ impl<Config: connection::Config> PacketSpaceManager<Config> {
 
     pub fn poll_crypto(
         &mut self,
-        connection_config: &Config,
-        path: &Path<Config::CongestionController>,
+        path: &Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
         local_id_registry: &mut connection::LocalIdRegistry,
         limits: &Limits,
         now: Timestamp,
@@ -144,7 +148,6 @@ impl<Config: connection::Config> PacketSpaceManager<Config> {
                 application: &mut self.application,
                 zero_rtt_crypto: &mut self.zero_rtt_crypto,
                 path,
-                connection_config,
                 handshake_status: &mut self.handshake_status,
                 local_id_registry,
                 limits,
@@ -175,7 +178,7 @@ impl<Config: connection::Config> PacketSpaceManager<Config> {
     pub fn on_timeout(
         &mut self,
         local_id_registry: &mut connection::LocalIdRegistry,
-        path_manager: &mut path::Manager<Config::CongestionController>,
+        path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
         timestamp: Timestamp,
     ) {
         let path = path_manager.active_path_mut();
@@ -201,7 +204,7 @@ impl<Config: connection::Config> PacketSpaceManager<Config> {
     /// but is now no longer limited.
     pub fn on_amplification_unblocked(
         &mut self,
-        path: &Path<Config::CongestionController>,
+        path: &Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
         timestamp: Timestamp,
     ) {
         if let Some((space, handshake_status)) = self.initial_mut() {
@@ -231,8 +234,8 @@ impl<Config: connection::Config> PacketSpaceManager<Config> {
 
     pub fn is_handshake_complete(&self) -> bool {
         match Config::ENDPOINT_TYPE {
-            endpoint::Type::Server => self.is_handshake_confirmed(),
-            endpoint::Type::Client => {
+            EndpointType::Server => self.is_handshake_confirmed(),
+            EndpointType::Client => {
                 // TODO https://github.com/awslabs/s2n-quic/issues/338
                 // Return true after the client has received the ServerFinished message
                 self.is_handshake_confirmed()
@@ -241,7 +244,7 @@ impl<Config: connection::Config> PacketSpaceManager<Config> {
     }
 }
 
-impl<Config: connection::Config> transmission::interest::Provider for PacketSpaceManager<Config> {
+impl<Config: endpoint::Config> transmission::interest::Provider for PacketSpaceManager<Config> {
     fn transmission_interest(&self) -> transmission::Interest {
         core::iter::empty()
             .chain(
@@ -264,7 +267,7 @@ impl<Config: connection::Config> transmission::interest::Provider for PacketSpac
     }
 }
 
-impl<Config: connection::Config> connection::finalization::Provider for PacketSpaceManager<Config> {
+impl<Config: endpoint::Config> connection::finalization::Provider for PacketSpaceManager<Config> {
     fn finalization_status(&self) -> connection::finalization::Status {
         core::iter::empty()
             .chain(self.initial.iter().map(|space| space.finalization_status()))
@@ -292,14 +295,14 @@ macro_rules! default_frame_handler {
     };
 }
 
-pub trait PacketSpace<Config: connection::Config> {
+pub trait PacketSpace<Config: endpoint::Config> {
     const INVALID_FRAME_ERROR: &'static str;
 
     fn handle_crypto_frame(
         &mut self,
         frame: CryptoRef,
         datagram: &DatagramInfo,
-        path: &mut Path<Config::CongestionController>,
+        path: &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
     ) -> Result<(), TransportError>;
 
     fn handle_ack_frame<A: AckRanges>(
@@ -307,7 +310,7 @@ pub trait PacketSpace<Config: connection::Config> {
         frame: Ack<A>,
         datagram: &DatagramInfo,
         path_id: path::Id,
-        path_manager: &mut path::Manager<Config::CongestionController>,
+        path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
         handshake_status: &mut HandshakeStatus,
         local_id_registry: &mut connection::LocalIdRegistry,
     ) -> Result<(), TransportError>;
@@ -316,14 +319,14 @@ pub trait PacketSpace<Config: connection::Config> {
         &mut self,
         frame: ConnectionClose,
         datagram: &DatagramInfo,
-        path: &mut Path<Config::CongestionController>,
+        path: &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
     ) -> Result<(), TransportError>;
 
     fn handle_handshake_done_frame(
         &mut self,
         frame: HandshakeDone,
         _datagram: &DatagramInfo,
-        _path: &mut Path<Config::CongestionController>,
+        _path: &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
         _local_id_registry: &mut connection::LocalIdRegistry,
         _handshake_status: &mut HandshakeStatus,
     ) -> Result<(), TransportError> {
@@ -336,7 +339,7 @@ pub trait PacketSpace<Config: connection::Config> {
         &mut self,
         frame: RetireConnectionID,
         _datagram: &DatagramInfo,
-        _path: &mut Path<Config::CongestionController>,
+        _path: &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
         _local_id_registry: &mut connection::LocalIdRegistry,
     ) -> Result<(), TransportError> {
         Err(TransportError::PROTOCOL_VIOLATION
@@ -348,7 +351,7 @@ pub trait PacketSpace<Config: connection::Config> {
         &mut self,
         frame: NewConnectionID,
         _datagram: &DatagramInfo,
-        _path_manager: &mut path::Manager<Config::CongestionController>,
+        _path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
     ) -> Result<(), TransportError> {
         Err(TransportError::PROTOCOL_VIOLATION
             .with_reason(Self::INVALID_FRAME_ERROR)
@@ -381,7 +384,7 @@ pub trait PacketSpace<Config: connection::Config> {
         mut payload: DecoderBufferMut<'a>,
         datagram: &DatagramInfo,
         path_id: path::Id,
-        path_manager: &mut path::Manager<Config::CongestionController>,
+        path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
         handshake_status: &mut HandshakeStatus,
         local_id_registry: &mut connection::LocalIdRegistry,
     ) -> Result<Option<frame::ConnectionClose<'a>>, TransportError> {

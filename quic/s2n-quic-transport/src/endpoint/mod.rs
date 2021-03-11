@@ -647,22 +647,20 @@ pub mod testing {
     impl Config for Server {
         type CongestionControllerEndpoint = crate::recovery::testing::Endpoint;
         type TLSEndpoint = s2n_quic_core::crypto::tls::testing::Endpoint;
-        type ConnectionConfig = connection::testing::Server;
-        type Connection = connection::Implementation<Self::ConnectionConfig>;
+        type Connection = connection::Implementation<Self>;
         type EndpointLimits = Limits;
         type ConnectionIdFormat = connection::id::testing::Format;
         type StatelessResetTokenGenerator = stateless_reset::token::testing::Generator;
         type RandomGenerator = random::testing::Generator;
         type TokenFormat = s2n_quic_core::token::testing::Format;
         type ConnectionLimits = s2n_quic_core::connection::limits::Limits;
-
-        fn create_connection_config(&mut self) -> Self::ConnectionConfig {
-            todo!()
-        }
+        type Stream = crate::stream::StreamImpl;
 
         fn context(&mut self) -> super::Context<Self> {
             todo!()
         }
+
+        const ENDPOINT_TYPE: endpoint::Type = endpoint::Type::Server;
     }
 
     #[derive(Debug)]
@@ -671,22 +669,20 @@ pub mod testing {
     impl Config for Client {
         type CongestionControllerEndpoint = crate::recovery::testing::Endpoint;
         type TLSEndpoint = s2n_quic_core::crypto::tls::testing::Endpoint;
-        type ConnectionConfig = connection::testing::Client;
-        type Connection = connection::Implementation<Self::ConnectionConfig>;
+        type Connection = connection::Implementation<Self>;
         type EndpointLimits = Limits;
         type ConnectionIdFormat = connection::id::testing::Format;
         type StatelessResetTokenGenerator = stateless_reset::token::testing::Generator;
         type RandomGenerator = random::testing::Generator;
         type TokenFormat = s2n_quic_core::token::testing::Format;
         type ConnectionLimits = s2n_quic_core::connection::limits::Limits;
-
-        fn create_connection_config(&mut self) -> Self::ConnectionConfig {
-            todo!()
-        }
+        type Stream = crate::stream::StreamImpl;
 
         fn context(&mut self) -> super::Context<Self> {
             todo!()
         }
+
+        const ENDPOINT_TYPE: endpoint::Type = endpoint::Type::Client;
     }
 
     #[derive(Debug)]

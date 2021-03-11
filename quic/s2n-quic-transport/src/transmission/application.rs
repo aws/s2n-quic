@@ -5,23 +5,24 @@ use crate::{
     connection,
     contexts::WriteContext,
     path,
+    recovery::congestion_controller,
     space::HandshakeStatus,
     stream::{AbstractStreamManager, StreamTrait as Stream},
     sync::flag::Ping,
     transmission,
 };
 use core::ops::RangeInclusive;
-use s2n_quic_core::{packet::number::PacketNumberSpace, recovery::CongestionController};
+use s2n_quic_core::packet::number::PacketNumberSpace;
 
-pub struct Payload<'a, S: Stream, CC: CongestionController> {
+pub struct Payload<'a, S: Stream, CCE: congestion_controller::Endpoint> {
     pub handshake_status: &'a mut HandshakeStatus,
     pub ping: &'a mut Ping,
     pub stream_manager: &'a mut AbstractStreamManager<S>,
     pub local_id_registry: &'a mut connection::LocalIdRegistry,
-    pub path_manager: &'a mut path::Manager<CC>,
+    pub path_manager: &'a mut path::Manager<CCE>,
 }
 
-impl<'a, S: Stream, CC: CongestionController> super::Payload for Payload<'a, S, CC> {
+impl<'a, S: Stream, CCE: congestion_controller::Endpoint> super::Payload for Payload<'a, S, CCE> {
     fn size_hint(&self, range: RangeInclusive<usize>) -> usize {
         // We need at least 1 byte to write a HANDSHAKE_DONE or PING frame
         (*range.start()).max(1)
@@ -48,8 +49,8 @@ impl<'a, S: Stream, CC: CongestionController> super::Payload for Payload<'a, S, 
     }
 }
 
-impl<'a, S: Stream, CC: CongestionController> transmission::interest::Provider
-    for Payload<'a, S, CC>
+impl<'a, S: Stream, CCE: congestion_controller::Endpoint> transmission::interest::Provider
+    for Payload<'a, S, CCE>
 {
     fn transmission_interest(&self) -> transmission::Interest {
         transmission::Interest::default()

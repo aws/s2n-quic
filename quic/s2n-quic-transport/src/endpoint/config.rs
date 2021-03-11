@@ -3,13 +3,13 @@
 
 //! Configuration parameters for `Endpoint`s
 
-use crate::connection;
+use crate::{connection, stream};
 use s2n_quic_core::{
     crypto::tls, endpoint, random, recovery::congestion_controller, stateless_reset,
 };
 
 /// Configuration paramters for a QUIC endpoint
-pub trait Config: Sized {
+pub trait Config: 'static + Sized + core::fmt::Debug {
     /// The type of the TLS endpoint which is utilized
     type TLSEndpoint: tls::Endpoint;
     type CongestionControllerEndpoint: congestion_controller::Endpoint;
@@ -27,6 +27,8 @@ pub trait Config: Sized {
     type EndpointLimits: endpoint::Limits;
     /// The connection limits
     type ConnectionLimits: connection::limits::Limiter;
+    /// The stream
+    type Stream: stream::StreamTrait;
 
     /// The type of the local endpoint
     const ENDPOINT_TYPE: endpoint::Type;
@@ -35,6 +37,7 @@ pub trait Config: Sized {
     fn context(&mut self) -> Context<Self>;
 }
 
+#[derive(Debug)]
 pub struct Context<'a, Cfg: Config> {
     /// The congestion controller endpoint associated with the endpoint config
     pub congestion_controller: &'a mut Cfg::CongestionControllerEndpoint,

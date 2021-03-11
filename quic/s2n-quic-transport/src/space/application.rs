@@ -3,9 +3,10 @@
 
 use crate::{
     connection::{self, ConnectionTransmissionContext, ProcessingError},
-    path,
+    endpoint, path,
     processed_packet::ProcessedPacket,
     recovery,
+    recovery::congestion_controller,
     space::{rx_packet_numbers::AckManager, HandshakeStatus, PacketSpace, TxPacketNumbers},
     stream::AbstractStreamManager,
     sync::flag,
@@ -15,8 +16,8 @@ use bytes::Bytes;
 use core::{convert::TryInto, marker::PhantomData};
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
-    crypto::{application::KeySet, CryptoSuite},
-    endpoint,
+    crypto::{application::KeySet, tls, CryptoSuite},
+    endpoint::Type as EndpointType,
     frame::{
         ack::AckRanges, crypto::CryptoRef, stream::StreamRef, Ack, ConnectionClose, DataBlocked,
         HandshakeDone, MaxData, MaxStreamData, MaxStreams, NewConnectionID, NewToken,
@@ -37,7 +38,7 @@ use s2n_quic_core::{
     transport::error::TransportError,
 };
 
-pub struct ApplicationSpace<Config: connection::Config> {
+pub struct ApplicationSpace<Config: endpoint::Config> {
     /// Transmission Packet numbers
     pub tx_packet_numbers: TxPacketNumbers,
     /// Ack manager
@@ -56,7 +57,7 @@ pub struct ApplicationSpace<Config: connection::Config> {
     //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.1
     //# An endpoint MUST NOT initiate a key update prior to having confirmed
     //# the handshake (Section 4.1.2).
-    key_set: KeySet<<Config::TLSSession as CryptoSuite>::OneRTTCrypto>,
+    key_set: KeySet<<<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::OneRTTCrypto>,
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7
     //# Endpoints MUST explicitly negotiate an application protocol.
@@ -72,9 +73,9 @@ pub struct ApplicationSpace<Config: connection::Config> {
     recovery_manager: recovery::Manager,
 }
 
-impl<Config: connection::Config> ApplicationSpace<Config> {
+impl<Config: endpoint::Config> ApplicationSpace<Config> {
     pub fn new(
-        crypto: <Config::TLSSession as CryptoSuite>::OneRTTCrypto,
+        crypto: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::OneRTTCrypto,
         now: Timestamp,
         stream_manager: AbstractStreamManager<Config::Stream>,
         ack_manager: AckManager,
@@ -194,7 +195,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
     /// but is now no longer limited.
     pub fn on_amplification_unblocked(
         &mut self,
-        path: &Path<Config::CongestionController>,
+        path: &Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
         timestamp: Timestamp,
         is_handshake_confirmed: bool,
     ) {
@@ -215,7 +216,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
     /// Signals the handshake is done
     pub fn on_handshake_done(
         &mut self,
-        path: &Path<Config::CongestionController>,
+        path: &Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
         local_id_registry: &mut connection::LocalIdRegistry,
         timestamp: Timestamp,
     ) {
@@ -242,7 +243,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
     /// Called when the connection timer expired
     pub fn on_timeout(
         &mut self,
-        path_manager: &mut path::Manager<Config::CongestionController>,
+        path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
         handshake_status: &mut HandshakeStatus,
         local_id_registry: &mut connection::LocalIdRegistry,
         timestamp: Timestamp,
@@ -279,7 +280,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
         handshake_status: &'a mut HandshakeStatus,
         local_id_registry: &'a mut connection::LocalIdRegistry,
         path_id: path::Id,
-        path_manager: &'a mut path::Manager<Config::CongestionController>,
+        path_manager: &'a mut path::Manager<Config::CongestionControllerEndpoint>,
     ) -> (&'a mut recovery::Manager, RecoveryContext<'a, Config>) {
         (
             &mut self.recovery_manager,
@@ -330,7 +331,7 @@ impl<Config: connection::Config> ApplicationSpace<Config> {
     }
 }
 
-impl<Config: connection::Config> transmission::interest::Provider for ApplicationSpace<Config> {
+impl<Config: endpoint::Config> transmission::interest::Provider for ApplicationSpace<Config> {
     fn transmission_interest(&self) -> transmission::Interest {
         transmission::Interest::default()
             + self.ack_manager.transmission_interest()
@@ -340,37 +341,37 @@ impl<Config: connection::Config> transmission::interest::Provider for Applicatio
     }
 }
 
-impl<Config: connection::Config> connection::finalization::Provider for ApplicationSpace<Config> {
+impl<Config: endpoint::Config> connection::finalization::Provider for ApplicationSpace<Config> {
     fn finalization_status(&self) -> connection::finalization::Status {
         self.stream_manager.finalization_status()
     }
 }
 
-struct RecoveryContext<'a, Config: connection::Config> {
+struct RecoveryContext<'a, Config: endpoint::Config> {
     ack_manager: &'a mut AckManager,
     handshake_status: &'a mut HandshakeStatus,
     ping: &'a mut flag::Ping,
     stream_manager: &'a mut AbstractStreamManager<Config::Stream>,
     local_id_registry: &'a mut connection::LocalIdRegistry,
     path_id: path::Id,
-    path_manager: &'a mut path::Manager<Config::CongestionController>,
+    path_manager: &'a mut path::Manager<Config::CongestionControllerEndpoint>,
     tx_packet_numbers: &'a mut TxPacketNumbers,
 }
 
-impl<'a, Config: connection::Config> recovery::Context<Config::CongestionController>
+impl<'a, Config: endpoint::Config> recovery::Context<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>
     for RecoveryContext<'a, Config>
 {
-    const ENDPOINT_TYPE: endpoint::Type = Config::ENDPOINT_TYPE;
+    const ENDPOINT_TYPE: EndpointType = Config::ENDPOINT_TYPE;
 
     fn is_handshake_confirmed(&self) -> bool {
         self.handshake_status.is_confirmed()
     }
 
-    fn path(&self) -> &Path<Config::CongestionController> {
+    fn path(&self) -> &Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController> {
         &self.path_manager[self.path_id]
     }
 
-    fn path_mut(&mut self) -> &mut Path<Config::CongestionController> {
+    fn path_mut(&mut self) -> &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController> {
         &mut self.path_manager[self.path_id]
     }
 
@@ -410,14 +411,14 @@ impl<'a, Config: connection::Config> recovery::Context<Config::CongestionControl
     }
 }
 
-impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config> {
+impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> {
     const INVALID_FRAME_ERROR: &'static str = "invalid frame in application space";
 
     fn handle_crypto_frame(
         &mut self,
         _frame: CryptoRef,
         _datagram: &DatagramInfo,
-        _path: &mut Path<Config::CongestionController>,
+        _path: &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
     ) -> Result<(), TransportError> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.5
         //# Once the handshake completes, if an endpoint is unable to buffer all
@@ -434,7 +435,7 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
         frame: Ack<A>,
         datagram: &DatagramInfo,
         path_id: path::Id,
-        path_manager: &mut path::Manager<Config::CongestionController>,
+        path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
         handshake_status: &mut HandshakeStatus,
         local_id_registry: &mut connection::LocalIdRegistry,
     ) -> Result<(), TransportError> {
@@ -455,7 +456,7 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
         &mut self,
         _frame: ConnectionClose,
         _datagram: &DatagramInfo,
-        _path: &mut Path<Config::CongestionController>,
+        _path: &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
     ) -> Result<(), TransportError> {
         Ok(())
     }
@@ -521,7 +522,7 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
         &mut self,
         frame: NewConnectionID,
         _datagram: &DatagramInfo,
-        path_manager: &mut path::Manager<Config::CongestionController>,
+        path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
     ) -> Result<(), TransportError> {
         if path_manager.active_path().peer_connection_id.is_empty() {
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
@@ -557,7 +558,7 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
         &mut self,
         frame: RetireConnectionID,
         datagram: &DatagramInfo,
-        path: &mut Path<Config::CongestionController>,
+        path: &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
         local_id_registry: &mut connection::LocalIdRegistry,
     ) -> Result<(), TransportError> {
         let sequence_number = frame
@@ -605,7 +606,7 @@ impl<Config: connection::Config> PacketSpace<Config> for ApplicationSpace<Config
         &mut self,
         frame: HandshakeDone,
         datagram: &DatagramInfo,
-        path: &mut Path<Config::CongestionController>,
+        path: &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
         local_id_registry: &mut connection::LocalIdRegistry,
         handshake_status: &mut HandshakeStatus,
     ) -> Result<(), TransportError> {

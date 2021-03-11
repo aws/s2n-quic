@@ -3,7 +3,9 @@
 
 use crate::{
     connection::{self, SharedConnectionState},
-    path, transmission,
+    endpoint, path,
+    recovery::congestion_controller,
+    transmission,
 };
 use core::time::Duration;
 use s2n_codec::{Encoder, EncoderBuffer};
@@ -17,33 +19,36 @@ use s2n_quic_core::{
 };
 
 #[derive(Debug)]
-pub struct ConnectionTransmissionContext<'a, Config: connection::Config> {
+pub struct ConnectionTransmissionContext<'a, Config: endpoint::Config> {
     pub quic_version: u32,
     pub timestamp: Timestamp,
     pub path_id: path::Id,
-    pub path_manager: &'a mut path::Manager<Config::CongestionController>,
+    pub path_manager: &'a mut path::Manager<Config::CongestionControllerEndpoint>,
     pub local_id_registry: &'a mut connection::LocalIdRegistry,
     pub source_connection_id: &'a connection::LocalId,
     pub ecn: ExplicitCongestionNotification,
     pub min_packet_len: Option<usize>,
 }
 
-impl<'a, Config: connection::Config> ConnectionTransmissionContext<'a, Config> {
-    pub fn path(&self) -> &Path<Config::CongestionController> {
+impl<'a, Config: endpoint::Config> ConnectionTransmissionContext<'a, Config> {
+    pub fn path(
+        &self,
+    ) -> &Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>
+    {
         &self.path_manager[self.path_id]
     }
 
-    pub fn path_mut(&mut self) -> &mut Path<Config::CongestionController> {
+pub fn path_mut(&mut self) -> &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>{
         &mut self.path_manager[self.path_id]
     }
 }
 
-pub struct ConnectionTransmission<'a, Config: connection::Config> {
+pub struct ConnectionTransmission<'a, Config: endpoint::Config> {
     pub context: ConnectionTransmissionContext<'a, Config>,
     pub shared_state: &'a mut SharedConnectionState<Config>,
 }
 
-impl<'a, Config: connection::Config> tx::Message for ConnectionTransmission<'a, Config> {
+impl<'a, Config: endpoint::Config> tx::Message for ConnectionTransmission<'a, Config> {
     fn remote_address(&mut self) -> SocketAddress {
         self.context.path().peer_socket_address
     }
