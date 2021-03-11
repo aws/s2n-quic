@@ -4,7 +4,7 @@
 use crate::{inet::SocketAddress, path::MINIMUM_MTU, recovery::RTTEstimator, time::Timestamp};
 use core::fmt::Debug;
 
-pub trait Endpoint: 'static {
+pub trait Endpoint: 'static + Debug {
     type CongestionController: CongestionController;
 
     fn new_congestion_controller(&mut self, path_info: PathInfo) -> Self::CongestionController;
@@ -82,102 +82,138 @@ pub mod testing {
     use super::*;
     use crate::recovery::RTTEstimator;
 
-    #[derive(Clone, Copy, Debug, Default, PartialEq)]
-    pub struct Unlimited {}
+    pub mod unlimited {
+        use super::*;
 
-    impl CongestionController for Unlimited {
-        fn congestion_window(&self) -> u32 {
-            u32::max_value()
+        #[derive(Debug, Default)]
+        pub struct Endpoint {}
+
+        impl super::Endpoint for Endpoint {
+            type CongestionController = CongestionController;
+
+            fn new_congestion_controller(
+                &mut self,
+                _path_info: super::PathInfo,
+            ) -> Self::CongestionController {
+                CongestionController::default()
+            }
         }
 
-        fn is_congestion_limited(&self) -> bool {
-            false
+        #[derive(Clone, Copy, Debug, Default, PartialEq)]
+        pub struct CongestionController {}
+
+        impl super::CongestionController for CongestionController {
+            fn congestion_window(&self) -> u32 {
+                u32::max_value()
+            }
+
+            fn is_congestion_limited(&self) -> bool {
+                false
+            }
+
+            fn requires_fast_retransmission(&self) -> bool {
+                false
+            }
+
+            fn on_packet_sent(&mut self, _time_sent: Timestamp, _bytes_sent: usize) {}
+            fn on_rtt_update(&mut self, _time_sent: Timestamp, _rtt_estimator: &RTTEstimator) {}
+
+            fn on_packet_ack(
+                &mut self,
+                _largest_acked_time_sent: Timestamp,
+                _sent_bytes: usize,
+                _rtt_estimator: &RTTEstimator,
+                _ack_receive_time: Timestamp,
+            ) {
+            }
+
+            fn on_packets_lost(
+                &mut self,
+                _lost_bytes: u32,
+                _persistent_congestion: bool,
+                _timestamp: Timestamp,
+            ) {
+            }
+
+            fn on_congestion_event(&mut self, _event_time: Timestamp) {}
+
+            fn on_mtu_update(&mut self, _max_data_size: u16) {}
+
+            fn on_packet_discarded(&mut self, _bytes_sent: usize) {}
         }
-
-        fn requires_fast_retransmission(&self) -> bool {
-            false
-        }
-
-        fn on_packet_sent(&mut self, _time_sent: Timestamp, _bytes_sent: usize) {}
-        fn on_rtt_update(&mut self, _time_sent: Timestamp, _rtt_estimator: &RTTEstimator) {}
-
-        fn on_packet_ack(
-            &mut self,
-            _largest_acked_time_sent: Timestamp,
-            _sent_bytes: usize,
-            _rtt_estimator: &RTTEstimator,
-            _ack_receive_time: Timestamp,
-        ) {
-        }
-
-        fn on_packets_lost(
-            &mut self,
-            _lost_bytes: u32,
-            _persistent_congestion: bool,
-            _timestamp: Timestamp,
-        ) {
-        }
-
-        fn on_congestion_event(&mut self, _event_time: Timestamp) {}
-
-        fn on_mtu_update(&mut self, _max_data_size: u16) {}
-
-        fn on_packet_discarded(&mut self, _bytes_sent: usize) {}
     }
 
-    #[derive(Clone, Copy, Debug, Default, PartialEq)]
-    pub struct MockCongestionController {
-        pub bytes_in_flight: u32,
-        pub lost_bytes: u32,
-        pub persistent_congestion: Option<bool>,
-        pub on_packets_lost: u32,
-        pub on_rtt_update: u32,
-    }
+    pub mod mock {
+        use super::*;
 
-    impl CongestionController for MockCongestionController {
-        fn congestion_window(&self) -> u32 {
-            u32::max_value()
-        }
+        #[derive(Debug, Default)]
+        pub struct Endpoint {}
 
-        fn is_congestion_limited(&self) -> bool {
-            false
-        }
-        fn requires_fast_retransmission(&self) -> bool {
-            false
+        impl super::Endpoint for Endpoint {
+            type CongestionController = CongestionController;
+
+            fn new_congestion_controller(
+                &mut self,
+                _path_info: super::PathInfo,
+            ) -> Self::CongestionController {
+                CongestionController::default()
+            }
         }
 
-        fn on_packet_sent(&mut self, _time_sent: Timestamp, bytes_sent: usize) {
-            self.bytes_in_flight += bytes_sent as u32
-        }
-        fn on_rtt_update(&mut self, _time_sent: Timestamp, _rtt_estimator: &RTTEstimator) {
-            self.on_rtt_update += 1
-        }
-
-        fn on_packet_ack(
-            &mut self,
-            _largest_acked_time_sent: Timestamp,
-            _sent_bytes: usize,
-            _rtt_estimator: &RTTEstimator,
-            _ack_receive_time: Timestamp,
-        ) {
+        #[derive(Clone, Copy, Debug, Default, PartialEq)]
+        pub struct CongestionController {
+            pub bytes_in_flight: u32,
+            pub lost_bytes: u32,
+            pub persistent_congestion: Option<bool>,
+            pub on_packets_lost: u32,
+            pub on_rtt_update: u32,
         }
 
-        fn on_packets_lost(
-            &mut self,
-            lost_bytes: u32,
-            persistent_congestion: bool,
-            _timestamp: Timestamp,
-        ) {
-            self.bytes_in_flight = self.bytes_in_flight.saturating_sub(lost_bytes);
-            self.lost_bytes += lost_bytes;
-            self.persistent_congestion = Some(persistent_congestion);
-            self.on_packets_lost += 1;
-        }
+        impl super::CongestionController for CongestionController {
+            fn congestion_window(&self) -> u32 {
+                u32::max_value()
+            }
 
-        fn on_congestion_event(&mut self, _event_time: Timestamp) {}
-        fn on_mtu_update(&mut self, _max_data_size: u16) {}
-        fn on_packet_discarded(&mut self, bytes_sent: usize) {
-            self.bytes_in_flight = self.bytes_in_flight.saturating_sub(bytes_sent as u32);
+            fn is_congestion_limited(&self) -> bool {
+                false
+            }
+            fn requires_fast_retransmission(&self) -> bool {
+                false
+            }
+
+            fn on_packet_sent(&mut self, _time_sent: Timestamp, bytes_sent: usize) {
+                self.bytes_in_flight += bytes_sent as u32
+            }
+            fn on_rtt_update(&mut self, _time_sent: Timestamp, _rtt_estimator: &RTTEstimator) {
+                self.on_rtt_update += 1
+            }
+
+            fn on_packet_ack(
+                &mut self,
+                _largest_acked_time_sent: Timestamp,
+                _sent_bytes: usize,
+                _rtt_estimator: &RTTEstimator,
+                _ack_receive_time: Timestamp,
+            ) {
+            }
+
+            fn on_packets_lost(
+                &mut self,
+                lost_bytes: u32,
+                persistent_congestion: bool,
+                _timestamp: Timestamp,
+            ) {
+                self.bytes_in_flight = self.bytes_in_flight.saturating_sub(lost_bytes);
+                self.lost_bytes += lost_bytes;
+                self.persistent_congestion = Some(persistent_congestion);
+                self.on_packets_lost += 1;
+            }
+
+            fn on_congestion_event(&mut self, _event_time: Timestamp) {}
+            fn on_mtu_update(&mut self, _max_data_size: u16) {}
+            fn on_packet_discarded(&mut self, bytes_sent: usize) {
+                self.bytes_in_flight = self.bytes_in_flight.saturating_sub(bytes_sent as u32);
+            }
         }
     }
 }

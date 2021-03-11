@@ -15,10 +15,10 @@ use s2n_quic_core::{
 };
 
 #[derive(Debug)]
-pub struct Negotiator<C> {
+pub struct Negotiator<Cfg> {
     transmissions: VecDeque<Transmission>,
     max_peers: usize,
-    config: PhantomData<C>,
+    config: PhantomData<Cfg>,
 }
 
 const SUPPORTED_VERSIONS: &[u32] = &[

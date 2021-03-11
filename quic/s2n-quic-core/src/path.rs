@@ -190,7 +190,10 @@ impl<CC: CongestionController> Path<CC> {
 mod tests {
     use super::*;
     use crate::{
-        recovery::{congestion_controller::testing::Unlimited, CubicCongestionController},
+        recovery::{
+            congestion_controller::testing::unlimited::CongestionController as Unlimited,
+            CubicCongestionController,
+        },
         time::{Clock, NoopClock},
     };
     use core::time::Duration;

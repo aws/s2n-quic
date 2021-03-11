@@ -11,8 +11,7 @@ use crate::{
         ConnectionIdMapper, Parameters as ConnectionParameters, ProcessingError,
     },
     contexts::ConnectionOnTransmitError,
-    path,
-    recovery::congestion_controller,
+    endpoint, path,
 };
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
@@ -35,13 +34,10 @@ use s2n_quic_core::{
 /// A trait which represents an internally used `Connection`
 pub trait ConnectionTrait: Sized {
     /// Static configuration of a connection
-    type Config: connection::Config;
+    type Config: endpoint::Config;
 
     /// Creates a new `Connection` instance with the given configuration
     fn new(parameters: ConnectionParameters<Self::Config>) -> Self;
-
-    /// Returns the connections configuration
-    fn config(&self) -> &Self::Config;
 
     /// Returns the Connections internal ID
     fn internal_connection_id(&self) -> InternalConnectionId;
@@ -183,15 +179,11 @@ pub trait ConnectionTrait: Sized {
     );
 
     /// Notifies a connection it has received a datagram from a peer
-    fn on_datagram_received<
-        CC: congestion_controller::Endpoint<
-            CongestionController = <Self::Config as connection::Config>::CongestionController,
-        >,
-    >(
+    fn on_datagram_received(
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
-        congestion_controller_endpoint: &mut CC,
+        congestion_controller_endpoint: &mut <Self::Config as endpoint::Config>::CongestionControllerEndpoint,
     ) -> Result<path::Id, TransportError>;
 
     /// Returns the Connections interests

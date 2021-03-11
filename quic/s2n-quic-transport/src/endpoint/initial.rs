@@ -16,7 +16,7 @@ use alloc::sync::Arc;
 use core::{convert::TryInto, time::Duration};
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
-    crypto::{tls::Endpoint as TLSEndpoint, CryptoSuite, InitialCrypto},
+    crypto::{tls, tls::Endpoint, CryptoSuite, InitialCrypto},
     inet::DatagramInfo,
     packet::initial::ProtectedInitial,
     stateless_reset::token::Generator as _,
@@ -95,7 +95,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         //# Changing Destination Connection ID also results in a change
         //# to the keys used to protect the Initial packet.
         let initial_crypto =
-            <<Config::ConnectionConfig as connection::Config>::TLSSession as CryptoSuite>::InitialCrypto::new_server(
+            <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::InitialCrypto::new_server(
                 datagram.destination_connection_id.as_bytes(),
             );
 
@@ -210,10 +210,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             .congestion_controller
             .new_congestion_controller(path_info);
 
-        let connection_config = self.config.create_connection_config();
-
         let connection_parameters = connection::Parameters {
-            connection_config,
             internal_connection_id,
             local_id_registry,
             peer_id_registry,

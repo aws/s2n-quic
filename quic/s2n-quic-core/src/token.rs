@@ -3,7 +3,7 @@
 
 use crate::{connection, inet::SocketAddress};
 
-pub trait Format {
+pub trait Format: 'static {
     const TOKEN_LEN: usize;
 
     /// Generate a signed token to be delivered in a NEW_TOKEN frame.

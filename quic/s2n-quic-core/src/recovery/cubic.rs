@@ -4,7 +4,7 @@
 use crate::{
     counter::Counter,
     recovery::{
-        congestion_controller::CongestionController,
+        congestion_controller::{self, CongestionController},
         cubic::{FastRetransmission::*, State::*},
         hybrid_slow_start::HybridSlowStart,
         RTTEstimator,
@@ -632,6 +632,20 @@ impl Cubic {
 
     fn bytes_to_packets(&self, bytes: f32) -> f32 {
         bytes / self.max_datagram_size as f32
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct Endpoint {}
+
+impl congestion_controller::Endpoint for Endpoint {
+    type CongestionController = CubicCongestionController;
+
+    fn new_congestion_controller(
+        &mut self,
+        path_info: congestion_controller::PathInfo,
+    ) -> Self::CongestionController {
+        CubicCongestionController::new(path_info.max_datagram_size)
     }
 }
 

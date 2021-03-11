@@ -3,6 +3,8 @@
 
 use crate::{
     connection::{self, limits::Limits},
+    endpoint,
+    recovery::congestion_controller,
     space::{
         rx_packet_numbers::AckManager, ApplicationSpace, HandshakeSpace, HandshakeStatus,
         InitialSpace,
@@ -20,25 +22,26 @@ use s2n_quic_core::{
     transport::{error::TransportError, parameters::ClientTransportParameters},
 };
 
-pub struct SessionContext<'a, Config: connection::Config> {
+pub struct SessionContext<'a, Config: endpoint::Config> {
     pub now: Timestamp,
-    pub connection_config: &'a Config,
-    pub path: &'a Path<Config::CongestionController>,
+    pub path: &'a Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
     pub initial: &'a mut Option<Box<InitialSpace<Config>>>,
     pub handshake: &'a mut Option<Box<HandshakeSpace<Config>>>,
     pub application: &'a mut Option<Box<ApplicationSpace<Config>>>,
-    pub zero_rtt_crypto: &'a mut Option<Box<<Config::TLSSession as CryptoSuite>::ZeroRTTCrypto>>,
+    pub zero_rtt_crypto: &'a mut Option<
+        Box<<<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::ZeroRTTCrypto>,
+    >,
     pub handshake_status: &'a mut HandshakeStatus,
     pub local_id_registry: &'a mut connection::LocalIdRegistry,
     pub limits: &'a Limits,
 }
 
-impl<'a, Config: connection::Config> tls::Context<Config::TLSSession>
+impl<'a, Config: endpoint::Config> tls::Context<<Config::TLSEndpoint as tls::Endpoint>::Session>
     for SessionContext<'a, Config>
 {
     fn on_handshake_keys(
         &mut self,
-        keys: <Config::TLSSession as CryptoSuite>::HandshakeCrypto,
+        keys: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::HandshakeCrypto,
     ) -> Result<(), TransportError> {
         if self.handshake.is_some() {
             return Err(TransportError::INTERNAL_ERROR
@@ -60,7 +63,7 @@ impl<'a, Config: connection::Config> tls::Context<Config::TLSSession>
 
     fn on_zero_rtt_keys(
         &mut self,
-        keys: <Config::TLSSession as CryptoSuite>::ZeroRTTCrypto,
+        keys: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::ZeroRTTCrypto,
         _application_parameters: tls::ApplicationParameters,
     ) -> Result<(), TransportError> {
         if self.zero_rtt_crypto.is_some() {
@@ -75,7 +78,7 @@ impl<'a, Config: connection::Config> tls::Context<Config::TLSSession>
 
     fn on_one_rtt_keys(
         &mut self,
-        keys: <Config::TLSSession as CryptoSuite>::OneRTTCrypto,
+        keys: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::OneRTTCrypto,
         application_parameters: tls::ApplicationParameters,
     ) -> Result<(), TransportError> {
         if self.application.is_some() {

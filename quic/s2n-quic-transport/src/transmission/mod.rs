@@ -15,7 +15,7 @@ pub use interest::Interest;
 pub use s2n_quic_core::transmission::*;
 
 use crate::{
-    connection, recovery,
+    endpoint, recovery,
     space::{rx_packet_numbers::AckManager, TxPacketNumbers},
     transmission::{self, interest::Provider as _},
 };
@@ -37,7 +37,7 @@ pub trait Payload: interest::Provider {
     fn packet_number_space(&self) -> PacketNumberSpace;
 }
 
-pub struct Transmission<'a, Config: connection::Config, P: Payload> {
+pub struct Transmission<'a, Config: endpoint::Config, P: Payload> {
     pub ack_manager: &'a mut AckManager,
     pub config: PhantomData<Config>,
     pub outcome: &'a mut transmission::Outcome,
@@ -49,7 +49,7 @@ pub struct Transmission<'a, Config: connection::Config, P: Payload> {
     pub tx_packet_numbers: &'a mut TxPacketNumbers,
 }
 
-impl<'a, Config: connection::Config, P: Payload> PacketPayloadEncoder
+impl<'a, Config: endpoint::Config, P: Payload> PacketPayloadEncoder
     for Transmission<'a, Config, P>
 {
     fn encoding_size_hint<E: Encoder>(&mut self, encoder: &E, minimum_len: usize) -> usize {
@@ -121,7 +121,7 @@ impl<'a, Config: connection::Config, P: Payload> PacketPayloadEncoder
     }
 }
 
-impl<'a, Config: connection::Config, P: Payload> transmission::interest::Provider
+impl<'a, Config: endpoint::Config, P: Payload> transmission::interest::Provider
     for Transmission<'a, Config, P>
 {
     fn transmission_interest(&self) -> transmission::Interest {

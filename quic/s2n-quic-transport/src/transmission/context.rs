@@ -1,11 +1,10 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{connection, contexts::WriteContext, transmission};
+use crate::{contexts::WriteContext, endpoint, transmission};
 use core::marker::PhantomData;
 use s2n_codec::{Encoder, EncoderBuffer, EncoderValue};
 use s2n_quic_core::{
-    endpoint,
     frame::{
         ack_elicitation::{AckElicitable, AckElicitation},
         congestion_controlled::CongestionControlled,
@@ -14,7 +13,7 @@ use s2n_quic_core::{
     time::Timestamp,
 };
 
-pub struct Context<'a, 'b, Config: connection::Config> {
+pub struct Context<'a, 'b, Config: endpoint::Config> {
     pub outcome: &'a mut transmission::Outcome,
     pub buffer: &'a mut EncoderBuffer<'b>,
     pub packet_number: PacketNumber,
@@ -23,7 +22,7 @@ pub struct Context<'a, 'b, Config: connection::Config> {
     pub config: PhantomData<Config>,
 }
 
-impl<'a, 'b, Config: connection::Config> WriteContext for Context<'a, 'b, Config> {
+impl<'a, 'b, Config: endpoint::Config> WriteContext for Context<'a, 'b, Config> {
     fn current_time(&self) -> Timestamp {
         self.timestamp
     }

@@ -779,7 +779,10 @@ mod test {
         packet::number::PacketNumberSpace,
         path::INITIAL_PTO_BACKOFF,
         recovery::{
-            congestion_controller::testing::{MockCongestionController, Unlimited},
+            congestion_controller::testing::{
+                mock::CongestionController as MockCongestionController,
+                unlimited::CongestionController as Unlimited,
+            },
             DEFAULT_INITIAL_RTT,
         },
         varint::VarInt,
