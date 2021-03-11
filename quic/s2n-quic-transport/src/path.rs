@@ -7,8 +7,7 @@ use crate::{connection::PeerIdRegistry, transmission};
 use s2n_quic_core::{
     connection,
     inet::{DatagramInfo, SocketAddress},
-    recovery::congestion_controller,
-    recovery::RTTEstimator,
+    recovery::{congestion_controller, RTTEstimator},
     stateless_reset,
     transport::error::TransportError,
 };
