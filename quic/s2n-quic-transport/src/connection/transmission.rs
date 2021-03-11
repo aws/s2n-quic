@@ -38,7 +38,8 @@ impl<'a, Config: endpoint::Config> ConnectionTransmissionContext<'a, Config> {
         &self.path_manager[self.path_id]
     }
 
-pub fn path_mut(&mut self) -> &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>{
+pub fn path_mut(&mut self) ->
+&mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>{
         &mut self.path_manager[self.path_id]
     }
 }

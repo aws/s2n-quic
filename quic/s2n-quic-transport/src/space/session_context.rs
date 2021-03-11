@@ -36,8 +36,6 @@ pub struct SessionContext<'a, Config: endpoint::Config> {
     pub limits: &'a Limits,
 }
 
-// impl<'a, Config: connection::Config> tls::Context<Config::TLSSession>
-//    for SessionContext<'a, Config>
 impl<'a, Config: endpoint::Config> tls::Context<<Config::TLSEndpoint as tls::Endpoint>::Session>
     for SessionContext<'a, Config>
 {

@@ -10,7 +10,6 @@ use s2n_quic_core::{
     ack,
     connection::limits::Limits,
     crypto::{tls, tls::Session, CryptoSuite},
-    endpoint::Type as EndpointType,
     frame::{
         self, ack::AckRanges, crypto::CryptoRef, stream::StreamRef, Ack, ConnectionClose,
         DataBlocked, HandshakeDone, MaxData, MaxStreamData, MaxStreams, NewConnectionID, NewToken,
@@ -234,8 +233,8 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
 
     pub fn is_handshake_complete(&self) -> bool {
         match Config::ENDPOINT_TYPE {
-            EndpointType::Server => self.is_handshake_confirmed(),
-            EndpointType::Client => {
+            endpoint::Type::Server => self.is_handshake_confirmed(),
+            endpoint::Type::Client => {
                 // TODO https://github.com/awslabs/s2n-quic/issues/338
                 // Return true after the client has received the ServerFinished message
                 self.is_handshake_confirmed()

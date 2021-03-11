@@ -4,7 +4,7 @@
 use crate::{
     counter::Counter,
     recovery::{
-        congestion_controller::CongestionController,
+        congestion_controller::{self, CongestionController},
         cubic::{FastRetransmission::*, State::*},
         hybrid_slow_start::HybridSlowStart,
         RTTEstimator,
@@ -17,8 +17,6 @@ use core::{
 };
 #[cfg(not(feature = "std"))]
 use num_traits::Float as _;
-
-use super::congestion_controller;
 
 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3
 //#                 New Path or      +------------+

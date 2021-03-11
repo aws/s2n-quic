@@ -16,7 +16,6 @@ use core::marker::PhantomData;
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
     crypto::{tls, CryptoSuite},
-    endpoint::Type as EndpointType,
     frame::{ack::AckRanges, crypto::CryptoRef, Ack, ConnectionClose},
     inet::DatagramInfo,
     packet::{
@@ -268,7 +267,7 @@ struct RecoveryContext<'a, Config: endpoint::Config> {
 impl<'a, Config: endpoint::Config> recovery::Context<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>
     for RecoveryContext<'a, Config>
 {
-    const ENDPOINT_TYPE: EndpointType = Config::ENDPOINT_TYPE;
+    const ENDPOINT_TYPE: endpoint::Type = Config::ENDPOINT_TYPE;
 
     fn is_handshake_confirmed(&self) -> bool {
         self.handshake_status.is_confirmed()

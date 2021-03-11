@@ -3,7 +3,7 @@
 
 //! This module contains the implementation of QUIC `Connections` and their management
 
-use crate::endpoint;
+use crate::{endpoint, recovery::congestion_controller};
 use s2n_quic_core::{
     application::ApplicationErrorCode, connection, frame::ConnectionClose, inet::SocketAddress,
     stream::StreamError, time::Timestamp, transport::error::TransportError,
@@ -42,8 +42,6 @@ pub use connection_impl::ConnectionImpl as Implementation;
 use core::fmt::Debug;
 /// re-export core
 pub use s2n_quic_core::connection::*;
-
-use crate::recovery::congestion_controller;
 
 /// Parameters which are passed to a Connection.
 /// These are unique per created connection.
