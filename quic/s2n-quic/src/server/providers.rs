@@ -255,7 +255,7 @@ impl<
 }
 
 impl<
-        CongestionController: 'static + congestion_controller::Endpoint,
+        CongestionController: congestion_controller::Endpoint,
         ConnectionID: 'static + connection::id::Format,
         StatelessResetToken: 'static + stateless_reset_token::Generator,
         Random: 'static + s2n_quic_core::random::Generator,

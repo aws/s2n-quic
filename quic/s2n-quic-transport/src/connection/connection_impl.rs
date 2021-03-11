@@ -236,7 +236,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         let path_manager = path::Manager::new(initial_path, parameters.peer_id_registry);
 
         Self {
-            //config: parameters.connection_config,
             internal_connection_id: parameters.internal_connection_id,
             local_connection_id: parameters.local_connection_id,
             local_id_registry: parameters.local_id_registry,
