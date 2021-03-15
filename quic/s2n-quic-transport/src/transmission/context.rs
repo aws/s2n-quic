@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{contexts::WriteContext, endpoint, transmission};
+use crate::{contexts::WriteContext, endpoint, path, transmission};
 use core::marker::PhantomData;
 use s2n_codec::{Encoder, EncoderBuffer, EncoderValue};
 use s2n_quic_core::{
@@ -20,6 +20,7 @@ pub struct Context<'a, 'b, Config: endpoint::Config> {
     pub transmission_constraint: transmission::Constraint,
     pub timestamp: Timestamp,
     pub config: PhantomData<Config>,
+    pub path_id: path::Id,
 }
 
 impl<'a, 'b, Config: endpoint::Config> WriteContext for Context<'a, 'b, Config> {
@@ -82,6 +83,10 @@ impl<'a, 'b, Config: endpoint::Config> WriteContext for Context<'a, 'b, Config> 
     fn local_endpoint_type(&self) -> endpoint::Type {
         Config::ENDPOINT_TYPE
     }
+
+    fn path_id(&self) -> path::Id {
+        self.path_id
+    }
 }
 
 // Overrides a context's transmission constraint to allow only retransmissions to be written to
@@ -138,5 +143,9 @@ impl<'a, C: WriteContext> WriteContext for RetransmissionContext<'a, C> {
 
     fn local_endpoint_type(&self) -> endpoint::Type {
         self.context.local_endpoint_type()
+    }
+
+    fn path_id(&self) -> path::Id {
+        self.context.path_id()
     }
 }

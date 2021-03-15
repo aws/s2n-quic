@@ -185,35 +185,48 @@ diff --git a/testcases.py b/testcases.py
 index 1d81d25..4ec44da 100644
 --- a/testcases.py
 +++ b/testcases.py
-@@ -90,6 +90,10 @@ class TestCase(abc.ABC):
-         """ The name of testcase presented to the endpoint Docker images"""
+@@ -91,6 +91,10 @@
          return self.name()
- 
-+    @staticmethod
+
+     @staticmethod
 +    def test_type() -> str:
 +        return "TEST"
 +
-     @staticmethod
++    @staticmethod
      def scenario() -> str:
          """ Scenario for the ns3 simulator """
-@@ -183,9 +187,6 @@ class TestCase(abc.ABC):
+         return "simple-p2p --delay=15ms --bandwidth=10Mbps --queue=25"
+@@ -183,9 +187,6 @@
          if len(versions) != 1:
              logging.info("Expected exactly one version. Got %s", versions)
              return False
 -        if QUIC_VERSION not in versions:
 -            logging.info("Wrong version. Expected %s, got %s", QUIC_VERSION, versions)
 -            return False
- 
+
          if len(self._files) == 0:
              raise Exception("No test files generated.")
-@@ -1445,6 +1446,10 @@ class MeasurementGoodput(Measurement):
-     def testname(p: Perspective):
+@@ -1446,6 +1447,10 @@
          return "transfer"
- 
-+    @staticmethod
+
+     @staticmethod
 +    def test_type() -> str:
 +        return "MEASUREMENT"
 +
-     @staticmethod
++    @staticmethod
      def abbreviation():
          return "G"
+
+@@ -1542,9 +1547,9 @@
+     TestCaseIPv6,
+     # The next three tests are disabled due to Wireshark not being able
+     # to decrypt packets sent on the new path.
+-    # TestCasePortRebinding,
+-    # TestCaseAddressRebinding,
+-    # TestCaseConnectionMigration,
++    TestCasePortRebinding,
++    TestCaseAddressRebinding,
++    TestCaseConnectionMigration,
+ ]
+
+ MEASUREMENTS = [

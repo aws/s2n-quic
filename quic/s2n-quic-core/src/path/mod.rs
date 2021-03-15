@@ -3,18 +3,22 @@
 
 //! This module contains the Path implementation
 
+pub mod challenge;
+use challenge::Challenge;
+
 use crate::{
     connection,
-    frame::path_challenge,
     inet::SocketAddress,
     recovery::{CongestionController, RttEstimator},
+    time::Timestamp,
     transmission,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum State {
+enum State {
     Validated,
-    Pending { tx_bytes: u32, rx_bytes: u32 },
+    AmplificationLimited { tx_bytes: u32, rx_bytes: u32 },
+    PendingChallengeResponse,
 }
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14
@@ -24,7 +28,7 @@ pub const MINIMUM_MTU: u16 = 1200;
 // Initial PTO backoff multiplier is 1 indicating no additional increase to the backoff.
 pub const INITIAL_PTO_BACKOFF: u32 = 1;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Path<CC: CongestionController> {
     /// The peer's socket address
     pub peer_socket_address: SocketAddress,
@@ -41,13 +45,11 @@ pub struct Path<CC: CongestionController> {
     /// Maximum transmission unit of the path
     mtu: u16,
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
-    //# To initiate path validation, an endpoint sends a PATH_CHALLENGE frame
-    //# containing an unpredictable payload on the path to be validated.
-    pub challenge: Option<[u8; path_challenge::DATA_LEN]>,
-
     /// True if the path has been validated by the peer
     peer_validated: bool,
+
+    /// Challenge sent to the peer in a PATH_CHALLENGE
+    challenge: Challenge,
 }
 
 /// A Path holds the local and peer socket addresses, connection ids, and state. It can be
@@ -69,14 +71,39 @@ impl<CC: CongestionController> Path<CC> {
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.4
             //# If the client IP address has changed, the server MUST
             //# adhere to the anti-amplification limits found in Section 8.1.
-            // Start each path in State::Pending until it has been validated.
-            state: State::Pending {
+            // Start each path in State::AmplificationLimited until it has been validated.
+            state: State::AmplificationLimited {
                 tx_bytes: 0,
                 rx_bytes: 0,
             },
             mtu: MINIMUM_MTU,
-            challenge: None,
             peer_validated,
+            challenge: Challenge::None,
+        }
+    }
+
+    pub fn new_probe(
+        peer_socket_address: SocketAddress,
+        peer_connection_id: connection::PeerId,
+        rtt_estimator: RttEstimator,
+        congestion_controller: CC,
+        peer_validated: bool,
+        challenge: Challenge,
+    ) -> Self {
+        Path {
+            peer_socket_address,
+            peer_connection_id,
+            rtt_estimator,
+            congestion_controller,
+            pto_backoff: INITIAL_PTO_BACKOFF,
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.4
+            //# If the client IP address has changed, the server MUST
+            //# adhere to the anti-amplification limits found in Section 8.1.
+            // Start each path in State::AmplificationLimited until it has been validated.
+            state: State::PendingChallengeResponse,
+            mtu: MINIMUM_MTU,
+            peer_validated,
+            challenge,
         }
     }
 
@@ -93,7 +120,7 @@ impl<CC: CongestionController> Path<CC> {
             bytes
         );
 
-        if let State::Pending { tx_bytes, .. } = &mut self.state {
+        if let State::AmplificationLimited { tx_bytes, .. } = &mut self.state {
             *tx_bytes += bytes as u32;
         }
     }
@@ -109,16 +136,47 @@ impl<CC: CongestionController> Path<CC> {
         //# avoiding amplification prior to address validation, servers MUST
         //# count all of the payload bytes received in datagrams that are
         //# uniquely attributed to a single connection.
-        if let State::Pending { rx_bytes, .. } = &mut self.state {
+        if let State::AmplificationLimited { rx_bytes, .. } = &mut self.state {
             *rx_bytes += bytes as u32;
         }
 
         was_at_amplification_limit && !self.at_amplification_limit()
     }
 
+    pub fn on_timeout(&mut self, timestamp: Timestamp) {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.4
+        //# Endpoints SHOULD abandon path validation based on a timer.
+        self.challenge.on_timeout(timestamp)
+    }
+
+    pub fn next_timer(&self) -> Option<&Timestamp> {
+        self.challenge.next_timer()
+    }
+
+    pub fn reset_timer(&mut self, timestamp: Timestamp) {
+        self.challenge.reset_timer(timestamp)
+    }
+
+    pub fn challenge_data(&self) -> Option<&challenge::Data> {
+        self.challenge.data()
+    }
+
+    pub fn is_challenge_pending(&self, timestamp: Timestamp) -> bool {
+        self.challenge.is_pending(timestamp)
+    }
+
+    pub fn is_challenge_abandoned(&self) -> bool {
+        self.challenge == Challenge::Abandoned
+    }
+
     /// Called when the path is validated
     pub fn on_validated(&mut self) {
-        self.state = State::Validated
+        self.challenge = Challenge::None;
+        self.state = State::Validated;
+    }
+
+    pub fn remove_amplification_limits(&mut self) {
+        self.state = State::PendingChallengeResponse;
     }
 
     /// Returns whether this path has passed address validation
@@ -139,14 +197,22 @@ impl<CC: CongestionController> Path<CC> {
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.1
     //# The server MUST also limit the number of bytes it sends before
     //# validating the address of the client; see Section 8.
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.1
+    //= type=TODO
+    //# The endpoint
+    //# MUST NOT send more than a minimum congestion window's worth of data
+    //# per estimated round-trip time (kMinimumWindow, as defined in
+    //# [QUIC-RECOVERY]).
     pub fn clamp_mtu(&self, requested_size: usize) -> usize {
         match self.state {
             State::Validated => requested_size.min(self.mtu as usize),
-            State::Pending { tx_bytes, rx_bytes } => {
-                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1
-                //# Prior to validating the client address, servers MUST NOT send more
-                //# than three times as many bytes as the number of bytes they have
-                //# received.
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1
+            //# Prior to validating the client address, servers MUST NOT send more
+            //# than three times as many bytes as the number of bytes they have
+            //# received.
+            State::PendingChallengeResponse => requested_size.min(self.mtu as usize),
+            State::AmplificationLimited { tx_bytes, rx_bytes } => {
                 let limit = rx_bytes
                     .checked_mul(3)
                     .and_then(|v| v.checked_sub(tx_bytes))
@@ -163,6 +229,8 @@ impl<CC: CongestionController> Path<CC> {
             //# than three times as many bytes as the number of bytes they have
             //# received.
             transmission::Constraint::AmplificationLimited
+        } else if self.at_pre_validated_limit() {
+            transmission::Constraint::CongestionLimited
         } else if self.congestion_controller.is_congestion_limited() {
             if self.congestion_controller.requires_fast_retransmission() {
                 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.2
@@ -184,8 +252,12 @@ impl<CC: CongestionController> Path<CC> {
         }
     }
 
-    /// Returns whether this path is blocked from transmitting more data
+    /// Returns whether this path should be limited according to connection establishment amplification limits
     pub fn at_amplification_limit(&self) -> bool {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1
+        //# Prior to validating the client address, servers MUST NOT send more
+        //# than three times as many bytes as the number of bytes they have
+        //# received.
         let mtu = self.mtu as usize;
         self.clamp_mtu(mtu) < mtu
     }
@@ -197,6 +269,21 @@ impl<CC: CongestionController> Path<CC> {
     ) -> core::time::Duration {
         self.rtt_estimator.pto_period(self.pto_backoff, space)
     }
+    /// Returns whether this path is limited to connection migration amplification limits
+    pub fn at_pre_validated_limit(&self) -> bool {
+        self.state == State::PendingChallengeResponse
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.1
+        //= type=TODO
+        //# Until a peer's address is deemed valid, an endpoint MUST
+        //# limit the rate at which it sends data to this address.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.1
+        //= type=TODO
+        //# The endpoint
+        //# MUST NOT send more than a minimum congestion window's worth of data
+        //# per estimated round-trip time (kMinimumWindow, as defined in
+        //# [QUIC-RECOVERY]).
+    }
 
     /// Resets the PTO backoff to the initial value
     pub fn reset_pto_backoff(&mut self) {
@@ -205,18 +292,30 @@ impl<CC: CongestionController> Path<CC> {
 
     /// Marks the path as closing
     pub fn on_closing(&mut self) {
-        // Revert the path state to Pending so we can control the number
+        // Revert the path state to AmplificationLimited so we can control the number
         // of packets sent back with anti-amplification limits
         match &self.state {
             // keep the current amplification limits
-            State::Pending { .. } => {}
-            State::Validated => {
-                self.state = State::Pending {
+            State::AmplificationLimited { .. } => {}
+            State::Validated | State::PendingChallengeResponse => {
+                self.state = State::AmplificationLimited {
                     tx_bytes: 0,
                     rx_bytes: MINIMUM_MTU as _,
                 };
             }
         }
+    }
+    /// Validates data in a PATH_RESPONSE frame
+    pub fn is_path_response_valid(
+        &self,
+        timestamp: Timestamp,
+        addr: &SocketAddress,
+        response: &[u8],
+    ) -> bool {
+        // The timestamp is only used to determine retransmission.
+        // We won't fail a validation based on timestamp because we will have zeroed the data if
+        // the timer expired.
+        self.challenge.is_valid(timestamp, addr, response)
     }
 }
 
@@ -252,7 +351,7 @@ mod tests {
         //= type=test
         //# If the client IP address has changed, the server MUST
         //# adhere to the anti-amplification limits found in Section 8.1.
-        // This is tested here by verifying a new Path starts in State::Pending
+        // This is tested here by verifying a new Path starts in State::AmplificationLimited
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1
         //= type=test

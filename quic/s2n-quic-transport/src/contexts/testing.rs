@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::contexts::WriteContext;
+use crate::{contexts::WriteContext, path};
 use alloc::collections::VecDeque;
 use s2n_codec::{encoder::EncoderBuffer, DecoderBufferMut};
 use s2n_quic_core::{
@@ -285,5 +285,9 @@ impl<'a> WriteContext for MockWriteContext<'a> {
 
     fn local_endpoint_type(&self) -> endpoint::Type {
         self.endpoint
+    }
+
+    fn path_id(&self) -> path::Id {
+        todo!()
     }
 }

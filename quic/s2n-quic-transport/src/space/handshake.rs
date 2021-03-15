@@ -118,6 +118,7 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
             timestamp: context.timestamp,
             transmission_constraint,
             tx_packet_numbers: &mut self.tx_packet_numbers,
+            path_id: context.path_id,
         };
 
         let packet = Handshake {
@@ -167,6 +168,7 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
             timestamp: context.timestamp,
             transmission_constraint: transmission::Constraint::None,
             tx_packet_numbers: &mut self.tx_packet_numbers,
+            path_id: context.path_id,
         };
 
         let packet = Handshake {
@@ -236,10 +238,6 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
         path: &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
     ) {
         self.recovery_manager.on_packet_number_space_discarded(path);
-    }
-
-    pub fn requires_probe(&self) -> bool {
-        self.recovery_manager.requires_probe()
     }
 
     /// Returns the Packet Number to be used when decoding incoming packets

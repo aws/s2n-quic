@@ -9,7 +9,7 @@ pub mod connection_close;
 pub mod early;
 pub mod interest;
 
-pub use crate::contexts::WriteContext;
+pub use crate::{contexts::WriteContext, path};
 pub use interest::Interest;
 
 /// re-export core
@@ -46,6 +46,7 @@ pub struct Transmission<'a, Config: endpoint::Config, P: Payload> {
     pub timestamp: Timestamp,
     pub transmission_constraint: transmission::Constraint,
     pub tx_packet_numbers: &'a mut TxPacketNumbers,
+    pub path_id: path::Id,
 }
 
 impl<'a, Config: endpoint::Config, P: Payload> PacketPayloadEncoder
@@ -78,6 +79,7 @@ impl<'a, Config: endpoint::Config, P: Payload> PacketPayloadEncoder
             transmission_constraint: self.transmission_constraint,
             timestamp: self.timestamp,
             config: Default::default(),
+            path_id: self.path_id,
         };
 
         self.payload.on_transmit(&mut context);

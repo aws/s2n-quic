@@ -162,10 +162,13 @@ impl CongestionController for CubicCongestionController {
         rtt_estimator: &RttEstimator,
         ack_receive_time: Timestamp,
     ) {
-        self.bytes_in_flight
-            .try_sub(sent_bytes)
-            .expect("sent bytes should not exceed u32::MAX");
-
+        if sent_bytes > *self.bytes_in_flight as usize {
+            self.bytes_in_flight = Counter::new(0);
+        } else {
+            self.bytes_in_flight
+                .try_sub(sent_bytes)
+                .expect("sent bytes should not exceed u32::MAX");
+        }
         if self.under_utilized {
             //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.8
             //# When bytes in flight is smaller than the congestion window and
@@ -240,7 +243,11 @@ impl CongestionController for CubicCongestionController {
     ) {
         debug_assert!(lost_bytes > 0);
 
-        self.bytes_in_flight -= lost_bytes;
+        if lost_bytes > *self.bytes_in_flight {
+            self.bytes_in_flight = Counter::new(0);
+        } else {
+            self.bytes_in_flight -= lost_bytes;
+        }
         self.on_congestion_event(timestamp);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.2
