@@ -29,6 +29,7 @@ pub struct ConnectionTransmissionContext<'a, Config: endpoint::Config> {
     pub outcome: &'a mut transmission::Outcome,
     pub ecn: ExplicitCongestionNotification,
     pub min_packet_len: Option<usize>,
+    pub transmission_constraint: transmission::Constraint,
 }
 
 impl<'a, Config: endpoint::Config> ConnectionTransmissionContext<'a, Config> {
@@ -97,17 +98,21 @@ impl<'a, Config: endpoint::Config> tx::Message for ConnectionTransmission<'a, Co
         //# timer expired, the sender SHOULD send ack-eliciting packets from
         //# other packet number spaces with in-flight data, coalescing packets if
         //# possible.
-        let transmission_constraint = if space_manager.requires_probe() {
-            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
-            //# When the PTO timer expires, an ack-eliciting packet MUST be sent.  An
-            //# endpoint SHOULD include new data in this packet.  Previously sent
-            //# data MAY be sent if no new data can be sent.
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.5
-            //# Probe packets MUST NOT be blocked by the congestion controller.
-            transmission::Constraint::Probing
-        } else {
-            self.context.path().transmission_constraint()
+        let transmission_constraint = {
+            self.context
+                .transmission_constraint
+                .max({
+                    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
+                    //# When the PTO timer expires, an ack-eliciting packet MUST be sent.  An
+                    //# endpoint SHOULD include new data in this packet.  Previously sent
+                    //# data MAY be sent if no new data can be sent.
+
+                    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.5
+                    //# Probe packets MUST NOT be blocked by the congestion controller.
+                    transmission::Constraint::Probing
+                })
+                .max(self.context.path().transmission_constraint())
         };
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.1

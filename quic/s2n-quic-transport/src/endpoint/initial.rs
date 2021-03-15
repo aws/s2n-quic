@@ -257,6 +257,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                 Some(locked_shared_state),
                 datagram,
                 endpoint_context.congestion_controller,
+                endpoint_context.random_generator,
             )?;
 
             connection

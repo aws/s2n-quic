@@ -4,7 +4,7 @@
 //! Defines Context traits, which are passed to various lifecycle callbacks
 //! within the connection in order to collect data
 
-use crate::{connection::InternalConnectionId, transmission, wakeup_queue::WakeupHandle};
+use crate::{connection::InternalConnectionId, path, transmission, wakeup_queue::WakeupHandle};
 use s2n_codec::encoder::EncoderValue;
 use s2n_quic_core::{
     endpoint,
@@ -50,6 +50,9 @@ pub trait WriteContext {
 
     /// Returns the local endpoint type (client or server)
     fn local_endpoint_type(&self) -> endpoint::Type;
+
+    /// Returns the destination path id the frame will be written to
+    fn path_id(&self) -> path::Id;
 }
 
 /// Enumerates error values for `on_transmit` calls

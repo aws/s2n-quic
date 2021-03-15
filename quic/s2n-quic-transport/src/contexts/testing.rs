@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::contexts::WriteContext;
+use crate::{contexts::WriteContext, path};
 use alloc::collections::VecDeque;
 use s2n_codec::{encoder::EncoderBuffer, DecoderBufferMut};
 use s2n_quic_core::{
@@ -219,6 +219,7 @@ pub struct MockWriteContext<'a> {
     pub frame_buffer: &'a mut OutgoingFrameBuffer,
     pub transmission_constraint: Constraint,
     pub endpoint: endpoint::Type,
+    pub path_id: path::Id,
 }
 
 impl<'a> MockWriteContext<'a> {
@@ -233,6 +234,7 @@ impl<'a> MockWriteContext<'a> {
             frame_buffer,
             transmission_constraint,
             endpoint,
+            path_id: path::Id::new(0),
         }
     }
 }
@@ -285,5 +287,9 @@ impl<'a> WriteContext for MockWriteContext<'a> {
 
     fn local_endpoint_type(&self) -> endpoint::Type {
         self.endpoint
+    }
+
+    fn path_id(&self) -> path::Id {
+        self.path_id
     }
 }

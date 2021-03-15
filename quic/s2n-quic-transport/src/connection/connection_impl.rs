@@ -237,7 +237,9 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
     fn transmission_context<'a>(
         &'a mut self,
         outcome: &'a mut transmission::Outcome,
+        path_id: path::Id,
         timestamp: Timestamp,
+        transmission_constraint: transmission::constraint::Constraint,
     ) -> ConnectionTransmissionContext<'a, Config> {
         // TODO get this from somewhere
         let ecn = Default::default();
@@ -245,13 +247,14 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         ConnectionTransmissionContext {
             quic_version: self.quic_version,
             timestamp,
-            path_id: self.path_manager.active_path_id(),
+            path_id,
             path_manager: &mut self.path_manager,
             source_connection_id: &self.local_connection_id,
             local_id_registry: &mut self.local_id_registry,
             outcome,
             ecn,
             min_packet_len: None,
+            transmission_constraint,
         }
     }
 }
@@ -351,7 +354,12 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             s2n_quic_core::connection::error::as_frame(error, close_formatter, &close_context)
         {
             let mut outcome = transmission::Outcome::default();
-            let mut context = self.transmission_context(&mut outcome, timestamp);
+            let mut context = self.transmission_context(
+                &mut outcome,
+                self.path_manager.active_path_id(),
+                timestamp,
+                self.path_manager.active_path().transmission_constraint(),
+            );
 
             if let Some(packet) = shared_state.space_manager.on_transmit_close(
                 &early_connection_close,
@@ -463,7 +471,12 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 if let Some(shared_state) = shared_state {
                     let mut outcome = transmission::Outcome::default();
                     while let Ok(_idx) = queue.push(ConnectionTransmission {
-                        context: self.transmission_context(&mut outcome, timestamp),
+                        context: self.transmission_context(
+                            &mut outcome,
+                            self.path_manager.active_path_id(),
+                            timestamp,
+                            self.path_manager.active_path().transmission_constraint(),
+                        ),
                         shared_state,
                     }) {
                         count += 1;
@@ -472,10 +485,35 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                         }
                     }
 
+                    let ecn = Default::default();
+                    let mut pending_paths = self.path_manager.pending_paths(timestamp);
+                    while let Some((path_id, path_manager)) = pending_paths.next_path() {
+                        if let Ok(_idx) = queue.push(ConnectionTransmission {
+                            // We can't call self.transmission_context because self is already used
+                            // for pending paths.
+                            context: ConnectionTransmissionContext {
+                                quic_version: self.quic_version,
+                                timestamp,
+                                path_id,
+                                path_manager,
+                                source_connection_id: &self.local_connection_id,
+                                local_id_registry: &mut self.local_id_registry,
+                                outcome: &mut outcome,
+                                ecn,
+                                min_packet_len: None,
+                                transmission_constraint: transmission::Constraint::Probing,
+                            },
+                            shared_state,
+                        }) {
+                            count += 1;
+                        }
+                    }
+
                     if outcome.ack_elicitation.is_ack_eliciting() {
                         self.on_ack_eliciting_packet_sent(timestamp);
                     }
                 }
+
                 // TODO  leave the psuedo in comment, TODO send this stuff
                 // for path_id in path_manager.pending_path_validation() {
                 // queue.push(path transmission context)
@@ -528,6 +566,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             connection_id_mapper.remove_initial_id(&self.internal_connection_id);
         }
 
+        self.path_manager.on_timeout(timestamp);
+
         self.local_id_registry.on_timeout(timestamp);
 
         if let Some(shared_state) = shared_state {
@@ -567,6 +607,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             .chain(self.timers.iter())
             .chain(self.close_sender.timers())
             .chain(shared_state.iter().flat_map(|s| s.space_manager.timers()))
+            .chain(self.path_manager.next_timer())
             .chain(self.local_id_registry.timers())
             .min();
 
@@ -605,6 +646,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         shared_state: Option<&mut SharedConnectionState<Config>>,
         datagram: &DatagramInfo,
         congestion_controller_endpoint: &mut Config::CongestionControllerEndpoint,
+        random_generator: &mut Config::RandomGenerator,
     ) -> Result<path::Id, connection::Error> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
         //# The design of QUIC relies on endpoints retaining a stable address
@@ -627,6 +669,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             &self.limits,
             can_migrate,
             congestion_controller_endpoint,
+            random_generator,
         )?;
 
         if let Some(shared_state) = shared_state {

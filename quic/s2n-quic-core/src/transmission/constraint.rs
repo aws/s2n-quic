@@ -7,7 +7,7 @@ use bolero_generator::*;
 #[cfg(test)]
 use bolero::generator::*;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(any(feature = "generator", test), derive(TypeGenerator))]
 pub enum Constraint {
     /// Anti-amplification limits

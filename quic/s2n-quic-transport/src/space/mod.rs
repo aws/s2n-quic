@@ -224,14 +224,6 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         }
     }
 
-    pub fn requires_probe(&self) -> bool {
-        core::iter::empty()
-            .chain(self.initial.iter().map(|space| space.requires_probe()))
-            .chain(self.handshake.iter().map(|space| space.requires_probe()))
-            .chain(self.application.iter().map(|space| space.requires_probe()))
-            .any(|requires_probe| requires_probe)
-    }
-
     pub fn is_handshake_confirmed(&self) -> bool {
         self.handshake_status.is_confirmed()
     }
@@ -454,6 +446,16 @@ pub trait PacketSpace<Config: endpoint::Config> {
             .with_frame_type(frame.tag().into()))
     }
 
+    fn handle_path_response_frame(
+        &mut self,
+        frame: &PathResponse,
+        _datagram: &DatagramInfo,
+        _path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
+    ) -> Result<(), transport::Error> {
+        Err(transport::Error::PROTOCOL_VIOLATION
+            .with_reason(Self::INVALID_FRAME_ERROR)
+            .with_frame_type(frame.tag().into()))
+    }
     default_frame_handler!(handle_stream_frame, StreamRef);
     default_frame_handler!(handle_data_blocked_frame, DataBlocked);
     default_frame_handler!(handle_max_data_frame, MaxData);
@@ -465,7 +467,6 @@ pub trait PacketSpace<Config: endpoint::Config> {
     default_frame_handler!(handle_streams_blocked_frame, StreamsBlocked);
     default_frame_handler!(handle_new_token_frame, NewToken);
     default_frame_handler!(handle_path_challenge_frame, PathChallenge);
-    default_frame_handler!(handle_path_response_frame, PathResponse);
 
     fn on_processed_packet(
         &mut self,
@@ -498,6 +499,8 @@ pub trait PacketSpace<Config: endpoint::Config> {
             }};
         }
 
+        let mut probing_packet = true;
+
         while !payload.is_empty() {
             let (frame, remaining) = payload
                 .decode::<FrameMut>()
@@ -517,6 +520,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
                     //# Endpoints can use PING frames (type=0x01) to verify that their peers
                     //# are still alive or to check reachability to the peer.
                     processed_packet.on_processed_frame(&frame);
+                    probing_packet = false;
                 }
                 Frame::Crypto(frame) => {
                     let on_error = with_frame_type!(frame);
@@ -527,6 +531,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
                     //# been received and processed by the transport even though the CRYPTO
                     //# frame was discarded.
                     processed_packet.on_processed_frame(&frame);
+                    probing_packet = false;
 
                     self.handle_crypto_frame(frame.into(), datagram, &mut path_manager[path_id])
                         .map_err(on_error)?;
@@ -534,6 +539,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
                 Frame::Ack(frame) => {
                     let on_error = with_frame_type!(frame);
                     processed_packet.on_processed_frame(&frame);
+                    probing_packet = false;
                     self.handle_ack_frame(
                         frame,
                         datagram,
@@ -556,52 +562,62 @@ pub trait PacketSpace<Config: endpoint::Config> {
                 Frame::Stream(frame) => {
                     let on_error = with_frame_type!(frame);
                     processed_packet.on_processed_frame(&frame);
+                    probing_packet = false;
                     self.handle_stream_frame(frame.into()).map_err(on_error)?;
                 }
                 Frame::DataBlocked(frame) => {
                     let on_error = with_frame_type!(frame);
                     processed_packet.on_processed_frame(&frame);
+                    probing_packet = false;
                     self.handle_data_blocked_frame(frame).map_err(on_error)?;
                 }
                 Frame::MaxData(frame) => {
                     let on_error = with_frame_type!(frame);
                     processed_packet.on_processed_frame(&frame);
+                    probing_packet = false;
                     self.handle_max_data_frame(frame).map_err(on_error)?;
                 }
                 Frame::MaxStreamData(frame) => {
                     let on_error = with_frame_type!(frame);
                     processed_packet.on_processed_frame(&frame);
+                    probing_packet = false;
                     self.handle_max_stream_data_frame(frame).map_err(on_error)?;
                 }
                 Frame::MaxStreams(frame) => {
                     let on_error = with_frame_type!(frame);
                     processed_packet.on_processed_frame(&frame);
+                    probing_packet = false;
                     self.handle_max_streams_frame(frame).map_err(on_error)?;
                 }
                 Frame::ResetStream(frame) => {
                     let on_error = with_frame_type!(frame);
                     processed_packet.on_processed_frame(&frame);
+                    probing_packet = false;
                     self.handle_reset_stream_frame(frame).map_err(on_error)?;
                 }
                 Frame::StopSending(frame) => {
                     let on_error = with_frame_type!(frame);
                     processed_packet.on_processed_frame(&frame);
+                    probing_packet = false;
                     self.handle_stop_sending_frame(frame).map_err(on_error)?;
                 }
                 Frame::StreamDataBlocked(frame) => {
                     let on_error = with_frame_type!(frame);
                     processed_packet.on_processed_frame(&frame);
+                    probing_packet = false;
                     self.handle_stream_data_blocked_frame(frame)
                         .map_err(on_error)?;
                 }
                 Frame::StreamsBlocked(frame) => {
                     let on_error = with_frame_type!(frame);
                     processed_packet.on_processed_frame(&frame);
+                    probing_packet = false;
                     self.handle_streams_blocked_frame(frame).map_err(on_error)?;
                 }
                 Frame::NewToken(frame) => {
                     let on_error = with_frame_type!(frame);
                     processed_packet.on_processed_frame(&frame);
+                    probing_packet = false;
                     self.handle_new_token_frame(frame).map_err(on_error)?;
                 }
                 Frame::NewConnectionId(frame) => {
@@ -613,6 +629,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
                 Frame::RetireConnectionId(frame) => {
                     let on_error = with_frame_type!(frame);
                     processed_packet.on_processed_frame(&frame);
+                    probing_packet = false;
                     self.handle_retire_connection_id_frame(
                         frame,
                         datagram,
@@ -629,11 +646,13 @@ pub trait PacketSpace<Config: endpoint::Config> {
                 Frame::PathResponse(frame) => {
                     let on_error = with_frame_type!(frame);
                     processed_packet.on_processed_frame(&frame);
-                    self.handle_path_response_frame(frame).map_err(on_error)?;
+                    self.handle_path_response_frame(&frame, &datagram, path_manager)
+                        .map_err(on_error)?;
                 }
                 Frame::HandshakeDone(frame) => {
                     let on_error = with_frame_type!(frame);
                     processed_packet.on_processed_frame(&frame);
+                    probing_packet = false;
                     self.handle_handshake_done_frame(
                         frame,
                         datagram,
@@ -646,6 +665,23 @@ pub trait PacketSpace<Config: endpoint::Config> {
             }
 
             payload = remaining;
+        }
+
+        // If a non-probing packet is received on a non-active path, we must migrate to that path.
+        if path_manager.active_path_id() != path_id && !probing_packet {
+            let active_path = path_manager.active_path();
+
+            // During a passive NAT rebind, the RTT and CC will have been copied into the new path.
+            // This means we can mark this path as validated.
+            if active_path.peer_socket_address.ip() == datagram.remote_address.ip() {
+                // We didn't mark the path as validated during creation because we haven't verified
+                // the packet is valid, and we don't want to remove amplification limits at that time.
+                let path = &mut path_manager[path_id];
+                path.remove_amplification_limits();
+            }
+
+            path_manager.update_active_path(path_id);
+            path_manager.active_path_mut().remove_amplification_limits();
         }
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.1

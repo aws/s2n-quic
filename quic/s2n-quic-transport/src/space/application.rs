@@ -160,6 +160,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             timestamp: context.timestamp,
             transmission_constraint,
             tx_packet_numbers: &mut self.tx_packet_numbers,
+            path_id: context.path_id,
         };
 
         let spin_bit = self.spin_bit;
@@ -224,6 +225,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             timestamp: context.timestamp,
             transmission_constraint: transmission::Constraint::None,
             tx_packet_numbers: &mut self.tx_packet_numbers,
+            path_id: context.path_id,
         };
 
         let spin_bit = self.spin_bit;
@@ -321,12 +323,6 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         recovery_manager.on_timeout(timestamp, &mut context);
 
         self.stream_manager.on_timeout(timestamp);
-    }
-
-    /// Returns `true` if the recovery manager for this packet space requires a probe
-    /// packet to be sent.
-    pub fn requires_probe(&self) -> bool {
-        self.recovery_manager.requires_probe()
     }
 
     pub fn ping(&mut self) {
@@ -681,9 +677,14 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         Ok(())
     }
 
-    fn handle_path_response_frame(&mut self, frame: PathResponse) -> Result<(), transport::Error> {
-        // TODO map this frame to a Path
-        eprintln!("UNIMPLEMENTED APPLICATION FRAME {:?}", frame);
+    fn handle_path_response_frame(
+        &mut self,
+        frame: &PathResponse,
+        datagram: &DatagramInfo,
+        path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
+    ) -> Result<(), transport::Error> {
+        path_manager.on_path_response(datagram.timestamp, &datagram.remote_address, &frame);
+
         Ok(())
     }
 
