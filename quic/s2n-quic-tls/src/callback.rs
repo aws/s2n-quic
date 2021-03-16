@@ -211,9 +211,8 @@ where
                         self.state.rx_phase.transition();
                     }
                     _ => {
-                        let (key, header_key) =
-                            RingOneRttKey::new(self.endpoint, aead_algo, pair.clone())
-                                .expect("invalid cipher");
+                        let (key, header_key) = RingOneRttKey::new(self.endpoint, aead_algo, pair)
+                            .expect("invalid cipher");
 
                         let params = unsafe {
                             // Safety: conn needs to outlive params

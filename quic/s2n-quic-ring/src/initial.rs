@@ -41,11 +41,10 @@ impl RingInitialHeaderKey {
 
         let (_key_sealer, header_sealer) = sealer;
         let (_key_opener, header_opener) = opener;
-        let header_key = Self(HeaderKeyPair {
+        Self(HeaderKeyPair {
             sealer: header_sealer,
             opener: header_opener,
-        });
-        header_key
+        })
     }
 }
 
@@ -97,11 +96,10 @@ impl RingInitialKey {
 
         let (key_sealer, _header_sealer) = sealer;
         let (key_opener, _header_opener) = opener;
-        let key = Self {
+        Self {
             sealer: key_sealer,
             opener: key_opener,
-        };
-        key
+        }
     }
 }
 
