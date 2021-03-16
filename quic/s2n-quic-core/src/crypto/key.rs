@@ -107,12 +107,14 @@ pub mod testing {
     }
 
     impl InitialKey for Key {
-        fn new_server(_connection_id: &[u8]) -> Self {
-            Key::default()
+        type HeaderKey = HeaderKey;
+
+        fn new_server(_connection_id: &[u8]) -> (Self, Self::HeaderKey) {
+            (Key::default(), HeaderKey::default())
         }
 
-        fn new_client(_connection_id: &[u8]) -> Self {
-            Key::default()
+        fn new_client(_connection_id: &[u8]) -> (Self, Self::HeaderKey) {
+            (Key::default(), HeaderKey::default())
         }
     }
     impl HandshakeKey for Key {}
@@ -163,15 +165,7 @@ pub mod testing {
         }
     }
 
-    impl InitialHeaderKey for HeaderKey {
-        fn new_server(_connection_id: &[u8]) -> Self {
-            HeaderKey::default()
-        }
-
-        fn new_client(_connection_id: &[u8]) -> Self {
-            HeaderKey::default()
-        }
-    }
+    impl InitialHeaderKey for HeaderKey {}
     impl HandshakeHeaderKey for HeaderKey {}
     impl OneRttHeaderKey for HeaderKey {}
     impl ZeroRttHeaderKey for HeaderKey {}

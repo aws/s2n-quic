@@ -99,11 +99,11 @@ impl<S: tls::Session, C: tls::Session> Pair<S, C> {
 
         let server = server_endpoint.new_server_session(&TEST_SERVER_TRANSPORT_PARAMS);
         let mut server_context = Context::default();
-        server_context.initial.crypto = Some(S::InitialKey::new_server(sni));
+        server_context.initial.crypto = Some(S::InitialKey::new_server(sni).0);
 
         let client = client_endpoint.new_client_session(&TEST_CLIENT_TRANSPORT_PARAMS, sni);
         let mut client_context = Context::default();
-        client_context.initial.crypto = Some(C::InitialKey::new_client(sni));
+        client_context.initial.crypto = Some(C::InitialKey::new_client(sni).0);
 
         Self {
             server: (server, server_context),
