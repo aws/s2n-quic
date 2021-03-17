@@ -30,11 +30,11 @@ fn main() {
             let packet_number = *packet_number;
             match crypto {
                 CryptoTest::Initial {
-                    ref server_key,
-                    ref client_key,
-                    ref server_header_key,
-                    ref client_header_key,
+                    ref server_keys,
+                    ref client_keys,
                 } => {
+                    let (server_key, server_header_key) = server_keys;
+                    let (client_key, client_header_key) = client_keys;
                     assert!(test_round_trip(
                         server_key,
                         client_key,
@@ -57,11 +57,11 @@ fn main() {
                     .is_ok());
                 }
                 CryptoTest::Handshake {
-                    ref server_key,
-                    ref client_key,
-                    ref server_header_key,
-                    ref client_header_key,
+                    ref server_keys,
+                    ref client_keys,
                 } => {
+                    let (server_key, server_header_key) = server_keys;
+                    let (client_key, client_header_key) = client_keys;
                     assert!(test_round_trip(
                         server_key,
                         client_key,
@@ -126,11 +126,11 @@ fn main() {
                     .is_ok());
                 }
                 CryptoTest::OneRTT {
-                    ref server_key,
-                    ref client_key,
-                    ref server_header_key,
-                    ref client_header_key,
+                    ref server_keys,
+                    ref client_keys,
                 } => {
+                    let (server_key, server_header_key) = server_keys;
+                    let (client_key, client_header_key) = client_keys;
                     assert!(test_round_trip(
                         server_key,
                         client_key,
@@ -194,10 +194,8 @@ fn main() {
                     )
                     .is_ok());
                 }
-                CryptoTest::ZeroRTT {
-                    ref key,
-                    ref header_key,
-                } => {
+                CryptoTest::ZeroRTT { ref keys } => {
+                    let (key, header_key) = keys;
                     assert!(test_round_trip(
                         key,
                         key,
@@ -252,26 +250,19 @@ fn test_round_trip<K: Key, H: HeaderKey>(
 #[derive(Debug)]
 enum CryptoTest {
     Initial {
-        server_key: RingInitialKey,
-        client_key: RingInitialKey,
-        server_header_key: RingInitialHeaderKey,
-        client_header_key: RingInitialHeaderKey,
+        server_keys: (RingInitialKey, RingInitialHeaderKey),
+        client_keys: (RingInitialKey, RingInitialHeaderKey),
     },
     Handshake {
-        server_key: RingHandshakeKey,
-        client_key: RingHandshakeKey,
-        server_header_key: RingHandshakeHeaderKey,
-        client_header_key: RingHandshakeHeaderKey,
+        server_keys: (RingHandshakeKey, RingHandshakeHeaderKey),
+        client_keys: (RingHandshakeKey, RingHandshakeHeaderKey),
     },
     OneRTT {
-        server_key: RingOneRttKey,
-        client_key: RingOneRttKey,
-        server_header_key: RingOneRttHeaderKey,
-        client_header_key: RingOneRttHeaderKey,
+        server_keys: (RingOneRttKey, RingOneRttHeaderKey),
+        client_keys: (RingOneRttKey, RingOneRttHeaderKey),
     },
     ZeroRTT {
-        key: RingZeroRttKey,
-        header_key: RingZeroRttHeaderKey,
+        keys: (RingZeroRttKey, RingZeroRttHeaderKey),
     },
 }
 
@@ -286,15 +277,11 @@ fn gen_crypto() -> impl ValueGenerator<Output = CryptoTest> {
 
 fn gen_initial() -> impl ValueGenerator<Output = CryptoTest> {
     gen_dcid().map(|dcid| {
-        let server_key = RingInitialKey::new_server(&dcid);
-        let client_key = RingInitialKey::new_client(&dcid);
-        let server_header_key = RingInitialHeaderKey::new_server(&dcid);
-        let client_header_key = RingInitialHeaderKey::new_client(&dcid);
+        let server_keys = RingInitialKey::new_server(&dcid);
+        let client_keys = RingInitialKey::new_client(&dcid);
         CryptoTest::Initial {
-            server_key,
-            client_key,
-            server_header_key,
-            client_header_key,
+            server_keys,
+            client_keys,
         }
     })
 }
@@ -305,36 +292,30 @@ fn gen_dcid() -> impl ValueGenerator<Output = Vec<u8>> {
 
 fn gen_handshake() -> impl ValueGenerator<Output = CryptoTest> {
     gen_negotiated_secrets().map(|(algo, secrets)| {
-        let (server_key, server_header_key) =
-            RingHandshakeKey::new_server(&algo, secrets.clone()).unwrap();
-        let (client_key, client_header_key) = RingHandshakeKey::new_client(&algo, secrets).unwrap();
+        let server_keys = RingHandshakeKey::new_server(&algo, secrets.clone()).unwrap();
+        let client_keys = RingHandshakeKey::new_client(&algo, secrets).unwrap();
         CryptoTest::Handshake {
-            server_key,
-            client_key,
-            server_header_key,
-            client_header_key,
+            server_keys,
+            client_keys,
         }
     })
 }
 
 fn gen_one_rtt() -> impl ValueGenerator<Output = CryptoTest> {
     gen_negotiated_secrets().map(|(algo, secrets)| {
-        let (server_key, server_header_key) =
-            RingOneRttKey::new_server(&algo, secrets.clone()).unwrap();
-        let (client_key, client_header_key) = RingOneRttKey::new_client(&algo, secrets).unwrap();
+        let server_keys = RingOneRttKey::new_server(&algo, secrets.clone()).unwrap();
+        let client_keys = RingOneRttKey::new_client(&algo, secrets).unwrap();
         CryptoTest::OneRTT {
-            server_key,
-            client_key,
-            server_header_key,
-            client_header_key,
+            server_keys,
+            client_keys,
         }
     })
 }
 
 fn gen_zero_rtt() -> impl ValueGenerator<Output = CryptoTest> {
     gen_secret(hkdf::HKDF_SHA256).map(|secret| {
-        let (key, header_key) = RingZeroRttKey::new(secret);
-        CryptoTest::ZeroRTT { key, header_key }
+        let keys = RingZeroRttKey::new(secret);
+        CryptoTest::ZeroRTT { keys }
     })
 }
 

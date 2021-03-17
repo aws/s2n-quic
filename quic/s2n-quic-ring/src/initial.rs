@@ -13,49 +13,9 @@ use s2n_quic_core::{
 
 header_key!(RingInitialHeaderKey);
 
-impl RingInitialHeaderKey {
-    fn new(endpoint: endpoint::Type, connection_id: &[u8]) -> Self {
-        let initial_secret = INITIAL_SIGNING_KEY.extract(connection_id);
-        let digest = INITIAL_SIGNING_KEY.algorithm();
+impl RingInitialHeaderKey {}
 
-        let client_secret = initial_secret
-            .expand(&[&CLIENT_IN], digest)
-            .expect("label size verified")
-            .into();
-
-        let server_secret = initial_secret
-            .expand(&[&SERVER_IN], digest)
-            .expect("label size verified")
-            .into();
-
-        let (sealer, opener) = match endpoint {
-            endpoint::Type::Client => (
-                Ciphersuite::new(client_secret),
-                Ciphersuite::new(server_secret),
-            ),
-            endpoint::Type::Server => (
-                Ciphersuite::new(server_secret),
-                Ciphersuite::new(client_secret),
-            ),
-        };
-
-        let (_key_sealer, header_sealer) = sealer;
-        let (_key_opener, header_opener) = opener;
-        Self(HeaderKeyPair {
-            sealer: header_sealer,
-            opener: header_opener,
-        })
-    }
-}
-
-impl InitialHeaderKey for RingInitialHeaderKey {
-    fn new_server(connection_id: &[u8]) -> Self {
-        Self::new(endpoint::Type::Server, connection_id)
-    }
-    fn new_client(connection_id: &[u8]) -> Self {
-        Self::new(endpoint::Type::Client, connection_id)
-    }
-}
+impl InitialHeaderKey for RingInitialHeaderKey {}
 
 #[derive(Debug)]
 pub struct RingInitialKey {
@@ -69,7 +29,7 @@ lazy_static::lazy_static! {
 }
 
 impl RingInitialKey {
-    fn new(endpoint: endpoint::Type, connection_id: &[u8]) -> Self {
+    fn new(endpoint: endpoint::Type, connection_id: &[u8]) -> (Self, RingInitialHeaderKey) {
         let initial_secret = INITIAL_SIGNING_KEY.extract(connection_id);
         let digest = INITIAL_SIGNING_KEY.algorithm();
 
@@ -94,21 +54,29 @@ impl RingInitialKey {
             ),
         };
 
-        let (key_sealer, _header_sealer) = sealer;
-        let (key_opener, _header_opener) = opener;
-        Self {
+        let (key_sealer, header_sealer) = sealer;
+        let (key_opener, header_opener) = opener;
+        let key = Self {
             sealer: key_sealer,
             opener: key_opener,
-        }
+        };
+        let header_key = RingInitialHeaderKey(HeaderKeyPair {
+            sealer: header_sealer,
+            opener: header_opener,
+        });
+
+        (key, header_key)
     }
 }
 
 impl InitialKey for RingInitialKey {
-    fn new_server(connection_id: &[u8]) -> Self {
+    type HeaderKey = RingInitialHeaderKey;
+
+    fn new_server(connection_id: &[u8]) -> (Self, Self::HeaderKey) {
         Self::new(endpoint::Type::Server, connection_id)
     }
 
-    fn new_client(connection_id: &[u8]) -> Self {
+    fn new_client(connection_id: &[u8]) -> (Self, Self::HeaderKey) {
         Self::new(endpoint::Type::Client, connection_id)
     }
 }
@@ -164,8 +132,6 @@ mod tests {
         test_round_trip(
             &RingInitialKey::new_client(&EXAMPLE_DCID),
             &RingInitialKey::new_server(&EXAMPLE_DCID),
-            &RingInitialHeaderKey::new_client(&EXAMPLE_DCID),
-            &RingInitialHeaderKey::new_server(&EXAMPLE_DCID),
             &EXAMPLE_CLIENT_INITIAL_PROTECTED_PACKET,
             &EXAMPLE_CLIENT_INITIAL_PAYLOAD,
         );
@@ -176,21 +142,19 @@ mod tests {
         test_round_trip(
             &RingInitialKey::new_server(&EXAMPLE_DCID),
             &RingInitialKey::new_client(&EXAMPLE_DCID),
-            &RingInitialHeaderKey::new_server(&EXAMPLE_DCID),
-            &RingInitialHeaderKey::new_client(&EXAMPLE_DCID),
             &EXAMPLE_SERVER_INITIAL_PROTECTED_PACKET,
             &EXAMPLE_SERVER_INITIAL_PAYLOAD,
         );
     }
 
     fn test_round_trip(
-        sealer_key: &RingInitialKey,
-        opener_key: &RingInitialKey,
-        sealer_header_key: &RingInitialHeaderKey,
-        opener_header_key: &RingInitialHeaderKey,
+        sealer: &(RingInitialKey, RingInitialHeaderKey),
+        opener: &(RingInitialKey, RingInitialHeaderKey),
         protected_packet: &[u8],
         cleartext_payload: &[u8],
     ) {
+        let (sealer_key, sealer_header_key) = sealer;
+        let (opener_key, opener_header_key) = opener;
         let (version, dcid, scid, token, sealed_packet) = decrypt(
             opener_key,
             opener_header_key,
