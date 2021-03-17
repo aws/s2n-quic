@@ -161,7 +161,7 @@ pub use zero_rtt::*;
 pub trait CryptoSuite {
     type HandshakeKey: HandshakeKey;
     type HandshakeHeaderKey: HandshakeHeaderKey;
-    type InitialKey: InitialKey;
+    type InitialKey: InitialKey<HeaderKey = Self::InitialHeaderKey>;
     type InitialHeaderKey: InitialHeaderKey;
     type OneRttKey: OneRttKey;
     type OneRttHeaderKey: OneRttHeaderKey;
