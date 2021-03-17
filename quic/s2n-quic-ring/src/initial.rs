@@ -13,8 +13,6 @@ use s2n_quic_core::{
 
 header_key!(RingInitialHeaderKey);
 
-impl RingInitialHeaderKey {}
-
 impl InitialHeaderKey for RingInitialHeaderKey {}
 
 #[derive(Debug)]

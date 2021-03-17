@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::crypto::{self};
+use crate::crypto;
 use hex_literal::hex;
 
 /// Types for which are able to perform initial cryptography.
@@ -9,10 +9,7 @@ use hex_literal::hex;
 /// This marker trait ensures only Initial-level keys
 /// are used with Initial packets. Any key misuses are
 /// caught by the type system.
-pub trait InitialKey: crypto::Key
-where
-    Self: Sized,
-{
+pub trait InitialKey: crypto::Key + Sized {
     type HeaderKey: crypto::HeaderKey;
 
     fn new_server(connection_id: &[u8]) -> (Self, Self::HeaderKey);

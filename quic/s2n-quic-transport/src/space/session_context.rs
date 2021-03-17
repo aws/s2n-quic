@@ -78,6 +78,7 @@ impl<'a, Config: endpoint::Config> tls::Context<<Config::TLSEndpoint as tls::End
                 .with_reason("zero rtt keys initialized more than once"));
         }
 
+        // TODO: also store the header_key https://github.com/awslabs/s2n-quic/issues/319
         *self.zero_rtt_crypto = Some(Box::new(key));
 
         Ok(())

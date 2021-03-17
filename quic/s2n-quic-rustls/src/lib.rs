@@ -167,7 +167,7 @@ macro_rules! impl_tls {
 
                     // try to pull out the early secrets, if any
                     if let Some(early_secret) = self.early_secret() {
-                        let (key, header_key) = RingZeroRttKey::new(early_secret.clone());
+                        let (key, header_key) = RingZeroRttKey::new(early_secret);
                         context.on_zero_rtt_keys(
                             key,
                             header_key,
