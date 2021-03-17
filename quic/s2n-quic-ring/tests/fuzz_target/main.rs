@@ -7,9 +7,7 @@ use ring::{
     hkdf,
     hkdf::KeyType,
 };
-use s2n_quic_core::crypto::{
-    initial::InitialKey, key::Key, CryptoError, HeaderKey, InitialHeaderKey,
-};
+use s2n_quic_core::crypto::{initial::InitialKey, key::Key, CryptoError, HeaderKey};
 use s2n_quic_ring::{
     handshake::{RingHandshakeHeaderKey, RingHandshakeKey},
     initial::{RingInitialHeaderKey, RingInitialKey},

@@ -16,7 +16,7 @@ use alloc::sync::Arc;
 use core::{convert::TryInto, time::Duration};
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
-    crypto::{tls, tls::Endpoint as TLSEndpoint, CryptoSuite, InitialHeaderKey, InitialKey},
+    crypto::{tls, tls::Endpoint as TLSEndpoint, CryptoSuite, InitialKey},
     inet::DatagramInfo,
     packet::initial::ProtectedInitial,
     stateless_reset::token::Generator as _,
@@ -94,18 +94,14 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.5.2
         //# Changing Destination Connection ID also results in a change
         //# to the keys used to protect the Initial packet.
-        let initial_crypto =
+        let (initial_key, initial_header_key) =
             <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::InitialKey::new_server(
-                datagram.destination_connection_id.as_bytes(),
-            );
-        let initial_header_key =
-            <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::InitialHeaderKey::new_server(
                 datagram.destination_connection_id.as_bytes(),
             );
 
         let largest_packet_number = Default::default();
         let packet = packet.unprotect(&initial_header_key, largest_packet_number)?;
-        let packet = packet.decrypt(&initial_crypto)?;
+        let packet = packet.decrypt(&initial_key)?;
 
         // TODO handle token with stateless retry
 
@@ -233,7 +229,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
 
         let space_manager = PacketSpaceManager::new(
             tls_session,
-            initial_crypto,
+            initial_key,
             initial_header_key,
             datagram.timestamp,
         );

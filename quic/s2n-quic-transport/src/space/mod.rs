@@ -93,7 +93,7 @@ macro_rules! packet_space_api {
 impl<Config: endpoint::Config> PacketSpaceManager<Config> {
     pub fn new(
         session: <Config::TLSEndpoint as tls::Endpoint>::Session,
-        initial: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::InitialKey,
+        initial_key: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::InitialKey,
         header_key: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::InitialHeaderKey,
         now: Timestamp,
     ) -> Self {
@@ -102,7 +102,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         Self {
             session: Some(session),
             initial: Some(Box::new(InitialSpace::new(
-                initial,
+                initial_key,
                 header_key,
                 now,
                 ack_manager,
