@@ -29,7 +29,7 @@ pub struct SessionContext<'a, Config: endpoint::Config> {
     pub handshake: &'a mut Option<Box<HandshakeSpace<Config>>>,
     pub application: &'a mut Option<Box<ApplicationSpace<Config>>>,
     pub zero_rtt_crypto: &'a mut Option<
-        Box<<<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::ZeroRTTCrypto>,
+        Box<<<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::ZeroRttKey>,
     >,
     pub handshake_status: &'a mut HandshakeStatus,
     pub local_id_registry: &'a mut connection::LocalIdRegistry,
@@ -41,7 +41,8 @@ impl<'a, Config: endpoint::Config> tls::Context<<Config::TLSEndpoint as tls::End
 {
     fn on_handshake_keys(
         &mut self,
-        keys: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::HandshakeCrypto,
+        key: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::HandshakeKey,
+        header_key: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::HandshakeHeaderKey,
     ) -> Result<(), TransportError> {
         if self.handshake.is_some() {
             return Err(TransportError::INTERNAL_ERROR
@@ -56,14 +57,20 @@ impl<'a, Config: endpoint::Config> tls::Context<<Config::TLSEndpoint as tls::End
 
         let ack_manager = AckManager::new(PacketNumberSpace::Handshake, ack::Settings::EARLY);
 
-        *self.handshake = Some(Box::new(HandshakeSpace::new(keys, self.now, ack_manager)));
+        *self.handshake = Some(Box::new(HandshakeSpace::new(
+            key,
+            header_key,
+            self.now,
+            ack_manager,
+        )));
 
         Ok(())
     }
 
     fn on_zero_rtt_keys(
         &mut self,
-        keys: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::ZeroRTTCrypto,
+        key: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::ZeroRttKey,
+        _header_key: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::ZeroRttHeaderKey,
         _application_parameters: tls::ApplicationParameters,
     ) -> Result<(), TransportError> {
         if self.zero_rtt_crypto.is_some() {
@@ -71,14 +78,16 @@ impl<'a, Config: endpoint::Config> tls::Context<<Config::TLSEndpoint as tls::End
                 .with_reason("zero rtt keys initialized more than once"));
         }
 
-        *self.zero_rtt_crypto = Some(Box::new(keys));
+        // TODO: also store the header_key https://github.com/awslabs/s2n-quic/issues/319
+        *self.zero_rtt_crypto = Some(Box::new(key));
 
         Ok(())
     }
 
     fn on_one_rtt_keys(
         &mut self,
-        keys: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::OneRTTCrypto,
+        key: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::OneRttKey,
+        header_key: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::OneRttHeaderKey,
         application_parameters: tls::ApplicationParameters,
     ) -> Result<(), TransportError> {
         if self.application.is_some() {
@@ -158,7 +167,8 @@ impl<'a, Config: endpoint::Config> tls::Context<<Config::TLSEndpoint as tls::End
         let alpn = Bytes::copy_from_slice(application_parameters.alpn_protocol);
 
         *self.application = Some(Box::new(ApplicationSpace::new(
-            keys,
+            key,
+            header_key,
             self.now,
             stream_manager,
             ack_manager,

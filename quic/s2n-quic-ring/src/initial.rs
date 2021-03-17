@@ -1,18 +1,22 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::ciphersuite::TLS_AES_128_GCM_SHA256 as Ciphersuite;
+use crate::{ciphersuite::TLS_AES_128_GCM_SHA256 as Ciphersuite, header_key::HeaderKeyPair};
 use ring::hkdf;
 use s2n_quic_core::{
     crypto::{
         label::{CLIENT_IN, SERVER_IN},
-        CryptoError, HeaderCrypto, HeaderProtectionMask, InitialCrypto, Key, INITIAL_SALT,
+        CryptoError, InitialHeaderKey, InitialKey, Key, INITIAL_SALT,
     },
     endpoint,
 };
 
+header_key!(RingInitialHeaderKey);
+
+impl InitialHeaderKey for RingInitialHeaderKey {}
+
 #[derive(Debug)]
-pub struct RingInitialCrypto {
+pub struct RingInitialKey {
     sealer: Ciphersuite,
     opener: Ciphersuite,
 }
@@ -22,8 +26,8 @@ lazy_static::lazy_static! {
     static ref INITIAL_SIGNING_KEY: hkdf::Salt = hkdf::Salt::new(hkdf::HKDF_SHA256, &INITIAL_SALT);
 }
 
-impl RingInitialCrypto {
-    fn new(endpoint: endpoint::Type, connection_id: &[u8]) -> Self {
+impl RingInitialKey {
+    fn new(endpoint: endpoint::Type, connection_id: &[u8]) -> (Self, RingInitialHeaderKey) {
         let initial_secret = INITIAL_SIGNING_KEY.extract(connection_id);
         let digest = INITIAL_SIGNING_KEY.algorithm();
 
@@ -48,21 +52,34 @@ impl RingInitialCrypto {
             ),
         };
 
-        Self { sealer, opener }
+        let (key_sealer, header_sealer) = sealer;
+        let (key_opener, header_opener) = opener;
+        let key = Self {
+            sealer: key_sealer,
+            opener: key_opener,
+        };
+        let header_key = RingInitialHeaderKey(HeaderKeyPair {
+            sealer: header_sealer,
+            opener: header_opener,
+        });
+
+        (key, header_key)
     }
 }
 
-impl InitialCrypto for RingInitialCrypto {
-    fn new_server(connection_id: &[u8]) -> Self {
+impl InitialKey for RingInitialKey {
+    type HeaderKey = RingInitialHeaderKey;
+
+    fn new_server(connection_id: &[u8]) -> (Self, Self::HeaderKey) {
         Self::new(endpoint::Type::Server, connection_id)
     }
 
-    fn new_client(connection_id: &[u8]) -> Self {
+    fn new_client(connection_id: &[u8]) -> (Self, Self::HeaderKey) {
         Self::new(endpoint::Type::Client, connection_id)
     }
 }
 
-impl Key for RingInitialCrypto {
+impl Key for RingInitialKey {
     fn decrypt(
         &self,
         packet_number: u64,
@@ -94,24 +111,6 @@ impl Key for RingInitialCrypto {
     }
 }
 
-impl HeaderCrypto for RingInitialCrypto {
-    fn opening_header_protection_mask(&self, sample: &[u8]) -> HeaderProtectionMask {
-        self.opener.opening_header_protection_mask(sample)
-    }
-
-    fn opening_sample_len(&self) -> usize {
-        self.opener.opening_sample_len()
-    }
-
-    fn sealing_header_protection_mask(&self, sample: &[u8]) -> HeaderProtectionMask {
-        self.sealer.sealing_header_protection_mask(sample)
-    }
-
-    fn sealing_sample_len(&self) -> usize {
-        self.sealer.sealing_sample_len()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -129,8 +128,8 @@ mod tests {
     #[test]
     fn rfc_example_server_test() {
         test_round_trip(
-            &RingInitialCrypto::new_client(&EXAMPLE_DCID),
-            &RingInitialCrypto::new_server(&EXAMPLE_DCID),
+            &RingInitialKey::new_client(&EXAMPLE_DCID),
+            &RingInitialKey::new_server(&EXAMPLE_DCID),
             &EXAMPLE_CLIENT_INITIAL_PROTECTED_PACKET,
             &EXAMPLE_CLIENT_INITIAL_PAYLOAD,
         );
@@ -139,21 +138,24 @@ mod tests {
     #[test]
     fn rfc_example_client_test() {
         test_round_trip(
-            &RingInitialCrypto::new_server(&EXAMPLE_DCID),
-            &RingInitialCrypto::new_client(&EXAMPLE_DCID),
+            &RingInitialKey::new_server(&EXAMPLE_DCID),
+            &RingInitialKey::new_client(&EXAMPLE_DCID),
             &EXAMPLE_SERVER_INITIAL_PROTECTED_PACKET,
             &EXAMPLE_SERVER_INITIAL_PAYLOAD,
         );
     }
 
     fn test_round_trip(
-        sealer: &RingInitialCrypto,
-        opener: &RingInitialCrypto,
+        sealer: &(RingInitialKey, RingInitialHeaderKey),
+        opener: &(RingInitialKey, RingInitialHeaderKey),
         protected_packet: &[u8],
         cleartext_payload: &[u8],
     ) {
+        let (sealer_key, sealer_header_key) = sealer;
+        let (opener_key, opener_header_key) = opener;
         let (version, dcid, scid, token, sealed_packet) = decrypt(
-            opener,
+            opener_key,
+            opener_header_key,
             protected_packet.to_vec(),
             cleartext_payload,
             |packet| {
@@ -165,7 +167,8 @@ mod tests {
                 let mut output_buffer = vec![0; protected_packet.len()];
                 packet
                     .encode_packet(
-                        sealer,
+                        sealer_key,
+                        sealer_header_key,
                         Default::default(),
                         None,
                         EncoderBuffer::new(&mut output_buffer),
@@ -179,16 +182,23 @@ mod tests {
         // We have to decrypt instead of assert_eq on the sealed_packet
         // because of potential encoding differences. But the resulting
         // packets should be equal
-        decrypt(opener, sealed_packet, cleartext_payload, |packet| {
-            assert_eq!(packet.version, version);
-            assert_eq!(packet.destination_connection_id, &dcid[..]);
-            assert_eq!(packet.source_connection_id, &scid[..]);
-            assert_eq!(packet.token, &token[..]);
-        });
+        decrypt(
+            opener_key,
+            opener_header_key,
+            sealed_packet,
+            cleartext_payload,
+            |packet| {
+                assert_eq!(packet.version, version);
+                assert_eq!(packet.destination_connection_id, &dcid[..]);
+                assert_eq!(packet.source_connection_id, &scid[..]);
+                assert_eq!(packet.token, &token[..]);
+            },
+        );
     }
 
     fn decrypt<F: FnOnce(CleartextInitial) -> O, O>(
-        opener: &RingInitialCrypto,
+        opener_key: &RingInitialKey,
+        opener_header_key: &RingInitialHeaderKey,
         mut protected_packet: Vec<u8>,
         cleartext_payload: &[u8],
         on_decrypt: F,
@@ -203,8 +213,10 @@ mod tests {
             _ => panic!("expected initial packet type"),
         };
 
-        let packet = packet.unprotect(opener, Default::default()).unwrap();
-        let packet = packet.decrypt(opener).unwrap();
+        let packet = packet
+            .unprotect(opener_header_key, Default::default())
+            .unwrap();
+        let packet = packet.decrypt(opener_key).unwrap();
 
         // trim any padding off of the end
         let actual_payload = &packet.payload.as_less_safe_slice()[..cleartext_payload.len()];

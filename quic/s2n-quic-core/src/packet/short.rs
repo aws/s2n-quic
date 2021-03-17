@@ -4,7 +4,7 @@
 use crate::{
     connection,
     connection::id::ConnectionInfo,
-    crypto::{CryptoError, EncryptedPayload, HeaderCrypto, OneRTTCrypto, ProtectedPayload},
+    crypto::{CryptoError, EncryptedPayload, OneRttHeaderKey, OneRttKey, ProtectedPayload},
     packet::{
         decoding::HeaderDecoder,
         encoding::{PacketEncoder, PacketPayloadEncoder},
@@ -156,9 +156,9 @@ impl<'a> ProtectedShort<'a> {
         Ok((packet, remaining))
     }
 
-    pub fn unprotect<C: OneRTTCrypto>(
+    pub fn unprotect<H: OneRttHeaderKey>(
         self,
-        crypto: &C,
+        header_key: &H,
         largest_acknowledged_packet_number: PacketNumber,
     ) -> Result<EncryptedShort<'a>, CryptoError> {
         let Short {
@@ -169,7 +169,7 @@ impl<'a> ProtectedShort<'a> {
         } = self;
 
         let (truncated_packet_number, payload) =
-            crate::crypto::unprotect(crypto, PacketNumberSpace::ApplicationData, payload)?;
+            crate::crypto::unprotect(header_key, PacketNumberSpace::ApplicationData, payload)?;
 
         let key_phase = KeyPhase::from_tag(payload.get_tag());
 
@@ -195,7 +195,7 @@ impl<'a> ProtectedShort<'a> {
 }
 
 impl<'a> EncryptedShort<'a> {
-    pub fn decrypt<C: OneRTTCrypto>(self, crypto: &C) -> Result<CleartextShort<'a>, CryptoError> {
+    pub fn decrypt<C: OneRttKey>(self, crypto: &C) -> Result<CleartextShort<'a>, CryptoError> {
         let Short {
             spin_bit,
             key_phase,
@@ -261,8 +261,8 @@ impl<DCID: EncoderValue, PacketNumber, Payload> Short<DCID, KeyPhase, PacketNumb
     }
 }
 
-impl<DCID: EncoderValue, Payload: PacketPayloadEncoder, Crypto: OneRTTCrypto + HeaderCrypto>
-    PacketEncoder<Crypto, Payload> for Short<DCID, KeyPhase, PacketNumber, Payload>
+impl<DCID: EncoderValue, Payload: PacketPayloadEncoder, K: OneRttKey, H: OneRttHeaderKey>
+    PacketEncoder<K, H, Payload> for Short<DCID, KeyPhase, PacketNumber, Payload>
 {
     type PayloadLenCursor = ();
 

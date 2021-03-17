@@ -45,9 +45,8 @@ pub struct PacketSpaceManager<Config: endpoint::Config> {
     initial: Option<Box<InitialSpace<Config>>>,
     handshake: Option<Box<HandshakeSpace<Config>>>,
     application: Option<Box<ApplicationSpace<Config>>>,
-    zero_rtt_crypto: Option<
-        Box<<<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::ZeroRTTCrypto>,
-    >,
+    zero_rtt_crypto:
+        Option<Box<<<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::ZeroRttKey>>,
     handshake_status: HandshakeStatus,
 }
 
@@ -94,14 +93,20 @@ macro_rules! packet_space_api {
 impl<Config: endpoint::Config> PacketSpaceManager<Config> {
     pub fn new(
         session: <Config::TLSEndpoint as tls::Endpoint>::Session,
-        initial: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::InitialCrypto,
+        initial_key: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::InitialKey,
+        header_key: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::InitialHeaderKey,
         now: Timestamp,
     ) -> Self {
         let ack_manager = AckManager::new(PacketNumberSpace::Initial, ack::Settings::EARLY);
 
         Self {
             session: Some(session),
-            initial: Some(Box::new(InitialSpace::new(initial, now, ack_manager))),
+            initial: Some(Box::new(InitialSpace::new(
+                initial_key,
+                header_key,
+                now,
+                ack_manager,
+            ))),
             handshake: None,
             application: None,
             zero_rtt_crypto: None,
@@ -123,8 +128,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
     #[allow(dead_code)] // 0RTT hasn't been started yet
     pub fn zero_rtt_crypto(
         &self,
-    ) -> Option<&<<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::ZeroRTTCrypto>
-    {
+    ) -> Option<&<<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::ZeroRttKey> {
         self.zero_rtt_crypto.as_ref().map(Box::as_ref)
     }
 

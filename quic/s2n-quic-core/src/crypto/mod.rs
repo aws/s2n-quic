@@ -154,16 +154,20 @@ pub use key::*;
 pub use one_rtt::*;
 pub use packet_protection::*;
 pub use payload::*;
-pub use retry::RetryCrypto;
+pub use retry::RetryKey;
 pub use zero_rtt::*;
 
 /// Trait which aggregates all Crypto types
 pub trait CryptoSuite {
-    type HandshakeCrypto: HandshakeCrypto;
-    type InitialCrypto: InitialCrypto;
-    type OneRTTCrypto: OneRTTCrypto;
-    type ZeroRTTCrypto: ZeroRTTCrypto;
-    type RetryCrypto: RetryCrypto;
+    type HandshakeKey: HandshakeKey;
+    type HandshakeHeaderKey: HandshakeHeaderKey;
+    type InitialKey: InitialKey<HeaderKey = Self::InitialHeaderKey>;
+    type InitialHeaderKey: InitialHeaderKey;
+    type OneRttKey: OneRttKey;
+    type OneRttHeaderKey: OneRttHeaderKey;
+    type ZeroRttKey: ZeroRttKey;
+    type ZeroRttHeaderKey: ZeroRttHeaderKey;
+    type RetryKey: RetryKey;
 }
 
 use crate::packet::number::{
@@ -173,7 +177,7 @@ use s2n_codec::{DecoderBufferMut, DecoderError, Encoder, EncoderBuffer};
 
 /// Protects an `EncryptedPayload` into a `ProtectedPayload`
 #[inline]
-pub fn protect<'a, K: HeaderCrypto>(
+pub fn protect<'a, K: HeaderKey>(
     crypto: &K,
     payload: EncryptedPayload<'a>,
 ) -> Result<ProtectedPayload<'a>, DecoderError> {
@@ -186,7 +190,7 @@ pub fn protect<'a, K: HeaderCrypto>(
 /// Removes packet protection from a `ProtectedPayload` into a `EncryptedPayload`
 /// and associated `TruncatedPacketNumber`
 #[inline]
-pub fn unprotect<'a, K: HeaderCrypto>(
+pub fn unprotect<'a, K: HeaderKey>(
     crypto: &K,
     space: PacketNumberSpace,
     payload: ProtectedPayload<'a>,

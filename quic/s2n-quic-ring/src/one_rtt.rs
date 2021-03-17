@@ -1,15 +1,18 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use s2n_quic_core::crypto::OneRTTCrypto;
+use s2n_quic_core::crypto::{OneRttHeaderKey, OneRttKey};
 
-negotiated_crypto!(RingOneRTTCrypto);
+header_key!(RingOneRttHeaderKey);
+negotiated_crypto!(RingOneRttKey, RingOneRttHeaderKey);
 
-impl OneRTTCrypto for RingOneRTTCrypto {
+impl OneRttKey for RingOneRttKey {
     fn derive_next_key(&self) -> Self {
         Self(self.0.update())
     }
 }
+
+impl OneRttHeaderKey for RingOneRttHeaderKey {}
 
 #[cfg(test)]
 mod tests {
@@ -63,13 +66,13 @@ mod tests {
         let cipher = TLS_CHACHA20_POLY1305_SHA256::new(key);
 
         // Create the cipher after a Key Update has occurred
-        let next_cipher = cipher.update();
+        let next_cipher = cipher.0.update();
 
         // Create a cipher based on the expected post-update secret
         let next_key = hkdf::Prk::new_less_safe(hkdf::HKDF_SHA256, next_secret);
         let expected_next_cipher = TLS_CHACHA20_POLY1305_SHA256::new(next_key);
 
-        (next_cipher, expected_next_cipher)
+        (next_cipher, expected_next_cipher.0)
     }
 
     #[test]

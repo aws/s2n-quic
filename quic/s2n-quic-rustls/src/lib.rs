@@ -16,7 +16,7 @@ use s2n_quic_core::{
     transport::error::TransportError,
 };
 use s2n_quic_ring::{
-    handshake::RingHandshakeCrypto, one_rtt::RingOneRTTCrypto, zero_rtt::RingZeroRTTCrypto, Prk,
+    handshake::RingHandshakeKey, one_rtt::RingOneRttKey, zero_rtt::RingZeroRttKey, Prk,
     RingCryptoSuite, SecretPair,
 };
 use std::sync::Arc;
@@ -112,11 +112,15 @@ macro_rules! impl_tls {
         }
 
         impl CryptoSuite for $session {
-            type HandshakeCrypto = <RingCryptoSuite as CryptoSuite>::HandshakeCrypto;
-            type InitialCrypto = <RingCryptoSuite as CryptoSuite>::InitialCrypto;
-            type OneRTTCrypto = <RingCryptoSuite as CryptoSuite>::OneRTTCrypto;
-            type ZeroRTTCrypto = <RingCryptoSuite as CryptoSuite>::ZeroRTTCrypto;
-            type RetryCrypto = <RingCryptoSuite as CryptoSuite>::RetryCrypto;
+            type HandshakeKey = <RingCryptoSuite as CryptoSuite>::HandshakeKey;
+            type HandshakeHeaderKey = <RingCryptoSuite as CryptoSuite>::HandshakeHeaderKey;
+            type InitialKey = <RingCryptoSuite as CryptoSuite>::InitialKey;
+            type InitialHeaderKey = <RingCryptoSuite as CryptoSuite>::InitialHeaderKey;
+            type OneRttKey = <RingCryptoSuite as CryptoSuite>::OneRttKey;
+            type OneRttHeaderKey = <RingCryptoSuite as CryptoSuite>::OneRttHeaderKey;
+            type ZeroRttKey = <RingCryptoSuite as CryptoSuite>::ZeroRttKey;
+            type ZeroRttHeaderKey = <RingCryptoSuite as CryptoSuite>::ZeroRttHeaderKey;
+            type RetryKey = <RingCryptoSuite as CryptoSuite>::RetryKey;
         }
 
         impl tls::Session for $session {
@@ -163,8 +167,10 @@ macro_rules! impl_tls {
 
                     // try to pull out the early secrets, if any
                     if let Some(early_secret) = self.early_secret() {
+                        let (key, header_key) = RingZeroRttKey::new(early_secret);
                         context.on_zero_rtt_keys(
-                            RingZeroRTTCrypto::new(early_secret.clone()),
+                            key,
+                            header_key,
                             self.application_parameters()?,
                         )?;
                     }
@@ -215,21 +221,25 @@ macro_rules! impl_tls {
 
                             match self.0.tx_phase {
                                 HandshakePhase::Initial => {
-                                    let keys =
-                                        RingHandshakeCrypto::$new_crypto(algorithm, key_pair)
+                                    let (key, header_key) =
+                                        RingHandshakeKey::$new_crypto(algorithm, key_pair)
                                             .expect("invalid cipher");
 
-                                    context.on_handshake_keys(keys)?;
+                                    context.on_handshake_keys(key, header_key)?;
 
                                     // Transition both phases to Handshake
                                     self.0.tx_phase.transition();
                                     self.0.rx_phase.transition();
                                 }
                                 _ => {
-                                    let keys = RingOneRTTCrypto::$new_crypto(algorithm, key_pair)
-                                        .expect("invalid cipher");
-                                    context
-                                        .on_one_rtt_keys(keys, self.application_parameters()?)?;
+                                    let (key, header_key) =
+                                        RingOneRttKey::$new_crypto(algorithm, key_pair.clone())
+                                            .expect("invalid cipher");
+                                    context.on_one_rtt_keys(
+                                        key,
+                                        header_key,
+                                        self.application_parameters()?,
+                                    )?;
 
                                     // Transition the tx_phase to Application
                                     // Note: the rx_phase is transitioned when the handshake is done

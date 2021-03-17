@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::crypto::{Key as KeyTrait, OneRTTCrypto};
+use crate::crypto::OneRttKey;
 
 //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
 //# Endpoints MUST count the number of encrypted packets for each set of
@@ -19,10 +19,7 @@ pub struct Key<K> {
 // https://github.com/awslabs/s2n-quic/issues/322
 const KEY_UPDATE_WINDOW: u64 = 10_000;
 
-impl<K: KeyTrait> Key<K>
-where
-    K: OneRTTCrypto,
-{
+impl<K: OneRttKey> Key<K> {
     pub fn new(key: K) -> Self {
         Key {
             // TODO: This should be configured through the limit provider, the default being the

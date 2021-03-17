@@ -1,43 +1,42 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{ciphersuite::NegotiatedCiphersuite as Ciphersuite, Algorithm, SecretPair};
+use crate::{
+    ciphersuite::NegotiatedCiphersuite as Ciphersuite, header_key::HeaderKeyPair, Algorithm,
+    SecretPair,
+};
 use s2n_quic_core::{
-    crypto::{CryptoError, HeaderCrypto, HeaderProtectionMask, Key},
+    crypto::{CryptoError, Key},
     endpoint,
 };
 
 #[derive(Debug)]
-pub struct RingNegotiatedCrypto {
+pub struct KeyPair {
     sealer: Ciphersuite,
     opener: Ciphersuite,
 }
 
-impl RingNegotiatedCrypto {
-    /// Create a server ciphersuite with a given negotiated algorithm and secret
-    pub fn new_server(algorithm: &Algorithm, secrets: SecretPair) -> Option<Self> {
-        Self::new(endpoint::Type::Server, algorithm, secrets)
-    }
-
-    /// Create a client ciphersuite with a given negotiated algorithm and secret
-    pub fn new_client(algorithm: &Algorithm, secrets: SecretPair) -> Option<Self> {
-        Self::new(endpoint::Type::Client, algorithm, secrets)
-    }
-
+impl KeyPair {
     pub fn new(
         endpoint: endpoint::Type,
         algorithm: &Algorithm,
         secrets: SecretPair,
-    ) -> Option<Self> {
+    ) -> Option<(Self, HeaderKeyPair)> {
         let (sealer_secret, opener_secret) = match endpoint {
             endpoint::Type::Client => (secrets.client, secrets.server),
             endpoint::Type::Server => (secrets.server, secrets.client),
         };
 
-        let sealer = Ciphersuite::new(algorithm, sealer_secret)?;
-        let opener = Ciphersuite::new(algorithm, opener_secret)?;
+        let (sealer, header_sealer) = Ciphersuite::new(algorithm, sealer_secret)?;
+        let (opener, header_opener) = Ciphersuite::new(algorithm, opener_secret)?;
 
-        Some(Self { sealer, opener })
+        let key = Self { sealer, opener };
+        let header_key = HeaderKeyPair {
+            sealer: header_sealer,
+            opener: header_opener,
+        };
+
+        Some((key, header_key))
     }
 
     /// Update the ciphersuite as defined in
@@ -50,7 +49,7 @@ impl RingNegotiatedCrypto {
     }
 }
 
-impl Key for RingNegotiatedCrypto {
+impl Key for KeyPair {
     fn decrypt(
         &self,
         packet_number: u64,
@@ -82,48 +81,26 @@ impl Key for RingNegotiatedCrypto {
     }
 }
 
-impl HeaderCrypto for RingNegotiatedCrypto {
-    fn opening_header_protection_mask(&self, sample: &[u8]) -> HeaderProtectionMask {
-        self.opener.opening_header_protection_mask(sample)
-    }
-
-    fn opening_sample_len(&self) -> usize {
-        self.opener.opening_sample_len()
-    }
-
-    fn sealing_header_protection_mask(&self, sample: &[u8]) -> HeaderProtectionMask {
-        self.sealer.sealing_header_protection_mask(sample)
-    }
-
-    fn sealing_sample_len(&self) -> usize {
-        self.sealer.sealing_sample_len()
-    }
-}
-
 macro_rules! negotiated_crypto {
-    ($name:ident) => {
+    ($name:ident, $header_key:ident) => {
         #[derive(Debug)]
-        pub struct $name(crate::negotiated::RingNegotiatedCrypto);
+        pub struct $name(crate::negotiated::KeyPair);
 
         impl $name {
             /// Create a server ciphersuite with a given negotiated algorithm and secret
             pub fn new_server(
                 algorithm: &$crate::Algorithm,
                 secrets: $crate::SecretPair,
-            ) -> Option<Self> {
-                Some(Self(crate::negotiated::RingNegotiatedCrypto::new_server(
-                    algorithm, secrets,
-                )?))
+            ) -> Option<(Self, $header_key)> {
+                Self::new(s2n_quic_core::endpoint::Type::Server, algorithm, secrets)
             }
 
             /// Create a client ciphersuite with a given negotiated algorithm and secret
             pub fn new_client(
                 algorithm: &$crate::Algorithm,
                 secrets: $crate::SecretPair,
-            ) -> Option<Self> {
-                Some(Self(crate::negotiated::RingNegotiatedCrypto::new_client(
-                    algorithm, secrets,
-                )?))
+            ) -> Option<(Self, $header_key)> {
+                Self::new(s2n_quic_core::endpoint::Type::Client, algorithm, secrets)
             }
 
             /// Create a ciphersuite for an endpoint type with a given negotiated algorithm and secret
@@ -131,10 +108,13 @@ macro_rules! negotiated_crypto {
                 endpoint: s2n_quic_core::endpoint::Type,
                 algorithm: &$crate::Algorithm,
                 secrets: $crate::SecretPair,
-            ) -> Option<Self> {
-                Some(Self(crate::negotiated::RingNegotiatedCrypto::new(
-                    endpoint, algorithm, secrets,
-                )?))
+            ) -> Option<(Self, $header_key)> {
+                let (key, header_key) =
+                    crate::negotiated::KeyPair::new(endpoint, algorithm, secrets)?;
+
+                let key = Self(key);
+                let header_key = $header_key(header_key);
+                Some((key, header_key))
             }
 
             /// Update the ciphersuite as defined in
@@ -173,30 +153,6 @@ macro_rules! negotiated_crypto {
 
             fn aead_integrity_limit(&self) -> u64 {
                 self.0.aead_integrity_limit()
-            }
-        }
-
-        impl s2n_quic_core::crypto::HeaderCrypto for $name {
-            fn opening_header_protection_mask(
-                &self,
-                sample: &[u8],
-            ) -> s2n_quic_core::crypto::HeaderProtectionMask {
-                self.0.opening_header_protection_mask(sample)
-            }
-
-            fn opening_sample_len(&self) -> usize {
-                self.0.opening_sample_len()
-            }
-
-            fn sealing_header_protection_mask(
-                &self,
-                sample: &[u8],
-            ) -> s2n_quic_core::crypto::HeaderProtectionMask {
-                self.0.sealing_header_protection_mask(sample)
-            }
-
-            fn sealing_sample_len(&self) -> usize {
-                self.0.sealing_sample_len()
             }
         }
     };

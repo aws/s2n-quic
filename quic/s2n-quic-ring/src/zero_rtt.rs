@@ -1,22 +1,27 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::ciphersuite::TLS_AES_128_GCM_SHA256 as Ciphersuite;
-use s2n_quic_core::crypto::{CryptoError, HeaderCrypto, HeaderProtectionMask, Key, ZeroRTTCrypto};
+use crate::{ciphersuite::TLS_AES_128_GCM_SHA256 as Ciphersuite, header_key::HeaderKey};
+use s2n_quic_core::crypto::{
+    self, CryptoError, HeaderProtectionMask, Key, ZeroRttHeaderKey, ZeroRttKey,
+};
 
 #[derive(Debug)]
-pub struct RingZeroRTTCrypto(Ciphersuite);
+pub struct RingZeroRttKey(Ciphersuite);
 
-impl RingZeroRTTCrypto {
+impl RingZeroRttKey {
     /// Create a ZeroRTT ciphersuite with a given secret
-    pub fn new(secret: crate::Prk) -> Self {
-        Self(Ciphersuite::new(secret))
+    pub fn new(secret: crate::Prk) -> (Self, RingZeroRttHeaderKey) {
+        let (key, header_key) = Ciphersuite::new(secret);
+        let key = Self(key);
+        let header_key = RingZeroRttHeaderKey(header_key);
+        (key, header_key)
     }
 }
 
-impl ZeroRTTCrypto for RingZeroRTTCrypto {}
+impl ZeroRttKey for RingZeroRttKey {}
 
-impl Key for RingZeroRTTCrypto {
+impl Key for RingZeroRttKey {
     fn decrypt(
         &self,
         packet_number: u64,
@@ -48,7 +53,10 @@ impl Key for RingZeroRTTCrypto {
     }
 }
 
-impl HeaderCrypto for RingZeroRTTCrypto {
+#[derive(Debug)]
+pub struct RingZeroRttHeaderKey(HeaderKey);
+
+impl crypto::HeaderKey for RingZeroRttHeaderKey {
     fn opening_header_protection_mask(&self, sample: &[u8]) -> HeaderProtectionMask {
         self.0.opening_header_protection_mask(sample)
     }
@@ -65,3 +73,5 @@ impl HeaderCrypto for RingZeroRTTCrypto {
         self.0.sealing_sample_len()
     }
 }
+
+impl ZeroRttHeaderKey for RingZeroRttHeaderKey {}

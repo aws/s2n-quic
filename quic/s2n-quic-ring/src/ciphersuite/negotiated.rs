@@ -1,12 +1,13 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::ciphersuite::{
-    TLS_AES_128_GCM_SHA256, TLS_AES_256_GCM_SHA384, TLS_CHACHA20_POLY1305_SHA256,
+use crate::{
+    ciphersuite::{TLS_AES_128_GCM_SHA256, TLS_AES_256_GCM_SHA384, TLS_CHACHA20_POLY1305_SHA256},
+    header_key::HeaderKey,
 };
 use core::fmt;
 use ring::{aead, hkdf};
-use s2n_quic_core::crypto::{CryptoError, HeaderCrypto, HeaderProtectionMask, Key};
+use s2n_quic_core::crypto::{self, CryptoError};
 
 #[allow(non_camel_case_types)]
 pub enum NegotiatedCiphersuite {
@@ -31,11 +32,13 @@ impl From<TLS_AES_256_GCM_SHA384> for NegotiatedCiphersuite {
         Self::TLS_AES_256_GCM_SHA384(ciphersuite)
     }
 }
+
 impl From<TLS_CHACHA20_POLY1305_SHA256> for NegotiatedCiphersuite {
     fn from(ciphersuite: TLS_CHACHA20_POLY1305_SHA256) -> Self {
         Self::TLS_CHACHA20_POLY1305_SHA256(ciphersuite)
     }
 }
+
 impl From<TLS_AES_128_GCM_SHA256> for NegotiatedCiphersuite {
     fn from(ciphersuite: TLS_AES_128_GCM_SHA256) -> Self {
         Self::TLS_AES_128_GCM_SHA256(ciphersuite)
@@ -44,13 +47,20 @@ impl From<TLS_AES_128_GCM_SHA256> for NegotiatedCiphersuite {
 
 impl NegotiatedCiphersuite {
     /// Create a ciphersuite with a given negotiated algorithm and secret
-    pub fn new(algorithm: &aead::Algorithm, secret: hkdf::Prk) -> Option<Self> {
+    pub fn new(algorithm: &aead::Algorithm, secret: hkdf::Prk) -> Option<(Self, HeaderKey)> {
         Some(match algorithm {
-            _ if algorithm == &aead::AES_256_GCM => TLS_AES_256_GCM_SHA384::new(secret).into(),
-            _ if algorithm == &aead::CHACHA20_POLY1305 => {
-                TLS_CHACHA20_POLY1305_SHA256::new(secret).into()
+            _ if algorithm == &aead::AES_256_GCM => {
+                let (ciphersuite, header_key) = TLS_AES_256_GCM_SHA384::new(secret);
+                (ciphersuite.into(), header_key)
             }
-            _ if algorithm == &aead::AES_128_GCM => TLS_AES_128_GCM_SHA256::new(secret).into(),
+            _ if algorithm == &aead::CHACHA20_POLY1305 => {
+                let (ciphersuite, header_key) = TLS_CHACHA20_POLY1305_SHA256::new(secret);
+                (ciphersuite.into(), header_key)
+            }
+            _ if algorithm == &aead::AES_128_GCM => {
+                let (ciphersuite, header_key) = TLS_AES_128_GCM_SHA256::new(secret);
+                (ciphersuite.into(), header_key)
+            }
             _ => return None,
         })
     }
@@ -62,25 +72,7 @@ impl NegotiatedCiphersuite {
     }
 }
 
-impl HeaderCrypto for NegotiatedCiphersuite {
-    fn opening_header_protection_mask(&self, sample: &[u8]) -> HeaderProtectionMask {
-        dispatch!(self, |cipher| cipher.opening_header_protection_mask(sample))
-    }
-
-    fn opening_sample_len(&self) -> usize {
-        dispatch!(self, |cipher| cipher.opening_sample_len())
-    }
-
-    fn sealing_header_protection_mask(&self, sample: &[u8]) -> HeaderProtectionMask {
-        dispatch!(self, |cipher| cipher.sealing_header_protection_mask(sample))
-    }
-
-    fn sealing_sample_len(&self) -> usize {
-        dispatch!(self, |cipher| cipher.sealing_sample_len())
-    }
-}
-
-impl Key for NegotiatedCiphersuite {
+impl crypto::Key for NegotiatedCiphersuite {
     fn decrypt(
         &self,
         packet_number: u64,

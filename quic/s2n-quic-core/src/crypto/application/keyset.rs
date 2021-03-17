@@ -3,13 +3,11 @@
 
 use crate::{
     connection::ProcessingError,
-    crypto::{
-        application::limited::Key as LimitedKey, CryptoError, Key, OneRTTCrypto, ProtectedPayload,
-    },
+    crypto::{application::limited, OneRttKey, ProtectedPayload},
     packet::{
         encoding::PacketEncodingError,
         number::PacketNumber,
-        short::{CleartextShort, EncryptedShort, ProtectedShort},
+        short::{CleartextShort, EncryptedShort},
         KeyPhase,
     },
     time::{Timer, Timestamp},
@@ -17,7 +15,7 @@ use crate::{
 };
 use s2n_codec::EncoderBuffer;
 
-pub struct KeySet<Key> {
+pub struct KeySet<K> {
     /// The current [`KeyPhase`]
     key_phase: KeyPhase,
 
@@ -31,13 +29,10 @@ pub struct KeySet<Key> {
     aead_integrity_limit: u64,
 
     /// Set of keys for the current and next phase
-    crypto: [LimitedKey<Key>; 2],
+    crypto: [limited::Key<K>; 2],
 }
 
-impl<K: Key> KeySet<K>
-where
-    K: OneRTTCrypto,
-{
+impl<K: OneRttKey> KeySet<K> {
     pub fn new(crypto: K) -> Self {
         //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6
         //# The Key Phase bit is initially set to 0 for the
@@ -57,8 +52,8 @@ where
         // By pre-generating the next key, we can respond to a KeyUpdate without exposing a timing
         // side channel.
         let aead_integrity_limit = crypto.aead_integrity_limit();
-        let next_key = LimitedKey::new(crypto.derive_next_key());
-        let active_key = LimitedKey::new(crypto);
+        let next_key = limited::Key::new(crypto.derive_next_key());
+        let active_key = limited::Key::new(crypto);
         Self {
             key_phase: KeyPhase::Zero,
             key_derivation_timer: Default::default(),
@@ -89,7 +84,7 @@ where
 
         let next_key = self.active_key().derive_next_key();
         let next_phase = KeyPhase::next_phase(self.key_phase);
-        self.crypto[next_phase as usize] = LimitedKey::new(next_key);
+        self.crypto[next_phase as usize] = limited::Key::new(next_key);
     }
 
     /// Set the timer to derive a new key after timestamp
@@ -100,17 +95,6 @@ where
     /// Returns whether there is a key update in progress.
     pub fn key_update_in_progress(&self) -> bool {
         self.key_derivation_timer.is_armed()
-    }
-
-    pub fn remove_header_protection<'a>(
-        &self,
-        protected: ProtectedShort<'a>,
-        largest_acknowledged_packet_number: PacketNumber,
-    ) -> Result<EncryptedShort<'a>, CryptoError> {
-        protected.unprotect(
-            self.key_for_phase(KeyPhase::Zero).key(),
-            largest_acknowledged_packet_number,
-        )
     }
 
     /// Passes the key for the the requested phase to a callback function. Integrity limits are
@@ -277,19 +261,19 @@ where
         self.key_phase
     }
 
-    pub fn active_key(&self) -> &LimitedKey<K> {
+    pub fn active_key(&self) -> &limited::Key<K> {
         self.key_for_phase(self.key_phase)
     }
 
-    pub fn active_key_mut(&mut self) -> &mut LimitedKey<K> {
+    pub fn active_key_mut(&mut self) -> &mut limited::Key<K> {
         self.key_for_phase_mut(self.key_phase)
     }
 
-    fn key_for_phase(&self, key_phase: KeyPhase) -> &LimitedKey<K> {
+    fn key_for_phase(&self, key_phase: KeyPhase) -> &limited::Key<K> {
         &self.crypto[(key_phase as u8) as usize]
     }
 
-    fn key_for_phase_mut(&mut self, key_phase: KeyPhase) -> &mut LimitedKey<K> {
+    fn key_for_phase_mut(&mut self, key_phase: KeyPhase) -> &mut limited::Key<K> {
         &mut self.crypto[(key_phase as u8) as usize]
     }
 
@@ -303,9 +287,15 @@ mod tests {
     use super::*;
     use crate::{
         connection::id::ConnectionInfo,
-        crypto::{testing::Key as TestKey, ProtectedPayload},
+        crypto::{
+            testing::{HeaderKey as TestHeaderKey, Key as TestKey},
+            ProtectedPayload,
+        },
         inet::SocketAddress,
-        packet::{encoding::PacketEncodingError, number::PacketNumberSpace, KeyPhase},
+        packet::{
+            encoding::PacketEncodingError, number::PacketNumberSpace, short::ProtectedShort,
+            KeyPhase,
+        },
         time::{testing::Clock, Clock as _},
         varint::VarInt,
     };
@@ -395,7 +385,7 @@ mod tests {
 
         let encrypted_packet = encoded_packet
             .unprotect(
-                keyset.active_key().key(),
+                &TestHeaderKey::default(),
                 PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u8(0)),
             )
             .unwrap();
@@ -437,7 +427,7 @@ mod tests {
 
         let encrypted_packet = encoded_packet
             .unprotect(
-                keyset.active_key().key(),
+                &TestHeaderKey::default(),
                 PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u8(0)),
             )
             .unwrap();

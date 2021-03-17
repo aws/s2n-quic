@@ -1,13 +1,14 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::header_key::HeaderKey;
 use core::fmt;
 use ring::{aead, hkdf};
 use s2n_codec::{Encoder, EncoderBuffer};
-use s2n_quic_core::crypto::{label, CryptoError, HeaderCrypto, HeaderProtectionMask, Key};
+use s2n_quic_core::crypto::{label, CryptoError, Key};
 use zeroize::Zeroizing;
 
-pub mod negotiated;
+mod negotiated;
 
 pub use negotiated::NegotiatedCiphersuite;
 
@@ -39,10 +40,6 @@ macro_rules! impl_ciphersuite {
             secret: hkdf::Prk,
             iv: Zeroizing<[u8; Self::IV_LEN]>,
             key: aead::LessSafeKey,
-            header_key: (
-                aead::quic::HeaderProtectionKey,
-                Zeroizing<[u8; Self::KEY_LEN]>,
-            ),
         }
 
         impl $name {
@@ -50,17 +47,14 @@ macro_rules! impl_ciphersuite {
             const KEY_LEN: usize = $cipher_key_len;
 
             /// Create a ciphersuite with a given secret
-            pub fn new(secret: hkdf::Prk) -> Self {
+            pub fn new(secret: hkdf::Prk) -> (Self, HeaderKey) {
                 let iv = Self::new_iv(&secret);
                 let key = Self::new_key(&secret);
                 let header_key = Self::new_header_key(&secret);
 
-                Self {
-                    secret,
-                    iv,
-                    key,
-                    header_key,
-                }
+                let key = Self { secret, iv, key };
+
+                (key, header_key)
             }
 
             /// Update the ciphersuite as defined in
@@ -74,14 +68,7 @@ macro_rules! impl_ciphersuite {
 
                 let iv = Self::new_iv(&secret);
                 let key = Self::new_key(&secret);
-                let header_key = self.clone_header_key();
-
-                Self {
-                    secret,
-                    iv,
-                    key,
-                    header_key,
-                }
+                Self { secret, iv, key }
             }
 
             fn generate_nonce(&self, packet_number: u64) -> [u8; Self::IV_LEN] {
@@ -96,13 +83,6 @@ macro_rules! impl_ciphersuite {
                 }
 
                 nonce
-            }
-
-            fn header_protection_mask(&self, sample: &[u8]) -> HeaderProtectionMask {
-                self.header_key
-                    .0
-                    .new_mask(sample)
-                    .expect("sample length already checked")
             }
 
             fn new_key(secret: &hkdf::Prk) -> aead::LessSafeKey {
@@ -131,12 +111,7 @@ macro_rules! impl_ciphersuite {
                 Zeroizing::new(bytes)
             }
 
-            fn new_header_key(
-                secret: &hkdf::Prk,
-            ) -> (
-                aead::quic::HeaderProtectionKey,
-                Zeroizing<[u8; Self::KEY_LEN]>,
-            ) {
+            fn new_header_key(secret: &hkdf::Prk) -> HeaderKey {
                 let mut bytes = Zeroizing::new([0u8; Self::KEY_LEN]);
 
                 secret
@@ -147,22 +122,7 @@ macro_rules! impl_ciphersuite {
 
                 let key = aead::quic::HeaderProtectionKey::new(&$header_protection, bytes.as_ref())
                     .expect("header secret length already checked");
-                (key, bytes)
-            }
-
-            fn clone_header_key(
-                &self,
-            ) -> (
-                aead::quic::HeaderProtectionKey,
-                Zeroizing<[u8; Self::KEY_LEN]>,
-            ) {
-                // TODO make this less expensive
-                //      https://github.com/awslabs/s2n-quic/issues/295
-                let bytes = self.header_key.1.clone();
-                let key =
-                    aead::quic::HeaderProtectionKey::new(&$header_protection, &bytes.as_ref())
-                        .expect("header secret length already checked");
-                (key, bytes)
+                HeaderKey(key)
             }
         }
 
@@ -223,24 +183,6 @@ macro_rules! impl_ciphersuite {
 
             fn aead_integrity_limit(&self) -> u64 {
                 $integrity_limit
-            }
-        }
-
-        impl HeaderCrypto for $name {
-            fn opening_header_protection_mask(&self, sample: &[u8]) -> HeaderProtectionMask {
-                self.header_protection_mask(sample)
-            }
-
-            fn opening_sample_len(&self) -> usize {
-                $header_protection.sample_len()
-            }
-
-            fn sealing_header_protection_mask(&self, sample: &[u8]) -> HeaderProtectionMask {
-                self.header_protection_mask(sample)
-            }
-
-            fn sealing_sample_len(&self) -> usize {
-                $header_protection.sample_len()
             }
         }
 

@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::crypto::{HeaderCrypto, Key};
+use crate::crypto;
 use hex_literal::hex;
 
 /// Types for which are able to perform initial cryptography.
@@ -9,10 +9,19 @@ use hex_literal::hex;
 /// This marker trait ensures only Initial-level keys
 /// are used with Initial packets. Any key misuses are
 /// caught by the type system.
-pub trait InitialCrypto: Key + HeaderCrypto {
-    fn new_server(connection_id: &[u8]) -> Self;
-    fn new_client(connection_id: &[u8]) -> Self;
+pub trait InitialKey: crypto::Key + Sized {
+    type HeaderKey: crypto::HeaderKey;
+
+    fn new_server(connection_id: &[u8]) -> (Self, Self::HeaderKey);
+    fn new_client(connection_id: &[u8]) -> (Self, Self::HeaderKey);
 }
+
+/// Types for which are able to perform initial header cryptography.
+///
+/// This marker trait ensures only Initial-level header keys
+/// are used with Initial packets. Any key misuses are
+/// caught by the type system.
+pub trait InitialHeaderKey: crypto::HeaderKey {}
 
 //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.2
 //# initial_salt = 0xafbfec289993d24c9e9786f19c6111e04390a899

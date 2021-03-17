@@ -35,7 +35,9 @@ pub struct InitialSpace<Config: endpoint::Config> {
     //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4
     //# If QUIC needs to retransmit that data, it MUST use
     //# the same keys even if TLS has already updated to newer keys.
-    pub crypto: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::InitialCrypto,
+    pub key: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::InitialKey,
+    pub header_key:
+        <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::InitialHeaderKey,
     //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9
     //# If packets from a lower encryption level contain
     //# CRYPTO frames, frames that retransmit that data MUST be sent at the
@@ -48,14 +50,16 @@ pub struct InitialSpace<Config: endpoint::Config> {
 
 impl<Config: endpoint::Config> InitialSpace<Config> {
     pub fn new(
-        crypto: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::InitialCrypto,
+        key: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::InitialKey,
+        header_key: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::InitialHeaderKey,
         now: Timestamp,
         ack_manager: AckManager,
     ) -> Self {
         let max_ack_delay = ack_manager.ack_settings.max_ack_delay;
         Self {
             ack_manager,
-            crypto,
+            key,
+            header_key,
             crypto_stream: CryptoStream::new(),
             tx_packet_numbers: TxPacketNumbers::new(PacketNumberSpace::Initial, now),
             processed_packet_numbers: SlidingWindow::default(),
@@ -127,7 +131,8 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
         };
 
         let (_protected_packet, buffer) = packet.encode_packet(
-            &self.crypto,
+            &self.key,
+            &self.header_key,
             packet_number_encoder,
             context.min_packet_len,
             buffer,
@@ -229,13 +234,13 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
         protected: ProtectedInitial<'a>,
     ) -> Result<CleartextInitial<'a>, ProcessingError> {
         let packet_number_decoder = self.packet_number_decoder();
-        let packet = protected.unprotect(&self.crypto, packet_number_decoder)?;
+        let packet = protected.unprotect(&self.header_key, packet_number_decoder)?;
 
         if self.is_duplicate(packet.packet_number) {
             return Err(ProcessingError::DuplicatePacket);
         }
 
-        Ok(packet.decrypt(&self.crypto)?)
+        Ok(packet.decrypt(&self.key)?)
     }
 }
 

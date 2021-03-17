@@ -6,7 +6,7 @@ use alloc::collections::VecDeque;
 use core::ops::Range;
 use s2n_quic_core::{
     connection,
-    crypto::RetryCrypto,
+    crypto::RetryKey,
     inet::{DatagramInfo, ExplicitCongestionNotification, SocketAddress},
     io::tx,
     packet,
@@ -35,7 +35,7 @@ impl Dispatch {
     }
 
     #[allow(dead_code)]
-    pub fn queue<T: token::Format, C: RetryCrypto>(
+    pub fn queue<T: token::Format, C: RetryKey>(
         &mut self,
         datagram: &DatagramInfo,
         packet: &packet::initial::ProtectedInitial,
@@ -78,7 +78,7 @@ impl core::fmt::Debug for Transmission {
 }
 
 impl Transmission {
-    pub fn new<T: token::Format, C: RetryCrypto>(
+    pub fn new<T: token::Format, C: RetryKey>(
         remote_address: SocketAddress,
         packet: &packet::initial::ProtectedInitial,
         local_connection_id: connection::LocalId,

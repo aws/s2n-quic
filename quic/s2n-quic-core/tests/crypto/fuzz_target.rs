@@ -5,7 +5,7 @@ use bolero::{check, generator::*};
 use core::mem::size_of;
 use s2n_codec::{DecoderBufferMut, EncoderBuffer};
 use s2n_quic_core::{
-    crypto::{CryptoError, HeaderCrypto, HeaderProtectionMask, Key, ProtectedPayload},
+    crypto::{CryptoError, HeaderKey, HeaderProtectionMask, Key, ProtectedPayload},
     packet::number::{PacketNumber, PacketNumberSpace},
     varint::VarInt,
 };
@@ -142,7 +142,7 @@ impl Key for FuzzCrypto {
 }
 
 /// `FuzzCrypto` uses the first 5 bytes of the payload as the protection mask
-impl HeaderCrypto for FuzzCrypto {
+impl HeaderKey for FuzzCrypto {
     fn opening_header_protection_mask(&self, buffer: &[u8]) -> HeaderProtectionMask {
         buffer.try_into().unwrap()
     }

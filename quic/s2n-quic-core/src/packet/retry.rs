@@ -3,7 +3,7 @@
 
 use crate::{
     connection,
-    crypto::{retry, retry::RetryCrypto},
+    crypto::{retry, retry::RetryKey},
     inet::SocketAddress,
     packet::{
         decoding::HeaderDecoder,
@@ -111,7 +111,7 @@ pub type EncryptedRetry<'a> = Retry<'a>;
 pub type CleartextRetry<'a> = Retry<'a>;
 
 impl<'a> Retry<'a> {
-    pub fn encode_packet<T: token::Format, C: RetryCrypto>(
+    pub fn encode_packet<T: token::Format, C: RetryKey>(
         remote_address: &SocketAddress,
         packet: &ProtectedInitial,
         local_connection_id: &connection::LocalId,
