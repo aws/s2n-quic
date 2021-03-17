@@ -93,9 +93,12 @@ impl<
 
         // Validate providers
         // TODO: Add more validation https://github.com/awslabs/s2n-quic/issues/285
+        let valid_lifetime = |lifetime| {
+            (connection::id::MIN_LIFETIME..=connection::id::MAX_LIFETIME).contains(&lifetime)
+        };
         if connection_id
             .lifetime()
-            .map_or(false, |lifetime| lifetime < connection::id::MIN_LIFETIME)
+            .map_or(false, |lifetime| !valid_lifetime(lifetime))
         {
             return Err(StartError::new(connection::id::Error::InvalidLifetime));
         };
