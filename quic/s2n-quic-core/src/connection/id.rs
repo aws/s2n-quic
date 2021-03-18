@@ -22,6 +22,10 @@ pub const MAX_LEN: usize = crate::packet::long::DESTINATION_CONNECTION_ID_MAX_LE
 /// The minimum lifetime of a connection ID.
 pub const MIN_LIFETIME: Duration = Duration::from_secs(60);
 
+/// The maximum bounded lifetime of a connection ID. Connection IDs may have no specified
+/// lifetime at all, but if a lifetime is specified, it cannot exceed this value.
+pub const MAX_LIFETIME: Duration = Duration::from_secs(24 * 60 * 60); // one day
+
 macro_rules! id {
     ($type:ident, $min_len:expr) => {
         /// Uniquely identifies a QUIC connection between 2 peers

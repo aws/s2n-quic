@@ -111,7 +111,7 @@ pub mod random {
 
         /// Sets the lifetime of each generated connection Id
         pub fn with_lifetime(mut self, lifetime: Duration) -> Result<Self, connection::id::Error> {
-            if lifetime < connection::id::MIN_LIFETIME {
+            if !(connection::id::MIN_LIFETIME..=connection::id::MAX_LIFETIME).contains(&lifetime) {
                 return Err(connection::id::Error::InvalidLifetime);
             }
             self.lifetime = Some(lifetime);
@@ -201,6 +201,13 @@ pub mod random {
                 Some(connection::id::Error::InvalidLifetime),
                 Format::builder()
                     .with_lifetime(connection::id::MIN_LIFETIME - Duration::from_millis(1))
+                    .err()
+            );
+
+            assert_eq!(
+                Some(connection::id::Error::InvalidLifetime),
+                Format::builder()
+                    .with_lifetime(connection::id::MAX_LIFETIME + Duration::from_millis(1))
                     .err()
             );
         }
