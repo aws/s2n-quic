@@ -171,3 +171,16 @@ impl PacketNumberLenValue {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// the code relies on the variants to be in ascending order
+    #[test]
+    fn ordering_test() {
+        assert!(PacketNumberLenValue::U8 < PacketNumberLenValue::U16);
+        assert!(PacketNumberLenValue::U16 < PacketNumberLenValue::U24);
+        assert!(PacketNumberLenValue::U24 < PacketNumberLenValue::U32);
+    }
+}
