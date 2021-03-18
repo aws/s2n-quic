@@ -89,9 +89,6 @@ const U16_TAG: u8 = (16 / 8) - 1;
 const U24_TAG: u8 = (24 / 8) - 1;
 const U32_TAG: u8 = (32 / 8) - 1;
 
-const U8_SIZE: usize = 1; // 8 / 8
-const U16_SIZE: usize = 16 / 8;
-const U24_SIZE: usize = 24 / 8;
 const U32_SIZE: usize = 32 / 8;
 
 const U8_MAX: u64 = (1 << 8) - 1;
@@ -138,22 +135,12 @@ impl PacketNumberLenValue {
 
     #[inline]
     pub fn into_packet_tag_mask(self) -> u8 {
-        match self {
-            Self::U8 => U8_TAG,
-            Self::U16 => U16_TAG,
-            Self::U24 => U24_TAG,
-            Self::U32 => U32_TAG,
-        }
+        self as u8
     }
 
     #[inline]
     pub fn bytesize(self) -> usize {
-        match self {
-            Self::U8 => U8_SIZE,
-            Self::U16 => U16_SIZE,
-            Self::U24 => U24_SIZE,
-            Self::U32 => U32_SIZE,
-        }
+        self as usize + 1
     }
 
     #[inline]

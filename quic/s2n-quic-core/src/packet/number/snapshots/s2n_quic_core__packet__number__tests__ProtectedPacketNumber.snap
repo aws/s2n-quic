@@ -1,5 +1,6 @@
 ---
 source: quic/s2n-quic-core/src/packet/number/mod.rs
-expression: "size_of::<PacketNumber>()"
+expression: "size_of::<ProtectedPacketNumber>()"
+
 ---
-8
+0

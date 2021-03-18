@@ -1,5 +1,6 @@
 ---
-source: quic-packet-number/src/lib.rs
+source: quic/s2n-quic-core/src/packet/number/mod.rs
 expression: "size_of::<PacketNumberSpace>()"
+
 ---
 1

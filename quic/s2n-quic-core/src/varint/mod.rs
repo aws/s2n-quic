@@ -7,11 +7,8 @@ use core::{
 };
 use s2n_codec::{decoder_value, Encoder, EncoderValue};
 
-#[cfg(feature = "generator")]
+#[cfg(any(test, feature = "generator"))]
 use bolero_generator::*;
-
-#[cfg(test)]
-use bolero::generator::*;
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#16
 //# QUIC packets and frames commonly use a variable-length encoding for
