@@ -9,12 +9,12 @@ use crate::packet::number::{
 };
 use s2n_codec::{u24, DecoderBuffer, DecoderBufferResult, DecoderValue, Encoder, EncoderValue};
 
-#[cfg(feature = "generator")]
+#[cfg(any(test, feature = "generator"))]
 use bolero_generator::*;
 
 /// A truncated packet number, which is derived from the largest acknowledged packet number
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "generator", derive(TypeGenerator))]
+#[cfg_attr(any(test, feature = "generator"), derive(TypeGenerator))]
 pub struct TruncatedPacketNumber {
     pub(crate) space: PacketNumberSpace,
     pub(crate) value: TruncatedPacketNumberValue,
@@ -29,7 +29,7 @@ impl TruncatedPacketNumber {
 
     /// Expands the `TruncatedPacketNumber` into a `PacketNumber`
     #[inline]
-    pub fn expand(self, largest_acknowledged_packet_number: PacketNumber) -> Option<PacketNumber> {
+    pub fn expand(self, largest_acknowledged_packet_number: PacketNumber) -> PacketNumber {
         decode_packet_number(largest_acknowledged_packet_number, self)
     }
 
@@ -88,7 +88,7 @@ impl EncoderValue for TruncatedPacketNumber {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "generator", derive(TypeGenerator))]
+#[cfg_attr(any(test, feature = "generator"), derive(TypeGenerator))]
 pub enum TruncatedPacketNumberValue {
     U8(u8),
     U16(u16),

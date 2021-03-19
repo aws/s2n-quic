@@ -26,6 +26,7 @@ zerocopy = "0.3"
 
 [dev-dependencies]
 bolero = "0.6"
+bolero-generator = { version = "0.6", default-features = false }
 compliance = { path = "../../common/compliance/compliance" }
 criterion = { version = "0.3", features = ["html_reports"] }
 insta = "1.0"

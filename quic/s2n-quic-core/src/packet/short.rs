@@ -173,9 +173,7 @@ impl<'a> ProtectedShort<'a> {
 
         let key_phase = KeyPhase::from_tag(payload.get_tag());
 
-        let packet_number = truncated_packet_number
-            .expand(largest_acknowledged_packet_number)
-            .ok_or(CryptoError::DECODE_ERROR)?;
+        let packet_number = truncated_packet_number.expand(largest_acknowledged_packet_number);
 
         Ok(Short {
             spin_bit,

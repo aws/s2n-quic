@@ -105,9 +105,7 @@ impl<'a> ProtectedHandshake<'a> {
         let (truncated_packet_number, payload) =
             crate::crypto::unprotect(key, PacketNumberSpace::Handshake, payload)?;
 
-        let packet_number = truncated_packet_number
-            .expand(largest_acknowledged_packet_number)
-            .ok_or(CryptoError::DECODE_ERROR)?;
+        let packet_number = truncated_packet_number.expand(largest_acknowledged_packet_number);
 
         Ok(Handshake {
             version,

@@ -6,12 +6,12 @@ use crate::{
     varint::VarInt,
 };
 
-#[cfg(feature = "generator")]
+#[cfg(any(test, feature = "generator"))]
 use bolero_generator::*;
 
 /// Contains all of the available packet spaces for QUIC packets
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "generator", derive(TypeGenerator))]
+#[cfg_attr(any(test, feature = "generator"), derive(TypeGenerator))]
 #[repr(u8)]
 pub enum PacketNumberSpace {
     // This MUST start with 1 to enable optimized memory layout
@@ -58,7 +58,7 @@ impl PacketNumberSpace {
     }
 
     /// Asserts the `PacketNumberSpace` is equal
-    #[inline]
+    #[inline(always)]
     pub(crate) fn assert_eq(self, other: Self) {
         debug_assert_eq!(
             self, other,
@@ -81,7 +81,8 @@ impl PacketNumberSpace {
             1 => Self::Initial,
             2 => Self::Handshake,
             3 => Self::ApplicationData,
-            _ => panic!("invalid tag for PacketNumberSpace"),
+            _ if cfg!(debug_assertions) => panic!("invalid tag for PacketNumberSpace"),
+            _ => Self::Initial,
         }
     }
 }

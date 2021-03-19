@@ -1,5 +1,0 @@
----
-source: quic-packet-number/src/lib.rs
-expression: "size_of::<ProtectedPacketNumber>()"
----
-0
