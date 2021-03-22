@@ -33,6 +33,9 @@ pub enum Error {
     /// The connection was closed because the connection's idle timer expired
     IdleTimerExpired,
 
+    /// Opening a stream is blocked by the peer's stream limits
+    StreamBlocked,
+
     /// All Stream IDs for Streams on a given connection had been exhausted
     StreamIdExhausted,
 
@@ -109,6 +112,7 @@ impl From<Error> for std::io::ErrorKind {
             Error::Transport(_) => ErrorKind::ConnectionReset,
             Error::Application(_) => ErrorKind::ConnectionReset,
             Error::IdleTimerExpired => ErrorKind::TimedOut,
+            Error::StreamBlocked => ErrorKind::Other,
             Error::StreamIdExhausted => ErrorKind::Other,
             Error::Unspecified => ErrorKind::Other,
         }
