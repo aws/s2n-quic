@@ -2,31 +2,25 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use s2n_quic_core::{
-    connection,
-    frame::MaxStreams,
-    stream::StreamType,
-    transport::{parameters::InitialFlowControlLimits},
-    varint::VarInt,
+    connection, frame::MaxStreams, stream::StreamType,
+    transport::parameters::InitialFlowControlLimits, varint::VarInt,
 };
 
-struct OutgoingController {
-    outgoing_bidi_controller: StreamTypeOutgoingController,
-    outgoing_uni_controller: StreamTypeOutgoingController,
+#[derive(Debug)]
+pub struct LocalController {
+    outgoing_bidi_controller: Controller,
+    outgoing_uni_controller: Controller,
 }
 
-impl OutgoingController {
+impl LocalController {
     pub fn new(initial_peer_limits: InitialFlowControlLimits) -> Self {
         Self {
-            outgoing_bidi_controller: StreamTypeOutgoingController::new(
-                initial_peer_limits.max_streams_bidi,
-            ),
-            outgoing_uni_controller: StreamTypeOutgoingController::new(
-                initial_peer_limits.max_streams_uni,
-            ),
+            outgoing_bidi_controller: Controller::new(initial_peer_limits.max_streams_bidi),
+            outgoing_uni_controller: Controller::new(initial_peer_limits.max_streams_uni),
         }
     }
 
-    pub fn on_max_streams(&mut self, frame: MaxStreams) {
+    pub fn on_max_streams(&mut self, frame: &MaxStreams) {
         match frame.stream_type {
             StreamType::Bidirectional => self.outgoing_bidi_controller.on_max_streams(frame),
             StreamType::Unidirectional => self.outgoing_uni_controller.on_max_streams(frame),
@@ -41,12 +35,13 @@ impl OutgoingController {
     }
 }
 
-struct StreamTypeOutgoingController {
+#[derive(Debug)]
+struct Controller {
     maximum_streams: VarInt,
     available_streams: VarInt,
 }
 
-impl StreamTypeOutgoingController {
+impl Controller {
     fn new(initial_maximum_streams: VarInt) -> Self {
         Self {
             maximum_streams: initial_maximum_streams,
@@ -54,7 +49,7 @@ impl StreamTypeOutgoingController {
         }
     }
 
-    fn on_max_streams(&mut self, frame: MaxStreams) {
+    fn on_max_streams(&mut self, frame: &MaxStreams) {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6
         //# A receiver MUST
         //# ignore any MAX_STREAMS frame that does not increase the stream limit.

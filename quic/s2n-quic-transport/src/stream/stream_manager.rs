@@ -156,6 +156,10 @@ pub struct StreamManagerState<S> {
     pub(super) incoming_connection_flow_controller: IncomingConnectionFlowController,
     /// Flow control credit manager for sending data
     pub(super) outgoing_connection_flow_controller: OutgoingConnectionFlowController,
+    /// Stream controller for streams opened locally
+    local_stream_controller: stream::LocalController,
+    /// Stream controller for streams opened by the peer
+    peer_stream_controller: stream::PeerController,
     /// A container which contains all Streams
     streams: StreamContainer<S>,
     /// The next Stream ID which was not yet used for an initiated stream
@@ -264,13 +268,12 @@ impl<S: StreamTrait> StreamManagerState<S> {
                 }
 
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6
-                //= type=TODO
-                //= tracking-issue=244
-                //= feature=Stream concurrency
-                //# Endpoints MUST NOT exceed the limit set by their peer.
-
-                // TODO: Check if the peer is allowed to open the stream according to `MAX_STREAMS`.
-                // Otherwise return an error which should lead to a connection error
+                //# Endpoints MUST NOT exceed the limit set by their peer. An endpoint
+                //# that receives a frame with a stream ID exceeding the limit it has
+                //# sent MUST treat this as a connection error of type STREAM_LIMIT_ERROR
+                //# (Section 11).
+                self.peer_stream_controller
+                    .on_open_stream(stream_id.stream_type())?;
 
                 // We must create ALL streams which a lower Stream ID too:
 
@@ -391,6 +394,8 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
                 outgoing_connection_flow_controller: OutgoingConnectionFlowController::new(
                     initial_peer_limits.max_data,
                 ),
+                local_stream_controller: stream::LocalController::new(initial_peer_limits),
+                peer_stream_controller: stream::PeerController::new(initial_local_limits),
                 streams: StreamContainer::new(),
                 next_stream_ids: StreamIdSet::initial(),
                 local_endpoint_type,
@@ -487,6 +492,12 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
             return Err(error).into();
         }
 
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6
+        //# Endpoints MUST NOT exceed the limit set by their peer.
+        self.inner
+            .local_stream_controller
+            .try_open_stream(stream_type)?;
+
         let local_endpoint_type = self.inner.local_endpoint_type;
 
         let first_unopened_id = self
@@ -494,12 +505,6 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
             .next_stream_ids
             .get_mut(local_endpoint_type, stream_type)
             .ok_or(connection::Error::StreamIdExhausted)?;
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6
-        //= type=TODO
-        //= tracking-issue=244
-        //= feature=Stream concurrency
-        //# Endpoints MUST NOT exceed the limit set by their peer.
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6
         //= type=TODO
@@ -517,11 +522,6 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         //# doing so will mean that the peer will be blocked for at least an
         //# entire round trip
 
-        // TODO: Check if we can open this Stream according to MAX_STREAMS and
-        // return an error otherwise. Also return an error if no more outgoing
-        // Streams are available anymore.
-        // If this is not possible maybe store a Waker.
-
         // Increase the next utilized Stream ID
         *self
             .inner
@@ -538,6 +538,7 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         self.inner
             .incoming_connection_flow_controller
             .on_packet_ack(ack_set);
+        self.inner.peer_stream_controller.on_packet_ack(ack_set);
 
         self.inner.streams.iterate_frame_delivery_list(|stream| {
             // We have to wake inside the lock, since `StreamEvent`s has no capacity
@@ -553,6 +554,7 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         self.inner
             .incoming_connection_flow_controller
             .on_packet_loss(ack_set);
+        self.inner.peer_stream_controller.on_packet_loss(ack_set);
 
         self.inner.streams.iterate_frame_delivery_list(|stream| {
             // We have to wake inside the lock, since `StreamEvent`s has no capacity
@@ -582,6 +584,7 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         self.inner
             .incoming_connection_flow_controller
             .on_transmit(context)?;
+        self.inner.peer_stream_controller.on_transmit(context)?;
 
         // Due to an error we could not transmit all data.
         // We add streams which could not send data back into the
@@ -650,15 +653,6 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         F: FnMut(&mut S, &mut StreamEvents) -> Result<(), TransportError>,
     {
         let mut events = StreamEvents::new();
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6
-        //= type=TODO
-        //= tracking-issue=244
-        //= feature=Stream concurrency
-        //# An endpoint
-        //# that receives a frame with a stream ID exceeding the limit it has
-        //# sent MUST treat this as a connection error of type STREAM_LIMIT_ERROR
-        //# (Section 11).
 
         let result = {
             // If Stream handling causes an error, trigger an internal reset
@@ -774,15 +768,10 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
     }
 
     /// This is called when a `MAX_STREAMS` frame had been received
-    pub fn on_max_streams(&mut self, _frame: &MaxStreams) -> Result<(), TransportError> {
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6
-        //= type=TODO
-        //= tracking-issue=244
-        //= feature=Stream concurrency
-        //# A receiver MUST
-        //# ignore any MAX_STREAMS frame that does not increase the stream limit.
+    pub fn on_max_streams(&mut self, frame: &MaxStreams) -> Result<(), TransportError> {
+        self.inner.local_stream_controller.on_max_streams(frame);
 
-        Ok(()) // TODO: Implement me
+        Ok(())
     }
 
     // User APIs
@@ -845,7 +834,13 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
 
 impl<S: StreamTrait> transmission::interest::Provider for AbstractStreamManager<S> {
     fn transmission_interest(&self) -> transmission::Interest {
-        self.inner.streams.transmission_interest()
+        transmission::Interest::default()
+            + self.inner.streams.transmission_interest()
+            + self.inner.peer_stream_controller.transmission_interest()
+            + self
+                .inner
+                .incoming_connection_flow_controller
+                .transmission_interest()
     }
 }
 

@@ -19,18 +19,17 @@ use s2n_quic_core::{
 // Send a MAX_STREAMS frame whenever 10% of the window has been closed
 const MAX_STREAMS_SYNC_PERCENTAGE: VarInt = VarInt::from_u8(10);
 
-struct IncomingController {
-    bidi_controller: StreamTypeIncomingController,
-    uni_controller: StreamTypeIncomingController,
+#[derive(Debug)]
+pub struct PeerController {
+    bidi_controller: Controller,
+    uni_controller: Controller,
 }
 
-impl IncomingController {
+impl PeerController {
     pub fn new(initial_local_limits: InitialFlowControlLimits) -> Self {
         Self {
-            bidi_controller: StreamTypeIncomingController::new(
-                initial_local_limits.max_streams_bidi,
-            ),
-            uni_controller: StreamTypeIncomingController::new(initial_local_limits.max_streams_uni),
+            bidi_controller: Controller::new(initial_local_limits.max_streams_bidi),
+            uni_controller: Controller::new(initial_local_limits.max_streams_uni),
         }
     }
 
@@ -71,7 +70,7 @@ impl IncomingController {
     }
 }
 
-impl transmission::interest::Provider for IncomingController {
+impl transmission::interest::Provider for PeerController {
     fn transmission_interest(&self) -> transmission::Interest {
         self.bidi_controller.window_sync.transmission_interest()
             + self.uni_controller.window_sync.transmission_interest()
@@ -79,7 +78,7 @@ impl transmission::interest::Provider for IncomingController {
 }
 
 /// Writes the `MAX_STREAMS` frames based on the stream control window.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub(super) struct MaxStreamsToFrameWriter {}
 
 impl ValueToFrameWriter<VarInt> for MaxStreamsToFrameWriter {
@@ -96,14 +95,15 @@ impl ValueToFrameWriter<VarInt> for MaxStreamsToFrameWriter {
     }
 }
 
-struct StreamTypeIncomingController {
+#[derive(Debug)]
+struct Controller {
     window_sync: IncrementalValueSync<VarInt, MaxStreamsToFrameWriter>,
     window_size: VarInt,
     closed_streams: VarInt,
     opened_streams: VarInt,
 }
 
-impl StreamTypeIncomingController {
+impl Controller {
     fn new(window_size: VarInt) -> Self {
         Self {
             window_sync: IncrementalValueSync::new(
