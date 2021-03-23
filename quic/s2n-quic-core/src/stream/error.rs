@@ -1,12 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{
-    application::{ApplicationErrorCode, ApplicationErrorExt},
-    connection,
-    frame::ConnectionClose,
-    transport::error::TransportError,
-};
+use crate::{application, connection, frame::ConnectionClose, transport};
 
 /// Errors that a stream can encounter.
 #[derive(PartialEq, Debug, Copy, Clone, displaydoc::Display)]
@@ -21,7 +16,7 @@ pub enum StreamError {
     ///
     /// Inside this frame the peer will deliver an error code, which will be
     /// provided by the parameter.
-    StreamReset(ApplicationErrorCode),
+    StreamReset(application::Error),
     /// A send attempt had been performed on a Stream after it was closed
     SendAfterFinish,
     /// Attempting to write data would exceed the stream limit
@@ -47,10 +42,10 @@ pub enum StreamError {
     NonEmptyOutput,
 }
 
-impl ApplicationErrorExt for StreamError {
-    fn application_error_code(&self) -> Option<ApplicationErrorCode> {
+impl application::error::TryInto for StreamError {
+    fn application_error(&self) -> Option<application::Error> {
         if let StreamError::ConnectionError(error) = self {
-            error.application_error_code()
+            error.application_error()
         } else {
             None
         }
@@ -63,14 +58,8 @@ impl From<connection::Error> for StreamError {
     }
 }
 
-impl From<ApplicationErrorCode> for StreamError {
-    fn from(error: ApplicationErrorCode) -> Self {
-        Self::ConnectionError(error.into())
-    }
-}
-
-impl From<TransportError> for StreamError {
-    fn from(error: TransportError) -> Self {
+impl From<transport::Error> for StreamError {
+    fn from(error: transport::Error) -> Self {
         Self::ConnectionError(error.into())
     }
 }

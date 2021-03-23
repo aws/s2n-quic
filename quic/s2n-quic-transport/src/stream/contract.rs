@@ -4,7 +4,7 @@
 use bytes::Bytes;
 use core::task::Context;
 use s2n_quic_core::{
-    application::ApplicationErrorCode,
+    application,
     stream::{ops, StreamError},
 };
 
@@ -61,7 +61,7 @@ pub mod tx {
 
     pub struct Request {
         chunks: Option<Vec<Bytes>>,
-        reset: Option<ApplicationErrorCode>,
+        reset: Option<application::Error>,
         flush: bool,
         finish: bool,
     }
@@ -324,7 +324,7 @@ pub mod rx {
         chunks: Option<Vec<Bytes>>,
         low_watermark: usize,
         high_watermark: usize,
-        stop_sending: Option<ApplicationErrorCode>,
+        stop_sending: Option<application::Error>,
     }
 
     impl<'a> From<&'a ops::rx::Request<'a>> for Request {

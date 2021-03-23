@@ -27,7 +27,7 @@ use s2n_quic_core::{
     },
     path::Path,
     time::Timestamp,
-    transport::error::TransportError,
+    transport,
 };
 
 pub struct InitialSpace<Config: endpoint::Config> {
@@ -293,7 +293,7 @@ fn path_mut(&mut self) -> &mut Path<<Config::CongestionControllerEndpoint as con
         &mut self,
         datagram: &DatagramInfo,
         packet_number_range: &PacketNumberRange,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), transport::Error> {
         self.tx_packet_numbers
             .on_packet_ack(datagram, packet_number_range)
     }
@@ -332,7 +332,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for InitialSpace<Config> {
         frame: CryptoRef,
         _datagram: &DatagramInfo,
         _path: &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), transport::Error> {
         self.crypto_stream.on_crypto_frame(frame)?;
 
         Ok(())
@@ -346,7 +346,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for InitialSpace<Config> {
         path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
         handshake_status: &mut HandshakeStatus,
         _local_id_registry: &mut connection::LocalIdRegistry,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), transport::Error> {
         let (recovery_manager, mut context) =
             self.recovery(&mut path_manager[path_id], handshake_status);
         recovery_manager.on_ack_frame(datagram, frame, &mut context)
@@ -357,13 +357,13 @@ impl<Config: endpoint::Config> PacketSpace<Config> for InitialSpace<Config> {
         frame: ConnectionClose,
         _datagram: &DatagramInfo,
         _path: &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), transport::Error> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.2
         //# CONNECTION_CLOSE frames of type 0x1c are also
         //# permitted.
 
         if frame.tag() != 0x1c {
-            return Err(TransportError::PROTOCOL_VIOLATION);
+            return Err(transport::Error::PROTOCOL_VIOLATION);
         }
 
         Ok(())
@@ -372,7 +372,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for InitialSpace<Config> {
     fn on_processed_packet(
         &mut self,
         processed_packet: ProcessedPacket,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), transport::Error> {
         self.ack_manager.on_processed_packet(&processed_packet);
         self.processed_packet_numbers
             .insert(processed_packet.packet_number)

@@ -214,7 +214,7 @@ macro_rules! impl_send_stream_api {
         /// ```
         pub fn reset(
             &mut self,
-            error_code: $crate::ApplicationErrorCode,
+            error_code: $crate::application::Error,
         ) -> $crate::stream::Result<()> {
             macro_rules! $dispatch {
                 () => {

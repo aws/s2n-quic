@@ -11,8 +11,8 @@ use crate::{
 use alloc::rc::Rc;
 use core::cell::RefCell;
 use s2n_quic_core::{
-    ack, frame::max_data::MaxData, packet::number::PacketNumber, stream::StreamId,
-    transport::error::TransportError, varint::VarInt,
+    ack, frame::max_data::MaxData, packet::number::PacketNumber, stream::StreamId, transport,
+    varint::VarInt,
 };
 
 /// Writes `MAX_DATA` frames based on the connections flow control window.
@@ -89,13 +89,13 @@ impl IncomingConnectionFlowControllerImpl {
         );
     }
 
-    pub fn acquire_window(&mut self, desired: VarInt) -> Result<(), TransportError> {
+    pub fn acquire_window(&mut self, desired: VarInt) -> Result<(), transport::Error> {
         if self.remaining_window() < desired {
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.1
             //# A receiver MUST close the connection with a FLOW_CONTROL_ERROR error
             //# (Section 11) if the sender violates the advertised connection or
             //# stream data limits.
-            return Err(TransportError::FLOW_CONTROL_ERROR);
+            return Err(transport::Error::FLOW_CONTROL_ERROR);
         }
 
         self.acquired_window += desired;
@@ -153,7 +153,7 @@ impl IncomingConnectionFlowController {
     ///
     /// If the requested window size is not available the method will return
     /// an error in form of the `Err` variant.
-    pub fn acquire_window(&mut self, desired: VarInt) -> Result<(), TransportError> {
+    pub fn acquire_window(&mut self, desired: VarInt) -> Result<(), transport::Error> {
         self.inner.borrow_mut().acquire_window(desired)
     }
 

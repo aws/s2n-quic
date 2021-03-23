@@ -12,7 +12,7 @@ use alloc::sync::Arc;
 use bytes::Bytes;
 use core::task::{Context, Poll};
 use s2n_quic_core::{
-    application::ApplicationErrorCode,
+    application,
     stream::{ops, StreamId, StreamType},
 };
 
@@ -43,7 +43,7 @@ pub(crate) trait ConnectionApiProvider: Sync + Send {
         context: &Context,
     ) -> Poll<Result<Stream, connection::Error>>;
 
-    fn close_connection(&self, error_code: ApplicationErrorCode);
+    fn close_connection(&self, code: Option<application::Error>);
 
     fn sni(&self) -> Option<Bytes>;
 

@@ -6,8 +6,7 @@ use bytes::BytesMut;
 use core::{marker::PhantomData, task::Poll};
 use s2n_quic_core::{
     crypto::{tls, CryptoError, CryptoSuite},
-    endpoint,
-    transport::error::TransportError,
+    endpoint, transport,
 };
 use s2n_quic_ring::RingCryptoSuite;
 use s2n_tls::{
@@ -50,14 +49,14 @@ impl Session {
         })
     }
 
-    fn translate_error(&self, error: Error) -> TransportError {
+    fn translate_error(&self, error: Error) -> transport::Error {
         if error.kind() == s2n_error_type::Alert {
             if let Some(code) = self.connection.alert() {
                 return CryptoError::new(code).into();
             }
         }
 
-        TransportError::INTERNAL_ERROR
+        transport::Error::INTERNAL_ERROR
     }
 }
 
@@ -74,7 +73,7 @@ impl CryptoSuite for Session {
 }
 
 impl tls::Session for Session {
-    fn poll<W>(&mut self, context: &mut W) -> Result<(), TransportError>
+    fn poll<W>(&mut self, context: &mut W) -> Result<(), transport::Error>
     where
         W: tls::Context<Self>,
     {

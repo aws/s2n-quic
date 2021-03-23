@@ -10,10 +10,11 @@ use crate::{
 use bytes::Bytes;
 use core::{convert::TryFrom, task::Poll};
 use s2n_quic_core::{
-    application::ApplicationErrorCode,
+    application::Error as ApplicationErrorCode,
     connection, endpoint,
     frame::{Frame, MaxData, MaxStreamData, ResetStream, StopSending},
     stream::{ops, StreamError, StreamType},
+    transport::Error as TransportError,
     varint::VarInt,
 };
 

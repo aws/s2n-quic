@@ -34,7 +34,7 @@ use s2n_quic_core::{
     path::Path,
     recovery::RTTEstimator,
     time::Timestamp,
-    transport::error::TransportError,
+    transport,
 };
 
 pub struct ApplicationSpace<Config: endpoint::Config> {
@@ -386,7 +386,7 @@ impl<'a, Config: endpoint::Config> recovery::Context<<Config::CongestionControll
         &mut self,
         datagram: &DatagramInfo,
         packet_number_range: &PacketNumberRange,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), transport::Error> {
         self.tx_packet_numbers
             .on_packet_ack(datagram, packet_number_range)
     }
@@ -426,7 +426,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         _frame: CryptoRef,
         _datagram: &DatagramInfo,
         _path: &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), transport::Error> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.5
         //# Once the handshake completes, if an endpoint is unable to buffer all
         //# data in a CRYPTO frame, it MAY discard that CRYPTO frame and all
@@ -445,7 +445,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
         handshake_status: &mut HandshakeStatus,
         local_id_registry: &mut connection::LocalIdRegistry,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), transport::Error> {
         //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.1.2
         //= type=TODO
         //= tracking-issue=297
@@ -464,59 +464,62 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         _frame: ConnectionClose,
         _datagram: &DatagramInfo,
         _path: &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), transport::Error> {
         Ok(())
     }
 
-    fn handle_stream_frame(&mut self, frame: StreamRef) -> Result<(), TransportError> {
+    fn handle_stream_frame(&mut self, frame: StreamRef) -> Result<(), transport::Error> {
         self.stream_manager.on_data(&frame)
     }
 
-    fn handle_data_blocked_frame(&mut self, frame: DataBlocked) -> Result<(), TransportError> {
+    fn handle_data_blocked_frame(&mut self, frame: DataBlocked) -> Result<(), transport::Error> {
         self.stream_manager.on_data_blocked(frame)
     }
 
-    fn handle_max_data_frame(&mut self, frame: MaxData) -> Result<(), TransportError> {
+    fn handle_max_data_frame(&mut self, frame: MaxData) -> Result<(), transport::Error> {
         self.stream_manager.on_max_data(frame)
     }
 
-    fn handle_max_stream_data_frame(&mut self, frame: MaxStreamData) -> Result<(), TransportError> {
+    fn handle_max_stream_data_frame(
+        &mut self,
+        frame: MaxStreamData,
+    ) -> Result<(), transport::Error> {
         self.stream_manager.on_max_stream_data(&frame)
     }
 
-    fn handle_max_streams_frame(&mut self, frame: MaxStreams) -> Result<(), TransportError> {
+    fn handle_max_streams_frame(&mut self, frame: MaxStreams) -> Result<(), transport::Error> {
         self.stream_manager.on_max_streams(&frame)
     }
 
-    fn handle_reset_stream_frame(&mut self, frame: ResetStream) -> Result<(), TransportError> {
+    fn handle_reset_stream_frame(&mut self, frame: ResetStream) -> Result<(), transport::Error> {
         self.stream_manager.on_reset_stream(&frame)
     }
 
-    fn handle_stop_sending_frame(&mut self, frame: StopSending) -> Result<(), TransportError> {
+    fn handle_stop_sending_frame(&mut self, frame: StopSending) -> Result<(), transport::Error> {
         self.stream_manager.on_stop_sending(&frame)
     }
 
     fn handle_stream_data_blocked_frame(
         &mut self,
         frame: StreamDataBlocked,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), transport::Error> {
         self.stream_manager.on_stream_data_blocked(&frame)
     }
 
     fn handle_streams_blocked_frame(
         &mut self,
         frame: StreamsBlocked,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), transport::Error> {
         self.stream_manager.on_streams_blocked(&frame)
     }
 
-    fn handle_new_token_frame(&mut self, frame: NewToken) -> Result<(), TransportError> {
+    fn handle_new_token_frame(&mut self, frame: NewToken) -> Result<(), transport::Error> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.7
         //# Servers MUST treat receipt
         //# of a NEW_TOKEN frame as a connection error of type
         //# PROTOCOL_VIOLATION.
         if Config::ENDPOINT_TYPE.is_server() {
-            return Err(TransportError::PROTOCOL_VIOLATION
+            return Err(transport::Error::PROTOCOL_VIOLATION
                 .with_reason(Self::INVALID_FRAME_ERROR)
                 .with_frame_type(frame.tag().into()));
         }
@@ -530,13 +533,13 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         frame: NewConnectionID,
         _datagram: &DatagramInfo,
         path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), transport::Error> {
         if path_manager.active_path().peer_connection_id.is_empty() {
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
             //# An endpoint that is sending packets with a zero-length Destination
             //# Connection ID MUST treat receipt of a NEW_CONNECTION_ID frame as a
             //# connection error of type PROTOCOL_VIOLATION.
-            return Err(TransportError::PROTOCOL_VIOLATION);
+            return Err(transport::Error::PROTOCOL_VIOLATION);
         }
 
         let peer_id = connection::PeerId::try_from_bytes(frame.connection_id)
@@ -545,12 +548,12 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
             .sequence_number
             .as_u64()
             .try_into()
-            .map_err(|_err| TransportError::PROTOCOL_VIOLATION)?;
+            .map_err(|_err| transport::Error::PROTOCOL_VIOLATION)?;
         let retire_prior_to = frame
             .retire_prior_to
             .as_u64()
             .try_into()
-            .map_err(|_err| TransportError::PROTOCOL_VIOLATION)?;
+            .map_err(|_err| transport::Error::PROTOCOL_VIOLATION)?;
         let stateless_reset_token = (*frame.stateless_reset_token).into();
 
         path_manager.on_new_connection_id(
@@ -567,12 +570,12 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         datagram: &DatagramInfo,
         path: &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
         local_id_registry: &mut connection::LocalIdRegistry,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), transport::Error> {
         let sequence_number = frame
             .sequence_number
             .as_u64()
             .try_into()
-            .map_err(|_err| TransportError::PROTOCOL_VIOLATION)?;
+            .map_err(|_err| transport::Error::PROTOCOL_VIOLATION)?;
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.16
         //# The sequence number specified in a RETIRE_CONNECTION_ID frame MUST
@@ -594,16 +597,19 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
                 path.rtt_estimator.smoothed_rtt(),
                 datagram.timestamp,
             )
-            .map_err(|err| TransportError::PROTOCOL_VIOLATION.with_reason(err.message()))
+            .map_err(|err| transport::Error::PROTOCOL_VIOLATION.with_reason(err.message()))
     }
 
-    fn handle_path_challenge_frame(&mut self, frame: PathChallenge) -> Result<(), TransportError> {
+    fn handle_path_challenge_frame(
+        &mut self,
+        frame: PathChallenge,
+    ) -> Result<(), transport::Error> {
         // TODO
         eprintln!("UNIMPLEMENTED APPLICATION FRAME {:?}", frame);
         Ok(())
     }
 
-    fn handle_path_response_frame(&mut self, frame: PathResponse) -> Result<(), TransportError> {
+    fn handle_path_response_frame(&mut self, frame: PathResponse) -> Result<(), transport::Error> {
         // TODO map this frame to a Path
         eprintln!("UNIMPLEMENTED APPLICATION FRAME {:?}", frame);
         Ok(())
@@ -616,14 +622,14 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         path: &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
         local_id_registry: &mut connection::LocalIdRegistry,
         handshake_status: &mut HandshakeStatus,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), transport::Error> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.20
         //# A server MUST
         //# treat receipt of a HANDSHAKE_DONE frame as a connection error of type
         //# PROTOCOL_VIOLATION.
 
         if Config::ENDPOINT_TYPE.is_server() {
-            return Err(TransportError::PROTOCOL_VIOLATION
+            return Err(transport::Error::PROTOCOL_VIOLATION
                 .with_reason("Clients MUST NOT send HANDSHAKE_DONE frames")
                 .with_frame_type(frame.tag().into()));
         }
@@ -637,7 +643,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
     fn on_processed_packet(
         &mut self,
         processed_packet: ProcessedPacket,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), transport::Error> {
         self.ack_manager.on_processed_packet(&processed_packet);
         self.processed_packet_numbers
             .insert(processed_packet.packet_number)

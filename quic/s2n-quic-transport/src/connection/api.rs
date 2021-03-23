@@ -12,7 +12,7 @@ use core::{
     fmt,
     task::{Context, Poll},
 };
-use s2n_quic_core::{application::ApplicationErrorCode, stream::StreamType};
+use s2n_quic_core::{application, stream::StreamType};
 
 /// A QUIC connection
 #[derive(Clone)]
@@ -30,9 +30,9 @@ impl fmt::Debug for Connection {
 
 impl Drop for Connection {
     fn drop(&mut self) {
-        // If the connection wasn't closed before close it now to make sure
+        // If the connection wasn't closed before, close it now to make sure
         // all Streams terminate.
-        self.close(ApplicationErrorCode::UNKNOWN);
+        self.shared_state.close_connection(None);
     }
 }
 
@@ -73,8 +73,8 @@ impl Connection {
     /// Closes the Connection with the provided error code
     ///
     /// This will immediatly terminate all outstanding streams.
-    pub fn close(&self, error_code: ApplicationErrorCode) {
-        self.shared_state.close_connection(error_code);
+    pub fn close(&self, error_code: application::Error) {
+        self.shared_state.close_connection(Some(error_code));
     }
 
     pub fn sni(&self) -> Option<Bytes> {

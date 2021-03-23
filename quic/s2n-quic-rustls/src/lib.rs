@@ -13,7 +13,7 @@ use s2n_codec::{EncoderBuffer, EncoderValue};
 use s2n_quic_core::{
     self,
     crypto::{tls, CryptoError, CryptoSuite},
-    transport::error::TransportError,
+    transport,
 };
 use s2n_quic_ring::{
     handshake::RingHandshakeKey, one_rtt::RingOneRttKey, zero_rtt::RingZeroRttKey, Prk,
@@ -127,7 +127,7 @@ macro_rules! impl_tls {
             fn poll<W: tls::Context<Self>>(
                 &mut self,
                 context: &mut W,
-            ) -> Result<(), TransportError> {
+            ) -> Result<(), transport::Error> {
                 use rustls::Session;
 
                 // Tracks if we have attempted to receive data at least once
@@ -253,7 +253,7 @@ macro_rules! impl_tls {
         }
 
         impl $session {
-            fn receive(&mut self, crypto_data: &[u8]) -> Result<(), TransportError> {
+            fn receive(&mut self, crypto_data: &[u8]) -> Result<(), transport::Error> {
                 self.0
                     .session
                     .read_hs(crypto_data)
@@ -285,7 +285,9 @@ macro_rules! impl_tls {
                 Ok(())
             }
 
-            fn application_parameters(&self) -> Result<tls::ApplicationParameters, TransportError> {
+            fn application_parameters(
+                &self,
+            ) -> Result<tls::ApplicationParameters, transport::Error> {
                 //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#8.1
                 //# Unless
                 //# another mechanism is used for agreeing on an application protocol,

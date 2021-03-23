@@ -11,8 +11,8 @@ use s2n_quic_core::{
     connection::limits::Limits,
     crypto::{tls, tls::Session, CryptoSuite},
     frame::{
-        self, ack::AckRanges, crypto::CryptoRef, stream::StreamRef, Ack, ConnectionClose,
-        DataBlocked, HandshakeDone, MaxData, MaxStreamData, MaxStreams, NewConnectionID, NewToken,
+        ack::AckRanges, crypto::CryptoRef, stream::StreamRef, Ack, ConnectionClose, DataBlocked,
+        HandshakeDone, MaxData, MaxStreamData, MaxStreams, NewConnectionID, NewToken,
         PathChallenge, PathResponse, ResetStream, RetireConnectionID, StopSending,
         StreamDataBlocked, StreamsBlocked,
     },
@@ -20,7 +20,7 @@ use s2n_quic_core::{
     packet::number::{PacketNumber, PacketNumberSpace},
     path::Path,
     time::Timestamp,
-    transport::error::TransportError,
+    transport,
 };
 
 mod application;
@@ -142,7 +142,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         local_id_registry: &mut connection::LocalIdRegistry,
         limits: &Limits,
         now: Timestamp,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), transport::Error> {
         if let Some(session) = self.session.as_mut() {
             let mut context: SessionContext<Config> = SessionContext {
                 now,
@@ -290,8 +290,8 @@ impl<Config: endpoint::Config> connection::finalization::Provider for PacketSpac
 
 macro_rules! default_frame_handler {
     ($name:ident, $frame:ty) => {
-        fn $name(&mut self, frame: $frame) -> Result<(), TransportError> {
-            Err(TransportError::PROTOCOL_VIOLATION
+        fn $name(&mut self, frame: $frame) -> Result<(), transport::Error> {
+            Err(transport::Error::PROTOCOL_VIOLATION
                 .with_reason(Self::INVALID_FRAME_ERROR)
                 .with_frame_type(frame.tag().into()))
         }
@@ -306,7 +306,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
         frame: CryptoRef,
         datagram: &DatagramInfo,
         path: &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
-    ) -> Result<(), TransportError>;
+    ) -> Result<(), transport::Error>;
 
     fn handle_ack_frame<A: AckRanges>(
         &mut self,
@@ -316,14 +316,14 @@ pub trait PacketSpace<Config: endpoint::Config> {
         path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
         handshake_status: &mut HandshakeStatus,
         local_id_registry: &mut connection::LocalIdRegistry,
-    ) -> Result<(), TransportError>;
+    ) -> Result<(), transport::Error>;
 
     fn handle_connection_close_frame(
         &mut self,
         frame: ConnectionClose,
         datagram: &DatagramInfo,
         path: &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
-    ) -> Result<(), TransportError>;
+    ) -> Result<(), transport::Error>;
 
     fn handle_handshake_done_frame(
         &mut self,
@@ -332,8 +332,8 @@ pub trait PacketSpace<Config: endpoint::Config> {
         _path: &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
         _local_id_registry: &mut connection::LocalIdRegistry,
         _handshake_status: &mut HandshakeStatus,
-    ) -> Result<(), TransportError> {
-        Err(TransportError::PROTOCOL_VIOLATION
+    ) -> Result<(), transport::Error> {
+        Err(transport::Error::PROTOCOL_VIOLATION
             .with_reason(Self::INVALID_FRAME_ERROR)
             .with_frame_type(frame.tag().into()))
     }
@@ -344,8 +344,8 @@ pub trait PacketSpace<Config: endpoint::Config> {
         _datagram: &DatagramInfo,
         _path: &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
         _local_id_registry: &mut connection::LocalIdRegistry,
-    ) -> Result<(), TransportError> {
-        Err(TransportError::PROTOCOL_VIOLATION
+    ) -> Result<(), transport::Error> {
+        Err(transport::Error::PROTOCOL_VIOLATION
             .with_reason(Self::INVALID_FRAME_ERROR)
             .with_frame_type(frame.tag().into()))
     }
@@ -355,8 +355,8 @@ pub trait PacketSpace<Config: endpoint::Config> {
         frame: NewConnectionID,
         _datagram: &DatagramInfo,
         _path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
-    ) -> Result<(), TransportError> {
-        Err(TransportError::PROTOCOL_VIOLATION
+    ) -> Result<(), transport::Error> {
+        Err(transport::Error::PROTOCOL_VIOLATION
             .with_reason(Self::INVALID_FRAME_ERROR)
             .with_frame_type(frame.tag().into()))
     }
@@ -377,7 +377,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
     fn on_processed_packet(
         &mut self,
         processed_packet: ProcessedPacket,
-    ) -> Result<(), TransportError>;
+    ) -> Result<(), transport::Error>;
 
     // TODO: Reduce arguments, https://github.com/awslabs/s2n-quic/issues/312
     #[allow(clippy::too_many_arguments)]
@@ -390,7 +390,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
         path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
         handshake_status: &mut HandshakeStatus,
         local_id_registry: &mut connection::LocalIdRegistry,
-    ) -> Result<Option<frame::ConnectionClose<'a>>, TransportError> {
+    ) -> Result<(), connection::Error> {
         use s2n_quic_core::{
             frame::{Frame, FrameMut},
             varint::VarInt,
@@ -401,12 +401,14 @@ pub trait PacketSpace<Config: endpoint::Config> {
         macro_rules! with_frame_type {
             ($frame:ident) => {{
                 let frame_type = $frame.tag();
-                move |err: TransportError| err.with_frame_type(VarInt::from_u8(frame_type))
+                move |err: transport::Error| err.with_frame_type(VarInt::from_u8(frame_type))
             }};
         }
 
         while !payload.is_empty() {
-            let (frame, remaining) = payload.decode::<FrameMut>()?;
+            let (frame, remaining) = payload
+                .decode::<FrameMut>()
+                .map_err(transport::Error::from)?;
 
             match frame {
                 Frame::Padding(frame) => {
@@ -455,10 +457,8 @@ pub trait PacketSpace<Config: endpoint::Config> {
                     self.handle_connection_close_frame(frame, datagram, &mut path_manager[path_id])
                         .map_err(on_error)?;
 
-                    // skip processing any other frames
-                    // TODO is this actually OK to do?
-                    // https://github.com/awslabs/s2n-quic/issues/216
-                    return Ok(Some(frame));
+                    // skip processing any other frames and return an error
+                    return Err(frame.into());
                 }
                 Frame::Stream(frame) => {
                     let on_error = with_frame_type!(frame);
@@ -568,6 +568,6 @@ pub trait PacketSpace<Config: endpoint::Config> {
 
         self.on_processed_packet(processed_packet)?;
 
-        Ok(None)
+        Ok(())
     }
 }

@@ -6,9 +6,8 @@
 use crate::{
     acceptor::Acceptor,
     connection::{
-        self, CloseReason as ConnectionCloseReason, ConnectionContainer,
-        ConnectionContainerIterationResult, ConnectionIdMapper, InternalConnectionId,
-        InternalConnectionIdGenerator, Trait as _,
+        self, ConnectionContainer, ConnectionContainerIterationResult, ConnectionIdMapper,
+        InternalConnectionId, InternalConnectionIdGenerator, Trait as _,
     },
     timer::TimerManager,
     unbounded_channel,
@@ -290,8 +289,8 @@ impl<Cfg: Config> Endpoint<Cfg> {
                             ProcessingError::DuplicatePacket => {
                                 // We discard duplicate packets
                             }
-                            ProcessingError::TransportError(err) => {
-                                conn.handle_transport_error(shared_state, datagram, err);
+                            ProcessingError::ConnectionError(err) => {
+                                conn.close(shared_state, err, datagram.timestamp);
                                 return Err(());
                             }
                             ProcessingError::CryptoError(_) => {
@@ -316,7 +315,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         endpoint_context.connection_id_format,
                         remaining,
                     ) {
-                        conn.handle_transport_error(shared_state, datagram, err);
+                        conn.close(shared_state, err, datagram.timestamp);
                         return Err(());
                     }
 
@@ -404,6 +403,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     if let Err(err) =
                         self.handle_initial_packet(datagram, packet, remaining, retry_token_dcid)
                     {
+                        // TODO send a minimal connection close frame
                         dbg!(err);
                     }
                 }
@@ -504,11 +504,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
         //# and not send any further packets on this connection.
         self.connections
             .with_connection(internal_id, |conn, shared_state| {
-                conn.close(
-                    shared_state,
-                    ConnectionCloseReason::StatelessReset,
-                    timestamp,
-                )
+                conn.close(shared_state, connection::Error::StatelessReset, timestamp)
             });
 
         Some(internal_id)
@@ -568,7 +564,9 @@ impl<Cfg: Config> Endpoint<Cfg> {
         for internal_id in self.timer_manager.expirations(now) {
             self.connections
                 .with_connection(internal_id, |conn, shared_state| {
-                    conn.on_timeout(shared_state, connection_id_mapper, now);
+                    if let Err(error) = conn.on_timeout(shared_state, connection_id_mapper, now) {
+                        conn.close(shared_state, error, now);
+                    }
                 });
         }
     }
@@ -600,7 +598,9 @@ impl<Cfg: Config> Endpoint<Cfg> {
         for internal_id in &self.dequeued_wakeups {
             self.connections
                 .with_connection(*internal_id, |conn, shared_state| {
-                    conn.on_wakeup(shared_state, timestamp);
+                    if let Err(error) = conn.on_wakeup(shared_state, timestamp) {
+                        conn.close(shared_state, error, timestamp);
+                    }
                 });
         }
 

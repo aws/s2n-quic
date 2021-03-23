@@ -22,8 +22,7 @@ use crate::{
 use alloc::rc::Rc;
 use core::cell::RefCell;
 use s2n_quic_core::{
-    ack, connection, frame, packet::number::PacketNumber, stateless_reset,
-    transport::error::TransportError,
+    ack, connection, frame, packet::number::PacketNumber, stateless_reset, transport,
 };
 use smallvec::SmallVec;
 
@@ -184,7 +183,7 @@ impl PeerIdRegistrationError {
     }
 }
 
-impl From<PeerIdRegistrationError> for TransportError {
+impl From<PeerIdRegistrationError> for transport::Error {
     fn from(err: PeerIdRegistrationError) -> Self {
         let transport_error = match err {
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
@@ -193,7 +192,7 @@ impl From<PeerIdRegistrationError> for TransportError {
             //# Token or a different sequence number, or if a sequence number is used
             //# for different connection IDs, the endpoint MAY treat that receipt as
             //# a connection error of type PROTOCOL_VIOLATION.
-            PeerIdRegistrationError::InvalidNewConnectionId => TransportError::PROTOCOL_VIOLATION,
+            PeerIdRegistrationError::InvalidNewConnectionId => transport::Error::PROTOCOL_VIOLATION,
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.1
             //# After processing a NEW_CONNECTION_ID frame and
             //# adding and retiring active connection IDs, if the number of active
@@ -201,7 +200,7 @@ impl From<PeerIdRegistrationError> for TransportError {
             //# active_connection_id_limit transport parameter, an endpoint MUST
             //# close the connection with an error of type CONNECTION_ID_LIMIT_ERROR.
             PeerIdRegistrationError::ExceededActiveConnectionIdLimit => {
-                TransportError::CONNECTION_ID_LIMIT_ERROR
+                transport::Error::CONNECTION_ID_LIMIT_ERROR
             }
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2
             //# An endpoint MUST NOT forget a connection ID without retiring it,
@@ -209,7 +208,7 @@ impl From<PeerIdRegistrationError> for TransportError {
             //# retirement that exceed this limit as a connection error of type
             //# CONNECTION_ID_LIMIT_ERROR.
             PeerIdRegistrationError::ExceededRetiredConnectionIdLimit => {
-                TransportError::CONNECTION_ID_LIMIT_ERROR
+                transport::Error::CONNECTION_ID_LIMIT_ERROR
             }
         };
         transport_error.with_reason(err.message())
@@ -601,7 +600,7 @@ pub(crate) mod tests {
         packet::number::PacketNumberRange,
         random, stateless_reset,
         stateless_reset::token::testing::*,
-        transport::error::TransportError,
+        transport,
         varint::VarInt,
     };
 
@@ -1009,7 +1008,7 @@ pub(crate) mod tests {
 
     #[test]
     fn error_conversion() {
-        let mut transport_error: TransportError;
+        let mut transport_error: transport::Error;
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15
         //= type=test
@@ -1020,7 +1019,7 @@ pub(crate) mod tests {
         //# a connection error of type PROTOCOL_VIOLATION.
         transport_error = PeerIdRegistrationError::InvalidNewConnectionId.into();
         assert_eq!(
-            TransportError::PROTOCOL_VIOLATION.code,
+            transport::Error::PROTOCOL_VIOLATION.code,
             transport_error.code
         );
 
@@ -1033,7 +1032,7 @@ pub(crate) mod tests {
         //# close the connection with an error of type CONNECTION_ID_LIMIT_ERROR.
         transport_error = PeerIdRegistrationError::ExceededActiveConnectionIdLimit.into();
         assert_eq!(
-            TransportError::CONNECTION_ID_LIMIT_ERROR.code,
+            transport::Error::CONNECTION_ID_LIMIT_ERROR.code,
             transport_error.code
         );
 
@@ -1045,7 +1044,7 @@ pub(crate) mod tests {
         //# CONNECTION_ID_LIMIT_ERROR.
         transport_error = PeerIdRegistrationError::ExceededRetiredConnectionIdLimit.into();
         assert_eq!(
-            TransportError::CONNECTION_ID_LIMIT_ERROR.code,
+            transport::Error::CONNECTION_ID_LIMIT_ERROR.code,
             transport_error.code
         );
     }
