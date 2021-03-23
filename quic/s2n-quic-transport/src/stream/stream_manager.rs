@@ -9,6 +9,7 @@ use crate::{
     stream::{
         self,
         incoming_connection_flow_controller::IncomingConnectionFlowController,
+        local_controller::StreamOpenStatus,
         outgoing_connection_flow_controller::OutgoingConnectionFlowController,
         stream_container::{StreamContainer, StreamContainerIterationResult},
         stream_events::StreamEvents,
@@ -485,7 +486,7 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
     pub fn poll_open(
         &mut self,
         stream_type: StreamType,
-        _context: &Context,
+        context: &Context,
     ) -> Poll<Result<StreamId, connection::Error>> {
         // If StreamManager was closed, return the error
         if let Some(error) = self.inner.close_reason {
@@ -494,9 +495,14 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6
         //# Endpoints MUST NOT exceed the limit set by their peer.
-        self.inner
-            .local_stream_controller
-            .try_open_stream(stream_type)?;
+        if matches!(
+            self.inner
+                .local_stream_controller
+                .poll_open_stream(stream_type, context),
+            StreamOpenStatus::Blocked
+        ) {
+            return Poll::Pending;
+        }
 
         let local_endpoint_type = self.inner.local_endpoint_type;
 

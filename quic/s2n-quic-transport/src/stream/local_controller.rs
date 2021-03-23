@@ -1,10 +1,12 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use core::task::{Context, Waker};
 use s2n_quic_core::{
-    connection, frame::MaxStreams, stream::StreamType,
-    transport::parameters::InitialFlowControlLimits, varint::VarInt,
+    frame::MaxStreams, stream::StreamType, transport::parameters::InitialFlowControlLimits,
+    varint::VarInt,
 };
+use smallvec::SmallVec;
 
 #[derive(Debug)]
 pub struct LocalController {
@@ -27,18 +29,30 @@ impl LocalController {
         }
     }
 
-    pub fn try_open_stream(&mut self, stream_type: StreamType) -> Result<(), connection::Error> {
+    pub fn poll_open_stream(
+        &mut self,
+        stream_type: StreamType,
+        context: &Context,
+    ) -> StreamOpenStatus {
         match stream_type {
-            StreamType::Bidirectional => self.outgoing_bidi_controller.try_open_stream(),
-            StreamType::Unidirectional => self.outgoing_uni_controller.try_open_stream(),
+            StreamType::Bidirectional => self.outgoing_bidi_controller.poll_open_stream(context),
+            StreamType::Unidirectional => self.outgoing_uni_controller.poll_open_stream(context),
         }
     }
+}
+
+const WAKERS_INITIAL_CAPACITY: usize = 5;
+
+pub enum StreamOpenStatus {
+    Success,
+    Blocked,
 }
 
 #[derive(Debug)]
 struct Controller {
     maximum_streams: VarInt,
     available_streams: VarInt,
+    wakers: SmallVec<[Waker; WAKERS_INITIAL_CAPACITY]>,
 }
 
 impl Controller {
@@ -46,6 +60,7 @@ impl Controller {
         Self {
             maximum_streams: initial_maximum_streams,
             available_streams: initial_maximum_streams,
+            wakers: SmallVec::new(),
         }
     }
 
@@ -60,14 +75,21 @@ impl Controller {
         let increment = frame.maximum_streams - self.maximum_streams;
         self.maximum_streams = frame.maximum_streams;
         self.available_streams += increment;
+
+        // Wake all the wakers now that we have more credit to open more streams
+        self.wakers.iter().for_each(|waker| waker.wake_by_ref());
+        self.wakers.clear();
     }
 
-    fn try_open_stream(&mut self) -> Result<(), connection::Error> {
+    fn poll_open_stream(&mut self, context: &Context) -> StreamOpenStatus {
         if self.available_streams < VarInt::from_u32(1) {
-            return Err(connection::Error::StreamBlocked);
+            // Store a waker that can be woken when we get more credit
+            self.wakers.push(context.waker().clone());
+            return StreamOpenStatus::Blocked;
         }
 
         self.available_streams -= 1;
-        Ok(())
+        self.wakers.clear();
+        StreamOpenStatus::Success
     }
 }
