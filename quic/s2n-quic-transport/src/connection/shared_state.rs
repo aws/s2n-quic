@@ -15,8 +15,9 @@ use crate::{
 use bytes::Bytes;
 use core::task::{Context, Poll};
 use s2n_quic_core::{
-    application::ApplicationErrorCode,
+    application,
     stream::{ops, StreamId, StreamType},
+    transport,
 };
 use std::sync::{Mutex, MutexGuard};
 
@@ -165,7 +166,7 @@ impl<EndpointConfig: endpoint::Config> ConnectionApiProvider
         }
     }
 
-    fn close_connection(&self, error_code: ApplicationErrorCode) {
+    fn close_connection(&self, error: Option<application::Error>) {
         let mut shared_state = self.lock();
 
         let application_space = match shared_state.space_manager.application_mut() {
@@ -180,7 +181,16 @@ impl<EndpointConfig: endpoint::Config> ConnectionApiProvider
             return;
         }
 
-        stream_manager.close(error_code.into());
+        let error = if let Some(error) = error {
+            connection::Error::Application {
+                error,
+                initiator: endpoint::Location::Local,
+            }
+        } else {
+            transport::Error::APPLICATION_ERROR.into()
+        };
+
+        stream_manager.close(error);
 
         // Wake up the Connection so that it gets aware about the close request.
         // So far we only reset the Streams, but we didn't have the chance to change

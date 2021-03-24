@@ -1,0 +1,96 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
+//! Defines QUIC Application Error Codes
+
+use crate::varint::{VarInt, VarIntError};
+use core::{convert::TryFrom, ops};
+
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#20.2
+//# The management of application error codes is left to application
+//# protocols.
+
+/// Application Error Codes are 62-bit unsigned integer values which
+/// may be used by applications to exchange errors.
+#[derive(Copy, Clone, Eq, PartialEq)]
+pub struct Error(VarInt);
+
+impl core::fmt::Debug for Error {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "application::Error({})", self.0.as_u64())
+    }
+}
+
+impl Error {
+    /// An error code that can be used when the application cannot provide
+    /// a more meaningful code.
+    pub const UNKNOWN: Self = Self(VarInt::MAX);
+
+    /// Creates an `ApplicationErrorCode` from an unsigned integer.
+    ///
+    /// This will return the error code if the given value is inside the valid
+    /// range for error codes and return `Err` otherwise.
+    pub fn new(value: u64) -> Result<Self, VarIntError> {
+        Ok(Self(VarInt::new(value)?))
+    }
+}
+
+impl ops::Deref for Error {
+    type Target = VarInt;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl TryInto for Error {
+    fn application_error(&self) -> Option<Error> {
+        Some(*self)
+    }
+}
+
+impl From<VarInt> for Error {
+    fn from(value: VarInt) -> Self {
+        Self(value)
+    }
+}
+
+impl Into<VarInt> for Error {
+    fn into(self) -> VarInt {
+        self.0
+    }
+}
+
+impl Into<u64> for Error {
+    fn into(self) -> u64 {
+        self.0.into()
+    }
+}
+
+macro_rules! convert {
+    ($ty:ident) => {
+        impl From<$ty> for Error {
+            fn from(value: $ty) -> Self {
+                Self(VarInt::from(value))
+            }
+        }
+    };
+}
+
+convert!(u8);
+convert!(u16);
+convert!(u32);
+
+impl TryFrom<u64> for Error {
+    type Error = VarIntError;
+
+    fn try_from(value: u64) -> Result<Self, Self::Error> {
+        Ok(VarInt::try_from(value)?.into())
+    }
+}
+
+/// Conversion trait for errors that have an associated [`Error`]
+pub trait TryInto {
+    /// Returns the associated [`Error`], if any
+    fn application_error(&self) -> Option<Error>;
+}

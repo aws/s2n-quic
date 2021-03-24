@@ -26,14 +26,17 @@ use core::task::{Context, Poll, Waker};
 use futures_test::task::new_count_waker;
 use s2n_quic_core::{
     ack::Set as AckSet,
-    application::ApplicationErrorCode,
+    application::Error as ApplicationErrorCode,
     connection,
     frame::{
         stream::StreamRef, MaxData, MaxStreamData, ResetStream, StopSending, Stream as StreamFrame,
         StreamDataBlocked,
     },
     stream::{ops, StreamId, StreamType},
-    transport::parameters::{InitialFlowControlLimits, InitialStreamLimits},
+    transport::{
+        parameters::{InitialFlowControlLimits, InitialStreamLimits},
+        Error as TransportError,
+    },
     varint::VarInt,
 };
 
@@ -430,7 +433,7 @@ fn remote_streams_do_not_open_if_manager_is_closed() {
                 };
 
                 let mut manager = create_stream_manager(*local_ep_type);
-                manager.close(ApplicationErrorCode::UNKNOWN.into());
+                manager.close(TransportError::NO_ERROR.into());
 
                 assert_is_transport_error(
                     manager.on_reset_stream(&reset_frame),
@@ -502,10 +505,13 @@ fn returns_finalization_interest_after_last_stream_is_drained() {
     assert_eq!(2, manager.active_streams().len());
     assert!(manager.finalization_status().is_idle());
 
-    manager.close(ApplicationErrorCode::UNKNOWN.into());
-    assert!(manager.finalization_status().is_draining());
-
     let error = ApplicationErrorCode::new(0).unwrap();
+
+    manager.close(connection::Error::Application {
+        error,
+        initiator: endpoint::Location::Local,
+    });
+    assert!(manager.finalization_status().is_draining());
 
     // The first stream is immediately interested in finalization and should
     // therefore be collected
@@ -957,7 +963,9 @@ fn closing_stream_manager_without_error_returns_none() {
 
                 // Close the StreamManager
                 // This should wake up the accept call
-                manager.close(connection::Error::Closed);
+                manager.close(connection::Error::Closed {
+                    initiator: endpoint::Location::Local,
+                });
                 assert_eq!(accept_wake_counter, 1);
 
                 // Now the stream should return None
@@ -1360,8 +1368,10 @@ fn close_is_forwarded_to_all_streams() {
         stream.write_waker_to_return = Some(write_waker);
     });
 
-    let error_code: ApplicationErrorCode = VarInt::from_u32(1).into();
-    manager.close(error_code.into());
+    manager.close(connection::Error::Application {
+        error: ApplicationErrorCode::new(1).unwrap(),
+        initiator: endpoint::Location::Local,
+    });
     assert_eq!([stream_2, stream_4], *manager.active_streams());
     assert_eq!(read_wake_counter, 2);
     assert_eq!(write_wake_counter, 1);

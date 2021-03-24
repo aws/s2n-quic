@@ -6,9 +6,7 @@ use crate::{
     sync::data_sender::{self, DataSender, OutgoingDataFlowController},
     transmission,
 };
-use s2n_quic_core::{
-    ack, frame::crypto::CryptoRef, transport::error::TransportError, varint::VarInt,
-};
+use s2n_quic_core::{ack, frame::crypto::CryptoRef, transport, varint::VarInt};
 
 pub type TxCryptoStream = DataSender<CryptoFlowController, data_sender::writer::Crypto>;
 
@@ -59,7 +57,7 @@ impl CryptoStream {
         !self.is_finished && self.tx.available_buffer_space() > 0
     }
 
-    pub fn finish(&mut self) -> Result<(), TransportError> {
+    pub fn finish(&mut self) -> Result<(), transport::Error> {
         self.is_finished = true;
         self.tx.finish();
 
@@ -71,11 +69,11 @@ impl CryptoStream {
         if self.rx.is_empty() {
             Ok(())
         } else {
-            Err(TransportError::PROTOCOL_VIOLATION)
+            Err(transport::Error::PROTOCOL_VIOLATION)
         }
     }
 
-    pub fn on_crypto_frame(&mut self, frame: CryptoRef) -> Result<(), TransportError> {
+    pub fn on_crypto_frame(&mut self, frame: CryptoRef) -> Result<(), transport::Error> {
         //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.1.3
         //# *  If the packet is from a previously installed encryption level, it
         //# MUST NOT contain data that extends past the end of previously
@@ -84,7 +82,7 @@ impl CryptoStream {
         //# PROTOCOL_VIOLATION.
 
         if self.is_finished && frame.offset + frame.data.len() > self.rx.total_received_len() {
-            return Err(TransportError::PROTOCOL_VIOLATION);
+            return Err(transport::Error::PROTOCOL_VIOLATION);
         }
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.5
@@ -108,7 +106,7 @@ impl CryptoStream {
             //# If an endpoint does not expand its buffer, it MUST close
             //# the connection with a CRYPTO_BUFFER_EXCEEDED error code.
 
-            TransportError::CRYPTO_BUFFER_EXCEEDED
+            transport::Error::CRYPTO_BUFFER_EXCEEDED
         })?;
 
         Ok(())

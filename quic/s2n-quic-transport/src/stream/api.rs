@@ -12,7 +12,7 @@ use core::{
     task::{Context, Poll},
 };
 pub use s2n_quic_core::{
-    application::ApplicationErrorCode,
+    application,
     stream::{ops, StreamError, StreamId, StreamType},
 };
 
@@ -70,7 +70,7 @@ impl Drop for State {
                 // Send a STOP_SENDING message on the receiving half of the `Stream`,
                 // for the case the application did not consume all data.
                 // If that already happened, this will be a noop.
-                request.stop_sending(ApplicationErrorCode::UNKNOWN);
+                request.stop_sending(application::Error::UNKNOWN);
             }
 
             let _ = request.poll(None);
@@ -201,7 +201,7 @@ macro_rules! tx_stream_apis {
         /// Initiates a `RESET` on the stream.
         ///
         /// This will close the stream and notify the peer of the provided `error_code`.
-        pub fn reset(&mut self, error_code: ApplicationErrorCode) -> Result<(), StreamError> {
+        pub fn reset(&mut self, error_code: application::Error) -> Result<(), StreamError> {
             self.tx_request()?.reset(error_code).poll(None)?;
             Ok(())
         }
@@ -279,10 +279,7 @@ macro_rules! rx_stream_apis {
         ///
         /// If the `Stream` had been previously reset by the peer or if all data had
         /// already been received the API call will not trigger any action.
-        pub fn stop_sending(
-            &mut self,
-            error_code: ApplicationErrorCode,
-        ) -> Result<(), StreamError> {
+        pub fn stop_sending(&mut self, error_code: application::Error) -> Result<(), StreamError> {
             self.rx_request()?.stop_sending(error_code).poll(None)?;
             Ok(())
         }
@@ -457,7 +454,7 @@ macro_rules! tx_request_apis {
             self
         }
 
-        pub fn reset(&mut self, error_code: ApplicationErrorCode) -> &mut Self {
+        pub fn reset(&mut self, error_code: application::Error) -> &mut Self {
             self.request.reset(error_code);
             self
         }
@@ -491,7 +488,7 @@ macro_rules! rx_request_apis {
             self
         }
 
-        pub fn stop_sending(&mut self, error_code: ApplicationErrorCode) -> &mut Self {
+        pub fn stop_sending(&mut self, error_code: application::Error) -> &mut Self {
             self.request.stop_sending(error_code);
             self
         }

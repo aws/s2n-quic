@@ -17,7 +17,7 @@ use bytes::Bytes;
 use core::task::{Context, Poll, Waker};
 use futures_test::task::{new_count_waker, AwokenCount};
 use s2n_quic_core::{
-    application::ApplicationErrorCode,
+    application::Error as ApplicationErrorCode,
     endpoint,
     frame::{Frame, ResetStream},
     packet::number::{PacketNumber, PacketNumberSpace},

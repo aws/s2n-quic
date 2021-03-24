@@ -11,7 +11,7 @@ use crate::{
         KeyPhase,
     },
     time::{Timer, Timestamp},
-    transport::error::TransportError,
+    transport,
 };
 use s2n_codec::EncoderBuffer;
 
@@ -180,8 +180,8 @@ impl<K: OneRttKey> KeySet<K> {
                 //# close the connection with a connection error of type
                 //# AEAD_LIMIT_REACHED and not process any more packets.
                 if self.decryption_error_count() > self.aead_integrity_limit {
-                    return Err(ProcessingError::TransportError(
-                        TransportError::AEAD_LIMIT_REACHED,
+                    return Err(ProcessingError::ConnectionError(
+                        transport::Error::AEAD_LIMIT_REACHED.into(),
                     ));
                 }
                 Err(ProcessingError::CryptoError(e))
@@ -433,16 +433,18 @@ mod tests {
             .unwrap();
 
         assert_eq!(keyset.decryption_error_count(), 0);
-        assert!(matches!(
-            keyset.decrypt_packet(
-                encrypted_packet,
-                PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u8(0)),
-                clock.get_time()
-            ),
-            Err(ProcessingError::TransportError(
-                TransportError::AEAD_LIMIT_REACHED
+        assert_eq!(
+            keyset
+                .decrypt_packet(
+                    encrypted_packet,
+                    PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u8(0)),
+                    clock.get_time()
+                )
+                .err(),
+            Some(ProcessingError::ConnectionError(
+                (transport::Error::AEAD_LIMIT_REACHED).into()
             ))
-        ));
+        );
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6

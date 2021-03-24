@@ -6,7 +6,7 @@ use s2n_quic_core::{
     inet::DatagramInfo,
     packet::number::{PacketNumber, PacketNumberSpace},
     time::Timestamp,
-    transport::error::TransportError,
+    transport,
     varint::VarInt,
 };
 
@@ -31,7 +31,7 @@ impl TxPacketNumbers {
         &mut self,
         datagram: &DatagramInfo,
         ack_set: &A,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), transport::Error> {
         let largest = ack_set.largest();
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.1
@@ -40,7 +40,7 @@ impl TxPacketNumbers {
         //# is able to detect the condition.
 
         if largest >= self.next {
-            return Err(TransportError::PROTOCOL_VIOLATION
+            return Err(transport::Error::PROTOCOL_VIOLATION
                 .with_reason("received an ACK for a packet that was not sent"));
         }
 

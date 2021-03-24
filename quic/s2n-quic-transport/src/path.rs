@@ -8,8 +8,7 @@ use s2n_quic_core::{
     connection,
     inet::{DatagramInfo, SocketAddress},
     recovery::{congestion_controller, RTTEstimator},
-    stateless_reset,
-    transport::error::TransportError,
+    stateless_reset, transport,
 };
 use smallvec::SmallVec;
 
@@ -98,7 +97,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         limits: &connection::Limits,
         is_handshake_confirmed: bool,
         congestion_controller_endpoint: &mut CCE,
-    ) -> Result<(Id, bool), TransportError> {
+    ) -> Result<(Id, bool), transport::Error> {
         if let Some((id, path)) = self.path_mut(&datagram.remote_address) {
             let unblocked = path.on_bytes_received(datagram.payload_len);
             return Ok((id, unblocked));
@@ -125,14 +124,14 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         //# connection migration before the handshake is confirmed, as defined
         //# in section 4.1.2 of [QUIC-TLS].
         if !is_handshake_confirmed {
-            return Err(TransportError::PROTOCOL_VIOLATION);
+            return Err(transport::Error::PROTOCOL_VIOLATION);
         }
 
         // Since we are not currently supporting connection migration (whether it was deliberate or
         // not), we will error our at this point to avoid re-using a peer connection ID.
         // TODO: This would be better handled as a stateless reset so the peer can terminate the
         //       connection immediately. https://github.com/awslabs/s2n-quic/issues/317
-        return Err(TransportError::INTERNAL_ERROR);
+        return Err(transport::Error::INTERNAL_ERROR);
 
         let path_info = congestion_controller::PathInfo::new(&datagram.remote_address);
         // TODO set alpn if available
@@ -248,7 +247,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         sequence_number: u32,
         retire_prior_to: u32,
         stateless_reset_token: &stateless_reset::Token,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), transport::Error> {
         // Register the new connection ID
         self.peer_id_registry.on_new_connection_id(
             connection_id,
@@ -433,7 +432,7 @@ mod tests {
         };
 
         assert_eq!(
-            Err(TransportError::INTERNAL_ERROR),
+            Err(transport::Error::INTERNAL_ERROR),
             manager.on_datagram_received(
                 &datagram,
                 &connection::Limits::default(),

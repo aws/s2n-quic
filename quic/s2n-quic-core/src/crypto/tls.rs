@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{crypto::CryptoSuite, transport::error::TransportError};
+use crate::{crypto::CryptoSuite, transport};
 pub use bytes::{Bytes, BytesMut};
 use core::fmt::Debug;
 use s2n_codec::EncoderValue;
@@ -32,23 +32,23 @@ pub trait Context<Crypto: CryptoSuite> {
         &mut self,
         key: Crypto::HandshakeKey,
         header_key: Crypto::HandshakeHeaderKey,
-    ) -> Result<(), TransportError>;
+    ) -> Result<(), transport::Error>;
 
     fn on_zero_rtt_keys(
         &mut self,
         key: Crypto::ZeroRttKey,
         header_key: Crypto::ZeroRttHeaderKey,
         application_parameters: ApplicationParameters,
-    ) -> Result<(), TransportError>;
+    ) -> Result<(), transport::Error>;
 
     fn on_one_rtt_keys(
         &mut self,
         key: Crypto::OneRttKey,
         header_key: Crypto::OneRttHeaderKey,
         application_parameters: ApplicationParameters,
-    ) -> Result<(), TransportError>;
+    ) -> Result<(), transport::Error>;
 
-    fn on_handshake_done(&mut self) -> Result<(), TransportError>;
+    fn on_handshake_done(&mut self) -> Result<(), transport::Error>;
 
     /// Receives data from the initial packet space
     ///
@@ -97,5 +97,5 @@ pub trait Endpoint: 'static + Sized {
 }
 
 pub trait Session: CryptoSuite + Sized + Send + Debug {
-    fn poll<C: Context<Self>>(&mut self, context: &mut C) -> Result<(), TransportError>;
+    fn poll<C: Context<Self>>(&mut self, context: &mut C) -> Result<(), transport::Error>;
 }

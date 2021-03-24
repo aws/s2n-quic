@@ -104,7 +104,7 @@ macro_rules! impl_receive_stream_api {
         /// ```
         pub fn stop_sending(
             &mut self,
-            error_code: $crate::ApplicationErrorCode,
+            error_code: $crate::application::Error,
         ) -> $crate::stream::Result<()> {
             macro_rules! $dispatch {
                 () => {
