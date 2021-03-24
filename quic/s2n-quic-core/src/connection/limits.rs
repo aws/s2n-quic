@@ -152,7 +152,9 @@ impl Limits {
     pub const fn stream_limits(&self) -> stream::Limits {
         stream::Limits {
             max_send_buffer_size: self.max_send_buffer_size,
-            max_open_local_unidirectional_streams: self.max_open_local_unidirectional_streams.as_varint()
+            max_open_local_unidirectional_streams: self
+                .max_open_local_unidirectional_streams
+                .as_varint(),
         }
     }
 }
