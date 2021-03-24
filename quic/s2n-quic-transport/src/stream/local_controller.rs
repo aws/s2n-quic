@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use core::task::{Context, Waker};
+use core::task::{Context, Poll, Waker};
 use s2n_quic_core::{
     frame::MaxStreams, stream::StreamType, transport::parameters::InitialFlowControlLimits,
     varint::VarInt,
@@ -29,24 +29,20 @@ impl LocalController {
         }
     }
 
-    pub fn poll_open_stream(
-        &mut self,
-        stream_type: StreamType,
-        context: &Context,
-    ) -> StreamOpenStatus {
+    pub fn poll_open_stream(&mut self, stream_type: StreamType, context: &Context) -> Poll<()> {
         match stream_type {
             StreamType::Bidirectional => self.outgoing_bidi_controller.poll_open_stream(context),
             StreamType::Unidirectional => self.outgoing_uni_controller.poll_open_stream(context),
         }
     }
+
+    pub fn close(&mut self) {
+        self.outgoing_bidi_controller.wake_all();
+        self.outgoing_uni_controller.wake_all();
+    }
 }
 
 const WAKERS_INITIAL_CAPACITY: usize = 5;
-
-pub enum StreamOpenStatus {
-    Success,
-    Blocked,
-}
 
 #[derive(Debug)]
 struct Controller {
@@ -76,20 +72,31 @@ impl Controller {
         self.maximum_streams = frame.maximum_streams;
         self.available_streams += increment;
 
-        // Wake all the wakers now that we have more credit to open more streams
-        self.wakers.iter().for_each(|waker| waker.wake_by_ref());
-        self.wakers.clear();
+        let unblocked_wakers_count = self
+            .wakers
+            .len()
+            .min(self.available_streams.as_u64() as usize);
+
+        // Wake the wakers that have been unblocked by this additional stream opening credit
+        self.wakers
+            .drain(..unblocked_wakers_count)
+            .for_each(|waker| waker.wake());
     }
 
-    fn poll_open_stream(&mut self, context: &Context) -> StreamOpenStatus {
+    fn poll_open_stream(&mut self, context: &Context) -> Poll<()> {
         if self.available_streams < VarInt::from_u32(1) {
             // Store a waker that can be woken when we get more credit
             self.wakers.push(context.waker().clone());
-            return StreamOpenStatus::Blocked;
+            return Poll::Pending;
         }
 
         self.available_streams -= 1;
-        self.wakers.clear();
-        StreamOpenStatus::Success
+        Poll::Ready(())
+    }
+
+    fn wake_all(&mut self) {
+        self.wakers
+            .drain(..self.wakers.len())
+            .for_each(|waker| waker.wake())
     }
 }

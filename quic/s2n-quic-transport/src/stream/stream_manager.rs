@@ -9,7 +9,6 @@ use crate::{
     stream::{
         self,
         incoming_connection_flow_controller::IncomingConnectionFlowController,
-        local_controller::StreamOpenStatus,
         outgoing_connection_flow_controller::OutgoingConnectionFlowController,
         stream_container::{StreamContainer, StreamContainerIterationResult},
         stream_events::StreamEvents,
@@ -359,6 +358,8 @@ impl<S: StreamTrait> StreamManagerState<S> {
         {
             waker.wake();
         }
+
+        self.local_stream_controller.close();
     }
 }
 
@@ -495,12 +496,12 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6
         //# Endpoints MUST NOT exceed the limit set by their peer.
-        if matches!(
-            self.inner
-                .local_stream_controller
-                .poll_open_stream(stream_type, context),
-            StreamOpenStatus::Blocked
-        ) {
+        if self
+            .inner
+            .local_stream_controller
+            .poll_open_stream(stream_type, context)
+            .is_pending()
+        {
             return Poll::Pending;
         }
 
