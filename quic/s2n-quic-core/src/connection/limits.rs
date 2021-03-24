@@ -36,7 +36,8 @@ pub struct Limits {
     pub(crate) bidirectional_remote_data_window: InitialMaxStreamDataBidiRemote,
     pub(crate) unidirectional_data_window: InitialMaxStreamDataUni,
     pub(crate) max_open_bidirectional_streams: InitialMaxStreamsBidi,
-    pub(crate) max_open_unidirectional_streams: InitialMaxStreamsUni,
+    pub(crate) max_open_local_unidirectional_streams: InitialMaxStreamsUni,
+    pub(crate) max_open_remote_unidirectional_streams: InitialMaxStreamsUni,
     pub(crate) max_ack_delay: MaxAckDelay,
     pub(crate) ack_delay_exponent: AckDelayExponent,
     pub(crate) max_active_connection_ids: ActiveConnectionIdLimit,
@@ -69,7 +70,8 @@ impl Limits {
             bidirectional_remote_data_window: InitialMaxStreamDataBidiRemote::RECOMMENDED,
             unidirectional_data_window: InitialMaxStreamDataUni::RECOMMENDED,
             max_open_bidirectional_streams: InitialMaxStreamsBidi::RECOMMENDED,
-            max_open_unidirectional_streams: InitialMaxStreamsUni::RECOMMENDED,
+            max_open_local_unidirectional_streams: InitialMaxStreamsUni::RECOMMENDED,
+            max_open_remote_unidirectional_streams: InitialMaxStreamsUni::RECOMMENDED,
             max_ack_delay: MaxAckDelay::RECOMMENDED,
             ack_delay_exponent: AckDelayExponent::RECOMMENDED,
             max_active_connection_ids: ActiveConnectionIdLimit::RECOMMENDED,
@@ -102,8 +104,13 @@ impl Limits {
         u64
     );
     setter!(
-        with_max_open_unidirectional_streams,
-        max_open_unidirectional_streams,
+        with_max_open_local_unidirectional_streams,
+        max_open_local_unidirectional_streams,
+        u64
+    );
+    setter!(
+        with_max_open_remote_unidirectional_streams,
+        max_open_remote_unidirectional_streams,
         u64
     );
     setter!(with_max_ack_delay, max_ack_delay, Duration);
@@ -130,7 +137,7 @@ impl Limits {
             stream_limits: self.initial_stream_limits(),
             max_data: self.data_window.as_varint(),
             max_streams_bidi: self.max_open_bidirectional_streams.as_varint(),
-            max_streams_uni: self.max_open_unidirectional_streams.as_varint(),
+            max_streams_uni: self.max_open_remote_unidirectional_streams.as_varint(),
         }
     }
 
@@ -145,6 +152,7 @@ impl Limits {
     pub const fn stream_limits(&self) -> stream::Limits {
         stream::Limits {
             max_send_buffer_size: self.max_send_buffer_size,
+            max_open_local_unidirectional_streams: self.max_open_local_unidirectional_streams.as_varint()
         }
     }
 }
