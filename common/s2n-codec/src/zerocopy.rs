@@ -226,22 +226,22 @@ fn zerocopy_struct_test() {
 
     #[derive(Copy, Clone, Debug, PartialEq, PartialOrd, FromBytes, AsBytes, Unaligned)]
     #[repr(C)]
-    struct UDPHeader {
+    struct UdpHeader {
         source_port: U16,
         destination_port: U16,
         payload_len: U16,
         checksum: U16,
     }
 
-    zerocopy_value_codec!(UDPHeader);
+    zerocopy_value_codec!(UdpHeader);
 
     let buffer = vec![0, 1, 0, 2, 0, 3, 0, 4];
     let decoder = DecoderBuffer::new(&buffer);
     let (mut header, _) = decoder.decode().unwrap();
 
-    ensure_codec_round_trip_value!(UDPHeader, header).unwrap();
-    ensure_codec_round_trip_value!(&UDPHeader, &header).unwrap();
-    ensure_codec_round_trip_value_mut!(&mut UDPHeader, &mut header).unwrap();
+    ensure_codec_round_trip_value!(UdpHeader, header).unwrap();
+    ensure_codec_round_trip_value!(&UdpHeader, &header).unwrap();
+    ensure_codec_round_trip_value_mut!(&mut UdpHeader, &mut header).unwrap();
 
     assert_eq!(header.source_port, 1u16);
     assert_eq!(header.destination_port, 2u16);

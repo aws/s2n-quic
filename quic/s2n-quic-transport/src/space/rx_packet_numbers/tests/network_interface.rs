@@ -47,8 +47,8 @@ impl NetworkInterface {
     }
 }
 
-impl Into<NetworkInterface> for Application {
-    fn into(self) -> NetworkInterface {
-        NetworkInterface::new(self)
+impl From<Application> for NetworkInterface {
+    fn from(value: Application) -> Self {
+        NetworkInterface::new(value)
     }
 }
