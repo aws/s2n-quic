@@ -5,6 +5,7 @@ pub mod context;
 use context::Context;
 
 pub mod application;
+pub mod connection_close;
 pub mod early;
 pub mod interest;
 
@@ -15,8 +16,8 @@ pub use interest::Interest;
 pub use s2n_quic_core::transmission::*;
 
 use crate::{
-    endpoint, recovery,
-    space::{rx_packet_numbers::AckManager, TxPacketNumbers},
+    endpoint,
+    space::TxPacketNumbers,
     transmission::{self, interest::Provider as _},
 };
 use core::{marker::PhantomData, ops::RangeInclusive};
@@ -38,12 +39,10 @@ pub trait Payload: interest::Provider {
 }
 
 pub struct Transmission<'a, Config: endpoint::Config, P: Payload> {
-    pub ack_manager: &'a mut AckManager,
     pub config: PhantomData<Config>,
     pub outcome: &'a mut transmission::Outcome,
     pub payload: P,
     pub packet_number: PacketNumber,
-    pub recovery_manager: &'a mut recovery::Manager,
     pub timestamp: Timestamp,
     pub transmission_constraint: transmission::Constraint,
     pub tx_packet_numbers: &'a mut TxPacketNumbers,
@@ -81,21 +80,7 @@ impl<'a, Config: endpoint::Config, P: Payload> PacketPayloadEncoder
             config: Default::default(),
         };
 
-        let did_send_ack = self.ack_manager.on_transmit(&mut context);
-
-        // Payloads can only transmit and retransmit
-        if context.transmission_constraint().can_transmit()
-            || context.transmission_constraint().can_retransmit()
-        {
-            self.payload.on_transmit(&mut context);
-        }
-
-        self.recovery_manager.on_transmit(&mut context);
-
-        if did_send_ack {
-            // inform the ack manager the packet is populated
-            self.ack_manager.on_transmit_complete(&mut context);
-        }
+        self.payload.on_transmit(&mut context);
 
         if !context.buffer.is_empty() {
             // Add padding up to minimum_len
@@ -125,9 +110,6 @@ impl<'a, Config: endpoint::Config, P: Payload> transmission::interest::Provider
     for Transmission<'a, Config, P>
 {
     fn transmission_interest(&self) -> transmission::Interest {
-        transmission::Interest::default()
-            + self.ack_manager.transmission_interest()
-            + self.recovery_manager.transmission_interest()
-            + self.payload.transmission_interest()
+        self.payload.transmission_interest()
     }
 }

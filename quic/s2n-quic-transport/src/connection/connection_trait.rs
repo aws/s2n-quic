@@ -48,8 +48,9 @@ pub trait ConnectionTrait: Sized {
     /// https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10
     fn close(
         &mut self,
-        shared_state: &mut SharedConnectionState<Self::Config>,
+        shared_state: Option<&mut SharedConnectionState<Self::Config>>,
         error: connection::Error,
+        packet_buffer: &mut endpoint::PacketBuffer,
         timestamp: Timestamp,
     );
 
@@ -73,7 +74,7 @@ pub trait ConnectionTrait: Sized {
     /// Queries the connection for outgoing packets
     fn on_transmit<Tx: tx::Queue>(
         &mut self,
-        shared_state: &mut SharedConnectionState<Self::Config>,
+        shared_state: Option<&mut SharedConnectionState<Self::Config>>,
         context: &mut Tx,
         timestamp: Timestamp,
     ) -> Result<(), ConnectionOnTransmitError>;
@@ -83,7 +84,7 @@ pub trait ConnectionTrait: Sized {
     /// `timestamp` passes the current time.
     fn on_timeout(
         &mut self,
-        shared_state: &mut SharedConnectionState<Self::Config>,
+        shared_state: Option<&mut SharedConnectionState<Self::Config>>,
         connection_id_mapper: &mut ConnectionIdMapper,
         timestamp: Timestamp,
     ) -> Result<(), connection::Error>;
@@ -91,12 +92,15 @@ pub trait ConnectionTrait: Sized {
     /// Updates the per-connection timer based on individual component timers.
     /// This method is used in order to update the connection timer only once
     /// per interaction with the connection and thereby to batch timer updates.
-    fn update_connection_timer(&mut self, shared_state: &mut SharedConnectionState<Self::Config>);
+    fn update_connection_timer(
+        &mut self,
+        shared_state: Option<&mut SharedConnectionState<Self::Config>>,
+    );
 
     /// Handles all external wakeups on the [`Connection`].
     fn on_wakeup(
         &mut self,
-        shared_state: &mut SharedConnectionState<Self::Config>,
+        shared_state: Option<&mut SharedConnectionState<Self::Config>>,
         timestamp: Timestamp,
     ) -> Result<(), connection::Error>;
 
@@ -168,13 +172,16 @@ pub trait ConnectionTrait: Sized {
     /// Notifies a connection it has received a datagram from a peer
     fn on_datagram_received(
         &mut self,
-        shared_state: &mut SharedConnectionState<Self::Config>,
+        shared_state: Option<&mut SharedConnectionState<Self::Config>>,
         datagram: &DatagramInfo,
         congestion_controller_endpoint: &mut <Self::Config as endpoint::Config>::CongestionControllerEndpoint,
     ) -> Result<path::Id, connection::Error>;
 
     /// Returns the Connections interests
-    fn interests(&self, shared_state: &SharedConnectionState<Self::Config>) -> ConnectionInterests;
+    fn interests(
+        &self,
+        shared_state: Option<&SharedConnectionState<Self::Config>>,
+    ) -> ConnectionInterests;
 
     /// Returns the QUIC version selected for the current connection
     fn quic_version(&self) -> u32;

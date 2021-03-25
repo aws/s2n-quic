@@ -88,13 +88,23 @@ pub fn as_frame(error: Error) -> Option<ConnectionClose<'static>> {
             frame_type: None,
             reason: None,
         }),
+        // hide any internal errors as generic PROTOCOL_VIOLATION errors
+        Error::Transport { error, .. }
+            if error.code == transport::Error::INTERNAL_ERROR.code && !cfg!(debug_assertions) =>
+        {
+            Some(ConnectionClose {
+                error_code: *transport::Error::PROTOCOL_VIOLATION.code,
+                frame_type: error.frame_type,
+                reason: None,
+            })
+        }
         Error::Transport { error, .. } => Some(ConnectionClose {
             error_code: *error.code,
             frame_type: error.frame_type,
-            reason: if error.reason.is_empty() {
-                None
+            reason: if cfg!(debug_assertions) {
+                Some(error.reason.as_bytes())
             } else {
-                Some(error.reason.as_ref())
+                None
             },
         }),
         Error::Application { error, .. } => Some(ConnectionClose {
@@ -111,8 +121,13 @@ pub fn as_frame(error: Error) -> Option<ConnectionClose<'static>> {
             frame_type: Some(Default::default()),
             reason: None,
         }),
-        Error::Unspecified => Some(ConnectionClose {
+        Error::Unspecified if cfg!(debug_assertions) => Some(ConnectionClose {
             error_code: *transport::Error::INTERNAL_ERROR.code,
+            frame_type: Some(Default::default()),
+            reason: Some(b"unspecified error occurred"),
+        }),
+        Error::Unspecified => Some(ConnectionClose {
+            error_code: *transport::Error::PROTOCOL_VIOLATION.code,
             frame_type: Some(Default::default()),
             reason: None,
         }),

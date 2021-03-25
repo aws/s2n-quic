@@ -180,9 +180,25 @@ impl<CC: CongestionController> Path<CC> {
         self.clamp_mtu(mtu) < mtu
     }
 
+    /// Returns the current PTO period
+    pub fn pto_period(
+        &self,
+        space: crate::packet::number::PacketNumberSpace,
+    ) -> core::time::Duration {
+        self.rtt_estimator.pto_period(self.pto_backoff, space)
+    }
+
     /// Resets the PTO backoff to the initial value
     pub fn reset_pto_backoff(&mut self) {
         self.pto_backoff = INITIAL_PTO_BACKOFF;
+    }
+
+    /// Marks the path as closing
+    pub fn on_closing(&mut self) {
+        self.state = State::Pending {
+            tx_bytes: 0,
+            rx_bytes: 0,
+        };
     }
 }
 

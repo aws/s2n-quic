@@ -145,18 +145,18 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         let destination_connection_id = context.path().peer_connection_id;
 
         let payload = transmission::Transmission {
-            ack_manager: &mut self.ack_manager,
             config: <PhantomData<Config>>::default(),
             outcome: &mut outcome,
             packet_number,
             payload: transmission::application::Payload {
+                ack_manager: &mut self.ack_manager,
                 handshake_status,
                 ping: &mut self.ping,
                 stream_manager: &mut self.stream_manager,
                 local_id_registry: context.local_id_registry,
                 path_manager: context.path_manager,
+                recovery_manager: &mut self.recovery_manager,
             },
-            recovery_manager: &mut self.recovery_manager,
             timestamp: context.timestamp,
             transmission_constraint,
             tx_packet_numbers: &mut self.tx_packet_numbers,
@@ -196,6 +196,57 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             context.timestamp,
             &mut recovery_context,
         );
+
+        Ok(buffer)
+    }
+
+    pub fn on_transmit_close<'a>(
+        &mut self,
+        context: &mut ConnectionTransmissionContext<Config>,
+        connection_close: &ConnectionClose,
+        buffer: EncoderBuffer<'a>,
+    ) -> Result<EncoderBuffer<'a>, PacketEncodingError<'a>> {
+        let packet_number = self.tx_packet_numbers.next();
+
+        let packet_number_encoder = self.packet_number_encoder();
+
+        let mut outcome = transmission::Outcome::default();
+        let destination_connection_id = context.path().peer_connection_id;
+
+        let payload = transmission::Transmission {
+            config: <PhantomData<Config>>::default(),
+            outcome: &mut outcome,
+            packet_number,
+            payload: transmission::connection_close::Payload {
+                connection_close,
+                packet_number_space: PacketNumberSpace::Handshake,
+            },
+            timestamp: context.timestamp,
+            transmission_constraint: transmission::Constraint::None,
+            tx_packet_numbers: &mut self.tx_packet_numbers,
+        };
+
+        let spin_bit = self.spin_bit;
+        let min_packet_len = context.min_packet_len;
+        let header_key = &self.header_key;
+        let (_protected_packet, buffer) =
+            self.key_set
+                .encrypt_packet(buffer, |buffer, key, key_phase| {
+                    let packet = Short {
+                        destination_connection_id: destination_connection_id.as_ref(),
+                        spin_bit,
+                        key_phase,
+                        packet_number,
+                        payload,
+                    };
+                    packet.encode_packet(
+                        key,
+                        header_key,
+                        packet_number_encoder,
+                        min_packet_len,
+                        buffer,
+                    )
+                })?;
 
         Ok(buffer)
     }

@@ -9,6 +9,9 @@ pub struct ConnectionInterests {
     /// Is `true` if the `Connection` has entered it's final state and
     /// can therefore be removed from the `Connection` map.
     pub finalization: bool,
+    /// Is `true` if the `Connection` has entered the closing state and
+    /// shared state should be freed
+    pub closing: bool,
     /// Is `true` if a `Connection` completed the handshake and should be transferred
     /// to the application via an accept call.
     pub accept: bool,
@@ -33,6 +36,7 @@ impl ConnectionInterests {
     pub fn merge(self, other: ConnectionInterests) -> ConnectionInterests {
         ConnectionInterests {
             finalization: self.finalization && other.finalization,
+            closing: self.closing && other.closing,
             accept: self.accept || other.accept,
             transmission: self.transmission || other.transmission,
             new_connection_id: self.new_connection_id || other.new_connection_id,
@@ -67,6 +71,7 @@ mod tests {
             transmission: false,
             accept: true,
             finalization: true,
+            closing: true,
             new_connection_id: false,
         };
 
@@ -74,6 +79,7 @@ mod tests {
             transmission: true,
             accept: false,
             finalization: false,
+            closing: false,
             new_connection_id: true,
         };
 
@@ -81,6 +87,7 @@ mod tests {
             transmission: false,
             accept: false,
             finalization: true,
+            closing: true,
             new_connection_id: false,
         };
 
@@ -89,6 +96,7 @@ mod tests {
                 transmission: true,
                 accept: true,
                 finalization: false,
+                closing: false,
                 new_connection_id: true,
             },
             a + b
@@ -99,6 +107,7 @@ mod tests {
                 transmission: false,
                 accept: true,
                 finalization: true,
+                closing: true,
                 new_connection_id: false,
             },
             a + c
@@ -109,6 +118,7 @@ mod tests {
                 transmission: true,
                 accept: false,
                 finalization: false,
+                closing: false,
                 new_connection_id: true,
             },
             b + c

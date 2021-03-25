@@ -236,10 +236,8 @@ impl Manager {
         if self.space.is_application_data() && !is_handshake_confirmed {
             self.pto.cancel();
         } else {
-            self.pto.update(
-                pto_base_timestamp,
-                path.rtt_estimator.pto_period(path.pto_backoff, self.space),
-            );
+            self.pto
+                .update(pto_base_timestamp, path.pto_period(self.space));
         }
     }
 
