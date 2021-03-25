@@ -1,10 +1,11 @@
 ---
 source: quic/s2n-quic-core/src/frame/mod.rs
-expression: frames
+expression: values
+
 ---
 [
-    NewConnectionID(
-        NewConnectionID {
+    NewConnectionId(
+        NewConnectionId {
             sequence_number: VarInt(
                 2,
             ),

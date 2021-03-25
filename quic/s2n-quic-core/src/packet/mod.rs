@@ -35,7 +35,7 @@ use initial::ProtectedInitial;
 use retry::ProtectedRetry;
 use short::ProtectedShort;
 use version_negotiation::ProtectedVersionNegotiation;
-use zero_rtt::ProtectedZeroRTT;
+use zero_rtt::ProtectedZeroRtt;
 
 // === API ===
 
@@ -46,7 +46,7 @@ pub enum ProtectedPacket<'a> {
     Short(ProtectedShort<'a>),
     VersionNegotiation(ProtectedVersionNegotiation<'a>),
     Initial(ProtectedInitial<'a>),
-    ZeroRTT(ProtectedZeroRTT<'a>),
+    ZeroRtt(ProtectedZeroRtt<'a>),
     Handshake(ProtectedHandshake<'a>),
     Retry(ProtectedRetry<'a>),
 }
@@ -66,7 +66,7 @@ impl<'a> ProtectedPacket<'a> {
             ProtectedPacket::Short(packet) => packet.destination_connection_id(),
             ProtectedPacket::VersionNegotiation(packet) => packet.destination_connection_id(),
             ProtectedPacket::Initial(packet) => packet.destination_connection_id(),
-            ProtectedPacket::ZeroRTT(packet) => packet.destination_connection_id(),
+            ProtectedPacket::ZeroRtt(packet) => packet.destination_connection_id(),
             ProtectedPacket::Handshake(packet) => packet.destination_connection_id(),
             ProtectedPacket::Retry(packet) => packet.destination_connection_id(),
         }
@@ -77,7 +77,7 @@ impl<'a> ProtectedPacket<'a> {
             ProtectedPacket::Short(_) => None,
             ProtectedPacket::VersionNegotiation(_) => None,
             ProtectedPacket::Initial(packet) => Some(packet.version),
-            ProtectedPacket::ZeroRTT(packet) => Some(packet.version),
+            ProtectedPacket::ZeroRtt(packet) => Some(packet.version),
             ProtectedPacket::Handshake(packet) => Some(packet.version),
             ProtectedPacket::Retry(packet) => Some(packet.version),
         }
@@ -89,7 +89,7 @@ pub enum CleartextPacket<'a> {
     Short(short::CleartextShort<'a>),
     VersionNegotiation(version_negotiation::CleartextVersionNegotiation<'a>),
     Initial(initial::CleartextInitial<'a>),
-    ZeroRTT(zero_rtt::CleartextZeroRTT<'a>),
+    ZeroRtt(zero_rtt::CleartextZeroRtt<'a>),
     Handshake(handshake::CleartextHandshake<'a>),
     Retry(retry::CleartextRetry<'a>),
 }
@@ -123,9 +123,9 @@ impl<'a> PacketDecoder<'a> for BasicPacketDecoder {
 
     fn handle_zero_rtt_packet(
         &mut self,
-        packet: ProtectedZeroRTT<'a>,
+        packet: ProtectedZeroRtt<'a>,
     ) -> Result<Self::Output, DecoderError> {
-        Ok(ProtectedPacket::ZeroRTT(packet))
+        Ok(ProtectedPacket::ZeroRtt(packet))
     }
 
     fn handle_handshake_packet(
@@ -164,7 +164,7 @@ pub trait PacketDecoder<'a> {
 
     fn handle_zero_rtt_packet(
         &mut self,
-        packet: ProtectedZeroRTT<'a>,
+        packet: ProtectedZeroRtt<'a>,
     ) -> Result<Self::Output, Self::Error>;
 
     fn handle_handshake_packet(
@@ -228,7 +228,7 @@ pub trait PacketDecoder<'a> {
                 version_negotiation!(version)
             }
             initial_tag!() => long_packet!(ProtectedInitial, handle_initial_packet),
-            zero_rtt_tag!() => long_packet!(ProtectedZeroRTT, handle_zero_rtt_packet),
+            zero_rtt_tag!() => long_packet!(ProtectedZeroRtt, handle_zero_rtt_packet),
             handshake_tag!() => long_packet!(ProtectedHandshake, handle_handshake_packet),
             retry_tag!() => long_packet!(ProtectedRetry, handle_retry_packet),
             _ => Err(DecoderError::InvariantViolation("invalid packet").into()),

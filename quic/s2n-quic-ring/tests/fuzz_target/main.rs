@@ -123,7 +123,7 @@ fn main() {
                     )
                     .is_ok());
                 }
-                CryptoTest::OneRTT {
+                CryptoTest::OneRtt {
                     ref server_keys,
                     ref client_keys,
                 } => {
@@ -192,7 +192,7 @@ fn main() {
                     )
                     .is_ok());
                 }
-                CryptoTest::ZeroRTT { ref keys } => {
+                CryptoTest::ZeroRtt { ref keys } => {
                     let (key, header_key) = keys;
                     assert!(test_round_trip(
                         key,
@@ -255,11 +255,11 @@ enum CryptoTest {
         server_keys: (RingHandshakeKey, RingHandshakeHeaderKey),
         client_keys: (RingHandshakeKey, RingHandshakeHeaderKey),
     },
-    OneRTT {
+    OneRtt {
         server_keys: (RingOneRttKey, RingOneRttHeaderKey),
         client_keys: (RingOneRttKey, RingOneRttHeaderKey),
     },
-    ZeroRTT {
+    ZeroRtt {
         keys: (RingZeroRttKey, RingZeroRttHeaderKey),
     },
 }
@@ -303,7 +303,7 @@ fn gen_one_rtt() -> impl ValueGenerator<Output = CryptoTest> {
     gen_negotiated_secrets().map(|(algo, secrets)| {
         let server_keys = RingOneRttKey::new_server(&algo, secrets.clone()).unwrap();
         let client_keys = RingOneRttKey::new_client(&algo, secrets).unwrap();
-        CryptoTest::OneRTT {
+        CryptoTest::OneRtt {
             server_keys,
             client_keys,
         }
@@ -313,7 +313,7 @@ fn gen_one_rtt() -> impl ValueGenerator<Output = CryptoTest> {
 fn gen_zero_rtt() -> impl ValueGenerator<Output = CryptoTest> {
     gen_secret(hkdf::HKDF_SHA256).map(|secret| {
         let keys = RingZeroRttKey::new(secret);
-        CryptoTest::ZeroRTT { keys }
+        CryptoTest::ZeroRtt { keys }
     })
 }
 

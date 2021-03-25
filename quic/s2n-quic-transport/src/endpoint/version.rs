@@ -76,7 +76,7 @@ impl<Config: endpoint::Config> Negotiator<Config> {
                 }
                 packet
             }
-            ProtectedPacket::ZeroRTT(packet) => {
+            ProtectedPacket::ZeroRtt(packet) => {
                 if is_supported!(packet) {
                     return Ok(());
                 }
@@ -263,7 +263,7 @@ mod tests {
             number::{PacketNumberSpace, TruncatedPacketNumber},
             short::Short,
             version_negotiation::VersionNegotiation,
-            zero_rtt::ZeroRTT,
+            zero_rtt::ZeroRtt,
         },
         varint::VarInt,
     };
@@ -379,7 +379,7 @@ mod tests {
             negotiator,
             datagram_info.remote_address,
             datagram_info.payload_len,
-            ZeroRTT {
+            ZeroRtt {
                 version,
                 destination_connection_id: &[1u8, 2, 3][..],
                 source_connection_id: &[4u8, 5, 6][..],

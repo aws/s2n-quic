@@ -108,6 +108,9 @@ decoder_parameterized_value!(
             let reason = if reason.is_empty() {
                 None
             } else {
+                // newer versions of clippy complain about redundant slicing
+                // but we don't know if this is a `&slice` or `&mut slice`
+                #[allow(clippy::all)]
                 Some(&reason.into_less_safe_slice()[..])
             };
 

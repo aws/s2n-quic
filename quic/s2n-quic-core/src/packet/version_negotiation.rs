@@ -5,7 +5,7 @@ use crate::packet::{
     initial::ProtectedInitial,
     long::{
         validate_destination_connection_id_len, validate_source_connection_id_len,
-        DestinationConnectionIDLen, SourceConnectionIDLen, Version,
+        DestinationConnectionIdLen, SourceConnectionIdLen, Version,
     },
     Tag,
 };
@@ -71,12 +71,12 @@ impl<'a> ProtectedVersionNegotiation<'a> {
             .expect("tag and version already verified");
 
         let (destination_connection_id, buffer) =
-            buffer.decode_slice_with_len_prefix::<DestinationConnectionIDLen>()?;
+            buffer.decode_slice_with_len_prefix::<DestinationConnectionIdLen>()?;
         let destination_connection_id = destination_connection_id.into_less_safe_slice();
         validate_destination_connection_id_len(destination_connection_id.len())?;
 
         let (source_connection_id, buffer) =
-            buffer.decode_slice_with_len_prefix::<SourceConnectionIDLen>()?;
+            buffer.decode_slice_with_len_prefix::<SourceConnectionIdLen>()?;
         let source_connection_id = source_connection_id.into_less_safe_slice();
         validate_source_connection_id_len(source_connection_id.len())?;
 
@@ -171,9 +171,9 @@ impl<'a, SupportedVersions: EncoderValue> EncoderValue
         (self.tag | ENCODING_TAG).encode(encoder);
         VERSION.encode(encoder);
         self.destination_connection_id
-            .encode_with_len_prefix::<DestinationConnectionIDLen, _>(encoder);
+            .encode_with_len_prefix::<DestinationConnectionIdLen, _>(encoder);
         self.source_connection_id
-            .encode_with_len_prefix::<SourceConnectionIDLen, _>(encoder);
+            .encode_with_len_prefix::<SourceConnectionIdLen, _>(encoder);
         self.supported_versions.encode(encoder);
     }
 }

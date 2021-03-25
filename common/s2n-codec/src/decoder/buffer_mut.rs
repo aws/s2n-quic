@@ -53,8 +53,8 @@ impl_buffer!(
     split_at_mut
 );
 
-impl<'a> Into<DecoderBuffer<'a>> for DecoderBufferMut<'a> {
-    fn into(self) -> DecoderBuffer<'a> {
-        self.freeze()
+impl<'a> From<DecoderBufferMut<'a>> for DecoderBuffer<'a> {
+    fn from(b: DecoderBufferMut<'a>) -> Self {
+        b.freeze()
     }
 }

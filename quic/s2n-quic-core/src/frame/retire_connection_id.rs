@@ -27,17 +27,17 @@ macro_rules! retire_connection_id_tag {
 //#    retired; see Section 5.1.2.
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct RetireConnectionID {
+pub struct RetireConnectionId {
     pub sequence_number: VarInt,
 }
 
-impl RetireConnectionID {
+impl RetireConnectionId {
     pub const fn tag(self) -> u8 {
         retire_connection_id_tag!()
     }
 }
 
 simple_frame_codec!(
-    RetireConnectionID { sequence_number },
+    RetireConnectionId { sequence_number },
     retire_connection_id_tag!()
 );

@@ -60,10 +60,10 @@ macro_rules! frames {
         }
 
         $(
-            impl<'a, $ack, $data> Into<Frame<'a, $ack, $data>> for $module::$ty $(<$($generics)*>)? {
+            impl<'a, $ack, $data> From<$module::$ty $(<$($generics)*>)?> for Frame<'a, $ack, $data> {
                 #[inline]
-                fn into(self) -> Frame<'a, $ack, $data> {
-                    Frame::$ty(self)
+                fn from(v: $module::$ty $(<$($generics)*>)?)  -> Frame<'a, $ack, $data> {
+                    Frame::$ty(v)
                 }
             }
         )*
@@ -203,8 +203,8 @@ frames! {
     data_blocked_tag => data_blocked, handle_data_blocked_frame, DataBlocked;
     stream_data_blocked_tag => stream_data_blocked, handle_stream_data_blocked_frame, StreamDataBlocked;
     streams_blocked_tag => streams_blocked, handle_streams_blocked_frame, StreamsBlocked;
-    new_connection_id_tag => new_connection_id, handle_new_connection_id_frame, NewConnectionID['a];
-    retire_connection_id_tag => retire_connection_id, handle_retire_connection_id_frame, RetireConnectionID;
+    new_connection_id_tag => new_connection_id, handle_new_connection_id_frame, NewConnectionId['a];
+    retire_connection_id_tag => retire_connection_id, handle_retire_connection_id_frame, RetireConnectionId;
     path_challenge_tag => path_challenge, handle_path_challenge_frame, PathChallenge['a];
     path_response_tag => path_response, handle_path_response_frame, PathResponse['a];
     connection_close_tag => connection_close, handle_connection_close_frame, ConnectionClose['a];

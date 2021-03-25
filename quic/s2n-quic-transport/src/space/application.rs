@@ -19,8 +19,8 @@ use s2n_quic_core::{
     crypto::{application::KeySet, tls, CryptoSuite},
     frame::{
         ack::AckRanges, crypto::CryptoRef, stream::StreamRef, Ack, ConnectionClose, DataBlocked,
-        HandshakeDone, MaxData, MaxStreamData, MaxStreams, NewConnectionID, NewToken,
-        PathChallenge, PathResponse, ResetStream, RetireConnectionID, StopSending,
+        HandshakeDone, MaxData, MaxStreamData, MaxStreams, NewConnectionId, NewToken,
+        PathChallenge, PathResponse, ResetStream, RetireConnectionId, StopSending,
         StreamDataBlocked, StreamsBlocked,
     },
     inet::DatagramInfo,
@@ -32,7 +32,7 @@ use s2n_quic_core::{
         short::{CleartextShort, ProtectedShort, Short, SpinBit},
     },
     path::Path,
-    recovery::RTTEstimator,
+    recovery::RttEstimator,
     time::Timestamp,
     transport,
 };
@@ -311,7 +311,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         &mut self,
         protected: ProtectedShort<'a>,
         datagram: &DatagramInfo,
-        rtt_estimator: &RTTEstimator,
+        rtt_estimator: &RttEstimator,
     ) -> Result<CleartextShort<'a>, ProcessingError> {
         let largest_acked = self.ack_manager.largest_received_packet_number_acked();
         let packet = protected.unprotect(&self.header_key, largest_acked)?;
@@ -530,7 +530,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
 
     fn handle_new_connection_id_frame(
         &mut self,
-        frame: NewConnectionID,
+        frame: NewConnectionId,
         _datagram: &DatagramInfo,
         path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
     ) -> Result<(), transport::Error> {
@@ -566,7 +566,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
 
     fn handle_retire_connection_id_frame(
         &mut self,
-        frame: RetireConnectionID,
+        frame: RetireConnectionId,
         datagram: &DatagramInfo,
         path: &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
         local_id_registry: &mut connection::LocalIdRegistry,

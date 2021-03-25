@@ -23,7 +23,7 @@ use s2n_quic_core::{
         retry::ProtectedRetry,
         short::ProtectedShort,
         version_negotiation::ProtectedVersionNegotiation,
-        zero_rtt::ProtectedZeroRTT,
+        zero_rtt::ProtectedZeroRtt,
         ProtectedPacket,
     },
     stateless_reset,
@@ -153,7 +153,7 @@ pub trait ConnectionTrait: Sized {
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         path_id: path::Id,
-        packet: ProtectedZeroRTT,
+        packet: ProtectedZeroRtt,
     ) -> Result<(), ProcessingError>;
 
     /// Is called when a retry packet had been received
@@ -213,7 +213,7 @@ pub trait ConnectionTrait: Sized {
             ProtectedPacket::Initial(packet) => {
                 self.handle_initial_packet(shared_state, datagram, path_id, packet)
             }
-            ProtectedPacket::ZeroRTT(packet) => {
+            ProtectedPacket::ZeroRtt(packet) => {
                 self.handle_zero_rtt_packet(shared_state, datagram, path_id, packet)
             }
             ProtectedPacket::Handshake(packet) => {

@@ -437,19 +437,19 @@ macro_rules! conversions {
             }
         }
 
-        impl Into<()> for $name {
-            fn into(self) {}
+        impl From<$name> for () {
+            fn from(_: $name) {}
         }
 
-        impl<T, E> Into<Poll<Result<T, E>>> for $name
+        impl<T, E> From<$name> for Poll<Result<T, E>>
         where
             $name: Into<T>,
         {
-            fn into(self) -> Poll<Result<T, E>> {
-                if self.is_pending() {
+            fn from(v: $name) -> Poll<Result<T, E>> {
+                if v.is_pending() {
                     Poll::Pending
                 } else {
-                    Poll::Ready(Ok(self.into()))
+                    Poll::Ready(Ok(v.into()))
                 }
             }
         }

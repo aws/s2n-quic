@@ -18,4 +18,4 @@ pub trait ZeroRttKey: Key {}
 pub trait ZeroRttHeaderKey: HeaderKey {}
 
 /// ZeroRTT Secret tokens are always 32 bytes
-pub type ZeroRTTSecret = [u8; 32];
+pub type ZeroRttSecret = [u8; 32];

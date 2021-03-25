@@ -15,7 +15,7 @@ use crate::{
     },
     contexts::ConnectionOnTransmitError,
     endpoint, path,
-    recovery::RTTEstimator,
+    recovery::RttEstimator,
     space::PacketSpace,
     transmission,
 };
@@ -29,7 +29,7 @@ use s2n_quic_core::{
         retry::ProtectedRetry,
         short::ProtectedShort,
         version_negotiation::ProtectedVersionNegotiation,
-        zero_rtt::ProtectedZeroRTT,
+        zero_rtt::ProtectedZeroRtt,
     },
     stateless_reset,
     time::Timestamp,
@@ -226,7 +226,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     fn new(parameters: ConnectionParameters<Self::Config>) -> Self {
         // The path manager always starts with a single path containing the known peer and local
         // connection ids.
-        let rtt_estimator = RTTEstimator::new(parameters.limits.ack_settings().max_ack_delay);
+        let rtt_estimator = RttEstimator::new(parameters.limits.ack_settings().max_ack_delay);
         // Assume clients validate the server's address implicitly.
         let peer_validated = Self::Config::ENDPOINT_TYPE.is_server();
         let initial_path = path::Path::new(
@@ -792,7 +792,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         _shared_state: &mut SharedConnectionState<Self::Config>,
         _datagram: &DatagramInfo,
         _path_id: path::Id,
-        _packet: ProtectedZeroRTT,
+        _packet: ProtectedZeroRtt,
     ) -> Result<(), ProcessingError> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2.2
         //= type=TODO

@@ -177,8 +177,8 @@ impl Format {
         ctx.update(&token.nonce);
         ctx.update(&destination_connection_id.as_bytes());
         match peer_address {
-            SocketAddress::IPv4(addr) => ctx.update(addr.as_bytes()),
-            SocketAddress::IPv6(addr) => ctx.update(addr.as_bytes()),
+            SocketAddress::IpV4(addr) => ctx.update(addr.as_bytes()),
+            SocketAddress::IpV6(addr) => ctx.update(addr.as_bytes()),
         };
 
         Some(ctx.sign())

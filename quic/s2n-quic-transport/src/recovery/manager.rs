@@ -13,7 +13,7 @@ use s2n_quic_core::{
     inet::DatagramInfo,
     packet::number::{PacketNumber, PacketNumberRange, PacketNumberSpace},
     path::Path,
-    recovery::{CongestionController, RTTEstimator, K_GRANULARITY},
+    recovery::{CongestionController, RttEstimator, K_GRANULARITY},
     time::Timestamp,
     transport,
     varint::VarInt,
@@ -578,7 +578,7 @@ impl Manager {
         }
     }
 
-    fn calculate_loss_time_threshold(rtt_estimator: &RTTEstimator) -> Duration {
+    fn calculate_loss_time_threshold(rtt_estimator: &RttEstimator) -> Duration {
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.1.2
         //# The time threshold is:
         //#
@@ -804,7 +804,7 @@ mod test {
         let path = Path::new(
             Default::default(),
             connection::PeerId::TEST_ID,
-            RTTEstimator::new(max_ack_delay),
+            RttEstimator::new(max_ack_delay),
             Unlimited::default(),
             false,
         );
@@ -1571,7 +1571,7 @@ mod test {
         context.path = Path::new(
             Default::default(),
             connection::PeerId::TEST_ID,
-            RTTEstimator::new(manager.max_ack_delay),
+            RttEstimator::new(manager.max_ack_delay),
             MockCongestionController::default(),
             false,
         );
@@ -1648,7 +1648,7 @@ mod test {
         let mut path = Path::new(
             Default::default(),
             connection::PeerId::TEST_ID,
-            RTTEstimator::new(Duration::from_millis(10)),
+            RttEstimator::new(Duration::from_millis(10)),
             Unlimited::default(),
             false,
         );
@@ -1674,7 +1674,7 @@ mod test {
         let mut path = Path::new(
             Default::default(),
             connection::PeerId::TEST_ID,
-            RTTEstimator::new(max_ack_delay),
+            RttEstimator::new(max_ack_delay),
             Unlimited::default(),
             false,
         );
@@ -2000,7 +2000,7 @@ mod test {
     //# round-trip time multiplier, is 9/8.
     #[test]
     fn time_threshold_multiplier_equals_nine_eighths() {
-        let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
+        let mut rtt_estimator = RttEstimator::new(Duration::from_millis(10));
         rtt_estimator.update_rtt(
             Duration::from_millis(10),
             Duration::from_secs(1),
@@ -2022,7 +2022,7 @@ mod test {
         //# timer granularity (kGranularity) is 1ms.
         assert_eq!(Duration::from_millis(1), K_GRANULARITY);
 
-        let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(0));
+        let mut rtt_estimator = RttEstimator::new(Duration::from_millis(0));
         rtt_estimator.update_rtt(
             Duration::from_millis(0),
             Duration::from_nanos(1),
@@ -2054,7 +2054,7 @@ mod test {
             let path = Path::new(
                 Default::default(),
                 connection::PeerId::TEST_ID,
-                RTTEstimator::new(max_ack_delay),
+                RttEstimator::new(max_ack_delay),
                 MockCongestionController::default(),
                 peer_validated,
             );

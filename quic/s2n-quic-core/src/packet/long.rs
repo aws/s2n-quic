@@ -56,7 +56,7 @@ pub(crate) type Version = u32;
 //#    unsigned integer.  In QUIC version 1, this value MUST NOT exceed
 //#    20.
 
-pub(crate) type DestinationConnectionIDLen = u8;
+pub(crate) type DestinationConnectionIdLen = u8;
 pub(crate) const DESTINATION_CONNECTION_ID_MAX_LEN: usize = 20;
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2
@@ -89,7 +89,7 @@ pub(crate) fn validate_destination_connection_id_len(len: usize) -> Result<(), D
 //#   8-bit unsigned integer.  In QUIC version 1, this value MUST NOT
 //#   exceed 20 bytes.
 
-pub(crate) type SourceConnectionIDLen = u8;
+pub(crate) type SourceConnectionIdLen = u8;
 pub(crate) const SOURCE_CONNECTION_ID_MAX_LEN: usize = 20;
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2
@@ -137,7 +137,7 @@ pub(crate) fn validate_source_connection_id_len(len: usize) -> Result<(), Decode
 #[derive(Clone, Copy, Debug)]
 pub enum PacketType {
     Initial = 0x0,
-    ZeroRTT = 0x1,
+    ZeroRtt = 0x1,
     Handshake = 0x2,
     Retry = 0x3,
 }
@@ -156,7 +156,7 @@ impl From<u8> for PacketType {
     fn from(bits: u8) -> Self {
         match bits {
             0x0 => PacketType::Initial,
-            0x1 => PacketType::ZeroRTT,
+            0x1 => PacketType::ZeroRtt,
             0x2 => PacketType::Handshake,
             0x3 => PacketType::Retry,
             _ => PacketType::Initial,
@@ -164,9 +164,9 @@ impl From<u8> for PacketType {
     }
 }
 
-impl Into<u8> for PacketType {
-    fn into(self) -> u8 {
-        self.into_bits()
+impl From<PacketType> for u8 {
+    fn from(v: PacketType) -> Self {
+        v.into_bits()
     }
 }
 

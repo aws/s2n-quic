@@ -7,7 +7,7 @@ use plotters::prelude::*;
 use s2n_quic_core::{
     packet::number::PacketNumberSpace,
     path::MINIMUM_MTU,
-    recovery::{CongestionController, CubicCongestionController, RTTEstimator},
+    recovery::{CongestionController, CubicCongestionController, RttEstimator},
     time::{Clock, NoopClock, Timestamp},
 };
 use std::{
@@ -247,7 +247,7 @@ fn simulate_constant_rtt<CC: CongestionController>(
     num_rounds: usize,
 ) -> Vec<Round> {
     let time_zero = NoopClock.get_time();
-    let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(0));
+    let mut rtt_estimator = RttEstimator::new(Duration::from_millis(0));
 
     // Update the rtt with 200 ms
     rtt_estimator.update_rtt(
@@ -296,7 +296,7 @@ fn simulate_constant_rtt<CC: CongestionController>(
 /// Send and acknowledge the given amount of bytes using the given congestion controller
 fn send_and_ack<CC: CongestionController>(
     congestion_controller: &mut CC,
-    rtt_estimator: &RTTEstimator,
+    rtt_estimator: &RttEstimator,
     timestamp: Timestamp,
     bytes: usize,
 ) {

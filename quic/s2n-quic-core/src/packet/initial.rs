@@ -7,8 +7,8 @@ use crate::{
         decoding::HeaderDecoder,
         encoding::{PacketEncoder, PacketPayloadEncoder},
         long::{
-            DestinationConnectionIDLen, LongPayloadEncoder, LongPayloadLenCursor,
-            SourceConnectionIDLen, Version,
+            DestinationConnectionIdLen, LongPayloadEncoder, LongPayloadLenCursor,
+            SourceConnectionIdLen, Version,
         },
         number::{
             PacketNumber, PacketNumberLen, PacketNumberSpace, ProtectedPacketNumber,
@@ -88,9 +88,9 @@ impl<'a> ProtectedInitial<'a> {
         // Connection ID validation for Initial packets occurs after version
         // negotiation has determined the specified version is supported.
         let destination_connection_id =
-            decoder.decode_checked_range::<DestinationConnectionIDLen>(&buffer)?;
+            decoder.decode_checked_range::<DestinationConnectionIdLen>(&buffer)?;
         let source_connection_id =
-            decoder.decode_checked_range::<SourceConnectionIDLen>(&buffer)?;
+            decoder.decode_checked_range::<SourceConnectionIdLen>(&buffer)?;
         let token = decoder.decode_checked_range::<VarInt>(&buffer)?;
 
         let (payload, packet_number, remaining) =
@@ -257,9 +257,9 @@ impl<DCID: EncoderValue, SCID: EncoderValue, Token: EncoderValue, PacketNumber, 
         self.version.encode(encoder);
 
         self.destination_connection_id
-            .encode_with_len_prefix::<DestinationConnectionIDLen, E>(encoder);
+            .encode_with_len_prefix::<DestinationConnectionIdLen, E>(encoder);
         self.source_connection_id
-            .encode_with_len_prefix::<SourceConnectionIDLen, E>(encoder);
+            .encode_with_len_prefix::<SourceConnectionIdLen, E>(encoder);
         self.token.encode_with_len_prefix::<VarInt, E>(encoder);
     }
 }

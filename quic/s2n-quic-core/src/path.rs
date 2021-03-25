@@ -7,7 +7,7 @@ use crate::{
     connection,
     frame::path_challenge,
     inet::SocketAddress,
-    recovery::{CongestionController, RTTEstimator},
+    recovery::{CongestionController, RttEstimator},
     transmission,
 };
 
@@ -31,7 +31,7 @@ pub struct Path<CC: CongestionController> {
     /// The connection id of the peer
     pub peer_connection_id: connection::PeerId,
     /// The path owns the roundtrip between peers
-    pub rtt_estimator: RTTEstimator,
+    pub rtt_estimator: RttEstimator,
     /// The congestion controller for the path
     pub congestion_controller: CC,
     /// Probe timeout backoff multiplier
@@ -56,7 +56,7 @@ impl<CC: CongestionController> Path<CC> {
     pub fn new(
         peer_socket_address: SocketAddress,
         peer_connection_id: connection::PeerId,
-        rtt_estimator: RTTEstimator,
+        rtt_estimator: RttEstimator,
         congestion_controller: CC,
         peer_validated: bool,
     ) -> Self {
@@ -222,7 +222,7 @@ mod tests {
         let mut path = Path::new(
             SocketAddress::default(),
             connection::PeerId::try_from_bytes(&[]).unwrap(),
-            RTTEstimator::new(Duration::from_millis(30)),
+            RttEstimator::new(Duration::from_millis(30)),
             Unlimited::default(),
             true,
         );
@@ -286,7 +286,7 @@ mod tests {
         let mut path = Path::new(
             SocketAddress::default(),
             connection::PeerId::try_from_bytes(&[]).unwrap(),
-            RTTEstimator::new(Duration::from_millis(30)),
+            RttEstimator::new(Duration::from_millis(30)),
             Unlimited::default(),
             true,
         );
@@ -319,7 +319,7 @@ mod tests {
         let mut path = Path::new(
             SocketAddress::default(),
             connection::PeerId::try_from_bytes(&[]).unwrap(),
-            RTTEstimator::new(Duration::from_millis(30)),
+            RttEstimator::new(Duration::from_millis(30)),
             Unlimited::default(),
             false,
         );
@@ -336,7 +336,7 @@ mod tests {
         let mut path = Path::new(
             SocketAddress::default(),
             connection::PeerId::try_from_bytes(&[]).unwrap(),
-            RTTEstimator::new(Duration::from_millis(30)),
+            RttEstimator::new(Duration::from_millis(30)),
             CubicCongestionController::new(MINIMUM_MTU),
             false,
         );

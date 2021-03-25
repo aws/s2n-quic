@@ -433,9 +433,9 @@ impl_from_lesser!(u8);
 impl_from_lesser!(u16);
 impl_from_lesser!(u32);
 
-impl Into<u64> for VarInt {
-    fn into(self) -> u64 {
-        self.0
+impl From<VarInt> for u64 {
+    fn from(v: VarInt) -> u64 {
+        v.0
     }
 }
 
