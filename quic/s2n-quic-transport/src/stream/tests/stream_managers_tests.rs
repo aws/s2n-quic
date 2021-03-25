@@ -369,7 +369,7 @@ fn try_open(
 
 #[test]
 fn remote_messages_open_unopened_streams() {
-    const STREAMS_TO_OPEN: usize = 8;
+    const STREAMS_TO_OPEN: u64 = 8;
 
     for initiator_type in &[endpoint::Type::Server, endpoint::Type::Client] {
         for stream_type in &[StreamType::Bidirectional, StreamType::Unidirectional] {
@@ -411,7 +411,7 @@ fn remote_messages_open_unopened_streams() {
 
 #[test]
 fn remote_streams_do_not_open_if_manager_is_closed() {
-    const STREAMS_TO_OPEN: usize = 8;
+    const STREAMS_TO_OPEN: u64 = 8;
 
     for initiator_type in &[endpoint::Type::Server, endpoint::Type::Client] {
         for stream_type in &[StreamType::Bidirectional, StreamType::Unidirectional] {
@@ -598,7 +598,7 @@ fn max_data_replenishes_connection_flow_control_window() {
 
 #[test]
 fn accept_returns_remotely_initiated_stream() {
-    const STREAMS_TO_OPEN: usize = 8;
+    const STREAMS_TO_OPEN: u64 = 8;
 
     for initiator_type in [endpoint::Type::Server, endpoint::Type::Client]
         .iter()
@@ -694,7 +694,7 @@ fn accept_returns_remotely_initiated_stream() {
 
 #[test]
 fn accept_returns_opened_streams_of_any_type() {
-    const STREAMS_TO_OPEN: usize = 8;
+    const STREAMS_TO_OPEN: u64 = 8;
 
     for initiator_type in [endpoint::Type::Server, endpoint::Type::Client]
         .iter()
@@ -847,7 +847,7 @@ fn accept_notifies_on_both_types() {
 
 #[test]
 fn accept_returns_opened_streams_even_if_stream_manager_was_closed() {
-    const STREAMS_TO_OPEN: usize = 8;
+    const STREAMS_TO_OPEN: u64 = 8;
 
     for initiator_type in &[endpoint::Type::Server, endpoint::Type::Client] {
         for local_ep_type in &[endpoint::Type::Server, endpoint::Type::Client] {

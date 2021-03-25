@@ -86,11 +86,11 @@ impl StreamId {
     ///
     /// nth() will return `None` if the resulting `StreamId` would not be valid.
     #[inline]
-    pub fn nth(initiator: endpoint::Type, stream_type: StreamType, n: usize) -> Option<StreamId> {
+    pub fn nth(initiator: endpoint::Type, stream_type: StreamType, n: u64) -> Option<StreamId> {
         let initial = Self::initial(initiator, stream_type);
         // We calculate as much as possible with u64, to reduce the number of
         // overflow checks for the maximum Stream ID to the last operation
-        let id = VarInt::new((n as u64).checked_mul(4)?.checked_add(initial.into())?).ok()?;
+        let id = VarInt::new(n.checked_mul(4)?.checked_add(initial.into())?).ok()?;
         Some(StreamId(id))
     }
 
@@ -211,7 +211,7 @@ mod tests {
                     StreamId::nth(
                         *initiator,
                         *stream_type,
-                        Into::<u64>::into(MAX_VARINT_VALUE / 2) as usize
+                        Into::<u64>::into(MAX_VARINT_VALUE / 2)
                     )
                 );
             }

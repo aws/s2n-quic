@@ -156,10 +156,8 @@ pub struct StreamManagerState<S> {
     pub(super) incoming_connection_flow_controller: IncomingConnectionFlowController,
     /// Flow control credit manager for sending data
     pub(super) outgoing_connection_flow_controller: OutgoingConnectionFlowController,
-    /// Stream controller for streams opened locally
-    local_stream_controller: stream::LocalController,
-    /// Stream controller for streams opened by the peer
-    peer_stream_controller: stream::PeerController,
+    /// Controller for managing streams concurrency limits
+    stream_controller: stream::Controller,
     /// A container which contains all Streams
     streams: StreamContainer<S>,
     /// The next Stream ID which was not yet used for an initiated stream
@@ -272,8 +270,7 @@ impl<S: StreamTrait> StreamManagerState<S> {
                 //# that receives a frame with a stream ID exceeding the limit it has
                 //# sent MUST treat this as a connection error of type STREAM_LIMIT_ERROR
                 //# (Section 11).
-                self.peer_stream_controller
-                    .on_open_stream(stream_id.stream_type())?;
+                self.stream_controller.on_remote_open_stream(stream_id)?;
 
                 // We must create ALL streams which a lower Stream ID too:
 
@@ -359,7 +356,7 @@ impl<S: StreamTrait> StreamManagerState<S> {
             waker.wake();
         }
 
-        self.local_stream_controller.close();
+        self.stream_controller.close();
     }
 }
 
@@ -396,8 +393,11 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
                 outgoing_connection_flow_controller: OutgoingConnectionFlowController::new(
                     initial_peer_limits.max_data,
                 ),
-                local_stream_controller: stream::LocalController::new(initial_peer_limits),
-                peer_stream_controller: stream::PeerController::new(initial_local_limits),
+                stream_controller: stream::Controller::new(
+                    initial_peer_limits,
+                    initial_local_limits,
+                    connection_limits.stream_limits(),
+                ),
                 streams: StreamContainer::new(),
                 next_stream_ids: StreamIdSet::initial(),
                 local_endpoint_type,
@@ -498,8 +498,8 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         //# Endpoints MUST NOT exceed the limit set by their peer.
         if self
             .inner
-            .local_stream_controller
-            .poll_open_stream(stream_type, context)
+            .stream_controller
+            .poll_local_open_stream(stream_type, context)
             .is_pending()
         {
             return Poll::Pending;
@@ -545,7 +545,7 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         self.inner
             .incoming_connection_flow_controller
             .on_packet_ack(ack_set);
-        self.inner.peer_stream_controller.on_packet_ack(ack_set);
+        self.inner.stream_controller.on_packet_ack(ack_set);
 
         self.inner.streams.iterate_frame_delivery_list(|stream| {
             // We have to wake inside the lock, since `StreamEvent`s has no capacity
@@ -561,7 +561,7 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         self.inner
             .incoming_connection_flow_controller
             .on_packet_loss(ack_set);
-        self.inner.peer_stream_controller.on_packet_loss(ack_set);
+        self.inner.stream_controller.on_packet_loss(ack_set);
 
         self.inner.streams.iterate_frame_delivery_list(|stream| {
             // We have to wake inside the lock, since `StreamEvent`s has no capacity
@@ -591,7 +591,7 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         self.inner
             .incoming_connection_flow_controller
             .on_transmit(context)?;
-        self.inner.peer_stream_controller.on_transmit(context)?;
+        self.inner.stream_controller.on_transmit(context)?;
 
         // Due to an error we could not transmit all data.
         // We add streams which could not send data back into the
@@ -776,7 +776,7 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
 
     /// This is called when a `MAX_STREAMS` frame had been received
     pub fn on_max_streams(&mut self, frame: &MaxStreams) -> Result<(), TransportError> {
-        self.inner.local_stream_controller.on_max_streams(frame);
+        self.inner.stream_controller.on_max_streams(frame);
 
         Ok(())
     }
@@ -843,7 +843,7 @@ impl<S: StreamTrait> transmission::interest::Provider for AbstractStreamManager<
     fn transmission_interest(&self) -> transmission::Interest {
         transmission::Interest::default()
             + self.inner.streams.transmission_interest()
-            + self.inner.peer_stream_controller.transmission_interest()
+            + self.inner.stream_controller.transmission_interest()
             + self
                 .inner
                 .incoming_connection_flow_controller
