@@ -330,13 +330,14 @@ impl<S: StreamTrait> StreamManagerState<S> {
         }
         self.close_reason = Some(error);
 
-        self.streams.iterate_streams(|stream| {
-            // We have to wake inside the lock, since `StreamEvent`s has no capacity
-            // to carry wakers in another iteration
-            let mut events = StreamEvents::new();
-            stream.on_internal_reset(error.into(), &mut events);
-            events.wake_all();
-        });
+        self.streams
+            .iterate_streams(&mut self.stream_controller, |stream| {
+                // We have to wake inside the lock, since `StreamEvent`s has no capacity
+                // to carry wakers in another iteration
+                let mut events = StreamEvents::new();
+                stream.on_internal_reset(error.into(), &mut events);
+                events.wake_all();
+            });
 
         // If the connection gets closed we need to notify tasks which are blocked
         // on `accept()`.
@@ -547,13 +548,16 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
             .on_packet_ack(ack_set);
         self.inner.stream_controller.on_packet_ack(ack_set);
 
-        self.inner.streams.iterate_frame_delivery_list(|stream| {
-            // We have to wake inside the lock, since `StreamEvent`s has no capacity
-            // to carry wakers in another iteration
-            let mut events = StreamEvents::new();
-            stream.on_packet_ack(ack_set, &mut events);
-            events.wake_all();
-        });
+        self.inner.streams.iterate_frame_delivery_list(
+            &mut self.inner.stream_controller,
+            |stream| {
+                // We have to wake inside the lock, since `StreamEvent`s has no capacity
+                // to carry wakers in another iteration
+                let mut events = StreamEvents::new();
+                stream.on_packet_ack(ack_set, &mut events);
+                events.wake_all();
+            },
+        );
     }
 
     /// This method gets called when a packet loss is reported
@@ -563,13 +567,16 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
             .on_packet_loss(ack_set);
         self.inner.stream_controller.on_packet_loss(ack_set);
 
-        self.inner.streams.iterate_frame_delivery_list(|stream| {
-            // We have to wake inside the lock, since `StreamEvent`s has no capacity
-            // to carry wakers in another iteration
-            let mut events = StreamEvents::new();
-            stream.on_packet_loss(ack_set, &mut events);
-            events.wake_all();
-        });
+        self.inner.streams.iterate_frame_delivery_list(
+            &mut self.inner.stream_controller,
+            |stream| {
+                // We have to wake inside the lock, since `StreamEvent`s has no capacity
+                // to carry wakers in another iteration
+                let mut events = StreamEvents::new();
+                stream.on_packet_loss(ack_set, &mut events);
+                events.wake_all();
+            },
+        );
     }
 
     /// Closes the [`AbstractStreamManager`] and resets all streams with the
@@ -609,32 +616,34 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
                 transmission::context::RetransmissionContext::new(context);
 
             // Prioritize retransmitting lost data
-            self.inner
-                .streams
-                .iterate_retransmission_list(|stream: &mut S| {
+            self.inner.streams.iterate_retransmission_list(
+                &mut self.inner.stream_controller,
+                |stream: &mut S| {
                     transmit_result = stream.on_transmit(&mut retransmission_context);
                     if transmit_result.is_err() {
                         StreamContainerIterationResult::BreakAndInsertAtBack
                     } else {
                         StreamContainerIterationResult::Continue
                     }
-                });
+                },
+            );
 
             // return if there were any errors
             transmit_result?;
         }
 
         if context.transmission_constraint().can_transmit() {
-            self.inner
-                .streams
-                .iterate_transmission_list(|stream: &mut S| {
+            self.inner.streams.iterate_transmission_list(
+                &mut self.inner.stream_controller,
+                |stream: &mut S| {
                     transmit_result = stream.on_transmit(context);
                     if transmit_result.is_err() {
                         StreamContainerIterationResult::BreakAndInsertAtBack
                     } else {
                         StreamContainerIterationResult::Continue
                     }
-                });
+                },
+            );
         }
 
         // There is no `finalize_done_streams` here, since we do not expect to
@@ -670,7 +679,9 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
                 // If the Stream does not exist it is no error.
                 state
                     .streams
-                    .with_stream(stream_id, |stream| func(stream, &mut events))
+                    .with_stream(stream_id, &mut state.stream_controller, |stream| {
+                        func(stream, &mut events)
+                    })
                     .unwrap_or(Ok(()))
             })
         };
@@ -750,9 +761,9 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         // iterating and insert the remaining streams to the end of the list
         // again.
         let conn_flow = &mut self.inner.outgoing_connection_flow_controller;
-        self.inner
-            .streams
-            .iterate_connection_flow_credits_list(|stream| {
+        self.inner.streams.iterate_connection_flow_credits_list(
+            &mut self.inner.stream_controller,
+            |stream| {
                 stream.on_connection_window_available();
 
                 if conn_flow.available_window() == VarInt::from_u32(0) {
@@ -760,7 +771,8 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
                 } else {
                     StreamContainerIterationResult::Continue
                 }
-            });
+            },
+        );
 
         Ok(())
     }
@@ -805,7 +817,9 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         let result = self
             .inner
             .streams
-            .with_stream(stream_id, |stream| func(stream))
+            .with_stream(stream_id, &mut self.inner.stream_controller, |stream| {
+                func(stream)
+            })
             .unwrap_or(unknown_stream_result);
 
         // A wakeup is only triggered if the the transmission list is
@@ -886,7 +900,7 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
     {
         self.inner
             .streams
-            .with_stream(stream_id, func)
+            .with_stream(stream_id, &mut self.inner.stream_controller, func)
             .expect("Stream is open")
     }
 
@@ -896,7 +910,9 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         let mut results = Vec::new();
         self.inner
             .streams
-            .iterate_streams(|stream| results.push(stream.stream_id()));
+            .iterate_streams(&mut self.inner.stream_controller, |stream| {
+                results.push(stream.stream_id())
+            });
         results
     }
 
@@ -904,12 +920,13 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
     /// connection flow control credits.
     pub fn streams_waiting_for_connection_flow_control_credits(&mut self) -> Vec<StreamId> {
         let mut results = Vec::new();
-        self.inner
-            .streams
-            .iterate_connection_flow_credits_list(|stream| {
+        self.inner.streams.iterate_connection_flow_credits_list(
+            &mut self.inner.stream_controller,
+            |stream| {
                 results.push(stream.stream_id());
                 StreamContainerIterationResult::Continue
-            });
+            },
+        );
         results
     }
 
@@ -917,9 +934,12 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
     /// delivery notifications.
     pub fn streams_waiting_for_delivery_notifications(&mut self) -> Vec<StreamId> {
         let mut results = Vec::new();
-        self.inner.streams.iterate_frame_delivery_list(|stream| {
-            results.push(stream.stream_id());
-        });
+        self.inner.streams.iterate_frame_delivery_list(
+            &mut self.inner.stream_controller,
+            |stream| {
+                results.push(stream.stream_id());
+            },
+        );
         results
     }
 
@@ -927,10 +947,12 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
     /// transmission.
     pub fn streams_waiting_for_transmission(&mut self) -> Vec<StreamId> {
         let mut results = Vec::new();
-        self.inner.streams.iterate_transmission_list(|stream| {
-            results.push(stream.stream_id());
-            StreamContainerIterationResult::Continue
-        });
+        self.inner
+            .streams
+            .iterate_transmission_list(&mut self.inner.stream_controller, |stream| {
+                results.push(stream.stream_id());
+                StreamContainerIterationResult::Continue
+            });
         results
     }
 
@@ -938,10 +960,13 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
     /// retransmission.
     pub fn streams_waiting_for_retransmission(&mut self) -> Vec<StreamId> {
         let mut results = Vec::new();
-        self.inner.streams.iterate_retransmission_list(|stream| {
-            results.push(stream.stream_id());
-            StreamContainerIterationResult::Continue
-        });
+        self.inner.streams.iterate_retransmission_list(
+            &mut self.inner.stream_controller,
+            |stream| {
+                results.push(stream.stream_id());
+                StreamContainerIterationResult::Continue
+            },
+        );
         results
     }
 }
