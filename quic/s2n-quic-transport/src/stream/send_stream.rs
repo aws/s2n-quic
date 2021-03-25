@@ -517,6 +517,12 @@ impl SendStream {
                     // In this state we also wake up the application,
                     // since the finish operation has been confirmed.
                     should_wake = true;
+
+                    if self.write_waiter.is_none() {
+                        // The application was not waiting on confirmation of the finish operation,
+                        // so we'll consider the final state to be implicitly observed.
+                        self.final_state_observed = true;
+                    }
                 }
                 _ => {}
             }
