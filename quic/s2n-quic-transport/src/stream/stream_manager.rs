@@ -25,7 +25,7 @@ use s2n_quic_core::{
         StopSending, StreamDataBlocked, StreamsBlocked,
     },
     stream::{ops, StreamId, StreamType},
-    transport::{error::TransportError, parameters::InitialFlowControlLimits},
+    transport::{self, parameters::InitialFlowControlLimits},
     varint::VarInt,
 };
 
@@ -184,9 +184,9 @@ pub struct StreamManagerState<S> {
 impl<S: StreamTrait> StreamManagerState<S> {
     /// Performs the given transaction on the `StreamManagerState`.
     /// If an error occurs, all Streams will be reset with an internal reset.
-    pub fn reset_streams_on_error<F, R>(&mut self, func: F) -> Result<R, TransportError>
+    pub fn reset_streams_on_error<F, R>(&mut self, func: F) -> Result<R, transport::Error>
     where
-        F: FnOnce(&mut Self) -> Result<R, TransportError>,
+        F: FnOnce(&mut Self) -> Result<R, transport::Error>,
     {
         let result = func(self);
         if let Err(err) = result.as_ref() {
@@ -238,7 +238,7 @@ impl<S: StreamTrait> StreamManagerState<S> {
     /// Opens a Stream which is referenced in a frame if it has not yet been
     /// opened so far. This will also open all unopened frames which a lower
     /// Stream ID of the same type, as required by the QUIC specification.
-    fn open_stream_if_necessary(&mut self, stream_id: StreamId) -> Result<(), TransportError> {
+    fn open_stream_if_necessary(&mut self, stream_id: StreamId) -> Result<(), transport::Error> {
         // If the stream ID is higher than any Stream ID we observed so far, we
         // need open all Stream IDs of the same type. Otherwise we need to look
         // up the Stream ID the map.
@@ -262,7 +262,7 @@ impl<S: StreamTrait> StreamManagerState<S> {
                 // to create a new Stream instance
 
                 if self.close_reason.is_some() {
-                    return Err(TransportError::NO_ERROR.with_reason("Connection was closed"));
+                    return Err(transport::Error::NO_ERROR.with_reason("Connection was closed"));
                 }
 
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6
@@ -316,7 +316,7 @@ impl<S: StreamTrait> StreamManagerState<S> {
             // close the connection.
             if stream_id >= first_unopened_id {
                 return Err(
-                    TransportError::STREAM_STATE_ERROR.with_reason("Stream was not yet opened")
+                    transport::Error::STREAM_STATE_ERROR.with_reason("Stream was not yet opened")
                 );
             }
         }
@@ -450,7 +450,7 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         });
 
         match self.inner.close_reason {
-            Some(connection::Error::Closed) => return Ok(None).into(),
+            Some(connection::Error::Closed { .. }) => return Ok(None).into(),
             Some(reason) => return Err(reason).into(),
             None => {}
         }
@@ -664,9 +664,9 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         &mut self,
         stream_id: StreamId,
         mut func: F,
-    ) -> Result<(), TransportError>
+    ) -> Result<(), transport::Error>
     where
-        F: FnMut(&mut S, &mut StreamEvents) -> Result<(), TransportError>,
+        F: FnMut(&mut S, &mut StreamEvents) -> Result<(), transport::Error>,
     {
         let mut events = StreamEvents::new();
 
@@ -694,13 +694,13 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
 
     /// This is called when a `STREAM_DATA` frame had been received for
     /// a stream
-    pub fn on_data(&mut self, frame: &StreamRef) -> Result<(), TransportError> {
+    pub fn on_data(&mut self, frame: &StreamRef) -> Result<(), transport::Error> {
         let stream_id = StreamId::from_varint(frame.stream_id);
         self.handle_stream_frame(stream_id, |stream, events| stream.on_data(frame, events))
     }
 
     /// This is called when a `DATA_BLOCKED` frame had been received
-    pub fn on_data_blocked(&mut self, _frame: DataBlocked) -> Result<(), TransportError> {
+    pub fn on_data_blocked(&mut self, _frame: DataBlocked) -> Result<(), transport::Error> {
         Ok(()) // This is currently ignored
     }
 
@@ -709,7 +709,7 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
     pub fn on_stream_data_blocked(
         &mut self,
         frame: &StreamDataBlocked,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), transport::Error> {
         let stream_id = StreamId::from_varint(frame.stream_id);
         self.handle_stream_frame(stream_id, |stream, events| {
             stream.on_stream_data_blocked(frame, events)
@@ -718,14 +718,14 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
 
     /// This is called when a `RESET_STREAM` frame had been received for
     /// a stream
-    pub fn on_reset_stream(&mut self, frame: &ResetStream) -> Result<(), TransportError> {
+    pub fn on_reset_stream(&mut self, frame: &ResetStream) -> Result<(), transport::Error> {
         let stream_id = StreamId::from_varint(frame.stream_id);
         self.handle_stream_frame(stream_id, |stream, events| stream.on_reset(frame, events))
     }
 
     /// This is called when a `MAX_STREAM_DATA` frame had been received for
     /// a stream
-    pub fn on_max_stream_data(&mut self, frame: &MaxStreamData) -> Result<(), TransportError> {
+    pub fn on_max_stream_data(&mut self, frame: &MaxStreamData) -> Result<(), transport::Error> {
         let stream_id = StreamId::from_varint(frame.stream_id);
         self.handle_stream_frame(stream_id, |stream, events| {
             stream.on_max_stream_data(frame, events)
@@ -734,7 +734,7 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
 
     /// This is called when a `STOP_SENDING` frame had been received for
     /// a stream
-    pub fn on_stop_sending(&mut self, frame: &StopSending) -> Result<(), TransportError> {
+    pub fn on_stop_sending(&mut self, frame: &StopSending) -> Result<(), transport::Error> {
         let stream_id = StreamId::from_varint(frame.stream_id);
         self.handle_stream_frame(stream_id, |stream, events| {
             stream.on_stop_sending(frame, events)
@@ -742,7 +742,7 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
     }
 
     /// This is called when a `MAX_DATA` frame had been received
-    pub fn on_max_data(&mut self, frame: MaxData) -> Result<(), TransportError> {
+    pub fn on_max_data(&mut self, frame: MaxData) -> Result<(), transport::Error> {
         self.inner
             .outgoing_connection_flow_controller
             .on_max_data(frame);
@@ -778,7 +778,7 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
     }
 
     /// This is called when a `STREAMS_BLOCKED` frame had been received
-    pub fn on_streams_blocked(&mut self, _frame: &StreamsBlocked) -> Result<(), TransportError> {
+    pub fn on_streams_blocked(&mut self, _frame: &StreamsBlocked) -> Result<(), transport::Error> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6
         //= type=TODO
         //= tracking-issue=244
@@ -787,7 +787,7 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
     }
 
     /// This is called when a `MAX_STREAMS` frame had been received
-    pub fn on_max_streams(&mut self, frame: &MaxStreams) -> Result<(), TransportError> {
+    pub fn on_max_streams(&mut self, frame: &MaxStreams) -> Result<(), transport::Error> {
         self.inner.stream_controller.on_max_streams(frame);
 
         Ok(())

@@ -18,7 +18,7 @@ use s2n_quic_core::{
     ack, endpoint,
     frame::{stream::StreamRef, MaxStreamData, ResetStream, StopSending, StreamDataBlocked},
     stream::{ops, StreamId},
-    transport::error::TransportError,
+    transport,
     varint::VarInt,
 };
 
@@ -58,7 +58,7 @@ pub trait StreamTrait: StreamInterestProvider {
         &mut self,
         frame: &StreamRef,
         events: &mut StreamEvents,
-    ) -> Result<(), TransportError>;
+    ) -> Result<(), transport::Error>;
 
     /// This is called when a `STREAM_DATA_BLOCKED` frame had been received for
     /// this stream
@@ -66,7 +66,7 @@ pub trait StreamTrait: StreamInterestProvider {
         &mut self,
         frame: &StreamDataBlocked,
         events: &mut StreamEvents,
-    ) -> Result<(), TransportError>;
+    ) -> Result<(), transport::Error>;
 
     /// This is called when a `RESET_STREAM` frame had been received for
     /// this stream
@@ -74,7 +74,7 @@ pub trait StreamTrait: StreamInterestProvider {
         &mut self,
         frame: &ResetStream,
         events: &mut StreamEvents,
-    ) -> Result<(), TransportError>;
+    ) -> Result<(), transport::Error>;
 
     /// This is called when a `MAX_STREAM_DATA` frame had been received for
     /// this stream
@@ -82,7 +82,7 @@ pub trait StreamTrait: StreamInterestProvider {
         &mut self,
         frame: &MaxStreamData,
         events: &mut StreamEvents,
-    ) -> Result<(), TransportError>;
+    ) -> Result<(), transport::Error>;
 
     /// This is called when a `STOP_SENDING` frame had been received for
     /// this stream
@@ -90,7 +90,7 @@ pub trait StreamTrait: StreamInterestProvider {
         &mut self,
         frame: &StopSending,
         events: &mut StreamEvents,
-    ) -> Result<(), TransportError>;
+    ) -> Result<(), transport::Error>;
 
     /// This method gets called when a packet delivery got acknowledged
     fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A, events: &mut StreamEvents);
@@ -180,7 +180,7 @@ impl StreamTrait for StreamImpl {
         &mut self,
         frame: &StreamRef,
         events: &mut StreamEvents,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), transport::Error> {
         self.receive_stream.on_data(frame, events)
     }
 
@@ -188,7 +188,7 @@ impl StreamTrait for StreamImpl {
         &mut self,
         frame: &StreamDataBlocked,
         events: &mut StreamEvents,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), transport::Error> {
         self.receive_stream.on_stream_data_blocked(frame, events)
     }
 
@@ -196,7 +196,7 @@ impl StreamTrait for StreamImpl {
         &mut self,
         frame: &ResetStream,
         events: &mut StreamEvents,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), transport::Error> {
         self.receive_stream.on_reset(frame, events)
     }
 
@@ -204,7 +204,7 @@ impl StreamTrait for StreamImpl {
         &mut self,
         frame: &MaxStreamData,
         events: &mut StreamEvents,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), transport::Error> {
         self.send_stream.on_max_stream_data(frame, events)
     }
 
@@ -212,7 +212,7 @@ impl StreamTrait for StreamImpl {
         &mut self,
         frame: &StopSending,
         events: &mut StreamEvents,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), transport::Error> {
         self.send_stream.on_stop_sending(frame, events)
     }
 

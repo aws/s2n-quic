@@ -1,11 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{
-    application::{ApplicationErrorCode, ApplicationErrorExt},
-    frame::Tag,
-    varint::VarInt,
-};
+use crate::{application, frame::Tag, varint::VarInt};
 use s2n_codec::{decoder_parameterized_value, Encoder, EncoderValue};
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.19
@@ -85,8 +81,8 @@ impl<'a> ConnectionClose<'a> {
 
 // If a `ConnectionClose` contains no frame type it was sent by an application and contains
 // an `ApplicationErrorCode`. Otherwise it is an error on the QUIC layer.
-impl<'a> ApplicationErrorExt for ConnectionClose<'a> {
-    fn application_error_code(&self) -> Option<ApplicationErrorCode> {
+impl<'a> application::error::TryInto for ConnectionClose<'a> {
+    fn application_error(&self) -> Option<application::Error> {
         if self.frame_type.is_none() {
             Some(self.error_code.into())
         } else {

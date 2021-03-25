@@ -21,12 +21,11 @@ use core::{
     task::{Context, Waker},
 };
 use s2n_quic_core::{
-    ack,
-    application::ApplicationErrorCode,
+    ack, application,
     frame::{MaxStreamData, ResetStream, StopSending},
     packet::number::PacketNumber,
     stream::{ops, StreamId},
-    transport::error::TransportError,
+    transport,
     varint::VarInt,
 };
 
@@ -95,7 +94,7 @@ pub struct OutgoingResetData {
     /// The final size which should get transmitted in the RESET frame
     final_size: VarInt,
     /// The error code which should get transmitted in the RESET frame
-    application_error_code: ApplicationErrorCode,
+    application_error_code: application::Error,
 }
 
 /// Writes the `RESET` frames based on the streams flow control window.
@@ -407,7 +406,7 @@ impl SendStream {
         &mut self,
         frame: &MaxStreamData,
         events: &mut StreamEvents,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), transport::Error> {
         // Window size increments are only important while we are still sending data
         // They **are** still important after the application has already called
         // `finish()` and when we know the final size of the stream.
@@ -447,7 +446,7 @@ impl SendStream {
         &mut self,
         frame: &StopSending,
         events: &mut StreamEvents,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), transport::Error> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#3.5
         //# A STOP_SENDING frame requests that the receiving endpoint send a
         //# RESET_STREAM frame.  An endpoint that receives a STOP_SENDING frame

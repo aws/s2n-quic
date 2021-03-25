@@ -3,7 +3,7 @@
 
 //! Defines the QUIC connection ID
 
-use crate::{inet::SocketAddress, transport::error::TransportError};
+use crate::{inet::SocketAddress, transport};
 use core::{
     convert::{TryFrom, TryInto},
     time::Duration,
@@ -215,9 +215,9 @@ impl core::fmt::Display for Error {
     }
 }
 
-impl From<Error> for TransportError {
-    fn from(error: Error) -> TransportError {
-        TransportError::PROTOCOL_VIOLATION.with_reason(error.message())
+impl From<Error> for transport::Error {
+    fn from(error: Error) -> Self {
+        Self::PROTOCOL_VIOLATION.with_reason(error.message())
     }
 }
 

@@ -7,8 +7,8 @@ use crate::{
     connection::{
         self, connection_interests::ConnectionInterests, id::ConnectionInfo,
         internal_connection_id::InternalConnectionId, local_id_registry::LocalIdRegistrationError,
-        shared_state::SharedConnectionState, CloseReason as ConnectionCloseReason,
-        ConnectionIdMapper, Parameters as ConnectionParameters, ProcessingError,
+        shared_state::SharedConnectionState, ConnectionIdMapper,
+        Parameters as ConnectionParameters, ProcessingError,
     },
     contexts::ConnectionOnTransmitError,
     endpoint, path,
@@ -28,7 +28,6 @@ use s2n_quic_core::{
     },
     stateless_reset,
     time::Timestamp,
-    transport::error::TransportError,
 };
 
 /// A trait which represents an internally used `Connection`
@@ -47,14 +46,10 @@ pub trait ConnectionTrait: Sized {
 
     /// Initiates closing the connection as described in
     /// https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10
-    ///
-    /// This method can be called for any of the close reasons:
-    /// - Idle timeout
-    /// - Immediate close
     fn close(
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
-        close_reason: ConnectionCloseReason,
+        error: connection::Error,
         timestamp: Timestamp,
     );
 
@@ -91,7 +86,7 @@ pub trait ConnectionTrait: Sized {
         shared_state: &mut SharedConnectionState<Self::Config>,
         connection_id_mapper: &mut ConnectionIdMapper,
         timestamp: Timestamp,
-    );
+    ) -> Result<(), connection::Error>;
 
     /// Updates the per-connection timer based on individual component timers.
     /// This method is used in order to update the connection timer only once
@@ -103,7 +98,7 @@ pub trait ConnectionTrait: Sized {
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         timestamp: Timestamp,
-    );
+    ) -> Result<(), connection::Error>;
 
     // Packet handling
 
@@ -132,7 +127,7 @@ pub trait ConnectionTrait: Sized {
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: CleartextInitial,
-    ) -> Result<(), TransportError>;
+    ) -> Result<(), ProcessingError>;
 
     /// Is called when a short packet had been received
     fn handle_short_packet(
@@ -170,21 +165,13 @@ pub trait ConnectionTrait: Sized {
         packet: ProtectedRetry,
     ) -> Result<(), ProcessingError>;
 
-    /// Handles a transport error that occurred during packet reception
-    fn handle_transport_error(
-        &mut self,
-        shared_state: &mut SharedConnectionState<Self::Config>,
-        datagram: &DatagramInfo,
-        transport_error: TransportError,
-    );
-
     /// Notifies a connection it has received a datagram from a peer
     fn on_datagram_received(
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         congestion_controller_endpoint: &mut <Self::Config as endpoint::Config>::CongestionControllerEndpoint,
-    ) -> Result<path::Id, TransportError>;
+    ) -> Result<path::Id, connection::Error>;
 
     /// Returns the Connections interests
     fn interests(&self, shared_state: &SharedConnectionState<Self::Config>) -> ConnectionInterests;
@@ -247,7 +234,7 @@ pub trait ConnectionTrait: Sized {
         path_id: path::Id,
         connection_id_validator: &Validator,
         mut payload: DecoderBufferMut,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), connection::Error> {
         let connection_info = ConnectionInfo::new(&datagram.remote_address);
 
         while !payload.is_empty() {
@@ -269,7 +256,7 @@ pub trait ConnectionTrait: Sized {
 
                 let result = self.handle_packet(shared_state, datagram, path_id, packet);
 
-                if let Err(ProcessingError::TransportError(err)) = result {
+                if let Err(ProcessingError::ConnectionError(err)) = result {
                     // CryptoErrors returned as a result of a packet failing decryption will be
                     // silently discarded, but this method could return an error on protocol
                     // violations which would result in shutting down the connection anyway. In this

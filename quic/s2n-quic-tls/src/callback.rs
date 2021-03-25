@@ -5,8 +5,7 @@ use bytes::BytesMut;
 use core::{ffi::c_void, marker::PhantomData};
 use s2n_quic_core::{
     crypto::{tls, CryptoError, CryptoSuite},
-    endpoint,
-    transport::error::TransportError,
+    endpoint, transport,
 };
 use s2n_quic_ring::{
     handshake::RingHandshakeKey,
@@ -28,7 +27,7 @@ pub struct Callback<'a, T, C> {
     pub endpoint: endpoint::Type,
     pub state: &'a mut State,
     pub suite: PhantomData<C>,
-    pub err: Option<TransportError>,
+    pub err: Option<transport::Error>,
     pub send_buffer: &'a mut BytesMut,
 }
 
@@ -69,7 +68,7 @@ where
     }
 
     /// Removes all of the callback and context pointers from the connection
-    pub fn unset(mut self, connection: &mut Connection) -> Result<(), TransportError> {
+    pub fn unset(mut self, connection: &mut Connection) -> Result<(), transport::Error> {
         unsafe {
             unsafe extern "C" fn secret_cb(
                 _context: *mut c_void,
@@ -144,7 +143,7 @@ where
         conn: *mut s2n_connection,
         id: s2n_secret_type_t,
         secret: &mut [u8],
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), transport::Error> {
         match core::mem::replace(&mut self.state.secrets, Secrets::Waiting) {
             Secrets::Waiting => {
                 if id == s2n_secret_type_t::ClientEarlyTrafficSecret {
@@ -193,7 +192,7 @@ where
                         if cfg!(debug_assertions) {
                             panic!("invalid key phase");
                         }
-                        return Err(TransportError::INTERNAL_ERROR);
+                        return Err(transport::Error::INTERNAL_ERROR);
                     }
                 };
 

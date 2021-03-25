@@ -19,7 +19,7 @@ use s2n_quic_core::{
     packet::number::PacketNumberSpace,
     path::Path,
     time::Timestamp,
-    transport::{error::TransportError, parameters::ClientTransportParameters},
+    transport::{self, parameters::ClientTransportParameters},
 };
 
 pub struct SessionContext<'a, Config: endpoint::Config> {
@@ -43,9 +43,9 @@ impl<'a, Config: endpoint::Config> tls::Context<<Config::TLSEndpoint as tls::End
         &mut self,
         key: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::HandshakeKey,
         header_key: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::HandshakeHeaderKey,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), transport::Error> {
         if self.handshake.is_some() {
-            return Err(TransportError::INTERNAL_ERROR
+            return Err(transport::Error::INTERNAL_ERROR
                 .with_reason("handshake keys initialized more than once"));
         }
 
@@ -72,9 +72,9 @@ impl<'a, Config: endpoint::Config> tls::Context<<Config::TLSEndpoint as tls::End
         key: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::ZeroRttKey,
         _header_key: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::ZeroRttHeaderKey,
         _application_parameters: tls::ApplicationParameters,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), transport::Error> {
         if self.zero_rtt_crypto.is_some() {
-            return Err(TransportError::INTERNAL_ERROR
+            return Err(transport::Error::INTERNAL_ERROR
                 .with_reason("zero rtt keys initialized more than once"));
         }
 
@@ -89,9 +89,9 @@ impl<'a, Config: endpoint::Config> tls::Context<<Config::TLSEndpoint as tls::End
         key: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::OneRttKey,
         header_key: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::OneRttHeaderKey,
         application_parameters: tls::ApplicationParameters,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), transport::Error> {
         if self.application.is_some() {
-            return Err(TransportError::INTERNAL_ERROR
+            return Err(transport::Error::INTERNAL_ERROR
                 .with_reason("application keys initialized more than once"));
         }
 
@@ -113,13 +113,13 @@ impl<'a, Config: endpoint::Config> tls::Context<<Config::TLSEndpoint as tls::End
                 //# An endpoint SHOULD treat receipt of
                 //# duplicate transport parameters as a connection error of type
                 //# TRANSPORT_PARAMETER_ERROR.
-                return Err(TransportError::TRANSPORT_PARAMETER_ERROR
+                return Err(transport::Error::TRANSPORT_PARAMETER_ERROR
                     .with_reason("Invalid transport parameters"));
             }
         };
 
         if !remaining.is_empty() {
-            return Err(TransportError::TRANSPORT_PARAMETER_ERROR
+            return Err(transport::Error::TRANSPORT_PARAMETER_ERROR
                 .with_reason("Invalid bytes in transport parameters"));
         }
 
@@ -182,7 +182,7 @@ impl<'a, Config: endpoint::Config> tls::Context<<Config::TLSEndpoint as tls::End
         Ok(())
     }
 
-    fn on_handshake_done(&mut self) -> Result<(), TransportError> {
+    fn on_handshake_done(&mut self) -> Result<(), transport::Error> {
         // After the handshake is done, the handshake crypto stream should be completely
         // finished
         if let Some(space) = self.handshake.as_mut() {
@@ -202,7 +202,7 @@ impl<'a, Config: endpoint::Config> tls::Context<<Config::TLSEndpoint as tls::End
             }
             Ok(())
         } else {
-            Err(TransportError::INTERNAL_ERROR
+            Err(transport::Error::INTERNAL_ERROR
                 .with_reason("handshake cannot be completed without application keys"))
         }
     }

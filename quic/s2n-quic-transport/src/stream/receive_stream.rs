@@ -18,12 +18,11 @@ use core::{
     task::{Context, Waker},
 };
 use s2n_quic_core::{
-    ack,
-    application::ApplicationErrorCode,
+    ack, application,
     frame::{stream::StreamRef, MaxStreamData, ResetStream, StopSending, StreamDataBlocked},
     packet::number::PacketNumber,
     stream::{ops, StreamId},
-    transport::error::TransportError,
+    transport,
     varint::VarInt,
 };
 
@@ -101,10 +100,10 @@ impl ValueToFrameWriter<VarInt> for MaxStreamDataToFrameWriter {
 #[derive(Default)]
 pub(super) struct StopSendingToFrameWriter {}
 
-impl ValueToFrameWriter<ApplicationErrorCode> for StopSendingToFrameWriter {
+impl ValueToFrameWriter<application::Error> for StopSendingToFrameWriter {
     fn write_value_as_frame<W: WriteContext>(
         &self,
-        value: ApplicationErrorCode,
+        value: application::Error,
         stream_id: StreamId,
         context: &mut W,
     ) -> Option<PacketNumber> {
@@ -161,7 +160,7 @@ impl ReceiveStreamFlowController {
         &mut self,
         offset: VarInt,
         source_frame_type: Option<u8>,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), transport::Error> {
         // Step 1: Check the stream limit
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.10
@@ -177,7 +176,7 @@ impl ReceiveStreamFlowController {
             //# (Section 11) if the sender violates the advertised connection or
             //# stream data limits.
 
-            return Err(TransportError::FLOW_CONTROL_ERROR
+            return Err(transport::Error::FLOW_CONTROL_ERROR
                 .with_reason("Stream flow control window exceeded")
                 .with_optional_frame_type(source_frame_type.map(|ty| ty.into())));
         }
@@ -287,7 +286,7 @@ pub struct ReceiveStream {
     /// The composite flow controller for receiving data
     pub(super) flow_controller: ReceiveStreamFlowController,
     /// Synchronizes the `STOP_SENDING` flag towards the peer.
-    pub(super) stop_sending_sync: OnceSync<ApplicationErrorCode, StopSendingToFrameWriter>,
+    pub(super) stop_sending_sync: OnceSync<application::Error, StopSendingToFrameWriter>,
     /// The handle of a task that is currently waiting on new incoming data, along with the low
     /// watermark value.
     pub(super) read_waiter: Option<(Waker, usize)>,
@@ -337,7 +336,7 @@ impl ReceiveStream {
         &mut self,
         frame: &StreamRef,
         events: &mut StreamEvents,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), transport::Error> {
         match self.state {
             ReceiveStreamState::Reset(_) => {
                 // Since the stream already had been reset we ignore the data.
@@ -364,7 +363,7 @@ impl ReceiveStream {
                     .offset
                     .checked_add_usize(frame.data.len())
                     .ok_or_else(|| {
-                        TransportError::FLOW_CONTROL_ERROR
+                        transport::Error::FLOW_CONTROL_ERROR
                             .with_reason("data size overflow")
                             .with_frame_type(frame.tag().into())
                     })?;
@@ -376,7 +375,7 @@ impl ReceiveStream {
                         //# RESET_STREAM or STREAM frame is received indicating a change in the
                         //# final size for the stream, an endpoint SHOULD respond with a
                         //# FINAL_SIZE_ERROR error
-                        return Err(TransportError::FINAL_SIZE_ERROR
+                        return Err(transport::Error::FINAL_SIZE_ERROR
                             .with_reason("Final size changed")
                             .with_frame_type(frame.tag().into()));
                     }
@@ -395,7 +394,7 @@ impl ReceiveStream {
                             //# This includes violations of remembered limits in Early Data; see
                             //# Section 7.4.1.
                             StreamReceiveBufferError::OutOfRange => {
-                                TransportError::FLOW_CONTROL_ERROR
+                                transport::Error::FLOW_CONTROL_ERROR
                             }
                         }
                         .with_reason("data reception error")
@@ -492,7 +491,7 @@ impl ReceiveStream {
         &mut self,
         _frame: &StreamDataBlocked,
         _events: &mut StreamEvents,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), transport::Error> {
         // There is currently no special handling implemented for this event.
         // In the future we might e.g. generate metrics for this.
         Ok(())
@@ -517,7 +516,7 @@ impl ReceiveStream {
         &mut self,
         frame: &ResetStream,
         events: &mut StreamEvents,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), transport::Error> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#3.5
         //= type=exception
         //= reason=It's simpler to accept any RESET_STREAM frame instead of ignore
@@ -546,7 +545,7 @@ impl ReceiveStream {
         error: StreamError,
         actual_size: Option<VarInt>,
         frame_tag: Option<u8>,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), transport::Error> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#3.2
         //# An implementation MAY
         //# interrupt delivery of stream data, discard any data that was not
@@ -570,7 +569,7 @@ impl ReceiveStream {
                     //# receipt of data at or beyond the final size as a FINAL_SIZE_ERROR
                     //# error, even after a stream is closed.
                     if Into::<u64>::into(actual_size) != total_size {
-                        return Err(TransportError::FINAL_SIZE_ERROR
+                        return Err(transport::Error::FINAL_SIZE_ERROR
                             .with_reason(
                                 "Final size in reset frame did not match previous final size",
                             )

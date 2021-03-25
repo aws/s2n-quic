@@ -34,3 +34,34 @@ impl Type {
         }
     }
 }
+
+/// Enumerates endpoint locations
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Location {
+    /// The local endpoint
+    Local,
+    /// The remote endpoint
+    Remote,
+}
+
+impl Location {
+    /// Returns true if the given endpoint is local
+    pub fn is_local(self) -> bool {
+        self == Self::Local
+    }
+
+    /// Returns true if the given endpoint is remote
+    pub fn is_remote(self) -> bool {
+        self == Self::Remote
+    }
+
+    /// Returns the [`Location`] of the peer.
+    /// - If called on `Local` this will return `Remote`
+    /// - If called on `Remote` this will return `Local`
+    pub fn peer_type(self) -> Self {
+        match self {
+            Self::Local => Self::Remote,
+            Self::Remote => Self::Local,
+        }
+    }
+}

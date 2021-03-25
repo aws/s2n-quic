@@ -11,7 +11,6 @@ use s2n_quic_core::{
     packet,
     packet::ProtectedPacket,
     path::MINIMUM_MTU,
-    transport::error::TransportError,
 };
 
 #[derive(Debug)]
@@ -20,6 +19,9 @@ pub struct Negotiator<Cfg> {
     max_peers: usize,
     config: PhantomData<Cfg>,
 }
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Error;
 
 const SUPPORTED_VERSIONS: &[u32] = &[
     0xff00_0020, // draft-32 (https://github.com/quicwg/base-drafts/wiki/20th-Implementation-Draft)
@@ -61,7 +63,7 @@ impl<Config: endpoint::Config> Negotiator<Config> {
         remote_address: SocketAddress,
         payload_len: usize,
         packet: &ProtectedPacket,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), Error> {
         // always forward packets for clients on to connections
         if Config::ENDPOINT_TYPE.is_client() {
             return Ok(());
@@ -84,7 +86,7 @@ impl<Config: endpoint::Config> Negotiator<Config> {
                 //# 0-RTT might choose not to send Version Negotiation packets in
                 //# response to 0-RTT packets with the expectation that it will
                 //# eventually receive an Initial packet.
-                return Err(TransportError::NO_ERROR);
+                return Err(Error);
             }
             ProtectedPacket::VersionNegotiation(_) => {
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#6.1
@@ -109,7 +111,7 @@ impl<Config: endpoint::Config> Negotiator<Config> {
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2.2
             //# Servers MUST
             //# drop smaller packets that specify unsupported versions.
-            return Err(TransportError::NO_ERROR);
+            return Err(Error);
         }
 
         {
@@ -131,7 +133,7 @@ impl<Config: endpoint::Config> Negotiator<Config> {
             }
         }
 
-        Err(TransportError::NO_ERROR)
+        Err(Error)
     }
 
     pub fn on_transmit<Tx: tx::Queue>(&mut self, queue: &mut Tx) {
@@ -303,7 +305,7 @@ mod tests {
         datagram_info: DatagramInfo,
         version: u32,
         negotiator: &mut Negotiator<C>,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), Error> {
         on_packet!(
             negotiator,
             datagram_info.remote_address,
@@ -323,7 +325,7 @@ mod tests {
         datagram_info: DatagramInfo,
         version: u32,
         negotiator: &mut Negotiator<C>,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), Error> {
         let mut payload = vec![1u8, 2, 3, 4, 5];
         payload.extend_from_slice(&DUMMY_TAG[..]);
 
@@ -347,7 +349,7 @@ mod tests {
         datagram_info: DatagramInfo,
         version: u32,
         negotiator: &mut Negotiator<C>,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), Error> {
         let mut payload = vec![1u8, 2, 3, 4, 5];
         payload.extend_from_slice(&DUMMY_TAG[..]);
 
@@ -369,7 +371,7 @@ mod tests {
         datagram_info: DatagramInfo,
         version: u32,
         negotiator: &mut Negotiator<C>,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), Error> {
         let mut payload = vec![1u8, 2, 3, 4, 5];
         payload.extend_from_slice(&DUMMY_TAG[..]);
 
@@ -390,7 +392,7 @@ mod tests {
     fn on_version_negotiation_packet<C: endpoint::Config>(
         datagram_info: DatagramInfo,
         negotiator: &mut Negotiator<C>,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), Error> {
         on_packet!(
             negotiator,
             datagram_info.remote_address,
@@ -407,7 +409,7 @@ mod tests {
     fn on_short_packet<C: endpoint::Config>(
         datagram_info: DatagramInfo,
         negotiator: &mut Negotiator<C>,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), Error> {
         let mut payload = vec![1u8, 2, 3, 4, 5];
         payload.extend_from_slice(&DUMMY_TAG[..]);
 
@@ -460,7 +462,7 @@ mod tests {
 
         assert_eq!(
             on_initial_packet(datagram_info(1200), INVALID_VERSION, &mut server),
-            Err(TransportError::NO_ERROR),
+            Err(Error),
             "server implementations should error on invalid versions"
         );
 
@@ -476,7 +478,7 @@ mod tests {
 
         assert_eq!(
             on_future_version_initial_packet(datagram_info(1200), INVALID_VERSION, &mut server),
-            Err(TransportError::NO_ERROR),
+            Err(Error),
             "server implementations should error on invalid versions"
         );
 
@@ -492,7 +494,7 @@ mod tests {
 
         assert_eq!(
             on_zerortt_packet(datagram_info(1200), INVALID_VERSION, &mut server),
-            Err(TransportError::NO_ERROR),
+            Err(Error),
             "server implementations should error on invalid versions"
         );
 
@@ -508,7 +510,7 @@ mod tests {
 
         assert_eq!(
             on_initial_packet(datagram_info(32), INVALID_VERSION, &mut server),
-            Err(TransportError::NO_ERROR),
+            Err(Error),
             "server implementations should error on invalid versions"
         );
 
@@ -525,7 +527,7 @@ mod tests {
         for _ in 0..5 {
             assert_eq!(
                 on_initial_packet(datagram_info(1200), INVALID_VERSION, &mut server),
-                Err(TransportError::NO_ERROR),
+                Err(Error),
                 "server implementations should error on invalid versions"
             );
         }

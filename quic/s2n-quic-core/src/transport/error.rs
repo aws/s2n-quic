@@ -4,11 +4,11 @@
 #![forbid(unsafe_code)]
 
 use crate::{
-    application::{ApplicationErrorCode, ApplicationErrorExt},
+    application,
     crypto::CryptoError,
     varint::{VarInt, VarIntError},
 };
-use core::fmt;
+use core::{fmt, ops};
 use s2n_codec::DecoderError;
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#20
@@ -17,61 +17,55 @@ use s2n_codec::DecoderError;
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
-pub struct TransportError {
-    pub code: VarInt,
+pub struct Error {
+    pub code: Code,
     pub frame_type: Option<VarInt>,
     pub reason: &'static str,
 }
 
-impl TransportError {
-    /// Creates a new `TransportError`
+impl Error {
+    /// Creates a new `Error`
     pub const fn new(code: VarInt) -> Self {
         Self {
-            code,
+            code: Code::new(code),
             reason: "",
             frame_type: None,
         }
     }
 
-    /// Updates the `TransportError` with the specified `frame_type`
+    /// Updates the `Error` with the specified `frame_type`
     pub const fn with_frame_type(self, frame_type: VarInt) -> Self {
         self.with_optional_frame_type(Some(frame_type))
     }
 
-    /// Updated the `TransportError` with the optional `frame_type`
+    /// Updated the `Error` with the optional `frame_type`
     pub const fn with_optional_frame_type(mut self, frame_type: Option<VarInt>) -> Self {
         self.frame_type = frame_type;
         self
     }
 
-    /// Updates the `TransportError` with the specified `reason`
+    /// Updates the `Error` with the specified `reason`
     pub const fn with_reason(mut self, reason: &'static str) -> Self {
         self.reason = reason;
         self
     }
 }
 
-impl fmt::Display for TransportError {
+impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if !self.reason.is_empty() {
             self.reason.fmt(f)
-        } else if let Some(description) = self.description() {
-            description.fmt(f)
         } else {
-            write!(f, "TransportError({})", self.code)
+            self.code.fmt(f)
         }
     }
 }
 
-impl fmt::Debug for TransportError {
+impl fmt::Debug for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut d = f.debug_struct("TransportError");
+        let mut d = f.debug_struct("transport::Error");
 
-        d.field("code", &self.code);
-
-        if let Some(description) = self.description() {
-            d.field("description", &description);
-        }
+        d.field("code", &self.code.as_u64());
 
         if !self.reason.is_empty() {
             d.field("reason", &self.reason);
@@ -85,6 +79,54 @@ impl fmt::Debug for TransportError {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Code(VarInt);
+
+impl Code {
+    /// Creates a new `TransportError`
+    pub const fn new(code: VarInt) -> Self {
+        Self(code)
+    }
+}
+
+impl fmt::Debug for Code {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut d = f.debug_tuple("transport::error::Code");
+
+        d.field(&self.0);
+
+        if let Some(desc) = self.description() {
+            d.field(&desc);
+        }
+
+        d.finish()
+    }
+}
+
+impl fmt::Display for Code {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(description) = self.description() {
+            description.fmt(f)
+        } else {
+            write!(f, "error({:x?})", self.as_u64())
+        }
+    }
+}
+
+impl ops::Deref for Code {
+    type Target = VarInt;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<VarInt> for Code {
+    fn from(value: VarInt) -> Self {
+        Self::new(value)
+    }
+}
+
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.19
 //# A value of 0 (equivalent to the mention
 //# of the PADDING frame) is used when the frame type is unknown.
@@ -93,15 +135,14 @@ const UNKNOWN_FRAME_TYPE: u32 = 0;
 /// Internal convenience macro for defining standard error codes
 macro_rules! impl_errors {
     ($($(#[doc = $doc:expr])* $name:ident = $code:literal $(.with_frame_type($frame:expr))?),* $(,)?) => {
-        impl TransportError {
+        impl Code {
             $(
                 $(#[doc = $doc])*
-                pub const $name: Self = Self::new(VarInt::from_u32($code))
-                    $( .with_frame_type(VarInt::from_u32($frame)) )?;
+                pub const $name: Self = Self::new(VarInt::from_u32($code));
             )*
 
             pub fn description(&self) -> Option<&'static str> {
-                match self.code.as_u64() {
+                match self.0.as_u64() {
                     $(
                         $code => Some(stringify!($name)),
                     )*
@@ -111,12 +152,24 @@ macro_rules! impl_errors {
             }
         }
 
+        impl Error {
+            $(
+                $(#[doc = $doc])*
+                pub const $name: Self = Self::new(VarInt::from_u32($code))
+                    $( .with_frame_type(VarInt::from_u32($frame)) )?;
+            )*
+
+            pub fn description(&self) -> Option<&'static str> {
+                self.code.description()
+            }
+        }
+
         #[test]
         fn description_test() {
             $(
-                assert_eq!(&TransportError::$name.to_string(), stringify!($name));
+                assert_eq!(&Error::$name.to_string(), stringify!($name));
             )*
-            assert_eq!(&TransportError::from(CryptoError::DECODE_ERROR).to_string(), "DECODE_ERROR");
+            assert_eq!(&Error::from(CryptoError::DECODE_ERROR).to_string(), "DECODE_ERROR");
         }
     };
 }
@@ -260,7 +313,7 @@ impl_errors! {
 //#    when TLS is used for the crypto handshake are described in
 //#    Section 4.8 of [QUIC-TLS].
 
-impl TransportError {
+impl Error {
     #[inline]
     /// Creates a crypto-level `TransportError` from a TLS alert code.
     pub const fn crypto_error(code: u8) -> Self {
@@ -276,21 +329,22 @@ impl TransportError {
 //# (Section 19.5), and the CONNECTION_CLOSE frame with a type of 0x1d
 //# (Section 19.19).
 
-impl TransportError {
+impl Error {
     #[inline]
-    /// Creates an application-level `TransportError`
+    /// Creates an application-level `Error`
     pub const fn applicaton_error(code: VarInt) -> Self {
+        // Application errors set `frame_type` to `None`
         Self::new(code)
     }
 }
 
-// If a `TransportError` contains no frame type it was sent by an application
-// and contains an `ApplicationLevelErrorCode`. Otherwise it is an
-// error on the QUIC layer.
-impl ApplicationErrorExt for TransportError {
-    fn application_error_code(&self) -> Option<ApplicationErrorCode> {
+/// If a `Error` contains no frame type it was sent by an application
+/// and contains an `ApplicationLevelErrorCode`. Otherwise it is an
+/// error on the QUIC layer.
+impl application::error::TryInto for Error {
+    fn application_error(&self) -> Option<application::Error> {
         if self.frame_type.is_none() {
-            Some(self.code.into())
+            Some(self.code.0.into())
         } else {
             None
         }
@@ -298,7 +352,7 @@ impl ApplicationErrorExt for TransportError {
 }
 
 /// Implements conversion from decoder errors
-impl From<DecoderError> for TransportError {
+impl From<DecoderError> for Error {
     fn from(decoder_error: DecoderError) -> Self {
         match decoder_error {
             DecoderError::InvariantViolation(reason) => {
@@ -310,16 +364,16 @@ impl From<DecoderError> for TransportError {
 }
 
 /// Implements conversion from crypto errors
-/// See `TransportError::crypto_error` for more details
-impl From<CryptoError> for TransportError {
+/// See `Error::crypto_error` for more details
+impl From<CryptoError> for Error {
     fn from(crypto_error: CryptoError) -> Self {
         Self::crypto_error(crypto_error.code).with_reason(crypto_error.reason)
     }
 }
 
 /// Implements conversion from crypto errors
-/// See `TransportError::crypto_error` for more details
-impl From<VarIntError> for TransportError {
+/// See `Error::crypto_error` for more details
+impl From<VarIntError> for Error {
     fn from(_: VarIntError) -> Self {
         Self::INTERNAL_ERROR.with_reason("varint encoding limit exceeded")
     }

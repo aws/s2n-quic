@@ -3,7 +3,7 @@
 
 use crate::{
     crypto::{tls, CryptoSuite, Key},
-    transport::error::TransportError,
+    transport,
 };
 use bytes::Bytes;
 use core::fmt;
@@ -60,7 +60,7 @@ impl super::Endpoint for Endpoint {
 pub struct Session;
 
 impl super::Session for Session {
-    fn poll<C: tls::Context<Self>>(&mut self, _context: &mut C) -> Result<(), TransportError> {
+    fn poll<C: tls::Context<Self>>(&mut self, _context: &mut C) -> Result<(), transport::Error> {
         todo!("implement dummy handshake")
     }
 }
@@ -119,7 +119,7 @@ impl<S: tls::Session, C: tls::Session> Pair<S, C> {
     }
 
     /// Continues progress of the handshake
-    pub fn poll(&mut self) -> Result<(), TransportError> {
+    pub fn poll(&mut self) -> Result<(), transport::Error> {
         assert!(
             self.iterations < 10,
             "handshake has iterated too many times: {:#?}",
@@ -342,7 +342,7 @@ impl<C: CryptoSuite> tls::Context<C> for Context<C> {
         &mut self,
         key: C::HandshakeKey,
         _header_key: C::HandshakeHeaderKey,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), transport::Error> {
         assert!(
             self.handshake.crypto.is_none(),
             "handshake keys emitted multiple times"
@@ -356,7 +356,7 @@ impl<C: CryptoSuite> tls::Context<C> for Context<C> {
         key: C::ZeroRttKey,
         _header_key: C::ZeroRttHeaderKey,
         params: tls::ApplicationParameters,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), transport::Error> {
         assert!(
             self.zero_rtt_crypto.is_none(),
             "0-rtt keys emitted multiple times"
@@ -371,7 +371,7 @@ impl<C: CryptoSuite> tls::Context<C> for Context<C> {
         key: C::OneRttKey,
         _header_key: C::OneRttHeaderKey,
         params: tls::ApplicationParameters,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), transport::Error> {
         assert!(
             self.application.crypto.is_none(),
             "1-rtt keys emitted multiple times"
@@ -381,7 +381,7 @@ impl<C: CryptoSuite> tls::Context<C> for Context<C> {
         Ok(())
     }
 
-    fn on_handshake_done(&mut self) -> Result<(), TransportError> {
+    fn on_handshake_done(&mut self) -> Result<(), transport::Error> {
         assert!(!self.handshake_done, "handshake done called multiple times");
         self.handshake_done = true;
         Ok(())

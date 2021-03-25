@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use s2n_quic_core::{
-    frame::stream::Stream as StreamFrame, stream::StreamId, transport::error::TransportError,
-    varint::VarInt,
+    frame::stream::Stream as StreamFrame, stream::StreamId, transport, varint::VarInt,
 };
 
 pub use crate::contexts::testing::*;
@@ -29,8 +28,8 @@ pub fn stream_data<Data>(
 /// Asserts that a `Result` type contains a TransportError with the given
 /// error code.
 fn assert_is_transport_error<T: core::fmt::Debug>(
-    result: Result<T, TransportError>,
-    expected: TransportError,
+    result: Result<T, transport::Error>,
+    expected: transport::Error,
 ) {
     let actual = result.unwrap_err();
     assert_eq!(expected.code, actual.code);

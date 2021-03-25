@@ -5,11 +5,13 @@
 
 use crate::{
     connection::{
-        self, id::ConnectionInfo, limits::Limits, local_id_registry::LocalIdRegistrationError,
-        CloseReason as ConnectionCloseReason, ConnectionIdMapper, ConnectionInterests,
-        ConnectionTimerEntry, ConnectionTimers, ConnectionTransmission,
-        ConnectionTransmissionContext, InternalConnectionId, Parameters as ConnectionParameters,
-        SharedConnectionState,
+        self,
+        id::{ConnectionInfo, Interest},
+        limits::Limits,
+        local_id_registry::LocalIdRegistrationError,
+        ConnectionIdMapper, ConnectionInterests, ConnectionTimerEntry, ConnectionTimers,
+        ConnectionTransmission, ConnectionTransmissionContext, InternalConnectionId,
+        Parameters as ConnectionParameters, ProcessingError, SharedConnectionState,
     },
     contexts::ConnectionOnTransmitError,
     endpoint, path,
@@ -19,8 +21,6 @@ use crate::{
 };
 use core::time::Duration;
 use s2n_quic_core::{
-    application::ApplicationErrorExt,
-    connection::{id::Interest, ProcessingError},
     inet::DatagramInfo,
     io::tx,
     packet::{
@@ -33,7 +33,6 @@ use s2n_quic_core::{
     },
     stateless_reset,
     time::Timestamp,
-    transport::error::TransportError,
 };
 
 /// Possible states for handing over a connection from the endpoint to the
@@ -69,37 +68,42 @@ enum ConnectionState {
     Finished,
 }
 
-impl<'a> From<ConnectionCloseReason<'a>> for ConnectionState {
-    fn from(close_reason: ConnectionCloseReason<'a>) -> Self {
-        match close_reason {
-            ConnectionCloseReason::IdleTimerExpired => {
+impl From<connection::Error> for ConnectionState {
+    fn from(error: connection::Error) -> Self {
+        match error {
+            connection::Error::IdleTimerExpired => {
                 // If the idle timer expired we directly move into the final state
                 ConnectionState::Finished
             }
-            ConnectionCloseReason::LocalImmediateClose(_error) => {
+            connection::Error::Closed { initiator }
+            | connection::Error::Transport { initiator, .. }
+            | connection::Error::Application { initiator, .. }
+                if initiator.is_local() =>
+            {
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.2.1
                 //# An endpoint enters the closing state after initiating an immediate
                 //# close.
                 ConnectionState::Closing
             }
-            ConnectionCloseReason::PeerImmediateClose(_error) => {
+            connection::Error::Closed { .. }
+            | connection::Error::Transport { .. }
+            | connection::Error::Application { .. } => {
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.2.2
                 //# The draining state is entered once an endpoint receives a
                 //# CONNECTION_CLOSE frame, which indicates that its peer is closing or
                 //# draining.
                 ConnectionState::Draining
             }
-            ConnectionCloseReason::LocalObservedTransportErrror(_error) => {
-                // Since the local side observes the error, it initiates the close
-                // Therefore this is similar to an application initiated close
-                ConnectionState::Closing
-            }
-            ConnectionCloseReason::StatelessReset => {
+            connection::Error::StatelessReset => {
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1
                 //# If the last 16 bytes of the datagram are identical in value to a
                 //# Stateless Reset Token, the endpoint MUST enter the draining period
                 //# and not send any further packets on this connection.
                 ConnectionState::Draining
+            }
+            _ => {
+                // catch all
+                ConnectionState::Closing
             }
         }
     }
@@ -143,7 +147,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         &mut self,
         shared_state: &mut SharedConnectionState<Config>,
         datagram: &DatagramInfo,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), connection::Error> {
         let space_manager = &mut shared_state.space_manager;
         space_manager.poll_crypto(
             self.path_manager.active_path(),
@@ -261,14 +265,10 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
     /// Initiates closing the connection as described in
     /// https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10
-    ///
-    /// This method can be called for any of the close reasons:
-    /// - Idle timeout
-    /// - Immediate close
     fn close(
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
-        close_reason: ConnectionCloseReason,
+        error: connection::Error,
         timestamp: Timestamp,
     ) {
         match self.state {
@@ -291,7 +291,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         // We are not interested in this timer anymore
         // TODO: There might be more such timers need to get added in the future
         self.timers.peer_idle_timer.cancel();
-        self.state = close_reason.into();
+        self.state = error.into();
 
         shared_state
             .space_manager
@@ -303,7 +303,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         if let Some((application, _handshake_status)) = shared_state.space_manager.application_mut()
         {
             // Close all streams with the derived error
-            application.stream_manager.close(close_reason.into());
+            application.stream_manager.close(error);
         }
         // TODO: Discard application state?
 
@@ -426,20 +426,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         shared_state: &mut SharedConnectionState<Self::Config>,
         connection_id_mapper: &mut ConnectionIdMapper,
         timestamp: Timestamp,
-    ) {
-        if self
-            .timers
-            .peer_idle_timer
-            .poll_expiration(timestamp)
-            .is_ready()
-        {
-            self.close(
-                shared_state,
-                ConnectionCloseReason::IdleTimerExpired,
-                timestamp,
-            );
-        }
-
+    ) -> Result<(), connection::Error> {
         if self
             .timers
             .close_timer
@@ -467,6 +454,17 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             &mut self.path_manager,
             timestamp,
         );
+
+        if self
+            .timers
+            .peer_idle_timer
+            .poll_expiration(timestamp)
+            .is_ready()
+        {
+            return Err(connection::Error::IdleTimerExpired);
+        }
+
+        Ok(())
     }
 
     /// Updates the per-connection timer based on individual component timers.
@@ -493,8 +491,10 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     fn on_wakeup(
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
-        timestamp: Timestamp,
-    ) {
+        _timestamp: Timestamp,
+    ) -> Result<(), connection::Error> {
+        let mut result = Ok(());
+
         // This method is intentionally mostly empty at the moment. The most important thing on a
         // wakeup is that the connection manager synchronizes the interests of the individual connection.
         // This will happen automatically through the [`interests()`] call after the [`Connection`]
@@ -506,23 +506,15 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             if let Some((application, _handshake_status)) =
                 shared_state.space_manager.application_mut()
             {
-                if let Some(stream_error) = application.stream_manager.close_reason() {
-                    // A connection close was requested. This needs to have an
-                    // associated error code which can be used as `TransportError`
-                    let error_code = stream_error.application_error_code().expect(concat!(
-                        "The connection should only be closeable through an ",
-                        "API call which submits an error code while active"
-                    ));
-                    self.close(
-                        shared_state,
-                        ConnectionCloseReason::LocalImmediateClose(error_code),
-                        timestamp,
-                    );
+                if let Some(error) = application.stream_manager.close_reason() {
+                    result = Err(error);
                 }
             }
         }
 
         shared_state.wakeup_handle.wakeup_handled();
+
+        result
     }
 
     // Packet handling
@@ -531,7 +523,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         shared_state: &mut SharedConnectionState<Config>,
         datagram: &DatagramInfo,
         congestion_controller_endpoint: &mut Config::CongestionControllerEndpoint,
-    ) -> Result<path::Id, TransportError> {
+    ) -> Result<path::Id, connection::Error> {
         let is_handshake_confirmed = shared_state.space_manager.is_handshake_confirmed();
 
         let (id, unblocked) = self.path_manager.on_datagram_received(
@@ -584,7 +576,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: CleartextInitial,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), ProcessingError> {
         if let Some((space, handshake_status)) = shared_state.space_manager.initial_mut() {
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2
             //= type=TODO
@@ -603,7 +595,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             // token is received in the first Initial Packet. If that value is set, it should be
             // verified in all subsequent packets.
 
-            if let Some(close) = space.handle_cleartext_payload(
+            space.handle_cleartext_payload(
                 packet.packet_number,
                 packet.payload,
                 datagram,
@@ -611,20 +603,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 &mut self.path_manager,
                 handshake_status,
                 &mut self.local_id_registry,
-            )? {
-                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2
-                //# An
-                //# endpoint MUST generate a connection error if processing the contents
-                //# of these packets prior to discovering an error, unless it fully
-                //# reverts these changes.
-
-                self.close(
-                    shared_state,
-                    ConnectionCloseReason::PeerImmediateClose(close),
-                    datagram.timestamp,
-                );
-                return Ok(());
-            }
+            )?;
 
             // try to move the crypto state machine forward
             self.update_crypto_state(shared_state, datagram)?;
@@ -656,7 +635,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
         if let Some((space, handshake_status)) = shared_state.space_manager.handshake_mut() {
             let packet = space.validate_and_decrypt_packet(packet)?;
-            if let Some(close) = space.handle_cleartext_payload(
+            space.handle_cleartext_payload(
                 packet.packet_number,
                 packet.payload,
                 datagram,
@@ -664,14 +643,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 &mut self.path_manager,
                 handshake_status,
                 &mut self.local_id_registry,
-            )? {
-                self.close(
-                    shared_state,
-                    ConnectionCloseReason::PeerImmediateClose(close),
-                    datagram.timestamp,
-                );
-                return Ok(());
-            }
+            )?;
 
             if Self::Config::ENDPOINT_TYPE.is_server() {
                 //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9.1
@@ -754,7 +726,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 &self.path_manager.active_path().rtt_estimator,
             )?;
 
-            if let Some(close) = space.handle_cleartext_payload(
+            space.handle_cleartext_payload(
                 packet.packet_number,
                 packet.payload,
                 datagram,
@@ -762,14 +734,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 &mut self.path_manager,
                 handshake_status,
                 &mut self.local_id_registry,
-            )? {
-                self.close(
-                    shared_state,
-                    ConnectionCloseReason::PeerImmediateClose(close),
-                    datagram.timestamp,
-                );
-                return Ok(());
-            }
+            )?;
 
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.1
             //# An endpoint restarts its idle timer when a packet from its peer is
@@ -873,20 +838,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         //# Retry replaces the token with a newer one.
 
         Ok(())
-    }
-
-    fn handle_transport_error(
-        &mut self,
-        shared_state: &mut SharedConnectionState<Self::Config>,
-        datagram: &DatagramInfo,
-        transport_error: TransportError,
-    ) {
-        dbg!(&transport_error);
-        self.close(
-            shared_state,
-            ConnectionCloseReason::LocalObservedTransportErrror(transport_error),
-            datagram.timestamp,
-        );
     }
 
     fn mark_as_accepted(&mut self) {

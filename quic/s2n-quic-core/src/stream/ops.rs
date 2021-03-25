@@ -28,7 +28,7 @@
 //!     .await?;
 //! ```
 
-use crate::application::ApplicationErrorCode;
+use crate::application;
 use core::task::Poll;
 
 /// A request made on a stream
@@ -49,7 +49,7 @@ impl<'a> Request<'a> {
     }
 
     /// Resets the tx stream with an error code
-    pub fn reset(&mut self, error: ApplicationErrorCode) -> &mut Self {
+    pub fn reset(&mut self, error: application::Error) -> &mut Self {
         self.tx_mut().reset = Some(error);
         self
     }
@@ -73,7 +73,7 @@ impl<'a> Request<'a> {
     }
 
     /// Requests the peer to stop sending data on the rx stream
-    pub fn stop_sending(&mut self, error: ApplicationErrorCode) -> &mut Self {
+    pub fn stop_sending(&mut self, error: application::Error) -> &mut Self {
         self.rx_mut().stop_sending = Some(error);
         self
     }
@@ -173,7 +173,7 @@ pub mod tx {
         pub chunks: Option<&'a mut [bytes::Bytes]>,
 
         /// Optionally reset the stream with an error
-        pub reset: Option<ApplicationErrorCode>,
+        pub reset: Option<application::Error>,
 
         /// Waits for an ACK on resets and finishes
         pub flush: bool,
@@ -253,7 +253,7 @@ pub mod rx {
         pub high_watermark: usize,
 
         /// Optionally requests the peer to stop sending data with an error
-        pub stop_sending: Option<ApplicationErrorCode>,
+        pub stop_sending: Option<application::Error>,
     }
 
     impl<'a> Default for Request<'a> {
@@ -477,10 +477,10 @@ mod tests {
             .send(&mut send_chunks)
             .finish()
             .flush()
-            .reset(ApplicationErrorCode::new(1).unwrap())
+            .reset(application::Error::new(1).unwrap())
             .receive(&mut receive_chunks)
             .with_watermark(5, 10)
-            .stop_sending(ApplicationErrorCode::new(2).unwrap());
+            .stop_sending(application::Error::new(2).unwrap());
 
         assert!(matches!(
             request,
@@ -497,8 +497,8 @@ mod tests {
                     high_watermark: 10,
                     stop_sending: Some(stop_sending)
                 })
-            } if reset == ApplicationErrorCode::new(1).unwrap()
-              && stop_sending == ApplicationErrorCode::new(2).unwrap()
+            } if reset == application::Error::new(1).unwrap()
+              && stop_sending == application::Error::new(2).unwrap()
               && tx_chunks.len() == 1
               && rx_chunks.len() == 2
         ));

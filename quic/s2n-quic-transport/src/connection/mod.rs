@@ -4,10 +4,7 @@
 //! This module contains the implementation of QUIC `Connections` and their management
 
 use crate::{endpoint, recovery::congestion_controller};
-use s2n_quic_core::{
-    application::ApplicationErrorCode, connection, frame::ConnectionClose, inet::SocketAddress,
-    stream::StreamError, time::Timestamp, transport::error::TransportError,
-};
+use s2n_quic_core::{connection, inet::SocketAddress, time::Timestamp};
 
 mod api;
 mod api_provider;
@@ -39,7 +36,6 @@ pub(crate) use transmission::{ConnectionTransmission, ConnectionTransmissionCont
 
 pub use api::Connection;
 pub use connection_impl::ConnectionImpl as Implementation;
-use core::fmt::Debug;
 /// re-export core
 pub use s2n_quic_core::connection::*;
 
@@ -68,41 +64,4 @@ pub struct Parameters<Cfg: endpoint::Config> {
     pub quic_version: u32,
     /// The limits that were advertised to the peer
     pub limits: connection::Limits,
-}
-
-/// Enumerates reasons for closing a connection
-#[derive(Clone, Copy, Debug)]
-pub enum CloseReason<'a> {
-    /// The connection gets closed because the idle timer expired
-    IdleTimerExpired,
-    /// The connection closed because the peer requested it through a
-    /// CONNECTION_CLOSE frame
-    PeerImmediateClose(ConnectionClose<'a>),
-    /// The connection closed because the local application requested it
-    LocalImmediateClose(ApplicationErrorCode),
-    /// The connection closed due to a transport error, which requires sending
-    /// CONNECTION_CLOSE to the peer
-    LocalObservedTransportErrror(TransportError),
-    /// The connection closed because the peer requested it by sending a
-    /// stateless reset
-    StatelessReset,
-}
-
-impl<'a> Into<Error> for CloseReason<'a> {
-    fn into(self) -> Error {
-        match self {
-            Self::IdleTimerExpired => Error::IdleTimerExpired,
-            Self::PeerImmediateClose(error) => error.into(),
-            Self::LocalImmediateClose(error) => error.into(),
-            Self::LocalObservedTransportErrror(error) => error.into(),
-            Self::StatelessReset => Error::Closed,
-        }
-    }
-}
-
-impl<'a> Into<StreamError> for CloseReason<'a> {
-    fn into(self) -> StreamError {
-        let error: Error = self.into();
-        error.into()
-    }
 }

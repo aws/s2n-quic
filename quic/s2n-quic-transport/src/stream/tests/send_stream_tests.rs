@@ -10,7 +10,7 @@ use bytes::Bytes;
 use core::task::Poll;
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
-    application::ApplicationErrorCode,
+    application::Error as ApplicationErrorCode,
     connection, endpoint,
     frame::{Frame, MaxData, MaxStreamData, StopSending},
     packet::number::PacketNumber,

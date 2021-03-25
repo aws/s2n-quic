@@ -15,7 +15,7 @@ use s2n_quic_core::{
     path::Path,
     recovery::{CongestionController, RTTEstimator, K_GRANULARITY},
     time::Timestamp,
-    transport::error::TransportError,
+    transport,
     varint::VarInt,
 };
 use smallvec::SmallVec;
@@ -253,7 +253,7 @@ impl Manager {
         datagram: &DatagramInfo,
         frame: frame::Ack<A>,
         context: &mut Ctx,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), transport::Error> {
         let largest_acked_in_frame = self.space.new_packet_number(frame.largest_acknowledged());
         let mut newly_acked_packets =
             SmallVec::<[SentPacketInfo; ACKED_PACKETS_INITIAL_CAPACITY]>::new();
@@ -612,7 +612,7 @@ pub trait Context<CC: CongestionController> {
         &mut self,
         datagram: &DatagramInfo,
         packet_number_range: &PacketNumberRange,
-    ) -> Result<(), TransportError>;
+    ) -> Result<(), transport::Error>;
 
     fn on_new_packet_ack(
         &mut self,
@@ -2094,7 +2094,7 @@ mod test {
             &mut self,
             _datagram: &DatagramInfo,
             _packet_number_range: &PacketNumberRange,
-        ) -> Result<(), TransportError> {
+        ) -> Result<(), transport::Error> {
             self.validate_packet_ack_count += 1;
             Ok(())
         }
