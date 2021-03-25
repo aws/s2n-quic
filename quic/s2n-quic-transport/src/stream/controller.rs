@@ -14,7 +14,8 @@ use s2n_quic_core::{
     packet::number::PacketNumber,
     stream,
     stream::{StreamId, StreamType},
-    transport::{error::TransportError, parameters::InitialFlowControlLimits},
+    transport,
+    transport::parameters::InitialFlowControlLimits,
     varint::VarInt,
 };
 use smallvec::SmallVec;
@@ -68,7 +69,7 @@ impl Controller {
         }
     }
 
-    pub fn on_remote_open_stream(&mut self, stream_id: StreamId) -> Result<(), TransportError> {
+    pub fn on_remote_open_stream(&mut self, stream_id: StreamId) -> Result<(), transport::Error> {
         match stream_id.stream_type() {
             StreamType::Bidirectional => self.bidi_controller.on_remote_open_stream(stream_id),
             StreamType::Unidirectional => self.uni_controller.on_remote_open_stream(stream_id),
@@ -192,7 +193,7 @@ impl ControllerImpl {
         Poll::Ready(())
     }
 
-    fn on_remote_open_stream(&mut self, stream_id: StreamId) -> Result<(), TransportError> {
+    fn on_remote_open_stream(&mut self, stream_id: StreamId) -> Result<(), transport::Error> {
         let max_stream_id = StreamId::nth(
             stream_id.initiator(),
             stream_id.stream_type(),
@@ -206,7 +207,7 @@ impl ControllerImpl {
             //# that receives a frame with a stream ID exceeding the limit it has
             //# sent MUST treat this as a connection error of type STREAM_LIMIT_ERROR
             //# (Section 11).
-            return Err(TransportError::STREAM_LIMIT_ERROR);
+            return Err(transport::Error::STREAM_LIMIT_ERROR);
         }
         self.on_open_stream();
         Ok(())
