@@ -37,8 +37,8 @@ impl Controller {
                 initial_peer_limits.max_streams_uni,
                 // Unidirectional streams may have asymmetric concurrent stream limits since the
                 // cost of a send stream is not equal to the cost of receive stream.
-                initial_local_limits.max_streams_uni,
                 stream_limits.max_open_local_unidirectional_streams,
+                initial_local_limits.max_streams_uni,
             ),
             bidi_controller: ControllerImpl::new(
                 initial_peer_limits.max_streams_bidi,
