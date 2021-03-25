@@ -510,9 +510,9 @@ impl RefStatus {
     }
 }
 
-impl Into<usize> for RefStatus {
-    fn into(self) -> usize {
-        self.id()
+impl From<RefStatus> for usize {
+    fn from(s: RefStatus) -> Self {
+        s.id()
     }
 }
 

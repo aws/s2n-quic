@@ -82,7 +82,7 @@ pub struct Ack<AckRanges> {
     pub ack_ranges: AckRanges,
 
     /// ECN Counts
-    pub ecn_counts: Option<ECNCounts>,
+    pub ecn_counts: Option<EcnCounts>,
 }
 
 impl<AckRanges> Ack<AckRanges> {
@@ -430,7 +430,7 @@ const ACK_RANGE_DECODING_ERROR: DecoderError =
 //# ECN counts are maintained separately for each packet number space.
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct ECNCounts {
+pub struct EcnCounts {
     /// A variable-length integer representing the total number of packets
     /// received with the ECT(0) codepoint.
     pub ect_0_count: VarInt,
@@ -445,7 +445,7 @@ pub struct ECNCounts {
 }
 
 decoder_value!(
-    impl<'a> ECNCounts {
+    impl<'a> EcnCounts {
         fn decode(buffer: Buffer) -> Result<Self> {
             let (ect_0_count, buffer) = buffer.decode()?;
             let (ect_1_count, buffer) = buffer.decode()?;
@@ -462,7 +462,7 @@ decoder_value!(
     }
 );
 
-impl EncoderValue for ECNCounts {
+impl EncoderValue for EcnCounts {
     fn encode<E: Encoder>(&self, buffer: &mut E) {
         buffer.encode(&self.ect_0_count);
         buffer.encode(&self.ect_1_count);

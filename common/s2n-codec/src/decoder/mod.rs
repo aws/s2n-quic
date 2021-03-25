@@ -434,15 +434,15 @@ impl fmt::Display for DecoderError {
     }
 }
 
-impl Into<&'static str> for DecoderError {
-    fn into(self) -> &'static str {
-        match self {
-            Self::UnexpectedEof(_len) => "unexpected eof",
-            Self::UnexpectedBytes(_len) => "unexpected bytes",
-            Self::LengthCapacityExceeded => {
+impl From<DecoderError> for &'static str {
+    fn from(error: DecoderError) -> Self {
+        match error {
+            DecoderError::UnexpectedEof(_len) => "unexpected eof",
+            DecoderError::UnexpectedBytes(_len) => "unexpected bytes",
+            DecoderError::LengthCapacityExceeded => {
                 "length could not be represented in platform's usize type"
             }
-            Self::InvariantViolation(msg) => msg,
+            DecoderError::InvariantViolation(msg) => msg,
         }
     }
 }

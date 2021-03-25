@@ -10,12 +10,12 @@ use s2n_codec::zerocopy::U16;
 const IPV6_LEN: usize = 128 / 8;
 
 define_inet_type!(
-    pub struct IPv6Address {
+    pub struct IpV6Address {
         octets: [u8; IPV6_LEN],
     }
 );
 
-impl IPv6Address {
+impl IpV6Address {
     pub fn segments(&self) -> [u16; 8] {
         let octets = &self.octets;
         [
@@ -31,13 +31,13 @@ impl IPv6Address {
     }
 }
 
-impl fmt::Debug for IPv6Address {
+impl fmt::Debug for IpV6Address {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(fmt, "IPv6Address({})", self)
     }
 }
 
-impl fmt::Display for IPv6Address {
+impl fmt::Display for IpV6Address {
     #[allow(clippy::many_single_char_names)]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match self.segments() {
@@ -71,23 +71,23 @@ impl fmt::Display for IPv6Address {
     }
 }
 
-impl Unspecified for IPv6Address {
+impl Unspecified for IpV6Address {
     fn is_unspecified(&self) -> bool {
         <[u8; IPV6_LEN]>::default().eq(&self.octets)
     }
 }
 
-test_inet_snapshot!(ipv6, ipv6_snapshot_test, IPv6Address);
+test_inet_snapshot!(ipv6, ipv6_snapshot_test, IpV6Address);
 
 define_inet_type!(
     pub struct SocketAddressV6 {
-        ip: IPv6Address,
+        ip: IpV6Address,
         port: U16,
     }
 );
 
 impl SocketAddressV6 {
-    pub const fn ip(&self) -> &IPv6Address {
+    pub const fn ip(&self) -> &IpV6Address {
         &self.ip
     }
 
@@ -120,15 +120,15 @@ impl Unspecified for SocketAddressV6 {
 
 test_inet_snapshot!(socket_v6, socket_v6_snapshot_test, SocketAddressV6);
 
-impl From<[u8; IPV6_LEN]> for IPv6Address {
+impl From<[u8; IPV6_LEN]> for IpV6Address {
     fn from(octets: [u8; IPV6_LEN]) -> Self {
         Self { octets }
     }
 }
 
-impl Into<[u8; IPV6_LEN]> for IPv6Address {
-    fn into(self) -> [u8; IPV6_LEN] {
-        self.octets
+impl From<IpV6Address> for [u8; IPV6_LEN] {
+    fn from(v: IpV6Address) -> Self {
+        v.octets
     }
 }
 
@@ -137,21 +137,21 @@ mod std_conversion {
     use super::*;
     use std::net;
 
-    impl From<net::Ipv6Addr> for IPv6Address {
+    impl From<net::Ipv6Addr> for IpV6Address {
         fn from(address: net::Ipv6Addr) -> Self {
             (&address).into()
         }
     }
 
-    impl From<&net::Ipv6Addr> for IPv6Address {
+    impl From<&net::Ipv6Addr> for IpV6Address {
         fn from(address: &net::Ipv6Addr) -> Self {
             address.octets().into()
         }
     }
 
-    impl Into<net::Ipv6Addr> for IPv6Address {
-        fn into(self) -> net::Ipv6Addr {
-            self.octets.into()
+    impl From<IpV6Address> for net::Ipv6Addr {
+        fn from(address: IpV6Address) -> Self {
+            address.octets.into()
         }
     }
 
@@ -163,32 +163,32 @@ mod std_conversion {
         }
     }
 
-    impl Into<net::SocketAddrV6> for SocketAddressV6 {
-        fn into(self) -> net::SocketAddrV6 {
-            let ip = self.ip.into();
-            let port = self.port.into();
-            net::SocketAddrV6::new(ip, port, 0, 0)
+    impl From<SocketAddressV6> for net::SocketAddrV6 {
+        fn from(address: SocketAddressV6) -> Self {
+            let ip = address.ip.into();
+            let port = address.port.into();
+            Self::new(ip, port, 0, 0)
         }
     }
 
-    impl Into<net::SocketAddrV6> for &SocketAddressV6 {
-        fn into(self) -> net::SocketAddrV6 {
-            let ip = self.ip.into();
-            let port = self.port.into();
-            net::SocketAddrV6::new(ip, port, 0, 0)
+    impl From<&SocketAddressV6> for net::SocketAddrV6 {
+        fn from(address: &SocketAddressV6) -> Self {
+            let ip = address.ip.into();
+            let port = address.port.into();
+            Self::new(ip, port, 0, 0)
         }
     }
 
-    impl Into<net::SocketAddr> for SocketAddressV6 {
-        fn into(self) -> net::SocketAddr {
-            let addr: net::SocketAddrV6 = self.into();
+    impl From<SocketAddressV6> for net::SocketAddr {
+        fn from(address: SocketAddressV6) -> Self {
+            let addr: net::SocketAddrV6 = address.into();
             addr.into()
         }
     }
 
-    impl Into<net::SocketAddr> for &SocketAddressV6 {
-        fn into(self) -> net::SocketAddr {
-            let addr: net::SocketAddrV6 = self.into();
+    impl From<&SocketAddressV6> for net::SocketAddr {
+        fn from(address: &SocketAddressV6) -> Self {
+            let addr: net::SocketAddrV6 = address.into();
             addr.into()
         }
     }

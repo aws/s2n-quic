@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::inet::{
-    ipv4::{IPv4Address, SocketAddressV4},
-    ipv6::{IPv6Address, SocketAddressV6},
+    ipv4::{IpV4Address, SocketAddressV4},
+    ipv6::{IpV6Address, SocketAddressV6},
     unspecified::Unspecified,
 };
 use core::fmt;
@@ -19,46 +19,46 @@ use bolero_generator::*;
 /// The size is also consistent across target operating systems.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "generator", derive(TypeGenerator))]
-pub enum IPAddress {
-    IPv4(IPv4Address),
-    IPv6(IPv6Address),
+pub enum IpAddress {
+    Ipv4(IpV4Address),
+    Ipv6(IpV6Address),
 }
 
-impl From<IPv4Address> for IPAddress {
-    fn from(ip: IPv4Address) -> Self {
-        Self::IPv4(ip)
+impl From<IpV4Address> for IpAddress {
+    fn from(ip: IpV4Address) -> Self {
+        Self::Ipv4(ip)
     }
 }
 
-impl From<IPv6Address> for IPAddress {
-    fn from(ip: IPv6Address) -> Self {
-        Self::IPv6(ip)
+impl From<IpV6Address> for IpAddress {
+    fn from(ip: IpV6Address) -> Self {
+        Self::Ipv6(ip)
     }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum IPAddressRef<'a> {
-    IPv4(&'a IPv4Address),
-    IPv6(&'a IPv6Address),
+pub enum IpAddressRef<'a> {
+    IPv4(&'a IpV4Address),
+    IPv6(&'a IpV6Address),
 }
 
-impl<'a> IPAddressRef<'a> {
-    pub fn to_owned(self) -> IPAddress {
+impl<'a> IpAddressRef<'a> {
+    pub fn to_owned(self) -> IpAddress {
         match self {
-            Self::IPv4(addr) => IPAddress::IPv4(*addr),
-            Self::IPv6(addr) => IPAddress::IPv6(*addr),
+            Self::IPv4(addr) => IpAddress::Ipv4(*addr),
+            Self::IPv6(addr) => IpAddress::Ipv6(*addr),
         }
     }
 }
 
-impl<'a> From<&'a IPv4Address> for IPAddressRef<'a> {
-    fn from(ip: &'a IPv4Address) -> Self {
+impl<'a> From<&'a IpV4Address> for IpAddressRef<'a> {
+    fn from(ip: &'a IpV4Address) -> Self {
         Self::IPv4(ip)
     }
 }
 
-impl<'a> From<&'a IPv6Address> for IPAddressRef<'a> {
-    fn from(ip: &'a IPv6Address) -> Self {
+impl<'a> From<&'a IpV6Address> for IpAddressRef<'a> {
+    fn from(ip: &'a IpV6Address) -> Self {
         Self::IPv6(ip)
     }
 }
@@ -72,45 +72,45 @@ impl<'a> From<&'a IPv6Address> for IPAddressRef<'a> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "generator", derive(TypeGenerator))]
 pub enum SocketAddress {
-    IPv4(SocketAddressV4),
-    IPv6(SocketAddressV6),
+    IpV4(SocketAddressV4),
+    IpV6(SocketAddressV6),
 }
 
 impl SocketAddress {
-    pub fn ip(&self) -> IPAddress {
+    pub fn ip(&self) -> IpAddress {
         match self {
-            SocketAddress::IPv4(addr) => IPAddress::IPv4(*addr.ip()),
-            SocketAddress::IPv6(addr) => IPAddress::IPv6(*addr.ip()),
+            SocketAddress::IpV4(addr) => IpAddress::Ipv4(*addr.ip()),
+            SocketAddress::IpV6(addr) => IpAddress::Ipv6(*addr.ip()),
         }
     }
 
     pub fn port(&self) -> u16 {
         match self {
-            SocketAddress::IPv4(addr) => addr.port(),
-            SocketAddress::IPv6(addr) => addr.port(),
+            SocketAddress::IpV4(addr) => addr.port(),
+            SocketAddress::IpV6(addr) => addr.port(),
         }
     }
 
     /// Converts the IP address into a IPv6 mapped address
     pub fn to_ipv6_mapped(&self) -> SocketAddressV6 {
         match self {
-            Self::IPv4(addr) => addr.to_ipv6_mapped(),
-            Self::IPv6(addr) => *addr,
+            Self::IpV4(addr) => addr.to_ipv6_mapped(),
+            Self::IpV6(addr) => *addr,
         }
     }
 }
 
 impl Default for SocketAddress {
     fn default() -> Self {
-        SocketAddress::IPv4(Default::default())
+        SocketAddress::IpV4(Default::default())
     }
 }
 
 impl fmt::Display for SocketAddress {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            SocketAddress::IPv4(addr) => write!(fmt, "{}", addr),
-            SocketAddress::IPv6(addr) => write!(fmt, "{}", addr),
+            SocketAddress::IpV4(addr) => write!(fmt, "{}", addr),
+            SocketAddress::IpV6(addr) => write!(fmt, "{}", addr),
         }
     }
 }
@@ -118,21 +118,21 @@ impl fmt::Display for SocketAddress {
 impl Unspecified for SocketAddress {
     fn is_unspecified(&self) -> bool {
         match self {
-            SocketAddress::IPv4(addr) => addr.is_unspecified(),
-            SocketAddress::IPv6(addr) => addr.is_unspecified(),
+            SocketAddress::IpV4(addr) => addr.is_unspecified(),
+            SocketAddress::IpV6(addr) => addr.is_unspecified(),
         }
     }
 }
 
 impl From<SocketAddressV4> for SocketAddress {
     fn from(addr: SocketAddressV4) -> Self {
-        SocketAddress::IPv4(addr)
+        SocketAddress::IpV4(addr)
     }
 }
 
 impl From<SocketAddressV6> for SocketAddress {
     fn from(addr: SocketAddressV6) -> Self {
-        SocketAddress::IPv6(addr)
+        SocketAddress::IpV6(addr)
     }
 }
 
@@ -142,15 +142,15 @@ impl From<SocketAddressV6> for SocketAddress {
 /// use cases.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum SocketAddressRef<'a> {
-    IPv4(&'a SocketAddressV4),
-    IPv6(&'a SocketAddressV6),
+    IpV4(&'a SocketAddressV4),
+    IpV6(&'a SocketAddressV6),
 }
 
 impl<'a> SocketAddressRef<'a> {
     pub fn to_owned(self) -> SocketAddress {
         match self {
-            Self::IPv4(addr) => SocketAddress::IPv4(*addr),
-            Self::IPv6(addr) => SocketAddress::IPv6(*addr),
+            Self::IpV4(addr) => SocketAddress::IpV4(*addr),
+            Self::IpV6(addr) => SocketAddress::IpV6(*addr),
         }
     }
 }
@@ -165,8 +165,8 @@ mod std_conversion {
 
         fn to_socket_addrs(&self) -> std::io::Result<Self::Iter> {
             match self {
-                Self::IPv4(addr) => addr.to_socket_addrs(),
-                Self::IPv6(addr) => addr.to_socket_addrs(),
+                Self::IpV4(addr) => addr.to_socket_addrs(),
+                Self::IpV6(addr) => addr.to_socket_addrs(),
             }
         }
     }
@@ -176,26 +176,26 @@ mod std_conversion {
 
         fn to_socket_addrs(&self) -> std::io::Result<Self::Iter> {
             match self {
-                Self::IPv4(addr) => addr.to_socket_addrs(),
-                Self::IPv6(addr) => addr.to_socket_addrs(),
+                Self::IpV4(addr) => addr.to_socket_addrs(),
+                Self::IpV6(addr) => addr.to_socket_addrs(),
             }
         }
     }
 
-    impl Into<net::SocketAddr> for SocketAddress {
-        fn into(self) -> net::SocketAddr {
-            match self {
-                Self::IPv4(addr) => addr.into(),
-                Self::IPv6(addr) => addr.into(),
+    impl From<SocketAddress> for net::SocketAddr {
+        fn from(address: SocketAddress) -> Self {
+            match address {
+                SocketAddress::IpV4(addr) => addr.into(),
+                SocketAddress::IpV6(addr) => addr.into(),
             }
         }
     }
 
-    impl<'a> Into<net::SocketAddr> for SocketAddressRef<'a> {
-        fn into(self) -> net::SocketAddr {
-            match self {
-                Self::IPv4(addr) => addr.into(),
-                Self::IPv6(addr) => addr.into(),
+    impl<'a> From<SocketAddressRef<'a>> for net::SocketAddr {
+        fn from(address: SocketAddressRef<'a>) -> Self {
+            match address {
+                SocketAddressRef::IpV4(addr) => addr.into(),
+                SocketAddressRef::IpV6(addr) => addr.into(),
             }
         }
     }
@@ -203,8 +203,8 @@ mod std_conversion {
     impl From<net::SocketAddr> for SocketAddress {
         fn from(addr: net::SocketAddr) -> Self {
             match addr {
-                net::SocketAddr::V4(addr) => Self::IPv4(addr.into()),
-                net::SocketAddr::V6(addr) => Self::IPv6(addr.into()),
+                net::SocketAddr::V4(addr) => Self::IpV4(addr.into()),
+                net::SocketAddr::V6(addr) => Self::IpV6(addr.into()),
             }
         }
     }
@@ -225,10 +225,9 @@ mod tests {
     ];
 
     #[test]
-    #[compliance::tests(
-        /// ::FFFF:0:0/96 are the IPv4-mapped addresses [RFC4291].
-        "https://tools.ietf.org/rfc/rfc5156.txt#2.2"
-    )]
+    //= https://tools.ietf.org/rfc/rfc5156.txt#2.2
+    //= type=test
+    //# ::FFFF:0:0/96 are the IPv4-mapped addresses [RFC4291].
     fn to_ipv6_mapped_test() {
         for test in TESTS.iter() {
             // assert that this implementation matches the standard library

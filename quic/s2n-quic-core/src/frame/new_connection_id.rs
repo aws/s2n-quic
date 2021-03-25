@@ -50,7 +50,7 @@ macro_rules! new_connection_id_tag {
 pub const STATELESS_RESET_TOKEN_LEN: usize = size_of::<u128>();
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct NewConnectionID<'a> {
+pub struct NewConnectionId<'a> {
     /// The sequence number assigned to the connection ID by the sender
     pub sequence_number: VarInt,
 
@@ -66,14 +66,14 @@ pub struct NewConnectionID<'a> {
     pub stateless_reset_token: &'a [u8; STATELESS_RESET_TOKEN_LEN],
 }
 
-impl<'a> NewConnectionID<'a> {
+impl<'a> NewConnectionId<'a> {
     pub const fn tag(&self) -> u8 {
         new_connection_id_tag!()
     }
 }
 
 decoder_parameterized_value!(
-    impl<'a> NewConnectionID<'a> {
+    impl<'a> NewConnectionId<'a> {
         fn decode(_tag: Tag, buffer: Buffer) -> Result<Self> {
             let (sequence_number, buffer) = buffer.decode()?;
             let (retire_prior_to, buffer) = buffer.decode()?;
@@ -110,7 +110,7 @@ decoder_parameterized_value!(
                 .try_into()
                 .expect("Length has been already verified");
 
-            let frame = NewConnectionID {
+            let frame = NewConnectionId {
                 sequence_number,
                 retire_prior_to,
                 connection_id,
@@ -122,7 +122,7 @@ decoder_parameterized_value!(
     }
 );
 
-impl<'a> EncoderValue for NewConnectionID<'a> {
+impl<'a> EncoderValue for NewConnectionId<'a> {
     fn encode<E: Encoder>(&self, buffer: &mut E) {
         buffer.encode(&self.tag());
         buffer.encode(&self.sequence_number);

@@ -194,9 +194,9 @@ macro_rules! zerocopy_network_integer {
             }
         }
 
-        impl Into<$native> for $name {
-            fn into(self) -> $native {
-                self.0.get()
+        impl From<$name> for $native {
+            fn from(v: $name) -> $native {
+                v.0.get()
             }
         }
 

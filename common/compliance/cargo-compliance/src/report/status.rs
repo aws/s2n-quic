@@ -10,13 +10,13 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 // TODO use a real interval set
 type IntervalSet<T> = HashSet<T>;
 
-type AnnotationID = usize;
+type AnnotationId = usize;
 
 #[derive(Debug, Default)]
-pub struct StatusMap(BTreeMap<AnnotationID, Spec>);
+pub struct StatusMap(BTreeMap<AnnotationId, Spec>);
 
 impl Deref for StatusMap {
-    type Target = BTreeMap<AnnotationID, Spec>;
+    type Target = BTreeMap<AnnotationId, Spec>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -25,7 +25,7 @@ impl Deref for StatusMap {
 
 impl StatusMap {
     pub(super) fn populate(&mut self, references: &BTreeSet<Reference>) {
-        let mut specs: BTreeMap<AnnotationID, Vec<&Reference>> = BTreeMap::new();
+        let mut specs: BTreeMap<AnnotationId, Vec<&Reference>> = BTreeMap::new();
         let mut coverage: BTreeMap<usize, Vec<&Reference>> = BTreeMap::new();
 
         // first build up a map of all of the references at any given offset
@@ -68,7 +68,7 @@ pub struct Spec {
     pub test: usize,
     pub exception: usize,
     pub todo: usize,
-    pub related: BTreeSet<AnnotationID>,
+    pub related: BTreeSet<AnnotationId>,
 }
 
 #[derive(Debug, Default)]
@@ -78,7 +78,7 @@ pub struct SpecReport {
     test_offsets: IntervalSet<usize>,
     exception_offsets: IntervalSet<usize>,
     todo_offsets: IntervalSet<usize>,
-    related: BTreeSet<AnnotationID>,
+    related: BTreeSet<AnnotationId>,
 }
 
 impl SpecReport {

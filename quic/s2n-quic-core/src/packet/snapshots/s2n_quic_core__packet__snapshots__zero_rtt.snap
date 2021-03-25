@@ -1,10 +1,11 @@
 ---
 source: quic/s2n-quic-core/src/packet/mod.rs
 expression: values
+
 ---
 [
-    ZeroRTT(
-        ZeroRTT {
+    ZeroRtt(
+        ZeroRtt {
             version: 16909060,
             destination_connection_id: 6..26,
             source_connection_id: 27..47,

@@ -9,7 +9,8 @@ use core::fmt;
 use ring::{aead, hkdf};
 use s2n_quic_core::crypto::{self, CryptoError};
 
-#[allow(non_camel_case_types)]
+// ignore casing warnings in order to preserve the IANA name
+#[allow(non_camel_case_types, clippy::all)]
 pub enum NegotiatedCiphersuite {
     TLS_AES_256_GCM_SHA384(TLS_AES_256_GCM_SHA384),
     TLS_CHACHA20_POLY1305_SHA256(TLS_CHACHA20_POLY1305_SHA256),

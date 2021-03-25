@@ -53,24 +53,24 @@ use bolero_generator::*;
 #[cfg_attr(feature = "generator", derive(TypeGenerator))]
 pub enum ExplicitCongestionNotification {
     /// The not-ECT codepoint '00' indicates a packet that is not using ECN.
-    NotECT = 0b00,
+    NotEct = 0b00,
 
     /// ECT(1) is set by the data sender to indicate that the end-points of the transport
     /// protocol are ECN-capable.
-    ECT1 = 0b01,
+    Ect1 = 0b01,
 
     /// ECT(0) is set by the data sender to indicate that the end-points of the transport
     /// protocol are ECN-capable.
     /// Protocols and senders that only require a single ECT codepoint SHOULD use ECT(0).
-    ECT0 = 0b10,
+    Ect0 = 0b10,
 
     /// The CE codepoint '11' is set by a router to indicate congestion to the end nodes.
-    CE = 0b11,
+    Ce = 0b11,
 }
 
 impl Default for ExplicitCongestionNotification {
     fn default() -> Self {
-        Self::NotECT
+        Self::NotEct
     }
 }
 
@@ -78,16 +78,16 @@ impl ExplicitCongestionNotification {
     /// Create a ExplicitCongestionNotification from the ECN field in the IP header
     pub fn new(ecn_field: u8) -> Self {
         match ecn_field & 0b11 {
-            0b00 => ExplicitCongestionNotification::NotECT,
-            0b01 => ExplicitCongestionNotification::ECT1,
-            0b10 => ExplicitCongestionNotification::ECT0,
-            0b11 => ExplicitCongestionNotification::CE,
+            0b00 => ExplicitCongestionNotification::NotEct,
+            0b01 => ExplicitCongestionNotification::Ect1,
+            0b10 => ExplicitCongestionNotification::Ect0,
+            0b11 => ExplicitCongestionNotification::Ce,
             _ => unreachable!(),
         }
     }
 
     /// Returns true if congestion was experienced by the peer
     pub fn congestion_experienced(self) -> bool {
-        self == Self::CE
+        self == Self::Ce
     }
 }

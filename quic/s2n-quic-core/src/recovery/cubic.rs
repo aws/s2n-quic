@@ -7,7 +7,7 @@ use crate::{
         congestion_controller::{self, CongestionController},
         cubic::{FastRetransmission::*, State::*},
         hybrid_slow_start::HybridSlowStart,
-        RTTEstimator,
+        RttEstimator,
     },
     time::Timestamp,
 };
@@ -143,7 +143,7 @@ impl CongestionController for CubicCongestionController {
         self.time_of_last_sent_packet = Some(time_sent);
     }
 
-    fn on_rtt_update(&mut self, time_sent: Timestamp, rtt_estimator: &RTTEstimator) {
+    fn on_rtt_update(&mut self, time_sent: Timestamp, rtt_estimator: &RttEstimator) {
         // Update the Slow Start algorithm each time the RTT
         // estimate is updated to find the slow start threshold.
         self.slow_start.on_rtt_update(
@@ -159,7 +159,7 @@ impl CongestionController for CubicCongestionController {
         &mut self,
         largest_acked_time_sent: Timestamp,
         sent_bytes: usize,
-        rtt_estimator: &RTTEstimator,
+        rtt_estimator: &RttEstimator,
         ack_receive_time: Timestamp,
     ) {
         self.bytes_in_flight
@@ -857,7 +857,7 @@ mod test {
     #[test]
     fn on_packet_sent() {
         let mut cc = CubicCongestionController::new(1000);
-        let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(0));
+        let mut rtt_estimator = RttEstimator::new(Duration::from_millis(0));
         let now = NoopClock.get_time();
 
         cc.congestion_window = 100_000.0;
@@ -973,7 +973,7 @@ mod test {
     fn congestion_avoidance_after_idle_period() {
         let mut cc = CubicCongestionController::new(1000);
         let now = NoopClock.get_time();
-        let rtt_estimator = &RTTEstimator::new(Duration::from_secs(0));
+        let rtt_estimator = &RttEstimator::new(Duration::from_secs(0));
 
         cc.congestion_window = 6000.0;
         cc.bytes_in_flight = BytesInFlight::new(0);
@@ -1233,13 +1233,13 @@ mod test {
         cc.under_utilized = true;
         cc.state = SlowStart;
 
-        cc.on_packet_ack(now, 1, &RTTEstimator::new(Duration::from_secs(0)), now);
+        cc.on_packet_ack(now, 1, &RttEstimator::new(Duration::from_secs(0)), now);
 
         assert_delta!(cc.congestion_window, 100_000.0, 0.001);
 
         cc.state = CongestionAvoidance(now);
 
-        cc.on_packet_ack(now, 1, &RTTEstimator::new(Duration::from_secs(0)), now);
+        cc.on_packet_ack(now, 1, &RttEstimator::new(Duration::from_secs(0)), now);
 
         assert_delta!(cc.congestion_window, 100_000.0, 0.001);
     }
@@ -1248,7 +1248,7 @@ mod test {
     fn on_packet_ack_utilized_then_under_utilized() {
         let mut cc = CubicCongestionController::new(5000);
         let now = NoopClock.get_time();
-        let mut rtt_estimator = RTTEstimator::new(Duration::from_secs(0));
+        let mut rtt_estimator = RttEstimator::new(Duration::from_secs(0));
         rtt_estimator.update_rtt(
             Duration::from_secs(0),
             Duration::from_millis(200),
@@ -1295,7 +1295,7 @@ mod test {
         cc.on_packet_ack(
             now + Duration::from_millis(1),
             1,
-            &RTTEstimator::new(Duration::from_secs(0)),
+            &RttEstimator::new(Duration::from_secs(0)),
             now + Duration::from_millis(2),
         );
 
@@ -1320,7 +1320,7 @@ mod test {
         cc.on_packet_ack(
             now,
             100,
-            &RTTEstimator::new(Duration::from_secs(0)),
+            &RttEstimator::new(Duration::from_secs(0)),
             now + Duration::from_millis(2),
         );
 
@@ -1349,7 +1349,7 @@ mod test {
         cc.on_packet_ack(
             now,
             100,
-            &RTTEstimator::new(Duration::from_secs(0)),
+            &RttEstimator::new(Duration::from_secs(0)),
             now + Duration::from_millis(2),
         );
 
@@ -1375,7 +1375,7 @@ mod test {
         cc2.bytes_in_flight = BytesInFlight::new(10000);
         cc2.cubic.w_max = bytes_to_packets(10000.0, max_datagram_size);
 
-        let mut rtt_estimator = RTTEstimator::new(Duration::from_secs(0));
+        let mut rtt_estimator = RttEstimator::new(Duration::from_secs(0));
         rtt_estimator.update_rtt(
             Duration::from_secs(0),
             Duration::from_millis(275),

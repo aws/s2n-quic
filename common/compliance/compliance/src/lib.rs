@@ -1,6 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+#![allow(clippy::upper_case_acronyms)]
+
 use core::hash::Hasher;
 use proc_macro::TokenStream;
 use proc_macro2::{Ident, TokenStream as TokenStream2};

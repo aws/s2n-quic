@@ -7,7 +7,7 @@ use crate::{connection::PeerIdRegistry, transmission};
 use s2n_quic_core::{
     connection,
     inet::{DatagramInfo, SocketAddress},
-    recovery::{congestion_controller, RTTEstimator},
+    recovery::{congestion_controller, RttEstimator},
     stateless_reset, transport,
 };
 use smallvec::SmallVec;
@@ -146,7 +146,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
             // PeerIdRegistry::consume_new_id_if_necessary(None) and ignoring the request if
             // no new connection::PeerId is available to use.
             self.active_path().peer_connection_id,
-            RTTEstimator::new(limits.ack_settings().max_ack_delay),
+            RttEstimator::new(limits.ack_settings().max_ack_delay),
             cc,
             true,
         );
@@ -334,7 +334,7 @@ mod tests {
         endpoint,
         inet::{DatagramInfo, ExplicitCongestionNotification},
         random,
-        recovery::{congestion_controller::testing::unlimited, RTTEstimator},
+        recovery::{congestion_controller::testing::unlimited, RttEstimator},
         stateless_reset,
         stateless_reset::token::testing::TEST_TOKEN_1,
         time::Timestamp,
@@ -364,7 +364,7 @@ mod tests {
         let first_path = Path::new(
             SocketAddress::default(),
             conn_id,
-            RTTEstimator::new(Duration::from_millis(30)),
+            RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
         );
@@ -382,7 +382,7 @@ mod tests {
         let mut first_path = Path::new(
             SocketAddress::default(),
             first_conn_id,
-            RTTEstimator::new(Duration::from_millis(30)),
+            RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
         );
@@ -410,7 +410,7 @@ mod tests {
         let first_path = Path::new(
             SocketAddress::default(),
             first_conn_id,
-            RTTEstimator::new(Duration::from_millis(30)),
+            RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
         );
@@ -483,7 +483,7 @@ mod tests {
         let first_path = Path::new(
             SocketAddress::default(),
             id_1,
-            RTTEstimator::new(Duration::from_millis(30)),
+            RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
         );

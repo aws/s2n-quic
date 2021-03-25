@@ -1,6 +1,7 @@
 ---
 source: quic/s2n-quic-core/src/frame/mod.rs
-expression: frames
+expression: values
+
 ---
 [
     Ack(
@@ -61,7 +62,7 @@ expression: frames
                 ),
             ],
             ecn_counts: Some(
-                ECNCounts {
+                EcnCounts {
                     ect_0_count: VarInt(
                         1,
                     ),
