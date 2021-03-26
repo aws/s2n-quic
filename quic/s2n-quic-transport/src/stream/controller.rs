@@ -125,8 +125,8 @@ const WAKERS_INITIAL_CAPACITY: usize = 5;
 //# to receive this signal before advertising additional credit, since
 //# doing so will mean that the peer will be blocked for at least an
 //# entire round trip
-// Send a MAX_STREAMS frame whenever 10% of the window has been closed
-const MAX_STREAMS_SYNC_PERCENTAGE: VarInt = VarInt::from_u8(10);
+// Send a MAX_STREAMS frame whenever 1/10th of the window has been closed
+const MAX_STREAMS_SYNC_FRACTION: VarInt = VarInt::from_u8(10);
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.11
 //# Maximum Streams:  A count of the cumulative number of streams of the
 //# corresponding type that can be opened over the lifetime of the
@@ -160,7 +160,7 @@ impl ControllerImpl {
             max_streams_sync: IncrementalValueSync::new(
                 peer_initiated_concurrent_stream_limit,
                 peer_initiated_concurrent_stream_limit,
-                peer_initiated_concurrent_stream_limit / MAX_STREAMS_SYNC_PERCENTAGE,
+                peer_initiated_concurrent_stream_limit / MAX_STREAMS_SYNC_FRACTION,
             ),
             opened_streams: VarInt::from_u8(0),
             closed_streams: VarInt::from_u8(0),
