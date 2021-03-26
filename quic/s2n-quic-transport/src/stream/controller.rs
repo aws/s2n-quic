@@ -120,6 +120,11 @@ impl Controller {
     }
 }
 const WAKERS_INITIAL_CAPACITY: usize = 5;
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6
+//# An endpoint MUST NOT wait
+//# to receive this signal before advertising additional credit, since
+//# doing so will mean that the peer will be blocked for at least an
+//# entire round trip
 // Send a MAX_STREAMS frame whenever 10% of the window has been closed
 const MAX_STREAMS_SYNC_PERCENTAGE: VarInt = VarInt::from_u8(10);
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.11

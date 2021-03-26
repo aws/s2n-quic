@@ -324,6 +324,9 @@ impl<S: StreamTrait> StreamContainer<S> {
     /// will get queried for its new interests, and all lists will be updated
     /// according to those.
     ///
+    /// The `stream::Controller` will be notified of streams that have been
+    /// closed to allow for further streams to be opened.
+    ///
     /// `Stream`s which signal finalization interest will be removed from the
     /// `StreamContainer`.
     pub fn with_stream<F, R>(
@@ -368,6 +371,9 @@ impl<S: StreamTrait> StreamContainer<S> {
     }
 
     /// Removes all Streams in the `done` state from the `StreamManager`.
+    ///
+    /// The `stream::Controller` will be notified of streams that have been
+    /// closed to allow for further streams to be opened.
     pub fn finalize_done_streams(&mut self, controller: &mut stream::Controller) {
         for stream in self.interest_lists.done_streams.take() {
             // Remove the Stream from `stream_map`
@@ -411,6 +417,9 @@ impl<S: StreamTrait> StreamContainer<S> {
 
     /// Iterates over all `Stream`s which are waiting for frame delivery,
     /// and executes the given function on each `Stream`
+    ///
+    /// The `stream::Controller` will be notified of streams that have been
+    /// closed to allow for further streams to be opened.
     pub fn iterate_frame_delivery_list<F>(
         &mut self,
         controller: &mut stream::Controller,
@@ -429,6 +438,9 @@ impl<S: StreamTrait> StreamContainer<S> {
 
     /// Iterates over all `Stream`s which waiting for connection flow control
     /// credits, and executes the given function on each `Stream`
+    ///
+    /// The `stream::Controller` will be notified of streams that have been
+    /// closed to allow for further streams to be opened.
     pub fn iterate_connection_flow_credits_list<F>(
         &mut self,
         controller: &mut stream::Controller,
@@ -447,6 +459,9 @@ impl<S: StreamTrait> StreamContainer<S> {
 
     /// Iterates over all `Stream`s which are waiting for transmission,
     /// and executes the given function on each `Stream`
+    ///
+    /// The `stream::Controller` will be notified of streams that have been
+    /// closed to allow for further streams to be opened.
     pub fn iterate_transmission_list<F>(&mut self, controller: &mut stream::Controller, mut func: F)
     where
         F: FnMut(&mut S) -> StreamContainerIterationResult,
@@ -462,6 +477,9 @@ impl<S: StreamTrait> StreamContainer<S> {
 
     /// Iterates over all `Stream`s which are waiting for retransmission,
     /// and executes the given function on each `Stream`
+    ///
+    /// The `stream::Controller` will be notified of streams that have been
+    /// closed to allow for further streams to be opened.
     pub fn iterate_retransmission_list<F>(
         &mut self,
         controller: &mut stream::Controller,
@@ -480,6 +498,9 @@ impl<S: StreamTrait> StreamContainer<S> {
 
     /// Iterates over all `Stream`s which are part of this container, and executes
     /// the given function on each `Stream`
+    ///
+    /// The `stream::Controller` will be notified of streams that have been
+    /// closed to allow for further streams to be opened.
     pub fn iterate_streams<F>(&mut self, controller: &mut stream::Controller, mut func: F)
     where
         F: FnMut(&mut S),

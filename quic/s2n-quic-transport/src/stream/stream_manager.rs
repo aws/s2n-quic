@@ -521,15 +521,6 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         //# An endpoint that is unable to open a new stream due to the peer's
         //# limits SHOULD send a STREAMS_BLOCKED frame (Section 19.14).
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6
-        //= type=TODO
-        //= tracking-issue=244
-        //= feature=Stream concurrency
-        //# An endpoint MUST NOT wait
-        //# to receive this signal before advertising additional credit, since
-        //# doing so will mean that the peer will be blocked for at least an
-        //# entire round trip
-
         // Increase the next utilized Stream ID
         *self
             .inner
