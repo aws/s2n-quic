@@ -76,6 +76,13 @@ impl Controller {
         }
     }
 
+    pub fn on_open_stream(&mut self, stream_type: StreamType) {
+        match stream_type {
+            StreamType::Bidirectional => self.bidi_controller.on_open_stream(),
+            StreamType::Unidirectional => self.uni_controller.on_open_stream(),
+        }
+    }
+
     pub fn on_close_stream(&mut self, stream_type: StreamType) {
         match stream_type {
             StreamType::Bidirectional => self.bidi_controller.on_close_stream(),
@@ -194,7 +201,6 @@ impl ControllerImpl {
             self.wakers.push(context.waker().clone());
             return Poll::Pending;
         }
-        self.on_open_stream();
         Poll::Ready(())
     }
 
@@ -214,7 +220,6 @@ impl ControllerImpl {
             //# (Section 11).
             return Err(transport::Error::STREAM_LIMIT_ERROR);
         }
-        self.on_open_stream();
         Ok(())
     }
 

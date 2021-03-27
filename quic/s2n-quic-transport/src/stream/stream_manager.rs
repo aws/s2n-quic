@@ -223,6 +223,9 @@ impl<S: StreamTrait> StreamManagerState<S> {
             "Receive window must not exceed 32bit range"
         );
 
+        self.stream_controller
+            .on_open_stream(stream_id.stream_type());
+
         self.streams.insert_stream(S::new(StreamConfig {
             incoming_connection_flow_controller: self.incoming_connection_flow_controller.clone(),
             outgoing_connection_flow_controller: self.outgoing_connection_flow_controller.clone(),
@@ -265,6 +268,13 @@ impl<S: StreamTrait> StreamManagerState<S> {
                     return Err(transport::Error::NO_ERROR.with_reason("Connection was closed"));
                 }
 
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6
+                //# Endpoints MUST NOT exceed the limit set by their peer. An endpoint
+                //# that receives a frame with a stream ID exceeding the limit it has
+                //# sent MUST treat this as a connection error of type STREAM_LIMIT_ERROR
+                //# (Section 11).
+                self.stream_controller.on_remote_open_stream(stream_id)?;
+
                 // We must create ALL streams which a lower Stream ID too:
 
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#3.2
@@ -274,13 +284,6 @@ impl<S: StreamTrait> StreamManagerState<S> {
 
                 let mut stream_id_iter = first_unopened_id;
                 while stream_id_iter <= stream_id {
-                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6
-                    //# Endpoints MUST NOT exceed the limit set by their peer. An endpoint
-                    //# that receives a frame with a stream ID exceeding the limit it has
-                    //# sent MUST treat this as a connection error of type STREAM_LIMIT_ERROR
-                    //# (Section 11).
-                    self.stream_controller
-                        .on_remote_open_stream(stream_id_iter)?;
                     self.open_stream(stream_id_iter);
 
                     // The Stream ID can be expected to be valid, since we check upfront
