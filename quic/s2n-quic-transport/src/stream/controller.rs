@@ -187,16 +187,18 @@ impl ControllerImpl {
         let unblocked_wakers_count = self
             .wakers
             .len()
-            .min(self.available_streams().as_u64() as usize);
+            .min(self.available_local_stream_capacity().as_u64() as usize);
 
-        // Wake the wakers that have been unblocked by this additional stream opening credit
+        // Wake the wakers that have been unblocked by this additional stream opening credit.
+        // It is possible even with this additional credit that no waker is unblocked if
+        // we are blocked on the local initiated concurrent stream limits.
         self.wakers
             .drain(..unblocked_wakers_count)
             .for_each(|waker| waker.wake());
     }
 
     fn poll_local_open_stream(&mut self, context: &Context) -> Poll<()> {
-        if self.available_streams() < VarInt::from_u32(1) {
+        if self.available_local_stream_capacity() < VarInt::from_u32(1) {
             // Store a waker that can be woken when we get more credit
             self.wakers.push(context.waker().clone());
             return Poll::Pending;
@@ -225,26 +227,25 @@ impl ControllerImpl {
 
     fn on_open_stream(&mut self) {
         self.opened_streams += 1;
+
+        self.check_integrity();
     }
 
     fn on_close_stream(&mut self) {
         self.closed_streams += 1;
-        debug_assert!(
-            self.closed_streams <= self.opened_streams,
-            "Cannot close more streams than previously opened"
-        );
 
         let max_streams = self
             .closed_streams
             .saturating_add(self.peer_initiated_concurrent_stream_limit)
             .min(MAX_STREAMS_MAX_VALUE);
-
         self.max_streams_sync.update_latest_value(max_streams);
+
+        self.check_integrity();
     }
 
-    fn available_streams(&self) -> VarInt {
-        let open_stream_count = self.opened_streams - self.closed_streams;
-        let local_capacity = self.local_initiated_concurrent_stream_limit - open_stream_count;
+    fn available_local_stream_capacity(&self) -> VarInt {
+        let local_capacity =
+            self.local_initiated_concurrent_stream_limit - self.open_stream_count();
         let peer_capacity = self.peer_cumulative_stream_limit - self.opened_streams;
         local_capacity.min(peer_capacity)
     }
@@ -253,6 +254,29 @@ impl ControllerImpl {
         self.wakers
             .drain(..self.wakers.len())
             .for_each(|waker| waker.wake())
+    }
+
+    /// Returns the number of streams currently open
+    fn open_stream_count(&self) -> VarInt {
+        self.opened_streams - self.closed_streams
+    }
+
+    #[inline]
+    fn check_integrity(&self) {
+        if cfg!(debug_assertions) {
+            assert!(
+                self.closed_streams <= self.opened_streams,
+                "Cannot close more streams than previously opened"
+            );
+            assert!(
+                self.open_stream_count()
+                    <= self
+                        .peer_initiated_concurrent_stream_limit
+                        .max(self.local_initiated_concurrent_stream_limit),
+                "Cannot have more streams open concurrently than
+                the larger of the local and peer limits"
+            );
+        }
     }
 }
 
