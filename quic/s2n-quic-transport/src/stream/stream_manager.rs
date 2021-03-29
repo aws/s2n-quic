@@ -500,6 +500,10 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6
         //# Endpoints MUST NOT exceed the limit set by their peer.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.11
+        //# An endpoint MUST NOT open more streams than permitted by the current
+        //# stream limit set by its peer.
         if self
             .inner
             .stream_controller
@@ -888,8 +892,8 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
 
     /// Executes the given function using the stream controller
     pub fn with_stream_controller<F, R>(&mut self, func: F) -> R
-        where
-            F: FnOnce(&mut stream::Controller) -> R,
+    where
+        F: FnOnce(&mut stream::Controller) -> R,
     {
         func(&mut self.inner.stream_controller)
     }

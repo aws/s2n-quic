@@ -133,7 +133,7 @@ const WAKERS_INITIAL_CAPACITY: usize = 5;
 //# doing so will mean that the peer will be blocked for at least an
 //# entire round trip
 // Send a MAX_STREAMS frame whenever 1/10th of the window has been closed
-const MAX_STREAMS_SYNC_FRACTION: VarInt = VarInt::from_u8(10);
+pub(super) const MAX_STREAMS_SYNC_FRACTION: VarInt = VarInt::from_u8(10);
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.11
 //# Maximum Streams:  A count of the cumulative number of streams of the
 //# corresponding type that can be opened over the lifetime of the
@@ -178,6 +178,10 @@ impl ControllerImpl {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6
         //# A receiver MUST
         //# ignore any MAX_STREAMS frame that does not increase the stream limit.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.11
+        //# MAX_STREAMS frames that do not increase the stream limit MUST be
+        //# ignored.
         if self.peer_cumulative_stream_limit >= frame.maximum_streams {
             return;
         }
@@ -220,6 +224,11 @@ impl ControllerImpl {
             //# that receives a frame with a stream ID exceeding the limit it has
             //# sent MUST treat this as a connection error of type STREAM_LIMIT_ERROR
             //# (Section 11).
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.11
+            //# An endpoint MUST terminate a connection
+            //# with a STREAM_LIMIT_ERROR error if a peer opens more streams than was
+            //# permitted.
             return Err(transport::Error::STREAM_LIMIT_ERROR);
         }
         Ok(())
@@ -304,6 +313,13 @@ impl Controller {
         match stream_type {
             StreamType::Bidirectional => self.bidi_controller.available_local_stream_capacity(),
             StreamType::Unidirectional => self.uni_controller.available_local_stream_capacity(),
+        }
+    }
+
+    pub fn max_streams_latest_value(&self, stream_type: StreamType) -> VarInt {
+        match stream_type {
+            StreamType::Bidirectional => self.bidi_controller.max_streams_sync.latest_value(),
+            StreamType::Unidirectional => self.uni_controller.max_streams_sync.latest_value(),
         }
     }
 }
