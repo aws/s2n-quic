@@ -188,17 +188,7 @@ impl ControllerImpl {
 
         self.peer_cumulative_stream_limit = frame.maximum_streams;
 
-        let unblocked_wakers_count = self
-            .wakers
-            .len()
-            .min(self.available_local_stream_capacity().as_u64() as usize);
-
-        // Wake the wakers that have been unblocked by this additional stream opening credit.
-        // It is possible even with this additional credit that no waker is unblocked if
-        // we are blocked on the local initiated concurrent stream limits.
-        self.wakers
-            .drain(..unblocked_wakers_count)
-            .for_each(|waker| waker.wake());
+        self.wake_unblocked();
     }
 
     fn poll_local_open_stream(&mut self, context: &Context) -> Poll<()> {
@@ -249,6 +239,8 @@ impl ControllerImpl {
             .min(MAX_STREAMS_MAX_VALUE);
         self.max_streams_sync.update_latest_value(max_streams);
 
+        self.wake_unblocked();
+
         self.check_integrity();
     }
 
@@ -263,6 +255,18 @@ impl ControllerImpl {
         self.wakers
             .drain(..self.wakers.len())
             .for_each(|waker| waker.wake())
+    }
+
+    fn wake_unblocked(&mut self) {
+        let unblocked_wakers_count = self
+            .wakers
+            .len()
+            .min(self.available_local_stream_capacity().as_u64() as usize);
+
+        // Wake the wakers that have may have been unblocked by an increase in local stream capacity.
+        self.wakers
+            .drain(..unblocked_wakers_count)
+            .for_each(|waker| waker.wake());
     }
 
     /// Returns the number of streams currently open

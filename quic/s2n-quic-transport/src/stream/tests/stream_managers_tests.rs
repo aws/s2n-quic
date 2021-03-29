@@ -804,6 +804,69 @@ fn stream_limit_error_on_peer_open_stream_too_large() {
 }
 
 #[test]
+fn blocked_on_local_concurrent_stream_limit() {
+    for stream_type in [StreamType::Bidirectional, StreamType::Unidirectional]
+        .iter()
+        .copied()
+    {
+        let mut manager = create_stream_manager(endpoint::Type::Server);
+
+        // The peer allows a large amount of streams to be opened
+        assert!(manager
+            .on_max_streams(&MaxStreams {
+                stream_type,
+                maximum_streams: VarInt::from_u32(100_000),
+            })
+            .is_ok());
+
+        let available_local_stream_capacity = manager
+            .with_stream_controller(|ctrl| ctrl.available_local_stream_capacity(stream_type));
+
+        assert!(available_local_stream_capacity < VarInt::from_u32(100_000));
+
+        let (waker, wake_counter) = new_count_waker();
+
+        for _i in 0..*available_local_stream_capacity {
+            assert!(manager
+                .poll_open(stream_type, &Context::from_waker(&waker))
+                .is_ready());
+        }
+
+        assert_eq!(wake_counter, 0);
+
+        // Cannot open any more streams
+        assert!(manager
+            .poll_open(stream_type, &Context::from_waker(&waker))
+            .is_pending());
+
+        // Close one stream
+        manager.with_asserted_stream(
+            StreamId::initial(endpoint::Type::Server, stream_type),
+            |stream| {
+                stream.interests.finalization = true;
+            },
+        );
+
+        // One more stream can be opened
+        assert!(manager
+            .poll_open(stream_type, &Context::from_waker(&waker))
+            .is_ready());
+        assert_eq!(wake_counter, 1);
+        assert!(manager
+            .poll_open(stream_type, &Context::from_waker(&waker))
+            .is_pending());
+
+        // Close the stream manager and verify the wake counter is incremented
+        manager.close(connection::Error::Application {
+            error: ApplicationErrorCode::new(1).unwrap(),
+            initiator: endpoint::Location::Local,
+        });
+
+        assert_eq!(wake_counter, 2);
+    }
+}
+
+#[test]
 fn accept_returns_remotely_initiated_stream() {
     const STREAMS_TO_OPEN: u64 = 8;
 
