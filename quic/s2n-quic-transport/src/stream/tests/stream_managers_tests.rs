@@ -29,8 +29,8 @@ use s2n_quic_core::{
     application::Error as ApplicationErrorCode,
     connection,
     frame::{
-        stream::StreamRef, MaxData, MaxStreamData, ResetStream, StopSending, Stream as StreamFrame,
-        StreamDataBlocked,
+        stream::StreamRef, MaxData, MaxStreamData, MaxStreams, ResetStream, StopSending,
+        Stream as StreamFrame, StreamDataBlocked,
     },
     stream::{ops, StreamId, StreamType},
     transport::{
@@ -347,6 +347,8 @@ fn create_stream_manager(local_ep_type: endpoint::Type) -> AbstractStreamManager
 
     let limits = ConnectionLimits::default()
         .with_max_send_buffer_size(4096)
+        .unwrap()
+        .with_max_open_local_unidirectional_streams(256)
         .unwrap();
 
     AbstractStreamManager::<MockStream>::new(
@@ -599,6 +601,41 @@ fn max_data_replenishes_connection_flow_control_window() {
             *window,
             manager.with_outgoing_connection_flow_controller(|ctrl| ctrl.total_window())
         );
+    }
+}
+
+#[test]
+fn max_streams_replenishes_stream_control_capacity() {
+    let mut manager = create_stream_manager(endpoint::Type::Server);
+
+    for stream_type in [StreamType::Bidirectional, StreamType::Unidirectional]
+        .iter()
+        .copied()
+    {
+        let current_max_streams = manager
+            .with_stream_controller(|ctrl| ctrl.available_local_stream_capacity(stream_type));
+
+        // Open and close up to the current max streams limit to ensure we are blocked on the
+        // peer's max streams limit and not the local concurrent stream limit.
+        for _i in 0..*current_max_streams {
+            manager.with_stream_controller(|ctrl| ctrl.on_open_stream(stream_type));
+            manager.with_stream_controller(|ctrl| ctrl.on_close_stream(stream_type));
+        }
+
+        for additional_streams in &[VarInt::from_u8(1), VarInt::from_u8(10)] {
+            assert!(manager
+                .on_max_streams(&MaxStreams {
+                    stream_type,
+                    maximum_streams: current_max_streams + *additional_streams,
+                })
+                .is_ok());
+            assert_eq!(
+                *additional_streams,
+                manager.with_stream_controller(
+                    |ctrl| ctrl.available_local_stream_capacity(stream_type)
+                )
+            );
+        }
     }
 }
 

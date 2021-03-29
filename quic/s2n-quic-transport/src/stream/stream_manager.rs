@@ -886,6 +886,14 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         func(&mut self.inner.outgoing_connection_flow_controller)
     }
 
+    /// Executes the given function using the stream controller
+    pub fn with_stream_controller<F, R>(&mut self, func: F) -> R
+        where
+            F: FnOnce(&mut stream::Controller) -> R,
+    {
+        func(&mut self.inner.stream_controller)
+    }
+
     /// Asserts that a Stream with the given ID exists, and executes the provided
     /// function on it
     pub fn with_asserted_stream<F, R>(&mut self, stream_id: StreamId, func: F) -> R

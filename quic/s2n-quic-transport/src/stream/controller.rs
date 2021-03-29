@@ -297,3 +297,13 @@ impl ValueToFrameWriter<VarInt> for MaxStreamsToFrameWriter {
         })
     }
 }
+
+#[cfg(test)]
+impl Controller {
+    pub fn available_local_stream_capacity(&self, stream_type: StreamType) -> VarInt {
+        match stream_type {
+            StreamType::Bidirectional => self.bidi_controller.available_local_stream_capacity(),
+            StreamType::Unidirectional => self.uni_controller.available_local_stream_capacity(),
+        }
+    }
+}
