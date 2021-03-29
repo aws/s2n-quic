@@ -33,6 +33,7 @@ use s2n_quic_core::{
         stream::StreamRef, Frame, MaxData, MaxStreamData, MaxStreams, ResetStream, StopSending,
         Stream as StreamFrame, StreamDataBlocked,
     },
+    packet::number::PacketNumberRange,
     stream::{ops, StreamId, StreamType},
     transport::{
         parameters::{InitialFlowControlLimits, InitialStreamLimits},
@@ -720,6 +721,7 @@ fn peer_closing_streams_transmits_max_streams() {
             transmission::Constraint::None,
             endpoint::Type::Server,
         );
+        let packet_number = write_context.packet_number();
         assert!(manager.on_transmit(&mut write_context).is_ok());
 
         let expected_frame = Frame::MaxStreams {
@@ -732,6 +734,28 @@ fn peer_closing_streams_transmits_max_streams() {
         assert_eq!(
             expected_frame,
             write_context.frame_buffer.pop_front().unwrap().as_frame()
+        );
+
+        assert_eq!(
+            transmission::Interest::None,
+            manager.transmission_interest()
+        );
+
+        manager.on_packet_loss(&PacketNumberRange::new(packet_number, packet_number));
+
+        assert_eq!(
+            transmission::Interest::LostData,
+            manager.transmission_interest()
+        );
+
+        let packet_number = write_context.packet_number();
+        assert!(manager.on_transmit(&mut write_context).is_ok());
+
+        manager.on_packet_ack(&PacketNumberRange::new(packet_number, packet_number));
+
+        assert_eq!(
+            transmission::Interest::None,
+            manager.transmission_interest()
         );
     }
 }
