@@ -20,6 +20,12 @@ use s2n_quic_core::{
 };
 use smallvec::SmallVec;
 
+/// This component manages stream concurrency limits.
+///
+/// It enforces both the local initiated stream limits and the peer initiated
+/// stream limits.
+///
+/// It will also signal an increased max streams once streams have been consumed.
 #[derive(Debug)]
 pub struct Controller {
     uni_controller: ControllerImpl,
@@ -27,6 +33,12 @@ pub struct Controller {
 }
 
 impl Controller {
+    /// Creates a new `stream::Controller`
+    ///
+    /// The peer will be allowed to open streams up to the given `initial_local_limits`.
+    ///
+    /// The local application will be allowed to open streams up to the minimum of the
+    /// given local limits (`initial_local_limits` and `stream_limits`) and `initial_peer_limits`.
     pub fn new(
         initial_peer_limits: InitialFlowControlLimits,
         initial_local_limits: InitialFlowControlLimits,
@@ -51,6 +63,8 @@ impl Controller {
         }
     }
 
+    /// This method is called when a `MAX_STREAMS` frame is received,
+    /// which signals an increase in the available streams budget.
     pub fn on_max_streams(&mut self, frame: &MaxStreams) {
         match frame.stream_type {
             StreamType::Bidirectional => self.bidi_controller.on_max_streams(frame),
@@ -58,6 +72,12 @@ impl Controller {
         }
     }
 
+    /// This method is called when the local application wishes to open a new stream.
+    ///
+    /// `Poll::Pending` is returned when there isn't available capacity to open a stream,
+    /// either because of local initiated concurrency limits or the peer's stream limits.
+    /// If `Poll::Pending` is returned, the waker in the given `context` will be woken
+    /// when additional stream capacity becomes available.
     pub fn poll_local_open_stream(
         &mut self,
         stream_type: StreamType,
@@ -69,6 +89,10 @@ impl Controller {
         }
     }
 
+    /// This method is called when the remote peer wishes to open a new stream.
+    ///
+    /// A `STREAM_LIMIT_ERROR` will be returned if the peer has exceeded the stream limits
+    /// that were communicated by transport parameters or MAX_STREAMS frames.
     pub fn on_remote_open_stream(&mut self, stream_id: StreamId) -> Result<(), transport::Error> {
         match stream_id.stream_type() {
             StreamType::Bidirectional => self.bidi_controller.on_remote_open_stream(stream_id),
@@ -76,6 +100,7 @@ impl Controller {
         }
     }
 
+    /// This method is called whenever a stream is opened, regardless of which side initiated.
     pub fn on_open_stream(&mut self, stream_type: StreamType) {
         match stream_type {
             StreamType::Bidirectional => self.bidi_controller.on_open_stream(),
@@ -83,6 +108,7 @@ impl Controller {
         }
     }
 
+    /// This method is called whenever a stream is closed.
     pub fn on_close_stream(&mut self, stream_type: StreamType) {
         match stream_type {
             StreamType::Bidirectional => self.bidi_controller.on_close_stream(),
@@ -90,11 +116,20 @@ impl Controller {
         }
     }
 
+    /// This method is called when the stream manager is closed. All wakers will be woken
+    /// to unblock waiting tasks.
+    pub fn close(&mut self) {
+        self.bidi_controller.wake_all();
+        self.uni_controller.wake_all();
+    }
+
+    /// This method is called when a packet delivery got acknowledged
     pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
         self.bidi_controller.max_streams_sync.on_packet_ack(ack_set);
         self.uni_controller.max_streams_sync.on_packet_ack(ack_set);
     }
 
+    /// This method is called when a packet loss is reported
     pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
         self.bidi_controller
             .max_streams_sync
@@ -102,6 +137,7 @@ impl Controller {
         self.uni_controller.max_streams_sync.on_packet_loss(ack_set);
     }
 
+    /// Queries the component for any outgoing frames that need to get sent
     pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) -> Result<(), OnTransmitError> {
         // Only the stream_type from the StreamId is transmitted
         self.bidi_controller.max_streams_sync.on_transmit(
@@ -114,11 +150,7 @@ impl Controller {
         )
     }
 
-    pub fn close(&mut self) {
-        self.bidi_controller.wake_all();
-        self.uni_controller.wake_all();
-    }
-
+    /// Queries the component for interest in transmitting frames
     pub fn transmission_interest(&self) -> transmission::Interest {
         self.bidi_controller
             .max_streams_sync
@@ -126,6 +158,7 @@ impl Controller {
             + self.uni_controller.max_streams_sync.transmission_interest()
     }
 }
+// The amount of wakers that may be tracked before allocating to the heap.
 const WAKERS_INITIAL_CAPACITY: usize = 5;
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6
 //# An endpoint MUST NOT wait
@@ -244,6 +277,8 @@ impl ControllerImpl {
         self.check_integrity();
     }
 
+    /// The number of streams that may be opened by the local application, respecting both
+    /// the local concurrent streams limit and the peer's stream limits.
     fn available_local_stream_capacity(&self) -> VarInt {
         let local_capacity =
             self.local_initiated_concurrent_stream_limit - self.open_stream_count();
@@ -251,19 +286,21 @@ impl ControllerImpl {
         local_capacity.min(peer_capacity)
     }
 
+    /// Wake all wakers
     fn wake_all(&mut self) {
         self.wakers
             .drain(..self.wakers.len())
             .for_each(|waker| waker.wake())
     }
 
+    /// Wakes the wakers that have been unblocked by the current amount
+    /// of available local stream capacity.
     fn wake_unblocked(&mut self) {
         let unblocked_wakers_count = self
             .wakers
             .len()
             .min(self.available_local_stream_capacity().as_u64() as usize);
 
-        // Wake the wakers that have may have been unblocked by an increase in local stream capacity.
         self.wakers
             .drain(..unblocked_wakers_count)
             .for_each(|waker| waker.wake());
