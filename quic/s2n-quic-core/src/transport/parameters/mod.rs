@@ -70,7 +70,7 @@ pub trait TransportParameterValidator: Sized {
 //# retry_source_connection_id, and stateless_reset_token.
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
-pub struct ZeroRTTParameters {
+pub struct ZeroRttParameters {
     pub active_connection_id_limit: VarInt,
     pub initial_max_data: VarInt,
     pub initial_max_stream_data_bidi_local: VarInt,
@@ -94,7 +94,7 @@ impl<
     >
 {
     /// Returns the ZeroRTTParameters to be saved between connections
-    pub fn zero_rtt_parameters(&self) -> ZeroRTTParameters {
+    pub fn zero_rtt_parameters(&self) -> ZeroRttParameters {
         let Self {
             active_connection_id_limit,
             initial_max_data,
@@ -105,7 +105,7 @@ impl<
             initial_max_streams_uni,
             ..
         } = self;
-        ZeroRTTParameters {
+        ZeroRttParameters {
             active_connection_id_limit: **active_connection_id_limit,
             initial_max_data: **initial_max_data,
             initial_max_stream_data_bidi_local: **initial_max_stream_data_bidi_local,

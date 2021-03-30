@@ -24,7 +24,7 @@ pub fn gen_duration() -> impl ValueGenerator<Output = Duration> {
 pub fn gen_ecn() -> impl ValueGenerator<Output = ExplicitCongestionNotification> {
     gen::<bool>().map(|has_congestion| {
         if has_congestion {
-            ExplicitCongestionNotification::CE
+            ExplicitCongestionNotification::Ce
         } else {
             ExplicitCongestionNotification::default()
         }

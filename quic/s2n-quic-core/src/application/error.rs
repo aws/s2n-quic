@@ -55,15 +55,15 @@ impl From<VarInt> for Error {
     }
 }
 
-impl Into<VarInt> for Error {
-    fn into(self) -> VarInt {
-        self.0
+impl From<Error> for VarInt {
+    fn from(e: Error) -> Self {
+        e.0
     }
 }
 
-impl Into<u64> for Error {
-    fn into(self) -> u64 {
-        self.0.into()
+impl From<Error> for u64 {
+    fn from(e: Error) -> Self {
+        e.0.as_u64()
     }
 }
 

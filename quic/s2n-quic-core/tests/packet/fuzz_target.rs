@@ -95,7 +95,7 @@ fn decrypt_packet(packet: ProtectedPacket) -> Result<CleartextPacket, CryptoErro
 
             Ok(CleartextPacket::Short(packet))
         }
-        ZeroRTT(packet) => {
+        ZeroRtt(packet) => {
             let dcid = packet.destination_connection_id().to_vec();
             let scid = packet.source_connection_id().to_vec();
 
@@ -110,7 +110,7 @@ fn decrypt_packet(packet: ProtectedPacket) -> Result<CleartextPacket, CryptoErro
             assert_eq!(dcid, packet.destination_connection_id());
             assert_eq!(scid, packet.source_connection_id());
 
-            Ok(CleartextPacket::ZeroRTT(packet))
+            Ok(CleartextPacket::ZeroRtt(packet))
         }
         VersionNegotiation(packet) => {
             let _: Vec<_> = packet.iter().collect();
@@ -148,7 +148,7 @@ fn encode_packet<'a>(packet: CleartextPacket, mut encoder: EncoderBuffer<'a>) ->
             None,
             encoder,
         ),
-        ZeroRTT(packet) => packet.encode_packet(
+        ZeroRtt(packet) => packet.encode_packet(
             &testing::Key::new(),
             &testing::HeaderKey::new(),
             PacketNumberSpace::ApplicationData.new_packet_number(Default::default()),

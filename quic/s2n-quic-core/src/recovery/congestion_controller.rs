@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{inet::SocketAddress, path::MINIMUM_MTU, recovery::RTTEstimator, time::Timestamp};
+use crate::{inet::SocketAddress, path::MINIMUM_MTU, recovery::RttEstimator, time::Timestamp};
 use core::fmt::Debug;
 
 pub trait Endpoint: 'static + Debug {
@@ -47,14 +47,14 @@ pub trait CongestionController: 'static + Clone + Send + Debug {
 
     /// Invoked each time the round trip time is updated, which is whenever the
     /// largest acknowledged packet in an ACK frame is newly acknowledged
-    fn on_rtt_update(&mut self, time_sent: Timestamp, rtt_estimator: &RTTEstimator);
+    fn on_rtt_update(&mut self, time_sent: Timestamp, rtt_estimator: &RttEstimator);
 
     /// Invoked for each newly acknowledged packet
     fn on_packet_ack(
         &mut self,
         largest_acked_time_sent: Timestamp,
         bytes_sent: usize,
-        rtt_estimator: &RTTEstimator,
+        rtt_estimator: &RttEstimator,
         ack_receive_time: Timestamp,
     );
 
@@ -80,7 +80,7 @@ pub trait CongestionController: 'static + Clone + Send + Debug {
 #[cfg(any(test, feature = "testing"))]
 pub mod testing {
     use super::*;
-    use crate::recovery::RTTEstimator;
+    use crate::recovery::RttEstimator;
 
     pub mod unlimited {
         use super::*;
@@ -116,13 +116,13 @@ pub mod testing {
             }
 
             fn on_packet_sent(&mut self, _time_sent: Timestamp, _bytes_sent: usize) {}
-            fn on_rtt_update(&mut self, _time_sent: Timestamp, _rtt_estimator: &RTTEstimator) {}
+            fn on_rtt_update(&mut self, _time_sent: Timestamp, _rtt_estimator: &RttEstimator) {}
 
             fn on_packet_ack(
                 &mut self,
                 _largest_acked_time_sent: Timestamp,
                 _sent_bytes: usize,
-                _rtt_estimator: &RTTEstimator,
+                _rtt_estimator: &RttEstimator,
                 _ack_receive_time: Timestamp,
             ) {
             }
@@ -184,7 +184,7 @@ pub mod testing {
             fn on_packet_sent(&mut self, _time_sent: Timestamp, bytes_sent: usize) {
                 self.bytes_in_flight += bytes_sent as u32
             }
-            fn on_rtt_update(&mut self, _time_sent: Timestamp, _rtt_estimator: &RTTEstimator) {
+            fn on_rtt_update(&mut self, _time_sent: Timestamp, _rtt_estimator: &RttEstimator) {
                 self.on_rtt_update += 1
             }
 
@@ -192,7 +192,7 @@ pub mod testing {
                 &mut self,
                 _largest_acked_time_sent: Timestamp,
                 _sent_bytes: usize,
-                _rtt_estimator: &RTTEstimator,
+                _rtt_estimator: &RttEstimator,
                 _ack_receive_time: Timestamp,
             ) {
             }

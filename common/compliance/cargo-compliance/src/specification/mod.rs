@@ -44,7 +44,7 @@ impl<'a> Specification<'a> {
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Ord, Eq, Hash)]
 pub enum Format {
     Auto,
-    IETF,
+    Ietf,
 }
 
 impl Default for Format {
@@ -57,7 +57,7 @@ impl Format {
     pub fn parse(self, contents: &str) -> Result<Specification, Error> {
         match self {
             Self::Auto => ietf::parse(contents),
-            Self::IETF => ietf::parse(contents),
+            Self::Ietf => ietf::parse(contents),
         }
     }
 }
@@ -68,7 +68,7 @@ impl FromStr for Format {
     fn from_str(v: &str) -> Result<Self, Self::Err> {
         match v {
             "AUTO" => Ok(Self::Auto),
-            "IETF" => Ok(Self::IETF),
+            "IETF" => Ok(Self::Ietf),
             _ => Err(anyhow!(format!("Invalid spec type {:?}", v))),
         }
     }

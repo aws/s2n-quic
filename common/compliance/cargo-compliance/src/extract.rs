@@ -19,12 +19,12 @@ use structopt::StructOpt;
 lazy_static! {
     static ref KEY_WORDS: Vec<(Regex, AnnotationLevel)> = {
         let matches = [
-            ("MUST( NOT)?", AnnotationLevel::MUST),
-            ("SHALL( NOT)?", AnnotationLevel::SHALL),
-            ("SHOULD( NOT)?", AnnotationLevel::SHOULD),
-            ("(NOT )?RECOMMENDED", AnnotationLevel::RECOMMENDED),
-            ("MAY", AnnotationLevel::MAY),
-            ("OPTIONAL", AnnotationLevel::OPTIONAL),
+            ("MUST( NOT)?", AnnotationLevel::Must),
+            ("SHALL( NOT)?", AnnotationLevel::Shall),
+            ("SHOULD( NOT)?", AnnotationLevel::Should),
+            ("(NOT )?RECOMMENDED", AnnotationLevel::Recommended),
+            ("MAY", AnnotationLevel::May),
+            ("OPTIONAL", AnnotationLevel::Optional),
         ];
 
         matches

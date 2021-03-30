@@ -161,23 +161,23 @@ impl FromStr for AnnotationType {
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord, Hash, Serialize)]
 pub enum AnnotationLevel {
     Auto,
-    OPTIONAL,
-    MAY,
-    RECOMMENDED,
-    SHOULD,
-    SHALL,
-    MUST,
+    Optional,
+    May,
+    Recommended,
+    Should,
+    Shall,
+    Must,
 }
 
 impl AnnotationLevel {
     pub const LEVELS: [Self; 7] = [
         Self::Auto,
-        Self::OPTIONAL,
-        Self::MAY,
-        Self::RECOMMENDED,
-        Self::SHOULD,
-        Self::SHALL,
-        Self::MUST,
+        Self::Optional,
+        Self::May,
+        Self::Recommended,
+        Self::Should,
+        Self::Shall,
+        Self::Must,
     ];
 }
 
@@ -191,12 +191,12 @@ impl fmt::Display for AnnotationLevel {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.write_str(match self {
             Self::Auto => "AUTO",
-            Self::OPTIONAL => "OPTIONAL",
-            Self::MAY => "MAY",
-            Self::RECOMMENDED => "RECOMMENDED",
-            Self::SHOULD => "SHOULD",
-            Self::SHALL => "SHALL",
-            Self::MUST => "MUST",
+            Self::Optional => "OPTIONAL",
+            Self::May => "MAY",
+            Self::Recommended => "RECOMMENDED",
+            Self::Should => "SHOULD",
+            Self::Shall => "SHALL",
+            Self::Must => "MUST",
         })
     }
 }
@@ -207,12 +207,12 @@ impl FromStr for AnnotationLevel {
     fn from_str(v: &str) -> Result<Self, Self::Err> {
         match v {
             "AUTO" => Ok(Self::Auto),
-            "MUST" => Ok(Self::MUST),
-            "SHALL" => Ok(Self::SHALL),
-            "SHOULD" => Ok(Self::SHOULD),
-            "RECOMMENDED" => Ok(Self::RECOMMENDED),
-            "MAY" => Ok(Self::MAY),
-            "OPTIONAL" => Ok(Self::OPTIONAL),
+            "MUST" => Ok(Self::Must),
+            "SHALL" => Ok(Self::Shall),
+            "SHOULD" => Ok(Self::Should),
+            "RECOMMENDED" => Ok(Self::Recommended),
+            "MAY" => Ok(Self::May),
+            "OPTIONAL" => Ok(Self::Optional),
             _ => Err(anyhow!(format!("Invalid annotation level {:?}", v))),
         }
     }

@@ -47,9 +47,9 @@ macro_rules! unaligned_integer_type {
             }
         }
 
-        impl Into<$storage_type> for $name {
-            fn into(self) -> $storage_type {
-                self.0
+        impl From<$name> for $storage_type {
+            fn from(value: $name) -> $storage_type {
+                value.0
             }
         }
 
@@ -60,9 +60,9 @@ macro_rules! unaligned_integer_type {
                 }
             }
 
-            impl Into<$additional_conversions> for $name {
-                fn into(self) -> $additional_conversions {
-                    self.0 as $additional_conversions
+            impl From<$name> for $additional_conversions {
+                fn from(value: $name) -> Self {
+                    value.0 as $additional_conversions
                 }
             }
         )*
@@ -89,9 +89,9 @@ impl TryFrom<u64> for u24 {
     }
 }
 
-impl Into<u64> for u24 {
-    fn into(self) -> u64 {
-        self.0.into()
+impl From<u24> for u64 {
+    fn from(value: u24) -> u64 {
+        value.0.into()
     }
 }
 

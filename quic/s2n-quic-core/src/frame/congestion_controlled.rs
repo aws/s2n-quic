@@ -26,13 +26,13 @@ impl CongestionControlled for crate::frame::HandshakeDone {}
 impl CongestionControlled for crate::frame::MaxData {}
 impl CongestionControlled for crate::frame::MaxStreamData {}
 impl CongestionControlled for crate::frame::MaxStreams {}
-impl CongestionControlled for crate::frame::NewConnectionID<'_> {}
+impl CongestionControlled for crate::frame::NewConnectionId<'_> {}
 impl CongestionControlled for crate::frame::NewToken<'_> {}
 impl CongestionControlled for crate::frame::Padding {}
 impl CongestionControlled for crate::frame::PathChallenge<'_> {}
 impl CongestionControlled for crate::frame::PathResponse<'_> {}
 impl CongestionControlled for crate::frame::Ping {}
 impl CongestionControlled for crate::frame::ResetStream {}
-impl CongestionControlled for crate::frame::RetireConnectionID {}
+impl CongestionControlled for crate::frame::RetireConnectionId {}
 impl CongestionControlled for crate::frame::StopSending {}
 impl<Data> CongestionControlled for crate::frame::Stream<Data> {}

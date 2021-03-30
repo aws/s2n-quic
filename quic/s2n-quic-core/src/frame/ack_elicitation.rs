@@ -76,7 +76,7 @@ impl AckElicitable for crate::frame::HandshakeDone {}
 impl AckElicitable for crate::frame::MaxData {}
 impl AckElicitable for crate::frame::MaxStreamData {}
 impl AckElicitable for crate::frame::MaxStreams {}
-impl AckElicitable for crate::frame::NewConnectionID<'_> {}
+impl AckElicitable for crate::frame::NewConnectionId<'_> {}
 impl AckElicitable for crate::frame::NewToken<'_> {}
 impl AckElicitable for crate::frame::Padding {
     #[inline]
@@ -88,7 +88,7 @@ impl AckElicitable for crate::frame::PathChallenge<'_> {}
 impl AckElicitable for crate::frame::PathResponse<'_> {}
 impl AckElicitable for crate::frame::Ping {}
 impl AckElicitable for crate::frame::ResetStream {}
-impl AckElicitable for crate::frame::RetireConnectionID {}
+impl AckElicitable for crate::frame::RetireConnectionId {}
 impl AckElicitable for crate::frame::StopSending {}
 impl<Data> AckElicitable for crate::frame::Stream<Data> {}
 impl AckElicitable for crate::frame::StreamDataBlocked {}

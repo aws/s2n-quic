@@ -7,8 +7,8 @@ use crate::{
         decoding::HeaderDecoder,
         encoding::{PacketEncoder, PacketPayloadEncoder},
         long::{
-            DestinationConnectionIDLen, LongPayloadEncoder, LongPayloadLenCursor,
-            SourceConnectionIDLen, Version,
+            DestinationConnectionIdLen, LongPayloadEncoder, LongPayloadLenCursor,
+            SourceConnectionIdLen, Version,
         },
         number::{
             PacketNumber, PacketNumberLen, PacketNumberSpace, ProtectedPacketNumber,
@@ -216,9 +216,9 @@ impl<DCID: EncoderValue, SCID: EncoderValue, PacketNumber, Payload>
 
         self.version.encode(encoder);
         self.destination_connection_id
-            .encode_with_len_prefix::<DestinationConnectionIDLen, E>(encoder);
+            .encode_with_len_prefix::<DestinationConnectionIdLen, E>(encoder);
         self.source_connection_id
-            .encode_with_len_prefix::<SourceConnectionIDLen, E>(encoder);
+            .encode_with_len_prefix::<SourceConnectionIdLen, E>(encoder);
     }
 }
 

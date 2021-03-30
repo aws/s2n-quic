@@ -8,7 +8,7 @@ use crate::{
     packet::{
         decoding::HeaderDecoder,
         initial::ProtectedInitial,
-        long::{DestinationConnectionIDLen, SourceConnectionIDLen, Version},
+        long::{DestinationConnectionIdLen, SourceConnectionIdLen, Version},
         Tag,
     },
     token,
@@ -152,7 +152,7 @@ impl<'a> Retry<'a> {
         buffer.write_slice(&tag);
         let end = buffer.len();
         let start =
-            packet.destination_connection_id().len() + size_of::<DestinationConnectionIDLen>();
+            packet.destination_connection_id().len() + size_of::<DestinationConnectionIdLen>();
 
         Some(start..end)
     }
@@ -264,9 +264,9 @@ impl<'a> EncoderValue for Retry<'a> {
         self.version.encode(encoder);
 
         self.destination_connection_id
-            .encode_with_len_prefix::<DestinationConnectionIDLen, E>(encoder);
+            .encode_with_len_prefix::<DestinationConnectionIdLen, E>(encoder);
         self.source_connection_id
-            .encode_with_len_prefix::<SourceConnectionIDLen, E>(encoder);
+            .encode_with_len_prefix::<SourceConnectionIdLen, E>(encoder);
         self.retry_token.encode(encoder);
         self.retry_integrity_tag.encode(encoder);
     }
@@ -275,16 +275,16 @@ impl<'a> EncoderValue for Retry<'a> {
 impl<'a> EncoderValue for PseudoRetry<'a> {
     fn encode<E: Encoder>(&self, encoder: &mut E) {
         self.original_destination_connection_id
-            .encode_with_len_prefix::<DestinationConnectionIDLen, E>(encoder);
+            .encode_with_len_prefix::<DestinationConnectionIdLen, E>(encoder);
 
         self.tag.encode(encoder);
 
         self.version.encode(encoder);
 
         self.destination_connection_id
-            .encode_with_len_prefix::<DestinationConnectionIDLen, E>(encoder);
+            .encode_with_len_prefix::<DestinationConnectionIdLen, E>(encoder);
         self.source_connection_id
-            .encode_with_len_prefix::<SourceConnectionIDLen, E>(encoder);
+            .encode_with_len_prefix::<SourceConnectionIdLen, E>(encoder);
         self.retry_token.encode(encoder);
     }
 }

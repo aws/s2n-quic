@@ -477,7 +477,7 @@ impl LocalIdRegistry {
             .iter_mut()
             .filter(|id_info| id_info.status.can_transmit(constraint))
         {
-            if let Some(packet_number) = context.write_frame(&frame::NewConnectionID {
+            if let Some(packet_number) = context.write_frame(&frame::NewConnectionId {
                 sequence_number: id_info.sequence_number.into(),
                 retire_prior_to: self.retire_prior_to.into(),
                 connection_id: id_info.id.as_bytes(),
@@ -632,7 +632,7 @@ mod tests {
     use s2n_quic_core::{
         connection,
         connection::id::MIN_LIFETIME,
-        frame::{Frame, NewConnectionID},
+        frame::{Frame, NewConnectionId},
         packet::number::PacketNumberRange,
         random,
         stateless_reset::token::testing::*,
@@ -1135,8 +1135,8 @@ mod tests {
         );
         reg1.on_transmit(&mut write_context);
 
-        let expected_frame = Frame::NewConnectionID {
-            0: NewConnectionID {
+        let expected_frame = Frame::NewConnectionId {
+            0: NewConnectionId {
                 sequence_number: VarInt::from_u32(1),
                 retire_prior_to: VarInt::from_u32(0),
                 connection_id: ext_id_2.as_bytes(),
@@ -1173,8 +1173,8 @@ mod tests {
 
         reg1.on_transmit(&mut write_context);
 
-        let expected_frame = Frame::NewConnectionID {
-            0: NewConnectionID {
+        let expected_frame = Frame::NewConnectionId {
+            0: NewConnectionId {
                 sequence_number: VarInt::from_u32(2),
                 retire_prior_to: VarInt::from_u32(2),
                 connection_id: ext_id_3.as_bytes(),
@@ -1238,8 +1238,8 @@ mod tests {
         // Only the ID pending reissue should be written
         assert_eq!(1, write_context.frame_buffer.len());
 
-        let expected_frame = Frame::NewConnectionID {
-            0: NewConnectionID {
+        let expected_frame = Frame::NewConnectionId {
+            0: NewConnectionId {
                 sequence_number: VarInt::from_u32(1),
                 retire_prior_to: VarInt::from_u32(0),
                 connection_id: ext_id_2.as_bytes(),

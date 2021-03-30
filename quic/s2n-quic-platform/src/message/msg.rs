@@ -9,12 +9,12 @@ use core::{
 };
 use libc::{c_void, iovec, msghdr, sockaddr_in, sockaddr_in6, AF_INET, AF_INET6};
 use s2n_quic_core::{
-    inet::{ExplicitCongestionNotification, IPv4Address, SocketAddress, SocketAddressV4},
+    inet::{ExplicitCongestionNotification, IpV4Address, SocketAddress, SocketAddressV4},
     io::{rx, tx},
 };
 
 #[cfg(feature = "ipv6")]
-use s2n_quic_core::inet::{IPv6Address, SocketAddressV6};
+use s2n_quic_core::inet::{IpV6Address, SocketAddressV6};
 
 #[repr(transparent)]
 pub struct Message(pub(crate) msghdr);
@@ -70,14 +70,14 @@ impl MessageTrait for msghdr {
             size if size == size_of::<sockaddr_in>() as _ => {
                 let sockaddr: &sockaddr_in = unsafe { &*(self.msg_name as *const _) };
                 let port = sockaddr.sin_port.to_be();
-                let addr: IPv4Address = sockaddr.sin_addr.s_addr.to_ne_bytes().into();
+                let addr: IpV4Address = sockaddr.sin_addr.s_addr.to_ne_bytes().into();
                 Some(SocketAddressV4::new(addr, port).into())
             }
             #[cfg(feature = "ipv6")]
             size if size == size_of::<sockaddr_in6>() as _ => {
                 let sockaddr: &sockaddr_in6 = unsafe { &*(self.msg_name as *const _) };
                 let port = sockaddr.sin6_port.to_be();
-                let addr: IPv6Address = sockaddr.sin6_addr.s6_addr.into();
+                let addr: IpV6Address = sockaddr.sin6_addr.s6_addr.into();
                 Some(SocketAddressV6::new(addr, port).into())
             }
             _ => None,
@@ -92,14 +92,14 @@ impl MessageTrait for msghdr {
         let remote_address = remote_address.to_ipv6_mapped().into();
 
         match remote_address {
-            SocketAddress::IPv4(addr) => {
+            SocketAddress::IpV4(addr) => {
                 let sockaddr: &mut sockaddr_in = unsafe { &mut *(self.msg_name as *mut _) };
                 sockaddr.sin_family = AF_INET as _;
                 sockaddr.sin_port = addr.port().to_be();
                 sockaddr.sin_addr.s_addr = u32::from_ne_bytes((*addr.ip()).into());
                 self.msg_namelen = size_of::<sockaddr_in>() as _;
             }
-            SocketAddress::IPv6(addr) => {
+            SocketAddress::IpV6(addr) => {
                 let sockaddr: &mut sockaddr_in6 = unsafe { &mut *(self.msg_name as *mut _) };
                 sockaddr.sin6_family = AF_INET6 as _;
                 sockaddr.sin6_port = addr.port().to_be();

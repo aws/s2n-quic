@@ -12,8 +12,8 @@ use s2n_quic_core::{
     crypto::{tls, tls::Session, CryptoSuite},
     frame::{
         ack::AckRanges, crypto::CryptoRef, stream::StreamRef, Ack, ConnectionClose, DataBlocked,
-        HandshakeDone, MaxData, MaxStreamData, MaxStreams, NewConnectionID, NewToken,
-        PathChallenge, PathResponse, ResetStream, RetireConnectionID, StopSending,
+        HandshakeDone, MaxData, MaxStreamData, MaxStreams, NewConnectionId, NewToken,
+        PathChallenge, PathResponse, ResetStream, RetireConnectionId, StopSending,
         StreamDataBlocked, StreamsBlocked,
     },
     inet::DatagramInfo,
@@ -340,7 +340,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
 
     fn handle_retire_connection_id_frame(
         &mut self,
-        frame: RetireConnectionID,
+        frame: RetireConnectionId,
         _datagram: &DatagramInfo,
         _path: &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
         _local_id_registry: &mut connection::LocalIdRegistry,
@@ -352,7 +352,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
 
     fn handle_new_connection_id_frame(
         &mut self,
-        frame: NewConnectionID,
+        frame: NewConnectionId,
         _datagram: &DatagramInfo,
         _path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
     ) -> Result<(), transport::Error> {
@@ -511,13 +511,13 @@ pub trait PacketSpace<Config: endpoint::Config> {
                     processed_packet.on_processed_frame(&frame);
                     self.handle_new_token_frame(frame).map_err(on_error)?;
                 }
-                Frame::NewConnectionID(frame) => {
+                Frame::NewConnectionId(frame) => {
                     let on_error = with_frame_type!(frame);
                     processed_packet.on_processed_frame(&frame);
                     self.handle_new_connection_id_frame(frame, datagram, path_manager)
                         .map_err(on_error)?;
                 }
-                Frame::RetireConnectionID(frame) => {
+                Frame::RetireConnectionId(frame) => {
                     let on_error = with_frame_type!(frame);
                     processed_packet.on_processed_frame(&frame);
                     self.handle_retire_connection_id_frame(

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::inet::{
-    ipv6::{IPv6Address, SocketAddressV6},
+    ipv6::{IpV6Address, SocketAddressV6},
     unspecified::Unspecified,
 };
 use core::{fmt, mem::size_of};
@@ -13,17 +13,17 @@ use s2n_codec::zerocopy::U16;
 const IPV4_LEN: usize = 32 / 8;
 
 define_inet_type!(
-    pub struct IPv4Address {
+    pub struct IpV4Address {
         octets: [u8; IPV4_LEN],
     }
 );
 
-impl IPv4Address {
+impl IpV4Address {
     /// Converts the IP address into a IPv6 mapped address
-    pub const fn to_ipv6_mapped(self) -> IPv6Address {
+    pub const fn to_ipv6_mapped(self) -> IpV6Address {
         //= https://tools.ietf.org/rfc/rfc5156.txt#2.2
         //# ::FFFF:0:0/96 are the IPv4-mapped addresses [RFC4291].
-        let mut addr = [0; size_of::<IPv6Address>()];
+        let mut addr = [0; size_of::<IpV6Address>()];
         let [a, b, c, d] = self.octets;
         addr[10] = 0xFF;
         addr[11] = 0xFF;
@@ -31,17 +31,17 @@ impl IPv4Address {
         addr[13] = b;
         addr[14] = c;
         addr[15] = d;
-        IPv6Address { octets: addr }
+        IpV6Address { octets: addr }
     }
 }
 
-impl fmt::Debug for IPv4Address {
+impl fmt::Debug for IpV4Address {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(fmt, "IPv4Address({})", self)
     }
 }
 
-impl fmt::Display for IPv4Address {
+impl fmt::Display for IpV4Address {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         let octets = &self.octets;
         write!(
@@ -52,23 +52,23 @@ impl fmt::Display for IPv4Address {
     }
 }
 
-impl Unspecified for IPv4Address {
+impl Unspecified for IpV4Address {
     fn is_unspecified(&self) -> bool {
         <[u8; IPV4_LEN]>::default().eq(&self.octets)
     }
 }
 
-test_inet_snapshot!(ipv4, ipv4_snapshot_test, IPv4Address);
+test_inet_snapshot!(ipv4, ipv4_snapshot_test, IpV4Address);
 
 define_inet_type!(
     pub struct SocketAddressV4 {
-        ip: IPv4Address,
+        ip: IpV4Address,
         port: U16,
     }
 );
 
 impl SocketAddressV4 {
-    pub const fn ip(&self) -> &IPv4Address {
+    pub const fn ip(&self) -> &IpV4Address {
         &self.ip
     }
 
@@ -109,15 +109,15 @@ impl Unspecified for SocketAddressV4 {
 
 test_inet_snapshot!(socket_v4, socket_v4_snapshot_test, SocketAddressV4);
 
-impl From<[u8; IPV4_LEN]> for IPv4Address {
+impl From<[u8; IPV4_LEN]> for IpV4Address {
     fn from(octets: [u8; IPV4_LEN]) -> Self {
         Self { octets }
     }
 }
 
-impl Into<[u8; IPV4_LEN]> for IPv4Address {
-    fn into(self) -> [u8; IPV4_LEN] {
-        self.octets
+impl From<IpV4Address> for [u8; IPV4_LEN] {
+    fn from(address: IpV4Address) -> Self {
+        address.octets
     }
 }
 
@@ -126,21 +126,21 @@ mod std_conversion {
     use super::*;
     use std::net;
 
-    impl From<net::Ipv4Addr> for IPv4Address {
+    impl From<net::Ipv4Addr> for IpV4Address {
         fn from(address: net::Ipv4Addr) -> Self {
             (&address).into()
         }
     }
 
-    impl From<&net::Ipv4Addr> for IPv4Address {
+    impl From<&net::Ipv4Addr> for IpV4Address {
         fn from(address: &net::Ipv4Addr) -> Self {
             address.octets().into()
         }
     }
 
-    impl Into<net::Ipv4Addr> for IPv4Address {
-        fn into(self) -> net::Ipv4Addr {
-            self.octets.into()
+    impl From<IpV4Address> for net::Ipv4Addr {
+        fn from(address: IpV4Address) -> Self {
+            address.octets.into()
         }
     }
 
@@ -152,32 +152,32 @@ mod std_conversion {
         }
     }
 
-    impl Into<net::SocketAddrV4> for SocketAddressV4 {
-        fn into(self) -> net::SocketAddrV4 {
-            let ip = self.ip.into();
-            let port = self.port.into();
-            net::SocketAddrV4::new(ip, port)
+    impl From<SocketAddressV4> for net::SocketAddrV4 {
+        fn from(address: SocketAddressV4) -> Self {
+            let ip = address.ip.into();
+            let port = address.port.into();
+            Self::new(ip, port)
         }
     }
 
-    impl Into<net::SocketAddrV4> for &SocketAddressV4 {
-        fn into(self) -> net::SocketAddrV4 {
-            let ip = self.ip.into();
-            let port = self.port.into();
-            net::SocketAddrV4::new(ip, port)
+    impl From<&SocketAddressV4> for net::SocketAddrV4 {
+        fn from(address: &SocketAddressV4) -> Self {
+            let ip = address.ip.into();
+            let port = address.port.into();
+            Self::new(ip, port)
         }
     }
 
-    impl Into<net::SocketAddr> for SocketAddressV4 {
-        fn into(self) -> net::SocketAddr {
-            let addr: net::SocketAddrV4 = self.into();
+    impl From<SocketAddressV4> for net::SocketAddr {
+        fn from(address: SocketAddressV4) -> Self {
+            let addr: net::SocketAddrV4 = address.into();
             addr.into()
         }
     }
 
-    impl Into<net::SocketAddr> for &SocketAddressV4 {
-        fn into(self) -> net::SocketAddr {
-            let addr: net::SocketAddrV4 = self.into();
+    impl From<&SocketAddressV4> for net::SocketAddr {
+        fn from(address: &SocketAddressV4) -> Self {
+            let addr: net::SocketAddrV4 = address.into();
             addr.into()
         }
     }

@@ -24,7 +24,7 @@ pub const K_GRANULARITY: Duration = Duration::from_millis(1);
 const K_PERSISTENT_CONGESTION_THRESHOLD: u32 = 3;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct RTTEstimator {
+pub struct RttEstimator {
     /// Latest RTT sample
     latest_rtt: Duration,
     /// The minimum value observed over the lifetime of the connection
@@ -41,7 +41,7 @@ pub struct RTTEstimator {
     first_rtt_sample: Option<Timestamp>,
 }
 
-impl RTTEstimator {
+impl RttEstimator {
     /// Creates a new RTT Estimator with default initial values using the given `max_ack_delay`.
     pub fn new(max_ack_delay: Duration) -> Self {
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.3
@@ -133,7 +133,7 @@ impl RTTEstimator {
     }
 }
 
-impl RTTEstimator {
+impl RttEstimator {
     pub fn update_rtt(
         &mut self,
         mut ack_delay: Duration,
@@ -268,14 +268,14 @@ mod test {
     use crate::{
         packet::number::PacketNumberSpace,
         path::INITIAL_PTO_BACKOFF,
-        recovery::{RTTEstimator, DEFAULT_INITIAL_RTT, K_GRANULARITY},
+        recovery::{RttEstimator, DEFAULT_INITIAL_RTT, K_GRANULARITY},
         time::{Clock, Duration, NoopClock},
     };
 
     /// Test the initial values before any RTT samples
     #[test]
     fn initial_rtt_across_spaces() {
-        let rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
+        let rtt_estimator = RttEstimator::new(Duration::from_millis(10));
         assert_eq!(rtt_estimator.min_rtt, DEFAULT_INITIAL_RTT);
         assert_eq!(rtt_estimator.latest_rtt(), DEFAULT_INITIAL_RTT);
         assert_eq!(rtt_estimator.smoothed_rtt(), DEFAULT_INITIAL_RTT);
@@ -297,7 +297,7 @@ mod test {
     /// Test a zero RTT value is treated as 1 ms
     #[test]
     fn zero_rtt_sample() {
-        let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
+        let mut rtt_estimator = RttEstimator::new(Duration::from_millis(10));
         let now = NoopClock.get_time();
         rtt_estimator.update_rtt(
             Duration::from_millis(10),
@@ -321,7 +321,7 @@ mod test {
     //#    max_ack_delay after the handshake is confirmed;.
     #[test]
     fn max_ack_delay() {
-        let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
+        let mut rtt_estimator = RttEstimator::new(Duration::from_millis(10));
         let now = NoopClock.get_time();
         rtt_estimator.update_rtt(
             Duration::from_millis(0),
@@ -380,7 +380,7 @@ mod test {
     /// Test several rounds of RTT updates
     #[test]
     fn update_rtt() {
-        let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
+        let mut rtt_estimator = RttEstimator::new(Duration::from_millis(10));
         let now = NoopClock.get_time();
         let rtt_sample = Duration::from_millis(500);
         assert!(rtt_estimator.first_rtt_sample.is_none());
@@ -459,7 +459,7 @@ mod test {
     //#    the resulting value is smaller than the min_rtt.
     #[test]
     fn must_not_subtract_acknowledgement_delay_if_result_smaller_than_min_rtt() {
-        let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(200));
+        let mut rtt_estimator = RttEstimator::new(Duration::from_millis(200));
         let now = NoopClock.get_time();
 
         rtt_estimator.min_rtt = Duration::from_millis(500);
@@ -491,7 +491,7 @@ mod test {
     //# the min_rtt.
     #[test]
     fn prior_to_handshake_ignore_if_less_than_min_rtt() {
-        let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(200));
+        let mut rtt_estimator = RttEstimator::new(Duration::from_millis(200));
         let now = NoopClock.get_time();
         let smoothed_rtt = Duration::from_millis(700);
 
@@ -519,7 +519,7 @@ mod test {
     //#    of [QUIC-TRANSPORT]);
     #[test]
     fn initial_space() {
-        let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
+        let mut rtt_estimator = RttEstimator::new(Duration::from_millis(10));
         let now = NoopClock.get_time();
         let rtt_sample = Duration::from_millis(500);
         rtt_estimator.update_rtt(
@@ -556,7 +556,7 @@ mod test {
     #[test]
     fn persistent_congestion_duration() {
         let max_ack_delay = Duration::from_millis(10);
-        let mut rtt_estimator = RTTEstimator::new(max_ack_delay);
+        let mut rtt_estimator = RttEstimator::new(max_ack_delay);
 
         rtt_estimator.smoothed_rtt = Duration::from_millis(100);
         rtt_estimator.rttvar = Duration::from_millis(50);
@@ -588,7 +588,7 @@ mod test {
 
     #[test]
     fn set_min_rtt_to_latest_sample_after_persistent_congestion() {
-        let mut rtt_estimator = RTTEstimator::new(Duration::from_millis(10));
+        let mut rtt_estimator = RttEstimator::new(Duration::from_millis(10));
         let now = NoopClock.get_time();
         let mut rtt_sample = Duration::from_millis(500);
         rtt_estimator.update_rtt(
@@ -630,7 +630,7 @@ mod test {
         let space = PacketNumberSpace::Handshake;
         let max_ack_delay = Duration::from_millis(0);
         let now = NoopClock.get_time();
-        let mut rtt_estimator = RTTEstimator::new(max_ack_delay);
+        let mut rtt_estimator = RttEstimator::new(max_ack_delay);
 
         // Update RTT with the smallest possible sample
         rtt_estimator.update_rtt(

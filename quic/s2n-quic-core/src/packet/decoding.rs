@@ -8,7 +8,7 @@ use crate::{
     packet::{
         long::{
             validate_destination_connection_id_range, validate_source_connection_id_range,
-            DestinationConnectionIDLen, SourceConnectionIDLen, Version,
+            DestinationConnectionIdLen, SourceConnectionIdLen, Version,
         },
         number::ProtectedPacketNumber,
         Tag,
@@ -51,7 +51,7 @@ impl<'a> HeaderDecoder<'a> {
         buffer: &DecoderBufferMut<'b>,
     ) -> Result<CheckedRange, DecoderError> {
         let destination_connection_id =
-            self.decode_checked_range::<DestinationConnectionIDLen>(buffer)?;
+            self.decode_checked_range::<DestinationConnectionIdLen>(buffer)?;
         validate_destination_connection_id_range(&destination_connection_id)?;
         Ok(destination_connection_id)
     }
@@ -82,7 +82,7 @@ impl<'a> HeaderDecoder<'a> {
         &mut self,
         buffer: &DecoderBufferMut<'b>,
     ) -> Result<CheckedRange, DecoderError> {
-        let source_connection_id = self.decode_checked_range::<SourceConnectionIDLen>(buffer)?;
+        let source_connection_id = self.decode_checked_range::<SourceConnectionIdLen>(buffer)?;
         validate_source_connection_id_range(&source_connection_id)?;
         Ok(source_connection_id)
     }

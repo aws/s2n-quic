@@ -96,25 +96,25 @@ impl<'a> ParsedAnnotation<'a> {
     }
 }
 
-impl Into<Annotation> for ParsedAnnotation<'_> {
-    fn into(self) -> Annotation {
+impl<'a> From<ParsedAnnotation<'a>> for Annotation {
+    fn from(a: ParsedAnnotation<'a>) -> Self {
         Annotation {
-            target: self.target.to_string(),
-            quote: self.quote.to_string(),
-            anno: self.anno,
-            comment: self.comment.to_string(),
-            source: self.source.into(),
-            path: self.path.to_string(),
-            anno_line: self.anno_line,
-            anno_column: self.anno_column,
-            item_line: self.item_line,
-            item_column: self.item_column,
-            manifest_dir: self.manifest_dir.into(),
-            level: self.level,
-            format: self.format,
-            feature: self.feature.to_string(),
+            target: a.target.to_string(),
+            quote: a.quote.to_string(),
+            anno: a.anno,
+            comment: a.comment.to_string(),
+            source: a.source.into(),
+            path: a.path.to_string(),
+            anno_line: a.anno_line,
+            anno_column: a.anno_column,
+            item_line: a.item_line,
+            item_column: a.item_column,
+            manifest_dir: a.manifest_dir.into(),
+            level: a.level,
+            format: a.format,
+            feature: a.feature.to_string(),
             tags: Default::default(),
-            tracking_issue: self.tracking_issue.to_string(),
+            tracking_issue: a.tracking_issue.to_string(),
         }
     }
 }

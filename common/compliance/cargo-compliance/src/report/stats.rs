@@ -21,22 +21,22 @@ impl Statistics {
             AnnotationLevel::Auto => {
                 // don't record auto references
             }
-            AnnotationLevel::MUST => {
+            AnnotationLevel::Must => {
                 self.must.record(reference);
             }
-            AnnotationLevel::SHALL => {
+            AnnotationLevel::Shall => {
                 self.shall.record(reference);
             }
-            AnnotationLevel::SHOULD => {
+            AnnotationLevel::Should => {
                 self.should.record(reference);
             }
-            AnnotationLevel::MAY => {
+            AnnotationLevel::May => {
                 self.may.record(reference);
             }
-            AnnotationLevel::OPTIONAL => {
+            AnnotationLevel::Optional => {
                 self.optional.record(reference);
             }
-            AnnotationLevel::RECOMMENDED => {
+            AnnotationLevel::Recommended => {
                 self.recommended.record(reference);
             }
         }

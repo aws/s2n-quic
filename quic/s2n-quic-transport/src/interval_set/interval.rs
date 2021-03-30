@@ -141,17 +141,17 @@ impl<T: IntervalBound> From<&Interval<T>> for Interval<T> {
 
 macro_rules! range_impls {
     ($range_ty:ident, $into:expr, $from:expr) => {
-        impl<T: IntervalBound> Into<$range_ty<T>> for Interval<T> {
-            fn into(self) -> $range_ty<T> {
+        impl<T: IntervalBound> From<Interval<T>> for $range_ty<T> {
+            fn from(range: Interval<T>) -> Self {
                 #[allow(clippy::redundant_closure_call)]
-                ($into)(self)
+                ($into)(range)
             }
         }
 
-        impl<T: IntervalBound> Into<$range_ty<T>> for &Interval<T> {
-            fn into(self) -> $range_ty<T> {
+        impl<T: IntervalBound> From<&Interval<T>> for $range_ty<T> {
+            fn from(range: &Interval<T>) -> Self {
                 #[allow(clippy::redundant_closure_call)]
-                ($into)(self)
+                ($into)(*range)
             }
         }
 
@@ -199,7 +199,7 @@ macro_rules! range_impls {
 
 range_impls!(
     Range,
-    |interval: Self| interval.start..interval.end_exclusive(),
+    |interval: Interval<_>| interval.start..interval.end_exclusive(),
     |range: Range<_>| Self {
         start: range.start,
         end: range.end.step_down_saturating(),
@@ -208,7 +208,7 @@ range_impls!(
 
 range_impls!(
     RangeInclusive,
-    |interval: Self| interval.start..=interval.end,
+    |interval: Interval<_>| interval.start..=interval.end,
     |range: RangeInclusive<_>| {
         let (start, end) = range.into_inner();
         Self { start, end }

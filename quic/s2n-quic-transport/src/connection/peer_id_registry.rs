@@ -375,7 +375,7 @@ impl PeerIdRegistry {
             .iter_mut()
             .filter(|id_info| id_info.status.can_transmit(constraint))
         {
-            if let Some(packet_number) = context.write_frame(&frame::RetireConnectionID {
+            if let Some(packet_number) = context.write_frame(&frame::RetireConnectionId {
                 sequence_number: id_info.sequence_number.into(),
             }) {
                 id_info.status = PendingAcknowledgement(packet_number);
@@ -596,7 +596,7 @@ pub(crate) mod tests {
     };
     use s2n_quic_core::{
         connection, endpoint,
-        frame::{new_connection_id::STATELESS_RESET_TOKEN_LEN, Frame, RetireConnectionID},
+        frame::{new_connection_id::STATELESS_RESET_TOKEN_LEN, Frame, RetireConnectionId},
         packet::number::PacketNumberRange,
         random, stateless_reset,
         stateless_reset::token::testing::*,
@@ -846,8 +846,8 @@ pub(crate) mod tests {
         let packet_number = write_context.packet_number();
         reg.on_transmit(&mut write_context);
 
-        let expected_frame = Frame::RetireConnectionID {
-            0: RetireConnectionID {
+        let expected_frame = Frame::RetireConnectionId {
+            0: RetireConnectionId {
                 sequence_number: VarInt::from_u32(0),
             },
         };

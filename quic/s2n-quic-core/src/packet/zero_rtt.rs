@@ -7,8 +7,8 @@ use crate::{
         decoding::HeaderDecoder,
         encoding::{PacketEncoder, PacketPayloadEncoder},
         long::{
-            DestinationConnectionIDLen, LongPayloadEncoder, LongPayloadLenCursor,
-            SourceConnectionIDLen, Version,
+            DestinationConnectionIdLen, LongPayloadEncoder, LongPayloadLenCursor,
+            SourceConnectionIdLen, Version,
         },
         number::{
             PacketNumber, PacketNumberLen, PacketNumberSpace, ProtectedPacketNumber,
@@ -46,7 +46,7 @@ macro_rules! zero_rtt_tag {
 }
 
 #[derive(Debug)]
-pub struct ZeroRTT<DCID, SCID, PacketNumber, Payload> {
+pub struct ZeroRtt<DCID, SCID, PacketNumber, Payload> {
     pub version: Version,
     pub destination_connection_id: DCID,
     pub source_connection_id: SCID,
@@ -54,19 +54,19 @@ pub struct ZeroRTT<DCID, SCID, PacketNumber, Payload> {
     pub payload: Payload,
 }
 
-pub type ProtectedZeroRTT<'a> =
-    ZeroRTT<CheckedRange, CheckedRange, ProtectedPacketNumber, ProtectedPayload<'a>>;
-pub type EncryptedZeroRTT<'a> =
-    ZeroRTT<CheckedRange, CheckedRange, PacketNumber, EncryptedPayload<'a>>;
-pub type CleartextZeroRTT<'a> = ZeroRTT<&'a [u8], &'a [u8], PacketNumber, DecoderBufferMut<'a>>;
+pub type ProtectedZeroRtt<'a> =
+    ZeroRtt<CheckedRange, CheckedRange, ProtectedPacketNumber, ProtectedPayload<'a>>;
+pub type EncryptedZeroRtt<'a> =
+    ZeroRtt<CheckedRange, CheckedRange, PacketNumber, EncryptedPayload<'a>>;
+pub type CleartextZeroRtt<'a> = ZeroRtt<&'a [u8], &'a [u8], PacketNumber, DecoderBufferMut<'a>>;
 
-impl<'a> ProtectedZeroRTT<'a> {
+impl<'a> ProtectedZeroRtt<'a> {
     #[inline]
     pub(crate) fn decode(
         _tag: Tag,
         version: Version,
         buffer: DecoderBufferMut,
-    ) -> DecoderBufferMutResult<ProtectedZeroRTT> {
+    ) -> DecoderBufferMutResult<ProtectedZeroRtt> {
         let mut decoder = HeaderDecoder::new_long(&buffer);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2
@@ -78,7 +78,7 @@ impl<'a> ProtectedZeroRTT<'a> {
         let (payload, packet_number, remaining) =
             decoder.finish_long()?.split_off_packet(buffer)?;
 
-        let packet = ZeroRTT {
+        let packet = ZeroRtt {
             version,
             destination_connection_id,
             source_connection_id,
@@ -93,8 +93,8 @@ impl<'a> ProtectedZeroRTT<'a> {
         self,
         header_key: &H,
         largest_acknowledged_packet_number: PacketNumber,
-    ) -> Result<EncryptedZeroRTT<'a>, CryptoError> {
-        let ZeroRTT {
+    ) -> Result<EncryptedZeroRtt<'a>, CryptoError> {
+        let ZeroRtt {
             version,
             destination_connection_id,
             source_connection_id,
@@ -107,7 +107,7 @@ impl<'a> ProtectedZeroRTT<'a> {
 
         let packet_number = truncated_packet_number.expand(largest_acknowledged_packet_number);
 
-        Ok(ZeroRTT {
+        Ok(ZeroRtt {
             version,
             destination_connection_id,
             source_connection_id,
@@ -131,9 +131,9 @@ impl<'a> ProtectedZeroRTT<'a> {
     }
 }
 
-impl<'a> EncryptedZeroRTT<'a> {
-    pub fn decrypt<C: ZeroRttKey>(self, crypto: &C) -> Result<CleartextZeroRTT<'a>, CryptoError> {
-        let ZeroRTT {
+impl<'a> EncryptedZeroRtt<'a> {
+    pub fn decrypt<C: ZeroRttKey>(self, crypto: &C) -> Result<CleartextZeroRtt<'a>, CryptoError> {
+        let ZeroRtt {
             version,
             destination_connection_id,
             source_connection_id,
@@ -148,7 +148,7 @@ impl<'a> EncryptedZeroRTT<'a> {
         let destination_connection_id = destination_connection_id.get(header);
         let source_connection_id = source_connection_id.get(header);
 
-        Ok(ZeroRTT {
+        Ok(ZeroRtt {
             version,
             destination_connection_id,
             source_connection_id,
@@ -172,7 +172,7 @@ impl<'a> EncryptedZeroRTT<'a> {
     }
 }
 
-impl<'a> CleartextZeroRTT<'a> {
+impl<'a> CleartextZeroRtt<'a> {
     #[inline]
     pub fn destination_connection_id(&self) -> &[u8] {
         &self.destination_connection_id
@@ -185,7 +185,7 @@ impl<'a> CleartextZeroRTT<'a> {
 }
 
 impl<DCID: EncoderValue, SCID: EncoderValue, Payload: EncoderValue> EncoderValue
-    for ZeroRTT<DCID, SCID, TruncatedPacketNumber, Payload>
+    for ZeroRtt<DCID, SCID, TruncatedPacketNumber, Payload>
 {
     fn encode<E: Encoder>(&self, encoder: &mut E) {
         self.encode_header(self.packet_number.len(), encoder);
@@ -198,7 +198,7 @@ impl<DCID: EncoderValue, SCID: EncoderValue, Payload: EncoderValue> EncoderValue
 }
 
 impl<DCID: EncoderValue, SCID: EncoderValue, PacketNumber, Payload>
-    ZeroRTT<DCID, SCID, PacketNumber, Payload>
+    ZeroRtt<DCID, SCID, PacketNumber, Payload>
 {
     fn encode_header<E: Encoder>(&self, packet_number_len: PacketNumberLen, encoder: &mut E) {
         let mut tag: u8 = zero_rtt_tag!() << 4;
@@ -207,9 +207,9 @@ impl<DCID: EncoderValue, SCID: EncoderValue, PacketNumber, Payload>
 
         self.version.encode(encoder);
         self.destination_connection_id
-            .encode_with_len_prefix::<DestinationConnectionIDLen, E>(encoder);
+            .encode_with_len_prefix::<DestinationConnectionIdLen, E>(encoder);
         self.source_connection_id
-            .encode_with_len_prefix::<SourceConnectionIDLen, E>(encoder);
+            .encode_with_len_prefix::<SourceConnectionIdLen, E>(encoder);
     }
 }
 
@@ -219,7 +219,7 @@ impl<
         Payload: PacketPayloadEncoder,
         K: ZeroRttKey,
         H: ZeroRttHeaderKey,
-    > PacketEncoder<K, H, Payload> for ZeroRTT<DCID, SCID, PacketNumber, Payload>
+    > PacketEncoder<K, H, Payload> for ZeroRtt<DCID, SCID, PacketNumber, Payload>
 {
     type PayloadLenCursor = LongPayloadLenCursor;
 
@@ -228,7 +228,7 @@ impl<
     }
 
     fn encode_header<E: Encoder>(&self, packet_number_len: PacketNumberLen, encoder: &mut E) {
-        ZeroRTT::encode_header(self, packet_number_len, encoder);
+        ZeroRtt::encode_header(self, packet_number_len, encoder);
     }
 
     fn payload(&mut self) -> &mut Payload {

@@ -35,7 +35,8 @@ macro_rules! impl_ciphersuite {
         $integrity_limit:expr,
         $test_name:ident
     ) => {
-        #[allow(non_camel_case_types)]
+        // ignore casing warnings in order to preserve the IANA name
+        #[allow(non_camel_case_types, clippy::all)]
         pub struct $name {
             secret: hkdf::Prk,
             iv: Zeroizing<[u8; Self::IV_LEN]>,
