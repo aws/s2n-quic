@@ -9,7 +9,7 @@ use crate::{
 };
 use core::task::{Context, Poll, Waker};
 use s2n_quic_core::{
-    ack,
+    ack, endpoint,
     frame::MaxStreams,
     packet::number::PacketNumber,
     stream,
@@ -20,6 +20,15 @@ use s2n_quic_core::{
 };
 use smallvec::SmallVec;
 
+enum StreamDirection {
+    // A stream that both transmits and receives data
+    Bidirectional,
+    // A stream that transmits data (unidirectional)
+    Outgoing,
+    // A stream that receives data (unidirectional)
+    Incoming,
+}
+
 /// This component manages stream concurrency limits.
 ///
 /// It enforces both the local initiated stream limits and the peer initiated
@@ -28,7 +37,9 @@ use smallvec::SmallVec;
 /// It will also signal an increased max streams once streams have been consumed.
 #[derive(Debug)]
 pub struct Controller {
-    uni_controller: ControllerImpl,
+    local_endpoint_type: endpoint::Type,
+    outgoing_controller: ControllerImpl,
+    incoming_controller: ControllerImpl,
     bidi_controller: ControllerImpl,
 }
 
@@ -40,12 +51,21 @@ impl Controller {
     /// The local application will be allowed to open streams up to the minimum of the
     /// given local limits (`initial_local_limits` and `stream_limits`) and `initial_peer_limits`.
     pub fn new(
+        local_endpoint_type: endpoint::Type,
         initial_peer_limits: InitialFlowControlLimits,
         initial_local_limits: InitialFlowControlLimits,
         stream_limits: stream::Limits,
     ) -> Self {
         Self {
-            uni_controller: ControllerImpl::new(
+            local_endpoint_type,
+            outgoing_controller: ControllerImpl::new(
+                initial_peer_limits.max_streams_uni,
+                // Unidirectional streams may have asymmetric concurrent stream limits since the
+                // cost of a send stream is not equal to the cost of receive stream.
+                stream_limits.max_open_local_unidirectional_streams,
+                initial_local_limits.max_streams_uni,
+            ),
+            incoming_controller: ControllerImpl::new(
                 initial_peer_limits.max_streams_uni,
                 // Unidirectional streams may have asymmetric concurrent stream limits since the
                 // cost of a send stream is not equal to the cost of receive stream.
@@ -68,7 +88,7 @@ impl Controller {
     pub fn on_max_streams(&mut self, frame: &MaxStreams) {
         match frame.stream_type {
             StreamType::Bidirectional => self.bidi_controller.on_max_streams(frame),
-            StreamType::Unidirectional => self.uni_controller.on_max_streams(frame),
+            StreamType::Unidirectional => self.outgoing_controller.on_max_streams(frame),
         }
     }
 
@@ -85,7 +105,7 @@ impl Controller {
     ) -> Poll<()> {
         match stream_type {
             StreamType::Bidirectional => self.bidi_controller.poll_local_open_stream(context),
-            StreamType::Unidirectional => self.uni_controller.poll_local_open_stream(context),
+            StreamType::Unidirectional => self.outgoing_controller.poll_local_open_stream(context),
         }
     }
 
@@ -96,23 +116,25 @@ impl Controller {
     pub fn on_remote_open_stream(&mut self, stream_id: StreamId) -> Result<(), transport::Error> {
         match stream_id.stream_type() {
             StreamType::Bidirectional => self.bidi_controller.on_remote_open_stream(stream_id),
-            StreamType::Unidirectional => self.uni_controller.on_remote_open_stream(stream_id),
+            StreamType::Unidirectional => self.incoming_controller.on_remote_open_stream(stream_id),
         }
     }
 
     /// This method is called whenever a stream is opened, regardless of which side initiated.
-    pub fn on_open_stream(&mut self, stream_type: StreamType) {
-        match stream_type {
-            StreamType::Bidirectional => self.bidi_controller.on_open_stream(),
-            StreamType::Unidirectional => self.uni_controller.on_open_stream(),
+    pub fn on_open_stream(&mut self, stream_id: StreamId) {
+        match self.direction(stream_id) {
+            StreamDirection::Bidirectional => self.bidi_controller.on_open_stream(),
+            StreamDirection::Outgoing => self.outgoing_controller.on_open_stream(),
+            StreamDirection::Incoming => self.incoming_controller.on_open_stream(),
         }
     }
 
     /// This method is called whenever a stream is closed.
-    pub fn on_close_stream(&mut self, stream_type: StreamType) {
-        match stream_type {
-            StreamType::Bidirectional => self.bidi_controller.on_close_stream(),
-            StreamType::Unidirectional => self.uni_controller.on_close_stream(),
+    pub fn on_close_stream(&mut self, stream_id: StreamId) {
+        match self.direction(stream_id) {
+            StreamDirection::Bidirectional => self.bidi_controller.on_close_stream(),
+            StreamDirection::Outgoing => self.outgoing_controller.on_close_stream(),
+            StreamDirection::Incoming => self.incoming_controller.on_close_stream(),
         }
     }
 
@@ -120,13 +142,15 @@ impl Controller {
     /// to unblock waiting tasks.
     pub fn close(&mut self) {
         self.bidi_controller.wake_all();
-        self.uni_controller.wake_all();
+        self.outgoing_controller.wake_all();
     }
 
     /// This method is called when a packet delivery got acknowledged
     pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
         self.bidi_controller.max_streams_sync.on_packet_ack(ack_set);
-        self.uni_controller.max_streams_sync.on_packet_ack(ack_set);
+        self.incoming_controller
+            .max_streams_sync
+            .on_packet_ack(ack_set);
     }
 
     /// This method is called when a packet loss is reported
@@ -134,7 +158,9 @@ impl Controller {
         self.bidi_controller
             .max_streams_sync
             .on_packet_loss(ack_set);
-        self.uni_controller.max_streams_sync.on_packet_loss(ack_set);
+        self.incoming_controller
+            .max_streams_sync
+            .on_packet_loss(ack_set);
     }
 
     /// Queries the component for any outgoing frames that need to get sent
@@ -144,7 +170,7 @@ impl Controller {
             StreamId::initial(context.local_endpoint_type(), StreamType::Bidirectional),
             context,
         )?;
-        self.uni_controller.max_streams_sync.on_transmit(
+        self.incoming_controller.max_streams_sync.on_transmit(
             StreamId::initial(context.local_endpoint_type(), StreamType::Unidirectional),
             context,
         )
@@ -155,7 +181,20 @@ impl Controller {
         self.bidi_controller
             .max_streams_sync
             .transmission_interest()
-            + self.uni_controller.max_streams_sync.transmission_interest()
+            + self
+                .incoming_controller
+                .max_streams_sync
+                .transmission_interest()
+    }
+
+    fn direction(&self, stream_id: StreamId) -> StreamDirection {
+        match stream_id.stream_type() {
+            StreamType::Bidirectional => StreamDirection::Bidirectional,
+            StreamType::Unidirectional if stream_id.initiator() == self.local_endpoint_type => {
+                StreamDirection::Outgoing
+            }
+            StreamType::Unidirectional => StreamDirection::Incoming,
+        }
     }
 }
 // The amount of wakers that may be tracked before allocating to the heap.
@@ -280,9 +319,12 @@ impl ControllerImpl {
     /// The number of streams that may be opened by the local application, respecting both
     /// the local concurrent streams limit and the peer's stream limits.
     fn available_local_stream_capacity(&self) -> VarInt {
-        let local_capacity =
-            self.local_initiated_concurrent_stream_limit - self.open_stream_count();
-        let peer_capacity = self.peer_cumulative_stream_limit - self.opened_streams;
+        let local_capacity = self
+            .local_initiated_concurrent_stream_limit
+            .saturating_sub(self.open_stream_count());
+        let peer_capacity = self
+            .peer_cumulative_stream_limit
+            .saturating_sub(self.opened_streams);
         local_capacity.min(peer_capacity)
     }
 
@@ -353,14 +395,16 @@ impl Controller {
     pub fn available_local_stream_capacity(&self, stream_type: StreamType) -> VarInt {
         match stream_type {
             StreamType::Bidirectional => self.bidi_controller.available_local_stream_capacity(),
-            StreamType::Unidirectional => self.uni_controller.available_local_stream_capacity(),
+            StreamType::Unidirectional => {
+                self.outgoing_controller.available_local_stream_capacity()
+            }
         }
     }
 
     pub fn max_streams_latest_value(&self, stream_type: StreamType) -> VarInt {
         match stream_type {
             StreamType::Bidirectional => self.bidi_controller.max_streams_sync.latest_value(),
-            StreamType::Unidirectional => self.uni_controller.max_streams_sync.latest_value(),
+            StreamType::Unidirectional => self.outgoing_controller.max_streams_sync.latest_value(),
         }
     }
 }

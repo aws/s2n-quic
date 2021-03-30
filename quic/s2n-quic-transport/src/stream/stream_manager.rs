@@ -223,8 +223,7 @@ impl<S: StreamTrait> StreamManagerState<S> {
             "Receive window must not exceed 32bit range"
         );
 
-        self.stream_controller
-            .on_open_stream(stream_id.stream_type());
+        self.stream_controller.on_open_stream(stream_id);
 
         self.streams.insert_stream(S::new(StreamConfig {
             incoming_connection_flow_controller: self.incoming_connection_flow_controller.clone(),
@@ -398,6 +397,7 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
                     initial_peer_limits.max_data,
                 ),
                 stream_controller: stream::Controller::new(
+                    local_endpoint_type,
                     initial_peer_limits,
                     initial_local_limits,
                     connection_limits.stream_limits(),

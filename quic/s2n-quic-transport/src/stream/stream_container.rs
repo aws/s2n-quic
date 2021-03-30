@@ -411,7 +411,7 @@ impl<S: StreamTrait> StreamContainer<S> {
                 waiting_for_connection_flow_control_credits_link
             );
 
-            controller.on_close_stream(stream.inner.borrow().stream_id().stream_type());
+            controller.on_close_stream(stream.inner.borrow().stream_id());
         }
     }
 
