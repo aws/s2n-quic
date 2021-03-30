@@ -658,7 +658,7 @@ fn max_streams_replenishes_stream_control_capacity() {
             assert_eq!(
                 *additional_streams,
                 manager.with_stream_controller(
-                    |ctrl| ctrl.available_local_stream_capacity(stream_type)
+                    |ctrl| ctrl.available_outgoing_stream_capacity(stream_type)
                 )
             );
         }
@@ -820,14 +820,14 @@ fn blocked_on_local_concurrent_stream_limit() {
             })
             .is_ok());
 
-        let available_local_stream_capacity = manager
-            .with_stream_controller(|ctrl| ctrl.available_local_stream_capacity(stream_type));
+        let available_outgoing_stream_capacity = manager
+            .with_stream_controller(|ctrl| ctrl.available_outgoing_stream_capacity(stream_type));
 
-        assert!(available_local_stream_capacity < VarInt::from_u32(100_000));
+        assert!(available_outgoing_stream_capacity < VarInt::from_u32(100_000));
 
         let (waker, wake_counter) = new_count_waker();
 
-        for _i in 0..*available_local_stream_capacity {
+        for _i in 0..*available_outgoing_stream_capacity {
             assert!(manager
                 .poll_open(stream_type, &Context::from_waker(&waker))
                 .is_ready());
@@ -905,17 +905,18 @@ fn asymmetric_stream_limits() {
                 );
             }
 
-            let available_local_stream_capacity = manager
-                .with_stream_controller(|cntl| cntl.available_local_stream_capacity(stream_type));
+            let available_outgoing_stream_capacity = manager.with_stream_controller(|cntl| {
+                cntl.available_outgoing_stream_capacity(stream_type)
+            });
 
             if stream_type.is_bidirectional() {
                 // The peer opening bidirectional streams uses up the capacity for locally opening streams
-                assert_eq!(VarInt::from_u8(0), available_local_stream_capacity);
+                assert_eq!(VarInt::from_u8(0), available_outgoing_stream_capacity);
             } else {
                 // The peer opening incoming streams does not affect the capacity for opening outgoing streams
                 assert_eq!(
                     VarInt::from_u8(*peer_limit),
-                    available_local_stream_capacity
+                    available_outgoing_stream_capacity
                 );
             }
         }
