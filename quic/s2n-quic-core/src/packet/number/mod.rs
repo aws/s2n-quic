@@ -229,7 +229,7 @@ mod tests {
 
     /// This implementation tries to closely follow the RFC psuedo code so it's
     /// easier to ensure it matches.
-    #[allow(clippy::clippy::blocks_in_if_conditions)]
+    #[allow(clippy::blocks_in_if_conditions)]
     fn rfc_decoder(largest_pn: u64, truncated_pn: u64, pn_nbits: usize) -> u64 {
         use std::panic::catch_unwind as catch;
 
