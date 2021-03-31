@@ -182,6 +182,8 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
 
     /// Returns the idle timeout based on transport parameters of both peers
     fn get_idle_timer_duration(&self) -> Duration {
+        let mut duration = Duration::from_secs(0);
+
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.1
         //= type=TODO
         //# Each endpoint advertises a max_idle_timeout, but the effective value
@@ -189,17 +191,22 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         //# values.  By announcing a max_idle_timeout, an endpoint commits to
         //# initiating an immediate close (Section 10.2) if it abandons the
         //# connection prior to the effective value.
+        // TODO read the peer and local `max_idle_timeout` TP
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.1
-        //= type=TODO
         //# To avoid excessively small idle timeout periods, endpoints MUST
         //# increase the idle timeout period to be at least three times the
         //# current Probe Timeout (PTO).  This allows for multiple PTOs to
         //# expire, and therefore multiple probes to be sent and lost, prior to
         //# idle timeout.
+        duration = duration.max(
+            3 * self
+                .path_manager
+                .active_path()
+                .pto_period(Default::default()),
+        );
 
-        // TODO: Derive this from transport parameters and pto
-        Duration::from_secs(30)
+        duration
     }
 
     fn restart_peer_idle_timer(&mut self, timestamp: Timestamp) {
@@ -305,7 +312,9 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
         // We don't need any timers anymore
         self.timers.cancel();
+        // Let the path manager know we're closing
         self.path_manager.on_closing();
+        // Update the connection state based on the type of error
         self.state = error.into();
         shared_state.error = Some(error);
 
@@ -313,110 +322,18 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         if let Some(connection_close) = s2n_quic_core::connection::error::as_frame(error) {
             let mut context = self.transmission_context(timestamp);
 
-            macro_rules! unwrap_result {
-                ($expr:expr) => {
-                    match $expr {
-                        Ok(buffer) => buffer,
-                        Err(_) => todo!(),
-                    }
-                };
-            }
-
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#10.2.3
-            //# When sending CONNECTION_CLOSE, the goal is to ensure that the peer
-            //# will process the frame.  Generally, this means sending the frame in a
-            //# packet with the highest level of packet protection to avoid the
-            //# packet being discarded.
-            let packet = packet_buffer.write(|buffer| {
-                let buffer = if let Some((space, handshake_status)) =
-                    shared_state.space_manager.application_mut()
-                {
-                    let result = space.on_transmit_close(&mut context, &connection_close, buffer);
-
-                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#10.2.3
-                    //# After the handshake is confirmed (see
-                    //# Section 4.1.2 of [QUIC-TLS]), an endpoint MUST send any
-                    //# CONNECTION_CLOSE frames in a 1-RTT packet.
-                    if handshake_status.is_confirmed() {
-                        return result.map_err(|_| ());
-                    }
-
-                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#10.2.3
-                    //# Prior to confirming the handshake, a peer might be unable to
-                    //# process 1-RTT packets, so an endpoint SHOULD send CONNECTION_CLOSE
-                    //# in both Handshake and 1-RTT packets.  A server SHOULD also send
-                    //# CONNECTION_CLOSE in an Initial packet.
-                    unwrap_result!(result)
-                } else {
-                    buffer
-                };
-
-                //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#10.2.3
-                //# Sending a CONNECTION_CLOSE of type 0x1d in an Initial or Handshake
-                //# packet could expose application state or be used to alter application
-                //# state.  A CONNECTION_CLOSE of type 0x1d MUST be replaced by a
-                //# CONNECTION_CLOSE of type 0x1c when sending the frame in Initial or
-                //# Handshake packets.  Otherwise, information about the application
-                //# state might be revealed.  Endpoints MUST clear the value of the
-                //# Reason Phrase field and SHOULD use the APPLICATION_ERROR code when
-                //# converting to a CONNECTION_CLOSE of type 0x1c.
-                use s2n_quic_core::{frame::ConnectionClose, transport};
-
-                let connection_close = if connection_close.frame_type.is_none() {
-                    ConnectionClose {
-                        error_code: *transport::Error::APPLICATION_ERROR.code,
-                        frame_type: Some(Default::default()),
-                        reason: None,
-                    }
-                } else {
-                    // Hide any sensitive information in early packet spaces
-                    // by removing the error code, frame type, and reason
-                    ConnectionClose {
-                        error_code: *transport::Error::PROTOCOL_VIOLATION.code,
-                        frame_type: Some(Default::default()),
-                        reason: None,
-                    }
-                };
-
-                let buffer = if let Some((space, _)) = shared_state.space_manager.handshake_mut() {
-                    let result = space.on_transmit_close(&mut context, &connection_close, buffer);
-
-                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#10.2.3
-                    //# A client will always know whether the server has Handshake keys
-                    //# (see Section 17.2.2.1), but it is possible that a server does not
-                    //# know whether the client has Handshake keys.  Under these
-                    //# circumstances, a server SHOULD send a CONNECTION_CLOSE frame in
-                    //# both Handshake and Initial packets to ensure that at least one of
-                    //# them is processable by the client.
-                    if Config::ENDPOINT_TYPE.is_client() {
-                        // If the client has handshake keys, then the server should have
-                        // handshake keys so we're ok to stop
-                        return result.map_err(|_| ());
-                    }
-
-                    unwrap_result!(result)
-                } else {
-                    buffer
-                };
-
-                if let Some((space, _)) = shared_state.space_manager.initial_mut() {
-                    return space
-                        .on_transmit_close(&mut context, &connection_close, buffer)
-                        .map_err(|_| ());
-                }
-
-                // we don't have any spaces to transmit packets
-                Err(())
-            });
-
-            if let Ok(packet) = packet {
+            if let Some(packet) = shared_state.space_manager.on_transmit_close(
+                &connection_close,
+                &mut context,
+                packet_buffer,
+            ) {
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#10.2
                 //# The closing and draining connection states exist to ensure that
                 //# connections close cleanly and that delayed or reordered packets are
                 //# properly discarded.  These states SHOULD persist for at least three
                 //# times the current Probe Timeout (PTO) interval as defined in
                 //# [QUIC-RECOVERY].
-                let timeout = self
+                let timeout = 3 * self
                     .path_manager
                     .active_path()
                     .pto_period(Default::default());
@@ -1055,6 +972,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#10.2.2
                 //# While otherwise identical to the closing state, an
                 //# endpoint in the draining state MUST NOT send any packets.
+                interests.transmission = false;
 
                 // Remove the connection from the endpoint
                 interests.finalization = true;

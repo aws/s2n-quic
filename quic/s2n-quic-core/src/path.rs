@@ -82,8 +82,15 @@ impl<CC: CongestionController> Path<CC> {
 
     /// Called when bytes have been transmitted on this path
     pub fn on_bytes_transmitted(&mut self, bytes: usize) {
-        if let State::Pending { tx_bytes, .. } = &mut self.state {
+        if let State::Pending { tx_bytes, rx_bytes } = &mut self.state {
             *tx_bytes += bytes as u32;
+            debug_assert!(
+                *rx_bytes * 3 >= *tx_bytes,
+                "tx_bytes({}) should never exceed 3 * rx_bytes({})",
+                tx_bytes,
+                rx_bytes
+            );
+            let _ = rx_bytes;
         }
     }
 
@@ -125,11 +132,6 @@ impl<CC: CongestionController> Path<CC> {
         self.peer_validated
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1
-    //# Prior to validating the client address, servers MUST NOT send more
-    //# than three times as many bytes as the number of bytes they have
-    //# received.
-
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.1
     //# The server MUST also limit the number of bytes it sends before
     //# validating the address of the client; see Section 8.
@@ -137,6 +139,10 @@ impl<CC: CongestionController> Path<CC> {
         match self.state {
             State::Validated => requested_size.min(self.mtu as usize),
             State::Pending { tx_bytes, rx_bytes } => {
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1
+                //# Prior to validating the client address, servers MUST NOT send more
+                //# than three times as many bytes as the number of bytes they have
+                //# received.
                 let limit = rx_bytes
                     .checked_mul(3)
                     .and_then(|v| v.checked_sub(tx_bytes))
@@ -195,10 +201,35 @@ impl<CC: CongestionController> Path<CC> {
 
     /// Marks the path as closing
     pub fn on_closing(&mut self) {
-        self.state = State::Pending {
-            tx_bytes: 0,
-            rx_bytes: 0,
-        };
+        // Revert the path state to Pending so we can control the number
+        // of packets sent back with anti-amplification limits
+        match &self.state {
+            // keep the current amplification limits
+            State::Pending { .. } => {}
+            State::Validated => {
+                self.state = State::Pending {
+                    tx_bytes: 0,
+                    rx_bytes: MINIMUM_MTU as _,
+                };
+            }
+        }
+    }
+}
+
+#[cfg(any(test, feature = "testing"))]
+pub mod testing {
+    use super::*;
+    use crate::recovery::congestion_controller::testing::unlimited::CongestionController as Unlimited;
+    use core::time::Duration;
+
+    pub fn test_path() -> Path<Unlimited> {
+        Path::new(
+            SocketAddress::default(),
+            connection::PeerId::try_from_bytes(&[]).unwrap(),
+            RttEstimator::new(Duration::from_millis(30)),
+            Unlimited::default(),
+            true,
+        )
     }
 }
 
@@ -235,13 +266,7 @@ mod tests {
         //# adhere to the anti-amplification limits found in Section 8.1.
         // This tests the IP change because a new path is created when a new peer_address is
         // detected. This new path should always start in State::Pending.
-        let mut path = Path::new(
-            SocketAddress::default(),
-            connection::PeerId::try_from_bytes(&[]).unwrap(),
-            RttEstimator::new(Duration::from_millis(30)),
-            Unlimited::default(),
-            true,
-        );
+        let mut path = testing::test_path();
 
         // Verify we enforce the amplification limit if we can't send
         // at least 1 minimum sized packet
@@ -299,13 +324,7 @@ mod tests {
         //# The server MUST also limit the number of bytes it sends before
         //# validating the address of the client; see Section 8.
         // TODO this would work better as a fuzz test
-        let mut path = Path::new(
-            SocketAddress::default(),
-            connection::PeerId::try_from_bytes(&[]).unwrap(),
-            RttEstimator::new(Duration::from_millis(30)),
-            Unlimited::default(),
-            true,
-        );
+        let mut path = testing::test_path();
 
         path.on_bytes_received(3);
         path.on_bytes_transmitted(8);
@@ -332,13 +351,8 @@ mod tests {
 
     #[test]
     fn peer_validated_test() {
-        let mut path = Path::new(
-            SocketAddress::default(),
-            connection::PeerId::try_from_bytes(&[]).unwrap(),
-            RttEstimator::new(Duration::from_millis(30)),
-            Unlimited::default(),
-            false,
-        );
+        let mut path = testing::test_path();
+        path.peer_validated = false;
 
         assert!(!path.is_peer_validated());
 
