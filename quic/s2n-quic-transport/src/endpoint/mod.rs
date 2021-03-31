@@ -146,21 +146,24 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 //# it cooperates with, received the original Initial packet from the
                 //# client.
 
+                let context = self.config.context();
                 let connection_info = ConnectionInfo::new(&datagram.remote_address);
-                let local_connection_id = self
-                    .config
-                    .context()
+
+                let local_connection_id = context
                     .connection_id_format
                     .generate(&connection_info);
 
                 self.retry_dispatch.queue::<
                     _,
-                    <<<Cfg as Config>::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::RetryKey
-                >(
+                    <<<Cfg as Config>::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::RetryKey,
+                    _,
+                >
+                    (
                     datagram,
                     &packet,
                     local_connection_id,
-                    self.config.context().token
+                    context.random_generator,
+                    context.token
                 );
                 None
             }
