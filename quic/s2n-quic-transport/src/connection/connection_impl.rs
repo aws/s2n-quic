@@ -192,6 +192,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         //# initiating an immediate close (Section 10.2) if it abandons the
         //# connection prior to the effective value.
         // TODO read the peer and local `max_idle_timeout` TP
+        duration = duration.max(Duration::from_secs(30));
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.1
         //# To avoid excessively small idle timeout periods, endpoints MUST
@@ -318,7 +319,9 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         self.state = error.into();
         shared_state.error = Some(error);
 
-        // try to write the error as a CONNECTION_CLOSE frame
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#10.3
+        //# An endpoint that wishes to communicate a fatal
+        //# connection error MUST use a CONNECTION_CLOSE frame if it is able.
         if let Some(connection_close) = s2n_quic_core::connection::error::as_frame(error) {
             let mut context = self.transmission_context(timestamp);
 
@@ -819,8 +822,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
             // Currently, the application space does not have any crypto state.
             // If, at some point, we decide to add it, we need to call `update_crypto_state` here.
-            // (note this comment is indented incorrectly by rustfmt. It applies above, not below. How
-            // to fix?)
 
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.1
             //# An endpoint restarts its idle timer when a packet from its peer is

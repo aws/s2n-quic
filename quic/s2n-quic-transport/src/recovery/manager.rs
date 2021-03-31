@@ -1543,7 +1543,8 @@ mod test {
             space,
         );
         // The path will be at the anti-amplification limit
-        context.path.on_bytes_transmitted((1200 * 2) + 1);
+        context.path.on_bytes_received(1200);
+        context.path.on_bytes_transmitted((1200 * 3) + 1);
         // Arm the PTO so we can verify it is cancelled
         manager.pto.timer.set(now + Duration::from_secs(10));
         manager.update_pto_timer(&context.path, now, is_handshake_confirmed);

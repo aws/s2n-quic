@@ -82,15 +82,19 @@ impl<CC: CongestionController> Path<CC> {
 
     /// Called when bytes have been transmitted on this path
     pub fn on_bytes_transmitted(&mut self, bytes: usize) {
-        if let State::Pending { tx_bytes, rx_bytes } = &mut self.state {
+        if bytes == 0 {
+            return;
+        }
+
+        debug_assert_ne!(
+            self.clamp_mtu(bytes),
+            0,
+            "path should not transmit when amplication limited; tried to transmit {}",
+            bytes
+        );
+
+        if let State::Pending { tx_bytes, .. } = &mut self.state {
             *tx_bytes += bytes as u32;
-            debug_assert!(
-                *rx_bytes * 3 >= *tx_bytes,
-                "tx_bytes({}) should never exceed 3 * rx_bytes({})",
-                tx_bytes,
-                rx_bytes
-            );
-            let _ = rx_bytes;
         }
     }
 
@@ -237,10 +241,7 @@ pub mod testing {
 mod tests {
     use super::*;
     use crate::{
-        recovery::{
-            congestion_controller::testing::unlimited::CongestionController as Unlimited,
-            CubicCongestionController,
-        },
+        recovery::CubicCongestionController,
         time::{Clock, NoopClock},
     };
     use core::time::Duration;
