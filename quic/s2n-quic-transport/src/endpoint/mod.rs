@@ -25,7 +25,7 @@ use s2n_quic_core::{
     packet::{initial::ProtectedInitial, ProtectedPacket},
     stateless_reset::token::LEN as StatelessResetTokenLen,
     time::Timestamp,
-    token::Format,
+    token::{self, Format}
 };
 
 mod config;
@@ -353,9 +353,13 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     //# provided in a Retry packet, a server cannot send another Retry
                     //# packet; it can only refuse the connection or permit it to proceed.
                     let retry_token_dcid = if !packet.token().is_empty() {
-                        if let Some(id) = endpoint_context.token.validate_token(
+                        let mut context = token::Context::new(
                             &datagram.remote_address,
                             &source_connection_id,
+                            endpoint_context.random_generator,
+                            );
+                        if let Some(id) = endpoint_context.token.validate_token(
+                            &mut context,
                             packet.token(),
                         ) {
                             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.3
