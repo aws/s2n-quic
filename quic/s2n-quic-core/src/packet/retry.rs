@@ -3,6 +3,7 @@
 
 use crate::{
     connection,
+    random,
     crypto::{retry, retry::RetryKey},
     inet::SocketAddress,
     packet::{
@@ -115,6 +116,7 @@ impl<'a> Retry<'a> {
         remote_address: &SocketAddress,
         packet: &ProtectedInitial,
         local_connection_id: &connection::LocalId,
+        rand: &dyn random::Generator,
         token_format: &mut T,
         packet_buf: &mut [u8],
     ) -> Option<Range<usize>> {
@@ -141,6 +143,7 @@ impl<'a> Retry<'a> {
                 &remote_address,
                 &connection::PeerId::try_from_bytes(retry_packet.destination_connection_id)
                     .unwrap(),
+                rand,
                 &connection::InitialId::try_from_bytes(packet.destination_connection_id()).unwrap(),
                 token_buf,
             );

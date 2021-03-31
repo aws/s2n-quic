@@ -8,7 +8,7 @@ use crate::{
 
 pub trait Format: 'static {
     const TOKEN_LEN: usize;
-    type RandomGenerator: random::Generator;
+    // type RandomGenerator: random::Generator;
 
     /// Generate a signed token to be delivered in a NEW_TOKEN frame.
     /// This function will only be called if the provider support NEW_TOKEN frames.
@@ -16,6 +16,7 @@ pub trait Format: 'static {
         &mut self,
         peer_address: &SocketAddress,
         destination_connection_id: &connection::PeerId,
+        // rand: &dyn random::Generator,
         source_connection_id: &connection::LocalId,
         output_buffer: &mut [u8],
     ) -> Option<()>;
@@ -25,6 +26,7 @@ pub trait Format: 'static {
         &mut self,
         peer_address: &SocketAddress,
         destination_connection_id: &connection::PeerId,
+        rand: &dyn random::Generator,
         original_destination_connection_id: &connection::InitialId,
         output_buffer: &mut [u8],
     ) -> Option<()>;
@@ -57,12 +59,13 @@ pub mod testing {
 
     impl super::Format for Format {
         const TOKEN_LEN: usize = retry::example::TOKEN_LEN;
-        type RandomGenerator = random::testing::Generator;
+        // type RandomGenerator = random::testing::Generator;
 
         fn generate_new_token(
             &mut self,
             _peer_address: &SocketAddress,
             _destination_connection_id: &connection::PeerId,
+            // _rand: &dyn random::Generator,
             _source_connection_id: &connection::LocalId,
             _output_buffer: &mut [u8],
         ) -> Option<()> {
@@ -74,6 +77,7 @@ pub mod testing {
             &mut self,
             _peer_address: &SocketAddress,
             _destination_connection_id: &connection::PeerId,
+            _rand: &dyn random::Generator,
             _original_destination_connection_id: &connection::InitialId,
             output_buffer: &mut [u8],
         ) -> Option<()> {

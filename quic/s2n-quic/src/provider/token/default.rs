@@ -123,6 +123,23 @@ impl super::Provider for Provider {
     }
 }
 
+pub struct Context {
+    peer_address: SocketAddress,
+    destination_connection_id: connection::PeerId,
+}
+
+impl Context {
+    pub fn new(
+    peer_address: SocketAddress,
+    destination_connection_id: connection::PeerId,
+        ) -> Self {
+        Self {
+            peer_address,
+            destination_connection_id
+        }
+    }
+}
+
 pub struct Format {
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.4
     //= type=exception
@@ -164,6 +181,7 @@ impl Format {
     fn tag_retry_token(
         &mut self,
         token: &Token,
+        // context: &Context,
         peer_address: &SocketAddress,
         destination_connection_id: &connection::PeerId,
     ) -> Option<hmac::Tag> {
@@ -188,6 +206,7 @@ impl Format {
     // Using the key id in the token, verify the token
     fn validate_retry_token(
         &mut self,
+        // context: &Context,
         peer_address: &SocketAddress,
         destination_connection_id: &connection::PeerId,
         token: &Token,
@@ -220,7 +239,7 @@ impl Format {
 
 impl super::Format for Format {
     const TOKEN_LEN: usize = size_of::<Token>();
-    type RandomGenerator = unimplemented!();
+    // type RandomGenerator = unimplemented!();
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.3
     //# A server SHOULD
@@ -306,7 +325,8 @@ impl super::Format for Format {
         }
 
         // Populate the nonce before signing
-        Self::RandomGenerator::public_random_fill(&mut token.nonce[..]);
+        // Self::RandomGenerator::public_random_fill(&mut token.nonce[..]);
+        SystemRandom::new().fill(&mut &mut token.nonce[..]).ok()?;
 
         let tag = self.tag_retry_token(token, peer_address, destination_connection_id)?;
 

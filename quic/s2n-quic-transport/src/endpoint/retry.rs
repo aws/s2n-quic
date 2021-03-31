@@ -85,10 +85,12 @@ impl Transmission {
         token_format: &mut T,
     ) -> Option<Self> {
         let mut packet_buf = [0u8; MINIMUM_MTU as usize];
+        let rand = unimplemented!();
         let packet_range = packet::retry::Retry::encode_packet::<_, C>(
             &remote_address,
             packet,
             &local_connection_id,
+            rand,
             token_format,
             &mut packet_buf,
         )?;
