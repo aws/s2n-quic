@@ -13,6 +13,7 @@ pub use s2n_tls_sys::s2n_mode as Mode;
 pub struct Connection {
     connection: *mut s2n_connection,
     // The config needs to be stored so the reference count is accurate
+    #[allow(dead_code)]
     config: Option<Config>,
 }
 

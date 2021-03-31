@@ -229,6 +229,7 @@ mod tests {
 
     /// This implementation tries to closely follow the RFC psuedo code so it's
     /// easier to ensure it matches.
+    #[allow(clippy::clippy::blocks_in_if_conditions)]
     fn rfc_decoder(largest_pn: u64, truncated_pn: u64, pn_nbits: usize) -> u64 {
         use std::panic::catch_unwind as catch;
 
@@ -264,14 +265,19 @@ mod tests {
         let pn_mask = pn_win - 1;
 
         let candidate_pn = (expected_pn & !pn_mask) | truncated_pn;
-        if catch(|| candidate_pn <= expected_pn - pn_hwin && candidate_pn < (1 << 62) - pn_win)
-            .unwrap_or_default()
+        if catch(|| {
+            candidate_pn <= expected_pn.checked_sub(pn_hwin).unwrap()
+                && candidate_pn < (1u64 << 62).checked_sub(pn_win).unwrap()
+        })
+        .unwrap_or_default()
         {
             return candidate_pn + pn_win;
         }
 
-        if catch(|| candidate_pn > expected_pn + pn_hwin && candidate_pn >= pn_win)
-            .unwrap_or_default()
+        if catch(|| {
+            candidate_pn > expected_pn.checked_add(pn_hwin).unwrap() && candidate_pn >= pn_win
+        })
+        .unwrap_or_default()
         {
             return candidate_pn - pn_win;
         }
