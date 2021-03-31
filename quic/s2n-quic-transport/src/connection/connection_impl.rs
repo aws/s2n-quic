@@ -559,14 +559,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         if let Some(shared_state) = shared_state {
             // For active connections we have to check if the application requested
             // to close them
-            if self.state == ConnectionState::Active {
-                if let Some((application, _handshake_status)) =
-                    shared_state.space_manager.application_mut()
-                {
-                    if let Some(error) = application.stream_manager.close_reason() {
-                        result = Err(error);
-                    }
-                }
+            if let Some(error) = shared_state.error {
+                result = Err(error);
             }
 
             shared_state.wakeup_handle.wakeup_handled();

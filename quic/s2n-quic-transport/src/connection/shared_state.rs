@@ -189,6 +189,11 @@ impl<EndpointConfig: endpoint::Config> ConnectionApiProvider
 
             shared_state.error = Some(error);
 
+            // notify the stream_manager if applicable
+            if let Some((application, _)) = shared_state.space_manager.application_mut() {
+                application.stream_manager.close(error);
+            }
+
             // Wake up the Connection so that it knows about the close request.
             shared_state.wakeup_handle.wakeup();
         }
