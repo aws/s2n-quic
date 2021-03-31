@@ -357,7 +357,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                             &datagram.remote_address,
                             &source_connection_id,
                             endpoint_context.random_generator,
-                            );
+                        );
                         if let Some(id) = endpoint_context.token.validate_token(
                             &mut context,
                             packet.token(),
