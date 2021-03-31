@@ -10,11 +10,9 @@
 
 use core::{mem::size_of, time::Duration};
 use hash_hasher::HashHasher;
-use ring::{
-    digest, hmac,
-};
+use ring::{digest, hmac};
 use s2n_codec::{DecoderBuffer, DecoderBufferMut};
-use s2n_quic_core::{random, connection, inet::SocketAddress, time::Timestamp, token::Source};
+use s2n_quic_core::{connection, inet::SocketAddress, random, time::Timestamp, token::Source};
 use std::hash::{Hash, Hasher};
 use zerocopy::{AsBytes, FromBytes, Unaligned};
 
@@ -331,9 +329,7 @@ impl super::Format for Format {
         let source = token.header.token_source();
 
         match source {
-            Source::RetryPacket => {
-                self.validate_retry_token(context, token)
-            }
+            Source::RetryPacket => self.validate_retry_token(context, token),
             Source::NewTokenFrame => None, // Not supported in the default provider
         }
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.4

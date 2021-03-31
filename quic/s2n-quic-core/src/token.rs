@@ -12,14 +12,14 @@ pub struct Context<'a> {
 
 impl<'a> Context<'a> {
     pub fn new(
-    peer_address: &'a SocketAddress,
-    destination_connection_id: &'a connection::PeerId,
-    random: &'a mut dyn random::Generator,
-        ) -> Self {
+        peer_address: &'a SocketAddress,
+        destination_connection_id: &'a connection::PeerId,
+        random: &'a mut dyn random::Generator,
+    ) -> Self {
         Self {
             peer_address,
             destination_connection_id,
-            random
+            random,
         }
     }
 }

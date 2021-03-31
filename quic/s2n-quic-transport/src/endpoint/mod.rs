@@ -25,7 +25,7 @@ use s2n_quic_core::{
     packet::{initial::ProtectedInitial, ProtectedPacket},
     stateless_reset::token::LEN as StatelessResetTokenLen,
     time::Timestamp,
-    token::{self, Format}
+    token::{self, Format},
 };
 
 mod config;
@@ -149,9 +149,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 let context = self.config.context();
                 let connection_info = ConnectionInfo::new(&datagram.remote_address);
 
-                let local_connection_id = context
-                    .connection_id_format
-                    .generate(&connection_info);
+                let local_connection_id = context.connection_id_format.generate(&connection_info);
 
                 self.retry_dispatch.queue::<
                     _,
@@ -361,10 +359,10 @@ impl<Cfg: Config> Endpoint<Cfg> {
                             &source_connection_id,
                             endpoint_context.random_generator,
                         );
-                        if let Some(id) = endpoint_context.token.validate_token(
-                            &mut context,
-                            packet.token(),
-                        ) {
+                        if let Some(id) = endpoint_context
+                            .token
+                            .validate_token(&mut context, packet.token())
+                        {
                             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.3
                             //# If the
                             //# validation succeeds, the server SHOULD then allow the handshake to

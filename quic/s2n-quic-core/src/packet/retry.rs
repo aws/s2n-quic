@@ -5,14 +5,13 @@ use crate::{
     connection,
     crypto::{retry, retry::RetryKey},
     inet::SocketAddress,
-    random,
     packet::{
         decoding::HeaderDecoder,
         initial::ProtectedInitial,
         long::{DestinationConnectionIdLen, SourceConnectionIdLen, Version},
         Tag,
     },
-    token,
+    random, token,
 };
 use core::{mem::size_of, ops::Range};
 use s2n_codec::{
@@ -139,8 +138,8 @@ impl<'a> Retry<'a> {
 
         let mut outcome = None;
 
-        let destination_connection_id = &connection::PeerId::try_from_bytes(retry_packet.destination_connection_id)
-            .unwrap();
+        let destination_connection_id =
+            &connection::PeerId::try_from_bytes(retry_packet.destination_connection_id).unwrap();
 
         let mut ctx = token::Context::new(remote_address, destination_connection_id, random);
         buffer.write_sized(T::TOKEN_LEN, |token_buf| {

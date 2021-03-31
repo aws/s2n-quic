@@ -5,14 +5,13 @@ use crate::endpoint;
 use alloc::collections::VecDeque;
 use core::ops::Range;
 use s2n_quic_core::{
-    random,
     connection,
     crypto::RetryKey,
     inet::{DatagramInfo, ExplicitCongestionNotification, SocketAddress},
     io::tx,
     packet,
     path::MINIMUM_MTU,
-    time, token,
+    random, time, token,
 };
 
 #[derive(Debug)]
