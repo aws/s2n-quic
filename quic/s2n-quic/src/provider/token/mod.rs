@@ -7,7 +7,7 @@
 //! means the actual token does not need to be exposed.
 
 use cfg_if::cfg_if;
-pub use s2n_quic_core::token::Format;
+pub use s2n_quic_core::token::{Format, Context};
 
 pub trait Provider: 'static {
     type Format: 'static + Format;

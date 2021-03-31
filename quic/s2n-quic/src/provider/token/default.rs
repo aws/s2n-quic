@@ -12,10 +12,9 @@ use core::{mem::size_of, time::Duration};
 use hash_hasher::HashHasher;
 use ring::{
     digest, hmac,
-    rand::{SecureRandom, SystemRandom},
 };
 use s2n_codec::{DecoderBuffer, DecoderBufferMut};
-use s2n_quic_core::{connection, inet::SocketAddress, time::Timestamp, token::Source};
+use s2n_quic_core::{random, connection, inet::SocketAddress, time::Timestamp, token::Source};
 use std::hash::{Hash, Hasher};
 use zerocopy::{AsBytes, FromBytes, Unaligned};
 
@@ -42,12 +41,12 @@ impl BaseKey {
         }
     }
 
-    pub fn hasher(&mut self) -> Option<hmac::Context> {
-        let key = self.poll_key()?;
+    pub fn hasher(&mut self, random: &mut dyn random::Generator) -> Option<hmac::Context> {
+        let key = self.poll_key(random)?;
         Some(hmac::Context::with_key(&key))
     }
 
-    fn poll_key(&mut self) -> Option<hmac::Key> {
+    fn poll_key(&mut self, random: &mut dyn random::Generator) -> Option<hmac::Key> {
         let now = s2n_quic_platform::time::now();
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#21.2
@@ -65,7 +64,8 @@ impl BaseKey {
         // TODO in addition to generating new key material, clear out the filter used for detecting
         // duplicates.
         let mut key_material = [0; digest::SHA256_OUTPUT_LEN];
-        SystemRandom::new().fill(&mut key_material[..]).ok()?;
+        random.private_random_fill(&mut key_material[..]);
+
         let key = hmac::Key::new(hmac::HMAC_SHA256, &key_material);
 
         // TODO clear the filter instead of recreating. This is pending a merge to crates.io
@@ -163,10 +163,9 @@ impl Format {
     fn tag_retry_token(
         &mut self,
         token: &Token,
-        peer_address: &SocketAddress,
-        destination_connection_id: &connection::PeerId,
+        context: &mut super::Context<'_>,
     ) -> Option<hmac::Tag> {
-        let mut ctx = self.keys[token.header.key_id() as usize].hasher()?;
+        let mut ctx = self.keys[token.header.key_id() as usize].hasher(context.random)?;
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.4
         //# Tokens
@@ -175,8 +174,8 @@ impl Format {
         //# packets remain constant.
         ctx.update(&token.original_destination_connection_id);
         ctx.update(&token.nonce);
-        ctx.update(&destination_connection_id.as_bytes());
-        match peer_address {
+        ctx.update(&context.destination_connection_id.as_bytes());
+        match context.peer_address {
             SocketAddress::IpV4(addr) => ctx.update(addr.as_bytes()),
             SocketAddress::IpV6(addr) => ctx.update(addr.as_bytes()),
         };
@@ -187,8 +186,7 @@ impl Format {
     // Using the key id in the token, verify the token
     fn validate_retry_token(
         &mut self,
-        peer_address: &SocketAddress,
-        destination_connection_id: &connection::PeerId,
+        context: &mut super::Context<'_>,
         token: &Token,
     ) -> Option<connection::InitialId> {
         if self.keys[token.header.key_id() as usize]
@@ -198,7 +196,7 @@ impl Format {
             return None;
         }
 
-        let tag = self.tag_retry_token(token, peer_address, destination_connection_id)?;
+        let tag = self.tag_retry_token(token, context)?;
 
         if ring::constant_time::verify_slices_are_equal(&token.hmac, &tag.as_ref()).is_ok() {
             // Only add the token once it has been validated. This will prevent the filter from
@@ -227,8 +225,7 @@ impl super::Format for Format {
     /// The default provider does not support NEW_TOKEN frame tokens
     fn generate_new_token(
         &mut self,
-        _peer_address: &SocketAddress,
-        _destination_connection_id: &connection::PeerId,
+        _context: &mut super::Context<'_>,
         _source_connection_id: &connection::LocalId,
         _output_buffer: &mut [u8],
     ) -> Option<()> {
@@ -277,8 +274,7 @@ impl super::Format for Format {
     //# client.
     fn generate_retry_token(
         &mut self,
-        peer_address: &SocketAddress,
-        destination_connection_id: &connection::PeerId,
+        context: &mut super::Context<'_>,
         original_destination_connection_id: &connection::InitialId,
         output_buffer: &mut [u8],
     ) -> Option<()> {
@@ -304,9 +300,9 @@ impl super::Format for Format {
         }
 
         // Populate the nonce before signing
-        SystemRandom::new().fill(&mut token.nonce[..]).ok()?;
+        context.random.public_random_fill(&mut token.nonce[..]);
 
-        let tag = self.tag_retry_token(token, peer_address, destination_connection_id)?;
+        let tag = self.tag_retry_token(token, context)?;
 
         token.hmac.copy_from_slice(tag.as_ref());
 
@@ -319,8 +315,7 @@ impl super::Format for Format {
     //# completed address validation.
     fn validate_token(
         &mut self,
-        peer_address: &SocketAddress,
-        destination_connection_id: &connection::PeerId,
+        context: &mut super::Context<'_>,
         token: &[u8],
     ) -> Option<connection::InitialId> {
         let buffer = DecoderBuffer::new(token);
@@ -337,7 +332,7 @@ impl super::Format for Format {
 
         match source {
             Source::RetryPacket => {
-                self.validate_retry_token(peer_address, destination_connection_id, token)
+                self.validate_retry_token(context, token)
             }
             Source::NewTokenFrame => None, // Not supported in the default provider
         }
