@@ -1,10 +1,14 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{connection, inet::SocketAddress};
+use crate::{
+    connection, inet::SocketAddress,
+    random,
+};
 
 pub trait Format: 'static {
     const TOKEN_LEN: usize;
+    type RandomGenerator: random::Generator;
 
     /// Generate a signed token to be delivered in a NEW_TOKEN frame.
     /// This function will only be called if the provider support NEW_TOKEN frames.
@@ -46,12 +50,14 @@ pub enum Source {
 pub mod testing {
     use super::*;
     use crate::crypto::retry;
+    use crate::random;
 
     #[derive(Debug, Default)]
     pub struct Format(u64);
 
     impl super::Format for Format {
         const TOKEN_LEN: usize = retry::example::TOKEN_LEN;
+        type RandomGenerator = random::testing::Generator;
 
         fn generate_new_token(
             &mut self,

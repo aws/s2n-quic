@@ -9,6 +9,7 @@
 //! The default provider does not support tokens delivered in a NEW_TOKEN frame.
 
 use core::{mem::size_of, time::Duration};
+pub use s2n_quic_core::random::Generator;
 use hash_hasher::HashHasher;
 use ring::{
     digest, hmac,
@@ -219,6 +220,7 @@ impl Format {
 
 impl super::Format for Format {
     const TOKEN_LEN: usize = size_of::<Token>();
+    type RandomGenerator = unimplemented!();
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.3
     //# A server SHOULD
@@ -304,7 +306,7 @@ impl super::Format for Format {
         }
 
         // Populate the nonce before signing
-        SystemRandom::new().fill(&mut token.nonce[..]).ok()?;
+        Self::RandomGenerator::public_random_fill(&mut token.nonce[..]);
 
         let tag = self.tag_retry_token(token, peer_address, destination_connection_id)?;
 
