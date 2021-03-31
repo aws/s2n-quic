@@ -361,7 +361,7 @@ pub(super) const MAX_STREAMS_SYNC_FRACTION: VarInt = VarInt::from_u8(10);
 //# connection.  This value cannot exceed 2^60, as it is not possible
 //# to encode stream IDs larger than 2^62-1.
 // Safety: 2^60 is less than MAX_VARINT_VALUE
-const MAX_STREAMS_MAX_VALUE: VarInt = unsafe { VarInt::new_unchecked(1_152_921_504_606_846_976) };
+const MAX_STREAMS_MAX_VALUE: VarInt = unsafe { VarInt::new_unchecked(1 << 60) };
 
 /// The IncomingController controls streams initiated by the peer
 #[derive(Debug)]
