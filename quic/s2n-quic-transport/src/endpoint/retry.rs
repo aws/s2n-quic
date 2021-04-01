@@ -11,7 +11,7 @@ use s2n_quic_core::{
     io::tx,
     packet,
     path::MINIMUM_MTU,
-    time, token,
+    random, time, token,
 };
 
 #[derive(Debug)]
@@ -35,17 +35,19 @@ impl Dispatch {
     }
 
     #[allow(dead_code)]
-    pub fn queue<T: token::Format, C: RetryKey>(
+    pub fn queue<T: token::Format, C: RetryKey, R: random::Generator>(
         &mut self,
         datagram: &DatagramInfo,
         packet: &packet::initial::ProtectedInitial,
         local_connection_id: connection::LocalId,
+        random: &mut R,
         token_format: &mut T,
     ) {
-        if let Some(transmission) = Transmission::new::<_, C>(
+        if let Some(transmission) = Transmission::new::<_, C, _>(
             datagram.remote_address,
             packet,
             local_connection_id,
+            random,
             token_format,
         ) {
             self.transmissions.push_back(transmission);
@@ -78,17 +80,19 @@ impl core::fmt::Debug for Transmission {
 }
 
 impl Transmission {
-    pub fn new<T: token::Format, C: RetryKey>(
+    pub fn new<T: token::Format, C: RetryKey, R: random::Generator>(
         remote_address: SocketAddress,
         packet: &packet::initial::ProtectedInitial,
         local_connection_id: connection::LocalId,
+        random: &mut R,
         token_format: &mut T,
     ) -> Option<Self> {
         let mut packet_buf = [0u8; MINIMUM_MTU as usize];
-        let packet_range = packet::retry::Retry::encode_packet::<_, C>(
+        let packet_range = packet::retry::Retry::encode_packet::<_, C, _>(
             &remote_address,
             packet,
             &local_connection_id,
+            random,
             token_format,
             &mut packet_buf,
         )?;

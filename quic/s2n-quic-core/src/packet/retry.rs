@@ -11,7 +11,7 @@ use crate::{
         long::{DestinationConnectionIdLen, SourceConnectionIdLen, Version},
         Tag,
     },
-    token,
+    random, token,
 };
 use core::{mem::size_of, ops::Range};
 use s2n_codec::{
@@ -111,10 +111,11 @@ pub type EncryptedRetry<'a> = Retry<'a>;
 pub type CleartextRetry<'a> = Retry<'a>;
 
 impl<'a> Retry<'a> {
-    pub fn encode_packet<T: token::Format, C: RetryKey>(
+    pub fn encode_packet<T: token::Format, C: RetryKey, R: random::Generator>(
         remote_address: &SocketAddress,
         packet: &ProtectedInitial,
         local_connection_id: &connection::LocalId,
+        random: &mut R,
         token_format: &mut T,
         packet_buf: &mut [u8],
     ) -> Option<Range<usize>> {
@@ -135,12 +136,15 @@ impl<'a> Retry<'a> {
         let mut buffer = EncoderBuffer::new(packet_buf);
         pseudo_packet.encode(&mut buffer);
 
+        let destination_connection_id =
+            &connection::PeerId::try_from_bytes(retry_packet.destination_connection_id).unwrap();
+        let mut context = token::Context::new(remote_address, destination_connection_id, random);
+
         let mut outcome = None;
+
         buffer.write_sized(T::TOKEN_LEN, |token_buf| {
             outcome = token_format.generate_retry_token(
-                &remote_address,
-                &connection::PeerId::try_from_bytes(retry_packet.destination_connection_id)
-                    .unwrap(),
+                &mut context,
                 &connection::InitialId::try_from_bytes(packet.destination_connection_id()).unwrap(),
                 token_buf,
             );

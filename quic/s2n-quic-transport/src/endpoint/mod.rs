@@ -25,7 +25,7 @@ use s2n_quic_core::{
     packet::{initial::ProtectedInitial, ProtectedPacket},
     stateless_reset::token::LEN as StatelessResetTokenLen,
     time::Timestamp,
-    token::Format,
+    token::{self, Format},
 };
 
 mod config;
@@ -132,11 +132,8 @@ impl<Cfg: Config> Endpoint<Cfg> {
             &datagram.remote_address,
         );
 
-        let outcome = self
-            .config
-            .context()
-            .endpoint_limits
-            .on_connection_attempt(&attempt);
+        let context = self.config.context();
+        let outcome = context.endpoint_limits.on_connection_attempt(&attempt);
 
         match outcome {
             Outcome::Allow => Some(()),
@@ -151,20 +148,20 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 //# client.
 
                 let connection_info = ConnectionInfo::new(&datagram.remote_address);
-                let local_connection_id = self
-                    .config
-                    .context()
-                    .connection_id_format
-                    .generate(&connection_info);
+
+                let local_connection_id = context.connection_id_format.generate(&connection_info);
 
                 self.retry_dispatch.queue::<
                     _,
-                    <<<Cfg as Config>::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::RetryKey
-                >(
+                    <<<Cfg as Config>::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::RetryKey,
+                    _,
+                >
+                    (
                     datagram,
                     &packet,
                     local_connection_id,
-                    self.config.context().token
+                    context.random_generator,
+                    context.token
                 );
                 None
             }
@@ -377,11 +374,15 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     //# provided in a Retry packet, a server cannot send another Retry
                     //# packet; it can only refuse the connection or permit it to proceed.
                     let retry_token_dcid = if !packet.token().is_empty() {
-                        if let Some(id) = endpoint_context.token.validate_token(
+                        let mut context = token::Context::new(
                             &datagram.remote_address,
                             &source_connection_id,
-                            packet.token(),
-                        ) {
+                            endpoint_context.random_generator,
+                        );
+                        if let Some(id) = endpoint_context
+                            .token
+                            .validate_token(&mut context, packet.token())
+                        {
                             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.3
                             //# If the
                             //# validation succeeds, the server SHOULD then allow the handshake to
