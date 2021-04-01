@@ -462,31 +462,6 @@ mod tests {
 
     const TEST_KEY_ROTATION_PERIOD: Duration = Duration::from_millis(1000);
 
-    #[derive(Debug, Default)]
-    pub struct RandomGenerator(pub u8);
-
-    impl random::Generator for RandomGenerator {
-        fn public_random_fill(&mut self, dest: &mut [u8]) {
-            let seed = self.0;
-
-            for (i, elem) in dest.iter_mut().enumerate() {
-                *elem = seed ^ i as u8;
-            }
-
-            self.0 = self.0.wrapping_add(1)
-        }
-
-        fn private_random_fill(&mut self, dest: &mut [u8]) {
-            let seed = u8::max_value() - self.0;
-
-            for (i, elem) in dest.iter_mut().enumerate() {
-                *elem = seed ^ i as u8;
-            }
-
-            self.0 = self.0.wrapping_add(1)
-        }
-    }
-
     fn get_test_format() -> Format {
         Format {
             key_rotation_period: TEST_KEY_ROTATION_PERIOD,
@@ -538,7 +513,7 @@ mod tests {
         let addr = SocketAddress::default();
         let mut first_token = [0; Format::TOKEN_LEN];
         let mut second_token = [0; Format::TOKEN_LEN];
-        let mut random = RandomGenerator(5);
+        let mut random = random::testing::Generator(5);
         let mut context = Context::new(&addr, &first_conn_id, &mut random);
 
         // Generate two tokens for different connections
@@ -583,7 +558,7 @@ mod tests {
         let ip_address = "127.0.0.1:443";
         let addr: SocketAddr = ip_address.parse().unwrap();
         let correct_address: SocketAddress = addr.into();
-        let mut random = RandomGenerator(5);
+        let mut random = random::testing::Generator(5);
         let mut context = Context::new(&correct_address, &conn_id, &mut random);
         format
             .generate_retry_token(&mut context, &orig_conn_id, &mut token)
@@ -622,7 +597,7 @@ mod tests {
         let orig_conn_id = connection::InitialId::TEST_ID;
         let addr = SocketAddress::default();
         let mut buf = [0; Format::TOKEN_LEN];
-        let mut random = RandomGenerator(5);
+        let mut random = random::testing::Generator(5);
         let mut context = Context::new(&addr, &conn_id, &mut random);
         format
             .generate_retry_token(&mut context, &orig_conn_id, &mut buf)
@@ -652,7 +627,7 @@ mod tests {
         let orig_conn_id = connection::InitialId::TEST_ID;
         let addr = SocketAddress::default();
         let mut buf = [0; Format::TOKEN_LEN];
-        let mut random = RandomGenerator(5);
+        let mut random = random::testing::Generator(5);
         let mut context = Context::new(&addr, &conn_id, &mut random);
         format
             .generate_retry_token(&mut context, &orig_conn_id, &mut buf)
@@ -677,7 +652,7 @@ mod tests {
         let odcid = connection::InitialId::try_from_bytes(&[0, 1, 2, 3, 4, 5, 6, 7]).unwrap();
         let addr = SocketAddress::default();
         let mut buf = [0; Format::TOKEN_LEN];
-        let mut random = RandomGenerator(5);
+        let mut random = random::testing::Generator(5);
         let mut context = Context::new(&addr, &conn_id, &mut random);
         format
             .generate_retry_token(&mut context, &odcid, &mut buf)
@@ -701,7 +676,7 @@ mod tests {
         let odcid = connection::InitialId::try_from_bytes(&[0, 1, 2, 3, 4, 5, 6, 7]).unwrap();
         let addr = SocketAddress::default();
         let mut buf = [0; Format::TOKEN_LEN];
-        let mut random = RandomGenerator(5);
+        let mut random = random::testing::Generator(5);
         let mut context = Context::new(&addr, &conn_id, &mut random);
         format
             .generate_retry_token(&mut context, &odcid, &mut buf)
@@ -727,7 +702,7 @@ mod tests {
         let addr = SocketAddress::default();
         let mut token = [0; Format::TOKEN_LEN];
 
-        let mut random = RandomGenerator(5);
+        let mut random = random::testing::Generator(5);
         let mut context = Context::new(&addr, &conn_id, &mut random);
         // Generate two tokens for different connections
         format
@@ -735,7 +710,7 @@ mod tests {
             .unwrap();
 
         for i in 0..Format::TOKEN_LEN {
-            random = RandomGenerator(5);
+            random = random::testing::Generator(5);
             context = Context::new(&addr, &conn_id, &mut random);
             token[i] = !token[i];
             assert!(format.validate_token(&mut context, &token).is_none());
@@ -750,7 +725,7 @@ mod tests {
         let addr = SocketAddress::default();
 
         bolero::check!().for_each(move |token| {
-            let mut random = RandomGenerator(5);
+            let mut random = random::testing::Generator(5);
             let mut context = Context::new(&addr, &conn_id, &mut random);
             assert!(format.validate_token(&mut context, token).is_none())
         });
@@ -773,7 +748,7 @@ mod tests {
         bolero::check!()
             .with_generator(generator)
             .for_each(move |token| {
-                let mut random = RandomGenerator(5);
+                let mut random = random::testing::Generator(5);
                 let mut context = Context::new(&addr, &conn_id, &mut random);
                 assert!(format.validate_token(&mut context, token).is_none())
             });

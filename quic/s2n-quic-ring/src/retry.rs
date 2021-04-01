@@ -53,31 +53,6 @@ mod tests {
         varint::VarInt,
     };
 
-    #[derive(Debug, Default)]
-    pub struct RandomGenerator(pub u8);
-
-    impl random::Generator for RandomGenerator {
-        fn public_random_fill(&mut self, dest: &mut [u8]) {
-            let seed = self.0;
-
-            for (i, elem) in dest.iter_mut().enumerate() {
-                *elem = seed ^ i as u8;
-            }
-
-            self.0 = self.0.wrapping_add(1)
-        }
-
-        fn private_random_fill(&mut self, dest: &mut [u8]) {
-            let seed = u8::max_value() - self.0;
-
-            for (i, elem) in dest.iter_mut().enumerate() {
-                *elem = seed ^ i as u8;
-            }
-
-            self.0 = self.0.wrapping_add(1)
-        }
-    }
-
     #[test]
     fn test_tag_validation() {
         let invalid_tag: [u8; 16] = hex!("00112233445566778899aabbccddeeff");
@@ -130,7 +105,7 @@ mod tests {
                 &remote_address,
                 &packet,
                 &local_conn_id,
-                &mut RandomGenerator(5),
+                &mut random::testing::Generator(5),
                 &mut token_format,
                 &mut output_buf,
             ) {
@@ -180,7 +155,7 @@ mod tests {
                 &remote_address,
                 &packet,
                 &local_conn_id,
-                &mut RandomGenerator(5),
+                &mut random::testing::Generator(5),
                 &mut token_format,
                 &mut output_buf,
             )
