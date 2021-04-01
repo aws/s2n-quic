@@ -25,6 +25,14 @@ skip-tree = [
 unknown-registry = "deny"
 unknown-git = "deny"
 
+allow-git = [
+    # The main flume has dependencies which don't have a rolling 6-month MSRV
+    #
+    # This fork uses `parking_lot` instead, which does. Since this is only a dev-dependency, it
+    # shouldn't prevent us from publishing to crates.io.
+    "https://github.com/camshaft/flume",
+]
+
 [licenses]
 unlicensed = "deny"
 allow-osi-fsf-free = "neither"
