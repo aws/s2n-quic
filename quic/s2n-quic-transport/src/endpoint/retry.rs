@@ -43,7 +43,7 @@ impl Dispatch {
         random: &mut R,
         token_format: &mut T,
     ) {
-        if let Some(transmission) = Transmission::new::<_, C, R>(
+        if let Some(transmission) = Transmission::new::<_, C, _>(
             datagram.remote_address,
             packet,
             local_connection_id,

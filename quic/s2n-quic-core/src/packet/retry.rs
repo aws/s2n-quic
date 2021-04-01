@@ -136,15 +136,15 @@ impl<'a> Retry<'a> {
         let mut buffer = EncoderBuffer::new(packet_buf);
         pseudo_packet.encode(&mut buffer);
 
-        let mut outcome = None;
-
         let destination_connection_id =
             &connection::PeerId::try_from_bytes(retry_packet.destination_connection_id).unwrap();
+        let mut context = token::Context::new(remote_address, destination_connection_id, random);
 
-        let mut ctx = token::Context::new(remote_address, destination_connection_id, random);
+        let mut outcome = None;
+
         buffer.write_sized(T::TOKEN_LEN, |token_buf| {
             outcome = token_format.generate_retry_token(
-                &mut ctx,
+                &mut context,
                 &connection::InitialId::try_from_bytes(packet.destination_connection_id()).unwrap(),
                 token_buf,
             );

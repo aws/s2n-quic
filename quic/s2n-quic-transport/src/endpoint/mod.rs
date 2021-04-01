@@ -128,11 +128,8 @@ impl<Cfg: Config> Endpoint<Cfg> {
             &datagram.remote_address,
         );
 
-        let outcome = self
-            .config
-            .context()
-            .endpoint_limits
-            .on_connection_attempt(&attempt);
+        let context = self.config.context();
+        let outcome = context.endpoint_limits.on_connection_attempt(&attempt);
 
         match outcome {
             Outcome::Allow => Some(()),
@@ -146,7 +143,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 //# it cooperates with, received the original Initial packet from the
                 //# client.
 
-                let context = self.config.context();
                 let connection_info = ConnectionInfo::new(&datagram.remote_address);
 
                 let local_connection_id = context.connection_id_format.generate(&connection_info);
