@@ -453,8 +453,10 @@ impl Token {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use s2n_quic_core::{random,
-        token::{Format as FormatTrait, Source, Context}};
+    use s2n_quic_core::{
+        random,
+        token::{Context, Format as FormatTrait, Source},
+    };
     use s2n_quic_platform::time;
     use std::{net::SocketAddr, sync::Arc};
 

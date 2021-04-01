@@ -48,9 +48,8 @@ mod tests {
         connection::id::ConnectionInfo,
         crypto::retry,
         inet, packet,
-        random,
         packet::number::{PacketNumberSpace, TruncatedPacketNumber},
-        token,
+        random, token,
         varint::VarInt,
     };
 
