@@ -7,7 +7,7 @@ use core::task::Poll;
 /// A timer that does not trigger an update in a timer
 /// list. These are usually owned by individual components
 /// and needs to be explicitly polled.
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub struct Timer {
     expiration: Option<Timestamp>,
 }

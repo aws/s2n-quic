@@ -10,11 +10,13 @@ pub mod data_sender;
 pub mod flag;
 mod incremental_value_sync;
 mod once_sync;
+mod periodic_sync;
 
 pub use data_sender::DataSender;
 pub use flag::Flag;
 pub use incremental_value_sync::IncrementalValueSync;
 pub use once_sync::OnceSync;
+use crate::timer::VirtualTimer;
 
 /// Carries information about the packet in which a frame is transmitted
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -43,6 +45,8 @@ pub enum DeliveryState<T> {
     Requested(T),
     /// The original delivery was lost and needs to be retransmitted
     Lost(T),
+    /// The delivery has been requested for a future time
+    Pending(VirtualTimer, T),
     /// The delivery of the information has been requested and is in progress
     InFlight(InFlightDelivery<T>),
     /// The delivery of the information has succeeded
@@ -64,6 +68,7 @@ impl<T> DeliveryState<T> {
             DeliveryState::NotRequested => DeliveryState::Cancelled(None),
             DeliveryState::Requested(value)
             | DeliveryState::Lost(value)
+            | DeliveryState::Pending(_, value)
             | DeliveryState::Delivered(value)
             | DeliveryState::InFlight(InFlightDelivery { value, .. }) => {
                 DeliveryState::Cancelled(Some(value))
