@@ -95,7 +95,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         &mut self,
         datagram: &DatagramInfo,
         limits: &connection::Limits,
-        is_handshake_confirmed: bool,
+        can_migrate: bool,
         congestion_controller_endpoint: &mut CCE,
     ) -> Result<(Id, bool), transport::Error> {
         if let Some((id, path)) = self.path_mut(&datagram.remote_address) {
@@ -123,7 +123,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         //# for the duration of the handshake.  An endpoint MUST NOT initiate
         //# connection migration before the handshake is confirmed, as defined
         //# in section 4.1.2 of [QUIC-TLS].
-        if !is_handshake_confirmed {
+        if !can_migrate {
             return Err(transport::Error::PROTOCOL_VIOLATION);
         }
 
@@ -297,6 +297,12 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         //# three times the larger of the current Probe Timeout (PTO) or the
         //# initial timeout (that is, 2*kInitialRtt) as defined in
         //# [QUIC-RECOVERY] is RECOMMENDED.
+    }
+
+    /// Notifies the path manager of the connection closing event
+    pub fn on_closing(&mut self) {
+        self.active_path_mut().on_closing();
+        // TODO clean up other paths
     }
 }
 

@@ -30,6 +30,7 @@ use s2n_quic_core::{
 
 mod config;
 mod initial;
+mod packet_buffer;
 mod retry;
 mod stateless_reset;
 mod version;
@@ -37,6 +38,7 @@ mod version;
 use crate::connection::ProcessingError;
 pub use config::{Config, Context};
 use connection::id::ConnectionInfo;
+pub use packet_buffer::Buffer as PacketBuffer;
 pub use s2n_quic_core::endpoint::*;
 use s2n_quic_core::{
     connection::LocalId,
@@ -69,6 +71,7 @@ pub struct Endpoint<Cfg: Config> {
     version_negotiator: version::Negotiator<Cfg>,
     retry_dispatch: retry::Dispatch,
     stateless_reset_dispatch: stateless_reset::Dispatch,
+    close_packet_buffer: packet_buffer::Buffer,
 }
 
 // Safety: The endpoint is marked as `!Send`, because the struct contains `Rc`s.
@@ -96,6 +99,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             version_negotiator: version::Negotiator::default(),
             retry_dispatch: retry::Dispatch::default(),
             stateless_reset_dispatch: stateless_reset::Dispatch::default(),
+            close_packet_buffer: Default::default(),
         };
 
         (endpoint, acceptor)
@@ -188,6 +192,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
         timestamp: Timestamp,
     ) {
         let endpoint_context = self.config.context();
+        let close_packet_buffer = &mut self.close_packet_buffer;
 
         // Try to decode the first packet in the datagram
         let payload_len = payload.len();
@@ -257,12 +262,12 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
             let _ = self
                 .connections
-                .with_connection(internal_id, |conn, shared_state| {
+                .with_connection(internal_id, |conn, mut shared_state| {
                     // The path `Id` needs to be passed around instead of the path to get around `&mut self` and
                     // `&mut self.path_manager` being borrowed at the same time
                     let path_id = conn
                         .on_datagram_received(
-                            shared_state,
+                            shared_state.as_deref_mut(),
                             datagram,
                             endpoint_context.congestion_controller,
                         )
@@ -277,46 +282,65 @@ impl<Cfg: Config> Endpoint<Cfg> {
                             //# manipulating observed traffic.
                         })?;
 
-                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
-                    //= type=TODO
-                    //= tracking-issue=https://github.com/awslabs/s2n-quic/issues/271
-                    //# An endpoint MUST
-                    //# perform path validation (Section 8.2) if it detects any change to a
-                    //# peer's address, unless it has previously validated that address.
+                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#10.2.1
+                    //# An endpoint
+                    //# that is closing is not required to process any received frame.
 
-                    if let Err(err) = conn.handle_packet(shared_state, datagram, path_id, packet) {
-                        match err {
-                            ProcessingError::DuplicatePacket => {
-                                // We discard duplicate packets
-                            }
-                            ProcessingError::ConnectionError(err) => {
-                                conn.close(shared_state, err, datagram.timestamp);
-                                return Err(());
-                            }
-                            ProcessingError::CryptoError(_) => {
-                                // CryptoErrors returned as a result of a packet failing decryption
-                                // will be silently discarded, but are a potential indication of a
-                                // stateless reset from the peer
+                    // only process packets if we are open
+                    if let Some(shared_state) = shared_state {
+                        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
+                        //= type=TODO
+                        //= tracking-issue=https://github.com/awslabs/s2n-quic/issues/271
+                        //# An endpoint MUST
+                        //# perform path validation (Section 8.2) if it detects any change to a
+                        //# peer's address, unless it has previously validated that address.
 
-                                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1
-                                //# Endpoints MAY skip this check if any packet from a datagram is
-                                //# successfully processed.  However, the comparison MUST be performed
-                                //# when the first packet in an incoming datagram either cannot be
-                                //# associated with a connection, or cannot be decrypted.
-                                check_for_stateless_reset = true;
+                        if let Err(err) =
+                            conn.handle_packet(shared_state, datagram, path_id, packet)
+                        {
+                            match err {
+                                ProcessingError::DuplicatePacket => {
+                                    // We discard duplicate packets
+                                }
+                                ProcessingError::ConnectionError(err) => {
+                                    conn.close(
+                                        Some(shared_state),
+                                        err,
+                                        close_packet_buffer,
+                                        datagram.timestamp,
+                                    );
+                                    return Err(());
+                                }
+                                ProcessingError::CryptoError(_) => {
+                                    // CryptoErrors returned as a result of a packet failing decryption
+                                    // will be silently discarded, but are a potential indication of a
+                                    // stateless reset from the peer
+
+                                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1
+                                    //# Endpoints MAY skip this check if any packet from a datagram is
+                                    //# successfully processed.  However, the comparison MUST be performed
+                                    //# when the first packet in an incoming datagram either cannot be
+                                    //# associated with a connection, or cannot be decrypted.
+                                    check_for_stateless_reset = true;
+                                }
                             }
                         }
-                    }
 
-                    if let Err(err) = conn.handle_remaining_packets(
-                        shared_state,
-                        datagram,
-                        path_id,
-                        endpoint_context.connection_id_format,
-                        remaining,
-                    ) {
-                        conn.close(shared_state, err, datagram.timestamp);
-                        return Err(());
+                        if let Err(err) = conn.handle_remaining_packets(
+                            shared_state,
+                            datagram,
+                            path_id,
+                            endpoint_context.connection_id_format,
+                            remaining,
+                        ) {
+                            conn.close(
+                                Some(shared_state),
+                                err,
+                                close_packet_buffer,
+                                datagram.timestamp,
+                            );
+                            return Err(());
+                        }
                     }
 
                     Ok(())
@@ -497,6 +521,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
         let internal_id = self
             .connection_id_mapper
             .remove_internal_connection_id_by_stateless_reset_token(&token)?;
+        let close_packet_buffer = &mut self.close_packet_buffer;
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1
         //# If the last 16 bytes of the datagram are identical in value to a
@@ -504,7 +529,12 @@ impl<Cfg: Config> Endpoint<Cfg> {
         //# and not send any further packets on this connection.
         self.connections
             .with_connection(internal_id, |conn, shared_state| {
-                conn.close(shared_state, connection::Error::StatelessReset, timestamp)
+                conn.close(
+                    shared_state,
+                    connection::Error::StatelessReset,
+                    close_packet_buffer,
+                    timestamp,
+                );
             });
 
         Some(internal_id)
@@ -560,12 +590,15 @@ impl<Cfg: Config> Endpoint<Cfg> {
     /// according to [`next_timer_expiration()`].
     pub fn handle_timers(&mut self, now: Timestamp) {
         let connection_id_mapper = &mut self.connection_id_mapper;
+        let close_packet_buffer = &mut self.close_packet_buffer;
 
         for internal_id in self.timer_manager.expirations(now) {
             self.connections
-                .with_connection(internal_id, |conn, shared_state| {
-                    if let Err(error) = conn.on_timeout(shared_state, connection_id_mapper, now) {
-                        conn.close(shared_state, error, now);
+                .with_connection(internal_id, |conn, mut shared_state| {
+                    if let Err(error) =
+                        conn.on_timeout(shared_state.as_deref_mut(), connection_id_mapper, now)
+                    {
+                        conn.close(shared_state, error, close_packet_buffer, now);
                     }
                 });
         }
@@ -594,12 +627,13 @@ impl<Cfg: Config> Endpoint<Cfg> {
             .wakeup_queue
             .poll_pending_wakeups(dequeued_wakeups, context);
         let nr_wakeups = self.dequeued_wakeups.len();
+        let close_packet_buffer = &mut self.close_packet_buffer;
 
         for internal_id in &self.dequeued_wakeups {
             self.connections
-                .with_connection(*internal_id, |conn, shared_state| {
-                    if let Err(error) = conn.on_wakeup(shared_state, timestamp) {
-                        conn.close(shared_state, error, timestamp);
+                .with_connection(*internal_id, |conn, mut shared_state| {
+                    if let Err(error) = conn.on_wakeup(shared_state.as_deref_mut(), timestamp) {
+                        conn.close(shared_state, error, close_packet_buffer, timestamp);
                     }
                 });
         }

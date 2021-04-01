@@ -453,7 +453,16 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         });
 
         match self.inner.close_reason {
+            // The connection closed without an error
             Some(connection::Error::Closed { .. }) => return Ok(None).into(),
+            // Translate application closes to end of stream
+            Some(connection::Error::Transport { error, .. })
+                if error.code == transport::Error::APPLICATION_ERROR.code =>
+            {
+                return Ok(None).into()
+            }
+            // Translate idle timer expiration to end of stream
+            Some(connection::Error::IdleTimerExpired) => return Ok(None).into(),
             Some(reason) => return Err(reason).into(),
             None => {}
         }

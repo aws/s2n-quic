@@ -9,7 +9,7 @@ use crate::{
     contexts::ConnectionApiCallContext,
     endpoint,
     space::PacketSpaceManager,
-    stream::{AbstractStreamManager, Stream, StreamError},
+    stream::{Stream, StreamError},
     wakeup_queue::WakeupHandle,
 };
 use bytes::Bytes;
@@ -40,36 +40,32 @@ impl<EndpointConfig: endpoint::Config> SynchronizedSharedConnectionState<Endpoin
 
     /// Locks the shared state of the connection, and returns a guard that allows
     /// to modify the shared state
-    pub fn lock(&self) -> MutexGuard<'_, SharedConnectionState<EndpointConfig>> {
-        self.inner
-            .lock()
-            .expect("Locking can only fail if locks are poisoned")
+    pub fn try_lock_error(
+        &self,
+    ) -> Result<MutexGuard<'_, SharedConnectionState<EndpointConfig>>, connection::Error> {
+        let state = self.try_lock()?;
+
+        if let Some(error) = state.error {
+            return Err(error);
+        }
+
+        Ok(state)
     }
 
-    /// A helper method for performing an API call.
-    ///
-    /// It extracts the [`StreamManager`] and the [`WakeupHandle`] from the shared state, and allows
-    /// to call a method using those.
-    fn perform_api_call<F, R>(&self, stream_id: StreamId, func: F) -> R
-    where
-        F: FnOnce(
-            StreamId,
-            &mut AbstractStreamManager<EndpointConfig::Stream>,
-            &mut ConnectionApiCallContext,
-        ) -> R,
-    {
-        let shared_state = &mut *self.lock();
-        let mut api_call_context =
-            ConnectionApiCallContext::from_wakeup_handle(&mut shared_state.wakeup_handle);
+    /// Locks the shared state of the connection, and returns a guard that allows
+    /// to modify the shared state
+    pub fn lock(&self) -> MutexGuard<'_, SharedConnectionState<EndpointConfig>> {
+        self.try_lock().expect("shared state has been poisoned")
+    }
 
-        let stream_manager = &mut shared_state
-            .space_manager
-            .application_mut()
-            .expect("Stream manager must be available")
-            .0
-            .stream_manager;
-
-        func(stream_id, stream_manager, &mut api_call_context)
+    /// Locks the shared state of the connection, and returns a guard that allows
+    /// to modify the shared state
+    pub fn try_lock(
+        &self,
+    ) -> Result<MutexGuard<'_, SharedConnectionState<EndpointConfig>>, connection::Error> {
+        self.inner
+            .lock()
+            .map_err(|_| connection::Error::Unspecified)
     }
 }
 
@@ -78,6 +74,7 @@ impl<EndpointConfig: endpoint::Config> SynchronizedSharedConnectionState<Endpoin
 pub struct SharedConnectionState<Config: endpoint::Config> {
     pub space_manager: PacketSpaceManager<Config>,
     pub wakeup_handle: WakeupHandle<InternalConnectionId>,
+    pub error: Option<connection::Error>,
 }
 
 impl<EndpointConfig: endpoint::Config> SharedConnectionState<EndpointConfig> {
@@ -89,6 +86,7 @@ impl<EndpointConfig: endpoint::Config> SharedConnectionState<EndpointConfig> {
         Self {
             space_manager,
             wakeup_handle,
+            error: None,
         }
     }
 }
@@ -102,9 +100,18 @@ impl<EndpointConfig: endpoint::Config> ConnectionApiProvider
         request: &mut ops::Request,
         context: Option<&Context>,
     ) -> Result<ops::Response, StreamError> {
-        self.perform_api_call(stream_id, |stream_id, api, api_call_context| {
-            api.poll_request(stream_id, api_call_context, request, context)
-        })
+        let shared_state = &mut *self.try_lock_error()?;
+        let mut api_call_context =
+            ConnectionApiCallContext::from_wakeup_handle(&mut shared_state.wakeup_handle);
+
+        let stream_manager = &mut shared_state
+            .space_manager
+            .application_mut()
+            .expect("Stream manager must be available")
+            .0
+            .stream_manager;
+
+        stream_manager.poll_request(stream_id, &mut api_call_context, request, context)
     }
 
     fn poll_accept(
@@ -113,12 +120,15 @@ impl<EndpointConfig: endpoint::Config> ConnectionApiProvider
         stream_type: Option<StreamType>,
         context: &Context,
     ) -> Poll<Result<Option<Stream>, connection::Error>> {
-        let mut shared_state = self.lock();
+        // the stream manager has it's own check
+        let mut shared_state = self.try_lock()?;
+
+        let error = shared_state.error;
 
         let stream_manager = &mut shared_state
             .space_manager
             .application_mut()
-            .expect("Application space must be available on active connections")
+            .ok_or_else(|| error.unwrap_or(connection::Error::Unspecified))?
             .0
             .stream_manager;
 
@@ -143,7 +153,7 @@ impl<EndpointConfig: endpoint::Config> ConnectionApiProvider
         stream_type: StreamType,
         context: &Context,
     ) -> Poll<Result<Stream, connection::Error>> {
-        let mut shared_state = self.lock();
+        let mut shared_state = self.try_lock_error()?;
 
         let stream_manager = &mut shared_state
             .space_manager
@@ -167,38 +177,26 @@ impl<EndpointConfig: endpoint::Config> ConnectionApiProvider
     }
 
     fn close_connection(&self, error: Option<application::Error>) {
-        let mut shared_state = self.lock();
+        if let Ok(mut shared_state) = self.try_lock() {
+            let error = if let Some(error) = error {
+                connection::Error::Application {
+                    error,
+                    initiator: endpoint::Location::Local,
+                }
+            } else {
+                transport::Error::APPLICATION_ERROR.into()
+            };
 
-        let application_space = match shared_state.space_manager.application_mut() {
-            Some((space, _handshake_status)) => space,
-            None => return,
-        };
+            shared_state.error = Some(error);
 
-        let stream_manager = &mut application_space.stream_manager;
-        if stream_manager.close_reason().is_some() {
-            // The connection was already closed. We return early here to avoid
-            // an unnecessary wakeup for the shared state.
-            return;
-        }
-
-        let error = if let Some(error) = error {
-            connection::Error::Application {
-                error,
-                initiator: endpoint::Location::Local,
+            // notify the stream_manager if applicable
+            if let Some((application, _)) = shared_state.space_manager.application_mut() {
+                application.stream_manager.close(error);
             }
-        } else {
-            transport::Error::APPLICATION_ERROR.into()
-        };
 
-        stream_manager.close(error);
-
-        // Wake up the Connection so that it gets aware about the close request.
-        // So far we only reset the Streams, but we didn't have the chance to change
-        // the Connections state since this is outside of the shared state.
-        // TODO: This is a race. The Connection thinks it is still in the Active
-        // state and might handle packets. However the StreamManager is closed.
-        // The behavior of this will depend on the frame.
-        shared_state.wakeup_handle.wakeup();
+            // Wake up the Connection so that it knows about the close request.
+            shared_state.wakeup_handle.wakeup();
+        }
     }
 
     fn sni(&self) -> Option<Bytes> {
@@ -215,17 +213,13 @@ impl<EndpointConfig: endpoint::Config> ConnectionApiProvider
     }
 
     fn ping(&self) -> Result<(), connection::Error> {
-        let mut shared_state = self.lock();
+        let mut shared_state = self.try_lock_error()?;
 
         let space = &mut shared_state
             .space_manager
             .application_mut()
             .expect("Application space must be available on active connections")
             .0;
-
-        if let Some(error) = space.stream_manager.close_reason() {
-            return Err(error);
-        }
 
         space.ping();
 

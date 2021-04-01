@@ -254,7 +254,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             let endpoint_context = self.config.context();
 
             let path_id = connection.on_datagram_received(
-                locked_shared_state,
+                Some(locked_shared_state),
                 datagram,
                 endpoint_context.congestion_controller,
             )?;
