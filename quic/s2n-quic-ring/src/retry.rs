@@ -53,6 +53,7 @@ mod tests {
         token,
         varint::VarInt,
     };
+
     #[derive(Debug, Default)]
     pub struct RandomGenerator(pub u8);
 
