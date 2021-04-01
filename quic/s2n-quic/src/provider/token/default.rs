@@ -15,6 +15,7 @@ use s2n_codec::{DecoderBuffer, DecoderBufferMut};
 use s2n_quic_core::{connection, inet::SocketAddress, random, time::Timestamp, token::Source};
 use std::hash::{Hash, Hasher};
 use zerocopy::{AsBytes, FromBytes, Unaligned};
+use zeroize::Zeroizing;
 
 struct BaseKey {
     active_duration: Duration,
@@ -61,10 +62,9 @@ impl BaseKey {
 
         // TODO in addition to generating new key material, clear out the filter used for detecting
         // duplicates.
-        let mut key_material = [0; digest::SHA256_OUTPUT_LEN];
+        let mut key_material = Zeroizing::new([0; digest::SHA256_OUTPUT_LEN]);
         random.private_random_fill(&mut key_material[..]);
-
-        let key = hmac::Key::new(hmac::HMAC_SHA256, &key_material);
+        let key = hmac::Key::new(hmac::HMAC_SHA256, &key_material.as_ref());
 
         // TODO clear the filter instead of recreating. This is pending a merge to crates.io
         // (https://github.com/axiomhq/rust-cuckoofilter/pull/52)

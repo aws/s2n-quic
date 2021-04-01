@@ -87,16 +87,16 @@ macro_rules! impl_ciphersuite {
             }
 
             fn new_key(secret: &hkdf::Prk) -> aead::LessSafeKey {
-                let mut bytes = [0u8; Self::KEY_LEN];
+                let mut bytes = Zeroizing::new([0u8; Self::KEY_LEN]);
 
                 secret
                     .expand(&[&$key_label], &$cipher)
                     .expect("label size verified")
-                    .fill(&mut bytes)
+                    .fill(&mut bytes.as_mut())
                     .expect("fill size verified");
 
                 let unbound_key =
-                    aead::UnboundKey::new(&$cipher, &bytes).expect("key size verified");
+                    aead::UnboundKey::new(&$cipher, &bytes.as_ref()).expect("key size verified");
                 aead::LessSafeKey::new(unbound_key)
             }
 
