@@ -48,10 +48,35 @@ mod tests {
         connection::id::ConnectionInfo,
         crypto::retry,
         inet, packet,
+        random,
         packet::number::{PacketNumberSpace, TruncatedPacketNumber},
         token,
         varint::VarInt,
     };
+    #[derive(Debug, Default)]
+    pub struct RandomGenerator(pub u8);
+
+    impl random::Generator for RandomGenerator {
+        fn public_random_fill(&mut self, dest: &mut [u8]) {
+            let seed = self.0;
+
+            for (i, elem) in dest.iter_mut().enumerate() {
+                *elem = seed ^ i as u8;
+            }
+
+            self.0 = self.0.wrapping_add(1)
+        }
+
+        fn private_random_fill(&mut self, dest: &mut [u8]) {
+            let seed = u8::max_value() - self.0;
+
+            for (i, elem) in dest.iter_mut().enumerate() {
+                *elem = seed ^ i as u8;
+            }
+
+            self.0 = self.0.wrapping_add(1)
+        }
+    }
 
     #[test]
     fn test_tag_validation() {
@@ -101,10 +126,11 @@ mod tests {
             }
         {
             let local_conn_id = connection::LocalId::try_from_bytes(&retry::example::SCID).unwrap();
-            if let Some(range) = packet::retry::Retry::encode_packet::<_, RingRetryKey>(
+            if let Some(range) = packet::retry::Retry::encode_packet::<_, RingRetryKey, _>(
                 &remote_address,
                 &packet,
                 &local_conn_id,
+                &mut RandomGenerator(5),
                 &mut token_format,
                 &mut output_buf,
             ) {
@@ -150,10 +176,11 @@ mod tests {
             //# Connection ID field of the packet sent by the client.
             let local_conn_id =
                 connection::LocalId::try_from_bytes(&retry::example::ODCID).unwrap();
-            assert!(packet::retry::Retry::encode_packet::<_, RingRetryKey>(
+            assert!(packet::retry::Retry::encode_packet::<_, RingRetryKey, _>(
                 &remote_address,
                 &packet,
                 &local_conn_id,
+                &mut RandomGenerator(5),
                 &mut token_format,
                 &mut output_buf,
             )
