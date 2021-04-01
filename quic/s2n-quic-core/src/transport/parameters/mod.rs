@@ -1248,7 +1248,10 @@ impl<
         );
         load!(unidirectional_data_window, initial_max_stream_data_uni);
         load!(max_open_bidirectional_streams, initial_max_streams_bidi);
-        load!(max_open_unidirectional_streams, initial_max_streams_uni);
+        load!(
+            max_open_remote_unidirectional_streams,
+            initial_max_streams_uni
+        );
         load!(max_ack_delay, max_ack_delay);
         load!(max_active_connection_ids, active_connection_id_limit);
     }

@@ -12,6 +12,7 @@ use crate::{
     contexts::{ConnectionApiCallContext, OnTransmitError, WriteContext},
     endpoint,
     stream::{
+        controller::MAX_STREAMS_SYNC_FRACTION,
         stream_impl::StreamConfig,
         stream_interests::{StreamInterestProvider, StreamInterests},
         AbstractStreamManager, StreamError, StreamEvents, StreamTrait,
@@ -29,9 +30,10 @@ use s2n_quic_core::{
     application::Error as ApplicationErrorCode,
     connection,
     frame::{
-        stream::StreamRef, MaxData, MaxStreamData, ResetStream, StopSending, Stream as StreamFrame,
-        StreamDataBlocked,
+        stream::StreamRef, Frame, MaxData, MaxStreamData, MaxStreams, ResetStream, StopSending,
+        Stream as StreamFrame, StreamDataBlocked,
     },
+    packet::number::PacketNumberRange,
     stream::{ops, StreamId, StreamType},
     transport::{
         parameters::{InitialFlowControlLimits, InitialStreamLimits},
@@ -347,6 +349,8 @@ fn create_stream_manager(local_ep_type: endpoint::Type) -> AbstractStreamManager
 
     let limits = ConnectionLimits::default()
         .with_max_send_buffer_size(4096)
+        .unwrap()
+        .with_max_open_local_unidirectional_streams(256)
         .unwrap();
 
     AbstractStreamManager::<MockStream>::new(
@@ -372,7 +376,7 @@ fn try_open(
 
 #[test]
 fn remote_messages_open_unopened_streams() {
-    const STREAMS_TO_OPEN: usize = 8;
+    const STREAMS_TO_OPEN: u64 = 8;
 
     for initiator_type in &[endpoint::Type::Server, endpoint::Type::Client] {
         for stream_type in &[StreamType::Bidirectional, StreamType::Unidirectional] {
@@ -414,7 +418,7 @@ fn remote_messages_open_unopened_streams() {
 
 #[test]
 fn remote_streams_do_not_open_if_manager_is_closed() {
-    const STREAMS_TO_OPEN: usize = 8;
+    const STREAMS_TO_OPEN: u64 = 8;
 
     for initiator_type in &[endpoint::Type::Server, endpoint::Type::Client] {
         for stream_type in &[StreamType::Bidirectional, StreamType::Unidirectional] {
@@ -602,9 +606,326 @@ fn max_data_replenishes_connection_flow_control_window() {
     }
 }
 
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6
+//= type=test
+//# A receiver MUST
+//# ignore any MAX_STREAMS frame that does not increase the stream limit.
+
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.11
+//= type=test
+//# MAX_STREAMS frames that do not increase the stream limit MUST be
+//# ignored.
+
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6
+//= type=test
+//# Endpoints MUST NOT exceed the limit set by their peer.
+
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.11
+//= type=test
+//# An endpoint MUST NOT open more streams than permitted by the current
+//# stream limit set by its peer.
+#[test]
+fn max_streams_replenishes_stream_control_capacity() {
+    let mut manager = create_stream_manager(endpoint::Type::Server);
+
+    for stream_type in [StreamType::Bidirectional, StreamType::Unidirectional]
+        .iter()
+        .copied()
+    {
+        let current_max_streams =
+            manager.with_stream_controller(|ctrl| ctrl.max_streams_latest_value(stream_type));
+
+        // Open and close up to the current max streams limit to ensure we are blocked on the
+        // peer's max streams limit and not the local concurrent stream limit.
+        for i in 0..*current_max_streams {
+            let stream_id = StreamId::nth(endpoint::Type::Server, stream_type, i).unwrap();
+            manager.with_stream_controller(|ctrl| ctrl.on_open_stream(stream_id));
+            manager.with_stream_controller(|ctrl| ctrl.on_close_stream(stream_id));
+        }
+
+        let (waker, _counter) = new_count_waker();
+        assert!(manager
+            .poll_open(stream_type, &Context::from_waker(&waker))
+            .is_pending());
+
+        for additional_streams in &[VarInt::from_u8(0), VarInt::from_u8(1), VarInt::from_u8(10)] {
+            assert!(manager
+                .on_max_streams(&MaxStreams {
+                    stream_type,
+                    maximum_streams: current_max_streams + *additional_streams,
+                })
+                .is_ok());
+            assert_eq!(
+                *additional_streams,
+                manager.with_stream_controller(
+                    |ctrl| ctrl.available_outgoing_stream_capacity(stream_type)
+                )
+            );
+        }
+
+        assert!(manager
+            .poll_open(stream_type, &Context::from_waker(&waker))
+            .is_ready());
+    }
+}
+
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6
+//= type=test
+//# An endpoint MUST NOT wait
+//# to receive this signal before advertising additional credit, since
+//# doing so will mean that the peer will be blocked for at least an
+//# entire round trip
+#[test]
+fn peer_closing_streams_transmits_max_streams() {
+    let mut manager = create_stream_manager(endpoint::Type::Server);
+
+    for stream_type in [StreamType::Bidirectional, StreamType::Unidirectional]
+        .iter()
+        .copied()
+    {
+        let current_max_streams =
+            manager.with_stream_controller(|ctrl| ctrl.max_streams_latest_value(stream_type));
+
+        // The peer opens up to the current max streams limit
+        for i in 0..*current_max_streams {
+            let stream_id = StreamId::nth(endpoint::Type::Client, stream_type, i).unwrap();
+            assert_eq!(
+                Ok(()),
+                manager.on_data(&stream_data(stream_id, VarInt::from_u32(0), &[], false))
+            );
+        }
+
+        assert_eq!(
+            transmission::Interest::None,
+            manager.transmission_interest()
+        );
+
+        // The peer closes MAX_STREAMS_SYNC_FRACTION of streams
+        let streams_to_close = current_max_streams / MAX_STREAMS_SYNC_FRACTION;
+
+        for i in 0..*streams_to_close {
+            let stream_id = StreamId::nth(endpoint::Type::Client, stream_type, i).unwrap();
+            manager.with_asserted_stream(stream_id, |stream| {
+                stream.interests.finalization = true;
+            });
+        }
+
+        assert_eq!(
+            transmission::Interest::NewData,
+            manager.transmission_interest()
+        );
+
+        let mut frame_buffer = OutgoingFrameBuffer::new();
+        let mut write_context = MockWriteContext::new(
+            s2n_quic_platform::time::now(),
+            &mut frame_buffer,
+            transmission::Constraint::None,
+            endpoint::Type::Server,
+        );
+        let packet_number = write_context.packet_number();
+        assert!(manager.on_transmit(&mut write_context).is_ok());
+
+        let expected_frame = Frame::MaxStreams {
+            0: MaxStreams {
+                stream_type,
+                maximum_streams: current_max_streams + streams_to_close,
+            },
+        };
+
+        assert_eq!(
+            expected_frame,
+            write_context.frame_buffer.pop_front().unwrap().as_frame()
+        );
+
+        assert_eq!(
+            transmission::Interest::None,
+            manager.transmission_interest()
+        );
+
+        manager.on_packet_loss(&PacketNumberRange::new(packet_number, packet_number));
+
+        assert_eq!(
+            transmission::Interest::LostData,
+            manager.transmission_interest()
+        );
+
+        let packet_number = write_context.packet_number();
+        assert!(manager.on_transmit(&mut write_context).is_ok());
+
+        manager.on_packet_ack(&PacketNumberRange::new(packet_number, packet_number));
+
+        assert_eq!(
+            transmission::Interest::None,
+            manager.transmission_interest()
+        );
+    }
+}
+
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6
+//= type=test
+//# An endpoint
+//# that receives a frame with a stream ID exceeding the limit it has
+//# sent MUST treat this as a connection error of type STREAM_LIMIT_ERROR
+//# (Section 11).
+
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.11
+//= type=test
+//# An endpoint MUST terminate a connection
+//# with a STREAM_LIMIT_ERROR error if a peer opens more streams than was
+//# permitted.
+#[test]
+fn stream_limit_error_on_peer_open_stream_too_large() {
+    let mut manager = create_stream_manager(endpoint::Type::Server);
+
+    for stream_type in [StreamType::Bidirectional, StreamType::Unidirectional]
+        .iter()
+        .copied()
+    {
+        let current_max_streams =
+            manager.with_stream_controller(|ctrl| ctrl.max_streams_latest_value(stream_type));
+
+        let max_stream_id = StreamId::nth(
+            endpoint::Type::Client,
+            stream_type,
+            current_max_streams.as_u64(),
+        )
+        .unwrap();
+
+        assert!(manager
+            .with_stream_controller(|ctrl| ctrl.on_remote_open_stream(max_stream_id))
+            .is_ok());
+
+        assert_eq!(
+            Err(transport::Error::STREAM_LIMIT_ERROR),
+            manager.with_stream_controller(
+                |ctrl| ctrl.on_remote_open_stream(max_stream_id.next_of_type().unwrap())
+            )
+        );
+    }
+}
+
+#[test]
+fn blocked_on_local_concurrent_stream_limit() {
+    for stream_type in [StreamType::Bidirectional, StreamType::Unidirectional]
+        .iter()
+        .copied()
+    {
+        let mut manager = create_stream_manager(endpoint::Type::Server);
+
+        // The peer allows a large amount of streams to be opened
+        assert!(manager
+            .on_max_streams(&MaxStreams {
+                stream_type,
+                maximum_streams: VarInt::from_u32(100_000),
+            })
+            .is_ok());
+
+        let available_outgoing_stream_capacity = manager
+            .with_stream_controller(|ctrl| ctrl.available_outgoing_stream_capacity(stream_type));
+
+        assert!(available_outgoing_stream_capacity < VarInt::from_u32(100_000));
+
+        let (waker, wake_counter) = new_count_waker();
+
+        for _i in 0..*available_outgoing_stream_capacity {
+            assert!(manager
+                .poll_open(stream_type, &Context::from_waker(&waker))
+                .is_ready());
+        }
+
+        assert_eq!(wake_counter, 0);
+
+        // Cannot open any more streams
+        assert!(manager
+            .poll_open(stream_type, &Context::from_waker(&waker))
+            .is_pending());
+
+        // Close one stream
+        manager.with_asserted_stream(
+            StreamId::initial(endpoint::Type::Server, stream_type),
+            |stream| {
+                stream.interests.finalization = true;
+            },
+        );
+
+        // One more stream can be opened
+        assert!(manager
+            .poll_open(stream_type, &Context::from_waker(&waker))
+            .is_ready());
+        assert_eq!(wake_counter, 1);
+        assert!(manager
+            .poll_open(stream_type, &Context::from_waker(&waker))
+            .is_pending());
+
+        // Close the stream manager and verify the wake counter is incremented
+        manager.close(connection::Error::Application {
+            error: ApplicationErrorCode::new(1).unwrap(),
+            initiator: endpoint::Location::Local,
+        });
+
+        assert_eq!(wake_counter, 2);
+    }
+}
+
+#[test]
+fn asymmetric_stream_limits() {
+    let mut initial_local_limits = create_default_initial_flow_control_limits();
+    let mut initial_peer_limits = create_default_initial_flow_control_limits();
+
+    let limits = ConnectionLimits::default()
+        .with_max_send_buffer_size(4096)
+        .unwrap()
+        .with_max_open_local_unidirectional_streams(256)
+        .unwrap();
+
+    for (local_limit, peer_limit) in &[(100, 5), (5, 100)] {
+        for stream_type in [StreamType::Bidirectional, StreamType::Unidirectional]
+            .iter()
+            .copied()
+        {
+            initial_local_limits.max_streams_bidi = VarInt::from_u8(*local_limit);
+            initial_peer_limits.max_streams_bidi = VarInt::from_u8(*peer_limit);
+            initial_local_limits.max_streams_uni = VarInt::from_u8(*local_limit);
+            initial_peer_limits.max_streams_uni = VarInt::from_u8(*peer_limit);
+
+            let mut manager = AbstractStreamManager::<MockStream>::new(
+                &limits,
+                endpoint::Type::Server,
+                initial_local_limits,
+                initial_peer_limits,
+            );
+
+            // The peer opens streams up to the limit we have given them
+            for i in 0..*local_limit {
+                let stream_id =
+                    StreamId::nth(endpoint::Type::Client, stream_type, i as u64).unwrap();
+                assert_eq!(
+                    Ok(()),
+                    manager.on_data(&stream_data(stream_id, VarInt::from_u32(0), &[], false))
+                );
+            }
+
+            let available_outgoing_stream_capacity = manager.with_stream_controller(|cntl| {
+                cntl.available_outgoing_stream_capacity(stream_type)
+            });
+
+            if stream_type.is_bidirectional() {
+                // The peer opening bidirectional streams uses up the capacity for locally opening streams
+                assert_eq!(VarInt::from_u8(0), available_outgoing_stream_capacity);
+            } else {
+                // The peer opening incoming streams does not affect the capacity for opening outgoing streams
+                assert_eq!(
+                    VarInt::from_u8(*peer_limit),
+                    available_outgoing_stream_capacity
+                );
+            }
+        }
+    }
+}
+
 #[test]
 fn accept_returns_remotely_initiated_stream() {
-    const STREAMS_TO_OPEN: usize = 8;
+    const STREAMS_TO_OPEN: u64 = 8;
 
     for initiator_type in [endpoint::Type::Server, endpoint::Type::Client]
         .iter()
@@ -700,7 +1021,7 @@ fn accept_returns_remotely_initiated_stream() {
 
 #[test]
 fn accept_returns_opened_streams_of_any_type() {
-    const STREAMS_TO_OPEN: usize = 8;
+    const STREAMS_TO_OPEN: u64 = 8;
 
     for initiator_type in [endpoint::Type::Server, endpoint::Type::Client]
         .iter()
@@ -853,7 +1174,7 @@ fn accept_notifies_on_both_types() {
 
 #[test]
 fn accept_returns_opened_streams_even_if_stream_manager_was_closed() {
-    const STREAMS_TO_OPEN: usize = 8;
+    const STREAMS_TO_OPEN: u64 = 8;
 
     for initiator_type in &[endpoint::Type::Server, endpoint::Type::Client] {
         for local_ep_type in &[endpoint::Type::Server, endpoint::Type::Client] {

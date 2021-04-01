@@ -5,6 +5,7 @@
 //! map of all active Streams, as well as a variety of dynamic Stream lists.
 
 use crate::{
+    stream,
     stream::{stream_impl::StreamTrait, stream_interests::StreamInterests},
     transmission,
 };
@@ -233,7 +234,7 @@ impl<S> core::fmt::Debug for StreamContainer<S> {
 }
 
 macro_rules! iterate_uninterruptible {
-    ($sel:ident, $list_name:tt, $link_name:ident, $func:ident) => {
+    ($sel:ident, $list_name:tt, $link_name:ident, $controller:ident, $func:ident) => {
         for stream in $sel.interest_lists.$list_name.take() {
             debug_assert!(!stream.$link_name.is_linked());
 
@@ -246,12 +247,12 @@ macro_rules! iterate_uninterruptible {
             $sel.interest_lists.update_interests(&stream, interests);
         }
 
-        $sel.finalize_done_streams();
+        $sel.finalize_done_streams($controller);
     };
 }
 
 macro_rules! iterate_interruptible {
-    ($sel:ident, $list_name:tt, $link_name:ident, $func:ident) => {
+    ($sel:ident, $list_name:tt, $link_name:ident, $controller:ident, $func:ident) => {
         let mut extracted_list = $sel.interest_lists.$list_name.take();
         let mut cursor = extracted_list.front_mut();
 
@@ -279,7 +280,7 @@ macro_rules! iterate_interruptible {
             }
         }
 
-        $sel.finalize_done_streams();
+        $sel.finalize_done_streams($controller);
     };
 }
 
@@ -323,9 +324,17 @@ impl<S: StreamTrait> StreamContainer<S> {
     /// will get queried for its new interests, and all lists will be updated
     /// according to those.
     ///
+    /// The `stream::Controller` will be notified of streams that have been
+    /// closed to allow for further streams to be opened.
+    ///
     /// `Stream`s which signal finalization interest will be removed from the
     /// `StreamContainer`.
-    pub fn with_stream<F, R>(&mut self, stream_id: StreamId, func: F) -> Option<R>
+    pub fn with_stream<F, R>(
+        &mut self,
+        stream_id: StreamId,
+        controller: &mut stream::Controller,
+        func: F,
+    ) -> Option<R>
     where
         F: FnOnce(&mut S) -> R,
     {
@@ -356,13 +365,16 @@ impl<S: StreamTrait> StreamContainer<S> {
         // Update the interest lists after the interactions and then remove
         // all finalized streams
         self.interest_lists.update_interests(&node_ptr, interests);
-        self.finalize_done_streams();
+        self.finalize_done_streams(controller);
 
         Some(result)
     }
 
     /// Removes all Streams in the `done` state from the `StreamManager`.
-    pub fn finalize_done_streams(&mut self) {
+    ///
+    /// The `stream::Controller` will be notified of streams that have been
+    /// closed to allow for further streams to be opened.
+    pub fn finalize_done_streams(&mut self, controller: &mut stream::Controller) {
         for stream in self.interest_lists.done_streams.take() {
             // Remove the Stream from `stream_map`
             let mut cursor = self.stream_map.find_mut(&stream.inner.borrow().stream_id());
@@ -398,40 +410,59 @@ impl<S: StreamTrait> StreamContainer<S> {
                 waiting_for_connection_flow_control_credits,
                 waiting_for_connection_flow_control_credits_link
             );
+
+            controller.on_close_stream(stream.inner.borrow().stream_id());
         }
     }
 
     /// Iterates over all `Stream`s which are waiting for frame delivery,
     /// and executes the given function on each `Stream`
-    pub fn iterate_frame_delivery_list<F>(&mut self, mut func: F)
-    where
+    ///
+    /// The `stream::Controller` will be notified of streams that have been
+    /// closed to allow for further streams to be opened.
+    pub fn iterate_frame_delivery_list<F>(
+        &mut self,
+        controller: &mut stream::Controller,
+        mut func: F,
+    ) where
         F: FnMut(&mut S),
     {
         iterate_uninterruptible!(
             self,
             waiting_for_frame_delivery,
             waiting_for_frame_delivery_link,
+            controller,
             func
         );
     }
 
     /// Iterates over all `Stream`s which waiting for connection flow control
     /// credits, and executes the given function on each `Stream`
-    pub fn iterate_connection_flow_credits_list<F>(&mut self, mut func: F)
-    where
+    ///
+    /// The `stream::Controller` will be notified of streams that have been
+    /// closed to allow for further streams to be opened.
+    pub fn iterate_connection_flow_credits_list<F>(
+        &mut self,
+        controller: &mut stream::Controller,
+        mut func: F,
+    ) where
         F: FnMut(&mut S) -> StreamContainerIterationResult,
     {
         iterate_interruptible!(
             self,
             waiting_for_connection_flow_control_credits,
             waiting_for_connection_flow_control_credits_link,
+            controller,
             func
         );
     }
 
     /// Iterates over all `Stream`s which are waiting for transmission,
     /// and executes the given function on each `Stream`
-    pub fn iterate_transmission_list<F>(&mut self, mut func: F)
+    ///
+    /// The `stream::Controller` will be notified of streams that have been
+    /// closed to allow for further streams to be opened.
+    pub fn iterate_transmission_list<F>(&mut self, controller: &mut stream::Controller, mut func: F)
     where
         F: FnMut(&mut S) -> StreamContainerIterationResult,
     {
@@ -439,27 +470,38 @@ impl<S: StreamTrait> StreamContainer<S> {
             self,
             waiting_for_transmission,
             waiting_for_transmission_link,
+            controller,
             func
         );
     }
 
     /// Iterates over all `Stream`s which are waiting for retransmission,
     /// and executes the given function on each `Stream`
-    pub fn iterate_retransmission_list<F>(&mut self, mut func: F)
-    where
+    ///
+    /// The `stream::Controller` will be notified of streams that have been
+    /// closed to allow for further streams to be opened.
+    pub fn iterate_retransmission_list<F>(
+        &mut self,
+        controller: &mut stream::Controller,
+        mut func: F,
+    ) where
         F: FnMut(&mut S) -> StreamContainerIterationResult,
     {
         iterate_interruptible!(
             self,
             waiting_for_retransmission,
             waiting_for_retransmission_link,
+            controller,
             func
         );
     }
 
     /// Iterates over all `Stream`s which are part of this container, and executes
     /// the given function on each `Stream`
-    pub fn iterate_streams<F>(&mut self, mut func: F)
+    ///
+    /// The `stream::Controller` will be notified of streams that have been
+    /// closed to allow for further streams to be opened.
+    pub fn iterate_streams<F>(&mut self, controller: &mut stream::Controller, mut func: F)
     where
         F: FnMut(&mut S),
     {
@@ -485,7 +527,7 @@ impl<S: StreamTrait> StreamContainer<S> {
 
         // Cleanup all `done` streams after we finished interacting with all
         // of them.
-        self.finalize_done_streams();
+        self.finalize_done_streams(controller);
     }
 }
 

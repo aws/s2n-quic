@@ -4,6 +4,7 @@
 //! This module contains the implementation of QUIC `Streams` and their management
 
 mod api;
+mod controller;
 mod incoming_connection_flow_controller;
 mod outgoing_connection_flow_controller;
 mod receive_stream;
@@ -18,6 +19,7 @@ mod stream_manager;
 pub(crate) mod contract;
 
 pub use api::*;
+pub use controller::Controller;
 pub use s2n_quic_core::stream::limits::Limits;
 pub use stream_events::StreamEvents;
 pub use stream_impl::{StreamImpl, StreamTrait};

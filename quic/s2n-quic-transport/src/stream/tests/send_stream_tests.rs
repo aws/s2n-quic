@@ -2551,7 +2551,7 @@ fn resetting_a_stream_takes_priority() {
 
 #[test]
 fn can_send_multiple_chunks() {
-    let max_send_buffer_size = 1500;
+    let max_send_buffer_size = 3000;
     for sizes in [&[10, 10, 10][..], &[500, 500, 500], &[1000, 1000, 1000][..]].iter() {
         for finish in [false, true].iter().cloned() {
             for flush in [false, true].iter().cloned() {
@@ -2649,9 +2649,16 @@ fn can_send_multiple_chunks() {
 
                     assert_eq!(expected_consumed_bytes, offset);
 
+                    let no_write_waiter = !with_context || !flush;
+                    let expected_interests = if finish && no_write_waiter {
+                        stream_interests(&["fin"])
+                    } else {
+                        stream_interests(&[])
+                    };
+
                     execute_instructions(
                         &mut test_env,
-                        &[Instruction::CheckInterests(stream_interests(&[]))],
+                        &[Instruction::CheckInterests(expected_interests)],
                     );
                 }
             }
