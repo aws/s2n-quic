@@ -25,6 +25,7 @@ use s2n_quic_core::{
         StopSending, StreamDataBlocked, StreamsBlocked,
     },
     stream::{ops, StreamId, StreamType},
+    time::Timestamp,
     transport::{self, parameters::InitialFlowControlLimits},
     varint::VarInt,
 };
@@ -530,13 +531,6 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
             .get_mut(local_endpoint_type, stream_type)
             .ok_or(connection::Error::StreamIdExhausted)?;
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6
-        //= type=TODO
-        //= tracking-issue=244
-        //= feature=Stream concurrency
-        //# An endpoint that is unable to open a new stream due to the peer's
-        //# limits SHOULD send a STREAMS_BLOCKED frame (Section 19.14).
-
         // Increase the next utilized Stream ID
         *self
             .inner
@@ -584,6 +578,16 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
                 events.wake_all();
             },
         );
+    }
+
+    /// Returns all timers for the component
+    pub fn timers(&self) -> impl Iterator<Item = &Timestamp> {
+        core::iter::empty().chain(self.inner.stream_controller.timers())
+    }
+
+    /// Called when the connection timer expires
+    pub fn on_timeout(&mut self, now: Timestamp) {
+        self.inner.stream_controller.on_timeout(now)
     }
 
     /// Closes the [`AbstractStreamManager`] and resets all streams with the

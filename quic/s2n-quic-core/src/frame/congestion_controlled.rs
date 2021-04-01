@@ -35,4 +35,5 @@ impl CongestionControlled for crate::frame::Ping {}
 impl CongestionControlled for crate::frame::ResetStream {}
 impl CongestionControlled for crate::frame::RetireConnectionId {}
 impl CongestionControlled for crate::frame::StopSending {}
+impl CongestionControlled for crate::frame::StreamsBlocked {}
 impl<Data> CongestionControlled for crate::frame::Stream<Data> {}

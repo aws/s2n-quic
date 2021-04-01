@@ -298,6 +298,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             .chain(self.ack_manager.timers())
             .chain(self.recovery_manager.timers())
             .chain(self.key_set.timers())
+            .chain(self.stream_manager.timers())
     }
 
     /// Called when the connection timer expired
@@ -318,6 +319,8 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             path_manager,
         );
         recovery_manager.on_timeout(timestamp, &mut context);
+
+        self.stream_manager.on_timeout(timestamp);
     }
 
     /// Returns `true` if the recovery manager for this packet space requires a probe

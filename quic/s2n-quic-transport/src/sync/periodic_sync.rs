@@ -35,36 +35,35 @@ impl<T: Copy + Clone + Eq + PartialEq, S: ValueToFrameWriter<T>> PeriodicSync<T,
         }
     }
 
-    /// Returns `true` if the synchronization has been cancelled
-    pub fn is_cancelled(&self) -> bool {
-        self.delivery.is_cancelled()
-    }
-
-    /// Requested delivery of the given value.
+    /// Requested delivery of the given value. If delivery has already been requested, the
+    /// original value will be overwritten.
     pub fn request_delivery(&mut self, value: T) {
-        if let DeliveryState::NotRequested = self.delivery {
-            self.delivery = DeliveryState::Requested(value);
+        match self.delivery {
+            DeliveryState::NotRequested => self.delivery = DeliveryState::Requested(value),
+            DeliveryState::Scheduled(_, ref mut original_value)
+            | DeliveryState::Requested(ref mut original_value) => *original_value = value,
+            _ => {}
         }
     }
 
-    /// Called when the pending delivery timer expires
+    /// Called when the connection timer expires
     pub fn on_timeout(&mut self, now: Timestamp) {
-        if let DeliveryState::Pending(mut delivery_timer, value) = self.delivery {
+        if let DeliveryState::Scheduled(mut delivery_timer, value) = self.delivery {
             if delivery_timer.poll_expiration(now).is_ready() {
                 self.delivery = DeliveryState::Requested(value);
             }
         }
     }
 
-    /// Returns the timer for a pending delivery
+    /// Returns the timer for a scheduled delivery
     pub fn timers(&self) -> impl Iterator<Item = &Timestamp> {
         match &self.delivery {
-            DeliveryState::Pending(delivery_timer, _) => delivery_timer.iter(),
+            DeliveryState::Scheduled(delivery_timer, _) => delivery_timer.iter(),
             _ => None.iter(),
         }
     }
 
-    /// Stop to synchronize the value to the peer
+    /// Stop synchronizing the value to the peer
     pub fn stop_sync(&mut self) {
         self.delivery.cancel();
     }
@@ -77,7 +76,7 @@ impl<T: Copy + Clone + Eq + PartialEq, S: ValueToFrameWriter<T>> PeriodicSync<T,
             if ack_set.contains(in_flight.packet.packet_nr) {
                 let mut next_delivery = VirtualTimer::default();
                 next_delivery.set(in_flight.packet.timestamp + self.sync_period);
-                self.delivery = DeliveryState::Pending(next_delivery, in_flight.value);
+                self.delivery = DeliveryState::Scheduled(next_delivery, in_flight.value);
             }
         }
     }
