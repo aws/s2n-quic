@@ -22,4 +22,8 @@ tokio = { version = "0.2", features = ["full"] }
 
 [dev-dependencies]
 bolero = "0.6"
-flume = { version = "0.10", default-features = false, features = ["async"] }
+# The main flume has dependencies which don't have a rolling 6-month MSRV
+#
+# This fork uses `parking_lot` instead, which does. Since this is only a dev-dependency, it
+# shouldn't prevent us from publishing to crates.io.
+flume = { git = "https://github.com/camshaft/flume", default-features = false, features = ["async"] }
