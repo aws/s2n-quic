@@ -91,11 +91,7 @@ pub fn as_frame(error: Error) -> Option<ConnectionClose<'static>> {
         Error::Transport { error, .. } => Some(ConnectionClose {
             error_code: *error.code,
             frame_type: error.frame_type,
-            reason: if error.reason.is_empty() {
-                None
-            } else {
-                Some(error.reason.as_ref())
-            },
+            reason: Some(error.reason.as_bytes()),
         }),
         Error::Application { error, .. } => Some(ConnectionClose {
             error_code: *error,
@@ -109,10 +105,15 @@ pub fn as_frame(error: Error) -> Option<ConnectionClose<'static>> {
         Error::StreamIdExhausted => Some(ConnectionClose {
             error_code: *transport::Error::PROTOCOL_VIOLATION.code,
             frame_type: Some(Default::default()),
-            reason: None,
+            reason: Some(b"stream ids exhausted"),
+        }),
+        Error::Unspecified if cfg!(debug_assertions) => Some(ConnectionClose {
+            error_code: *transport::Error::INTERNAL_ERROR.code,
+            frame_type: Some(Default::default()),
+            reason: Some(b"unspecified error occurred"),
         }),
         Error::Unspecified => Some(ConnectionClose {
-            error_code: *transport::Error::INTERNAL_ERROR.code,
+            error_code: *transport::Error::PROTOCOL_VIOLATION.code,
             frame_type: Some(Default::default()),
             reason: None,
         }),

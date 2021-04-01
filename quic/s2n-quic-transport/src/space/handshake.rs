@@ -68,8 +68,8 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
     }
 
     /// Returns true if the packet number has already been processed
-    pub fn is_duplicate(&self, _packet_number: PacketNumber) -> bool {
-        match self.processed_packet_numbers.check(_packet_number) {
+    pub fn is_duplicate(&self, packet_number: PacketNumber) -> bool {
+        match self.processed_packet_numbers.check(packet_number) {
             Ok(()) => false,
             Err(SlidingWindowError::Duplicate) => {
                 // TODO: emit duplicate metric
@@ -106,15 +106,15 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
         let mut outcome = transmission::Outcome::default();
 
         let payload = transmission::Transmission {
-            ack_manager: &mut self.ack_manager,
             config: <PhantomData<Config>>::default(),
             outcome: &mut outcome,
             packet_number,
             payload: transmission::early::Payload {
+                ack_manager: &mut self.ack_manager,
                 crypto_stream: &mut self.crypto_stream,
                 packet_number_space: PacketNumberSpace::Handshake,
+                recovery_manager: &mut self.recovery_manager,
             },
-            recovery_manager: &mut self.recovery_manager,
             timestamp: context.timestamp,
             transmission_constraint,
             tx_packet_numbers: &mut self.tx_packet_numbers,
@@ -140,6 +140,50 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
         let (recovery_manager, mut recovery_context) =
             self.recovery(context.path_mut(), handshake_status);
         recovery_manager.on_packet_sent(packet_number, outcome, time_sent, &mut recovery_context);
+
+        Ok(buffer)
+    }
+
+    pub fn on_transmit_close<'a>(
+        &mut self,
+        context: &mut ConnectionTransmissionContext<Config>,
+        connection_close: &ConnectionClose,
+        buffer: EncoderBuffer<'a>,
+    ) -> Result<EncoderBuffer<'a>, PacketEncodingError<'a>> {
+        let packet_number = self.tx_packet_numbers.next();
+
+        let packet_number_encoder = self.packet_number_encoder();
+
+        let mut outcome = transmission::Outcome::default();
+
+        let payload = transmission::Transmission {
+            config: <PhantomData<Config>>::default(),
+            outcome: &mut outcome,
+            packet_number,
+            payload: transmission::connection_close::Payload {
+                connection_close,
+                packet_number_space: PacketNumberSpace::Handshake,
+            },
+            timestamp: context.timestamp,
+            transmission_constraint: transmission::Constraint::None,
+            tx_packet_numbers: &mut self.tx_packet_numbers,
+        };
+
+        let packet = Handshake {
+            version: context.quic_version,
+            destination_connection_id: context.path().peer_connection_id.as_ref(),
+            source_connection_id: context.source_connection_id.as_ref(),
+            packet_number,
+            payload,
+        };
+
+        let (_protected_packet, buffer) = packet.encode_packet(
+            &self.key,
+            &self.header_key,
+            packet_number_encoder,
+            context.min_packet_len,
+            buffer,
+        )?;
 
         Ok(buffer)
     }

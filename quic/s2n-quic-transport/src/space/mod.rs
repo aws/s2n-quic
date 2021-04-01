@@ -5,6 +5,7 @@ use crate::{
     connection, endpoint, path, processed_packet::ProcessedPacket, recovery::congestion_controller,
     space::rx_packet_numbers::AckManager, transmission,
 };
+use bytes::Bytes;
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     ack,
@@ -244,6 +245,129 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                 self.is_handshake_confirmed()
             }
         }
+    }
+
+    pub fn on_transmit_close(
+        &mut self,
+        connection_close: &ConnectionClose,
+        context: &mut connection::ConnectionTransmissionContext<Config>,
+        packet_buffer: &mut endpoint::PacketBuffer,
+    ) -> Option<Bytes> {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#10.2.3
+        //# When sending CONNECTION_CLOSE, the goal is to ensure that the peer
+        //# will process the frame.  Generally, this means sending the frame in a
+        //# packet with the highest level of packet protection to avoid the
+        //# packet being discarded.
+        let mut can_send_initial = self.initial.is_some();
+        let mut can_send_handshake = self.handshake.is_some();
+        let can_send_application = self.application.is_some();
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#10.2.3
+        //# After the handshake is confirmed (see
+        //# Section 4.1.2 of [QUIC-TLS]), an endpoint MUST send any
+        //# CONNECTION_CLOSE frames in a 1-RTT packet.
+        if self.is_handshake_confirmed() {
+            can_send_initial = false;
+            can_send_handshake = false;
+            debug_assert!(
+                can_send_application,
+                "if the handshake is confirmed, 1rtt keys should be available"
+            );
+        }
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#10.2.3
+        //# A client will always know whether the server has Handshake keys
+        //# (see Section 17.2.2.1), but it is possible that a server does not
+        //# know whether the client has Handshake keys.  Under these
+        //# circumstances, a server SHOULD send a CONNECTION_CLOSE frame in
+        //# both Handshake and Initial packets to ensure that at least one of
+        //# them is processable by the client.
+        if can_send_handshake {
+            match Config::ENDPOINT_TYPE {
+                endpoint::Type::Client => {
+                    // if we are a client and have handshake keys, we know the server
+                    // has handshake keys as well, so no need to transmit in initial.
+                    can_send_initial = false;
+                }
+                endpoint::Type::Server => {
+                    // try to send an initial packet if the space is still available
+                    //
+                    // Note: this assignment isn't actually needed; it's mostly to make
+                    //       the code easier to follow
+                    can_send_initial &= true;
+                }
+            }
+        }
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#10.2.3
+        //# Sending a CONNECTION_CLOSE of type 0x1d in an Initial or Handshake
+        //# packet could expose application state or be used to alter application
+        //# state.  A CONNECTION_CLOSE of type 0x1d MUST be replaced by a
+        //# CONNECTION_CLOSE of type 0x1c when sending the frame in Initial or
+        //# Handshake packets.  Otherwise, information about the application
+        //# state might be revealed.  Endpoints MUST clear the value of the
+        //# Reason Phrase field and SHOULD use the APPLICATION_ERROR code when
+        //# converting to a CONNECTION_CLOSE of type 0x1c.
+        let early_connection_close = if connection_close.frame_type.is_none() {
+            ConnectionClose {
+                error_code: *transport::Error::APPLICATION_ERROR.code,
+                frame_type: Some(Default::default()),
+                reason: None,
+            }
+        } else {
+            // Hide any sensitive information in early packet spaces
+            // by removing the error code, frame type, and reason
+            ConnectionClose {
+                error_code: *transport::Error::PROTOCOL_VIOLATION.code,
+                frame_type: Some(Default::default()),
+                reason: None,
+            }
+        };
+
+        // allow real errors to be returned in debug mode
+        #[cfg(debug_assertions)]
+        let early_connection_close = {
+            let _ = early_connection_close;
+            connection_close
+        };
+
+        packet_buffer.write(|buffer| {
+            macro_rules! write_packet {
+                ($buffer:expr, $space:ident, $check:expr, $frame:expr) => {
+                    if let Some((space, _handshake_status)) = self.$space().filter(|_| $check) {
+                        let result = space.on_transmit_close(context, &$frame, $buffer);
+
+                        match result {
+                            Ok(buffer) => buffer,
+                            Err(err) => err.take_buffer(),
+                        }
+                    } else {
+                        $buffer
+                    }
+                };
+            }
+
+            let buffer = write_packet!(
+                buffer,
+                initial_mut,
+                can_send_initial,
+                early_connection_close
+            );
+            let buffer = write_packet!(
+                buffer,
+                handshake_mut,
+                can_send_handshake,
+                early_connection_close
+            );
+            let buffer = write_packet!(
+                buffer,
+                application_mut,
+                can_send_application,
+                connection_close
+            );
+
+            buffer
+        })
     }
 }
 

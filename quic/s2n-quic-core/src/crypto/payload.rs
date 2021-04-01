@@ -58,6 +58,16 @@ impl<'a> ProtectedPayload<'a> {
     ) -> Result<&[u8], DecoderError> {
         header_protection_sample(self.buffer.peek(), self.header_len, sample_len)
     }
+
+    /// Returns the length of the payload, including the header
+    pub fn len(&self) -> usize {
+        self.buffer.len()
+    }
+
+    /// Returns `true` if the payload is empty
+    pub fn is_empty(&self) -> bool {
+        self.buffer.is_empty()
+    }
 }
 
 /// Type which restricts access to encrypted payloads

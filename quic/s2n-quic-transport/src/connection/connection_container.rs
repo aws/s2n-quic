@@ -47,18 +47,29 @@ struct ConnectionNode<C: ConnectionTrait> {
     /// This contains the actual implementation of the `Connection`
     inner: RefCell<C>,
     /// The shared state associated with the connection
-    shared_state: Arc<SynchronizedSharedConnectionState<C::Config>>,
+    shared_state: RefCell<State<C>>,
     /// Allows the Connection to be part of the `connection_map` collection
     tree_link: RBTreeLink,
     /// Allows the Connection to be part of the `done_connections` collection
     done_connections_link: LinkedListLink,
-    #[allow(dead_code)] // TODO do we still need this?
-    /// Allows the Connection to be part of the `accepted_connections` collection
-    accepted_connections_link: LinkedListLink,
     /// Allows the Connection to be part of the `waiting_for_transmission` collection
     waiting_for_transmission_link: LinkedListLink,
     /// Allows the Connection to be part of the `waiting_for_connection_id` collection
     waiting_for_connection_id_link: LinkedListLink,
+}
+
+enum State<C: ConnectionTrait> {
+    Connected(Arc<SynchronizedSharedConnectionState<C::Config>>),
+    Closing,
+}
+
+impl<C: ConnectionTrait> State<C> {
+    fn try_lock(&self) -> Option<std::sync::MutexGuard<'_, SharedConnectionState<C::Config>>> {
+        match self {
+            Self::Connected(state) => Some(state.lock()),
+            Self::Closing => None,
+        }
+    }
 }
 
 impl<C: ConnectionTrait> ConnectionNode<C> {
@@ -69,9 +80,8 @@ impl<C: ConnectionTrait> ConnectionNode<C> {
     ) -> ConnectionNode<C> {
         ConnectionNode {
             inner: RefCell::new(connection_impl),
-            shared_state,
+            shared_state: RefCell::new(State::Connected(shared_state)),
             tree_link: RBTreeLink::new(),
-            accepted_connections_link: LinkedListLink::new(),
             done_connections_link: LinkedListLink::new(),
             waiting_for_transmission_link: LinkedListLink::new(),
             waiting_for_connection_id_link: LinkedListLink::new(),
@@ -191,13 +201,20 @@ impl<C: ConnectionTrait> InterestLists<C> {
                 self.handshake_connections -= 1;
             }
 
-            // TODO shutdown endpoint if we can't send connections
-            if accept_queue
-                .send(Connection::new(node.shared_state.clone()))
-                .is_err()
-            {
-                return;
+            if let State::Connected(shared_state) = &*node.shared_state.borrow() {
+                if accept_queue
+                    .send(Connection::new(shared_state.clone()))
+                    .is_err()
+                {
+                    // TODO shutdown endpoint if we can't send connections
+                    return;
+                }
             }
+        }
+
+        // Connections that enter the draining phase should have their shared state freed
+        if interests.closing {
+            *node.shared_state.borrow_mut() = State::Closing;
         }
 
         if interests.finalization != node.done_connections_link.is_linked() {
@@ -243,11 +260,14 @@ macro_rules! iterate_interruptible {
 
             let (result, interests) = {
                 let mut mut_connection = connection.inner.borrow_mut();
-                let shared_state = &mut *connection.shared_state.lock();
 
-                let result = $func(&mut *mut_connection, shared_state);
-                mut_connection.update_connection_timer(shared_state);
-                let interests = mut_connection.interests(shared_state);
+                let shared_state = connection.shared_state.borrow();
+                let mut shared_state = shared_state.try_lock();
+
+                let result = $func(&mut *mut_connection, shared_state.as_deref_mut());
+
+                mut_connection.update_connection_timer(shared_state.as_deref_mut());
+                let interests = mut_connection.interests(shared_state.as_deref());
                 (result, interests)
             };
 
@@ -291,8 +311,8 @@ impl<C: ConnectionTrait> ConnectionContainer<C> {
         // would be better to avoid future bugs
         let interests = {
             let shared_state = &mut *shared_state.lock();
-            connection.update_connection_timer(shared_state);
-            connection.interests(shared_state)
+            connection.update_connection_timer(Some(shared_state));
+            connection.interests(Some(shared_state))
         };
 
         let new_connection = Rc::new(ConnectionNode::new(connection, shared_state));
@@ -325,7 +345,7 @@ impl<C: ConnectionTrait> ConnectionContainer<C> {
         func: F,
     ) -> Option<(R, ConnectionInterests)>
     where
-        F: FnOnce(&mut C, &mut SharedConnectionState<C::Config>) -> R,
+        F: FnOnce(&mut C, Option<&mut SharedConnectionState<C::Config>>) -> R,
     {
         let node_ptr: Rc<ConnectionNode<C>>;
         let result: R;
@@ -347,13 +367,16 @@ impl<C: ConnectionTrait> ConnectionContainer<C> {
             node_ptr = unsafe { connnection_node_rc_from_ref(node) };
 
             // Lock the shared connection state
-            let shared_state = &mut *node.shared_state.lock();
+            let shared_state = node.shared_state.borrow();
+            let mut shared_state = shared_state.try_lock();
 
             // Obtain a mutable reference to `Connection` implementation
             let connection: &mut C = &mut *node.inner.borrow_mut();
-            result = func(connection, shared_state);
-            connection.update_connection_timer(shared_state);
-            interests = connection.interests(shared_state);
+
+            result = func(connection, shared_state.as_deref_mut());
+
+            connection.update_connection_timer(shared_state.as_deref_mut());
+            interests = connection.interests(shared_state.as_deref());
         }
 
         // Update the interest lists after the interactions and outside of the per-connection Mutex.
@@ -425,7 +448,7 @@ impl<C: ConnectionTrait> ConnectionContainer<C> {
     where
         F: FnMut(
             &mut C,
-            &mut SharedConnectionState<C::Config>,
+            Option<&mut SharedConnectionState<C::Config>>,
         ) -> ConnectionContainerIterationResult,
     {
         iterate_interruptible!(
@@ -442,7 +465,7 @@ impl<C: ConnectionTrait> ConnectionContainer<C> {
     where
         F: FnMut(
             &mut C,
-            &mut SharedConnectionState<C::Config>,
+            Option<&mut SharedConnectionState<C::Config>>,
         ) -> ConnectionContainerIterationResult,
     {
         iterate_interruptible!(

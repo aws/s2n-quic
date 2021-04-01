@@ -8,6 +8,7 @@ use s2n_quic_core::{connection, inet::SocketAddress, time::Timestamp};
 
 mod api;
 mod api_provider;
+mod close_sender;
 mod connection_container;
 mod connection_id_mapper;
 mod connection_impl;
