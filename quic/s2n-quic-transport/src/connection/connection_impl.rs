@@ -27,6 +27,7 @@ use s2n_quic_core::{
     packet::{
         handshake::ProtectedHandshake,
         initial::{CleartextInitial, ProtectedInitial},
+        number::PacketNumberSpace,
         retry::ProtectedRetry,
         short::ProtectedShort,
         version_negotiation::ProtectedVersionNegotiation,
@@ -200,12 +201,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         //# current Probe Timeout (PTO).  This allows for multiple PTOs to
         //# expire, and therefore multiple probes to be sent and lost, prior to
         //# idle timeout.
-        duration = duration.max(
-            3 * self
-                .path_manager
-                .active_path()
-                .pto_period(Default::default()),
-        );
+        duration = duration.max(3 * self.current_pto());
 
         duration
     }
@@ -214,6 +210,13 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         self.timers
             .peer_idle_timer
             .set(timestamp + self.get_idle_timer_duration())
+    }
+
+    fn current_pto(&self) -> Duration {
+        self.path_manager.active_path().pto_period({
+            // Incorporate `max_ack_delay` into the timeout
+            PacketNumberSpace::ApplicationData
+        })
     }
 
     fn transmission_context(
@@ -336,10 +339,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 //# properly discarded.  These states SHOULD persist for at least three
                 //# times the current Probe Timeout (PTO) interval as defined in
                 //# [QUIC-RECOVERY].
-                let timeout = 3 * self
-                    .path_manager
-                    .active_path()
-                    .pto_period(Default::default());
+                let timeout = 3 * self.current_pto();
 
                 self.close_sender.close(packet, timeout, timestamp);
             } else if cfg!(debug_assertions) {

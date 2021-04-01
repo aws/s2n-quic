@@ -219,7 +219,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             packet_number,
             payload: transmission::connection_close::Payload {
                 connection_close,
-                packet_number_space: PacketNumberSpace::Handshake,
+                packet_number_space: PacketNumberSpace::ApplicationData,
             },
             timestamp: context.timestamp,
             transmission_constraint: transmission::Constraint::None,

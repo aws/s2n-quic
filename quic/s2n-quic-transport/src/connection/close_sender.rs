@@ -95,7 +95,13 @@ impl transmission::interest::Provider for CloseSender {
                 ..
             }
         ) {
-            transmission::Interest::NewData
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-34.txt#3
+            //# Packets containing frames besides ACK or CONNECTION_CLOSE frames
+            //# count toward congestion control limits and are considered in-
+            //# flight.
+
+            // this packet only contains a CONNECTION_CLOSE so bypass the CC
+            transmission::Interest::Forced
         } else {
             transmission::Interest::None
         }
@@ -163,17 +169,19 @@ impl Default for State {
 }
 
 impl State {
-    pub fn timers(&self) -> impl Iterator<Item = &Timestamp> {
+    pub fn timers(&self) -> impl Iterator<Item = &Timestamp> + '_ {
         if let Self::Closing {
             close_timer,
             limiter,
             ..
         } = self
         {
-            close_timer.iter().chain(limiter.timers())
+            Some((close_timer, limiter))
         } else {
-            None.iter().chain(None.iter())
+            None
         }
+        .into_iter()
+        .flat_map(|(close_timer, limiter)| close_timer.iter().chain(limiter.timers()))
     }
 
     pub fn on_timeout(&mut self, now: Timestamp) -> Poll<()> {

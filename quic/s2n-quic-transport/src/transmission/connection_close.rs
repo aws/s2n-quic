@@ -27,6 +27,12 @@ impl<'a> super::Payload for Payload<'a> {
 
 impl<'a> transmission::interest::Provider for Payload<'a> {
     fn transmission_interest(&self) -> transmission::Interest {
-        transmission::Interest::NewData
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-34.txt#3
+        //# Packets containing frames besides ACK or CONNECTION_CLOSE frames
+        //# count toward congestion control limits and are considered in-
+        //# flight.
+
+        // this packet only contains a CONNECTION_CLOSE so bypass the CC
+        transmission::Interest::Forced
     }
 }

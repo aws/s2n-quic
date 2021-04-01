@@ -35,9 +35,11 @@ impl<'a> super::Payload for Payload<'a> {
             || context.transmission_constraint().can_retransmit()
         {
             let _ = self.crypto_stream.tx.on_transmit((), context);
-        }
 
-        self.recovery_manager.on_transmit(context);
+            // send PINGs last, since they might not actually be needed if there's an ack-eliciting
+            // frame already present in the payload
+            self.recovery_manager.on_transmit(context);
+        }
 
         if did_send_ack {
             // inform the ack manager the packet is populated

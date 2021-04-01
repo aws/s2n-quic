@@ -89,7 +89,7 @@ impl<CC: CongestionController> Path<CC> {
         debug_assert_ne!(
             self.clamp_mtu(bytes),
             0,
-            "path should not transmit when amplication limited; tried to transmit {}",
+            "path should not transmit when amplification limited; tried to transmit {}",
             bytes
         );
 

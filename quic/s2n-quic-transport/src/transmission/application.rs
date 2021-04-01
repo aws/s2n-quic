@@ -49,10 +49,9 @@ impl<'a, S: Stream, CCE: congestion_controller::Endpoint> super::Payload for Pay
 
             // send PINGs last, since they might not actually be needed if there's an ack-eliciting
             // frame already present in the payload
+            self.recovery_manager.on_transmit(context);
             let _ = self.ping.on_transmit(context);
         }
-
-        self.recovery_manager.on_transmit(context);
 
         if did_send_ack {
             // inform the ack manager the packet is populated
