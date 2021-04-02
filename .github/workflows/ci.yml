@@ -319,7 +319,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GRCOV_CONFIG: --branch --llvm --ignore-not-existing --source-dir .
-      GRCOV_IGNORE: --ignore '**/compliance/**' --ignore 'quic/s2n-quic-qns/**' --ignore '**/tests/**' --ignore '**/test/**' --ignore '**/testing/**' --ignore '**/testing.rs' --ignore '**/tests.rs' --ignore '**/.cargo/registry/**'
+      GRCOV_IGNORE: --ignore '**/compliance/**' --ignore 'quic/s2n-quic-qns/**' --ignore '**/tests/**' --ignore '**/test/**' --ignore '**/testing/**' --ignore '**/testing.rs' --ignore '**/tests.rs' --ignore '**/.cargo/registry/**' --ignore '*flume*'
     steps:
       - uses: actions/checkout@v2
         with:
