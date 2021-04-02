@@ -49,7 +49,7 @@ mod tests {
         crypto::retry,
         inet, packet,
         packet::number::{PacketNumberSpace, TruncatedPacketNumber},
-        token,
+        random, token,
         varint::VarInt,
     };
 
@@ -101,10 +101,11 @@ mod tests {
             }
         {
             let local_conn_id = connection::LocalId::try_from_bytes(&retry::example::SCID).unwrap();
-            if let Some(range) = packet::retry::Retry::encode_packet::<_, RingRetryKey>(
+            if let Some(range) = packet::retry::Retry::encode_packet::<_, RingRetryKey, _>(
                 &remote_address,
                 &packet,
                 &local_conn_id,
+                &mut random::testing::Generator(5),
                 &mut token_format,
                 &mut output_buf,
             ) {
@@ -150,10 +151,11 @@ mod tests {
             //# Connection ID field of the packet sent by the client.
             let local_conn_id =
                 connection::LocalId::try_from_bytes(&retry::example::ODCID).unwrap();
-            assert!(packet::retry::Retry::encode_packet::<_, RingRetryKey>(
+            assert!(packet::retry::Retry::encode_packet::<_, RingRetryKey, _>(
                 &remote_address,
                 &packet,
                 &local_conn_id,
+                &mut random::testing::Generator(5),
                 &mut token_format,
                 &mut output_buf,
             )

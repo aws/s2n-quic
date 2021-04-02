@@ -10,12 +10,9 @@
 
 use core::{mem::size_of, time::Duration};
 use hash_hasher::HashHasher;
-use ring::{
-    digest, hmac,
-    rand::{SecureRandom, SystemRandom},
-};
+use ring::{digest, hmac};
 use s2n_codec::{DecoderBuffer, DecoderBufferMut};
-use s2n_quic_core::{connection, inet::SocketAddress, time::Timestamp, token::Source};
+use s2n_quic_core::{connection, inet::SocketAddress, random, time::Timestamp, token::Source};
 use std::hash::{Hash, Hasher};
 use zerocopy::{AsBytes, FromBytes, Unaligned};
 
@@ -42,12 +39,12 @@ impl BaseKey {
         }
     }
 
-    pub fn hasher(&mut self) -> Option<hmac::Context> {
-        let key = self.poll_key()?;
+    pub fn hasher(&mut self, random: &mut dyn random::Generator) -> Option<hmac::Context> {
+        let key = self.poll_key(random)?;
         Some(hmac::Context::with_key(&key))
     }
 
-    fn poll_key(&mut self) -> Option<hmac::Key> {
+    fn poll_key(&mut self, random: &mut dyn random::Generator) -> Option<hmac::Key> {
         let now = s2n_quic_platform::time::now();
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#21.2
@@ -65,7 +62,8 @@ impl BaseKey {
         // TODO in addition to generating new key material, clear out the filter used for detecting
         // duplicates.
         let mut key_material = [0; digest::SHA256_OUTPUT_LEN];
-        SystemRandom::new().fill(&mut key_material[..]).ok()?;
+        random.private_random_fill(&mut key_material[..]);
+
         let key = hmac::Key::new(hmac::HMAC_SHA256, &key_material);
 
         // TODO clear the filter instead of recreating. This is pending a merge to crates.io
@@ -163,10 +161,9 @@ impl Format {
     fn tag_retry_token(
         &mut self,
         token: &Token,
-        peer_address: &SocketAddress,
-        destination_connection_id: &connection::PeerId,
+        context: &mut super::Context<'_>,
     ) -> Option<hmac::Tag> {
-        let mut ctx = self.keys[token.header.key_id() as usize].hasher()?;
+        let mut ctx = self.keys[token.header.key_id() as usize].hasher(context.random)?;
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.4
         //# Tokens
@@ -175,8 +172,8 @@ impl Format {
         //# packets remain constant.
         ctx.update(&token.original_destination_connection_id);
         ctx.update(&token.nonce);
-        ctx.update(&destination_connection_id.as_bytes());
-        match peer_address {
+        ctx.update(&context.destination_connection_id.as_bytes());
+        match context.peer_address {
             SocketAddress::IpV4(addr) => ctx.update(addr.as_bytes()),
             SocketAddress::IpV6(addr) => ctx.update(addr.as_bytes()),
         };
@@ -187,8 +184,7 @@ impl Format {
     // Using the key id in the token, verify the token
     fn validate_retry_token(
         &mut self,
-        peer_address: &SocketAddress,
-        destination_connection_id: &connection::PeerId,
+        context: &mut super::Context<'_>,
         token: &Token,
     ) -> Option<connection::InitialId> {
         if self.keys[token.header.key_id() as usize]
@@ -198,7 +194,7 @@ impl Format {
             return None;
         }
 
-        let tag = self.tag_retry_token(token, peer_address, destination_connection_id)?;
+        let tag = self.tag_retry_token(token, context)?;
 
         if ring::constant_time::verify_slices_are_equal(&token.hmac, &tag.as_ref()).is_ok() {
             // Only add the token once it has been validated. This will prevent the filter from
@@ -227,8 +223,7 @@ impl super::Format for Format {
     /// The default provider does not support NEW_TOKEN frame tokens
     fn generate_new_token(
         &mut self,
-        _peer_address: &SocketAddress,
-        _destination_connection_id: &connection::PeerId,
+        _context: &mut super::Context<'_>,
         _source_connection_id: &connection::LocalId,
         _output_buffer: &mut [u8],
     ) -> Option<()> {
@@ -277,8 +272,7 @@ impl super::Format for Format {
     //# client.
     fn generate_retry_token(
         &mut self,
-        peer_address: &SocketAddress,
-        destination_connection_id: &connection::PeerId,
+        context: &mut super::Context<'_>,
         original_destination_connection_id: &connection::InitialId,
         output_buffer: &mut [u8],
     ) -> Option<()> {
@@ -304,9 +298,9 @@ impl super::Format for Format {
         }
 
         // Populate the nonce before signing
-        SystemRandom::new().fill(&mut token.nonce[..]).ok()?;
+        context.random.public_random_fill(&mut token.nonce[..]);
 
-        let tag = self.tag_retry_token(token, peer_address, destination_connection_id)?;
+        let tag = self.tag_retry_token(token, context)?;
 
         token.hmac.copy_from_slice(tag.as_ref());
 
@@ -319,8 +313,7 @@ impl super::Format for Format {
     //# completed address validation.
     fn validate_token(
         &mut self,
-        peer_address: &SocketAddress,
-        destination_connection_id: &connection::PeerId,
+        context: &mut super::Context<'_>,
         token: &[u8],
     ) -> Option<connection::InitialId> {
         let buffer = DecoderBuffer::new(token);
@@ -336,9 +329,7 @@ impl super::Format for Format {
         let source = token.header.token_source();
 
         match source {
-            Source::RetryPacket => {
-                self.validate_retry_token(peer_address, destination_connection_id, token)
-            }
+            Source::RetryPacket => self.validate_retry_token(context, token),
             Source::NewTokenFrame => None, // Not supported in the default provider
         }
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.4
@@ -462,7 +453,10 @@ impl Token {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use s2n_quic_core::token::{Format as FormatTrait, Source};
+    use s2n_quic_core::{
+        random,
+        token::{Context, Format as FormatTrait, Source},
+    };
     use s2n_quic_platform::time;
     use std::{net::SocketAddr, sync::Arc};
 
@@ -519,29 +513,32 @@ mod tests {
         let addr = SocketAddress::default();
         let mut first_token = [0; Format::TOKEN_LEN];
         let mut second_token = [0; Format::TOKEN_LEN];
+        let mut random = random::testing::Generator(5);
+        let mut context = Context::new(&addr, &first_conn_id, &mut random);
 
         // Generate two tokens for different connections
         format
-            .generate_retry_token(&addr, &first_conn_id, &orig_conn_id, &mut first_token)
+            .generate_retry_token(&mut context, &orig_conn_id, &mut first_token)
             .unwrap();
 
+        context = Context::new(&addr, &second_conn_id, &mut random);
         format
-            .generate_retry_token(&addr, &second_conn_id, &orig_conn_id, &mut second_token)
+            .generate_retry_token(&mut context, &orig_conn_id, &mut second_token)
             .unwrap();
 
         clock.adjust_by(TEST_KEY_ROTATION_PERIOD);
+        context = Context::new(&addr, &first_conn_id, &mut random);
         assert_eq!(
-            format.validate_token(&addr, &first_conn_id, &first_token),
+            format.validate_token(&mut context, &first_token),
             Some(orig_conn_id)
         );
+        context = Context::new(&addr, &second_conn_id, &mut random);
         assert_eq!(
-            format.validate_token(&addr, &second_conn_id, &second_token),
+            format.validate_token(&mut context, &second_token),
             Some(orig_conn_id)
         );
-        assert_eq!(
-            format.validate_token(&addr, &first_conn_id, &second_token),
-            None
-        );
+        context = Context::new(&addr, &first_conn_id, &mut random);
+        assert_eq!(format.validate_token(&mut context, &second_token), None);
     }
 
     #[test]
@@ -561,30 +558,27 @@ mod tests {
         let ip_address = "127.0.0.1:443";
         let addr: SocketAddr = ip_address.parse().unwrap();
         let correct_address: SocketAddress = addr.into();
+        let mut random = random::testing::Generator(5);
+        let mut context = Context::new(&correct_address, &conn_id, &mut random);
         format
-            .generate_retry_token(&correct_address, &conn_id, &orig_conn_id, &mut token)
+            .generate_retry_token(&mut context, &orig_conn_id, &mut token)
             .unwrap();
 
         let ip_address = "127.0.0.2:443";
         let addr: SocketAddr = ip_address.parse().unwrap();
         let incorrect_address: SocketAddress = addr.into();
-        assert_eq!(
-            format.validate_token(&incorrect_address, &conn_id, &token),
-            None
-        );
+        context = Context::new(&incorrect_address, &conn_id, &mut random);
+        assert_eq!(format.validate_token(&mut context, &token), None);
 
         let ip_address = "127.0.0.1:444";
         let addr: SocketAddr = ip_address.parse().unwrap();
         let incorrect_port: SocketAddress = addr.into();
-        assert_eq!(
-            format.validate_token(&incorrect_port, &conn_id, &token),
-            None
-        );
+        context = Context::new(&incorrect_port, &conn_id, &mut random);
+        assert_eq!(format.validate_token(&mut context, &token), None);
 
         // Verify the token is still valid after the failed attempts
-        assert!(format
-            .validate_token(&correct_address, &conn_id, &token)
-            .is_some());
+        context = Context::new(&correct_address, &conn_id, &mut random);
+        assert!(format.validate_token(&mut context, &token).is_some());
     }
 
     #[test]
@@ -603,18 +597,20 @@ mod tests {
         let orig_conn_id = connection::InitialId::TEST_ID;
         let addr = SocketAddress::default();
         let mut buf = [0; Format::TOKEN_LEN];
+        let mut random = random::testing::Generator(5);
+        let mut context = Context::new(&addr, &conn_id, &mut random);
         format
-            .generate_retry_token(&addr, &conn_id, &orig_conn_id, &mut buf)
+            .generate_retry_token(&mut context, &orig_conn_id, &mut buf)
             .unwrap();
 
         // Validation should succeed because the signing key is still valid, even
         // though it has been rotated from the current signing key
         clock.adjust_by(TEST_KEY_ROTATION_PERIOD);
-        assert!(format.validate_token(&addr, &conn_id, &buf).is_some());
+        assert!(format.validate_token(&mut context, &buf).is_some());
 
         // Validation should fail because the key used for signing has been regenerated
         clock.adjust_by(TEST_KEY_ROTATION_PERIOD);
-        assert!(format.validate_token(&addr, &conn_id, &buf).is_none());
+        assert!(format.validate_token(&mut context, &buf).is_none());
     }
 
     #[test]
@@ -631,8 +627,10 @@ mod tests {
         let orig_conn_id = connection::InitialId::TEST_ID;
         let addr = SocketAddress::default();
         let mut buf = [0; Format::TOKEN_LEN];
+        let mut random = random::testing::Generator(5);
+        let mut context = Context::new(&addr, &conn_id, &mut random);
         format
-            .generate_retry_token(&addr, &conn_id, &orig_conn_id, &mut buf)
+            .generate_retry_token(&mut context, &orig_conn_id, &mut buf)
             .unwrap();
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#21.2
@@ -641,7 +639,7 @@ mod tests {
         //# usage and lifetime of address validation tokens; see Section 8.1.3.
         // Validation should fail because multiple rotation periods have elapsed
         clock.adjust_by(TEST_KEY_ROTATION_PERIOD * 2);
-        assert!(format.validate_token(&addr, &conn_id, &buf).is_none());
+        assert!(format.validate_token(&mut context, &buf).is_none());
     }
 
     #[test]
@@ -654,14 +652,17 @@ mod tests {
         let odcid = connection::InitialId::try_from_bytes(&[0, 1, 2, 3, 4, 5, 6, 7]).unwrap();
         let addr = SocketAddress::default();
         let mut buf = [0; Format::TOKEN_LEN];
+        let mut random = random::testing::Generator(5);
+        let mut context = Context::new(&addr, &conn_id, &mut random);
         format
-            .generate_retry_token(&addr, &conn_id, &odcid, &mut buf)
+            .generate_retry_token(&mut context, &odcid, &mut buf)
             .unwrap();
 
-        assert_eq!(format.validate_token(&addr, &conn_id, &buf), Some(odcid));
+        assert_eq!(format.validate_token(&mut context, &buf), Some(odcid));
 
         let wrong_conn_id = connection::PeerId::try_from_bytes(&[0, 1, 2]).unwrap();
-        assert!(format.validate_token(&addr, &wrong_conn_id, &buf).is_none());
+        context = Context::new(&addr, &wrong_conn_id, &mut random);
+        assert!(format.validate_token(&mut context, &buf).is_none());
     }
 
     #[test]
@@ -675,14 +676,16 @@ mod tests {
         let odcid = connection::InitialId::try_from_bytes(&[0, 1, 2, 3, 4, 5, 6, 7]).unwrap();
         let addr = SocketAddress::default();
         let mut buf = [0; Format::TOKEN_LEN];
+        let mut random = random::testing::Generator(5);
+        let mut context = Context::new(&addr, &conn_id, &mut random);
         format
-            .generate_retry_token(&addr, &conn_id, &odcid, &mut buf)
+            .generate_retry_token(&mut context, &odcid, &mut buf)
             .unwrap();
 
-        assert_eq!(format.validate_token(&addr, &conn_id, &buf), Some(odcid));
+        assert_eq!(format.validate_token(&mut context, &buf), Some(odcid));
 
         // Second attempt with the same token should fail because the token is a duplicate
-        assert!(format.validate_token(&addr, &conn_id, &buf).is_none());
+        assert!(format.validate_token(&mut context, &buf).is_none());
     }
 
     #[test]
@@ -699,14 +702,18 @@ mod tests {
         let addr = SocketAddress::default();
         let mut token = [0; Format::TOKEN_LEN];
 
+        let mut random = random::testing::Generator(5);
+        let mut context = Context::new(&addr, &conn_id, &mut random);
         // Generate two tokens for different connections
         format
-            .generate_retry_token(&addr, &conn_id, &orig_conn_id, &mut token)
+            .generate_retry_token(&mut context, &orig_conn_id, &mut token)
             .unwrap();
 
         for i in 0..Format::TOKEN_LEN {
+            random = random::testing::Generator(5);
+            context = Context::new(&addr, &conn_id, &mut random);
             token[i] = !token[i];
-            assert!(format.validate_token(&addr, &conn_id, &token).is_none());
+            assert!(format.validate_token(&mut context, &token).is_none());
             token[i] = !token[i];
         }
     }
@@ -718,7 +725,9 @@ mod tests {
         let addr = SocketAddress::default();
 
         bolero::check!().for_each(move |token| {
-            assert!(format.validate_token(&addr, &conn_id, token).is_none())
+            let mut random = random::testing::Generator(5);
+            let mut context = Context::new(&addr, &conn_id, &mut random);
+            assert!(format.validate_token(&mut context, token).is_none())
         });
     }
 
@@ -739,7 +748,9 @@ mod tests {
         bolero::check!()
             .with_generator(generator)
             .for_each(move |token| {
-                assert!(format.validate_token(&addr, &conn_id, token).is_none())
+                let mut random = random::testing::Generator(5);
+                let mut context = Context::new(&addr, &conn_id, &mut random);
+                assert!(format.validate_token(&mut context, token).is_none())
             });
     }
 }

@@ -1,7 +1,28 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{connection, inet::SocketAddress};
+use crate::{connection, inet::SocketAddress, random};
+
+#[non_exhaustive]
+pub struct Context<'a> {
+    pub peer_address: &'a SocketAddress,
+    pub destination_connection_id: &'a connection::PeerId,
+    pub random: &'a mut dyn random::Generator,
+}
+
+impl<'a> Context<'a> {
+    pub fn new(
+        peer_address: &'a SocketAddress,
+        destination_connection_id: &'a connection::PeerId,
+        random: &'a mut dyn random::Generator,
+    ) -> Self {
+        Self {
+            peer_address,
+            destination_connection_id,
+            random,
+        }
+    }
+}
 
 pub trait Format: 'static {
     const TOKEN_LEN: usize;
@@ -10,8 +31,7 @@ pub trait Format: 'static {
     /// This function will only be called if the provider support NEW_TOKEN frames.
     fn generate_new_token(
         &mut self,
-        peer_address: &SocketAddress,
-        destination_connection_id: &connection::PeerId,
+        context: &mut Context<'_>,
         source_connection_id: &connection::LocalId,
         output_buffer: &mut [u8],
     ) -> Option<()>;
@@ -19,8 +39,7 @@ pub trait Format: 'static {
     /// Generate a signed token to be delivered in a Retry Packet
     fn generate_retry_token(
         &mut self,
-        peer_address: &SocketAddress,
-        destination_connection_id: &connection::PeerId,
+        context: &mut Context<'_>,
         original_destination_connection_id: &connection::InitialId,
         output_buffer: &mut [u8],
     ) -> Option<()>;
@@ -30,8 +49,7 @@ pub trait Format: 'static {
     /// Callers should detect duplicate tokens and treat them as invalid.
     fn validate_token(
         &mut self,
-        peer_address: &SocketAddress,
-        destination_connection_id: &connection::PeerId,
+        context: &mut Context<'_>,
         token: &[u8],
     ) -> Option<connection::InitialId>;
 }
@@ -55,8 +73,7 @@ pub mod testing {
 
         fn generate_new_token(
             &mut self,
-            _peer_address: &SocketAddress,
-            _destination_connection_id: &connection::PeerId,
+            _context: &mut Context<'_>,
             _source_connection_id: &connection::LocalId,
             _output_buffer: &mut [u8],
         ) -> Option<()> {
@@ -66,8 +83,7 @@ pub mod testing {
 
         fn generate_retry_token(
             &mut self,
-            _peer_address: &SocketAddress,
-            _destination_connection_id: &connection::PeerId,
+            _context: &mut Context<'_>,
             _original_destination_connection_id: &connection::InitialId,
             output_buffer: &mut [u8],
         ) -> Option<()> {
@@ -77,8 +93,7 @@ pub mod testing {
 
         fn validate_token(
             &mut self,
-            _peer_address: &SocketAddress,
-            _destination_connection_id: &connection::PeerId,
+            _context: &mut Context<'_>,
             token: &[u8],
         ) -> Option<connection::InitialId> {
             if token == retry::example::TOKEN {
