@@ -35,9 +35,18 @@ jobs:
 
       - uses: actions/checkout@v2
         with:
+          path: s2n-quic
+
+      - uses: actions/checkout@v2
+        with:
           repository: marten-seemann/quic-interop-runner
           ref: ${{ env.INTEROP_RUNNER_REF }}
           path: quic-interop-runner
+
+      - name: Patch quic-interop-runner
+        working-directory: quic-interop-runner
+        run: |
+          git apply --3way ../s2n-quic/.github/interop/runner.patch
 
       - name: Define implementations
         id: implementations
