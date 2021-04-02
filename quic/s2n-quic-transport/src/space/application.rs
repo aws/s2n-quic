@@ -384,6 +384,11 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             datagram.timestamp + rtt_estimator.pto_period(1, PacketNumberSpace::ApplicationData),
         );
 
+        //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#9.5
+        //# For authentication to be
+        //# free from side-channels, the entire process of header protection
+        //# removal, packet number recovery, and packet protection removal MUST
+        //# be applied together without timing and other side-channels.
         if self.is_duplicate(packet_number) {
             return Err(ProcessingError::DuplicatePacket);
         }
