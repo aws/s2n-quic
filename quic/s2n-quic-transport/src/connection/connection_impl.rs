@@ -295,6 +295,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         &mut self,
         shared_state: Option<&mut SharedConnectionState<Self::Config>>,
         error: connection::Error,
+        close_formatter: &Config::ConnectionCloseFormatter,
         packet_buffer: &mut endpoint::PacketBuffer,
         timestamp: Timestamp,
     ) {
@@ -325,10 +326,17 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#10.3
         //# An endpoint that wishes to communicate a fatal
         //# connection error MUST use a CONNECTION_CLOSE frame if it is able.
-        if let Some(connection_close) = s2n_quic_core::connection::error::as_frame(error) {
+
+        let remote_address = self.path_manager.active_path().peer_socket_address;
+        let close_context = s2n_quic_core::connection::close::Context::new(&remote_address);
+
+        if let Some((early_connection_close, connection_close)) =
+            s2n_quic_core::connection::error::as_frame(error, close_formatter, &close_context)
+        {
             let mut context = self.transmission_context(timestamp);
 
             if let Some(packet) = shared_state.space_manager.on_transmit_close(
+                &early_connection_close,
                 &connection_close,
                 &mut context,
                 packet_buffer,

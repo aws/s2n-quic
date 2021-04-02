@@ -12,6 +12,7 @@ impl_providers_state! {
     struct Providers {
         clock: Clock,
         congestion_controller: CongestionController,
+        connection_close_formatter: ConnectionCloseFormatter,
         connection_id: ConnectionID,
         stateless_reset_token: StatelessResetToken,
         random: Random,
@@ -32,6 +33,7 @@ impl_providers_state! {
 impl<
         Clock: clock::Provider,
         CongestionController: congestion_controller::Provider,
+        ConnectionCloseFormatter: connection_close_formatter::Provider,
         ConnectionID: connection_id::Provider,
         StatelessResetToken: stateless_reset_token::Provider,
         Random: random::Provider,
@@ -47,6 +49,7 @@ impl<
     Providers<
         Clock,
         CongestionController,
+        ConnectionCloseFormatter,
         ConnectionID,
         StatelessResetToken,
         Random,
@@ -66,6 +69,7 @@ impl<
         let Self {
             clock,
             congestion_controller,
+            connection_close_formatter,
             connection_id,
             stateless_reset_token,
             random,
@@ -81,6 +85,9 @@ impl<
 
         let clock = clock.start().map_err(StartError::new)?;
         let congestion_controller = congestion_controller.start().map_err(StartError::new)?;
+        let connection_close_formatter = connection_close_formatter
+            .start()
+            .map_err(StartError::new)?;
         let connection_id = connection_id.start().map_err(StartError::new)?;
         let stateless_reset_token = stateless_reset_token.start().map_err(StartError::new)?;
         let random = random.start().map_err(StartError::new)?;
@@ -110,6 +117,7 @@ impl<
 
         let endpoint_config = EndpointConfig {
             congestion_controller,
+            connection_close_formatter,
             connection_id,
             stateless_reset_token,
             random,
@@ -205,6 +213,7 @@ impl<
 #[allow(dead_code)] // don't warn on unused providers for now
 struct EndpointConfig<
     CongestionController,
+    ConnectionCloseFormatter,
     ConnectionID,
     StatelessResetToken,
     Random,
@@ -216,6 +225,7 @@ struct EndpointConfig<
     Token,
 > {
     congestion_controller: CongestionController,
+    connection_close_formatter: ConnectionCloseFormatter,
     connection_id: ConnectionID,
     stateless_reset_token: StatelessResetToken,
     random: Random,
@@ -229,6 +239,7 @@ struct EndpointConfig<
 
 impl<
         CongestionController: congestion_controller::Endpoint,
+        ConnectionCloseFormatter: connection_close_formatter::Formatter,
         ConnectionID: connection::id::Format,
         StatelessResetToken: stateless_reset_token::Generator,
         Random: s2n_quic_core::random::Generator,
@@ -241,6 +252,7 @@ impl<
     > core::fmt::Debug
     for EndpointConfig<
         CongestionController,
+        ConnectionCloseFormatter,
         ConnectionID,
         StatelessResetToken,
         Random,
@@ -259,6 +271,7 @@ impl<
 
 impl<
         CongestionController: congestion_controller::Endpoint,
+        ConnectionCloseFormatter: connection_close_formatter::Formatter,
         ConnectionID: connection::id::Format,
         StatelessResetToken: stateless_reset_token::Generator,
         Random: s2n_quic_core::random::Generator,
@@ -271,6 +284,7 @@ impl<
     > endpoint::Config
     for EndpointConfig<
         CongestionController,
+        ConnectionCloseFormatter,
         ConnectionID,
         StatelessResetToken,
         Random,
@@ -283,6 +297,7 @@ impl<
     >
 {
     type ConnectionIdFormat = ConnectionID;
+    type ConnectionCloseFormatter = ConnectionCloseFormatter;
     type StatelessResetTokenGenerator = StatelessResetToken;
     type RandomGenerator = Random;
     type Connection = connection::Implementation<Self>;
@@ -298,6 +313,7 @@ impl<
     fn context(&mut self) -> endpoint::Context<Self> {
         endpoint::Context {
             congestion_controller: &mut self.congestion_controller,
+            connection_close_formatter: &mut self.connection_close_formatter,
             connection_id_format: &mut self.connection_id,
             stateless_reset_token_generator: &mut self.stateless_reset_token,
             random_generator: &mut self.random,

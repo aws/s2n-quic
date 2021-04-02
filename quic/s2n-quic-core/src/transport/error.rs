@@ -4,8 +4,8 @@
 #![forbid(unsafe_code)]
 
 use crate::{
-    application,
     crypto::CryptoError,
+    frame::ConnectionClose,
     varint::{VarInt, VarIntError},
 };
 use core::{fmt, ops};
@@ -19,7 +19,7 @@ use s2n_codec::DecoderError;
 #[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
 pub struct Error {
     pub code: Code,
-    pub frame_type: Option<VarInt>,
+    pub frame_type: VarInt,
     pub reason: &'static str,
 }
 
@@ -29,17 +29,12 @@ impl Error {
         Self {
             code: Code::new(code),
             reason: "",
-            frame_type: None,
+            frame_type: VarInt::from_u8(0),
         }
     }
 
     /// Updates the `Error` with the specified `frame_type`
-    pub const fn with_frame_type(self, frame_type: VarInt) -> Self {
-        self.with_optional_frame_type(Some(frame_type))
-    }
-
-    /// Updated the `Error` with the optional `frame_type`
-    pub const fn with_optional_frame_type(mut self, frame_type: Option<VarInt>) -> Self {
+    pub const fn with_frame_type(mut self, frame_type: VarInt) -> Self {
         self.frame_type = frame_type;
         self
     }
@@ -71,11 +66,19 @@ impl fmt::Debug for Error {
             d.field("reason", &self.reason);
         }
 
-        if let Some(frame_type) = self.frame_type {
-            d.field("frame_type", &frame_type);
-        }
+        d.field("frame_type", &self.frame_type);
 
         d.finish()
+    }
+}
+
+impl<'a> From<Error> for ConnectionClose<'a> {
+    fn from(error: Error) -> Self {
+        ConnectionClose {
+            error_code: *error.code,
+            frame_type: Some(error.frame_type),
+            reason: Some(error.reason.as_bytes()).filter(|reason| !reason.is_empty()),
+        }
     }
 }
 
@@ -335,19 +338,6 @@ impl Error {
     pub const fn applicaton_error(code: VarInt) -> Self {
         // Application errors set `frame_type` to `None`
         Self::new(code)
-    }
-}
-
-/// If a `Error` contains no frame type it was sent by an application
-/// and contains an `ApplicationLevelErrorCode`. Otherwise it is an
-/// error on the QUIC layer.
-impl application::error::TryInto for Error {
-    fn application_error(&self) -> Option<application::Error> {
-        if self.frame_type.is_none() {
-            Some(self.code.0.into())
-        } else {
-            None
-        }
     }
 }
 
