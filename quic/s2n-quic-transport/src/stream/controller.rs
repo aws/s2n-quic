@@ -297,7 +297,7 @@ const WAKERS_INITIAL_CAPACITY: usize = 5;
 
 // The amount of time to wait before sending another STREAMS_BLOCKED frame
 // while blocked by peer stream limits.
-const STREAMS_BLOCKED_PERIOD: Duration = Duration::from_secs(10);
+pub(super) const STREAMS_BLOCKED_PERIOD: Duration = Duration::from_secs(10);
 
 /// The OutgoingController controls streams initiated locally
 #[derive(Debug)]

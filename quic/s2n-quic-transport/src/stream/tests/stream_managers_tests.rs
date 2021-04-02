@@ -12,7 +12,7 @@ use crate::{
     contexts::{ConnectionApiCallContext, OnTransmitError, WriteContext},
     endpoint,
     stream::{
-        controller::MAX_STREAMS_SYNC_FRACTION,
+        controller::{MAX_STREAMS_SYNC_FRACTION, STREAMS_BLOCKED_PERIOD},
         stream_impl::StreamConfig,
         stream_interests::{StreamInterestProvider, StreamInterests},
         AbstractStreamManager, StreamError, StreamEvents, StreamTrait,
@@ -31,7 +31,7 @@ use s2n_quic_core::{
     connection,
     frame::{
         stream::StreamRef, Frame, MaxData, MaxStreamData, MaxStreams, ResetStream, StopSending,
-        Stream as StreamFrame, StreamDataBlocked,
+        Stream as StreamFrame, StreamDataBlocked, StreamsBlocked,
     },
     packet::number::PacketNumberRange,
     stream::{ops, StreamId, StreamType},
@@ -763,6 +763,114 @@ fn peer_closing_streams_transmits_max_streams() {
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6
 //= type=test
+//# An endpoint that is unable to open a new stream due to the peer's
+//# limits SHOULD send a STREAMS_BLOCKED frame (Section 19.14).
+
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.14
+//= type=test
+//# A sender SHOULD send a STREAMS_BLOCKED frame (type=0x16 or 0x17) when
+//# it wishes to open a stream, but is unable to due to the maximum
+//# stream limit set by its peer; see Section 19.11.
+#[test]
+fn send_streams_blocked_frame_when_blocked_by_peer() {
+    let mut manager = create_stream_manager(endpoint::Type::Server);
+
+    for stream_type in [StreamType::Bidirectional, StreamType::Unidirectional]
+        .iter()
+        .copied()
+    {
+        let (waker, _) = new_count_waker();
+
+        let mut opened_streams = VarInt::from_u8(0);
+
+        // Open streams until blocked
+        while manager
+            .poll_open(stream_type, &Context::from_waker(&waker))
+            .is_ready()
+        {
+            opened_streams += 1;
+        }
+
+        assert_eq!(
+            transmission::Interest::NewData,
+            manager.transmission_interest()
+        );
+
+        let mut frame_buffer = OutgoingFrameBuffer::new();
+        let mut write_context = MockWriteContext::new(
+            s2n_quic_platform::time::now(),
+            &mut frame_buffer,
+            transmission::Constraint::None,
+            endpoint::Type::Server,
+        );
+        let packet_number = write_context.packet_number();
+        assert!(manager.on_transmit(&mut write_context).is_ok());
+
+        let expected_frame = Frame::StreamsBlocked {
+            0: StreamsBlocked {
+                stream_type,
+                stream_limit: opened_streams,
+            },
+        };
+
+        assert_eq!(
+            expected_frame,
+            write_context.frame_buffer.pop_front().unwrap().as_frame()
+        );
+
+        assert_eq!(
+            transmission::Interest::None,
+            manager.transmission_interest()
+        );
+
+        manager.on_packet_loss(&PacketNumberRange::new(packet_number, packet_number));
+
+        assert_eq!(
+            transmission::Interest::LostData,
+            manager.transmission_interest()
+        );
+
+        let packet_number = write_context.packet_number();
+        assert!(manager.on_transmit(&mut write_context).is_ok());
+
+        manager.on_packet_ack(&PacketNumberRange::new(packet_number, packet_number));
+
+        assert_eq!(
+            transmission::Interest::None,
+            manager.transmission_interest()
+        );
+
+        let expected_next_stream_blocked_time = write_context.current_time + STREAMS_BLOCKED_PERIOD;
+        assert_eq!(
+            Some(expected_next_stream_blocked_time),
+            manager.timers().next().copied()
+        );
+
+        manager.on_timeout(expected_next_stream_blocked_time);
+
+        // Another STREAM_BLOCKED frame should be sent
+        assert_eq!(
+            transmission::Interest::NewData,
+            manager.transmission_interest()
+        );
+
+        // We get more credit from the peer so we should no longer send STREAM_BLOCKED
+        assert!(manager
+            .on_max_streams(&MaxStreams {
+                stream_type,
+                maximum_streams: VarInt::from_u32(100_000),
+            })
+            .is_ok());
+
+        assert_eq!(
+            transmission::Interest::None,
+            manager.transmission_interest()
+        );
+    }
+}
+
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6
+//= type=test
 //# An endpoint
 //# that receives a frame with a stream ID exceeding the limit it has
 //# sent MUST treat this as a connection error of type STREAM_LIMIT_ERROR
@@ -839,6 +947,10 @@ fn blocked_on_local_concurrent_stream_limit() {
         assert!(manager
             .poll_open(stream_type, &Context::from_waker(&waker))
             .is_pending());
+
+        // No STREAMS_BLOCKED frame should be transmitted since we are blocked on the local
+        // limit not the peer's limit.
+        assert!(manager.transmission_interest().is_none());
 
         // Close one stream
         manager.with_asserted_stream(
