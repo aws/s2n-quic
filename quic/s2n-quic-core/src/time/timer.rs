@@ -7,7 +7,10 @@ use core::task::Poll;
 /// A timer that does not trigger an update in a timer
 /// list. These are usually owned by individual components
 /// and needs to be explicitly polled.
-#[derive(Copy, Clone, Debug, Default)]
+///
+/// Note: The timer doesn't implement Copy to ensure it isn't accidentally moved
+///       and have the expiration discarded.
+#[derive(Clone, Debug, Default)]
 pub struct Timer {
     expiration: Option<Timestamp>,
 }
@@ -25,7 +28,7 @@ impl Timer {
     }
 
     /// Returns true if the timer has expired
-    pub fn is_expired(self, current_time: Timestamp) -> bool {
+    pub fn is_expired(&self, current_time: Timestamp) -> bool {
         match self.expiration {
             Some(timeout) => timeout <= current_time,
             _ => false,
@@ -33,7 +36,7 @@ impl Timer {
     }
 
     /// Returns true if the timer is armed
-    pub fn is_armed(self) -> bool {
+    pub fn is_armed(&self) -> bool {
         self.expiration.is_some()
     }
 
