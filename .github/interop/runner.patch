@@ -45,10 +45,10 @@ index 7541cae..12f9c70 100644
        - "server6:fd00:cafe:cafe:100::110"
        - "server46:193.167.100.110"
 diff --git a/implementations.json b/implementations.json
-index 708e1ae..aac0f66 100644
+index 708e1ae..58da827 100644
 --- a/implementations.json
 +++ b/implementations.json
-@@ -1,16 +1,21 @@
+@@ -1,51 +1,51 @@
  {
 +  "s2n-quic": {
 +    "image": "awslabs/s2n-quic-qns:latest",
@@ -73,9 +73,11 @@ index 708e1ae..aac0f66 100644
      "url": "https://github.com/ngtcp2/ngtcp2",
      "role": "both"
    },
-@@ -20,32 +25,32 @@
-     "role": "both"
-   },
+-  "quant": {
+-    "image": "ntap/quant:interop",
+-    "url": "https://github.com/NTAP/quant",
+-    "role": "both"
+-  },
    "mvfst": {
 -    "image": "lnicco/mvfst-qns:latest",
 +    "image": "lnicco/mvfst-qns@sha256:2b01c44213e953fd9fb0c179eb98e76e964157570ca49dbd0604435dd798060b",
@@ -112,7 +114,7 @@ index 708e1ae..aac0f66 100644
      "url": "https://github.com/mozilla/neqo",
      "role": "both"
    },
-@@ -55,7 +60,7 @@
+@@ -55,7 +55,7 @@
      "role": "server"
    },
    "msquic": {
@@ -121,7 +123,7 @@ index 708e1ae..aac0f66 100644
      "url": "https://github.com/microsoft/msquic",
      "role": "both"
    },
-@@ -65,12 +70,12 @@
+@@ -65,12 +65,12 @@
      "role": "client"
    },
    "xquic": {
