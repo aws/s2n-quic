@@ -53,7 +53,7 @@ index 708e1ae..58da827 100644
 +  "s2n-quic": {
 +    "image": "awslabs/s2n-quic-qns:latest",
 +    "url": "https://github.com/awslabs/s2n-quic",
-+    "role": "both"
++    "role": "server"
 +  },
    "quic-go": {
 -    "image": "martenseemann/quic-go-interop:latest",
