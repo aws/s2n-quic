@@ -366,12 +366,9 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
     ) -> Result<CleartextShort<'a>, ProcessingError> {
         let largest_acked = self.ack_manager.largest_received_packet_number_acked();
         let packet = protected.unprotect(&self.header_key, largest_acked)?;
+        let packet_number = packet.packet_number;
 
-        if self.is_duplicate(packet.packet_number) {
-            return Err(ProcessingError::DuplicatePacket);
-        }
-
-        self.key_set.decrypt_packet(
+        let decrypted_packet = self.key_set.decrypt_packet(
             packet,
             largest_acked,
             //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.3
@@ -385,7 +382,13 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             //# key generation before it creates the next set of packet protection
             //# keys.
             datagram.timestamp + rtt_estimator.pto_period(1, PacketNumberSpace::ApplicationData),
-        )
+        );
+
+        if self.is_duplicate(packet_number) {
+            return Err(ProcessingError::DuplicatePacket);
+        }
+
+        decrypted_packet
     }
 }
 
