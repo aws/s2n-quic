@@ -389,6 +389,9 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         //# free from side-channels, the entire process of header protection
         //# removal, packet number recovery, and packet protection removal MUST
         //# be applied together without timing and other side-channels.
+
+        // We perform decryption prior to checking for duplicate to avoid short-circuiting
+        // and maintain constant-time operation.
         if self.is_duplicate(packet_number) {
             return Err(ProcessingError::DuplicatePacket);
         }
