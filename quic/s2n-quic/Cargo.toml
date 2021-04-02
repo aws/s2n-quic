@@ -14,6 +14,8 @@ default = [
     "std",
     "tokio-runtime"
 ]
+# Sends debug information in CONNECTION_CLOSE frames
+connection-close-debug = []
 default-token-provider = ["ring", "zerocopy"]
 default-tls-provider = ["s2n-quic-tls-default"]
 protocol-extensions = []

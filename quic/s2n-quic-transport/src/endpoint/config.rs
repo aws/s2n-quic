@@ -27,8 +27,10 @@ pub trait Config: 'static + Sized + core::fmt::Debug {
     type EndpointLimits: endpoint::Limits;
     /// The connection limits
     type ConnectionLimits: connection::limits::Limiter;
-    /// The stream
+    /// The type of stream
     type Stream: stream::StreamTrait;
+    /// The connection close formatter
+    type ConnectionCloseFormatter: connection::close::Formatter;
 
     /// The type of the local endpoint
     const ENDPOINT_TYPE: endpoint::Type;
@@ -60,5 +62,8 @@ pub struct Context<'a, Cfg: Config> {
     /// Token generator / validator
     pub token: &'a mut Cfg::TokenFormat,
 
+    /// The connection limits
     pub connection_limits: &'a mut Cfg::ConnectionLimits,
+
+    pub connection_close_formatter: &'a mut Cfg::ConnectionCloseFormatter,
 }
