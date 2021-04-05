@@ -14,6 +14,7 @@ webpki = "0.21"
 # We fetch the top 3 ciphersuites from rustls::ALL_CIPHERSUITES. This is an internal implementation
 # and can change in future versions of rustls. Therefore care must be taken to maintain the same order
 # of ciphersuites when upgrading rustls version.
+# See quic/s2n-quic-rustls/src/lib.rs, default_ciphersuites()
 rustls = { version = "0.17", features = ["quic"] }
 
 [dev-dependencies]
