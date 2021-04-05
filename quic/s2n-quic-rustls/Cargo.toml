@@ -9,8 +9,12 @@ license = "Apache-2.0"
 s2n-codec = { version = "0.1", path = "../../common/s2n-codec", default-features = false }
 s2n-quic-core = { version = "0.1", path = "../s2n-quic-core", default-features = false }
 s2n-quic-ring = { version = "0.1", path = "../s2n-quic-ring", default-features = false }
-rustls = { version = "0.17", features = ["quic"] }
 webpki = "0.21"
+
+# We fetch the top 3 ciphersuites from rustls::ALL_CIPHERSUITES. This is an internal implementation
+# and can change in future versions of rustls. Therefore care must be taken to maintain the same order
+# of ciphersuites when upgrading rustls version.
+rustls = { version = "0.17", features = ["quic"] }
 
 [dev-dependencies]
 s2n-quic-core = { version = "0.1", path = "../s2n-quic-core", features = ["testing"] }
