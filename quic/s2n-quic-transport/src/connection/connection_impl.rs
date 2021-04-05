@@ -202,9 +202,26 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         Some(duration)
     }
 
-    fn restart_peer_idle_timer(&mut self, timestamp: Timestamp) {
+    fn on_processed_packet(&mut self, timestamp: Timestamp) {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#10.1
+        //# An endpoint restarts its idle timer when a packet from its peer is
+        //# received and processed successfully.
         if let Some(duration) = self.get_idle_timer_duration() {
-            self.timers.peer_idle_timer.set(timestamp + duration)
+            self.timers.peer_idle_timer.set(timestamp + duration);
+            self.timers.reset_peer_idle_timer_on_send = true;
+        }
+    }
+
+    fn on_ack_eliciting_packet_sent(&mut self, timestamp: Timestamp) {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#10.1
+        //# An endpoint also restarts its
+        //# idle timer when sending an ack-eliciting packet if no other ack-
+        //# eliciting packets have been sent since last receiving and processing
+        //# a packet.
+        if core::mem::take(&mut self.timers.reset_peer_idle_timer_on_send) {
+            if let Some(duration) = self.get_idle_timer_duration() {
+                self.timers.peer_idle_timer.set(timestamp + duration);
+            }
         }
     }
 
@@ -215,10 +232,11 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         })
     }
 
-    fn transmission_context(
-        &mut self,
+    fn transmission_context<'a>(
+        &'a mut self,
+        outcome: &'a mut transmission::Outcome,
         timestamp: Timestamp,
-    ) -> ConnectionTransmissionContext<Config> {
+    ) -> ConnectionTransmissionContext<'a, Config> {
         // TODO get this from somewhere
         let ecn = Default::default();
 
@@ -229,6 +247,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
             path_manager: &mut self.path_manager,
             source_connection_id: &self.local_connection_id,
             local_id_registry: &mut self.local_id_registry,
+            outcome,
             ecn,
             min_packet_len: None,
         }
@@ -329,7 +348,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         if let Some((early_connection_close, connection_close)) =
             s2n_quic_core::connection::error::as_frame(error, close_formatter, &close_context)
         {
-            let mut context = self.transmission_context(timestamp);
+            let mut outcome = transmission::Outcome::default();
+            let mut context = self.transmission_context(&mut outcome, timestamp);
 
             if let Some(packet) = shared_state.space_manager.on_transmit_close(
                 &early_connection_close,
@@ -439,14 +459,19 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         match self.state {
             ConnectionState::Handshaking | ConnectionState::Active => {
                 if let Some(shared_state) = shared_state {
+                    let mut outcome = transmission::Outcome::default();
                     while let Ok(_idx) = queue.push(ConnectionTransmission {
-                        context: self.transmission_context(timestamp),
+                        context: self.transmission_context(&mut outcome, timestamp),
                         shared_state,
                     }) {
                         count += 1;
                         if self.path_manager.active_path().at_amplification_limit() {
                             break;
                         }
+                    }
+
+                    if outcome.ack_elicitation.is_ack_eliciting() {
+                        self.on_ack_eliciting_packet_sent(timestamp);
                     }
                 }
                 // TODO  leave the psuedo in comment, TODO send this stuff
@@ -687,10 +712,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             // try to move the crypto state machine forward
             self.update_crypto_state(shared_state, datagram)?;
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.1
-            //# An endpoint restarts its idle timer when a packet from its peer is
-            //# received and processed successfully.
-            self.restart_peer_idle_timer(datagram.timestamp);
+            // notify the connection a packet was processed
+            self.on_processed_packet(datagram.timestamp);
         }
 
         Ok(())
@@ -747,10 +770,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             // try to move the crypto state machine forward
             self.update_crypto_state(shared_state, datagram)?;
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.1
-            //# An endpoint restarts its idle timer when a packet from its peer is
-            //# received and processed successfully.
-            self.restart_peer_idle_timer(datagram.timestamp);
+            // notify the connection a packet was processed
+            self.on_processed_packet(datagram.timestamp);
         }
 
         Ok(())
@@ -821,10 +842,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             // Currently, the application space does not have any crypto state.
             // If, at some point, we decide to add it, we need to call `update_crypto_state` here.
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.1
-            //# An endpoint restarts its idle timer when a packet from its peer is
-            //# received and processed successfully.
-            self.restart_peer_idle_timer(datagram.timestamp);
+            // notify the connection a packet was processed
+            self.on_processed_packet(datagram.timestamp);
         }
 
         Ok(())
