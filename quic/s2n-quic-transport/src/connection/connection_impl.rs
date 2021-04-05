@@ -155,7 +155,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         space_manager.poll_crypto(
             self.path_manager.active_path(),
             &mut self.local_id_registry,
-            &self.limits,
+            &mut self.limits,
             datagram.timestamp,
         )?;
 
@@ -174,7 +174,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
             if Config::ENDPOINT_TYPE.is_server() {
                 self.timers
                     .initial_id_expiration_timer
-                    .set(datagram.timestamp + self.get_idle_timer_duration())
+                    .set(datagram.timestamp + 3 * self.current_pto())
             }
         }
 
@@ -182,18 +182,14 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
     }
 
     /// Returns the idle timeout based on transport parameters of both peers
-    fn get_idle_timer_duration(&self) -> Duration {
-        let mut duration = Duration::from_secs(0);
-
+    fn get_idle_timer_duration(&self) -> Option<Duration> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.1
-        //= type=TODO
         //# Each endpoint advertises a max_idle_timeout, but the effective value
         //# at an endpoint is computed as the minimum of the two advertised
         //# values.  By announcing a max_idle_timeout, an endpoint commits to
         //# initiating an immediate close (Section 10.2) if it abandons the
         //# connection prior to the effective value.
-        // TODO read the peer and local `max_idle_timeout` TP
-        duration = duration.max(Duration::from_secs(30));
+        let mut duration = self.limits.max_idle_timeout()?;
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.1
         //# To avoid excessively small idle timeout periods, endpoints MUST
@@ -203,13 +199,13 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         //# idle timeout.
         duration = duration.max(3 * self.current_pto());
 
-        duration
+        Some(duration)
     }
 
     fn restart_peer_idle_timer(&mut self, timestamp: Timestamp) {
-        self.timers
-            .peer_idle_timer
-            .set(timestamp + self.get_idle_timer_duration())
+        if let Some(duration) = self.get_idle_timer_duration() {
+            self.timers.peer_idle_timer.set(timestamp + duration)
+        }
     }
 
     fn current_pto(&self) -> Duration {
