@@ -218,6 +218,8 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         //# idle timer when sending an ack-eliciting packet if no other ack-
         //# eliciting packets have been sent since last receiving and processing
         //# a packet.
+
+        // reset the value back to `false` after reading it
         if core::mem::take(&mut self.timers.reset_peer_idle_timer_on_send) {
             if let Some(duration) = self.get_idle_timer_duration() {
                 self.timers.peer_idle_timer.set(timestamp + duration);

@@ -467,9 +467,9 @@ impl MaxIdleTimeout {
         //# values.
 
         match (self.as_duration(), peer.as_duration()) {
-            (Some(a), Some(b)) => {
+            (Some(current_duration), Some(peer_duration)) => {
                 // take the peer's value if less
-                if a > b {
+                if current_duration > peer_duration {
                     *self = *peer;
                 }
             }
