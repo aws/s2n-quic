@@ -88,7 +88,7 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
         transmission_constraint: transmission::Constraint,
         handshake_status: &HandshakeStatus,
         buffer: EncoderBuffer<'a>,
-    ) -> Result<EncoderBuffer<'a>, PacketEncodingError<'a>> {
+    ) -> Result<(transmission::Outcome, EncoderBuffer<'a>), PacketEncodingError<'a>> {
         let mut packet_number = self.tx_packet_numbers.next();
 
         if self.recovery_manager.requires_probe() {
@@ -141,7 +141,7 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
             self.recovery(context.path_mut(), handshake_status);
         recovery_manager.on_packet_sent(packet_number, outcome, time_sent, &mut recovery_context);
 
-        Ok(buffer)
+        Ok((outcome, buffer))
     }
 
     pub fn on_transmit_close<'a>(
