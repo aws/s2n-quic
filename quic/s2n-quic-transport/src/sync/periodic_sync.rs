@@ -20,16 +20,23 @@ use s2n_quic_core::{ack, stream::StreamId, time::Timestamp};
 /// into an outgoing frame.
 #[derive(Debug)]
 pub struct PeriodicSync<T, S> {
+    latest_value: T,
     sync_period: Duration,
+    delivery_timer: VirtualTimer,
     delivery: DeliveryState<T>,
     writer: S,
 }
 
-impl<T: Copy + Clone + Eq + PartialEq, S: ValueToFrameWriter<T>> PeriodicSync<T, S> {
-    /// Creates a new PeriodicSync. The value will transmitted once every `sync_period`
+impl<T: Copy + Clone + Default + Eq + PartialEq + PartialOrd, S: ValueToFrameWriter<T>>
+    PeriodicSync<T, S>
+{
+    /// Creates a new PeriodicSync. The value will transmitted when `request_delivery` is called
+    /// and every subsequent `sync_period` until `stop_sync` is called.
     pub fn new(sync_period: Duration) -> Self {
         Self {
+            latest_value: T::default(),
             sync_period,
+            delivery_timer: VirtualTimer::default(),
             delivery: DeliveryState::NotRequested,
             writer: S::default(),
         }
@@ -39,36 +46,30 @@ impl<T: Copy + Clone + Eq + PartialEq, S: ValueToFrameWriter<T>> PeriodicSync<T,
     /// original value will be overwritten. The new value must be greater than or equal
     /// to the original value.
     pub fn request_delivery(&mut self, value: T) {
-        match self.delivery {
-            DeliveryState::NotRequested => self.delivery = DeliveryState::Requested(value),
-            DeliveryState::Scheduled(_, ref mut original_value)
-            | DeliveryState::Requested(ref mut original_value) => {
-                debug_assert!(value >= original_value);
-                *original_value = value
-            }
-            _ => {}
+        debug_assert!(value >= self.latest_value);
+
+        self.latest_value = value;
+
+        if let DeliveryState::NotRequested = self.delivery {
+            self.delivery = DeliveryState::Requested(value);
         }
     }
 
     /// Called when the connection timer expires
     pub fn on_timeout(&mut self, now: Timestamp) {
-        if let DeliveryState::Scheduled(mut delivery_timer, value) = self.delivery {
-            if delivery_timer.poll_expiration(now).is_ready() {
-                self.delivery = DeliveryState::Requested(value);
-            }
+        if self.delivery_timer.poll_expiration(now).is_ready() {
+            self.delivery = DeliveryState::Requested(self.latest_value);
         }
     }
 
     /// Returns the timer for a scheduled delivery
     pub fn timers(&self) -> impl Iterator<Item = &Timestamp> {
-        match &self.delivery {
-            DeliveryState::Scheduled(delivery_timer, _) => delivery_timer.iter(),
-            _ => None.iter(),
-        }
+        self.delivery_timer.iter()
     }
 
     /// Stop synchronizing the value to the peer
     pub fn stop_sync(&mut self) {
+        self.delivery_timer.cancel();
         self.delivery.cancel();
     }
 
@@ -78,9 +79,9 @@ impl<T: Copy + Clone + Eq + PartialEq, S: ValueToFrameWriter<T>> PeriodicSync<T,
         // next delivery period
         if let DeliveryState::InFlight(in_flight) = self.delivery {
             if ack_set.contains(in_flight.packet.packet_nr) {
-                let mut next_delivery = VirtualTimer::default();
-                next_delivery.set(in_flight.packet.timestamp + self.sync_period);
-                self.delivery = DeliveryState::Scheduled(next_delivery, in_flight.value);
+                self.delivery_timer
+                    .set(in_flight.packet.timestamp + self.sync_period);
+                self.delivery = DeliveryState::Delivered(in_flight.value);
             }
         }
     }
@@ -102,11 +103,13 @@ impl<T: Copy + Clone + Eq + PartialEq, S: ValueToFrameWriter<T>> PeriodicSync<T,
         stream_id: StreamId,
         context: &mut W,
     ) -> Result<(), OnTransmitError> {
-        if let Some(value) = self
+        if self
             .delivery
             .try_transmit(context.transmission_constraint())
-            .cloned()
+            .is_some()
         {
+            let value = self.latest_value;
+
             let packet_nr = self
                 .writer
                 .write_value_as_frame(value, stream_id, context)
