@@ -269,6 +269,10 @@ impl ReceiveStream {
 
     impl_receive_stream_api!(|stream, dispatch| dispatch!(stream.0));
 
+    pub fn id(&self) -> u64 {
+        self.0.id().into()
+    }
+
     impl_connection_api!(|_stream| todo!());
 }
 

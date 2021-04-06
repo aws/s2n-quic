@@ -50,6 +50,14 @@ impl Stream {
         Stream::Send(stream) => dispatch!(stream),
     });
 
+    pub fn id(&self) -> u64 {
+        match self {
+            Self::Bidirectional(stream) => stream.id(),
+            Self::Receive(stream) => stream.id(),
+            Self::Send(stream) => stream.id(),
+        }
+    }
+
     impl_splittable_stream_api!();
 
     impl_connection_api!(|stream| match stream {
