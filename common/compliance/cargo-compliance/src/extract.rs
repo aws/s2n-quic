@@ -20,7 +20,8 @@ lazy_static! {
     static ref KEY_WORDS: Vec<(Regex, AnnotationLevel)> = {
         let matches = [
             ("MUST( NOT)?", AnnotationLevel::Must),
-            ("SHALL( NOT)?", AnnotationLevel::Shall),
+            ("SHALL( NOT)?", AnnotationLevel::Must),
+            ("REQUIRED", AnnotationLevel::Must),
             ("SHOULD( NOT)?", AnnotationLevel::Should),
             ("(NOT )?RECOMMENDED", AnnotationLevel::Recommended),
             ("MAY", AnnotationLevel::May),

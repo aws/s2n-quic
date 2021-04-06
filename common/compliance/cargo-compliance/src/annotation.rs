@@ -165,18 +165,16 @@ pub enum AnnotationLevel {
     May,
     Recommended,
     Should,
-    Shall,
     Must,
 }
 
 impl AnnotationLevel {
-    pub const LEVELS: [Self; 7] = [
+    pub const LEVELS: [Self; 6] = [
         Self::Auto,
         Self::Optional,
         Self::May,
         Self::Recommended,
         Self::Should,
-        Self::Shall,
         Self::Must,
     ];
 }
@@ -195,7 +193,6 @@ impl fmt::Display for AnnotationLevel {
             Self::May => "MAY",
             Self::Recommended => "RECOMMENDED",
             Self::Should => "SHOULD",
-            Self::Shall => "SHALL",
             Self::Must => "MUST",
         })
     }
@@ -208,7 +205,6 @@ impl FromStr for AnnotationLevel {
         match v {
             "AUTO" => Ok(Self::Auto),
             "MUST" => Ok(Self::Must),
-            "SHALL" => Ok(Self::Shall),
             "SHOULD" => Ok(Self::Should),
             "RECOMMENDED" => Ok(Self::Recommended),
             "MAY" => Ok(Self::May),

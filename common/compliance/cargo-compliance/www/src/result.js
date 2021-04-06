@@ -117,7 +117,6 @@ function getRequirementsStats(reqs) {
   const stats = {
     overall: new Stats(),
     MUST: new Stats(),
-    SHALL: new Stats(),
     SHOULD: new Stats(),
     MAY: new Stats(),
     RECOMMENDED: new Stats(),

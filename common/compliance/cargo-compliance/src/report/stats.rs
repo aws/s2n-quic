@@ -7,7 +7,6 @@ use crate::annotation::{AnnotationLevel, AnnotationType};
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Statistics {
     pub must: AnnotationStatistics,
-    pub shall: AnnotationStatistics,
     pub should: AnnotationStatistics,
     pub may: AnnotationStatistics,
     pub recommended: AnnotationStatistics,
@@ -23,9 +22,6 @@ impl Statistics {
             }
             AnnotationLevel::Must => {
                 self.must.record(reference);
-            }
-            AnnotationLevel::Shall => {
-                self.shall.record(reference);
             }
             AnnotationLevel::Should => {
                 self.should.record(reference);

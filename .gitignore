@@ -6,3 +6,4 @@ target/
 **/*.rs.bk
 Cargo.lock
 *.tar.gz
+/.history
