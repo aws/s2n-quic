@@ -6,6 +6,7 @@
 use crate::{
     connection,
     contexts::{ConnectionApiCallContext, OnTransmitError, WriteContext},
+    recovery::RttEstimator,
     stream::{
         self,
         incoming_connection_flow_controller::IncomingConnectionFlowController,
@@ -17,13 +18,17 @@ use crate::{
     },
     transmission::{self, interest::Provider as _},
 };
-use core::task::{Context, Poll, Waker};
+use core::{
+    task::{Context, Poll, Waker},
+    time::Duration,
+};
 use s2n_quic_core::{
     ack, endpoint,
     frame::{
         stream::StreamRef, DataBlocked, MaxData, MaxStreamData, MaxStreams, ResetStream,
         StopSending, StreamDataBlocked, StreamsBlocked,
     },
+    packet::number::PacketNumberSpace,
     stream::{ops, StreamId, StreamType},
     time::Timestamp,
     transport::{self, parameters::InitialFlowControlLimits},
@@ -180,6 +185,8 @@ pub struct StreamManagerState<S> {
     /// Limits for the Stream manager. Since only Stream limits are utilized at
     /// the moment we only store those
     stream_limits: stream::Limits,
+    /// The duration after which an idle connection may be closed.
+    max_idle_timeout: Option<Duration>,
 }
 
 impl<S: StreamTrait> StreamManagerState<S> {
@@ -411,6 +418,7 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
                 close_reason: None,
                 accept_state: AcceptState::new(local_endpoint_type),
                 stream_limits: connection_limits.stream_limits(),
+                max_idle_timeout: connection_limits.max_idle_timeout(),
             },
         }
     }
@@ -543,11 +551,15 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
     }
 
     /// This method gets called when a packet delivery got acknowledged
-    pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
+    pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A, rtt_estimator: &RttEstimator) {
+        let blocked_sync_period = self.blocked_sync_period(rtt_estimator);
+
         self.inner
             .incoming_connection_flow_controller
             .on_packet_ack(ack_set);
-        self.inner.stream_controller.on_packet_ack(ack_set);
+        self.inner
+            .stream_controller
+            .on_packet_ack(ack_set, blocked_sync_period);
 
         self.inner.streams.iterate_frame_delivery_list(
             &mut self.inner.stream_controller,
@@ -661,6 +673,39 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         // perform an operation which brings us in a finalization state
 
         transmit_result
+    }
+
+    /// Calculates the period for sending STREAMS_BLOCKED, STREAM_DATA_BLOCKED and
+    /// DATA_BLOCKED frames when blocked, according to the idle timeout and latest RTT estimates
+    fn blocked_sync_period(&self, rtt_estimator: &RttEstimator) -> Duration {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.1
+        //# To keep the
+        //# connection from closing, a sender that is flow control limited SHOULD
+        //# periodically send a STREAM_DATA_BLOCKED or DATA_BLOCKED frame when it
+        //# has no ack-eliciting packets in flight.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.1
+        //# To avoid excessively small idle timeout periods, endpoints MUST
+        //# increase the idle timeout period to be at least three times the
+        //# current Probe Timeout (PTO).  This allows for multiple PTOs to
+        //# expire, and therefore multiple probes to be sent and lost, prior to
+        //# idle timeout.
+
+        // STREAMS_BLOCKED, DATA_BLOCKED, and STREAM_DATA_BLOCKED frames are
+        // sent to prevent the connection from closing due to an idle timeout
+        // when we are blocked from opening or sending on streams. Therefore, the
+        // ideal period for sending these frames would be just before the peer's
+        // idle timer expires. The peer's idle timer is also adjusted by the PTO
+        // period as described in the citation above. Since we cannot assume any
+        // of the peer's packets have been lost, we use a pto backoff of 1.
+        let idle_timeout = self
+            .inner
+            .max_idle_timeout
+            .unwrap_or_default()
+            .max(3 * rtt_estimator.pto_period(1, PacketNumberSpace::ApplicationData));
+
+        // Subtract 1 RTT from the idle timeout so the blocked frames are received in time
+        idle_timeout - rtt_estimator.smoothed_rtt()
     }
 
     // Frame reception

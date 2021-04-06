@@ -12,7 +12,7 @@ use crate::{
     contexts::{ConnectionApiCallContext, OnTransmitError, WriteContext},
     endpoint,
     stream::{
-        controller::{MAX_STREAMS_SYNC_FRACTION, STREAMS_BLOCKED_PERIOD},
+        controller::MAX_STREAMS_SYNC_FRACTION,
         stream_impl::StreamConfig,
         stream_interests::{StreamInterestProvider, StreamInterests},
         AbstractStreamManager, StreamError, StreamEvents, StreamTrait,

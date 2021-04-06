@@ -151,15 +151,19 @@ impl Controller {
         self.outgoing_controller.streams_blocked_sync.stop_sync();
     }
 
-    /// This method is called when a packet delivery got acknowledged
-    pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
-        self.bidi_controller.on_packet_ack(ack_set);
+    /// This method is called when a packet delivery got acknowledged.
+    /// The `blocked_sync_period` is used for updating the period at which
+    /// `STREAMS_BLOCKED` frames will be sent to the peer if the application
+    /// is blocked by peer limits.
+    pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A, blocked_sync_period: Duration) {
+        self.bidi_controller
+            .on_packet_ack(ack_set, blocked_sync_period);
         self.incoming_controller
             .max_streams_sync
             .on_packet_ack(ack_set);
         self.outgoing_controller
             .streams_blocked_sync
-            .on_packet_ack(ack_set);
+            .on_packet_ack(ack_set, blocked_sync_period);
     }
 
     /// This method is called when a packet loss is reported
@@ -261,9 +265,11 @@ impl BidiController {
         self.incoming.on_close_stream();
     }
 
-    pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
+    pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A, blocked_sync_period: Duration) {
         self.incoming.max_streams_sync.on_packet_ack(ack_set);
-        self.outgoing.streams_blocked_sync.on_packet_ack(ack_set);
+        self.outgoing
+            .streams_blocked_sync
+            .on_packet_ack(ack_set, blocked_sync_period);
     }
 
     pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
@@ -294,10 +300,6 @@ impl transmission::interest::Provider for BidiController {
 // The amount of wakers that may be tracked before allocating to the heap.
 const WAKERS_INITIAL_CAPACITY: usize = 5;
 
-// The amount of time to wait before sending another STREAMS_BLOCKED frame
-// while blocked by peer stream limits.
-pub(super) const STREAMS_BLOCKED_PERIOD: Duration = Duration::from_secs(10);
-
 /// The OutgoingController controls streams initiated locally
 #[derive(Debug)]
 struct OutgoingController {
@@ -318,7 +320,7 @@ impl OutgoingController {
             local_initiated_concurrent_stream_limit,
             peer_cumulative_stream_limit: initial_peer_maximum_streams,
             wakers: SmallVec::new(),
-            streams_blocked_sync: PeriodicSync::new(STREAMS_BLOCKED_PERIOD),
+            streams_blocked_sync: PeriodicSync::new(),
             opened_streams: VarInt::from_u8(0),
             closed_streams: VarInt::from_u8(0),
         }

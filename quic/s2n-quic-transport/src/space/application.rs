@@ -463,7 +463,8 @@ impl<'a, Config: endpoint::Config> recovery::Context<<Config::CongestionControll
     ) {
         self.handshake_status.on_packet_ack(packet_number_range);
         self.ping.on_packet_ack(packet_number_range);
-        self.stream_manager.on_packet_ack(packet_number_range);
+        self.stream_manager.on_packet_ack(
+            packet_number_range, &self.path_manager.active_path().rtt_estimator);
         self.local_id_registry.on_packet_ack(packet_number_range);
         self.path_manager.on_packet_ack(packet_number_range);
     }
