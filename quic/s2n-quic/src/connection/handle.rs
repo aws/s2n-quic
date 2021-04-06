@@ -197,7 +197,7 @@ macro_rules! impl_handle_api {
         /// ```rust
         /// // TODO
         /// ```
-        pub fn close(self, error_code: $crate::application::Error) {
+        pub fn close(&self, error_code: $crate::application::Error) {
             self.0.close(error_code)
         }
     };
