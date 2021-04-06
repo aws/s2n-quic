@@ -84,7 +84,7 @@ target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#22.4"
 #          Table 7: Initial QUIC Transport Error Codes Entries
 
 [[spec]]
-level = "SHALL"
+level = "MUST"
 quote = '''
 IANA [SHALL add/has added] a registry for "QUIC Transport Error
 Codes" under a "QUIC" heading.

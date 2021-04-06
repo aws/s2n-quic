@@ -31,7 +31,7 @@ target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#22.3"
 # Table 3.
 
 [[spec]]
-level = "SHALL"
+level = "MUST"
 quote = '''
 IANA [SHALL add/has added] a registry for "QUIC Frame Types" under a
 "QUIC" heading.
