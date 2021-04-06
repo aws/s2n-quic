@@ -9,7 +9,7 @@ mod client;
 mod file;
 mod server;
 
-#[tokio::main(basic_scheduler)]
+#[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
     Arguments::from_args().run().await
 }

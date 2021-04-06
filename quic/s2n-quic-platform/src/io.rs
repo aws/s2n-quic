@@ -1,5 +1,5 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-pub mod rx;
-pub mod tx;
+#[cfg(feature = "tokio")]
+pub mod tokio;

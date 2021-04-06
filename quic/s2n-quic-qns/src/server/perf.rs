@@ -37,7 +37,21 @@ pub struct Perf {
 
 impl Perf {
     pub async fn run(&self) -> Result<()> {
-        let mut server = self.server()?;
+        let private_key = self.private_key()?;
+        let certificate = self.certificate()?;
+
+        let tls = s2n_quic::provider::tls::default::Server::builder()
+            .with_certificate(certificate, private_key)?
+            .with_alpn_protocols(self.alpn_protocols.iter().map(String::as_bytes))?
+            .build()?;
+
+        let mut server = Server::builder()
+            .with_io(("::", self.port))?
+            .with_tls(tls)?
+            .start()
+            .unwrap();
+
+        eprintln!("Server listening on port {}", self.port);
 
         if let Some(limit) = self.connections {
             let mut connections = vec![];
@@ -220,26 +234,6 @@ impl Perf {
         }
 
         Ok(())
-    }
-
-    fn server(&self) -> Result<Server> {
-        let private_key = self.private_key()?;
-        let certificate = self.certificate()?;
-
-        let tls = s2n_quic::provider::tls::default::Server::builder()
-            .with_certificate(certificate, private_key)?
-            .with_alpn_protocols(self.alpn_protocols.iter().map(String::as_bytes))?
-            .build()?;
-
-        let server = Server::builder()
-            .with_io(("::", self.port))?
-            .with_tls(tls)?
-            .start()
-            .unwrap();
-
-        eprintln!("Server listening on port {}", self.port);
-
-        Ok(server)
     }
 
     fn certificate(&self) -> Result<Certificate> {

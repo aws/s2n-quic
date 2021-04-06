@@ -252,11 +252,41 @@ macro_rules! impl_receive_stream_trait {
         #[cfg(all(feature = "std", feature = "tokio"))]
         impl tokio::io::AsyncRead for $name {
             fn poll_read(
-                self: core::pin::Pin<&mut Self>,
+                mut self: core::pin::Pin<&mut Self>,
                 cx: &mut core::task::Context<'_>,
-                buf: &mut [u8],
-            ) -> core::task::Poll<std::io::Result<usize>> {
-                futures::io::AsyncRead::poll_read(self, cx, buf)
+                buf: &mut tokio::io::ReadBuf,
+            ) -> core::task::Poll<std::io::Result<()>> {
+                use bytes::Bytes;
+
+                if buf.capacity() == 0 {
+                    return Ok(()).into();
+                }
+
+                // create some chunks on the stack to receive into
+                // TODO investigate a better default number
+                let mut chunks = [
+                    Bytes::new(),
+                    Bytes::new(),
+                    Bytes::new(),
+                    Bytes::new(),
+                    Bytes::new(),
+                ];
+
+                let high_watermark = buf.capacity();
+
+                let response = futures::ready!(self
+                    .rx_request()?
+                    .receive(&mut chunks)
+                    // don't receive more than we're capable of storing
+                    .with_high_watermark(high_watermark)
+                    .poll(Some(cx))?
+                    .into_poll());
+
+                for chunk in &chunks[..response.chunks.consumed] {
+                    buf.put_slice(chunk);
+                }
+
+                Ok(()).into()
             }
         }
     };

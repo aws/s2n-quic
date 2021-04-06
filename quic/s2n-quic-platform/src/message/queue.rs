@@ -51,6 +51,12 @@ pub struct Queue<Ring: message::Ring> {
     free: Segment,
 }
 
+impl<Ring: message::Ring + Default> Default for Queue<Ring> {
+    fn default() -> Self {
+        Self::new(Ring::default())
+    }
+}
+
 impl<Ring: message::Ring> Queue<Ring> {
     /// Creates a new `MessageQueue` with a `MessageBuffer`
     pub fn new(ring: Ring) -> Self {

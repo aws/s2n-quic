@@ -2,12 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::inet::{ExplicitCongestionNotification, SocketAddress};
-use core::{fmt, marker::PhantomData, time::Duration};
+use core::time::Duration;
 
 /// A structure capable of queueing and transmitting messages
 pub trait Tx<'a>: Sized {
     type Queue: Queue;
-    type Error: fmt::Display;
 
     /// Set to true if the queue supports setting ECN markings
     const SUPPORTS_ECN: bool = false;
@@ -27,46 +26,6 @@ pub trait Tx<'a>: Sized {
     /// Returns true if the queue is empty
     fn is_empty(&self) -> bool {
         self.len() == 0
-    }
-
-    /// Returns a future that transmits messages from the queue and returns the number of messages
-    /// sent.
-    fn transmit(&mut self) -> Transmit<'a, '_, Self> {
-        Transmit {
-            tx: self,
-            l: PhantomData,
-        }
-    }
-
-    /// Polls transmitting messages from the queue and returns the number of messages sent.
-    fn poll_transmit(
-        &mut self,
-        cx: &mut core::task::Context<'_>,
-    ) -> core::task::Poll<Result<usize, Self::Error>>;
-}
-
-/// A Future for transmitting data
-pub struct Transmit<'a, 't, T: Tx<'a>> {
-    /// Reference to the Tx implementation
-    tx: &'t mut T,
-    /// Stores the lifetime for the Tx trait parameter
-    l: PhantomData<&'a ()>,
-}
-
-impl<'a, 't, T: Tx<'a>> core::future::Future for Transmit<'a, 't, T> {
-    type Output = Result<usize, T::Error>;
-
-    fn poll(
-        mut self: core::pin::Pin<&mut Self>,
-        cx: &mut core::task::Context<'_>,
-    ) -> core::task::Poll<Self::Output> {
-        let tx = &mut self.tx;
-
-        if tx.is_empty() {
-            return core::task::Poll::Ready(Ok(0));
-        }
-
-        tx.poll_transmit(cx)
     }
 }
 

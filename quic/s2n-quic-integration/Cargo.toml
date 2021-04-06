@@ -18,7 +18,7 @@ lazy_static = "1"
 s2n-quic = { path = "../s2n-quic", features = ["std"] }
 s2n-quic-core = { path = "../s2n-quic-core", features = ["std", "testing"] }
 s2n-quic-platform = { path = "../s2n-quic-platform" }
-tokio = { version = "0.2", features = ["full"] }
+tokio = { version = "1", features = ["full"] }
 
 [dev-dependencies]
 bolero = "0.6"

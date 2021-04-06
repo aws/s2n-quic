@@ -1,6 +1,15 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::{
+    io::{rx, tx},
+    time::Timestamp,
+};
+use core::{
+    future::Future,
+    task::{Context, Poll},
+};
+
 pub mod limits;
 pub use limits::Limits;
 
@@ -63,5 +72,43 @@ impl Location {
             Self::Local => Self::Remote,
             Self::Remote => Self::Local,
         }
+    }
+}
+
+/// The main interface for a QUIC endpoint
+pub trait Endpoint: 'static + Send + Sized {
+    /// Receives and processes datagrams for the Rx queue
+    fn receive<'rx, Rx: rx::Rx<'rx>>(&mut self, rx: &'rx mut Rx, timestamp: Timestamp);
+
+    /// Transmits outgoing datagrams into the Tx queue
+    fn transmit<'tx, Tx: tx::Tx<'tx>>(&mut self, tx: &'tx mut Tx, timestamp: Timestamp);
+
+    /// Returns a future which polls for application-space wakeups
+    fn wakeups(&mut self, timestamp: Timestamp) -> Wakeups<Self> {
+        Wakeups {
+            endpoint: self,
+            timestamp,
+        }
+    }
+
+    /// Polls for any application-space wakeups
+    fn poll_wakeups(&mut self, cx: &mut Context<'_>, timestamp: Timestamp) -> Poll<usize>;
+
+    /// Returns the latest Timestamp at which `transmit` should be called
+    fn timeout(&self) -> Option<Timestamp>;
+}
+
+/// A future which polls an endpoint for application-space wakeups
+pub struct Wakeups<'a, E: Endpoint> {
+    endpoint: &'a mut E,
+    timestamp: Timestamp,
+}
+
+impl<'a, E: Endpoint> Future for Wakeups<'a, E> {
+    type Output = usize;
+
+    fn poll(mut self: core::pin::Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let timestamp = self.timestamp;
+        self.endpoint.poll_wakeups(cx, timestamp)
     }
 }
