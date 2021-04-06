@@ -5,7 +5,7 @@ use crate::{
     contexts::OnTransmitError,
     sync::{IncrementalValueSync, PeriodicSync, ValueToFrameWriter},
     transmission,
-    transmission::{interest::Provider, WriteContext},
+    transmission::{Interest, WriteContext},
 };
 use core::{
     task::{Context, Poll, Waker},
@@ -153,16 +153,9 @@ impl Controller {
 
     /// This method is called when a packet delivery got acknowledged
     pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
-        self.bidi_controller
-            .incoming
-            .max_streams_sync
-            .on_packet_ack(ack_set);
+        self.bidi_controller.on_packet_ack(ack_set);
         self.incoming_controller
             .max_streams_sync
-            .on_packet_ack(ack_set);
-        self.bidi_controller
-            .outgoing
-            .streams_blocked_sync
             .on_packet_ack(ack_set);
         self.outgoing_controller
             .streams_blocked_sync
@@ -171,16 +164,9 @@ impl Controller {
 
     /// This method is called when a packet loss is reported
     pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
-        self.bidi_controller
-            .incoming
-            .max_streams_sync
-            .on_packet_loss(ack_set);
+        self.bidi_controller.on_packet_loss(ack_set);
         self.incoming_controller
             .max_streams_sync
-            .on_packet_loss(ack_set);
-        self.bidi_controller
-            .outgoing
-            .streams_blocked_sync
             .on_packet_loss(ack_set);
         self.outgoing_controller
             .streams_blocked_sync
@@ -189,47 +175,16 @@ impl Controller {
 
     /// Queries the component for any outgoing frames that need to get sent
     pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) -> Result<(), OnTransmitError> {
+        self.bidi_controller.on_transmit(context)?;
         // Only the stream_type from the StreamId is transmitted
-        self.bidi_controller.incoming.max_streams_sync.on_transmit(
-            StreamId::initial(context.local_endpoint_type(), StreamType::Bidirectional),
-            context,
-        )?;
         self.incoming_controller.max_streams_sync.on_transmit(
             StreamId::initial(context.local_endpoint_type(), StreamType::Unidirectional),
             context,
         )?;
-        self.bidi_controller
-            .outgoing
-            .streams_blocked_sync
-            .on_transmit(
-                StreamId::initial(context.local_endpoint_type(), StreamType::Bidirectional),
-                context,
-            )?;
         self.outgoing_controller.streams_blocked_sync.on_transmit(
             StreamId::initial(context.local_endpoint_type(), StreamType::Unidirectional),
             context,
         )
-    }
-
-    /// Queries the component for interest in transmitting frames
-    pub fn transmission_interest(&self) -> transmission::Interest {
-        self.bidi_controller
-            .incoming
-            .max_streams_sync
-            .transmission_interest()
-            + self
-                .incoming_controller
-                .max_streams_sync
-                .transmission_interest()
-            + self
-                .bidi_controller
-                .outgoing
-                .streams_blocked_sync
-                .transmission_interest()
-            + self
-                .outgoing_controller
-                .streams_blocked_sync
-                .transmission_interest()
     }
 
     /// Returns all timers for the component
@@ -261,6 +216,21 @@ impl Controller {
     }
 }
 
+/// Queries the component for interest in transmitting frames
+impl transmission::interest::Provider for Controller {
+    fn transmission_interest(&self) -> Interest {
+        self.bidi_controller.transmission_interest()
+            + self
+                .incoming_controller
+                .max_streams_sync
+                .transmission_interest()
+            + self
+                .outgoing_controller
+                .streams_blocked_sync
+                .transmission_interest()
+    }
+}
+
 /// The bidirectional controller consists of both outgoing and incoming
 /// controllers that are both notified when a stream is opened, regardless
 /// of which side initiated the stream.
@@ -289,6 +259,35 @@ impl BidiController {
     fn on_close_stream(&mut self) {
         self.outgoing.on_close_stream();
         self.incoming.on_close_stream();
+    }
+
+    pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
+        self.incoming.max_streams_sync.on_packet_ack(ack_set);
+        self.outgoing.streams_blocked_sync.on_packet_ack(ack_set);
+    }
+
+    pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
+        self.incoming.max_streams_sync.on_packet_loss(ack_set);
+        self.outgoing.streams_blocked_sync.on_packet_loss(ack_set);
+    }
+
+    pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) -> Result<(), OnTransmitError> {
+        // Only the stream_type from the StreamId is transmitted
+        self.incoming.max_streams_sync.on_transmit(
+            StreamId::initial(context.local_endpoint_type(), StreamType::Bidirectional),
+            context,
+        )?;
+        self.outgoing.streams_blocked_sync.on_transmit(
+            StreamId::initial(context.local_endpoint_type(), StreamType::Bidirectional),
+            context,
+        )
+    }
+}
+
+impl transmission::interest::Provider for BidiController {
+    fn transmission_interest(&self) -> Interest {
+        self.incoming.max_streams_sync.transmission_interest()
+            + self.outgoing.streams_blocked_sync.transmission_interest()
     }
 }
 
