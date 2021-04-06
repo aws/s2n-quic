@@ -9,7 +9,7 @@ use crate::{
         AckDelayExponent, ActiveConnectionIdLimit, InitialFlowControlLimits, InitialMaxData,
         InitialMaxStreamDataBidiLocal, InitialMaxStreamDataBidiRemote, InitialMaxStreamDataUni,
         InitialMaxStreamsBidi, InitialMaxStreamsUni, InitialStreamLimits, MaxAckDelay,
-        MaxIdleTimeout,
+        MaxIdleTimeout, TransportParameters,
     },
 };
 use core::{convert::TryInto, time::Duration};
@@ -123,6 +123,11 @@ impl Limits {
     setter!(with_max_ack_ranges, ack_ranges_limit, u8);
     setter!(with_max_send_buffer_size, max_send_buffer_size, u32);
 
+    pub fn load_peer<A, B, C, D>(&mut self, peer_parameters: &TransportParameters<A, B, C, D>) {
+        self.max_idle_timeout
+            .load_peer(&peer_parameters.max_idle_timeout);
+    }
+
     pub const fn ack_settings(&self) -> ack::Settings {
         ack::Settings {
             ack_delay_exponent: self.ack_delay_exponent.as_u8(),
@@ -156,6 +161,10 @@ impl Limits {
                 .max_open_local_unidirectional_streams
                 .as_varint(),
         }
+    }
+
+    pub fn max_idle_timeout(&self) -> Option<Duration> {
+        self.max_idle_timeout.as_duration()
     }
 }
 

@@ -141,7 +141,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         &mut self,
         path: &Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
         local_id_registry: &mut connection::LocalIdRegistry,
-        limits: &Limits,
+        limits: &mut Limits,
         now: Timestamp,
     ) -> Result<(), transport::Error> {
         if let Some(session) = self.session.as_mut() {
