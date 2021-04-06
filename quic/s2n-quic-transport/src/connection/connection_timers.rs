@@ -20,6 +20,13 @@ pub type ConnectionTimerEntry = TimerEntry<InternalConnectionId>;
 pub struct ConnectionTimers {
     /// The timer which is used to check peer idle times
     pub peer_idle_timer: VirtualTimer,
+    /// Stores if sending an ack-eliciting packet will rearm the idle timer
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#10.1
+    //# An endpoint also restarts its
+    //# idle timer when sending an ack-eliciting packet if no other ack-
+    //# eliciting packets have been sent since last receiving and processing
+    //# a packet.
+    pub reset_peer_idle_timer_on_send: bool,
     /// The timer which is used to send packets to the peer before the idle
     /// timeout expires
     pub local_idle_timer: VirtualTimer,

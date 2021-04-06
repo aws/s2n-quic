@@ -3,7 +3,10 @@
 
 //! Defines QUIC Application Error Codes
 
-use crate::varint::{VarInt, VarIntError};
+use crate::{
+    frame::ConnectionClose,
+    varint::{VarInt, VarIntError},
+};
 use core::{convert::TryFrom, ops};
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#20.2
@@ -64,6 +67,16 @@ impl From<Error> for VarInt {
 impl From<Error> for u64 {
     fn from(e: Error) -> Self {
         e.0.as_u64()
+    }
+}
+
+impl<'a> From<Error> for ConnectionClose<'a> {
+    fn from(error: Error) -> Self {
+        ConnectionClose {
+            error_code: error.0,
+            frame_type: None,
+            reason: None,
+        }
     }
 }
 

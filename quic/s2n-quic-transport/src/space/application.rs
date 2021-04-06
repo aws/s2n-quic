@@ -125,7 +125,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         transmission_constraint: transmission::Constraint,
         handshake_status: &mut HandshakeStatus,
         buffer: EncoderBuffer<'a>,
-    ) -> Result<EncoderBuffer<'a>, PacketEncodingError<'a>> {
+    ) -> Result<(transmission::Outcome, EncoderBuffer<'a>), PacketEncodingError<'a>> {
         let mut packet_number = self.tx_packet_numbers.next();
 
         if self.recovery_manager.requires_probe() {
@@ -197,7 +197,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             &mut recovery_context,
         );
 
-        Ok(buffer)
+        Ok((outcome, buffer))
     }
 
     pub fn on_transmit_close<'a>(

@@ -33,7 +33,7 @@ pub struct SessionContext<'a, Config: endpoint::Config> {
     >,
     pub handshake_status: &'a mut HandshakeStatus,
     pub local_id_registry: &'a mut connection::LocalIdRegistry,
-    pub limits: &'a Limits,
+    pub limits: &'a mut Limits,
 }
 
 impl<'a, Config: endpoint::Config> tls::Context<<Config::TLSEndpoint as tls::Endpoint>::Session>
@@ -146,6 +146,9 @@ impl<'a, Config: endpoint::Config> tls::Context<<Config::TLSEndpoint as tls::End
         //= tracking-issue=353
         //# An endpoint MUST treat the following as a connection error of type
         //# TRANSPORT_PARAMETER_ERROR or PROTOCOL_VIOLATION:
+
+        // Load the peer's transport parameters into the connection's limits
+        self.limits.load_peer(&peer_parameters);
 
         let peer_flow_control_limits = peer_parameters.flow_control_limits();
 

@@ -141,7 +141,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         &mut self,
         path: &Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
         local_id_registry: &mut connection::LocalIdRegistry,
-        limits: &Limits,
+        limits: &mut Limits,
         now: Timestamp,
     ) -> Result<(), transport::Error> {
         if let Some(session) = self.session.as_mut() {
@@ -249,6 +249,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
 
     pub fn on_transmit_close(
         &mut self,
+        early_connection_close: &ConnectionClose,
         connection_close: &ConnectionClose,
         context: &mut connection::ConnectionTransmissionContext<Config>,
         packet_buffer: &mut endpoint::PacketBuffer,
@@ -298,38 +299,6 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                 }
             }
         }
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#10.2.3
-        //# Sending a CONNECTION_CLOSE of type 0x1d in an Initial or Handshake
-        //# packet could expose application state or be used to alter application
-        //# state.  A CONNECTION_CLOSE of type 0x1d MUST be replaced by a
-        //# CONNECTION_CLOSE of type 0x1c when sending the frame in Initial or
-        //# Handshake packets.  Otherwise, information about the application
-        //# state might be revealed.  Endpoints MUST clear the value of the
-        //# Reason Phrase field and SHOULD use the APPLICATION_ERROR code when
-        //# converting to a CONNECTION_CLOSE of type 0x1c.
-        let early_connection_close = if connection_close.frame_type.is_none() {
-            ConnectionClose {
-                error_code: *transport::Error::APPLICATION_ERROR.code,
-                frame_type: Some(Default::default()),
-                reason: None,
-            }
-        } else {
-            // Hide any sensitive information in early packet spaces
-            // by removing the error code, frame type, and reason
-            ConnectionClose {
-                error_code: *transport::Error::PROTOCOL_VIOLATION.code,
-                frame_type: Some(Default::default()),
-                reason: None,
-            }
-        };
-
-        // allow real errors to be returned in debug mode
-        #[cfg(debug_assertions)]
-        let early_connection_close = {
-            let _ = early_connection_close;
-            connection_close
-        };
 
         packet_buffer.write(|buffer| {
             macro_rules! write_packet {

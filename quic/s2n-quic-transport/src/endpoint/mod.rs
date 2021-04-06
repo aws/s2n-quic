@@ -303,6 +303,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                                     conn.close(
                                         Some(shared_state),
                                         err,
+                                        endpoint_context.connection_close_formatter,
                                         close_packet_buffer,
                                         datagram.timestamp,
                                     );
@@ -333,6 +334,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                             conn.close(
                                 Some(shared_state),
                                 err,
+                                endpoint_context.connection_close_formatter,
                                 close_packet_buffer,
                                 datagram.timestamp,
                             );
@@ -522,6 +524,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
         let internal_id = self
             .connection_id_mapper
             .remove_internal_connection_id_by_stateless_reset_token(&token)?;
+        let endpoint_context = self.config.context();
         let close_packet_buffer = &mut self.close_packet_buffer;
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1
@@ -533,6 +536,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 conn.close(
                     shared_state,
                     connection::Error::StatelessReset,
+                    endpoint_context.connection_close_formatter,
                     close_packet_buffer,
                     timestamp,
                 );
@@ -592,6 +596,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
     pub fn handle_timers(&mut self, now: Timestamp) {
         let connection_id_mapper = &mut self.connection_id_mapper;
         let close_packet_buffer = &mut self.close_packet_buffer;
+        let endpoint_context = self.config.context();
 
         for internal_id in self.timer_manager.expirations(now) {
             self.connections
@@ -599,7 +604,13 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     if let Err(error) =
                         conn.on_timeout(shared_state.as_deref_mut(), connection_id_mapper, now)
                     {
-                        conn.close(shared_state, error, close_packet_buffer, now);
+                        conn.close(
+                            shared_state,
+                            error,
+                            endpoint_context.connection_close_formatter,
+                            close_packet_buffer,
+                            now,
+                        );
                     }
                 });
         }
@@ -629,12 +640,19 @@ impl<Cfg: Config> Endpoint<Cfg> {
             .poll_pending_wakeups(dequeued_wakeups, context);
         let nr_wakeups = self.dequeued_wakeups.len();
         let close_packet_buffer = &mut self.close_packet_buffer;
+        let endpoint_context = self.config.context();
 
         for internal_id in &self.dequeued_wakeups {
             self.connections
                 .with_connection(*internal_id, |conn, mut shared_state| {
                     if let Err(error) = conn.on_wakeup(shared_state.as_deref_mut(), timestamp) {
-                        conn.close(shared_state, error, close_packet_buffer, timestamp);
+                        conn.close(
+                            shared_state,
+                            error,
+                            endpoint_context.connection_close_formatter,
+                            close_packet_buffer,
+                            timestamp,
+                        );
                     }
                 });
         }
@@ -690,6 +708,7 @@ pub mod testing {
         type TokenFormat = s2n_quic_core::token::testing::Format;
         type ConnectionLimits = s2n_quic_core::connection::limits::Limits;
         type Stream = crate::stream::StreamImpl;
+        type ConnectionCloseFormatter = s2n_quic_core::connection::close::Development;
 
         fn context(&mut self) -> super::Context<Self> {
             todo!()
@@ -712,6 +731,7 @@ pub mod testing {
         type TokenFormat = s2n_quic_core::token::testing::Format;
         type ConnectionLimits = s2n_quic_core::connection::limits::Limits;
         type Stream = crate::stream::StreamImpl;
+        type ConnectionCloseFormatter = s2n_quic_core::connection::close::Development;
 
         fn context(&mut self) -> super::Context<Self> {
             todo!()

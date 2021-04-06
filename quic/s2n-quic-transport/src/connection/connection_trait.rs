@@ -50,6 +50,7 @@ pub trait ConnectionTrait: Sized {
         &mut self,
         shared_state: Option<&mut SharedConnectionState<Self::Config>>,
         error: connection::Error,
+        close_formatter: &<Self::Config as endpoint::Config>::ConnectionCloseFormatter,
         packet_buffer: &mut endpoint::PacketBuffer,
         timestamp: Timestamp,
     );

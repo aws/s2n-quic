@@ -178,7 +178,7 @@ impl ReceiveStreamFlowController {
 
             return Err(transport::Error::FLOW_CONTROL_ERROR
                 .with_reason("Stream flow control window exceeded")
-                .with_optional_frame_type(source_frame_type.map(|ty| ty.into())));
+                .with_frame_type(source_frame_type.unwrap_or_default().into()));
         }
         // Remark: Actually this read window might not have yet been
         // transmitted to the peer. In that case it might have now
@@ -204,7 +204,7 @@ impl ReceiveStreamFlowController {
                     //# (Section 11) if the sender violates the advertised connection or
                     //# stream data limits.
                     err.with_reason("Connection flow control window exceeded")
-                        .with_optional_frame_type(source_frame_type.map(|ty| ty.into()))
+                        .with_frame_type(source_frame_type.unwrap_or_default().into())
                 })?;
             // The connection window was acquired successfully
             self.acquired_connection_window += additional_connection_window;
@@ -573,7 +573,7 @@ impl ReceiveStream {
                             .with_reason(
                                 "Final size in reset frame did not match previous final size",
                             )
-                            .with_optional_frame_type(frame_tag.map(|tag| tag.into())));
+                            .with_frame_type(frame_tag.unwrap_or_default().into()));
                     }
                 }
 

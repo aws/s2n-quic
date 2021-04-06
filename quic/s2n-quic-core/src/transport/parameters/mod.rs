@@ -453,14 +453,69 @@ optional_transport_parameter!(OriginalDestinationConnectionId);
 //#    Idle timeout is disabled when both endpoints omit this transport
 //#    parameter or specify a value of 0.
 
-duration_transport_parameter!(MaxIdleTimeout, 0x01);
+transport_parameter!(MaxIdleTimeout(VarInt), 0x01, VarInt::from_u8(0));
 
 impl MaxIdleTimeout {
-    /// Defaults to 15 seconds
-    pub const RECOMMENDED: Self = Self(VarInt::from_u32(15_000));
+    /// Defaults to 30 seconds
+    pub const RECOMMENDED: Self = Self(VarInt::from_u32(30_000));
+
+    /// Loads a value setting from a peer's transport parameter
+    pub fn load_peer(&mut self, peer: &Self) {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#10.1
+        //# Each endpoint advertises a max_idle_timeout, but the effective value
+        //# at an endpoint is computed as the minimum of the two advertised
+        //# values.
+
+        match (self.as_duration(), peer.as_duration()) {
+            (Some(current_duration), Some(peer_duration)) => {
+                // take the peer's value if less
+                if current_duration > peer_duration {
+                    *self = *peer;
+                }
+            }
+            (Some(_), None) => {
+                // keep self
+            }
+            (None, Some(_)) => {
+                *self = *peer;
+            }
+            (None, None) => {
+                // keep self
+            }
+        }
+    }
+
+    /// Returns the `max_idle_timeout` if set
+    pub fn as_duration(&self) -> Option<Duration> {
+        let duration = Duration::from_millis(self.0.as_u64());
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2
+        //# Idle timeout is disabled when both endpoints omit this transport
+        //# parameter or specify a value of 0.
+        if duration == Duration::from_secs(0) {
+            None
+        } else {
+            Some(duration)
+        }
+    }
 }
 
 impl TransportParameterValidator for MaxIdleTimeout {}
+
+impl TryFrom<Duration> for MaxIdleTimeout {
+    type Error = ValidationError;
+
+    fn try_from(value: Duration) -> Result<Self, Self::Error> {
+        let value: VarInt = value.as_millis().try_into()?;
+        value.try_into()
+    }
+}
+
+impl From<MaxIdleTimeout> for Duration {
+    fn from(value: MaxIdleTimeout) -> Self {
+        value.as_duration().unwrap_or_default()
+    }
+}
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#18.2
 //# stateless_reset_token (0x02):  A stateless reset token is used in

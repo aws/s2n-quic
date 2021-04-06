@@ -26,6 +26,7 @@ pub struct ConnectionTransmissionContext<'a, Config: endpoint::Config> {
     pub path_manager: &'a mut path::Manager<Config::CongestionControllerEndpoint>,
     pub local_id_registry: &'a mut connection::LocalIdRegistry,
     pub source_connection_id: &'a connection::LocalId,
+    pub outcome: &'a mut transmission::Outcome,
     pub ecn: ExplicitCongestionNotification,
     pub min_packet_len: Option<usize>,
 }
@@ -161,6 +162,8 @@ impl<'a, Config: endpoint::Config> tx::Message for ConnectionTransmission<'a, Co
                 encoder,
             ) {
                 Ok((outcome, encoder)) => {
+                    *self.context.outcome += outcome;
+
                     if Config::ENDPOINT_TYPE.is_server()
                         && !outcome.ack_elicitation().is_ack_eliciting()
                     {
@@ -207,7 +210,9 @@ impl<'a, Config: endpoint::Config> tx::Message for ConnectionTransmission<'a, Co
                 handshake_status,
                 encoder,
             ) {
-                Ok(encoder) => {
+                Ok((outcome, encoder)) => {
+                    *self.context.outcome += outcome;
+
                     //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9.1
                     //# a client MUST discard Initial keys when it first sends a
                     //# Handshake packet
@@ -268,7 +273,10 @@ impl<'a, Config: endpoint::Config> tx::Message for ConnectionTransmission<'a, Co
                 handshake_status,
                 encoder,
             ) {
-                Ok(encoder) => encoder,
+                Ok((outcome, encoder)) => {
+                    *self.context.outcome += outcome;
+                    encoder
+                }
                 Err(PacketEncodingError::PacketNumberTruncationError(encoder)) => {
                     // TODO handle this
                     encoder

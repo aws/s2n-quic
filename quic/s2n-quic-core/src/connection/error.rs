@@ -2,11 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    application::{self, error::TryInto as _},
-    crypto::CryptoError,
-    endpoint,
-    frame::ConnectionClose,
-    transport,
+    application, connection, crypto::CryptoError, endpoint, frame::ConnectionClose, transport,
 };
 
 /// Errors that a connection can encounter.
@@ -65,58 +61,70 @@ impl Error {
     }
 }
 
-/// Returns a CONNECTION_CLOSE frame for the given connection Error,
-/// if any
-pub fn as_frame(error: Error) -> Option<ConnectionClose<'static>> {
+/// Returns a CONNECTION_CLOSE frame for the given connection Error, if any
+///
+/// The first item will be a close frame for an early (initial, handshake) packet.
+/// The second item will be a close frame for a 1-RTT (application data) packet.
+pub fn as_frame<'a, F: connection::close::Formatter>(
+    error: Error,
+    formatter: &'a F,
+    context: &'a connection::close::Context<'a>,
+) -> Option<(ConnectionClose<'a>, ConnectionClose<'a>)> {
     match error {
-        Error::Closed {
-            initiator: endpoint::Location::Remote,
+        Error::Closed { initiator } => {
+            // don't send CONNECTION_CLOSE frames on remote-initiated errors
+            if initiator.is_remote() {
+                return None;
+            }
+
+            let error = transport::Error::NO_ERROR;
+            let early = formatter.format_early_transport_error(context, error);
+            let one_rtt = formatter.format_transport_error(context, error);
+
+            Some((early, one_rtt))
         }
-        | Error::Transport {
-            initiator: endpoint::Location::Remote,
-            ..
+        Error::Transport { error, initiator } => {
+            // don't send CONNECTION_CLOSE frames on remote-initiated errors
+            if initiator.is_remote() {
+                return None;
+            }
+
+            let early = formatter.format_early_transport_error(context, error);
+            let one_rtt = formatter.format_transport_error(context, error);
+            Some((early, one_rtt))
         }
-        | Error::Application {
-            initiator: endpoint::Location::Remote,
-            ..
-        } => {
-            // we don't send CONNECTION_CLOSE frames on remote-initiated errors
-            None
+        Error::Application { error, initiator } => {
+            // don't send CONNECTION_CLOSE frames on remote-initiated errors
+            if initiator.is_remote() {
+                return None;
+            }
+
+            let early = formatter.format_early_application_error(context, error);
+            let one_rtt = formatter.format_application_error(context, error);
+            Some((early, one_rtt))
         }
-        Error::Closed { .. } => Some(ConnectionClose {
-            error_code: *transport::Error::NO_ERROR.code,
-            frame_type: None,
-            reason: None,
-        }),
-        Error::Transport { error, .. } => Some(ConnectionClose {
-            error_code: *error.code,
-            frame_type: error.frame_type,
-            reason: Some(error.reason.as_bytes()),
-        }),
-        Error::Application { error, .. } => Some(ConnectionClose {
-            error_code: *error,
-            frame_type: None,
-            reason: None,
-        }),
         // This error comes from the peer so we don't respond with a CONNECTION_CLOSE
         Error::StatelessReset => None,
         // Nothing gets sent on idle timeouts
         Error::IdleTimerExpired => None,
-        Error::StreamIdExhausted => Some(ConnectionClose {
-            error_code: *transport::Error::PROTOCOL_VIOLATION.code,
-            frame_type: Some(Default::default()),
-            reason: Some(b"stream ids exhausted"),
-        }),
-        Error::Unspecified if cfg!(debug_assertions) => Some(ConnectionClose {
-            error_code: *transport::Error::INTERNAL_ERROR.code,
-            frame_type: Some(Default::default()),
-            reason: Some(b"unspecified error occurred"),
-        }),
-        Error::Unspecified => Some(ConnectionClose {
-            error_code: *transport::Error::PROTOCOL_VIOLATION.code,
-            frame_type: Some(Default::default()),
-            reason: None,
-        }),
+        Error::StreamIdExhausted => {
+            let error =
+                transport::Error::PROTOCOL_VIOLATION.with_reason("stream IDs have been exhausted");
+
+            let early = formatter.format_early_transport_error(context, error);
+            let one_rtt = formatter.format_transport_error(context, error);
+
+            Some((early, one_rtt))
+        }
+        Error::Unspecified => {
+            let error =
+                transport::Error::INTERNAL_ERROR.with_reason("an unspecified error occurred");
+
+            let early = formatter.format_early_transport_error(context, error);
+            let one_rtt = formatter.format_transport_error(context, error);
+
+            Some((early, one_rtt))
+        }
     }
 }
 
@@ -132,14 +140,7 @@ impl application::error::TryInto for Error {
 
 impl From<transport::Error> for Error {
     fn from(error: transport::Error) -> Self {
-        if let Some(error) = error.application_error() {
-            Self::Application {
-                error,
-                initiator: endpoint::Location::Local,
-            }
-        } else {
-            Self::from_transport_error(error, endpoint::Location::Local)
-        }
+        Self::from_transport_error(error, endpoint::Location::Local)
     }
 }
 
@@ -151,20 +152,20 @@ impl From<CryptoError> for Error {
 
 impl<'a> From<ConnectionClose<'a>> for Error {
     fn from(error: ConnectionClose) -> Self {
-        if let Some(error) = error.application_error() {
-            Self::Application {
-                error,
-                initiator: endpoint::Location::Remote,
-            }
-        } else {
+        if let Some(frame_type) = error.frame_type {
             let error = transport::Error {
                 code: error.error_code.into(),
                 // we use an empty `&'static str` so we don't allocate anything
                 // in the event of an error
                 reason: "",
-                frame_type: error.frame_type,
+                frame_type,
             };
             Self::from_transport_error(error, endpoint::Location::Remote)
+        } else {
+            Self::Application {
+                error: error.error_code.into(),
+                initiator: endpoint::Location::Remote,
+            }
         }
     }
 }
