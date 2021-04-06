@@ -19,6 +19,10 @@ impl BidirectionalStream {
 
     impl_send_stream_api!(|stream, call| call!(stream.0));
 
+    pub fn id(&self) -> u64 {
+        self.0.id().into()
+    }
+
     pub fn split(self) -> (crate::stream::ReceiveStream, crate::stream::SendStream) {
         let (recv, send) = self.0.split();
         (
