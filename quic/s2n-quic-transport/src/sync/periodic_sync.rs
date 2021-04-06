@@ -12,7 +12,7 @@ use crate::{
 use core::time::Duration;
 use s2n_quic_core::{ack, stream::StreamId, time::Timestamp};
 
-/// Synchronizes a value of type `T` periodically towards the remote peer.
+/// Synchronizes a monotonically increasing value of type `T` periodically towards the remote peer.
 ///
 /// Retransmissions of the value will be performed if it got lost.
 ///
@@ -36,12 +36,16 @@ impl<T: Copy + Clone + Eq + PartialEq, S: ValueToFrameWriter<T>> PeriodicSync<T,
     }
 
     /// Requested delivery of the given value. If delivery has already been requested, the
-    /// original value will be overwritten.
+    /// original value will be overwritten. The new value must be greater than or equal
+    /// to the original value.
     pub fn request_delivery(&mut self, value: T) {
         match self.delivery {
             DeliveryState::NotRequested => self.delivery = DeliveryState::Requested(value),
             DeliveryState::Scheduled(_, ref mut original_value)
-            | DeliveryState::Requested(ref mut original_value) => *original_value = value,
+            | DeliveryState::Requested(ref mut original_value) => {
+                debug_assert!(value >= original_value);
+                *original_value = value
+            }
             _ => {}
         }
     }
