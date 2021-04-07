@@ -941,7 +941,7 @@ fn send_streams_blocked_period_based_on_max_idle_timeout() {
         let packet_number = write_context.packet_number();
         assert!(manager.on_transmit(&mut write_context).is_ok());
 
-        let mut rtt_estimator = RttEstimator::new(Duration::from_millis(100));
+        let rtt_estimator = RttEstimator::new(Duration::from_millis(100));
         manager.on_rtt_update(&rtt_estimator);
         manager.on_packet_ack(&PacketNumberRange::new(packet_number, packet_number));
 

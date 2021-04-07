@@ -702,6 +702,11 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         // idle timer expires. The peer's idle timer is also adjusted by the PTO
         // period as described in the citation above. Since we cannot assume any
         // of the peer's packets have been lost, we use a pto backoff of 1.
+
+        // For extremely low RTT networks, this will ensure we do not send blocked
+        // frames too frequently.
+        const MIN_BLOCKED_SYNC_PERIOD: Duration = Duration::from_millis(10);
+
         let idle_timeout = self
             .inner
             .max_idle_timeout
@@ -709,7 +714,7 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
             .max(3 * rtt_estimator.pto_period(1, PacketNumberSpace::ApplicationData));
 
         // Subtract 1 RTT from the idle timeout so the blocked frames are received in time
-        idle_timeout - rtt_estimator.smoothed_rtt()
+        (idle_timeout - rtt_estimator.smoothed_rtt()).max(MIN_BLOCKED_SYNC_PERIOD)
     }
 
     // Frame reception
