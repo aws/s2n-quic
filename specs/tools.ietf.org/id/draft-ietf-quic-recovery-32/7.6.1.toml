@@ -37,7 +37,7 @@ target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.1"
 # congestion without depending on PTO expiration.
 
 [[spec]]
-level = "RECOMMENDED"
+level = "SHOULD"
 quote = '''
 The RECOMMENDED value for kPersistentCongestionThreshold is 3, which
 results in behavior that is approximately equivalent to a TCP sender

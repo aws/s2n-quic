@@ -119,8 +119,6 @@ function getRequirementsStats(reqs) {
     MUST: new Stats(),
     SHOULD: new Stats(),
     MAY: new Stats(),
-    RECOMMENDED: new Stats(),
-    OPTIONAL: new Stats(),
   };
 
   reqs.maxFeatures = 0;

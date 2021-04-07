@@ -9,8 +9,6 @@ pub struct Statistics {
     pub must: AnnotationStatistics,
     pub should: AnnotationStatistics,
     pub may: AnnotationStatistics,
-    pub recommended: AnnotationStatistics,
-    pub optional: AnnotationStatistics,
 }
 
 impl Statistics {
@@ -28,12 +26,6 @@ impl Statistics {
             }
             AnnotationLevel::May => {
                 self.may.record(reference);
-            }
-            AnnotationLevel::Optional => {
-                self.optional.record(reference);
-            }
-            AnnotationLevel::Recommended => {
-                self.recommended.record(reference);
             }
         }
     }

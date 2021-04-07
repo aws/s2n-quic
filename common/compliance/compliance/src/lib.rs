@@ -124,10 +124,10 @@ impl Parse for SpecRef {
         };
 
         Ok(Self {
+            quote,
             source,
             level,
             format,
-            quote,
         })
     }
 }

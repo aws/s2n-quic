@@ -23,9 +23,9 @@ lazy_static! {
             ("SHALL( NOT)?", AnnotationLevel::Must),
             ("REQUIRED", AnnotationLevel::Must),
             ("SHOULD( NOT)?", AnnotationLevel::Should),
-            ("(NOT )?RECOMMENDED", AnnotationLevel::Recommended),
+            ("(NOT )?RECOMMENDED", AnnotationLevel::Should),
             ("MAY", AnnotationLevel::May),
-            ("OPTIONAL", AnnotationLevel::Optional),
+            ("OPTIONAL", AnnotationLevel::May),
         ];
 
         matches

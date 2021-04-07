@@ -161,22 +161,13 @@ impl FromStr for AnnotationType {
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord, Hash, Serialize)]
 pub enum AnnotationLevel {
     Auto,
-    Optional,
     May,
-    Recommended,
     Should,
     Must,
 }
 
 impl AnnotationLevel {
-    pub const LEVELS: [Self; 6] = [
-        Self::Auto,
-        Self::Optional,
-        Self::May,
-        Self::Recommended,
-        Self::Should,
-        Self::Must,
-    ];
+    pub const LEVELS: [Self; 4] = [Self::Auto, Self::May, Self::Should, Self::Must];
 }
 
 impl Default for AnnotationLevel {
@@ -189,9 +180,7 @@ impl fmt::Display for AnnotationLevel {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.write_str(match self {
             Self::Auto => "AUTO",
-            Self::Optional => "OPTIONAL",
             Self::May => "MAY",
-            Self::Recommended => "RECOMMENDED",
             Self::Should => "SHOULD",
             Self::Must => "MUST",
         })
@@ -206,9 +195,7 @@ impl FromStr for AnnotationLevel {
             "AUTO" => Ok(Self::Auto),
             "MUST" => Ok(Self::Must),
             "SHOULD" => Ok(Self::Should),
-            "RECOMMENDED" => Ok(Self::Recommended),
             "MAY" => Ok(Self::May),
-            "OPTIONAL" => Ok(Self::Optional),
             _ => Err(anyhow!(format!("Invalid annotation level {:?}", v))),
         }
     }

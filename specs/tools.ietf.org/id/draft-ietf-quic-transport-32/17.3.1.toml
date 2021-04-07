@@ -57,7 +57,7 @@ target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.3.1"
 # end-to-end RTT of a connection.
 
 [[spec]]
-level = "OPTIONAL"
+level = "MAY"
 quote = '''
 The spin bit is an OPTIONAL feature of QUIC.
 '''
@@ -95,7 +95,7 @@ value, and MUST ignore any incoming value.
 '''
 
 [[spec]]
-level = "RECOMMENDED"
+level = "SHOULD"
 quote = '''
 It is RECOMMENDED that
 endpoints set the spin bit to a random value either chosen

@@ -18,7 +18,7 @@ target = "https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.1.1"
 # to be at least as useful in QUIC.
 
 [[spec]]
-level = "RECOMMENDED"
+level = "SHOULD"
 quote = '''
 The RECOMMENDED initial value for the packet reordering threshold
 (kPacketThreshold) is 3, based on best practices for TCP loss

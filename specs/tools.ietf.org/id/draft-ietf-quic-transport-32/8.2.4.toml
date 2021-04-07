@@ -40,7 +40,7 @@ Endpoints SHOULD abandon path validation based on a timer.
 '''
 
 [[spec]]
-level = "RECOMMENDED"
+level = "SHOULD"
 quote = '''
 A value of
 three times the larger of the current Probe Timeout (PTO) or the
