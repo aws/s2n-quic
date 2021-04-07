@@ -151,7 +151,7 @@ impl Controller {
         self.outgoing_controller.streams_blocked_sync.stop_sync();
     }
 
-    /// This method is called when a packet delivery got acknowledged.
+    /// This method is called when a packet delivery got acknowledged
     pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
         self.bidi_controller.on_packet_ack(ack_set);
         self.incoming_controller
