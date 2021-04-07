@@ -622,9 +622,7 @@ pub trait Context<CC: CongestionController> {
     );
     fn on_packet_ack(&mut self, datagram: &DatagramInfo, packet_number_range: &PacketNumberRange);
     fn on_packet_loss(&mut self, packet_number_range: &PacketNumberRange);
-    fn on_rtt_update(&mut self) {
-        unimplemented!()
-    }
+    fn on_rtt_update(&mut self);
 }
 
 impl transmission::interest::Provider for Manager {
