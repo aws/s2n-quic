@@ -11,19 +11,24 @@ use crate::{
     },
     contexts::{ConnectionApiCallContext, OnTransmitError, WriteContext},
     endpoint,
+    recovery::RttEstimator,
     stream::{
         controller::MAX_STREAMS_SYNC_FRACTION,
         stream_impl::StreamConfig,
         stream_interests::{StreamInterestProvider, StreamInterests},
         AbstractStreamManager, StreamError, StreamEvents, StreamTrait,
     },
+    sync::DEFAULT_SYNC_PERIOD,
     transmission,
     transmission::interest::Provider as TransmissionInterestProvider,
     wakeup_queue::{WakeupHandle, WakeupQueue},
 };
 use alloc::collections::VecDeque;
 use bytes::Bytes;
-use core::task::{Context, Poll, Waker};
+use core::{
+    task::{Context, Poll, Waker},
+    time::Duration,
+};
 use futures_test::task::new_count_waker;
 use s2n_quic_core::{
     ack::Set as AckSet,
@@ -840,7 +845,7 @@ fn send_streams_blocked_frame_when_blocked_by_peer() {
             manager.transmission_interest()
         );
 
-        let expected_next_stream_blocked_time = write_context.current_time + STREAMS_BLOCKED_PERIOD;
+        let expected_next_stream_blocked_time = write_context.current_time + DEFAULT_SYNC_PERIOD;
         assert_eq!(
             Some(expected_next_stream_blocked_time),
             manager.timers().next().copied()

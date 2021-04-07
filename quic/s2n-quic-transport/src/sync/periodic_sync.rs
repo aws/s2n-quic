@@ -15,7 +15,7 @@ use s2n_quic_core::{ack, stream::StreamId, time::Timestamp};
 // The default period for synchronizing the value. This value is only used prior to a more
 // precise value calculated based on idle timeout and current RTT estimates and provided
 // in the `update_sync_period` method.
-const DEFAULT_SYNC_PERIOD: Duration = Duration::from_secs(10);
+pub const DEFAULT_SYNC_PERIOD: Duration = Duration::from_secs(10);
 
 /// Synchronizes a monotonically increasing value of type `T` periodically towards the remote peer.
 ///

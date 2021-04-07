@@ -186,7 +186,7 @@ pub struct StreamManagerState<S> {
     /// the moment we only store those
     stream_limits: stream::Limits,
     /// The duration after which an idle connection may be closed.
-    max_idle_timeout: Option<Duration>,
+    pub(super) max_idle_timeout: Option<Duration>,
 }
 
 impl<S: StreamTrait> StreamManagerState<S> {
