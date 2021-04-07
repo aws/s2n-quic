@@ -863,13 +863,51 @@ fn send_streams_blocked_frame_when_blocked_by_peer() {
         assert!(manager
             .on_max_streams(&MaxStreams {
                 stream_type,
-                maximum_streams: VarInt::from_u32(100_000),
+                maximum_streams: VarInt::from_u32(200),
             })
             .is_ok());
 
         assert_eq!(
             transmission::Interest::None,
             manager.transmission_interest()
+        );
+
+        // Close currently open streams to not block on local limits
+        for i in 0..*opened_streams {
+            let stream_id = StreamId::nth(endpoint::Type::Server, stream_type, i).unwrap();
+            manager.with_asserted_stream(stream_id, |stream| stream.interests.finalization = true);
+        }
+
+        // Clear out the MAX_STREAMS frame
+        assert!(manager.on_transmit(&mut write_context).is_ok());
+        write_context.frame_buffer.clear();
+
+        // Open streams until blocked
+        while manager
+            .poll_open(stream_type, &Context::from_waker(&waker))
+            .is_ready()
+        {
+            opened_streams += 1;
+        }
+
+        // Another STREAM_BLOCKED frame should be sent with the updated MAX_STREAMS value
+        assert_eq!(
+            transmission::Interest::NewData,
+            manager.transmission_interest()
+        );
+
+        assert!(manager.on_transmit(&mut write_context).is_ok());
+
+        let expected_frame = Frame::StreamsBlocked {
+            0: StreamsBlocked {
+                stream_type,
+                stream_limit: VarInt::from_u32(200),
+            },
+        };
+
+        assert_eq!(
+            expected_frame,
+            write_context.frame_buffer.pop_front().unwrap().as_frame()
         );
     }
 }

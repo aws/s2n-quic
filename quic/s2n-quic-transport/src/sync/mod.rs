@@ -37,7 +37,7 @@ pub struct InFlightDelivery<T> {
 }
 
 /// Tracks the delivery of a particular piece of information to the peer.
-#[derive(PartialEq, Eq, Debug, Copy, Clone)]
+#[derive(PartialEq, Eq, Debug)]
 pub enum DeliveryState<T> {
     /// The delivery of the information has not yet been requested
     NotRequested,

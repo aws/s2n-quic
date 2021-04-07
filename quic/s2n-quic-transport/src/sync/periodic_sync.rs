@@ -55,7 +55,10 @@ impl<T: Copy + Clone + Default + Eq + PartialEq + PartialOrd, S: ValueToFrameWri
 
         self.latest_value = value;
 
-        if let DeliveryState::NotRequested = self.delivery {
+        if matches!(
+            self.delivery,
+            DeliveryState::NotRequested | DeliveryState::Cancelled(_)
+        ) {
             self.delivery = DeliveryState::Requested(value);
         }
     }
