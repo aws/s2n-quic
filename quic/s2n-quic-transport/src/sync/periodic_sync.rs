@@ -94,20 +94,9 @@ impl<T: Copy + Clone + Default + Eq + PartialEq + PartialOrd, S: ValueToFrameWri
         }
     }
 
-    /// Sets the sync period. If a delivery is currently scheduled based on the existing
-    /// sync period, the delivery time will be adjusted sooner or later based on the
-    /// given `sync_period`
+    /// Sets the sync period. The given `sync_period` will be used the next time
+    /// the delivery timer is armed; the existing timer will be unaffected.
     pub fn update_sync_period(&mut self, sync_period: Duration) {
-        if let Some(delivery_time) = self.delivery_timer.iter().next().copied() {
-            if self.sync_period > sync_period {
-                self.delivery_timer
-                    .set(delivery_time - (self.sync_period - sync_period))
-            } else {
-                self.delivery_timer
-                    .set(delivery_time + (sync_period - self.sync_period))
-            }
-        }
-
         self.sync_period = sync_period;
     }
 
