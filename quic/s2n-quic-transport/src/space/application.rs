@@ -463,8 +463,7 @@ impl<'a, Config: endpoint::Config> recovery::Context<<Config::CongestionControll
     ) {
         self.handshake_status.on_packet_ack(packet_number_range);
         self.ping.on_packet_ack(packet_number_range);
-        self.stream_manager.on_packet_ack(
-            packet_number_range, &self.path_manager.active_path().rtt_estimator);
+        self.stream_manager.on_packet_ack(packet_number_range);
         self.local_id_registry.on_packet_ack(packet_number_range);
         self.path_manager.on_packet_ack(packet_number_range);
     }
@@ -481,6 +480,13 @@ impl<'a, Config: endpoint::Config> recovery::Context<<Config::CongestionControll
         self.stream_manager.on_packet_loss(packet_number_range);
         self.local_id_registry.on_packet_loss(packet_number_range);
         self.path_manager.on_packet_loss(packet_number_range);
+    }
+
+    fn on_rtt_update(&mut self) {
+        // Update the stream manager if this RTT update was for the active path
+        if self.path_manager.active_path_id() == self.path_id {
+            self.stream_manager.on_rtt_update(&self.path_manager.active_path().rtt_estimator)
+        }
     }
 }
 

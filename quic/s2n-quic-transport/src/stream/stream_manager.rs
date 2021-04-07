@@ -551,15 +551,11 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
     }
 
     /// This method gets called when a packet delivery got acknowledged
-    pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A, rtt_estimator: &RttEstimator) {
-        let blocked_sync_period = self.blocked_sync_period(rtt_estimator);
-
+    pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
         self.inner
             .incoming_connection_flow_controller
             .on_packet_ack(ack_set);
-        self.inner
-            .stream_controller
-            .on_packet_ack(ack_set, blocked_sync_period);
+        self.inner.stream_controller.on_packet_ack(ack_set);
 
         self.inner.streams.iterate_frame_delivery_list(
             &mut self.inner.stream_controller,
@@ -590,6 +586,14 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
                 events.wake_all();
             },
         );
+    }
+
+    /// This method gets called when the RTT estimate is updated for the active path
+    pub fn on_rtt_update(&mut self, rtt_estimator: &RttEstimator) {
+        let blocked_sync_period = self.blocked_sync_period(rtt_estimator);
+        self.inner
+            .stream_controller
+            .update_blocked_sync_period(blocked_sync_period);
     }
 
     /// Returns all timers for the component

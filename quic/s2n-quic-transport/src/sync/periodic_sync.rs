@@ -14,7 +14,7 @@ use s2n_quic_core::{ack, stream::StreamId, time::Timestamp};
 
 // The default period for synchronizing the value. This value is only used prior to a more
 // precise value calculated based on idle timeout and current RTT estimates and provided
-// in the `on_packet_ack` method.
+// in the `update_sync_period` method.
 const DEFAULT_SYNC_PERIOD: Duration = Duration::from_secs(10);
 
 /// Synchronizes a monotonically increasing value of type `T` periodically towards the remote peer.
@@ -79,10 +79,7 @@ impl<T: Copy + Clone + Default + Eq + PartialEq + PartialOrd, S: ValueToFrameWri
     }
 
     /// This method gets called when a packet delivery got acknowledged
-    /// The given `sync_period` is used to update the period at which
-    /// the value is synchronized with the peer.
-    pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A, sync_period: Duration) {
-        self.set_sync_period(sync_period);
+    pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
         // If the packet containing the frame gets acknowledged, schedule a delivery for the
         // next delivery period
         if let DeliveryState::InFlight(in_flight) = self.delivery {
@@ -97,7 +94,7 @@ impl<T: Copy + Clone + Default + Eq + PartialEq + PartialOrd, S: ValueToFrameWri
     /// Sets the sync period. If a delivery is currently scheduled based on the existing
     /// sync period, the delivery time will be adjusted sooner or later based on the
     /// given `sync_period`
-    fn set_sync_period(&mut self, sync_period: Duration) {
+    pub fn update_sync_period(&mut self, sync_period: Duration) {
         if let Some(delivery_time) = self.delivery_timer.iter().next().copied() {
             if self.sync_period > sync_period {
                 self.delivery_timer

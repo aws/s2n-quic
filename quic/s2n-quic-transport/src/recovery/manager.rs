@@ -338,6 +338,9 @@ impl Manager {
             // Update the congestion controller with the latest RTT estimate
             path.congestion_controller
                 .on_rtt_update(largest_newly_acked.1.time_sent, &path.rtt_estimator);
+
+            // Notify components the RTT estimate was updated
+            context.on_rtt_update();
         }
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.1
@@ -619,6 +622,9 @@ pub trait Context<CC: CongestionController> {
     );
     fn on_packet_ack(&mut self, datagram: &DatagramInfo, packet_number_range: &PacketNumberRange);
     fn on_packet_loss(&mut self, packet_number_range: &PacketNumberRange);
+    fn on_rtt_update(&mut self) {
+        unimplemented!()
+    }
 }
 
 impl transmission::interest::Provider for Manager {
@@ -948,6 +954,7 @@ mod test {
             context.path.rtt_estimator.latest_rtt(),
             Duration::from_millis(500)
         );
+        assert_eq!(1, context.on_rtt_update_count);
 
         // Reset the pto backoff to 2 so we can tell if it was reset
         context.path.pto_backoff = 2;
@@ -973,6 +980,7 @@ mod test {
             context.path.rtt_estimator.latest_rtt(),
             Duration::from_millis(500)
         );
+        assert_eq!(1, context.on_rtt_update_count);
 
         // Ack packets 7 to 9 (4 - 6 will be considered lost)
         let ack_receive_time = ack_receive_time + Duration::from_secs(1);
@@ -991,6 +999,7 @@ mod test {
             context.path.rtt_estimator.latest_rtt(),
             Duration::from_millis(2500)
         );
+        assert_eq!(2, context.on_rtt_update_count);
 
         // Ack packet 10, but with a path that is not peer validated
         context.path = Path::new(
@@ -1013,6 +1022,7 @@ mod test {
             context.path.rtt_estimator.latest_rtt(),
             Duration::from_millis(3000)
         );
+        assert_eq!(3, context.on_rtt_update_count);
 
         // Send and ack a non ack eliciting packet
         manager.on_packet_sent(
@@ -1038,6 +1048,7 @@ mod test {
             context.path.rtt_estimator.latest_rtt(),
             Duration::from_millis(3000)
         );
+        assert_eq!(3, context.on_rtt_update_count);
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.1
@@ -1092,6 +1103,7 @@ mod test {
             context.path.rtt_estimator.latest_rtt(),
             Duration::from_millis(500)
         );
+        assert_eq!(1, context.on_rtt_update_count);
 
         // Ack packets 0 and 1
         let ack_receive_time = time_sent + Duration::from_millis(1500);
@@ -1103,6 +1115,7 @@ mod test {
             context.path.rtt_estimator.latest_rtt(),
             Duration::from_millis(500)
         );
+        assert_eq!(1, context.on_rtt_update_count);
     }
 
     #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.10")]
@@ -2044,6 +2057,7 @@ mod test {
         on_new_packet_ack_count: u8,
         on_packet_ack_count: u8,
         on_packet_loss_count: u8,
+        on_rtt_update_count: u8,
         path: Path<MockCongestionController>,
         lost_packets: HashSet<PacketNumber>,
     }
@@ -2062,6 +2076,7 @@ mod test {
                 on_new_packet_ack_count: 0,
                 on_packet_ack_count: 0,
                 on_packet_loss_count: 0,
+                on_rtt_update_count: 0,
                 path,
                 lost_packets: HashSet::default(),
             }
@@ -2117,6 +2132,10 @@ mod test {
         fn on_packet_loss(&mut self, packet_number_range: &PacketNumberRange) {
             self.on_packet_loss_count += 1;
             self.lost_packets.insert(packet_number_range.start());
+        }
+
+        fn on_rtt_update(&mut self) {
+            self.on_rtt_update_count += 1;
         }
     }
 }
