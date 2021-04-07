@@ -64,14 +64,14 @@ be declared lost, then a timer SHOULD be set for the remaining time.
 '''
 
 [[spec]]
-level = "RECOMMENDED"
+level = "SHOULD"
 quote = '''
 The RECOMMENDED time threshold (kTimeThreshold), expressed as a
 round-trip time multiplier, is 9/8.
 '''
 
 [[spec]]
-level = "RECOMMENDED"
+level = "SHOULD"
 quote = '''
 The RECOMMENDED value of the
 timer granularity (kGranularity) is 1ms.

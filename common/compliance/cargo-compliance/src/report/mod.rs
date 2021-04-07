@@ -100,7 +100,9 @@ impl Report {
             .par_iter()
             .flat_map(|source| {
                 // TODO gracefully handle error
-                source.annotations().expect("could not extract annotations")
+                source
+                    .annotations()
+                    .unwrap_or_else(|_| panic!("could not extract annotations from {:?}", source))
             })
             .collect();
 

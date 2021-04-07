@@ -57,7 +57,7 @@ const useStyles = makeStyles((theme) => ({
   },
 }));
 
-const LEVELS = ["MUST", "SHALL", "SHOULD", "MAY", "RECOMMENDED", "OPTIONAL"];
+const LEVELS = ["MUST", "SHOULD", "MAY"];
 
 const LEVEL_IDS = LEVELS.reduce((acc, level, idx) => {
   acc[level] = idx;

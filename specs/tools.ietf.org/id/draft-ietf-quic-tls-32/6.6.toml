@@ -115,7 +115,7 @@ packets.
 '''
 
 [[spec]]
-level = "RECOMMENDED"
+level = "SHOULD"
 quote = '''
 It is RECOMMENDED that endpoints immediately close the
 connection with a connection error of type AEAD_LIMIT_REACHED before

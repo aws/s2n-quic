@@ -53,7 +53,7 @@ congestion window.
 '''
 
 [[spec]]
-level = "RECOMMENDED"
+level = "SHOULD"
 quote = '''
 The RECOMMENDED
 value is 2 * max_datagram_size.
