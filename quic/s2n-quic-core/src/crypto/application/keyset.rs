@@ -10,11 +10,10 @@ use crate::{
         short::{CleartextShort, EncryptedShort},
         KeyPhase,
     },
-    time::{Timer, Timestamp},
+    time::{Timer, TimerIterator, Timestamp},
     transport,
 };
 use s2n_codec::EncoderBuffer;
-use crate::time::TimerIterator;
 
 pub struct KeySet<K> {
     /// The current [`KeyPhase`]
