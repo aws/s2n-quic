@@ -445,7 +445,7 @@ impl LocalIdRegistry {
     }
 
     /// Gets the timers for the registration
-    pub fn timers(&self) -> impl Iterator<Item = Timestamp> + '_ {
+    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
         self.check_timer_integrity();
         self.expiration_timer.iter()
     }

@@ -21,6 +21,7 @@ use s2n_quic_core::{
     time::Timestamp,
     varint::VarInt,
 };
+use s2n_quic_core::time::TimerIterator;
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2
 //# Endpoints acknowledge all packets they receive and process.  However,
@@ -286,7 +287,7 @@ impl AckManager {
     }
 
     /// Returns all of the component timers
-    pub fn timers(&self) -> impl Iterator<Item = Timestamp> + '_ {
+    pub fn timers(&self) -> TimerIterator {
         // NOTE: ack_elicitation_timer is not actively polled
 
         self.ack_delay_timer.iter()

@@ -661,7 +661,7 @@ impl Pto {
     }
 
     /// Returns an iterator containing the probe timeout timestamp
-    pub fn timers(&self) -> impl Iterator<Item = Timestamp> + '_ {
+    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
         self.timer.iter()
     }
 

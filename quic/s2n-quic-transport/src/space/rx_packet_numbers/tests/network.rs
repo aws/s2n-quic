@@ -49,7 +49,7 @@ impl Network {
         self.timers().min()
     }
 
-    pub fn timers(&self) -> impl Iterator<Item = Timestamp> + '_ {
+    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
         self.client.timers().chain(self.server.timers())
     }
 

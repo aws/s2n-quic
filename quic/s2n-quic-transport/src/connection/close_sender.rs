@@ -244,7 +244,7 @@ impl Default for Limiter {
 }
 
 impl Limiter {
-    pub fn timers(&self) -> impl Iterator<Item = Timestamp> + '_ {
+    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
         self.debounce.iter()
     }
 

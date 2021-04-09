@@ -86,7 +86,7 @@ impl Endpoint {
         self.transmit(AckElicitation::NonEliciting)
     }
 
-    pub fn timers(&self) -> impl Iterator<Item = Timestamp> + '_ {
+    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
         self.ack_manager.timers()
     }
 

@@ -37,7 +37,7 @@ impl NetworkInterface {
         self.application.tick(now)
     }
 
-    pub fn timers(&self) -> impl Iterator<Item = Timestamp> + '_ {
+    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
         self.application
             .timers()
             .chain(self.rx_queue.keys().next().copied())
