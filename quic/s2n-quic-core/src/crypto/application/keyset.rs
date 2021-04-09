@@ -14,6 +14,7 @@ use crate::{
     transport,
 };
 use s2n_codec::EncoderBuffer;
+use crate::time::TimerIterator;
 
 pub struct KeySet<K> {
     /// The current [`KeyPhase`]
@@ -240,7 +241,7 @@ impl<K: OneRttKey> KeySet<K> {
         Ok(r)
     }
 
-    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
+    pub fn timers(&self) -> TimerIterator {
         self.key_derivation_timer.iter()
     }
 

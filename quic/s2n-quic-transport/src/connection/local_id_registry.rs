@@ -9,7 +9,7 @@ use s2n_quic_core::{
     ack, connection, frame,
     packet::number::PacketNumber,
     stateless_reset,
-    time::{Duration, Timer, Timestamp},
+    time::{Duration, Timer, TimerIterator, Timestamp},
     transmission,
 };
 
@@ -445,7 +445,7 @@ impl LocalIdRegistry {
     }
 
     /// Gets the timers for the registration
-    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
+    pub fn timers(&self) -> TimerIterator {
         self.check_timer_integrity();
         self.expiration_timer.iter()
     }
@@ -1329,10 +1329,7 @@ mod tests {
 
         // Expiration timer is armed based on retire time
         assert_eq!(1, reg1.timers().count());
-        assert_eq!(
-            Some(expiration - EXPIRATION_BUFFER),
-            reg1.timers().next()
-        );
+        assert_eq!(Some(expiration - EXPIRATION_BUFFER), reg1.timers().next());
 
         reg1.get_connection_id_info_mut(&ext_id_1)
             .unwrap()
@@ -1418,10 +1415,7 @@ mod tests {
             reg1.get_connection_id_info(&ext_id_2).unwrap().status
         );
         // Expiration timer is set to the expiration time of ID 2
-        assert_eq!(
-            Some(expiration_2),
-            reg1.expiration_timer.iter().next()
-        );
+        assert_eq!(Some(expiration_2), reg1.expiration_timer.iter().next());
 
         reg1.on_timeout(expiration_2);
 

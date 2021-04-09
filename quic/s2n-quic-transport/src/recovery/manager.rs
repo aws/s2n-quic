@@ -14,7 +14,7 @@ use s2n_quic_core::{
     packet::number::{PacketNumber, PacketNumberRange, PacketNumberSpace},
     path::Path,
     recovery::{CongestionController, RttEstimator, K_GRANULARITY},
-    time::Timestamp,
+    time::{TimerIterator, Timestamp},
     transport,
     varint::VarInt,
 };
@@ -661,7 +661,7 @@ impl Pto {
     }
 
     /// Returns an iterator containing the probe timeout timestamp
-    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
+    pub fn timers(&self) -> TimerIterator {
         self.timer.iter()
     }
 

@@ -18,10 +18,9 @@ use s2n_quic_core::{
     frame::{Ack, Ping},
     inet::DatagramInfo,
     packet::number::{PacketNumber, PacketNumberSpace},
-    time::Timestamp,
+    time::{TimerIterator, Timestamp},
     varint::VarInt,
 };
-use s2n_quic_core::time::TimerIterator;
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.2
 //# Endpoints acknowledge all packets they receive and process.  However,

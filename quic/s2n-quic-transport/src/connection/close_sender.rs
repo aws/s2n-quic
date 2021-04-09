@@ -13,7 +13,7 @@ use s2n_quic_core::{
     io::tx,
     path::Path,
     recovery::CongestionController,
-    time::{Timer, Timestamp},
+    time::{Timer, TimerIterator, Timestamp},
 };
 
 #[derive(Debug, Default)]
@@ -244,7 +244,7 @@ impl Default for Limiter {
 }
 
 impl Limiter {
-    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
+    pub fn timers(&self) -> TimerIterator {
         self.debounce.iter()
     }
 
