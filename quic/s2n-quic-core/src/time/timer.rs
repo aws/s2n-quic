@@ -10,7 +10,7 @@ use core::task::Poll;
 ///
 /// Note: The timer doesn't implement Copy to ensure it isn't accidentally moved
 ///       and have the expiration discarded.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Timer {
     expiration: Option<Timestamp>,
 }

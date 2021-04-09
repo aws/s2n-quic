@@ -298,6 +298,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             .chain(self.ack_manager.timers())
             .chain(self.recovery_manager.timers())
             .chain(self.key_set.timers())
+            .chain(self.stream_manager.timers())
     }
 
     /// Called when the connection timer expired
@@ -318,6 +319,8 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             path_manager,
         );
         recovery_manager.on_timeout(timestamp, &mut context);
+
+        self.stream_manager.on_timeout(timestamp);
     }
 
     /// Returns `true` if the recovery manager for this packet space requires a probe
@@ -477,6 +480,13 @@ impl<'a, Config: endpoint::Config> recovery::Context<<Config::CongestionControll
         self.stream_manager.on_packet_loss(packet_number_range);
         self.local_id_registry.on_packet_loss(packet_number_range);
         self.path_manager.on_packet_loss(packet_number_range);
+    }
+
+    fn on_rtt_update(&mut self) {
+        // Update the stream manager if this RTT update was for the active path
+        if self.path_manager.active_path_id() == self.path_id {
+            self.stream_manager.on_rtt_update(&self.path_manager.active_path().rtt_estimator)
+        }
     }
 }
 

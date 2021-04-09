@@ -3,17 +3,21 @@
 
 use crate::{
     contexts::OnTransmitError,
-    sync::{IncrementalValueSync, ValueToFrameWriter},
+    sync::{IncrementalValueSync, PeriodicSync, ValueToFrameWriter},
     transmission,
-    transmission::{interest::Provider, WriteContext},
+    transmission::{Interest, WriteContext},
 };
-use core::task::{Context, Poll, Waker};
+use core::{
+    task::{Context, Poll, Waker},
+    time::Duration,
+};
 use s2n_quic_core::{
     ack, endpoint,
-    frame::MaxStreams,
+    frame::{MaxStreams, StreamsBlocked},
     packet::number::PacketNumber,
     stream,
     stream::{StreamId, StreamType},
+    time::Timestamp,
     transport,
     transport::parameters::InitialFlowControlLimits,
     varint::VarInt,
@@ -138,53 +142,79 @@ impl Controller {
     pub fn close(&mut self) {
         self.bidi_controller.outgoing.wake_all();
         self.outgoing_controller.wake_all();
+        self.bidi_controller.incoming.max_streams_sync.stop_sync();
+        self.bidi_controller
+            .outgoing
+            .streams_blocked_sync
+            .stop_sync();
+        self.incoming_controller.max_streams_sync.stop_sync();
+        self.outgoing_controller.streams_blocked_sync.stop_sync();
     }
 
     /// This method is called when a packet delivery got acknowledged
     pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
-        self.bidi_controller
-            .incoming
-            .max_streams_sync
-            .on_packet_ack(ack_set);
+        self.bidi_controller.on_packet_ack(ack_set);
         self.incoming_controller
             .max_streams_sync
+            .on_packet_ack(ack_set);
+        self.outgoing_controller
+            .streams_blocked_sync
             .on_packet_ack(ack_set);
     }
 
     /// This method is called when a packet loss is reported
     pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
-        self.bidi_controller
-            .incoming
-            .max_streams_sync
-            .on_packet_loss(ack_set);
+        self.bidi_controller.on_packet_loss(ack_set);
         self.incoming_controller
             .max_streams_sync
             .on_packet_loss(ack_set);
+        self.outgoing_controller
+            .streams_blocked_sync
+            .on_packet_loss(ack_set);
+    }
+
+    /// Updates the period at which `STREAMS_BLOCKED` frames are sent to the peer
+    /// if the application is blocked by peer limits.
+    pub fn update_blocked_sync_period(&mut self, blocked_sync_period: Duration) {
+        self.bidi_controller
+            .outgoing
+            .streams_blocked_sync
+            .update_sync_period(blocked_sync_period);
+        self.outgoing_controller
+            .streams_blocked_sync
+            .update_sync_period(blocked_sync_period);
     }
 
     /// Queries the component for any outgoing frames that need to get sent
     pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) -> Result<(), OnTransmitError> {
+        self.bidi_controller.on_transmit(context)?;
         // Only the stream_type from the StreamId is transmitted
-        self.bidi_controller.incoming.max_streams_sync.on_transmit(
-            StreamId::initial(context.local_endpoint_type(), StreamType::Bidirectional),
+        self.incoming_controller.max_streams_sync.on_transmit(
+            StreamId::initial(context.local_endpoint_type(), StreamType::Unidirectional),
             context,
         )?;
-        self.incoming_controller.max_streams_sync.on_transmit(
+        self.outgoing_controller.streams_blocked_sync.on_transmit(
             StreamId::initial(context.local_endpoint_type(), StreamType::Unidirectional),
             context,
         )
     }
 
-    /// Queries the component for interest in transmitting frames
-    pub fn transmission_interest(&self) -> transmission::Interest {
+    /// Returns all timers for the component
+    pub fn timers(&self) -> impl Iterator<Item = &Timestamp> {
+        core::iter::empty()
+            .chain(self.bidi_controller.outgoing.streams_blocked_sync.timers())
+            .chain(self.outgoing_controller.streams_blocked_sync.timers())
+    }
+
+    /// Called when the connection timer expires
+    pub fn on_timeout(&mut self, now: Timestamp) {
         self.bidi_controller
-            .incoming
-            .max_streams_sync
-            .transmission_interest()
-            + self
-                .incoming_controller
-                .max_streams_sync
-                .transmission_interest()
+            .outgoing
+            .streams_blocked_sync
+            .on_timeout(now);
+        self.outgoing_controller
+            .streams_blocked_sync
+            .on_timeout(now);
     }
 
     fn direction(&self, stream_id: StreamId) -> StreamDirection {
@@ -195,6 +225,21 @@ impl Controller {
             }
             StreamType::Unidirectional => StreamDirection::Incoming,
         }
+    }
+}
+
+/// Queries the component for interest in transmitting frames
+impl transmission::interest::Provider for Controller {
+    fn transmission_interest(&self) -> Interest {
+        self.bidi_controller.transmission_interest()
+            + self
+                .incoming_controller
+                .max_streams_sync
+                .transmission_interest()
+            + self
+                .outgoing_controller
+                .streams_blocked_sync
+                .transmission_interest()
     }
 }
 
@@ -227,6 +272,35 @@ impl BidiController {
         self.outgoing.on_close_stream();
         self.incoming.on_close_stream();
     }
+
+    pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
+        self.incoming.max_streams_sync.on_packet_ack(ack_set);
+        self.outgoing.streams_blocked_sync.on_packet_ack(ack_set);
+    }
+
+    pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
+        self.incoming.max_streams_sync.on_packet_loss(ack_set);
+        self.outgoing.streams_blocked_sync.on_packet_loss(ack_set);
+    }
+
+    pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) -> Result<(), OnTransmitError> {
+        // Only the stream_type from the StreamId is transmitted
+        self.incoming.max_streams_sync.on_transmit(
+            StreamId::initial(context.local_endpoint_type(), StreamType::Bidirectional),
+            context,
+        )?;
+        self.outgoing.streams_blocked_sync.on_transmit(
+            StreamId::initial(context.local_endpoint_type(), StreamType::Bidirectional),
+            context,
+        )
+    }
+}
+
+impl transmission::interest::Provider for BidiController {
+    fn transmission_interest(&self) -> Interest {
+        self.incoming.max_streams_sync.transmission_interest()
+            + self.outgoing.streams_blocked_sync.transmission_interest()
+    }
 }
 
 // The amount of wakers that may be tracked before allocating to the heap.
@@ -238,6 +312,7 @@ struct OutgoingController {
     local_initiated_concurrent_stream_limit: VarInt,
     peer_cumulative_stream_limit: VarInt,
     wakers: SmallVec<[Waker; WAKERS_INITIAL_CAPACITY]>,
+    streams_blocked_sync: PeriodicSync<VarInt, StreamsBlockedToFrameWriter>,
     opened_streams: VarInt,
     closed_streams: VarInt,
 }
@@ -251,6 +326,7 @@ impl OutgoingController {
             local_initiated_concurrent_stream_limit,
             peer_cumulative_stream_limit: initial_peer_maximum_streams,
             wakers: SmallVec::new(),
+            streams_blocked_sync: PeriodicSync::new(),
             opened_streams: VarInt::from_u8(0),
             closed_streams: VarInt::from_u8(0),
         }
@@ -270,6 +346,9 @@ impl OutgoingController {
 
         self.peer_cumulative_stream_limit = frame.maximum_streams;
 
+        // We now have more capacity from the peer so stop sending STREAMS_BLOCKED frames
+        self.streams_blocked_sync.stop_sync();
+
         self.wake_unblocked();
     }
 
@@ -277,6 +356,20 @@ impl OutgoingController {
         if self.available_stream_capacity() < VarInt::from_u32(1) {
             // Store a waker that can be woken when we get more credit
             self.wakers.push(context.waker().clone());
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6
+            //# An endpoint that is unable to open a new stream due to the peer's
+            //# limits SHOULD send a STREAMS_BLOCKED frame (Section 19.14).
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.14
+            //# A sender SHOULD send a STREAMS_BLOCKED frame (type=0x16 or 0x17) when
+            //# it wishes to open a stream, but is unable to due to the maximum
+            //# stream limit set by its peer; see Section 19.11.
+            if self.peer_capacity() < VarInt::from_u32(1) {
+                self.streams_blocked_sync
+                    .request_delivery(self.peer_cumulative_stream_limit)
+            }
+
             return Poll::Pending;
         }
         Poll::Ready(())
@@ -301,10 +394,13 @@ impl OutgoingController {
         let local_capacity = self
             .local_initiated_concurrent_stream_limit
             .saturating_sub(self.open_stream_count());
-        let peer_capacity = self
-            .peer_cumulative_stream_limit
-            .saturating_sub(self.opened_streams);
-        local_capacity.min(peer_capacity)
+        local_capacity.min(self.peer_capacity())
+    }
+
+    /// The current number of streams that can be opened according to the peer's limits
+    fn peer_capacity(&self) -> VarInt {
+        self.peer_cumulative_stream_limit
+            .saturating_sub(self.opened_streams)
     }
 
     /// Wake all wakers
@@ -345,6 +441,24 @@ impl OutgoingController {
                 the local_initiated_concurrent_stream_limit"
             );
         }
+    }
+}
+
+/// Writes the `STREAMS_BLOCKED` frames.
+#[derive(Debug, Default)]
+pub(super) struct StreamsBlockedToFrameWriter {}
+
+impl ValueToFrameWriter<VarInt> for StreamsBlockedToFrameWriter {
+    fn write_value_as_frame<W: WriteContext>(
+        &self,
+        value: VarInt,
+        stream_id: StreamId,
+        context: &mut W,
+    ) -> Option<PacketNumber> {
+        context.write_frame(&StreamsBlocked {
+            stream_type: stream_id.stream_type(),
+            stream_limit: value,
+        })
     }
 }
 

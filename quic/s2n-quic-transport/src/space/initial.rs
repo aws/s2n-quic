@@ -360,6 +360,8 @@ fn path_mut(&mut self) -> &mut Path<<Config::CongestionControllerEndpoint as con
         self.crypto_stream.on_packet_loss(packet_number_range);
         self.ack_manager.on_packet_loss(packet_number_range);
     }
+
+    fn on_rtt_update(&mut self) {}
 }
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.2

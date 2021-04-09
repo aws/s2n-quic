@@ -10,11 +10,13 @@ pub mod data_sender;
 pub mod flag;
 mod incremental_value_sync;
 mod once_sync;
+mod periodic_sync;
 
 pub use data_sender::DataSender;
 pub use flag::Flag;
 pub use incremental_value_sync::IncrementalValueSync;
 pub use once_sync::OnceSync;
+pub use periodic_sync::{PeriodicSync, DEFAULT_SYNC_PERIOD};
 
 /// Carries information about the packet in which a frame is transmitted
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -35,7 +37,7 @@ pub struct InFlightDelivery<T> {
 }
 
 /// Tracks the delivery of a particular piece of information to the peer.
-#[derive(PartialEq, Eq, Debug, Copy, Clone)]
+#[derive(PartialEq, Eq, Debug)]
 pub enum DeliveryState<T> {
     /// The delivery of the information has not yet been requested
     NotRequested,

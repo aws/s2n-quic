@@ -354,6 +354,8 @@ impl<'a, Config: endpoint::Config> recovery::Context<<Config::CongestionControll
         self.crypto_stream.on_packet_loss(packet_number_range);
         self.ack_manager.on_packet_loss(packet_number_range);
     }
+
+    fn on_rtt_update(&mut self) {}
 }
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.2.4
