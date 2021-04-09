@@ -200,7 +200,7 @@ impl Controller {
     }
 
     /// Returns all timers for the component
-    pub fn timers(&self) -> impl Iterator<Item = &Timestamp> {
+    pub fn timers(&self) -> impl Iterator<Item = Timestamp> + '_ {
         core::iter::empty()
             .chain(self.bidi_controller.outgoing.streams_blocked_sync.timers())
             .chain(self.outgoing_controller.streams_blocked_sync.timers())

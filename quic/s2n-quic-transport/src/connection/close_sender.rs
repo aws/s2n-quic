@@ -36,7 +36,7 @@ impl CloseSender {
         };
     }
 
-    pub fn timers(&self) -> impl Iterator<Item = &Timestamp> {
+    pub fn timers(&self) -> impl Iterator<Item = Timestamp> + '_ {
         self.state.timers()
     }
 
@@ -169,7 +169,7 @@ impl Default for State {
 }
 
 impl State {
-    pub fn timers(&self) -> impl Iterator<Item = &Timestamp> + '_ {
+    pub fn timers(&self) -> impl Iterator<Item = Timestamp> + '_ {
         if let Self::Closing {
             close_timer,
             limiter,
@@ -244,7 +244,7 @@ impl Default for Limiter {
 }
 
 impl Limiter {
-    pub fn timers(&self) -> core::option::Iter<Timestamp> {
+    pub fn timers(&self) -> impl Iterator<Item = Timestamp> + '_ {
         self.debounce.iter()
     }
 
@@ -318,7 +318,6 @@ mod tests {
                     // get the next timer event
                     let gap = sender
                         .timers()
-                        .copied()
                         .map(|t| t - clock.get_time())
                         .chain(Some(*gap))
                         .min()

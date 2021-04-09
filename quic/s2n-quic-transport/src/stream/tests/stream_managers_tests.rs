@@ -848,7 +848,7 @@ fn send_streams_blocked_frame_when_blocked_by_peer() {
         let expected_next_stream_blocked_time = write_context.current_time + DEFAULT_SYNC_PERIOD;
         assert_eq!(
             Some(expected_next_stream_blocked_time),
-            manager.timers().next().copied()
+            manager.timers().next()
         );
 
         manager.on_timeout(expected_next_stream_blocked_time);
@@ -950,7 +950,7 @@ fn send_streams_blocked_period_based_on_max_idle_timeout() {
             - rtt_estimator.smoothed_rtt();
         assert_eq!(
             Some(expected_next_stream_blocked_time),
-            manager.timers().next().copied()
+            manager.timers().next()
         );
     }
 }
@@ -1002,7 +1002,7 @@ fn send_streams_blocked_period_based_on_pto() {
 
         assert_eq!(
             Some(write_context.current_time + expected_blocked_sync_period),
-            manager.timers().next().copied()
+            manager.timers().next()
         );
     }
 }

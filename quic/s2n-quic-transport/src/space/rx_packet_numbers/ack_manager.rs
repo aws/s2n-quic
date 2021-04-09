@@ -286,7 +286,7 @@ impl AckManager {
     }
 
     /// Returns all of the component timers
-    pub fn timers(&self) -> impl Iterator<Item = &Timestamp> {
+    pub fn timers(&self) -> impl Iterator<Item = Timestamp> + '_ {
         // NOTE: ack_elicitation_timer is not actively polled
 
         self.ack_delay_timer.iter()

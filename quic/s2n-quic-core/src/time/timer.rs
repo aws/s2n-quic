@@ -54,8 +54,8 @@ impl Timer {
     }
 
     /// Iterates over the contained timers
-    pub fn iter(&self) -> core::option::Iter<Timestamp> {
-        self.expiration.iter()
+    pub fn iter(&self) -> impl Iterator<Item = Timestamp> + '_ {
+        self.expiration.iter().copied()
     }
 }
 
