@@ -52,6 +52,10 @@ pub mod application {
     pub use s2n_quic_core::application::Error;
 }
 
+pub mod message {
+    pub use s2n_quic_core::message::{publisher::Publisher, event};
+}
+
 pub use connection::Connection;
 pub use server::Server;
 

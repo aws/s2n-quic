@@ -11,6 +11,7 @@ pub mod endpoint_limits;
 pub mod io;
 pub mod limits;
 pub mod log;
+pub mod message_publisher;
 pub mod runtime;
 pub mod stateless_reset_token;
 pub mod sync;
