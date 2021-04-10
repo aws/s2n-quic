@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::log::event::*;
+use crate::message::event::*;
 
 pub trait Publisher {
     fn on_version_information(&self, event: &VersionInformation) {
@@ -12,4 +12,3 @@ pub trait Publisher {
         let _ = event;
     }
 }
-
