@@ -93,16 +93,18 @@ impl Manager {
         }
     }
 
-    pub fn timers(&self) -> impl Iterator<Item = Timestamp> + '_ {
+    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
         //# The PTO timer MUST NOT be set if a timer is set for time threshold
         //# loss detection; see Section 6.1.2.  A timer that is set for time
         //# threshold loss detection will expire earlier than the PTO timer in
         //# most cases and is less likely to spuriously retransmit data.
 
+        let is_loss_timer_armed = self.loss_timer.is_armed();
+
         core::iter::empty()
             .chain(self.pto.timers())
-            .filter(move |_| !self.loss_timer.is_armed())
+            .filter(move |_| !is_loss_timer_armed)
             .chain(self.loss_timer.iter())
     }
 

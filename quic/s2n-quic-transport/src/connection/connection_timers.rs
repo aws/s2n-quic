@@ -36,7 +36,7 @@ pub struct ConnectionTimers {
 
 impl ConnectionTimers {
     /// Returns an iterator of the currently armed timer timestamps
-    pub fn iter(&self) -> impl Iterator<Item = Timestamp> + '_ {
+    pub fn iter(&self) -> impl Iterator<Item = Timestamp> {
         core::iter::empty()
             .chain(self.local_idle_timer.iter())
             .chain(self.peer_idle_timer.iter())
