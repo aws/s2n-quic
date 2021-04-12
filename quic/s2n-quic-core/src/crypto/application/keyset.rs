@@ -10,7 +10,7 @@ use crate::{
         short::{CleartextShort, EncryptedShort},
         KeyPhase,
     },
-    time::{Timer, TimerIterator, Timestamp},
+    time::{Timer, Timestamp},
     transport,
 };
 use s2n_codec::EncoderBuffer;
@@ -240,7 +240,7 @@ impl<K: OneRttKey> KeySet<K> {
         Ok(r)
     }
 
-    pub fn timers(&self) -> TimerIterator {
+    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
         self.key_derivation_timer.iter()
     }
 

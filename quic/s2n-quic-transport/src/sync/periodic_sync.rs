@@ -10,11 +10,7 @@ use crate::{
     transmission,
 };
 use core::time::Duration;
-use s2n_quic_core::{
-    ack,
-    stream::StreamId,
-    time::{TimerIterator, Timestamp},
-};
+use s2n_quic_core::{ack, stream::StreamId, time::Timestamp};
 
 // The default period for synchronizing the value. This value is only used prior to a more
 // precise value calculated based on idle timeout and current RTT estimates and provided
@@ -75,7 +71,7 @@ impl<T: Copy + Clone + Default + Eq + PartialEq + PartialOrd, S: ValueToFrameWri
     }
 
     /// Returns the timer for a scheduled delivery
-    pub fn timers(&self) -> TimerIterator {
+    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
         self.delivery_timer.iter()
     }
 

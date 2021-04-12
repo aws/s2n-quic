@@ -18,7 +18,7 @@ use s2n_quic_core::{
     frame::{Ack, Ping},
     inet::DatagramInfo,
     packet::number::{PacketNumber, PacketNumberSpace},
-    time::{TimerIterator, Timestamp},
+    time::Timestamp,
     varint::VarInt,
 };
 
@@ -286,7 +286,7 @@ impl AckManager {
     }
 
     /// Returns all of the component timers
-    pub fn timers(&self) -> TimerIterator {
+    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
         // NOTE: ack_elicitation_timer is not actively polled
 
         self.ack_delay_timer.iter()

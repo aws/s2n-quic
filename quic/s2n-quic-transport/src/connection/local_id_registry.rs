@@ -9,7 +9,7 @@ use s2n_quic_core::{
     ack, connection, frame,
     packet::number::PacketNumber,
     stateless_reset,
-    time::{Duration, Timer, TimerIterator, Timestamp},
+    time::{Duration, Timer, Timestamp},
     transmission,
 };
 
@@ -445,7 +445,7 @@ impl LocalIdRegistry {
     }
 
     /// Gets the timers for the registration
-    pub fn timers(&self) -> TimerIterator {
+    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
         self.check_timer_integrity();
         self.expiration_timer.iter()
     }
