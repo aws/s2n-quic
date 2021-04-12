@@ -53,7 +53,7 @@ pub mod application {
 }
 
 pub mod message {
-    pub use s2n_quic_core::message::{event, publisher::Publisher};
+    pub use s2n_quic_core::message::{event, subscriber::Subscriber};
 }
 
 pub use connection::Connection;
