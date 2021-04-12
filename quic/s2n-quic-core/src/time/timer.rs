@@ -59,7 +59,6 @@ impl Timer {
     }
 }
 
-#[derive(Clone, Copy)]
 pub struct Iter(Option<Timestamp>);
 
 impl Iterator for Iter {
