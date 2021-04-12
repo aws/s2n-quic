@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::message::event::*;
+use crate::event::*;
 
 /// Clients should implement the Subscriber trait to customize which
 /// events they want to emit from the library.
@@ -19,6 +19,18 @@ pub trait Subscriber {
     }
 }
 
+impl<A, B> Subscriber for (A, B)
+where
+    A: Subscriber,
+    B: Subscriber,
+{
+    fn on_version_information(&mut self, event: &VersionInformation) {
+        self.0.on_version_information(event);
+        self.1.on_version_information(event);
+    }
 
-impl <A, B> Subscriber for (A, B) {
+    fn on_alpn_information(&mut self, event: &AlpnInformation) {
+        self.0.on_alpn_information(event);
+        self.1.on_alpn_information(event);
+    }
 }

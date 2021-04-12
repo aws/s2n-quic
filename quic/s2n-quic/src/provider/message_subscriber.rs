@@ -1,9 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-pub use crate::message::Subscriber;
-
-pub use s2n_quic_core::connection::limits::{ConnectionInfo, Limiter, Limits};
+pub use s2n_quic_core::event::subscriber::Subscriber;
 
 /// Provides logging support for an endpoint
 pub trait Provider {
@@ -18,7 +16,7 @@ pub use default::Provider as Default;
 impl_provider_utils!();
 
 pub mod default {
-    pub use crate::message::event::*;
+    pub use s2n_quic_core::event::*;
 
     #[derive(Debug, Default)]
     pub struct Provider;

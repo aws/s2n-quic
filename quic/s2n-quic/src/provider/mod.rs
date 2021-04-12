@@ -21,3 +21,7 @@ pub mod token;
 // These providers are not currently exposed to applications
 pub(crate) mod connection_close_formatter;
 pub(crate) mod random;
+
+pub mod event {
+    pub use s2n_quic_core::event::{self, subscriber::Subscriber};
+}
