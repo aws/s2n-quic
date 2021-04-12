@@ -22,9 +22,6 @@ use smallvec::SmallVec;
 /// The amount of Paths that can be maintained without using the heap
 const INLINE_PATH_LEN: usize = 5;
 
-// Maximum number of path validation retries
-// const MAX_VALIDATION_RETRIES: u8 = 3;
-
 /// The PathManager handles paths for a specific connection.
 /// It will handle path validation operations, and track the active path for a connection.
 #[derive(Debug)]
@@ -172,7 +169,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         // not), we will error our at this point to avoid re-using a peer connection ID.
         // TODO: This would be better handled as a stateless reset so the peer can terminate the
         //       connection immediately. https://github.com/awslabs/s2n-quic/issues/317
-        //return Err(transport::Error::INTERNAL_ERROR);
+        return Err(transport::Error::INTERNAL_ERROR);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.4
         //= type=TODO
@@ -180,8 +177,6 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         //# result of NAT rebinding or other middlebox activity, the endpoint MAY
         //# instead retain its congestion control state and round-trip estimate
         //# in those cases instead of reverting to initial values.
-        //let rtt = RTTEstimator::new(limits.ack_settings().max_ack_delay);
-        //let cc = congestion_controller_endpoint.new_congestion_controller(path_info);
 
         // TODO temporarily copy rtt and cc to maintain state when migrating to this new path.
         let rtt = self.active_path().rtt_estimator;
@@ -269,6 +264,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         }
     }
 
+    /// Iterate paths pending a path verification
     pub fn pending_paths(&mut self, timestamp: Timestamp) -> PendingPaths<CCE> {
         PendingPaths::new(self, timestamp)
     }
@@ -418,11 +414,12 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
 
 impl<CCE: congestion_controller::Endpoint> transmission::interest::Provider for Manager<CCE> {
     fn transmission_interest(&self) -> transmission::Interest {
-        let mut interest = self.peer_id_registry.transmission_interest();
+        let interest = self.peer_id_registry.transmission_interest();
 
         for p in &self.paths {
             if !p.is_validated() {
-                interest += transmission::interest::Interest::Forced;
+                // TODO Is this the right interest to express?
+                // interest += transmission::interest::Interest::Forced;
             }
         }
 
@@ -473,8 +470,8 @@ impl<'a, CCE: congestion_controller::Endpoint> PendingPaths<'a, CCE> {
         loop {
             let path = self.path_manager.paths.get(self.index)?;
 
-            // is_challenge_pending won't mutate the challenge. We have to advance the index before
-            // returning or we risk returning the same path over and over.
+            // We have to advance the index before returning or we risk
+            // returning the same path over and over.
             self.index += 1;
 
             if path.is_challenge_pending(self.timestamp) {
@@ -661,7 +658,7 @@ mod tests {
             Default::default(),
             false,
         );
-        let mut manager = manager(first_path, None);
+        let manager = manager(first_path, None);
         assert_eq!(manager.paths.len(), 1);
         assert_eq!(manager.path(&SocketAddress::default()).is_some(), true);
 
@@ -669,6 +666,9 @@ mod tests {
         let new_addr = SocketAddress::from(new_addr);
         assert_eq!(manager.path(&new_addr), None);
         assert_eq!(manager.paths.len(), 1);
+
+        // TODO Remove when Connection Migration is supported
+        return;
 
         let clock = NoopClock {};
         let datagram = DatagramInfo {

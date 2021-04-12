@@ -485,11 +485,12 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                         }
                     }
 
-                    // TODO get this from somewhere
                     let ecn = Default::default();
                     let mut pending_paths = self.path_manager.pending_paths(timestamp);
                     while let Some((path_id, path_manager)) = pending_paths.next_path() {
                         if let Ok(_idx) = queue.push(ConnectionTransmission {
+                            // We can't call self.transmission_context because self is already used
+                            // for pending paths.
                             context: ConnectionTransmissionContext {
                                 quic_version: self.quic_version,
                                 timestamp,
@@ -512,11 +513,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                         self.on_ack_eliciting_packet_sent(timestamp);
                     }
                 }
-
-                debug_assert!(
-                    !self.path_manager.active_path().at_amplification_limit(),
-                    "connection should not express transmission interest if amplification limited"
-                );
 
                 // TODO  leave the psuedo in comment, TODO send this stuff
                 // for path_id in path_manager.pending_path_validation() {
