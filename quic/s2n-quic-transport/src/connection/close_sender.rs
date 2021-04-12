@@ -36,7 +36,7 @@ impl CloseSender {
         };
     }
 
-    pub fn timers(&self) -> impl Iterator<Item = Timestamp> + '_ {
+    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
         self.state.timers()
     }
 
@@ -169,19 +169,19 @@ impl Default for State {
 }
 
 impl State {
-    pub fn timers(&self) -> impl Iterator<Item = Timestamp> + '_ {
+    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
         if let Self::Closing {
             close_timer,
             limiter,
             ..
         } = self
         {
-            Some((close_timer, limiter))
+            Some(close_timer.iter().chain(limiter.timers()))
         } else {
             None
         }
         .into_iter()
-        .flat_map(|(close_timer, limiter)| close_timer.iter().chain(limiter.timers()))
+        .flatten()
     }
 
     pub fn on_timeout(&mut self, now: Timestamp) -> Poll<()> {
