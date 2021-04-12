@@ -130,7 +130,7 @@ impl Challenge {
                 valid = false;
             }
 
-            if ConstantTimeEq::ct_eq(&state.data[..], &data[..]).unwrap_u8() == 0 {
+            if ConstantTimeEq::ct_eq(&state.data[..], &data).unwrap_u8() == 0 {
                 valid = false;
             }
 
