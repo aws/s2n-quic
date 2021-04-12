@@ -568,8 +568,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             .chain(self.close_sender.timers())
             .chain(shared_state.iter().flat_map(|s| s.space_manager.timers()))
             .chain(self.local_id_registry.timers())
-            .min()
-            .cloned();
+            .min();
 
         self.timer_entry.update(earliest);
     }

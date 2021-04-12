@@ -54,8 +54,18 @@ impl Timer {
     }
 
     /// Iterates over the contained timers
-    pub fn iter(&self) -> core::option::Iter<Timestamp> {
-        self.expiration.iter()
+    pub fn iter(&self) -> impl Iterator<Item = Timestamp> {
+        Iter(self.expiration)
+    }
+}
+
+pub struct Iter(Option<Timestamp>);
+
+impl Iterator for Iter {
+    type Item = Timestamp;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0.take()
     }
 }
 

@@ -71,7 +71,7 @@ impl<T: Copy + Clone + Default + Eq + PartialEq + PartialOrd, S: ValueToFrameWri
     }
 
     /// Returns the timer for a scheduled delivery
-    pub fn timers(&self) -> impl Iterator<Item = &Timestamp> {
+    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
         self.delivery_timer.iter()
     }
 

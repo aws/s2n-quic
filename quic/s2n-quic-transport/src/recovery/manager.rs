@@ -93,16 +93,18 @@ impl Manager {
         }
     }
 
-    pub fn timers(&self) -> impl Iterator<Item = &Timestamp> {
+    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
         //# The PTO timer MUST NOT be set if a timer is set for time threshold
         //# loss detection; see Section 6.1.2.  A timer that is set for time
         //# threshold loss detection will expire earlier than the PTO timer in
         //# most cases and is less likely to spuriously retransmit data.
 
+        let is_loss_timer_armed = self.loss_timer.is_armed();
+
         core::iter::empty()
             .chain(self.pto.timers())
-            .filter(move |_| !self.loss_timer.is_armed())
+            .filter(move |_| !is_loss_timer_armed)
             .chain(self.loss_timer.iter())
     }
 
@@ -661,7 +663,7 @@ impl Pto {
     }
 
     /// Returns an iterator containing the probe timeout timestamp
-    pub fn timers(&self) -> impl Iterator<Item = &Timestamp> {
+    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
         self.timer.iter()
     }
 
@@ -817,7 +819,7 @@ mod test {
 
         assert!(manager.pto.timer.is_armed());
         assert_eq!(
-            manager.pto.timer.iter().next().cloned(),
+            manager.pto.timer.iter().next(),
             Some(now + Duration::from_millis(999))
         );
     }
@@ -886,7 +888,7 @@ mod test {
                 }
 
                 assert!(manager.pto.timer.is_armed());
-                assert_eq!(Some(expected_pto), manager.pto.timer.iter().cloned().next());
+                assert_eq!(Some(expected_pto), manager.pto.timer.iter().next());
 
                 expected_bytes_in_flight += outcome.bytes_sent;
             } else {
@@ -1215,7 +1217,7 @@ mod test {
         //# If packets sent prior to the largest acknowledged packet cannot yet
         //# be declared lost, then a timer SHOULD be set for the remaining time.
         assert!(manager.loss_timer.is_armed());
-        assert_eq!(Some(&expected_loss_time), manager.loss_timer.iter().next());
+        assert_eq!(Some(expected_loss_time), manager.loss_timer.iter().next());
     }
 
     #[test]
@@ -1636,7 +1638,7 @@ mod test {
         // PTO = (2000 + max(4*1000, 1) + 10) * 2 = 12020
         assert!(manager.pto.timer.is_armed());
         assert_eq!(
-            *manager.pto.timer.iter().next().unwrap(),
+            manager.pto.timer.iter().next().unwrap(),
             expected_pto_base_timestamp + Duration::from_millis(12020)
         );
     }
@@ -1703,7 +1705,7 @@ mod test {
             .update(now, path.rtt_estimator.pto_period(path.pto_backoff, space));
 
         assert!(manager.pto.timer.is_armed());
-        assert!(manager.pto.timer.iter().next().cloned().unwrap() >= now + K_GRANULARITY);
+        assert!(manager.pto.timer.iter().next().unwrap() >= now + K_GRANULARITY);
     }
 
     #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1")]
@@ -1826,19 +1828,19 @@ mod test {
         // Loss timer is armed
         manager.loss_timer.set(loss_time);
         assert_eq!(manager.timers().count(), 1);
-        assert_eq!(manager.timers().next(), Some(&loss_time));
+        assert_eq!(manager.timers().next(), Some(loss_time));
 
         // PTO timer is armed
         manager.loss_timer.cancel();
         manager.pto.timer.set(pto_time);
         assert_eq!(manager.timers().count(), 1);
-        assert_eq!(manager.timers().next(), Some(&pto_time));
+        assert_eq!(manager.timers().next(), Some(pto_time));
 
         // Both timers are armed, only loss time is returned
         manager.loss_timer.set(loss_time);
         manager.pto.timer.set(pto_time);
         assert_eq!(manager.timers().count(), 1);
-        assert_eq!(manager.timers().next(), Some(&loss_time));
+        assert_eq!(manager.timers().next(), Some(loss_time));
     }
 
     #[test]

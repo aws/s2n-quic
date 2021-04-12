@@ -240,7 +240,7 @@ impl<K: OneRttKey> KeySet<K> {
         Ok(r)
     }
 
-    pub fn timers(&self) -> impl Iterator<Item = &Timestamp> {
+    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
         self.key_derivation_timer.iter()
     }
 

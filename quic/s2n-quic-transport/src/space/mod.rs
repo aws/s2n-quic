@@ -169,7 +169,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
     }
 
     /// Returns all of the component timers
-    pub fn timers(&self) -> impl Iterator<Item = &Timestamp> {
+    pub fn timers(&self) -> impl Iterator<Item = Timestamp> + '_ {
         // the spaces are `Option`s and can be iterated over, either returning
         // the value or `None`.
         core::iter::empty()

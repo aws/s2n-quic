@@ -46,10 +46,10 @@ impl Network {
     }
 
     pub fn next_tick(&self) -> Option<Timestamp> {
-        self.timers().min().cloned()
+        self.timers().min()
     }
 
-    pub fn timers(&self) -> impl Iterator<Item = &Timestamp> {
+    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
         self.client.timers().chain(self.server.timers())
     }
 
