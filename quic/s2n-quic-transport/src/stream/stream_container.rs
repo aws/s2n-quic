@@ -44,6 +44,12 @@ intrusive_adapter!(WaitingForConnectionFlowControlCreditsAdapter<S> = Rc<StreamN
     waiting_for_connection_flow_control_credits_link: LinkedListLink
 });
 
+// Intrusive list adapter for managing the list of
+// `waiting_for_stream_flow_control_credits` streams
+intrusive_adapter!(WaitingForStreamFlowControlCreditsAdapter<S> = Rc<StreamNode<S>>: StreamNode<S> {
+    waiting_for_stream_flow_control_credits_link: LinkedListLink
+});
+
 // Intrusive red black tree adapter for managing all streams in a tree for
 // lookup by Stream ID
 intrusive_adapter!(StreamTreeAdapter<S> = Rc<StreamNode<S>>: StreamNode<S> {
@@ -68,6 +74,8 @@ struct StreamNode<S> {
     waiting_for_retransmission_link: LinkedListLink,
     /// Allows the Stream to be part of the `waiting_for_connection_flow_control_credits` collection
     waiting_for_connection_flow_control_credits_link: LinkedListLink,
+    /// Allows the Stream to be part of the `waiting_for_stream_flow_control_credits` collection
+    waiting_for_stream_flow_control_credits_link: LinkedListLink,
 }
 
 impl<S> StreamNode<S> {
@@ -81,6 +89,7 @@ impl<S> StreamNode<S> {
             waiting_for_transmission_link: LinkedListLink::new(),
             waiting_for_retransmission_link: LinkedListLink::new(),
             waiting_for_connection_flow_control_credits_link: LinkedListLink::new(),
+            waiting_for_stream_flow_control_credits_link: LinkedListLink::new(),
         }
     }
 }
@@ -129,6 +138,10 @@ struct InterestLists<S> {
     /// connection flow control window to increase
     waiting_for_connection_flow_control_credits:
         LinkedList<WaitingForConnectionFlowControlCreditsAdapter<S>>,
+    /// Streams which are blocked on transmission due to waiting on the
+    /// stream flow control window to increase
+    waiting_for_stream_flow_control_credits:
+        LinkedList<WaitingForStreamFlowControlCreditsAdapter<S>>,
 }
 
 impl<S: StreamTrait> InterestLists<S> {
@@ -140,6 +153,9 @@ impl<S: StreamTrait> InterestLists<S> {
             waiting_for_retransmission: LinkedList::new(WaitingForRetransmissionAdapter::new()),
             waiting_for_connection_flow_control_credits: LinkedList::new(
                 WaitingForConnectionFlowControlCreditsAdapter::new(),
+            ),
+            waiting_for_stream_flow_control_credits: LinkedList::new(
+                WaitingForStreamFlowControlCreditsAdapter::new(),
             ),
         }
     }
@@ -192,6 +208,11 @@ impl<S: StreamTrait> InterestLists<S> {
             interests.connection_flow_control_credits,
             waiting_for_connection_flow_control_credits_link,
             waiting_for_connection_flow_control_credits
+        );
+        sync_interests!(
+            interests.stream_flow_control_credits,
+            waiting_for_stream_flow_control_credits_link,
+            waiting_for_stream_flow_control_credits
         );
 
         if interests.finalization != node.done_streams_link.is_linked() {
@@ -410,6 +431,10 @@ impl<S: StreamTrait> StreamContainer<S> {
                 waiting_for_connection_flow_control_credits,
                 waiting_for_connection_flow_control_credits_link
             );
+            remove_stream_from_list!(
+                waiting_for_stream_flow_control_credits,
+                waiting_for_stream_flow_control_credits_link
+            );
 
             controller.on_close_stream(stream.inner.borrow().stream_id());
         }
@@ -452,6 +477,27 @@ impl<S: StreamTrait> StreamContainer<S> {
             self,
             waiting_for_connection_flow_control_credits,
             waiting_for_connection_flow_control_credits_link,
+            controller,
+            func
+        );
+    }
+
+    /// Iterates over all `Stream`s which waiting for stream flow control
+    /// credits, and executes the given function on each `Stream`
+    ///
+    /// The `stream::Controller` will be notified of streams that have been
+    /// closed to allow for further streams to be opened.
+    pub fn iterate_stream_flow_credits_list<F>(
+        &mut self,
+        controller: &mut stream::Controller,
+        mut func: F,
+    ) where
+        F: FnMut(&mut S) -> StreamContainerIterationResult,
+    {
+        iterate_interruptible!(
+            self,
+            waiting_for_stream_flow_control_credits,
+            waiting_for_stream_flow_control_credits_link,
             controller,
             func
         );

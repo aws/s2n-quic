@@ -28,6 +28,7 @@ struct OutgoingConnectionFlowControllerImpl {
     /// The flow control window which has not yet been handed out to `Stream`s
     /// for sending data.
     available_window: VarInt,
+    /// For periodically sending `DATA_BLOCKED` frames when blocked by peer limits
     data_blocked_sync: PeriodicSync<VarInt, DataBlockedToFrameWriter>,
 }
 
