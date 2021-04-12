@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-pub use s2n_quic_core::event::subscriber::Subscriber;
+pub use s2n_quic_core::event::*;
 
 /// Provides logging support for an endpoint
 pub trait Provider {
@@ -16,7 +16,7 @@ pub use default::Provider as Default;
 impl_provider_utils!();
 
 pub mod default {
-    pub use s2n_quic_core::event::*;
+    use super::*;
 
     #[derive(Debug, Default)]
     pub struct Provider;
@@ -33,7 +33,7 @@ pub mod default {
     pub struct Subscriber;
 
     impl super::Subscriber for Subscriber {
-        fn on_version_information(&mut self, event: &VersionInformation) {
+        fn on_version_information(&mut self, event: &events::VersionInformation) {
             // TODO log this event
             let _ = event;
         }

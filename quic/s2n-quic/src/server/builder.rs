@@ -186,11 +186,11 @@ impl<Providers: ServerProviders> Builder<Providers> {
     );
 
     impl_provider_method!(
-        /// Sets the log provider for the [`Server`]
+        /// Sets the event provider for the [`Server`]
         ///
         /// # Examples
         ///
-        /// Sets a custom logger for the server
+        /// Sets a custom event subscriber for the server
         ///
         /// ```rust,ignore
         /// # use std::{error::Error, time::Duration};
@@ -199,14 +199,14 @@ impl<Providers: ServerProviders> Builder<Providers> {
         /// # #[tokio::main]
         /// # async fn main() -> Result<(), Box<dyn Error>> {
         /// let server = Server::builder()
-        ///     .with_log(MyLogger::new("./path/to/logs"))?
+        ///     .with_event(MyEventLogger::new())?
         ///     .start()?;
         /// #
         /// #    Ok(())
         /// # }
         /// ```
-        with_log,
-        log
+        with_event,
+        event
     );
 
     impl_provider_method!(

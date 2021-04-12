@@ -8,10 +8,9 @@ pub mod clock;
 pub mod congestion_controller;
 pub mod connection_id;
 pub mod endpoint_limits;
+pub mod event;
 pub mod io;
 pub mod limits;
-pub mod log;
-pub mod message_subscriber;
 pub mod runtime;
 pub mod stateless_reset_token;
 pub mod sync;
@@ -21,7 +20,3 @@ pub mod token;
 // These providers are not currently exposed to applications
 pub(crate) mod connection_close_formatter;
 pub(crate) mod random;
-
-pub mod event {
-    pub use s2n_quic_core::event::{self, subscriber::Subscriber};
-}
