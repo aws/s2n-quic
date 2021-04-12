@@ -160,7 +160,7 @@ impl<CC: CongestionController> Path<CC> {
         self.challenge.on_timeout(timestamp)
     }
 
-    pub fn next_timer(&self) -> Option<&Timestamp> {
+    pub fn next_timer(&self) -> Option<Timestamp> {
         self.challenge.next_timer()
     }
 

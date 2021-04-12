@@ -70,7 +70,7 @@ impl Challenge {
         Self::Pending(state)
     }
 
-    pub fn next_timer(&self) -> Option<&Timestamp> {
+    pub fn next_timer(&self) -> Option<Timestamp> {
         if let Challenge::Pending(state) = self {
             return core::iter::empty()
                 .chain(state.abandon_timer.iter())

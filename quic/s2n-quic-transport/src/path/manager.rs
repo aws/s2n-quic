@@ -235,7 +235,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         Ok((id, false))
     }
 
-    pub fn next_timer(&self) -> impl Iterator<Item = &Timestamp> {
+    pub fn next_timer(&self) -> impl Iterator<Item = Timestamp> + '_ {
         self.paths.iter().flat_map(|p| p.next_timer())
     }
 
