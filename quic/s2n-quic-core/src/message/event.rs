@@ -3,14 +3,14 @@
 
 #![allow(unused)]
 
-/// Event is a marker trait which is used collecting all event types wich are
+/// Event is a marker trait which is used for collecting all event types
 /// of interest for logging or metric collection.
 pub trait Event: Meta {}
 
 /// This is meant to capture high level values used to categorize and
 /// aggregate events. Some naming semantics are taken from the qlog rfc.
 pub trait Meta {
-    /// Taken from qlog rfc. this value is composed of category and type
+    /// Taken from qlog rfc. This value is composed of category and type
     fn name(&self) -> &str;
 }
 

@@ -8,7 +8,6 @@ pub use s2n_quic_core::connection::limits::{ConnectionInfo, Limiter, Limits};
 /// Provides logging support for an endpoint
 pub trait Provider {
     type Publisher: 'static + Publisher;
-    // type Publisher: 'static;
     type Error: 'static + core::fmt::Display;
 
     fn start(self) -> Result<Self::Publisher, Self::Error>;
@@ -25,11 +24,10 @@ pub mod default {
     pub struct Provider;
 
     impl super::Provider for Provider {
-        type Publisher = Publisher; // TODO
+        type Publisher = Publisher;
         type Error = core::convert::Infallible;
 
         fn start(self) -> Result<Self::Publisher, Self::Error> {
-            // TODO
             Ok(Publisher)
         }
     }
@@ -38,6 +36,7 @@ pub mod default {
 
     impl super::Publisher for Publisher {
         fn on_version_information(&self, event: &VersionInformation) {
+            // TODO log this event
             let _ = event;
         }
     }
