@@ -51,9 +51,7 @@ impl Application {
     }
 
     pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
-        self.endpoint
-            .timers()
-            .chain(self.next_transmission.into_iter())
+        self.endpoint.timers().chain(self.next_transmission)
     }
 
     pub fn done(&mut self) {
