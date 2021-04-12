@@ -54,15 +54,15 @@ impl Timer {
     }
 
     /// Iterates over the contained timers
-    pub fn iter(&self) -> TimerIterator {
-        TimerIterator(self.expiration)
+    pub fn iter(&self) -> impl Iterator<Item = Timestamp> {
+        Iter(self.expiration)
     }
 }
 
 #[derive(Clone, Copy)]
-pub struct TimerIterator(Option<Timestamp>);
+pub struct Iter(Option<Timestamp>);
 
-impl Iterator for TimerIterator {
+impl Iterator for Iter {
     type Item = Timestamp;
 
     fn next(&mut self) -> Option<Self::Item> {
