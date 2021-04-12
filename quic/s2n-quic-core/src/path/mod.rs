@@ -16,8 +16,19 @@ use crate::{
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum State {
+    /// Path has no transmission limitations
     Validated,
+
+    /// Path has not been validated and is subject to amplification limits
     AmplificationLimited { tx_bytes: u32, rx_bytes: u32 },
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.1
+    //= type=TODO
+    //# The endpoint
+    //# MUST NOT send more than a minimum congestion window's worth of data
+    //# per estimated round-trip time (kMinimumWindow, as defined in
+    //# [QUIC-RECOVERY]).
+    /// New path for an existing connection is waiting on a PATH_RESPONSE
     PendingChallengeResponse,
 }
 
@@ -197,21 +208,27 @@ impl<CC: CongestionController> Path<CC> {
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.1
     //# The server MUST also limit the number of bytes it sends before
     //# validating the address of the client; see Section 8.
-
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.1
-    //= type=TODO
-    //# The endpoint
-    //# MUST NOT send more than a minimum congestion window's worth of data
-    //# per estimated round-trip time (kMinimumWindow, as defined in
-    //# [QUIC-RECOVERY]).
     pub fn clamp_mtu(&self, requested_size: usize) -> usize {
         match self.state {
             State::Validated => requested_size.min(self.mtu as usize),
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.1
+            //= type=TODO
+            //# Until a peer's address is deemed valid, an endpoint MUST
+            //# limit the rate at which it sends data to this address.
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.1
+            //= type=TODO
+            //# The endpoint
+            //# MUST NOT send more than a minimum congestion window's worth of data
+            //# per estimated round-trip time (kMinimumWindow, as defined in
+            //# [QUIC-RECOVERY]).
+            State::PendingChallengeResponse => requested_size.min(self.mtu as usize),
+
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1
             //# Prior to validating the client address, servers MUST NOT send more
             //# than three times as many bytes as the number of bytes they have
             //# received.
-            State::PendingChallengeResponse => requested_size.min(self.mtu as usize),
             State::AmplificationLimited { tx_bytes, rx_bytes } => {
                 let limit = rx_bytes
                     .checked_mul(3)
@@ -229,8 +246,6 @@ impl<CC: CongestionController> Path<CC> {
             //# than three times as many bytes as the number of bytes they have
             //# received.
             transmission::Constraint::AmplificationLimited
-        } else if self.at_pre_validated_limit() {
-            transmission::Constraint::CongestionLimited
         } else if self.congestion_controller.is_congestion_limited() {
             if self.congestion_controller.requires_fast_retransmission() {
                 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.2
@@ -268,21 +283,6 @@ impl<CC: CongestionController> Path<CC> {
         space: crate::packet::number::PacketNumberSpace,
     ) -> core::time::Duration {
         self.rtt_estimator.pto_period(self.pto_backoff, space)
-    }
-    /// Returns whether this path is limited to connection migration amplification limits
-    pub fn at_pre_validated_limit(&self) -> bool {
-        self.state == State::PendingChallengeResponse
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.1
-        //= type=TODO
-        //# Until a peer's address is deemed valid, an endpoint MUST
-        //# limit the rate at which it sends data to this address.
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.1
-        //= type=TODO
-        //# The endpoint
-        //# MUST NOT send more than a minimum congestion window's worth of data
-        //# per estimated round-trip time (kMinimumWindow, as defined in
-        //# [QUIC-RECOVERY]).
     }
 
     /// Resets the PTO backoff to the initial value

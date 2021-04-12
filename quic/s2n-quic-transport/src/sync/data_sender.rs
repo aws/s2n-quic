@@ -529,6 +529,7 @@ mod tests {
     use super::*;
     use crate::{
         contexts::testing::{MockWriteContext, OutgoingFrameBuffer},
+        path,
         transmission::{self, interest::Provider as _},
     };
     use bolero::{check, generator::*};
@@ -583,6 +584,7 @@ mod tests {
             frame_buffer: &mut frame_buffer,
             transmission_constraint: transmission::Constraint::None,
             endpoint: endpoint::Type::Server,
+            path_id: path::Id::new(0),
         };
         let mut lost = HashSet::new();
         let mut pending = HashSet::new();

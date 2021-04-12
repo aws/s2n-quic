@@ -83,6 +83,7 @@ impl Challenge {
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.4
     //= type=TODO
+    //= tracking-issue=https://github.com/awslabs/s2n-quic/issues/412
     //# This timer SHOULD be set as described in Section 6.2.1 of
     //# [QUIC-RECOVERY] and MUST NOT be more aggressive.
     pub fn reset_timer(&mut self, timestamp: Timestamp) {

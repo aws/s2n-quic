@@ -219,6 +219,7 @@ pub struct MockWriteContext<'a> {
     pub frame_buffer: &'a mut OutgoingFrameBuffer,
     pub transmission_constraint: Constraint,
     pub endpoint: endpoint::Type,
+    pub path_id: path::Id,
 }
 
 impl<'a> MockWriteContext<'a> {
@@ -233,6 +234,7 @@ impl<'a> MockWriteContext<'a> {
             frame_buffer,
             transmission_constraint,
             endpoint,
+            path_id: path::Id::new(0),
         }
     }
 }
@@ -288,6 +290,6 @@ impl<'a> WriteContext for MockWriteContext<'a> {
     }
 
     fn path_id(&self) -> path::Id {
-        todo!()
+        self.path_id
     }
 }

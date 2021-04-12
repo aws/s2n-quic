@@ -226,7 +226,6 @@ impl Interop {
             Some("ecn") => false,
             Some("rebind-addr") => false,
             Some("crosstraffic") => true,
-            Some("connectionmigration") => true,
             None => true,
             _ => false,
         };

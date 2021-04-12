@@ -27,7 +27,7 @@ const INLINE_PATH_LEN: usize = 5;
 #[derive(Debug)]
 pub struct Manager<CCE: congestion_controller::Endpoint> {
     /// Path array
-    pub paths: SmallVec<[Path<CCE::CongestionController>; INLINE_PATH_LEN]>,
+    paths: SmallVec<[Path<CCE::CongestionController>; INLINE_PATH_LEN]>,
 
     /// Registry of `connection::PeerId`s
     peer_id_registry: PeerIdRegistry,
@@ -36,16 +36,9 @@ pub struct Manager<CCE: congestion_controller::Endpoint> {
     active: usize,
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.2
-    //= type=TODO
     //# To protect the connection from failing due to such a spurious
     //# migration, an endpoint MUST revert to using the last validated peer
     //# address when validation of a new peer address fails.
-
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.2
-    //= type=TODO
-    //# If an endpoint has no state about the last validated peer address, it
-    //# MUST close the connection silently by discarding all connection
-    //# state.
     /// Index of last known validated path
     previous: Option<usize>,
 }
