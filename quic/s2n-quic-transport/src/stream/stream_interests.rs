@@ -41,7 +41,8 @@ impl StreamInterests {
         StreamInterests {
             connection_flow_control_credits: self.connection_flow_control_credits
                 || other.connection_flow_control_credits,
-            stream_flow_control_credits: self.stream_flow_control_credits || other.stream_flow_control_credits,
+            stream_flow_control_credits: self.stream_flow_control_credits
+                || other.stream_flow_control_credits,
             finalization: self.finalization && other.finalization,
             delivery_notifications: self.delivery_notifications || other.delivery_notifications,
             transmission: self.transmission + other.transmission,
