@@ -26,12 +26,12 @@ macro_rules! events {
             )*
         }
 
-        /// We can implement the Subscriber trait to customize events we
-        /// want to emit from the library.
+        /// The trait exposes a function for each type of event. The default
+        /// implementation simply ignores the event, but can be overridden to
+        /// consume the event.
         ///
-        /// Since the default implementation is a noop, the rust compiler
-        /// is able to optimize away any allocations and code execution. This
-        /// results in zero-cost for any event we are not interested in consuming.
+        /// One can provide a custom implementation of `Subscriber` to create
+        /// a logger, metrics agent, etc.
         pub trait Subscriber {
             $(
                 paste!(
