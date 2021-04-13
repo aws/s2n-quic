@@ -4,7 +4,6 @@
 use crate::{
     ct::ConstantTimeEq,
     frame,
-    inet::SocketAddress,
     time::{Duration, Timer, Timestamp},
 };
 
@@ -15,7 +14,6 @@ pub struct State {
     retransmit_timer: Timer,
     retransmit_period: Duration,
     abandon_timer: Timer,
-    peer_address: SocketAddress,
     data: Data,
 }
 
@@ -38,8 +36,7 @@ impl PartialEq for Challenge {
             (Challenge::None, Challenge::None) => true,
             (Challenge::Abandoned, Challenge::Abandoned) => true,
             (Challenge::Pending(state), Challenge::Pending(other)) => {
-                (ConstantTimeEq::ct_eq(&state.data[..], &other.data[..]).unwrap_u8() == 1)
-                    && (state.peer_address == other.peer_address)
+                ConstantTimeEq::ct_eq(&state.data[..], &other.data[..]).unwrap_u8() == 1
             }
             _ => false,
         }
@@ -51,7 +48,6 @@ impl Challenge {
         timestamp: Timestamp,
         retransmit_period: Duration,
         expiration: Duration,
-        peer_address: SocketAddress,
         data: Data,
     ) -> Self {
         let mut retransmit_timer = Timer::default();
@@ -63,29 +59,26 @@ impl Challenge {
             retransmit_timer,
             retransmit_period,
             abandon_timer,
-            peer_address,
             data,
         };
 
         Self::Pending(state)
     }
 
-    pub fn next_timer(&self) -> Option<Timestamp> {
+    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
         if let Challenge::Pending(state) = self {
-            return core::iter::empty()
-                .chain(state.abandon_timer.iter())
-                .chain(state.retransmit_timer.iter())
-                .min();
+            Some(
+                core::iter::empty()
+                    .chain(state.abandon_timer.iter())
+                    .chain(state.retransmit_timer.iter()),
+            )
+        } else {
+            None
         }
-
-        None
+        .into_iter()
+        .flatten()
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.4
-    //= type=TODO
-    //= tracking-issue=https://github.com/awslabs/s2n-quic/issues/412
-    //# This timer SHOULD be set as described in Section 6.2.1 of
-    //# [QUIC-RECOVERY] and MUST NOT be more aggressive.
     pub fn reset_timer(&mut self, timestamp: Timestamp) {
         if let Challenge::Pending(state) = self {
             state
@@ -117,17 +110,10 @@ impl Challenge {
         None
     }
 
-    pub fn is_valid(&self, timestamp: Timestamp, addr: &SocketAddress, data: &[u8]) -> bool {
+    pub fn is_valid(&self, timestamp: Timestamp, data: &[u8]) -> bool {
         if let Challenge::Pending(state) = self {
             let mut valid = true;
             if state.abandon_timer.is_expired(timestamp) {
-                valid = false;
-            }
-
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
-            //# A PATH_RESPONSE frame MUST be sent on the network path where the
-            //# PATH_CHALLENGE was received.
-            if &state.peer_address != addr {
                 valid = false;
             }
 
@@ -145,10 +131,7 @@ impl Challenge {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        inet::SocketAddressV4,
-        time::{Clock, Duration, NoopClock},
-    };
+    use crate::time::{Clock, Duration, NoopClock};
 
     #[test]
     fn test_challenge_validation() {
@@ -160,34 +143,18 @@ mod tests {
             clock.get_time(),
             Duration::from_millis(0),
             expiration,
-            SocketAddress::default(),
             expected_data,
         );
 
-        assert!(challenge.is_valid(clock.get_time(), &SocketAddress::default(), &expected_data));
+        assert!(challenge.is_valid(clock.get_time(), &expected_data));
 
         let empty_challenge = Challenge::None;
-        assert!(!empty_challenge.is_valid(
-            clock.get_time(),
-            &SocketAddress::default(),
-            &expected_data
-        ));
+        assert!(!empty_challenge.is_valid(clock.get_time(), &expected_data));
 
         let invalid_data = [1; 8];
-        assert!(!challenge.is_valid(clock.get_time(), &SocketAddress::default(), &invalid_data));
+        assert!(!challenge.is_valid(clock.get_time(), &invalid_data));
 
         let expired = Duration::from_millis(150);
-        assert!(!challenge.is_valid(
-            clock.get_time() + expired,
-            &SocketAddress::default(),
-            &expected_data
-        ));
-
-        let invalid_socket = SocketAddressV4::new([1, 1, 1, 1], 1024);
-        assert!(!challenge.is_valid(
-            clock.get_time(),
-            &SocketAddress::from(invalid_socket),
-            &expected_data
-        ));
+        assert!(!challenge.is_valid(clock.get_time() + expired, &expected_data));
     }
 }

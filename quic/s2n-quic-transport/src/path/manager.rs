@@ -3,15 +3,15 @@
 
 //! This module contains the Manager implementation
 
-use crate::{connection::PeerIdRegistry, transmission};
-/// re-export core
-pub use s2n_quic_core::path::*;
+use crate::{
+    connection::PeerIdRegistry,
+    path::{challenge, Path},
+    transmission,
+};
 use s2n_quic_core::{
     ack, connection, frame,
     inet::{DatagramInfo, SocketAddress},
     packet::number::PacketNumberSpace,
-    path::challenge::Challenge,
-    random,
     recovery::congestion_controller,
     stateless_reset,
     time::Timestamp,
@@ -109,13 +109,12 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     /// and is now no longer amplification limited.
     #[allow(unreachable_code)]
     #[allow(unused_variables)]
-    pub fn on_datagram_received<Rnd: random::Generator>(
+    pub fn on_datagram_received(
         &mut self,
         datagram: &DatagramInfo,
         limits: &connection::Limits,
         can_migrate: bool,
         congestion_controller_endpoint: &mut CCE,
-        random_generator: &mut Rnd,
     ) -> Result<(Id, bool), transport::Error> {
         if let Some((id, path)) = self.path_mut(&datagram.remote_address) {
             let unblocked = path.on_bytes_received(datagram.payload_len);
@@ -186,7 +185,10 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         //# frame so that it can associate the peer's response with the
         //# corresponding PATH_CHALLENGE.
         let mut data: challenge::Data = [0; 8];
-        random_generator.public_random_fill(&mut data);
+
+        // NOTE: When enabled, the random generator should be passed into this function.
+        // This function can be generic over random.
+        // random_generator.public_random_fill(&mut data);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
         //# An endpoint MUST
@@ -197,7 +199,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         //# Servers SHOULD initiate path validation to the client's new address
         //# upon receiving a probe packet from a different address.
         // This will overwrite any in-progress path validation
-        let challenge = Challenge::new(
+        let challenge = challenge::Challenge::new(
             datagram.timestamp,
             rtt.pto_period(1, PacketNumberSpace::ApplicationData),
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.4
@@ -206,15 +208,20 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
             //# three times the larger of the current Probe Timeout (PTO) or the
             //# initial timeout (that is, 2*kInitialRtt) as defined in
             //# [QUIC-RECOVERY] is RECOMMENDED.
+            //
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.4
+            //= type=TODO
+            //= tracking-issue=https://github.com/awslabs/s2n-quic/issues/412
+            //# This timer SHOULD be set as described in Section 6.2.1 of
+            //# [QUIC-RECOVERY] and MUST NOT be more aggressive.
             rtt.pto_period(6, PacketNumberSpace::ApplicationData),
-            datagram.remote_address,
             data,
         );
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.1
         //# Until a peer's address is deemed valid, an endpoint MUST
         //# limit the rate at which it sends data to this address.
-        let path = Path::new_probe(
+        let path = Path::new(
             datagram.remote_address,
             // TODO https://github.com/awslabs/s2n-quic/issues/316
             // The existing peer connection id may only be reused if the destination
@@ -227,34 +234,25 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
             rtt,
             cc,
             true,
-            challenge,
-        );
+        )
+        .with_challenge(challenge);
+
         let id = Id(self.paths.len());
-        self.paths.push(path);
+        self.paths.push(*path);
 
         Ok((id, false))
     }
 
-    pub fn next_timer(&self) -> impl Iterator<Item = Timestamp> + '_ {
-        self.paths.iter().flat_map(|p| p.next_timer())
+    pub fn timers(&self) -> impl Iterator<Item = Timestamp> + '_ {
+        self.paths.iter().flat_map(|p| p.timers())
     }
 
     /// Writes any frames the path manager wishes to transmit to the given context
     pub fn on_transmit<W: transmission::WriteContext>(&mut self, context: &mut W) {
-        self.peer_id_registry.on_transmit(context);
+        self.peer_id_registry.on_transmit(context)
 
-        let constraint = context.transmission_constraint();
-        if constraint.can_transmit() {
-            let path = &mut self.paths[context.path_id().0];
-
-            if path.is_challenge_pending(context.current_time()) {
-                if let Some(data) = path.challenge_data() {
-                    let frame = frame::PathChallenge { data };
-                    context.write_frame(&frame);
-                    self[context.path_id()].reset_timer(context.current_time());
-                }
-            }
-        }
+        // NOTE Add in per-path constraints based on whether a Challenge needs to be
+        // transmitted.
     }
 
     /// Iterate paths pending a path verification
@@ -316,7 +314,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
                 return;
             }
 
-            if path.is_path_response_valid(timestamp, peer_address, response.data) {
+            if path.is_path_response_valid(timestamp, response.data) {
                 path.on_validated();
 
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3
@@ -543,21 +541,21 @@ mod tests {
         // Create a challenge that will expire in 100ms
         let clock = NoopClock {};
         let expiration = Duration::from_millis(100);
-        let challenge = Challenge::new(
+        let challenge = challenge::Challenge::new(
             clock.get_time(),
             Duration::from_millis(0),
             expiration,
-            SocketAddress::default(),
             [0; 8],
         );
-        let second_path = Path::new_probe(
+        let mut second_path = Path::new(
             SocketAddress::default(),
             first_conn_id,
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
-            challenge,
         );
+
+        second_path.with_challenge(challenge);
 
         let mut manager = manager(first_path, None);
         manager.paths.push(second_path);
@@ -582,22 +580,21 @@ mod tests {
 
         // Create a challenge that will expire in 100ms
         let expiration = Duration::from_millis(100);
-        let challenge = Challenge::new(
+        let challenge = challenge::Challenge::new(
             clock.get_time(),
             Duration::from_millis(0),
             expiration,
-            SocketAddress::default(),
             expected_data,
         );
         let first_conn_id = connection::PeerId::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
-        let first_path = Path::new_probe(
+        let mut first_path = Path::new(
             SocketAddress::default(),
             first_conn_id,
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
-            challenge,
         );
+        first_path.with_challenge(challenge);
 
         let mut manager = manager(first_path.clone(), None);
         assert_eq!(manager.paths.len(), 1);
@@ -672,14 +669,14 @@ mod tests {
             destination_connection_id: connection::LocalId::TEST_ID,
         };
 
-        let mut random_generator = random::testing::Generator(123);
+        // NOTE This generator should be passed to on_datagram_received when migation is enabled
+        let mut _random_generator = random::testing::Generator(123);
         let (_path_id, _unblocked) = manager
             .on_datagram_received(
                 &datagram,
                 &connection::Limits::default(),
                 true,
                 &mut unlimited::Endpoint::default(),
-                &mut random_generator,
             )
             .unwrap();
 
@@ -731,7 +728,6 @@ mod tests {
                     &connection::Limits::default(),
                     false,
                     &mut unlimited::Endpoint::default(),
-                    &mut random_generator,
                 )
                 .is_err(),
             true

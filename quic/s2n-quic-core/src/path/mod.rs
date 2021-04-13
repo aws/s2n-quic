@@ -4,7 +4,6 @@
 //! This module contains the Path implementation
 
 pub mod challenge;
-use challenge::Challenge;
 
 use crate::{
     connection,
@@ -13,6 +12,7 @@ use crate::{
     time::Timestamp,
     transmission,
 };
+use challenge::Challenge;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum State {
@@ -72,7 +72,7 @@ impl<CC: CongestionController> Path<CC> {
         rtt_estimator: RttEstimator,
         congestion_controller: CC,
         peer_validated: bool,
-    ) -> Self {
+    ) -> Path<CC> {
         Path {
             peer_socket_address,
             peer_connection_id,
@@ -93,29 +93,9 @@ impl<CC: CongestionController> Path<CC> {
         }
     }
 
-    pub fn new_probe(
-        peer_socket_address: SocketAddress,
-        peer_connection_id: connection::PeerId,
-        rtt_estimator: RttEstimator,
-        congestion_controller: CC,
-        peer_validated: bool,
-        challenge: Challenge,
-    ) -> Self {
-        Path {
-            peer_socket_address,
-            peer_connection_id,
-            rtt_estimator,
-            congestion_controller,
-            pto_backoff: INITIAL_PTO_BACKOFF,
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.4
-            //# If the client IP address has changed, the server MUST
-            //# adhere to the anti-amplification limits found in Section 8.1.
-            // Start each path in State::AmplificationLimited until it has been validated.
-            state: State::PendingChallengeResponse,
-            mtu: MINIMUM_MTU,
-            peer_validated,
-            challenge,
-        }
+    pub fn with_challenge(&mut self, challenge: Challenge) -> &Self {
+        self.challenge = challenge;
+        self
     }
 
     /// Called when bytes have been transmitted on this path
@@ -160,8 +140,8 @@ impl<CC: CongestionController> Path<CC> {
         self.challenge.on_timeout(timestamp)
     }
 
-    pub fn next_timer(&self) -> Option<Timestamp> {
-        self.challenge.next_timer()
+    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
+        self.challenge.timers()
     }
 
     pub fn reset_timer(&mut self, timestamp: Timestamp) {
@@ -306,16 +286,8 @@ impl<CC: CongestionController> Path<CC> {
         }
     }
     /// Validates data in a PATH_RESPONSE frame
-    pub fn is_path_response_valid(
-        &self,
-        timestamp: Timestamp,
-        addr: &SocketAddress,
-        response: &[u8],
-    ) -> bool {
-        // The timestamp is only used to determine retransmission.
-        // We won't fail a validation based on timestamp because we will have zeroed the data if
-        // the timer expired.
-        self.challenge.is_valid(timestamp, addr, response)
+    pub fn is_path_response_valid(&self, timestamp: Timestamp, response: &[u8]) -> bool {
+        self.challenge.is_valid(timestamp, response)
     }
 }
 
