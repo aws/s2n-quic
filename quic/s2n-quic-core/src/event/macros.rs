@@ -26,12 +26,14 @@ macro_rules! events {
             )*
         }
 
-        /// The trait exposes a function for each type of event. The default
+        /// An interface for handling QUIC events.
+        ///
+        /// This trait exposes a function for each type of event. The default
         /// implementation simply ignores the event, but can be overridden to
         /// consume the event.
         ///
-        /// One can provide a custom implementation of `Subscriber` to create
-        /// a logger, metrics agent, etc.
+        /// Applications can provide a custom implementation of `Subscriber` to perform
+        /// logging, metrics recording, etc.
         pub trait Subscriber {
             $(
                 paste!(
