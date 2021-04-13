@@ -15,7 +15,7 @@ macro_rules! events {
             $(
                 $(#[$attrs])*
                 #[non_exhaustive]
-                #[derive(Clone, Debug)]
+                #[derive(Clone, Debug, Default)]
                 pub struct $name $(<$lt>)? {
                     $($fields)*
                 }
@@ -34,7 +34,7 @@ macro_rules! events {
         ///
         /// Applications can provide a custom implementation of `Subscriber` to perform
         /// logging, metrics recording, etc.
-        pub trait Subscriber {
+        pub trait Subscriber: 'static {
             $(
                 paste!(
                     $(#[$attrs])*

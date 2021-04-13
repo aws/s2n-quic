@@ -244,7 +244,7 @@ impl<
         StatelessResetToken: stateless_reset_token::Generator,
         Random: s2n_quic_core::random::Generator,
         EndpointLimits: s2n_quic_core::endpoint::Limits,
-        Event,
+        Event: s2n_quic_core::event::Subscriber,
         Limits: s2n_quic_core::connection::limits::Limiter,
         Sync,
         Tls: crypto::tls::Endpoint,
@@ -276,7 +276,7 @@ impl<
         StatelessResetToken: stateless_reset_token::Generator,
         Random: s2n_quic_core::random::Generator,
         EndpointLimits: s2n_quic_core::endpoint::Limits,
-        Event: 'static,
+        Event: s2n_quic_core::event::Subscriber,
         Limits: s2n_quic_core::connection::limits::Limiter,
         Sync: 'static,
         Tls: crypto::tls::Endpoint,
@@ -303,6 +303,7 @@ impl<
     type Connection = connection::Implementation<Self>;
     type CongestionControllerEndpoint = CongestionController;
     type EndpointLimits = EndpointLimits;
+    type EventSubscriber = Event;
     type TLSEndpoint = Tls;
     type TokenFormat = Token;
     type ConnectionLimits = Limits;
@@ -321,6 +322,7 @@ impl<
             endpoint_limits: &mut self.endpoint_limits,
             token: &mut self.token,
             connection_limits: &mut self.limits,
+            event_subscriber: &mut self.event,
         }
     }
 }

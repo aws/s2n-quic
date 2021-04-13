@@ -5,7 +5,7 @@
 
 use crate::{connection, stream};
 use s2n_quic_core::{
-    crypto::tls, endpoint, random, recovery::congestion_controller, stateless_reset,
+    crypto::tls, endpoint, event, random, recovery::congestion_controller, stateless_reset,
 };
 
 /// Configuration paramters for a QUIC endpoint
@@ -31,6 +31,8 @@ pub trait Config: 'static + Sized + core::fmt::Debug {
     type Stream: stream::StreamTrait;
     /// The connection close formatter
     type ConnectionCloseFormatter: connection::close::Formatter;
+    /// The event subscriber
+    type EventSubscriber: event::Subscriber;
 
     /// The type of the local endpoint
     const ENDPOINT_TYPE: endpoint::Type;
@@ -66,4 +68,6 @@ pub struct Context<'a, Cfg: Config> {
     pub connection_limits: &'a mut Cfg::ConnectionLimits,
 
     pub connection_close_formatter: &'a mut Cfg::ConnectionCloseFormatter,
+
+    pub event_subscriber: &'a mut Cfg::EventSubscriber,
 }

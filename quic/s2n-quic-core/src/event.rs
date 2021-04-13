@@ -20,6 +20,15 @@ pub struct Meta {
     pub group_id: u64,
 }
 
+impl Default for Meta {
+    fn default() -> Self {
+        Self {
+            vantage_point: endpoint::Type::Server,
+            group_id: 0,
+        }
+    }
+}
+
 events!(
     #[name = "transport::version_information"]
     // https://tools.ietf.org/html/draft-marx-qlog-event-definitions-quic-h3-02#section-5.3.1

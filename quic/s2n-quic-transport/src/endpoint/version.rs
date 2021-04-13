@@ -6,6 +6,7 @@ use alloc::collections::VecDeque;
 use core::{marker::PhantomData, time::Duration};
 use s2n_codec::{Encoder, EncoderBuffer, EncoderValue};
 use s2n_quic_core::{
+    event::{self, events},
     inet::{ExplicitCongestionNotification, SocketAddress},
     io::tx,
     packet,
@@ -58,11 +59,12 @@ impl<Config: endpoint::Config> Negotiator<Config> {
         }
     }
 
-    pub fn on_packet(
+    pub fn on_packet<S: event::Subscriber>(
         &mut self,
         remote_address: SocketAddress,
         payload_len: usize,
         packet: &ProtectedPacket,
+        subscriber: &mut S,
     ) -> Result<(), Error> {
         // always forward packets for clients on to connections
         if Config::ENDPOINT_TYPE.is_client() {
@@ -72,12 +74,32 @@ impl<Config: endpoint::Config> Negotiator<Config> {
         let packet = match packet {
             ProtectedPacket::Initial(packet) => {
                 if is_supported!(packet) {
+                    // FIXME we should use the builder pattern to make this less error prone and
+                    // more ergonomic
+                    let mut event = events::VersionInformation::default();
+                    event.meta = event::Meta {
+                        vantage_point: endpoint::Type::Server,
+                        group_id: 7,
+                    };
+                    event.chosen_version = packet.version;
+                    subscriber.on_version_information(&event);
+
                     return Ok(());
                 }
                 packet
             }
             ProtectedPacket::ZeroRtt(packet) => {
                 if is_supported!(packet) {
+                    // FIXME we should use the builder pattern to make this less error prone and
+                    // more ergonomic
+                    let mut event = events::VersionInformation::default();
+                    event.meta = event::Meta {
+                        vantage_point: endpoint::Type::Server,
+                        group_id: 7,
+                    };
+                    event.chosen_version = packet.version;
+                    subscriber.on_version_information(&event);
+
                     return Ok(());
                 }
 
@@ -88,7 +110,18 @@ impl<Config: endpoint::Config> Negotiator<Config> {
                 //# eventually receive an Initial packet.
                 return Err(Error);
             }
-            ProtectedPacket::VersionNegotiation(_) => {
+            ProtectedPacket::VersionNegotiation(_packet) => {
+                // FIXME we should use the builder pattern to make this less error prone and
+                // more ergonomic
+                let mut event = events::VersionInformation::default();
+                event.meta = event::Meta {
+                    vantage_point: endpoint::Type::Server,
+                    group_id: 7,
+                };
+                // TODO extract the supported versions
+                // event.server_versions = packet.version;
+                subscriber.on_version_information(&event);
+
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#6.1
                 //# An endpoint MUST NOT send a Version Negotiation packet
                 //# in response to receiving a Version Negotiation packet.

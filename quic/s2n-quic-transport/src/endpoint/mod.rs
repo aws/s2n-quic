@@ -223,7 +223,12 @@ impl<Cfg: Config> Endpoint<Cfg> {
         // length requirements for connection IDs.
         if self
             .version_negotiator
-            .on_packet(remote_address, payload_len, &packet)
+            .on_packet(
+                remote_address,
+                payload_len,
+                &packet,
+                endpoint_context.event_subscriber,
+            )
             .is_err()
         {
             return;
