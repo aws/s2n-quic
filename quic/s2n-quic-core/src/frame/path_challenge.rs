@@ -27,7 +27,7 @@ macro_rules! path_challenge_tag {
 //#
 //# Data:  This 8-byte field contains arbitrary data.
 
-pub(crate) const DATA_LEN: usize = 8;
+pub const DATA_LEN: usize = 8;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct PathChallenge<'a> {
