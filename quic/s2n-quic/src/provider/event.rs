@@ -34,6 +34,7 @@ pub mod default {
 
     pub struct TracingSubscriber;
 
+    // TODO we should implement Display for Events or maybe opt into serde as a feature
     impl super::Subscriber for TracingSubscriber {
         fn on_version_information(&mut self, event: &events::VersionInformation) {
             info!("{:?}", event);
