@@ -15,27 +15,33 @@ pub use default::Provider as Default;
 
 impl_provider_utils!();
 
+#[cfg(feature = "tracing")]
 pub mod default {
     use super::*;
+    use tracing::info;
 
     #[derive(Debug, Default)]
     pub struct Provider;
 
     impl super::Provider for Provider {
-        type Subscriber = Subscriber;
+        type Subscriber = TracingSubscriber;
         type Error = core::convert::Infallible;
 
         fn start(self) -> Result<Self::Subscriber, Self::Error> {
-            Ok(Subscriber)
+            Ok(TracingSubscriber)
         }
     }
 
-    pub struct Subscriber;
+    pub struct TracingSubscriber;
 
-    impl super::Subscriber for Subscriber {
+    impl super::Subscriber for TracingSubscriber {
         fn on_version_information(&mut self, event: &events::VersionInformation) {
-            // TODO log this event
-            let _ = event;
+            info!("{:?}", event);
+        }
+
+        fn on_alpn_information(&mut self, event: &events::AlpnInformation) {
+            info!("{:?}", event);
         }
     }
 }
+

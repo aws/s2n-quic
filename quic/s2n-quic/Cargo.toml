@@ -12,7 +12,8 @@ default = [
     "protocol-extensions",
     "rand-provider",
     "std",
-    "tokio-runtime"
+    "tokio-runtime",
+    "tracing-provider"
 ]
 # Sends debug information in CONNECTION_CLOSE frames
 connection-close-debug = []
@@ -24,6 +25,7 @@ rustls = ["s2n-quic-rustls"]
 s2n-tls = ["s2n-quic-tls"]
 std = ["bytes/std", "futures/std", "s2n-quic-core/std", "s2n-quic-platform/std", "thiserror"]
 tokio-runtime = ["tokio", "s2n-quic-platform/tokio-runtime"]
+tracing-provider = ["tracing"]
 
 [dependencies]
 bytes = { version = "1", default-features = false }
@@ -45,6 +47,7 @@ thiserror = { version = "1.0", optional = true }
 tokio = { version = "0.2", optional = true, features = ["rt-core", "time", "udp"] }
 zerocopy = { version = "0.3", optional = true }
 zeroize = { version = "1", default-features = false }
+tracing = { version = "0.1", optional = true }
 
 [dev-dependencies]
 bolero = { version = "0.6" }
