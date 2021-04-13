@@ -300,19 +300,20 @@ mod tests {
 
         if let Ok(new_length) = frame.try_fit(capacity) {
             frame.data = Padding { length: new_length };
+
+            // we should never exceed the capacity
+            assert!(
+                frame.encoding_size() <= capacity,
+                "the encoding_size should not exceed capacity {:#?}",
+                frame
+            );
+
             if new_length < length {
                 // the payload was trimmed so we should be at full capacity
                 assert_eq!(
                     frame.encoding_size(),
                     capacity,
                     "should match capacity {:#?}",
-                    frame
-                );
-            } else {
-                // we should never exceed the capacity
-                assert!(
-                    frame.encoding_size() <= capacity,
-                    "the encoding_size should not exceed capacity {:#?}",
                     frame
                 );
             }

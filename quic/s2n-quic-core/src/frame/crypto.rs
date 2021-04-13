@@ -155,20 +155,29 @@ mod tests {
 
         if let Ok(new_length) = frame.try_fit(capacity) {
             frame.data = Padding { length: new_length };
+
+            assert!(
+                frame.encoding_size() <= capacity,
+                "the encoding_size should not exceed capacity {:#?}",
+                frame
+            );
+
             if new_length < length {
-                // the payload was trimmed so we should be at full capacity
-                assert_eq!(
-                    frame.encoding_size(),
-                    capacity,
-                    "should match capacity {:#?}",
-                    frame
-                );
-            } else {
-                // we should never exceed the capacity
+                // Ideally `frame.encoding_size() == capacity` but in some cases, the payload
+                // needs to be decreased to fit `capacity` and by decreasing the payload size,
+                // the length prefix is also decreased.
+                //
+                // The tolerance is based on the length prefix encoding size.
+                // For example, if the length prefix requires 2 bytes to encode the length,
+                // the overall `frame.encoding_size()` can be within 2 bytes of `capacity`.
+                let tolerance = VarInt::try_from(new_length).unwrap().encoding_size();
+
                 assert!(
-                    frame.encoding_size() <= capacity,
-                    "the encoding_size should not exceed capacity {:#?}",
-                    frame
+                    capacity - frame.encoding_size() <= tolerance,
+                    "should fit capacity tolerance: expected {}, got {}; {:#?}",
+                    tolerance,
+                    capacity - frame.encoding_size(),
+                    frame,
                 );
             }
         } else {
