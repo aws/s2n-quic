@@ -13,11 +13,12 @@ use crate::{
         StreamError,
     },
 };
-use core::task::Context;
+use core::{task::Context, time::Duration};
 use s2n_quic_core::{
     ack, endpoint,
     frame::{stream::StreamRef, MaxStreamData, ResetStream, StopSending, StreamDataBlocked},
     stream::{ops, StreamId},
+    time::Timestamp,
     transport,
     varint::VarInt,
 };
@@ -97,6 +98,16 @@ pub trait StreamTrait: StreamInterestProvider {
 
     /// This method gets called when a packet loss is reported
     fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A, events: &mut StreamEvents);
+
+    /// Updates the period at which `STREAM_DATA_BLOCKED` frames are sent to the peer
+    /// if the application is blocked by peer limits.
+    fn update_blocked_sync_period(&mut self, blocked_sync_period: Duration);
+
+    /// Returns the timer for the component
+    fn timer(&self) -> Option<Timestamp>;
+
+    /// Called when the connection timer expires
+    fn on_timeout(&mut self, now: Timestamp);
 
     /// This method gets called when a stream gets reset due to a reason that is
     /// not related to a frame. E.g. due to a connection failure.
@@ -224,6 +235,19 @@ impl StreamTrait for StreamImpl {
     fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A, _events: &mut StreamEvents) {
         self.receive_stream.on_packet_loss(ack_set);
         self.send_stream.on_packet_loss(ack_set);
+    }
+
+    fn update_blocked_sync_period(&mut self, blocked_sync_period: Duration) {
+        self.send_stream
+            .update_blocked_sync_period(blocked_sync_period);
+    }
+
+    fn timer(&self) -> Option<Timestamp> {
+        self.send_stream.timers().next()
+    }
+
+    fn on_timeout(&mut self, now: Timestamp) {
+        self.send_stream.on_timeout(now)
     }
 
     fn on_internal_reset(&mut self, error: StreamError, events: &mut StreamEvents) {

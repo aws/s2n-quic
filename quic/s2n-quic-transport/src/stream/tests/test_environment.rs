@@ -53,6 +53,7 @@ pub fn stream_interests(interests: &[&str]) -> StreamInterests {
             "lost" => result.transmission = transmission::Interest::LostData,
             "fin" => result.finalization = true,
             "cf" => result.connection_flow_control_credits = true,
+            "sf" => result.stream_flow_control_credits = true,
             other => unreachable!("Unsupported interest {}", other),
         }
     }

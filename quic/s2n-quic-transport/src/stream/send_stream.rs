@@ -561,10 +561,15 @@ impl SendStream {
     /// This method gets called when a packet delivery got acknowledged
     pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A, events: &mut StreamEvents) {
         self.data_sender.on_packet_ack(ack_set);
+        self.data_sender
+            .flow_controller_mut()
+            .on_packet_ack(ack_set);
 
         let should_flush = self.write_waiter.as_ref().map_or(false, |w| w.1);
         let mut should_wake = false;
-
+        self.data_sender
+            .flow_controller_mut()
+            .on_packet_ack(ack_set);
         if let SendStreamState::Sending = self.state {
             match self.data_sender.state() {
                 data_sender::State::Sending if should_flush => {
@@ -623,6 +628,9 @@ impl SendStream {
     /// This method gets called when a packet loss is reported
     pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
         self.data_sender.on_packet_loss(ack_set);
+        self.data_sender
+            .flow_controller_mut()
+            .on_packet_loss(ack_set);
         self.reset_sync.on_packet_loss(ack_set);
     }
 
@@ -633,7 +641,28 @@ impl SendStream {
         context: &mut W,
     ) -> Result<(), OnTransmitError> {
         self.reset_sync.on_transmit(stream_id, context)?;
-        self.data_sender.on_transmit(stream_id.into(), context)
+        self.data_sender.on_transmit(stream_id.into(), context)?;
+        self.data_sender
+            .flow_controller_mut()
+            .on_transmit(stream_id, context)
+    }
+
+    /// Updates the period at which `STREAM_DATA_BLOCKED` frames are sent to the peer
+    /// if the application is blocked by peer limits.
+    pub fn update_blocked_sync_period(&mut self, blocked_sync_period: Duration) {
+        self.data_sender
+            .flow_controller_mut()
+            .update_blocked_sync_period(blocked_sync_period)
+    }
+
+    /// Returns all timers for the component
+    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
+        self.data_sender.flow_controller().timers()
+    }
+
+    /// Called when the connection timer expires
+    pub fn on_timeout(&mut self, now: Timestamp) {
+        self.data_sender.flow_controller_mut().on_timeout(now)
     }
 
     /// A reset that is triggered without having received a `RESET` frame.
@@ -971,7 +1000,11 @@ impl StreamInterestProvider for SendStream {
             //# any terminal state, that is, after sending a RESET_STREAM frame.
             SendStreamState::ResetSent(_) => self.reset_sync.transmission_interest(),
 
-            _ => self.data_sender.transmission_interest() + self.reset_sync.transmission_interest(),
+            _ => {
+                self.data_sender.transmission_interest()
+                    + self.reset_sync.transmission_interest()
+                    + self.data_sender.flow_controller().transmission_interest()
+            }
         };
 
         StreamInterests {

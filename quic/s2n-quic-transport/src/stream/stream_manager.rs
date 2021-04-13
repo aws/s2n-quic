@@ -603,13 +603,21 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         self.inner
             .outgoing_connection_flow_controller
             .update_blocked_sync_period(blocked_sync_period);
+        self.inner.streams.iterate_stream_flow_credits_list(
+            &mut self.inner.stream_controller,
+            |stream| {
+                stream.update_blocked_sync_period(blocked_sync_period);
+                StreamContainerIterationResult::Continue
+            },
+        );
     }
 
     /// Returns all timers for the component
-    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
+    pub fn timers(&self) -> impl Iterator<Item = Timestamp> + '_ {
         core::iter::empty()
             .chain(self.inner.stream_controller.timers())
             .chain(self.inner.outgoing_connection_flow_controller.timers())
+            .chain(self.inner.streams.timers())
     }
 
     /// Called when the connection timer expires
@@ -618,6 +626,13 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         self.inner
             .outgoing_connection_flow_controller
             .on_timeout(now);
+        self.inner.streams.iterate_stream_flow_credits_list(
+            &mut self.inner.stream_controller,
+            |stream| {
+                stream.on_timeout(now);
+                StreamContainerIterationResult::Continue
+            },
+        );
     }
 
     /// Closes the [`AbstractStreamManager`] and resets all streams with the

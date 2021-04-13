@@ -40,6 +40,7 @@ use s2n_quic_core::{
     },
     packet::number::{PacketNumberRange, PacketNumberSpace},
     stream::{ops, StreamId, StreamType},
+    time::Timestamp,
     transport::{
         parameters::{InitialFlowControlLimits, InitialStreamLimits, MaxIdleTimeout},
         Error as TransportError,
@@ -60,6 +61,8 @@ struct MockStream {
     on_connection_window_available_retrieve_window: u64,
     on_packet_ack_count: usize,
     on_packet_loss_count: usize,
+    update_blocked_sync_period_count: usize,
+    on_timeout_count: usize,
     on_internal_reset_count: usize,
     on_transmit_try_write_frames: usize,
     on_transmit_count: usize,
@@ -122,6 +125,8 @@ impl StreamTrait for MockStream {
             on_connection_window_available_retrieve_window: 0,
             on_packet_ack_count: 0,
             on_packet_loss_count: 0,
+            update_blocked_sync_period_count: 0,
+            on_timeout_count: 0,
             on_internal_reset_count: 0,
             on_data_count: 0,
             on_reset_count: 0,
@@ -231,6 +236,18 @@ impl StreamTrait for MockStream {
     fn on_packet_loss<A: AckSet>(&mut self, _ack_set: &A, events: &mut StreamEvents) {
         self.on_packet_loss_count += 1;
         self.store_wakers(events);
+    }
+
+    fn update_blocked_sync_period(&mut self, _blocked_sync_period: Duration) {
+        self.update_blocked_sync_period_count += 1;
+    }
+
+    fn timer(&self) -> Option<Timestamp> {
+        None
+    }
+
+    fn on_timeout(&mut self, _now: Timestamp) {
+        self.on_timeout_count += 1;
     }
 
     fn on_internal_reset(&mut self, _error: StreamError, events: &mut StreamEvents) {
