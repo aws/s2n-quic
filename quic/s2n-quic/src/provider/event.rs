@@ -45,4 +45,3 @@ pub mod default {
         }
     }
 }
-
