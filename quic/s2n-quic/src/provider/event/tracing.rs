@@ -1,6 +1,9 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use s2n_quic_core::event::events;
+use tracing::info;
+
 #[derive(Debug, Default)]
 pub struct Provider;
 
@@ -14,10 +17,6 @@ impl super::Provider for Provider {
 }
 
 pub struct Subscriber;
-
-#[cfg(feature = "tracing")]
-use s2n_quic_core::event::*;
-use tracing::info;
 
 // TODO we should implement Display for Events or maybe opt into serde as a feature
 impl super::Subscriber for Subscriber {
