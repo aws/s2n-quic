@@ -154,7 +154,6 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         //# in the network to cause connections to close by spoofing or otherwise
         //# manipulating observed traffic.
 
-        //let path_info = congestion_controller::PathInfo::new(&datagram.remote_address);
         // TODO set alpn if available
 
         // Since we are not currently supporting connection migration (whether it was deliberate or
@@ -238,7 +237,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         .with_challenge(challenge);
 
         let id = Id(self.paths.len());
-        self.paths.push(*path);
+        self.paths.push(path);
 
         Ok((id, false))
     }
@@ -251,7 +250,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     pub fn on_transmit<W: transmission::WriteContext>(&mut self, context: &mut W) {
         self.peer_id_registry.on_transmit(context)
 
-        // NOTE Add in per-path constraints based on whether a Challenge needs to be
+        // TODO Add in per-path constraints based on whether a Challenge needs to be
         // transmitted.
     }
 
@@ -306,23 +305,14 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     pub fn on_path_response(
         &mut self,
         timestamp: Timestamp,
-        peer_address: &SocketAddress,
+        path_id: Id,
         response: &s2n_quic_core::frame::PathResponse,
     ) {
-        if let Some((_id, path)) = self.path_mut(peer_address) {
-            if path.is_validated() {
-                return;
-            }
-
-            if path.is_path_response_valid(timestamp, response.data) {
-                path.on_validated();
-
-                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3
-                //= type=TODO
-                //# After verifying a new client address, the server SHOULD send new
-                //# address validation tokens (Section 8) to the client.
-            }
+        if self[path_id].is_validated() {
+            return;
         }
+
+        self[path_id].validate_path_response(timestamp, response.data);
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
@@ -405,16 +395,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
 
 impl<CCE: congestion_controller::Endpoint> transmission::interest::Provider for Manager<CCE> {
     fn transmission_interest(&self) -> transmission::Interest {
-        let interest = self.peer_id_registry.transmission_interest();
-
-        for p in &self.paths {
-            if !p.is_validated() {
-                // TODO Is this the right interest to express?
-                // interest += transmission::interest::Interest::Forced;
-            }
-        }
-
-        interest
+        self.peer_id_registry.transmission_interest()
     }
 }
 
@@ -459,14 +440,13 @@ impl<'a, CCE: congestion_controller::Endpoint> PendingPaths<'a, CCE> {
 
     pub fn next_path(&mut self) -> Option<(Id, &mut Manager<CCE>)> {
         loop {
-            let path = self.path_manager.paths.get(self.index)?;
-
-            // We have to advance the index before returning or we risk
-            // returning the same path over and over.
+            let index = self.index;
             self.index += 1;
 
+            let path = self.path_manager.paths.get(index)?;
+
             if path.is_challenge_pending(self.timestamp) {
-                return Some((Id(self.index - 1), self.path_manager));
+                return Some((Id(index), self.path_manager));
             }
         }
     }
@@ -506,20 +486,33 @@ mod tests {
 
     #[test]
     fn get_path_by_address_test() {
-        let conn_id = connection::PeerId::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
+        let first_conn_id = connection::PeerId::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
         let first_path = Path::new(
             SocketAddress::default(),
-            conn_id,
+            first_conn_id,
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
         );
 
-        let manager = manager(first_path.clone(), None);
-        assert_eq!(manager.paths.len(), 1);
+        let second_conn_id = connection::PeerId::try_from_bytes(&[5, 4, 3, 2, 1]).unwrap();
+        let second_path = Path::new(
+            SocketAddress::default(),
+            second_conn_id,
+            RttEstimator::new(Duration::from_millis(30)),
+            Default::default(),
+            false,
+        );
+
+        let mut manager = manager(first_path.clone(), None);
+        manager.paths.push(second_path);
+        assert_eq!(manager.paths.len(), 2);
 
         let (_id, matched_path) = manager.path(&SocketAddress::default()).unwrap();
-        assert_eq!(matched_path, &first_path);
+        assert_eq!(
+            matched_path.peer_connection_id,
+            first_path.peer_connection_id
+        );
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.2
@@ -547,15 +540,14 @@ mod tests {
             expiration,
             [0; 8],
         );
-        let mut second_path = Path::new(
+        let second_path = Path::new(
             SocketAddress::default(),
             first_conn_id,
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
-        );
-
-        second_path.with_challenge(challenge);
+        )
+        .with_challenge(challenge);
 
         let mut manager = manager(first_path, None);
         manager.paths.push(second_path);
@@ -587,14 +579,14 @@ mod tests {
             expected_data,
         );
         let first_conn_id = connection::PeerId::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
-        let mut first_path = Path::new(
+        let first_path = Path::new(
             SocketAddress::default(),
             first_conn_id,
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
-        );
-        first_path.with_challenge(challenge);
+        )
+        .with_challenge(challenge);
 
         let mut manager = manager(first_path.clone(), None);
         assert_eq!(manager.paths.len(), 1);
@@ -615,7 +607,7 @@ mod tests {
         // A response 100ms after the challenge should fail
         manager.on_path_response(
             clock.get_time() + expiration + Duration::from_millis(100),
-            &first_path.peer_socket_address,
+            Id(0),
             &frame,
         );
         if let Some((_path_id, first_path)) = manager.path(&first_path.peer_socket_address) {
@@ -627,7 +619,7 @@ mod tests {
         // A response 100ms before the challenge should succeed
         manager.on_path_response(
             clock.get_time() + expiration - Duration::from_millis(100),
-            &first_path.peer_socket_address,
+            Id(0),
             &frame,
         );
         if let Some((_path_id, first_path)) = manager.path(&first_path.peer_socket_address) {
@@ -654,7 +646,7 @@ mod tests {
 
         let new_addr: SocketAddr = "127.0.0.1:80".parse().unwrap();
         let new_addr = SocketAddress::from(new_addr);
-        assert_eq!(manager.path(&new_addr), None);
+        assert!(manager.path(&new_addr).is_none());
         assert_eq!(manager.paths.len(), 1);
 
         // TODO Remove when Connection Migration is supported

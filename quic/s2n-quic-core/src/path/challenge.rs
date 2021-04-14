@@ -19,28 +19,14 @@ pub struct State {
 
 #[derive(Clone, Debug)]
 pub enum Challenge {
+    /// There is no Challenge associated with this Path
     None,
+
+    /// A Challenge has been sent to the peer and the response is pending
     Pending(State),
+
+    /// A timeout caused this Challenge to be abandoned, an new Challenge will have to be used
     Abandoned,
-}
-
-impl Default for Challenge {
-    fn default() -> Self {
-        Self::None
-    }
-}
-
-impl PartialEq for Challenge {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Challenge::None, Challenge::None) => true,
-            (Challenge::Abandoned, Challenge::Abandoned) => true,
-            (Challenge::Pending(state), Challenge::Pending(other)) => {
-                ConstantTimeEq::ct_eq(&state.data[..], &other.data[..]).unwrap_u8() == 1
-            }
-            _ => false,
-        }
-    }
 }
 
 impl Challenge {
@@ -79,7 +65,8 @@ impl Challenge {
         .flatten()
     }
 
-    pub fn reset_timer(&mut self, timestamp: Timestamp) {
+    /// When a PATH_CHALLENGE is transmitted this handles any internal state operations.
+    pub fn on_transmit(&mut self, timestamp: Timestamp) {
         if let Challenge::Pending(state) = self {
             state
                 .retransmit_timer

@@ -15,20 +15,22 @@ use crate::{
 use challenge::Challenge;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[allow(dead_code)]
 enum State {
     /// Path has no transmission limitations
     Validated,
 
     /// Path has not been validated and is subject to amplification limits
-    AmplificationLimited { tx_bytes: u32, rx_bytes: u32 },
-
+    AmplificationLimited {
+        tx_bytes: u32,
+        rx_bytes: u32,
+    },
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.1
     //= type=TODO
     //# The endpoint
     //# MUST NOT send more than a minimum congestion window's worth of data
     //# per estimated round-trip time (kMinimumWindow, as defined in
     //# [QUIC-RECOVERY]).
-    /// New path for an existing connection is waiting on a PATH_RESPONSE
     PendingChallengeResponse,
 }
 
@@ -39,7 +41,7 @@ pub const MINIMUM_MTU: u16 = 1200;
 // Initial PTO backoff multiplier is 1 indicating no additional increase to the backoff.
 pub const INITIAL_PTO_BACKOFF: u32 = 1;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Path<CC: CongestionController> {
     /// The peer's socket address
     pub peer_socket_address: SocketAddress,
@@ -93,7 +95,7 @@ impl<CC: CongestionController> Path<CC> {
         }
     }
 
-    pub fn with_challenge(&mut self, challenge: Challenge) -> &Self {
+    pub fn with_challenge(mut self, challenge: Challenge) -> Self {
         self.challenge = challenge;
         self
     }
@@ -135,8 +137,6 @@ impl<CC: CongestionController> Path<CC> {
     }
 
     pub fn on_timeout(&mut self, timestamp: Timestamp) {
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.4
-        //# Endpoints SHOULD abandon path validation based on a timer.
         self.challenge.on_timeout(timestamp)
     }
 
@@ -144,8 +144,9 @@ impl<CC: CongestionController> Path<CC> {
         self.challenge.timers()
     }
 
-    pub fn reset_timer(&mut self, timestamp: Timestamp) {
-        self.challenge.reset_timer(timestamp)
+    /// When transmitting on a path this handles any internal state operations.
+    pub fn on_transmit(&mut self, timestamp: Timestamp) {
+        self.challenge.on_transmit(timestamp)
     }
 
     pub fn challenge_data(&self) -> Option<&challenge::Data> {
@@ -157,17 +158,28 @@ impl<CC: CongestionController> Path<CC> {
     }
 
     pub fn is_challenge_abandoned(&self) -> bool {
-        self.challenge == Challenge::Abandoned
+        if let Challenge::Abandoned = self.challenge {
+            return true;
+        }
+
+        false
+    }
+
+    pub fn validate_path_response(&mut self, timestamp: Timestamp, response: &[u8]) {
+        if self.challenge.is_valid(timestamp, response) {
+            self.on_validated();
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3
+            //= type=TODO
+            //# After verifying a new client address, the server SHOULD send new
+            //# address validation tokens (Section 8) to the client.
+        }
     }
 
     /// Called when the path is validated
     pub fn on_validated(&mut self) {
         self.challenge = Challenge::None;
         self.state = State::Validated;
-    }
-
-    pub fn remove_amplification_limits(&mut self) {
-        self.state = State::PendingChallengeResponse;
     }
 
     /// Returns whether this path has passed address validation
@@ -284,10 +296,6 @@ impl<CC: CongestionController> Path<CC> {
                 };
             }
         }
-    }
-    /// Validates data in a PATH_RESPONSE frame
-    pub fn is_path_response_valid(&self, timestamp: Timestamp, response: &[u8]) -> bool {
-        self.challenge.is_valid(timestamp, response)
     }
 }
 
