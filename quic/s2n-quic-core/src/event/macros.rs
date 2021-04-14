@@ -1,6 +1,25 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+
+#[non_exhaustive]
+#[derive(Clone, Debug, Default)]
+struct Foo<'a> {
+    pub server_alpns: &'a [&'a [u8]],
+    pub meta: super::Meta,
+}
+
+struct FooBuilder<'a>(Foo<'a>);
+
+impl<'a> FooBuilder<'a> {
+    fn build(self) -> Foo<'a> {
+        self.0
+    }
+}
+
+
+
+
 macro_rules! events {
     ($(
         #[name = $name_str:literal]
@@ -34,16 +53,15 @@ macro_rules! events {
                     }
 
                     #[derive(Clone, Debug, Default)]
-                    pub struct [<$name Builder>] $(<$lt>)? {
-                        // inner: $name $(<$lt>)?
-                        inner: &$($lt)? str,
-                    }
+                    pub struct [<$name Builder>] $(<$lt>)? (
+                        $name $(<$lt>)?
+                    );
 
-                    // impl $(<$lt>)? [<$name Builder>] $(<$lt>)? {
-                    //     fn build(self) -> $name {
-                    //         self.inner
-                    //     }
-                    // }
+                    impl $(<$lt>)? [<$name Builder>] $(<$lt>)? {
+                        fn build(self) -> $name $(<$lt>)? {
+                            self.0
+                        }
+                    }
                 }
             )*
         }

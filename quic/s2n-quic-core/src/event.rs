@@ -50,5 +50,3 @@ events!(
         pub meta: Meta,
     }
 );
-
-
