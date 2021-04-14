@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use cfg_if::cfg_if;
-pub use s2n_quic_core::event::Subscriber;
+pub use s2n_quic_core::event::{Subscriber, events};
 
 /// Provides logging support for an endpoint
 pub trait Provider {
@@ -13,18 +13,14 @@ pub trait Provider {
 }
 
 cfg_if! {
-    if #[cfg(feature = "tracing")] {
+    if #[cfg(feature = "tracing-provider")] {
         pub use self::tracing as default;
+        pub mod tracing;
     } else {
-        pub mod default {
-            // TODO export stub implementation that panics on initialization
-        }
+        pub mod default;
     }
 }
 
 pub use default::Provider as Default;
-
-#[cfg(feature = "tracing")]
-pub mod tracing;
 
 impl_provider_utils!();
