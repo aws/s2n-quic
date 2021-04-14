@@ -23,6 +23,28 @@ macro_rules! events {
                 impl $(<$lt>)? Event for $name $(<$lt>)? {
                     const NAME: &'static str = $name_str;
                 }
+
+                paste! {
+                    impl $(<$lt>)? $name $(<$lt>)? {
+                        pub fn builder() -> [<$name Builder>] $(<$lt>)? {
+                            // [<$name Builder>] {
+                            // }
+                            [<$name Builder>]::default()
+                        }
+                    }
+
+                    #[derive(Clone, Debug, Default)]
+                    pub struct [<$name Builder>] $(<$lt>)? {
+                        // inner: $name $(<$lt>)?
+                        inner: &$($lt)? str,
+                    }
+
+                    // impl $(<$lt>)? [<$name Builder>] $(<$lt>)? {
+                    //     fn build(self) -> $name {
+                    //         self.inner
+                    //     }
+                    // }
+                }
             )*
         }
 
