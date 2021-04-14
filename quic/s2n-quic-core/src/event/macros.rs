@@ -12,6 +12,7 @@ struct Foo<'a> {
 struct FooBuilder<'a>(Foo<'a>);
 
 impl<'a> FooBuilder<'a> {
+    #[allow(dead_code)]
     fn build(self) -> Foo<'a> {
         self.0
     }
@@ -46,8 +47,6 @@ macro_rules! events {
                 paste! {
                     impl $(<$lt>)? $name $(<$lt>)? {
                         pub fn builder() -> [<$name Builder>] $(<$lt>)? {
-                            // [<$name Builder>] {
-                            // }
                             [<$name Builder>]::default()
                         }
                     }
@@ -58,6 +57,7 @@ macro_rules! events {
                     );
 
                     impl $(<$lt>)? [<$name Builder>] $(<$lt>)? {
+                        #[allow(dead_code)]
                         fn build(self) -> $name $(<$lt>)? {
                             self.0
                         }
