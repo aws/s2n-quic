@@ -364,12 +364,8 @@ jobs:
       - name: Run covfix
         run: rust-covfix -o coverage.lcov coverage.unfiltered.lcov
 
-      - name: Upload report to codecov
-        uses: codecov/codecov-action@v1
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          file: coverage.lcov
-          flags: unit-tests
+      # TODO: Switch to source coverage and create coverage report
+      #       See https://github.com/awslabs/s2n-quic/issues/226
 
   examples:
     runs-on: ubuntu-latest
