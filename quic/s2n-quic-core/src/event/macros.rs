@@ -130,5 +130,26 @@ macro_rules! events {
                 );
             )*
         }
+
+        #[cfg(any(test, feature = "testing"))]
+        mod tests { $(
+            // use super::*;
+            // use paste::paste;
+
+            super::paste! {
+                //     fn [<on_ $name:snake>](&mut self, event: &events::$name) {
+                //         self.0.[<on_ $name:snake>](event);
+                //         self.1.[<on_ $name:snake>](event);
+                //     }
+
+                #[test]
+                fn [<build_ $name:snake>]() {
+                    super::events::$name::builder()
+                        .default_meta()
+                        .build();
+                }
+
+            }
+        )* }
     };
 }
