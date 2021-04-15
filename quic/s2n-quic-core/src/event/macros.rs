@@ -1,7 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-
 #[non_exhaustive]
 #[derive(Clone, Debug, Default)]
 struct Foo<'a> {
@@ -36,8 +35,7 @@ struct FooBuilder<'a>(Foo<'a>);
 
 #[allow(dead_code)]
 impl<'a> FooBuilder<'a> {
-    fn with_server_alpns(&mut self) {
-    }
+    fn with_server_alpns(&mut self) {}
 
     fn build(self) -> Foo<'a> {
         self.0
