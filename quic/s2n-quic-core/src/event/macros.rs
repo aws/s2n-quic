@@ -1,51 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-#[non_exhaustive]
-#[derive(Clone, Debug, Default)]
-struct Foo<'a> {
-    pub server_alpns: &'a [&'a [u8]],
-    pub meta: super::Meta,
-}
-
-#[allow(dead_code)]
-impl<'a> Foo<'a> {
-    pub fn builder() -> FooMetaBuilder<'a> {
-        FooMetaBuilder(Foo::default())
-    }
-}
-
-struct FooMetaBuilder<'a>(Foo<'a>);
-
-#[allow(dead_code)]
-impl<'a> FooMetaBuilder<'a> {
-    pub fn with_meta(self, meta: super::Meta) -> FooBuilder<'a> {
-        let mut event = self.0;
-        event.meta = meta;
-        FooBuilder(event)
-    }
-
-    pub fn without_meta(self) -> FooBuilder<'a> {
-        let event = self.0;
-        FooBuilder(event)
-    }
-}
-
-struct FooBuilder<'a>(Foo<'a>);
-
-#[allow(dead_code)]
-impl<'a> FooBuilder<'a> {
-    fn with_server_alpns(&mut self) {}
-
-    fn build(self) -> Foo<'a> {
-        self.0
-    }
-}
-
-fn _bla() {
-    let _e = Foo::builder().without_meta().build();
-}
-
 macro_rules! events {
     ($(
         #[name = $name_str:literal]
@@ -55,54 +10,20 @@ macro_rules! events {
             $( pub $field_name:ident : $field_type:ty, )*
         }
     )*) => {
-        pub mod builder {
-            use super::*;
-
-            $(
-                paste! {
-                    /// A builder to ensure we specify a Meta for each event.
-                    #[derive(Clone, Debug)]
-                    pub struct [<$name MetaBuilder>] $(<$lt>)? (
-                        events::$name $(<$lt>)?
-                    );
-
-                    #[allow(dead_code)]
-                    impl $(<$lt>)? [<$name MetaBuilder>] $(<$lt>)? {
-                        pub fn with_meta(self, meta: Meta) -> [<$name Builder>] $(<$lt>)? {
-                            let mut event = self.0;
-                            event.meta = meta;
-                            [<$name Builder>] (event)
-                        }
-
-                        pub fn without_meta(self) -> [<$name Builder>] $(<$lt>)? {
-                            [<$name Builder>] (self.0)
-                        }
-                    }
-
-                    /// A builder to allow for easy customization of event fields and ensure the
-                    /// event is built only once.
-                    #[derive(Clone, Debug)]
-                    pub struct [<$name Builder>] $(<$lt>)? (
-                        events::$name $(<$lt>)?
-                    );
-
-                    #[allow(dead_code)]
-                    impl $(<$lt>)? [<$name Builder>] $(<$lt>)? {
-                        pub fn build(self) -> events::$name $(<$lt>)? {
-                            self.0
-                        }
-
-                        $(
-                            pub fn [<with_ $field_name>](&mut self, $field_name: $field_type) {
-                                self.0.$field_name = $field_name;
-                            }
-                        )*
-                    }
-                }
-            )*
-        }
 
         pub mod events {
+            //! Builder to ensure that Events are created uniformly.
+            //!
+            //! Event builders allow for the creating of immutable Events.
+            //! There are two stages to building an event and involve an
+            //! EventMetaBuilder and the EventBuilder.
+            //!
+            //! The EventMetaBilder captures the Meta field associated with all
+            //! Events. Its functions return a EventBuilder.
+            //!
+            //! The EventBuilder allow for chaining and allows for easy modification
+            //! of values of each event. The `fn build` can be envoked on each
+            //! EventBuilder to return an Event.
             use super::*;
 
             $(
@@ -110,7 +31,7 @@ macro_rules! events {
                 #[non_exhaustive]
                 #[derive(Clone, Debug, Default)]
                 pub struct $name $(<$lt>)? {
-                    pub meta: super::Meta,
+                    pub meta: Meta,
                     $( pub $field_name: $field_type, )*
                 }
 
@@ -121,11 +42,58 @@ macro_rules! events {
                 paste! {
                     impl $(<$lt>)? $name $(<$lt>)? {
                         pub fn builder() -> builder::[<$name MetaBuilder>] $(<$lt>)? {
-                            [<$name MetaBuilder>] ($name::default())
+                            builder::[<$name MetaBuilder>] ($name::default())
                         }
                     }
                 }
             )*
+
+            pub mod builder {
+                use super::*;
+                $(
+                    paste! {
+                        /// A builder to ensure we specify a Meta for each event.
+                        #[derive(Clone, Debug)]
+                        pub struct [<$name MetaBuilder>] $(<$lt>)? (
+                            pub(super) events::$name $(<$lt>)?
+                        );
+
+                        #[allow(dead_code)]
+                        impl $(<$lt>)? [<$name MetaBuilder>] $(<$lt>)? {
+                            pub fn with_meta(self, meta: Meta) -> [<$name Builder>] $(<$lt>)? {
+                                let mut event = self.0;
+                                event.meta = meta;
+                                [<$name Builder>] (event)
+                            }
+
+                            pub fn without_meta(self) -> [<$name Builder>] $(<$lt>)? {
+                                [<$name Builder>] (self.0)
+                            }
+                        }
+
+                        /// A builder to allow for easy customization of event fields and ensure the
+                        /// event is built only once.
+                        #[derive(Clone, Debug)]
+                        pub struct [<$name Builder>] $(<$lt>)? (
+                            events::$name $(<$lt>)?
+                        );
+
+                        #[allow(dead_code)]
+                        impl $(<$lt>)? [<$name Builder>] $(<$lt>)? {
+                            pub fn build(self) -> events::$name $(<$lt>)? {
+                                self.0
+                            }
+
+                            $(
+                                pub fn [<with_ $field_name>](mut self, $field_name: $field_type) -> Self {
+                                    self.0.$field_name = $field_name;
+                                    self
+                                }
+                            )*
+                        }
+                    }
+                )*
+            }
         }
 
         /// An interface for handling QUIC events.

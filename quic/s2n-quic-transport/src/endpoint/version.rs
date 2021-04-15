@@ -74,14 +74,14 @@ impl<Config: endpoint::Config> Negotiator<Config> {
         let packet = match packet {
             ProtectedPacket::Initial(packet) => {
                 if is_supported!(packet) {
-                    // FIXME we should use the builder pattern to make this less error prone and
-                    // more ergonomic
-                    let mut event = events::VersionInformation::default();
-                    event.meta = event::Meta {
-                        vantage_point: endpoint::Type::Server,
-                        group_id: 7,
-                    };
-                    event.chosen_version = packet.version;
+                    let event = events::VersionInformation::builder()
+                        .with_meta(event::Meta {
+                            vantage_point: endpoint::Type::Server,
+                            group_id: 7,
+                        })
+                        .with_chosen_version(packet.version)
+                        .build();
+
                     subscriber.on_version_information(&event);
 
                     return Ok(());
@@ -90,14 +90,13 @@ impl<Config: endpoint::Config> Negotiator<Config> {
             }
             ProtectedPacket::ZeroRtt(packet) => {
                 if is_supported!(packet) {
-                    // FIXME we should use the builder pattern to make this less error prone and
-                    // more ergonomic
-                    let mut event = events::VersionInformation::default();
-                    event.meta = event::Meta {
-                        vantage_point: endpoint::Type::Server,
-                        group_id: 7,
-                    };
-                    event.chosen_version = packet.version;
+                    let event = events::VersionInformation::builder()
+                        .with_meta(event::Meta {
+                            vantage_point: endpoint::Type::Server,
+                            group_id: 7,
+                        })
+                        .with_chosen_version(packet.version)
+                        .build();
                     subscriber.on_version_information(&event);
 
                     return Ok(());
@@ -111,13 +110,12 @@ impl<Config: endpoint::Config> Negotiator<Config> {
                 return Err(Error);
             }
             ProtectedPacket::VersionNegotiation(_packet) => {
-                // FIXME we should use the builder pattern to make this less error prone and
-                // more ergonomic
-                let mut event = events::VersionInformation::default();
-                event.meta = event::Meta {
-                    vantage_point: endpoint::Type::Server,
-                    group_id: 7,
-                };
+                let event = events::VersionInformation::builder()
+                    .with_meta(event::Meta {
+                        vantage_point: endpoint::Type::Server,
+                        group_id: 7,
+                    })
+                    .build();
                 // TODO extract the supported versions
                 // event.server_versions = packet.version;
                 subscriber.on_version_information(&event);
