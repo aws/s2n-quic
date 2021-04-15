@@ -57,6 +57,53 @@ macro_rules! events {
             $( pub $field_name:ident : $field_type:ty, )*
         }
     )*) => {
+        pub mod builder {
+            use super::*;
+
+            $(
+                paste! {
+                    /// A builder to ensure we specify a Meta for each event.
+                    #[derive(Clone, Debug)]
+                    pub struct [<$name MetaBuilder>] $(<$lt>)? (
+                        events::$name $(<$lt>)?
+                    );
+
+                    #[allow(dead_code)]
+                    impl $(<$lt>)? [<$name MetaBuilder>] $(<$lt>)? {
+                        pub fn with_meta(self, meta: Meta) -> [<$name Builder>] $(<$lt>)? {
+                            let mut event = self.0;
+                            event.meta = meta;
+                            [<$name Builder>] (event)
+                        }
+
+                        pub fn without_meta(self) -> [<$name Builder>] $(<$lt>)? {
+                            [<$name Builder>] (self.0)
+                        }
+                    }
+
+                    /// A builder to allow for easy customization of event fields and ensure the
+                    /// event is built only once.
+                    #[derive(Clone, Debug)]
+                    pub struct [<$name Builder>] $(<$lt>)? (
+                        events::$name $(<$lt>)?
+                    );
+
+                    #[allow(dead_code)]
+                    impl $(<$lt>)? [<$name Builder>] $(<$lt>)? {
+                        pub fn build(self) -> events::$name $(<$lt>)? {
+                            self.0
+                        }
+
+                        $(
+                            pub fn [<with_ $field_name>](&mut self, $field_name: $field_type) {
+                                self.0.$field_name = $field_name;
+                            }
+                        )*
+                    }
+                }
+            )*
+        }
+
         pub mod events {
             use super::*;
 
@@ -75,48 +122,9 @@ macro_rules! events {
 
                 paste! {
                     impl $(<$lt>)? $name $(<$lt>)? {
-                        pub fn builder() -> [<$name Builder>] $(<$lt>)? {
-                            [<$name Builder>] ($name::default())
+                        pub fn builder() -> builder::[<$name MetaBuilder>] $(<$lt>)? {
+                            [<$name MetaBuilder>] ($name::default())
                         }
-                    }
-
-                    /// A builder to ensure we specify a Meta for each event.
-                    #[derive(Clone, Debug)]
-                    pub struct [<$name MetaBuilder>] $(<$lt>)? (
-                        $name $(<$lt>)?
-                    );
-
-                    #[allow(dead_code)]
-                    impl $(<$lt>)? [<$name MetaBuilder>] $(<$lt>)? {
-                        pub fn with_meta(self, meta: super::Meta) -> [<$name Builder>] $(<$lt>)? {
-                            let mut event = self.0;
-                            event.meta = meta;
-                            [<$name Builder>] (event)
-                        }
-
-                        pub fn without_meta(self) -> [<$name Builder>] $(<$lt>)? {
-                            [<$name Builder>] (self.0)
-                        }
-                    }
-
-                    /// A builder to allow for easy customization of event fields and ensure the
-                    /// event is built only once.
-                    #[derive(Clone, Debug)]
-                    pub struct [<$name Builder>] $(<$lt>)? (
-                        $name $(<$lt>)?
-                    );
-
-                    #[allow(dead_code)]
-                    impl $(<$lt>)? [<$name Builder>] $(<$lt>)? {
-                        fn build(self) -> $name $(<$lt>)? {
-                            self.0
-                        }
-
-                        $(
-                            pub fn [<with_ $field_name>](&mut self, $field_name: $field_type) {
-                                self.0.$field_name = $field_name;
-                            }
-                        )*
                     }
                 }
             )*
