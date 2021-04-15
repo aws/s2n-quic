@@ -12,20 +12,9 @@ macro_rules! events {
     )*) => {
 
         pub mod events {
-            //! Builder to ensure that Events are created uniformly.
-            //!
-            //! Event builders allow for the creating of immutable Events.
-            //! There are two stages to building an event and involve an
-            //! EventMetaBuilder and the EventBuilder.
-            //!
-            //! The EventMetaBilder captures the Meta field associated with all
-            //! Events. Its functions return a EventBuilder.
-            //!
-            //! The EventBuilder allow for chaining and allows for easy modification
-            //! of values of each event. The `fn build` can be envoked on each
-            //! EventBuilder to return an Event.
-            use super::*;
+            //! A set of events that the application can emit.
 
+            use super::*;
             $(
                 $(#[$attrs])*
                 #[non_exhaustive]
@@ -49,6 +38,21 @@ macro_rules! events {
             )*
 
             pub mod builder {
+                //! Builders to ensure that Events are created uniformly.
+                //!
+                //! Event builders allow for an ergonomic way to create Events
+                //! and allow us to treat Events as immutable once built.
+                //!
+                //! Each `Event` has two set of builder associated with it, the
+                //! EventMetaBuilder and the EventBuilder.
+                //!
+                //! The EventMetaBilder captures the Meta field associated with all
+                //! Events. Its functions return a EventBuilder.
+                //!
+                //! The EventBuilder allow for chaining and allows for easy modification
+                //! of values of each event. The `fn build` can be envoked on each
+                //! EventBuilder to return an Event.
+
                 use super::*;
                 $(
                     paste! {
