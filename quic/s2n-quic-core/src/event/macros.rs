@@ -68,7 +68,7 @@ macro_rules! events {
                                 [<$name Builder>] (event)
                             }
 
-                            pub fn without_meta(self) -> [<$name Builder>] $(<$lt>)? {
+                            pub fn default_meta(self) -> [<$name Builder>] $(<$lt>)? {
                                 [<$name Builder>] (self.0)
                             }
                         }
@@ -110,7 +110,7 @@ macro_rules! events {
             $(
                 paste!(
                     $(#[$attrs])*
-                    fn [<on_ $name:snake>](&self, event: &events::$name) {
+                    fn [<on_ $name:snake>](&mut self, event: &events::$name) {
                         let _ = event;
                     }
                 );
@@ -123,7 +123,7 @@ macro_rules! events {
         {
             $(
                 paste!(
-                    fn [<on_ $name:snake>](&self, event: &events::$name) {
+                    fn [<on_ $name:snake>](&mut self, event: &events::$name) {
                         self.0.[<on_ $name:snake>](event);
                         self.1.[<on_ $name:snake>](event);
                     }

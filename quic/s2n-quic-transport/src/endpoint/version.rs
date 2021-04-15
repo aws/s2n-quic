@@ -74,6 +74,7 @@ impl<Config: endpoint::Config> Negotiator<Config> {
         let packet = match packet {
             ProtectedPacket::Initial(packet) => {
                 if is_supported!(packet) {
+                    // TODO the event needs to be propolated with real values
                     let event = events::VersionInformation::builder()
                         .with_meta(event::Meta {
                             vantage_point: endpoint::Type::Server,
@@ -90,6 +91,7 @@ impl<Config: endpoint::Config> Negotiator<Config> {
             }
             ProtectedPacket::ZeroRtt(packet) => {
                 if is_supported!(packet) {
+                    // TODO the event needs to be propolated with real values
                     let event = events::VersionInformation::builder()
                         .with_meta(event::Meta {
                             vantage_point: endpoint::Type::Server,
@@ -110,14 +112,13 @@ impl<Config: endpoint::Config> Negotiator<Config> {
                 return Err(Error);
             }
             ProtectedPacket::VersionNegotiation(_packet) => {
+                // TODO the event needs to be propolated with real values
                 let event = events::VersionInformation::builder()
                     .with_meta(event::Meta {
                         vantage_point: endpoint::Type::Server,
                         group_id: 7,
                     })
                     .build();
-                // TODO extract the supported versions
-                // event.server_versions = packet.version;
                 subscriber.on_version_information(&event);
 
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#6.1
@@ -275,7 +276,7 @@ impl EncoderValue for SupportedVersions {
         //# correctly handle unsupported versions.  Some version numbers
         //# (0x?a?a?a?a as defined in Section 15) are reserved for inclusion in
         //# fields that contain version numbers.
-        encoder.encode(&0xdadada);
+        encoder.encode(&0xdadadadau32);
     }
 }
 
