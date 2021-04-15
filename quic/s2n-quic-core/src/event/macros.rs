@@ -78,14 +78,9 @@ macro_rules! events {
                         pub fn builder() -> [<$name Builder>] $(<$lt>)? {
                             [<$name Builder>] ($name::default())
                         }
-
-                        $(
-                            pub fn [<with_ $field_name>](&mut self, $field_name: $field_type) {
-                                self.$field_name = $field_name;
-                            }
-                        )*
                     }
 
+                    /// A builder to ensure we specify a Meta for each event.
                     #[derive(Clone, Debug)]
                     pub struct [<$name MetaBuilder>] $(<$lt>)? (
                         $name $(<$lt>)?
@@ -104,6 +99,8 @@ macro_rules! events {
                         }
                     }
 
+                    /// A builder to allow for easy customization of event fields and ensure the
+                    /// event is built only once.
                     #[derive(Clone, Debug)]
                     pub struct [<$name Builder>] $(<$lt>)? (
                         $name $(<$lt>)?
@@ -114,6 +111,12 @@ macro_rules! events {
                         fn build(self) -> $name $(<$lt>)? {
                             self.0
                         }
+
+                        $(
+                            pub fn [<with_ $field_name>](&mut self, $field_name: $field_type) {
+                                self.0.$field_name = $field_name;
+                            }
+                        )*
                     }
                 }
             )*
