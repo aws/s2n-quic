@@ -12,7 +12,7 @@ use libc::{recvmsg, sendmsg};
 use s2n_quic_core::io::{rx, tx};
 use std::{io, os::unix::io::AsRawFd};
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Queue<B: Buffer>(queue::Queue<Ring<B>>);
 
 impl<B: Buffer> Queue<B> {
