@@ -132,24 +132,23 @@ macro_rules! events {
         }
 
         #[cfg(any(test, feature = "testing"))]
-        mod tests { $(
-            // use super::*;
-            // use paste::paste;
-
-            super::paste! {
-                //     fn [<on_ $name:snake>](&mut self, event: &events::$name) {
-                //         self.0.[<on_ $name:snake>](event);
-                //         self.1.[<on_ $name:snake>](event);
-                //     }
+        mod tests {
+            $( super::paste! {
+                #[test]
+                fn [<build_ $name:snake _with_meta>]() {
+                    let meta = super::Meta::default();
+                    super::events::$name::builder()
+                        .with_meta(meta)
+                        .build();
+                }
 
                 #[test]
-                fn [<build_ $name:snake>]() {
+                fn [<build_ $name:snake _default_meta>]() {
                     super::events::$name::builder()
                         .default_meta()
                         .build();
                 }
-
-            }
-        )* }
+            } )*
+        }
     };
 }

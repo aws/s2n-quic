@@ -280,16 +280,15 @@ impl EncoderValue for SupportedVersions {
     }
 }
 
-#[cfg(test)]
-// #[cfg(any(test, feature = "testing"))]
+#[cfg(any(test, feature = "testing"))]
 mod tests {
     use super::*;
+    use crate::endpoint::testing;
     use core::mem::size_of;
     use s2n_codec::{DecoderBufferMut, Encoder, EncoderBuffer};
     use s2n_quic_core::{
         connection,
         connection::id::ConnectionInfo,
-        event,
         inet::DatagramInfo,
         packet::{
             handshake::Handshake,
@@ -302,15 +301,12 @@ mod tests {
         varint::VarInt,
     };
 
-    type Server = Negotiator<crate::endpoint::testing::Server>;
-    type Client = Negotiator<crate::endpoint::testing::Client>;
+    type Server = Negotiator<testing::Server>;
+    type Client = Negotiator<testing::Client>;
 
     // TAG to append to packet payloads to ensure they meet the minimum packet size
     // that would be expected had they undergone packet protection.
     const DUMMY_TAG: [u8; 16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
-
-    struct Subscriber;
-    impl event::Subscriber for Subscriber {}
 
     fn datagram_info(payload_len: usize) -> DatagramInfo {
         DatagramInfo {
@@ -334,7 +330,12 @@ mod tests {
             let remote_address = SocketAddress::default();
             let connection_info = ConnectionInfo::new(&remote_address);
             let (packet, _) = ProtectedPacket::decode(decoder, &connection_info, &3).unwrap();
-            $negotiator.on_packet($remote_address, $payload_len, &packet, &mut Subscriber)
+            $negotiator.on_packet(
+                $remote_address,
+                $payload_len,
+                &packet,
+                &mut testing::Subscriber,
+            )
         }};
     }
 
