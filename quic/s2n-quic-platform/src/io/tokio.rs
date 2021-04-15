@@ -86,7 +86,7 @@ impl Io {
         } else if let Some(addr) = addr {
             std::net::UdpSocket::bind(addr)?
         } else {
-            std::net::UdpSocket::bind(("::", 0))?
+            std::net::UdpSocket::bind(("0.0.0.0", 0))?
         };
 
         let socket = UdpSocket::from_std(socket)?;
