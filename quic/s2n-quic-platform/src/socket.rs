@@ -17,6 +17,6 @@ cfg_if! {
     } else if #[cfg(s2n_quic_platform_socket_msg)] {
         pub use msg as default;
     } else {
-        pub use std as default;
+        pub use self::std as default;
     }
 }

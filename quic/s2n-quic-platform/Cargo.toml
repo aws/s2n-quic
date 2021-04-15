@@ -19,7 +19,7 @@ futures-core = { version = "0.3", default-features = false }
 lazy_static = { version = "1.4", optional = true }
 s2n-quic-core = { version = "0.1.0", path = "../s2n-quic-core", default-features = false }
 socket2 = { version = "0.3", features = ["reuseport"], optional = true }
-tokio = { version = "1", default-features = false, features = ["net", "time"], optional = true }
+tokio = { version = "1", default-features = false, features = ["macros", "net", "rt", "time"], optional = true }
 zeroize = { version = "1", default-features = false, optional = true }
 
 [target.'cfg(unix)'.dependencies]

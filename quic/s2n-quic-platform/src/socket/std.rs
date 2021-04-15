@@ -52,7 +52,7 @@ impl Error for std::io::Error {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Queue<B: Buffer>(queue::Queue<Ring<B>>);
 
 impl<B: Buffer> Queue<B> {

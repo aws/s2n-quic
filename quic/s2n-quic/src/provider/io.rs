@@ -13,7 +13,7 @@ pub trait Provider: 'static {
 }
 
 cfg_if! {
-    if #[cfg(feature = "tokio")] {
+    if #[cfg(feature = "tokio-runtime")] {
         pub mod tokio;
 
         pub use self::tokio as default;
