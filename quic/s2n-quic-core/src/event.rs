@@ -34,19 +34,19 @@ events!(
     // https://tools.ietf.org/html/draft-marx-qlog-event-definitions-quic-h3-02#section-5.3.1
     /// QUIC version
     struct VersionInformation<'a> {
+        pub meta: Meta,
         pub server_versions: &'a [u32],
         pub client_versions: &'a [u32],
         pub chosen_version: u32,
-        pub meta: Meta,
     }
 
     #[name = "transport:alpn_information"]
     // https://tools.ietf.org/html/draft-marx-qlog-event-definitions-quic-h3-02#section-5.3.1
     /// Application level protocol
     struct AlpnInformation<'a> {
+        pub meta: Meta,
         pub server_alpns: &'a [&'a [u8]],
         pub client_alpns: &'a [&'a [u8]],
         pub chosen_alpn: u32,
-        pub meta: Meta,
     }
 );

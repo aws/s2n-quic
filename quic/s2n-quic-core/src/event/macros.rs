@@ -53,6 +53,7 @@ macro_rules! events {
         #[name = $name_str:literal]
         $(#[$attrs:meta])*
         struct $name:ident $(<$lt:lifetime>)? {
+            pub meta: Meta,
             $( pub $field_name:ident : $field_type:ty, )*
         }
     )*) => {
@@ -64,6 +65,7 @@ macro_rules! events {
                 #[non_exhaustive]
                 #[derive(Clone, Debug, Default)]
                 pub struct $name $(<$lt>)? {
+                    pub meta: super::Meta,
                     $( pub $field_name: $field_type, )*
                 }
 
@@ -76,6 +78,12 @@ macro_rules! events {
                         pub fn builder() -> [<$name Builder>] $(<$lt>)? {
                             [<$name Builder>] ($name::default())
                         }
+
+                        $(
+                            pub fn [<with_ $field_name>](&mut self, $field_name: $field_type) {
+                                self.$field_name = $field_name;
+                            }
+                        )*
                     }
 
                     #[derive(Clone, Debug)]
