@@ -75,11 +75,13 @@ impl<Config: endpoint::Config> Negotiator<Config> {
             ProtectedPacket::Initial(packet) => {
                 if is_supported!(packet) {
                     // TODO the event needs to be propolated with real values
+                    let versions = &[packet.version];
                     let event = events::VersionInformation::builder()
                         .with_meta(event::Meta {
                             endpoint_type: Config::ENDPOINT_TYPE,
                             group_id: 7,
                         })
+                        .with_client_versions(versions)
                         .with_chosen_version(packet.version)
                         .build();
 
