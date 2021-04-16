@@ -8,7 +8,7 @@ edition = "2018"
 bytes = { version = "1", default-features = false }
 s2n-quic = { version = "0.1", path = "../../quic/s2n-quic" }
 s2n-quic-core = { version = "0.1", path = "../../quic/s2n-quic-core", features = ["testing"] }
-tokio = { version = "0.2", features = ["macros", "rt-threaded"] }
+tokio = { version = "1", features = ["macros", "rt"] }
 
 [workspace]
 members = ["."]
