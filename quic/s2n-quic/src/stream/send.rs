@@ -183,6 +183,9 @@ macro_rules! impl_send_stream_api {
 
         /// Finishes and closes the stream.
         ///
+        /// This method returns immediately without notifying the caller that all of the outstanding
+        /// data has been received by the peer. An application can use `close` to accomplish this.
+        ///
         /// # Examples
         ///
         /// ```rust
@@ -195,6 +198,41 @@ macro_rules! impl_send_stream_api {
                 };
                 ($variant: expr) => {
                     $variant.finish()
+                };
+            }
+
+            let $stream = self;
+            $dispatch_body
+        }
+
+        /// Finishes the stream and waits for the peer to receive all outstanding data
+        ///
+        /// # Examples
+        ///
+        /// ```rust
+        /// // TODO
+        /// ```
+        pub async fn close(&mut self) -> $crate::stream::Result<()> {
+            ::futures::future::poll_fn(|cx| self.poll_close(cx)).await
+        }
+
+        /// Polls finishing the stream and waits for the peer to receive all outstanding data
+        ///
+        /// # Examples
+        ///
+        /// ```rust
+        /// // TODO
+        /// ```
+        pub fn poll_close(
+            &mut self,
+            cx: &mut core::task::Context,
+        ) -> core::task::Poll<$crate::stream::Result<()>> {
+            macro_rules! $dispatch {
+                () => {
+                    Err($crate::stream::Error::NonWritable).into()
+                };
+                ($variant: expr) => {
+                    $variant.poll_close(cx)
                 };
             }
 
@@ -260,10 +298,9 @@ macro_rules! impl_send_stream_trait {
 
             fn poll_close(
                 mut self: core::pin::Pin<&mut Self>,
-                _cx: &mut core::task::Context<'_>,
+                cx: &mut core::task::Context<'_>,
             ) -> core::task::Poll<$crate::stream::Result<()>> {
-                self.finish()?;
-                Ok(()).into()
+                Self::poll_close(&mut self, cx)
             }
         }
 
@@ -324,9 +361,9 @@ macro_rules! impl_send_stream_trait {
 
             fn poll_close(
                 mut self: core::pin::Pin<&mut Self>,
-                _cx: &mut core::task::Context<'_>,
+                cx: &mut core::task::Context<'_>,
             ) -> core::task::Poll<std::io::Result<()>> {
-                self.finish()?;
+                futures::ready!($name::poll_close(&mut self, cx))?;
                 Ok(()).into()
             }
         }
@@ -350,9 +387,9 @@ macro_rules! impl_send_stream_trait {
 
             fn poll_shutdown(
                 mut self: core::pin::Pin<&mut Self>,
-                _cx: &mut core::task::Context<'_>,
+                cx: &mut core::task::Context<'_>,
             ) -> core::task::Poll<std::io::Result<()>> {
-                self.finish()?;
+                futures::ready!(self.poll_close(cx))?;
                 Ok(()).into()
             }
         }
