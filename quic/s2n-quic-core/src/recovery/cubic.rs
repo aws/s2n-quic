@@ -91,6 +91,20 @@ pub struct CubicCongestionController {
 type BytesInFlight = Counter<u32>;
 
 impl CongestionController for CubicCongestionController {
+    fn migrate_paths(&self) -> Self {
+        Self {
+            cubic: Cubic::new(self.max_datagram_size),
+            slow_start: HybridSlowStart::new(self.max_datagram_size),
+            max_datagram_size: self.max_datagram_size,
+            congestion_window: CubicCongestionController::initial_window(self.max_datagram_size)
+                as f32,
+            state: SlowStart,
+            bytes_in_flight: self.bytes_in_flight,
+            time_of_last_sent_packet: self.time_of_last_sent_packet,
+            under_utilized: true,
+        }
+    }
+
     fn congestion_window(&self) -> u32 {
         self.congestion_window as u32
     }
@@ -240,6 +254,7 @@ impl CongestionController for CubicCongestionController {
     ) {
         debug_assert!(lost_bytes > 0);
 
+        println!(" -- We do lose packets");
         self.bytes_in_flight -= lost_bytes;
         self.on_congestion_event(timestamp);
 

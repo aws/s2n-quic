@@ -12,12 +12,13 @@ use s2n_quic_core::{
     packet::number::PacketNumberSpace,
     path::challenge::Challenge,
     random,
-    recovery::congestion_controller,
+    recovery::{congestion_controller, CongestionController, RttEstimator},
     stateless_reset,
-    time::Timestamp,
+    time::{Duration, Timestamp},
     transport,
 };
 use smallvec::SmallVec;
+//use transmission::path;
 
 /// The amount of Paths that can be maintained without using the heap
 const INLINE_PATH_LEN: usize = 5;
@@ -155,14 +156,13 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         //# in the network to cause connections to close by spoofing or otherwise
         //# manipulating observed traffic.
 
-        //let path_info = congestion_controller::PathInfo::new(&datagram.remote_address);
         // TODO set alpn if available
 
         // Since we are not currently supporting connection migration (whether it was deliberate or
         // not), we will error our at this point to avoid re-using a peer connection ID.
         // TODO: This would be better handled as a stateless reset so the peer can terminate the
         //       connection immediately. https://github.com/awslabs/s2n-quic/issues/317
-        return Err(transport::Error::INTERNAL_ERROR);
+        //return Err(transport::Error::INTERNAL_ERROR);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.4
         //= type=TODO
@@ -173,8 +173,12 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
 
         // TODO temporarily copy rtt and cc to maintain state when migrating to this new path.
         let rtt = self.active_path().rtt_estimator;
-        let cc = self.active_path().congestion_controller.clone();
+        let cc = self.active_path().congestion_controller.migrate_paths();
 
+        let rtt = RttEstimator::new(Duration::from_millis(250));
+
+        //let path_info = congestion_controller::PathInfo::new(&datagram.remote_address);
+        //let cc = congestion_controller_endpoint.new_congestion_controller(path_info);
         // TODO grab a new conn id correctly,
         let conn_id = self.active_path().peer_connection_id;
         let new_id = self
@@ -231,6 +235,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         );
         let id = Id(self.paths.len());
         self.paths.push(path);
+        println!(" -- New path pushedD");
 
         Ok((id, false))
     }
@@ -248,6 +253,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
             let path = &mut self.paths[context.path_id().0];
 
             if path.is_challenge_pending(context.current_time()) {
+                println!(" -- Sending challenge");
                 if let Some(data) = path.challenge_data() {
                     let frame = frame::PathChallenge { data };
                     context.write_frame(&frame);
@@ -317,6 +323,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
             }
 
             if path.is_path_response_valid(timestamp, peer_address, response.data) {
+                println!(" -- HEY THEY RESPONSE IS VALID");
                 path.on_validated();
 
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3
