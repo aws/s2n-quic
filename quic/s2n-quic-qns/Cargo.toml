@@ -12,7 +12,7 @@ default = []
 [dependencies]
 bytes = { version = "1", default-features = false }
 futures = "0.3"
-s2n-quic = { path = "../s2n-quic" }
+s2n-quic = { path = "../s2n-quic", features = ["tracing-provider"] }
 s2n-quic-core = { path = "../s2n-quic-core", features = ["testing"] }
 structopt = "0.3"
 tokio = { version = "0.2", features = ["full"] }
