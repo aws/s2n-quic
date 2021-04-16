@@ -206,7 +206,7 @@ impl<C: ConnectionTrait> InterestLists<C> {
                     .send(Connection::new(shared_state.clone()))
                     .is_err()
                 {
-                    // TODO shutdown endpoint if we can't send connections
+                    // TODO close the connection
                     return;
                 }
             }
@@ -299,6 +299,14 @@ impl<C: ConnectionTrait> ConnectionContainer<C> {
             interest_lists: InterestLists::new(),
             accept_queue,
         }
+    }
+
+    pub fn can_accept(&self) -> bool {
+        self.accept_queue.is_open()
+    }
+
+    pub fn is_open(&self) -> bool {
+        !self.connection_map.is_empty() || self.can_accept()
     }
 
     /// Insert a new Connection into the container

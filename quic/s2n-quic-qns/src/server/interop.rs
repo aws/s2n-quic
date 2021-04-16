@@ -42,34 +42,7 @@ impl Interop {
     pub async fn run(&self) -> Result<()> {
         self.check_testcase();
 
-        let private_key = self.private_key()?;
-        let certificate = self.certificate()?;
-
-        // The server builder defaults to a chain because this allows certs to just work, whether
-        // the PEM contains a single cert or a chain
-        let tls = s2n_quic::provider::tls::default::Server::builder()
-            .with_certificate(certificate, private_key)?
-            .with_alpn_protocols(self.alpn_protocols.iter().map(String::as_bytes))?
-            .with_key_logging()?
-            .build()?;
-
-        let mut max_handshakes = 100;
-        if let Some("retry") = std::env::var("TESTCASE").ok().as_deref() {
-            max_handshakes = 0;
-        }
-
-        let limits = endpoint_limits::Default::builder()
-            .with_inflight_handshake_limit(max_handshakes)?
-            .build()?;
-
-        let mut server = Server::builder()
-            .with_io(("::", self.port))?
-            .with_tls(tls)?
-            .with_endpoint_limits(limits)?
-            .start()
-            .unwrap();
-
-        eprintln!("Server listening on port {}", self.port);
+        let mut server = self.server()?;
 
         let www_dir: Arc<Path> = Arc::from(self.www_dir.as_path());
 
@@ -186,6 +159,39 @@ impl Interop {
         }
 
         Ok(())
+    }
+
+    fn server(&self) -> Result<Server> {
+        let private_key = self.private_key()?;
+        let certificate = self.certificate()?;
+
+        // The server builder defaults to a chain because this allows certs to just work, whether
+        // the PEM contains a single cert or a chain
+        let tls = s2n_quic::provider::tls::default::Server::builder()
+            .with_certificate(certificate, private_key)?
+            .with_alpn_protocols(self.alpn_protocols.iter().map(String::as_bytes))?
+            .with_key_logging()?
+            .build()?;
+
+        let mut max_handshakes = 100;
+        if let Some("retry") = std::env::var("TESTCASE").ok().as_deref() {
+            max_handshakes = 0;
+        }
+
+        let limits = endpoint_limits::Default::builder()
+            .with_inflight_handshake_limit(max_handshakes)?
+            .build()?;
+
+        let server = Server::builder()
+            .with_io(("::", self.port))?
+            .with_tls(tls)?
+            .with_endpoint_limits(limits)?
+            .start()
+            .unwrap();
+
+        eprintln!("Server listening on port {}", self.port);
+
+        Ok(server)
     }
 
     fn certificate(&self) -> Result<Certificate> {

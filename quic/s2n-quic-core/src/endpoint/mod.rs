@@ -92,7 +92,11 @@ pub trait Endpoint: 'static + Send + Sized {
     }
 
     /// Polls for any application-space wakeups
-    fn poll_wakeups(&mut self, cx: &mut Context<'_>, timestamp: Timestamp) -> Poll<usize>;
+    fn poll_wakeups(
+        &mut self,
+        cx: &mut Context<'_>,
+        timestamp: Timestamp,
+    ) -> Poll<Result<usize, CloseError>>;
 
     /// Returns the latest Timestamp at which `transmit` should be called
     fn timeout(&self) -> Option<Timestamp>;
@@ -105,10 +109,14 @@ pub struct Wakeups<'a, E: Endpoint> {
 }
 
 impl<'a, E: Endpoint> Future for Wakeups<'a, E> {
-    type Output = usize;
+    type Output = Result<usize, CloseError>;
 
     fn poll(mut self: core::pin::Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let timestamp = self.timestamp;
         self.endpoint.poll_wakeups(cx, timestamp)
     }
 }
+
+/// Indicates the endpoint is no longer processing connections.
+#[derive(Clone, Copy, Debug)]
+pub struct CloseError;

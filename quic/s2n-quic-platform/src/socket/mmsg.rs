@@ -31,7 +31,7 @@ impl<B: Buffer> Queue<B> {
     }
 
     pub fn tx<Socket: AsRawFd>(&mut self, socket: &Socket) -> io::Result<usize> {
-        let mut entries = self.0.free_mut();
+        let mut entries = self.0.occupied_mut();
 
         unsafe {
             // Safety: calling a libc function is inherently unsafe as rust cannot
@@ -91,7 +91,7 @@ impl<B: Buffer> Queue<B> {
     }
 
     pub fn rx<Socket: AsRawFd>(&mut self, socket: &Socket) -> io::Result<usize> {
-        let mut entries = self.0.occupied_wipe_mut();
+        let mut entries = self.0.free_mut();
 
         if entries.is_empty() {
             return Ok(0);
@@ -165,7 +165,7 @@ impl<'a, B: Buffer> tx::Tx<'a> for Queue<B> {
     }
 
     fn len(&self) -> usize {
-        self.0.occupied_len()
+        self.0.free_len()
     }
 }
 
@@ -177,6 +177,6 @@ impl<'a, B: Buffer> rx::Rx<'a> for Queue<B> {
     }
 
     fn len(&self) -> usize {
-        self.0.free_len()
+        self.0.occupied_len()
     }
 }

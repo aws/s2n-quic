@@ -120,7 +120,15 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
         }
     }
 
-    fn poll_wakeups(&mut self, cx: &mut task::Context<'_>, timestamp: Timestamp) -> Poll<usize> {
+    fn poll_wakeups(
+        &mut self,
+        cx: &mut task::Context<'_>,
+        timestamp: Timestamp,
+    ) -> Poll<Result<usize, s2n_quic_core::endpoint::CloseError>> {
+        if !self.connections.is_open() {
+            return Poll::Ready(Err(s2n_quic_core::endpoint::CloseError));
+        }
+
         // The mem::replace is needed to work around a limitation which does not allow us to pass
         // the new queue directly - even though we will populate the field again after the call.
         let dequeued_wakeups = core::mem::replace(&mut self.dequeued_wakeups, VecDeque::new());
@@ -145,7 +153,7 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
         }
 
         if nr_wakeups > 0 {
-            Poll::Ready(nr_wakeups)
+            Poll::Ready(Ok(nr_wakeups))
         } else {
             Poll::Pending
         }
@@ -188,6 +196,10 @@ impl<Cfg: Config> Endpoint<Cfg> {
         datagram: &DatagramInfo,
         packet: &ProtectedInitial,
     ) -> Option<()> {
+        if !self.connections.can_accept() {
+            return None;
+        }
+
         let attempt = s2n_quic_core::endpoint::limits::ConnectionAttempt::new(
             self.connections.handshake_connections(),
             &datagram.remote_address,

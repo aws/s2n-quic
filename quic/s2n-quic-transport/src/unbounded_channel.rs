@@ -74,6 +74,10 @@ impl<T> Sender<T> {
 
         Ok(())
     }
+
+    pub fn is_open(&self) -> bool {
+        Arc::strong_count(&self.state) >= 2
+    }
 }
 
 impl<T> Drop for Sender<T> {
