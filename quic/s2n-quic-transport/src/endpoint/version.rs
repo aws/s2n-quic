@@ -115,6 +115,12 @@ impl<Config: endpoint::Config> Negotiator<Config> {
             }
             ProtectedPacket::VersionNegotiation(_packet) => {
                 // TODO the event needs to be propolated with real values
+                //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.1
+                //# Upon receiving a version negotiation packet from the server, the
+                //# client logs this event with client_versions set and
+                //# server_versions to the versions in the version negotiation packet
+                //# and chosen_version to the version it will use for the next initial
+                //# packet
                 let event = events::VersionInformation::builder()
                     .with_meta(event::Meta {
                         endpoint_type: Config::ENDPOINT_TYPE,

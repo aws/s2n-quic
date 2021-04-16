@@ -31,7 +31,9 @@ impl Default for Meta {
 
 events!(
     #[name = "transport::version_information"]
-    // https://tools.ietf.org/html/draft-marx-qlog-event-definitions-quic-h3-02#section-5.3.1
+    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.1
+    //# QUIC endpoints each have their own list of of QUIC versions they
+    //# support.
     /// QUIC version
     struct VersionInformation<'a> {
         pub meta: Meta,
@@ -41,7 +43,9 @@ events!(
     }
 
     #[name = "transport:alpn_information"]
-    // https://tools.ietf.org/html/draft-marx-qlog-event-definitions-quic-h3-02#section-5.3.1
+    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.2
+    //# QUIC implementations each have their own list of application level
+    //# protocols and versions thereof they support.
     /// Application level protocol
     struct AlpnInformation<'a> {
         pub meta: Meta,
