@@ -22,9 +22,17 @@ impl<B: Buffer> Queue<B> {
         Self(queue)
     }
 
+    pub fn free_len(&self) -> usize {
+        self.0.free_len()
+    }
+
+    pub fn occupied_len(&self) -> usize {
+        self.0.occupied_len()
+    }
+
     pub fn tx<Socket: AsRawFd>(&mut self, socket: &Socket) -> io::Result<usize> {
         let mut count = 0;
-        let mut entries = self.0.free_mut();
+        let mut entries = self.0.occupied_mut();
 
         for entry in entries.iter_mut() {
             unsafe {
@@ -81,7 +89,7 @@ impl<B: Buffer> Queue<B> {
 
     pub fn rx<Socket: AsRawFd>(&mut self, socket: &Socket) -> io::Result<usize> {
         let mut count = 0;
-        let mut entries = self.0.occupied_wipe_mut();
+        let mut entries = self.0.free_mut();
 
         for entry in entries.as_mut() {
             unsafe {
@@ -157,7 +165,7 @@ impl<'a, B: Buffer> tx::Tx<'a> for Queue<B> {
     }
 
     fn len(&self) -> usize {
-        self.0.occupied_len()
+        self.0.free_len()
     }
 }
 
@@ -169,6 +177,6 @@ impl<'a, B: Buffer> rx::Rx<'a> for Queue<B> {
     }
 
     fn len(&self) -> usize {
-        self.0.free_len()
+        self.0.occupied_len()
     }
 }

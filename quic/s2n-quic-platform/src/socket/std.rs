@@ -62,9 +62,17 @@ impl<B: Buffer> Queue<B> {
         Self(queue)
     }
 
+    pub fn free_len(&self) -> usize {
+        self.0.free_len()
+    }
+
+    pub fn occupied_len(&self) -> usize {
+        self.0.occupied_len()
+    }
+
     pub fn tx<S: Socket>(&mut self, socket: &S) -> Result<usize, S::Error> {
         let mut count = 0;
-        let mut entries = self.0.free_mut();
+        let mut entries = self.0.occupied_mut();
 
         for entry in entries.as_mut() {
             if let Some(remote_address) = entry.remote_address() {
@@ -91,7 +99,7 @@ impl<B: Buffer> Queue<B> {
 
     pub fn rx<S: Socket>(&mut self, socket: &S) -> Result<usize, S::Error> {
         let mut count = 0;
-        let mut entries = self.0.occupied_wipe_mut();
+        let mut entries = self.0.free_mut();
 
         while let Some(entry) = entries.get_mut(count) {
             match socket.recv_from(entry.payload_mut()) {
@@ -134,7 +142,7 @@ impl<'a, B: Buffer> tx::Tx<'a> for Queue<B> {
     }
 
     fn len(&self) -> usize {
-        self.0.occupied_len()
+        self.0.free_len()
     }
 }
 
@@ -146,6 +154,6 @@ impl<'a, B: Buffer> rx::Rx<'a> for Queue<B> {
     }
 
     fn len(&self) -> usize {
-        self.0.free_len()
+        self.0.occupied_len()
     }
 }
