@@ -75,13 +75,15 @@ impl<Config: endpoint::Config> Negotiator<Config> {
             ProtectedPacket::Initial(packet) => {
                 if is_supported!(packet) {
                     // TODO the event needs to be propolated with real values
-                    let versions = &[packet.version];
+                    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.1
+                    //# Upon receiving a client initial with a supported version, the
+                    //# server logs this event with server_versions and chosen_version set
                     let event = events::VersionInformation::builder()
                         .with_meta(event::Meta {
                             endpoint_type: Config::ENDPOINT_TYPE,
                             group_id: 7,
                         })
-                        .with_client_versions(versions)
+                        .with_server_versions(SUPPORTED_VERSIONS)
                         .with_chosen_version(packet.version)
                         .build();
 
@@ -94,11 +96,15 @@ impl<Config: endpoint::Config> Negotiator<Config> {
             ProtectedPacket::ZeroRtt(packet) => {
                 if is_supported!(packet) {
                     // TODO the event needs to be propolated with real values
+                    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.1
+                    //# Upon receiving a client initial with a supported version, the
+                    //# server logs this event with server_versions and chosen_version set
                     let event = events::VersionInformation::builder()
                         .with_meta(event::Meta {
                             endpoint_type: Config::ENDPOINT_TYPE,
                             group_id: 7,
                         })
+                        .with_server_versions(SUPPORTED_VERSIONS)
                         .with_chosen_version(packet.version)
                         .build();
                     subscriber.on_version_information(&event);
@@ -126,6 +132,9 @@ impl<Config: endpoint::Config> Negotiator<Config> {
                         endpoint_type: Config::ENDPOINT_TYPE,
                         group_id: 7,
                     })
+                    .with_client_versions(SUPPORTED_VERSIONS)
+                    // .with_server_versions(...)
+                    // .with_chosen_version(...)
                     .build();
                 subscriber.on_version_information(&event);
 
@@ -136,6 +145,24 @@ impl<Config: endpoint::Config> Negotiator<Config> {
             }
             _ => return Ok(()),
         };
+
+        // TODO the event needs to be propolated with real values
+        //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.1
+        //# Upon receiving a client initial with an unsupported version, the
+        //# server logs this event with server_versions set and
+        //# client_versions to the single-element array containing the
+        //# client's attempted version.  The absence of chosen_version implies
+        //# no overlap was found.
+        let versions_received = &[packet.version];
+        let event = events::VersionInformation::builder()
+            .with_meta(event::Meta {
+                vantage_point: endpoint::Type::Server,
+                group_id: 7,
+            })
+            .with_client_versions(versions_received)
+            .with_server_versions(SUPPORTED_VERSIONS)
+            .build();
+        subscriber.on_version_information(&event);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2.2
         //# If a server receives a packet that indicates an unsupported version
