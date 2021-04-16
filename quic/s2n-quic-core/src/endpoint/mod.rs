@@ -84,6 +84,8 @@ pub trait Endpoint: 'static + Send + Sized {
     fn transmit<'tx, Tx: tx::Tx<'tx>>(&mut self, tx: &'tx mut Tx, timestamp: Timestamp);
 
     /// Returns a future which polls for application-space wakeups
+    ///
+    /// When successful, the number of wakups is returned.
     fn wakeups(&mut self, timestamp: Timestamp) -> Wakeups<Self> {
         Wakeups {
             endpoint: self,
@@ -92,6 +94,8 @@ pub trait Endpoint: 'static + Send + Sized {
     }
 
     /// Polls for any application-space wakeups
+    ///
+    /// When successful, the number of wakups is returned.
     fn poll_wakeups(
         &mut self,
         cx: &mut Context<'_>,

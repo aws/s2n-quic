@@ -126,6 +126,7 @@ fn bind<A: std::net::ToSocketAddrs>(addr: A) -> io::Result<socket2::Socket> {
     let protocol = Some(Protocol::udp());
 
     cfg_if! {
+        // Set non-blocking mode in a single syscall if supported
         if #[cfg(any(
             target_os = "android",
             target_os = "dragonfly",
@@ -178,12 +179,18 @@ impl Builder {
         self
     }
 
+    /// Sets the local address for the runtime
+    ///
+    /// NOTE: this method is mutually exclusive with `with_socket`
     pub fn with_address(mut self, addr: std::net::SocketAddr) -> io::Result<Self> {
         debug_assert!(self.socket.is_none(), "socket has already been set");
         self.addr.push(addr);
         Ok(self)
     }
 
+    /// Sets the socket used for the runtime
+    ///
+    /// NOTE: this method is mutually exclusive with `with_address`
     pub fn with_socket(mut self, socket: std::net::UdpSocket) -> io::Result<Self> {
         debug_assert!(self.addr.is_empty(), "address has already been set");
         self.socket = Some(socket.into());

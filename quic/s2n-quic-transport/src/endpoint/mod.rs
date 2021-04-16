@@ -623,23 +623,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
         let close_packet_buffer = &mut self.close_packet_buffer;
         let endpoint_context = self.config.context();
 
-        // allow connections to generate a new connection id
-        self.connections
-            .iterate_new_connection_id_list(|connection, _shared_state| {
-                let result = connection.on_new_connection_id(
-                    endpoint_context.connection_id_format,
-                    endpoint_context.stateless_reset_token_generator,
-                    timestamp,
-                );
-                if result.is_ok() {
-                    ConnectionContainerIterationResult::Continue
-                } else {
-                    // The provided Connection ID generator must never generate the same connection
-                    // ID twice. If this happens, it is unlikely we could recover from it.
-                    panic!("Generated connection ID was already in use");
-                }
-            });
-
         for internal_id in self.timer_manager.expirations(timestamp) {
             self.connections
                 .with_connection(internal_id, |conn, mut shared_state| {
@@ -658,6 +641,23 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     }
                 });
         }
+
+        // allow connections to generate a new connection id
+        self.connections
+            .iterate_new_connection_id_list(|connection, _shared_state| {
+                let result = connection.on_new_connection_id(
+                    endpoint_context.connection_id_format,
+                    endpoint_context.stateless_reset_token_generator,
+                    timestamp,
+                );
+                if result.is_ok() {
+                    ConnectionContainerIterationResult::Continue
+                } else {
+                    // The provided Connection ID generator must never generate the same connection
+                    // ID twice. If this happens, it is unlikely we could recover from it.
+                    panic!("Generated connection ID was already in use");
+                }
+            });
     }
 }
 
