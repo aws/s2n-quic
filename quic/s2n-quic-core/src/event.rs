@@ -29,6 +29,11 @@ impl Default for Meta {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct PacketHeader {
+    pub packet_type: u8,
+}
+
 events!(
     #[name = "transport::version_information"]
     //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.1
@@ -52,5 +57,16 @@ events!(
         pub server_alpns: &'a [&'a [u8]],
         pub client_alpns: &'a [&'a [u8]],
         pub chosen_alpn: u32,
+    }
+
+    #[name = "recovery:packet_lost"]
+    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.2
+    //# QUIC implementations each have their own list of application level
+    //# protocols and versions thereof they support.
+    /// Application level protocol
+    struct PacketLost<'a> {
+        pub meta: Meta,
+        pub header: Option<&'a [&'a [u8]]>,
+        pub frames: Option<&'a PacketHeader>,
     }
 );

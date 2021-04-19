@@ -9,6 +9,8 @@ use crate::{
         hybrid_slow_start::HybridSlowStart,
         RttEstimator,
     },
+    event::{self, events},
+    endpoint,
     time::Timestamp,
 };
 use core::{
@@ -232,11 +234,12 @@ impl CongestionController for CubicCongestionController {
         debug_assert!(self.congestion_window >= self.cubic.minimum_window());
     }
 
-    fn on_packets_lost(
+    fn on_packets_lost<S: event::Subscriber>(
         &mut self,
         lost_bytes: u32,
         persistent_congestion: bool,
         timestamp: Timestamp,
+        subscriber: &mut S,
     ) {
         debug_assert!(lost_bytes > 0);
 
@@ -253,6 +256,14 @@ impl CongestionController for CubicCongestionController {
             self.state = State::SlowStart;
             self.cubic.reset();
         }
+
+        let event = events::PacketLost::builder()
+            .with_meta(event::Meta {
+                vantage_point: endpoint::Type::Server,
+                group_id: 7,
+            })
+            .build();
+        subscriber.on_packet_lost(&event);
     }
 
     fn on_congestion_event(&mut self, event_time: Timestamp) {
