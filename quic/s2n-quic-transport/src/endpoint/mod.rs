@@ -79,6 +79,88 @@ pub struct Endpoint<Cfg: Config> {
 // and which also get moved.
 unsafe impl<Cfg: Config> Send for Endpoint<Cfg> {}
 
+impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
+    fn receive<Rx: rx::Queue>(&mut self, queue: &mut Rx, timestamp: Timestamp) {
+        use rx::Entry;
+
+        let entries = queue.as_slice_mut();
+
+        for entry in entries.iter_mut() {
+            if let Some(remote_address) = entry.remote_address() {
+                self.receive_datagram(remote_address, entry.ecn(), entry.payload_mut(), timestamp)
+            }
+        }
+        let len = entries.len();
+        queue.finish(len);
+    }
+
+    fn transmit<Tx: tx::Queue>(&mut self, queue: &mut Tx, timestamp: Timestamp) {
+        self.on_timeout(timestamp);
+
+        // Iterate over all connections which want to transmit data
+        let mut transmit_result = Ok(());
+        self.connections
+            .iterate_transmission_list(|connection, shared_state| {
+                transmit_result = connection.on_transmit(shared_state, queue, timestamp);
+                if transmit_result.is_err() {
+                    // If one connection fails, return
+                    ConnectionContainerIterationResult::BreakAndInsertAtBack
+                } else {
+                    ConnectionContainerIterationResult::Continue
+                }
+            });
+
+        if transmit_result.is_ok() {
+            self.version_negotiator.on_transmit(queue);
+            self.retry_dispatch.on_transmit(queue);
+            self.stateless_reset_dispatch.on_transmit(queue);
+        }
+    }
+
+    fn poll_wakeups(
+        &mut self,
+        cx: &mut task::Context<'_>,
+        timestamp: Timestamp,
+    ) -> Poll<Result<usize, s2n_quic_core::endpoint::CloseError>> {
+        if !self.connections.is_open() {
+            return Poll::Ready(Err(s2n_quic_core::endpoint::CloseError));
+        }
+
+        // The mem::replace is needed to work around a limitation which does not allow us to pass
+        // the new queue directly - even though we will populate the field again after the call.
+        let dequeued_wakeups = core::mem::replace(&mut self.dequeued_wakeups, VecDeque::new());
+        self.dequeued_wakeups = self.wakeup_queue.poll_pending_wakeups(dequeued_wakeups, cx);
+        let nr_wakeups = self.dequeued_wakeups.len();
+        let close_packet_buffer = &mut self.close_packet_buffer;
+        let endpoint_context = self.config.context();
+
+        for internal_id in &self.dequeued_wakeups {
+            self.connections
+                .with_connection(*internal_id, |conn, mut shared_state| {
+                    if let Err(error) = conn.on_wakeup(shared_state.as_deref_mut(), timestamp) {
+                        conn.close(
+                            shared_state,
+                            error,
+                            endpoint_context.connection_close_formatter,
+                            close_packet_buffer,
+                            timestamp,
+                        );
+                    }
+                });
+        }
+
+        if nr_wakeups > 0 {
+            Poll::Ready(Ok(nr_wakeups))
+        } else {
+            Poll::Pending
+        }
+    }
+
+    fn timeout(&self) -> Option<Timestamp> {
+        self.timer_manager.next_expiration()
+    }
+}
+
 impl<Cfg: Config> Endpoint<Cfg> {
     /// Creates a new QUIC endpoint using the given configuration
     pub fn new(mut config: Cfg) -> (Self, Acceptor) {
@@ -105,28 +187,16 @@ impl<Cfg: Config> Endpoint<Cfg> {
         (endpoint, acceptor)
     }
 
-    /// Ingests a queue of datagrams
-    pub fn receive<'a, Rx: rx::Rx<'a>>(&mut self, rx: &'a mut Rx, timestamp: Timestamp) {
-        use rx::{Entry, Queue};
-
-        let mut queue = rx.queue();
-        let entries = queue.as_slice_mut();
-
-        for entry in entries.iter_mut() {
-            if let Some(remote_address) = entry.remote_address() {
-                self.receive_datagram(remote_address, entry.ecn(), entry.payload_mut(), timestamp)
-            }
-        }
-        let len = entries.len();
-        queue.finish(len);
-    }
-
     /// Determine the next step when a peer attempts a connection
     fn connection_allowed(
         &mut self,
         datagram: &DatagramInfo,
         packet: &ProtectedInitial,
     ) -> Option<()> {
+        if !self.connections.can_accept() {
+            return None;
+        }
+
         let attempt = s2n_quic_core::endpoint::limits::ConnectionAttempt::new(
             self.connections.handshake_connections(),
             &datagram.remote_address,
@@ -241,9 +311,9 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
         let datagram = &DatagramInfo {
             timestamp,
+            remote_address,
             payload_len,
             ecn,
-            remote_address,
             destination_connection_id,
         };
 
@@ -545,107 +615,19 @@ impl<Cfg: Config> Endpoint<Cfg> {
         Some(internal_id)
     }
 
-    /// Queries the endpoint for connections requiring new connection IDs
-    pub fn issue_new_connection_ids(&mut self, timestamp: Timestamp) {
-        // Iterate over all connections which need new connection IDs
-        let context = self.config.context();
-
-        self.connections
-            .iterate_new_connection_id_list(|connection, _shared_state| {
-                let result = connection.on_new_connection_id(
-                    context.connection_id_format,
-                    context.stateless_reset_token_generator,
-                    timestamp,
-                );
-                if result.is_ok() {
-                    ConnectionContainerIterationResult::Continue
-                } else {
-                    // The provided Connection ID generator must never generate the same connection
-                    // ID twice. If this happens, it is unlikely we could recover from it.
-                    panic!("Generated connection ID was already in use");
-                }
-            });
-    }
-
-    /// Queries the endpoint for outgoing datagrams
-    pub fn transmit<'a, Tx: tx::Tx<'a>>(&mut self, tx: &'a mut Tx, timestamp: Timestamp) {
-        let mut queue = tx.queue();
-
-        // Iterate over all connections which want to transmit data
-        let mut transmit_result = Ok(());
-        self.connections
-            .iterate_transmission_list(|connection, shared_state| {
-                transmit_result = connection.on_transmit(shared_state, &mut queue, timestamp);
-                if transmit_result.is_err() {
-                    // If one connection fails, return
-                    ConnectionContainerIterationResult::BreakAndInsertAtBack
-                } else {
-                    ConnectionContainerIterationResult::Continue
-                }
-            });
-
-        if transmit_result.is_ok() {
-            self.version_negotiator.on_transmit(&mut queue);
-            self.retry_dispatch.on_transmit(&mut queue);
-            self.stateless_reset_dispatch.on_transmit(&mut queue);
-        }
-    }
-
-    /// Handles all timer events. This should be called when a timer expired
-    /// according to [`next_timer_expiration()`].
-    pub fn handle_timers(&mut self, now: Timestamp) {
+    fn on_timeout(&mut self, timestamp: Timestamp) {
         let connection_id_mapper = &mut self.connection_id_mapper;
         let close_packet_buffer = &mut self.close_packet_buffer;
         let endpoint_context = self.config.context();
 
-        for internal_id in self.timer_manager.expirations(now) {
+        for internal_id in self.timer_manager.expirations(timestamp) {
             self.connections
                 .with_connection(internal_id, |conn, mut shared_state| {
-                    if let Err(error) =
-                        conn.on_timeout(shared_state.as_deref_mut(), connection_id_mapper, now)
-                    {
-                        conn.close(
-                            shared_state,
-                            error,
-                            endpoint_context.connection_close_formatter,
-                            close_packet_buffer,
-                            now,
-                        );
-                    }
-                });
-        }
-    }
-
-    /// Returns a future that handles wakeup events
-    pub fn pending_wakeups(&mut self, timestamp: Timestamp) -> PendingWakeups<Cfg> {
-        PendingWakeups {
-            endpoint: self,
-            timestamp,
-        }
-    }
-
-    /// Handles all wakeup events.
-    /// This should be called in every eventloop iteration.
-    /// Returns the number of wakeups which have occurred and had been handled.
-    pub fn poll_pending_wakeups(
-        &mut self,
-        context: &'_ task::Context,
-        timestamp: Timestamp,
-    ) -> Poll<usize> {
-        // The mem::replace is needed to work around a limitation which does not allow us to pass
-        // the new queue directly - even though we will populate the field again after the call.
-        let dequeued_wakeups = core::mem::replace(&mut self.dequeued_wakeups, VecDeque::new());
-        self.dequeued_wakeups = self
-            .wakeup_queue
-            .poll_pending_wakeups(dequeued_wakeups, context);
-        let nr_wakeups = self.dequeued_wakeups.len();
-        let close_packet_buffer = &mut self.close_packet_buffer;
-        let endpoint_context = self.config.context();
-
-        for internal_id in &self.dequeued_wakeups {
-            self.connections
-                .with_connection(*internal_id, |conn, mut shared_state| {
-                    if let Err(error) = conn.on_wakeup(shared_state.as_deref_mut(), timestamp) {
+                    if let Err(error) = conn.on_timeout(
+                        shared_state.as_deref_mut(),
+                        connection_id_mapper,
+                        timestamp,
+                    ) {
                         conn.close(
                             shared_state,
                             error,
@@ -657,35 +639,22 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 });
         }
 
-        if nr_wakeups > 0 {
-            Poll::Ready(nr_wakeups)
-        } else {
-            Poll::Pending
-        }
-    }
-
-    /// Returns the timestamp when the [`handle_timers`] method of the `Endpoint`
-    /// should be called next time.
-    pub fn next_timer_expiration(&self) -> Option<Timestamp> {
-        self.timer_manager.next_expiration()
-    }
-}
-
-/// A future for handling wakeup events on an endpoint
-pub struct PendingWakeups<'a, Cfg: Config> {
-    endpoint: &'a mut Endpoint<Cfg>,
-    timestamp: Timestamp,
-}
-
-impl<'a, Cfg: Config> core::future::Future for PendingWakeups<'a, Cfg> {
-    type Output = usize;
-
-    fn poll(
-        mut self: core::pin::Pin<&mut Self>,
-        cx: &mut core::task::Context<'_>,
-    ) -> core::task::Poll<Self::Output> {
-        let timestamp = self.timestamp;
-        self.endpoint.poll_pending_wakeups(cx, timestamp)
+        // allow connections to generate a new connection id
+        self.connections
+            .iterate_new_connection_id_list(|connection, _shared_state| {
+                let result = connection.on_new_connection_id(
+                    endpoint_context.connection_id_format,
+                    endpoint_context.stateless_reset_token_generator,
+                    timestamp,
+                );
+                if result.is_ok() {
+                    ConnectionContainerIterationResult::Continue
+                } else {
+                    // The provided Connection ID generator must never generate the same connection
+                    // ID twice. If this happens, it is unlikely we could recover from it.
+                    panic!("Generated connection ID was already in use");
+                }
+            });
     }
 }
 

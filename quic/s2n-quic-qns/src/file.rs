@@ -3,13 +3,17 @@
 
 use crate::Result;
 use bytes::{BufMut, Bytes, BytesMut};
+use core::mem::MaybeUninit;
 use futures::{ready, stream::Stream};
 use std::{
     path::Path,
     pin::Pin,
     task::{Context, Poll},
 };
-use tokio::{fs, io::AsyncRead};
+use tokio::{
+    fs,
+    io::{AsyncRead, ReadBuf},
+};
 
 const CAPACITY: usize = 4096;
 
@@ -38,8 +42,14 @@ impl Stream for File {
 
         let n = {
             let bytes = self.buf.chunk_mut();
-            let dst = unsafe { core::slice::from_raw_parts_mut(bytes.as_mut_ptr(), bytes.len()) };
-            ready!(AsyncRead::poll_read(Pin::new(&mut self.file), cx, dst)?)
+            let dst = unsafe { &mut *(bytes as *mut _ as *mut [MaybeUninit<u8>]) };
+            let mut buf = ReadBuf::uninit(dst);
+            ready!(AsyncRead::poll_read(
+                Pin::new(&mut self.file),
+                cx,
+                &mut buf
+            )?);
+            buf.filled().len()
         };
 
         if n == 0 {

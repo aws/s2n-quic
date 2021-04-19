@@ -94,6 +94,10 @@ impl<'a, Message: rx::Entry + message::Message, B: Behavior> rx::Queue for Slice
         &mut self.messages[range]
     }
 
+    fn len(&self) -> usize {
+        self.primary.len
+    }
+
     fn finish(&mut self, count: usize) {
         self.advance(count)
     }

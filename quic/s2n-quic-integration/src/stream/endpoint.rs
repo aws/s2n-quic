@@ -370,11 +370,8 @@ mod tests {
     #[test]
     fn random_scenario_test() {
         bolero::check!().with_type().for_each(|scenario| {
-            tokio::runtime::Builder::new()
+            tokio::runtime::Builder::new_current_thread()
                 .enable_time()
-                .core_threads(1)
-                .max_threads(1)
-                .basic_scheduler()
                 .build()
                 .unwrap()
                 .block_on(check(scenario));

@@ -3,17 +3,9 @@ vulnerability = "deny"
 unmaintained = "deny"
 notice = "deny"
 yanked = "deny"
-ignore = [
-    "RUSTSEC-2020-0016", # mio 0.6 uses 'net2' (removed in 0.7) but tokio is still pinned to 0.6
-]
 
 [bans]
 multiple-versions = "deny"
-skip = [
-    # mio 0.6 uses older versions; waiting for tokio to update
-    { name = "miow" },
-    { name = "winapi" },
-]
 
 # compliance is a separate binary target so just ignore it
 skip-tree = [
