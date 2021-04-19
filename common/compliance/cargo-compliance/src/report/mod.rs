@@ -17,6 +17,7 @@ use std::{
 };
 use structopt::StructOpt;
 
+mod ci;
 mod html;
 mod json;
 mod lcov;
@@ -44,6 +45,9 @@ pub struct Report {
 
     #[structopt(long)]
     require_tests: Option<Option<bool>>,
+
+    #[structopt(long)]
+    ci: bool,
 
     #[structopt(long)]
     blob_link: Option<String>,
@@ -254,6 +258,10 @@ impl Report {
 
         if let Some(dir) = &self.html {
             html::report(&report, &dir)?;
+        }
+
+        if self.ci {
+            ci::report(&report)?;
         }
 
         Ok(())

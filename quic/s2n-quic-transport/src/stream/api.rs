@@ -187,7 +187,7 @@ macro_rules! tx_stream_apis {
             self.tx_request()?.flush().poll(Some(cx))?.into()
         }
 
-        /// Marks the stream as finished and flushes the send buffer.
+        /// Marks the stream as finished.
         ///
         /// The method will return:
         /// - `Ok(())` if the stream was finished successfully
@@ -196,6 +196,18 @@ macro_rules! tx_stream_apis {
         pub fn finish(&mut self) -> Result<(), StreamError> {
             self.tx_request()?.finish().poll(None)?;
             Ok(())
+        }
+
+        /// Marks the stream as finished and waits for all outstanding data to be acknowledged
+        ///
+        /// The method will return:
+        /// - `Poll::Ready(Ok(()))` if the stream was completely flushed and acknowledged.
+        /// - `Poll::Ready(Err(stream_error))` if the stream could not be flushed, because the stream
+        ///   had previously entered an error state.
+        /// - `Poll::Pending` if the stream is still being flushed. In this case, the
+        ///   caller should retry sending after the `Waker` on the provided `Context` is notified.
+        pub fn poll_close(&mut self, cx: &mut Context) -> Poll<Result<(), StreamError>> {
+            self.tx_request()?.finish().flush().poll(Some(cx))?.into()
         }
 
         /// Initiates a `RESET` on the stream.
