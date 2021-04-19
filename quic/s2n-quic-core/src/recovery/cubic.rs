@@ -260,7 +260,7 @@ impl CongestionController for CubicCongestionController {
         // TODO populate with actual values
         let event = events::PacketLost::builder()
             .with_meta(event::Meta {
-                vantage_point: endpoint::Type::Server,
+                endpoint_type: endpoint::Type::Server,
                 group_id: 7,
             })
             .build();

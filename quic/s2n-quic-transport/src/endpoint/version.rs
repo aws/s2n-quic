@@ -156,7 +156,7 @@ impl<Config: endpoint::Config> Negotiator<Config> {
         let versions_received = &[packet.version];
         let event = events::VersionInformation::builder()
             .with_meta(event::Meta {
-                vantage_point: Config::ENDPOINT_TYPE,
+                endpoint_type: Config::ENDPOINT_TYPE,
                 group_id: 7,
             })
             .with_client_versions(versions_received)
