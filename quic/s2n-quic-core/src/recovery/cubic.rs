@@ -257,6 +257,7 @@ impl CongestionController for CubicCongestionController {
             self.cubic.reset();
         }
 
+        // TODO populate with actual values
         let event = events::PacketLost::builder()
             .with_meta(event::Meta {
                 vantage_point: endpoint::Type::Server,
