@@ -10,12 +10,14 @@ default = ["ipv6", "std", "tokio-runtime", "wipe"]
 ipv6 = []
 std = ["s2n-quic-core/std", "socket2", "lazy_static"]
 testing = ["std"] # Testing allows to overwrite the system time
-tokio-runtime = ["tokio"]
+tokio-runtime = ["futures", "pin-project", "tokio"]
 wipe = ["zeroize"]
 
 [dependencies]
 cfg-if = "1.0"
+futures = { version = "0.3", optional = true }
 lazy_static = { version = "1.4", optional = true }
+pin-project = { version = "1", optional = true }
 s2n-quic-core = { version = "0.1.0", path = "../s2n-quic-core", default-features = false }
 socket2 = { version = "0.3", features = ["reuseport"], optional = true }
 tokio = { version = "1", default-features = false, features = ["macros", "net", "rt", "time"], optional = true }

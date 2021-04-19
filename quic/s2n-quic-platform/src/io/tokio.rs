@@ -5,11 +5,14 @@ use crate::{buffer::default as buffer, socket::default as socket};
 use cfg_if::cfg_if;
 use core::{
     future::Future,
+    pin::Pin,
     task::{Context, Poll},
     time::Duration,
 };
+use futures::future::{Fuse, FutureExt};
+use pin_project::pin_project;
 use s2n_quic_core::{
-    endpoint::Endpoint,
+    endpoint::{CloseError, Endpoint},
     inet::SocketAddress,
     time::{self, Clock as ClockTrait},
 };
@@ -232,53 +235,54 @@ impl<E: Endpoint> Instance<E> {
         /// Even if there is no progress to be made, wake up the task at least once a second
         const DEFAULT_TIMEOUT: Duration = Duration::from_secs(1);
 
-        let sleep = tokio::time::sleep(DEFAULT_TIMEOUT);
         let mut prev_time = Instant::now() + DEFAULT_TIMEOUT;
+        let sleep = tokio::time::sleep_until(prev_time);
         tokio::pin!(sleep);
 
         loop {
-            // Poll for writablity if we have occupied slots available
-            let tx_interest = tx.occupied_len() > 0;
-            let tx_task = async {
-                if tx_interest {
-                    socket.writable().await
-                } else {
-                    Pending::new().await
-                }
-            };
-
             // Poll for readability if we have free slots available
             let rx_interest = rx.free_len() > 0;
             let rx_task = async {
                 if rx_interest {
                     socket.readable().await
                 } else {
-                    Pending::new().await
+                    futures::future::pending().await
                 }
             };
 
-            tokio::select! {
-                guard = tx_task => {
-                    if let Ok(result) = guard?.try_io(|socket| tx.tx(socket)) {
-                        result?;
-                    }
+            // Poll for writablity if we have occupied slots available
+            let tx_interest = tx.occupied_len() > 0;
+            let tx_task = async {
+                if tx_interest {
+                    socket.writable().await
+                } else {
+                    futures::future::pending().await
                 }
-                guard = rx_task => {
+            };
+
+            let wakeups = endpoint.wakeups(clock.get_time());
+            // pin the wakeups future so we don't have to move it into the Select future.
+            tokio::pin!(wakeups);
+
+            let select = Select::new(rx_task, tx_task, &mut wakeups, &mut sleep);
+
+            if let Ok((rx_result, tx_result)) = select.await {
+                if let Some(guard) = rx_result {
                     if let Ok(result) = guard?.try_io(|socket| rx.rx(socket)) {
                         result?;
                     }
                     endpoint.receive(&mut rx, clock.get_time());
                 }
-                result = endpoint.wakeups(clock.get_time()) => {
-                    // The endpoint has shut down
-                    if result.is_err() {
-                        return Ok(())
+
+                if let Some(guard) = tx_result {
+                    if let Ok(result) = guard?.try_io(|socket| tx.tx(socket)) {
+                        result?;
                     }
                 }
-                _ = &mut sleep => {
-                    // do nothing; timer expiration is handled by `transmit`
-                }
-            };
+            } else {
+                // The endpoint has shut down
+                return Ok(());
+            }
 
             endpoint.transmit(&mut tx, clock.get_time());
 
@@ -293,20 +297,106 @@ impl<E: Endpoint> Instance<E> {
     }
 }
 
-#[derive(Debug)]
-pub struct Pending<T>(core::marker::PhantomData<T>);
+/// The main event loop future for selecting readiness of sub-tasks
+///
+/// This future ensures all sub-tasks are polled fairly by yielding once
+/// after completing any of the sub-tasks. This is especially important when the TX queue is
+/// flushed quickly and we never get notified of the RX socket having packets to read.
+#[pin_project]
+struct Select<Rx, Tx, Wakeup, Sleep>
+where
+    Rx: Future,
+    Tx: Future,
+    Wakeup: Future,
+    Sleep: Future,
+{
+    #[pin]
+    rx: Fuse<Rx>,
+    rx_out: Option<Rx::Output>,
+    #[pin]
+    tx: Fuse<Tx>,
+    tx_out: Option<Tx::Output>,
+    #[pin]
+    wakeup: Fuse<Wakeup>,
+    #[pin]
+    sleep: Sleep,
+    is_ready: bool,
+}
 
-impl<T> Pending<T> {
-    fn new() -> Self {
-        Self(Default::default())
+impl<Rx, Tx, Wakeup, Sleep> Select<Rx, Tx, Wakeup, Sleep>
+where
+    Rx: Future,
+    Tx: Future,
+    Wakeup: Future,
+    Sleep: Future,
+{
+    #[inline(always)]
+    fn new(rx: Rx, tx: Tx, wakeup: Wakeup, sleep: Sleep) -> Self {
+        Self {
+            rx: rx.fuse(),
+            rx_out: None,
+            tx: tx.fuse(),
+            tx_out: None,
+            wakeup: wakeup.fuse(),
+            sleep,
+            is_ready: false,
+        }
     }
 }
 
-impl<T> Future for Pending<T> {
-    type Output = T;
+type SelectResult<Rx, Tx> = Result<(Option<Rx>, Option<Tx>), CloseError>;
 
-    fn poll(self: core::pin::Pin<&mut Self>, _: &mut Context<'_>) -> Poll<T> {
-        Poll::Pending
+impl<Rx, Tx, Wakeup, Sleep> Future for Select<Rx, Tx, Wakeup, Sleep>
+where
+    Rx: Future,
+    Tx: Future,
+    Wakeup: Future<Output = Result<usize, CloseError>>,
+    Sleep: Future,
+{
+    type Output = SelectResult<Rx::Output, Tx::Output>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let this = self.project();
+
+        let mut should_wake = *this.is_ready;
+
+        if let Poll::Ready(wakeup) = this.wakeup.poll(cx) {
+            should_wake = true;
+            if let Err(err) = wakeup {
+                return Poll::Ready(Err(err));
+            }
+        }
+
+        if let Poll::Ready(v) = this.rx.poll(cx) {
+            should_wake = true;
+            *this.rx_out = Some(v);
+        }
+
+        if let Poll::Ready(v) = this.tx.poll(cx) {
+            should_wake = true;
+            *this.tx_out = Some(v);
+        }
+
+        if this.sleep.poll(cx).is_ready() {
+            should_wake = true;
+            // A ready from the sleep future should not yield, as it's unlikely that any of the
+            // other tasks will yield on this loop.
+            *this.is_ready = true;
+        }
+
+        // if none of the subtasks are ready, return
+        if !should_wake {
+            return Poll::Pending;
+        }
+
+        if core::mem::replace(this.is_ready, true) {
+            Poll::Ready(Ok((this.rx_out.take(), this.tx_out.take())))
+        } else {
+            // yield once so the other futures have the chance to wake up
+            // before returning
+            cx.waker().wake_by_ref();
+            Poll::Pending
+        }
     }
 }
 
@@ -372,7 +462,6 @@ mod tests {
 
     struct TestEndpoint {
         addr: SocketAddress,
-        inflight: usize,
         messages: BTreeMap<u32, Option<Timestamp>>,
         now: Option<Timestamp>,
     }
@@ -382,7 +471,6 @@ mod tests {
             let messages = (0..1000).map(|id| (id, None)).collect();
             Self {
                 addr,
-                inflight: 0,
                 messages,
                 now: None,
             }
@@ -392,11 +480,6 @@ mod tests {
     impl Endpoint for TestEndpoint {
         fn transmit<'tx, Tx: tx::Tx<'tx>>(&mut self, tx: &'tx mut Tx, now: Timestamp) {
             self.now = Some(now);
-
-            // limit the number of datagrams in flight
-            if self.inflight > 100 {
-                return;
-            }
 
             let mut queue = tx.queue();
             for (id, tx_time) in &mut self.messages {
@@ -411,7 +494,6 @@ mod tests {
                         let msg = (self.addr, payload);
                         if queue.push(msg).is_ok() {
                             *tx_time = Some(now);
-                            self.inflight += 1;
                         } else {
                             // no more capacity
                             return;
@@ -430,9 +512,7 @@ mod tests {
                 let payload: &[u8] = entry.payload_mut();
                 let payload = payload.try_into().unwrap();
                 let id = u32::from_be_bytes(payload);
-                if self.messages.remove(&id).is_some() {
-                    self.inflight -= 1;
-                }
+                self.messages.remove(&id);
             }
             queue.finish(len);
         }
