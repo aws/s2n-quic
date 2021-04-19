@@ -121,12 +121,12 @@ fn bind<A: std::net::ToSocketAddrs>(addr: A) -> io::Result<socket2::Socket> {
     use socket2::{Domain, Protocol, Socket, Type};
 
     let domain = if cfg!(feature = "ipv6") {
-        Domain::ipv6()
+        Domain::IPV6
     } else {
-        Domain::ipv4()
+        Domain::IPV4
     };
-    let socket_type = Type::dgram();
-    let protocol = Some(Protocol::udp());
+    let socket_type = Type::DGRAM;
+    let protocol = Some(Protocol::UDP);
 
     cfg_if! {
         // Set non-blocking mode in a single syscall if supported
@@ -134,11 +134,13 @@ fn bind<A: std::net::ToSocketAddrs>(addr: A) -> io::Result<socket2::Socket> {
             target_os = "android",
             target_os = "dragonfly",
             target_os = "freebsd",
+            target_os = "fuchsia",
+            target_os = "illumos",
             target_os = "linux",
             target_os = "netbsd",
             target_os = "openbsd"
         ))] {
-            let socket_type = socket_type.non_blocking();
+            let socket_type = socket_type.nonblocking();
             let socket = Socket::new(domain, socket_type, protocol)?;
         } else {
             let socket = Socket::new(domain, socket_type, protocol)?;
