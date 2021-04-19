@@ -193,7 +193,7 @@ impl Controller {
             StreamId::initial(context.local_endpoint_type(), StreamType::Unidirectional),
             context,
         )?;
-        self.outgoing_controller.streams_blocked_sync.on_transmit(
+        self.outgoing_controller.on_transmit(
             StreamId::initial(context.local_endpoint_type(), StreamType::Unidirectional),
             context,
         )
@@ -289,7 +289,7 @@ impl BidiController {
             StreamId::initial(context.local_endpoint_type(), StreamType::Bidirectional),
             context,
         )?;
-        self.outgoing.streams_blocked_sync.on_transmit(
+        self.outgoing.on_transmit(
             StreamId::initial(context.local_endpoint_type(), StreamType::Bidirectional),
             context,
         )
@@ -426,6 +426,22 @@ impl OutgoingController {
     /// Returns the number of streams currently open
     fn open_stream_count(&self) -> VarInt {
         self.opened_streams - self.closed_streams
+    }
+
+    fn on_transmit<W: WriteContext>(
+        &mut self,
+        stream_id: StreamId,
+        context: &mut W,
+    ) -> Result<(), OnTransmitError> {
+        if context.ack_elicitation().is_ack_eliciting() {
+            // We are already sending an ack-eliciting packet, so no need to send STREAMS_BLOCKED.
+            // This matches the RFC requirement for STREAM_DATA_BLOCKED and DATA_BLOCKED.
+            self.streams_blocked_sync
+                .skip_delivery(context.current_time());
+            Ok(())
+        } else {
+            self.streams_blocked_sync.on_transmit(stream_id, context)
+        }
     }
 
     #[inline]

@@ -63,6 +63,18 @@ impl<T: Copy + Clone + Default + Eq + PartialEq + PartialOrd, S: ValueToFrameWri
         }
     }
 
+    /// Skip delivery for this sync period. A delivery will be scheduled for the next sync period.
+    pub fn skip_delivery(&mut self, now: Timestamp) {
+        match self.delivery {
+            DeliveryState::Requested(_) | DeliveryState::Lost(_) => {
+                self.delivery = DeliveryState::NotRequested;
+                self.delivery_timer.set(now + self.sync_period)
+            }
+            DeliveryState::Delivered(_) => self.delivery_timer.set(now + self.sync_period),
+            _ => {}
+        }
+    }
+
     /// Called when the connection timer expires
     pub fn on_timeout(&mut self, now: Timestamp) {
         if self.delivery_timer.poll_expiration(now).is_ready() {
