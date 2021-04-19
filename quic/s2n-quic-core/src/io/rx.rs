@@ -4,27 +4,19 @@
 use crate::inet::{ExplicitCongestionNotification, SocketAddress};
 
 /// A structure capable of queueing and receiving messages
-pub trait Rx<'a>: Sized {
-    type Queue: Queue;
-
-    /// Returns the reception queue
-    fn queue(&'a mut self) -> Self::Queue;
-
-    /// Returns number of items in the queue
-    fn len(&self) -> usize;
-
-    /// Returns true if the queue is empty
-    fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-}
-
-/// A first-in, first-out queue of messages to be received
 pub trait Queue {
     type Entry: Entry;
 
     /// Returns a slice of all of the entries in the queue
     fn as_slice_mut(&mut self) -> &mut [Self::Entry];
+
+    /// Returns the number of items in the queue
+    fn len(&self) -> usize;
+
+    /// Returns `true` if the queue is empty
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 
     /// Consumes `count` number of entries in the queue
     fn finish(&mut self, count: usize);

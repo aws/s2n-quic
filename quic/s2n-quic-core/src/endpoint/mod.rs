@@ -78,10 +78,10 @@ impl Location {
 /// The main interface for a QUIC endpoint
 pub trait Endpoint: 'static + Send + Sized {
     /// Receives and processes datagrams for the Rx queue
-    fn receive<'rx, Rx: rx::Rx<'rx>>(&mut self, rx: &'rx mut Rx, timestamp: Timestamp);
+    fn receive<Rx: rx::Queue>(&mut self, rx: &mut Rx, timestamp: Timestamp);
 
     /// Transmits outgoing datagrams into the Tx queue
-    fn transmit<'tx, Tx: tx::Tx<'tx>>(&mut self, tx: &'tx mut Tx, timestamp: Timestamp);
+    fn transmit<Tx: tx::Queue>(&mut self, tx: &mut Tx, timestamp: Timestamp);
 
     /// Returns a future which polls for application-space wakeups
     ///

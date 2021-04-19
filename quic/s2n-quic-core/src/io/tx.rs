@@ -5,8 +5,8 @@ use crate::inet::{ExplicitCongestionNotification, SocketAddress};
 use core::time::Duration;
 
 /// A structure capable of queueing and transmitting messages
-pub trait Tx<'a>: Sized {
-    type Queue: Queue;
+pub trait Queue {
+    type Entry: Entry;
 
     /// Set to true if the queue supports setting ECN markings
     const SUPPORTS_ECN: bool = false;
@@ -16,22 +16,6 @@ pub trait Tx<'a>: Sized {
 
     /// Set to true if the queue supports setting IPv6 flow labels
     const SUPPORTS_FLOW_LABELS: bool = false;
-
-    /// Returns the transmission queue
-    fn queue(&'a mut self) -> Self::Queue;
-
-    /// Returns number of items in the queue
-    fn len(&self) -> usize;
-
-    /// Returns true if the queue is empty
-    fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-}
-
-/// A first-in, first-out queue of messages to be transmitted
-pub trait Queue {
-    type Entry: Entry;
 
     /// Pushes a message into the transmission queue
     ///

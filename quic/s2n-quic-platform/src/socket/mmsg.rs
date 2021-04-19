@@ -9,7 +9,6 @@ use crate::{
     },
 };
 use libc::{recvmmsg, sendmmsg};
-use s2n_quic_core::io::{rx, tx};
 use std::{io, os::unix::io::AsRawFd};
 
 #[derive(Debug, Default)]
@@ -155,28 +154,12 @@ impl<B: Buffer> Queue<B> {
             }
         }
     }
-}
 
-impl<'a, B: Buffer> tx::Tx<'a> for Queue<B> {
-    type Queue = queue::Free<'a, Message>;
-
-    fn queue(&'a mut self) -> Self::Queue {
-        self.0.free_mut()
-    }
-
-    fn len(&self) -> usize {
-        self.0.free_len()
-    }
-}
-
-impl<'a, B: Buffer> rx::Rx<'a> for Queue<B> {
-    type Queue = queue::OccupiedWipe<'a, Message>;
-
-    fn queue(&'a mut self) -> Self::Queue {
+    pub fn rx_queue(&mut self) -> queue::OccupiedWipe<Message> {
         self.0.occupied_wipe_mut()
     }
 
-    fn len(&self) -> usize {
-        self.0.occupied_len()
+    pub fn tx_queue(&mut self) -> queue::Free<Message> {
+        self.0.free_mut()
     }
 }

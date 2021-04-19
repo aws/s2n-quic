@@ -271,7 +271,7 @@ impl<E: Endpoint> Instance<E> {
                     if let Ok(result) = guard?.try_io(|socket| rx.rx(socket)) {
                         result?;
                     }
-                    endpoint.receive(&mut rx, clock.get_time());
+                    endpoint.receive(&mut rx.rx_queue(), clock.get_time());
                 }
 
                 if let Some(guard) = tx_result {
@@ -284,7 +284,7 @@ impl<E: Endpoint> Instance<E> {
                 return Ok(());
             }
 
-            endpoint.transmit(&mut tx, clock.get_time());
+            endpoint.transmit(&mut tx.tx_queue(), clock.get_time());
 
             if let Some(delay) = endpoint.timeout() {
                 let next_time = clock.0 + unsafe { delay.as_duration() };
@@ -453,8 +453,8 @@ mod tests {
         endpoint::CloseError,
         inet::SocketAddress,
         io::{
-            rx::{self, Entry as _, Queue as _},
-            tx::{self, Queue as _},
+            rx::{self, Entry as _},
+            tx,
         },
         time::Timestamp,
     };
@@ -478,10 +478,9 @@ mod tests {
     }
 
     impl Endpoint for TestEndpoint {
-        fn transmit<'tx, Tx: tx::Tx<'tx>>(&mut self, tx: &'tx mut Tx, now: Timestamp) {
+        fn transmit<Tx: tx::Queue>(&mut self, queue: &mut Tx, now: Timestamp) {
             self.now = Some(now);
 
-            let mut queue = tx.queue();
             for (id, tx_time) in &mut self.messages {
                 match tx_time {
                     Some(time)
@@ -503,9 +502,8 @@ mod tests {
             }
         }
 
-        fn receive<'rx, Rx: rx::Rx<'rx>>(&mut self, rx: &'rx mut Rx, now: Timestamp) {
+        fn receive<Rx: rx::Queue>(&mut self, queue: &mut Rx, now: Timestamp) {
             self.now = Some(now);
-            let mut queue = rx.queue();
             let entries = queue.as_slice_mut();
             let len = entries.len();
             for entry in entries {

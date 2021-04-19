@@ -80,10 +80,9 @@ pub struct Endpoint<Cfg: Config> {
 unsafe impl<Cfg: Config> Send for Endpoint<Cfg> {}
 
 impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
-    fn receive<'rx, Rx: rx::Rx<'rx>>(&mut self, rx: &'rx mut Rx, timestamp: Timestamp) {
-        use rx::{Entry, Queue};
+    fn receive<Rx: rx::Queue>(&mut self, queue: &mut Rx, timestamp: Timestamp) {
+        use rx::Entry;
 
-        let mut queue = rx.queue();
         let entries = queue.as_slice_mut();
 
         for entry in entries.iter_mut() {
@@ -95,16 +94,14 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
         queue.finish(len);
     }
 
-    fn transmit<'tx, Tx: tx::Tx<'tx>>(&mut self, tx: &'tx mut Tx, timestamp: Timestamp) {
+    fn transmit<Tx: tx::Queue>(&mut self, queue: &mut Tx, timestamp: Timestamp) {
         self.on_timeout(timestamp);
-
-        let mut queue = tx.queue();
 
         // Iterate over all connections which want to transmit data
         let mut transmit_result = Ok(());
         self.connections
             .iterate_transmission_list(|connection, shared_state| {
-                transmit_result = connection.on_transmit(shared_state, &mut queue, timestamp);
+                transmit_result = connection.on_transmit(shared_state, queue, timestamp);
                 if transmit_result.is_err() {
                     // If one connection fails, return
                     ConnectionContainerIterationResult::BreakAndInsertAtBack
@@ -114,9 +111,9 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
             });
 
         if transmit_result.is_ok() {
-            self.version_negotiator.on_transmit(&mut queue);
-            self.retry_dispatch.on_transmit(&mut queue);
-            self.stateless_reset_dispatch.on_transmit(&mut queue);
+            self.version_negotiator.on_transmit(queue);
+            self.retry_dispatch.on_transmit(queue);
+            self.stateless_reset_dispatch.on_transmit(queue);
         }
     }
 
