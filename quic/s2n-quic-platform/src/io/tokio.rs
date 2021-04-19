@@ -372,6 +372,7 @@ mod tests {
 
     struct TestEndpoint {
         addr: SocketAddress,
+        inflight: usize,
         messages: BTreeMap<u32, Option<Timestamp>>,
         now: Option<Timestamp>,
     }
@@ -381,6 +382,7 @@ mod tests {
             let messages = (0..1000).map(|id| (id, None)).collect();
             Self {
                 addr,
+                inflight: 0,
                 messages,
                 now: None,
             }
@@ -390,6 +392,12 @@ mod tests {
     impl Endpoint for TestEndpoint {
         fn transmit<'tx, Tx: tx::Tx<'tx>>(&mut self, tx: &'tx mut Tx, now: Timestamp) {
             self.now = Some(now);
+
+            // limit the number of datagrams in flight
+            if self.inflight > 100 {
+                return;
+            }
+
             let mut queue = tx.queue();
             for (id, tx_time) in &mut self.messages {
                 match tx_time {
@@ -403,6 +411,7 @@ mod tests {
                         let msg = (self.addr, payload);
                         if queue.push(msg).is_ok() {
                             *tx_time = Some(now);
+                            self.inflight += 1;
                         } else {
                             // no more capacity
                             return;
@@ -421,7 +430,9 @@ mod tests {
                 let payload: &[u8] = entry.payload_mut();
                 let payload = payload.try_into().unwrap();
                 let id = u32::from_be_bytes(payload);
-                self.messages.remove(&id);
+                if self.messages.remove(&id).is_some() {
+                    self.inflight -= 1;
+                }
             }
             queue.finish(len);
         }
