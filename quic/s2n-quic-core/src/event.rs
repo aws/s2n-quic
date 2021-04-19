@@ -16,14 +16,14 @@ pub trait Event {
 /// maintain compatibility with the qlog spec.
 #[derive(Clone, Debug)]
 pub struct Meta {
-    pub vantage_point: endpoint::Type,
+    pub endpoint_type: endpoint::Type,
     pub group_id: u64,
 }
 
 impl Default for Meta {
     fn default() -> Self {
         Self {
-            vantage_point: endpoint::Type::Server,
+            endpoint_type: endpoint::Type::Server,
             group_id: 0,
         }
     }

@@ -77,7 +77,7 @@ impl<Config: endpoint::Config> Negotiator<Config> {
                     // TODO the event needs to be propolated with real values
                     let event = events::VersionInformation::builder()
                         .with_meta(event::Meta {
-                            vantage_point: endpoint::Type::Server,
+                            endpoint_type: endpoint::Type::Server,
                             group_id: 7,
                         })
                         .with_chosen_version(packet.version)
@@ -94,7 +94,7 @@ impl<Config: endpoint::Config> Negotiator<Config> {
                     // TODO the event needs to be propolated with real values
                     let event = events::VersionInformation::builder()
                         .with_meta(event::Meta {
-                            vantage_point: endpoint::Type::Server,
+                            endpoint_type: endpoint::Type::Server,
                             group_id: 7,
                         })
                         .with_chosen_version(packet.version)
@@ -115,7 +115,7 @@ impl<Config: endpoint::Config> Negotiator<Config> {
                 // TODO the event needs to be propolated with real values
                 let event = events::VersionInformation::builder()
                     .with_meta(event::Meta {
-                        vantage_point: endpoint::Type::Server,
+                        endpoint_type: endpoint::Type::Server,
                         group_id: 7,
                     })
                     .build();
