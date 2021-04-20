@@ -46,6 +46,21 @@ impl OutgoingConnectionFlowControllerImpl {
         self.available_window -= result;
 
         if result < desired {
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.1
+            //# A sender SHOULD send a
+            //# STREAM_DATA_BLOCKED or DATA_BLOCKED frame to indicate to the receiver
+            //# that it has data to write but is blocked by flow control limits.
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.1
+            //# To keep the
+            //# connection from closing, a sender that is flow control limited SHOULD
+            //# periodically send a STREAM_DATA_BLOCKED or DATA_BLOCKED frame when it
+            //# has no ack-eliciting packets in flight.
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.12
+            //# A sender SHOULD send a DATA_BLOCKED frame (type=0x14) when it wishes
+            //# to send data, but is unable to do so due to connection-level flow
+            //# control; see Section 4.
             self.data_blocked_sync
                 .request_delivery(self.total_available_window);
         }

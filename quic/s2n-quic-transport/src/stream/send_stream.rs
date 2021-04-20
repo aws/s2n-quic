@@ -353,19 +353,20 @@ impl OutgoingDataFlowController for StreamFlowController {
         self.state = StreamFlowControllerState::Ready;
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.1
-        //= type=TODO
-        //= tracking-issue=333
         //# A sender SHOULD send a
         //# STREAM_DATA_BLOCKED or DATA_BLOCKED frame to indicate to the receiver
         //# that it has data to write but is blocked by flow control limits.
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.1
-        //= type=TODO
-        //= tracking-issue=333
         //# To keep the
         //# connection from closing, a sender that is flow control limited SHOULD
         //# periodically send a STREAM_DATA_BLOCKED or DATA_BLOCKED frame when it
         //# has no ack-eliciting packets in flight.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.13
+        //# A sender SHOULD send a STREAM_DATA_BLOCKED frame (type=0x15) when it
+        //# wishes to send data, but is unable to do so due to stream-level flow
+        //# control.
 
         if end_offset > self.max_stream_data {
             // Can't send any data due to being blocked on the Stream window
