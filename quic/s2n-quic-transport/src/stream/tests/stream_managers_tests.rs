@@ -35,8 +35,8 @@ use s2n_quic_core::{
     application::Error as ApplicationErrorCode,
     connection,
     frame::{
-        stream::StreamRef, Frame, MaxData, MaxStreamData, MaxStreams, ResetStream, StopSending,
-        Stream as StreamFrame, StreamDataBlocked, StreamsBlocked,
+        stream::StreamRef, DataBlocked, Frame, MaxData, MaxStreamData, MaxStreams, ResetStream,
+        StopSending, Stream as StreamFrame, StreamDataBlocked, StreamsBlocked,
     },
     packet::number::{PacketNumberRange, PacketNumberSpace},
     stream::{ops, StreamId, StreamType},
@@ -1022,6 +1022,137 @@ fn send_streams_blocked_period_based_on_pto() {
             manager.timers().next()
         );
     }
+}
+
+#[test]
+fn send_data_blocked_frame_when_blocked_by_connection_flow_limits() {
+    let mut manager = create_stream_manager(endpoint::Type::Server);
+
+    // Consume all window
+    let current_window =
+        manager.with_outgoing_connection_flow_controller(|ctrl| ctrl.total_window());
+    assert_eq!(
+        current_window,
+        manager
+            .with_outgoing_connection_flow_controller(|ctrl| ctrl.acquire_window(current_window))
+    );
+
+    // No DATA_BLOCKED is sent, since the window has been fully consumed, but not exceeded
+    assert_eq!(
+        transmission::Interest::None,
+        manager.transmission_interest()
+    );
+
+    // Try acquiring one more byte to exceed the window
+    assert_eq!(
+        VarInt::from_u32(0),
+        manager.with_outgoing_connection_flow_controller(
+            |ctrl| ctrl.acquire_window(VarInt::from_u32(1))
+        )
+    );
+
+    assert_eq!(
+        transmission::Interest::NewData,
+        manager.transmission_interest()
+    );
+
+    let mut frame_buffer = OutgoingFrameBuffer::new();
+    let mut write_context = MockWriteContext::new(
+        s2n_quic_platform::time::now(),
+        &mut frame_buffer,
+        transmission::Constraint::None,
+        endpoint::Type::Server,
+    );
+    let packet_number = write_context.packet_number();
+    assert!(manager.on_transmit(&mut write_context).is_ok());
+
+    let expected_frame = Frame::DataBlocked {
+        0: DataBlocked {
+            data_limit: current_window,
+        },
+    };
+
+    assert_eq!(
+        expected_frame,
+        write_context.frame_buffer.pop_front().unwrap().as_frame()
+    );
+    write_context.frame_buffer.clear();
+
+    assert_eq!(
+        transmission::Interest::None,
+        manager.transmission_interest()
+    );
+
+    manager.on_packet_loss(&PacketNumberRange::new(packet_number, packet_number));
+
+    assert_eq!(
+        transmission::Interest::LostData,
+        manager.transmission_interest()
+    );
+
+    let packet_number = write_context.packet_number();
+    assert!(manager.on_transmit(&mut write_context).is_ok());
+    write_context.frame_buffer.clear();
+
+    manager.on_packet_ack(&PacketNumberRange::new(packet_number, packet_number));
+
+    assert_eq!(
+        transmission::Interest::None,
+        manager.transmission_interest()
+    );
+
+    let expected_next_data_blocked_time = write_context.current_time + DEFAULT_SYNC_PERIOD;
+    assert_eq!(
+        Some(expected_next_data_blocked_time),
+        manager.timers().next()
+    );
+
+    manager.on_timeout(expected_next_data_blocked_time);
+
+    // Another DATA_BLOCKED frame should be sent
+    assert_eq!(
+        transmission::Interest::NewData,
+        manager.transmission_interest()
+    );
+
+    // We get more credit from the peer so we should no longer send DATA_BLOCKED
+    assert!(manager
+        .on_max_data(MaxData {
+            maximum_data: current_window + 1
+        })
+        .is_ok());
+
+    assert_eq!(
+        transmission::Interest::None,
+        manager.transmission_interest()
+    );
+
+    // Exceed the window again
+    assert_eq!(
+        VarInt::from_u32(1),
+        manager.with_outgoing_connection_flow_controller(
+            |ctrl| ctrl.acquire_window(VarInt::from_u32(2))
+        )
+    );
+
+    // Another DATA_BLOCKED frame should be sent with the updated MAX_DATA value
+    assert_eq!(
+        transmission::Interest::NewData,
+        manager.transmission_interest()
+    );
+
+    assert!(manager.on_transmit(&mut write_context).is_ok());
+
+    let expected_frame = Frame::DataBlocked {
+        0: DataBlocked {
+            data_limit: current_window + 1,
+        },
+    };
+
+    assert_eq!(
+        expected_frame,
+        write_context.frame_buffer.pop_front().unwrap().as_frame()
+    );
 }
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.6
