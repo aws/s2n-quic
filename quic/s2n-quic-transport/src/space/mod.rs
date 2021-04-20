@@ -199,7 +199,13 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
             space.on_timeout(path, handshake_status, timestamp, subscriber)
         }
         if let Some((space, handshake_status)) = self.application_mut() {
-            space.on_timeout(path_manager, handshake_status, local_id_registry, timestamp, subscriber)
+            space.on_timeout(
+                path_manager,
+                handshake_status,
+                local_id_registry,
+                timestamp,
+                subscriber,
+            )
         }
 
         let path = path_manager.active_path_mut();

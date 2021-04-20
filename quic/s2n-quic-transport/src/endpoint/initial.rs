@@ -260,9 +260,14 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                 endpoint_context.congestion_controller,
             )?;
 
-
             connection
-                .handle_cleartext_initial_packet(locked_shared_state, datagram, path_id, packet, endpoint_context.event_subscriber)
+                .handle_cleartext_initial_packet(
+                    locked_shared_state,
+                    datagram,
+                    path_id,
+                    packet,
+                    endpoint_context.event_subscriber,
+                )
                 .map_err(|err| {
                     use connection::ProcessingError;
                     match err {

@@ -22,9 +22,9 @@ use crate::{
 };
 use core::time::Duration;
 use s2n_quic_core::{
+    event,
     inet::DatagramInfo,
     io::tx,
-    event,
     packet::{
         handshake::ProtectedHandshake,
         initial::{CleartextInitial, ProtectedInitial},
@@ -672,7 +672,13 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     ) -> Result<(), ProcessingError> {
         if let Some((space, _status)) = shared_state.space_manager.initial_mut() {
             let packet = space.validate_and_decrypt_packet(packet)?;
-            self.handle_cleartext_initial_packet(shared_state, datagram, path_id, packet, subscriber)?;
+            self.handle_cleartext_initial_packet(
+                shared_state,
+                datagram,
+                path_id,
+                packet,
+                subscriber,
+            )?;
         }
 
         Ok(())

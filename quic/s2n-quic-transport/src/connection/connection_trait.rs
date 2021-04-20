@@ -15,8 +15,8 @@ use crate::{
 };
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
-    inet::DatagramInfo,
     event,
+    inet::DatagramInfo,
     io::tx,
     packet::{
         handshake::ProtectedHandshake,
@@ -89,7 +89,7 @@ pub trait ConnectionTrait: Sized {
         shared_state: Option<&mut SharedConnectionState<Self::Config>>,
         connection_id_mapper: &mut ConnectionIdMapper,
         timestamp: Timestamp,
-        subscriber: &mut S
+        subscriber: &mut S,
     ) -> Result<(), connection::Error>;
 
     /// Updates the per-connection timer based on individual component timers.
@@ -270,7 +270,8 @@ pub trait ConnectionTrait: Sized {
                     break;
                 }
 
-                let result = self.handle_packet(shared_state, datagram, path_id, packet, subscriber);
+                let result =
+                    self.handle_packet(shared_state, datagram, path_id, packet, subscriber);
 
                 if let Err(ProcessingError::ConnectionError(err)) = result {
                     // CryptoErrors returned as a result of a packet failing decryption will be

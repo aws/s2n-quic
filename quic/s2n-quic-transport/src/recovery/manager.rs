@@ -9,8 +9,7 @@ use crate::{
 };
 use core::{cmp::max, time::Duration};
 use s2n_quic_core::{
-    endpoint, frame,
-    event,
+    endpoint, event, frame,
     inet::DatagramInfo,
     packet::number::{PacketNumber, PacketNumberRange, PacketNumberSpace},
     path::Path,
@@ -250,7 +249,12 @@ impl Manager {
         self.pto.on_transmit(context)
     }
 
-    pub fn on_ack_frame<A: frame::ack::AckRanges, CC: CongestionController, Ctx: Context<CC>, S: event::Subscriber>(
+    pub fn on_ack_frame<
+        A: frame::ack::AckRanges,
+        CC: CongestionController,
+        Ctx: Context<CC>,
+        S: event::Subscriber,
+    >(
         &mut self,
         datagram: &DatagramInfo,
         frame: frame::Ack<A>,
@@ -428,7 +432,11 @@ impl Manager {
     //# DetectAndRemoveLostPackets is called every time an ACK is received or the time threshold
     //# loss detection timer expires. This function operates on the sent_packets for that packet
     //# number space and returns a list of packets newly detected as lost.
-    fn detect_and_remove_lost_packets<CC: CongestionController, Ctx: Context<CC>, S: event::Subscriber>(
+    fn detect_and_remove_lost_packets<
+        CC: CongestionController,
+        Ctx: Context<CC>,
+        S: event::Subscriber,
+    >(
         &mut self,
         now: Timestamp,
         context: &mut Ctx,

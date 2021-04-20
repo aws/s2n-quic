@@ -1,9 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::endpoint;
+use crate::{endpoint, packet::number::PacketNumberSpace};
 use paste::paste;
-use crate::packet::number::PacketNumberSpace;
 
 #[macro_use]
 mod macros;

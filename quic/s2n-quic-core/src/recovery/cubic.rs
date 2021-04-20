@@ -3,14 +3,14 @@
 
 use crate::{
     counter::Counter,
+    endpoint,
+    event::{self, events},
     recovery::{
         congestion_controller::{self, CongestionController},
         cubic::{FastRetransmission::*, State::*},
         hybrid_slow_start::HybridSlowStart,
         RttEstimator,
     },
-    event::{self, events},
-    endpoint,
     time::Timestamp,
 };
 use core::{

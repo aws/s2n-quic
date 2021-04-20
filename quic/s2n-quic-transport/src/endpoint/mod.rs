@@ -297,10 +297,13 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         //# perform path validation (Section 8.2) if it detects any change to a
                         //# peer's address, unless it has previously validated that address.
 
-                        if let Err(err) =
-                            conn.handle_packet(shared_state, datagram, path_id, packet,
-                            endpoint_context.event_subscriber)
-                        {
+                        if let Err(err) = conn.handle_packet(
+                            shared_state,
+                            datagram,
+                            path_id,
+                            packet,
+                            endpoint_context.event_subscriber,
+                        ) {
                             match err {
                                 ProcessingError::DuplicatePacket => {
                                     // We discard duplicate packets
@@ -336,7 +339,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                             path_id,
                             endpoint_context.connection_id_format,
                             remaining,
-                            endpoint_context.event_subscriber
+                            endpoint_context.event_subscriber,
                         ) {
                             conn.close(
                                 Some(shared_state),
@@ -608,11 +611,12 @@ impl<Cfg: Config> Endpoint<Cfg> {
         for internal_id in self.timer_manager.expirations(now) {
             self.connections
                 .with_connection(internal_id, |conn, mut shared_state| {
-                    if let Err(error) =
-                        conn.on_timeout(shared_state.as_deref_mut(), connection_id_mapper, now,
-                endpoint_context.event_subscriber,
-                        )
-                    {
+                    if let Err(error) = conn.on_timeout(
+                        shared_state.as_deref_mut(),
+                        connection_id_mapper,
+                        now,
+                        endpoint_context.event_subscriber,
+                    ) {
                         conn.close(
                             shared_state,
                             error,

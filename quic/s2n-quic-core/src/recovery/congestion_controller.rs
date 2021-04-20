@@ -1,7 +1,9 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{inet::SocketAddress, path::MINIMUM_MTU, recovery::RttEstimator, time::Timestamp, event};
+use crate::{
+    event, inet::SocketAddress, path::MINIMUM_MTU, recovery::RttEstimator, time::Timestamp,
+};
 use core::fmt::Debug;
 
 pub trait Endpoint: 'static + Debug {

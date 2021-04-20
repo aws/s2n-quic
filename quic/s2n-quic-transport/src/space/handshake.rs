@@ -16,8 +16,8 @@ use core::marker::PhantomData;
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
     crypto::{tls, CryptoSuite},
-    frame::{ack::AckRanges, crypto::CryptoRef, Ack, ConnectionClose},
     event,
+    frame::{ack::AckRanges, crypto::CryptoRef, Ack, ConnectionClose},
     inet::DatagramInfo,
     packet::{
         encoding::{PacketEncoder, PacketEncodingError},
