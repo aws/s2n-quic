@@ -705,7 +705,7 @@ impl<'a, Cfg: Config> core::future::Future for PendingWakeups<'a, Cfg> {
 #[cfg(any(test, feature = "testing"))]
 pub mod testing {
     use super::*;
-    use s2n_quic_core::{endpoint, event, random, stateless_reset};
+    use s2n_quic_core::{endpoint, {event::testing}, random, stateless_reset};
 
     #[derive(Debug)]
     pub struct Server;
@@ -722,7 +722,7 @@ pub mod testing {
         type ConnectionLimits = s2n_quic_core::connection::limits::Limits;
         type Stream = crate::stream::StreamImpl;
         type ConnectionCloseFormatter = s2n_quic_core::connection::close::Development;
-        type EventSubscriber = Subscriber;
+        type EventSubscriber = testing::Subscriber;
 
         fn context(&mut self) -> super::Context<Self> {
             todo!()
@@ -766,8 +766,4 @@ pub mod testing {
             endpoint::limits::Outcome::Allow
         }
     }
-
-    #[derive(Debug)]
-    pub struct Subscriber;
-    impl event::Subscriber for Subscriber {}
 }

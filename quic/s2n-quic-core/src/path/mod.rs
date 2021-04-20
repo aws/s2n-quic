@@ -322,6 +322,7 @@ mod tests {
     use crate::{
         recovery::CubicCongestionController,
         time::{Clock, NoopClock},
+        event::testing::Subscriber,
     };
     use core::time::Duration;
 
@@ -468,7 +469,7 @@ mod tests {
         );
 
         // Lose a byte to enter recovery
-        path.congestion_controller.on_packets_lost(1, false, now);
+        path.congestion_controller.on_packets_lost(1, false, now, &mut Subscriber);
 
         assert_eq!(
             path.transmission_constraint(),
@@ -480,6 +481,7 @@ mod tests {
             path.congestion_controller.congestion_window(),
             false,
             now,
+            &mut Subscriber
         );
 
         // Since we are no longer congestion limited, there is no transmission constraint

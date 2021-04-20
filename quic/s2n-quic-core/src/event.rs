@@ -70,3 +70,12 @@ events!(
         pub frames: Option<&'a PacketHeader>,
     }
 );
+
+#[cfg(any(test, feature = "testing"))]
+pub mod testing {
+    use crate::event;
+
+    #[derive(Debug)]
+    pub struct Subscriber;
+    impl event::Subscriber for Subscriber {}
+}

@@ -318,13 +318,13 @@ impl EncoderValue for SupportedVersions {
 #[cfg(any(test, feature = "testing"))]
 mod tests {
     use super::*;
-    use crate::endpoint::testing;
     use core::mem::size_of;
     use s2n_codec::{DecoderBufferMut, Encoder, EncoderBuffer};
     use s2n_quic_core::{
         connection,
         connection::id::ConnectionInfo,
         inet::DatagramInfo,
+        event::testing,
         packet::{
             handshake::Handshake,
             initial::Initial,

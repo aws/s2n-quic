@@ -667,6 +667,7 @@ mod test {
     use crate::{
         packet::number::PacketNumberSpace,
         time::{Clock, NoopClock},
+        event::testing,
     };
     use core::time::Duration;
 
@@ -1029,7 +1030,7 @@ mod test {
         cc.congestion_window = 80_000.0;
         cc.cubic.w_last_max = bytes_to_packets(100_000.0, max_datagram_size);
 
-        cc.on_packets_lost(100, false, now);
+        cc.on_packets_lost(100, false, now, &mut testing::Subscriber);
         assert_delta!(cc.congestion_window, 80_000.0 * BETA_CUBIC, 0.001);
 
         // Window max was less than the last max, so fast convergence applies
@@ -1101,7 +1102,7 @@ mod test {
         cc.bytes_in_flight = BytesInFlight::new(100_000);
         cc.state = SlowStart;
 
-        cc.on_packets_lost(100, false, now + Duration::from_secs(10));
+        cc.on_packets_lost(100, false, now + Duration::from_secs(10), &mut testing::Subscriber);
 
         assert_eq!(cc.bytes_in_flight, 100_000u32 - 100);
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.1
@@ -1131,7 +1132,7 @@ mod test {
         cc.bytes_in_flight = BytesInFlight::new(cc.congestion_window());
         cc.state = CongestionAvoidance(now);
 
-        cc.on_packets_lost(100, false, now + Duration::from_secs(10));
+        cc.on_packets_lost(100, false, now + Duration::from_secs(10), &mut testing::Subscriber);
 
         assert_delta!(cc.congestion_window, cc.cubic.minimum_window(), 0.001);
     }
@@ -1144,7 +1145,7 @@ mod test {
         cc.bytes_in_flight = BytesInFlight::new(1000);
         cc.state = Recovery(now, Idle);
 
-        cc.on_packets_lost(100, false, now);
+        cc.on_packets_lost(100, false, now, &mut testing::Subscriber);
 
         // No change to the congestion window
         assert_delta!(cc.congestion_window, 10000.0, 0.001);
@@ -1164,7 +1165,7 @@ mod test {
         cc.bytes_in_flight = BytesInFlight::new(1000);
         cc.state = Recovery(now, Idle);
 
-        cc.on_packets_lost(100, true, now);
+        cc.on_packets_lost(100, true, now, &mut testing::Subscriber);
 
         assert_eq!(cc.state, SlowStart);
         assert_delta!(cc.congestion_window, cc.cubic.minimum_window(), 0.001);
