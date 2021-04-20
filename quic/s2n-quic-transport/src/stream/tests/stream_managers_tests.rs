@@ -930,100 +930,129 @@ fn send_streams_blocked_frame_when_blocked_by_peer() {
 }
 
 #[test]
-fn send_streams_blocked_period_based_on_max_idle_timeout() {
+fn streams_blocked_period() {
     for stream_type in [StreamType::Bidirectional, StreamType::Unidirectional]
         .iter()
         .copied()
     {
-        let mut manager = create_stream_manager(endpoint::Type::Server);
-        let (waker, _) = new_count_waker();
+        let block_func = |manager: &mut AbstractStreamManager<MockStream>| {
+            let (waker, _) = new_count_waker();
 
-        let mut opened_streams = VarInt::from_u8(0);
+            let mut opened_streams = VarInt::from_u8(0);
 
-        // Open streams until blocked
-        while manager
-            .poll_open(stream_type, &Context::from_waker(&waker))
-            .is_ready()
-        {
-            opened_streams += 1;
-        }
+            // Open streams until blocked
+            while manager
+                .poll_open(stream_type, &Context::from_waker(&waker))
+                .is_ready()
+            {
+                opened_streams += 1;
+            }
+        };
 
-        let mut frame_buffer = OutgoingFrameBuffer::new();
-        let mut write_context = MockWriteContext::new(
-            s2n_quic_platform::time::now(),
-            &mut frame_buffer,
-            transmission::Constraint::None,
-            endpoint::Type::Server,
-        );
-        let packet_number = write_context.packet_number();
-        assert!(manager.on_transmit(&mut write_context).is_ok());
-
-        let rtt_estimator = RttEstimator::new(Duration::from_millis(100));
-        manager.on_rtt_update(&rtt_estimator);
-        manager.on_packet_ack(&PacketNumberRange::new(packet_number, packet_number));
-
-        let expected_next_stream_blocked_time = write_context.current_time
-            + MaxIdleTimeout::RECOMMENDED.as_duration().unwrap()
-            - rtt_estimator.smoothed_rtt();
-        assert_eq!(
-            Some(expected_next_stream_blocked_time),
-            manager.timers().next()
-        );
+        assert_blocked_frame_based_on_max_idle_timeout(block_func);
+        assert_blocked_frame_based_on_pto(block_func);
     }
 }
 
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.1
+//= type=test
+//# To keep the
+//# connection from closing, a sender that is flow control limited SHOULD
+//# periodically send a STREAM_DATA_BLOCKED or DATA_BLOCKED frame when it
+//# has no ack-eliciting packets in flight.
 #[test]
-fn send_streams_blocked_period_based_on_pto() {
-    for stream_type in [StreamType::Bidirectional, StreamType::Unidirectional]
-        .iter()
-        .copied()
-    {
-        let mut manager = create_stream_manager(endpoint::Type::Server);
-        let (waker, _) = new_count_waker();
+fn data_blocked_period() {
+    let blocked_func = |manager: &mut AbstractStreamManager<MockStream>| {
+        let current_window =
+            manager.with_outgoing_connection_flow_controller(|ctrl| ctrl.total_window());
+        manager.with_outgoing_connection_flow_controller(|ctrl| {
+            ctrl.acquire_window(current_window + 1)
+        });
+    };
 
-        let mut opened_streams = VarInt::from_u8(0);
-
-        // Open streams until blocked
-        while manager
-            .poll_open(stream_type, &Context::from_waker(&waker))
-            .is_ready()
-        {
-            opened_streams += 1;
-        }
-
-        let mut frame_buffer = OutgoingFrameBuffer::new();
-        let mut write_context = MockWriteContext::new(
-            s2n_quic_platform::time::now(),
-            &mut frame_buffer,
-            transmission::Constraint::None,
-            endpoint::Type::Server,
-        );
-        let packet_number = write_context.packet_number();
-        assert!(manager.on_transmit(&mut write_context).is_ok());
-
-        let mut rtt_estimator = RttEstimator::new(Duration::from_millis(100));
-        // Update the RTT estimate with a large value to ensure 3 * PTO is larger than the max idle timeout
-        rtt_estimator.update_rtt(
-            Duration::from_millis(0),
-            Duration::from_secs(20),
-            write_context.current_time,
-            true,
-            PacketNumberSpace::ApplicationData,
-        );
-        manager.on_rtt_update(&rtt_estimator);
-        manager.on_packet_ack(&PacketNumberRange::new(packet_number, packet_number));
-
-        let expected_blocked_sync_period = 3 * rtt_estimator
-            .pto_period(1, PacketNumberSpace::ApplicationData)
-            - rtt_estimator.smoothed_rtt();
-
-        assert_eq!(
-            Some(write_context.current_time + expected_blocked_sync_period),
-            manager.timers().next()
-        );
-    }
+    assert_blocked_frame_based_on_max_idle_timeout(blocked_func);
+    assert_blocked_frame_based_on_pto(blocked_func);
 }
 
+fn assert_blocked_frame_based_on_max_idle_timeout<F>(mut block_func: F)
+where
+    F: FnMut(&mut AbstractStreamManager<MockStream>),
+{
+    let mut manager = create_stream_manager(endpoint::Type::Server);
+
+    block_func(&mut manager);
+
+    let mut frame_buffer = OutgoingFrameBuffer::new();
+    let mut write_context = MockWriteContext::new(
+        s2n_quic_platform::time::now(),
+        &mut frame_buffer,
+        transmission::Constraint::None,
+        endpoint::Type::Server,
+    );
+    let packet_number = write_context.packet_number();
+    assert!(manager.on_transmit(&mut write_context).is_ok());
+
+    let rtt_estimator = RttEstimator::new(Duration::from_millis(100));
+    manager.on_rtt_update(&rtt_estimator);
+    manager.on_packet_ack(&PacketNumberRange::new(packet_number, packet_number));
+
+    let expected_next_blocked_time = write_context.current_time
+        + MaxIdleTimeout::RECOMMENDED.as_duration().unwrap()
+        - rtt_estimator.smoothed_rtt();
+    assert_eq!(Some(expected_next_blocked_time), manager.timers().next());
+}
+
+fn assert_blocked_frame_based_on_pto<F>(mut block_func: F)
+where
+    F: FnMut(&mut AbstractStreamManager<MockStream>),
+{
+    let mut manager = create_stream_manager(endpoint::Type::Server);
+
+    block_func(&mut manager);
+
+    let mut frame_buffer = OutgoingFrameBuffer::new();
+    let mut write_context = MockWriteContext::new(
+        s2n_quic_platform::time::now(),
+        &mut frame_buffer,
+        transmission::Constraint::None,
+        endpoint::Type::Server,
+    );
+    let packet_number = write_context.packet_number();
+    assert!(manager.on_transmit(&mut write_context).is_ok());
+
+    let mut rtt_estimator = RttEstimator::new(Duration::from_millis(100));
+    // Update the RTT estimate with a large value to ensure 3 * PTO is larger than the max idle timeout
+    rtt_estimator.update_rtt(
+        Duration::from_millis(0),
+        Duration::from_secs(20),
+        write_context.current_time,
+        true,
+        PacketNumberSpace::ApplicationData,
+    );
+    manager.on_rtt_update(&rtt_estimator);
+    manager.on_packet_ack(&PacketNumberRange::new(packet_number, packet_number));
+
+    let expected_blocked_sync_period = 3 * rtt_estimator
+        .pto_period(1, PacketNumberSpace::ApplicationData)
+        - rtt_estimator.smoothed_rtt();
+
+    assert_eq!(
+        Some(write_context.current_time + expected_blocked_sync_period),
+        manager.timers().next()
+    );
+}
+
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.1
+//= type=test
+//# A sender SHOULD send a
+//# STREAM_DATA_BLOCKED or DATA_BLOCKED frame to indicate to the receiver
+//# that it has data to write but is blocked by flow control limits.
+
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.12
+//= type=test
+//# A sender SHOULD send a DATA_BLOCKED frame (type=0x14) when it wishes
+//# to send data, but is unable to do so due to connection-level flow
+//# control; see Section 4.
 #[test]
 fn send_data_blocked_frame_when_blocked_by_connection_flow_limits() {
     let mut manager = create_stream_manager(endpoint::Type::Server);
@@ -2522,6 +2551,29 @@ fn forwards_on_stream_data_blocked() {
         manager.on_stream_data_blocked(&frame),
         TransportError::STREAM_STATE_ERROR,
     );
+}
+
+#[test]
+fn forwards_on_rtt_update() {
+    let mut manager = create_stream_manager(endpoint::Type::Server);
+
+    let stream_1 = try_open(&mut manager, StreamType::Bidirectional).unwrap();
+    let stream_2 = try_open(&mut manager, StreamType::Bidirectional).unwrap();
+
+    manager.with_asserted_stream(stream_1, |stream| {
+        stream.interests.stream_flow_control_credits = true;
+    });
+
+    let rtt_estimator = RttEstimator::new(Duration::from_millis(100));
+    manager.on_rtt_update(&rtt_estimator);
+
+    // Check call count
+    manager.with_asserted_stream(stream_1, |stream| {
+        assert_eq!(stream.update_blocked_sync_period_count, 1);
+    });
+    manager.with_asserted_stream(stream_2, |stream| {
+        assert_eq!(stream.update_blocked_sync_period_count, 0);
+    });
 }
 
 #[test]
