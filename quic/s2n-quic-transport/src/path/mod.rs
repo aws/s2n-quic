@@ -34,6 +34,8 @@ pub struct Path<CC: CongestionController> {
     pub peer_socket_address: SocketAddress,
     /// The connection id of the peer
     pub peer_connection_id: connection::PeerId,
+    /// The local connection id
+    pub local_connection_id: connection::LocalId,
     /// The path owns the roundtrip between peers
     pub rtt_estimator: RttEstimator,
     /// The congestion controller for the path
@@ -58,6 +60,7 @@ impl<CC: CongestionController> Path<CC> {
     pub fn new(
         peer_socket_address: SocketAddress,
         peer_connection_id: connection::PeerId,
+        local_connection_id: connection::LocalId,
         rtt_estimator: RttEstimator,
         congestion_controller: CC,
         peer_validated: bool,
@@ -65,6 +68,7 @@ impl<CC: CongestionController> Path<CC> {
         Path {
             peer_socket_address,
             peer_connection_id,
+            local_connection_id,
             rtt_estimator,
             congestion_controller,
             pto_backoff: INITIAL_PTO_BACKOFF,
@@ -202,6 +206,11 @@ impl<CC: CongestionController> Path<CC> {
         match self.state {
             State::Validated => requested_size.min(self.mtu as usize),
 
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.1
+            //= type=TODO
+            //# Until a peer's address is deemed valid, an endpoint MUST
+            //# limit the rate at which it sends data to this address.
+
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1
             //# Prior to validating the client address, servers MUST NOT send more
             //# than three times as many bytes as the number of bytes they have
@@ -297,6 +306,7 @@ pub mod testing {
         Path::new(
             SocketAddress::default(),
             connection::PeerId::try_from_bytes(&[]).unwrap(),
+            connection::LocalId::TEST_ID,
             RttEstimator::new(Duration::from_millis(30)),
             Unlimited::default(),
             true,
@@ -453,6 +463,7 @@ mod tests {
         let mut path = Path::new(
             SocketAddress::default(),
             connection::PeerId::try_from_bytes(&[]).unwrap(),
+            connection::LocalId::TEST_ID,
             RttEstimator::new(Duration::from_millis(30)),
             CubicCongestionController::new(MINIMUM_MTU),
             false,

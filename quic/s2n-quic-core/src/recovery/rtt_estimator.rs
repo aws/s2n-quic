@@ -92,6 +92,11 @@ impl RttEstimator {
         self.first_rtt_sample
     }
 
+    /// Gets the max_ack_delay
+    pub fn max_ack_delay(&self) -> Duration {
+        self.max_ack_delay
+    }
+
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
     //# The PTO period is the amount of time that a sender ought to wait for
     //# an acknowledgement of a sent packet.
