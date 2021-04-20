@@ -433,8 +433,8 @@ impl OutgoingController {
         stream_id: StreamId,
         context: &mut W,
     ) -> Result<(), OnTransmitError> {
-        if context.ack_elicitation().is_ack_eliciting() {
-            // We are already sending an ack-eliciting packet, so no need to send STREAMS_BLOCKED.
+        if context.ack_elicitation().is_ack_eliciting() && self.streams_blocked_sync.has_delivered() {
+            // We are already sending an ack-eliciting packet, so no need to send another STREAMS_BLOCKED.
             // This matches the RFC requirement for STREAM_DATA_BLOCKED and DATA_BLOCKED.
             self.streams_blocked_sync
                 .skip_delivery(context.current_time());

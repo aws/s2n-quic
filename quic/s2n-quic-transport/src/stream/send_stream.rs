@@ -311,8 +311,10 @@ impl StreamFlowController {
         //# connection from closing, a sender that is flow control limited SHOULD
         //# periodically send a STREAM_DATA_BLOCKED or DATA_BLOCKED frame when it
         //# has no ack-eliciting packets in flight.
-        if context.ack_elicitation().is_ack_eliciting() {
-            // We are already sending an ack-eliciting packet, so no need to send STREAM_DATA_BLOCKED
+        if context.ack_elicitation().is_ack_eliciting()
+            && self.stream_data_blocked_sync.has_delivered()
+        {
+            // We are already sending an ack-eliciting packet, so no need to send another STREAM_DATA_BLOCKED
             self.stream_data_blocked_sync
                 .skip_delivery(context.current_time());
             Ok(())

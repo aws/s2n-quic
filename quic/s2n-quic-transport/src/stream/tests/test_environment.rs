@@ -19,7 +19,7 @@ use futures_test::task::{new_count_waker, AwokenCount};
 use s2n_quic_core::{
     application::Error as ApplicationErrorCode,
     endpoint,
-    frame::{Frame, ResetStream},
+    frame::{Frame, ResetStream, StreamDataBlocked},
     packet::number::{PacketNumber, PacketNumberSpace},
     stream::{ops, StreamError, StreamId, StreamType},
     time::Timestamp,
@@ -273,6 +273,27 @@ impl TestEnvironment {
                 stream_id: self.stream.stream_id.into(),
                 application_error_code: expected_error_code.into(),
                 final_size: expected_final_size,
+            }),
+            sent_frame.as_frame()
+        );
+    }
+
+    /// Asserts that a STREAM_DATA_BLOCKED frame was transmitted
+    pub fn assert_write_stream_data_blocked_frame(
+        &mut self,
+        expected_stream_data_limit: VarInt,
+        expected_packet_number: PacketNumber,
+    ) {
+        let mut sent_frame = self.transmit().expect("no frame was written");
+        assert_eq!(
+            expected_packet_number, sent_frame.packet_nr,
+            "packet number mismatch"
+        );
+
+        assert_eq!(
+            Frame::StreamDataBlocked(StreamDataBlocked {
+                stream_id: self.stream.stream_id.into(),
+                stream_data_limit: expected_stream_data_limit,
             }),
             sent_frame.as_frame()
         );
