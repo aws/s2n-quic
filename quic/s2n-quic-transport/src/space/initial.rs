@@ -230,7 +230,8 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
         self.ack_manager.on_timeout(timestamp);
 
         let (recovery_manager, mut context) = self.recovery(path, handshake_status);
-        recovery_manager.on_timeout(timestamp, &mut context)
+        let subscriber = Config::EventSubscriber;
+        recovery_manager.on_timeout(timestamp, &mut context, &mut subscriber)
     }
 
     /// Called before the Initial packet space is discarded
