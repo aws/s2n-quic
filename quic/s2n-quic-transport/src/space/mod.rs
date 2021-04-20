@@ -409,6 +409,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
         path: &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
     ) -> Result<(), transport::Error>;
 
+    #[allow(clippy::too_many_arguments)]
     fn handle_ack_frame<A: AckRanges, S: event::Subscriber>(
         &mut self,
         frame: Ack<A>,

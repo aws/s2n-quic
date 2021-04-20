@@ -5,11 +5,11 @@ use core::{fmt, ops::Range, time::Duration};
 use insta::assert_debug_snapshot;
 use plotters::prelude::*;
 use s2n_quic_core::{
+    event::testing,
     packet::number::PacketNumberSpace,
     path::MINIMUM_MTU,
     recovery::{CongestionController, CubicCongestionController, RttEstimator},
     time::{Clock, NoopClock, Timestamp},
-    event::testing,
 };
 use std::{
     env,
@@ -207,10 +207,20 @@ fn minimum_window<CC: CongestionController>(
 
     congestion_controller.on_packet_sent(time_zero, MINIMUM_MTU as usize);
     // Experience persistent congestion to drop to the minimum window
-    congestion_controller.on_packets_lost(MINIMUM_MTU as u32, true, time_zero, &mut testing::Subscriber);
+    congestion_controller.on_packets_lost(
+        MINIMUM_MTU as u32,
+        true,
+        time_zero,
+        &mut testing::Subscriber,
+    );
     congestion_controller.on_packet_sent(time_zero, MINIMUM_MTU as usize);
     // Lose a packet to exit slow start
-    congestion_controller.on_packets_lost(MINIMUM_MTU as u32, false, time_zero, &mut testing::Subscriber);
+    congestion_controller.on_packets_lost(
+        MINIMUM_MTU as u32,
+        false,
+        time_zero,
+        &mut testing::Subscriber,
+    );
 
     Simulation {
         name: "Minimum Window",
@@ -275,7 +285,12 @@ fn simulate_constant_rtt<CC: CongestionController>(
         {
             // Drop a packet
             congestion_controller.on_packet_sent(round_start, MINIMUM_MTU as usize);
-            congestion_controller.on_packets_lost(MINIMUM_MTU as u32, false, round_start, &mut testing::Subscriber);
+            congestion_controller.on_packets_lost(
+                MINIMUM_MTU as u32,
+                false,
+                round_start,
+                &mut testing::Subscriber,
+            );
             drop_index += 1;
         } else {
             let send_bytes = (congestion_controller.congestion_window() as usize)

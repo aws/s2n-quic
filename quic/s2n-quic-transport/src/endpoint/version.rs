@@ -318,13 +318,14 @@ impl EncoderValue for SupportedVersions {
 #[cfg(any(test, feature = "testing"))]
 mod tests {
     use super::*;
+    use crate::endpoint::testing;
     use core::mem::size_of;
     use s2n_codec::{DecoderBufferMut, Encoder, EncoderBuffer};
     use s2n_quic_core::{
         connection,
         connection::id::ConnectionInfo,
+        event::testing::Subscriber,
         inet::DatagramInfo,
-        event::testing,
         packet::{
             handshake::Handshake,
             initial::Initial,
@@ -365,12 +366,7 @@ mod tests {
             let remote_address = SocketAddress::default();
             let connection_info = ConnectionInfo::new(&remote_address);
             let (packet, _) = ProtectedPacket::decode(decoder, &connection_info, &3).unwrap();
-            $negotiator.on_packet(
-                $remote_address,
-                $payload_len,
-                &packet,
-                &mut testing::Subscriber,
-            )
+            $negotiator.on_packet($remote_address, $payload_len, &packet, &mut Subscriber)
         }};
     }
 
