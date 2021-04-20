@@ -40,15 +40,13 @@ pub const MINIMUM_MTU: u16 = 1200;
 pub const INITIAL_PTO_BACKOFF: u32 = 1;
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Path<CC: CongestionController> {
+pub struct Path {
     /// The peer's socket address
     pub peer_socket_address: SocketAddress,
     /// The connection id of the peer
     pub peer_connection_id: connection::PeerId,
     /// The path owns the roundtrip between peers
     pub rtt_estimator: RttEstimator,
-    /// The congestion controller for the path
-    pub congestion_controller: CC,
     /// Probe timeout backoff multiplier
     pub pto_backoff: u32,
     /// Tracks whether this path has passed Address or Path validation
@@ -65,19 +63,17 @@ pub struct Path<CC: CongestionController> {
 
 /// A Path holds the local and peer socket addresses, connection ids, and state. It can be
 /// validated or pending validation.
-impl<CC: CongestionController> Path<CC> {
+impl Path {
     pub fn new(
         peer_socket_address: SocketAddress,
         peer_connection_id: connection::PeerId,
         rtt_estimator: RttEstimator,
-        congestion_controller: CC,
         peer_validated: bool,
     ) -> Self {
         Path {
             peer_socket_address,
             peer_connection_id,
             rtt_estimator,
-            congestion_controller,
             pto_backoff: INITIAL_PTO_BACKOFF,
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.4
             //# If the client IP address has changed, the server MUST
@@ -97,7 +93,6 @@ impl<CC: CongestionController> Path<CC> {
         peer_socket_address: SocketAddress,
         peer_connection_id: connection::PeerId,
         rtt_estimator: RttEstimator,
-        congestion_controller: CC,
         peer_validated: bool,
         challenge: Challenge,
     ) -> Self {
@@ -105,7 +100,6 @@ impl<CC: CongestionController> Path<CC> {
             peer_socket_address,
             peer_connection_id,
             rtt_estimator,
-            congestion_controller,
             pto_backoff: INITIAL_PTO_BACKOFF,
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.4
             //# If the client IP address has changed, the server MUST
@@ -239,15 +233,18 @@ impl<CC: CongestionController> Path<CC> {
         }
     }
 
-    pub fn transmission_constraint(&self) -> transmission::Constraint {
+    pub fn transmission_constraint<CC: CongestionController>(
+        &self,
+        congestion_controller: &CC,
+    ) -> transmission::Constraint {
         if self.at_amplification_limit() {
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1
             //# Prior to validating the client address, servers MUST NOT send more
             //# than three times as many bytes as the number of bytes they have
             //# received.
             transmission::Constraint::AmplificationLimited
-        } else if self.congestion_controller.is_congestion_limited() {
-            if self.congestion_controller.requires_fast_retransmission() {
+        } else if congestion_controller.is_congestion_limited() {
+            if congestion_controller.requires_fast_retransmission() {
                 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.2
                 //# If the congestion window is reduced immediately, a
                 //# single packet can be sent prior to reduction.  This speeds up loss
@@ -322,15 +319,13 @@ impl<CC: CongestionController> Path<CC> {
 #[cfg(any(test, feature = "testing"))]
 pub mod testing {
     use super::*;
-    use crate::recovery::congestion_controller::testing::unlimited::CongestionController as Unlimited;
     use core::time::Duration;
 
-    pub fn test_path() -> Path<Unlimited> {
+    pub fn test_path() -> Path {
         Path::new(
             SocketAddress::default(),
             connection::PeerId::try_from_bytes(&[]).unwrap(),
             RttEstimator::new(Duration::from_millis(30)),
-            Unlimited::default(),
             true,
         )
     }
@@ -339,6 +334,7 @@ pub mod testing {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::recovery::congestion_controller::testing::unlimited::CongestionController as Unlimited;
     use crate::{
         recovery::CubicCongestionController,
         time::{Clock, NoopClock},
@@ -366,6 +362,7 @@ mod tests {
         //# adhere to the anti-amplification limits found in Section 8.1.
         // This tests the IP change because a new path is created when a new peer_address is
         // detected. This new path should always start in State::Pending.
+        let cc = Unlimited::default();
         let mut path = testing::test_path();
 
         // Verify we enforce the amplification limit if we can't send
@@ -375,14 +372,14 @@ mod tests {
         path.on_bytes_transmitted((1200 * 2) + 1);
         assert_eq!(path.at_amplification_limit(), true);
         assert_eq!(
-            path.transmission_constraint(),
+            path.transmission_constraint(&cc),
             transmission::Constraint::AmplificationLimited
         );
 
         unblocked = path.on_bytes_received(1200);
         assert_eq!(path.at_amplification_limit(), false);
         assert_eq!(
-            path.transmission_constraint(),
+            path.transmission_constraint(&cc),
             transmission::Constraint::None
         );
         assert!(unblocked);
@@ -390,7 +387,7 @@ mod tests {
         path.on_bytes_transmitted((1200 * 6) + 1);
         assert_eq!(path.at_amplification_limit(), true);
         assert_eq!(
-            path.transmission_constraint(),
+            path.transmission_constraint(&cc),
             transmission::Constraint::AmplificationLimited
         );
         unblocked = path.on_bytes_received(1200);
@@ -401,7 +398,7 @@ mod tests {
         // Validated paths should always be able to transmit
         assert_eq!(path.at_amplification_limit(), false);
         assert_eq!(
-            path.transmission_constraint(),
+            path.transmission_constraint(&cc),
             transmission::Constraint::None
         );
 
@@ -463,48 +460,43 @@ mod tests {
 
     #[test]
     fn transmission_constraint_test() {
+        let mut cc = CubicCongestionController::new(MINIMUM_MTU);
         let mut path = Path::new(
             SocketAddress::default(),
             connection::PeerId::try_from_bytes(&[]).unwrap(),
             RttEstimator::new(Duration::from_millis(30)),
-            CubicCongestionController::new(MINIMUM_MTU),
             false,
         );
         let now = NoopClock.get_time();
         path.on_validated();
 
         assert_eq!(
-            path.transmission_constraint(),
+            path.transmission_constraint(&cc),
             transmission::Constraint::None
         );
 
         // Fill up the congestion controller
-        path.congestion_controller
-            .on_packet_sent(now, path.congestion_controller.congestion_window() as usize);
+        cc.on_packet_sent(now, cc.congestion_window() as usize);
 
         assert_eq!(
-            path.transmission_constraint(),
+            path.transmission_constraint(&cc),
             transmission::Constraint::CongestionLimited
         );
 
         // Lose a byte to enter recovery
-        path.congestion_controller.on_packets_lost(1, false, now);
+        cc.on_packets_lost(1, false, now);
 
         assert_eq!(
-            path.transmission_constraint(),
+            path.transmission_constraint(&cc),
             transmission::Constraint::RetransmissionOnly
         );
 
         // Lose remaining bytes
-        path.congestion_controller.on_packets_lost(
-            path.congestion_controller.congestion_window(),
-            false,
-            now,
-        );
+        cc.on_packets_lost(cc.congestion_window(), false, now);
 
         // Since we are no longer congestion limited, there is no transmission constraint
         assert_eq!(
-            path.transmission_constraint(),
+            path.transmission_constraint(&cc),
             transmission::Constraint::None
         );
     }

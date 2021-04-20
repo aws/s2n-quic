@@ -28,7 +28,7 @@ const INLINE_PATH_LEN: usize = 5;
 #[derive(Debug)]
 pub struct Manager<CCE: congestion_controller::Endpoint> {
     /// Path array
-    paths: SmallVec<[Path<CCE::CongestionController>; INLINE_PATH_LEN]>,
+    paths: SmallVec<[Path; INLINE_PATH_LEN]>,
 
     /// Registry of `connection::PeerId`s
     peer_id_registry: PeerIdRegistry,
@@ -42,17 +42,24 @@ pub struct Manager<CCE: congestion_controller::Endpoint> {
     //# address when validation of a new peer address fails.
     /// Index of last known validated path
     previous: Option<usize>,
+
+    /// The congestion controller for the path
+    congestion_controller_endpoint: CCE,
+    congestion_controller: CCE::CongestionController,
 }
 
-impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
+impl<CCE: CongestionController> Manager<CCE> {
     pub fn new(
-        initial_path: Path<CCE::CongestionController>,
+        initial_path: Path,
         peer_id_registry: PeerIdRegistry,
+        congestion_controller_endpoint: CCE,
     ) -> Self {
+        let path_info = congestion_controller::PathInfo::new(&datagram.remote_address);
         Manager {
             paths: SmallVec::from_elem(initial_path, 1),
             peer_id_registry,
             active: 0,
+            congestion_controller_endpoint.new_congestion_controller(),
             previous: None,
         }
     }
@@ -66,12 +73,12 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     }
 
     /// Return the active path
-    pub fn active_path(&self) -> &Path<CCE::CongestionController> {
+    pub fn active_path(&self) -> &Path {
         &self.paths[self.active]
     }
 
     /// Return a mutable reference to the active path
-    pub fn active_path_mut(&mut self) -> &mut Path<CCE::CongestionController> {
+    pub fn active_path_mut(&mut self) -> &mut Path {
         &mut self.paths[self.active]
     }
 
@@ -81,10 +88,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     }
 
     /// Returns the Path for the provided address if the PathManager knows about it
-    pub fn path(
-        &self,
-        peer_address: &SocketAddress,
-    ) -> Option<(Id, &Path<CCE::CongestionController>)> {
+    pub fn path(&self, peer_address: &SocketAddress) -> Option<(Id, &Path)> {
         self.paths
             .iter()
             .enumerate()
@@ -93,10 +97,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     }
 
     /// Returns the Path for the provided address if the PathManager knows about it
-    pub fn path_mut(
-        &mut self,
-        peer_address: &SocketAddress,
-    ) -> Option<(Id, &mut Path<CCE::CongestionController>)> {
+    pub fn path_mut(&mut self, peer_address: &SocketAddress) -> Option<(Id, &mut Path)> {
         self.paths
             .iter_mut()
             .enumerate()
@@ -175,8 +176,9 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         let rtt = self.active_path().rtt_estimator;
         let cc = self.active_path().congestion_controller.migrate_paths();
 
-        let rtt = RttEstimator::new(Duration::from_millis(250));
+        //let rtt = RttEstimator::new(Duration::from_millis(250));
 
+        //println!(" -- Creating new congestion controller");
         //let path_info = congestion_controller::PathInfo::new(&datagram.remote_address);
         //let cc = congestion_controller_endpoint.new_congestion_controller(path_info);
         // TODO grab a new conn id correctly,
@@ -438,7 +440,7 @@ impl Id {
 }
 
 impl<CCE: congestion_controller::Endpoint> core::ops::Index<Id> for Manager<CCE> {
-    type Output = Path<CCE::CongestionController>;
+    type Output = Path;
 
     fn index(&self, id: Id) -> &Self::Output {
         &self.paths[id.0]
@@ -499,7 +501,7 @@ mod tests {
 
     // Helper function to easily create a PathManager
     fn manager(
-        first_path: Path<unlimited::CongestionController>,
+        first_path: Path,
         stateless_reset_token: Option<stateless_reset::Token>,
     ) -> Manager<unlimited::Endpoint> {
         let mut random_generator = random::testing::Generator(123);
@@ -510,7 +512,7 @@ mod tests {
                     first_path.peer_connection_id,
                     stateless_reset_token,
                 );
-        Manager::new(first_path, peer_id_registry)
+        Manager::new(first_path, peer_id_registry, unlimited::Endpoint::default())
     }
 
     #[test]
@@ -520,7 +522,6 @@ mod tests {
             SocketAddress::default(),
             conn_id,
             RttEstimator::new(Duration::from_millis(30)),
-            Default::default(),
             false,
         );
 
@@ -655,7 +656,6 @@ mod tests {
             SocketAddress::default(),
             first_conn_id,
             RttEstimator::new(Duration::from_millis(30)),
-            Default::default(),
             false,
         );
         let manager = manager(first_path, None);
@@ -759,7 +759,6 @@ mod tests {
             SocketAddress::default(),
             id_1,
             RttEstimator::new(Duration::from_millis(30)),
-            Default::default(),
             false,
         );
         let mut manager = manager(first_path, None);

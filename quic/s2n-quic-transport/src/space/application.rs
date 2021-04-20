@@ -520,6 +520,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         //# A client MAY consider the handshake to be confirmed when it receives
         //# an acknowledgement for a 1-RTT packet.
 
+        println!(" -- What is the conn ID here? maybe we should use the previous path?");
         let path = &mut path_manager[path_id];
         path.on_peer_validated();
         let (recovery_manager, mut context) =

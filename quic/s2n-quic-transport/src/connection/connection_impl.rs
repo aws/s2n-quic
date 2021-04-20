@@ -278,11 +278,14 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             parameters.peer_socket_address,
             parameters.peer_connection_id,
             rtt_estimator,
-            parameters.congestion_controller,
             peer_validated,
         );
 
-        let path_manager = path::Manager::new(initial_path, parameters.peer_id_registry);
+        let path_manager = path::Manager::new(
+            initial_path,
+            parameters.peer_id_registry,
+            parameters.congestion_controller,
+        );
 
         Self {
             internal_connection_id: parameters.internal_connection_id,

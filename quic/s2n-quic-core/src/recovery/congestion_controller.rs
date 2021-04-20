@@ -75,9 +75,6 @@ pub trait CongestionController: 'static + Clone + Send + Debug {
 
     /// Invoked for each packet discarded when a packet number space is discarded.
     fn on_packet_discarded(&mut self, bytes_sent: usize);
-
-    /// Clone CC for new path
-    fn migrate_paths(&self) -> Self;
 }
 
 #[cfg(any(test, feature = "testing"))]
@@ -106,10 +103,6 @@ pub mod testing {
         pub struct CongestionController {}
 
         impl super::CongestionController for CongestionController {
-            fn migrate_paths(&self) -> Self {
-                todo!()
-            }
-
             fn congestion_window(&self) -> u32 {
                 u32::max_value()
             }
@@ -177,10 +170,6 @@ pub mod testing {
         }
 
         impl super::CongestionController for CongestionController {
-            fn migrate_paths(&self) -> Self {
-                todo!()
-            }
-
             fn congestion_window(&self) -> u32 {
                 u32::max_value()
             }

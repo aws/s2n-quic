@@ -34,6 +34,8 @@ COPY --from=cacher /usr/local/cargo /usr/local/cargo
 
 # build runner
 RUN set -eux; \
+  rustup update nightly; \
+  rustup default nightly; \
   if [ "$release" = "true" ]; then \
     RUSTFLAGS="-C link-arg=-s -C panic=abort" \
       cargo build --bin s2n-quic-qns --release; \

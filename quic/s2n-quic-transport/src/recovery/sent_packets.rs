@@ -66,6 +66,8 @@ pub struct SentPacketInfo {
     pub time_sent: Timestamp,
     /// Indicates whether a packet is ack-eliciting
     pub ack_elicitation: AckElicitation,
+    /// Path packet was sent on
+    pub path_id: path::Id,
 }
 
 impl SentPacketInfo {
