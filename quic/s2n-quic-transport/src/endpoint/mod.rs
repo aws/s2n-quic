@@ -367,9 +367,13 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         //# perform path validation (Section 8.2) if it detects any change to a
                         //# peer's address, unless it has previously validated that address.
 
-                        if let Err(err) =
-                            conn.handle_packet(shared_state, datagram, path_id, packet)
-                        {
+                        if let Err(err) = conn.handle_packet(
+                            shared_state,
+                            datagram,
+                            path_id,
+                            packet,
+                            endpoint_context.event_subscriber,
+                        ) {
                             match err {
                                 ProcessingError::DuplicatePacket => {
                                     // We discard duplicate packets
@@ -405,6 +409,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                             path_id,
                             endpoint_context.connection_id_format,
                             remaining,
+                            endpoint_context.event_subscriber,
                         ) {
                             conn.close(
                                 Some(shared_state),
@@ -632,6 +637,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         shared_state.as_deref_mut(),
                         connection_id_mapper,
                         timestamp,
+                        endpoint_context.event_subscriber,
                     ) {
                         conn.close(
                             shared_state,
@@ -666,7 +672,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
 #[cfg(any(test, feature = "testing"))]
 pub mod testing {
     use super::*;
-    use s2n_quic_core::{endpoint, event, random, stateless_reset};
+    use s2n_quic_core::{endpoint, event::testing::Subscriber, random, stateless_reset};
 
     #[derive(Debug)]
     pub struct Server;

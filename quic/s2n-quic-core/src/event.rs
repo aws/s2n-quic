@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::endpoint;
+use crate::{endpoint, packet::number::PacketNumberSpace};
 use paste::paste;
 
 #[macro_use]
@@ -29,9 +29,16 @@ impl Default for Meta {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct PacketHeader {
+    pub packet_type: PacketNumberSpace,
+}
+
 events!(
     #[name = "transport::version_information"]
-    // https://tools.ietf.org/html/draft-marx-qlog-event-definitions-quic-h3-02#section-5.3.1
+    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.1
+    //# QUIC endpoints each have their own list of of QUIC versions they
+    //# support.
     /// QUIC version
     struct VersionInformation<'a> {
         pub meta: Meta,
@@ -41,7 +48,9 @@ events!(
     }
 
     #[name = "transport:alpn_information"]
-    // https://tools.ietf.org/html/draft-marx-qlog-event-definitions-quic-h3-02#section-5.3.1
+    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.2
+    //# QUIC implementations each have their own list of application level
+    //# protocols and versions thereof they support.
     /// Application level protocol
     struct AlpnInformation<'a> {
         pub meta: Meta,
@@ -49,4 +58,24 @@ events!(
         pub client_alpns: &'a [&'a [u8]],
         pub chosen_alpn: u32,
     }
+
+    #[name = "recovery:packet_lost"]
+    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.2
+    //# QUIC implementations each have their own list of application level
+    //# protocols and versions thereof they support.
+    /// Application level protocol
+    struct PacketLost<'a> {
+        pub meta: Meta,
+        pub header: Option<&'a [&'a [u8]]>,
+        pub frames: Option<&'a PacketHeader>,
+    }
 );
+
+#[cfg(any(test, feature = "testing"))]
+pub mod testing {
+    use crate::event;
+
+    #[derive(Debug)]
+    pub struct Subscriber;
+    impl event::Subscriber for Subscriber {}
+}

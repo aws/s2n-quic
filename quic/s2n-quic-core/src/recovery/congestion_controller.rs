@@ -1,7 +1,9 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{inet::SocketAddress, path::MINIMUM_MTU, recovery::RttEstimator, time::Timestamp};
+use crate::{
+    event, inet::SocketAddress, path::MINIMUM_MTU, recovery::RttEstimator, time::Timestamp,
+};
 use core::fmt::Debug;
 
 pub trait Endpoint: 'static + Debug {
@@ -59,11 +61,12 @@ pub trait CongestionController: 'static + Clone + Send + Debug {
     );
 
     /// Invoked when packets are declared lost
-    fn on_packets_lost(
+    fn on_packets_lost<S: event::Subscriber>(
         &mut self,
         lost_bytes: u32,
         persistent_congestion: bool,
         timestamp: Timestamp,
+        subscriber: &mut S,
     );
 
     /// Invoked from on_packets_lost, but is also directly invoked when
@@ -127,11 +130,12 @@ pub mod testing {
             ) {
             }
 
-            fn on_packets_lost(
+            fn on_packets_lost<S: event::Subscriber>(
                 &mut self,
                 _lost_bytes: u32,
                 _persistent_congestion: bool,
                 _timestamp: Timestamp,
+                _subscriber: &mut S,
             ) {
             }
 
@@ -197,11 +201,12 @@ pub mod testing {
             ) {
             }
 
-            fn on_packets_lost(
+            fn on_packets_lost<S: event::Subscriber>(
                 &mut self,
                 lost_bytes: u32,
                 persistent_congestion: bool,
                 _timestamp: Timestamp,
+                _subscriber: &mut S,
             ) {
                 self.bytes_in_flight = self.bytes_in_flight.saturating_sub(lost_bytes);
                 self.lost_bytes += lost_bytes;

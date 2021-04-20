@@ -22,6 +22,7 @@ use crate::{
 };
 use core::time::Duration;
 use s2n_quic_core::{
+    event,
     inet::DatagramInfo,
     io::tx,
     packet::{
@@ -506,11 +507,12 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     /// Handles all timeouts on the `Connection`.
     ///
     /// `timestamp` passes the current time.
-    fn on_timeout(
+    fn on_timeout<S: event::Subscriber>(
         &mut self,
         shared_state: Option<&mut SharedConnectionState<Self::Config>>,
         connection_id_mapper: &mut ConnectionIdMapper,
         timestamp: Timestamp,
+        subscriber: &mut S,
     ) -> Result<(), connection::Error> {
         if self.close_sender.on_timeout(timestamp).is_ready() {
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#10.2
@@ -535,6 +537,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 &mut self.local_id_registry,
                 &mut self.path_manager,
                 timestamp,
+                subscriber,
             );
         }
 
@@ -659,28 +662,36 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Is called when a initial packet had been received
-    fn handle_initial_packet(
+    fn handle_initial_packet<S: event::Subscriber>(
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedInitial,
+        subscriber: &mut S,
     ) -> Result<(), ProcessingError> {
         if let Some((space, _status)) = shared_state.space_manager.initial_mut() {
             let packet = space.validate_and_decrypt_packet(packet)?;
-            self.handle_cleartext_initial_packet(shared_state, datagram, path_id, packet)?;
+            self.handle_cleartext_initial_packet(
+                shared_state,
+                datagram,
+                path_id,
+                packet,
+                subscriber,
+            )?;
         }
 
         Ok(())
     }
 
     /// Is called when an unprotected initial packet had been received
-    fn handle_cleartext_initial_packet(
+    fn handle_cleartext_initial_packet<S: event::Subscriber>(
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: CleartextInitial,
+        subscriber: &mut S,
     ) -> Result<(), ProcessingError> {
         if let Some((space, handshake_status)) = shared_state.space_manager.initial_mut() {
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2
@@ -708,6 +719,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 &mut self.path_manager,
                 handshake_status,
                 &mut self.local_id_registry,
+                subscriber,
             )?;
 
             // try to move the crypto state machine forward
@@ -721,12 +733,13 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Is called when a handshake packet had been received
-    fn handle_handshake_packet(
+    fn handle_handshake_packet<S: event::Subscriber>(
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedHandshake,
+        subscriber: &mut S,
     ) -> Result<(), ProcessingError> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2.1
         //= type=TODO
@@ -751,6 +764,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 &mut self.path_manager,
                 handshake_status,
                 &mut self.local_id_registry,
+                subscriber,
             )?;
 
             if Self::Config::ENDPOINT_TYPE.is_server() {
@@ -779,12 +793,13 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Is called when a short packet had been received
-    fn handle_short_packet(
+    fn handle_short_packet<S: event::Subscriber>(
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedShort,
+        subscriber: &mut S,
     ) -> Result<(), ProcessingError> {
         //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.7
         //# Endpoints in either role MUST NOT decrypt 1-RTT packets from
@@ -838,6 +853,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 &mut self.path_manager,
                 handshake_status,
                 &mut self.local_id_registry,
+                subscriber,
             )?;
 
             // Currently, the application space does not have any crypto state.

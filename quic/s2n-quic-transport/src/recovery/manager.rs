@@ -9,7 +9,7 @@ use crate::{
 };
 use core::{cmp::max, time::Duration};
 use s2n_quic_core::{
-    endpoint, frame,
+    endpoint, event, frame,
     inet::DatagramInfo,
     packet::number::{PacketNumber, PacketNumberRange, PacketNumberSpace},
     path::Path,
@@ -108,14 +108,15 @@ impl Manager {
             .chain(self.loss_timer.iter())
     }
 
-    pub fn on_timeout<CC: CongestionController, Ctx: Context<CC>>(
+    pub fn on_timeout<CC: CongestionController, Ctx: Context<CC>, S: event::Subscriber>(
         &mut self,
         timestamp: Timestamp,
         context: &mut Ctx,
+        subscriber: &mut S,
     ) {
         if self.loss_timer.is_armed() {
             if self.loss_timer.poll_expiration(timestamp).is_ready() {
-                self.detect_and_remove_lost_packets(timestamp, context)
+                self.detect_and_remove_lost_packets(timestamp, context, subscriber)
             }
         } else {
             let pto_expired = self
@@ -248,11 +249,17 @@ impl Manager {
         self.pto.on_transmit(context)
     }
 
-    pub fn on_ack_frame<A: frame::ack::AckRanges, CC: CongestionController, Ctx: Context<CC>>(
+    pub fn on_ack_frame<
+        A: frame::ack::AckRanges,
+        CC: CongestionController,
+        Ctx: Context<CC>,
+        S: event::Subscriber,
+    >(
         &mut self,
         datagram: &DatagramInfo,
         frame: frame::Ack<A>,
         context: &mut Ctx,
+        subscriber: &mut S,
     ) -> Result<(), transport::Error> {
         let largest_acked_in_frame = self.space.new_packet_number(frame.largest_acknowledged());
         let mut newly_acked_packets =
@@ -363,7 +370,7 @@ impl Manager {
         //# Once a later packet within the same packet number space has been
         //# acknowledged, an endpoint SHOULD declare an earlier packet lost if it
         //# was sent a threshold amount of time in the past.
-        self.detect_and_remove_lost_packets(datagram.timestamp, context);
+        self.detect_and_remove_lost_packets(datagram.timestamp, context, subscriber);
 
         let path = context.path_mut();
         for acked_packet_info in newly_acked_packets {
@@ -425,10 +432,15 @@ impl Manager {
     //# DetectAndRemoveLostPackets is called every time an ACK is received or the time threshold
     //# loss detection timer expires. This function operates on the sent_packets for that packet
     //# number space and returns a list of packets newly detected as lost.
-    fn detect_and_remove_lost_packets<CC: CongestionController, Ctx: Context<CC>>(
+    fn detect_and_remove_lost_packets<
+        CC: CongestionController,
+        Ctx: Context<CC>,
+        S: event::Subscriber,
+    >(
         &mut self,
         now: Timestamp,
         context: &mut Ctx,
+        subscriber: &mut S,
     ) {
         let path = context.path_mut();
         // Cancel the loss timer. It will be armed again if any unacknowledged packets are
@@ -570,6 +582,7 @@ impl Manager {
                 lost_bytes,
                 persistent_congestion,
                 now,
+                subscriber,
             );
         }
 
@@ -779,6 +792,7 @@ mod test {
     use core::{ops::RangeInclusive, time::Duration};
     use s2n_quic_core::{
         connection, endpoint,
+        event::testing::Subscriber,
         frame::ack_elicitation::AckElicitation,
         packet::number::PacketNumberSpace,
         path::INITIAL_PTO_BACKOFF,
@@ -1179,7 +1193,7 @@ mod test {
 
         let now = time_sent;
 
-        manager.detect_and_remove_lost_packets(now, &mut context);
+        manager.detect_and_remove_lost_packets(now, &mut context, &mut Subscriber);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.1.2
         //= type=test
@@ -1238,7 +1252,7 @@ mod test {
         let not_lost = space.new_packet_number(VarInt::from_u8(9));
         manager.on_packet_sent(not_lost, outcome, time_sent, &mut context);
 
-        manager.detect_and_remove_lost_packets(time_sent, &mut context);
+        manager.detect_and_remove_lost_packets(time_sent, &mut context, &mut Subscriber);
 
         // Verify no lost bytes are sent to the congestion controller and
         // on_packets_lost is not called
@@ -1721,7 +1735,7 @@ mod test {
 
         // Loss timer is armed but not expired yet, nothing happens
         manager.loss_timer.set(now + Duration::from_secs(10));
-        manager.on_timeout(now, &mut context);
+        manager.on_timeout(now, &mut context, &mut Subscriber);
         assert_eq!(context.on_packet_loss_count, 0);
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
         //= type=test
@@ -1744,7 +1758,7 @@ mod test {
 
         // Loss timer is armed and expired, on_packet_loss is called
         manager.loss_timer.set(now - Duration::from_secs(1));
-        manager.on_timeout(now, &mut context);
+        manager.on_timeout(now, &mut context, &mut Subscriber);
         assert_eq!(context.on_packet_loss_count, 1);
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
         //= type=test
@@ -1755,19 +1769,19 @@ mod test {
 
         // Loss timer is not armed, pto timer is not armed
         manager.loss_timer.cancel();
-        manager.on_timeout(now, &mut context);
+        manager.on_timeout(now, &mut context, &mut Subscriber);
         assert_eq!(expected_pto_backoff, context.path.pto_backoff);
 
         // Loss timer is not armed, pto timer is armed but not expired
         manager.loss_timer.cancel();
         manager.pto.timer.set(now + Duration::from_secs(5));
-        manager.on_timeout(now, &mut context);
+        manager.on_timeout(now, &mut context, &mut Subscriber);
         assert_eq!(expected_pto_backoff, context.path.pto_backoff);
 
         // Loss timer is not armed, pto timer is expired without bytes in flight
         expected_pto_backoff *= 2;
         manager.pto.timer.set(now - Duration::from_secs(5));
-        manager.on_timeout(now, &mut context);
+        manager.on_timeout(now, &mut context, &mut Subscriber);
         assert_eq!(expected_pto_backoff, context.path.pto_backoff);
         assert_eq!(manager.pto.state, RequiresTransmission(1));
 
@@ -1788,7 +1802,7 @@ mod test {
             },
         );
         manager.pto.timer.set(now - Duration::from_secs(5));
-        manager.on_timeout(now, &mut context);
+        manager.on_timeout(now, &mut context, &mut Subscriber);
         assert_eq!(expected_pto_backoff, context.path.pto_backoff);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
@@ -1942,7 +1956,7 @@ mod test {
             ecn_counts: None,
         };
 
-        let _ = manager.on_ack_frame(&datagram, frame, context);
+        let _ = manager.on_ack_frame(&datagram, frame, context, &mut Subscriber);
 
         for packet in acked_packets {
             assert!(manager.sent_packets.get(packet).is_none());
