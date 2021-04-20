@@ -10,6 +10,7 @@ use crate::{
 use core::{cmp::max, time::Duration};
 use s2n_quic_core::{
     endpoint, frame,
+    event,
     inet::DatagramInfo,
     packet::number::{PacketNumber, PacketNumberRange, PacketNumberSpace},
     path::Path,
@@ -108,14 +109,15 @@ impl Manager {
             .chain(self.loss_timer.iter())
     }
 
-    pub fn on_timeout<CC: CongestionController, Ctx: Context<CC>>(
+    pub fn on_timeout<CC: CongestionController, Ctx: Context<CC>, S: event::Subscriber>(
         &mut self,
         timestamp: Timestamp,
         context: &mut Ctx,
+        subscriber: &mut S,
     ) {
         if self.loss_timer.is_armed() {
             if self.loss_timer.poll_expiration(timestamp).is_ready() {
-                self.detect_and_remove_lost_packets(timestamp, context)
+                self.detect_and_remove_lost_packets(timestamp, context, subscriber)
             }
         } else {
             let pto_expired = self
@@ -248,11 +250,12 @@ impl Manager {
         self.pto.on_transmit(context)
     }
 
-    pub fn on_ack_frame<A: frame::ack::AckRanges, CC: CongestionController, Ctx: Context<CC>>(
+    pub fn on_ack_frame<A: frame::ack::AckRanges, CC: CongestionController, Ctx: Context<CC>, S: event::Subscriber>(
         &mut self,
         datagram: &DatagramInfo,
         frame: frame::Ack<A>,
         context: &mut Ctx,
+        subscriber: &mut S,
     ) -> Result<(), transport::Error> {
         let largest_acked_in_frame = self.space.new_packet_number(frame.largest_acknowledged());
         let mut newly_acked_packets =
@@ -363,7 +366,7 @@ impl Manager {
         //# Once a later packet within the same packet number space has been
         //# acknowledged, an endpoint SHOULD declare an earlier packet lost if it
         //# was sent a threshold amount of time in the past.
-        self.detect_and_remove_lost_packets(datagram.timestamp, context);
+        self.detect_and_remove_lost_packets(datagram.timestamp, context, subscriber);
 
         let path = context.path_mut();
         for acked_packet_info in newly_acked_packets {
@@ -425,10 +428,11 @@ impl Manager {
     //# DetectAndRemoveLostPackets is called every time an ACK is received or the time threshold
     //# loss detection timer expires. This function operates on the sent_packets for that packet
     //# number space and returns a list of packets newly detected as lost.
-    fn detect_and_remove_lost_packets<CC: CongestionController, Ctx: Context<CC>>(
+    fn detect_and_remove_lost_packets<CC: CongestionController, Ctx: Context<CC>, S: event::Subscriber>(
         &mut self,
         now: Timestamp,
         context: &mut Ctx,
+        subscriber: &mut S,
     ) {
         let path = context.path_mut();
         // Cancel the loss timer. It will be armed again if any unacknowledged packets are
@@ -570,7 +574,7 @@ impl Manager {
                 lost_bytes,
                 persistent_congestion,
                 now,
-                // subscriber,
+                subscriber,
             );
         }
 

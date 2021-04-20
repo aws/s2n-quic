@@ -3,6 +3,7 @@
 
 use crate::endpoint;
 use paste::paste;
+use crate::packet::number::PacketNumberSpace;
 
 #[macro_use]
 mod macros;
@@ -31,7 +32,7 @@ impl Default for Meta {
 
 #[derive(Clone, Debug)]
 pub struct PacketHeader {
-    pub packet_type: u8,
+    pub packet_type: PacketNumberSpace,
 }
 
 events!(
