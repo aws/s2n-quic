@@ -16,8 +16,17 @@ pub trait Event {
 /// maintain compatibility with the qlog spec.
 #[derive(Clone, Debug)]
 pub struct Meta {
-    pub vantage_point: endpoint::Type,
+    pub endpoint_type: endpoint::Type,
     pub group_id: u64,
+}
+
+impl Default for Meta {
+    fn default() -> Self {
+        Self {
+            endpoint_type: endpoint::Type::Server,
+            group_id: 0,
+        }
+    }
 }
 
 events!(
@@ -25,19 +34,19 @@ events!(
     // https://tools.ietf.org/html/draft-marx-qlog-event-definitions-quic-h3-02#section-5.3.1
     /// QUIC version
     struct VersionInformation<'a> {
+        pub meta: Meta,
         pub server_versions: &'a [u32],
         pub client_versions: &'a [u32],
         pub chosen_version: u32,
-        pub meta: Meta,
     }
 
     #[name = "transport:alpn_information"]
     // https://tools.ietf.org/html/draft-marx-qlog-event-definitions-quic-h3-02#section-5.3.1
     /// Application level protocol
     struct AlpnInformation<'a> {
+        pub meta: Meta,
         pub server_alpns: &'a [&'a [u8]],
         pub client_alpns: &'a [&'a [u8]],
         pub chosen_alpn: u32,
-        pub meta: Meta,
     }
 );

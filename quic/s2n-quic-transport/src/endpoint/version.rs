@@ -6,6 +6,7 @@ use alloc::collections::VecDeque;
 use core::{marker::PhantomData, time::Duration};
 use s2n_codec::{Encoder, EncoderBuffer, EncoderValue};
 use s2n_quic_core::{
+    event::{self, events},
     inet::{ExplicitCongestionNotification, SocketAddress},
     io::tx,
     packet,
@@ -58,11 +59,12 @@ impl<Config: endpoint::Config> Negotiator<Config> {
         }
     }
 
-    pub fn on_packet(
+    pub fn on_packet<S: event::Subscriber>(
         &mut self,
         remote_address: SocketAddress,
         payload_len: usize,
         packet: &ProtectedPacket,
+        subscriber: &mut S,
     ) -> Result<(), Error> {
         // always forward packets for clients on to connections
         if Config::ENDPOINT_TYPE.is_client() {
@@ -72,12 +74,33 @@ impl<Config: endpoint::Config> Negotiator<Config> {
         let packet = match packet {
             ProtectedPacket::Initial(packet) => {
                 if is_supported!(packet) {
+                    // TODO the event needs to be propolated with real values
+                    let event = events::VersionInformation::builder()
+                        .with_meta(event::Meta {
+                            endpoint_type: Config::ENDPOINT_TYPE,
+                            group_id: 7,
+                        })
+                        .with_chosen_version(packet.version)
+                        .build();
+
+                    subscriber.on_version_information(&event);
+
                     return Ok(());
                 }
                 packet
             }
             ProtectedPacket::ZeroRtt(packet) => {
                 if is_supported!(packet) {
+                    // TODO the event needs to be propolated with real values
+                    let event = events::VersionInformation::builder()
+                        .with_meta(event::Meta {
+                            endpoint_type: Config::ENDPOINT_TYPE,
+                            group_id: 7,
+                        })
+                        .with_chosen_version(packet.version)
+                        .build();
+                    subscriber.on_version_information(&event);
+
                     return Ok(());
                 }
 
@@ -88,7 +111,16 @@ impl<Config: endpoint::Config> Negotiator<Config> {
                 //# eventually receive an Initial packet.
                 return Err(Error);
             }
-            ProtectedPacket::VersionNegotiation(_) => {
+            ProtectedPacket::VersionNegotiation(_packet) => {
+                // TODO the event needs to be propolated with real values
+                let event = events::VersionInformation::builder()
+                    .with_meta(event::Meta {
+                        endpoint_type: Config::ENDPOINT_TYPE,
+                        group_id: 7,
+                    })
+                    .build();
+                subscriber.on_version_information(&event);
+
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#6.1
                 //# An endpoint MUST NOT send a Version Negotiation packet
                 //# in response to receiving a Version Negotiation packet.
@@ -244,13 +276,14 @@ impl EncoderValue for SupportedVersions {
         //# correctly handle unsupported versions.  Some version numbers
         //# (0x?a?a?a?a as defined in Section 15) are reserved for inclusion in
         //# fields that contain version numbers.
-        encoder.encode(&0xdadada);
+        encoder.encode(&0xdadadadau32);
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "testing"))]
 mod tests {
     use super::*;
+    use crate::endpoint::testing;
     use core::mem::size_of;
     use s2n_codec::{DecoderBufferMut, Encoder, EncoderBuffer};
     use s2n_quic_core::{
@@ -268,8 +301,8 @@ mod tests {
         varint::VarInt,
     };
 
-    type Server = Negotiator<crate::endpoint::testing::Server>;
-    type Client = Negotiator<crate::endpoint::testing::Client>;
+    type Server = Negotiator<testing::Server>;
+    type Client = Negotiator<testing::Client>;
 
     // TAG to append to packet payloads to ensure they meet the minimum packet size
     // that would be expected had they undergone packet protection.
@@ -297,7 +330,12 @@ mod tests {
             let remote_address = SocketAddress::default();
             let connection_info = ConnectionInfo::new(&remote_address);
             let (packet, _) = ProtectedPacket::decode(decoder, &connection_info, &3).unwrap();
-            $negotiator.on_packet($remote_address, $payload_len, &packet)
+            $negotiator.on_packet(
+                $remote_address,
+                $payload_len,
+                &packet,
+                &mut testing::Subscriber,
+            )
         }};
     }
 

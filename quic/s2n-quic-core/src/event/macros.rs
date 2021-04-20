@@ -6,24 +6,96 @@ macro_rules! events {
         #[name = $name_str:literal]
         $(#[$attrs:meta])*
         struct $name:ident $(<$lt:lifetime>)? {
-            $($fields:tt)*
+            pub meta: Meta,
+            $( pub $field_name:ident : $field_type:ty, )*
         }
     )*) => {
-        pub mod events {
-            use super::*;
 
+        pub mod events {
+            //! A set of events that the application can emit.
+            //!
+            //! Event should be created using a `builder`. Each Event has two set of
+            //! builder associated with it; the EventMetaBuilder and the EventBuilder.
+            //!
+            //! The EventMetaBilder captures the Meta field associated with all
+            //! Events. Its functions return a EventBuilder.
+            //!
+            //! The EventBuilder allow for chaining and allows for easy modification
+            //! of values of each event. The `fn build` can be envoked on each
+            //! EventBuilder to finalze and return an Event.
+
+            use super::{Event, Meta, events};
+            use paste::paste;
             $(
                 $(#[$attrs])*
                 #[non_exhaustive]
-                #[derive(Clone, Debug)]
+                #[derive(Clone, Debug, Default)]
                 pub struct $name $(<$lt>)? {
-                    $($fields)*
+                    pub meta: Meta,
+                    $( pub $field_name: $field_type, )*
                 }
 
                 impl $(<$lt>)? Event for $name $(<$lt>)? {
                     const NAME: &'static str = $name_str;
                 }
+
+                paste! {
+                    impl $(<$lt>)? $name $(<$lt>)? {
+                        pub fn builder() -> builder::[<$name MetaBuilder>] $(<$lt>)? {
+                            builder::[<$name MetaBuilder>] ($name::default())
+                        }
+                    }
+                }
             )*
+
+            pub mod builder {
+                //! Builders allow for ergonomic and uniform creation of Events.
+
+                use super::*;
+                $(
+                    paste! {
+                        /// A builder to ensure we specify a Meta for each event.
+                        #[derive(Clone, Debug)]
+                        pub struct [<$name MetaBuilder>] $(<$lt>)? (
+                            pub(super) events::$name $(<$lt>)?
+                        );
+
+                        #[allow(dead_code)]
+                        impl $(<$lt>)? [<$name MetaBuilder>] $(<$lt>)? {
+                            pub fn with_meta(self, meta: Meta) -> [<$name Builder>] $(<$lt>)? {
+                                let mut event = self.0;
+                                event.meta = meta;
+                                [<$name Builder>] (event)
+                            }
+
+                            pub fn default_meta(self) -> [<$name Builder>] $(<$lt>)? {
+                                [<$name Builder>] (self.0)
+                            }
+                        }
+
+                        /// A builder to allow for easy customization of event fields and ensure the
+                        /// event is built only once.
+                        #[derive(Clone, Debug)]
+                        pub struct [<$name Builder>] $(<$lt>)? (
+                            events::$name $(<$lt>)?
+                        );
+
+                        #[allow(dead_code)]
+                        impl $(<$lt>)? [<$name Builder>] $(<$lt>)? {
+                            pub fn build(self) -> events::$name $(<$lt>)? {
+                                self.0
+                            }
+
+                            $(
+                                pub fn [<with_ $field_name>](mut self, $field_name: $field_type) -> Self {
+                                    self.0.$field_name = $field_name;
+                                    self
+                                }
+                            )*
+                        }
+                    }
+                )*
+            }
         }
 
         /// An interface for handling QUIC events.
@@ -34,7 +106,7 @@ macro_rules! events {
         ///
         /// Applications can provide a custom implementation of `Subscriber` to perform
         /// logging, metrics recording, etc.
-        pub trait Subscriber {
+        pub trait Subscriber: 'static {
             $(
                 paste!(
                     $(#[$attrs])*
@@ -57,6 +129,26 @@ macro_rules! events {
                     }
                 );
             )*
+        }
+
+        #[cfg(any(test, feature = "testing"))]
+        mod tests {
+            $( super::paste! {
+                #[test]
+                fn [<build_ $name:snake _with_meta>]() {
+                    let meta = super::Meta::default();
+                    super::events::$name::builder()
+                        .with_meta(meta)
+                        .build();
+                }
+
+                #[test]
+                fn [<build_ $name:snake _default_meta>]() {
+                    super::events::$name::builder()
+                        .default_meta()
+                        .build();
+                }
+            } )*
         }
     };
 }
