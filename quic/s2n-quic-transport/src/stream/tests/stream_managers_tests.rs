@@ -1866,6 +1866,10 @@ fn max_data_causes_on_connection_window_available_to_be_called_on_streams() {
         stream.on_connection_window_available_retrieve_window = 220
     });
 
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.1
+    //= type=test
+    //# A sender MUST ignore any MAX_STREAM_DATA or MAX_DATA frames that do
+    //# not increase flow control limits.
     assert!(manager
         .on_max_data(MaxData {
             maximum_data: current_window,
