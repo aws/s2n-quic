@@ -80,6 +80,12 @@ pub struct Ring<Payloads> {
 /// and can be sent across threads safely.
 unsafe impl<Payloads: Send> Send for Ring<Payloads> {}
 
+impl<Payloads: crate::buffer::Buffer + Default> Default for Ring<Payloads> {
+    fn default() -> Self {
+        Self::new(Payloads::default())
+    }
+}
+
 impl<Payloads: crate::buffer::Buffer> Ring<Payloads> {
     pub fn new(mut payloads: Payloads) -> Self {
         let capacity = payloads.len();

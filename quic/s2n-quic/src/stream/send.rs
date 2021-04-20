@@ -378,6 +378,40 @@ macro_rules! impl_send_stream_trait {
                 futures::io::AsyncWrite::poll_write(self, cx, buf)
             }
 
+            fn poll_write_vectored(
+                mut self: core::pin::Pin<&mut Self>,
+                cx: &mut core::task::Context<'_>,
+                bufs: &[std::io::IoSlice],
+            ) -> core::task::Poll<std::io::Result<usize>> {
+                if bufs.is_empty() {
+                    return Ok(0).into();
+                }
+
+                let len = futures::ready!(self.poll_send_ready(cx))?;
+                let capacity = bufs.iter().map(|buf| buf.len()).sum();
+                let len = len.min(capacity);
+
+                let mut data = bytes::BytesMut::with_capacity(len);
+                for buf in bufs {
+                    // only copy what the window will allow
+                    let to_copy = buf.len().min(len - data.len());
+                    data.extend_from_slice(&buf[..to_copy]);
+
+                    // we're done filling the buffer
+                    if data.len() == len {
+                        break;
+                    }
+                }
+
+                self.send_data(data.freeze())?;
+
+                Ok(len).into()
+            }
+
+            fn is_write_vectored(&self) -> bool {
+                true
+            }
+
             fn poll_flush(
                 self: core::pin::Pin<&mut Self>,
                 cx: &mut core::task::Context<'_>,

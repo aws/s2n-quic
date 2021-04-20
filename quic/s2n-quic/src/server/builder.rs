@@ -44,28 +44,6 @@ impl fmt::Display for StartError {
 
 impl<Providers: ServerProviders> Builder<Providers> {
     impl_provider_method!(
-        /// Sets the clock provider for the [`Server`]
-        ///
-        /// # Examples
-        ///
-        /// ```rust,no_run
-        /// # use std::error::Error;
-        /// use s2n_quic::{Server, provider::clock};
-        /// #
-        /// # #[tokio::main]
-        /// # async fn main() -> Result<(), Box<dyn Error>> {
-        /// let server = Server::builder()
-        ///     .with_clock(clock::Default::default())?
-        ///     .start()?;
-        /// #
-        /// #   Ok(())
-        /// # }
-        /// ```
-        with_clock,
-        clock
-    );
-
-    impl_provider_method!(
         /// Sets the congestion controller provider for the [`Server`]
         ///
         /// # Examples
@@ -234,30 +212,6 @@ impl<Providers: ServerProviders> Builder<Providers> {
     );
 
     impl_provider_method!(
-        /// Sets the runtime provider for the [`Server`]
-        ///
-        /// # Examples
-        ///
-        /// Uses the tokio runtime.
-        ///
-        /// ```rust,no_run
-        /// # use std::error::Error;
-        /// use s2n_quic::{Server, provider::runtime};
-        /// #
-        /// # #[tokio::main]
-        /// # async fn main() -> Result<(), Box<dyn Error>> {
-        /// let server = Server::builder()
-        ///     .with_runtime(tokio::runtime::Handle::current())?
-        ///     .start()?;
-        /// #
-        /// #    Ok(())
-        /// # }
-        /// ```
-        with_runtime,
-        runtime
-    );
-
-    impl_provider_method!(
         /// Sets the IO provider for the [`Server`]
         ///
         /// # Examples
@@ -278,27 +232,23 @@ impl<Providers: ServerProviders> Builder<Providers> {
         /// # }
         /// ```
         ///
-        /// Configures a socket pair
+        /// Configures a socket with the provided `Builder`
         ///
         /// ```rust,no_run
         /// # use std::error::Error;
-        /// use s2n_quic::{Server, provider::io::platform as io};
+        /// use s2n_quic::{Server, provider::io::tokio::Builder as IoBuilder};
+        /// use std::net::ToSocketAddrs;
         /// #
         /// # #[tokio::main]
         /// # async fn main() -> Result<(), Box<dyn Error>> {
-        /// let addr = "127.0.0.1:443";
+        /// let addr = "127.0.0.1:443".to_socket_addrs()?.next().unwrap();
         ///
-        /// let socket = io::Socket::builder()?
+        /// let io = IoBuilder::default()
         ///     .with_address(addr)?
-        ///     .with_address_reuse()?
         ///     .build()?;
         ///
-        /// let rx = io::Rx::new(io::Buffer::default(), socket.try_clone()?);
-        /// let tx = io::Tx::new(io::Buffer::default(), socket);
-        /// let duplex = io::Duplex { rx, tx };
-        ///
         /// let server = Server::builder()
-        ///     .with_io(duplex)?
+        ///     .with_io(io)?
         ///     .start()?;
         /// #
         /// #    Ok(())
@@ -306,30 +256,6 @@ impl<Providers: ServerProviders> Builder<Providers> {
         /// ```
         with_io,
         io
-    );
-
-    impl_provider_method!(
-        /// Sets the synchronization provider for the [`Server`]
-        ///
-        /// # Examples
-        ///
-        /// Uses [`std::sync::Mutex`] to perform synchronization.
-        ///
-        /// ```rust,ignore
-        /// # use std::{error::Error, time::Duration};
-        /// use s2n_quic::{Server, provider::sync};
-        /// #
-        /// # #[tokio::main]
-        /// # async fn main() -> Result<(), Box<dyn Error>> {
-        /// let server = Server::builder()
-        ///     .with_sync(sync::Mutex::default())?
-        ///     .start()?;
-        /// #
-        /// #    Ok(())
-        /// # }
-        /// ```
-        with_sync,
-        sync
     );
 
     impl_provider_method!(

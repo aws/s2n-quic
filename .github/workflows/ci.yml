@@ -128,7 +128,7 @@ jobs:
           toolchain: stable
           profile: minimal
           override: true
-      
+
       - uses: camshaft/rust-cache@v1
 
       - name: Run cargo doc
@@ -283,7 +283,7 @@ jobs:
       - uses: camshaft/rust-cache@v1
 
       - name: Cache cargo-compliance
-        uses: actions/cache@v2.1.4
+        uses: actions/cache@v2.1.5
         continue-on-error: true
         with:
           path: target/release/cargo-compliance

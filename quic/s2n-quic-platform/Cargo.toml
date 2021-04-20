@@ -10,17 +10,17 @@ default = ["ipv6", "std", "tokio-runtime", "wipe"]
 ipv6 = []
 std = ["s2n-quic-core/std", "socket2", "lazy_static"]
 testing = ["std"] # Testing allows to overwrite the system time
-tokio-runtime = ["mio", "tokio"]
+tokio-runtime = ["futures", "pin-project", "tokio"]
 wipe = ["zeroize"]
 
 [dependencies]
 cfg-if = "1.0"
-futures-core = { version = "0.3", default-features = false }
+futures = { version = "0.3", optional = true }
 lazy_static = { version = "1.4", optional = true }
-mio = { version = "0.6", optional = true }
+pin-project = { version = "1", optional = true }
 s2n-quic-core = { version = "0.1.0", path = "../s2n-quic-core", default-features = false }
-socket2 = { version = "0.3", features = ["reuseport"], optional = true }
-tokio = { version = "0.2", default-features = false, features = ["io-driver"], optional = true }
+socket2 = { version = "0.4", features = ["all"], optional = true }
+tokio = { version = "1", default-features = false, features = ["macros", "net", "rt", "time"], optional = true }
 zeroize = { version = "1", default-features = false, optional = true }
 
 [target.'cfg(unix)'.dependencies]
@@ -29,4 +29,4 @@ libc = "0.2"
 [dev-dependencies]
 bolero = "0.6"
 s2n-quic-core = { version = "0.1.0", path = "../s2n-quic-core", features = ["testing"] }
-tokio = { version = "0.2", features = ["macros", "rt-threaded", "time", "udp"] }
+tokio = { version = "1", features = ["full"] }
