@@ -482,7 +482,7 @@ impl<S: StreamTrait> StreamContainer<S> {
         );
     }
 
-    /// Iterates over all `Stream`s which waiting for stream flow control
+    /// Iterates over all `Stream`s which are waiting for stream flow control
     /// credits, and executes the given function on each `Stream`
     ///
     /// The `stream::Controller` will be notified of streams that have been
