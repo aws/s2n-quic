@@ -11,6 +11,7 @@ use s2n_quic_core::{
     ack,
     connection::limits::Limits,
     crypto::{tls, tls::Session, CryptoSuite},
+    event,
     frame::{
         ack::AckRanges, crypto::CryptoRef, stream::StreamRef, Ack, ConnectionClose, DataBlocked,
         HandshakeDone, MaxData, MaxStreamData, MaxStreams, NewConnectionId, NewToken,
@@ -179,11 +180,12 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
     }
 
     /// Called when the connection timer expired
-    pub fn on_timeout(
+    pub fn on_timeout<S: event::Subscriber>(
         &mut self,
         local_id_registry: &mut connection::LocalIdRegistry,
         path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
         timestamp: Timestamp,
+        subscriber: &mut S,
     ) {
         let path = path_manager.active_path_mut();
 
@@ -191,13 +193,13 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         let max_backoff = path.pto_backoff * 2;
 
         if let Some((space, handshake_status)) = self.initial_mut() {
-            space.on_timeout(path, handshake_status, timestamp)
+            space.on_timeout(path, handshake_status, timestamp, subscriber)
         }
         if let Some((space, handshake_status)) = self.handshake_mut() {
-            space.on_timeout(path, handshake_status, timestamp)
+            space.on_timeout(path, handshake_status, timestamp, subscriber)
         }
         if let Some((space, handshake_status)) = self.application_mut() {
-            space.on_timeout(path_manager, handshake_status, local_id_registry, timestamp)
+            space.on_timeout(path_manager, handshake_status, local_id_registry, timestamp, subscriber)
         }
 
         let path = path_manager.active_path_mut();
@@ -401,7 +403,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
         path: &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
     ) -> Result<(), transport::Error>;
 
-    fn handle_ack_frame<A: AckRanges>(
+    fn handle_ack_frame<A: AckRanges, S: event::Subscriber>(
         &mut self,
         frame: Ack<A>,
         datagram: &DatagramInfo,
@@ -409,6 +411,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
         path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
         handshake_status: &mut HandshakeStatus,
         local_id_registry: &mut connection::LocalIdRegistry,
+        subscriber: &mut S,
     ) -> Result<(), transport::Error>;
 
     fn handle_connection_close_frame(
@@ -474,7 +477,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
 
     // TODO: Reduce arguments, https://github.com/awslabs/s2n-quic/issues/312
     #[allow(clippy::too_many_arguments)]
-    fn handle_cleartext_payload<'a>(
+    fn handle_cleartext_payload<'a, S: event::Subscriber>(
         &mut self,
         packet_number: PacketNumber,
         mut payload: DecoderBufferMut<'a>,
@@ -483,6 +486,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
         path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
         handshake_status: &mut HandshakeStatus,
         local_id_registry: &mut connection::LocalIdRegistry,
+        subscriber: &mut S,
     ) -> Result<(), connection::Error> {
         use s2n_quic_core::{
             frame::{Frame, FrameMut},
@@ -541,6 +545,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
                         path_manager,
                         handshake_status,
                         local_id_registry,
+                        subscriber,
                     )
                     .map_err(on_error)?;
                 }

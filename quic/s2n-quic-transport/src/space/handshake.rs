@@ -17,6 +17,7 @@ use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
     crypto::{tls, CryptoSuite},
     frame::{ack::AckRanges, crypto::CryptoRef, Ack, ConnectionClose},
+    event,
     inet::DatagramInfo,
     packet::{
         encoding::{PacketEncoder, PacketEncodingError},
@@ -218,16 +219,17 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
     }
 
     /// Called when the connection timer expired
-    pub fn on_timeout(
+    pub fn on_timeout<S: event::Subscriber>(
         &mut self,
         path: &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
         handshake_status: &HandshakeStatus,
         timestamp: Timestamp,
+        subscriber: &mut S,
     ) {
         self.ack_manager.on_timeout(timestamp);
 
         let (recovery_manager, mut context) = self.recovery(path, handshake_status);
-        recovery_manager.on_timeout(timestamp, &mut context)
+        recovery_manager.on_timeout(timestamp, &mut context, subscriber)
     }
 
     /// Called before the Handshake packet space is discarded
@@ -377,7 +379,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for HandshakeSpace<Config> {
         Ok(())
     }
 
-    fn handle_ack_frame<A: AckRanges>(
+    fn handle_ack_frame<A: AckRanges, S: event::Subscriber>(
         &mut self,
         frame: Ack<A>,
         datagram: &DatagramInfo,
@@ -385,11 +387,12 @@ impl<Config: endpoint::Config> PacketSpace<Config> for HandshakeSpace<Config> {
         path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
         handshake_status: &mut HandshakeStatus,
         _local_id_registry: &mut connection::LocalIdRegistry,
+        subscriber: &mut S,
     ) -> Result<(), transport::Error> {
         let path = &mut path_manager[path_id];
         path.on_peer_validated();
         let (recovery_manager, mut context) = self.recovery(path, handshake_status);
-        recovery_manager.on_ack_frame(datagram, frame, &mut context)
+        recovery_manager.on_ack_frame(datagram, frame, &mut context, subscriber)
     }
 
     fn handle_connection_close_frame(
