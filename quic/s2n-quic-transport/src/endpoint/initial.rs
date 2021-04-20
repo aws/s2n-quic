@@ -30,6 +30,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         packet: ProtectedInitial,
         remaining: DecoderBufferMut,
         retry_token_dcid: Option<connection::InitialId>,
+        // subscriber: &mut S,
     ) -> Result<(), connection::Error> {
         debug_assert!(
             Config::ENDPOINT_TYPE.is_server(),
@@ -259,8 +260,9 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                 endpoint_context.congestion_controller,
             )?;
 
+
             connection
-                .handle_cleartext_initial_packet(locked_shared_state, datagram, path_id, packet)
+                .handle_cleartext_initial_packet(locked_shared_state, datagram, path_id, packet, endpoint_context.event_subscriber)
                 .map_err(|err| {
                     use connection::ProcessingError;
                     match err {
@@ -283,6 +285,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                 path_id,
                 endpoint_context.connection_id_format,
                 remaining,
+                endpoint_context.event_subscriber,
             )?;
 
             //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.3

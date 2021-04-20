@@ -298,7 +298,8 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         //# peer's address, unless it has previously validated that address.
 
                         if let Err(err) =
-                            conn.handle_packet(shared_state, datagram, path_id, packet)
+                            conn.handle_packet(shared_state, datagram, path_id, packet,
+                            endpoint_context.event_subscriber)
                         {
                             match err {
                                 ProcessingError::DuplicatePacket => {
@@ -335,6 +336,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                             path_id,
                             endpoint_context.connection_id_format,
                             remaining,
+                            endpoint_context.event_subscriber
                         ) {
                             conn.close(
                                 Some(shared_state),
@@ -607,7 +609,9 @@ impl<Cfg: Config> Endpoint<Cfg> {
             self.connections
                 .with_connection(internal_id, |conn, mut shared_state| {
                     if let Err(error) =
-                        conn.on_timeout(shared_state.as_deref_mut(), connection_id_mapper, now)
+                        conn.on_timeout(shared_state.as_deref_mut(), connection_id_mapper, now,
+                endpoint_context.event_subscriber,
+                        )
                     {
                         conn.close(
                             shared_state,
