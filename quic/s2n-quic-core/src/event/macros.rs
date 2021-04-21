@@ -149,20 +149,30 @@ macro_rules! events {
         mod tests {
             $( super::paste! {
                 #[test]
-                fn [<build_ $name:snake _with_meta>]() {
-                    let meta = super::Meta::default();
-                    super::events::$name::builder()
-                        .with_meta(meta)
-                        .build();
-                }
-
-                #[test]
-                fn [<build_ $name:snake _default_meta>]() {
-                    super::events::$name::builder()
-                        .default_meta()
-                        .build();
+                fn [<build_ $name:snake>]() {
+                    super::events::$name::builder().build();
                 }
             } )*
+        }
+
+        #[cfg(any(test, feature = "testing"))]
+        pub mod testing {
+            use super::events;
+
+            pub struct Subscriber;
+            impl super::Subscriber for Subscriber{}
+
+            pub struct Publisher;
+            impl super::Publisher for Publisher{
+                $(
+                    super::paste!(
+                        $(#[$attrs])*
+                        fn [<on_ $name:snake>](&mut self, event: &events::$name) {
+                            let _ = event;
+                        }
+                    );
+                )*
+            }
         }
     };
 }

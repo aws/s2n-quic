@@ -285,6 +285,7 @@ mod tests {
             version_negotiation::VersionNegotiation,
             zero_rtt::ZeroRtt,
         },
+        testing::event::Subscriber,
         varint::VarInt,
     };
 
@@ -317,12 +318,7 @@ mod tests {
             let remote_address = SocketAddress::default();
             let connection_info = ConnectionInfo::new(&remote_address);
             let (packet, _) = ProtectedPacket::decode(decoder, &connection_info, &3).unwrap();
-            $negotiator.on_packet(
-                $remote_address,
-                $payload_len,
-                &packet,
-                &mut testing::Pubscriber,
-            )
+            $negotiator.on_packet($remote_address, $payload_len, &packet, &mut Subscriber)
         }};
     }
 

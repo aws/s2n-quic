@@ -681,7 +681,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
 #[cfg(any(test, feature = "testing"))]
 pub mod testing {
     use super::*;
-    use s2n_quic_core::{endpoint, event, random, stateless_reset};
+    use s2n_quic_core::{endpoint, event, random, stateless_reset, testing::Subscriber};
 
     #[derive(Debug)]
     pub struct Server;
@@ -742,8 +742,4 @@ pub mod testing {
             endpoint::limits::Outcome::Allow
         }
     }
-
-    #[derive(Debug)]
-    pub struct Subscriber;
-    impl event::Subscriber for Subscriber {}
 }
