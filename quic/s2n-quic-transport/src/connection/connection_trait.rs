@@ -16,7 +16,7 @@ use crate::{
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     inet::DatagramInfo,
-    event,
+    event::{self, events},
     io::tx,
     packet::{
         handshake::ProtectedHandshake,
@@ -213,6 +213,8 @@ pub trait ConnectionTrait: Sized {
         // any special logic required to meet this requirement as each packet is handled
         // independently.
 
+        let event = events::PacketReceived::builder().build();
+        publisher.on_packet_received(&event);
         match packet {
             ProtectedPacket::Short(packet) => {
                 self.handle_short_packet(shared_state, datagram, path_id, packet)

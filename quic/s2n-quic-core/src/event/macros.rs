@@ -23,7 +23,7 @@ macro_rules! events {
             //! of values of each event. The `fn build` can be envoked on each
             //! EventBuilder to finalze and return an Event.
 
-            use super::{Event, events};
+            use super::{Event, events, PacketHeader};
             use paste::paste;
             $(
                 $(#[$attrs])*

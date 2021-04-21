@@ -29,6 +29,23 @@ impl Default for Meta {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct PacketHeader {
+    pub packet_type: bool,
+    pub packet_number: u64,
+    pub version: u64,
+}
+
+impl Default for PacketHeader {
+    fn default() -> Self {
+        Self {
+            packet_type: false,
+            packet_number: 0,
+            version: 0,
+        }
+    }
+}
+
 events!(
     #[name = "transport::version_information"]
     //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.1
@@ -56,6 +73,7 @@ events!(
     //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.5
     /// Application level protocol
     struct PacketSent<'a> {
+        pub packet_header: PacketHeader,
         pub frames: &'a [&'a [u8]],
         pub is_coalesced: bool,
     }
@@ -64,6 +82,7 @@ events!(
     //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.6
     /// Application level protocol
     struct PacketReceived<'a> {
+        pub packet_header: PacketHeader,
         pub frames: &'a [&'a [u8]],
         pub is_coalesced: bool,
     }
