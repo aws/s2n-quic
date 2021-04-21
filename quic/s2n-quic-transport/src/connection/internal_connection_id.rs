@@ -36,9 +36,9 @@ impl InternalConnectionIdGenerator {
     }
 }
 
-impl Into<u64> for InternalConnectionId {
-    fn into(self) -> u64 {
-        self.0
+impl From<InternalConnectionId> for u64 {
+    fn from(internal_conn_id: InternalConnectionId) -> u64 {
+        internal_conn_id.0
     }
 }
 

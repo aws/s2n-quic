@@ -276,6 +276,7 @@ mod tests {
     use s2n_quic_core::{
         connection,
         connection::id::ConnectionInfo,
+        event::testing::Publisher,
         inet::DatagramInfo,
         packet::{
             handshake::Handshake,
@@ -285,7 +286,6 @@ mod tests {
             version_negotiation::VersionNegotiation,
             zero_rtt::ZeroRtt,
         },
-        testing::event::Subscriber,
         varint::VarInt,
     };
 
@@ -318,7 +318,7 @@ mod tests {
             let remote_address = SocketAddress::default();
             let connection_info = ConnectionInfo::new(&remote_address);
             let (packet, _) = ProtectedPacket::decode(decoder, &connection_info, &3).unwrap();
-            $negotiator.on_packet($remote_address, $payload_len, &packet, &mut Subscriber)
+            $negotiator.on_packet($remote_address, $payload_len, &packet, &mut Publisher)
         }};
     }
 
