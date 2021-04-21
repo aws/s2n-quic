@@ -120,9 +120,18 @@ macro_rules! events {
             )*
         }
 
-        struct PublisherSubscriber<'a, Sub: Subscriber> {
+        pub struct PublisherSubscriber<'a, Sub: Subscriber> {
             meta: Meta,
             subscriber: &'a mut Sub,
+        }
+
+        impl<'a, Sub: Subscriber> PublisherSubscriber<'a, Sub> {
+            pub fn new(meta: Meta, subscriber: &'a mut Sub) -> PublisherSubscriber<'a, Sub> {
+                PublisherSubscriber {
+                    meta,
+                    subscriber
+                }
+            }
         }
 
         impl<'a, Sub: Subscriber> Publisher for PublisherSubscriber<'a, Sub> {

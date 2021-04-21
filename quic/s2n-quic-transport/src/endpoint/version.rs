@@ -59,12 +59,12 @@ impl<Config: endpoint::Config> Negotiator<Config> {
         }
     }
 
-    pub fn on_packet<S: event::Subscriber>(
+    pub fn on_packet<Pub: event::Publisher>(
         &mut self,
         remote_address: SocketAddress,
         payload_len: usize,
         packet: &ProtectedPacket,
-        subscriber: &mut S,
+        publisher: &mut Pub,
     ) -> Result<(), Error> {
         // always forward packets for clients on to connections
         if Config::ENDPOINT_TYPE.is_client() {
@@ -76,14 +76,10 @@ impl<Config: endpoint::Config> Negotiator<Config> {
                 if is_supported!(packet) {
                     // TODO the event needs to be propolated with real values
                     let event = events::VersionInformation::builder()
-                        .with_meta(event::Meta {
-                            endpoint_type: Config::ENDPOINT_TYPE,
-                            group_id: 7,
-                        })
                         .with_chosen_version(packet.version)
                         .build();
 
-                    subscriber.on_version_information(&event);
+                    publisher.on_version_information(&event);
 
                     return Ok(());
                 }
@@ -93,13 +89,9 @@ impl<Config: endpoint::Config> Negotiator<Config> {
                 if is_supported!(packet) {
                     // TODO the event needs to be propolated with real values
                     let event = events::VersionInformation::builder()
-                        .with_meta(event::Meta {
-                            endpoint_type: Config::ENDPOINT_TYPE,
-                            group_id: 7,
-                        })
                         .with_chosen_version(packet.version)
                         .build();
-                    subscriber.on_version_information(&event);
+                    publisher.on_version_information(&event);
 
                     return Ok(());
                 }
@@ -114,12 +106,8 @@ impl<Config: endpoint::Config> Negotiator<Config> {
             ProtectedPacket::VersionNegotiation(_packet) => {
                 // TODO the event needs to be propolated with real values
                 let event = events::VersionInformation::builder()
-                    .with_meta(event::Meta {
-                        endpoint_type: Config::ENDPOINT_TYPE,
-                        group_id: 7,
-                    })
                     .build();
-                subscriber.on_version_information(&event);
+                publisher.on_version_information(&event);
 
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#6.1
                 //# An endpoint MUST NOT send a Version Negotiation packet
@@ -334,7 +322,7 @@ mod tests {
                 $remote_address,
                 $payload_len,
                 &packet,
-                &mut testing::Subscriber,
+                &mut testing::Pubscriber,
             )
         }};
     }

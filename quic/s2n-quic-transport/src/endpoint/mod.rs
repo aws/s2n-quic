@@ -41,6 +41,7 @@ use connection::id::ConnectionInfo;
 pub use packet_buffer::Buffer as PacketBuffer;
 pub use s2n_quic_core::endpoint::*;
 use s2n_quic_core::{
+    event,
     connection::LocalId,
     crypto::tls::Endpoint as _,
     inet::{ExplicitCongestionNotification, SocketAddress},
@@ -291,13 +292,20 @@ impl<Cfg: Config> Endpoint<Cfg> {
         // Ensure the version is supported. This check occurs before the destination
         // connection ID is parsed since future versions of QUIC could have different
         // length requirements for connection IDs.
+        let mut publisher = event::PublisherSubscriber::new(
+            event::Meta{
+                endpoint_type: Cfg::ENDPOINT_TYPE,
+                group_id: 7,
+            },
+            endpoint_context.event_subscriber,
+        );
         if self
             .version_negotiator
             .on_packet(
                 remote_address,
                 payload_len,
                 &packet,
-                endpoint_context.event_subscriber,
+                &mut publisher,
             )
             .is_err()
         {
