@@ -16,6 +16,7 @@ use crate::{
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     inet::DatagramInfo,
+    event,
     io::tx,
     packet::{
         handshake::ProtectedHandshake,
@@ -188,12 +189,13 @@ pub trait ConnectionTrait: Sized {
     fn quic_version(&self) -> u32;
 
     /// Handles reception of a single QUIC packet
-    fn handle_packet(
+    fn handle_packet<Pub: event::Publisher>(
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedPacket,
+        publisher: &mut Pub,
     ) -> Result<(), ProcessingError> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2.1
         //# If a client receives a packet that uses a different version than it
@@ -235,13 +237,14 @@ pub trait ConnectionTrait: Sized {
 
     /// This is called to handle the remaining and yet undecoded packets inside
     /// a datagram.
-    fn handle_remaining_packets<Validator: connection::id::Validator>(
+    fn handle_remaining_packets<Validator: connection::id::Validator, Pub: event::Publisher>(
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         path_id: path::Id,
         connection_id_validator: &Validator,
         mut payload: DecoderBufferMut,
+        publisher: &mut Pub,
     ) -> Result<(), connection::Error> {
         let connection_info = ConnectionInfo::new(&datagram.remote_address);
 
@@ -262,7 +265,7 @@ pub trait ConnectionTrait: Sized {
                     break;
                 }
 
-                let result = self.handle_packet(shared_state, datagram, path_id, packet);
+                let result = self.handle_packet(shared_state, datagram, path_id, packet, publisher);
 
                 if let Err(ProcessingError::ConnectionError(err)) = result {
                     // CryptoErrors returned as a result of a packet failing decryption will be

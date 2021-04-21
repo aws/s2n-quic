@@ -47,4 +47,12 @@ events!(
         pub client_alpns: &'a [&'a [u8]],
         pub chosen_alpn: u32,
     }
+
+    #[name = "transport:packet_sent"]
+    // https://tools.ietf.org/html/draft-marx-qlog-event-definitions-quic-h3-02#section-5.3.5
+    /// Application level protocol
+    struct PacketSent<'a> {
+        pub frames: &'a [&'a [u8]],
+        pub is_coalesced: &'a [&'a [u8]],
+    }
 );

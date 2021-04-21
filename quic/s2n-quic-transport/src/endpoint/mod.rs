@@ -375,8 +375,15 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         //# perform path validation (Section 8.2) if it detects any change to a
                         //# peer's address, unless it has previously validated that address.
 
+                        let mut publisher = event::PublisherSubscriber::new(
+                            event::Meta{
+                                endpoint_type: Cfg::ENDPOINT_TYPE,
+                                group_id: internal_id.into(),
+                            },
+                            endpoint_context.event_subscriber,
+                        );
                         if let Err(err) =
-                            conn.handle_packet(shared_state, datagram, path_id, packet)
+                            conn.handle_packet(shared_state, datagram, path_id, packet, &mut publisher)
                         {
                             match err {
                                 ProcessingError::DuplicatePacket => {
@@ -413,6 +420,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                             path_id,
                             endpoint_context.connection_id_format,
                             remaining,
+                            &mut publisher,
                         ) {
                             conn.close(
                                 Some(shared_state),

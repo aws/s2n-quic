@@ -36,6 +36,12 @@ impl InternalConnectionIdGenerator {
     }
 }
 
+impl Into<u64> for InternalConnectionId {
+    fn into(self) -> u64 {
+        self.0
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
