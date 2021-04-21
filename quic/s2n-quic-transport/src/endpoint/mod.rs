@@ -289,9 +289,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             return;
         };
 
-        // Ensure the version is supported. This check occurs before the destination
-        // connection ID is parsed since future versions of QUIC could have different
-        // length requirements for connection IDs.
+        // TODO: generate a new internal connection id
         let mut publisher = event::PublisherSubscriber::new(
             event::Meta {
                 endpoint_type: Cfg::ENDPOINT_TYPE,
@@ -299,6 +297,10 @@ impl<Cfg: Config> Endpoint<Cfg> {
             },
             endpoint_context.event_subscriber,
         );
+
+        // Ensure the version is supported. This check occurs before the destination
+        // connection ID is parsed since future versions of QUIC could have different
+        // length requirements for connection IDs.
         if self
             .version_negotiator
             .on_packet(remote_address, payload_len, &packet, &mut publisher)

@@ -30,6 +30,7 @@ impl Default for Meta {
 }
 
 //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#A.2
+//# PacketType
 #[derive(Clone, Debug)]
 pub enum PacketType {
     Initial,
@@ -43,6 +44,7 @@ pub enum PacketType {
 }
 
 //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#A.4
+//# Note: short vs long header is implicit through PacketType
 #[derive(Clone, Debug)]
 pub struct PacketHeader {
     pub packet_type: PacketType,
@@ -85,7 +87,7 @@ events!(
 
     #[name = "transport:packet_sent"]
     //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.5
-    /// Application level protocol
+    /// Packet was sent
     struct PacketSent<'a> {
         pub packet_header: PacketHeader,
         pub frames: &'a [&'a [u8]],
@@ -94,7 +96,7 @@ events!(
 
     #[name = "transport:packet_received"]
     //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.6
-    /// Application level protocol
+    /// Packet was received
     struct PacketReceived<'a> {
         pub packet_header: PacketHeader,
         pub frames: &'a [&'a [u8]],
