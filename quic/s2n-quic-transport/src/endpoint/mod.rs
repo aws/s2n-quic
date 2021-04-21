@@ -41,9 +41,9 @@ use connection::id::ConnectionInfo;
 pub use packet_buffer::Buffer as PacketBuffer;
 pub use s2n_quic_core::endpoint::*;
 use s2n_quic_core::{
-    event,
     connection::LocalId,
     crypto::tls::Endpoint as _,
+    event,
     inet::{ExplicitCongestionNotification, SocketAddress},
     stateless_reset::token::Generator as _,
 };
@@ -293,7 +293,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
         // connection ID is parsed since future versions of QUIC could have different
         // length requirements for connection IDs.
         let mut publisher = event::PublisherSubscriber::new(
-            event::Meta{
+            event::Meta {
                 endpoint_type: Cfg::ENDPOINT_TYPE,
                 group_id: 7,
             },
@@ -301,12 +301,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
         );
         if self
             .version_negotiator
-            .on_packet(
-                remote_address,
-                payload_len,
-                &packet,
-                &mut publisher,
-            )
+            .on_packet(remote_address, payload_len, &packet, &mut publisher)
             .is_err()
         {
             return;
@@ -376,15 +371,19 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         //# peer's address, unless it has previously validated that address.
 
                         let mut publisher = event::PublisherSubscriber::new(
-                            event::Meta{
+                            event::Meta {
                                 endpoint_type: Cfg::ENDPOINT_TYPE,
                                 group_id: internal_id.into(),
                             },
                             endpoint_context.event_subscriber,
                         );
-                        if let Err(err) =
-                            conn.handle_packet(shared_state, datagram, path_id, packet, &mut publisher)
-                        {
+                        if let Err(err) = conn.handle_packet(
+                            shared_state,
+                            datagram,
+                            path_id,
+                            packet,
+                            &mut publisher,
+                        ) {
                             match err {
                                 ProcessingError::DuplicatePacket => {
                                     // We discard duplicate packets

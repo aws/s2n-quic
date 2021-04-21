@@ -105,8 +105,7 @@ impl<Config: endpoint::Config> Negotiator<Config> {
             }
             ProtectedPacket::VersionNegotiation(_packet) => {
                 // TODO the event needs to be propolated with real values
-                let event = events::VersionInformation::builder()
-                    .build();
+                let event = events::VersionInformation::builder().build();
                 publisher.on_version_information(&event);
 
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#6.1

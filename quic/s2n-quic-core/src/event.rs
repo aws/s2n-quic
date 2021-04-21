@@ -48,14 +48,14 @@ impl Default for PacketHeader {
 
 #[derive(Clone, Debug)]
 pub enum PacketType {
-       Initial,
-       Handshake,
-       ZeroRtt,
-       OneRtt,
-       Retry,
-       VersionNegotiation,
-       StatelessReset,
-       Unknown
+    Initial,
+    Handshake,
+    ZeroRtt,
+    OneRtt,
+    Retry,
+    VersionNegotiation,
+    StatelessReset,
+    Unknown,
 }
 
 events!(

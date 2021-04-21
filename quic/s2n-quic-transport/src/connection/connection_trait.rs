@@ -15,8 +15,8 @@ use crate::{
 };
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
+    event,
     inet::DatagramInfo,
-    event::{self, events},
     io::tx,
     packet::{
         handshake::ProtectedHandshake,
