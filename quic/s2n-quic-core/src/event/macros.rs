@@ -6,7 +6,6 @@ macro_rules! events {
         #[name = $name_str:literal]
         $(#[$attrs:meta])*
         struct $name:ident $(<$lt:lifetime>)? {
-            pub meta: Meta,
             $( pub $field_name:ident : $field_type:ty, )*
         }
     )*) => {
@@ -24,14 +23,13 @@ macro_rules! events {
             //! of values of each event. The `fn build` can be envoked on each
             //! EventBuilder to finalze and return an Event.
 
-            use super::{Event, Meta, events};
+            use super::{Event, events};
             use paste::paste;
             $(
                 $(#[$attrs])*
                 #[non_exhaustive]
                 #[derive(Clone, Debug, Default)]
                 pub struct $name $(<$lt>)? {
-                    pub meta: Meta,
                     $( pub $field_name: $field_type, )*
                 }
 
@@ -41,8 +39,8 @@ macro_rules! events {
 
                 paste! {
                     impl $(<$lt>)? $name $(<$lt>)? {
-                        pub fn builder() -> builder::[<$name MetaBuilder>] $(<$lt>)? {
-                            builder::[<$name MetaBuilder>] ($name::default())
+                        pub fn builder() -> builder::[<$name Builder>] $(<$lt>)? {
+                            builder::[<$name Builder>]::default()
                         }
                     }
                 }
@@ -54,28 +52,9 @@ macro_rules! events {
                 use super::*;
                 $(
                     paste! {
-                        /// A builder to ensure we specify a Meta for each event.
-                        #[derive(Clone, Debug)]
-                        pub struct [<$name MetaBuilder>] $(<$lt>)? (
-                            pub(super) events::$name $(<$lt>)?
-                        );
-
-                        #[allow(dead_code)]
-                        impl $(<$lt>)? [<$name MetaBuilder>] $(<$lt>)? {
-                            pub fn with_meta(self, meta: Meta) -> [<$name Builder>] $(<$lt>)? {
-                                let mut event = self.0;
-                                event.meta = meta;
-                                [<$name Builder>] (event)
-                            }
-
-                            pub fn default_meta(self) -> [<$name Builder>] $(<$lt>)? {
-                                [<$name Builder>] (self.0)
-                            }
-                        }
-
                         /// A builder to allow for easy customization of event fields and ensure the
                         /// event is built only once.
-                        #[derive(Clone, Debug)]
+                        #[derive(Clone, Debug, Default)]
                         pub struct [<$name Builder>] $(<$lt>)? (
                             events::$name $(<$lt>)?
                         );
@@ -110,7 +89,8 @@ macro_rules! events {
             $(
                 paste!(
                     $(#[$attrs])*
-                    fn [<on_ $name:snake>](&mut self, event: &events::$name) {
+                    fn [<on_ $name:snake>](&mut self, meta: &Meta, event: &events::$name) {
+                        let _ = meta;
                         let _ = event;
                     }
                 );
@@ -123,9 +103,34 @@ macro_rules! events {
         {
             $(
                 paste!(
+                    fn [<on_ $name:snake>](&mut self, meta: &Meta, event: &events::$name) {
+                        self.0.[<on_ $name:snake>](meta, event);
+                        self.1.[<on_ $name:snake>](meta, event);
+                    }
+                );
+            )*
+        }
+
+        pub trait Publisher {
+            $(
+                paste!(
+                    $(#[$attrs])*
+                    fn [<on_ $name:snake>](&mut self, event: &events::$name);
+                );
+            )*
+        }
+
+        struct PublisherSubscriber<'a, Sub: Subscriber> {
+            meta: Meta,
+            subscriber: &'a mut Sub,
+        }
+
+        impl<'a, Sub: Subscriber> Publisher for PublisherSubscriber<'a, Sub> {
+            $(
+                paste!(
+                    $(#[$attrs])*
                     fn [<on_ $name:snake>](&mut self, event: &events::$name) {
-                        self.0.[<on_ $name:snake>](event);
-                        self.1.[<on_ $name:snake>](event);
+                        self.subscriber.[<on_ $name:snake>](&self.meta, event);
                     }
                 );
             )*
