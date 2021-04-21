@@ -29,6 +29,20 @@ impl Default for Meta {
     }
 }
 
+//= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#A.2
+#[derive(Clone, Debug)]
+pub enum PacketType {
+    Initial,
+    Handshake,
+    ZeroRtt,
+    OneRtt,
+    Retry,
+    VersionNegotiation,
+    StatelessReset,
+    Unknown,
+}
+
+//= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#A.4
 #[derive(Clone, Debug)]
 pub struct PacketHeader {
     pub packet_type: PacketType,
@@ -44,18 +58,6 @@ impl Default for PacketHeader {
             version: None,
         }
     }
-}
-
-#[derive(Clone, Debug)]
-pub enum PacketType {
-    Initial,
-    Handshake,
-    ZeroRtt,
-    OneRtt,
-    Retry,
-    VersionNegotiation,
-    StatelessReset,
-    Unknown,
 }
 
 events!(
