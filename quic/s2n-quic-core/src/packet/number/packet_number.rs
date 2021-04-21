@@ -147,7 +147,7 @@ impl PacketNumber {
     }
 
     /// Returns the value with the top 2 bits removed
-    pub(crate) const fn as_u64(self) -> u64 {
+    pub const fn as_u64(self) -> u64 {
         self.0.get() & PACKET_NUMBER_MASK
     }
 

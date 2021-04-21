@@ -136,12 +136,13 @@ pub trait ConnectionTrait: Sized {
     ) -> Result<(), ProcessingError>;
 
     /// Is called when a short packet had been received
-    fn handle_short_packet(
+    fn handle_short_packet<Pub: event::Publisher>(
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedShort,
+        publisher: &mut Pub,
     ) -> Result<(), ProcessingError>;
 
     /// Is called when a version negotiation packet had been received
@@ -213,11 +214,9 @@ pub trait ConnectionTrait: Sized {
         // any special logic required to meet this requirement as each packet is handled
         // independently.
 
-        let event = events::PacketReceived::builder().build();
-        publisher.on_packet_received(&event);
         match packet {
             ProtectedPacket::Short(packet) => {
-                self.handle_short_packet(shared_state, datagram, path_id, packet)
+                self.handle_short_packet(shared_state, datagram, path_id, packet, publisher)
             }
             ProtectedPacket::VersionNegotiation(packet) => {
                 self.handle_version_negotiation_packet(shared_state, datagram, path_id, packet)

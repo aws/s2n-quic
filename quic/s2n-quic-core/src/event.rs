@@ -31,19 +31,31 @@ impl Default for Meta {
 
 #[derive(Clone, Debug)]
 pub struct PacketHeader {
-    pub packet_type: bool,
+    pub packet_type: PacketType,
     pub packet_number: u64,
-    pub version: u64,
+    pub version: Option<u32>,
 }
 
 impl Default for PacketHeader {
     fn default() -> Self {
         Self {
-            packet_type: false,
+            packet_type: PacketType::Unknown,
             packet_number: 0,
-            version: 0,
+            version: None,
         }
     }
+}
+
+#[derive(Clone, Debug)]
+pub enum PacketType {
+       Initial,
+       Handshake,
+       ZeroRtt,
+       OneRtt,
+       Retry,
+       VersionNegotiation,
+       StatelessReset,
+       Unknown
 }
 
 events!(

@@ -24,6 +24,8 @@ use core::time::Duration;
 use s2n_quic_core::{
     inet::DatagramInfo,
     io::tx,
+    event::{self, events},
+    packet::number::{PacketNumber},
     packet::{
         handshake::ProtectedHandshake,
         initial::{CleartextInitial, ProtectedInitial},
@@ -779,12 +781,13 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Is called when a short packet had been received
-    fn handle_short_packet(
+    fn handle_short_packet<Pub: event::Publisher>(
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedShort,
+        publisher: &mut Pub,
     ) -> Result<(), ProcessingError> {
         //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.7
         //# Endpoints in either role MUST NOT decrypt 1-RTT packets from
@@ -845,6 +848,16 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
             // notify the connection a packet was processed
             self.on_processed_packet(datagram.timestamp);
+
+            let event = events::PacketReceived::builder()
+                .with_packet_header(
+                    event::PacketHeader{
+                        packet_type: event::PacketType::OneRtt,
+                        packet_number: PacketNumber::as_u64(packet.packet_number),
+                        version: None,
+                    }
+                ).build();
+            publisher.on_packet_received(&event);
         }
 
         Ok(())
