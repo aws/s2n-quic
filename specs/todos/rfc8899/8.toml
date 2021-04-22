@@ -1,0 +1,12 @@
+target = "https://tools.ietf.org/rfc/rfc8899.txt#8"
+
+[[TODO]]
+quote = '''
+A node supporting DPLPMTUD
+MUST therefore appropriately validate the payload of PTB messages to
+ensure these are received in response to transmitted traffic (i.e., a
+reported error condition that corresponds to a datagram actually sent
+by the path layer, see Section 4.6.1).
+'''
+feature = "Incorporate PTB messages into DPLPMTUD"
+tracking-issue = "628"
