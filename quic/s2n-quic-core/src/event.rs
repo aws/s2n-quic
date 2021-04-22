@@ -12,43 +12,22 @@ pub trait Event {
     const NAME: &'static str;
 }
 
-pub mod common {
-    use super::*;
-
-    /// Common fields that are common to all events. Some of these fields exits to
-    /// maintain compatibility with the qlog spec.
-    #[derive(Clone, Debug)]
-    // #[non_exhaustive] TODO
-    pub struct Meta {
+common!(
+    //
+    #[non_exhaustive]
+    struct Meta {
         pub endpoint_type: endpoint::Type,
         pub group_id: u64,
     }
 
-    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#A.2
-    //# PacketType
-    #[derive(Clone, Debug)]
-    // #[non_exhaustive] TODO
-    pub enum PacketType {
-        Initial,
-        Handshake,
-        ZeroRtt,
-        OneRtt,
-        Retry,
-        VersionNegotiation,
-        StatelessReset,
-        Unknown,
-    }
-
     //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#A.4
     //# Note: short vs long header is implicit through PacketType
-    #[derive(Clone, Debug)]
-    // #[non_exhaustive] TODO
-    pub struct PacketHeader {
-        pub packet_type: PacketType,
+    struct PacketHeader {
+        pub packet_type: common::PacketType,
         pub packet_number: u64,
         pub version: Option<u32>,
     }
-}
+);
 
 events!(
     #[name = "transport::version_information"]

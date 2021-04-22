@@ -291,7 +291,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
         // TODO: generate a new internal connection id
         let mut publisher = event::PublisherSubscriber::new(
-            event::common::Meta {
+            event::common_builders::Meta {
                 endpoint_type: Cfg::ENDPOINT_TYPE,
                 group_id: 7,
             },
@@ -373,7 +373,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         //# peer's address, unless it has previously validated that address.
 
                         let mut publisher = event::PublisherSubscriber::new(
-                            event::common::Meta {
+                            event::common_builders::Meta {
                                 endpoint_type: Cfg::ENDPOINT_TYPE,
                                 group_id: internal_id.into(),
                             },
