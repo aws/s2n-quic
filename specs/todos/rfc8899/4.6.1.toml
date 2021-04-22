@@ -1,0 +1,37 @@
+target = "https://tools.ietf.org/rfc/rfc8899.txt#4.6.1"
+
+[[TODO]]
+quote = '''
+*  A PL that supports PTB messages MUST validate these messages
+before they are further processed.
+'''
+feature = "Incorporate PTB messages into DPLPMTUD"
+tracking-issue = "628"
+
+[[TODO]]
+quote = '''
+The PL MUST check the protocol information in the quoted packet
+carried in an ICMP PTB message payload to validate the message
+originated from the sending node.
+'''
+feature = "Incorporate PTB messages into DPLPMTUD"
+tracking-issue = "628"
+
+[[TODO]]
+quote = '''
+The validation SHOULD utilize information that is not simple for an
+off-path attacker to determine [BCP145].
+'''
+feature = "Incorporate PTB messages into DPLPMTUD"
+tracking-issue = "628"
+
+[[TODO]]
+quote = '''
+A PTB message
+that does not complete the validation MUST NOT be further utilized by
+the DPLPMTUD method, as discussed in the Security Considerations
+section (Section 8).
+'''
+feature = "Incorporate PTB messages into DPLPMTUD"
+tracking-issue = "628"
+

@@ -1,0 +1,13 @@
+target = "https://tools.ietf.org/rfc/rfc8899.txt#6.1.5"
+
+[[exception]]
+quote = '''
+An application that does not have other higher-layer information
+confirming correct delivery of datagrams SHOULD implement the
+CONFIRMATION_TIMER to periodically send probe packets while in the
+SEARCH_COMPLETE state.
+'''
+reason = '''
+This requirement applies only to applications
+built directly or indirectly on UDP or UDP-Lite
+'''

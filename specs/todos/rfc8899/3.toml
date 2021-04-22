@@ -1,0 +1,36 @@
+target = "https://tools.ietf.org/rfc/rfc8899.txt#3"
+
+[[TODO]]
+quote = '''
+Processing PTB messages: A DPLPMTUD sender MAY optionally utilize
+PTB messages received from the network layer to help identify
+when a network path does not support the current size of probe
+packet.
+'''
+feature = "Incorporate PTB messages into DPLPMTUD"
+tracking-issue = "628"
+
+[[TODO]]
+quote = '''
+Any received PTB message MUST be validated before it is
+used to update the PLPMTU discovery information [RFC8201].
+'''
+feature = "Incorporate PTB messages into DPLPMTUD"
+tracking-issue = "628"
+
+[[TODO]]
+quote = '''
+A
+PTB message MUST NOT be used to increase the PLPMTU [RFC8201] but
+could trigger a probe to test for a larger PLPMTU.
+'''
+feature = "Incorporate PTB messages into DPLPMTUD"
+tracking-issue = "628"
+
+[[TODO]]
+quote = '''
+A PL_PTB_SIZE that is greater than
+that currently probed SHOULD be ignored.
+'''
+feature = "Incorporate PTB messages into DPLPMTUD"
+tracking-issue = "628"

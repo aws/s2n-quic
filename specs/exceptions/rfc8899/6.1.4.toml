@@ -1,0 +1,13 @@
+target = "https://tools.ietf.org/rfc/rfc8899.txt#6.1.4"
+
+[[exception]]
+quote = '''
+An application that does not have other higher-layer information
+confirming connectivity with the remote peer SHOULD implement a
+connectivity mechanism using acknowledged probe packets before
+entering the BASE state.
+'''
+reason = '''
+This requirement applies only to applications
+built directly or indirectly on UDP or UDP-Lite
+'''

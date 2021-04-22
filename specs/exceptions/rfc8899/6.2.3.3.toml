@@ -1,0 +1,10 @@
+target = "https://tools.ietf.org/rfc/rfc8899.txt#6.2.3.3"
+
+[[exception]]
+quote = '''
+Since SCTP provides an acknowledged PL, a sender MUST NOT implement
+the CONFIRMATION_TIMER while in the SEARCH_COMPLETE state.
+'''
+reason = '''
+This requirement only applies to SCTP.
+'''

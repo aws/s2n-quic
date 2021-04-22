@@ -1,0 +1,12 @@
+target = "https://tools.ietf.org/rfc/rfc8899.txt#6.1"
+
+[[exception]]
+quote = '''
+An application SHOULD avoid using
+DPLPMTUD when the underlying transport system provides this
+capability.
+'''
+reason = '''
+s2n-QUIC acts as the Packetization Layer (PL) for applications using
+it, so the application will not be able to implement DPLPMTUD itself.
+'''
