@@ -148,8 +148,8 @@ macro_rules! events {
 macro_rules! common {
     ($(
         $(#[$attrs:meta])*
-        struct $name:ident $(<$lt:lifetime>)? {
-            $( pub $field_name:ident : $field_type:ty, )*
+        $struct:ident $name:ident $(<$lt:lifetime>)? {
+            $( $pub:vis $field_name:ident $(: $field_type:ty)?, )*
         }
     )*) => {
         pub mod common {
@@ -162,25 +162,10 @@ macro_rules! common {
                 $(#[$attrs])*
                 // #[non_exhaustive]
                 #[derive(Clone, Debug)]
-                pub struct $name $(<$lt>)? {
-                    $( pub $field_name : $field_type, )*
+                pub $struct $name $(<$lt>)? {
+                    $( $pub $field_name $(: $field_type)?, )*
                 }
             )*
-
-            //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#A.2
-            //# PacketType
-            #[non_exhaustive]
-            #[derive(Clone, Debug)]
-            pub enum PacketType {
-                Initial,
-                Handshake,
-                ZeroRtt,
-                OneRtt,
-                Retry,
-                VersionNegotiation,
-                StatelessReset,
-                Unknown,
-            }
         }
 
         pub mod common_builders {
@@ -191,8 +176,8 @@ macro_rules! common {
                 // Builders are an implementation detail and allow us to create
                 // `non_exhaustive` Events outside this crate.
                 #[derive(Clone, Debug)]
-                pub struct $name $(<$lt>)? {
-                    $( pub $field_name : $field_type, )*
+                pub $struct $name $(<$lt>)? {
+                    $( $pub $field_name $(: $field_type)?, )*
                 }
 
                 #[doc(hidden)]

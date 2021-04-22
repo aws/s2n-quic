@@ -27,6 +27,19 @@ common!(
         pub packet_number: u64,
         pub version: Option<u32>,
     }
+
+    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#A.2
+    //# PacketType
+    enum PacketType {
+        Initial,
+        Handshake,
+        ZeroRtt,
+        OneRtt,
+        Retry,
+        VersionNegotiation,
+        StatelessReset,
+        Unknown,
+    }
 );
 
 events!(
