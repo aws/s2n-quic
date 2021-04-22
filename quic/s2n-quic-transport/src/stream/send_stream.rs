@@ -11,20 +11,23 @@ use crate::{
     },
     sync::{
         data_sender::{self, DataSender, OutgoingDataFlowController},
-        OnceSync, ValueToFrameWriter,
+        OnceSync, PeriodicSync, ValueToFrameWriter,
     },
-    transmission::interest::Provider as _,
+    transmission,
+    transmission::{interest::Provider as _, Interest},
 };
 use bytes::Bytes;
 use core::{
     convert::TryFrom,
     task::{Context, Waker},
+    time::Duration,
 };
 use s2n_quic_core::{
     ack, application,
-    frame::{MaxStreamData, ResetStream, StopSending},
+    frame::{MaxStreamData, ResetStream, StopSending, StreamDataBlocked},
     packet::number::PacketNumber,
     stream::{ops, StreamId},
+    time::Timestamp,
     transport,
     varint::VarInt,
 };
@@ -194,10 +197,9 @@ pub(super) struct StreamFlowController {
     /// The maximum data offset we are allowed to send, which is communicated
     /// via `MAX_STREAM_DATA` frames.
     max_stream_data: VarInt,
-    // /// Whether the sender is blocked and can not transmit data,
-    // /// even though data is available.
-    // blocked: Option<SenderBlockedReason>,
     state: StreamFlowControllerState,
+    /// For periodically sending `STREAM_DATA_BLOCKED` frames when blocked by peer limits
+    stream_data_blocked_sync: PeriodicSync<VarInt, StreamDataBlockedToFrameWriter>,
 }
 
 impl StreamFlowController {
@@ -212,6 +214,7 @@ impl StreamFlowController {
             highest_requested_connection_flow_control_window: VarInt::from_u32(0),
             max_stream_data: initial_window,
             state: StreamFlowControllerState::Ready,
+            stream_data_blocked_sync: PeriodicSync::new(),
         }
     }
 
@@ -227,6 +230,8 @@ impl StreamFlowController {
         self.max_stream_data = max_stream_data;
         if self.state == StreamFlowControllerState::BlockedOnStreamWindow {
             self.state = StreamFlowControllerState::Ready;
+            // We now have more capacity from the peer so stop sending STREAM_DATA_BLOCKED frames
+            self.stream_data_blocked_sync.stop_sync();
         }
     }
 
@@ -277,6 +282,64 @@ impl StreamFlowController {
     pub fn acquired_connection_flow_controller_window(&self) -> VarInt {
         self.acquired_connection_flow_controller_window
     }
+
+    /// This method is called when a packet delivery got acknowledged
+    pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
+        self.stream_data_blocked_sync.on_packet_ack(ack_set)
+    }
+
+    /// This method is called when a packet loss is reported
+    pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
+        self.stream_data_blocked_sync.on_packet_loss(ack_set);
+    }
+
+    /// Updates the period at which `STREAM_DATA_BLOCKED` frames are sent to the peer
+    /// if the application is blocked by peer limits.
+    pub fn update_blocked_sync_period(&mut self, blocked_sync_period: Duration) {
+        self.stream_data_blocked_sync
+            .update_sync_period(blocked_sync_period);
+    }
+
+    /// Queries the component for any outgoing frames that need to get sent
+    pub fn on_transmit<W: WriteContext>(
+        &mut self,
+        stream_id: StreamId,
+        context: &mut W,
+    ) -> Result<(), OnTransmitError> {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.1
+        //# To keep the
+        //# connection from closing, a sender that is flow control limited SHOULD
+        //# periodically send a STREAM_DATA_BLOCKED or DATA_BLOCKED frame when it
+        //# has no ack-eliciting packets in flight.
+        if context.ack_elicitation().is_ack_eliciting()
+            && self.stream_data_blocked_sync.has_delivered()
+        {
+            // We are already sending an ack-eliciting packet, so no need to send another STREAM_DATA_BLOCKED
+            self.stream_data_blocked_sync
+                .skip_delivery(context.current_time());
+            Ok(())
+        } else {
+            self.stream_data_blocked_sync
+                .on_transmit(stream_id, context)
+        }
+    }
+
+    /// Returns all timers for the component
+    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
+        self.stream_data_blocked_sync.timers()
+    }
+
+    /// Called when the connection timer expires
+    pub fn on_timeout(&mut self, now: Timestamp) {
+        self.stream_data_blocked_sync.on_timeout(now)
+    }
+}
+
+/// Queries the component for interest in transmitting frames
+impl transmission::interest::Provider for StreamFlowController {
+    fn transmission_interest(&self) -> Interest {
+        self.stream_data_blocked_sync.transmission_interest()
+    }
 }
 
 impl OutgoingDataFlowController for StreamFlowController {
@@ -292,24 +355,26 @@ impl OutgoingDataFlowController for StreamFlowController {
         self.state = StreamFlowControllerState::Ready;
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.1
-        //= type=TODO
-        //= tracking-issue=333
         //# A sender SHOULD send a
         //# STREAM_DATA_BLOCKED or DATA_BLOCKED frame to indicate to the receiver
         //# that it has data to write but is blocked by flow control limits.
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.1
-        //= type=TODO
-        //= tracking-issue=333
         //# To keep the
         //# connection from closing, a sender that is flow control limited SHOULD
         //# periodically send a STREAM_DATA_BLOCKED or DATA_BLOCKED frame when it
         //# has no ack-eliciting packets in flight.
 
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.13
+        //# A sender SHOULD send a STREAM_DATA_BLOCKED frame (type=0x15) when it
+        //# wishes to send data, but is unable to do so due to stream-level flow
+        //# control.
+
         if end_offset > self.max_stream_data {
             // Can't send any data due to being blocked on the Stream window
             self.state = StreamFlowControllerState::BlockedOnStreamWindow;
-            // TODO send STREAM_DATA_BLOCKED
+            self.stream_data_blocked_sync
+                .request_delivery(self.max_stream_data);
         }
 
         self.highest_requested_connection_flow_control_window = core::cmp::max(
@@ -321,7 +386,6 @@ impl OutgoingDataFlowController for StreamFlowController {
         if end_offset > self.acquired_connection_flow_controller_window {
             // Can't send due to being blocked on the connection flow control window
             self.state = StreamFlowControllerState::BlockedOnConnectionWindow;
-            // TODO send DATA_BLOCKED
         }
 
         self.available_window()
@@ -339,10 +403,34 @@ impl OutgoingDataFlowController for StreamFlowController {
         if self.state != StreamFlowControllerState::Finished {
             self.state = StreamFlowControllerState::Ready;
         }
+        self.stream_data_blocked_sync.stop_sync();
     }
 
     fn finish(&mut self) {
         self.state = StreamFlowControllerState::Finished;
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#3.3
+        //# A sender MUST NOT send a STREAM or
+        //# STREAM_DATA_BLOCKED frame for a stream in the "Reset Sent" state or
+        //# any terminal state, that is, after sending a RESET_STREAM frame.
+        self.stream_data_blocked_sync.stop_sync();
+    }
+}
+
+/// Writes the `STREAM_DATA_BLOCKED` frames.
+#[derive(Debug, Default)]
+pub(super) struct StreamDataBlockedToFrameWriter {}
+
+impl ValueToFrameWriter<VarInt> for StreamDataBlockedToFrameWriter {
+    fn write_value_as_frame<W: WriteContext>(
+        &self,
+        value: VarInt,
+        stream_id: StreamId,
+        context: &mut W,
+    ) -> Option<PacketNumber> {
+        context.write_frame(&StreamDataBlocked {
+            stream_id: stream_id.into(),
+            stream_data_limit: value,
+        })
     }
 }
 
@@ -488,10 +576,15 @@ impl SendStream {
     /// This method gets called when a packet delivery got acknowledged
     pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A, events: &mut StreamEvents) {
         self.data_sender.on_packet_ack(ack_set);
+        self.data_sender
+            .flow_controller_mut()
+            .on_packet_ack(ack_set);
 
         let should_flush = self.write_waiter.as_ref().map_or(false, |w| w.1);
         let mut should_wake = false;
-
+        self.data_sender
+            .flow_controller_mut()
+            .on_packet_ack(ack_set);
         if let SendStreamState::Sending = self.state {
             match self.data_sender.state() {
                 data_sender::State::Sending if should_flush => {
@@ -550,6 +643,9 @@ impl SendStream {
     /// This method gets called when a packet loss is reported
     pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
         self.data_sender.on_packet_loss(ack_set);
+        self.data_sender
+            .flow_controller_mut()
+            .on_packet_loss(ack_set);
         self.reset_sync.on_packet_loss(ack_set);
     }
 
@@ -560,7 +656,28 @@ impl SendStream {
         context: &mut W,
     ) -> Result<(), OnTransmitError> {
         self.reset_sync.on_transmit(stream_id, context)?;
-        self.data_sender.on_transmit(stream_id.into(), context)
+        self.data_sender.on_transmit(stream_id.into(), context)?;
+        self.data_sender
+            .flow_controller_mut()
+            .on_transmit(stream_id, context)
+    }
+
+    /// Updates the period at which `STREAM_DATA_BLOCKED` frames are sent to the peer
+    /// if the application is blocked by peer limits.
+    pub fn update_blocked_sync_period(&mut self, blocked_sync_period: Duration) {
+        self.data_sender
+            .flow_controller_mut()
+            .update_blocked_sync_period(blocked_sync_period)
+    }
+
+    /// Returns all timers for the component
+    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
+        self.data_sender.flow_controller().timers()
+    }
+
+    /// Called when the connection timer expires
+    pub fn on_timeout(&mut self, now: Timestamp) {
+        self.data_sender.flow_controller_mut().on_timeout(now)
     }
 
     /// A reset that is triggered without having received a `RESET` frame.
@@ -876,9 +993,11 @@ impl StreamInterestProvider for SendStream {
             };
 
         // Check whether the flow controller reports being blocked on the
-        // connection flow control window
+        // connection flow control window or the stream flow control window
         let connection_flow_control_credits = self.data_sender.flow_controller().state()
             == StreamFlowControllerState::BlockedOnConnectionWindow;
+        let stream_flow_control_credits = self.data_sender.flow_controller().state()
+            == StreamFlowControllerState::BlockedOnStreamWindow;
 
         let delivery_notifications =
             self.data_sender.is_inflight() || self.reset_sync.is_inflight();
@@ -896,12 +1015,17 @@ impl StreamInterestProvider for SendStream {
             //# any terminal state, that is, after sending a RESET_STREAM frame.
             SendStreamState::ResetSent(_) => self.reset_sync.transmission_interest(),
 
-            _ => self.data_sender.transmission_interest() + self.reset_sync.transmission_interest(),
+            _ => {
+                self.data_sender.transmission_interest()
+                    + self.reset_sync.transmission_interest()
+                    + self.data_sender.flow_controller().transmission_interest()
+            }
         };
 
         StreamInterests {
             finalization,
             connection_flow_control_credits,
+            stream_flow_control_credits,
             delivery_notifications,
             transmission,
         }

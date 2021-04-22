@@ -103,6 +103,12 @@ enum Instruction {
         bool,   // is last frame
         PacketNumber,
     ),
+    /// Checks that a stream data blocked frame with the given parameters had been
+    /// transmitted.
+    CheckStreamDataBlockedTx(
+        VarInt, // stream data limit
+        PacketNumber,
+    ),
     /// Checks whether a reset frame is transmitted
     CheckResetTx(ApplicationErrorCode, PacketNumber, VarInt),
     /// Checks whether a Stream is interested in the given interactions
@@ -216,6 +222,12 @@ fn execute_instructions(test_env: &mut TestEnvironment, instructions: &[Instruct
                     *expect_is_last_frame,
                     *expected_packet_number,
                 );
+            }
+            Instruction::CheckStreamDataBlockedTx(stream_data_limit, expected_packet_number) => {
+                test_env.assert_write_stream_data_blocked_frame(
+                    *stream_data_limit,
+                    *expected_packet_number,
+                )
             }
             Instruction::CheckResetTx(
                 expected_error_code,
@@ -843,6 +855,17 @@ fn retransmitted_data_is_sent_in_same_packets_as_new_data() {
     }
 }
 
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.1
+//= type=test
+//# A sender SHOULD send a
+//# STREAM_DATA_BLOCKED or DATA_BLOCKED frame to indicate to the receiver
+//# that it has data to write but is blocked by flow control limits.
+
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.13
+//= type=test
+//# A sender SHOULD send a STREAM_DATA_BLOCKED frame (type=0x15) when it
+//# wishes to send data, but is unable to do so due to stream-level flow
+//# control.
 #[test]
 fn writes_not_more_than_max_stream_data_even_if_more_data_is_enqueued() {
     const MAX_PACKET_SIZE: usize = 1000;
@@ -858,13 +881,14 @@ fn writes_not_more_than_max_stream_data_even_if_more_data_is_enqueued() {
         Instruction::CheckDataTx(VarInt::from_u32(0), 998, false, true, pn(0)),
         Instruction::CheckDataTx(VarInt::from_u32(998), 996, false, true, pn(1)),
         Instruction::CheckDataTx(VarInt::from_u32(1994), 6, false, false, pn(2)),
-        Instruction::CheckInterests(stream_interests(&["ack"])),
+        Instruction::CheckStreamDataBlockedTx(VarInt::from_u32(2000), pn(2)),
+        Instruction::CheckInterests(stream_interests(&["ack", "sf"])),
         // Acking the packets does not unblock sending more data
         Instruction::AckPacket(pn(0), ExpectWakeup(Some(false))),
-        Instruction::CheckInterests(stream_interests(&["ack"])),
+        Instruction::CheckInterests(stream_interests(&["ack", "sf"])),
         Instruction::AckPacket(pn(1), ExpectWakeup(Some(true))),
         Instruction::AckPacket(pn(2), ExpectWakeup(Some(false))),
-        Instruction::CheckInterests(stream_interests(&[])),
+        Instruction::CheckInterests(stream_interests(&["sf"])),
         Instruction::CheckNoTx,
         // Sending a window update should unblock sending more data.
         // Since we still have enqueued more data than the new flow control window,
@@ -872,22 +896,24 @@ fn writes_not_more_than_max_stream_data_even_if_more_data_is_enqueued() {
         Instruction::SetMaxStreamData(VarInt::from_u32(2100), ExpectWakeup(Some(false))),
         Instruction::CheckInterests(stream_interests(&["tx"])),
         Instruction::CheckDataTx(VarInt::from_u32(2000), 100, false, false, pn(3)),
-        Instruction::CheckInterests(stream_interests(&["ack"])),
+        Instruction::CheckStreamDataBlockedTx(VarInt::from_u32(2100), pn(3)),
+        Instruction::CheckInterests(stream_interests(&["ack", "sf"])),
         Instruction::AckPacket(pn(3), ExpectWakeup(Some(false))),
-        Instruction::CheckInterests(stream_interests(&[])),
+        Instruction::CheckInterests(stream_interests(&["sf"])),
         Instruction::CheckNoTx,
         Instruction::SetMaxStreamData(VarInt::from_u32(2499), ExpectWakeup(Some(false))),
         Instruction::CheckInterests(stream_interests(&["tx"])),
         Instruction::CheckDataTx(VarInt::from_u32(2100), 399, false, false, pn(4)),
-        Instruction::CheckInterests(stream_interests(&["ack"])),
+        Instruction::CheckStreamDataBlockedTx(VarInt::from_u32(2499), pn(4)),
+        Instruction::CheckInterests(stream_interests(&["ack", "sf"])),
         Instruction::AckPacket(pn(4), ExpectWakeup(Some(false))),
-        Instruction::CheckInterests(stream_interests(&[])),
+        Instruction::CheckInterests(stream_interests(&["sf"])),
         Instruction::CheckNoTx,
         Instruction::SetMaxStreamData(VarInt::from_u32(2499), ExpectWakeup(Some(false))),
-        Instruction::CheckInterests(stream_interests(&[])),
+        Instruction::CheckInterests(stream_interests(&["sf"])),
         Instruction::CheckNoTx,
         Instruction::SetMaxStreamData(VarInt::from_u32(2000), ExpectWakeup(Some(false))),
-        Instruction::CheckInterests(stream_interests(&[])),
+        Instruction::CheckInterests(stream_interests(&["sf"])),
         Instruction::CheckNoTx,
         Instruction::SetMaxStreamData(VarInt::from_u32(2500), ExpectWakeup(Some(false))),
         Instruction::CheckInterests(stream_interests(&["tx"])),
@@ -932,7 +958,8 @@ fn blocked_on_stream_flow_control_does_not_prevent_retransmissions() {
         Instruction::CheckDataTx(VarInt::from_u32(0), 998, false, true, pn(0)),
         Instruction::CheckDataTx(VarInt::from_u32(998), 996, false, true, pn(1)),
         Instruction::CheckDataTx(VarInt::from_u32(1994), 6, false, false, pn(2)),
-        Instruction::CheckInterests(stream_interests(&["ack"])),
+        Instruction::CheckStreamDataBlockedTx(VarInt::from_u32(2000), pn(2)),
+        Instruction::CheckInterests(stream_interests(&["ack", "sf"])),
         // Nack packets. This should lead to retransmissions
         Instruction::NackPacket(pn(1)),
         Instruction::CheckInterests(stream_interests(&["ack", "lost"])),
@@ -949,10 +976,11 @@ fn blocked_on_stream_flow_control_does_not_prevent_retransmissions() {
         Instruction::NackPacket(pn(2)),
         Instruction::CheckInterests(stream_interests(&["lost"])),
         Instruction::CheckDataTx(VarInt::from_u32(1994), 6, false, false, pn(5)),
-        Instruction::CheckInterests(stream_interests(&["ack"])),
+        Instruction::CheckStreamDataBlockedTx(VarInt::from_u32(2000), pn(5)),
+        Instruction::CheckInterests(stream_interests(&["ack", "sf"])),
         Instruction::CheckNoTx,
         Instruction::AckPacket(pn(5), ExpectWakeup(Some(false))),
-        Instruction::CheckInterests(stream_interests(&[])),
+        Instruction::CheckInterests(stream_interests(&["sf"])),
         Instruction::CheckNoTx,
     ][..]];
 
@@ -1010,9 +1038,17 @@ fn writes_not_more_than_max_data_even_if_more_data_is_enqueued() {
         Instruction::AckPacket(pn(4), ExpectWakeup(Some(false))),
         Instruction::CheckInterests(stream_interests(&["cf"])),
         Instruction::CheckNoTx,
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.1
+        //= type=test
+        //# A sender MUST ignore any MAX_STREAM_DATA or MAX_DATA frames that do
+        //# not increase flow control limits.
         Instruction::SetMaxData(VarInt::from_u32(2499)),
         Instruction::CheckInterests(stream_interests(&["cf"])),
         Instruction::CheckNoTx,
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.1
+        //= type=test
+        //# A sender MUST ignore any MAX_STREAM_DATA or MAX_DATA frames that do
+        //# not increase flow control limits.
         Instruction::SetMaxData(VarInt::from_u32(2000)),
         Instruction::CheckInterests(stream_interests(&["cf"])),
         Instruction::CheckNoTx,
@@ -1541,19 +1577,21 @@ fn transmit_fin_while_outstanding_data_exceeds_stream_flow_control_window() {
             Instruction::CheckInterests(stream_interests(&["ack", "tx"])),
             Instruction::CheckDataTx(VarInt::from_u32(998), 996, false, true, pn(1)),
             Instruction::CheckDataTx(VarInt::from_u32(1994), 6, false, false, pn(2)),
-            Instruction::CheckInterests(stream_interests(&["ack"])),
+            Instruction::CheckStreamDataBlockedTx(VarInt::from_u32(2000), pn(2)),
+            Instruction::CheckInterests(stream_interests(&["ack", "sf"])),
             Instruction::CheckNoTx,
-            Instruction::CheckInterests(stream_interests(&["ack"])),
+            Instruction::CheckInterests(stream_interests(&["ack", "sf"])),
             Instruction::AckPacket(pn(0), ExpectWakeup(Some(false))),
             Instruction::AckPacket(pn(1), ExpectWakeup(Some(false))),
-            Instruction::CheckInterests(stream_interests(&["ack"])),
+            Instruction::CheckInterests(stream_interests(&["ack", "sf"])),
             Instruction::AckPacket(pn(2), ExpectWakeup(Some(false))),
-            Instruction::CheckInterests(stream_interests(&[])),
+            Instruction::CheckInterests(stream_interests(&["sf"])),
             Instruction::SetMaxStreamData(VarInt::from_u32(3000), ExpectWakeup(Some(false))),
             Instruction::CheckInterests(stream_interests(&["tx"])),
             Instruction::CheckDataTx(VarInt::from_u32(2000), 996, false, true, pn(3)),
             Instruction::CheckDataTx(VarInt::from_u32(2996), 4, false, false, pn(4)),
-            Instruction::CheckInterests(stream_interests(&["ack"])),
+            Instruction::CheckStreamDataBlockedTx(VarInt::from_u32(3000), pn(4)),
+            Instruction::CheckInterests(stream_interests(&["ack", "sf"])),
             // Flow control window is now big enough to get all data transmitted
             Instruction::SetMaxStreamData(VarInt::from_u32(4000), ExpectWakeup(Some(false))),
             Instruction::CheckInterests(stream_interests(&["ack", "tx"])),
@@ -1586,12 +1624,13 @@ fn transmit_fin_while_outstanding_data_exceeds_stream_flow_control_window() {
             Instruction::CheckInterests(stream_interests(&["ack", "tx"])),
             Instruction::CheckDataTx(VarInt::from_u32(998), 996, false, true, pn(1)),
             Instruction::CheckDataTx(VarInt::from_u32(1994), 6, false, false, pn(2)),
+            Instruction::CheckStreamDataBlockedTx(VarInt::from_u32(2000), pn(2)),
             Instruction::CheckNoTx,
-            Instruction::CheckInterests(stream_interests(&["ack"])),
+            Instruction::CheckInterests(stream_interests(&["ack", "sf"])),
             Instruction::AckPacket(pn(0), ExpectWakeup(Some(false))),
             Instruction::AckPacket(pn(1), ExpectWakeup(Some(false))),
             Instruction::AckPacket(pn(2), ExpectWakeup(Some(false))),
-            Instruction::CheckInterests(stream_interests(&[])),
+            Instruction::CheckInterests(stream_interests(&["sf"])),
             Instruction::SetMaxStreamData(VarInt::from_u32(3001), ExpectWakeup(Some(false))),
             Instruction::CheckInterests(stream_interests(&["tx"])),
             Instruction::CheckDataTx(VarInt::from_u32(2000), 996, false, true, pn(3)),

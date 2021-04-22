@@ -833,6 +833,7 @@ impl StreamInterestProvider for ReceiveStream {
 
         StreamInterests {
             connection_flow_control_credits: false,
+            stream_flow_control_credits: false,
             finalization: self.final_state_observed,
             delivery_notifications,
             transmission,

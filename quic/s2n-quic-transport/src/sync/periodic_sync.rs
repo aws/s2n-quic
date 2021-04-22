@@ -30,6 +30,7 @@ pub struct PeriodicSync<T, S> {
     delivery_timer: VirtualTimer,
     delivery: DeliveryState<T>,
     writer: S,
+    delivered: bool,
 }
 
 impl<T: Copy + Clone + Default + Eq + PartialEq + PartialOrd, S: ValueToFrameWriter<T>>
@@ -44,6 +45,7 @@ impl<T: Copy + Clone + Default + Eq + PartialEq + PartialOrd, S: ValueToFrameWri
             delivery_timer: VirtualTimer::default(),
             delivery: DeliveryState::NotRequested,
             writer: S::default(),
+            delivered: false,
         }
     }
 
@@ -63,6 +65,18 @@ impl<T: Copy + Clone + Default + Eq + PartialEq + PartialOrd, S: ValueToFrameWri
         }
     }
 
+    /// Skip delivery for this sync period. A delivery will be scheduled for the next sync period.
+    pub fn skip_delivery(&mut self, now: Timestamp) {
+        match self.delivery {
+            DeliveryState::Requested(_) | DeliveryState::Lost(_) => {
+                self.delivery = DeliveryState::NotRequested;
+                self.delivery_timer.set(now + self.sync_period)
+            }
+            DeliveryState::Delivered(_) => self.delivery_timer.set(now + self.sync_period),
+            _ => {}
+        }
+    }
+
     /// Called when the connection timer expires
     pub fn on_timeout(&mut self, now: Timestamp) {
         if self.delivery_timer.poll_expiration(now).is_ready() {
@@ -79,6 +93,7 @@ impl<T: Copy + Clone + Default + Eq + PartialEq + PartialOrd, S: ValueToFrameWri
     pub fn stop_sync(&mut self) {
         self.delivery_timer.cancel();
         self.delivery.cancel();
+        self.delivered = false;
     }
 
     /// This method gets called when a packet delivery got acknowledged
@@ -87,6 +102,7 @@ impl<T: Copy + Clone + Default + Eq + PartialEq + PartialOrd, S: ValueToFrameWri
         // next delivery period
         if let DeliveryState::InFlight(in_flight) = self.delivery {
             if ack_set.contains(in_flight.packet.packet_nr) {
+                self.delivered = true;
                 self.delivery_timer
                     .set(in_flight.packet.timestamp + self.sync_period);
                 self.delivery = DeliveryState::Delivered(in_flight.value);
@@ -140,6 +156,12 @@ impl<T: Copy + Clone + Default + Eq + PartialEq + PartialOrd, S: ValueToFrameWri
         }
 
         Ok(())
+    }
+
+    /// Returns whether the value has been delivered at least once since delivery was first
+    /// requested, or requested again after `stop_sync` was called.
+    pub fn has_delivered(&self) -> bool {
+        self.delivered
     }
 }
 

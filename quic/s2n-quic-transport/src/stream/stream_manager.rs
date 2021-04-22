@@ -555,6 +555,9 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         self.inner
             .incoming_connection_flow_controller
             .on_packet_ack(ack_set);
+        self.inner
+            .outgoing_connection_flow_controller
+            .on_packet_ack(ack_set);
         self.inner.stream_controller.on_packet_ack(ack_set);
 
         self.inner.streams.iterate_frame_delivery_list(
@@ -573,6 +576,9 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
     pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
         self.inner
             .incoming_connection_flow_controller
+            .on_packet_loss(ack_set);
+        self.inner
+            .outgoing_connection_flow_controller
             .on_packet_loss(ack_set);
         self.inner.stream_controller.on_packet_loss(ack_set);
 
@@ -594,16 +600,39 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         self.inner
             .stream_controller
             .update_blocked_sync_period(blocked_sync_period);
+        self.inner
+            .outgoing_connection_flow_controller
+            .update_blocked_sync_period(blocked_sync_period);
+        self.inner.streams.iterate_stream_flow_credits_list(
+            &mut self.inner.stream_controller,
+            |stream| {
+                stream.update_blocked_sync_period(blocked_sync_period);
+                StreamContainerIterationResult::Continue
+            },
+        );
     }
 
     /// Returns all timers for the component
     pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
-        self.inner.stream_controller.timers()
+        core::iter::empty()
+            .chain(self.inner.stream_controller.timers())
+            .chain(self.inner.outgoing_connection_flow_controller.timers())
+            .chain(self.inner.streams.timers())
     }
 
     /// Called when the connection timer expires
     pub fn on_timeout(&mut self, now: Timestamp) {
-        self.inner.stream_controller.on_timeout(now)
+        self.inner.stream_controller.on_timeout(now);
+        self.inner
+            .outgoing_connection_flow_controller
+            .on_timeout(now);
+        self.inner.streams.iterate_stream_flow_credits_list(
+            &mut self.inner.stream_controller,
+            |stream| {
+                stream.on_timeout(now);
+                StreamContainerIterationResult::Continue
+            },
+        );
     }
 
     /// Closes the [`AbstractStreamManager`] and resets all streams with the
@@ -624,6 +653,9 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
     pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) -> Result<(), OnTransmitError> {
         self.inner
             .incoming_connection_flow_controller
+            .on_transmit(context)?;
+        self.inner
+            .outgoing_connection_flow_controller
             .on_transmit(context)?;
         self.inner.stream_controller.on_transmit(context)?;
 
@@ -926,6 +958,10 @@ impl<S: StreamTrait> transmission::interest::Provider for AbstractStreamManager<
             + self
                 .inner
                 .incoming_connection_flow_controller
+                .transmission_interest()
+            + self
+                .inner
+                .outgoing_connection_flow_controller
                 .transmission_interest()
     }
 }
