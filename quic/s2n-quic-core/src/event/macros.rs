@@ -160,7 +160,7 @@ macro_rules! common {
     )*
     ) => {
         pub mod common {
-            //! Common fields that are common to all events. Some of these fields exits to
+            //! Common fields that are common to multiple events. Some of these fields exits to
             //! maintain compatibility with the qlog spec.
 
             use super::*;

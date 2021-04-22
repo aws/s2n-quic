@@ -17,7 +17,10 @@ pub mod builders {
 }
 
 common!(
-    //
+    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#4
+    //# When the qlog "group_id" field is used, it is recommended to use
+    //# QUIC's Original Destination Connection ID (ODCID, the CID chosen by
+    //# the client when first contacting the server)
     struct Meta {
         pub endpoint_type: endpoint::Type,
         pub group_id: u64,
