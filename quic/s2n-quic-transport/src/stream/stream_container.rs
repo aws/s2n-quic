@@ -577,11 +577,16 @@ impl<S: StreamTrait> StreamContainer<S> {
     }
 
     /// Returns all timers for the component
-    pub fn timers(&self) -> impl Iterator<Item = Timestamp> + '_ {
+    ///
+    /// Only the next expiring timer (if any) is iterated over
+    /// to avoid use of the explicit `'_` lifetime bound.
+    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
         self.interest_lists
             .waiting_for_stream_flow_control_credits
             .iter()
             .flat_map(|stream| stream.inner.borrow().timer())
+            .min()
+            .into_iter()
     }
 }
 

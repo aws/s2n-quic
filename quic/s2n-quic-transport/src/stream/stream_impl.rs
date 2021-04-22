@@ -243,7 +243,7 @@ impl StreamTrait for StreamImpl {
     }
 
     fn timer(&self) -> Option<Timestamp> {
-        self.send_stream.timers().next()
+        self.send_stream.timers().min()
     }
 
     fn on_timeout(&mut self, now: Timestamp) {

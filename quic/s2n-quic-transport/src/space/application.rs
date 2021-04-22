@@ -293,7 +293,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
     }
 
     /// Returns all of the component timers
-    pub fn timers(&self) -> impl Iterator<Item = Timestamp> + '_ {
+    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
         core::iter::empty()
             .chain(self.ack_manager.timers())
             .chain(self.recovery_manager.timers())

@@ -613,7 +613,7 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
     }
 
     /// Returns all timers for the component
-    pub fn timers(&self) -> impl Iterator<Item = Timestamp> + '_ {
+    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
         core::iter::empty()
             .chain(self.inner.stream_controller.timers())
             .chain(self.inner.outgoing_connection_flow_controller.timers())
