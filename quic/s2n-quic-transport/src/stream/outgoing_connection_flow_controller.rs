@@ -133,7 +133,9 @@ impl OutgoingConnectionFlowController {
     /// Acquires a part of the window from the `ConnectionFlowController` in
     /// order to be able to use it for sending data. `desired` is the window
     /// size that is intended to be borrowed. The returned window size might
-    /// be smaller if only a smaller window is available.
+    /// be smaller if only a smaller window is available. In such a case, a
+    /// `DATA_BLOCKED` frame will be sent (if one had not already been sent) to
+    /// indicate the connection is blocked on the peer's connection flow limits.
     ///
     /// The requested and returned window sizes are relative window sizes and
     /// do not refer to a particular offset in the reported MAX_DATA values.
