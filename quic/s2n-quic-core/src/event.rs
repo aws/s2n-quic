@@ -12,9 +12,12 @@ pub trait Event {
     const NAME: &'static str;
 }
 
+pub mod builders {
+    pub use super::{common_builders::*, event_builders::*};
+}
+
 common!(
     //
-    #[non_exhaustive]
     struct Meta {
         pub endpoint_type: endpoint::Type,
         pub group_id: u64,

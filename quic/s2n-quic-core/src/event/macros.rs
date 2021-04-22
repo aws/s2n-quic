@@ -29,7 +29,7 @@ macro_rules! events {
             )*
         }
 
-        pub mod builders {
+        pub(crate) mod event_builders {
 
             use super::*;
 
@@ -148,10 +148,17 @@ macro_rules! events {
 macro_rules! common {
     ($(
         $(#[$attrs:meta])*
-        $struct:ident $name:ident $(<$lt:lifetime>)? {
-            $( $pub:vis $field_name:ident $(: $field_type:ty)?, )*
+        struct $name:ident $(<$lt:lifetime>)? {
+            $( pub $field_name:ident : $field_type:ty, )*
         }
-    )*) => {
+    )*
+    $(
+        $(#[$enum_attrs:meta])*
+        enum $enum_name:ident {
+            $( $enum_fields : tt, )*
+        }
+    )*
+    ) => {
         pub mod common {
             //! Common fields that are common to all events. Some of these fields exits to
             //! maintain compatibility with the qlog spec.
@@ -160,15 +167,24 @@ macro_rules! common {
 
             $(
                 $(#[$attrs])*
-                // #[non_exhaustive]
+                #[non_exhaustive]
                 #[derive(Clone, Debug)]
-                pub $struct $name $(<$lt>)? {
-                    $( $pub $field_name $(: $field_type)?, )*
+                pub struct $name $(<$lt>)? {
+                    $( pub $field_name : $field_type, )*
+                }
+            )*
+
+            $(
+                $(#[$enum_attrs])*
+                #[non_exhaustive]
+                #[derive(Clone, Debug)]
+                pub enum $enum_name {
+                    $( $enum_fields, )*
                 }
             )*
         }
 
-        pub mod common_builders {
+        pub(crate) mod common_builders {
 
             use super::*;
 
@@ -176,8 +192,8 @@ macro_rules! common {
                 // Builders are an implementation detail and allow us to create
                 // `non_exhaustive` Events outside this crate.
                 #[derive(Clone, Debug)]
-                pub $struct $name $(<$lt>)? {
-                    $( $pub $field_name $(: $field_type)?, )*
+                pub struct $name $(<$lt>)? {
+                    $( pub $field_name : $field_type, )*
                 }
 
                 #[doc(hidden)]

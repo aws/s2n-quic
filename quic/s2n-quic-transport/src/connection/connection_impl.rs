@@ -849,11 +849,12 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             self.on_processed_packet(datagram.timestamp);
 
             publisher.on_packet_received(event::builders::PacketReceived {
-                packet_header: event::common::PacketHeader {
+                packet_header: event::builders::PacketHeader {
                     packet_type: event::common::PacketType::OneRtt,
                     packet_number: PacketNumber::as_u64(packet.packet_number),
                     version: None, // TODO get this from ProtectedPacket rather than manually setting it
-                },
+                }
+                .into(),
                 is_coalesced: false, // TODO
             });
         }
