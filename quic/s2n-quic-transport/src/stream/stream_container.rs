@@ -576,7 +576,7 @@ impl<S: StreamTrait> StreamContainer<S> {
         self.finalize_done_streams(controller);
     }
 
-    // Returns all timers for the component
+    /// Returns all timers for the component
     pub fn timers(&self) -> impl Iterator<Item = Timestamp> + '_ {
         self.interest_lists
             .waiting_for_stream_flow_control_credits

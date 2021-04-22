@@ -436,7 +436,12 @@ impl OutgoingController {
         if context.ack_elicitation().is_ack_eliciting() && self.streams_blocked_sync.has_delivered()
         {
             // We are already sending an ack-eliciting packet, so no need to send another STREAMS_BLOCKED.
-            // This matches the RFC requirement for STREAM_DATA_BLOCKED and DATA_BLOCKED.
+            // This matches the RFC requirement below for STREAM_DATA_BLOCKED and DATA_BLOCKED.
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.1
+            //# To keep the
+            //# connection from closing, a sender that is flow control limited SHOULD
+            //# periodically send a STREAM_DATA_BLOCKED or DATA_BLOCKED frame when it
+            //# has no ack-eliciting packets in flight.
             self.streams_blocked_sync
                 .skip_delivery(context.current_time());
             Ok(())
