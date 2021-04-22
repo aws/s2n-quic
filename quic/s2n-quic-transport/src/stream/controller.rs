@@ -193,7 +193,7 @@ impl Controller {
             StreamId::initial(context.local_endpoint_type(), StreamType::Unidirectional),
             context,
         )?;
-        self.outgoing_controller.streams_blocked_sync.on_transmit(
+        self.outgoing_controller.on_transmit(
             StreamId::initial(context.local_endpoint_type(), StreamType::Unidirectional),
             context,
         )
@@ -289,7 +289,7 @@ impl BidiController {
             StreamId::initial(context.local_endpoint_type(), StreamType::Bidirectional),
             context,
         )?;
-        self.outgoing.streams_blocked_sync.on_transmit(
+        self.outgoing.on_transmit(
             StreamId::initial(context.local_endpoint_type(), StreamType::Bidirectional),
             context,
         )
@@ -426,6 +426,28 @@ impl OutgoingController {
     /// Returns the number of streams currently open
     fn open_stream_count(&self) -> VarInt {
         self.opened_streams - self.closed_streams
+    }
+
+    fn on_transmit<W: WriteContext>(
+        &mut self,
+        stream_id: StreamId,
+        context: &mut W,
+    ) -> Result<(), OnTransmitError> {
+        if context.ack_elicitation().is_ack_eliciting() && self.streams_blocked_sync.has_delivered()
+        {
+            // We are already sending an ack-eliciting packet, so no need to send another STREAMS_BLOCKED.
+            // This matches the RFC requirement below for STREAM_DATA_BLOCKED and DATA_BLOCKED.
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#4.1
+            //# To keep the
+            //# connection from closing, a sender that is flow control limited SHOULD
+            //# periodically send a STREAM_DATA_BLOCKED or DATA_BLOCKED frame when it
+            //# has no ack-eliciting packets in flight.
+            self.streams_blocked_sync
+                .skip_delivery(context.current_time());
+            Ok(())
+        } else {
+            self.streams_blocked_sync.on_transmit(stream_id, context)
+        }
     }
 
     #[inline]
