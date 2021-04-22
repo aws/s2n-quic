@@ -854,7 +854,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                     packet_number: PacketNumber::as_u64(packet.packet_number),
                     version: None, // TODO get this from ProtectedPacket rather than manually setting it
                 },
-                frames: &[],
                 is_coalesced: false, // TODO
             });
         }

@@ -30,13 +30,12 @@ macro_rules! events {
         }
 
         pub mod builders {
-            //! Builders allow for ergonomic and uniform creation of Events.
 
             use super::*;
 
             $(
-                /// A builder to allow for easy customization of event fields and ensure the
-                /// event is built only once.
+                // Builders are an implementation detail and allow us to create
+                // `non_exhaustive` Events outside this crate.
                 #[derive(Clone, Debug)]
                 pub struct $name $(<$lt>)? {
                     $( pub $field_name: $field_type, )*
@@ -122,19 +121,6 @@ macro_rules! events {
                 );
             )*
         }
-
-        /*
-         * TODO fix me
-        #[cfg(any(test, feature = "testing"))]
-        mod tests {
-            $( super::paste! {
-                #[test]
-                fn [<build_ $name:snake>]() {
-                    super::events::$name::builder().build();
-                }
-            } )*
-        }
-        */
 
         #[cfg(any(test, feature = "testing"))]
         pub mod testing {

@@ -7,7 +7,7 @@ use paste::paste;
 #[macro_use]
 mod macros;
 
-/// All events types which can be emitted from this library.
+/// All event types which can be emitted from this library.
 pub trait Event {
     const NAME: &'static str;
 }
@@ -76,18 +76,16 @@ events!(
     #[name = "transport:packet_sent"]
     //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.5
     /// Packet was sent
-    struct PacketSent<'a> {
+    struct PacketSent {
         pub packet_header: common::PacketHeader,
-        pub frames: &'a [&'a [u8]],
         pub is_coalesced: bool,
     }
 
     #[name = "transport:packet_received"]
     //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.6
     /// Packet was received
-    struct PacketReceived<'a> {
+    struct PacketReceived {
         pub packet_header: common::PacketHeader,
-        pub frames: &'a [&'a [u8]],
         pub is_coalesced: bool,
     }
 );
