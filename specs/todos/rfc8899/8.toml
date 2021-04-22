@@ -10,3 +10,12 @@ by the path layer, see Section 4.6.1).
 '''
 feature = "Incorporate PTB messages into DPLPMTUD"
 tracking-issue = "628"
+
+[[TODO]]
+quote = '''
+This processing
+SHOULD be limited to avoid a denial-of-service attack when arbitrary
+headers are included.
+'''
+feature = "Incorporate PTB messages into DPLPMTUD"
+tracking-issue = "628"

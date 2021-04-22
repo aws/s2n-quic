@@ -1,0 +1,12 @@
+target = "https://tools.ietf.org/rfc/rfc8899.txt#5.3.1"
+
+[[exception]]
+quote = '''
+The
+MAX_PLPMTU MAY be reduced by an application that sets a maximum to
+the size of datagrams it will send.
+'''
+reason = '''
+The QUIC protocol supports segmenting data blocks and thus does not
+use input from the application on maximum data block size.
+'''

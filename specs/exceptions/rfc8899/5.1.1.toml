@@ -1,0 +1,10 @@
+target = "https://tools.ietf.org/rfc/rfc8899.txt#5.1.1"
+
+[[exception]]
+quote = '''
+CONFIRMATION_TIMER:  When an acknowledged PL is used, this timer MUST
+NOT be used.
+'''
+reason = '''
+From the perspective of DPLPMTUD, QUIC can function as an acknowledged PL.
+'''
