@@ -22,12 +22,13 @@ use crate::{
 };
 use core::time::Duration;
 use s2n_quic_core::{
+    event,
     inet::DatagramInfo,
     io::tx,
     packet::{
         handshake::ProtectedHandshake,
         initial::{CleartextInitial, ProtectedInitial},
-        number::PacketNumberSpace,
+        number::{PacketNumber, PacketNumberSpace},
         retry::ProtectedRetry,
         short::ProtectedShort,
         version_negotiation::ProtectedVersionNegotiation,
@@ -779,12 +780,13 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Is called when a short packet had been received
-    fn handle_short_packet(
+    fn handle_short_packet<Pub: event::Publisher>(
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedShort,
+        publisher: &mut Pub,
     ) -> Result<(), ProcessingError> {
         //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.7
         //# Endpoints in either role MUST NOT decrypt 1-RTT packets from
@@ -845,6 +847,15 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
             // notify the connection a packet was processed
             self.on_processed_packet(datagram.timestamp);
+
+            publisher.on_packet_received(event::builders::PacketReceived {
+                packet_header: event::common::PacketHeader {
+                    packet_type: event::common::PacketType::OneRtt,
+                    packet_number: PacketNumber::as_u64(packet.packet_number),
+                    version: None, // TODO get this from ProtectedPacket rather than manually setting it
+                },
+                is_coalesced: false, // TODO
+            });
         }
 
         Ok(())

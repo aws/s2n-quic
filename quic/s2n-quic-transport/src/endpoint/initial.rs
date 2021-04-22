@@ -17,6 +17,7 @@ use core::{convert::TryInto, time::Duration};
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     crypto::{tls, tls::Endpoint as TLSEndpoint, CryptoSuite, InitialKey},
+    event,
     inet::DatagramInfo,
     packet::initial::ProtectedInitial,
     stateless_reset::token::Generator as _,
@@ -277,12 +278,20 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                     }
                 })?;
 
+            let mut publisher = event::PublisherSubscriber::new(
+                event::common::Meta {
+                    endpoint_type: Config::ENDPOINT_TYPE,
+                    group_id: internal_connection_id.into(),
+                },
+                endpoint_context.event_subscriber,
+            );
             connection.handle_remaining_packets(
                 locked_shared_state,
                 datagram,
                 path_id,
                 endpoint_context.connection_id_format,
                 remaining,
+                &mut publisher,
             )?;
 
             //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.3

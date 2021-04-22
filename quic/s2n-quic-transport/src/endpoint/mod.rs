@@ -43,6 +43,7 @@ pub use s2n_quic_core::endpoint::*;
 use s2n_quic_core::{
     connection::LocalId,
     crypto::tls::Endpoint as _,
+    event,
     inet::{ExplicitCongestionNotification, SocketAddress},
     stateless_reset::token::Generator as _,
 };
@@ -288,17 +289,21 @@ impl<Cfg: Config> Endpoint<Cfg> {
             return;
         };
 
+        // TODO: generate a new internal connection id
+        let mut publisher = event::PublisherSubscriber::new(
+            event::common::Meta {
+                endpoint_type: Cfg::ENDPOINT_TYPE,
+                group_id: 7,
+            },
+            endpoint_context.event_subscriber,
+        );
+
         // Ensure the version is supported. This check occurs before the destination
         // connection ID is parsed since future versions of QUIC could have different
         // length requirements for connection IDs.
         if self
             .version_negotiator
-            .on_packet(
-                remote_address,
-                payload_len,
-                &packet,
-                endpoint_context.event_subscriber,
-            )
+            .on_packet(remote_address, payload_len, &packet, &mut publisher)
             .is_err()
         {
             return;
@@ -367,9 +372,20 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         //# perform path validation (Section 8.2) if it detects any change to a
                         //# peer's address, unless it has previously validated that address.
 
-                        if let Err(err) =
-                            conn.handle_packet(shared_state, datagram, path_id, packet)
-                        {
+                        let mut publisher = event::PublisherSubscriber::new(
+                            event::common::Meta {
+                                endpoint_type: Cfg::ENDPOINT_TYPE,
+                                group_id: internal_id.into(),
+                            },
+                            endpoint_context.event_subscriber,
+                        );
+                        if let Err(err) = conn.handle_packet(
+                            shared_state,
+                            datagram,
+                            path_id,
+                            packet,
+                            &mut publisher,
+                        ) {
                             match err {
                                 ProcessingError::DuplicatePacket => {
                                     // We discard duplicate packets
@@ -405,6 +421,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                             path_id,
                             endpoint_context.connection_id_format,
                             remaining,
+                            &mut publisher,
                         ) {
                             conn.close(
                                 Some(shared_state),
@@ -666,7 +683,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
 #[cfg(any(test, feature = "testing"))]
 pub mod testing {
     use super::*;
-    use s2n_quic_core::{endpoint, event, random, stateless_reset};
+    use s2n_quic_core::{endpoint, event::testing::Subscriber, random, stateless_reset};
 
     #[derive(Debug)]
     pub struct Server;
@@ -727,8 +744,4 @@ pub mod testing {
             endpoint::limits::Outcome::Allow
         }
     }
-
-    #[derive(Debug)]
-    pub struct Subscriber;
-    impl event::Subscriber for Subscriber {}
 }
