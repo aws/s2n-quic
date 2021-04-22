@@ -22,7 +22,7 @@ use crate::{
 };
 use core::time::Duration;
 use s2n_quic_core::{
-    event::{self, events},
+    event,
     inet::DatagramInfo,
     io::tx,
     packet::{
@@ -848,14 +848,15 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             // notify the connection a packet was processed
             self.on_processed_packet(datagram.timestamp);
 
-            let event = events::PacketReceived::builder()
-                .with_packet_header(event::PacketHeader {
-                    packet_type: event::PacketType::OneRtt,
+            publisher.on_packet_received(event::builders::PacketReceived {
+                packet_header: event::common::PacketHeader {
+                    packet_type: event::common::PacketType::OneRtt,
                     packet_number: PacketNumber::as_u64(packet.packet_number),
                     version: None, // TODO get this from ProtectedPacket rather than manually setting it
-                })
-                .build();
-            publisher.on_packet_received(&event);
+                },
+                frames: &[],
+                is_coalesced: false, // TODO
+            });
         }
 
         Ok(())

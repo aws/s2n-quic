@@ -6,7 +6,7 @@ use alloc::collections::VecDeque;
 use core::{marker::PhantomData, time::Duration};
 use s2n_codec::{Encoder, EncoderBuffer, EncoderValue};
 use s2n_quic_core::{
-    event::{self, events},
+    event,
     inet::{ExplicitCongestionNotification, SocketAddress},
     io::tx,
     packet,
@@ -75,11 +75,11 @@ impl<Config: endpoint::Config> Negotiator<Config> {
             ProtectedPacket::Initial(packet) => {
                 if is_supported!(packet) {
                     // TODO the event needs to be propolated with real values
-                    let event = events::VersionInformation::builder()
-                        .with_chosen_version(packet.version)
-                        .build();
-
-                    publisher.on_version_information(&event);
+                    publisher.on_version_information(event::builders::VersionInformation {
+                        server_versions: &[],
+                        client_versions: &[],
+                        chosen_version: 0,
+                    });
 
                     return Ok(());
                 }
@@ -88,10 +88,11 @@ impl<Config: endpoint::Config> Negotiator<Config> {
             ProtectedPacket::ZeroRtt(packet) => {
                 if is_supported!(packet) {
                     // TODO the event needs to be propolated with real values
-                    let event = events::VersionInformation::builder()
-                        .with_chosen_version(packet.version)
-                        .build();
-                    publisher.on_version_information(&event);
+                    publisher.on_version_information(event::builders::VersionInformation {
+                        server_versions: &[],
+                        client_versions: &[],
+                        chosen_version: 0,
+                    });
 
                     return Ok(());
                 }
@@ -105,8 +106,11 @@ impl<Config: endpoint::Config> Negotiator<Config> {
             }
             ProtectedPacket::VersionNegotiation(_packet) => {
                 // TODO the event needs to be propolated with real values
-                let event = events::VersionInformation::builder().build();
-                publisher.on_version_information(&event);
+                publisher.on_version_information(event::builders::VersionInformation {
+                    server_versions: &[],
+                    client_versions: &[],
+                    chosen_version: 0,
+                });
 
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#6.1
                 //# An endpoint MUST NOT send a Version Negotiation packet

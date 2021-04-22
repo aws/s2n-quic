@@ -11,24 +11,14 @@ macro_rules! events {
     )*) => {
 
         pub mod events {
-            //! A set of events that the application can emit.
-            //!
-            //! Event should be created using a `builder`. Each Event has two set of
-            //! builder associated with it; the EventMetaBuilder and the EventBuilder.
-            //!
-            //! The EventMetaBilder captures the Meta field associated with all
-            //! Events. Its functions return a EventBuilder.
-            //!
-            //! The EventBuilder allow for chaining and allows for easy modification
-            //! of values of each event. The `fn build` can be envoked on each
-            //! EventBuilder to finalze and return an Event.
+            //! A set of events that the application can handle
 
-            use super::{Event, events, PacketHeader};
-            use paste::paste;
+            use super::*;
+
             $(
                 $(#[$attrs])*
                 #[non_exhaustive]
-                #[derive(Clone, Debug, Default)]
+                #[derive(Clone, Debug)]
                 pub struct $name $(<$lt>)? {
                     $( pub $field_name: $field_type, )*
                 }
@@ -36,45 +26,33 @@ macro_rules! events {
                 impl $(<$lt>)? Event for $name $(<$lt>)? {
                     const NAME: &'static str = $name_str;
                 }
+            )*
+        }
 
-                paste! {
-                    impl $(<$lt>)? $name $(<$lt>)? {
-                        pub fn builder() -> builder::[<$name Builder>] $(<$lt>)? {
-                            builder::[<$name Builder>]::default()
+        pub mod builders {
+            //! Builders allow for ergonomic and uniform creation of Events.
+
+            use super::*;
+
+            $(
+                /// A builder to allow for easy customization of event fields and ensure the
+                /// event is built only once.
+                #[derive(Clone, Debug)]
+                pub struct $name $(<$lt>)? {
+                    $( pub $field_name: $field_type, )*
+                }
+
+                #[doc(hidden)]
+                impl $(<$lt>)? From<$name $(<$lt>)?> for events::$name $(<$lt>)? {
+                    fn from(builder: $name $(<$lt>)?) -> Self {
+                        Self {
+                            $(
+                                $field_name: builder.$field_name,
+                            )*
                         }
                     }
                 }
             )*
-
-            pub mod builder {
-                //! Builders allow for ergonomic and uniform creation of Events.
-
-                use super::*;
-                $(
-                    paste! {
-                        /// A builder to allow for easy customization of event fields and ensure the
-                        /// event is built only once.
-                        #[derive(Clone, Debug, Default)]
-                        pub struct [<$name Builder>] $(<$lt>)? (
-                            events::$name $(<$lt>)?
-                        );
-
-                        #[allow(dead_code)]
-                        impl $(<$lt>)? [<$name Builder>] $(<$lt>)? {
-                            pub fn build(self) -> events::$name $(<$lt>)? {
-                                self.0
-                            }
-
-                            $(
-                                pub fn [<with_ $field_name>](mut self, $field_name: $field_type) -> Self {
-                                    self.0.$field_name = $field_name;
-                                    self
-                                }
-                            )*
-                        }
-                    }
-                )*
-            }
         }
 
         /// An interface for handling QUIC events.
@@ -89,7 +67,7 @@ macro_rules! events {
             $(
                 paste!(
                     $(#[$attrs])*
-                    fn [<on_ $name:snake>](&mut self, meta: &Meta, event: &events::$name) {
+                    fn [<on_ $name:snake>](&mut self, meta: &common::Meta, event: &events::$name) {
                         let _ = meta;
                         let _ = event;
                     }
@@ -103,7 +81,7 @@ macro_rules! events {
         {
             $(
                 paste!(
-                    fn [<on_ $name:snake>](&mut self, meta: &Meta, event: &events::$name) {
+                    fn [<on_ $name:snake>](&mut self, meta: &common::Meta, event: &events::$name) {
                         self.0.[<on_ $name:snake>](meta, event);
                         self.1.[<on_ $name:snake>](meta, event);
                     }
@@ -115,18 +93,18 @@ macro_rules! events {
             $(
                 paste!(
                     $(#[$attrs])*
-                    fn [<on_ $name:snake>](&mut self, event: &events::$name);
+                    fn [<on_ $name:snake>](&mut self, event: builders::$name);
                 );
             )*
         }
 
         pub struct PublisherSubscriber<'a, Sub: Subscriber> {
-            meta: Meta,
+            meta: common::Meta,
             subscriber: &'a mut Sub,
         }
 
         impl<'a, Sub: Subscriber> PublisherSubscriber<'a, Sub> {
-            pub fn new(meta: Meta, subscriber: &'a mut Sub) -> PublisherSubscriber<'a, Sub> {
+            pub fn new(meta: common::Meta, subscriber: &'a mut Sub) -> PublisherSubscriber<'a, Sub> {
                 PublisherSubscriber {
                     meta,
                     subscriber
@@ -138,13 +116,15 @@ macro_rules! events {
             $(
                 paste!(
                     $(#[$attrs])*
-                    fn [<on_ $name:snake>](&mut self, event: &events::$name) {
-                        self.subscriber.[<on_ $name:snake>](&self.meta, event);
+                    fn [<on_ $name:snake>](&mut self, event: builders::$name) {
+                        self.subscriber.[<on_ $name:snake>](&self.meta, &event.into());
                     }
                 );
             )*
         }
 
+        /*
+         * TODO fix me
         #[cfg(any(test, feature = "testing"))]
         mod tests {
             $( super::paste! {
@@ -154,10 +134,11 @@ macro_rules! events {
                 }
             } )*
         }
+        */
 
         #[cfg(any(test, feature = "testing"))]
         pub mod testing {
-            use super::events;
+            use super::*;
 
             pub struct Subscriber;
             impl super::Subscriber for Subscriber{}
@@ -167,8 +148,9 @@ macro_rules! events {
                 $(
                     super::paste!(
                         $(#[$attrs])*
-                        fn [<on_ $name:snake>](&mut self, event: &events::$name) {
-                            let _ = event;
+                        fn [<on_ $name:snake>](&mut self, event: builders::$name) {
+                            let event: events::$name = event.into();
+                            std::eprintln!("{:?}", event);
                         }
                     );
                 )*

@@ -12,53 +12,41 @@ pub trait Event {
     const NAME: &'static str;
 }
 
-/// Common fields that are common to all events. Some of these fields exits to
-/// maintain compatibility with the qlog spec.
-#[derive(Clone, Debug)]
-pub struct Meta {
-    pub endpoint_type: endpoint::Type,
-    pub group_id: u64,
-}
+pub mod common {
+    use super::*;
 
-impl Default for Meta {
-    fn default() -> Self {
-        Self {
-            endpoint_type: endpoint::Type::Server,
-            group_id: 0,
-        }
+    /// Common fields that are common to all events. Some of these fields exits to
+    /// maintain compatibility with the qlog spec.
+    #[derive(Clone, Debug)]
+    // #[non_exhaustive] TODO
+    pub struct Meta {
+        pub endpoint_type: endpoint::Type,
+        pub group_id: u64,
     }
-}
 
-//= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#A.2
-//# PacketType
-#[derive(Clone, Debug)]
-pub enum PacketType {
-    Initial,
-    Handshake,
-    ZeroRtt,
-    OneRtt,
-    Retry,
-    VersionNegotiation,
-    StatelessReset,
-    Unknown,
-}
+    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#A.2
+    //# PacketType
+    #[derive(Clone, Debug)]
+    // #[non_exhaustive] TODO
+    pub enum PacketType {
+        Initial,
+        Handshake,
+        ZeroRtt,
+        OneRtt,
+        Retry,
+        VersionNegotiation,
+        StatelessReset,
+        Unknown,
+    }
 
-//= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#A.4
-//# Note: short vs long header is implicit through PacketType
-#[derive(Clone, Debug)]
-pub struct PacketHeader {
-    pub packet_type: PacketType,
-    pub packet_number: u64,
-    pub version: Option<u32>,
-}
-
-impl Default for PacketHeader {
-    fn default() -> Self {
-        Self {
-            packet_type: PacketType::Unknown,
-            packet_number: 0,
-            version: None,
-        }
+    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#A.4
+    //# Note: short vs long header is implicit through PacketType
+    #[derive(Clone, Debug)]
+    // #[non_exhaustive] TODO
+    pub struct PacketHeader {
+        pub packet_type: PacketType,
+        pub packet_number: u64,
+        pub version: Option<u32>,
     }
 }
 
@@ -89,7 +77,7 @@ events!(
     //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.5
     /// Packet was sent
     struct PacketSent<'a> {
-        pub packet_header: PacketHeader,
+        pub packet_header: common::PacketHeader,
         pub frames: &'a [&'a [u8]],
         pub is_coalesced: bool,
     }
@@ -98,7 +86,7 @@ events!(
     //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.6
     /// Packet was received
     struct PacketReceived<'a> {
-        pub packet_header: PacketHeader,
+        pub packet_header: common::PacketHeader,
         pub frames: &'a [&'a [u8]],
         pub is_coalesced: bool,
     }
