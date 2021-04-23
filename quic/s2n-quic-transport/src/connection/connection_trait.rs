@@ -109,12 +109,13 @@ pub trait ConnectionTrait: Sized {
     // Packet handling
 
     /// Is called when a handshake packet had been received
-    fn handle_handshake_packet(
+    fn handle_handshake_packet<Pub: event::Publisher>(
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedHandshake,
+        publisher: &mut Pub,
     ) -> Result<(), ProcessingError>;
 
     /// Is called when a initial packet had been received
@@ -218,7 +219,7 @@ pub trait ConnectionTrait: Sized {
 
         match packet {
             ProtectedPacket::Short(packet) => {
-                // TODO quic version or PacketHeader could be moved into Publisher or the packet
+                // TODO quic version or PacketHeader could be moved into Publisher
                 // itself
                 self.handle_short_packet(shared_state, datagram, path_id, packet, publisher, self.quic_version())
             }
@@ -232,7 +233,7 @@ pub trait ConnectionTrait: Sized {
                 self.handle_zero_rtt_packet(shared_state, datagram, path_id, packet)
             }
             ProtectedPacket::Handshake(packet) => {
-                self.handle_handshake_packet(shared_state, datagram, path_id, packet)
+                self.handle_handshake_packet(shared_state, datagram, path_id, packet, publisher)
             }
             ProtectedPacket::Retry(packet) => {
                 self.handle_retry_packet(shared_state, datagram, path_id, packet)

@@ -734,12 +734,13 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Is called when a handshake packet had been received
-    fn handle_handshake_packet(
+    fn handle_handshake_packet<Pub: event::Publisher>(
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedHandshake,
+        publisher: &mut Pub,
     ) -> Result<(), ProcessingError> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2.1
         //= type=TODO
@@ -756,6 +757,17 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
         if let Some((space, handshake_status)) = shared_state.space_manager.handshake_mut() {
             let packet = space.validate_and_decrypt_packet(packet)?;
+
+            publisher.on_packet_received(event::builders::PacketReceived {
+                packet_header: event::builders::PacketHeader {
+                    packet_type: event::common::PacketType::OneRtt,
+                    packet_number: PacketNumber::as_u64(packet.packet_number),
+                    version: Some(packet.version),
+                }
+                .into(),
+                is_coalesced: false, // TODO
+            });
+
             space.handle_cleartext_payload(
                 packet.packet_number,
                 packet.payload,
