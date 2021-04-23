@@ -446,11 +446,12 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Queries the connection for outgoing packets
-    fn on_transmit<Tx: tx::Queue>(
+    fn on_transmit<Tx: tx::Queue, Pub: event::Publisher>(
         &mut self,
         shared_state: Option<&mut SharedConnectionState<Self::Config>>,
         queue: &mut Tx,
         timestamp: Timestamp,
+        publisher: &mut Pub,
     ) -> Result<(), ConnectionOnTransmitError> {
         let mut count = 0;
 
@@ -476,6 +477,16 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                     if outcome.ack_elicitation.is_ack_eliciting() {
                         self.on_ack_eliciting_packet_sent(timestamp);
                     }
+
+                    publisher.on_packet_sent(event::builders::PacketSent {
+                        packet_header: event::builders::PacketHeader {
+                            packet_type: event::common::PacketType::Initial,
+                            packet_number: 7,
+                            version: Some(7),
+                        }
+                        .into(),
+                        is_coalesced: false, // TODO
+                    });
                 }
                 // TODO  leave the psuedo in comment, TODO send this stuff
                 // for path_id in path_manager.pending_path_validation() {

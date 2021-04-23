@@ -74,11 +74,12 @@ pub trait ConnectionTrait: Sized {
     ) -> Result<(), LocalIdRegistrationError>;
 
     /// Queries the connection for outgoing packets
-    fn on_transmit<Tx: tx::Queue>(
+    fn on_transmit<Tx: tx::Queue, Pub: event::Publisher>(
         &mut self,
         shared_state: Option<&mut SharedConnectionState<Self::Config>>,
-        context: &mut Tx,
+        queue: &mut Tx,
         timestamp: Timestamp,
+        publisher: &mut Pub,
     ) -> Result<(), ConnectionOnTransmitError>;
 
     /// Handles all timeouts on the `Connection`.
