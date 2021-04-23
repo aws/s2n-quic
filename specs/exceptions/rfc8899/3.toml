@@ -1,0 +1,88 @@
+target = "https://tools.ietf.org/rfc/rfc8899.txt#3"
+
+[[exception]]
+quote = '''
+Probe packets: The network interface below the PL is REQUIRED to
+provide a way to transmit a probe packet that is larger than the
+PLPMTU.
+'''
+reason = '''
+This requirement pertains to the network interface s2n-quic uses,
+not s2n-quic itself.
+'''
+
+[[exception]]
+quote = '''
+Reception feedback: The destination PL endpoint is REQUIRED to
+provide a feedback method that indicates to the DPLPMTUD sender
+when a probe packet has been received by the destination PL
+endpoint.
+'''
+reason = '''
+The QUIC protocol fulfills this requirement via ACK frames.
+'''
+
+[[exception]]
+quote = '''
+If a probe packet
+contains user data requiring retransmission in case of loss, the
+PL (or layers above) is REQUIRED to arrange any retransmission
+and/or repair of any resulting loss.
+'''
+reason = '''
+s2n-quic PMTU probe packets do not contain user data.
+'''
+
+[[exception]]
+quote = '''
+Flow control
+SHOULD NOT apply to DPLPMTU when probe packets use a design that
+does not carry user data to the remote application.
+'''
+reason = '''
+Flow control only applies to STREAM frames in QUIC.
+'''
+
+[[exception]]
+quote = '''
+Shared PLPMTU state: The PMTU value calculated from the PLPMTU
+MAY also be stored with the corresponding entry associated with
+the destination in the IP layer cache and used by other PL
+instances.
+'''
+reason = '''
+s2n-quic does not control the IP layer cache.
+'''
+
+[[exception]]
+quote = '''
+*  A PL MAY be designed to segment data blocks larger than the MPS
+into multiple datagrams.
+'''
+reason = '''
+The QUIC protocol is designed to segment data blocks larger than the MPS
+into multiple datagrams.
+'''
+
+[[exception]]
+quote = '''
+It is RECOMMENDED that methods avoid
+forcing an application to use an arbitrary small MPS for
+transmission while the method is searching for the currently
+supported PLPMTU.
+'''
+reason = '''
+The QUIC protocol supports segmenting data blocks and thus does not
+force the application to use any particular data block size.
+'''
+
+[[exception]]
+quote = '''
+*  To assist applications in choosing a suitable data block size, the
+PL is RECOMMENDED to provide a primitive that returns the MPS
+derived from the PLPMTU to the higher layer using the PL.
+'''
+reason = '''
+The QUIC protocol supports segmenting data blocks and thus does not
+to assist the application in choosing any particular data block size.
+'''

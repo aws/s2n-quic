@@ -1,0 +1,22 @@
+target = "https://tools.ietf.org/rfc/rfc8899.txt#6.1.6"
+
+[[exception]]
+quote = '''
+An application that is able and wishes to receive PTB messages MUST
+perform ICMP validation as specified in Section 5.2 of [BCP145].
+'''
+reason = '''
+This requirement applies only to applications
+built directly or indirectly on UDP or UDP-Lite
+'''
+
+[[exception]]
+quote = '''
+A validated PTB message MAY be used
+as input to the DPLPMTUD algorithm but MUST NOT be used directly to
+set the PLPMTU.
+'''
+reason = '''
+This requirement applies only to applications
+built directly or indirectly on UDP or UDP-Lite
+'''

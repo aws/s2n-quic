@@ -1,0 +1,22 @@
+target = "https://tools.ietf.org/rfc/rfc8899.txt#4.1"
+
+[[exception]]
+quote = '''
+A receiver is REQUIRED to be able to distinguish an in-band data
+block from any added padding.
+'''
+reason = '''
+The QUIC protocol fulfills this requirement via explicit PADDING frames.
+'''
+
+[[exception]]
+quote = '''
+Probe messages sent by a PL MUST contain enough information to
+uniquely identify the probe within the Maximum Segment Lifetime
+(e.g., including a unique identifier from the PL or the DPLPMTUD
+implementation), while being robust to reordering and replay of probe
+response and PTB messages.
+'''
+reason = '''
+The QUIC protocol fulfills this requirement via packet numbers.
+'''

@@ -1,0 +1,12 @@
+target = "https://tools.ietf.org/rfc/rfc8899.txt#2"
+
+[[exception]]
+quote = '''
+This specification continues the requirement in
+[RFC4821] that states, "All links MUST enforce their MTU: links
+that might non-deterministically deliver packets that are larger
+than their rated MTU MUST consistently discard such packets."
+'''
+reason = '''
+s2n-quic cannot enforce the packet delivery behavior of links.
+'''

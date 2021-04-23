@@ -200,6 +200,11 @@ impl<CC: CongestionController> Path<CC> {
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.1
     //# The server MUST also limit the number of bytes it sends before
     //# validating the address of the client; see Section 8.
+
+    //= https://tools.ietf.org/rfc/rfc8899.txt#3
+    //# A PL MUST NOT send a datagram (other than a probe
+    //# packet) with a size at the PL that is larger than the current
+    //# PLPMTU.
     pub fn clamp_mtu(&self, requested_size: usize) -> usize {
         match self.state {
             State::Validated => requested_size.min(self.mtu as usize),
@@ -403,6 +408,13 @@ mod tests {
         //= type=test
         //# The server MUST also limit the number of bytes it sends before
         //# validating the address of the client; see Section 8.
+
+        //= https://tools.ietf.org/rfc/rfc8899.txt#3
+        //= type=test
+        //# A PL MUST NOT send a datagram (other than a probe
+        //# packet) with a size at the PL that is larger than the current
+        //# PLPMTU.
+
         // TODO this would work better as a fuzz test
         let mut path = testing::test_path();
 

@@ -1,0 +1,21 @@
+target = "https://tools.ietf.org/rfc/rfc8899.txt#6.2.2.4"
+
+[[exception]]
+quote = '''
+ICMP validation MUST be performed for PTB messages as specified in
+Appendix C of [RFC4960].
+'''
+reason = '''
+This requirement only applies to SCTP.
+'''
+
+[[exception]]
+quote = '''
+When the
+validation is completed, the PL_PTB_SIZE calculated from the PTB_SIZE
+in the PTB message SHOULD be used with the DPLPMTUD providing that
+the reported PL_PTB_SIZE is less than the current probe size.
+'''
+reason = '''
+This requirement only applies to SCTP.
+'''

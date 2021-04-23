@@ -1,0 +1,10 @@
+target = "https://tools.ietf.org/rfc/rfc8899.txt#6.2.2"
+
+[[exception]]
+quote = '''
+|  The RECOMMENDED method for determining the MTU of the path is
+|  specified in RFC 8899.
+'''
+reason = '''
+This requirement only applies to SCTP.
+'''

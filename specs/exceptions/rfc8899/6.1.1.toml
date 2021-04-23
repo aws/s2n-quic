@@ -1,0 +1,12 @@
+target = "https://tools.ietf.org/rfc/rfc8899.txt#6.1.1"
+
+[[exception]]
+quote = '''
+The method SHOULD allow the sender to check
+the value returned in the response to provide additional protection
+from off-path insertion of data [BCP145].
+'''
+reason = '''
+This requirement applies only to applications
+built directly or indirectly on UDP or UDP-Lite
+'''
