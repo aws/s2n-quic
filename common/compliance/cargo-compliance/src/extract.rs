@@ -130,6 +130,11 @@ fn extract_section<'a>(section: &'a Section<'a>) -> (&'a Section<'a>, Vec<Featur
 
                     #[allow(clippy::needless_range_loop)]
                     for i in start.0..=end.0 {
+                        // The requirement didn't end with a period so stop processing
+                        if i == lines.len() {
+                            break;
+                        }
+
                         let mut line = &lines[i][..];
 
                         if i == end.0 {
