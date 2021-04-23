@@ -29,7 +29,7 @@ macro_rules! events {
             )*
         }
 
-        pub mod builders {
+        mod event_builders {
 
             use super::*;
 
@@ -103,9 +103,9 @@ macro_rules! events {
         }
 
         impl<'a, Sub: Subscriber> PublisherSubscriber<'a, Sub> {
-            pub fn new(meta: common::Meta, subscriber: &'a mut Sub) -> PublisherSubscriber<'a, Sub> {
+            pub fn new(meta: builders::Meta, subscriber: &'a mut Sub) -> PublisherSubscriber<'a, Sub> {
                 PublisherSubscriber {
-                    meta,
+                    meta: meta.into(),
                     subscriber
                 }
             }
@@ -141,6 +141,72 @@ macro_rules! events {
                     );
                 )*
             }
+        }
+    };
+}
+
+macro_rules! common {
+    ($(
+        $(#[$attrs:meta])*
+        struct $name:ident $(<$lt:lifetime>)? {
+            $( pub $field_name:ident : $field_type:ty, )*
+        }
+    )*
+    $(
+        $(#[$enum_attrs:meta])*
+        enum $enum_name:ident {
+            $( $enum_fields : tt, )*
+        }
+    )*
+    ) => {
+        pub mod common {
+            //! Common fields that are common to multiple events. Some of these fields exits to
+            //! maintain compatibility with the qlog spec.
+
+            use super::*;
+
+            $(
+                $(#[$attrs])*
+                #[non_exhaustive]
+                #[derive(Clone, Debug)]
+                pub struct $name $(<$lt>)? {
+                    $( pub $field_name : $field_type, )*
+                }
+            )*
+
+            $(
+                $(#[$enum_attrs])*
+                #[non_exhaustive]
+                #[derive(Clone, Debug)]
+                pub enum $enum_name {
+                    $( $enum_fields, )*
+                }
+            )*
+        }
+
+        mod common_builders {
+
+            use super::*;
+
+            $(
+                // Builders are an implementation detail and allow us to create
+                // `non_exhaustive` Events outside this crate.
+                #[derive(Clone, Debug)]
+                pub struct $name $(<$lt>)? {
+                    $( pub $field_name : $field_type, )*
+                }
+
+                #[doc(hidden)]
+                impl $(<$lt>)? From<$name $(<$lt>)?> for common::$name $(<$lt>)? {
+                    fn from(builder: $name $(<$lt>)?) -> Self {
+                        Self {
+                            $(
+                                $field_name: builder.$field_name,
+                            )*
+                        }
+                    }
+                }
+            )*
         }
     };
 }

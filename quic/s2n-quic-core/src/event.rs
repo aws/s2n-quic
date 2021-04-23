@@ -12,23 +12,31 @@ pub trait Event {
     const NAME: &'static str;
 }
 
-pub mod common {
-    use super::*;
+pub mod builders {
+    pub use super::{common_builders::*, event_builders::*};
+}
 
-    /// Common fields that are common to all events. Some of these fields exits to
-    /// maintain compatibility with the qlog spec.
-    #[derive(Clone, Debug)]
-    // #[non_exhaustive] TODO
-    pub struct Meta {
+common!(
+    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#4
+    //# When the qlog "group_id" field is used, it is recommended to use
+    //# QUIC's Original Destination Connection ID (ODCID, the CID chosen by
+    //# the client when first contacting the server)
+    struct Meta {
         pub endpoint_type: endpoint::Type,
         pub group_id: u64,
     }
 
+    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#A.4
+    //# Note: short vs long header is implicit through PacketType
+    struct PacketHeader {
+        pub packet_type: common::PacketType,
+        pub packet_number: u64,
+        pub version: Option<u32>,
+    }
+
     //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#A.2
     //# PacketType
-    #[derive(Clone, Debug)]
-    // #[non_exhaustive] TODO
-    pub enum PacketType {
+    enum PacketType {
         Initial,
         Handshake,
         ZeroRtt,
@@ -38,17 +46,7 @@ pub mod common {
         StatelessReset,
         Unknown,
     }
-
-    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#A.4
-    //# Note: short vs long header is implicit through PacketType
-    #[derive(Clone, Debug)]
-    // #[non_exhaustive] TODO
-    pub struct PacketHeader {
-        pub packet_type: PacketType,
-        pub packet_number: u64,
-        pub version: Option<u32>,
-    }
-}
+);
 
 events!(
     #[name = "transport::version_information"]
