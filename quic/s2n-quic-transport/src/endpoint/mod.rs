@@ -289,11 +289,10 @@ impl<Cfg: Config> Endpoint<Cfg> {
             return;
         };
 
-        // TODO: generate a new internal connection id
         let mut publisher = event::PublisherSubscriber::new(
             event::builders::Meta {
                 endpoint_type: Cfg::ENDPOINT_TYPE,
-                group_id: 7,
+                group_id: 7, // TODO: generate a new internal connection id
             },
             endpoint_context.event_subscriber,
         );

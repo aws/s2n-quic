@@ -660,15 +660,27 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Is called when a initial packet had been received
-    fn handle_initial_packet(
+    fn handle_initial_packet<Pub: event::Publisher>(
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedInitial,
+        publisher: &mut Pub,
     ) -> Result<(), ProcessingError> {
         if let Some((space, _status)) = shared_state.space_manager.initial_mut() {
             let packet = space.validate_and_decrypt_packet(packet)?;
+
+            publisher.on_packet_received(event::builders::PacketReceived {
+                packet_header: event::builders::PacketHeader {
+                    packet_type: event::common::PacketType::Initial,
+                    packet_number: PacketNumber::as_u64(packet.packet_number),
+                    version: Some(packet.version),
+                }
+                .into(),
+                is_coalesced: false, // TODO
+            });
+
             self.handle_cleartext_initial_packet(shared_state, datagram, path_id, packet)?;
         }
 
@@ -787,6 +799,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         path_id: path::Id,
         packet: ProtectedShort,
         publisher: &mut Pub,
+        version: u32,
     ) -> Result<(), ProcessingError> {
         //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.7
         //# Endpoints in either role MUST NOT decrypt 1-RTT packets from
@@ -852,7 +865,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 packet_header: event::builders::PacketHeader {
                     packet_type: event::common::PacketType::OneRtt,
                     packet_number: PacketNumber::as_u64(packet.packet_number),
-                    version: None, // TODO get this from ProtectedPacket rather than manually setting it
+                    version: Some(version),
                 }
                 .into(),
                 is_coalesced: false, // TODO

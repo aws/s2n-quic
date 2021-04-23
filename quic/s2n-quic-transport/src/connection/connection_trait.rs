@@ -118,12 +118,13 @@ pub trait ConnectionTrait: Sized {
     ) -> Result<(), ProcessingError>;
 
     /// Is called when a initial packet had been received
-    fn handle_initial_packet(
+    fn handle_initial_packet<Pub: event::Publisher>(
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedInitial,
+        publisher: &mut Pub,
     ) -> Result<(), ProcessingError>;
 
     /// Is called when an unprotected initial packet had been received
@@ -143,6 +144,7 @@ pub trait ConnectionTrait: Sized {
         path_id: path::Id,
         packet: ProtectedShort,
         publisher: &mut Pub,
+        version: u32,
     ) -> Result<(), ProcessingError>;
 
     /// Is called when a version negotiation packet had been received
@@ -216,13 +218,15 @@ pub trait ConnectionTrait: Sized {
 
         match packet {
             ProtectedPacket::Short(packet) => {
-                self.handle_short_packet(shared_state, datagram, path_id, packet, publisher)
+                // TODO quic version or PacketHeader could be moved into Publisher or the packet
+                // itself
+                self.handle_short_packet(shared_state, datagram, path_id, packet, publisher, self.quic_version())
             }
             ProtectedPacket::VersionNegotiation(packet) => {
                 self.handle_version_negotiation_packet(shared_state, datagram, path_id, packet)
             }
             ProtectedPacket::Initial(packet) => {
-                self.handle_initial_packet(shared_state, datagram, path_id, packet)
+                self.handle_initial_packet(shared_state, datagram, path_id, packet, publisher)
             }
             ProtectedPacket::ZeroRtt(packet) => {
                 self.handle_zero_rtt_packet(shared_state, datagram, path_id, packet)
