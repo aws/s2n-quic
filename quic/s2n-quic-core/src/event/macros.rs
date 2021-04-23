@@ -29,7 +29,7 @@ macro_rules! events {
             )*
         }
 
-        pub(crate) mod event_builders {
+        mod event_builders {
 
             use super::*;
 
@@ -103,7 +103,7 @@ macro_rules! events {
         }
 
         impl<'a, Sub: Subscriber> PublisherSubscriber<'a, Sub> {
-            pub fn new(meta: common_builders::Meta, subscriber: &'a mut Sub) -> PublisherSubscriber<'a, Sub> {
+            pub fn new(meta: builders::Meta, subscriber: &'a mut Sub) -> PublisherSubscriber<'a, Sub> {
                 PublisherSubscriber {
                     meta: meta.into(),
                     subscriber
@@ -184,7 +184,7 @@ macro_rules! common {
             )*
         }
 
-        pub(crate) mod common_builders {
+        mod common_builders {
 
             use super::*;
 
