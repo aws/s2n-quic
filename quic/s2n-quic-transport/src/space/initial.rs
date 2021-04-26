@@ -105,6 +105,7 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
         let packet_number_encoder = self.packet_number_encoder();
 
         let mut outcome = transmission::Outcome::default();
+        outcome.packet_number = packet_number.as_u64();
 
         let payload = transmission::Transmission {
             config: <PhantomData<Config>>::default(),
@@ -157,6 +158,7 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
         let packet_number_encoder = self.packet_number_encoder();
 
         let mut outcome = transmission::Outcome::default();
+        outcome.packet_number = packet_number.as_u64();
 
         let payload = transmission::Transmission {
             config: <PhantomData<Config>>::default(),

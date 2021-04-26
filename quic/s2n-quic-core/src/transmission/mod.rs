@@ -13,6 +13,7 @@ pub struct Outcome {
     pub ack_elicitation: AckElicitation,
     pub is_congestion_controlled: bool,
     pub bytes_sent: usize,
+    pub packet_number: u64,
 }
 
 impl AckElicitable for Outcome {
@@ -26,5 +27,6 @@ impl ops::AddAssign for Outcome {
         self.ack_elicitation |= rhs.ack_elicitation;
         self.is_congestion_controlled |= rhs.is_congestion_controlled;
         self.bytes_sent += rhs.bytes_sent;
+        self.packet_number = rhs.packet_number;
     }
 }

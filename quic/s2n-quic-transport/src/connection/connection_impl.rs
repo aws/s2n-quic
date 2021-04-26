@@ -480,8 +480,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
                     publisher.on_packet_sent(event::builders::PacketSent {
                         packet_header: event::builders::PacketHeader {
-                            packet_type: event::common::PacketType::Initial,
-                            packet_number: 7, // FIXME how do we get the packet number here??
+                            packet_type: event::common::PacketType::Initial, // FIXME get this from outcome possibly
+                            packet_number: outcome.packet_number,
                             version: Some(self.quic_version),
                         }
                         .into(),
