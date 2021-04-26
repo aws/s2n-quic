@@ -106,7 +106,7 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
                 let mut publisher = event::PublisherSubscriber::new(
                     event::builders::Meta {
                         endpoint_type: Cfg::ENDPOINT_TYPE,
-                        group_id: connection.internal_connection_id().into(), // todo: generate a new internal connection id
+                        group_id: connection.internal_connection_id().into(),
                     },
                     endpoint_context.event_subscriber,
                 );

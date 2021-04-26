@@ -22,13 +22,13 @@ use crate::{
 };
 use core::time::Duration;
 use s2n_quic_core::{
-    event,
+    event::{self, common::PacketType},
     inet::DatagramInfo,
     io::tx,
     packet::{
         handshake::ProtectedHandshake,
         initial::{CleartextInitial, ProtectedInitial},
-        number::{PacketNumber, PacketNumberSpace},
+        number::PacketNumberSpace,
         retry::ProtectedRetry,
         short::ProtectedShort,
         version_negotiation::ProtectedVersionNegotiation,
@@ -684,8 +684,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
             publisher.on_packet_received(event::builders::PacketReceived {
                 packet_header: event::builders::PacketHeader {
-                    packet_type: event::common::PacketType::Initial,
-                    packet_number: PacketNumber::as_u64(packet.packet_number),
+                    packet_type: PacketType::Initial,
+                    packet_number: packet.packet_number.as_u64(),
                     version: Some(self.quic_version),
                 }
                 .into(),
@@ -771,8 +771,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
             publisher.on_packet_received(event::builders::PacketReceived {
                 packet_header: event::builders::PacketHeader {
-                    packet_type: event::common::PacketType::OneRtt,
-                    packet_number: PacketNumber::as_u64(packet.packet_number),
+                    packet_type: PacketType::Handshake,
+                    packet_number: packet.packet_number.as_u64(),
                     version: Some(self.quic_version),
                 }
                 .into(),
@@ -885,8 +885,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
             publisher.on_packet_received(event::builders::PacketReceived {
                 packet_header: event::builders::PacketHeader {
-                    packet_type: event::common::PacketType::OneRtt,
-                    packet_number: PacketNumber::as_u64(packet.packet_number),
+                    packet_type: PacketType::OneRtt,
+                    packet_number: packet.packet_number.as_u64(),
                     version: Some(self.quic_version),
                 }
                 .into(),

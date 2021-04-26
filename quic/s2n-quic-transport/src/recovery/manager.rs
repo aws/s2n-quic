@@ -779,6 +779,7 @@ mod test {
     use core::{ops::RangeInclusive, time::Duration};
     use s2n_quic_core::{
         connection, endpoint,
+        event::common::PacketType,
         frame::ack_elicitation::AckElicitation,
         packet::number::PacketNumberSpace,
         path::INITIAL_PTO_BACKOFF,
@@ -856,6 +857,8 @@ mod test {
                 ack_elicitation,
                 is_congestion_controlled: i % 3 == 0,
                 bytes_sent: (2 * i) as usize,
+                packet_number: 0,
+                packet_type: PacketType::Unknown,
             };
 
             manager.on_packet_sent(sent_packet, outcome, time_sent, &mut context);
@@ -926,6 +929,8 @@ mod test {
                     ack_elicitation: AckElicitation::Eliciting,
                     is_congestion_controlled: true,
                     bytes_sent: packet_bytes,
+                    packet_number: 0,
+                    packet_type: PacketType::Unknown,
                 },
                 time_sent,
                 &mut context,
@@ -1031,6 +1036,8 @@ mod test {
                 ack_elicitation: AckElicitation::NonEliciting,
                 is_congestion_controlled: true,
                 bytes_sent: packet_bytes,
+                packet_number: 0,
+                packet_type: PacketType::Unknown,
             },
             time_sent,
             &mut context,
@@ -1072,6 +1079,8 @@ mod test {
                 ack_elicitation: AckElicitation::Eliciting,
                 is_congestion_controlled: true,
                 bytes_sent: packet_bytes,
+                packet_number: 0,
+                packet_type: PacketType::Unknown,
             },
             time_sent,
             &mut context,
@@ -1082,6 +1091,8 @@ mod test {
                 ack_elicitation: AckElicitation::Eliciting,
                 is_congestion_controlled: true,
                 bytes_sent: packet_bytes,
+                packet_number: 0,
+                packet_type: PacketType::Unknown,
             },
             time_sent,
             &mut context,
@@ -1132,6 +1143,8 @@ mod test {
             ack_elicitation: AckElicitation::Eliciting,
             is_congestion_controlled: true,
             bytes_sent: 1,
+            packet_number: 0,
+            packet_type: PacketType::Unknown,
         };
 
         // Send a packet that was sent too long ago (lost)
@@ -1232,6 +1245,8 @@ mod test {
             ack_elicitation: AckElicitation::Eliciting,
             is_congestion_controlled: true,
             bytes_sent: 1,
+            packet_number: 0,
+            packet_type: PacketType::Unknown,
         };
 
         // Send a packet that is less than the largest acked but not lost
@@ -1274,6 +1289,8 @@ mod test {
             ack_elicitation: AckElicitation::Eliciting,
             is_congestion_controlled: true,
             bytes_sent: 1,
+            packet_number: 0,
+            packet_type: PacketType::Unknown,
         };
 
         // t=0: Send packet #1 (app data)
@@ -1390,6 +1407,8 @@ mod test {
             ack_elicitation: AckElicitation::Eliciting,
             is_congestion_controlled: true,
             bytes_sent: 1,
+            packet_number: 0,
+            packet_type: PacketType::Unknown,
         };
 
         // t=0: Send packet #1 (app data)
@@ -1488,6 +1507,8 @@ mod test {
             ack_elicitation: AckElicitation::Eliciting,
             is_congestion_controlled: true,
             bytes_sent: 1,
+            packet_number: 0,
+            packet_type: PacketType::Unknown,
         };
 
         // t=0: Send packet #1 (app data)
@@ -1612,6 +1633,8 @@ mod test {
                 ack_elicitation: AckElicitation::Eliciting,
                 is_congestion_controlled: true,
                 bytes_sent: 1,
+                packet_number: 0,
+                packet_type: PacketType::Unknown,
             },
             now,
             &mut context,
@@ -1737,6 +1760,8 @@ mod test {
                 ack_elicitation: AckElicitation::Eliciting,
                 is_congestion_controlled: true,
                 bytes_sent: 1,
+                packet_number: 0,
+                packet_type: PacketType::Unknown,
             },
             now - Duration::from_secs(5),
             &mut context,
@@ -1978,6 +2003,8 @@ mod test {
             ack_elicitation: AckElicitation::Eliciting,
             is_congestion_controlled: true,
             bytes_sent: 100,
+            packet_number: 0,
+            packet_type: PacketType::Unknown,
         };
         manager.on_packet_sent(
             space.new_packet_number(VarInt::from_u8(1)),

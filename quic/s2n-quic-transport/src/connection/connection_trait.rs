@@ -219,8 +219,6 @@ pub trait ConnectionTrait: Sized {
 
         match packet {
             ProtectedPacket::Short(packet) => {
-                // TODO quic version or PacketHeader could be moved into Publisher
-                // itself
                 self.handle_short_packet(shared_state, datagram, path_id, packet, publisher)
             }
             ProtectedPacket::VersionNegotiation(packet) => {
