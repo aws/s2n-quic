@@ -482,7 +482,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                         packet_header: event::builders::PacketHeader {
                             packet_type: event::common::PacketType::Initial,
                             packet_number: 7,
-                            version: Some(7),
+                            version: Some(self.quic_version),
                         }
                         .into(),
                         is_coalesced: false, // TODO
