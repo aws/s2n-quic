@@ -1,6 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use std::fmt::Debug;
+
 use crate::endpoint;
 use paste::paste;
 
@@ -8,7 +10,7 @@ use paste::paste;
 mod macros;
 
 /// All event types which can be emitted from this library.
-pub trait Event {
+pub trait Event: Debug {
     const NAME: &'static str;
 }
 

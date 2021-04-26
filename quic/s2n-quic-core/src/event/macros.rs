@@ -72,6 +72,11 @@ macro_rules! events {
                     }
                 );
             )*
+
+            fn on_event<E: Event>(&mut self, meta: &common::Meta, event: &E) {
+                let _ = meta;
+                let _ = event;
+            }
         }
 
         impl<A, B> Subscriber for (A, B)
@@ -86,6 +91,11 @@ macro_rules! events {
                     }
                 );
             )*
+
+            fn on_event<E: Event>(&mut self, meta: &common::Meta, event: &E) {
+                self.0.on_event(meta, event);
+                self.1.on_event(meta, event);
+            }
         }
 
         pub trait Publisher {
@@ -95,6 +105,8 @@ macro_rules! events {
                     fn [<on_ $name:snake>](&mut self, event: builders::$name);
                 );
             )*
+
+            fn on_event<E: Event>(&mut self, event: &E);
         }
 
         pub struct PublisherSubscriber<'a, Sub: Subscriber> {
@@ -120,6 +132,10 @@ macro_rules! events {
                     }
                 );
             )*
+
+            fn on_event<E: Event>(&mut self, event: &E) {
+                self.subscriber.on_event(&self.meta, event);
+            }
         }
 
         #[cfg(any(test, feature = "testing"))]
@@ -130,7 +146,7 @@ macro_rules! events {
             impl super::Subscriber for Subscriber{}
 
             pub struct Publisher;
-            impl super::Publisher for Publisher{
+            impl super::Publisher for Publisher {
                 $(
                     super::paste!(
                         $(#[$attrs])*
@@ -140,6 +156,11 @@ macro_rules! events {
                         }
                     );
                 )*
+
+
+                fn on_event<E: Event>(&mut self, event: &E) {
+                    std::eprintln!("{:?}", event);
+                }
             }
         }
     };
