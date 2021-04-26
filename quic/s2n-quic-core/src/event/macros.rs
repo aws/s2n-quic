@@ -198,7 +198,7 @@ macro_rules! common {
             $(
                 $(#[$enum_attrs])*
                 #[non_exhaustive]
-                #[derive(Clone, Debug)]
+                #[derive(Copy, Clone, Debug)]
                 pub enum $enum_name {
                     $( $enum_fields, )*
                 }

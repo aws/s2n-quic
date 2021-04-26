@@ -50,6 +50,12 @@ common!(
     }
 );
 
+impl Default for common::PacketType {
+    fn default() -> Self {
+        common::PacketType::Unknown
+    }
+}
+
 events!(
     #[name = "transport::version_information"]
     //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.1

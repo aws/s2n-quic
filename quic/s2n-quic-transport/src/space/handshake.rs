@@ -16,6 +16,7 @@ use core::marker::PhantomData;
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
     crypto::{tls, CryptoSuite},
+    event::common::PacketType,
     frame::{ack::AckRanges, crypto::CryptoRef, Ack, ConnectionClose},
     inet::DatagramInfo,
     packet::{
@@ -105,6 +106,7 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
 
         let mut outcome = transmission::Outcome::default();
         outcome.packet_number = packet_number.as_u64();
+        outcome.packet_type = PacketType::Handshake;
 
         let payload = transmission::Transmission {
             config: <PhantomData<Config>>::default(),
@@ -157,6 +159,7 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
 
         let mut outcome = transmission::Outcome::default();
         outcome.packet_number = packet_number.as_u64();
+        outcome.packet_type = PacketType::Handshake;
 
         let payload = transmission::Transmission {
             config: <PhantomData<Config>>::default(),

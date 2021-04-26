@@ -17,6 +17,7 @@ use core::{convert::TryInto, marker::PhantomData};
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
     crypto::{application::KeySet, tls, CryptoSuite},
+    event::common::PacketType,
     frame::{
         ack::AckRanges, crypto::CryptoRef, stream::StreamRef, Ack, ConnectionClose, DataBlocked,
         HandshakeDone, MaxData, MaxStreamData, MaxStreams, NewConnectionId, NewToken,
@@ -142,6 +143,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
 
         let mut outcome = transmission::Outcome::default();
         outcome.packet_number = packet_number.as_u64();
+        outcome.packet_type = PacketType::OneRtt;
 
         let destination_connection_id = context.path().peer_connection_id;
 
@@ -213,6 +215,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
 
         let mut outcome = transmission::Outcome::default();
         outcome.packet_number = packet_number.as_u64();
+        outcome.packet_type = PacketType::OneRtt;
         let destination_connection_id = context.path().peer_connection_id;
 
         let payload = transmission::Transmission {

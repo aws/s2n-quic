@@ -1,7 +1,10 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::frame::ack_elicitation::{AckElicitable, AckElicitation};
+use crate::{
+    event::common,
+    frame::ack_elicitation::{AckElicitable, AckElicitation},
+};
 use core::ops;
 
 pub mod constraint;
@@ -14,6 +17,7 @@ pub struct Outcome {
     pub is_congestion_controlled: bool,
     pub bytes_sent: usize,
     pub packet_number: u64,
+    pub packet_type: common::PacketType,
 }
 
 impl AckElicitable for Outcome {
