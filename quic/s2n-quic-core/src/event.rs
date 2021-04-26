@@ -84,7 +84,6 @@ events!(
     /// Packet was sent
     struct PacketSent {
         pub packet_header: common::PacketHeader,
-        pub is_coalesced: bool,
     }
 
     #[name = "transport:packet_received"]
@@ -92,6 +91,5 @@ events!(
     /// Packet was received
     struct PacketReceived {
         pub packet_header: common::PacketHeader,
-        pub is_coalesced: bool,
     }
 );

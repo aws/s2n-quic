@@ -485,7 +485,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                             version: Some(self.quic_version),
                         }
                         .into(),
-                        is_coalesced: false, // TODO
                     });
                 }
                 // TODO  leave the psuedo in comment, TODO send this stuff
@@ -689,7 +688,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                     version: Some(self.quic_version),
                 }
                 .into(),
-                is_coalesced: false, // TODO
             });
 
             self.handle_cleartext_initial_packet(shared_state, datagram, path_id, packet)?;
@@ -776,7 +774,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                     version: Some(self.quic_version),
                 }
                 .into(),
-                is_coalesced: false, // TODO
             });
 
             space.handle_cleartext_payload(
@@ -890,7 +887,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                     version: Some(self.quic_version),
                 }
                 .into(),
-                is_coalesced: false, // TODO
             });
         }
 
