@@ -686,7 +686,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 packet_header: event::builders::PacketHeader {
                     packet_type: event::common::PacketType::Initial,
                     packet_number: PacketNumber::as_u64(packet.packet_number),
-                    version: Some(packet.version),
+                    version: Some(self.quic_version),
                 }
                 .into(),
                 is_coalesced: false, // TODO
@@ -773,7 +773,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 packet_header: event::builders::PacketHeader {
                     packet_type: event::common::PacketType::OneRtt,
                     packet_number: PacketNumber::as_u64(packet.packet_number),
-                    version: Some(packet.version),
+                    version: Some(self.quic_version),
                 }
                 .into(),
                 is_coalesced: false, // TODO
@@ -822,7 +822,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         path_id: path::Id,
         packet: ProtectedShort,
         publisher: &mut Pub,
-        version: u32,
     ) -> Result<(), ProcessingError> {
         //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.7
         //# Endpoints in either role MUST NOT decrypt 1-RTT packets from
@@ -888,7 +887,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 packet_header: event::builders::PacketHeader {
                     packet_type: event::common::PacketType::OneRtt,
                     packet_number: PacketNumber::as_u64(packet.packet_number),
-                    version: Some(version),
+                    version: Some(self.quic_version),
                 }
                 .into(),
                 is_coalesced: false, // TODO

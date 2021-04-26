@@ -146,7 +146,6 @@ pub trait ConnectionTrait: Sized {
         path_id: path::Id,
         packet: ProtectedShort,
         publisher: &mut Pub,
-        version: u32,
     ) -> Result<(), ProcessingError>;
 
     /// Is called when a version negotiation packet had been received
@@ -222,7 +221,7 @@ pub trait ConnectionTrait: Sized {
             ProtectedPacket::Short(packet) => {
                 // TODO quic version or PacketHeader could be moved into Publisher
                 // itself
-                self.handle_short_packet(shared_state, datagram, path_id, packet, publisher, self.quic_version())
+                self.handle_short_packet(shared_state, datagram, path_id, packet, publisher)
             }
             ProtectedPacket::VersionNegotiation(packet) => {
                 self.handle_version_negotiation_packet(shared_state, datagram, path_id, packet)
