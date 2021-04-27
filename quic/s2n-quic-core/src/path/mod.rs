@@ -4,6 +4,7 @@
 //! This module contains the Path implementation
 
 pub mod challenge;
+mod mtu;
 
 use crate::{
     connection,
