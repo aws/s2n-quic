@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use s2n_quic_core::event::{common, events};
+use s2n_quic_core::event::{common, Event};
 use tracing::info;
 
 #[derive(Debug, Default)]
@@ -20,12 +20,7 @@ pub struct Subscriber;
 
 // TODO we should implement Display for Events or maybe opt into serde as a feature
 impl super::Subscriber for Subscriber {
-    fn on_version_information(&mut self, meta: &common::Meta, event: &events::VersionInformation) {
-        info!("{:?}", meta);
-        info!("{:?}", event);
-    }
-
-    fn on_alpn_information(&mut self, meta: &common::Meta, event: &events::AlpnInformation) {
+    fn on_event<E: Event>(&mut self, meta: &common::Meta, event: &E) {
         info!("{:?}", meta);
         info!("{:?}", event);
     }

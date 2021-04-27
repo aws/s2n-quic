@@ -140,7 +140,10 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
 
         let packet_number_encoder = self.packet_number_encoder();
 
-        let mut outcome = transmission::Outcome::default();
+        let mut outcome = transmission::Outcome {
+            packet_number,
+            ..Default::default()
+        };
 
         let destination_connection_id = context.path().peer_connection_id;
 
@@ -210,7 +213,10 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
 
         let packet_number_encoder = self.packet_number_encoder();
 
-        let mut outcome = transmission::Outcome::default();
+        let mut outcome = transmission::Outcome {
+            packet_number,
+            ..Default::default()
+        };
         let destination_connection_id = context.path().peer_connection_id;
 
         let payload = transmission::Transmission {

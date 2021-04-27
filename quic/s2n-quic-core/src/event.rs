@@ -1,14 +1,14 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::endpoint;
+use crate::{endpoint, packet::number::PacketNumberSpace};
 use paste::paste;
 
 #[macro_use]
 mod macros;
 
 /// All event types which can be emitted from this library.
-pub trait Event {
+pub trait Event: core::fmt::Debug {
     const NAME: &'static str;
 }
 
@@ -48,6 +48,22 @@ common!(
     }
 );
 
+impl Default for common::PacketType {
+    fn default() -> Self {
+        common::PacketType::Unknown
+    }
+}
+
+impl From<PacketNumberSpace> for common::PacketType {
+    fn from(packet_space: PacketNumberSpace) -> common::PacketType {
+        match packet_space {
+            PacketNumberSpace::Initial => common::PacketType::Initial,
+            PacketNumberSpace::Handshake => common::PacketType::Handshake,
+            PacketNumberSpace::ApplicationData => common::PacketType::OneRtt, // TODO: need to figure out how to capture ZeroRtt
+        }
+    }
+}
+
 events!(
     #[name = "transport::version_information"]
     //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.1
@@ -76,7 +92,6 @@ events!(
     /// Packet was sent
     struct PacketSent {
         pub packet_header: common::PacketHeader,
-        pub is_coalesced: bool,
     }
 
     #[name = "transport:packet_received"]
@@ -84,6 +99,5 @@ events!(
     /// Packet was received
     struct PacketReceived {
         pub packet_header: common::PacketHeader,
-        pub is_coalesced: bool,
     }
 );

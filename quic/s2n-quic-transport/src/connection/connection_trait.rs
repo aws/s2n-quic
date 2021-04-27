@@ -74,11 +74,12 @@ pub trait ConnectionTrait: Sized {
     ) -> Result<(), LocalIdRegistrationError>;
 
     /// Queries the connection for outgoing packets
-    fn on_transmit<Tx: tx::Queue>(
+    fn on_transmit<Tx: tx::Queue, Pub: event::Publisher>(
         &mut self,
         shared_state: Option<&mut SharedConnectionState<Self::Config>>,
-        context: &mut Tx,
+        queue: &mut Tx,
         timestamp: Timestamp,
+        publisher: &mut Pub,
     ) -> Result<(), ConnectionOnTransmitError>;
 
     /// Handles all timeouts on the `Connection`.
@@ -109,21 +110,23 @@ pub trait ConnectionTrait: Sized {
     // Packet handling
 
     /// Is called when a handshake packet had been received
-    fn handle_handshake_packet(
+    fn handle_handshake_packet<Pub: event::Publisher>(
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedHandshake,
+        publisher: &mut Pub,
     ) -> Result<(), ProcessingError>;
 
     /// Is called when a initial packet had been received
-    fn handle_initial_packet(
+    fn handle_initial_packet<Pub: event::Publisher>(
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedInitial,
+        publisher: &mut Pub,
     ) -> Result<(), ProcessingError>;
 
     /// Is called when an unprotected initial packet had been received
@@ -222,13 +225,13 @@ pub trait ConnectionTrait: Sized {
                 self.handle_version_negotiation_packet(shared_state, datagram, path_id, packet)
             }
             ProtectedPacket::Initial(packet) => {
-                self.handle_initial_packet(shared_state, datagram, path_id, packet)
+                self.handle_initial_packet(shared_state, datagram, path_id, packet, publisher)
             }
             ProtectedPacket::ZeroRtt(packet) => {
                 self.handle_zero_rtt_packet(shared_state, datagram, path_id, packet)
             }
             ProtectedPacket::Handshake(packet) => {
-                self.handle_handshake_packet(shared_state, datagram, path_id, packet)
+                self.handle_handshake_packet(shared_state, datagram, path_id, packet, publisher)
             }
             ProtectedPacket::Retry(packet) => {
                 self.handle_retry_packet(shared_state, datagram, path_id, packet)

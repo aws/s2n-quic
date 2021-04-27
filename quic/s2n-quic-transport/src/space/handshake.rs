@@ -102,8 +102,10 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
         }
 
         let packet_number_encoder = self.packet_number_encoder();
-
-        let mut outcome = transmission::Outcome::default();
+        let mut outcome = transmission::Outcome {
+            packet_number,
+            ..Default::default()
+        };
 
         let payload = transmission::Transmission {
             config: <PhantomData<Config>>::default(),
@@ -153,8 +155,10 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
         let packet_number = self.tx_packet_numbers.next();
 
         let packet_number_encoder = self.packet_number_encoder();
-
-        let mut outcome = transmission::Outcome::default();
+        let mut outcome = transmission::Outcome {
+            packet_number,
+            ..Default::default()
+        };
 
         let payload = transmission::Transmission {
             config: <PhantomData<Config>>::default(),
