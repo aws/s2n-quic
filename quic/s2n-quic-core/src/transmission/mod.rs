@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    event::common,
     frame::ack_elicitation::{AckElicitable, AckElicitation},
+    packet::number,
 };
 use core::ops;
 
@@ -16,8 +16,7 @@ pub struct Outcome {
     pub ack_elicitation: AckElicitation,
     pub is_congestion_controlled: bool,
     pub bytes_sent: usize,
-    pub packet_number: u64,
-    pub packet_type: common::PacketType,
+    pub packet_number: number::PacketNumber,
 }
 
 impl AckElicitable for Outcome {

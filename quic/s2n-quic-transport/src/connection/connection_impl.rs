@@ -480,8 +480,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
                     publisher.on_packet_sent(event::builders::PacketSent {
                         packet_header: event::builders::PacketHeader {
-                            packet_type: outcome.packet_type,
-                            packet_number: outcome.packet_number,
+                            packet_type: outcome.packet_number.space().into(),
+                            packet_number: outcome.packet_number.as_u64(),
                             version: Some(self.quic_version),
                         }
                         .into(),

@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::endpoint;
+use crate::{endpoint, packet::number::PacketNumberSpace};
 use paste::paste;
 
 #[macro_use]
@@ -51,6 +51,16 @@ common!(
 impl Default for common::PacketType {
     fn default() -> Self {
         common::PacketType::Unknown
+    }
+}
+
+impl From<PacketNumberSpace> for common::PacketType {
+    fn from(packet_space: PacketNumberSpace) -> common::PacketType {
+        match packet_space {
+            PacketNumberSpace::Initial => common::PacketType::Initial,
+            PacketNumberSpace::Handshake => common::PacketType::Handshake,
+            PacketNumberSpace::ApplicationData => common::PacketType::OneRtt, // TODO: need to figure out how to capture ZeroRtt
+        }
     }
 }
 
