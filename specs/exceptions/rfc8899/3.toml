@@ -86,3 +86,26 @@ reason = '''
 The QUIC protocol supports segmenting data blocks and thus does not
 to assist the application in choosing any particular data block size.
 '''
+
+[[exception]]
+quote = '''
+A PL sender MAY utilize similar information about the
+maximum size of network-layer packet that a receiver can accept
+when this is supplied (note this could be less than EMTU_R).
+'''
+reason = '''
+s2n-quic does not receive any information about the maximum size of packet
+a receiver can accept.
+'''
+
+[[exception]]
+quote = '''
+When the
+transmission of probe packets is not controlled by the congestion
+controller, the interval between probe packets MUST be at least
+one RTT.
+'''
+reason = '''
+The transmission of PMTU probe packets is controlled by the congestion
+controller.
+'''

@@ -201,6 +201,12 @@ impl<CC: CongestionController> Path<CC> {
     //# The server MUST also limit the number of bytes it sends before
     //# validating the address of the client; see Section 8.
 
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.2
+    //# All QUIC
+    //# packets that are not sent in a PMTU probe SHOULD be sized to fit
+    //# within the maximum datagram size to avoid the datagram being
+    //# fragmented or dropped ([RFC8085]).
+
     //= https://tools.ietf.org/rfc/rfc8899.txt#3
     //# A PL MUST NOT send a datagram (other than a probe
     //# packet) with a size at the PL that is larger than the current
@@ -408,6 +414,13 @@ mod tests {
         //= type=test
         //# The server MUST also limit the number of bytes it sends before
         //# validating the address of the client; see Section 8.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.2
+        //= type=test
+        //# All QUIC
+        //# packets that are not sent in a PMTU probe SHOULD be sized to fit
+        //# within the maximum datagram size to avoid the datagram being
+        //# fragmented or dropped ([RFC8085]).
 
         //= https://tools.ietf.org/rfc/rfc8899.txt#3
         //= type=test
