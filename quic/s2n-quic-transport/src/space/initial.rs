@@ -1,18 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{
-    connection::{self, ConnectionTransmissionContext, ProcessingError},
-    endpoint, path,
-    processed_packet::ProcessedPacket,
-    recovery,
-    recovery::congestion_controller,
-    space::{
-        rx_packet_numbers::AckManager, CryptoStream, HandshakeStatus, PacketSpace, TxPacketNumbers,
-    },
-    transmission,
-};
 use core::marker::PhantomData;
+
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
     crypto::{tls, CryptoSuite},
@@ -25,9 +15,21 @@ use s2n_quic_core::{
             PacketNumber, PacketNumberRange, PacketNumberSpace, SlidingWindow, SlidingWindowError,
         },
     },
-    path::Path,
     time::Timestamp,
     transport,
+};
+
+use crate::{
+    connection::{self, ConnectionTransmissionContext, ProcessingError},
+    endpoint, path,
+    path::Path,
+    processed_packet::ProcessedPacket,
+    recovery,
+    recovery::congestion_controller,
+    space::{
+        rx_packet_numbers::AckManager, CryptoStream, HandshakeStatus, PacketSpace, TxPacketNumbers,
+    },
+    transmission,
 };
 
 pub struct InitialSpace<Config: endpoint::Config> {

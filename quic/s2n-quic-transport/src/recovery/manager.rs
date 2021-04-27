@@ -1,24 +1,27 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{
-    contexts::WriteContext,
-    recovery::{SentPacketInfo, SentPackets},
-    timer::VirtualTimer,
-    transmission,
-};
 use core::{cmp::max, time::Duration};
+
+use smallvec::SmallVec;
+
 use s2n_quic_core::{
     endpoint, frame,
     inet::DatagramInfo,
     packet::number::{PacketNumber, PacketNumberRange, PacketNumberSpace},
-    path::Path,
     recovery::{CongestionController, RttEstimator, K_GRANULARITY},
     time::Timestamp,
     transport,
     varint::VarInt,
 };
-use smallvec::SmallVec;
+
+use crate::{
+    contexts::WriteContext,
+    path::Path,
+    recovery::{SentPacketInfo, SentPackets},
+    timer::VirtualTimer,
+    transmission,
+};
 
 #[derive(Debug)]
 pub struct Manager {
@@ -769,14 +772,9 @@ impl transmission::interest::Provider for Pto {
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use crate::{
-        contexts::testing::{MockWriteContext, OutgoingFrameBuffer},
-        recovery,
-        recovery::manager::PtoState::RequiresTransmission,
-        space::rx_packet_numbers::ack_ranges::AckRanges,
-    };
     use core::{ops::RangeInclusive, time::Duration};
+    use std::collections::HashSet;
+
     use s2n_quic_core::{
         connection, endpoint,
         frame::ack_elicitation::AckElicitation,
@@ -791,7 +789,15 @@ mod test {
         },
         varint::VarInt,
     };
-    use std::collections::HashSet;
+
+    use crate::{
+        contexts::testing::{MockWriteContext, OutgoingFrameBuffer},
+        recovery,
+        recovery::manager::PtoState::RequiresTransmission,
+        space::rx_packet_numbers::ack_ranges::AckRanges,
+    };
+
+    use super::*;
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.2
     //= type=test

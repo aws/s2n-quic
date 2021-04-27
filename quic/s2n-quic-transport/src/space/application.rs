@@ -1,19 +1,10 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{
-    connection::{self, ConnectionTransmissionContext, ProcessingError},
-    endpoint, path,
-    processed_packet::ProcessedPacket,
-    recovery,
-    recovery::congestion_controller,
-    space::{rx_packet_numbers::AckManager, HandshakeStatus, PacketSpace, TxPacketNumbers},
-    stream::AbstractStreamManager,
-    sync::flag,
-    transmission,
-};
-use bytes::Bytes;
 use core::{convert::TryInto, marker::PhantomData};
+
+use bytes::Bytes;
+
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
     crypto::{application::KeySet, tls, CryptoSuite},
@@ -31,10 +22,22 @@ use s2n_quic_core::{
         },
         short::{CleartextShort, ProtectedShort, Short, SpinBit},
     },
-    path::Path,
     recovery::RttEstimator,
     time::Timestamp,
     transport,
+};
+
+use crate::{
+    connection::{self, ConnectionTransmissionContext, ProcessingError},
+    endpoint, path,
+    path::Path,
+    processed_packet::ProcessedPacket,
+    recovery,
+    recovery::congestion_controller,
+    space::{rx_packet_numbers::AckManager, HandshakeStatus, PacketSpace, TxPacketNumbers},
+    stream::AbstractStreamManager,
+    sync::flag,
+    transmission,
 };
 
 pub struct ApplicationSpace<Config: endpoint::Config> {

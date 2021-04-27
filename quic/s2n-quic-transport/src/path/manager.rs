@@ -3,11 +3,8 @@
 
 //! This module contains the Manager implementation
 
-use crate::{
-    connection::PeerIdRegistry,
-    path::{challenge, Path},
-    transmission,
-};
+use smallvec::SmallVec;
+
 use s2n_quic_core::{
     ack, connection, frame,
     inet::{DatagramInfo, SocketAddress},
@@ -17,7 +14,12 @@ use s2n_quic_core::{
     time::Timestamp,
     transport,
 };
-use smallvec::SmallVec;
+
+use crate::{
+    connection::PeerIdRegistry,
+    path::{challenge, Path},
+    transmission,
+};
 
 /// The amount of Paths that can be maintained without using the heap
 const INLINE_PATH_LEN: usize = 5;
@@ -454,9 +456,9 @@ impl<'a, CCE: congestion_controller::Endpoint> PendingPaths<'a, CCE> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::connection::{ConnectionIdMapper, InternalConnectionIdGenerator};
     use core::time::Duration;
+    use std::net::SocketAddr;
+
     use s2n_quic_core::{
         endpoint,
         inet::{DatagramInfo, ExplicitCongestionNotification},
@@ -466,7 +468,10 @@ mod tests {
         stateless_reset::token::testing::TEST_TOKEN_1,
         time::{Clock, NoopClock},
     };
-    use std::net::SocketAddr;
+
+    use crate::connection::{ConnectionIdMapper, InternalConnectionIdGenerator};
+
+    use super::*;
 
     // Helper function to easily create a PathManager
     fn manager(

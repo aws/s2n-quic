@@ -1,19 +1,22 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{
-    connection::finalization,
-    transmission::{self, interest::Provider as _},
-};
-use bytes::Bytes;
 use core::{task::Poll, time::Duration};
+
+use bytes::Bytes;
+
 use s2n_quic_core::{
     counter::{self, Counter},
     inet::{ExplicitCongestionNotification, SocketAddress},
     io::tx,
-    path::Path,
     recovery::CongestionController,
     time::{Timer, Timestamp},
+};
+
+use crate::{
+    connection::finalization,
+    path::Path,
+    transmission::{self, interest::Provider as _},
 };
 
 #[derive(Debug, Default)]
@@ -269,12 +272,15 @@ impl Limiter {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use s2n_quic_core::{
         io::tx::Message as _,
-        path::{testing::test_path, MINIMUM_MTU},
+        path::MINIMUM_MTU,
         time::{testing::Clock, Clock as _},
     };
+
+    use crate::path::testing::test_path;
+
+    use super::*;
 
     static PACKET: Bytes = Bytes::from_static(b"CLOSE");
 

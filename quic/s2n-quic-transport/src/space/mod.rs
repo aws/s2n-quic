@@ -1,11 +1,13 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{
-    connection, endpoint, path, processed_packet::ProcessedPacket, recovery::congestion_controller,
-    space::rx_packet_numbers::AckManager, transmission,
-};
 use bytes::Bytes;
+
+pub(crate) use application::ApplicationSpace;
+pub(crate) use crypto_stream::CryptoStream;
+pub(crate) use handshake::HandshakeSpace;
+pub(crate) use handshake_status::HandshakeStatus;
+pub(crate) use initial::InitialSpace;
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     ack,
@@ -19,9 +21,15 @@ use s2n_quic_core::{
     },
     inet::DatagramInfo,
     packet::number::{PacketNumber, PacketNumberSpace},
-    path::Path,
     time::Timestamp,
     transport,
+};
+pub(crate) use session_context::SessionContext;
+pub(crate) use tx_packet_numbers::TxPacketNumbers;
+
+use crate::{
+    connection, endpoint, path, path::Path, processed_packet::ProcessedPacket,
+    recovery::congestion_controller, space::rx_packet_numbers::AckManager, transmission,
 };
 
 mod application;
@@ -32,14 +40,6 @@ mod initial;
 pub(crate) mod rx_packet_numbers;
 mod session_context;
 mod tx_packet_numbers;
-
-pub(crate) use application::ApplicationSpace;
-pub(crate) use crypto_stream::CryptoStream;
-pub(crate) use handshake::HandshakeSpace;
-pub(crate) use handshake_status::HandshakeStatus;
-pub(crate) use initial::InitialSpace;
-pub(crate) use session_context::SessionContext;
-pub(crate) use tx_packet_numbers::TxPacketNumbers;
 
 pub struct PacketSpaceManager<Config: endpoint::Config> {
     session: Option<<Config::TLSEndpoint as tls::Endpoint>::Session>,
