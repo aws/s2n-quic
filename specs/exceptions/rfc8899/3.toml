@@ -95,7 +95,7 @@ when this is supplied (note this could be less than EMTU_R).
 '''
 reason = '''
 s2n-quic does not receive any information about the maximum size of packet
-a receive can accept.
+a receiver can accept.
 '''
 
 [[exception]]
