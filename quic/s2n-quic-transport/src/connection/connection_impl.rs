@@ -22,13 +22,13 @@ use crate::{
 };
 use core::time::Duration;
 use s2n_quic_core::{
-    event,
+    event::{self, common::PacketType},
     inet::DatagramInfo,
     io::tx,
     packet::{
         handshake::ProtectedHandshake,
         initial::{CleartextInitial, ProtectedInitial},
-        number::{PacketNumber, PacketNumberSpace},
+        number::PacketNumberSpace,
         retry::ProtectedRetry,
         short::ProtectedShort,
         version_negotiation::ProtectedVersionNegotiation,
@@ -446,11 +446,12 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Queries the connection for outgoing packets
-    fn on_transmit<Tx: tx::Queue>(
+    fn on_transmit<Tx: tx::Queue, Pub: event::Publisher>(
         &mut self,
         shared_state: Option<&mut SharedConnectionState<Self::Config>>,
         queue: &mut Tx,
         timestamp: Timestamp,
+        publisher: &mut Pub,
     ) -> Result<(), ConnectionOnTransmitError> {
         let mut count = 0;
 
@@ -476,6 +477,15 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                     if outcome.ack_elicitation.is_ack_eliciting() {
                         self.on_ack_eliciting_packet_sent(timestamp);
                     }
+
+                    publisher.on_packet_sent(event::builders::PacketSent {
+                        packet_header: event::builders::PacketHeader {
+                            packet_type: outcome.packet_number.space().into(),
+                            packet_number: outcome.packet_number.as_u64(),
+                            version: Some(self.quic_version),
+                        }
+                        .into(),
+                    });
                 }
                 // TODO  leave the psuedo in comment, TODO send this stuff
                 // for path_id in path_manager.pending_path_validation() {
@@ -660,15 +670,26 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Is called when a initial packet had been received
-    fn handle_initial_packet(
+    fn handle_initial_packet<Pub: event::Publisher>(
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedInitial,
+        publisher: &mut Pub,
     ) -> Result<(), ProcessingError> {
         if let Some((space, _status)) = shared_state.space_manager.initial_mut() {
             let packet = space.validate_and_decrypt_packet(packet)?;
+
+            publisher.on_packet_received(event::builders::PacketReceived {
+                packet_header: event::builders::PacketHeader {
+                    packet_type: PacketType::Initial,
+                    packet_number: packet.packet_number.as_u64(),
+                    version: Some(self.quic_version),
+                }
+                .into(),
+            });
+
             self.handle_cleartext_initial_packet(shared_state, datagram, path_id, packet)?;
         }
 
@@ -722,12 +743,13 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Is called when a handshake packet had been received
-    fn handle_handshake_packet(
+    fn handle_handshake_packet<Pub: event::Publisher>(
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedHandshake,
+        publisher: &mut Pub,
     ) -> Result<(), ProcessingError> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2.1
         //= type=TODO
@@ -744,6 +766,16 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
         if let Some((space, handshake_status)) = shared_state.space_manager.handshake_mut() {
             let packet = space.validate_and_decrypt_packet(packet)?;
+
+            publisher.on_packet_received(event::builders::PacketReceived {
+                packet_header: event::builders::PacketHeader {
+                    packet_type: PacketType::Handshake,
+                    packet_number: packet.packet_number.as_u64(),
+                    version: Some(self.quic_version),
+                }
+                .into(),
+            });
+
             space.handle_cleartext_payload(
                 packet.packet_number,
                 packet.payload,
@@ -850,12 +882,11 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
             publisher.on_packet_received(event::builders::PacketReceived {
                 packet_header: event::builders::PacketHeader {
-                    packet_type: event::common::PacketType::OneRtt,
-                    packet_number: PacketNumber::as_u64(packet.packet_number),
-                    version: None, // TODO get this from ProtectedPacket rather than manually setting it
+                    packet_type: PacketType::OneRtt,
+                    packet_number: packet.packet_number.as_u64(),
+                    version: Some(self.quic_version),
                 }
                 .into(),
-                is_coalesced: false, // TODO
             });
         }
 

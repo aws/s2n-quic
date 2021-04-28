@@ -3,6 +3,7 @@
 
 use crate::{
     contexts::WriteContext,
+    path::Path,
     recovery::{SentPacketInfo, SentPackets},
     timer::VirtualTimer,
     transmission,
@@ -12,7 +13,6 @@ use s2n_quic_core::{
     endpoint, frame,
     inet::DatagramInfo,
     packet::number::{PacketNumber, PacketNumberRange, PacketNumberSpace},
-    path::Path,
     recovery::{CongestionController, RttEstimator, K_GRANULARITY},
     time::Timestamp,
     transport,
@@ -856,6 +856,7 @@ mod test {
                 ack_elicitation,
                 is_congestion_controlled: i % 3 == 0,
                 bytes_sent: (2 * i) as usize,
+                packet_number: space.new_packet_number(VarInt::from_u8(1)),
             };
 
             manager.on_packet_sent(sent_packet, outcome, time_sent, &mut context);
@@ -926,6 +927,7 @@ mod test {
                     ack_elicitation: AckElicitation::Eliciting,
                     is_congestion_controlled: true,
                     bytes_sent: packet_bytes,
+                    packet_number: space.new_packet_number(VarInt::from_u8(1)),
                 },
                 time_sent,
                 &mut context,
@@ -1031,6 +1033,7 @@ mod test {
                 ack_elicitation: AckElicitation::NonEliciting,
                 is_congestion_controlled: true,
                 bytes_sent: packet_bytes,
+                packet_number: space.new_packet_number(VarInt::from_u8(1)),
             },
             time_sent,
             &mut context,
@@ -1072,6 +1075,7 @@ mod test {
                 ack_elicitation: AckElicitation::Eliciting,
                 is_congestion_controlled: true,
                 bytes_sent: packet_bytes,
+                packet_number: space.new_packet_number(VarInt::from_u8(1)),
             },
             time_sent,
             &mut context,
@@ -1082,6 +1086,7 @@ mod test {
                 ack_elicitation: AckElicitation::Eliciting,
                 is_congestion_controlled: true,
                 bytes_sent: packet_bytes,
+                packet_number: space.new_packet_number(VarInt::from_u8(1)),
             },
             time_sent,
             &mut context,
@@ -1132,6 +1137,7 @@ mod test {
             ack_elicitation: AckElicitation::Eliciting,
             is_congestion_controlled: true,
             bytes_sent: 1,
+            packet_number: space.new_packet_number(VarInt::from_u8(1)),
         };
 
         // Send a packet that was sent too long ago (lost)
@@ -1232,6 +1238,7 @@ mod test {
             ack_elicitation: AckElicitation::Eliciting,
             is_congestion_controlled: true,
             bytes_sent: 1,
+            packet_number: space.new_packet_number(VarInt::from_u8(1)),
         };
 
         // Send a packet that is less than the largest acked but not lost
@@ -1274,6 +1281,7 @@ mod test {
             ack_elicitation: AckElicitation::Eliciting,
             is_congestion_controlled: true,
             bytes_sent: 1,
+            packet_number: space.new_packet_number(VarInt::from_u8(1)),
         };
 
         // t=0: Send packet #1 (app data)
@@ -1390,6 +1398,7 @@ mod test {
             ack_elicitation: AckElicitation::Eliciting,
             is_congestion_controlled: true,
             bytes_sent: 1,
+            packet_number: space.new_packet_number(VarInt::from_u8(1)),
         };
 
         // t=0: Send packet #1 (app data)
@@ -1488,6 +1497,7 @@ mod test {
             ack_elicitation: AckElicitation::Eliciting,
             is_congestion_controlled: true,
             bytes_sent: 1,
+            packet_number: space.new_packet_number(VarInt::from_u8(1)),
         };
 
         // t=0: Send packet #1 (app data)
@@ -1612,6 +1622,7 @@ mod test {
                 ack_elicitation: AckElicitation::Eliciting,
                 is_congestion_controlled: true,
                 bytes_sent: 1,
+                packet_number: space.new_packet_number(VarInt::from_u8(1)),
             },
             now,
             &mut context,
@@ -1737,6 +1748,7 @@ mod test {
                 ack_elicitation: AckElicitation::Eliciting,
                 is_congestion_controlled: true,
                 bytes_sent: 1,
+                packet_number: space.new_packet_number(VarInt::from_u8(1)),
             },
             now - Duration::from_secs(5),
             &mut context,
@@ -1978,6 +1990,7 @@ mod test {
             ack_elicitation: AckElicitation::Eliciting,
             is_congestion_controlled: true,
             bytes_sent: 100,
+            packet_number: space.new_packet_number(VarInt::from_u8(1)),
         };
         manager.on_packet_sent(
             space.new_packet_number(VarInt::from_u8(1)),

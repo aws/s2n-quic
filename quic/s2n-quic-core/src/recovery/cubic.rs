@@ -297,6 +297,15 @@ impl CongestionController for CubicCongestionController {
     //# If the maximum datagram size is decreased in order to complete the
     //# handshake, the congestion window SHOULD be set to the new initial
     //# congestion window.
+
+    //= https://tools.ietf.org/rfc/rfc8899.txt#3
+    //# An update to the PLPMTU (or MPS) MUST NOT increase the congestion
+    //# window measured in bytes [RFC4821].
+
+    //= https://tools.ietf.org/rfc/rfc8899.txt#3
+    //# A PL that maintains the congestion window in terms of a limit to
+    //# the number of outstanding fixed-size packets SHOULD adapt this
+    //# limit to compensate for the size of the actual packets.
     fn on_mtu_update(&mut self, max_datagram_size: u16) {
         let old_max_datagram_size = self.max_datagram_size;
         self.max_datagram_size = max_datagram_size;
@@ -1185,16 +1194,32 @@ mod test {
     //= type=test
     //# If the maximum datagram size changes during the connection, the
     //# initial congestion window SHOULD be recalculated with the new size.
+
+    //= https://tools.ietf.org/rfc/rfc8899.txt#3
+    //= type=test
+    //# A PL that maintains the congestion window in terms of a limit to
+    //# the number of outstanding fixed-size packets SHOULD adapt this
+    //# limit to compensate for the size of the actual packets.
     #[test]
     fn on_mtu_update_increase() {
-        let mut cc = CubicCongestionController::new(5000);
-        cc.congestion_window = 100_000.0;
+        let mut mtu = 5000;
+        let cwnd_in_packets = 100_000f32;
+        let cwnd_in_bytes = cwnd_in_packets / mtu as f32;
+        let mut cc = CubicCongestionController::new(mtu);
+        cc.congestion_window = cwnd_in_packets;
 
-        cc.on_mtu_update(10000);
-        assert_eq!(cc.max_datagram_size, 10000);
-        assert_eq!(cc.cubic.max_datagram_size, 10000);
+        mtu = 10000;
+        cc.on_mtu_update(mtu);
+        assert_eq!(cc.max_datagram_size, mtu);
+        assert_eq!(cc.cubic.max_datagram_size, mtu);
 
         assert_delta!(cc.congestion_window, 200_000.0, 0.001);
+
+        //= https://tools.ietf.org/rfc/rfc8899.txt#3
+        //= type=test
+        //# An update to the PLPMTU (or MPS) MUST NOT increase the congestion
+        //# window measured in bytes [RFC4821].
+        assert_delta!(cc.congestion_window / mtu as f32, cwnd_in_bytes, 0.001);
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.4

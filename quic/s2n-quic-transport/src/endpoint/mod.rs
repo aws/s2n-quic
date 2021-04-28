@@ -100,9 +100,19 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
 
         // Iterate over all connections which want to transmit data
         let mut transmit_result = Ok(());
+        let endpoint_context = self.config.context();
         self.connections
             .iterate_transmission_list(|connection, shared_state| {
-                transmit_result = connection.on_transmit(shared_state, queue, timestamp);
+                let mut publisher = event::PublisherSubscriber::new(
+                    event::builders::Meta {
+                        endpoint_type: Cfg::ENDPOINT_TYPE,
+                        group_id: connection.internal_connection_id().into(),
+                    },
+                    endpoint_context.event_subscriber,
+                );
+
+                transmit_result =
+                    connection.on_transmit(shared_state, queue, timestamp, &mut publisher);
                 if transmit_result.is_err() {
                     // If one connection fails, return
                     ConnectionContainerIterationResult::BreakAndInsertAtBack
@@ -289,11 +299,10 @@ impl<Cfg: Config> Endpoint<Cfg> {
             return;
         };
 
-        // TODO: generate a new internal connection id
         let mut publisher = event::PublisherSubscriber::new(
             event::builders::Meta {
                 endpoint_type: Cfg::ENDPOINT_TYPE,
-                group_id: 7,
+                group_id: 7, // TODO: generate a new internal connection id
             },
             endpoint_context.event_subscriber,
         );
