@@ -3,6 +3,7 @@
 
 //! This module contains the Path implementation
 mod manager;
+mod mtu;
 
 pub use manager::*;
 

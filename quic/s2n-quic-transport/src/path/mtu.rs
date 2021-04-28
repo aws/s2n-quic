@@ -1,7 +1,11 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{packet::number::PacketNumber, path::MINIMUM_MTU};
+use crate::{
+    packet::number::PacketNumber, path::MINIMUM_MTU, timer::VirtualTimer, transmission,
+    transmission::Interest,
+};
+use s2n_quic_core::time::Timestamp;
 
 //= https://tools.ietf.org/rfc/rfc8899.txt#5.2
 //#    |         |
@@ -100,6 +104,16 @@ pub struct Controller {
     //# as determined at the PL.  This is a tentative value for the
     //# PLPMTU, which is awaiting confirmation by an acknowledgment.
     probed_size: u16,
+    //= https://tools.ietf.org/rfc/rfc8899.txt#5.1.1
+    //# The PROBE_TIMER is configured to expire after a period
+    //# longer than the maximum time to receive an acknowledgment to a
+    //# probe packet.
+    probe_timer: VirtualTimer,
+    //= https://tools.ietf.org/rfc/rfc8899.txt#5.1.1
+    //# The PMTU_RAISE_TIMER is configured to the period a
+    //# sender will continue to use the current PLPMTU, after which it
+    //# reenters the Search Phase.
+    pmtu_raise_timer: VirtualTimer,
 }
 
 impl Controller {
@@ -108,6 +122,8 @@ impl Controller {
             state: State::Disabled,
             probe_count: 0,
             probed_size: 1450, // TODO: use correct value
+            probe_timer: VirtualTimer::default(),
+            pmtu_raise_timer: VirtualTimer::default(),
         }
     }
 
@@ -119,6 +135,34 @@ impl Controller {
         //       for a larger PMTU immediately
         self.state = State::Base;
     }
+
+    /// Returns all timers for the component
+    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
+        core::iter::empty()
+            .chain(self.probe_timer.iter())
+            .chain(self.pmtu_raise_timer.iter())
+    }
+
+    /// Called when the connection timer expires
+    pub fn on_timeout(&mut self, now: Timestamp) {
+        if self.probe_timer.poll_expiration(now).is_ready() {
+            self.probe_count += 1;
+            if self.probe_count < MAX_PROBES {
+                // send another probe
+            } else {
+                self.state = State::SearchComplete;
+            }
+        }
+
+        if self.pmtu_raise_timer.poll_expiration(now).is_ready() {
+            // send another probe
+        }
+    }
 }
 
-impl transmission::interest::Provider for Controller {}
+// In Base or
+impl transmission::interest::Provider for Controller {
+    fn transmission_interest(&self) -> Interest {
+        todo!()
+    }
+}
