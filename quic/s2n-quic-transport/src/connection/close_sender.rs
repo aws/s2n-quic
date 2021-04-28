@@ -3,6 +3,7 @@
 
 use crate::{
     connection::finalization,
+    path::Path,
     transmission::{self, interest::Provider as _},
 };
 use bytes::Bytes;
@@ -11,7 +12,6 @@ use s2n_quic_core::{
     counter::{self, Counter},
     inet::{ExplicitCongestionNotification, SocketAddress},
     io::tx,
-    path::Path,
     recovery::CongestionController,
     time::{Timer, Timestamp},
 };
@@ -270,9 +270,10 @@ impl Limiter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::path::testing::test_path;
     use s2n_quic_core::{
         io::tx::Message as _,
-        path::{testing::test_path, MINIMUM_MTU},
+        path::MINIMUM_MTU,
         time::{testing::Clock, Clock as _},
     };
 

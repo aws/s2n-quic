@@ -4,6 +4,7 @@
 use crate::{
     connection::{self, limits::Limits},
     endpoint,
+    path::Path,
     recovery::congestion_controller,
     space::{
         rx_packet_numbers::AckManager, ApplicationSpace, HandshakeSpace, HandshakeStatus,
@@ -17,7 +18,6 @@ use s2n_quic_core::{
     ack,
     crypto::{tls, CryptoSuite},
     packet::number::PacketNumberSpace,
-    path::Path,
     time::Timestamp,
     transport::{self, parameters::ClientTransportParameters},
 };

@@ -3,6 +3,7 @@
 
 use crate::{
     contexts::WriteContext,
+    path::Path,
     recovery::{SentPacketInfo, SentPackets},
     timer::VirtualTimer,
     transmission,
@@ -12,7 +13,6 @@ use s2n_quic_core::{
     endpoint, frame,
     inet::DatagramInfo,
     packet::number::{PacketNumber, PacketNumberRange, PacketNumberSpace},
-    path::Path,
     recovery::{CongestionController, RttEstimator, K_GRANULARITY},
     time::Timestamp,
     transport,

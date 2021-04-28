@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    connection, endpoint, path, processed_packet::ProcessedPacket, recovery::congestion_controller,
-    space::rx_packet_numbers::AckManager, transmission,
+    connection, endpoint, path, path::Path, processed_packet::ProcessedPacket,
+    recovery::congestion_controller, space::rx_packet_numbers::AckManager, transmission,
 };
 use bytes::Bytes;
 use s2n_codec::DecoderBufferMut;
@@ -19,7 +19,6 @@ use s2n_quic_core::{
     },
     inet::DatagramInfo,
     packet::number::{PacketNumber, PacketNumberSpace},
-    path::Path,
     time::Timestamp,
     transport,
 };

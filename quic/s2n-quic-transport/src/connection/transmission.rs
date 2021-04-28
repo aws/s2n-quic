@@ -4,6 +4,7 @@
 use crate::{
     connection::{self, SharedConnectionState},
     endpoint, path,
+    path::Path,
     recovery::congestion_controller,
     transmission,
 };
@@ -14,7 +15,6 @@ use s2n_quic_core::{
     inet::{ExplicitCongestionNotification, SocketAddress},
     io::tx,
     packet::{encoding::PacketEncodingError, number::PacketNumberSpace},
-    path::Path,
     time::Timestamp,
 };
 

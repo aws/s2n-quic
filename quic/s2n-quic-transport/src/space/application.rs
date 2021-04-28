@@ -4,6 +4,7 @@
 use crate::{
     connection::{self, ConnectionTransmissionContext, ProcessingError},
     endpoint, path,
+    path::Path,
     processed_packet::ProcessedPacket,
     recovery,
     recovery::congestion_controller,
@@ -31,7 +32,6 @@ use s2n_quic_core::{
         },
         short::{CleartextShort, ProtectedShort, Short, SpinBit},
     },
-    path::Path,
     recovery::RttEstimator,
     time::Timestamp,
     transport,
