@@ -1,8 +1,14 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::{
+    connection::{self, SharedConnectionState},
+    endpoint, path,
+    path::Path,
+    recovery::congestion_controller,
+    transmission,
+};
 use core::time::Duration;
-
 use s2n_codec::{Encoder, EncoderBuffer};
 use s2n_quic_core::{
     frame::ack_elicitation::AckElicitable,
@@ -10,14 +16,6 @@ use s2n_quic_core::{
     io::tx,
     packet::{encoding::PacketEncodingError, number::PacketNumberSpace},
     time::Timestamp,
-};
-
-use crate::{
-    connection::{self, SharedConnectionState},
-    endpoint, path,
-    path::Path,
-    recovery::congestion_controller,
-    transmission,
 };
 
 #[derive(Debug)]

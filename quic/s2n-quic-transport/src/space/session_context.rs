@@ -1,17 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use bytes::Bytes;
-
-use s2n_codec::{DecoderBuffer, DecoderValue};
-use s2n_quic_core::{
-    ack,
-    crypto::{tls, CryptoSuite},
-    packet::number::PacketNumberSpace,
-    time::Timestamp,
-    transport::{self, parameters::ClientTransportParameters},
-};
-
 use crate::{
     connection::{self, limits::Limits},
     endpoint,
@@ -22,6 +11,15 @@ use crate::{
         InitialSpace,
     },
     stream::AbstractStreamManager,
+};
+use bytes::Bytes;
+use s2n_codec::{DecoderBuffer, DecoderValue};
+use s2n_quic_core::{
+    ack,
+    crypto::{tls, CryptoSuite},
+    packet::number::PacketNumberSpace,
+    time::Timestamp,
+    transport::{self, parameters::ClientTransportParameters},
 };
 
 pub struct SessionContext<'a, Config: endpoint::Config> {

@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! This module contains the Path implementation
+mod manager;
 
 pub use manager::*;
+
 /// re-export core
 pub use s2n_quic_core::path::*;
 use s2n_quic_core::time::Timestamp;
@@ -15,8 +17,6 @@ use crate::{
     recovery::{CongestionController, RttEstimator},
     transmission,
 };
-
-mod manager;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[allow(dead_code)]
@@ -309,11 +309,11 @@ impl<CC: CongestionController> Path<CC> {
 
 #[cfg(any(test, feature = "testing"))]
 pub mod testing {
+    use crate::{
+        path::Path,
+        recovery::congestion_controller::testing::unlimited::CongestionController as Unlimited,
+    };
     use core::time::Duration;
-
-    use crate::path::Path;
-
-    use crate::recovery::congestion_controller::testing::unlimited::CongestionController as Unlimited;
     use s2n_quic_core::{connection, inet::SocketAddress, recovery::RttEstimator};
 
     pub fn test_path() -> Path<Unlimited> {
