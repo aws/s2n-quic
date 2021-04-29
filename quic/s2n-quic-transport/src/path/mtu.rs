@@ -2,10 +2,22 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    packet::number::PacketNumber, path::MINIMUM_MTU, timer::VirtualTimer, transmission,
-    transmission::Interest,
+    contexts::{OnTransmitError, WriteContext},
+    path::{Path, MINIMUM_MTU},
+    timer::VirtualTimer,
+    transmission,
+    transmission::{interest::Provider, Interest},
 };
-use s2n_quic_core::time::Timestamp;
+use core::time::Duration;
+use s2n_codec::{Encoder, EncoderBuffer, EncoderValue};
+use s2n_quic_core::{
+    ack, frame,
+    inet::{ExplicitCongestionNotification, SocketAddress},
+    io::tx,
+    packet::number::PacketNumber,
+    recovery::CongestionController,
+    time::Timestamp,
+};
 
 //= https://tools.ietf.org/rfc/rfc8899.txt#5.2
 //#    |         |
@@ -58,6 +70,7 @@ enum State {
     //# application to continue working when there are transient reductions
     //# in the actual PMTU.
     Base,
+    SearchRequested,
     //= https://tools.ietf.org/rfc/rfc8899.txt#5.2
     //# The SEARCHING state is the main probing state.
     Searching(PacketNumber),
@@ -93,8 +106,16 @@ const BASE_PLPMTU: u16 = MINIMUM_MTU;
 //# value of MAX_PROBES is 3.
 const MAX_PROBES: u8 = 3;
 
+#[derive(Debug)]
 pub struct Controller {
     state: State,
+    //= https://tools.ietf.org/rfc/rfc8899.txt#2
+    //# The Packetization Layer PMTU is an estimate of the largest size
+    //# of PL datagram that can be sent by a path, controlled by PLPMTUD
+    plpmtu: u16,
+    //= https://tools.ietf.org/rfc/rfc8899.txt#5.1.2
+    //# The MAX_PLPMTU is the largest size of PLPMTU.
+    max_plpmtu: u16,
     //= https://tools.ietf.org/rfc/rfc8899.txt#5.1.3
     //# The PROBE_COUNT is a count of the number of successive
     //# unsuccessful probe packets that have been sent.
@@ -117,9 +138,11 @@ pub struct Controller {
 }
 
 impl Controller {
-    pub fn new() -> Self {
+    pub fn new(max_plpmtu: u16) -> Self {
         Self {
             state: State::Disabled,
+            plpmtu: BASE_PLPMTU,
+            max_plpmtu,
             probe_count: 0,
             probed_size: 1450, // TODO: use correct value
             probe_timer: VirtualTimer::default(),
@@ -131,9 +154,9 @@ impl Controller {
         debug_assert_eq!(self.state, State::Disabled);
 
         // TODO: Look up current MTU in the cache. If there is a cache hit
-        //       move directly to SearchComplete. Otherwise, we should start searching
+        //       move directly to SearchComplete[?]. Otherwise, we should start searching
         //       for a larger PMTU immediately
-        self.state = State::Base;
+        self.state = State::SearchRequested;
     }
 
     /// Returns all timers for the component
@@ -149,6 +172,7 @@ impl Controller {
             self.probe_count += 1;
             if self.probe_count < MAX_PROBES {
                 // send another probe
+                self.state = State::SearchRequested;
             } else {
                 self.state = State::SearchComplete;
             }
@@ -156,13 +180,102 @@ impl Controller {
 
         if self.pmtu_raise_timer.poll_expiration(now).is_ready() {
             // send another probe
+            self.state = State::SearchRequested;
+        }
+    }
+
+    /// This method gets called when a packet delivery got acknowledged
+    pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
+        if let State::Searching(packet_number) = self.state {
+            if ack_set.contains(packet_number) {
+                self.probe_count = 0;
+                self.plpmtu = self.probed_size;
+                self.probed_size += 1; // look up next probed size from table
+            }
+        }
+    }
+
+    /// This method gets called when a packet loss is reported
+    pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
+        if let State::Searching(packet_number) = self.state {
+            if ack_set.contains(packet_number) {
+                // An explicit "Lost" state is not used since PMTU Probe packets do not need
+                // prioritization over other packets when lost
+                self.state = State::SearchRequested;
+            }
+        }
+    }
+
+    /// Queries the component for any outgoing frames that need to get sent
+    pub fn transmission<'a, CC: CongestionController>(
+        &'a mut self,
+        path: &'a mut Path<CC>,
+    ) -> Transmission<'a, CC> {
+        debug_assert!(
+            !self.transmission_interest().is_none(),
+            "transmission should only be called when transmission interest is expressed"
+        );
+
+        Transmission {
+            path,
+            mtu: self.probed_size,
         }
     }
 }
 
-// In Base or
 impl transmission::interest::Provider for Controller {
     fn transmission_interest(&self) -> Interest {
-        todo!()
+        match self.state {
+            State::SearchRequested => transmission::Interest::NewData,
+            _ => transmission::Interest::None,
+        }
+    }
+}
+
+pub struct Transmission<'a, CC: CongestionController> {
+    path: &'a mut Path<CC>,
+    mtu: u16,
+}
+
+impl<'a, CC: CongestionController> tx::Message for Transmission<'a, CC> {
+    fn remote_address(&mut self) -> SocketAddress {
+        self.path.peer_socket_address
+    }
+
+    fn ecn(&mut self) -> ExplicitCongestionNotification {
+        ExplicitCongestionNotification::default()
+    }
+
+    fn ipv6_flow_label(&mut self) -> u32 {
+        0
+    }
+
+    fn delay(&mut self) -> Duration {
+        Duration::default()
+    }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.4
+    //# Endpoints could limit the content of PMTU probes to PING and PADDING
+    //# frames, since packets that are larger than the current maximum
+    //# datagram size are more likely to be dropped by the network.
+    fn write_payload(&mut self, buffer: &mut [u8]) -> usize {
+        let mut buffer = EncoderBuffer::new(buffer);
+
+        debug_assert!(self.mtu as usize <= buffer.capacity());
+
+        frame::Ping.encode(&mut buffer);
+
+        let padding_size = self.mtu as usize - buffer.len();
+
+        frame::Padding {
+            length: padding_size,
+        }
+        .encode(&mut buffer);
+
+        let len = buffer.len();
+
+        self.path.on_bytes_transmitted(len);
+
+        len
     }
 }
