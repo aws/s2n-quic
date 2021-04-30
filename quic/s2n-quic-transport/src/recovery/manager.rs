@@ -824,7 +824,8 @@ mod test {
         );
     }
 
-    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.5")]
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.5
+    //= type=test
     #[test]
     fn on_packet_sent() {
         let space = PacketNumberSpace::ApplicationData;
@@ -906,7 +907,8 @@ mod test {
         );
     }
 
-    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.7")]
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.7
+    //= type=test
     #[test]
     fn on_ack_frame() {
         let space = PacketNumberSpace::ApplicationData;
@@ -1123,7 +1125,8 @@ mod test {
         assert_eq!(1, context.on_rtt_update_count);
     }
 
-    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.10")]
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.10
+    //= type=test
     #[test]
     fn detect_and_remove_lost_packets() {
         let space = PacketNumberSpace::ApplicationData;
@@ -1386,7 +1389,8 @@ mod test {
         );
     }
 
-    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6")]
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6
+    //= type=test
     #[test]
     fn persistent_congestion_multiple_periods() {
         let space = PacketNumberSpace::ApplicationData;
@@ -1542,7 +1546,8 @@ mod test {
         );
     }
 
-    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1")]
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+    //= type=test
     #[test]
     fn update_pto_timer() {
         let space = PacketNumberSpace::ApplicationData;
@@ -1719,7 +1724,8 @@ mod test {
         assert!(manager.pto.timer.iter().next().unwrap() >= now + K_GRANULARITY);
     }
 
-    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1")]
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+    //= type=test
     #[test]
     fn on_timeout() {
         let space = PacketNumberSpace::ApplicationData;
