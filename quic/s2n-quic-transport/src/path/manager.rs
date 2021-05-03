@@ -41,7 +41,7 @@ pub struct Manager<CCE: congestion_controller::Endpoint> {
     //# migration, an endpoint MUST revert to using the last validated peer
     //# address when validation of a new peer address fails.
     /// Index of last known validated path
-    previous: Option<u8>,
+    last_known_validated_path: Option<u8>,
 }
 
 impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
@@ -53,7 +53,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
             paths: SmallVec::from_elem(initial_path, 1),
             peer_id_registry,
             active: 0,
-            previous: None,
+            last_known_validated_path: None,
         }
     }
 
@@ -61,7 +61,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     pub fn update_active_path(&mut self, path_id: Id) {
         // TODO return an error if the path doesn't exist
         // Or take an index and verify INLINE_PATH_LEN
-        self.previous = Some(self.active);
+        self.last_known_validated_path = Some(self.active);
         self.active = path_id.0;
     }
 
@@ -368,13 +368,13 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         }
 
         if !self.active_path().is_validated() && self.active_path().is_challenge_abandoned() {
-            if let Some(previous) = self.previous {
+            if let Some(last_known_validated_path) = self.last_known_validated_path {
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.2
                 //# To protect the connection from failing due to such a spurious
                 //# migration, an endpoint MUST revert to using the last validated peer
                 //# address when validation of a new peer address fails.
-                self.active = previous;
-                self.previous = None;
+                self.active = last_known_validated_path;
+                self.last_known_validated_path = None;
             }
         }
 
@@ -550,15 +550,15 @@ mod tests {
 
         let mut manager = manager(first_path, None);
         manager.paths.push(second_path);
-        assert_eq!(manager.previous, None);
+        assert_eq!(manager.last_known_validated_path, None);
         assert_eq!(manager.active, 0);
         manager.update_active_path(Id(1));
-        assert_eq!(manager.previous, Some(0));
+        assert_eq!(manager.last_known_validated_path, Some(0));
         assert_eq!(manager.active, 1);
 
         // After a validation times out, the path should revert to the previous
         manager.on_timeout(clock.get_time() + Duration::from_millis(2000));
-        assert!(manager.previous.is_none());
+        assert!(manager.last_known_validated_path.is_none());
         assert_eq!(manager.active, 0);
     }
 
