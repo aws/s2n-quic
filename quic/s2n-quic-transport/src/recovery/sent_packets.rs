@@ -285,4 +285,12 @@ mod test {
         sent_packets.insert(packet_number, sent_packet);
         sent_packets
     }
+
+    #[test]
+    fn sent_packet_info_size_test() {
+        insta::assert_debug_snapshot!(
+            stringify!(sent_packet_info_size_test),
+            core::mem::size_of::<SentPacketInfo>()
+        );
+    }
 }

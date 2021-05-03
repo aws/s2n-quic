@@ -752,9 +752,4 @@ mod tests {
 
         assert_eq!(id_2, manager.paths[0].peer_connection_id);
     }
-
-    #[test]
-    fn path_id_size_test() {
-        insta::assert_debug_snapshot!(stringify!(path_id_size_test), core::mem::size_of::<Id>());
-    }
 }

@@ -1,5 +1,0 @@
----
-source: quic/s2n-quic-transport/src/path/manager.rs
-expression: "core::mem::size_of::<Id>()"
----
-1
