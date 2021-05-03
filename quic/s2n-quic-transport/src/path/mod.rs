@@ -25,17 +25,7 @@ enum State {
     Validated,
 
     /// Path has not been validated and is subject to amplification limits
-    AmplificationLimited {
-        tx_bytes: u32,
-        rx_bytes: u32,
-    },
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.1
-    //= type=TODO
-    //# The endpoint
-    //# MUST NOT send more than a minimum congestion window's worth of data
-    //# per estimated round-trip time (kMinimumWindow, as defined in
-    //# [QUIC-RECOVERY]).
-    PendingChallengeResponse,
+    AmplificationLimited { tx_bytes: u32, rx_bytes: u32 },
 }
 
 #[derive(Debug, Clone)]
@@ -212,19 +202,6 @@ impl<CC: CongestionController> Path<CC> {
         match self.state {
             State::Validated => requested_size.min(self.mtu as usize),
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.1
-            //= type=TODO
-            //# Until a peer's address is deemed valid, an endpoint MUST
-            //# limit the rate at which it sends data to this address.
-
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.1
-            //= type=TODO
-            //# The endpoint
-            //# MUST NOT send more than a minimum congestion window's worth of data
-            //# per estimated round-trip time (kMinimumWindow, as defined in
-            //# [QUIC-RECOVERY]).
-            State::PendingChallengeResponse => requested_size.min(self.mtu as usize),
-
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1
             //# Prior to validating the client address, servers MUST NOT send more
             //# than three times as many bytes as the number of bytes they have
@@ -297,7 +274,7 @@ impl<CC: CongestionController> Path<CC> {
         match &self.state {
             // keep the current amplification limits
             State::AmplificationLimited { .. } => {}
-            State::Validated | State::PendingChallengeResponse => {
+            State::Validated => {
                 self.state = State::AmplificationLimited {
                     tx_bytes: 0,
                     rx_bytes: MINIMUM_MTU as _,
