@@ -7,5 +7,8 @@ instead retain its congestion control state and round-trip estimate
 in those cases instead of reverting to initial values.
 '''
 reason = '''
-We create a new congestion controller for each path. At this time an unintentional rebind will cause the CC to start from an initial state. The path is amplification limited anyway, so there will always be a short drop in performance during a rebind.
+We create a new congestion controller for each path. At this time an
+unintentional rebind will cause the CC to start from an initial state.
+The path is amplification limited anyway, so there will always be a
+short drop in performance during a rebind.
 '''
