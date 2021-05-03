@@ -207,6 +207,21 @@ impl Controller {
     }
 
     /// Queries the component for any outgoing frames that need to get sent
+    pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) -> Result<(), OnTransmitError> {
+        if context.remaining_capacity() <= self.probed_size as usize {
+            self.state = State::SearchComplete;
+            return Ok(())
+        }
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.4
+        //# Endpoints could limit the content of PMTU probes to PING and PADDING
+        //# frames, since packets that are larger than the current maximum
+        //# datagram size are more likely to be dropped by the network.
+        context.write_frame(&frame::Ping);
+        context.write_frame(&frame::Padding { length: 0 })
+    }
+
+    /// Queries the component for any outgoing frames that need to get sent
     pub fn transmission<'a, CC: CongestionController>(
         &'a mut self,
         path: &'a mut Path<CC>,
