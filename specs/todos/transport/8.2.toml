@@ -1,15 +1,5 @@
 [[TODO]]
 target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1"
-tracking-issue = "408"
-feature = "Connection migration"
-quote = '''
-The endpoint MUST use unpredictable data in every PATH_CHALLENGE
-frame so that it can associate the peer's response with the
-corresponding PATH_CHALLENGE.
-'''
-
-[[TODO]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1"
 tracking-issue = "409"
 feature = "Connection migration"
 quote = '''
