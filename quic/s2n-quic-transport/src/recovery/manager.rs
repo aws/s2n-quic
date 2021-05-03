@@ -3,7 +3,7 @@
 
 use crate::{
     contexts::WriteContext,
-    path::Path,
+    path::{self, Path},
     recovery::{SentPacketInfo, SentPackets},
     timer::VirtualTimer,
     transmission,
@@ -145,6 +145,7 @@ impl Manager {
         packet_number: PacketNumber,
         outcome: transmission::Outcome,
         time_sent: Timestamp,
+        path_id: path::Id,
         context: &mut Ctx,
     ) {
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7
@@ -169,6 +170,7 @@ impl Manager {
                 congestion_controlled_bytes,
                 time_sent,
                 outcome.ack_elicitation,
+                path_id,
             ),
         );
 
@@ -860,7 +862,13 @@ mod test {
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
             };
 
-            manager.on_packet_sent(sent_packet, outcome, time_sent, &mut context);
+            manager.on_packet_sent(
+                sent_packet,
+                outcome,
+                time_sent,
+                path::Id::new(0),
+                &mut context,
+            );
 
             assert!(manager.sent_packets.get(sent_packet).is_some());
             let actual_sent_packet = manager.sent_packets.get(sent_packet).unwrap();
@@ -932,6 +940,7 @@ mod test {
                     packet_number: space.new_packet_number(VarInt::from_u8(1)),
                 },
                 time_sent,
+                path::Id::new(0),
                 &mut context,
             );
         }
@@ -1038,6 +1047,7 @@ mod test {
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
             },
             time_sent,
+            path::Id::new(0),
             &mut context,
         );
         ack_packets(11..=11, ack_receive_time, &mut context, &mut manager);
@@ -1080,6 +1090,7 @@ mod test {
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
             },
             time_sent,
+            path::Id::new(0),
             &mut context,
         );
         manager.on_packet_sent(
@@ -1091,6 +1102,7 @@ mod test {
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
             },
             time_sent,
+            path::Id::new(0),
             &mut context,
         );
 
@@ -1145,7 +1157,13 @@ mod test {
 
         // Send a packet that was sent too long ago (lost)
         let old_packet_time_sent = space.new_packet_number(VarInt::from_u8(0));
-        manager.on_packet_sent(old_packet_time_sent, outcome, time_sent, &mut context);
+        manager.on_packet_sent(
+            old_packet_time_sent,
+            outcome,
+            time_sent,
+            path::Id::new(0),
+            &mut context,
+        );
 
         // time threshold = max(kTimeThreshold * max(smoothed_rtt, latest_rtt), kGranularity)
         // time threshold = max(9/8 * 8) = 9
@@ -1168,15 +1186,27 @@ mod test {
         // K_PACKET_THRESHOLD away from the largest (lost)
         let old_packet_packet_number =
             space.new_packet_number(VarInt::new(10 - K_PACKET_THRESHOLD).unwrap());
-        manager.on_packet_sent(old_packet_packet_number, outcome, time_sent, &mut context);
+        manager.on_packet_sent(
+            old_packet_packet_number,
+            outcome,
+            time_sent,
+            path::Id::new(0),
+            &mut context,
+        );
 
         // Send a packet that is less than the largest acked but not lost
         let not_lost = space.new_packet_number(VarInt::from_u8(9));
-        manager.on_packet_sent(not_lost, outcome, time_sent, &mut context);
+        manager.on_packet_sent(not_lost, outcome, time_sent, path::Id::new(0), &mut context);
 
         // Send a packet larger than the largest acked (not lost)
         let larger_than_largest = manager.largest_acked_packet.unwrap().next().unwrap();
-        manager.on_packet_sent(larger_than_largest, outcome, time_sent, &mut context);
+        manager.on_packet_sent(
+            larger_than_largest,
+            outcome,
+            time_sent,
+            path::Id::new(0),
+            &mut context,
+        );
 
         // Four packets sent, each size 1 byte
         let bytes_in_flight: u16 = manager
@@ -1246,7 +1276,7 @@ mod test {
 
         // Send a packet that is less than the largest acked but not lost
         let not_lost = space.new_packet_number(VarInt::from_u8(9));
-        manager.on_packet_sent(not_lost, outcome, time_sent, &mut context);
+        manager.on_packet_sent(not_lost, outcome, time_sent, path::Id::new(0), &mut context);
 
         manager.detect_and_remove_lost_packets(time_sent, &mut context);
 
@@ -1292,6 +1322,7 @@ mod test {
             space.new_packet_number(VarInt::from_u8(1)),
             outcome,
             time_zero,
+            path::Id::new(0),
             &mut context,
         );
 
@@ -1300,6 +1331,7 @@ mod test {
             space.new_packet_number(VarInt::from_u8(2)),
             outcome,
             time_zero + Duration::from_secs(1),
+            path::Id::new(0),
             &mut context,
         );
 
@@ -1317,6 +1349,7 @@ mod test {
                 space.new_packet_number(VarInt::from_u8(t + 1)),
                 outcome,
                 time_zero + Duration::from_secs(t.into()),
+                path::Id::new(0),
                 &mut context,
             );
         }
@@ -1326,6 +1359,7 @@ mod test {
             space.new_packet_number(VarInt::from_u8(8)),
             outcome,
             time_zero + Duration::from_secs(8),
+            path::Id::new(0),
             &mut context,
         );
 
@@ -1334,6 +1368,7 @@ mod test {
             space.new_packet_number(VarInt::from_u8(9)),
             outcome,
             time_zero + Duration::from_secs(12),
+            path::Id::new(0),
             &mut context,
         );
 
@@ -1367,6 +1402,7 @@ mod test {
             space.new_packet_number(VarInt::from_u8(10)),
             outcome,
             time_zero + Duration::from_secs(20),
+            path::Id::new(0),
             &mut context,
         );
 
@@ -1410,6 +1446,7 @@ mod test {
             space.new_packet_number(VarInt::from_u8(1)),
             outcome,
             time_zero,
+            path::Id::new(0),
             &mut context,
         );
 
@@ -1418,6 +1455,7 @@ mod test {
             space.new_packet_number(VarInt::from_u8(2)),
             outcome,
             time_zero + Duration::from_secs(1),
+            path::Id::new(0),
             &mut context,
         );
 
@@ -1435,6 +1473,7 @@ mod test {
                 space.new_packet_number(VarInt::from_u8(t + 1)),
                 outcome,
                 time_zero + Duration::from_secs(t.into()),
+                path::Id::new(0),
                 &mut context,
             );
         }
@@ -1446,6 +1485,7 @@ mod test {
             space.new_packet_number(VarInt::from_u8(9)),
             outcome,
             time_zero + Duration::from_secs(8),
+            path::Id::new(0),
             &mut context,
         );
 
@@ -1454,6 +1494,7 @@ mod test {
             space.new_packet_number(VarInt::from_u8(10)),
             outcome,
             time_zero + Duration::from_secs(20),
+            path::Id::new(0),
             &mut context,
         );
 
@@ -1462,6 +1503,7 @@ mod test {
             space.new_packet_number(VarInt::from_u8(11)),
             outcome,
             time_zero + Duration::from_secs(30),
+            path::Id::new(0),
             &mut context,
         );
 
@@ -1509,6 +1551,7 @@ mod test {
             space.new_packet_number(VarInt::from_u8(1)),
             outcome,
             time_zero,
+            path::Id::new(0),
             &mut context,
         );
 
@@ -1517,6 +1560,7 @@ mod test {
             space.new_packet_number(VarInt::from_u8(2)),
             outcome,
             time_zero + Duration::from_secs(10),
+            path::Id::new(0),
             &mut context,
         );
 
@@ -1525,6 +1569,7 @@ mod test {
             space.new_packet_number(VarInt::from_u8(3)),
             outcome,
             time_zero + Duration::from_secs(20),
+            path::Id::new(0),
             &mut context,
         );
 
@@ -1630,6 +1675,7 @@ mod test {
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
             },
             now,
+            path::Id::new(0),
             &mut context,
         );
 
@@ -1757,6 +1803,7 @@ mod test {
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
             },
             now - Duration::from_secs(5),
+            path::Id::new(0),
             &mut context,
         );
 
@@ -1803,6 +1850,7 @@ mod test {
                 sent_bytes: 1,
                 time_sent: now,
                 ack_elicitation: AckElicitation::Eliciting,
+                path_id: path::Id::new(0),
             },
         );
         manager.pto.timer.set(now - Duration::from_secs(5));
@@ -2002,6 +2050,7 @@ mod test {
             space.new_packet_number(VarInt::from_u8(1)),
             outcome,
             s2n_quic_platform::time::now(),
+            path::Id::new(0),
             &mut context,
         );
 

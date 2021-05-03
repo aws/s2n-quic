@@ -197,6 +197,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             packet_number,
             outcome,
             context.timestamp,
+            context.path_id,
             &mut recovery_context,
         );
 

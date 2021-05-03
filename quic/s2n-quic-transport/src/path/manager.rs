@@ -33,14 +33,14 @@ pub struct Manager<CCE: congestion_controller::Endpoint> {
     peer_id_registry: PeerIdRegistry,
 
     /// Index to the active path
-    active: usize,
+    active: u8,
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.2
     //# To protect the connection from failing due to such a spurious
     //# migration, an endpoint MUST revert to using the last validated peer
     //# address when validation of a new peer address fails.
     /// Index of last known validated path
-    previous: Option<usize>,
+    previous: Option<u8>,
 }
 
 impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
@@ -66,12 +66,12 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
 
     /// Return the active path
     pub fn active_path(&self) -> &Path<CCE::CongestionController> {
-        &self.paths[self.active]
+        &self.paths[self.active as usize]
     }
 
     /// Return a mutable reference to the active path
     pub fn active_path_mut(&mut self) -> &mut Path<CCE::CongestionController> {
-        &mut self.paths[self.active]
+        &mut self.paths[self.active as usize]
     }
 
     /// Return the Id of the active path
@@ -88,7 +88,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
             .iter()
             .enumerate()
             .find(|(_id, path)| *peer_address == path.peer_socket_address)
-            .map(|(id, path)| (Id(id), path))
+            .map(|(id, path)| (Id(id as u8), path))
     }
 
     /// Returns the Path for the provided address if the PathManager knows about it
@@ -100,7 +100,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
             .iter_mut()
             .enumerate()
             .find(|(_id, path)| *peer_address == path.peer_socket_address)
-            .map(|(id, path)| (Id(id), path))
+            .map(|(id, path)| (Id(id as u8), path))
     }
 
     /// Called when a datagram is received on a connection
@@ -236,7 +236,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         )
         .with_challenge(challenge);
 
-        let id = Id(self.paths.len());
+        let id = Id(self.paths.len() as u8);
         self.paths.push(path);
 
         Ok((id, false))
@@ -401,10 +401,10 @@ impl<CCE: congestion_controller::Endpoint> transmission::interest::Provider for 
 
 /// Internal Id of a path in the manager
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord, Hash)]
-pub struct Id(usize);
+pub struct Id(u8);
 
 impl Id {
-    pub fn new(id: usize) -> Self {
+    pub fn new(id: u8) -> Self {
         Self(id)
     }
 }
@@ -413,13 +413,13 @@ impl<CCE: congestion_controller::Endpoint> core::ops::Index<Id> for Manager<CCE>
     type Output = Path<CCE::CongestionController>;
 
     fn index(&self, id: Id) -> &Self::Output {
-        &self.paths[id.0]
+        &self.paths[id.0 as usize]
     }
 }
 
 impl<CCE: congestion_controller::Endpoint> core::ops::IndexMut<Id> for Manager<CCE> {
     fn index_mut(&mut self, id: Id) -> &mut Self::Output {
-        &mut self.paths[id.0]
+        &mut self.paths[id.0 as usize]
     }
 }
 
@@ -446,7 +446,7 @@ impl<'a, CCE: congestion_controller::Endpoint> PendingPaths<'a, CCE> {
             let path = self.path_manager.paths.get(index)?;
 
             if path.is_challenge_pending(self.timestamp) {
-                return Some((Id(index), self.path_manager));
+                return Some((Id(index as u8), self.path_manager));
             }
         }
     }
