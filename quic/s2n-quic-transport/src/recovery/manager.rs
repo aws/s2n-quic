@@ -3,7 +3,7 @@
 
 use crate::{
     contexts::WriteContext,
-    path::Path,
+    path::{self, Path},
     recovery::{SentPacketInfo, SentPackets},
     timer::VirtualTimer,
     transmission,
@@ -145,6 +145,7 @@ impl Manager {
         packet_number: PacketNumber,
         outcome: transmission::Outcome,
         time_sent: Timestamp,
+        path_id: path::Id,
         context: &mut Ctx,
     ) {
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7
@@ -169,6 +170,7 @@ impl Manager {
                 congestion_controlled_bytes,
                 time_sent,
                 outcome.ack_elicitation,
+                path_id,
             ),
         );
 

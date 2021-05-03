@@ -1,6 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::path;
 use alloc::collections::{
     btree_map::{Iter, Range},
     BTreeMap,
@@ -66,6 +67,8 @@ pub struct SentPacketInfo {
     pub time_sent: Timestamp,
     /// Indicates whether a packet is ack-eliciting
     pub ack_elicitation: AckElicitation,
+    /// The ID of the Path the packet was sent on
+    pub path_id: path::Id,
 }
 
 impl SentPacketInfo {
@@ -74,6 +77,7 @@ impl SentPacketInfo {
         sent_bytes: usize,
         time_sent: Timestamp,
         ack_elicitation: AckElicitation,
+        path_id: path::Id,
     ) -> Self {
         debug_assert_eq!(
             sent_bytes > 0,
@@ -88,6 +92,7 @@ impl SentPacketInfo {
                 .expect("sent_bytes exceeds max UDP payload size"),
             time_sent,
             ack_elicitation,
+            path_id,
         }
     }
 }
@@ -109,6 +114,7 @@ mod test {
             u16::max_value() as usize + 1,
             s2n_quic_platform::time::now(),
             AckElicitation::Eliciting,
+            path::Id::new(0),
         );
     }
 
@@ -122,6 +128,7 @@ mod test {
             1,
             s2n_quic_platform::time::now(),
             AckElicitation::Eliciting,
+            path::Id::new(0),
         );
 
         let packet_number_2 = PacketNumberSpace::Initial.new_packet_number(VarInt::from_u8(2));
@@ -130,6 +137,7 @@ mod test {
             2,
             s2n_quic_platform::time::now(),
             AckElicitation::Eliciting,
+            path::Id::new(0),
         );
 
         let packet_number_3 = PacketNumberSpace::Initial.new_packet_number(VarInt::from_u8(3));
@@ -138,6 +146,7 @@ mod test {
             3,
             s2n_quic_platform::time::now(),
             AckElicitation::Eliciting,
+            path::Id::new(0),
         );
 
         sent_packets.insert(packet_number_1, sent_packet_1);
@@ -175,6 +184,7 @@ mod test {
             0,
             s2n_quic_platform::time::now(),
             AckElicitation::Eliciting,
+            path::Id::new(0),
         );
         sent_packets.insert(packet_number, sent_packet);
 
@@ -200,6 +210,7 @@ mod test {
             0,
             s2n_quic_platform::time::now(),
             AckElicitation::Eliciting,
+            path::Id::new(0),
         );
         sent_packets.insert(packet_number, sent_packet);
         assert!(!sent_packets.is_empty());
@@ -217,6 +228,7 @@ mod test {
             0,
             s2n_quic_platform::time::now(),
             AckElicitation::Eliciting,
+            path::Id::new(0),
         );
 
         sent_packets.insert(packet_number, sent_packet);
@@ -265,6 +277,7 @@ mod test {
             0,
             s2n_quic_platform::time::now(),
             AckElicitation::Eliciting,
+            path::Id::new(0),
         );
         sent_packets.insert(packet_number, sent_packet);
         sent_packets
