@@ -99,7 +99,10 @@ impl SentPacketInfo {
 
 #[cfg(test)]
 mod test {
-    use crate::recovery::{SentPacketInfo, SentPackets};
+    use crate::{
+        path,
+        recovery::{SentPacketInfo, SentPackets},
+    };
     use s2n_quic_core::{
         frame::ack_elicitation::AckElicitation,
         packet::number::{PacketNumberRange, PacketNumberSpace},
