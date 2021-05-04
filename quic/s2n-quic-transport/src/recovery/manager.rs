@@ -1573,71 +1573,6 @@ mod test {
         );
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.2.1
-    //= type=test
-    //# That is,
-    //# the client MUST set the probe timer if the client has not received an
-    //# acknowledgement for one of its Handshake packets and the handshake is
-    //# not confirmed (see Section 4.1.2 of [QUIC-TLS]), even if there are no
-    //# packets in flight.
-    #[test]
-    fn pto_armed_if_handshake_not_confirmed() {
-        let space = PacketNumberSpace::Handshake;
-        let mut manager = Manager::new(space, Duration::from_millis(10));
-        let now = s2n_quic_platform::time::now() + Duration::from_secs(10);
-        let is_handshake_confirmed = false;
-
-        let mut path = Path::new(
-            Default::default(),
-            connection::PeerId::TEST_ID,
-            RttEstimator::new(Duration::from_millis(10)),
-            Unlimited::default(),
-            false,
-        );
-
-        path.on_validated();
-
-        manager.update_pto_timer(&path, now, is_handshake_confirmed);
-
-        assert!(manager.pto.timer.is_armed());
-    }
-
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
-    //= type=test
-    //# The PTO period MUST be at least kGranularity, to avoid the timer
-    //# expiring immediately.
-    #[test]
-    fn pto_must_be_at_least_k_granularity() {
-        let space = PacketNumberSpace::Handshake;
-        let max_ack_delay = Duration::from_millis(0);
-        let mut manager = Manager::new(space, max_ack_delay);
-        let now = s2n_quic_platform::time::now();
-
-        let mut path = Path::new(
-            Default::default(),
-            connection::PeerId::TEST_ID,
-            RttEstimator::new(max_ack_delay),
-            Unlimited::default(),
-            false,
-        );
-
-        // Update RTT with the smallest possible sample
-        path.rtt_estimator.update_rtt(
-            Duration::from_millis(0),
-            Duration::from_nanos(1),
-            now,
-            true,
-            space,
-        );
-
-        manager
-            .pto
-            .update(now, path.rtt_estimator.pto_period(path.pto_backoff, space));
-
-        assert!(manager.pto.timer.is_armed());
-        assert!(manager.pto.timer.iter().next().unwrap() >= now + K_GRANULARITY);
-    }
-
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
     //= type=test
     #[test]
@@ -1764,12 +1699,6 @@ mod test {
         assert_eq!(manager.timers().count(), 1);
         assert_eq!(manager.timers().next(), Some(loss_time));
 
-        // PTO timer is armed
-        manager.loss_timer.cancel();
-        manager.pto.timer.set(pto_time);
-        assert_eq!(manager.timers().count(), 1);
-        assert_eq!(manager.timers().next(), Some(pto_time));
-
         // Both timers are armed, only loss time is returned
         manager.loss_timer.set(loss_time);
         manager.pto.timer.set(pto_time);
@@ -1881,36 +1810,6 @@ mod test {
         for packet in acked_packets {
             assert!(manager.sent_packets.get(packet).is_none());
         }
-    }
-
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.5
-    //= type=test
-    //# A sender MUST however count these packets as being additionally in
-    //# flight, since these packets add network load without establishing
-    //# packet loss.
-    #[test]
-    fn probe_packets_count_towards_bytes_in_flight() {
-        let space = PacketNumberSpace::ApplicationData;
-        let mut manager = Manager::new(space, Duration::from_millis(10));
-
-        manager.pto.state = PtoState::RequiresTransmission(2);
-
-        let mut context = MockContext::default();
-        let outcome = transmission::Outcome {
-            ack_elicitation: AckElicitation::Eliciting,
-            is_congestion_controlled: true,
-            bytes_sent: 100,
-            packet_number: space.new_packet_number(VarInt::from_u8(1)),
-        };
-        manager.on_packet_sent(
-            space.new_packet_number(VarInt::from_u8(1)),
-            outcome,
-            s2n_quic_platform::time::now(),
-            path::Id::new(0),
-            &mut context,
-        );
-
-        assert_eq!(context.path.congestion_controller.bytes_in_flight, 100);
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.1.1
