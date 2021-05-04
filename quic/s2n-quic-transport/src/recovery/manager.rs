@@ -6,7 +6,8 @@ use crate::{
     path::{self, Path},
     recovery::{
         probe::{Pto, PtoState},
-        SentPacketInfo, SentPackets},
+        SentPacketInfo, SentPackets,
+    },
     timer::VirtualTimer,
     transmission,
 };
@@ -662,37 +663,6 @@ mod test {
         varint::VarInt,
     };
     use std::collections::HashSet;
-
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.2
-    //= type=test
-    //# When no previous RTT is available, the initial RTT
-    //# SHOULD be set to 333ms, resulting in a 1 second initial timeout, as
-    //# recommended in [RFC6298].
-    #[test]
-    fn one_second_pto_when_no_previous_rtt_available() {
-        let space = PacketNumberSpace::Handshake;
-        let max_ack_delay = Duration::from_millis(0);
-        let mut manager = Manager::new(space, max_ack_delay);
-        let now = s2n_quic_platform::time::now();
-
-        let path = Path::new(
-            Default::default(),
-            connection::PeerId::TEST_ID,
-            RttEstimator::new(max_ack_delay),
-            Unlimited::default(),
-            false,
-        );
-
-        manager
-            .pto
-            .update(now, path.rtt_estimator.pto_period(path.pto_backoff, space));
-
-        assert!(manager.pto.timer.is_armed());
-        assert_eq!(
-            manager.pto.timer.iter().next(),
-            Some(now + Duration::from_millis(999))
-        );
-    }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.5
     //= type=test
@@ -1706,69 +1676,6 @@ mod test {
         assert_eq!(manager.timers().next(), Some(loss_time));
     }
 
-    #[test]
-    fn on_transmit() {
-        let space = PacketNumberSpace::ApplicationData;
-        let mut manager = Manager::new(space, Duration::from_millis(10));
-        let mut frame_buffer = OutgoingFrameBuffer::new();
-        let mut context = MockWriteContext::new(
-            s2n_quic_platform::time::now(),
-            &mut frame_buffer,
-            transmission::Constraint::CongestionLimited, // Recovery manager ignores constraints
-            endpoint::Type::Client,
-        );
-
-        // Already idle
-        manager.pto.state = PtoState::Idle;
-        manager.on_transmit(&mut context);
-        assert_eq!(manager.pto.state, PtoState::Idle);
-
-        // No transmissions required
-        manager.pto.state = RequiresTransmission(0);
-        manager.on_transmit(&mut context);
-        assert_eq!(manager.pto.state, PtoState::Idle);
-
-        // One transmission required, not ack eliciting
-        manager.pto.state = RequiresTransmission(1);
-        context.write_frame_forced(&frame::Padding { length: 1 });
-        assert!(!context.ack_elicitation().is_ack_eliciting());
-        manager.on_transmit(&mut context);
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
-        //= type=test
-        //# All probe packets sent on a PTO MUST be ack-eliciting.
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
-        //= type=test
-        //# When the PTO timer expires, an ack-eliciting packet MUST be sent.
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
-        //= type=test
-        //# When there is no data to send, the sender SHOULD send
-        //# a PING or other ack-eliciting frame in a single packet, re-arming the
-        //# PTO timer.
-        assert!(context.ack_elicitation().is_ack_eliciting());
-        assert_eq!(manager.pto.state, PtoState::Idle);
-
-        // One transmission required, ack eliciting
-        manager.pto.state = RequiresTransmission(1);
-        context.write_frame_forced(&frame::Ping);
-        manager.on_transmit(&mut context);
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
-        //= type=test
-        //# All probe packets sent on a PTO MUST be ack-eliciting.
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
-        //= type=test
-        //# When the PTO timer expires, an ack-eliciting packet MUST be sent.
-        assert!(context.ack_elicitation().is_ack_eliciting());
-        assert_eq!(manager.pto.state, PtoState::Idle);
-
-        // Two transmissions required
-        manager.pto.state = RequiresTransmission(2);
-        manager.on_transmit(&mut context);
-        assert_eq!(manager.pto.state, RequiresTransmission(1));
-    }
-
     // Helper function that will call on_ack_frame with the given packet numbers
     fn ack_packets<CC: CongestionController, Ctx: Context<CC>>(
         range: RangeInclusive<u8>,
@@ -1847,6 +1754,18 @@ mod test {
             Duration::from_millis(1125), // 9/8 seconds = 1.125 seconds
             Manager::calculate_loss_time_threshold(&rtt_estimator)
         );
+    }
+
+    #[test]
+    fn requires_probe() {
+        let space = PacketNumberSpace::ApplicationData;
+        let mut manager = Manager::new(space, Duration::from_millis(10));
+
+        manager.pto.state = PtoState::RequiresTransmission(2);
+        assert!(manager.requires_probe());
+
+        manager.pto.state = PtoState::Idle;
+        assert!(!manager.requires_probe());
     }
 
     #[test]
