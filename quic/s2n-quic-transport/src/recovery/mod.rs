@@ -10,6 +10,7 @@ pub use sent_packets::*;
 mod context;
 mod manager;
 mod pto;
+mod recovery_testing;
 mod sent_packets;
 
 #[cfg(any(test, feature = "testing"))]
