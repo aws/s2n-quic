@@ -174,6 +174,8 @@ fn bind<A: std::net::ToSocketAddrs>(addr: A) -> io::Result<socket2::Socket> {
     socket.set_only_v6(false)?;
 
     socket.set_reuse_address(true)?;
+
+    #[cfg(unix)]
     socket.set_reuse_port(true)?;
 
     for addr in addr.to_socket_addrs()? {
