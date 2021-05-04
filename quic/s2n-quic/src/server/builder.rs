@@ -244,7 +244,7 @@ impl<Providers: ServerProviders> Builder<Providers> {
         /// let addr = "127.0.0.1:443".to_socket_addrs()?.next().unwrap();
         ///
         /// let io = IoBuilder::default()
-        ///     .with_address(addr)?
+        ///     .with_receive_address(addr)?
         ///     .build()?;
         ///
         /// let server = Server::builder()

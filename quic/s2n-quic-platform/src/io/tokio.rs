@@ -69,15 +69,19 @@ impl Io {
 
     pub fn new<A: std::net::ToSocketAddrs>(addr: A) -> io::Result<Self> {
         let address = addr.to_socket_addrs()?.next().expect("missing address");
-        let builder = Builder::default().with_address(address)?;
+        let builder = Builder::default().with_receive_address(address)?;
         Ok(Self { builder })
     }
 
     pub fn start<E: Endpoint>(self, endpoint: E) -> io::Result<tokio::task::JoinHandle<()>> {
         let Builder {
             handle,
-            socket,
-            addr,
+            rx_socket,
+            tx_socket,
+            recv_addr,
+            send_addr,
+            recv_buffer_size,
+            send_buffer_size,
         } = self.builder;
 
         let handle = if let Some(handle) = handle {
@@ -88,18 +92,36 @@ impl Io {
 
         let guard = handle.enter();
 
-        let socket = if let Some(socket) = socket {
-            socket
-        } else if !addr.is_empty() {
-            bind(&addr[..])?
+        let rx_socket = if let Some(rx_socket) = rx_socket {
+            rx_socket
+        } else if !recv_addr.is_empty() {
+            bind(&recv_addr[..])?
         } else {
             bind(("::", 0))?
+        };
+
+        let tx_socket = if let Some(tx_socket) = tx_socket {
+            tx_socket
+        } else if !send_addr.is_empty() {
+            bind(&send_addr[..])?
+        } else {
+            // No tx_socket or send address was specified, so the tx socket
+            // will be a handle to the rx socket.
+            rx_socket.try_clone()?
+        };
+
+        if let Some(size) = send_buffer_size {
+            tx_socket.set_send_buffer_size(size)?;
         }
-        .into();
+
+        if let Some(size) = recv_buffer_size {
+            rx_socket.set_recv_buffer_size(size)?;
+        }
 
         let instance = Instance {
             clock: Clock::default(),
-            socket,
+            rx_socket: rx_socket.into(),
+            tx_socket: tx_socket.into(),
             rx: Default::default(),
             tx: Default::default(),
             endpoint,
@@ -153,6 +175,9 @@ fn bind<A: std::net::ToSocketAddrs>(addr: A) -> io::Result<socket2::Socket> {
 
     socket.set_reuse_address(true)?;
 
+    #[cfg(unix)]
+    socket.set_reuse_port(true)?;
+
     for addr in addr.to_socket_addrs()? {
         let addr = if cfg!(feature = "ipv6") {
             use ::std::net::SocketAddr;
@@ -174,8 +199,12 @@ fn bind<A: std::net::ToSocketAddrs>(addr: A) -> io::Result<socket2::Socket> {
 #[derive(Debug, Default)]
 pub struct Builder {
     handle: Option<Handle>,
-    socket: Option<socket2::Socket>,
-    addr: Vec<std::net::SocketAddr>,
+    rx_socket: Option<socket2::Socket>,
+    tx_socket: Option<socket2::Socket>,
+    recv_addr: Vec<std::net::SocketAddr>,
+    send_addr: Vec<std::net::SocketAddr>,
+    recv_buffer_size: Option<usize>,
+    send_buffer_size: Option<usize>,
 }
 
 impl Builder {
@@ -184,21 +213,61 @@ impl Builder {
         self
     }
 
-    /// Sets the local address for the runtime
+    /// Sets the local address for the runtime to listen on. If no send address
+    /// or tx socket is specified, this address will also be used for transmitting from.
     ///
-    /// NOTE: this method is mutually exclusive with `with_socket`
-    pub fn with_address(mut self, addr: std::net::SocketAddr) -> io::Result<Self> {
-        debug_assert!(self.socket.is_none(), "socket has already been set");
-        self.addr.push(addr);
+    /// NOTE: this method is mutually exclusive with `with_rx_socket`
+    pub fn with_receive_address(mut self, addr: std::net::SocketAddr) -> io::Result<Self> {
+        debug_assert!(self.rx_socket.is_none(), "rx socket has already been set");
+        self.recv_addr.push(addr);
         Ok(self)
     }
 
-    /// Sets the socket used for the runtime
+    /// Sets the local address for the runtime to transmit from. If no send address
+    /// or tx socket is specified, the receive_address will be used for transmitting.
     ///
-    /// NOTE: this method is mutually exclusive with `with_address`
-    pub fn with_socket(mut self, socket: std::net::UdpSocket) -> io::Result<Self> {
-        debug_assert!(self.addr.is_empty(), "address has already been set");
-        self.socket = Some(socket.into());
+    /// NOTE: this method is mutually exclusive with `with_tx_socket`
+    pub fn with_send_address(mut self, addr: std::net::SocketAddr) -> io::Result<Self> {
+        debug_assert!(self.tx_socket.is_none(), "tx socket has already been set");
+        self.send_addr.push(addr);
+        Ok(self)
+    }
+
+    /// Sets the socket used for receiving for the runtime. If no tx_socket or send address is
+    /// specified, this socket will be used for transmitting.
+    ///
+    /// NOTE: this method is mutually exclusive with `with_receive_address`
+    pub fn with_rx_socket(mut self, socket: std::net::UdpSocket) -> io::Result<Self> {
+        debug_assert!(
+            self.recv_addr.is_empty(),
+            "recv address has already been set"
+        );
+        self.rx_socket = Some(socket.into());
+        Ok(self)
+    }
+
+    /// Sets the socket used for transmitting on for the runtime. If no tx_socket or send address is
+    /// specified, the rx_socket will be used for transmitting.
+    ///
+    /// NOTE: this method is mutually exclusive with `with_send_address`
+    pub fn with_tx_socket(mut self, socket: std::net::UdpSocket) -> io::Result<Self> {
+        debug_assert!(
+            self.send_addr.is_empty(),
+            "send address has already been set"
+        );
+        self.tx_socket = Some(socket.into());
+        Ok(self)
+    }
+
+    /// Sets the size of the operating system’s send buffer associated with the tx socket
+    pub fn with_send_buffer_size(mut self, send_buffer_size: usize) -> io::Result<Self> {
+        self.send_buffer_size = Some(send_buffer_size);
+        Ok(self)
+    }
+
+    /// Sets the size of the operating system’s receive buffer associated with the rx socket
+    pub fn with_recv_buffer_size(mut self, recv_buffer_size: usize) -> io::Result<Self> {
+        self.recv_buffer_size = Some(recv_buffer_size);
         Ok(self)
     }
 
@@ -210,7 +279,8 @@ impl Builder {
 #[derive(Debug)]
 struct Instance<E> {
     clock: Clock,
-    socket: std::net::UdpSocket,
+    rx_socket: std::net::UdpSocket,
+    tx_socket: std::net::UdpSocket,
     rx: socket::Queue<buffer::Buffer>,
     tx: socket::Queue<buffer::Buffer>,
     endpoint: E,
@@ -220,7 +290,8 @@ impl<E: Endpoint> Instance<E> {
     async fn event_loop(self) -> io::Result<()> {
         let Self {
             clock,
-            socket,
+            rx_socket,
+            tx_socket,
             mut rx,
             mut tx,
             mut endpoint,
@@ -228,9 +299,11 @@ impl<E: Endpoint> Instance<E> {
 
         cfg_if! {
             if #[cfg(any(s2n_quic_platform_socket_msg, s2n_quic_platform_socket_mmsg))] {
-                let socket = tokio::io::unix::AsyncFd::new(socket)?;
+                let rx_socket = tokio::io::unix::AsyncFd::new(rx_socket)?;
+                let tx_socket = tokio::io::unix::AsyncFd::new(tx_socket)?;
             } else {
-                let socket = async_fd_shim::AsyncFd::new(socket)?;
+                let rx_socket = async_fd_shim::AsyncFd::new(rx_socket)?;
+                let tx_socket = async_fd_shim::AsyncFd::new(tx_socket)?;
             }
         }
 
@@ -246,7 +319,7 @@ impl<E: Endpoint> Instance<E> {
             let rx_interest = rx.free_len() > 0;
             let rx_task = async {
                 if rx_interest {
-                    socket.readable().await
+                    rx_socket.readable().await
                 } else {
                     futures::future::pending().await
                 }
@@ -256,7 +329,7 @@ impl<E: Endpoint> Instance<E> {
             let tx_interest = tx.occupied_len() > 0;
             let tx_task = async {
                 if tx_interest {
-                    socket.writable().await
+                    tx_socket.writable().await
                 } else {
                     futures::future::pending().await
                 }
@@ -536,12 +609,23 @@ mod tests {
         }
     }
 
-    async fn test<A: std::net::ToSocketAddrs>(addr: A) -> io::Result<()> {
-        let socket = bind(addr)?;
-        let socket: std::net::UdpSocket = socket.into();
-        let addr = socket.local_addr()?;
+    async fn test<A: std::net::ToSocketAddrs>(
+        receive_addr: A,
+        send_addr: Option<A>,
+    ) -> io::Result<()> {
+        let rx_socket = bind(receive_addr)?;
+        let rx_socket: std::net::UdpSocket = rx_socket.into();
+        let addr = rx_socket.local_addr()?;
 
-        let io = Io::builder().with_socket(socket)?.build()?;
+        let mut io_builder = Io::builder().with_rx_socket(rx_socket)?;
+
+        if let Some(addr) = send_addr {
+            let tx_socket = bind(addr)?;
+            let tx_socket: std::net::UdpSocket = tx_socket.into();
+            io_builder = io_builder.with_tx_socket(tx_socket)?
+        }
+
+        let io = io_builder.build()?;
 
         let endpoint = TestEndpoint::new(addr.into());
 
@@ -552,13 +636,30 @@ mod tests {
 
     #[tokio::test]
     async fn ipv4_test() -> io::Result<()> {
-        test("127.0.0.1:0").await
+        test("127.0.0.1:0", None).await
+    }
+
+    #[tokio::test]
+    async fn ipv4_two_socket_test() -> io::Result<()> {
+        test("127.0.0.1:0", Some("127.0.0.1:0")).await
     }
 
     #[cfg(feature = "ipv6")]
     #[tokio::test]
     async fn ipv6_test() -> io::Result<()> {
-        match test(("::1", 0)).await {
+        match test(("::1", 0), None).await {
+            Err(err) if err.kind() == io::ErrorKind::AddrNotAvailable => {
+                eprintln!("The current environment does not support IPv6; skipping");
+                Ok(())
+            }
+            other => other,
+        }
+    }
+
+    #[cfg(feature = "ipv6")]
+    #[tokio::test]
+    async fn ipv6_two_socket_test() -> io::Result<()> {
+        match test(("::1", 0), Some(("::1", 0))).await {
             Err(err) if err.kind() == io::ErrorKind::AddrNotAvailable => {
                 eprintln!("The current environment does not support IPv6; skipping");
                 Ok(())
