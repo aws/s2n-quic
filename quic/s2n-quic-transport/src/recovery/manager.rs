@@ -614,14 +614,14 @@ impl transmission::interest::Provider for Manager {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "testing"))]
 mod test {
     use super::*;
     use crate::{
         path::{self, Path},
         recovery::{
             context::mock::MockContext, manager::Manager, pto::PtoState::RequiresTransmission,
-            recovery_testing::test::ack_packets,
+            testing::ack_packets,
         },
     };
     use core::time::Duration;
