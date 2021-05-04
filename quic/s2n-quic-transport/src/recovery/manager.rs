@@ -13,7 +13,7 @@ use s2n_quic_core::{
     endpoint, frame,
     inet::DatagramInfo,
     packet::number::{PacketNumber, PacketNumberRange, PacketNumberSpace},
-    recovery::{CongestionController, RttEstimator, K_GRANULARITY},
+    recovery::{congestion_controller, CongestionController, RttEstimator, K_GRANULARITY},
     time::Timestamp,
     transport,
     varint::VarInt,
@@ -108,7 +108,7 @@ impl Manager {
             .chain(self.loss_timer.iter())
     }
 
-    pub fn on_timeout<CC: CongestionController, Ctx: Context<CC>>(
+    pub fn on_timeout<CCE: congestion_controller::Endpoint, Ctx: Context<CCE>>(
         &mut self,
         timestamp: Timestamp,
         context: &mut Ctx,
@@ -140,7 +140,7 @@ impl Manager {
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.5
     //# After a packet is sent, information about the packet is stored.
-    pub fn on_packet_sent<CC: CongestionController, Ctx: Context<CC>>(
+    pub fn on_packet_sent<CCE: congestion_controller::Endpoint, Ctx: Context<CCE>>(
         &mut self,
         packet_number: PacketNumber,
         outcome: transmission::Outcome,
@@ -250,7 +250,7 @@ impl Manager {
         self.pto.on_transmit(context)
     }
 
-    pub fn on_ack_frame<A: frame::ack::AckRanges, CC: CongestionController, Ctx: Context<CC>>(
+    pub fn on_ack_frame<A: frame::ack::AckRanges, CCE: congestion_controller::Endpoint, Ctx: Context<CCE>>(
         &mut self,
         datagram: &DatagramInfo,
         frame: frame::Ack<A>,
@@ -427,7 +427,7 @@ impl Manager {
     //# DetectAndRemoveLostPackets is called every time an ACK is received or the time threshold
     //# loss detection timer expires. This function operates on the sent_packets for that packet
     //# number space and returns a list of packets newly detected as lost.
-    fn detect_and_remove_lost_packets<CC: CongestionController, Ctx: Context<CC>>(
+    fn detect_and_remove_lost_packets<CCE: congestion_controller::Endpoint, Ctx: Context<CCE>>(
         &mut self,
         now: Timestamp,
         context: &mut Ctx,
@@ -604,14 +604,14 @@ impl Manager {
     }
 }
 
-pub trait Context<CC: CongestionController> {
+pub trait Context<CCE: congestion_controller::Endpoint> {
     const ENDPOINT_TYPE: endpoint::Type;
 
     fn is_handshake_confirmed(&self) -> bool;
 
-    fn path(&self) -> &Path<CC>;
+    fn path(&self) -> &Path<CCE::CongestionController>;
 
-    fn path_mut(&mut self) -> &mut Path<CC>;
+    fn path_mut(&mut self) -> &mut Path<CCE::CongestionController>;
 
     fn validate_packet_ack(
         &mut self,
@@ -1733,7 +1733,6 @@ mod test {
 
         assert!(manager.pto.timer.is_armed());
     }
-
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
     //= type=test
     //# The PTO period MUST be at least kGranularity, to avoid the timer
