@@ -621,10 +621,10 @@ mod test {
         path::{self, Path},
         recovery::{
             context::mock::MockContext, manager::Manager, pto::PtoState::RequiresTransmission,
+            recovery_testing
         },
-        space::rx_packet_numbers::ack_ranges::AckRanges,
     };
-    use core::{ops::RangeInclusive, time::Duration};
+    use core::time::Duration;
     use s2n_quic_core::{
         connection,
         frame::ack_elicitation::AckElicitation,
@@ -760,7 +760,7 @@ mod test {
 
         // Ack packets 1 to 3
         let ack_receive_time = time_sent + Duration::from_millis(500);
-        ack_packets(1..=3, ack_receive_time, &mut context, &mut manager);
+        recovery_testing::test::ack_packets(1..=3, ack_receive_time, &mut context, &mut manager);
 
         assert_eq!(context.path.congestion_controller.lost_bytes, 0);
         assert_eq!(context.path.congestion_controller.on_rtt_update, 1);
@@ -785,7 +785,7 @@ mod test {
 
         // Acknowledging already acked packets
         let ack_receive_time = ack_receive_time + Duration::from_secs(1);
-        ack_packets(1..=3, ack_receive_time, &mut context, &mut manager);
+        recovery_testing::test::ack_packets(1..=3, ack_receive_time, &mut context, &mut manager);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.1
         //= type=test
@@ -808,7 +808,7 @@ mod test {
 
         // Ack packets 7 to 9 (4 - 6 will be considered lost)
         let ack_receive_time = ack_receive_time + Duration::from_secs(1);
-        ack_packets(7..=9, ack_receive_time, &mut context, &mut manager);
+        recovery_testing::test::ack_packets(7..=9, ack_receive_time, &mut context, &mut manager);
 
         assert_eq!(
             context.path.congestion_controller.lost_bytes,
@@ -835,7 +835,7 @@ mod test {
         );
         context.path.pto_backoff = 2;
         let ack_receive_time = ack_receive_time + Duration::from_millis(500);
-        ack_packets(10..=10, ack_receive_time, &mut context, &mut manager);
+        recovery_testing::test::ack_packets(10..=10, ack_receive_time, &mut context, &mut manager);
         assert_eq!(context.path.congestion_controller.on_rtt_update, 1);
         assert_eq!(context.path.pto_backoff, 2);
         assert_eq!(context.on_packet_ack_count, 4);
@@ -861,7 +861,8 @@ mod test {
             path::Id::new(0),
             &mut context,
         );
-        ack_packets(11..=11, ack_receive_time, &mut context, &mut manager);
+
+        recovery_testing::test::ack_packets(11..=11, ack_receive_time, &mut context, &mut manager);
 
         assert_eq!(context.path.congestion_controller.lost_bytes, 0);
         assert_eq!(context.path.congestion_controller.on_rtt_update, 1);
@@ -1347,48 +1348,5 @@ mod test {
         //# least the local timer granularity, as indicated by the kGranularity
         //# constant.
         assert!(Manager::calculate_loss_time_threshold(&rtt_estimator) >= K_GRANULARITY);
-    }
-
-    // Helper function that will call on_ack_frame with the given packet numbers
-    fn ack_packets<CC: CongestionController, Ctx: Context<CC>>(
-        range: RangeInclusive<u8>,
-        ack_receive_time: Timestamp,
-        context: &mut Ctx,
-        manager: &mut Manager,
-    ) {
-        let acked_packets = PacketNumberRange::new(
-            manager
-                .space
-                .new_packet_number(VarInt::from_u8(*range.start())),
-            manager
-                .space
-                .new_packet_number(VarInt::from_u8(*range.end())),
-        );
-
-        let datagram = DatagramInfo {
-            timestamp: ack_receive_time,
-            remote_address: Default::default(),
-            payload_len: 0,
-            ecn: Default::default(),
-            destination_connection_id: connection::LocalId::TEST_ID,
-        };
-
-        let mut ack_range = AckRanges::new(acked_packets.count());
-
-        for acked_packet in acked_packets {
-            ack_range.insert_packet_number(acked_packet);
-        }
-
-        let frame = frame::Ack {
-            ack_delay: VarInt::from_u8(10),
-            ack_ranges: (&ack_range),
-            ecn_counts: None,
-        };
-
-        let _ = manager.on_ack_frame(&datagram, frame, context);
-
-        for packet in acked_packets {
-            assert!(manager.sent_packets.get(packet).is_none());
-        }
     }
 }

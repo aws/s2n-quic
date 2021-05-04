@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #[cfg(test)]
-mod test {
+pub mod test {
     use crate::{
         path::{self},
         recovery::{
@@ -399,7 +399,7 @@ mod test {
     }
 
     // Helper function that will call on_ack_frame with the given packet numbers
-    fn ack_packets<CC: CongestionController, Ctx: Context<CC>>(
+    pub fn ack_packets<CC: CongestionController, Ctx: Context<CC>>(
         range: RangeInclusive<u8>,
         ack_receive_time: Timestamp,
         context: &mut Ctx,
