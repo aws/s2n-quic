@@ -621,7 +621,7 @@ mod test {
         path::{self, Path},
         recovery::{
             context::mock::MockContext, manager::Manager, pto::PtoState::RequiresTransmission,
-            recovery_testing
+            recovery_testing::test::ack_packets,
         },
     };
     use core::time::Duration;
@@ -760,7 +760,7 @@ mod test {
 
         // Ack packets 1 to 3
         let ack_receive_time = time_sent + Duration::from_millis(500);
-        recovery_testing::test::ack_packets(1..=3, ack_receive_time, &mut context, &mut manager);
+        ack_packets(1..=3, ack_receive_time, &mut context, &mut manager);
 
         assert_eq!(context.path.congestion_controller.lost_bytes, 0);
         assert_eq!(context.path.congestion_controller.on_rtt_update, 1);
@@ -785,7 +785,7 @@ mod test {
 
         // Acknowledging already acked packets
         let ack_receive_time = ack_receive_time + Duration::from_secs(1);
-        recovery_testing::test::ack_packets(1..=3, ack_receive_time, &mut context, &mut manager);
+        ack_packets(1..=3, ack_receive_time, &mut context, &mut manager);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.1
         //= type=test
@@ -808,7 +808,7 @@ mod test {
 
         // Ack packets 7 to 9 (4 - 6 will be considered lost)
         let ack_receive_time = ack_receive_time + Duration::from_secs(1);
-        recovery_testing::test::ack_packets(7..=9, ack_receive_time, &mut context, &mut manager);
+        ack_packets(7..=9, ack_receive_time, &mut context, &mut manager);
 
         assert_eq!(
             context.path.congestion_controller.lost_bytes,
@@ -835,7 +835,7 @@ mod test {
         );
         context.path.pto_backoff = 2;
         let ack_receive_time = ack_receive_time + Duration::from_millis(500);
-        recovery_testing::test::ack_packets(10..=10, ack_receive_time, &mut context, &mut manager);
+        ack_packets(10..=10, ack_receive_time, &mut context, &mut manager);
         assert_eq!(context.path.congestion_controller.on_rtt_update, 1);
         assert_eq!(context.path.pto_backoff, 2);
         assert_eq!(context.on_packet_ack_count, 4);
@@ -862,7 +862,7 @@ mod test {
             &mut context,
         );
 
-        recovery_testing::test::ack_packets(11..=11, ack_receive_time, &mut context, &mut manager);
+        ack_packets(11..=11, ack_receive_time, &mut context, &mut manager);
 
         assert_eq!(context.path.congestion_controller.lost_bytes, 0);
         assert_eq!(context.path.congestion_controller.on_rtt_update, 1);
