@@ -181,6 +181,7 @@ pub trait ConnectionTrait: Sized {
         shared_state: Option<&mut SharedConnectionState<Self::Config>>,
         datagram: &DatagramInfo,
         congestion_controller_endpoint: &mut <Self::Config as endpoint::Config>::CongestionControllerEndpoint,
+        random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
     ) -> Result<path::Id, connection::Error>;
 
     /// Returns the Connections interests

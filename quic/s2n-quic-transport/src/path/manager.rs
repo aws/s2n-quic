@@ -12,6 +12,7 @@ use s2n_quic_core::{
     ack, connection, frame,
     inet::{DatagramInfo, SocketAddress},
     packet::number::PacketNumberSpace,
+    random,
     recovery::congestion_controller,
     stateless_reset,
     time::Timestamp,
@@ -109,12 +110,13 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     /// and is now no longer amplification limited.
     #[allow(unreachable_code)]
     #[allow(unused_variables)]
-    pub fn on_datagram_received(
+    pub fn on_datagram_received<Rnd: random::Generator>(
         &mut self,
         datagram: &DatagramInfo,
         limits: &connection::Limits,
         can_migrate: bool,
         congestion_controller_endpoint: &mut CCE,
+        random_generator: &mut Rnd,
     ) -> Result<(Id, bool), transport::Error> {
         if let Some((id, path)) = self.path_mut(&datagram.remote_address) {
             let unblocked = path.on_bytes_received(datagram.payload_len);
@@ -184,10 +186,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         //# frame so that it can associate the peer's response with the
         //# corresponding PATH_CHALLENGE.
         let mut data: challenge::Data = [0; 8];
-
-        // NOTE: When enabled, the random generator should be passed into this function.
-        // This function can be generic over random.
-        // random_generator.public_random_fill(&mut data);
+        random_generator.public_random_fill(&mut data);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
         //# An endpoint MUST
@@ -669,6 +668,7 @@ mod tests {
                 &connection::Limits::default(),
                 true,
                 &mut unlimited::Endpoint::default(),
+                &mut random::testing::Generator(123),
             )
             .unwrap();
 
@@ -720,6 +720,7 @@ mod tests {
                     &connection::Limits::default(),
                     false,
                     &mut unlimited::Endpoint::default(),
+                    &mut random::testing::Generator(123),
                 )
                 .is_err(),
             true
