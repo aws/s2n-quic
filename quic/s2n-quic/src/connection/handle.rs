@@ -153,6 +153,17 @@ macro_rules! impl_handle_api {
             self.0.alpn()
         }
 
+        /// Returns the identifier for the [`Connection`]
+        ///
+        /// # Examples
+        ///
+        /// ```rust
+        /// // TODO
+        /// ```
+        pub fn id(&self) -> u64 {
+            self.0.id()
+        }
+
         /// TODO
         ///
         /// # Examples

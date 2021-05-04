@@ -49,5 +49,7 @@ pub(crate) trait ConnectionApiProvider: Sync + Send {
 
     fn alpn(&self) -> Bytes;
 
+    fn id(&self) -> u64;
+
     fn ping(&self) -> Result<(), connection::Error>;
 }

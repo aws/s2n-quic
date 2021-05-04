@@ -85,6 +85,10 @@ impl Connection {
         self.shared_state.alpn()
     }
 
+    pub fn id(&self) -> u64 {
+        self.shared_state.id()
+    }
+
     pub fn ping(&self) -> Result<(), connection::Error> {
         self.shared_state.ping()
     }
