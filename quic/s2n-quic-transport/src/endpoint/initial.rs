@@ -243,6 +243,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         let shared_state = Arc::new(SynchronizedSharedConnectionState::new(
             space_manager,
             wakeup_handle,
+            internal_connection_id,
         ));
 
         let mut connection = <Config as endpoint::Config>::Connection::new(connection_parameters);
