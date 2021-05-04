@@ -1275,6 +1275,18 @@ mod test {
         assert_eq!(manager.timers().next(), Some(loss_time));
     }
 
+    #[test]
+    fn requires_probe() {
+        let space = PacketNumberSpace::ApplicationData;
+        let mut manager = Manager::new(space, Duration::from_millis(10));
+
+        manager.pto.state = PtoState::RequiresTransmission(2);
+        assert!(manager.requires_probe());
+
+        manager.pto.state = PtoState::Idle;
+        assert!(!manager.requires_probe());
+    }
+
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.1.1
     //= type=test
     //# The RECOMMENDED initial value for the packet reordering threshold
@@ -1310,18 +1322,6 @@ mod test {
             Duration::from_millis(1125), // 9/8 seconds = 1.125 seconds
             Manager::calculate_loss_time_threshold(&rtt_estimator)
         );
-    }
-
-    #[test]
-    fn requires_probe() {
-        let space = PacketNumberSpace::ApplicationData;
-        let mut manager = Manager::new(space, Duration::from_millis(10));
-
-        manager.pto.state = PtoState::RequiresTransmission(2);
-        assert!(manager.requires_probe());
-
-        manager.pto.state = PtoState::Idle;
-        assert!(!manager.requires_probe());
     }
 
     #[test]

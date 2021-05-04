@@ -39,7 +39,7 @@ pub trait Context<CC: CongestionController> {
     fn on_rtt_update(&mut self);
 }
 
-pub(crate) mod mock {
+pub mod mock {
     use super::*;
     // use core::time::Duration;
     // use s2n_quic_core::{
@@ -54,7 +54,7 @@ pub(crate) mod mock {
     // };
     use std::collections::HashSet;
 
-    pub(crate) struct MockContext {
+    pub struct MockContext {
         pub validate_packet_ack_count: u8,
         pub on_new_packet_ack_count: u8,
         pub on_packet_ack_count: u8,
