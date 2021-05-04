@@ -145,27 +145,21 @@ mod test {
     use crate::{
         contexts::testing::{MockWriteContext, OutgoingFrameBuffer},
         path::{self, Path},
-        recovery::{self, manager::Manager, probe::PtoState::RequiresTransmission},
-        space::rx_packet_numbers::ack_ranges::AckRanges,
+        recovery::{
+            context::mock::MockContext, manager::Manager, pto::PtoState::RequiresTransmission,
+        },
     };
-    use core::{ops::RangeInclusive, time::Duration};
+    use core::time::Duration;
     use s2n_quic_core::{
         connection, endpoint,
         frame::ack_elicitation::AckElicitation,
-        inet::DatagramInfo,
-        packet::number::{PacketNumber, PacketNumberRange, PacketNumberSpace},
-        path::INITIAL_PTO_BACKOFF,
+        packet::number::PacketNumberSpace,
         recovery::{
-            congestion_controller::testing::{
-                mock::CongestionController as MockCongestionController,
-                unlimited::CongestionController as Unlimited,
-            },
-            CongestionController, RttEstimator, DEFAULT_INITIAL_RTT, K_GRANULARITY,
+            congestion_controller::testing::unlimited::CongestionController as Unlimited,
+            RttEstimator, K_GRANULARITY,
         },
-        transport,
         varint::VarInt,
     };
-    use std::collections::HashSet;
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.2
     //= type=test
@@ -369,92 +363,5 @@ mod test {
         );
 
         assert_eq!(context.path.congestion_controller.bytes_in_flight, 100);
-    }
-
-    struct MockContext {
-        validate_packet_ack_count: u8,
-        on_new_packet_ack_count: u8,
-        on_packet_ack_count: u8,
-        on_packet_loss_count: u8,
-        on_rtt_update_count: u8,
-        path: Path<MockCongestionController>,
-        lost_packets: HashSet<PacketNumber>,
-    }
-
-    impl MockContext {
-        pub fn new(max_ack_delay: Duration, peer_validated: bool) -> Self {
-            let path = Path::new(
-                Default::default(),
-                connection::PeerId::TEST_ID,
-                RttEstimator::new(max_ack_delay),
-                MockCongestionController::default(),
-                peer_validated,
-            );
-            Self {
-                validate_packet_ack_count: 0,
-                on_new_packet_ack_count: 0,
-                on_packet_ack_count: 0,
-                on_packet_loss_count: 0,
-                on_rtt_update_count: 0,
-                path,
-                lost_packets: HashSet::default(),
-            }
-        }
-    }
-
-    impl Default for MockContext {
-        fn default() -> Self {
-            Self::new(Duration::from_millis(10), true)
-        }
-    }
-
-    impl recovery::Context<MockCongestionController> for MockContext {
-        const ENDPOINT_TYPE: endpoint::Type = endpoint::Type::Client;
-
-        fn is_handshake_confirmed(&self) -> bool {
-            true
-        }
-
-        fn path(&self) -> &Path<MockCongestionController> {
-            &self.path
-        }
-
-        fn path_mut(&mut self) -> &mut Path<MockCongestionController> {
-            &mut self.path
-        }
-
-        fn validate_packet_ack(
-            &mut self,
-            _datagram: &DatagramInfo,
-            _packet_number_range: &PacketNumberRange,
-        ) -> Result<(), transport::Error> {
-            self.validate_packet_ack_count += 1;
-            Ok(())
-        }
-
-        fn on_new_packet_ack(
-            &mut self,
-            _datagram: &DatagramInfo,
-            _packet_number_range: &PacketNumberRange,
-        ) {
-            self.on_new_packet_ack_count += 1;
-        }
-
-        fn on_packet_ack(
-            &mut self,
-            _datagram: &DatagramInfo,
-            _packet_number_range: &PacketNumberRange,
-        ) {
-            self.on_packet_ack_count += 1;
-        }
-
-        fn on_packet_loss(&mut self, packet_number_range: &PacketNumberRange) {
-            self.on_packet_loss_count += 1;
-            self.lost_packets.insert(packet_number_range.start());
-        }
-
-        fn on_rtt_update(&mut self) {
-            self.on_rtt_update_count += 1;
-        }
     }
 }
