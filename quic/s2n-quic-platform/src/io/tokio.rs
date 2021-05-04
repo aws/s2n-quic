@@ -213,7 +213,8 @@ impl Builder {
         self
     }
 
-    /// Sets the local address for the runtime to listen on
+    /// Sets the local address for the runtime to listen on. If no send address
+    /// or tx socket is specified, this address will also be used for transmitting from.
     ///
     /// NOTE: this method is mutually exclusive with `with_rx_socket`
     pub fn with_receive_address(mut self, addr: std::net::SocketAddr) -> io::Result<Self> {
@@ -223,7 +224,7 @@ impl Builder {
     }
 
     /// Sets the local address for the runtime to transmit from. If no send address
-    /// is specified, the receive_address will be used.
+    /// or tx socket is specified, the receive_address will be used for transmitting.
     ///
     /// NOTE: this method is mutually exclusive with `with_tx_socket`
     pub fn with_send_address(mut self, addr: std::net::SocketAddr) -> io::Result<Self> {
@@ -232,7 +233,8 @@ impl Builder {
         Ok(self)
     }
 
-    /// Sets the socket used for receiving for the runtime
+    /// Sets the socket used for receiving for the runtime. If no tx_socket or send address is
+    /// specified, this socket will be used for transmitting.
     ///
     /// NOTE: this method is mutually exclusive with `with_receive_address`
     pub fn with_rx_socket(mut self, socket: std::net::UdpSocket) -> io::Result<Self> {
@@ -244,7 +246,7 @@ impl Builder {
         Ok(self)
     }
 
-    /// Sets the socket used for transmitting on for the runtime. If no tx_socket is
+    /// Sets the socket used for transmitting on for the runtime. If no tx_socket or send address is
     /// specified, the rx_socket will be used for transmitting.
     ///
     /// NOTE: this method is mutually exclusive with `with_send_address`
