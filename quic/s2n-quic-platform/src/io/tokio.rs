@@ -234,7 +234,10 @@ impl Builder {
     ///
     /// NOTE: this method is mutually exclusive with `with_receive_address`
     pub fn with_rx_socket(mut self, socket: std::net::UdpSocket) -> io::Result<Self> {
-        debug_assert!(self.recv_addr.is_empty(), "recv address has already been set");
+        debug_assert!(
+            self.recv_addr.is_empty(),
+            "recv address has already been set"
+        );
         self.rx_socket = Some(socket.into());
         Ok(self)
     }
@@ -244,7 +247,10 @@ impl Builder {
     ///
     /// NOTE: this method is mutually exclusive with `with_send_address`
     pub fn with_tx_socket(mut self, socket: std::net::UdpSocket) -> io::Result<Self> {
-        debug_assert!(self.send_addr.is_empty(), "send address has already been set");
+        debug_assert!(
+            self.send_addr.is_empty(),
+            "send address has already been set"
+        );
         self.tx_socket = Some(socket.into());
         Ok(self)
     }
@@ -526,16 +532,16 @@ mod tests {
     use std::collections::BTreeMap;
 
     struct TestEndpoint {
-        tx_addr: SocketAddress,
+        addr: SocketAddress,
         messages: BTreeMap<u32, Option<Timestamp>>,
         now: Option<Timestamp>,
     }
 
     impl TestEndpoint {
-        fn new(tx_addr: SocketAddress) -> Self {
+        fn new(addr: SocketAddress) -> Self {
             let messages = (0..1000).map(|id| (id, None)).collect();
             Self {
-                tx_addr,
+                addr,
                 messages,
                 now: None,
             }
@@ -555,7 +561,7 @@ mod tests {
                     }
                     _ => {
                         let payload = id.to_be_bytes();
-                        let msg = (self.tx_addr, payload);
+                        let msg = (self.addr, payload);
                         if queue.push(msg).is_ok() {
                             *tx_time = Some(now);
                         } else {
@@ -604,14 +610,14 @@ mod tests {
         let tx_socket = bind(send_addr)?;
         let rx_socket: std::net::UdpSocket = rx_socket.into();
         let tx_socket: std::net::UdpSocket = tx_socket.into();
-        let send_addr = tx_socket.local_addr()?;
+        let addr = rx_socket.local_addr()?;
 
         let io = Io::builder()
             .with_rx_socket(rx_socket)?
             .with_tx_socket(tx_socket)?
             .build()?;
 
-        let endpoint = TestEndpoint::new(send_addr.into());
+        let endpoint = TestEndpoint::new(addr.into());
 
         io.start(endpoint)?.await?;
 
