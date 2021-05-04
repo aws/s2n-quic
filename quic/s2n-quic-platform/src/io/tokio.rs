@@ -609,17 +609,23 @@ mod tests {
         }
     }
 
-    async fn test<A: std::net::ToSocketAddrs>(receive_addr: A, send_addr: A) -> io::Result<()> {
+    async fn test<A: std::net::ToSocketAddrs>(
+        receive_addr: A,
+        send_addr: Option<A>,
+    ) -> io::Result<()> {
         let rx_socket = bind(receive_addr)?;
-        let tx_socket = bind(send_addr)?;
         let rx_socket: std::net::UdpSocket = rx_socket.into();
-        let tx_socket: std::net::UdpSocket = tx_socket.into();
         let addr = rx_socket.local_addr()?;
 
-        let io = Io::builder()
-            .with_rx_socket(rx_socket)?
-            .with_tx_socket(tx_socket)?
-            .build()?;
+        let mut io_builder = Io::builder().with_rx_socket(rx_socket)?;
+
+        if let Some(addr) = send_addr {
+            let tx_socket = bind(addr)?;
+            let tx_socket: std::net::UdpSocket = tx_socket.into();
+            io_builder = io_builder.with_tx_socket(tx_socket)?
+        }
+
+        let io = io_builder.build()?;
 
         let endpoint = TestEndpoint::new(addr.into());
 
@@ -630,13 +636,30 @@ mod tests {
 
     #[tokio::test]
     async fn ipv4_test() -> io::Result<()> {
-        test("127.0.0.1:0", "127.0.0.1:0").await
+        test("127.0.0.1:0", None).await
+    }
+
+    #[tokio::test]
+    async fn ipv4_two_socket_test() -> io::Result<()> {
+        test("127.0.0.1:0", Some("127.0.0.1:0")).await
     }
 
     #[cfg(feature = "ipv6")]
     #[tokio::test]
     async fn ipv6_test() -> io::Result<()> {
-        match test(("::1", 0), ("::1", 0)).await {
+        match test(("::1", 0), None).await {
+            Err(err) if err.kind() == io::ErrorKind::AddrNotAvailable => {
+                eprintln!("The current environment does not support IPv6; skipping");
+                Ok(())
+            }
+            other => other,
+        }
+    }
+
+    #[cfg(feature = "ipv6")]
+    #[tokio::test]
+    async fn ipv6_two_socket_test() -> io::Result<()> {
+        match test(("::1", 0), Some(("::1", 0))).await {
             Err(err) if err.kind() == io::ErrorKind::AddrNotAvailable => {
                 eprintln!("The current environment does not support IPv6; skipping");
                 Ok(())
