@@ -4,7 +4,9 @@
 use crate::{
     contexts::WriteContext,
     path::{self, Path},
-    recovery::{SentPacketInfo, SentPackets},
+    recovery::{
+        probe::{Pto, PtoState},
+        SentPacketInfo, SentPackets},
     timer::VirtualTimer,
     transmission,
 };
@@ -52,7 +54,7 @@ pub struct Manager {
     //# period of time or the server may not have validated the client's
     //# address.  A PTO enables a connection to recover from loss of tail
     //# packets or acknowledgements.
-    pto: Pto,
+    pub(crate) pto: Pto,
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.3
     //# The time the most recent ack-eliciting packet was sent.
@@ -632,140 +634,6 @@ pub trait Context<CC: CongestionController> {
 impl transmission::interest::Provider for Manager {
     fn transmission_interest(&self) -> transmission::Interest {
         self.pto.transmission_interest()
-    }
-}
-
-/// Manages the probe time out calculation and probe packet transmission
-#[derive(Debug, Default)]
-struct Pto {
-    timer: VirtualTimer,
-    state: PtoState,
-    max_ack_delay: Duration,
-}
-
-#[derive(Debug, PartialEq)]
-enum PtoState {
-    Idle,
-    RequiresTransmission(u8),
-}
-
-impl Default for PtoState {
-    fn default() -> Self {
-        Self::Idle
-    }
-}
-
-impl Pto {
-    /// Constructs a new `Pto` with the given `max_ack_delay`
-    pub fn new(max_ack_delay: Duration) -> Self {
-        Self {
-            max_ack_delay,
-            ..Self::default()
-        }
-    }
-
-    /// Returns an iterator containing the probe timeout timestamp
-    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
-        self.timer.iter()
-    }
-
-    /// Called when a timeout has occurred. Returns true if the PTO timer had expired.
-    pub fn on_timeout(&mut self, packets_in_flight: bool, timestamp: Timestamp) -> bool {
-        if self.timer.poll_expiration(timestamp).is_ready() {
-            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
-            //# When a PTO timer expires, a sender MUST send at least one ack-
-            //# eliciting packet in the packet number space as a probe.
-
-            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.2.1
-            //# Since the server could be blocked until more datagrams are received
-            //# from the client, it is the client's responsibility to send packets to
-            //# unblock the server until it is certain that the server has finished
-            //# its address validation
-
-            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
-            //# An endpoint MAY send up to two full-sized datagrams containing
-            //# ack-eliciting packets, to avoid an expensive consecutive PTO
-            //# expiration due to a single lost datagram or transmit data from
-            //# multiple packet number spaces.
-
-            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
-            //# Sending two packets on PTO
-            //# expiration increases resilience to packet drops, thus reducing the
-            //# probability of consecutive PTO events.
-            let transmission_count = if packets_in_flight { 2 } else { 1 };
-
-            self.state = PtoState::RequiresTransmission(transmission_count);
-            true
-        } else {
-            false
-        }
-    }
-
-    /// Queries the component for any outgoing frames that need to get sent
-    pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
-        match self.state {
-            PtoState::RequiresTransmission(0) => self.state = PtoState::Idle,
-            PtoState::RequiresTransmission(remaining) => {
-                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
-                //# When there is no data to send, the sender SHOULD send
-                //# a PING or other ack-eliciting frame in a single packet, re-arming the
-                //# PTO timer.
-
-                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.2.1
-                //# When the PTO fires, the client MUST send a Handshake packet if it
-                //# has Handshake keys, otherwise it MUST send an Initial packet in a
-                //# UDP datagram with a payload of at least 1200 bytes.
-
-                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.9
-                //# // Client sends an anti-deadlock packet: Initial is padded
-                //# // to earn more anti-amplification credit,
-                //# // a Handshake packet proves address ownership.
-
-                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
-                //# All probe packets sent on a PTO MUST be ack-eliciting.
-
-                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.5
-                //# Probe packets MUST NOT be blocked by the congestion controller.
-
-                // The early transmission will automatically ensure all initial packets sent by the
-                // client are padded to 1200 bytes
-                if context.ack_elicitation().is_ack_eliciting()
-                    || context.write_frame_forced(&frame::Ping).is_some()
-                {
-                    let remaining = remaining - 1;
-                    self.state = if remaining == 0 {
-                        PtoState::Idle
-                    } else {
-                        PtoState::RequiresTransmission(remaining)
-                    };
-                }
-            }
-            _ => {}
-        }
-    }
-
-    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
-    //# A sender SHOULD restart its PTO timer every time an ack-eliciting
-    //# packet is sent or acknowledged, when the handshake is confirmed
-    //# (Section 4.1.2 of [QUIC-TLS]), or when Initial or Handshake keys are
-    //# discarded (Section 4.9 of [QUIC-TLS]).
-    pub fn update(&mut self, base_timestamp: Timestamp, pto_period: Duration) {
-        self.timer.set(base_timestamp + pto_period);
-    }
-
-    /// Cancels the PTO timer
-    pub fn cancel(&mut self) {
-        self.timer.cancel();
-    }
-}
-
-impl transmission::interest::Provider for Pto {
-    fn transmission_interest(&self) -> transmission::Interest {
-        if matches!(self.state, PtoState::RequiresTransmission(_)) {
-            transmission::Interest::Forced
-        } else {
-            transmission::Interest::None
-        }
     }
 }
 
@@ -2013,18 +1881,6 @@ mod test {
         for packet in acked_packets {
             assert!(manager.sent_packets.get(packet).is_none());
         }
-    }
-
-    #[test]
-    fn requires_probe() {
-        let space = PacketNumberSpace::ApplicationData;
-        let mut manager = Manager::new(space, Duration::from_millis(10));
-
-        manager.pto.state = PtoState::RequiresTransmission(2);
-        assert!(manager.requires_probe());
-
-        manager.pto.state = PtoState::Idle;
-        assert!(!manager.requires_probe());
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.5

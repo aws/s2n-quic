@@ -7,6 +7,7 @@ pub use s2n_quic_core::recovery::*;
 pub use sent_packets::*;
 
 mod manager;
+mod probe;
 mod sent_packets;
 
 #[cfg(any(test, feature = "testing"))]
