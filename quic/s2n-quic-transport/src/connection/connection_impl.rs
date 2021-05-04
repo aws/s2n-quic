@@ -616,6 +616,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         shared_state: Option<&mut SharedConnectionState<Config>>,
         datagram: &DatagramInfo,
         congestion_controller_endpoint: &mut Config::CongestionControllerEndpoint,
+        random: &mut Config::RandomGenerator,
     ) -> Result<path::Id, connection::Error> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
         //# The design of QUIC relies on endpoints retaining a stable address
@@ -638,6 +639,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             &self.limits,
             can_migrate,
             congestion_controller_endpoint,
+            random,
         )?;
 
         if let Some(shared_state) = shared_state {
