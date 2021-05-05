@@ -4,14 +4,8 @@
 use crate::path::Path;
 use core::time::Duration;
 use s2n_quic_core::{
-    connection, endpoint,
-    inet::DatagramInfo,
-    packet::number::{PacketNumber, PacketNumberRange},
-    recovery::{
-        congestion_controller::testing::mock::CongestionController as MockCongestionController,
-        CongestionController, RttEstimator,
-    },
-    transport,
+    connection, endpoint, inet::DatagramInfo, packet::number::PacketNumberRange,
+    recovery::CongestionController, transport,
 };
 
 pub trait Context<CC: CongestionController> {
@@ -41,6 +35,13 @@ pub trait Context<CC: CongestionController> {
 
 pub mod testing {
     use super::*;
+    use s2n_quic_core::{
+        packet::number::PacketNumber,
+        recovery::{
+            congestion_controller::testing::mock::CongestionController as MockCongestionController,
+            RttEstimator,
+        },
+    };
     use std::collections::HashSet;
 
     pub struct MockContext {
