@@ -620,7 +620,7 @@ mod test {
     use crate::{
         path::{self, Path},
         recovery::{
-            context::mock::MockContext, manager::Manager, pto::PtoState::RequiresTransmission,
+            context::testing::MockContext, manager::Manager, pto::PtoState::RequiresTransmission,
             testing::ack_packets,
         },
     };

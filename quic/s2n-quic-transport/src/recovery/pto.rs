@@ -146,7 +146,7 @@ mod test {
         contexts::testing::{MockWriteContext, OutgoingFrameBuffer},
         path::{self, Path},
         recovery::{
-            context::mock::MockContext, manager::Manager, pto::PtoState::RequiresTransmission,
+            context::testing::MockContext, manager::Manager, pto::PtoState::RequiresTransmission,
         },
     };
     use core::time::Duration;

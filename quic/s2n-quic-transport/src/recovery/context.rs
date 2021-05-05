@@ -39,19 +39,8 @@ pub trait Context<CC: CongestionController> {
     fn on_rtt_update(&mut self);
 }
 
-pub mod mock {
+pub mod testing {
     use super::*;
-    // use core::time::Duration;
-    // use s2n_quic_core::{
-    //     connection, endpoint,
-    //     inet::DatagramInfo,
-    //     packet::number::{PacketNumber, PacketNumberRange},
-    //     recovery::{
-    //         congestion_controller::testing::mock::CongestionController as MockCongestionController,
-    //         RttEstimator,
-    //     },
-    //     transport,
-    // };
     use std::collections::HashSet;
 
     pub struct MockContext {
