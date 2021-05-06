@@ -1,8 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use s2n_quic_core::connection::id::Format;
-pub use s2n_quic_core::connection::id::{Generator, Validator};
+pub use s2n_quic_core::connection::id::{ConnectionInfo, Format, Generator, LocalId, Validator};
 
 /// Provides connection id support for an endpoint
 pub trait Provider: 'static {
