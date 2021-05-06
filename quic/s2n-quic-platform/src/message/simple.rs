@@ -107,7 +107,7 @@ impl<Payloads: crate::buffer::Buffer> Ring<Payloads> {
             messages.push(messages[index]);
         }
 
-        Self { payloads, messages }
+        Self { messages, payloads }
     }
 }
 

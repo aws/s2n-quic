@@ -106,9 +106,9 @@ impl<
             endpoint_limits,
             event,
             limits,
-            token,
             sync,
             tls,
+            token,
         };
 
         let (endpoint, acceptor) = endpoint::Endpoint::new(endpoint_config);

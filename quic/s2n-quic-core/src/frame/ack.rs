@@ -303,9 +303,9 @@ decoder_parameterized_value!(
             let range_buffer = range_buffer.into();
 
             let ack_ranges = AckRangesDecoder {
+                largest_acknowledged,
                 ack_range_count,
                 range_buffer,
-                largest_acknowledged,
             };
 
             Ok((ack_ranges, remaining))

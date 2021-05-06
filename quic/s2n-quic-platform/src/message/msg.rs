@@ -209,8 +209,8 @@ impl<Payloads: crate::buffer::Buffer> Ring<Payloads> {
         }
 
         Self {
-            payloads,
             messages,
+            payloads,
             iovecs,
             msg_names,
         }

@@ -324,8 +324,8 @@ macro_rules! impl_tls {
 
                 Ok(tls::ApplicationParameters {
                     alpn_protocol,
-                    transport_parameters,
                     sni,
+                    transport_parameters,
                 })
             }
 
@@ -343,7 +343,7 @@ macro_rules! impl_tls {
                 self.0
                     .session
                     .write_hs(buffer)
-                    .map(|Secrets { client, server }| SecretPair { client, server })
+                    .map(|Secrets { client, server }| SecretPair { server, client })
             }
         }
     };

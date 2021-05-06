@@ -429,8 +429,8 @@ unsafe fn get_application_params<'a>(
     let sni = get_sni(connection);
 
     Ok(tls::ApplicationParameters {
-        sni,
         alpn_protocol,
+        sni,
         transport_parameters,
     })
 }
