@@ -99,14 +99,12 @@ impl<'a> AnnoObject for (&MultiArch<'a>, &'a [u8]) {
 impl<'a> AnnoObject for MachO<'a> {
     fn load(&self, annotations: &mut AnnotationSet) -> Result<(), Error> {
         for sections in self.segments.sections() {
-            for section in sections {
-                if let Ok((section, data)) = section {
-                    if let (b"__DATA\0\0\0\0\0\0\0\0\0\0", b"__compliance\0\0\0\0") =
-                        (&section.segname, &section.sectname)
-                    {
-                        for annotation in Parser(data) {
-                            annotations.insert(annotation?);
-                        }
+            for (section, data) in sections.flatten() {
+                if let (b"__DATA\0\0\0\0\0\0\0\0\0\0", b"__compliance\0\0\0\0") =
+                    (&section.segname, &section.sectname)
+                {
+                    for annotation in Parser(data) {
+                        annotations.insert(annotation?);
                     }
                 }
             }
