@@ -1023,9 +1023,9 @@ impl StreamInterestProvider for SendStream {
         };
 
         StreamInterests {
-            finalization,
             connection_flow_control_credits,
             stream_flow_control_credits,
+            finalization,
             delivery_notifications,
             transmission,
         }
