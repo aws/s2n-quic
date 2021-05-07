@@ -21,16 +21,6 @@ cfg_if::cfg_if! {
 
 impl_provider_utils!();
 
-/// Implement Provider for all types that implement Format
-impl<T: Format> Provider for T {
-    type Format = T;
-    type Error = core::convert::Infallible;
-
-    fn start(self) -> Result<Self::Format, Self::Error> {
-        Ok(self)
-    }
-}
-
 #[cfg(feature = "rand")]
 pub mod random {
     use core::{
@@ -52,6 +42,15 @@ pub mod random {
 
         fn start(self) -> Result<Self::Format, Self::Error> {
             Ok(self.0)
+        }
+    }
+
+    impl super::TryInto for Format {
+        type Provider = Provider;
+        type Error = Infallible;
+
+        fn try_into(self) -> Result<Self::Provider, Self::Error> {
+            Ok(Provider(self))
         }
     }
 
