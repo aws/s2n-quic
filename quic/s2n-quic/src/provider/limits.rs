@@ -15,6 +15,15 @@ pub use default::Provider as Default;
 
 impl_provider_utils!();
 
+impl Provider for Limits {
+    type Limits = Limits;
+    type Error = core::convert::Infallible;
+
+    fn start(self) -> Result<Self::Limits, Self::Error> {
+        Ok(self)
+    }
+}
+
 pub mod default {
     #[derive(Debug, Default)]
     pub struct Provider;
