@@ -78,6 +78,18 @@ impl Annotation {
         self.target.splitn(2, '#').next().unwrap()
     }
 
+    // The JSON file needs to index the specification
+    // to the same path that the annotation targets will have
+    pub fn resolve_target_path(&self) -> String {
+        let target_path = self.target_path();
+        match target_path.contains("://") {
+            // A URL should not be changed.
+            true => String::from(target_path),
+            // A file paths needs to match
+            false => String::from(self.resolve_file(Path::new(target_path)).unwrap().to_str().unwrap())
+        }
+    }
+
     pub fn target_section(&self) -> Option<&str> {
         self.target.splitn(2, '#').nth(1).map(|section| {
             // allow references to specify a #section-123 instead of #123
@@ -89,10 +101,9 @@ impl Annotation {
 
     pub fn resolve_file(&self, file: &Path) -> Result<PathBuf, Error> {
         let mut manifest_dir = self.manifest_dir.clone();
-
         loop {
-            if let Ok(file) = manifest_dir.join(&file).canonicalize() {
-                return Ok(file);
+            if let Ok(_file) = manifest_dir.join(&file).canonicalize() {
+                return Ok(manifest_dir.join(&file));
             }
 
             if !manifest_dir.pop() {

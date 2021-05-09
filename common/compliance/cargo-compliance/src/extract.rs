@@ -69,7 +69,6 @@ impl Extract {
             .collect();
 
         let local_path = self.target.local();
-        let local_path = local_path.strip_prefix(std::env::current_dir()?)?;
 
         if self.out.extension().is_some() {
             // assume a path with an extension is a single file

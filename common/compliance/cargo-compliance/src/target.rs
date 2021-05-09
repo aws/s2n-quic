@@ -129,7 +129,7 @@ impl FromStr for TargetPath {
             return Ok(Self::Url(url));
         }
 
-        let path = Path::new(path).canonicalize()?;
+        let path = PathBuf::from(path);
         Ok(Self::Path(path))
     }
 }
