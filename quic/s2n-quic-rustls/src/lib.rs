@@ -32,9 +32,13 @@ pub mod certificate;
 
 // The first 3 ciphers are TLS1.3
 // https://github.com/ctz/rustls/blob/1287510bece905b7e45cf31d6e7cf3334b98bb2e/rustls/src/suites.rs#L379
-// We fetch the top 3 ciphersuites from rustls::ALL_CIPHERSUITES. This is an internal implementation
-// and can change in future versions of rustls. Therefore care must be taken to maintain the same order
-// of ciphersuites when upgrading rustls version.
+// We fetch the top 3 ciphersuites from rustls::ALL_CIPHERSUITES and reverse the order to end up
+// with a default preference of:
+// 1. TLS13_AES_128_GCM_SHA256
+// 2. TLS13_AES_256_GCM_SHA384
+// 3. TLS13_CHACHA20_POLY1305_SHA256
+// This is an internal implementation and can change in future versions of rustls. Therefore care
+// must be taken to maintain the same order of ciphersuites when upgrading rustls version.
 pub fn default_ciphersuites() -> Vec<&'static SupportedCipherSuite> {
     rustls::ALL_CIPHERSUITES
         .iter()
