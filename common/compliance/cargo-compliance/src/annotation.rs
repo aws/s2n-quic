@@ -85,7 +85,7 @@ impl Annotation {
         match target_path.contains("://") {
             // A URL should not be changed.
             true => String::from(target_path),
-            // A file paths needs to match
+            // A file path needs to match
             false => String::from(self.resolve_file(Path::new(target_path)).unwrap().to_str().unwrap())
         }
     }
