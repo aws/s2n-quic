@@ -297,6 +297,9 @@ impl Manager {
             //
             for packet_number in acked_packets {
                 if let Some(acked_packet_info) = self.sent_packets.remove(packet_number) {
+                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.4
+                    //# Packets sent on the old path MUST NOT contribute to
+                    //# congestion control or RTT estimation for the new path.
                     should_update_rtt &= context.path_manager()[acked_packet_info.path_id]
                         .peer_socket_address
                         == datagram.remote_address;
