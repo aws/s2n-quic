@@ -36,7 +36,12 @@ pub mod certificate;
 // and can change in future versions of rustls. Therefore care must be taken to maintain the same order
 // of ciphersuites when upgrading rustls version.
 pub fn default_ciphersuites() -> Vec<&'static SupportedCipherSuite> {
-    rustls::ALL_CIPHERSUITES.iter().take(3).cloned().collect()
+    rustls::ALL_CIPHERSUITES
+        .iter()
+        .take(3)
+        .cloned()
+        .rev()
+        .collect()
 }
 
 //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.2
@@ -351,7 +356,7 @@ macro_rules! impl_tls {
 
 pub mod server {
     use super::*;
-    pub use rustls::ServerConfig as Config;
+    pub use rustls::{ResolvesServerCert, ServerConfig as Config};
 
     impl_tls!(Server, Session, ServerConfig, ServerSession, new_server);
 
@@ -409,6 +414,14 @@ pub mod server {
             let certificate = certificate.into_certificate()?;
             let private_key = private_key.into_private_key()?;
             self.config.set_single_cert(certificate.0, private_key.0)?;
+            Ok(self)
+        }
+
+        pub fn with_cert_resolver(
+            mut self,
+            cert_resolver: Arc<dyn ResolvesServerCert>,
+        ) -> Result<Self, TLSError> {
+            self.config.cert_resolver = cert_resolver;
             Ok(self)
         }
 
@@ -627,7 +640,7 @@ fn test_default_ciphersuites() {
     let ciphersuites = default_ciphersuites();
     assert_eq!(
         ciphersuites.get(0).unwrap().suite,
-        rustls::CipherSuite::TLS13_CHACHA20_POLY1305_SHA256
+        rustls::CipherSuite::TLS13_AES_128_GCM_SHA256
     );
     assert_eq!(
         ciphersuites.get(1).unwrap().suite,
@@ -635,7 +648,7 @@ fn test_default_ciphersuites() {
     );
     assert_eq!(
         ciphersuites.get(2).unwrap().suite,
-        rustls::CipherSuite::TLS13_AES_128_GCM_SHA256
+        rustls::CipherSuite::TLS13_CHACHA20_POLY1305_SHA256
     );
 }
 
