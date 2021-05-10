@@ -107,7 +107,7 @@ impl Annotation {
     pub fn resolve_file(&self, file: &Path) -> Result<PathBuf, Error> {
         let mut manifest_dir = self.manifest_dir.clone();
         loop {
-            if let Ok(_file) = manifest_dir.join(&file).canonicalize() {
+            if manifest_dir.join(&file).is_file() {
                 return Ok(manifest_dir.join(&file));
             }
 
