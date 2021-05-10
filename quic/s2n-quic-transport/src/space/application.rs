@@ -446,12 +446,16 @@ impl<'a, Config: endpoint::Config> recovery::Context<Config::CongestionControlle
         self.handshake_status.is_confirmed()
     }
 
-    fn path(&self) -> &Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController> {
+    fn path(&self) -> &Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>{
         &self.path_manager[self.path_id]
     }
 
-    fn path_mut(&mut self) -> &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController> {
+    fn path_mut(&mut self) -> &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>{
         &mut self.path_manager[self.path_id]
+    }
+
+    fn path_manager(&self) -> &path::Manager<Config::CongestionControllerEndpoint> {
+        &self.path_manager
     }
 
     fn validate_packet_ack(
@@ -492,7 +496,8 @@ impl<'a, Config: endpoint::Config> recovery::Context<Config::CongestionControlle
     fn on_rtt_update(&mut self) {
         // Update the stream manager if this RTT update was for the active path
         if self.path_manager.active_path_id() == self.path_id {
-            self.stream_manager.on_rtt_update(&self.path_manager.active_path().rtt_estimator)
+            self.stream_manager
+                .on_rtt_update(&self.path_manager.active_path().rtt_estimator)
         }
     }
 }

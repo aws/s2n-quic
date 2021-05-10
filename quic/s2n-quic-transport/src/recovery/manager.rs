@@ -250,7 +250,11 @@ impl Manager {
         self.pto.on_transmit(context)
     }
 
-    pub fn on_ack_frame<A: frame::ack::AckRanges, CCE: congestion_controller::Endpoint, Ctx: Context<CCE>>(
+    pub fn on_ack_frame<
+        A: frame::ack::AckRanges,
+        CCE: congestion_controller::Endpoint,
+        Ctx: Context<CCE>,
+    >(
         &mut self,
         datagram: &DatagramInfo,
         frame: frame::Ack<A>,
@@ -275,6 +279,7 @@ impl Manager {
         //# *  at least one of the newly acknowledged packets was ack-eliciting.
         let mut largest_newly_acked: Option<(PacketNumber, SentPacketInfo)> = None;
         let mut includes_ack_eliciting = false;
+        let mut should_update_rtt = true;
 
         for ack_range in frame.ack_ranges() {
             let (start, end) = ack_range.into_inner();
@@ -288,8 +293,14 @@ impl Manager {
             context.on_packet_ack(datagram, &acked_packets);
 
             let mut new_packet_ack = false;
+
+            //
             for packet_number in acked_packets {
                 if let Some(acked_packet_info) = self.sent_packets.remove(packet_number) {
+                    should_update_rtt &= context.path_manager()[acked_packet_info.path_id]
+                        .peer_socket_address
+                        == datagram.remote_address;
+
                     newly_acked_packets.push(acked_packet_info);
 
                     if largest_newly_acked.map_or(true, |(pn, _)| packet_number > pn) {
@@ -314,7 +325,6 @@ impl Manager {
 
         let largest_newly_acked = largest_newly_acked.expect("There are newly acked packets");
 
-        let mut should_update_rtt = true;
         let is_handshake_confirmed = context.is_handshake_confirmed();
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.1
@@ -612,6 +622,8 @@ pub trait Context<CCE: congestion_controller::Endpoint> {
     fn path(&self) -> &Path<CCE::CongestionController>;
 
     fn path_mut(&mut self) -> &mut Path<CCE::CongestionController>;
+
+    fn path_manager(&self) -> &path::Manager<CCE>;
 
     fn validate_packet_ack(
         &mut self,
