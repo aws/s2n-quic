@@ -86,7 +86,12 @@ impl Annotation {
             // A URL should not be changed.
             true => String::from(target_path),
             // A file path needs to match
-            false => String::from(self.resolve_file(Path::new(target_path)).unwrap().to_str().unwrap())
+            false => String::from(
+                self.resolve_file(Path::new(target_path))
+                    .unwrap()
+                    .to_str()
+                    .unwrap(),
+            ),
         }
     }
 
