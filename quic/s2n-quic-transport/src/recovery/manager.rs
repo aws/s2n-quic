@@ -294,13 +294,12 @@ impl Manager {
 
             let mut new_packet_ack = false;
 
-            //
             for packet_number in acked_packets {
                 if let Some(acked_packet_info) = self.sent_packets.remove(packet_number) {
                     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.4
                     //# Packets sent on the old path MUST NOT contribute to
                     //# congestion control or RTT estimation for the new path.
-                    should_update_rtt &= context.path_manager()[acked_packet_info.path_id]
+                    should_update_rtt &= context.path_by_id(acked_packet_info.path_id)
                         .peer_socket_address
                         == datagram.remote_address;
 
@@ -626,7 +625,7 @@ pub trait Context<CCE: congestion_controller::Endpoint> {
 
     fn path_mut(&mut self) -> &mut Path<CCE::CongestionController>;
 
-    fn path_manager(&self) -> &path::Manager<CCE>;
+    fn path_by_id(&self, path_id: path::Id) -> &path::Path<CCE::CongestionController>;
 
     fn validate_packet_ack(
         &mut self,
@@ -2334,8 +2333,8 @@ mod test {
             &mut self.path_manager[self.path_id]
         }
 
-        fn path_manager(&self) -> &path::Manager<Endpoint> {
-            &self.path_manager
+        fn path_by_id(&self, path_id: path::Id) -> &Path<MockCongestionController> {
+            &self.path_manager[path_id]
         }
 
         fn validate_packet_ack(

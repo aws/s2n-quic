@@ -454,8 +454,8 @@ impl<'a, Config: endpoint::Config> recovery::Context<Config::CongestionControlle
         &mut self.path_manager[self.path_id]
     }
 
-    fn path_manager(&self) -> &path::Manager<Config::CongestionControllerEndpoint> {
-        &self.path_manager
+    fn path_by_id(&self, path_id: path::Id) -> &path::Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController> {
+        &self.path_manager[path_id]
     }
 
     fn validate_packet_ack(
