@@ -7,3 +7,5 @@ target/
 Cargo.lock
 *.tar.gz
 /.history
+.DS_Store
+/.idea

@@ -70,12 +70,25 @@ impl Annotation {
         Target::from_annotation(&self)
     }
 
-    pub fn source(&self) -> Result<PathBuf, Error> {
-        self.resolve_file(&self.source)
-    }
-
     pub fn target_path(&self) -> &str {
         self.target.splitn(2, '#').next().unwrap()
+    }
+
+    // The JSON file needs to index the specification
+    // to the same path that the annotation targets will have
+    pub fn resolve_target_path(&self) -> String {
+        let target_path = self.target_path();
+        match target_path.contains("://") {
+            // A URL should not be changed.
+            true => target_path.into(),
+            // A file path needs to match
+            false => String::from(
+                self.resolve_file(Path::new(target_path))
+                    .unwrap()
+                    .to_str()
+                    .unwrap(),
+            ),
+        }
     }
 
     pub fn target_section(&self) -> Option<&str> {
@@ -88,11 +101,15 @@ impl Annotation {
     }
 
     pub fn resolve_file(&self, file: &Path) -> Result<PathBuf, Error> {
-        let mut manifest_dir = self.manifest_dir.clone();
+        // If we have the right path, just return it
+        if file.is_file() {
+            return Ok(file.to_path_buf());
+        }
 
+        let mut manifest_dir = self.manifest_dir.clone();
         loop {
-            if let Ok(file) = manifest_dir.join(&file).canonicalize() {
-                return Ok(file);
+            if manifest_dir.join(&file).is_file() {
+                return Ok(manifest_dir.join(&file));
             }
 
             if !manifest_dir.pop() {
