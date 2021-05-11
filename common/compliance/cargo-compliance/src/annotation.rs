@@ -70,10 +70,6 @@ impl Annotation {
         Target::from_annotation(&self)
     }
 
-    pub fn source(&self) -> Result<PathBuf, Error> {
-        self.resolve_file(&self.source)
-    }
-
     pub fn target_path(&self) -> &str {
         self.target.splitn(2, '#').next().unwrap()
     }
@@ -84,7 +80,7 @@ impl Annotation {
         let target_path = self.target_path();
         match target_path.contains("://") {
             // A URL should not be changed.
-            true => String::from(target_path),
+            true => target_path.into(),
             // A file path needs to match
             false => String::from(
                 self.resolve_file(Path::new(target_path))
@@ -105,6 +101,11 @@ impl Annotation {
     }
 
     pub fn resolve_file(&self, file: &Path) -> Result<PathBuf, Error> {
+        // If we have the right path, just return it
+        if file.is_file() {
+            return Ok(file.to_path_buf());
+        }
+
         let mut manifest_dir = self.manifest_dir.clone();
         loop {
             if manifest_dir.join(&file).is_file() {

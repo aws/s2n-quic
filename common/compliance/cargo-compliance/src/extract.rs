@@ -79,7 +79,12 @@ impl Extract {
             sections
                 .par_iter()
                 .map(|(section, features)| {
-                    let mut out = self.out.join(&local_path);
+                    // The specification may be stored alongside the extracted TOML.
+                    let mut out = match local_path.strip_prefix(&self.out) {
+                        Ok(path) => self.out.join(path),
+                        Err(_e) => self.out.join(&local_path),
+                    };
+
                     out.set_extension("");
                     let _ = std::fs::create_dir_all(&out);
                     out.push(format!("{}.{}", section.id, self.extension));

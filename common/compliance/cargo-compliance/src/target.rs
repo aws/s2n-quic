@@ -57,16 +57,12 @@ impl TargetPath {
     pub fn from_annotation(anno: &Annotation) -> Result<Self, Error> {
         let path = anno.target_path();
 
+        // Absolute path
         if path.starts_with('/') {
             return Ok(Self::Path(path.into()));
         }
 
-        if path.starts_with('.') {
-            let path = anno.source()?.parent().unwrap().join(&path);
-            let path = path.canonicalize()?;
-            return Ok(Self::Path(path));
-        }
-
+        // URL style path
         if path.contains("://") {
             let url = Url::parse(&path)?;
             return Ok(Self::Url(url));
