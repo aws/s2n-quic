@@ -938,14 +938,6 @@ mod test {
         let mut manager = Manager::new(space, Duration::from_millis(100));
         let packet_bytes = 128;
         let mut path_manager = generate_path_manager(Duration::from_millis(10));
-        // let path = Path::new(
-        //     Default::default(),
-        //     connection::PeerId::TEST_ID,
-        //     RttEstimator::new(Duration::from_millis(250)),
-        //     MockCongestionController::default(),
-        //     true,
-        // );
-        // path_manager.add_path(path);
         let mut context = MockContext::new(&mut path_manager);
 
         // Start the pto backoff at 2 so we can tell if it was reset
