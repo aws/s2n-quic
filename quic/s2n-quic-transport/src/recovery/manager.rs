@@ -13,7 +13,7 @@ use s2n_quic_core::{
     endpoint, frame,
     inet::DatagramInfo,
     packet::number::{PacketNumber, PacketNumberRange, PacketNumberSpace},
-    recovery::{congestion_controller, CongestionController, RttEstimator, K_GRANULARITY},
+    recovery::{CongestionController, RttEstimator, K_GRANULARITY},
     time::Timestamp,
     transport,
     varint::VarInt,
@@ -108,7 +108,7 @@ impl Manager {
             .chain(self.loss_timer.iter())
     }
 
-    pub fn on_timeout<CCE: congestion_controller::Endpoint, Ctx: Context<CCE>>(
+    pub fn on_timeout<CC: CongestionController, Ctx: Context<CC>>(
         &mut self,
         timestamp: Timestamp,
         context: &mut Ctx,
@@ -140,7 +140,7 @@ impl Manager {
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.5
     //# After a packet is sent, information about the packet is stored.
-    pub fn on_packet_sent<CCE: congestion_controller::Endpoint, Ctx: Context<CCE>>(
+    pub fn on_packet_sent<CC: CongestionController, Ctx: Context<CC>>(
         &mut self,
         packet_number: PacketNumber,
         outcome: transmission::Outcome,
@@ -250,11 +250,7 @@ impl Manager {
         self.pto.on_transmit(context)
     }
 
-    pub fn on_ack_frame<
-        A: frame::ack::AckRanges,
-        CCE: congestion_controller::Endpoint,
-        Ctx: Context<CCE>,
-    >(
+    pub fn on_ack_frame<A: frame::ack::AckRanges, CC: CongestionController, Ctx: Context<CC>>(
         &mut self,
         datagram: &DatagramInfo,
         frame: frame::Ack<A>,
@@ -299,7 +295,8 @@ impl Manager {
                     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.4
                     //# Packets sent on the old path MUST NOT contribute to
                     //# congestion control or RTT estimation for the new path.
-                    should_update_rtt &= context.path_by_id(acked_packet_info.path_id)
+                    should_update_rtt &= context
+                        .path_by_id(acked_packet_info.path_id)
                         .peer_socket_address
                         == datagram.remote_address;
 
@@ -439,7 +436,7 @@ impl Manager {
     //# DetectAndRemoveLostPackets is called every time an ACK is received or the time threshold
     //# loss detection timer expires. This function operates on the sent_packets for that packet
     //# number space and returns a list of packets newly detected as lost.
-    fn detect_and_remove_lost_packets<CCE: congestion_controller::Endpoint, Ctx: Context<CCE>>(
+    fn detect_and_remove_lost_packets<CC: CongestionController, Ctx: Context<CC>>(
         &mut self,
         now: Timestamp,
         context: &mut Ctx,
@@ -616,16 +613,16 @@ impl Manager {
     }
 }
 
-pub trait Context<CCE: congestion_controller::Endpoint> {
+pub trait Context<CC: CongestionController> {
     const ENDPOINT_TYPE: endpoint::Type;
 
     fn is_handshake_confirmed(&self) -> bool;
 
-    fn path(&self) -> &Path<CCE::CongestionController>;
+    fn path(&self) -> &Path<CC>;
 
-    fn path_mut(&mut self) -> &mut Path<CCE::CongestionController>;
+    fn path_mut(&mut self) -> &mut Path<CC>;
 
-    fn path_by_id(&self, path_id: path::Id) -> &path::Path<CCE::CongestionController>;
+    fn path_by_id(&self, path_id: path::Id) -> &path::Path<CC>;
 
     fn validate_packet_ack(
         &mut self,
@@ -2107,7 +2104,7 @@ mod test {
     }
 
     // Helper function that will call on_ack_frame with the given packet numbers
-    fn ack_packets_on_path<CCE: congestion_controller::Endpoint, Ctx: Context<CCE>>(
+    fn ack_packets_on_path<CC: CongestionController, Ctx: Context<CC>>(
         range: RangeInclusive<u8>,
         ack_receive_time: Timestamp,
         context: &mut Ctx,
@@ -2151,7 +2148,7 @@ mod test {
     }
 
     // Helper function that will call on_ack_frame with the given packet numbers
-    fn ack_packets<CCE: congestion_controller::Endpoint, Ctx: Context<CCE>>(
+    fn ack_packets<CC: CongestionController, Ctx: Context<CC>>(
         range: RangeInclusive<u8>,
         ack_receive_time: Timestamp,
         context: &mut Ctx,
@@ -2318,7 +2315,7 @@ mod test {
         }
     }
 
-    impl<'a> recovery::Context<Endpoint> for MockContext<'a> {
+    impl<'a> recovery::Context<MockCongestionController> for MockContext<'a> {
         const ENDPOINT_TYPE: endpoint::Type = endpoint::Type::Client;
 
         fn is_handshake_confirmed(&self) -> bool {

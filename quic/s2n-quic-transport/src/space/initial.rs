@@ -330,7 +330,7 @@ struct RecoveryContext<'a, Config: endpoint::Config> {
     path_manager: &'a mut path::Manager<Config::CongestionControllerEndpoint>,
 }
 
-impl<'a, Config: endpoint::Config> recovery::Context<Config::CongestionControllerEndpoint>
+impl<'a, Config: endpoint::Config> recovery::Context<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>
     for RecoveryContext<'a, Config>
 {
     const ENDPOINT_TYPE: endpoint::Type = Config::ENDPOINT_TYPE;
