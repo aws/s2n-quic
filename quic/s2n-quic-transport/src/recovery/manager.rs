@@ -798,6 +798,7 @@ mod test {
     use s2n_quic_core::{
         connection, endpoint,
         frame::ack_elicitation::AckElicitation,
+        inet::SocketAddress,
         packet::number::PacketNumberSpace,
         path::INITIAL_PTO_BACKOFF,
         random,
@@ -1161,6 +1162,94 @@ mod test {
         assert_eq!(
             context.path_mut().rtt_estimator.latest_rtt(),
             Duration::from_millis(500)
+        );
+        assert_eq!(1, context.on_rtt_update_count);
+    }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.4
+    //= type=test
+    //# Packets sent on the old path MUST NOT contribute to
+    //# congestion control or RTT estimation for the new path.
+    #[test]
+    fn no_rtt_update_when_receiving_packet_on_different_path() {
+        let space = PacketNumberSpace::ApplicationData;
+        let mut manager = Manager::new(space, Duration::from_millis(100));
+        let packet_bytes = 128;
+        let mut path_manager = generate_path_manager(Duration::from_millis(10));
+        let mut context = MockContext::new(&mut path_manager);
+
+        let time_sent = s2n_quic_platform::time::now() + Duration::from_secs(10);
+
+        // Send packet
+        manager.on_packet_sent(
+            space.new_packet_number(VarInt::from_u8(0)),
+            transmission::Outcome {
+                ack_elicitation: AckElicitation::Eliciting,
+                is_congestion_controlled: true,
+                bytes_sent: packet_bytes,
+                packet_number: space.new_packet_number(VarInt::from_u8(1)),
+            },
+            time_sent,
+            path::Id::new(0),
+            &mut context,
+        );
+        manager.on_packet_sent(
+            space.new_packet_number(VarInt::from_u8(1)),
+            transmission::Outcome {
+                ack_elicitation: AckElicitation::Eliciting,
+                is_congestion_controlled: true,
+                bytes_sent: packet_bytes,
+                packet_number: space.new_packet_number(VarInt::from_u8(1)),
+            },
+            time_sent,
+            path::Id::new(0),
+            &mut context,
+        );
+        assert_eq!(manager.sent_packets.iter().count(), 2);
+
+        // Ack packet 0 on diffent path as it was sent.. expect no rtt update
+        let ack_receive_time = time_sent + Duration::from_millis(500);
+        let ipv6_addr = SocketAddress::IpV6(Default::default());
+        ack_packets_on_path(
+            0..=0,
+            ack_receive_time,
+            &mut context,
+            &mut manager,
+            ipv6_addr,
+        );
+
+        // no rtt estimate because the packet was received on different path
+        assert_eq!(context.path().congestion_controller.on_rtt_update, 0);
+        assert_eq!(
+            manager.largest_acked_packet,
+            Some(space.new_packet_number(VarInt::from_u8(0)))
+        );
+        assert_eq!(
+            context.path_mut().rtt_estimator.latest_rtt(),
+            Duration::from_millis(DEFAULT_INITIAL_RTT.as_millis() as u64)
+        );
+        assert_eq!(0, context.on_rtt_update_count);
+
+        // Ack packet 1 on same path as it was sent.. expect rtt update
+        let ack_receive_time = time_sent + Duration::from_millis(1500);
+        let ipv4_addr = SocketAddress::IpV4(Default::default());
+        ack_packets_on_path(
+            1..=1,
+            ack_receive_time,
+            &mut context,
+            &mut manager,
+            ipv4_addr,
+        );
+
+        // rtt estimate because the packet was received on same path
+        assert_eq!(context.path().congestion_controller.on_rtt_update, 1);
+        assert_eq!(
+            manager.largest_acked_packet,
+            Some(space.new_packet_number(VarInt::from_u8(1)))
+        );
+        assert_eq!(
+            context.path_mut().rtt_estimator.latest_rtt(),
+            Duration::from_millis(1500)
         );
         assert_eq!(1, context.on_rtt_update_count);
     }
@@ -2019,11 +2108,12 @@ mod test {
     }
 
     // Helper function that will call on_ack_frame with the given packet numbers
-    fn ack_packets<CCE: congestion_controller::Endpoint, Ctx: Context<CCE>>(
+    fn ack_packets_on_path<CCE: congestion_controller::Endpoint, Ctx: Context<CCE>>(
         range: RangeInclusive<u8>,
         ack_receive_time: Timestamp,
         context: &mut Ctx,
         manager: &mut Manager,
+        remote_address: SocketAddress,
     ) {
         let acked_packets = PacketNumberRange::new(
             manager
@@ -2036,7 +2126,7 @@ mod test {
 
         let datagram = DatagramInfo {
             timestamp: ack_receive_time,
-            remote_address: Default::default(),
+            remote_address,
             payload_len: 0,
             ecn: Default::default(),
             destination_connection_id: connection::LocalId::TEST_ID,
@@ -2059,6 +2149,22 @@ mod test {
         for packet in acked_packets {
             assert!(manager.sent_packets.get(packet).is_none());
         }
+    }
+
+    // Helper function that will call on_ack_frame with the given packet numbers
+    fn ack_packets<CCE: congestion_controller::Endpoint, Ctx: Context<CCE>>(
+        range: RangeInclusive<u8>,
+        ack_receive_time: Timestamp,
+        context: &mut Ctx,
+        manager: &mut Manager,
+    ) {
+        ack_packets_on_path(
+            range,
+            ack_receive_time,
+            context,
+            manager,
+            Default::default(),
+        )
     }
 
     #[test]
