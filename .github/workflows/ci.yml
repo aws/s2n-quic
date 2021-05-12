@@ -62,7 +62,7 @@ jobs:
           components: rustfmt
 
       - name: Run cargo fmt
-        uses: actions-rs/cargo@v1
+        uses: actions-rs/cargo@v1.0.3
         with:
           command: fmt
           args: --all -- --check
@@ -132,7 +132,7 @@ jobs:
       - uses: camshaft/rust-cache@v1
 
       - name: Run cargo doc
-        uses: actions-rs/cargo@v1
+        uses: actions-rs/cargo@v1.0.3
         with:
           command: doc
           args: --all-features --no-deps --workspace --exclude cargo-compliance --exclude compliance --exclude s2n-quic-qns
@@ -202,14 +202,14 @@ jobs:
 
       # Build the tests before running to improve cross compilation speed
       - name: Run cargo build
-        uses: actions-rs/cargo@v1
+        uses: actions-rs/cargo@v1.0.3
         with:
           command: build
           args: --tests ${{ matrix.exclude }} ${{ matrix.target != 'native' && format('--target {0}', matrix.target) || '' }}
           use-cross: ${{ matrix.target != 'native' }}
 
       - name: Run cargo test
-        uses: actions-rs/cargo@v1
+        uses: actions-rs/cargo@v1.0.3
         with:
           command: test
           args: ${{ matrix.exclude }} ${{ matrix.target != 'native' && format('--target {0}', matrix.target) || '' }}
@@ -349,7 +349,7 @@ jobs:
           crate: rust-covfix
 
       - name: Run cargo test
-        uses: actions-rs/cargo@v1
+        uses: actions-rs/cargo@v1.0.3
         with:
           command: test
           args: --no-fail-fast --workspace --exclude s2n-quic-qns --all-features

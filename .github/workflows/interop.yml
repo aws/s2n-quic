@@ -87,7 +87,7 @@ jobs:
           key: ${{ matrix.mode }}
 
       - name: Run cargo build
-        uses: actions-rs/cargo@v1
+        uses: actions-rs/cargo@v1.0.3
         with:
           command: build
           args: --bin s2n-quic-qns ${{ matrix.mode == 'release' && '--release' || '' }}
