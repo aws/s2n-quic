@@ -184,16 +184,17 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
         timestamp: Timestamp,
     ) {
+        let path_id = path_manager.active_path_id();
         let path = path_manager.active_path_mut();
 
         // ensure the backoff doesn't grow too quickly
         let max_backoff = path.pto_backoff * 2;
 
         if let Some((space, handshake_status)) = self.initial_mut() {
-            space.on_timeout(path, handshake_status, timestamp)
+            space.on_timeout(handshake_status, path_id, path_manager, timestamp)
         }
         if let Some((space, handshake_status)) = self.handshake_mut() {
-            space.on_timeout(path, handshake_status, timestamp)
+            space.on_timeout(handshake_status, path_id, path_manager, timestamp)
         }
         if let Some((space, handshake_status)) = self.application_mut() {
             space.on_timeout(path_manager, handshake_status, local_id_registry, timestamp)
