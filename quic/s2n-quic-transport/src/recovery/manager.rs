@@ -182,7 +182,7 @@ impl Manager {
             //# A sender SHOULD restart its PTO timer every time an ack-eliciting
             //# packet is sent or acknowledged,
             let is_handshake_confirmed = context.is_handshake_confirmed();
-            let path = context.path_mut();
+            let path = context.path_mut_by_id(path_id);
             self.update_pto_timer(path, time_sent, is_handshake_confirmed);
             path.congestion_controller
                 .on_packet_sent(time_sent, congestion_controlled_bytes);
@@ -322,7 +322,8 @@ impl Manager {
             return Ok(());
         }
 
-        let largest_newly_acked = largest_newly_acked.expect("There are newly acked packets");
+        let (largest_newly_acked_packet_number, largest_newly_acked_info) =
+            largest_newly_acked.expect("There are newly acked packets");
 
         let is_handshake_confirmed = context.is_handshake_confirmed();
 
@@ -330,7 +331,7 @@ impl Manager {
         //# To avoid generating multiple RTT samples for a single packet, an ACK
         //# frame SHOULD NOT be used to update RTT estimates if it does not newly
         //# acknowledge the largest acknowledged packet.
-        should_update_rtt &= largest_newly_acked.0 == largest_acked_in_frame;
+        should_update_rtt &= largest_newly_acked_packet_number == largest_acked_in_frame;
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.1
         //# An RTT sample MUST NOT be generated on receiving an ACK frame that
@@ -338,7 +339,7 @@ impl Manager {
         should_update_rtt &= includes_ack_eliciting;
 
         if should_update_rtt {
-            let latest_rtt = datagram.timestamp - largest_newly_acked.1.time_sent;
+            let latest_rtt = datagram.timestamp - largest_newly_acked_info.time_sent;
             let path = context.path_mut();
             path.rtt_estimator.update_rtt(
                 frame.ack_delay(),
@@ -350,7 +351,7 @@ impl Manager {
 
             // Update the congestion controller with the latest RTT estimate
             path.congestion_controller
-                .on_rtt_update(largest_newly_acked.1.time_sent, &path.rtt_estimator);
+                .on_rtt_update(largest_newly_acked_info.time_sent, &path.rtt_estimator);
 
             // Notify components the RTT estimate was updated
             context.on_rtt_update();
@@ -376,38 +377,41 @@ impl Manager {
         //# was sent a threshold amount of time in the past.
         self.detect_and_remove_lost_packets(datagram.timestamp, context);
 
-        let path = context.path_mut();
+        let is_handshake_confirmed = context.is_handshake_confirmed();
         for acked_packet_info in newly_acked_packets {
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.4
+            //# Packets sent on the old path MUST NOT contribute to
+            //# congestion control or RTT estimation for the new path.
+            let path = context.path_mut_by_id(acked_packet_info.path_id);
             path.congestion_controller.on_packet_ack(
-                largest_newly_acked.1.time_sent,
+                largest_newly_acked_info.time_sent,
                 acked_packet_info.sent_bytes as usize,
                 &path.rtt_estimator,
                 datagram.timestamp,
             );
-        }
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
-        //# The PTO backoff factor is reset when an acknowledgement is received,
-        //# except in the following case.  A server might take longer to respond
-        //# to packets during the handshake than otherwise.  To protect such a
-        //# server from repeated client probes, the PTO backoff is not reset at a
-        //# client that is not yet certain that the server has finished
-        //# validating the client's address.  That is, a client does not reset
-        //# the PTO backoff factor on receiving acknowledgements in Initial
-        //# packets.
-        if context.path().is_peer_validated() {
-            context.path_mut().reset_pto_backoff();
-        }
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+            //# The PTO backoff factor is reset when an acknowledgement is received,
+            //# except in the following case.  A server might take longer to respond
+            //# to packets during the handshake than otherwise.  To protect such a
+            //# server from repeated client probes, the PTO backoff is not reset at a
+            //# client that is not yet certain that the server has finished
+            //# validating the client's address.  That is, a client does not reset
+            //# the PTO backoff factor on receiving acknowledgements in Initial
+            //# packets.
+            if path.is_peer_validated() {
+                path.reset_pto_backoff();
+            }
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
-        //# A sender SHOULD restart its PTO timer every time an ack-eliciting
-        //# packet is sent or acknowledged,
-        let is_handshake_confirmed = context.is_handshake_confirmed();
-        self.update_pto_timer(
-            context.path_mut(),
-            datagram.timestamp,
-            self.space.is_application_data() && is_handshake_confirmed,
-        );
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+            //# A sender SHOULD restart its PTO timer every time an ack-eliciting
+            //# packet is sent or acknowledged,
+            self.update_pto_timer(
+                path,
+                datagram.timestamp,
+                self.space.is_application_data() && is_handshake_confirmed,
+            );
+        }
 
         Ok(())
     }
@@ -623,6 +627,8 @@ pub trait Context<CC: CongestionController> {
     fn path_mut(&mut self) -> &mut Path<CC>;
 
     fn path_by_id(&self, path_id: path::Id) -> &path::Path<CC>;
+
+    fn path_mut_by_id(&mut self, path_id: path::Id) -> &mut path::Path<CC>;
 
     fn validate_packet_ack(
         &mut self,
@@ -969,7 +975,7 @@ mod test {
 
         assert_eq!(context.path().congestion_controller.lost_bytes, 0);
         assert_eq!(context.path().congestion_controller.on_rtt_update, 1);
-        assert_eq!(context.path_mut().pto_backoff, INITIAL_PTO_BACKOFF);
+        assert_eq!(context.path().pto_backoff, INITIAL_PTO_BACKOFF);
         assert_eq!(manager.sent_packets.iter().count(), 7);
         assert_eq!(
             manager.largest_acked_packet,
@@ -980,7 +986,7 @@ mod test {
         assert_eq!(context.validate_packet_ack_count, 1);
         assert_eq!(context.on_packet_loss_count, 0);
         assert_eq!(
-            context.path_mut().rtt_estimator.latest_rtt(),
+            context.path().rtt_estimator.latest_rtt(),
             Duration::from_millis(500)
         );
         assert_eq!(1, context.on_rtt_update_count);
@@ -1000,13 +1006,13 @@ mod test {
         // Acknowledging already acked packets does not call on_new_packet_ack or change RTT
         assert_eq!(context.path().congestion_controller.lost_bytes, 0);
         assert_eq!(context.path().congestion_controller.on_rtt_update, 1);
-        assert_eq!(context.path_mut().pto_backoff, 2);
+        assert_eq!(context.path().pto_backoff, 2);
         assert_eq!(context.on_packet_ack_count, 2);
         assert_eq!(context.on_new_packet_ack_count, 1);
         assert_eq!(context.validate_packet_ack_count, 2);
         assert_eq!(context.on_packet_loss_count, 0);
         assert_eq!(
-            context.path_mut().rtt_estimator.latest_rtt(),
+            context.path().rtt_estimator.latest_rtt(),
             Duration::from_millis(500)
         );
         assert_eq!(1, context.on_rtt_update_count);
@@ -1019,13 +1025,13 @@ mod test {
             context.path().congestion_controller.lost_bytes,
             (packet_bytes * 3) as u32
         );
-        assert_eq!(context.path_mut().pto_backoff, INITIAL_PTO_BACKOFF);
+        assert_eq!(context.path().pto_backoff, INITIAL_PTO_BACKOFF);
         assert_eq!(context.on_packet_ack_count, 3);
         assert_eq!(context.on_new_packet_ack_count, 2);
         assert_eq!(context.validate_packet_ack_count, 3);
         assert_eq!(context.on_packet_loss_count, 3);
         assert_eq!(
-            context.path_mut().rtt_estimator.latest_rtt(),
+            context.path().rtt_estimator.latest_rtt(),
             Duration::from_millis(2500)
         );
         assert_eq!(2, context.on_rtt_update_count);
@@ -1034,7 +1040,7 @@ mod test {
         context.path_manager[path::Id::new(0)] = Path::new(
             Default::default(),
             connection::PeerId::TEST_ID,
-            context.path_mut().rtt_estimator,
+            context.path().rtt_estimator,
             MockCongestionController::default(),
             false,
         );
@@ -1042,13 +1048,13 @@ mod test {
         let ack_receive_time = ack_receive_time + Duration::from_millis(500);
         ack_packets(10..=10, ack_receive_time, &mut context, &mut manager);
         assert_eq!(context.path().congestion_controller.on_rtt_update, 1);
-        assert_eq!(context.path_mut().pto_backoff, 2);
+        assert_eq!(context.path().pto_backoff, 2);
         assert_eq!(context.on_packet_ack_count, 4);
         assert_eq!(context.on_new_packet_ack_count, 3);
         assert_eq!(context.validate_packet_ack_count, 4);
         assert_eq!(context.on_packet_loss_count, 3);
         assert_eq!(
-            context.path_mut().rtt_estimator.latest_rtt(),
+            context.path().rtt_estimator.latest_rtt(),
             Duration::from_millis(3000)
         );
         assert_eq!(3, context.on_rtt_update_count);
@@ -1076,7 +1082,7 @@ mod test {
         assert_eq!(context.on_packet_loss_count, 3);
         // RTT remains unchanged
         assert_eq!(
-            context.path_mut().rtt_estimator.latest_rtt(),
+            context.path().rtt_estimator.latest_rtt(),
             Duration::from_millis(3000)
         );
         assert_eq!(3, context.on_rtt_update_count);
@@ -1136,7 +1142,7 @@ mod test {
             Some(space.new_packet_number(VarInt::from_u8(1)))
         );
         assert_eq!(
-            context.path_mut().rtt_estimator.latest_rtt(),
+            context.path().rtt_estimator.latest_rtt(),
             Duration::from_millis(500)
         );
         assert_eq!(1, context.on_rtt_update_count);
@@ -1148,7 +1154,7 @@ mod test {
         // No new rtt estimate because the largest packet was not newly acked
         assert_eq!(context.path().congestion_controller.on_rtt_update, 1);
         assert_eq!(
-            context.path_mut().rtt_estimator.latest_rtt(),
+            context.path().rtt_estimator.latest_rtt(),
             Duration::from_millis(500)
         );
         assert_eq!(1, context.on_rtt_update_count);
@@ -1213,7 +1219,7 @@ mod test {
             Some(space.new_packet_number(VarInt::from_u8(0)))
         );
         assert_eq!(
-            context.path_mut().rtt_estimator.latest_rtt(),
+            context.path().rtt_estimator.latest_rtt(),
             Duration::from_millis(DEFAULT_INITIAL_RTT.as_millis() as u64)
         );
         assert_eq!(0, context.on_rtt_update_count);
@@ -1236,7 +1242,7 @@ mod test {
             Some(space.new_packet_number(VarInt::from_u8(1)))
         );
         assert_eq!(
-            context.path_mut().rtt_estimator.latest_rtt(),
+            context.path().rtt_estimator.latest_rtt(),
             Duration::from_millis(1500)
         );
         assert_eq!(1, context.on_rtt_update_count);
@@ -1284,7 +1290,7 @@ mod test {
         let expected_time_threshold = Duration::from_secs(9);
         assert_eq!(
             expected_time_threshold,
-            Manager::calculate_loss_time_threshold(&context.path_mut().rtt_estimator)
+            Manager::calculate_loss_time_threshold(&context.path().rtt_estimator)
         );
 
         time_sent += Duration::from_secs(10);
@@ -1508,7 +1514,7 @@ mod test {
             Some(true),
             context.path().congestion_controller.persistent_congestion
         );
-        assert_eq!(context.path_mut().rtt_estimator.first_rtt_sample(), None);
+        assert_eq!(context.path().rtt_estimator.first_rtt_sample(), None);
 
         // t=20: Send packet #10
         manager.on_packet_sent(
@@ -1532,11 +1538,11 @@ mod test {
         //# Endpoints SHOULD set the min_rtt to the newest RTT sample after
         //# persistent congestion is established.
         assert_eq!(
-            context.path_mut().rtt_estimator.min_rtt(),
+            context.path().rtt_estimator.min_rtt(),
             Duration::from_secs(1)
         );
         assert_eq!(
-            context.path_mut().rtt_estimator.smoothed_rtt(),
+            context.path().rtt_estimator.smoothed_rtt(),
             Duration::from_secs(1)
         );
     }
@@ -1903,7 +1909,7 @@ mod test {
         let mut path_manager = generate_path_manager(Duration::from_millis(10));
         let mut context = MockContext::new(&mut path_manager);
 
-        let mut expected_pto_backoff = context.path_mut().pto_backoff;
+        let mut expected_pto_backoff = context.path().pto_backoff;
 
         // Loss timer is armed but not expired yet, nothing happens
         manager.loss_timer.set(now + Duration::from_secs(10));
@@ -1914,7 +1920,7 @@ mod test {
         //# The PTO timer MUST NOT be set if a timer is set for time threshold
         //# loss detection; see Section 6.1.2.
         assert!(!manager.pto.timer.is_armed());
-        assert_eq!(expected_pto_backoff, context.path_mut().pto_backoff);
+        assert_eq!(expected_pto_backoff, context.path().pto_backoff);
 
         // Send a packet that will be considered lost
         manager.on_packet_sent(
@@ -1939,24 +1945,24 @@ mod test {
         //# The PTO timer MUST NOT be set if a timer is set for time threshold
         //# loss detection; see Section 6.1.2.
         assert!(!manager.pto.timer.is_armed());
-        assert_eq!(expected_pto_backoff, context.path_mut().pto_backoff);
+        assert_eq!(expected_pto_backoff, context.path().pto_backoff);
 
         // Loss timer is not armed, pto timer is not armed
         manager.loss_timer.cancel();
         manager.on_timeout(now, &mut context);
-        assert_eq!(expected_pto_backoff, context.path_mut().pto_backoff);
+        assert_eq!(expected_pto_backoff, context.path().pto_backoff);
 
         // Loss timer is not armed, pto timer is armed but not expired
         manager.loss_timer.cancel();
         manager.pto.timer.set(now + Duration::from_secs(5));
         manager.on_timeout(now, &mut context);
-        assert_eq!(expected_pto_backoff, context.path_mut().pto_backoff);
+        assert_eq!(expected_pto_backoff, context.path().pto_backoff);
 
         // Loss timer is not armed, pto timer is expired without bytes in flight
         expected_pto_backoff *= 2;
         manager.pto.timer.set(now - Duration::from_secs(5));
         manager.on_timeout(now, &mut context);
-        assert_eq!(expected_pto_backoff, context.path_mut().pto_backoff);
+        assert_eq!(expected_pto_backoff, context.path().pto_backoff);
         assert_eq!(manager.pto.state, RequiresTransmission(1));
 
         // Loss timer is not armed, pto timer is expired with bytes in flight
@@ -1978,7 +1984,7 @@ mod test {
         );
         manager.pto.timer.set(now - Duration::from_secs(5));
         manager.on_timeout(now, &mut context);
-        assert_eq!(expected_pto_backoff, context.path_mut().pto_backoff);
+        assert_eq!(expected_pto_backoff, context.path().pto_backoff);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
         //= type=test

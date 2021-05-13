@@ -11,6 +11,7 @@ use s2n_codec::{
 
 pub mod ack_elicitation;
 pub mod congestion_controlled;
+pub mod probing;
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19
 //# As described in Section 12.4, packets contain one or more frames.
@@ -54,6 +55,16 @@ macro_rules! frames {
                 match self {
                     $(
                         Frame::$ty(frame) => frame.ack_elicitation(),
+                    )*
+                }
+            }
+        }
+
+        impl<'a, $ack, $data> probing::Probable for Frame<'a, $ack, $data> {
+            fn probe(&self) -> probing::Probe {
+                match self {
+                    $(
+                        Frame::$ty(frame) => frame.probe(),
                     )*
                 }
             }
