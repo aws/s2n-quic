@@ -36,10 +36,6 @@ pub struct Manager<CCE: congestion_controller::Endpoint> {
     /// Index to the active path
     active: u8,
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.2
-    //# To protect the connection from failing due to such a spurious
-    //# migration, an endpoint MUST revert to using the last validated peer
-    //# address when validation of a new peer address fails.
     /// Index of last known validated path
     last_known_validated_path: Option<u8>,
 }
