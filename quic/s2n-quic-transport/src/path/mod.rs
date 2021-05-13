@@ -206,6 +206,11 @@ impl<CC: CongestionController> Path<CC> {
         match self.state {
             State::Validated => requested_size.min(self.mtu as usize),
 
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.1
+            //= type=TODO
+            //# Until a peer's address is deemed valid, an endpoint MUST
+            //# limit the rate at which it sends data to this address.
+
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1
             //# Prior to validating the client address, servers MUST NOT send more
             //# than three times as many bytes as the number of bytes they have

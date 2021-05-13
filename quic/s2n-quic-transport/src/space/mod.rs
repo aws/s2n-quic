@@ -653,6 +653,23 @@ pub trait PacketSpace<Config: endpoint::Config> {
             payload = remaining;
         }
 
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3
+        //# Receiving a packet from a new peer address containing a non-probing
+        //# frame indicates that the peer has migrated to that address.
+        if path_manager.active_path_id() != path_id {
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3
+            //# If the recipient permits the migration, it MUST send subsequent
+            //# packets to the new peer address and MUST initiate path validation
+            //# (Section 8.2) to verify the peer's ownership of the address if
+            //# validation is not already underway.
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3
+            //# An endpoint MAY send data to an unvalidated peer address, but it MUST
+            //# protect against potential attacks as described in Section 9.3.1 and
+            //# Section 9.3.2.
+            path_manager.update_active_path(path_id)?;
+        }
+
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.1
         //# A packet MUST NOT be acknowledged until packet protection has been
         //# successfully removed and all frames contained in the packet have been

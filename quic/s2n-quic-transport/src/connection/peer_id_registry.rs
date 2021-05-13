@@ -422,8 +422,20 @@ impl PeerIdRegistry {
         }
     }
 
-    /// Consumes a new ID from the available registered IDs if
-    /// the `current_id` is either not provided or is retired.
+    /// Verifies whether the connection id is active and in the registered list
+    pub fn is_active(&self, id: connection::PeerId) -> bool {
+        for id_info in self.registered_ids.iter() {
+            if id_info.id == id {
+                return id_info.status.is_active();
+            }
+        }
+
+        false
+    }
+
+    /// Consumes and returns a new ID from the available registered IDs
+    /// if the `current_id` is either not provided or is retired.
+    /// Returns None if the provided ID was active, or there were no IDs available.
     pub fn consume_new_id_if_necessary(
         &mut self,
         current_id: Option<&connection::PeerId>,
@@ -435,8 +447,7 @@ impl PeerIdRegistry {
 
         for id_info in self.registered_ids.iter_mut() {
             if current_id_is_active(id_info) {
-                // The current ID is still ok to use, so return it
-                return Some(id_info.id);
+                return None;
             }
 
             if id_info.status == New {
@@ -974,7 +985,7 @@ pub(crate) mod tests {
         assert!(reg.on_new_connection_id(&id_3, 2, 0, &TEST_TOKEN_3).is_ok());
 
         // ID 3 is not retired, so it is not necessary to consume a new ID
-        assert_eq!(Some(id_3), reg.consume_new_id_if_necessary(Some(&id_3)));
+        assert_eq!(None, reg.consume_new_id_if_necessary(Some(&id_3)));
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1
         //= type=test
         //# An endpoint MUST NOT check for any Stateless Reset Tokens associated
@@ -1003,7 +1014,7 @@ pub(crate) mod tests {
         assert_eq!(None, reg.consume_new_id_if_necessary(Some(&id_3)));
 
         // There are no new IDs left, but ID 4 is not retired,so it is returned
-        assert_eq!(Some(id_4), reg.consume_new_id_if_necessary(Some(&id_4)));
+        assert_eq!(None, reg.consume_new_id_if_necessary(Some(&id_4)));
     }
 
     #[test]

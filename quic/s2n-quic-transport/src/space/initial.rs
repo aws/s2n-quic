@@ -140,8 +140,8 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
             buffer,
         )?;
 
-        let time_sent = context.timestamp;
         let path_id = context.path_id;
+        let time_sent = context.timestamp;
         let (recovery_manager, mut recovery_context) =
             self.recovery(handshake_status, path_id, context.path_manager);
         recovery_manager.on_packet_sent(
@@ -339,10 +339,7 @@ impl<'a, Config: endpoint::Config> recovery::Context<<Config::CongestionControll
         self.handshake_status.is_confirmed()
     }
 
-    fn path(
-        &self,
-    ) -> &Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>
-    {
+    fn path(&self) -> &Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>{
         &self.path_manager[self.path_id]
     }
 
@@ -350,13 +347,13 @@ impl<'a, Config: endpoint::Config> recovery::Context<<Config::CongestionControll
         &mut self.path_manager[self.path_id]
     }
 
-    fn path_by_id(&self, path_id: path::Id) -> &path::Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController> {
+    fn path_by_id(&self, path_id: path::Id) -> &path::Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>{
         &self.path_manager[path_id]
     }
 
-        fn path_mut_by_id(&mut self, path_id: path::Id) -> &mut path::Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController> {
-                    &mut self.path_manager[path_id]
-                            }
+    fn path_mut_by_id(&mut self, path_id: path::Id) -> &mut path::Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController> {
+        &mut self.path_manager[path_id]
+    }
 
     fn validate_packet_ack(
         &mut self,

@@ -13,7 +13,7 @@ use s2n_quic_core::{
     inet::{DatagramInfo, SocketAddress},
     packet::number::PacketNumberSpace,
     random,
-    recovery::congestion_controller,
+    recovery::{congestion_controller, RttEstimator},
     stateless_reset,
     time::Timestamp,
     transport,
@@ -54,11 +54,27 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     }
 
     /// Update the active path
-    pub fn update_active_path(&mut self, path_id: Id) {
-        // TODO return an error if the path doesn't exist
-        // Or take an index and verify INLINE_PATH_LEN
-        self.last_known_validated_path = Some(self.active);
+    pub fn update_active_path(&mut self, path_id: Id) -> Result<(), transport::Error> {
+        debug_assert!(path_id != Id(self.active));
+
+        if self.active_path().is_validated() {
+            self.last_known_validated_path = Some(self.active);
+        }
+
+        // Attempt to consume a new connection id incase it has been retired since the last use.
+        // NOTE This error will be sent on the old path, since the active path isn't updated.
+        let peer_id = self[path_id].peer_connection_id;
+        if let Some(id) = self
+            .peer_id_registry
+            .consume_new_id_if_necessary(Some(&peer_id))
+        {
+            self[path_id].peer_connection_id = id;
+        }
+
+        // Update the active path
         self.active = path_id.0;
+
+        Ok(())
     }
 
     /// Return the active path
@@ -116,29 +132,19 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     ) -> Result<(Id, bool), transport::Error> {
         if let Some((id, path)) = self.path_mut(&datagram.remote_address) {
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3
+            //= type=TODO
+            //# An endpoint MAY skip validation of a peer address if
+            //# that address has been seen recently.
+            // Determine if this is an old path, and needs to be validated again.
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.5
             //# At any time, endpoints MAY change the Destination Connection ID they
-            //# transmit with to a value that has not been used on another
-            //# path.
+            //# transmit with to a value that has not been used on another path.
             path.local_connection_id = datagram.destination_connection_id;
 
             let unblocked = path.on_bytes_received(datagram.payload_len);
             return Ok((id, unblocked));
         }
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.5
-        //= type=TODO
-        //= tracking-issue=316
-        //# Similarly, an endpoint MUST NOT reuse a connection ID when sending to
-        //# more than one destination address.
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.5
-        //= type=TODO
-        //= tracking-issue=316
-        //# Due to network changes outside
-        //# the control of its peer, an endpoint might receive packets from a new
-        //# source address with the same destination connection ID, in which case
-        //# it MAY continue to use the current connection ID with the new remote
-        //# address while still sending from the same local address.
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
         //# The design of QUIC relies on endpoints retaining a stable address
@@ -166,22 +172,35 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         //       connection immediately. https://github.com/awslabs/s2n-quic/issues/317
         // return Err(transport::Error::INTERNAL_ERROR);
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.4
-        //= type=TODO
-        //# Because port-only changes are commonly the
-        //# result of NAT rebinding or other middlebox activity, the endpoint MAY
-        //# instead retain its congestion control state and round-trip estimate
-        //# in those cases instead of reverting to initial values.
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.1
+        //# Note that since the endpoint will not have any round-trip
+        //# time measurements to this address, the estimate SHOULD be the default
+        //# initial value; see [QUIC-RECOVERY].
+        let rtt = RttEstimator::new(self.active_path().rtt_estimator.max_ack_delay());
+        let path_info = congestion_controller::PathInfo::new(&datagram.remote_address);
+        let cc = congestion_controller_endpoint.new_congestion_controller(path_info);
 
-        // TODO temporarily copy rtt and cc to maintain state when migrating to this new path.
-        let rtt = self.active_path().rtt_estimator;
-        let cc = self.active_path().congestion_controller.clone();
+        let peer_connection_id = {
+            if self.active_path().local_connection_id != datagram.destination_connection_id {
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.5
+                //# Similarly, an endpoint MUST NOT reuse a connection ID when sending to
+                //# more than one destination address.
 
-        // TODO grab a new conn id correctly,
-        let conn_id = self.active_path().peer_connection_id;
-        let new_id = self
-            .peer_id_registry
-            .consume_new_id_if_necessary(Some(&conn_id));
+                // Peer has intentionally tried to migrate to this new path because they changed
+                // their destination_connection_id, so we will change our destination_connection_id as well.
+                self.peer_id_registry
+                    .consume_new_id_if_necessary(None)
+                    .ok_or(transport::Error::CONNECTION_ID_LIMIT_ERROR)?
+            } else {
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.5
+                //# Due to network changes outside
+                //# the control of its peer, an endpoint might receive packets from a new
+                //# source address with the same destination connection ID, in which case
+                //# it MAY continue to use the current connection ID with the new remote
+                //# address while still sending from the same local address.
+                self.active_path().peer_connection_id
+            }
+        };
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
         //# The endpoint MUST use unpredictable data in every PATH_CHALLENGE
@@ -191,6 +210,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         random_generator.public_random_fill(&mut data);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
+        //= type=TODO
         //# An endpoint MUST
         //# perform path validation (Section 8.2) if it detects any change to a
         //# peer's address, unless it has previously validated that address.
@@ -198,7 +218,6 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.6.3
         //# Servers SHOULD initiate path validation to the client's new address
         //# upon receiving a probe packet from a different address.
-        // This will overwrite any in-progress path validation
         let challenge = challenge::Challenge::new(
             datagram.timestamp,
             rtt.pto_period(1, PacketNumberSpace::ApplicationData),
@@ -221,7 +240,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.1
         //# Until a peer's address is deemed valid, an endpoint MUST
         //# limit the rate at which it sends data to this address.
-        let path = Path::new(
+        let mut path = Path::new(
             datagram.remote_address,
             // TODO https://github.com/awslabs/s2n-quic/issues/316
             // The existing peer connection id may only be reused if the destination
@@ -230,7 +249,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
             // control). Otherwise we will need to consume a new connection::PeerId by calling
             // PeerIdRegistry::consume_new_id_if_necessary(None) and ignoring the request if
             // no new connection::PeerId is available to use.
-            new_id.unwrap(),
+            peer_connection_id,
             datagram.destination_connection_id,
             rtt,
             cc,
@@ -238,10 +257,17 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         )
         .with_challenge(challenge);
 
+        let unblocked = path.on_bytes_received(datagram.payload_len);
         let id = Id(self.paths.len() as u8);
         self.paths.push(path);
 
-        Ok((id, false))
+        Ok((id, unblocked))
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.3
+        //= type=TODO
+        //# In response to an apparent migration, endpoints MUST validate the
+        //# previously active path using a PATH_CHALLENGE frame.
+        // This induces the sending of new packets on that path.
     }
 
     pub fn timers(&self) -> impl Iterator<Item = Timestamp> + '_ {
@@ -314,6 +340,12 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
             return;
         }
 
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
+        //# A PATH_RESPONSE frame MUST be sent on the network path where the
+        //# PATH_CHALLENGE was received.
+        // This requirement is achieved because paths own their challenges.
+        // We compare the path_response data to the data stored in the
+        // receiving path's challenge.
         self[path_id].validate_path_response(timestamp, response.data);
     }
 
@@ -341,51 +373,46 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
             stateless_reset_token,
         )?;
 
-        // TODO This new connection ID may retire IDs in use by multiple paths. Since we are not
-        //      currently supporting connection migration, there is only one path, but once there
-        //      are more than one we should decide what to do if there aren't enough new connection
-        //      IDs available for all paths.
-        //      See https://github.com/awslabs/s2n-quic/issues/358
+        let active_path_connection_id = self.active_path().peer_connection_id;
+
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2
         //# Upon receipt of an increased Retire Prior To field, the peer MUST
         //# stop using the corresponding connection IDs and retire them with
         //# RETIRE_CONNECTION_ID frames before adding the newly provided
         //# connection ID to the set of active connection IDs.
-        // Ensure all paths are not using a newly retired connection ID
-        for path in self.paths.iter_mut() {
-            path.peer_connection_id = self
-                .peer_id_registry
-                .consume_new_id_if_necessary(Some(&path.peer_connection_id))
-                .expect(
-                    "There is only one path maintained currently and since a new ID was \
-                delivered, there will always be a new ID available to consume if necessary",
-                );
-        }
+        self.active_path_mut().peer_connection_id = self
+            .peer_id_registry
+            .consume_new_id_if_necessary(Some(&active_path_connection_id))
+            .ok_or(transport::Error::CONNECTION_ID_LIMIT_ERROR)?;
 
         Ok(())
     }
 
-    pub fn on_timeout(&mut self, timestamp: Timestamp) {
+    pub fn on_timeout(&mut self, timestamp: Timestamp) -> Result<(), connection::Error> {
         for path in self.paths.iter_mut() {
             path.on_timeout(timestamp);
         }
 
         if !self.active_path().is_validated() && self.active_path().is_challenge_abandoned() {
-            if let Some(last_known_validated_path) = self.last_known_validated_path {
+            if let Some(last_known) = self.last_known_validated_path {
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.2
                 //# To protect the connection from failing due to such a spurious
                 //# migration, an endpoint MUST revert to using the last validated peer
                 //# address when validation of a new peer address fails.
-                self.active = last_known_validated_path;
-                self.last_known_validated_path = None;
+
+                self.update_active_path(Id(last_known))?;
+            } else {
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.2
+                //= type=TODO
+                //# If an endpoint has no state about the last validated peer address, it
+                //# MUST close the connection silently by discarding all connection
+                //# state.
+                // New error code needed, the error should silently close the connection
+                return Err(connection::Error::IdleTimerExpired);
             }
         }
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.2
-        //= type=TODO
-        //# If an endpoint has no state about the last validated peer address, it
-        //# MUST close the connection silently by discarding all connection
-        //# state.
+        Ok(())
     }
 
     /// Notifies the path manager of the connection closing event
@@ -477,10 +504,16 @@ mod tests {
         random::{self, Generator},
         recovery::{congestion_controller::testing::unlimited, RttEstimator},
         stateless_reset,
-        stateless_reset::token::testing::TEST_TOKEN_1,
+        stateless_reset::token::testing::{TEST_TOKEN_1, TEST_TOKEN_2},
         time::{Clock, NoopClock},
     };
     use std::net::SocketAddr;
+
+    impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
+        pub fn add_path(&mut self, path: Path<CCE::CongestionController>) {
+            self.paths.push(path)
+        }
+    }
 
     // Helper function to easily create a PathManager
     fn manager(
@@ -496,6 +529,12 @@ mod tests {
                     stateless_reset_token,
                 );
         Manager::new(first_path, peer_id_registry)
+    }
+
+    #[test]
+    fn validate_path_id_size() {
+        // path::Id must be less than u64, or the SentPacketInfo struct will increase in size.
+        assert_eq!(core::mem::size_of::<Id>(), core::mem::size_of::<u8>());
     }
 
     #[test]
@@ -522,7 +561,7 @@ mod tests {
         );
 
         let mut manager = manager(first_path.clone(), None);
-        manager.paths.push(second_path);
+        manager.add_path(second_path);
         assert_eq!(manager.paths.len(), 2);
 
         let (_id, matched_path) = manager.path(&SocketAddress::default()).unwrap();
@@ -538,7 +577,7 @@ mod tests {
     //# migration, an endpoint MUST revert to using the last validated peer
     //# address when validation of a new peer address fails.
     #[test]
-    fn test_invalid_path_fallback() {
+    fn test_last_known_path_always_valid() {
         let first_conn_id = connection::PeerId::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
         let first_conn_local_id = connection::LocalId::TEST_ID;
         let first_path = Path::new(
@@ -570,17 +609,74 @@ mod tests {
         .with_challenge(challenge);
 
         let mut manager = manager(first_path, None);
-        manager.paths.push(second_path);
+        manager.add_path(second_path);
+
+        // Verify that an not-yet-validated path can't become the last_known_validated_path
         assert_eq!(manager.last_known_validated_path, None);
         assert_eq!(manager.active, 0);
-        manager.update_active_path(Id(1));
+        assert_eq!(manager.active_path().is_validated(), false);
+        assert_eq!(manager.update_active_path(Id(1)).is_ok(), true);
+        assert_eq!(manager.last_known_validated_path, None);
+    }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.2
+    //= type=test
+    //# To protect the connection from failing due to such a spurious
+    //# migration, an endpoint MUST revert to using the last validated peer
+    //# address when validation of a new peer address fails.
+
+    #[test]
+    fn test_invalid_path_fallback() {
+        let first_conn_id = connection::PeerId::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
+        let first_path = Path::new(
+            SocketAddress::default(),
+            first_conn_id,
+            connection::LocalId::TEST_ID,
+            RttEstimator::new(Duration::from_millis(30)),
+            Default::default(),
+            false,
+        );
+
+        // Create a challenge that will expire in 100ms
+        let clock = NoopClock {};
+        let expiration = Duration::from_millis(100);
+        let challenge = challenge::Challenge::new(
+            clock.get_time(),
+            Duration::from_millis(0),
+            expiration,
+            [0; 8],
+        );
+        let second_path = Path::new(
+            SocketAddress::default(),
+            first_conn_id,
+            connection::LocalId::TEST_ID,
+            RttEstimator::new(Duration::from_millis(30)),
+            Default::default(),
+            false,
+        )
+        .with_challenge(challenge);
+
+        let mut manager = manager(first_path, None);
+        manager.add_path(second_path);
+
+        manager.active_path_mut().on_validated();
+        assert_eq!(manager.active, 0);
+        assert_eq!(manager.active_path().is_validated(), true);
+        assert_eq!(manager.last_known_validated_path, None);
+
+        assert_eq!(manager.update_active_path(Id(1)), Ok(()));
         assert_eq!(manager.last_known_validated_path, Some(0));
-        assert_eq!(manager.active, 1);
 
         // After a validation times out, the path should revert to the previous
-        manager.on_timeout(clock.get_time() + Duration::from_millis(2000));
-        assert!(manager.last_known_validated_path.is_none());
+        assert_eq!(manager.active, 1);
+        manager
+            .on_timeout(clock.get_time() + Duration::from_millis(2000))
+            .unwrap();
         assert_eq!(manager.active, 0);
+        assert_eq!(manager.last_known_validated_path, Some(0));
+        manager
+            .on_timeout(clock.get_time() + Duration::from_millis(2000))
+            .unwrap();
     }
 
     #[test]
@@ -653,11 +749,11 @@ mod tests {
     #[test]
     #[allow(unreachable_code)]
     fn test_new_peer() {
-        let first_conn_id = connection::PeerId::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
+        let first_conn_peer_id = connection::PeerId::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
         let first_conn_local_id = connection::LocalId::TEST_ID;
         let first_path = Path::new(
             SocketAddress::default(),
-            first_conn_id,
+            first_conn_peer_id,
             first_conn_local_id,
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
@@ -684,8 +780,6 @@ mod tests {
             destination_connection_id: first_conn_local_id,
         };
 
-        // NOTE This generator should be passed to on_datagram_received when migation is enabled
-        let mut _random_generator = random::testing::Generator(123);
         let (_path_id, _unblocked) = manager
             .on_datagram_received(
                 &datagram,
@@ -698,6 +792,17 @@ mod tests {
 
         assert_eq!(manager.path(&new_addr).is_some(), true);
         assert_eq!(manager.paths.len(), 2);
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.5
+        //= type=test
+        //# Due to network changes outside
+        //# the control of its peer, an endpoint might receive packets from a new
+        //# source address with the same destination connection ID, in which case
+        //# it MAY continue to use the current connection ID with the new remote
+        //# address while still sending from the same local address.
+        assert_eq!(manager.paths[1].local_connection_id, first_conn_local_id);
+        assert_eq!(manager.paths[1].peer_connection_id, first_conn_peer_id);
+
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
         //= type=test
         //# An endpoint MUST
@@ -735,7 +840,6 @@ mod tests {
             ecn: ExplicitCongestionNotification::default(),
             destination_connection_id: first_conn_local_id,
         };
-
         // Verify an unconfirmed handshake does not add a new path
         assert_eq!(
             manager
@@ -748,8 +852,93 @@ mod tests {
                 )
                 .is_err(),
             true
+        )
+    }
+
+    #[test]
+    #[allow(unreachable_code)]
+    fn test_new_peer_connection_ids() {
+        // TODO Remove when Connection Migration is supported
+        return;
+        let first_conn_peer_id = connection::PeerId::TEST_ID;
+        let first_conn_local_id = connection::LocalId::TEST_ID;
+        let first_path = Path::new(
+            SocketAddress::default(),
+            first_conn_peer_id,
+            first_conn_local_id,
+            RttEstimator::new(Duration::from_millis(30)),
+            Default::default(),
+            false,
         );
+        let mut manager = manager(first_path, None);
+
+        let clock = NoopClock {};
+        let mut random_generator = random::testing::Generator(123);
+
+        let second_conn_local_id = connection::LocalId::try_from_bytes(&[1, 2, 3, 4, 5]).unwrap();
+        let new_addr: SocketAddr = "127.0.0.1:443".parse().unwrap();
+        let new_addr = SocketAddress::from(new_addr);
+        let datagram = DatagramInfo {
+            timestamp: clock.get_time(),
+            remote_address: new_addr,
+            payload_len: 0,
+            ecn: ExplicitCongestionNotification::default(),
+            destination_connection_id: second_conn_local_id,
+        };
+
+        // The destination_connection_id is unknown to the path manager, so this new path should be
+        // rejected.
+        assert!(manager
+            .on_datagram_received(
+                &datagram,
+                &connection::Limits::default(),
+                true,
+                &mut unlimited::Endpoint::default(),
+                &mut random_generator,
+            )
+            .is_err());
+        assert_eq!(manager.paths.len(), 1);
+
+        // This connection Id will replace the initial connection id
+        assert!(manager
+            .on_new_connection_id(
+                &connection::PeerId::try_from_bytes(&[0, 1]).unwrap(),
+                2,
+                0,
+                &TEST_TOKEN_1
+            )
+            .is_ok());
+
+        // The destination_connection_id was received from the peer through a new_connection_id
+        // frame. This path is valid.
+        let second_conn_peer_id = connection::PeerId::try_from_bytes(&[1, 2, 3, 4, 5]).unwrap();
+        assert!(manager
+            .on_new_connection_id(&second_conn_peer_id, 3, 0, &TEST_TOKEN_2)
+            .is_ok());
+
+        let datagram = DatagramInfo {
+            timestamp: clock.get_time(),
+            remote_address: new_addr,
+            payload_len: 0,
+            ecn: ExplicitCongestionNotification::default(),
+            destination_connection_id: second_conn_local_id,
+        };
+        let (_path_id, _unblocked) = manager
+            .on_datagram_received(
+                &datagram,
+                &connection::Limits::default(),
+                true,
+                &mut unlimited::Endpoint::default(),
+                &mut random_generator,
+            )
+            .unwrap();
         assert_eq!(manager.paths.len(), 2);
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.5
+        //# Similarly, an endpoint MUST NOT reuse a connection ID when sending to
+        //# more than one destination address.
+        assert_eq!(manager.paths[1].local_connection_id, second_conn_local_id);
+        assert_eq!(manager.paths[1].peer_connection_id, second_conn_peer_id);
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2

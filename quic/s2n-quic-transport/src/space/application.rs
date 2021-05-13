@@ -454,7 +454,7 @@ impl<'a, Config: endpoint::Config> recovery::Context<<Config::CongestionControll
         &mut self.path_manager[self.path_id]
     }
 
-    fn path_by_id(&self, path_id: path::Id) -> &path::Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController> {
+    fn path_by_id(&self, path_id: path::Id) -> &path::Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>{
         &self.path_manager[path_id]
     }
 

@@ -184,7 +184,8 @@ impl Manager {
             let is_handshake_confirmed = context.is_handshake_confirmed();
             let path = context.path_mut_by_id(path_id);
             self.update_pto_timer(path, time_sent, is_handshake_confirmed);
-            path.congestion_controller
+            context.path_mut_by_id(path_id)
+                .congestion_controller
                 .on_packet_sent(time_sent, congestion_controlled_bytes);
         }
     }
@@ -424,6 +425,9 @@ impl Manager {
 
         let is_handshake_confirmed = context.is_handshake_confirmed();
         for acked_packet_info in newly_acked_packets {
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.4
+            //# Packets sent on the old path MUST NOT contribute to
+            //# congestion control or RTT estimation for the new path.
             let path = context.path_mut_by_id(acked_packet_info.path_id);
             path.congestion_controller.on_packet_ack(
                 largest_newly_acked_time_sent,
@@ -498,8 +502,8 @@ impl Manager {
             .expect("This function is only called after an ack has been received");
 
         let mut persistent_congestion_period = Duration::from_secs(0);
-        let mut max_persistent_congestion_period = Duration::from_secs(0);
         let mut prev_packet: Option<(&PacketNumber, Timestamp)> = None;
+        let mut max_persistent_congestion_period = Duration::from_secs(0);
 
         for (unacked_packet_number, unacked_sent_info) in self.sent_packets.iter() {
             let path = &context.path_by_id(unacked_sent_info.path_id);
@@ -611,7 +615,6 @@ impl Manager {
         // Remove the lost packets and account for the bytes on the proper congestion controller
         for (packet_number, lost_bytes, path_id) in sent_packets_to_remove {
             let path = &mut context.path_mut_by_id(path_id);
-
             self.sent_packets.remove(packet_number);
 
             //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.2
@@ -902,6 +905,7 @@ mod test {
         let mut time_sent = now;
         let mut path_manager = generate_path_manager(Duration::from_millis(100));
         let mut context = MockContext::new(&mut path_manager);
+
         // Call on validated so the path is not amplification limited so we can verify PTO arming
         context.path_mut().on_validated();
 
@@ -984,11 +988,21 @@ mod test {
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.7
     //= type=test
     #[test]
-    fn on_ack_frame() {
+    fn on_ack_frame_multiple_paths() {
         let space = PacketNumberSpace::ApplicationData;
         let mut manager = Manager::new(space, Duration::from_millis(100));
         let packet_bytes = 128;
         let mut path_manager = generate_path_manager(Duration::from_millis(10));
+        let new_path_addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
+        let new_path = Path::new(
+            new_path_addr.into(),
+            connection::PeerId::TEST_ID,
+            connection::LocalId::TEST_ID,
+            RttEstimator::new(Duration::from_millis(250)),
+            MockCongestionController::default(),
+            true,
+        );
+        path_manager.add_path(new_path);
         let mut context = MockContext::new(&mut path_manager);
 
         // Start the pto backoff at 2 so we can tell if it was reset
@@ -996,7 +1010,8 @@ mod test {
 
         let time_sent = s2n_quic_platform::time::now() + Duration::from_secs(10);
 
-        // Send packets 1 to 10
+        // Send packets 1 to 10 on the first path
+        let original_path_id = path::Id::new(0);
         for i in 1..=10 {
             manager.on_packet_sent(
                 space.new_packet_number(VarInt::from_u8(i)),
@@ -1007,16 +1022,154 @@ mod test {
                     packet_number: space.new_packet_number(VarInt::from_u8(1)),
                 },
                 time_sent,
-                path::Id::new(0),
+                original_path_id,
                 &mut context,
             );
         }
 
         assert_eq!(manager.sent_packets.iter().count(), 10);
 
-        // Ack packets 1 to 3
         let ack_receive_time = time_sent + Duration::from_millis(500);
-        ack_packets(1..=3, ack_receive_time, &mut context, &mut manager);
+        let datagram = DatagramInfo {
+            timestamp: ack_receive_time,
+            remote_address: Default::default(),
+            payload_len: 0,
+            ecn: Default::default(),
+            destination_connection_id: connection::LocalId::TEST_ID,
+        };
+
+        // Ack packets 1 to 3
+        ack_packets(1..=3, &datagram, &mut context, &mut manager);
+
+        assert_eq!(context.path().congestion_controller.lost_bytes, 0);
+        assert_eq!(context.path().congestion_controller.on_rtt_update, 1);
+        assert_eq!(context.path().pto_backoff, INITIAL_PTO_BACKOFF);
+        assert_eq!(manager.sent_packets.iter().count(), 7);
+        assert_eq!(
+            manager.largest_acked_packet,
+            Some(space.new_packet_number(VarInt::from_u8(3)))
+        );
+        assert_eq!(context.on_packet_ack_count, 1);
+        assert_eq!(context.on_new_packet_ack_count, 1);
+        assert_eq!(context.validate_packet_ack_count, 1);
+        assert_eq!(context.on_packet_loss_count, 0);
+        assert_eq!(
+            context.path().rtt_estimator.latest_rtt(),
+            Duration::from_millis(500)
+        );
+        assert_eq!(1, context.on_rtt_update_count);
+
+        let ack_receive_time = ack_receive_time + Duration::from_secs(1);
+        let datagram = DatagramInfo {
+            timestamp: ack_receive_time,
+            remote_address: new_path_addr.into(),
+            payload_len: 0,
+            ecn: Default::default(),
+            destination_connection_id: connection::LocalId::TEST_ID,
+        };
+
+        // Acknowledging packet 6 on a new path.
+        // The path on which packets were sent should be updated.
+        ack_packets(6..=6, &datagram, &mut context, &mut manager);
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.4
+        //= type=test
+        //# Packets sent on the old path MUST NOT contribute to
+        //# congestion control or RTT estimation for the new path.
+        // The Rtt update should not have been called
+        assert_eq!(1, context.on_rtt_update_count);
+
+        // No Rtt estimates should be updated on the original path.
+        assert_eq!(
+            context.path().rtt_estimator.latest_rtt(),
+            Duration::from_millis(500)
+        );
+
+        let new_path_id = path::Id::new(1);
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.1
+        //= type=test
+        //# Note that since the endpoint will not have any round-trip
+        //# time measurements to this address, the estimate SHOULD be the default
+        //# initial value; see [QUIC-RECOVERY].
+        // The latest Rtt should be the default for the new path
+        assert_eq!(
+            context.path_by_id(new_path_id)
+                .rtt_estimator
+                .latest_rtt(),
+            DEFAULT_INITIAL_RTT
+        );
+
+        // The lost packet should not count against the new path
+        assert_eq!(
+            context.path_by_id(new_path_id)
+                .congestion_controller
+                .lost_bytes,
+            0
+        );
+
+        // The lost packets should count against the original path they were sent on
+        assert_eq!(context.on_packet_loss_count, 2);
+        assert_eq!(
+            context.path_by_id(original_path_id)
+                .congestion_controller
+                .lost_bytes,
+            (packet_bytes * 2) as u32
+        );
+    }
+
+    #[test]
+    fn on_ack_frame() {
+        let space = PacketNumberSpace::ApplicationData;
+        let mut manager = Manager::new(space, Duration::from_millis(100));
+        let packet_bytes = 128;
+        let mut path_manager = generate_path_manager(Duration::from_millis(10));
+        let path = Path::new(
+            Default::default(),
+            connection::PeerId::TEST_ID,
+            connection::LocalId::TEST_ID,
+            RttEstimator::new(Duration::from_millis(250)),
+            MockCongestionController::default(),
+            true,
+        );
+        path_manager.add_path(path);
+        let mut context = MockContext::new(&mut path_manager);
+
+        // Start the pto backoff at 2 so we can tell if it was reset
+        context.path_mut().pto_backoff = 2;
+
+        let time_sent = s2n_quic_platform::time::now() + Duration::from_secs(10);
+
+        // Send packets 1 to 10 on the first path
+        let path_id = path::Id::new(0);
+        for i in 1..=10 {
+            manager.on_packet_sent(
+                space.new_packet_number(VarInt::from_u8(i)),
+                transmission::Outcome {
+                    ack_elicitation: AckElicitation::Eliciting,
+                    is_congestion_controlled: true,
+                    bytes_sent: packet_bytes,
+                    packet_number: space.new_packet_number(VarInt::from_u8(1)),
+                },
+                time_sent,
+                path_id,
+                &mut context,
+            );
+        }
+
+        assert_eq!(manager.sent_packets.iter().count(), 10);
+
+        let ack_receive_time = time_sent + Duration::from_millis(500);
+        let datagram = DatagramInfo {
+            timestamp: ack_receive_time,
+            remote_address: Default::default(),
+            payload_len: 0,
+            ecn: Default::default(),
+            destination_connection_id: connection::LocalId::TEST_ID,
+        };
+
+        // Ack packets 1 to 3
+        ack_packets(1..=3, &datagram, &mut context, &mut manager);
 
         assert_eq!(context.path().congestion_controller.lost_bytes, 0);
         assert_eq!(context.path().congestion_controller.on_rtt_update, 1);
@@ -1041,7 +1194,14 @@ mod test {
 
         // Acknowledging already acked packets
         let ack_receive_time = ack_receive_time + Duration::from_secs(1);
-        ack_packets(1..=3, ack_receive_time, &mut context, &mut manager);
+        let datagram = DatagramInfo {
+            timestamp: ack_receive_time,
+            remote_address: Default::default(),
+            payload_len: 0,
+            ecn: Default::default(),
+            destination_connection_id: connection::LocalId::TEST_ID,
+        };
+        ack_packets(1..=3, &datagram, &mut context, &mut manager);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.1
         //= type=test
@@ -1064,7 +1224,14 @@ mod test {
 
         // Ack packets 7 to 9 (4 - 6 will be considered lost)
         let ack_receive_time = ack_receive_time + Duration::from_secs(1);
-        ack_packets(7..=9, ack_receive_time, &mut context, &mut manager);
+        let datagram = DatagramInfo {
+            timestamp: ack_receive_time,
+            remote_address: Default::default(),
+            payload_len: 0,
+            ecn: Default::default(),
+            destination_connection_id: connection::LocalId::TEST_ID,
+        };
+        ack_packets(7..=9, &datagram, &mut context, &mut manager);
 
         assert_eq!(
             context.path().congestion_controller.lost_bytes,
@@ -1082,7 +1249,7 @@ mod test {
         assert_eq!(2, context.on_rtt_update_count);
 
         // Ack packet 10, but with a path that is not peer validated
-        context.path_manager[path::Id::new(0)] = Path::new(
+        context.path_mut_by_id(path::Id::new(0)) = Path::new(
             Default::default(),
             connection::PeerId::TEST_ID,
             connection::LocalId::TEST_ID,
@@ -1092,7 +1259,14 @@ mod test {
         );
         context.path_mut().pto_backoff = 2;
         let ack_receive_time = ack_receive_time + Duration::from_millis(500);
-        ack_packets(10..=10, ack_receive_time, &mut context, &mut manager);
+        let datagram = DatagramInfo {
+            timestamp: ack_receive_time,
+            remote_address: Default::default(),
+            payload_len: 0,
+            ecn: Default::default(),
+            destination_connection_id: connection::LocalId::TEST_ID,
+        };
+        ack_packets(10..=10, &datagram, &mut context, &mut manager);
         assert_eq!(context.path().congestion_controller.on_rtt_update, 1);
         assert_eq!(context.path().pto_backoff, 2);
         assert_eq!(context.on_packet_ack_count, 4);
@@ -1118,7 +1292,7 @@ mod test {
             path::Id::new(0),
             &mut context,
         );
-        ack_packets(11..=11, ack_receive_time, &mut context, &mut manager);
+        ack_packets(11..=11, &datagram, &mut context, &mut manager);
 
         assert_eq!(context.path().congestion_controller.lost_bytes, 0);
         assert_eq!(context.path().congestion_controller.on_rtt_update, 1);
@@ -1179,7 +1353,14 @@ mod test {
 
         // Ack packet 1
         let ack_receive_time = time_sent + Duration::from_millis(500);
-        ack_packets(1..=1, ack_receive_time, &mut context, &mut manager);
+        let datagram = DatagramInfo {
+            timestamp: ack_receive_time,
+            remote_address: Default::default(),
+            payload_len: 0,
+            ecn: Default::default(),
+            destination_connection_id: connection::LocalId::TEST_ID,
+        };
+        ack_packets(1..=1, &datagram, &mut context, &mut manager);
 
         // New rtt estimate because the largest packet was newly acked
         assert_eq!(context.path().congestion_controller.on_rtt_update, 1);
@@ -1195,7 +1376,14 @@ mod test {
 
         // Ack packets 0 and 1
         let ack_receive_time = time_sent + Duration::from_millis(1500);
-        ack_packets(0..=1, ack_receive_time, &mut context, &mut manager);
+        let datagram = DatagramInfo {
+            timestamp: ack_receive_time,
+            remote_address: Default::default(),
+            payload_len: 0,
+            ecn: Default::default(),
+            destination_connection_id: connection::LocalId::TEST_ID,
+        };
+        ack_packets(0..=1, &datagram, &mut context, &mut manager);
 
         // No new rtt estimate because the largest packet was not newly acked
         assert_eq!(context.path().congestion_controller.on_rtt_update, 1);
@@ -1250,13 +1438,15 @@ mod test {
         // Ack packet 0 on diffent path as it was sent.. expect no rtt update
         let ack_receive_time = time_sent + Duration::from_millis(500);
         let ipv6_addr = SocketAddress::IpV6(Default::default());
-        ack_packets_on_path(
-            0..=0,
-            ack_receive_time,
-            &mut context,
-            &mut manager,
-            ipv6_addr,
-        );
+
+        let datagram = DatagramInfo {
+            timestamp: ack_receive_time,
+            remote_address: ipv6_addr,
+            payload_len: 0,
+            ecn: Default::default(),
+            destination_connection_id: connection::LocalId::TEST_ID,
+        };
+        ack_packets_on_path(0..=0, &datagram, &mut context, &mut manager);
 
         // no rtt estimate because the packet was received on different path
         assert_eq!(context.path().congestion_controller.on_rtt_update, 0);
@@ -1273,13 +1463,15 @@ mod test {
         // Ack packet 1 on same path as it was sent.. expect rtt update
         let ack_receive_time = time_sent + Duration::from_millis(1500);
         let ipv4_addr = SocketAddress::IpV4(Default::default());
-        ack_packets_on_path(
-            1..=1,
-            ack_receive_time,
-            &mut context,
-            &mut manager,
-            ipv4_addr,
-        );
+
+        let datagram = DatagramInfo {
+            timestamp: ack_receive_time,
+            remote_address: ipv4_addr,
+            payload_len: 0,
+            ecn: Default::default(),
+            destination_connection_id: connection::LocalId::TEST_ID,
+        };
+        ack_packets_on_path(1..=1, &datagram, &mut context, &mut manager);
 
         // rtt estimate because the packet was received on same path
         assert_eq!(context.path().congestion_controller.on_rtt_update, 1);
@@ -1419,7 +1611,6 @@ mod test {
         let now = s2n_quic_platform::time::now();
         let mut path_manager = generate_path_manager(Duration::from_millis(10));
         let mut context = MockContext::new(&mut path_manager);
-
         manager.largest_acked_packet = Some(space.new_packet_number(VarInt::from_u8(10)));
 
         let mut time_sent = s2n_quic_platform::time::now();
@@ -1429,6 +1620,7 @@ mod test {
             bytes_sent: 1,
             packet_number: space.new_packet_number(VarInt::from_u8(1)),
         };
+        let path_id = path::Id::new(0);
 
         // Send a packet that was sent too long ago (lost)
         let old_packet_time_sent = space.new_packet_number(VarInt::from_u8(0));
@@ -1436,7 +1628,7 @@ mod test {
             old_packet_time_sent,
             outcome,
             time_sent,
-            path::Id::new(0),
+            path_id,
             &mut context,
         );
 
@@ -1465,13 +1657,13 @@ mod test {
             old_packet_packet_number,
             outcome,
             time_sent,
-            path::Id::new(0),
+            path_id,
             &mut context,
         );
 
         // Send a packet that is less than the largest acked but not lost
         let not_lost = space.new_packet_number(VarInt::from_u8(9));
-        manager.on_packet_sent(not_lost, outcome, time_sent, path::Id::new(0), &mut context);
+        manager.on_packet_sent(not_lost, outcome, time_sent, path_id, &mut context);
 
         // Send a packet larger than the largest acked (not lost)
         let larger_than_largest = manager.largest_acked_packet.unwrap().next().unwrap();
@@ -1479,7 +1671,7 @@ mod test {
             larger_than_largest,
             outcome,
             time_sent,
-            path::Id::new(0),
+            path_id,
             &mut context,
         );
 
@@ -1587,6 +1779,8 @@ mod test {
             space,
         );
 
+        let path_id = path::Id::new(0);
+
         let outcome = transmission::Outcome {
             ack_elicitation: AckElicitation::Eliciting,
             is_congestion_controlled: true,
@@ -1599,7 +1793,7 @@ mod test {
             space.new_packet_number(VarInt::from_u8(1)),
             outcome,
             time_zero,
-            path::Id::new(0),
+            path_id,
             &mut context,
         );
 
@@ -1608,17 +1802,19 @@ mod test {
             space.new_packet_number(VarInt::from_u8(2)),
             outcome,
             time_zero + Duration::from_secs(1),
-            path::Id::new(0),
+            path_id,
             &mut context,
         );
 
         // t=1.2: Recv acknowledgement of #1
-        ack_packets(
-            1..=1,
-            time_zero + Duration::from_millis(1200),
-            &mut context,
-            &mut manager,
-        );
+        let datagram = DatagramInfo {
+            timestamp: time_zero + Duration::from_millis(1200),
+            remote_address: Default::default(),
+            payload_len: 0,
+            ecn: Default::default(),
+            destination_connection_id: connection::LocalId::TEST_ID,
+        };
+        ack_packets(1..=1, &datagram, &mut context, &mut manager);
 
         // t=2-6: Send packets #3 - #7 (app data)
         for t in 2..=6 {
@@ -1626,7 +1822,7 @@ mod test {
                 space.new_packet_number(VarInt::from_u8(t + 1)),
                 outcome,
                 time_zero + Duration::from_secs(t.into()),
-                path::Id::new(0),
+                path_id,
                 &mut context,
             );
         }
@@ -1636,7 +1832,7 @@ mod test {
             space.new_packet_number(VarInt::from_u8(8)),
             outcome,
             time_zero + Duration::from_secs(8),
-            path::Id::new(0),
+            path_id,
             &mut context,
         );
 
@@ -1645,17 +1841,19 @@ mod test {
             space.new_packet_number(VarInt::from_u8(9)),
             outcome,
             time_zero + Duration::from_secs(12),
-            path::Id::new(0),
+            path_id,
             &mut context,
         );
 
         // t=12.2: Recv acknowledgement of #9
-        ack_packets(
-            9..=9,
-            time_zero + Duration::from_millis(12200),
-            &mut context,
-            &mut manager,
-        );
+        let datagram = DatagramInfo {
+            timestamp: time_zero + Duration::from_millis(12200),
+            remote_address: Default::default(),
+            payload_len: 0,
+            ecn: Default::default(),
+            destination_connection_id: connection::LocalId::TEST_ID,
+        };
+        ack_packets(9..=9, &datagram, &mut context, &mut manager);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.3
         //# Packets 2 through 8 are declared lost when the acknowledgement for
@@ -1666,8 +1864,7 @@ mod test {
         //# The congestion period is calculated as the time between the oldest
         //# and newest lost packets: 8 - 1 = 7.
         assert!(
-            context
-                .path()
+            context.path_by_id(path_id)
                 .rtt_estimator
                 .persistent_congestion_threshold()
                 < Duration::from_secs(7)
@@ -1683,17 +1880,19 @@ mod test {
             space.new_packet_number(VarInt::from_u8(10)),
             outcome,
             time_zero + Duration::from_secs(20),
-            path::Id::new(0),
+            path_id,
             &mut context,
         );
 
         // t=21: Recv acknowledgement of #10
-        ack_packets(
-            10..=10,
-            time_zero + Duration::from_secs(21),
-            &mut context,
-            &mut manager,
-        );
+        let datagram = DatagramInfo {
+            timestamp: time_zero + Duration::from_secs(21),
+            remote_address: Default::default(),
+            payload_len: 0,
+            ecn: Default::default(),
+            destination_connection_id: connection::LocalId::TEST_ID,
+        };
+        ack_packets(10..=10, &datagram, &mut context, &mut manager);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.2
         //= type=test
@@ -1726,12 +1925,14 @@ mod test {
             packet_number: space.new_packet_number(VarInt::from_u8(1)),
         };
 
+        let path_id = path::Id::new(0);
+
         // t=0: Send packet #1 (app data)
         manager.on_packet_sent(
             space.new_packet_number(VarInt::from_u8(1)),
             outcome,
             time_zero,
-            path::Id::new(0),
+            path_id,
             &mut context,
         );
 
@@ -1740,17 +1941,19 @@ mod test {
             space.new_packet_number(VarInt::from_u8(2)),
             outcome,
             time_zero + Duration::from_secs(1),
-            path::Id::new(0),
+            path_id,
             &mut context,
         );
 
         // t=1.2: Recv acknowledgement of #1
-        ack_packets(
-            1..=1,
-            time_zero + Duration::from_millis(1200),
-            &mut context,
-            &mut manager,
-        );
+        let datagram = DatagramInfo {
+            timestamp: time_zero + Duration::from_millis(1200),
+            remote_address: Default::default(),
+            payload_len: 0,
+            ecn: Default::default(),
+            destination_connection_id: connection::LocalId::TEST_ID,
+        };
+        ack_packets(1..=1, &datagram, &mut context, &mut manager);
 
         // t=2-6: Send packets #3 - #7 (app data)
         for t in 2..=6 {
@@ -1758,7 +1961,7 @@ mod test {
                 space.new_packet_number(VarInt::from_u8(t + 1)),
                 outcome,
                 time_zero + Duration::from_secs(t.into()),
-                path::Id::new(0),
+                path_id,
                 &mut context,
             );
         }
@@ -1770,7 +1973,7 @@ mod test {
             space.new_packet_number(VarInt::from_u8(9)),
             outcome,
             time_zero + Duration::from_secs(8),
-            path::Id::new(0),
+            path_id,
             &mut context,
         );
 
@@ -1779,7 +1982,7 @@ mod test {
             space.new_packet_number(VarInt::from_u8(10)),
             outcome,
             time_zero + Duration::from_secs(20),
-            path::Id::new(0),
+            path_id,
             &mut context,
         );
 
@@ -1788,17 +1991,19 @@ mod test {
             space.new_packet_number(VarInt::from_u8(11)),
             outcome,
             time_zero + Duration::from_secs(30),
-            path::Id::new(0),
+            path_id,
             &mut context,
         );
 
         // t=30.2: Recv acknowledgement of #11
-        ack_packets(
-            11..=11,
-            time_zero + Duration::from_millis(30200),
-            &mut context,
-            &mut manager,
-        );
+        let datagram = DatagramInfo {
+            timestamp: time_zero + Duration::from_millis(30200),
+            remote_address: Default::default(),
+            payload_len: 0,
+            ecn: Default::default(),
+            destination_connection_id: connection::LocalId::TEST_ID,
+        };
+        ack_packets(11..=11, &datagram, &mut context, &mut manager);
 
         // Packets 2 though 7 and 9-10 should be lost
         assert_eq!(8, context.on_packet_loss_count);
@@ -1836,12 +2041,14 @@ mod test {
             packet_number: space.new_packet_number(VarInt::from_u8(1)),
         };
 
+        let path_id = path::Id::new(0);
+
         // t=0: Send packet #1 (app data)
         manager.on_packet_sent(
             space.new_packet_number(VarInt::from_u8(1)),
             outcome,
             time_zero,
-            path::Id::new(0),
+            path_id,
             &mut context,
         );
 
@@ -1850,7 +2057,7 @@ mod test {
             space.new_packet_number(VarInt::from_u8(2)),
             outcome,
             time_zero + Duration::from_secs(10),
-            path::Id::new(0),
+            path_id,
             &mut context,
         );
 
@@ -1859,18 +2066,20 @@ mod test {
             space.new_packet_number(VarInt::from_u8(3)),
             outcome,
             time_zero + Duration::from_secs(20),
-            path::Id::new(0),
+            path_id,
             &mut context,
         );
 
         // t=20.1: Recv acknowledgement of #3. The first RTT sample is collected
         //         now, at t=20.1
-        ack_packets(
-            3..=3,
-            time_zero + Duration::from_millis(20_100),
-            &mut context,
-            &mut manager,
-        );
+        let datagram = DatagramInfo {
+            timestamp: time_zero + Duration::from_millis(20_100),
+            remote_address: Default::default(),
+            payload_len: 0,
+            ecn: Default::default(),
+            destination_connection_id: connection::LocalId::TEST_ID,
+        };
+        ack_packets(3..=3, &datagram, &mut context, &mut manager);
 
         // There is no persistent congestion, because the lost packets were all
         // sent prior to the first RTT sample
@@ -1891,6 +2100,15 @@ mod test {
         let is_handshake_confirmed = true;
         let mut path_manager = generate_path_manager(Duration::from_millis(10));
         let mut context = MockContext::new(&mut path_manager);
+        let path = Path::new(
+            Default::default(),
+            connection::PeerId::TEST_ID,
+            connection::LocalId::TEST_ID,
+            RttEstimator::new(Duration::from_millis(10)),
+            MockCongestionController::default(),
+            true,
+        );
+        context.path_mut_by_id(path::Id::new(0)) = path;
 
         context.path_mut().rtt_estimator.update_rtt(
             Duration::from_millis(0),
@@ -2087,6 +2305,8 @@ mod test {
         assert!(!manager.pto.timer.is_armed());
         assert_eq!(expected_pto_backoff, context.path().pto_backoff);
 
+        let path_id = path::Id::new(0);
+
         // Send a packet that will be considered lost
         manager.on_packet_sent(
             space.new_packet_number(VarInt::from_u8(1)),
@@ -2097,7 +2317,7 @@ mod test {
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
             },
             now - Duration::from_secs(5),
-            path::Id::new(0),
+            path_id,
             &mut context,
         );
 
@@ -2143,8 +2363,8 @@ mod test {
                 congestion_controlled: true,
                 sent_bytes: 1,
                 time_sent: now,
+                path_id,
                 ack_elicitation: AckElicitation::Eliciting,
-                path_id: path::Id::new(0),
             },
         );
         manager.pto.timer.set(now - Duration::from_secs(5));
@@ -2269,10 +2489,9 @@ mod test {
     // Helper function that will call on_ack_frame with the given packet numbers
     fn ack_packets_on_path<CC: CongestionController, Ctx: Context<CC>>(
         range: RangeInclusive<u8>,
-        ack_receive_time: Timestamp,
+        datagram: &DatagramInfo,
         context: &mut Ctx,
         manager: &mut Manager,
-        remote_address: SocketAddress,
     ) {
         let acked_packets = PacketNumberRange::new(
             manager
@@ -2283,13 +2502,13 @@ mod test {
                 .new_packet_number(VarInt::from_u8(*range.end())),
         );
 
-        let datagram = DatagramInfo {
-            timestamp: ack_receive_time,
-            remote_address,
-            payload_len: 0,
-            ecn: Default::default(),
-            destination_connection_id: connection::LocalId::TEST_ID,
-        };
+        // let datagram = DatagramInfo {
+        //     timestamp: ack_receive_time,
+        //     remote_address,
+        //     payload_len: 0,
+        //     ecn: Default::default(),
+        //     destination_connection_id: connection::LocalId::TEST_ID,
+        // };
 
         let mut ack_range = AckRanges::new(acked_packets.count());
 
@@ -2313,16 +2532,13 @@ mod test {
     // Helper function that will call on_ack_frame with the given packet numbers
     fn ack_packets<CC: CongestionController, Ctx: Context<CC>>(
         range: RangeInclusive<u8>,
-        ack_receive_time: Timestamp,
+        datagram: &DatagramInfo,
         context: &mut Ctx,
         manager: &mut Manager,
     ) {
         ack_packets_on_path(
-            range,
-            ack_receive_time,
-            context,
-            manager,
-            Default::default(),
+            range, // ack_receive_time,
+            datagram, context, manager,
         )
     }
 
@@ -2479,7 +2695,7 @@ mod test {
         }
     }
 
-    impl<'a> recovery::Context<MockCongestionController> for MockContext<'a> {
+    impl<'a> recovery::Context<Endpoint> for MockContext<'a> {
         const ENDPOINT_TYPE: endpoint::Type = endpoint::Type::Client;
 
         fn is_handshake_confirmed(&self) -> bool {

@@ -540,7 +540,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             connection_id_mapper.remove_initial_id(&self.internal_connection_id);
         }
 
-        self.path_manager.on_timeout(timestamp);
+        self.path_manager.on_timeout(timestamp)?;
         self.local_id_registry.on_timeout(timestamp);
 
         if let Some(shared_state) = shared_state {
@@ -580,6 +580,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             .chain(self.timers.iter())
             .chain(self.close_sender.timers())
             .chain(shared_state.iter().flat_map(|s| s.space_manager.timers()))
+            .chain(self.path_manager.timers())
             .chain(self.local_id_registry.timers())
             .chain(self.path_manager.timers())
             .min();
