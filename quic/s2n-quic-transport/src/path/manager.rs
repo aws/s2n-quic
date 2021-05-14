@@ -408,12 +408,24 @@ impl<CCE: congestion_controller::Endpoint> core::ops::Index<Id> for Manager<CCE>
     type Output = Path<CCE::CongestionController>;
 
     fn index(&self, id: Id) -> &Self::Output {
+        debug_assert!(
+            (id.0 as usize) < self.paths.len(),
+            "tried to access index {} but manager.paths has a length of {}",
+            id.0,
+            self.paths.len()
+        );
         &self.paths[id.0 as usize]
     }
 }
 
 impl<CCE: congestion_controller::Endpoint> core::ops::IndexMut<Id> for Manager<CCE> {
     fn index_mut(&mut self, id: Id) -> &mut Self::Output {
+        debug_assert!(
+            (id.0 as usize) < self.paths.len(),
+            "tried to access index {} but manager.paths has a length of {}",
+            id.0,
+            self.paths.len()
+        );
         &mut self.paths[id.0 as usize]
     }
 }
