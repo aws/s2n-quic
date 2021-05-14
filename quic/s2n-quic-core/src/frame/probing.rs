@@ -37,7 +37,6 @@ impl BitOrAssign<Probe> for Probe {
     }
 }
 
-
 /// Trait to retrieve if a frame is probing
 pub trait Probable {
     #[inline]
@@ -49,38 +48,34 @@ pub trait Probable {
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.1
 //# PATH_CHALLENGE, PATH_RESPONSE, NEW_CONNECTION_ID, and PADDING frames
 //# are "probing frames", and all other frames are "non-probing frames".
-impl<AckRanges> Probable for crate::frame::Ack<AckRanges>{}
-impl Probable for crate::frame::ConnectionClose<'_>{}
+impl<AckRanges> Probable for crate::frame::Ack<AckRanges> {}
+impl Probable for crate::frame::ConnectionClose<'_> {}
 impl<Data> Probable for crate::frame::Crypto<Data> {}
 impl Probable for crate::frame::DataBlocked {}
 impl Probable for crate::frame::HandshakeDone {}
 impl Probable for crate::frame::MaxData {}
 impl Probable for crate::frame::MaxStreamData {}
 impl Probable for crate::frame::MaxStreams {}
-impl Probable for crate::frame::NewConnectionId<'_>
-{
+impl Probable for crate::frame::NewConnectionId<'_> {
     #[inline]
     fn probe(&self) -> Probe {
         Probe::Probing
     }
 }
 impl Probable for crate::frame::NewToken<'_> {}
-impl Probable for crate::frame::Padding
-{
+impl Probable for crate::frame::Padding {
     #[inline]
     fn probe(&self) -> Probe {
         Probe::Probing
     }
 }
-impl Probable for crate::frame::PathChallenge<'_>
-{
+impl Probable for crate::frame::PathChallenge<'_> {
     #[inline]
     fn probe(&self) -> Probe {
         Probe::Probing
     }
 }
-impl Probable for crate::frame::PathResponse<'_>
-{
+impl Probable for crate::frame::PathResponse<'_> {
     #[inline]
     fn probe(&self) -> Probe {
         Probe::Probing
@@ -94,6 +89,10 @@ impl<Data> Probable for crate::frame::Stream<Data> {}
 impl Probable for crate::frame::StreamDataBlocked {}
 impl Probable for crate::frame::StreamsBlocked {}
 
+//= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.1
+//= type=test
+//# A packet containing only probing frames is a "probing packet", and a
+//# packet containing any other frame is a "non-probing packet".
 #[cfg(test)]
 mod test {
     use super::*;
