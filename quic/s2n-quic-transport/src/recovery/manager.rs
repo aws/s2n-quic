@@ -362,38 +362,41 @@ impl Manager {
         //# was sent a threshold amount of time in the past.
         self.detect_and_remove_lost_packets(datagram.timestamp, context);
 
-        let path = context.path_mut();
+        let is_handshake_confirmed = context.is_handshake_confirmed();
         for acked_packet_info in newly_acked_packets {
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.4
+            //# Packets sent on the old path MUST NOT contribute to
+            //# congestion control or RTT estimation for the new path.
+            let path = context.path_mut_by_id(acked_packet_info.path_id);
             path.congestion_controller.on_packet_ack(
                 largest_newly_acked_info.time_sent,
                 acked_packet_info.sent_bytes as usize,
                 &path.rtt_estimator,
                 datagram.timestamp,
             );
-        }
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
-        //# The PTO backoff factor is reset when an acknowledgement is received,
-        //# except in the following case.  A server might take longer to respond
-        //# to packets during the handshake than otherwise.  To protect such a
-        //# server from repeated client probes, the PTO backoff is not reset at a
-        //# client that is not yet certain that the server has finished
-        //# validating the client's address.  That is, a client does not reset
-        //# the PTO backoff factor on receiving acknowledgements in Initial
-        //# packets.
-        if context.path().is_peer_validated() {
-            context.path_mut().reset_pto_backoff();
-        }
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+            //# The PTO backoff factor is reset when an acknowledgement is received,
+            //# except in the following case.  A server might take longer to respond
+            //# to packets during the handshake than otherwise.  To protect such a
+            //# server from repeated client probes, the PTO backoff is not reset at a
+            //# client that is not yet certain that the server has finished
+            //# validating the client's address.  That is, a client does not reset
+            //# the PTO backoff factor on receiving acknowledgements in Initial
+            //# packets.
+            if path.is_peer_validated() {
+                path.reset_pto_backoff();
+            }
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
-        //# A sender SHOULD restart its PTO timer every time an ack-eliciting
-        //# packet is sent or acknowledged,
-        let is_handshake_confirmed = context.is_handshake_confirmed();
-        self.update_pto_timer(
-            context.path_mut(),
-            datagram.timestamp,
-            self.space.is_application_data() && is_handshake_confirmed,
-        );
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+            //# A sender SHOULD restart its PTO timer every time an ack-eliciting
+            //# packet is sent or acknowledged,
+            self.update_pto_timer(
+                path,
+                datagram.timestamp,
+                self.space.is_application_data() && is_handshake_confirmed,
+            );
+        }
 
         Ok(())
     }
