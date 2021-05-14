@@ -14,7 +14,7 @@ use s2n_quic_core::{
     frame::{
         ack::AckRanges,
         crypto::CryptoRef,
-        probing::{Probable, Probe},
+        path_probing::{self, PathProbing},
         stream::StreamRef,
         Ack, ConnectionClose, DataBlocked, HandshakeDone, MaxData, MaxStreamData, MaxStreams,
         NewConnectionId, NewToken, PathChallenge, PathResponse, ResetStream, RetireConnectionId,
@@ -501,7 +501,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
             }};
         }
 
-        let mut probe = Probe::Probing;
+        let mut probe = path_probing::Probe::Probing;
         while !payload.is_empty() {
             let (frame, remaining) = payload
                 .decode::<FrameMut>()
