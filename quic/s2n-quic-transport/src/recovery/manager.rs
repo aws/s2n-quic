@@ -182,7 +182,7 @@ impl Manager {
             //# A sender SHOULD restart its PTO timer every time an ack-eliciting
             //# packet is sent or acknowledged,
             let is_handshake_confirmed = context.is_handshake_confirmed();
-            let path = context.path_mut();
+            let path = context.path_mut_by_id(path_id);
             self.update_pto_timer(path, time_sent, is_handshake_confirmed);
             path.congestion_controller
                 .on_packet_sent(time_sent, congestion_controlled_bytes);
@@ -669,6 +669,8 @@ pub trait Context<CC: CongestionController> {
     fn path_mut(&mut self) -> &mut Path<CC>;
 
     fn path_by_id(&self, path_id: path::Id) -> &path::Path<CC>;
+
+    fn path_mut_by_id(&mut self, path_id: path::Id) -> &mut path::Path<CC>;
 
     fn validate_packet_ack(
         &mut self,
