@@ -12,6 +12,7 @@ use s2n_quic_core::{
     connection::limits::Limits,
     crypto::{tls, tls::Session, CryptoSuite},
     frame::{
+        probing::{Probe, Probable},
         ack::AckRanges, crypto::CryptoRef, stream::StreamRef, Ack, ConnectionClose, DataBlocked,
         HandshakeDone, MaxData, MaxStreamData, MaxStreams, NewConnectionId, NewToken,
         PathChallenge, PathResponse, ResetStream, RetireConnectionId, StopSending,
@@ -498,10 +499,12 @@ pub trait PacketSpace<Config: endpoint::Config> {
             }};
         }
 
+        let mut probe = Probe::Probing;
         while !payload.is_empty() {
             let (frame, remaining) = payload
                 .decode::<FrameMut>()
                 .map_err(transport::Error::from)?;
+            probe |= frame.probe();
 
             match frame {
                 Frame::Padding(frame) => {
