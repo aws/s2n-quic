@@ -250,20 +250,25 @@ impl Manager {
         self.pto.on_transmit(context)
     }
 
+    /// Process ack frame and update congestion controler, timers and meta data around acked
+    /// packet ranges.
     pub fn on_ack_frame<A: frame::ack::AckRanges, CC: CongestionController, Ctx: Context<CC>>(
         &mut self,
         datagram: &DatagramInfo,
         frame: frame::Ack<A>,
         context: &mut Ctx,
     ) -> Result<(), transport::Error> {
-        let largest_acked_in_frame = self.space.new_packet_number(frame.largest_acknowledged());
+        let largest_acked_packet_number =
+            self.space.new_packet_number(frame.largest_acknowledged());
         let mut newly_acked_packets =
             SmallVec::<[SentPacketInfo; ACKED_PACKETS_INITIAL_CAPACITY]>::new();
 
         // Update the largest acked packet if the largest packet acked in this frame is larger
         self.largest_acked_packet = Some(
             self.largest_acked_packet
-                .map_or(largest_acked_in_frame, |pn| pn.max(largest_acked_in_frame)),
+                .map_or(largest_acked_packet_number, |pn| {
+                    pn.max(largest_acked_packet_number)
+                }),
         );
 
         //# https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.1
@@ -273,49 +278,12 @@ impl Manager {
         //# *  the largest acknowledged packet number is newly acknowledged, and
         //#
         //# *  at least one of the newly acknowledged packets was ack-eliciting.
-        let mut largest_newly_acked: Option<(PacketNumber, SentPacketInfo)> = None;
-        let mut includes_ack_eliciting = false;
-        let mut should_update_rtt = true;
+        // let mut largest_newly_acked: Option<(PacketNumber, SentPacketInfo)> = None;
+        // let mut includes_ack_eliciting = false;
+        // let mut should_update_rtt = true;
 
-        for ack_range in frame.ack_ranges() {
-            let (start, end) = ack_range.into_inner();
-
-            let acked_packets = PacketNumberRange::new(
-                self.space.new_packet_number(start),
-                self.space.new_packet_number(end),
-            );
-
-            context.validate_packet_ack(datagram, &acked_packets)?;
-            context.on_packet_ack(datagram, &acked_packets);
-
-            let mut new_packet_ack = false;
-
-            for packet_number in acked_packets {
-                if let Some(acked_packet_info) = self.sent_packets.remove(packet_number) {
-                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.4
-                    //# Packets sent on the old path MUST NOT contribute to
-                    //# congestion control or RTT estimation for the new path.
-                    should_update_rtt &= context
-                        .path_by_id(acked_packet_info.path_id)
-                        .peer_socket_address
-                        == datagram.remote_address;
-
-                    newly_acked_packets.push(acked_packet_info);
-
-                    if largest_newly_acked.map_or(true, |(pn, _)| packet_number > pn) {
-                        largest_newly_acked = Some((packet_number, acked_packet_info));
-                    }
-
-                    new_packet_ack = true;
-                    includes_ack_eliciting |= acked_packet_info.ack_elicitation.is_ack_eliciting();
-                }
-            }
-
-            if new_packet_ack {
-                // notify components of packets that are newly acked
-                context.on_new_packet_ack(datagram, &acked_packets);
-            }
-        }
+        let (largest_newly_acked, includes_ack_eliciting, mut should_update_rtt) =
+            self.handle_ack_range(&mut newly_acked_packets, datagram, &frame, context)?;
 
         if largest_newly_acked.is_none() {
             // Nothing to do if there are no newly acked packets.
@@ -330,7 +298,7 @@ impl Manager {
         //# To avoid generating multiple RTT samples for a single packet, an ACK
         //# frame SHOULD NOT be used to update RTT estimates if it does not newly
         //# acknowledge the largest acknowledged packet.
-        should_update_rtt &= largest_newly_acked.0 == largest_acked_in_frame;
+        should_update_rtt &= largest_newly_acked.0 == largest_acked_packet_number;
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.1
         //# An RTT sample MUST NOT be generated on receiving an ACK frame that
@@ -345,7 +313,7 @@ impl Manager {
                 latest_rtt,
                 datagram.timestamp,
                 is_handshake_confirmed,
-                largest_acked_in_frame.space(),
+                largest_acked_packet_number.space(),
             );
 
             // Update the congestion controller with the latest RTT estimate
@@ -410,6 +378,66 @@ impl Manager {
         );
 
         Ok(())
+    }
+
+    // Process ack_range and return meta data.
+    fn handle_ack_range<A: frame::ack::AckRanges, CC: CongestionController, Ctx: Context<CC>>(
+        &mut self,
+        newly_acked_packets: &mut SmallVec<[SentPacketInfo; ACKED_PACKETS_INITIAL_CAPACITY]>,
+        datagram: &DatagramInfo,
+        frame: &frame::Ack<A>,
+        context: &mut Ctx,
+    ) -> Result<(Option<(PacketNumber, SentPacketInfo)>, bool, bool), transport::Error> {
+        let mut largest_newly_acked: Option<(PacketNumber, SentPacketInfo)> = None;
+        let mut includes_ack_eliciting = false;
+        let mut should_update_rtt = true;
+
+        for ack_range in frame.ack_ranges() {
+            let (start, end) = ack_range.into_inner();
+
+            let acked_packets = PacketNumberRange::new(
+                self.space.new_packet_number(start),
+                self.space.new_packet_number(end),
+            );
+
+            context.validate_packet_ack(datagram, &acked_packets)?;
+            // notify components of packets acked
+            context.on_packet_ack(datagram, &acked_packets);
+
+            let mut new_packet_ack = false;
+
+            for packet_number in acked_packets {
+                if let Some(acked_packet_info) = self.sent_packets.remove(packet_number) {
+                    new_packet_ack = true;
+
+                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.4
+                    //# Packets sent on the old path MUST NOT contribute to
+                    //# congestion control or RTT estimation for the new path.
+                    should_update_rtt &= context
+                        .path_by_id(acked_packet_info.path_id)
+                        .peer_socket_address
+                        == datagram.remote_address;
+
+                    newly_acked_packets.push(acked_packet_info);
+
+                    if largest_newly_acked.map_or(true, |(pn, _)| packet_number > pn) {
+                        largest_newly_acked = Some((packet_number, acked_packet_info));
+                    }
+
+                    includes_ack_eliciting |= acked_packet_info.ack_elicitation.is_ack_eliciting();
+                }
+            }
+
+            if new_packet_ack {
+                // notify components of packets that are newly acked
+                context.on_new_packet_ack(datagram, &acked_packets);
+            }
+        }
+        Ok((
+            largest_newly_acked,
+            includes_ack_eliciting,
+            should_update_rtt,
+        ))
     }
 
     /// Returns `true` if the recovery manager requires a probe packet to be sent.
