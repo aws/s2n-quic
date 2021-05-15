@@ -278,20 +278,36 @@ impl Manager {
         //# *  the largest acknowledged packet number is newly acknowledged, and
         //#
         //# *  at least one of the newly acknowledged packets was ack-eliciting.
-        // let mut largest_newly_acked: Option<(PacketNumber, SentPacketInfo)> = None;
-        // let mut includes_ack_eliciting = false;
-        // let mut should_update_rtt = true;
+        let (largest_newly_acked, includes_ack_eliciting, should_update_rtt) =
+            self.process_ack_range(&mut newly_acked_packets, datagram, &frame, context)?;
 
-        let (largest_newly_acked, includes_ack_eliciting, mut should_update_rtt) =
-            self.handle_ack_range(&mut newly_acked_packets, datagram, &frame, context)?;
-
-        if largest_newly_acked.is_none() {
-            // Nothing to do if there are no newly acked packets.
-            return Ok(());
+        if let Some(largest_newly_acked) = largest_newly_acked {
+            self.process_new_acked_packets(
+                &mut newly_acked_packets,
+                largest_newly_acked,
+                should_update_rtt,
+                includes_ack_eliciting,
+                largest_acked_packet_number,
+                datagram,
+                &frame,
+                context,
+            )?;
         }
 
-        let largest_newly_acked = largest_newly_acked.expect("There are newly acked packets");
+        Ok(())
+    }
 
+    fn process_new_acked_packets<A: frame::ack::AckRanges, CC: CongestionController, Ctx: Context<CC>>(
+        &mut self,
+        newly_acked_packets: &mut SmallVec<[SentPacketInfo; ACKED_PACKETS_INITIAL_CAPACITY]>,
+        largest_newly_acked: (PacketNumber, SentPacketInfo),
+        mut should_update_rtt: bool,
+        includes_ack_eliciting: bool,
+        largest_acked_packet_number: PacketNumber,
+        datagram: &DatagramInfo,
+        frame: &frame::Ack<A>,
+        context: &mut Ctx,
+    ) -> Result<(), transport::Error> {
         let is_handshake_confirmed = context.is_handshake_confirmed();
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.1
@@ -381,7 +397,7 @@ impl Manager {
     }
 
     // Process ack_range and return meta data.
-    fn handle_ack_range<A: frame::ack::AckRanges, CC: CongestionController, Ctx: Context<CC>>(
+    fn process_ack_range<A: frame::ack::AckRanges, CC: CongestionController, Ctx: Context<CC>>(
         &mut self,
         newly_acked_packets: &mut SmallVec<[SentPacketInfo; ACKED_PACKETS_INITIAL_CAPACITY]>,
         datagram: &DatagramInfo,
