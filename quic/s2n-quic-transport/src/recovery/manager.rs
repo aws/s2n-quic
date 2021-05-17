@@ -281,10 +281,11 @@ impl Manager {
         let (largest_newly_acked, includes_ack_eliciting, should_update_rtt) =
             self.process_ack_range(&mut newly_acked_packets, datagram, &frame, context)?;
 
-        if let Some(largest_newly_acked) = largest_newly_acked {
+        if let Some((largest_newly_acked_packet_number, largest_newly_acked_info)) = largest_newly_acked {
             self.process_new_acked_packets(
-                &mut newly_acked_packets,
-                largest_newly_acked,
+                &newly_acked_packets,
+                largest_newly_acked_packet_number,
+                largest_newly_acked_info,
                 should_update_rtt,
                 includes_ack_eliciting,
                 largest_acked_packet_number,
@@ -299,8 +300,9 @@ impl Manager {
 
     fn process_new_acked_packets<A: frame::ack::AckRanges, CC: CongestionController, Ctx: Context<CC>>(
         &mut self,
-        newly_acked_packets: &mut SmallVec<[SentPacketInfo; ACKED_PACKETS_INITIAL_CAPACITY]>,
-        largest_newly_acked: (PacketNumber, SentPacketInfo),
+        newly_acked_packets: &SmallVec<[SentPacketInfo; ACKED_PACKETS_INITIAL_CAPACITY]>,
+        largest_newly_acked_packet_number: PacketNumber,
+        largest_newly_acked_info: SentPacketInfo,
         mut should_update_rtt: bool,
         includes_ack_eliciting: bool,
         largest_acked_packet_number: PacketNumber,
@@ -314,7 +316,7 @@ impl Manager {
         //# To avoid generating multiple RTT samples for a single packet, an ACK
         //# frame SHOULD NOT be used to update RTT estimates if it does not newly
         //# acknowledge the largest acknowledged packet.
-        should_update_rtt &= largest_newly_acked.0 == largest_acked_packet_number;
+        should_update_rtt &= largest_newly_acked_packet_number == largest_acked_packet_number;
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.1
         //# An RTT sample MUST NOT be generated on receiving an ACK frame that
@@ -322,7 +324,7 @@ impl Manager {
         should_update_rtt &= includes_ack_eliciting;
 
         if should_update_rtt {
-            let latest_rtt = datagram.timestamp - largest_newly_acked.1.time_sent;
+            let latest_rtt = datagram.timestamp - largest_newly_acked_info.time_sent;
             let path = context.path_mut();
             path.rtt_estimator.update_rtt(
                 frame.ack_delay(),
@@ -334,7 +336,7 @@ impl Manager {
 
             // Update the congestion controller with the latest RTT estimate
             path.congestion_controller
-                .on_rtt_update(largest_newly_acked.1.time_sent, &path.rtt_estimator);
+                .on_rtt_update(largest_newly_acked_info.time_sent, &path.rtt_estimator);
 
             // Notify components the RTT estimate was updated
             context.on_rtt_update();
@@ -363,7 +365,7 @@ impl Manager {
         let path = context.path_mut();
         for acked_packet_info in newly_acked_packets {
             path.congestion_controller.on_packet_ack(
-                largest_newly_acked.1.time_sent,
+                largest_newly_acked_info.time_sent,
                 acked_packet_info.sent_bytes as usize,
                 &path.rtt_estimator,
                 datagram.timestamp,
