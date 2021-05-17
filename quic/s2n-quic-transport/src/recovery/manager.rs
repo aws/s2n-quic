@@ -325,6 +325,8 @@ impl Manager {
 
         if should_update_rtt {
             let latest_rtt = datagram.timestamp - largest_newly_acked_info.time_sent;
+            // FIXME we also need to make this path aware since rtt and congestion should only
+            // be updated if the packed arrived on that path
             let path = context.path_mut();
             path.rtt_estimator.update_rtt(
                 frame.ack_delay(),
@@ -346,6 +348,7 @@ impl Manager {
         //# If a path has been validated to support ECN ([RFC3168], [RFC8311]),
         //# QUIC treats a Congestion Experienced (CE) codepoint in the IP header
         //# as a signal of congestion.
+        // FIXME does this need to be path aware?
         if let Some(ecn_counts) = frame.ecn_counts {
             if ecn_counts.ce_count > self.ecn_ce_counter {
                 self.ecn_ce_counter = ecn_counts.ce_count;
@@ -410,7 +413,9 @@ impl Manager {
         context: &mut Ctx,
     ) -> Result<(Option<(PacketNumber, SentPacketInfo)>, bool, bool), transport::Error> {
         let mut largest_newly_acked: Option<(PacketNumber, SentPacketInfo)> = None;
+        // FIXME includes_ack_eliciting should path aware?
         let mut includes_ack_eliciting = false;
+        // FIXME should_update_rtt should path aware?
         let mut should_update_rtt = true;
 
         for ack_range in frame.ack_ranges() {
@@ -434,6 +439,13 @@ impl Manager {
                     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.4
                     //# Packets sent on the old path MUST NOT contribute to
                     //# congestion control or RTT estimation for the new path.
+                    // FIXME here we are checking that the path sent matches received path. however
+                    // its not clear what is path specific logic and what is not. its unclear if should_update_rtt
+                    // is/is_not path aware and if it needs to be
+                    //
+                    // FIXME here we are checking against remote address. since we are receiving
+                    // this packet, the remote_address should be our local_address and !=
+                    // peer_socket_address.
                     should_update_rtt &= context
                         .path_by_id(acked_packet_info.path_id)
                         .peer_socket_address
@@ -441,7 +453,7 @@ impl Manager {
 
                     newly_acked_packets.push(acked_packet_info);
 
-                    if largest_newly_acked.map_or(true, |(pn, _)| packet_number > pn) {
+                    if largest_newly_acked.map_or(true, |(current_largest_acked_packet_number, _)| packet_number > current_largest_acked_packet_number) {
                         largest_newly_acked = Some((packet_number, acked_packet_info));
                     }
 
