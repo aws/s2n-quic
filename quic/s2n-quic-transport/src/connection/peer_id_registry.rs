@@ -428,15 +428,17 @@ impl PeerIdRegistry {
         &mut self,
         current_id: Option<&connection::PeerId>,
     ) -> Option<connection::PeerId> {
-        let mut new_id = None;
+        let mut id = None;
 
+        // closure to check if current id is active
         let current_id_is_active =
             |id_info: &PeerIdInfo| current_id == Some(&id_info.id) && id_info.status.is_active();
 
         for id_info in self.registered_ids.iter_mut() {
             if current_id_is_active(id_info) {
                 // The current ID is still ok to use, so return it
-                return Some(id_info.id);
+                id = Some(id_info.id);
+                break;
             }
 
             if id_info.status == New {
@@ -454,7 +456,7 @@ impl PeerIdRegistry {
 
                 // Consume the new id
                 id_info.status = InUse;
-                new_id = Some(id_info.id);
+                id = Some(id_info.id);
                 break;
             }
         }
@@ -468,7 +470,7 @@ impl PeerIdRegistry {
             .find(|id_info| current_id_is_active(id_info))
             .is_none());
 
-        new_id
+        id
     }
 
     // Validate that the ACTIVE_CONNECTION_ID_LIMIT has not been exceeded

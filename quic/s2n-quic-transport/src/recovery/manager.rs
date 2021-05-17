@@ -281,7 +281,9 @@ impl Manager {
         let (largest_newly_acked, includes_ack_eliciting, should_update_rtt) =
             self.process_ack_range(&mut newly_acked_packets, datagram, &frame, context)?;
 
-        if let Some((largest_newly_acked_packet_number, largest_newly_acked_info)) = largest_newly_acked {
+        if let Some((largest_newly_acked_packet_number, largest_newly_acked_info)) =
+            largest_newly_acked
+        {
             self.process_new_acked_packets(
                 &newly_acked_packets,
                 largest_newly_acked_packet_number,
@@ -292,13 +294,17 @@ impl Manager {
                 datagram,
                 &frame,
                 context,
-            )?;
+            );
         }
 
         Ok(())
     }
 
-    fn process_new_acked_packets<A: frame::ack::AckRanges, CC: CongestionController, Ctx: Context<CC>>(
+    fn process_new_acked_packets<
+        A: frame::ack::AckRanges,
+        CC: CongestionController,
+        Ctx: Context<CC>,
+    >(
         &mut self,
         newly_acked_packets: &SmallVec<[SentPacketInfo; ACKED_PACKETS_INITIAL_CAPACITY]>,
         largest_newly_acked_packet_number: PacketNumber,
@@ -309,7 +315,7 @@ impl Manager {
         datagram: &DatagramInfo,
         frame: &frame::Ack<A>,
         context: &mut Ctx,
-    ) -> Result<(), transport::Error> {
+    ) {
         let is_handshake_confirmed = context.is_handshake_confirmed();
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.1
@@ -400,8 +406,6 @@ impl Manager {
                 self.space.is_application_data() && is_handshake_confirmed,
             );
         }
-
-        Ok(())
     }
 
     // Process ack_range and return meta data.
@@ -453,7 +457,7 @@ impl Manager {
 
                     newly_acked_packets.push(acked_packet_info);
 
-                    if largest_newly_acked.map_or(true, |(current_largest_acked_packet_number, _)| packet_number > current_largest_acked_packet_number) {
+                    if largest_newly_acked.map_or(true, |(pn, _)| packet_number > pn) {
                         largest_newly_acked = Some((packet_number, acked_packet_info));
                     }
 
