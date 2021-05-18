@@ -184,8 +184,7 @@ impl Manager {
             let is_handshake_confirmed = context.is_handshake_confirmed();
             let path = context.path_mut_by_id(path_id);
             self.update_pto_timer(path, time_sent, is_handshake_confirmed);
-            context.path_mut_by_id(path_id)
-                .congestion_controller
+            path.congestion_controller
                 .on_packet_sent(time_sent, congestion_controlled_bytes);
         }
     }
@@ -1094,15 +1093,14 @@ mod test {
         //# initial value; see [QUIC-RECOVERY].
         // The latest Rtt should be the default for the new path
         assert_eq!(
-            context.path_by_id(new_path_id)
-                .rtt_estimator
-                .latest_rtt(),
+            context.path_by_id(new_path_id).rtt_estimator.latest_rtt(),
             DEFAULT_INITIAL_RTT
         );
 
         // The lost packet should not count against the new path
         assert_eq!(
-            context.path_by_id(new_path_id)
+            context
+                .path_by_id(new_path_id)
                 .congestion_controller
                 .lost_bytes,
             0
@@ -1111,7 +1109,8 @@ mod test {
         // The lost packets should count against the original path they were sent on
         assert_eq!(context.on_packet_loss_count, 2);
         assert_eq!(
-            context.path_by_id(original_path_id)
+            context
+                .path_by_id(original_path_id)
                 .congestion_controller
                 .lost_bytes,
             (packet_bytes * 2) as u32
@@ -1249,7 +1248,7 @@ mod test {
         assert_eq!(2, context.on_rtt_update_count);
 
         // Ack packet 10, but with a path that is not peer validated
-        context.path_mut_by_id(path::Id::new(0)) = Path::new(
+        context.path_manager[path::Id::new(0)] = Path::new(
             Default::default(),
             connection::PeerId::TEST_ID,
             connection::LocalId::TEST_ID,
@@ -1571,13 +1570,14 @@ mod test {
         assert_eq!(manager.sent_packets.iter().count(), 2);
 
         // receive ack for both packets on address of first path (first packet is largest)
-        ack_packets_on_path(
-            0..=1,
-            ack_receive_time,
-            &mut context,
-            &mut manager,
-            first_addr,
-        );
+        let datagram = DatagramInfo {
+            timestamp: ack_receive_time,
+            remote_address: first_addr,
+            payload_len: 0,
+            ecn: Default::default(),
+            destination_connection_id: connection::LocalId::TEST_ID,
+        };
+        ack_packets_on_path(0..=1, &datagram, &mut context, &mut manager);
 
         let first_path = context.path_by_id(first_path_id);
         let second_path = context.path_by_id(second_path_id);
@@ -1864,7 +1864,8 @@ mod test {
         //# The congestion period is calculated as the time between the oldest
         //# and newest lost packets: 8 - 1 = 7.
         assert!(
-            context.path_by_id(path_id)
+            context
+                .path_by_id(path_id)
                 .rtt_estimator
                 .persistent_congestion_threshold()
                 < Duration::from_secs(7)
@@ -2108,7 +2109,7 @@ mod test {
             MockCongestionController::default(),
             true,
         );
-        context.path_mut_by_id(path::Id::new(0)) = path;
+        context.path_manager[path::Id::new(0)] = path;
 
         context.path_mut().rtt_estimator.update_rtt(
             Duration::from_millis(0),
@@ -2695,7 +2696,7 @@ mod test {
         }
     }
 
-    impl<'a> recovery::Context<Endpoint> for MockContext<'a> {
+    impl<'a> recovery::Context<MockCongestionController> for MockContext<'a> {
         const ENDPOINT_TYPE: endpoint::Type = endpoint::Type::Client;
 
         fn is_handshake_confirmed(&self) -> bool {
