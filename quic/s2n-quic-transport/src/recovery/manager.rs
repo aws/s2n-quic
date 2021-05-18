@@ -278,69 +278,13 @@ impl Manager {
         //# *  the largest acknowledged packet number is newly acknowledged, and
         //#
         //# *  at least one of the newly acknowledged packets was ack-eliciting.
-        let (largest_newly_acked, includes_ack_eliciting, should_update_rtt) =
-            self.process_ack_range(&mut newly_acked_packets, datagram, &frame, context)?;
-
-        if let Some((largest_newly_acked_packet_number, largest_newly_acked_info)) = largest_newly_acked {
-            self.process_new_acked_packets(
-                &newly_acked_packets,
-                largest_newly_acked_packet_number,
-                largest_newly_acked_info,
-                should_update_rtt,
-                includes_ack_eliciting,
-                largest_acked_packet_number,
-                datagram,
-                &frame,
-                context,
-            )?;
-        }
-
-        Ok(())
-    }
-
-    fn process_new_acked_packets<A: frame::ack::AckRanges, CC: CongestionController, Ctx: Context<CC>>(
-        &mut self,
-        newly_acked_packets: &SmallVec<[SentPacketInfo; ACKED_PACKETS_INITIAL_CAPACITY]>,
-        largest_newly_acked_packet_number: PacketNumber,
-        largest_newly_acked_info: SentPacketInfo,
-        mut should_update_rtt: bool,
-        includes_ack_eliciting: bool,
-        largest_acked_packet_number: PacketNumber,
-        datagram: &DatagramInfo,
-        frame: &frame::Ack<A>,
-        context: &mut Ctx,
-    ) -> Result<(), transport::Error> {
-        let is_handshake_confirmed = context.is_handshake_confirmed();
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.1
-        //# To avoid generating multiple RTT samples for a single packet, an ACK
-        //# frame SHOULD NOT be used to update RTT estimates if it does not newly
-        //# acknowledge the largest acknowledged packet.
-        should_update_rtt &= largest_newly_acked_packet_number == largest_acked_packet_number;
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.1
-        //# An RTT sample MUST NOT be generated on receiving an ACK frame that
-        //# does not newly acknowledge at least one ack-eliciting packet.
-        should_update_rtt &= includes_ack_eliciting;
-
-        if should_update_rtt {
-            let latest_rtt = datagram.timestamp - largest_newly_acked_info.time_sent;
-            let path = context.path_mut();
-            path.rtt_estimator.update_rtt(
-                frame.ack_delay(),
-                latest_rtt,
-                datagram.timestamp,
-                is_handshake_confirmed,
-                largest_acked_packet_number.space(),
-            );
-
-            // Update the congestion controller with the latest RTT estimate
-            path.congestion_controller
-                .on_rtt_update(largest_newly_acked_info.time_sent, &path.rtt_estimator);
-
-            // Notify components the RTT estimate was updated
-            context.on_rtt_update();
-        }
+        let largest_newly_acked_time_sent = self.process_ack_range(
+            &mut newly_acked_packets,
+            largest_acked_packet_number,
+            datagram,
+            &frame,
+            context,
+        )?;
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.1
         //# If a path has been validated to support ECN ([RFC3168], [RFC8311]),
@@ -356,44 +300,14 @@ impl Manager {
             }
         }
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.1.2
-        //# Once a later packet within the same packet number space has been
-        //# acknowledged, an endpoint SHOULD declare an earlier packet lost if it
-        //# was sent a threshold amount of time in the past.
-        self.detect_and_remove_lost_packets(datagram.timestamp, context);
-
-        let path = context.path_mut();
-        for acked_packet_info in newly_acked_packets {
-            path.congestion_controller.on_packet_ack(
-                largest_newly_acked_info.time_sent,
-                acked_packet_info.sent_bytes as usize,
-                &path.rtt_estimator,
-                datagram.timestamp,
+        if let Some(largest_newly_acked_time_sent) = largest_newly_acked_time_sent {
+            self.process_new_acked_packets(
+                &newly_acked_packets,
+                largest_newly_acked_time_sent,
+                datagram,
+                context,
             );
         }
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
-        //# The PTO backoff factor is reset when an acknowledgement is received,
-        //# except in the following case.  A server might take longer to respond
-        //# to packets during the handshake than otherwise.  To protect such a
-        //# server from repeated client probes, the PTO backoff is not reset at a
-        //# client that is not yet certain that the server has finished
-        //# validating the client's address.  That is, a client does not reset
-        //# the PTO backoff factor on receiving acknowledgements in Initial
-        //# packets.
-        if context.path().is_peer_validated() {
-            context.path_mut().reset_pto_backoff();
-        }
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
-        //# A sender SHOULD restart its PTO timer every time an ack-eliciting
-        //# packet is sent or acknowledged,
-        let is_handshake_confirmed = context.is_handshake_confirmed();
-        self.update_pto_timer(
-            context.path_mut(),
-            datagram.timestamp,
-            self.space.is_application_data() && is_handshake_confirmed,
-        );
 
         Ok(())
     }
@@ -402,10 +316,11 @@ impl Manager {
     fn process_ack_range<A: frame::ack::AckRanges, CC: CongestionController, Ctx: Context<CC>>(
         &mut self,
         newly_acked_packets: &mut SmallVec<[SentPacketInfo; ACKED_PACKETS_INITIAL_CAPACITY]>,
+        largest_acked_packet_number: PacketNumber,
         datagram: &DatagramInfo,
         frame: &frame::Ack<A>,
         context: &mut Ctx,
-    ) -> Result<(Option<(PacketNumber, SentPacketInfo)>, bool, bool), transport::Error> {
+    ) -> Result<Option<Timestamp>, transport::Error> {
         let mut largest_newly_acked: Option<(PacketNumber, SentPacketInfo)> = None;
         let mut includes_ack_eliciting = false;
         let mut should_update_rtt = true;
@@ -451,11 +366,90 @@ impl Manager {
                 context.on_new_packet_ack(datagram, &acked_packets);
             }
         }
-        Ok((
-            largest_newly_acked,
-            includes_ack_eliciting,
-            should_update_rtt,
-        ))
+
+        let is_handshake_confirmed = context.is_handshake_confirmed();
+        if let Some((largest_newly_acked_packet_number, largest_newly_acked_info)) =
+            largest_newly_acked
+        {
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.1
+            //# To avoid generating multiple RTT samples for a single packet, an ACK
+            //# frame SHOULD NOT be used to update RTT estimates if it does not newly
+            //# acknowledge the largest acknowledged packet.
+            should_update_rtt &= largest_newly_acked_packet_number == largest_acked_packet_number;
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.1
+            //# An RTT sample MUST NOT be generated on receiving an ACK frame that
+            //# does not newly acknowledge at least one ack-eliciting packet.
+            should_update_rtt &= includes_ack_eliciting;
+
+            if should_update_rtt {
+                let latest_rtt = datagram.timestamp - largest_newly_acked_info.time_sent;
+                let path = context.path_mut();
+                path.rtt_estimator.update_rtt(
+                    frame.ack_delay(),
+                    latest_rtt,
+                    datagram.timestamp,
+                    is_handshake_confirmed,
+                    largest_acked_packet_number.space(),
+                );
+
+                // Update the congestion controller with the latest RTT estimate
+                path.congestion_controller
+                    .on_rtt_update(largest_newly_acked_info.time_sent, &path.rtt_estimator);
+
+                // Notify components the RTT estimate was updated
+                context.on_rtt_update();
+            }
+        }
+
+        Ok(largest_newly_acked.map(|(_packet_number, packet_info)| packet_info.time_sent))
+    }
+
+    fn process_new_acked_packets<CC: CongestionController, Ctx: Context<CC>>(
+        &mut self,
+        newly_acked_packets: &SmallVec<[SentPacketInfo; ACKED_PACKETS_INITIAL_CAPACITY]>,
+        largest_newly_acked_time_sent: Timestamp,
+        datagram: &DatagramInfo,
+        context: &mut Ctx,
+    ) {
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.1.2
+        //# Once a later packet within the same packet number space has been
+        //# acknowledged, an endpoint SHOULD declare an earlier packet lost if it
+        //# was sent a threshold amount of time in the past.
+        self.detect_and_remove_lost_packets(datagram.timestamp, context);
+
+        let path = context.path_mut();
+        for acked_packet_info in newly_acked_packets {
+            path.congestion_controller.on_packet_ack(
+                largest_newly_acked_time_sent,
+                acked_packet_info.sent_bytes as usize,
+                &path.rtt_estimator,
+                datagram.timestamp,
+            );
+        }
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+        //# The PTO backoff factor is reset when an acknowledgement is received,
+        //# except in the following case.  A server might take longer to respond
+        //# to packets during the handshake than otherwise.  To protect such a
+        //# server from repeated client probes, the PTO backoff is not reset at a
+        //# client that is not yet certain that the server has finished
+        //# validating the client's address.  That is, a client does not reset
+        //# the PTO backoff factor on receiving acknowledgements in Initial
+        //# packets.
+        if context.path().is_peer_validated() {
+            context.path_mut().reset_pto_backoff();
+        }
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+        //# A sender SHOULD restart its PTO timer every time an ack-eliciting
+        //# packet is sent or acknowledged,
+        let is_handshake_confirmed = context.is_handshake_confirmed();
+        self.update_pto_timer(
+            context.path_mut(),
+            datagram.timestamp,
+            self.space.is_application_data() && is_handshake_confirmed,
+        );
     }
 
     /// Returns `true` if the recovery manager requires a probe packet to be sent.
