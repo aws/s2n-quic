@@ -14,5 +14,9 @@ pub struct DatagramInfo {
     pub remote_address: SocketAddress,
     pub payload_len: usize,
     pub ecn: ExplicitCongestionNotification,
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#7.2
+    //# the Destination Connection ID is chosen by the recipient of the
+    //# packet and is used to provide consistent routing
     pub destination_connection_id: connection::LocalId,
 }
