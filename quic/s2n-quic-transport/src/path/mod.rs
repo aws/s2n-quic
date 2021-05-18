@@ -34,6 +34,8 @@ pub struct Path<CC: CongestionController> {
     pub peer_socket_address: SocketAddress,
     /// The connection id of the peer
     pub peer_connection_id: connection::PeerId,
+    /// The local connection id
+    pub local_connection_id: connection::LocalId,
     /// The path owns the roundtrip between peers
     pub rtt_estimator: RttEstimator,
     /// The congestion controller for the path
@@ -58,6 +60,7 @@ impl<CC: CongestionController> Path<CC> {
     pub fn new(
         peer_socket_address: SocketAddress,
         peer_connection_id: connection::PeerId,
+        local_connection_id: connection::LocalId,
         rtt_estimator: RttEstimator,
         congestion_controller: CC,
         peer_validated: bool,
@@ -65,6 +68,7 @@ impl<CC: CongestionController> Path<CC> {
         Path {
             peer_socket_address,
             peer_connection_id,
+            local_connection_id,
             rtt_estimator,
             congestion_controller,
             pto_backoff: INITIAL_PTO_BACKOFF,
@@ -297,6 +301,7 @@ pub mod testing {
         Path::new(
             SocketAddress::default(),
             connection::PeerId::try_from_bytes(&[]).unwrap(),
+            connection::LocalId::TEST_ID,
             RttEstimator::new(Duration::from_millis(30)),
             Unlimited::default(),
             true,
@@ -453,6 +458,7 @@ mod tests {
         let mut path = Path::new(
             SocketAddress::default(),
             connection::PeerId::try_from_bytes(&[]).unwrap(),
+            connection::LocalId::TEST_ID,
             RttEstimator::new(Duration::from_millis(30)),
             CubicCongestionController::new(MINIMUM_MTU),
             false,

@@ -115,6 +115,12 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         random_generator: &mut Rnd,
     ) -> Result<(Id, bool), transport::Error> {
         if let Some((id, path)) = self.path_mut(&datagram.remote_address) {
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3
+            //# At any time, endpoints MAY change the Destination Connection ID they
+            //# transmit with to a value that has not been used on another
+            //# path.
+            path.local_connection_id = datagram.destination_connection_id;
+
             let unblocked = path.on_bytes_received(datagram.payload_len);
             return Ok((id, unblocked));
         }
@@ -225,6 +231,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
             // PeerIdRegistry::consume_new_id_if_necessary(None) and ignoring the request if
             // no new connection::PeerId is available to use.
             new_id.unwrap(),
+            datagram.destination_connection_id,
             rtt,
             cc,
             true,
@@ -494,9 +501,11 @@ mod tests {
     #[test]
     fn get_path_by_address_test() {
         let first_conn_id = connection::PeerId::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
+        let first_conn_local_id = connection::LocalId::TEST_ID;
         let first_path = Path::new(
             SocketAddress::default(),
             first_conn_id,
+            first_conn_local_id,
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
@@ -506,6 +515,7 @@ mod tests {
         let second_path = Path::new(
             SocketAddress::default(),
             second_conn_id,
+            first_conn_local_id,
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
@@ -530,9 +540,11 @@ mod tests {
     #[test]
     fn test_invalid_path_fallback() {
         let first_conn_id = connection::PeerId::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
+        let first_conn_local_id = connection::LocalId::TEST_ID;
         let first_path = Path::new(
             SocketAddress::default(),
             first_conn_id,
+            first_conn_local_id,
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
@@ -550,6 +562,7 @@ mod tests {
         let second_path = Path::new(
             SocketAddress::default(),
             first_conn_id,
+            first_conn_local_id,
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
@@ -589,6 +602,7 @@ mod tests {
         let first_path = Path::new(
             SocketAddress::default(),
             first_conn_id,
+            connection::LocalId::TEST_ID,
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
@@ -640,9 +654,11 @@ mod tests {
     #[allow(unreachable_code)]
     fn test_new_peer() {
         let first_conn_id = connection::PeerId::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
+        let first_conn_local_id = connection::LocalId::TEST_ID;
         let first_path = Path::new(
             SocketAddress::default(),
             first_conn_id,
+            first_conn_local_id,
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
@@ -665,7 +681,7 @@ mod tests {
             remote_address: new_addr,
             payload_len: 0,
             ecn: ExplicitCongestionNotification::default(),
-            destination_connection_id: connection::LocalId::TEST_ID,
+            destination_connection_id: first_conn_local_id,
         };
 
         // NOTE This generator should be passed to on_datagram_received when migation is enabled
@@ -717,7 +733,7 @@ mod tests {
             remote_address: new_addr,
             payload_len: 0,
             ecn: ExplicitCongestionNotification::default(),
-            destination_connection_id: connection::LocalId::TEST_ID,
+            destination_connection_id: first_conn_local_id,
         };
 
         // Verify an unconfirmed handshake does not add a new path
@@ -748,6 +764,7 @@ mod tests {
         let first_path = Path::new(
             SocketAddress::default(),
             id_1,
+            connection::LocalId::TEST_ID,
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
