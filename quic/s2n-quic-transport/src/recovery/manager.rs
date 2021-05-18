@@ -346,6 +346,17 @@ impl Manager {
                     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.4
                     //# Packets sent on the old path MUST NOT contribute to
                     //# congestion control or RTT estimation for the new path.
+                    //
+    // FIXME what happens if in one loop the packet_numeber matches current path
+    // but in second loop the packet numbers dont match??
+    //
+    // since should_update_rtt depends on largest_newly_acked_info.time_sent
+    //
+    // largest_newly_acked should only be updated when the path sent and received matches
+
+                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.4
+                    //# A receiver of packets on multiple paths will still send ACK
+                    //# frames covering all received packets.
                     should_update_rtt &= context
                         .path_by_id(acked_packet_info.path_id)
                         .peer_socket_address
@@ -375,12 +386,12 @@ impl Manager {
             //# To avoid generating multiple RTT samples for a single packet, an ACK
             //# frame SHOULD NOT be used to update RTT estimates if it does not newly
             //# acknowledge the largest acknowledged packet.
-            should_update_rtt &= largest_newly_acked_packet_number == largest_acked_packet_number;
+should_update_rtt &= largest_newly_acked_packet_number == largest_acked_packet_number;
 
             //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.1
             //# An RTT sample MUST NOT be generated on receiving an ACK frame that
             //# does not newly acknowledge at least one ack-eliciting packet.
-            should_update_rtt &= includes_ack_eliciting;
+should_update_rtt &= includes_ack_eliciting;
 
             if should_update_rtt {
                 let latest_rtt = datagram.timestamp - largest_newly_acked_info.time_sent;
@@ -835,6 +846,7 @@ mod test {
         connection, endpoint,
         frame::ack_elicitation::AckElicitation,
         inet::SocketAddress,
+        inet::{DatagramInfo, ExplicitCongestionNotification},
         packet::number::PacketNumberSpace,
         path::INITIAL_PTO_BACKOFF,
         random,
@@ -845,8 +857,10 @@ mod test {
             },
             DEFAULT_INITIAL_RTT,
         },
+        time::{Clock, NoopClock},
         varint::VarInt,
     };
+    use std::net::SocketAddr;
     use std::collections::HashSet;
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.2
@@ -1280,6 +1294,122 @@ mod test {
             Duration::from_millis(1500)
         );
         assert_eq!(1, context.on_rtt_update_count);
+    }
+
+    #[test]
+    // create path manager with two paths
+    // send packet on each path
+    //    packet 0: path 0: time 100
+    //    packet 1: path 1: time 200
+    // send ack for both packet on path 0
+    // update rtt for path 0 using time packet 0 since it was sent/received on path 0
+    // rtt for path 1 should be unchanged
+    fn bla() {
+        let space = PacketNumberSpace::ApplicationData;
+        let mut manager = Manager::new(space, Duration::from_millis(100));
+        let packet_bytes = 128;
+        let clock = NoopClock {};
+
+        let first_addr = SocketAddress::IpV4(Default::default());
+        let second_addr: SocketAddr = "127.0.0.1:80".parse().unwrap();
+        let second_addr = SocketAddress::from(second_addr);
+
+        let first_path_id = path::Id::new(0);
+        let second_path_id = path::Id::new(1);
+
+        // confirm we have one path
+        let mut path_manager = generate_path_manager(Duration::from_millis(10));
+        {
+        assert!(path_manager.path(&first_addr).is_some());
+        assert!(path_manager.path(&second_addr).is_none());
+        }
+
+        // insert and confirm we have two paths
+        {
+        let datagram = DatagramInfo {
+            timestamp: clock.get_time(),
+            remote_address: second_addr,
+            payload_len: 0,
+            ecn: ExplicitCongestionNotification::default(),
+            destination_connection_id: connection::LocalId::TEST_ID,
+        };
+        let _ = path_manager
+            .on_datagram_received(
+                &datagram,
+                &connection::Limits::default(),
+                true,
+                &mut Endpoint::default(),
+                &mut random::testing::Generator(123),
+            )
+            .unwrap();
+        assert!(path_manager.path(&second_addr).is_some());
+        assert_eq!(path_manager.active_path_id(), first_path_id);
+        }
+
+        let mut context = MockContext::new(&mut path_manager);
+        let time_sent = s2n_quic_platform::time::now() + Duration::from_secs(10);
+        let first_sent_time = time_sent + Duration::from_millis(200);
+        let second_sent_time = time_sent + Duration::from_millis(500);
+        let ack_receive_time = time_sent + Duration::from_millis(1000);
+
+        // send packet on first path. sent + 200
+        manager.on_packet_sent(
+            space.new_packet_number(VarInt::from_u8(0)),
+            transmission::Outcome {
+                ack_elicitation: AckElicitation::Eliciting,
+                is_congestion_controlled: true,
+                bytes_sent: packet_bytes,
+                packet_number: space.new_packet_number(VarInt::from_u8(1)),
+            },
+            first_sent_time,
+            first_path_id,
+            &mut context,
+        );
+        // send packet on second path. sent +500
+        manager.on_packet_sent(
+            space.new_packet_number(VarInt::from_u8(1)),
+            transmission::Outcome {
+                ack_elicitation: AckElicitation::Eliciting,
+                is_congestion_controlled: true,
+                bytes_sent: packet_bytes,
+                packet_number: space.new_packet_number(VarInt::from_u8(1)),
+            },
+            second_sent_time,
+            second_path_id,
+            &mut context,
+        );
+        assert_eq!(manager.sent_packets.iter().count(), 2);
+
+        // receive ack for both packets on address of first path
+        ack_packets_on_path(
+            0..=1,
+            ack_receive_time,
+            &mut context,
+            &mut manager,
+            first_addr,
+        );
+
+        let first_path = context.path_by_id(first_path_id);
+        let second_path = context.path_by_id(second_path_id);
+
+        // received packet on first path so we expect an rtt update using sent time of the first path
+        assert_eq!(
+            manager.largest_acked_packet,
+            Some(space.new_packet_number(VarInt::from_u8(1)))
+        );
+
+        assert_eq!(
+            first_path.rtt_estimator.latest_rtt(),
+            ack_receive_time - first_sent_time
+        );
+        assert_eq!(1, context.on_rtt_update_count);
+        assert_eq!(first_path.congestion_controller.on_rtt_update, 1);
+
+        assert_eq!(
+            second_path.rtt_estimator.latest_rtt(),
+            Duration::from_millis(DEFAULT_INITIAL_RTT.as_millis() as u64)
+        );
+        assert_eq!(second_path.congestion_controller.on_rtt_update, 0);
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.10
