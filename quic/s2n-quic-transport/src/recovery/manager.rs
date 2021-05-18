@@ -599,7 +599,7 @@ impl Manager {
             //# sample prevents a sender from establishing persistent congestion with
             //# potentially too few probes.
             if context
-                .path()
+                .path_mut_by_id(unacked_sent_info.path_id)
                 .rtt_estimator
                 .first_rtt_sample()
                 .map_or(false, |ts| unacked_sent_info.time_sent > ts)
