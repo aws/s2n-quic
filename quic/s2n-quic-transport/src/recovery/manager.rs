@@ -182,7 +182,7 @@ impl Manager {
             //# A sender SHOULD restart its PTO timer every time an ack-eliciting
             //# packet is sent or acknowledged,
             let is_handshake_confirmed = context.is_handshake_confirmed();
-            let path = context.path_mut();
+            let path = context.path_mut_by_id(path_id);
             self.update_pto_timer(path, time_sent, is_handshake_confirmed);
             path.congestion_controller
                 .on_packet_sent(time_sent, congestion_controlled_bytes);
@@ -422,38 +422,38 @@ impl Manager {
         //# was sent a threshold amount of time in the past.
         self.detect_and_remove_lost_packets(datagram.timestamp, context);
 
-        let path = context.path_mut();
+        let is_handshake_confirmed = context.is_handshake_confirmed();
         for acked_packet_info in newly_acked_packets {
+            let path = context.path_mut_by_id(acked_packet_info.path_id);
             path.congestion_controller.on_packet_ack(
                 largest_newly_acked_time_sent,
                 acked_packet_info.sent_bytes as usize,
                 &path.rtt_estimator,
                 datagram.timestamp,
             );
-        }
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
-        //# The PTO backoff factor is reset when an acknowledgement is received,
-        //# except in the following case.  A server might take longer to respond
-        //# to packets during the handshake than otherwise.  To protect such a
-        //# server from repeated client probes, the PTO backoff is not reset at a
-        //# client that is not yet certain that the server has finished
-        //# validating the client's address.  That is, a client does not reset
-        //# the PTO backoff factor on receiving acknowledgements in Initial
-        //# packets.
-        if context.path().is_peer_validated() {
-            context.path_mut().reset_pto_backoff();
-        }
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+            //# The PTO backoff factor is reset when an acknowledgement is received,
+            //# except in the following case.  A server might take longer to respond
+            //# to packets during the handshake than otherwise.  To protect such a
+            //# server from repeated client probes, the PTO backoff is not reset at a
+            //# client that is not yet certain that the server has finished
+            //# validating the client's address.  That is, a client does not reset
+            //# the PTO backoff factor on receiving acknowledgements in Initial
+            //# packets.
+            if path.is_peer_validated() {
+                path.reset_pto_backoff();
+            }
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
-        //# A sender SHOULD restart its PTO timer every time an ack-eliciting
-        //# packet is sent or acknowledged,
-        let is_handshake_confirmed = context.is_handshake_confirmed();
-        self.update_pto_timer(
-            context.path_mut(),
-            datagram.timestamp,
-            self.space.is_application_data() && is_handshake_confirmed,
-        );
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+            //# A sender SHOULD restart its PTO timer every time an ack-eliciting
+            //# packet is sent or acknowledged,
+            self.update_pto_timer(
+                path,
+                datagram.timestamp,
+                self.space.is_application_data() && is_handshake_confirmed,
+            );
+        }
     }
 
     /// Returns `true` if the recovery manager requires a probe packet to be sent.
@@ -485,14 +485,9 @@ impl Manager {
         now: Timestamp,
         context: &mut Ctx,
     ) {
-        let path = context.path_mut();
         // Cancel the loss timer. It will be armed again if any unacknowledged packets are
         // older than the largest acked packet, but not old enough to be considered lost yet
         self.loss_timer.cancel();
-        // Calculate how long we wait until a packet is declared lost
-        let time_threshold = Self::calculate_loss_time_threshold(&path.rtt_estimator);
-        // Packets sent before this time are deemed lost.
-        let lost_send_time = now.checked_sub(time_threshold);
 
         // TODO: Investigate a more efficient mechanism for managing sent_packets
         //       See https://github.com/awslabs/s2n-quic/issues/69
@@ -502,12 +497,17 @@ impl Manager {
             .largest_acked_packet
             .expect("This function is only called after an ack has been received");
 
-        let mut lost_bytes = 0;
         let mut persistent_congestion_period = Duration::from_secs(0);
         let mut max_persistent_congestion_period = Duration::from_secs(0);
         let mut prev_packet: Option<(&PacketNumber, Timestamp)> = None;
 
         for (unacked_packet_number, unacked_sent_info) in self.sent_packets.iter() {
+            let path = &context.path_by_id(unacked_sent_info.path_id);
+            // Calculate how long we wait until a packet is declared lost
+            let time_threshold = Self::calculate_loss_time_threshold(&path.rtt_estimator);
+            // Packets sent before this time are deemed lost.
+            let lost_send_time = now.checked_sub(time_threshold);
+
             if unacked_packet_number > largest_acked_packet {
                 // sent_packets is ordered by packet number, so all remaining packets will be larger
                 break;
@@ -532,11 +532,14 @@ impl Manager {
             //#       acknowledged packet (Section 6.1.1), or it was sent long enough in
             //#       the past (Section 6.1.2).
             if time_threshold_exceeded || packet_number_threshold_exceeded {
-                sent_packets_to_remove.push(*unacked_packet_number);
+                sent_packets_to_remove.push((
+                    *unacked_packet_number,
+                    unacked_sent_info.sent_bytes,
+                    unacked_sent_info.path_id,
+                ));
 
                 if unacked_sent_info.congestion_controlled {
                     // The packet is "in-flight", ie congestion controlled
-                    lost_bytes += unacked_sent_info.sent_bytes as u32;
                     // TODO merge contiguous packet numbers
                     let range =
                         PacketNumberRange::new(*unacked_packet_number, *unacked_packet_number);
@@ -605,34 +608,34 @@ impl Manager {
             }
         }
 
-        for packet_number in sent_packets_to_remove {
+        // Remove the lost packets and account for the bytes on the proper congestion controller
+        for (packet_number, lost_bytes, path_id) in sent_packets_to_remove {
+            let path = &mut context.path_mut_by_id(path_id);
+
             self.sent_packets.remove(packet_number);
-        }
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.2
-        //# A sender that does not have state for all packet
-        //# number spaces or an implementation that cannot compare send times
-        //# across packet number spaces MAY use state for just the packet number
-        //# space that was acknowledged.
-        let persistent_congestion = max_persistent_congestion_period
-            > context
-                .path()
-                .rtt_estimator
-                .persistent_congestion_threshold();
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.2
+            //# A sender that does not have state for all packet
+            //# number spaces or an implementation that cannot compare send times
+            //# across packet number spaces MAY use state for just the packet number
+            //# space that was acknowledged.
+            let persistent_congestion = max_persistent_congestion_period
+                > path.rtt_estimator.persistent_congestion_threshold();
 
-        if lost_bytes > 0 {
-            context.path_mut().congestion_controller.on_packets_lost(
-                lost_bytes,
-                persistent_congestion,
-                now,
-            );
-        }
+            if lost_bytes > 0 {
+                path.congestion_controller.on_packets_lost(
+                    lost_bytes as u32,
+                    persistent_congestion,
+                    now,
+                );
+            }
 
-        if persistent_congestion {
-            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.2
-            //# Endpoints SHOULD set the min_rtt to the newest RTT sample after
-            //# persistent congestion is established.
-            context.path_mut().rtt_estimator.on_persistent_congestion();
+            if persistent_congestion {
+                //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.2
+                //# Endpoints SHOULD set the min_rtt to the newest RTT sample after
+                //# persistent congestion is established.
+                context.path_mut().rtt_estimator.on_persistent_congestion();
+            }
         }
     }
 
@@ -667,6 +670,8 @@ pub trait Context<CC: CongestionController> {
     fn path_mut(&mut self) -> &mut Path<CC>;
 
     fn path_by_id(&self, path_id: path::Id) -> &path::Path<CC>;
+
+    fn path_mut_by_id(&mut self, path_id: path::Id) -> &mut path::Path<CC>;
 
     fn validate_packet_ack(
         &mut self,
@@ -1873,14 +1878,14 @@ mod test {
         //         now, at t=20.1
         ack_packets(
             3..=3,
-            time_zero + Duration::from_millis(20100),
+            time_zero + Duration::from_millis(20_100),
             &mut context,
             &mut manager,
         );
 
         // There is no persistent congestion, because the lost packets were all
         // sent prior to the first RTT sample
-        assert_eq!(context.path().congestion_controller.on_packets_lost, 1);
+        assert_eq!(context.path().congestion_controller.on_packets_lost, 2);
         assert_eq!(
             context.path().congestion_controller.persistent_congestion,
             Some(false)
@@ -2498,6 +2503,10 @@ mod test {
 
         fn path_by_id(&self, path_id: path::Id) -> &Path<MockCongestionController> {
             &self.path_manager[path_id]
+        }
+
+        fn path_mut_by_id(&mut self, path_id: path::Id) -> &mut Path<MockCongestionController> {
+            &mut self.path_manager[path_id]
         }
 
         fn validate_packet_ack(
