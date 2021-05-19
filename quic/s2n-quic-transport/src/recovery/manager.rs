@@ -250,7 +250,7 @@ impl Manager {
         self.pto.on_transmit(context)
     }
 
-    /// Process ack frame. Update congestion controler, timers and meta data around acked
+    /// Process ACK frame. Update congestion controler, timers and meta data around acked
     /// packet ranges.
     pub fn on_ack_frame<A: frame::ack::AckRanges, CC: CongestionController, Ctx: Context<CC>>(
         &mut self,
