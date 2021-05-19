@@ -9,4 +9,3 @@ Cargo.lock
 /.history
 .DS_Store
 /.idea
-specs/tools.ietf.org/id/*txt
