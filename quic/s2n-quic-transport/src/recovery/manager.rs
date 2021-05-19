@@ -250,7 +250,7 @@ impl Manager {
         self.pto.on_transmit(context)
     }
 
-    /// Process ack frame and update congestion controler, timers and meta data around acked
+    /// Process ack frame. Update congestion controler, timers and meta data around acked
     /// packet ranges.
     pub fn on_ack_frame<A: frame::ack::AckRanges, CC: CongestionController, Ctx: Context<CC>>(
         &mut self,
@@ -1288,14 +1288,19 @@ mod test {
     }
 
     #[test]
+    // setup:
     // - create path manager with two paths
+    //
+    // trigger:
     // - send packet on each path
     //   - packet 1: 1st path: time 200
     //   - packet 0: 2nd path: time 500
     // - send ack for both packet on 1st path
+    //
+    // expectation:
     // - update rtt for 1st path using time packet 1 since it is largest and was sent/received on 1st path
     // - rtt for 2nd apth should be unchanged
-    fn rtt_update_when_receiving_ack_across_multiple_paths() {
+    fn rtt_update_when_receiving_ack_from_multiple_paths() {
         let space = PacketNumberSpace::ApplicationData;
         let mut manager = Manager::new(space, Duration::from_millis(100));
         let packet_bytes = 128;
