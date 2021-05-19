@@ -141,10 +141,9 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         // Query paths based on the remote_address. If we don't have a path registered
         // to the remote_address then the peer might be attempting a connection migration.
         if let Some((id, path)) = self.path_mut_by_peer_address(&datagram.remote_address) {
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.5
             //# At any time, endpoints MAY change the Destination Connection ID they
-            //# transmit with to a value that has not been used on another
-            //# path.
+            //# transmit with to a value that has not been used on another path.
             path.local_connection_id = datagram.destination_connection_id;
 
             let unblocked = path.on_bytes_received(datagram.payload_len);
@@ -283,7 +282,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         let challenge = challenge::Challenge::new(
             datagram.timestamp,
             rtt.pto_period(1, PacketNumberSpace::ApplicationData),
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.4
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#8.2.4
             //= type=TODO
             //# A value of
             //# three times the larger of the current Probe Timeout (PTO) or the PTO

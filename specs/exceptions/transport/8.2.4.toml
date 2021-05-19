@@ -1,0 +1,17 @@
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.4"
+
+[[exception]]
+quote = '''
+A value of
+three times the larger of the current Probe Timeout (PTO) or the
+initial timeout (that is, 2*kInitialRtt) as defined in
+[QUIC-RECOVERY] is RECOMMENDED.
+'''
+reason = '''
+The text was updated in draft 34:
+
+A value of
+three times the larger of the current Probe Timeout (PTO) or the PTO
+for the new path (that is, using kInitialRtt as defined in
+[QUIC-RECOVERY]) is RECOMMENDED.
+'''
