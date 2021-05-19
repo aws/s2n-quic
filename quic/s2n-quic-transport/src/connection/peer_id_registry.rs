@@ -422,6 +422,24 @@ impl PeerIdRegistry {
         }
     }
 
+    // fn is_validate( // better name
+    //     &connection::PeerId
+    // ) -> bool {
+
+    // fn consume_new_id(
+    // ) -> Result<connection::PeerId>
+    //     // always get new id
+    //     // else connection id limit error
+
+    // // fn validate_or_get_id(
+    // //     &connection::PeerId
+    // // ) -> Result<connection::PeerId> {
+    // //     // not found - get new one
+    // //     // retired - get new one
+    // //     // have enough connection ids - error
+    // // }
+
+
     /// Consumes a new ID from the available registered IDs if
     /// the `current_id` is either not provided or is retired.
     pub fn consume_new_id_if_necessary(
@@ -462,6 +480,8 @@ impl PeerIdRegistry {
         // New IDs are inserted at the end of the registered_ids Vec and are always consumed in
         // order, so if we find a new ID before finding an active current ID, the current ID must
         // not be active. This debug assertion will verify that remains true.
+        //
+        // if the passed id is active panic because there is a return on line 457
         debug_assert!(self
             .registered_ids
             .iter()
