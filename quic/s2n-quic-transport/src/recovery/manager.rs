@@ -1288,16 +1288,16 @@ mod test {
     }
 
     #[test]
-    // setup:
+    // Setup:
     // - create path manager with two paths
     //
-    // trigger:
+    // Trigger:
     // - send packet on each path
     //   - packet 1: 1st path: time 200
     //   - packet 0: 2nd path: time 500
     // - send ack for both packet on 1st path
     //
-    // expectation:
+    // Expectation:
     // - update rtt for 1st path using time packet 1 since it is largest and was sent/received on 1st path
     // - rtt for 2nd apth should be unchanged
     fn rtt_update_when_receiving_ack_from_multiple_paths() {
@@ -1306,6 +1306,7 @@ mod test {
         let packet_bytes = 128;
         let clock = NoopClock {};
 
+        // Setup:
         let first_addr = SocketAddress::IpV4(Default::default());
         let second_addr: SocketAddr = "127.0.0.1:80".parse().unwrap();
         let second_addr = SocketAddress::from(second_addr);
@@ -1338,11 +1339,14 @@ mod test {
                     &mut random::testing::Generator(123),
                 )
                 .unwrap();
+
+            assert!(path_manager.path(&first_addr).is_some());
             assert!(path_manager.path(&second_addr).is_some());
             assert_eq!(path_manager.active_path_id(), first_path_id);
         }
-
         let mut context = MockContext::new(&mut path_manager);
+
+        // Trigger:
         let time_sent = s2n_quic_platform::time::now() + Duration::from_secs(10);
         let first_sent_time = time_sent + Duration::from_millis(200);
         let second_sent_time = time_sent + Duration::from_millis(500);
@@ -1388,19 +1392,23 @@ mod test {
         let first_path = context.path_by_id(first_path_id);
         let second_path = context.path_by_id(second_path_id);
 
+        // Expectation:
         // received/sent largest packet on first path so we expect an rtt update using sent time of first path
+        // assert common component
         assert_eq!(
             manager.largest_acked_packet,
             Some(space.new_packet_number(VarInt::from_u8(1)))
         );
         assert_eq!(context.on_rtt_update_count, 1);
 
+        // assert first path
         assert_eq!(
             first_path.rtt_estimator.latest_rtt(),
             ack_receive_time - first_sent_time
         );
         assert_eq!(first_path.congestion_controller.on_rtt_update, 1);
 
+        // assert second path
         assert_eq!(
             second_path.rtt_estimator.latest_rtt(),
             Duration::from_millis(DEFAULT_INITIAL_RTT.as_millis() as u64)
