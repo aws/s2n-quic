@@ -38,7 +38,7 @@ impl BitOrAssign<Probe> for Probe {
 }
 
 /// Trait to retrieve if a frame is probing
-pub trait PathProbing {
+pub trait Probing {
     #[inline]
     fn probe(&self) -> Probe {
         Probe::NonProbing
@@ -48,46 +48,46 @@ pub trait PathProbing {
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.1
 //# PATH_CHALLENGE, PATH_RESPONSE, NEW_CONNECTION_ID, and PADDING frames
 //# are "probing frames", and all other frames are "non-probing frames".
-impl<AckRanges> PathProbing for crate::frame::Ack<AckRanges> {}
-impl PathProbing for crate::frame::ConnectionClose<'_> {}
-impl<Data> PathProbing for crate::frame::Crypto<Data> {}
-impl PathProbing for crate::frame::DataBlocked {}
-impl PathProbing for crate::frame::HandshakeDone {}
-impl PathProbing for crate::frame::MaxData {}
-impl PathProbing for crate::frame::MaxStreamData {}
-impl PathProbing for crate::frame::MaxStreams {}
-impl PathProbing for crate::frame::NewConnectionId<'_> {
+impl<AckRanges> Probing for crate::frame::Ack<AckRanges> {}
+impl Probing for crate::frame::ConnectionClose<'_> {}
+impl<Data> Probing for crate::frame::Crypto<Data> {}
+impl Probing for crate::frame::DataBlocked {}
+impl Probing for crate::frame::HandshakeDone {}
+impl Probing for crate::frame::MaxData {}
+impl Probing for crate::frame::MaxStreamData {}
+impl Probing for crate::frame::MaxStreams {}
+impl Probing for crate::frame::NewConnectionId<'_> {
     #[inline]
     fn probe(&self) -> Probe {
         Probe::Probing
     }
 }
-impl PathProbing for crate::frame::NewToken<'_> {}
-impl PathProbing for crate::frame::Padding {
+impl Probing for crate::frame::NewToken<'_> {}
+impl Probing for crate::frame::Padding {
     #[inline]
     fn probe(&self) -> Probe {
         Probe::Probing
     }
 }
-impl PathProbing for crate::frame::PathChallenge<'_> {
+impl Probing for crate::frame::PathChallenge<'_> {
     #[inline]
     fn probe(&self) -> Probe {
         Probe::Probing
     }
 }
-impl PathProbing for crate::frame::PathResponse<'_> {
+impl Probing for crate::frame::PathResponse<'_> {
     #[inline]
     fn probe(&self) -> Probe {
         Probe::Probing
     }
 }
-impl PathProbing for crate::frame::Ping {}
-impl PathProbing for crate::frame::ResetStream {}
-impl PathProbing for crate::frame::RetireConnectionId {}
-impl PathProbing for crate::frame::StopSending {}
-impl<Data> PathProbing for crate::frame::Stream<Data> {}
-impl PathProbing for crate::frame::StreamDataBlocked {}
-impl PathProbing for crate::frame::StreamsBlocked {}
+impl Probing for crate::frame::Ping {}
+impl Probing for crate::frame::ResetStream {}
+impl Probing for crate::frame::RetireConnectionId {}
+impl Probing for crate::frame::StopSending {}
+impl<Data> Probing for crate::frame::Stream<Data> {}
+impl Probing for crate::frame::StreamDataBlocked {}
+impl Probing for crate::frame::StreamsBlocked {}
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.1
 //= type=test
