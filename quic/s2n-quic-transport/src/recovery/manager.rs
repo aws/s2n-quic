@@ -284,7 +284,7 @@ impl Manager {
         //#
         //# *  at least one of the newly acknowledged packets was ack-eliciting.
         if let Some(largest_newly_acked) = largest_newly_acked {
-            self.upate_congestion_control(
+            self.update_congestion_control(
                 largest_newly_acked,
                 largest_acked_packet_number,
                 includes_ack_eliciting,
@@ -353,7 +353,7 @@ impl Manager {
         Ok((largest_newly_acked, includes_ack_eliciting))
     }
 
-    fn upate_congestion_control<
+    fn update_congestion_control<
         A: frame::ack::AckRanges,
         CC: CongestionController,
         Ctx: Context<CC>,
