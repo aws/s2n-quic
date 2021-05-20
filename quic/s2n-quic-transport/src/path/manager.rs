@@ -171,11 +171,27 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         let rtt = self.active_path().rtt_estimator;
         let cc = self.active_path().congestion_controller.clone();
 
-        // TODO grab a new conn id correctly,
-        let conn_id = self.active_path().peer_connection_id;
-        let new_id = self
-            .peer_id_registry
-            .consume_new_id_if_necessary(Some(&conn_id));
+        let peer_connection_id = {
+            if self.active_path().local_connection_id != datagram.destination_connection_id {
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.5
+                //# Similarly, an endpoint MUST NOT reuse a connection ID when sending to
+                //# more than one destination address.
+
+                // Peer has intentionally tried to migrate to this new path because they changed
+                // their destination_connection_id, so we will change our destination_connection_id as well.
+                self.peer_id_registry.consume_new_id()?
+            } else {
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.5
+                //# Due to network changes outside
+                //# the control of its peer, an endpoint might receive packets from a new
+                //# source address with the same destination connection ID, in which case
+                //# it MAY continue to use the current connection ID with the new remote
+                //# address while still sending from the same local address.
+                self.active_path().peer_connection_id
+            }
+        };
+
+
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
         //# The endpoint MUST use unpredictable data in every PATH_CHALLENGE
@@ -217,14 +233,8 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         //# limit the rate at which it sends data to this address.
         let path = Path::new(
             datagram.remote_address,
-            // TODO https://github.com/awslabs/s2n-quic/issues/316
-            // The existing peer connection id may only be reused if the destination
-            // connection ID on this packet had not been used before (this would happen
-            // when the peer's remote address gets changed due to circumstances out of their
-            // control). Otherwise we will need to consume a new connection::PeerId by calling
-            // PeerIdRegistry::consume_new_id_if_necessary(None) and ignoring the request if
-            // no new connection::PeerId is available to use.
-            new_id.unwrap(),
+            peer_connection_id,
+            datagram.destination_connection_id,
             rtt,
             cc,
             true,
@@ -334,25 +344,15 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
             stateless_reset_token,
         )?;
 
-        // TODO This new connection ID may retire IDs in use by multiple paths. Since we are not
-        //      currently supporting connection migration, there is only one path, but once there
-        //      are more than one we should decide what to do if there aren't enough new connection
-        //      IDs available for all paths.
-        //      See https://github.com/awslabs/s2n-quic/issues/358
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2
         //# Upon receipt of an increased Retire Prior To field, the peer MUST
         //# stop using the corresponding connection IDs and retire them with
         //# RETIRE_CONNECTION_ID frames before adding the newly provided
         //# connection ID to the set of active connection IDs.
-        // Ensure all paths are not using a newly retired connection ID
-        for path in self.paths.iter_mut() {
-            path.peer_connection_id = self
-                .peer_id_registry
-                .consume_new_id_if_necessary(Some(&path.peer_connection_id))
-                .expect(
-                    "There is only one path maintained currently and since a new ID was \
-                delivered, there will always be a new ID available to consume if necessary",
-                );
+        let active_path_connection_id = self.active_path().peer_connection_id;
+
+        if !self.peer_id_registry.is_active(&active_path_connection_id) {
+            self.active_path_mut().peer_connection_id = self.peer_id_registry.consume_new_id()?;
         }
 
         Ok(())
@@ -482,9 +482,11 @@ mod tests {
     #[test]
     fn get_path_by_address_test() {
         let first_conn_id = connection::PeerId::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
+        let first_local_conn_id = connection::LocalId::TEST_ID;
         let first_path = Path::new(
             SocketAddress::default(),
             first_conn_id,
+            first_local_conn_id,
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
@@ -494,6 +496,7 @@ mod tests {
         let second_path = Path::new(
             SocketAddress::default(),
             second_conn_id,
+            first_local_conn_id,
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
@@ -518,9 +521,11 @@ mod tests {
     #[test]
     fn test_invalid_path_fallback() {
         let first_conn_id = connection::PeerId::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
+        let first_local_conn_id = connection::LocalId::TEST_ID;
         let first_path = Path::new(
             SocketAddress::default(),
             first_conn_id,
+            first_local_conn_id,
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
@@ -538,6 +543,7 @@ mod tests {
         let second_path = Path::new(
             SocketAddress::default(),
             first_conn_id,
+            first_local_conn_id,
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
@@ -577,6 +583,7 @@ mod tests {
         let first_path = Path::new(
             SocketAddress::default(),
             first_conn_id,
+            connection::LocalId::TEST_ID,
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
@@ -631,6 +638,7 @@ mod tests {
         let first_path = Path::new(
             SocketAddress::default(),
             first_conn_id,
+            connection::LocalId::TEST_ID,
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
@@ -736,6 +744,7 @@ mod tests {
         let first_path = Path::new(
             SocketAddress::default(),
             id_1,
+            connection::LocalId::TEST_ID,
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,

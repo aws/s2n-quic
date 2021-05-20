@@ -422,23 +422,18 @@ impl PeerIdRegistry {
         }
     }
 
-    /// Consumes a new ID from the available registered IDs if
-    /// the `current_id` is either not provided or is retired.
-    pub fn consume_new_id_if_necessary(
-        &mut self,
-        current_id: Option<&connection::PeerId>,
-    ) -> Option<connection::PeerId> {
-        let mut new_id = None;
-
-        let current_id_is_active =
-            |id_info: &PeerIdInfo| current_id == Some(&id_info.id) && id_info.status.is_active();
-
-        for id_info in self.registered_ids.iter_mut() {
-            if current_id_is_active(id_info) {
-                // The current ID is still ok to use, so return it
-                return Some(id_info.id);
+    pub fn is_active(&self, peer_id: &connection::PeerId) -> bool {
+        for id_info in self.registered_ids.iter() {
+            if peer_id == &id_info.id && id_info.status.is_active() {
+                return true;
             }
+        }
 
+        return false;
+    }
+
+    pub fn consume_new_id(&mut self) -> Result<connection::PeerId, transport::Error> {
+        for id_info in self.registered_ids.iter_mut() {
             if id_info.status == New {
                 // Start tracking the stateless reset token
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1
@@ -454,21 +449,11 @@ impl PeerIdRegistry {
 
                 // Consume the new id
                 id_info.status = InUse;
-                new_id = Some(id_info.id);
-                break;
+                return Ok(id_info.id);
             }
         }
 
-        // New IDs are inserted at the end of the registered_ids Vec and are always consumed in
-        // order, so if we find a new ID before finding an active current ID, the current ID must
-        // not be active. This debug assertion will verify that remains true.
-        debug_assert!(self
-            .registered_ids
-            .iter()
-            .find(|id_info| current_id_is_active(id_info))
-            .is_none());
-
-        new_id
+        Err(transport::Error::CONNECTION_ID_LIMIT_ERROR)
     }
 
     // Validate that the ACTIVE_CONNECTION_ID_LIMIT has not been exceeded
@@ -941,70 +926,125 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn consume_new_id_if_necessary() {
-        let id_1 = id(b"id01");
-        let mut random_generator = random::testing::Generator(123);
-        let mut mapper = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server);
-        let mut reg = mapper.create_peer_id_registry(
-            InternalConnectionIdGenerator::new().generate_id(),
-            id_1,
-            Some(TEST_TOKEN_1),
-        );
+    pub fn initial_id_is_active() {
+       let id_1 = id(b"id01");
+       let mut random_generator = random::testing::Generator(123);
+       let mut mapper = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server);
+       let mut reg = mapper.create_peer_id_registry(
+           InternalConnectionIdGenerator::new().generate_id(),
+           id_1,
+           Some(TEST_TOKEN_1),
+       );
 
-        assert_eq!(InUsePendingNewConnectionId, reg.registered_ids[0].status);
-        assert_eq!(
-            Some(reg.internal_id),
-            mapper.remove_internal_connection_id_by_stateless_reset_token(&TEST_TOKEN_1)
-        );
-
-        let id_2 = id(b"id02");
-        assert!(reg.on_new_connection_id(&id_2, 1, 0, &TEST_TOKEN_2).is_ok());
-
-        assert_eq!(
-            None,
-            mapper.remove_internal_connection_id_by_stateless_reset_token(&TEST_TOKEN_2)
-        );
-        assert_eq!(Some(id_2), reg.consume_new_id_if_necessary(None));
-        assert_eq!(
-            Some(reg.internal_id),
-            mapper.remove_internal_connection_id_by_stateless_reset_token(&TEST_TOKEN_2,)
-        );
-
-        let id_3 = id(b"id03");
-        assert!(reg.on_new_connection_id(&id_3, 2, 0, &TEST_TOKEN_3).is_ok());
-
-        // ID 3 is not retired, so it is not necessary to consume a new ID
-        assert_eq!(Some(id_3), reg.consume_new_id_if_necessary(Some(&id_3)));
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1
-        //= type=test
-        //# An endpoint MUST NOT check for any Stateless Reset Tokens associated
-        //# with connection IDs it has not used or for connection IDs that have
-        //# been retired.
-        assert_eq!(
-            None,
-            mapper.remove_internal_connection_id_by_stateless_reset_token(&TEST_TOKEN_3)
-        );
-
-        let id_4 = id(b"id04");
-        assert!(reg.on_new_connection_id(&id_4, 3, 3, &TEST_TOKEN_4).is_ok());
-        assert_eq!(
-            None,
-            mapper.remove_internal_connection_id_by_stateless_reset_token(&TEST_TOKEN_4)
-        );
-
-        // ID 2 is retired, so it is necessary to consume a new ID
-        assert_eq!(Some(id_4), reg.consume_new_id_if_necessary(Some(&id_2)));
-        assert_eq!(
-            Some(reg.internal_id),
-            mapper.remove_internal_connection_id_by_stateless_reset_token(&TEST_TOKEN_4)
-        );
-
-        // There are no new IDs left, so None is returned
-        assert_eq!(None, reg.consume_new_id_if_necessary(Some(&id_3)));
-
-        // There are no new IDs left, but ID 4 is not retired,so it is returned
-        assert_eq!(Some(id_4), reg.consume_new_id_if_necessary(Some(&id_4)));
+       assert_eq!(true, reg.is_active(&id_1));
     }
+
+    #[test]
+    pub fn retired_id_is_not_active() {
+       let id_1 = id(b"id01");
+       let mut random_generator = random::testing::Generator(123);
+       let mut mapper = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server);
+       let mut reg = mapper.create_peer_id_registry(
+           InternalConnectionIdGenerator::new().generate_id(),
+           id_1,
+           Some(TEST_TOKEN_1),
+       );
+
+       assert_eq!(true, reg.is_active(&id_1));
+       reg.registered_ids[0].status = PendingRetirement;
+       assert_eq!(false, reg.is_active(&id_1));
+    }
+
+    #[test]
+    pub fn unknown_id_is_not_active() {
+       let id_1 = id(b"id01");
+       let mut random_generator = random::testing::Generator(123);
+       let mut mapper = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server);
+       let mut reg = mapper.create_peer_id_registry(
+           InternalConnectionIdGenerator::new().generate_id(),
+           id_1,
+           Some(TEST_TOKEN_1),
+       );
+
+       assert_eq!(true, reg.is_active(&id_1));
+       let id_unknown = id(b"unknown");
+       assert_eq!(false, reg.is_active(&id_unknown));
+    }
+
+    #[test]
+    pub fn consume_new_id() {
+        // get new id if we we have some
+        // return error if we dont have
+        //
+        // confirm id is set to InUse
+        // confirm that reset token is set
+    }
+
+    //#[test]
+    //fn consume_new_id_if_necessary() {
+    //    let id_1 = id(b"id01");
+    //    let mut random_generator = random::testing::Generator(123);
+    //    let mut mapper = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server);
+    //    let mut reg = mapper.create_peer_id_registry(
+    //        InternalConnectionIdGenerator::new().generate_id(),
+    //        id_1,
+    //        Some(TEST_TOKEN_1),
+    //    );
+
+    //    assert_eq!(InUsePendingNewConnectionId, reg.registered_ids[0].status);
+    //    assert_eq!(
+    //        Some(reg.internal_id),
+    //        mapper.remove_internal_connection_id_by_stateless_reset_token(&TEST_TOKEN_1)
+    //    );
+
+    //    let id_2 = id(b"id02");
+    //    assert!(reg.on_new_connection_id(&id_2, 1, 0, &TEST_TOKEN_2).is_ok());
+
+    //    assert_eq!(
+    //        None,
+    //        mapper.remove_internal_connection_id_by_stateless_reset_token(&TEST_TOKEN_2)
+    //    );
+    //    assert_eq!(Some(id_2), reg.consume_new_id_if_necessary(None));
+    //    assert_eq!(
+    //        Some(reg.internal_id),
+    //        mapper.remove_internal_connection_id_by_stateless_reset_token(&TEST_TOKEN_2,)
+    //    );
+
+    //    let id_3 = id(b"id03");
+    //    assert!(reg.on_new_connection_id(&id_3, 2, 0, &TEST_TOKEN_3).is_ok());
+
+    //    // ID 3 is not retired, so it is not necessary to consume a new ID
+    //    assert_eq!(Some(id_3), reg.consume_new_id_if_necessary(Some(&id_3)));
+    //    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3.1
+    //    //= type=test
+    //    //# An endpoint MUST NOT check for any Stateless Reset Tokens associated
+    //    //# with connection IDs it has not used or for connection IDs that have
+    //    //# been retired.
+    //    assert_eq!(
+    //        None,
+    //        mapper.remove_internal_connection_id_by_stateless_reset_token(&TEST_TOKEN_3)
+    //    );
+
+    //    let id_4 = id(b"id04");
+    //    assert!(reg.on_new_connection_id(&id_4, 3, 3, &TEST_TOKEN_4).is_ok());
+    //    assert_eq!(
+    //        None,
+    //        mapper.remove_internal_connection_id_by_stateless_reset_token(&TEST_TOKEN_4)
+    //    );
+
+    //    // ID 2 is retired, so it is necessary to consume a new ID
+    //    assert_eq!(Some(id_4), reg.consume_new_id_if_necessary(Some(&id_2)));
+    //    assert_eq!(
+    //        Some(reg.internal_id),
+    //        mapper.remove_internal_connection_id_by_stateless_reset_token(&TEST_TOKEN_4)
+    //    );
+
+    //    // There are no new IDs left, so None is returned
+    //    assert_eq!(None, reg.consume_new_id_if_necessary(Some(&id_3)));
+
+    //    // There are no new IDs left, but ID 4 is not retired,so it is returned
+    //    assert_eq!(Some(id_4), reg.consume_new_id_if_necessary(Some(&id_4)));
+    //}
 
     #[test]
     fn error_conversion() {

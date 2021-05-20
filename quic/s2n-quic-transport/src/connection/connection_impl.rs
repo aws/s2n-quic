@@ -275,6 +275,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         let initial_path = path::Path::new(
             parameters.peer_socket_address,
             parameters.peer_connection_id,
+            parameters.local_connection_id,
             rtt_estimator,
             parameters.congestion_controller,
             peer_validated,
