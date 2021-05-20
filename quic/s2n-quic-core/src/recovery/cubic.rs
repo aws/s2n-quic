@@ -1145,7 +1145,10 @@ mod test {
         cc.bytes_in_flight = BytesInFlight::new(1000);
         cc.state = Recovery(now, Idle);
 
-        cc.on_packets_lost(100, false, now);
+        // break up on_packet_loss into two call to confirm double call
+        // behavior is valid (50 + 50 = 100 lost bytes)
+        cc.on_packets_lost(50, false, now);
+        cc.on_packets_lost(50, false, now);
 
         // No change to the congestion window
         assert_delta!(cc.congestion_window, 10000.0, 0.001);
