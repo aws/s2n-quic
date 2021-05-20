@@ -439,7 +439,6 @@ impl PeerIdRegistry {
     // //     // have enough connection ids - error
     // // }
 
-
     /// Consumes a new ID from the available registered IDs if
     /// the `current_id` is either not provided or is retired.
     pub fn consume_new_id_if_necessary(
