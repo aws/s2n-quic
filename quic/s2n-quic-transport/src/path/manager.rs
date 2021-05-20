@@ -191,8 +191,6 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
             }
         };
 
-
-
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
         //# The endpoint MUST use unpredictable data in every PATH_CHALLENGE
         //# frame so that it can associate the peer's response with the
