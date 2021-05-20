@@ -333,8 +333,6 @@ impl Manager {
 
             for packet_number in acked_packets {
                 if let Some(acked_packet_info) = self.sent_packets.remove(packet_number) {
-                    new_packet_ack = true;
-
                     newly_acked_packets.push(acked_packet_info);
 
                     if largest_newly_acked.map_or(true, |(pn, _, _)| packet_number > pn) {
@@ -342,6 +340,7 @@ impl Manager {
                             Some((packet_number, acked_packet_info, acked_packet_info.path_id));
                     }
 
+                    new_packet_ack = true;
                     includes_ack_eliciting |= acked_packet_info.ack_elicitation.is_ack_eliciting();
                 }
             }
