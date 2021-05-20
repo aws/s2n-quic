@@ -20,6 +20,8 @@ use s2n_quic_core::{
 };
 use smallvec::SmallVec;
 
+type PacketDetails = (PacketNumber, SentPacketInfo, path::Id);
+
 #[derive(Debug)]
 pub struct Manager {
     // The packet space for this recovery manager
@@ -271,39 +273,31 @@ impl Manager {
                 }),
         );
 
-        //# https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.1
+        let (largest_newly_acked, includes_ack_eliciting) =
+            self.process_ack_range(&mut newly_acked_packets, datagram, &frame, context)?;
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.1
         //# An endpoint generates an RTT sample on receiving an ACK frame that
         //# meets the following two conditions:
         //#
         //# *  the largest acknowledged packet number is newly acknowledged, and
         //#
         //# *  at least one of the newly acknowledged packets was ack-eliciting.
-        let largest_newly_acked_time_sent = self.process_ack_range(
-            &mut newly_acked_packets,
-            largest_acked_packet_number,
-            datagram,
-            &frame,
-            context,
-        )?;
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.1
-        //# If a path has been validated to support ECN ([RFC3168], [RFC8311]),
-        //# QUIC treats a Congestion Experienced (CE) codepoint in the IP header
-        //# as a signal of congestion.
-        if let Some(ecn_counts) = frame.ecn_counts {
-            if ecn_counts.ce_count > self.ecn_ce_counter {
-                self.ecn_ce_counter = ecn_counts.ce_count;
-                context
-                    .path_mut()
-                    .congestion_controller
-                    .on_congestion_event(datagram.timestamp);
-            }
+        if let Some(largest_newly_acked) = largest_newly_acked {
+            self.upate_congestion_control(
+                largest_newly_acked,
+                largest_acked_packet_number,
+                includes_ack_eliciting,
+                datagram,
+                &frame,
+                context,
+            );
         }
 
-        if let Some(largest_newly_acked_time_sent) = largest_newly_acked_time_sent {
+        if let Some((_, largest_newly_acked_info, _)) = largest_newly_acked {
             self.process_new_acked_packets(
                 &newly_acked_packets,
-                largest_newly_acked_time_sent,
+                largest_newly_acked_info.time_sent,
                 datagram,
                 context,
             );
@@ -312,18 +306,16 @@ impl Manager {
         Ok(())
     }
 
-    // Process ack_range and return meta data.
+    // Process ack_range and return largest_newly_acked and if the packet is ack eliciting.
     fn process_ack_range<A: frame::ack::AckRanges, CC: CongestionController, Ctx: Context<CC>>(
         &mut self,
         newly_acked_packets: &mut SmallVec<[SentPacketInfo; ACKED_PACKETS_INITIAL_CAPACITY]>,
-        largest_acked_packet_number: PacketNumber,
         datagram: &DatagramInfo,
         frame: &frame::Ack<A>,
         context: &mut Ctx,
-    ) -> Result<Option<Timestamp>, transport::Error> {
+    ) -> Result<(Option<PacketDetails>, bool), transport::Error> {
         let mut largest_newly_acked: Option<(PacketNumber, SentPacketInfo, path::Id)> = None;
         let mut includes_ack_eliciting = false;
-        let mut should_update_rtt = true;
 
         for ack_range in frame.ack_ranges() {
             let (start, end) = ack_range.into_inner();
@@ -360,12 +352,26 @@ impl Manager {
             }
         }
 
+        Ok((largest_newly_acked, includes_ack_eliciting))
+    }
+
+    fn upate_congestion_control<
+        A: frame::ack::AckRanges,
+        CC: CongestionController,
+        Ctx: Context<CC>,
+    >(
+        &mut self,
+        largest_newly_acked: PacketDetails,
+        largest_acked_packet_number: PacketNumber,
+        includes_ack_eliciting: bool,
+        datagram: &DatagramInfo,
+        frame: &frame::Ack<A>,
+        context: &mut Ctx,
+    ) {
+        let mut should_update_rtt = true;
         let is_handshake_confirmed = context.is_handshake_confirmed();
-        if let Some((
-            largest_newly_acked_packet_number,
-            largest_newly_acked_info,
-            largest_acked_path_id,
-        )) = largest_newly_acked
+        let (largest_newly_acked_packet_number, largest_newly_acked_info, largest_acked_path_id) =
+            largest_newly_acked;
         {
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.4
             //# Packets sent on the old path MUST NOT contribute to
@@ -406,7 +412,19 @@ impl Manager {
             }
         }
 
-        Ok(largest_newly_acked.map(|(_, packet_info, _)| packet_info.time_sent))
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.1
+        //# If a path has been validated to support ECN ([RFC3168], [RFC8311]),
+        //# QUIC treats a Congestion Experienced (CE) codepoint in the IP header
+        //# as a signal of congestion.
+        if let Some(ecn_counts) = frame.ecn_counts {
+            if ecn_counts.ce_count > self.ecn_ce_counter {
+                self.ecn_ce_counter = ecn_counts.ce_count;
+                context
+                    .path_mut()
+                    .congestion_controller
+                    .on_congestion_event(datagram.timestamp);
+            }
+        }
     }
 
     fn process_new_acked_packets<CC: CongestionController, Ctx: Context<CC>>(
