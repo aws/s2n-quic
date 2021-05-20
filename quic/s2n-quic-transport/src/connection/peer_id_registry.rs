@@ -429,7 +429,7 @@ impl PeerIdRegistry {
             }
         }
 
-        return false;
+        false
     }
 
     pub fn consume_new_id(&mut self) -> Result<connection::PeerId, transport::Error> {
