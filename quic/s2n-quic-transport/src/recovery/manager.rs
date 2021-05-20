@@ -292,9 +292,8 @@ impl Manager {
                 &frame,
                 context,
             );
-        }
 
-        if let Some((_, largest_newly_acked_info, _)) = largest_newly_acked {
+            let (_, largest_newly_acked_info, _) = largest_newly_acked;
             self.process_new_acked_packets(
                 &newly_acked_packets,
                 largest_newly_acked_info.time_sent,
@@ -371,44 +370,43 @@ impl Manager {
         let is_handshake_confirmed = context.is_handshake_confirmed();
         let (largest_newly_acked_packet_number, largest_newly_acked_info, largest_acked_path_id) =
             largest_newly_acked;
-        {
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.4
-            //# Packets sent on the old path MUST NOT contribute to
-            //# congestion control or RTT estimation for the new path.
-            should_update_rtt &= context
-                .path_by_id(largest_acked_path_id)
-                .peer_socket_address
-                == datagram.remote_address;
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.1
-            //# To avoid generating multiple RTT samples for a single packet, an ACK
-            //# frame SHOULD NOT be used to update RTT estimates if it does not newly
-            //# acknowledge the largest acknowledged packet.
-            should_update_rtt &= largest_newly_acked_packet_number == largest_acked_packet_number;
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.4
+        //# Packets sent on the old path MUST NOT contribute to
+        //# congestion control or RTT estimation for the new path.
+        should_update_rtt &= context
+            .path_by_id(largest_acked_path_id)
+            .peer_socket_address
+            == datagram.remote_address;
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.1
-            //# An RTT sample MUST NOT be generated on receiving an ACK frame that
-            //# does not newly acknowledge at least one ack-eliciting packet.
-            should_update_rtt &= includes_ack_eliciting;
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.1
+        //# To avoid generating multiple RTT samples for a single packet, an ACK
+        //# frame SHOULD NOT be used to update RTT estimates if it does not newly
+        //# acknowledge the largest acknowledged packet.
+        should_update_rtt &= largest_newly_acked_packet_number == largest_acked_packet_number;
 
-            if should_update_rtt {
-                let latest_rtt = datagram.timestamp - largest_newly_acked_info.time_sent;
-                let path = context.path_mut();
-                path.rtt_estimator.update_rtt(
-                    frame.ack_delay(),
-                    latest_rtt,
-                    datagram.timestamp,
-                    is_handshake_confirmed,
-                    largest_acked_packet_number.space(),
-                );
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.1
+        //# An RTT sample MUST NOT be generated on receiving an ACK frame that
+        //# does not newly acknowledge at least one ack-eliciting packet.
+        should_update_rtt &= includes_ack_eliciting;
 
-                // Update the congestion controller with the latest RTT estimate
-                path.congestion_controller
-                    .on_rtt_update(largest_newly_acked_info.time_sent, &path.rtt_estimator);
+        if should_update_rtt {
+            let latest_rtt = datagram.timestamp - largest_newly_acked_info.time_sent;
+            let path = context.path_mut();
+            path.rtt_estimator.update_rtt(
+                frame.ack_delay(),
+                latest_rtt,
+                datagram.timestamp,
+                is_handshake_confirmed,
+                largest_acked_packet_number.space(),
+            );
 
-                // Notify components the RTT estimate was updated
-                context.on_rtt_update();
-            }
+            // Update the congestion controller with the latest RTT estimate
+            path.congestion_controller
+                .on_rtt_update(largest_newly_acked_info.time_sent, &path.rtt_estimator);
+
+            // Notify components the RTT estimate was updated
+            context.on_rtt_update();
         }
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.1
