@@ -1024,8 +1024,14 @@ mod test {
         // Setup:
         let space = PacketNumberSpace::ApplicationData;
         let packet_bytes = 128;
-        let (first_addr, first_path_id, _second_addr, second_path_id, mut manager, mut path_manager) =
-            helper_generate_multi_path_manager(space);
+        let (
+            first_addr,
+            first_path_id,
+            _second_addr,
+            second_path_id,
+            mut manager,
+            mut path_manager,
+        ) = helper_generate_multi_path_manager(space);
         let mut context = MockContext::new(&mut path_manager);
 
         //let space = PacketNumberSpace::ApplicationData;
@@ -1046,39 +1052,39 @@ mod test {
         //    // Reset the timer so we can confirm it was set correctly
         //    manager.pto.timer.cancel();
 
-           let sent_packet = space.new_packet_number(VarInt::from_u8(1));
-           let ack_elicitation = AckElicitation::Eliciting;
-               // AckElicitation::NonEliciting
-            let is_congestion_controlled = true;
+        let sent_packet = space.new_packet_number(VarInt::from_u8(1));
+        let ack_elicitation = AckElicitation::Eliciting;
+        // AckElicitation::NonEliciting
+        let is_congestion_controlled = true;
 
-           let outcome = transmission::Outcome {
-               ack_elicitation,
-               is_congestion_controlled: is_congestion_controlled,
-               bytes_sent: packet_bytes,
-               packet_number: space.new_packet_number(VarInt::from_u8(1)),
-           };
+        let outcome = transmission::Outcome {
+            ack_elicitation,
+            is_congestion_controlled,
+            bytes_sent: packet_bytes,
+            packet_number: space.new_packet_number(VarInt::from_u8(1)),
+        };
 
-           manager.on_packet_sent(
-               sent_packet,
-               outcome,
-               time_sent,
-               path::Id::new(0),
-               &mut context,
-           );
+        manager.on_packet_sent(
+            sent_packet,
+            outcome,
+            time_sent,
+            path::Id::new(0),
+            &mut context,
+        );
 
-           assert!(manager.sent_packets.get(sent_packet).is_some());
-           let actual_sent_packet = manager.sent_packets.get(sent_packet).unwrap();
-           assert_eq!(
-               actual_sent_packet.congestion_controlled,
-               outcome.is_congestion_controlled
-           );
-           assert_eq!(actual_sent_packet.time_sent, time_sent);
+        assert!(manager.sent_packets.get(sent_packet).is_some());
+        let actual_sent_packet = manager.sent_packets.get(sent_packet).unwrap();
+        assert_eq!(
+            actual_sent_packet.congestion_controlled,
+            outcome.is_congestion_controlled
+        );
+        assert_eq!(actual_sent_packet.time_sent, time_sent);
 
-           // check congestion_control for path 1
-           // check congestion_control for path 2
+        // check congestion_control for path 1
+        // check congestion_control for path 2
 
         //    if outcome.is_congestion_controlled {
-               assert_eq!(actual_sent_packet.sent_bytes as usize, outcome.bytes_sent);
+        assert_eq!(actual_sent_packet.sent_bytes as usize, outcome.bytes_sent);
 
         //        let expected_pto;
         //        if outcome.ack_elicitation.is_ack_eliciting() {
@@ -1086,7 +1092,7 @@ mod test {
         //            //= type=test
         //            //# A sender SHOULD restart its PTO timer every time an ack-eliciting
         //            //# packet is sent
-                   let expected_pto = time_sent + expected_pto_duration;
+        let expected_pto = time_sent + expected_pto_duration;
         //        } else if let Some(time_of_last_ack_eliciting_packet) =
         //            manager.time_of_last_ack_eliciting_packet
         //        {
@@ -1096,10 +1102,10 @@ mod test {
         //            expected_pto = time_sent + expected_pto_duration;
         //        }
 
-               // assert!(manager.pto.timer.is_armed());
-               assert_eq!(Some(expected_pto), manager.pto.timer.iter().next());
+        // assert!(manager.pto.timer.is_armed());
+        assert_eq!(Some(expected_pto), manager.pto.timer.iter().next());
 
-               let expected_bytes_in_flight = outcome.bytes_sent;
+        let expected_bytes_in_flight = outcome.bytes_sent;
         //    } else {
         //        assert_eq!(actual_sent_packet.sent_bytes, 0);
         //    }
@@ -1122,7 +1128,7 @@ mod test {
         SocketAddress,
         path::Id,
         Manager,
-        path::Manager<Endpoint>
+        path::Manager<Endpoint>,
     ) {
         // let space = PacketNumberSpace::ApplicationData;
         let manager = Manager::new(space, Duration::from_millis(100));
@@ -1171,7 +1177,7 @@ mod test {
             second_addr,
             second_path_id,
             manager,
-            path_manager
+            path_manager,
         )
     }
 
@@ -1505,8 +1511,14 @@ mod test {
         // Setup:
         let space = PacketNumberSpace::ApplicationData;
         let packet_bytes = 128;
-        let (first_addr, first_path_id, _second_addr, second_path_id, mut manager, mut path_manager) =
-            helper_generate_multi_path_manager(space);
+        let (
+            first_addr,
+            first_path_id,
+            _second_addr,
+            second_path_id,
+            mut manager,
+            mut path_manager,
+        ) = helper_generate_multi_path_manager(space);
         let mut context = MockContext::new(&mut path_manager);
 
         // Trigger:
