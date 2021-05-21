@@ -185,6 +185,9 @@ impl Manager {
             //# packet is sent or acknowledged,
             let is_handshake_confirmed = context.is_handshake_confirmed();
             let path = context.path_mut_by_id(path_id);
+            // TODO add test to verify multi path behavior
+            // update_pto_timer
+            // congestion_controller.on_packet_sent
             self.update_pto_timer(path, time_sent, is_handshake_confirmed);
             path.congestion_controller
                 .on_packet_sent(time_sent, congestion_controlled_bytes);
@@ -439,6 +442,11 @@ impl Manager {
 
         let is_handshake_confirmed = context.is_handshake_confirmed();
         for acked_packet_info in newly_acked_packets {
+            // TODO add test to verify multi path behavior
+            // congestion_controller.on_packet_ack
+            // path.is_peer_validated
+            // path.reset_pto_backoff
+            // update_pto_timer
             let path = context.path_mut_by_id(acked_packet_info.path_id);
             path.congestion_controller.on_packet_ack(
                 largest_newly_acked_time_sent,
@@ -517,6 +525,8 @@ impl Manager {
         let mut prev_packet: Option<(&PacketNumber, Timestamp)> = None;
 
         for (unacked_packet_number, unacked_sent_info) in self.sent_packets.iter() {
+            // TODO
+            // make persistent_congestion_period and other path aware
             let path = &context.path_by_id(unacked_sent_info.path_id);
             // Calculate how long we wait until a packet is declared lost
             let time_threshold = Self::calculate_loss_time_threshold(&path.rtt_estimator);
@@ -625,6 +635,9 @@ impl Manager {
 
         // Remove the lost packets and account for the bytes on the proper congestion controller
         for (packet_number, lost_bytes, path_id) in sent_packets_to_remove {
+            // TODO add test to verify multi path behavior
+            // congestion_controller.on_packets_lost
+            // rtt_estimator.on_persistent_congestion
             let path = &mut context.path_mut_by_id(path_id);
 
             self.sent_packets.remove(packet_number);
@@ -996,6 +1009,172 @@ mod test {
         );
     }
 
+    #[test]
+    // Setup:
+    // - create path manager with two paths
+    //
+    // Trigger:
+    // - send packet on path
+    //   - packet 0: 1nd path: ack_elicitation Eliciting: is_congestion_controlled true
+    //   - packet 1: 1st path: time 200
+    //
+    // Expectation:
+    // - update rtt for 1st path using time packet 1 since it is largest and was sent/received on 1st path
+    fn on_packet_sent_across_multiple_paths() {
+        // Setup:
+        let space = PacketNumberSpace::ApplicationData;
+        let packet_bytes = 128;
+        let (first_addr, first_path_id, _second_addr, second_path_id, mut manager, mut path_manager) =
+            helper_generate_multi_path_manager(space);
+        let mut context = MockContext::new(&mut path_manager);
+
+        //let space = PacketNumberSpace::ApplicationData;
+        let max_ack_delay = Duration::from_millis(100);
+        //let mut manager = Manager::new(space, max_ack_delay);
+        let mut time_sent = s2n_quic_platform::time::now();
+        //let mut path_manager = generate_path_manager(Duration::from_millis(100));
+        //let mut context = MockContext::new(&mut path_manager);
+        //// Call on validated so the path is not amplification limited so we can verify PTO arming
+        //context.path_mut().on_validated();
+
+        //// PTO = smoothed_rtt + max(4*rttvar, kGranularity) + max_ack_delay
+        //// PTO = DEFAULT_INITIAL_RTT + 4*DEFAULT_INITIAL_RTT/2 + 10
+        let expected_pto_duration = DEFAULT_INITIAL_RTT + 2 * DEFAULT_INITIAL_RTT + max_ack_delay;
+        //let mut expected_bytes_in_flight = 0;
+
+        //for i in 1..=10 {
+        //    // Reset the timer so we can confirm it was set correctly
+        //    manager.pto.timer.cancel();
+
+           let sent_packet = space.new_packet_number(VarInt::from_u8(1));
+           let ack_elicitation = AckElicitation::Eliciting;
+               // AckElicitation::NonEliciting
+            let is_congestion_controlled = true;
+
+           let outcome = transmission::Outcome {
+               ack_elicitation,
+               is_congestion_controlled: is_congestion_controlled,
+               bytes_sent: packet_bytes,
+               packet_number: space.new_packet_number(VarInt::from_u8(1)),
+           };
+
+           manager.on_packet_sent(
+               sent_packet,
+               outcome,
+               time_sent,
+               path::Id::new(0),
+               &mut context,
+           );
+
+           assert!(manager.sent_packets.get(sent_packet).is_some());
+           let actual_sent_packet = manager.sent_packets.get(sent_packet).unwrap();
+           assert_eq!(
+               actual_sent_packet.congestion_controlled,
+               outcome.is_congestion_controlled
+           );
+           assert_eq!(actual_sent_packet.time_sent, time_sent);
+
+           // check congestion_control for path 1
+           // check congestion_control for path 2
+
+        //    if outcome.is_congestion_controlled {
+               assert_eq!(actual_sent_packet.sent_bytes as usize, outcome.bytes_sent);
+
+        //        let expected_pto;
+        //        if outcome.ack_elicitation.is_ack_eliciting() {
+        //            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+        //            //= type=test
+        //            //# A sender SHOULD restart its PTO timer every time an ack-eliciting
+        //            //# packet is sent
+                   let expected_pto = time_sent + expected_pto_duration;
+        //        } else if let Some(time_of_last_ack_eliciting_packet) =
+        //            manager.time_of_last_ack_eliciting_packet
+        //        {
+        //            expected_pto = time_of_last_ack_eliciting_packet + expected_pto_duration;
+        //        } else {
+        //            // No ack eliciting packets have been sent yet
+        //            expected_pto = time_sent + expected_pto_duration;
+        //        }
+
+               // assert!(manager.pto.timer.is_armed());
+               assert_eq!(Some(expected_pto), manager.pto.timer.iter().next());
+
+               let expected_bytes_in_flight = outcome.bytes_sent;
+        //    } else {
+        //        assert_eq!(actual_sent_packet.sent_bytes, 0);
+        //    }
+
+        //    time_sent += Duration::from_millis(10);
+        //}
+
+        //assert_eq!(manager.sent_packets.iter().count(), 10);
+        assert_eq!(
+            expected_bytes_in_flight as u32,
+            context.path().congestion_controller.bytes_in_flight
+        );
+    }
+
+    fn helper_generate_multi_path_manager<'a>(
+        space: PacketNumberSpace,
+    ) -> (
+        SocketAddress,
+        path::Id,
+        SocketAddress,
+        path::Id,
+        Manager,
+        path::Manager<Endpoint>
+    ) {
+        // let space = PacketNumberSpace::ApplicationData;
+        let manager = Manager::new(space, Duration::from_millis(100));
+        let clock = NoopClock {};
+
+        let first_addr = SocketAddress::IpV4(Default::default());
+        let second_addr: SocketAddr = "127.0.0.1:80".parse().unwrap();
+        let second_addr = SocketAddress::from(second_addr);
+
+        let first_path_id = path::Id::new(0);
+        let second_path_id = path::Id::new(1);
+
+        // confirm we have one path
+        let mut path_manager = generate_path_manager(Duration::from_millis(10));
+        {
+            assert!(path_manager.path(&first_addr).is_some());
+            assert!(path_manager.path(&second_addr).is_none());
+        }
+
+        // insert and confirm we have two paths
+        {
+            let datagram = DatagramInfo {
+                timestamp: clock.get_time(),
+                remote_address: second_addr,
+                payload_len: 0,
+                ecn: ExplicitCongestionNotification::default(),
+                destination_connection_id: connection::LocalId::TEST_ID,
+            };
+            let _ = path_manager
+                .on_datagram_received(
+                    &datagram,
+                    &connection::Limits::default(),
+                    true,
+                    &mut Endpoint::default(),
+                    &mut random::testing::Generator(123),
+                )
+                .unwrap();
+
+            assert!(path_manager.path(&first_addr).is_some());
+            assert!(path_manager.path(&second_addr).is_some());
+            assert_eq!(path_manager.active_path_id(), first_path_id);
+        }
+        (
+            first_addr,
+            first_path_id,
+            second_addr,
+            second_path_id,
+            manager,
+            path_manager
+        )
+    }
+
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.7
     //= type=test
     #[test]
@@ -1323,49 +1502,11 @@ mod test {
     // - update rtt for 1st path using time packet 1 since it is largest and was sent/received on 1st path
     // - rtt for 2nd apth should be unchanged
     fn rtt_update_when_receiving_ack_from_multiple_paths() {
-        let space = PacketNumberSpace::ApplicationData;
-        let mut manager = Manager::new(space, Duration::from_millis(100));
-        let packet_bytes = 128;
-        let clock = NoopClock {};
-
         // Setup:
-        let first_addr = SocketAddress::IpV4(Default::default());
-        let second_addr: SocketAddr = "127.0.0.1:80".parse().unwrap();
-        let second_addr = SocketAddress::from(second_addr);
-
-        let first_path_id = path::Id::new(0);
-        let second_path_id = path::Id::new(1);
-
-        // confirm we have one path
-        let mut path_manager = generate_path_manager(Duration::from_millis(10));
-        {
-            assert!(path_manager.path(&first_addr).is_some());
-            assert!(path_manager.path(&second_addr).is_none());
-        }
-
-        // insert and confirm we have two paths
-        {
-            let datagram = DatagramInfo {
-                timestamp: clock.get_time(),
-                remote_address: second_addr,
-                payload_len: 0,
-                ecn: ExplicitCongestionNotification::default(),
-                destination_connection_id: connection::LocalId::TEST_ID,
-            };
-            let _ = path_manager
-                .on_datagram_received(
-                    &datagram,
-                    &connection::Limits::default(),
-                    true,
-                    &mut Endpoint::default(),
-                    &mut random::testing::Generator(123),
-                )
-                .unwrap();
-
-            assert!(path_manager.path(&first_addr).is_some());
-            assert!(path_manager.path(&second_addr).is_some());
-            assert_eq!(path_manager.active_path_id(), first_path_id);
-        }
+        let space = PacketNumberSpace::ApplicationData;
+        let packet_bytes = 128;
+        let (first_addr, first_path_id, _second_addr, second_path_id, mut manager, mut path_manager) =
+            helper_generate_multi_path_manager(space);
         let mut context = MockContext::new(&mut path_manager);
 
         // Trigger:
