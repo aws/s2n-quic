@@ -27,7 +27,7 @@ impl<'a> Default for Pattern<'a> {
 
 impl<'a> Pattern<'a> {
     pub fn from_arg(arg: &'a str) -> Result<Self, Error> {
-        let mut parts = arg.split(' ').filter(|p| !p.is_empty());
+        let mut parts = arg.split(',').filter(|p| !p.is_empty());
         let meta = parts.next().expect("should have at least one pattern");
         if meta.is_empty() {
             return Err(anyhow!("compliance pattern cannot be empty"));
