@@ -179,7 +179,9 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
 
                 // Peer has intentionally tried to migrate to this new path because they changed
                 // their destination_connection_id, so we will change our destination_connection_id as well.
-                self.peer_id_registry.consume_new_id()?
+                self.peer_id_registry
+                    .consume_new_id()
+                    .ok_or(transport::Error::INTERNAL_ERROR)?
             } else {
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.5
                 //# Due to network changes outside
@@ -350,7 +352,11 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         let active_path_connection_id = self.active_path().peer_connection_id;
 
         if !self.peer_id_registry.is_active(&active_path_connection_id) {
-            self.active_path_mut().peer_connection_id = self.peer_id_registry.consume_new_id()?;
+            self.active_path_mut().peer_connection_id =
+                self.peer_id_registry.consume_new_id().expect(
+                    "Since we are only checking the active path and new ID was delivered, \
+                    there will always be a new ID available to consume if necessary",
+                );
         }
 
         Ok(())

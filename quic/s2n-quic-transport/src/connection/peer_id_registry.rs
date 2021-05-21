@@ -422,17 +422,17 @@ impl PeerIdRegistry {
         }
     }
 
+    /// Checks if the peer_id exists and if it is active.
     pub fn is_active(&self, peer_id: &connection::PeerId) -> bool {
-        for id_info in self.registered_ids.iter() {
-            if peer_id == &id_info.id && id_info.status.is_active() {
-                return true;
-            }
-        }
-
-        false
+        self.registered_ids
+            .iter()
+            .any(|id_info| peer_id == &id_info.id && id_info.status.is_active())
     }
 
-    pub fn consume_new_id(&mut self) -> Result<connection::PeerId, transport::Error> {
+    /// Tries to consume a new peer_id if one is available.
+    ///
+    /// Register the stateless reset token once a connection ID is in use.
+    pub fn consume_new_id(&mut self) -> Option<connection::PeerId> {
         for id_info in self.registered_ids.iter_mut() {
             if id_info.status == New {
                 // Start tracking the stateless reset token
@@ -449,11 +449,11 @@ impl PeerIdRegistry {
 
                 // Consume the new id
                 id_info.status = InUse;
-                return Ok(id_info.id);
+                return Some(id_info.id);
             }
         }
 
-        Err(transport::Error::CONNECTION_ID_LIMIT_ERROR)
+        None
     }
 
     // Validate that the ACTIVE_CONNECTION_ID_LIMIT has not been exceeded
@@ -992,7 +992,7 @@ pub(crate) mod tests {
             .stateless_reset_map
             .remove(&TEST_TOKEN_2)
             .is_none());
-        assert_eq!(Ok(id_2), reg.consume_new_id());
+        assert_eq!(Some(id_2), reg.consume_new_id());
         reg.registered_ids[1].status = InUse;
         // this is an indirect way to test that we inserted a reset token when we consumed id_2
         assert!(reg
@@ -1014,10 +1014,7 @@ pub(crate) mod tests {
             Some(TEST_TOKEN_1),
         );
 
-        assert_eq!(
-            Err(transport::Error::CONNECTION_ID_LIMIT_ERROR),
-            reg.consume_new_id()
-        );
+        assert_eq!(None, reg.consume_new_id());
     }
 
     #[test]
