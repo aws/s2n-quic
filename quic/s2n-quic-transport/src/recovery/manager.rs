@@ -1055,7 +1055,7 @@ mod test {
         // Call on validated so the path is not amplification limited so we can verify PTO arming
         let space = PacketNumberSpace::ApplicationData;
         let packet_bytes = 128;
-        // Setup:
+        // Setup 1:
         let (
             _first_addr,
             first_path_id,
@@ -1074,7 +1074,7 @@ mod test {
         // Reset the timer so we can confirm it was set correctly
         manager.pto.timer.cancel();
 
-        // Trigger:
+        // Trigger 1:
         let sent_packet = space.new_packet_number(VarInt::from_u8(1));
         let ack_elicitation = AckElicitation::Eliciting;
 
@@ -1087,7 +1087,7 @@ mod test {
 
         manager.on_packet_sent(sent_packet, outcome, time_sent, first_path_id, &mut context);
 
-        // Expectation:
+        // Expectation 1:
         assert!(manager.sent_packets.get(sent_packet).is_some());
         let actual_sent_packet = manager.sent_packets.get(sent_packet).unwrap();
         assert_eq!(
@@ -1107,7 +1107,7 @@ mod test {
         assert!(manager.pto.timer.is_armed());
         assert_eq!(Some(expected_pto), manager.pto.timer.iter().next());
 
-        // Setup:
+        // Setup 2:
         // send 2nd packet on path 2nd path
         let sent_packet = space.new_packet_number(VarInt::from_u8(2));
         time_sent += Duration::from_millis(10);
@@ -1121,7 +1121,7 @@ mod test {
         // Reset the timer so we can confirm it was set correctly
         manager.pto.timer.cancel();
 
-        // Trigger:
+        // Trigger 2:
         manager.on_packet_sent(
             sent_packet,
             outcome,
@@ -1130,7 +1130,7 @@ mod test {
             &mut context,
         );
 
-        // Expectation:
+        // Expectation 2:
         assert!(manager.sent_packets.get(sent_packet).is_some());
         let actual_sent_packet = manager.sent_packets.get(sent_packet).unwrap();
         assert_eq!(
