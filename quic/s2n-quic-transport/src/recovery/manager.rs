@@ -245,6 +245,7 @@ impl Manager {
         if self.space.is_application_data() && !is_handshake_confirmed {
             self.pto.cancel();
         } else {
+            // TODO does the PTO need to be tracked by path?
             self.pto
                 .update(pto_base_timestamp, path.pto_period(self.space));
         }
@@ -927,12 +928,11 @@ mod test {
         let now = s2n_quic_platform::time::now();
         let mut time_sent = now;
         let space = PacketNumberSpace::ApplicationData;
-        let packet_bytes = 128;
         let (
             _first_addr,
             first_path_id,
             _second_addr,
-            second_path_id,
+            _second_path_id,
             mut manager,
             mut path_manager,
         ) = helper_generate_multi_path_manager(space);
@@ -964,13 +964,7 @@ mod test {
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
             };
 
-            manager.on_packet_sent(
-                sent_packet,
-                outcome,
-                time_sent,
-                first_path_id,
-                &mut context,
-            );
+            manager.on_packet_sent(sent_packet, outcome, time_sent, first_path_id, &mut context);
 
             assert!(manager.sent_packets.get(sent_packet).is_some());
             let actual_sent_packet = manager.sent_packets.get(sent_packet).unwrap();
@@ -1013,21 +1007,43 @@ mod test {
         assert_eq!(manager.sent_packets.iter().count(), 10);
         assert_eq!(
             expected_bytes_in_flight as u32,
-            context.path_by_id(first_path_id).congestion_controller.bytes_in_flight
+            context
+                .path_by_id(first_path_id)
+                .congestion_controller
+                .bytes_in_flight
         );
     }
 
     #[test]
-    // Setup:
-    // - create path manager with two paths
+    // The pto timer is shared for all paths and should be armed if packet if received on any of
+    // the paths.
     //
-    // Trigger:
-    // - send packet on path
-    //   - packet 0: 1nd path: ack_elicitation Eliciting: is_congestion_controlled true
-    //   - packet 1: 1st path: time 200
+    // Setup 1:
+    // - create path manager with two validated and not AmplificationLimited paths
+    // - reset pto timer
     //
-    // Expectation:
-    // - update rtt for 1st path using time packet 1 since it is largest and was sent/received on 1st path
+    // Trigger 1:
+    // - send packet on path 1
+    //   - packet: 1
+    //   - ack_elicitation: Eliciting
+    //   - is_congestion_controlled: true
+    //
+    // Expectation 1:
+    // - bytes sent, congestion_controlled, time_sent match that of sent
+    // - pto is armed
+    //
+    // Setup 2:
+    // - reset pto timer
+    //
+    // Trigger 2:
+    // - send packet on path 2
+    //   - packet: 2
+    //   - ack_elicitation: Eliciting
+    //   - is_congestion_controlled: true
+    //
+    // Expectation 2:
+    // - bytes sent, congestion_controlled, time_sent match that of sent
+    // - pto is armed
     fn on_packet_sent_across_multiple_paths() {
         // let space = PacketNumberSpace::ApplicationData;
         let max_ack_delay = Duration::from_millis(100);
@@ -1039,6 +1055,7 @@ mod test {
         // Call on validated so the path is not amplification limited so we can verify PTO arming
         let space = PacketNumberSpace::ApplicationData;
         let packet_bytes = 128;
+        // Setup:
         let (
             _first_addr,
             first_path_id,
@@ -1053,77 +1070,85 @@ mod test {
         // PTO = smoothed_rtt + max(4*rttvar, kGranularity) + max_ack_delay
         // PTO = DEFAULT_INITIAL_RTT + 4*DEFAULT_INITIAL_RTT/2 + 10
         let expected_pto_duration = DEFAULT_INITIAL_RTT + 2 * DEFAULT_INITIAL_RTT + max_ack_delay;
-        let mut expected_bytes_in_flight = 0;
 
-        for i in 1..=10 {
-            // Reset the timer so we can confirm it was set correctly
-            manager.pto.timer.cancel();
+        // Reset the timer so we can confirm it was set correctly
+        manager.pto.timer.cancel();
 
-            let sent_packet = space.new_packet_number(VarInt::from_u8(i));
-            let ack_elicitation = if i % 2 == 0 {
-                AckElicitation::Eliciting
-            } else {
-                AckElicitation::NonEliciting
-            };
+        // Trigger:
+        let sent_packet = space.new_packet_number(VarInt::from_u8(1));
+        let ack_elicitation = AckElicitation::Eliciting;
 
-            let outcome = transmission::Outcome {
-                ack_elicitation,
-                is_congestion_controlled: i % 3 == 0,
-                bytes_sent: (2 * i) as usize,
-                packet_number: space.new_packet_number(VarInt::from_u8(1)),
-            };
+        let outcome = transmission::Outcome {
+            ack_elicitation,
+            is_congestion_controlled: true,
+            bytes_sent: packet_bytes,
+            packet_number: space.new_packet_number(VarInt::from_u8(1)),
+        };
 
-            manager.on_packet_sent(
-                sent_packet,
-                outcome,
-                time_sent,
-                first_path_id,
-                &mut context,
-            );
+        manager.on_packet_sent(sent_packet, outcome, time_sent, first_path_id, &mut context);
 
-            assert!(manager.sent_packets.get(sent_packet).is_some());
-            let actual_sent_packet = manager.sent_packets.get(sent_packet).unwrap();
-            assert_eq!(
-                actual_sent_packet.congestion_controlled,
-                outcome.is_congestion_controlled
-            );
-            assert_eq!(actual_sent_packet.time_sent, time_sent);
-
-            if outcome.is_congestion_controlled {
-                assert_eq!(actual_sent_packet.sent_bytes as usize, outcome.bytes_sent);
-
-                let expected_pto;
-                if outcome.ack_elicitation.is_ack_eliciting() {
-                    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
-                    //= type=test
-                    //# A sender SHOULD restart its PTO timer every time an ack-eliciting
-                    //# packet is sent
-                    expected_pto = time_sent + expected_pto_duration;
-                } else if let Some(time_of_last_ack_eliciting_packet) =
-                    manager.time_of_last_ack_eliciting_packet
-                {
-                    expected_pto = time_of_last_ack_eliciting_packet + expected_pto_duration;
-                } else {
-                    // No ack eliciting packets have been sent yet
-                    expected_pto = time_sent + expected_pto_duration;
-                }
-
-                assert!(manager.pto.timer.is_armed());
-                assert_eq!(Some(expected_pto), manager.pto.timer.iter().next());
-
-                expected_bytes_in_flight += outcome.bytes_sent;
-            } else {
-                assert_eq!(actual_sent_packet.sent_bytes, 0);
-            }
-
-            time_sent += Duration::from_millis(10);
-        }
-
-        assert_eq!(manager.sent_packets.iter().count(), 10);
+        // Expectation:
+        assert!(manager.sent_packets.get(sent_packet).is_some());
+        let actual_sent_packet = manager.sent_packets.get(sent_packet).unwrap();
         assert_eq!(
-            expected_bytes_in_flight as u32,
-            context.path().congestion_controller.bytes_in_flight
+            actual_sent_packet.congestion_controlled,
+            outcome.is_congestion_controlled
         );
+        assert_eq!(actual_sent_packet.time_sent, time_sent);
+
+        // checking outcome.is_congestion_controlled
+        assert_eq!(actual_sent_packet.sent_bytes as usize, outcome.bytes_sent);
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+        //= type=test
+        //# A sender SHOULD restart its PTO timer every time an ack-eliciting
+        //# packet is sent
+        let expected_pto = time_sent + expected_pto_duration;
+        assert!(manager.pto.timer.is_armed());
+        assert_eq!(Some(expected_pto), manager.pto.timer.iter().next());
+
+        // Setup:
+        // send 2nd packet on path 2nd path
+        let sent_packet = space.new_packet_number(VarInt::from_u8(2));
+        time_sent += Duration::from_millis(10);
+        let outcome = transmission::Outcome {
+            ack_elicitation,
+            is_congestion_controlled: true,
+            bytes_sent: packet_bytes,
+            packet_number: space.new_packet_number(VarInt::from_u8(2)),
+        };
+
+        // Reset the timer so we can confirm it was set correctly
+        manager.pto.timer.cancel();
+
+        // Trigger:
+        manager.on_packet_sent(
+            sent_packet,
+            outcome,
+            time_sent,
+            second_path_id,
+            &mut context,
+        );
+
+        // Expectation:
+        assert!(manager.sent_packets.get(sent_packet).is_some());
+        let actual_sent_packet = manager.sent_packets.get(sent_packet).unwrap();
+        assert_eq!(
+            actual_sent_packet.congestion_controlled,
+            outcome.is_congestion_controlled
+        );
+        assert_eq!(actual_sent_packet.time_sent, time_sent);
+
+        // checking outcome.is_congestion_controlled
+        assert_eq!(actual_sent_packet.sent_bytes as usize, outcome.bytes_sent);
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+        //= type=test
+        //# A sender SHOULD restart its PTO timer every time an ack-eliciting
+        //# packet is sent
+        let expected_pto = time_sent + expected_pto_duration;
+        assert!(manager.pto.timer.is_armed());
+        assert_eq!(Some(expected_pto), manager.pto.timer.iter().next());
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.7
@@ -1440,6 +1465,9 @@ mod test {
     }
 
     #[test]
+    // It is possible to receive acks for packets that were sent on different paths. In this case
+    // we still update rtt if the largest acked packet was sent/received on the same path.
+    //
     // Setup:
     // - create path manager with two paths
     //
@@ -2559,7 +2587,7 @@ mod test {
         assert!(Manager::calculate_loss_time_threshold(&rtt_estimator) >= K_GRANULARITY);
     }
 
-    fn helper_generate_multi_path_manager<'a>(
+    fn helper_generate_multi_path_manager(
         space: PacketNumberSpace,
     ) -> (
         SocketAddress,
@@ -2610,6 +2638,19 @@ mod test {
             assert!(path_manager.path(&second_addr).is_some());
             assert_eq!(path_manager.active_path_id(), first_path_id);
         }
+
+        // start out with both paths validate and not AmplificationLimited
+        path_manager.path_mut(&first_addr).unwrap().1.on_validated();
+        path_manager
+            .path_mut(&second_addr)
+            .unwrap()
+            .1
+            .on_validated();
+        let first_path = path_manager.path(&first_addr).unwrap().1;
+        let second_path = path_manager.path(&second_addr).unwrap().1;
+        assert_eq!(false, first_path.at_amplification_limit());
+        assert_eq!(false, second_path.at_amplification_limit());
+
         (
             first_addr,
             first_path_id,
