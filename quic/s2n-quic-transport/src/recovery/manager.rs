@@ -884,6 +884,7 @@ mod test {
         let path = Path::new(
             Default::default(),
             connection::PeerId::TEST_ID,
+            connection::LocalId::TEST_ID,
             RttEstimator::new(max_ack_delay),
             Unlimited::default(),
             false,
@@ -1094,6 +1095,7 @@ mod test {
         context.path_manager[path::Id::new(0)] = Path::new(
             Default::default(),
             connection::PeerId::TEST_ID,
+            connection::LocalId::TEST_ID,
             context.path().rtt_estimator,
             MockCongestionController::default(),
             false,
@@ -1955,6 +1957,7 @@ mod test {
         context.path_manager[path::Id::new(0)] = Path::new(
             Default::default(),
             connection::PeerId::TEST_ID,
+            connection::LocalId::TEST_ID,
             RttEstimator::new(manager.max_ack_delay),
             MockCongestionController::default(),
             false,
@@ -2034,6 +2037,7 @@ mod test {
         let mut path = Path::new(
             Default::default(),
             connection::PeerId::TEST_ID,
+            connection::LocalId::TEST_ID,
             RttEstimator::new(Duration::from_millis(10)),
             Unlimited::default(),
             false,
@@ -2059,6 +2063,7 @@ mod test {
         let mut path = Path::new(
             Default::default(),
             connection::PeerId::TEST_ID,
+            connection::LocalId::TEST_ID,
             RttEstimator::new(max_ack_delay),
             Unlimited::default(),
             false,
@@ -2462,6 +2467,7 @@ mod test {
         let path = Path::new(
             Default::default(),
             connection::PeerId::TEST_ID,
+            connection::LocalId::TEST_ID,
             RttEstimator::new(max_ack_delay),
             MockCongestionController::default(),
             true,
