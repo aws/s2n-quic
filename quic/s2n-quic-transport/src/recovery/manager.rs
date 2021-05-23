@@ -472,11 +472,7 @@ impl Manager {
             //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
             //# A sender SHOULD restart its PTO timer every time an ack-eliciting
             //# packet is sent or acknowledged,
-            self.update_pto_timer(
-                path,
-                datagram.timestamp,
-                is_handshake_confirmed,
-            );
+            self.update_pto_timer(path, datagram.timestamp, is_handshake_confirmed);
         }
     }
 
@@ -1305,53 +1301,71 @@ mod test {
     }
 
     #[test]
-    // ack should only reset pto_backoff for the path the packet was sent on
+    // pto_backoff reset should happen for the path the packet was sent on
+    //
+    // Setup 1:
+    // - create path manager with two validated and not AmplificationLimited paths
+    // - send a packet on each path
+    // - set pto_backoff to non-initial value
+    //
+    // Trigger 1:
+    // - send ack for packet 1 on path 1
+    //
+    // Expectation 1:
+    // - pto_backoff for first_path is reset
+    // - pto_backoff for second_path_id path is not reset
+    //
+    // Trigger 2:
+    // - send ack for packet 2 on path 1
+    //
+    // Expectation 2:
+    // - pto_backoff for first_path path is not reset
+    // - pto_backoff for second_path is reset
     fn process_new_acked_packets_update_pto_timer() {
         // Setup:
         let space = PacketNumberSpace::ApplicationData;
         let packet_bytes = 128;
-        let (
-            first_addr,
-            first_path_id,
-            second_addr,
-            second_path_id,
-            mut manager,
-            mut path_manager,
-        ) = helper_generate_multi_path_manager(space);
+        let (first_addr, first_path_id, second_addr, second_path_id, mut manager, mut path_manager) =
+            helper_generate_multi_path_manager(space);
         let mut context = MockContext::new(&mut path_manager);
-
-        // let first_path = context.path_mut_by_id(first_path_id);
-        // let second_path = context.path_mut_by_id(second_path_id);
 
         let time_sent = s2n_quic_platform::time::now() + Duration::from_secs(10);
 
-        // Send packets 1 to 2
-        // for i in 1..=2 {
-            manager.on_packet_sent(
-                space.new_packet_number(VarInt::from_u8(1)),
-                transmission::Outcome {
-                    ack_elicitation: AckElicitation::Eliciting,
-                    is_congestion_controlled: true,
-                    bytes_sent: packet_bytes,
-                    packet_number: space.new_packet_number(VarInt::from_u8(1)),
-                },
-                time_sent,
-                first_path_id,
-                &mut context,
-            );
-            manager.on_packet_sent(
-                space.new_packet_number(VarInt::from_u8(2)),
-                transmission::Outcome {
-                    ack_elicitation: AckElicitation::Eliciting,
-                    is_congestion_controlled: true,
-                    bytes_sent: packet_bytes,
-                    packet_number: space.new_packet_number(VarInt::from_u8(1)),
-                },
-                time_sent,
-                second_path_id,
-                &mut context,
-            );
-        // }
+        // Send packets 1 on first_path
+        manager.on_packet_sent(
+            space.new_packet_number(VarInt::from_u8(1)),
+            transmission::Outcome {
+                ack_elicitation: AckElicitation::Eliciting,
+                is_congestion_controlled: true,
+                bytes_sent: packet_bytes,
+                packet_number: space.new_packet_number(VarInt::from_u8(1)),
+            },
+            time_sent,
+            first_path_id,
+            &mut context,
+        );
+        // Send packets 2 on second_path
+        manager.on_packet_sent(
+            space.new_packet_number(VarInt::from_u8(2)),
+            transmission::Outcome {
+                ack_elicitation: AckElicitation::Eliciting,
+                is_congestion_controlled: true,
+                bytes_sent: packet_bytes,
+                packet_number: space.new_packet_number(VarInt::from_u8(1)),
+            },
+            time_sent,
+            second_path_id,
+            &mut context,
+        );
+
+        assert!(
+            context.path_mut_by_id(first_path_id).is_peer_validated(),
+            true
+        );
+        assert!(
+            context.path_mut_by_id(second_path_id).is_peer_validated(),
+            true
+        );
 
         // Start the pto backoff at 2 so we can tell if it was reset
         context.path_mut_by_id(first_path_id).pto_backoff = 2;
@@ -1360,10 +1374,19 @@ mod test {
         // Trigger 1:
         // Ack packet first_path
         let ack_receive_time = time_sent + Duration::from_millis(500);
-        ack_packets_on_path(1..=1, ack_receive_time, &mut context, &mut manager, first_addr);
+        ack_packets_on_path(
+            1..=1,
+            ack_receive_time,
+            &mut context,
+            &mut manager,
+            first_addr,
+        );
 
         // Expectation 1:
-        assert_eq!(context.path_mut_by_id(first_path_id).pto_backoff, INITIAL_PTO_BACKOFF);
+        assert_eq!(
+            context.path_mut_by_id(first_path_id).pto_backoff,
+            INITIAL_PTO_BACKOFF
+        );
         assert_eq!(context.path_mut_by_id(second_path_id).pto_backoff, 2);
 
         // Reset the pto backoff to 2 so we can tell if it was reset
@@ -1373,11 +1396,20 @@ mod test {
         // Trigger 2:
         // Ack packet second_path
         let ack_receive_time = ack_receive_time + Duration::from_secs(1);
-        ack_packets_on_path(2..=2, ack_receive_time, &mut context, &mut manager, first_addr);
+        ack_packets_on_path(
+            2..=2,
+            ack_receive_time,
+            &mut context,
+            &mut manager,
+            first_addr,
+        );
 
         // Expectation 2:
         assert_eq!(context.path_mut_by_id(first_path_id).pto_backoff, 2);
-        assert_eq!(context.path_mut_by_id(second_path_id).pto_backoff, INITIAL_PTO_BACKOFF);
+        assert_eq!(
+            context.path_mut_by_id(second_path_id).pto_backoff,
+            INITIAL_PTO_BACKOFF
+        );
     }
 
     //#[test]
@@ -1394,7 +1426,6 @@ mod test {
     //        mut path_manager,
     //    ) = helper_generate_multi_path_manager(space);
     //    let mut context = MockContext::new(&mut path_manager);
-
 
     //    // Start the pto backoff at 2 so we can tell if it was reset
     //    context.path_mut().pto_backoff = 2;
@@ -1539,7 +1570,6 @@ mod test {
     //    //);
     //    //assert_eq!(3, context.on_rtt_update_count);
     //}
-
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.1
     //= type=test
