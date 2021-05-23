@@ -167,6 +167,7 @@ pub mod testing {
             pub persistent_congestion: Option<bool>,
             pub on_packets_lost: u32,
             pub on_rtt_update: u32,
+            pub on_packet_ack: u32,
         }
 
         impl super::CongestionController for CongestionController {
@@ -195,6 +196,7 @@ pub mod testing {
                 _rtt_estimator: &RttEstimator,
                 _ack_receive_time: Timestamp,
             ) {
+                self.on_packet_ack += 1;
             }
 
             fn on_packets_lost(
