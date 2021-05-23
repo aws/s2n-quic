@@ -445,8 +445,6 @@ impl Manager {
         for acked_packet_info in newly_acked_packets {
             // TODO add test to verify multi path behavior
             // congestion_controller.on_packet_ack
-            // path.is_peer_validated
-            //D path.reset_pto_backoff
             // update_pto_timer
             let path = context.path_mut_by_id(acked_packet_info.path_id);
             path.congestion_controller.on_packet_ack(
