@@ -2979,8 +2979,8 @@ mod test {
         let second_path = path_manager.path(&second_addr).unwrap().1;
         assert_eq!(false, first_path.at_amplification_limit());
         assert_eq!(false, second_path.at_amplification_limit());
-        assert!(first_path.is_peer_validated(), true);
-        assert!(second_path.is_peer_validated(), true);
+        assert!(first_path.is_peer_validated());
+        assert!(second_path.is_peer_validated());
 
         (
             first_addr,
