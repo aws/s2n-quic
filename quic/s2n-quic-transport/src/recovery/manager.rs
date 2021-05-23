@@ -185,9 +185,6 @@ impl Manager {
             //# packet is sent or acknowledged,
             let is_handshake_confirmed = context.is_handshake_confirmed();
             let path = context.path_mut_by_id(path_id);
-            // TODO add test to verify multi path behavior
-            // update_pto_timer
-            // congestion_controller.on_packet_sent
             self.update_pto_timer(path, time_sent, is_handshake_confirmed);
             path.congestion_controller
                 .on_packet_sent(time_sent, congestion_controlled_bytes);
@@ -443,8 +440,6 @@ impl Manager {
 
         let is_handshake_confirmed = context.is_handshake_confirmed();
         for acked_packet_info in newly_acked_packets {
-            // TODO add test to verify multi path behavior
-            // update_pto_timer
             let path = context.path_mut_by_id(acked_packet_info.path_id);
             path.congestion_controller.on_packet_ack(
                 largest_newly_acked_time_sent,
