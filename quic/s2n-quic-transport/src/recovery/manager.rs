@@ -1322,8 +1322,14 @@ mod test {
         // Setup:
         let space = PacketNumberSpace::ApplicationData;
         let packet_bytes = 128;
-        let (first_addr, first_path_id, _second_addr, second_path_id, mut manager, mut path_manager) =
-            helper_generate_multi_path_manager(space);
+        let (
+            first_addr,
+            first_path_id,
+            _second_addr,
+            second_path_id,
+            mut manager,
+            mut path_manager,
+        ) = helper_generate_multi_path_manager(space);
         let mut context = MockContext::new(&mut path_manager);
 
         let time_sent = s2n_quic_platform::time::now() + Duration::from_secs(10);
@@ -1422,13 +1428,18 @@ mod test {
     // Expectation 2:
     // - cc.on_packet_ack should not be updated for first_path
     // - cc.on_packet_ack should be updated for second_path
-    //
     fn process_new_acked_packets_congestion_controller() {
         // Setup:
         let space = PacketNumberSpace::ApplicationData;
         let packet_bytes = 128;
-        let (first_addr, first_path_id, _second_addr, second_path_id, mut manager, mut path_manager) =
-            helper_generate_multi_path_manager(space);
+        let (
+            first_addr,
+            first_path_id,
+            _second_addr,
+            second_path_id,
+            mut manager,
+            mut path_manager,
+        ) = helper_generate_multi_path_manager(space);
         let mut context = MockContext::new(&mut path_manager);
 
         let time_sent = s2n_quic_platform::time::now() + Duration::from_secs(10);
@@ -1463,31 +1474,87 @@ mod test {
         // Trigger 1:
         // Ack packet 1 on path 1
         let ack_receive_time = time_sent + Duration::from_millis(500);
-        ack_packets_on_path(1..=1, ack_receive_time, &mut context, &mut manager, first_addr);
+        ack_packets_on_path(
+            1..=1,
+            ack_receive_time,
+            &mut context,
+            &mut manager,
+            first_addr,
+        );
 
         // Expectation 1:
-        assert_eq!(context.path_by_id(first_path_id).congestion_controller.on_packet_ack, 1);
-        assert_eq!(context.path_by_id(second_path_id).congestion_controller.on_packet_ack, 0);
+        assert_eq!(
+            context
+                .path_by_id(first_path_id)
+                .congestion_controller
+                .on_packet_ack,
+            1
+        );
+        assert_eq!(
+            context
+                .path_by_id(second_path_id)
+                .congestion_controller
+                .on_packet_ack,
+            0
+        );
 
         // Trigger 2:
         // Ack packet 2 on path 1
         let ack_receive_time = time_sent + Duration::from_millis(500);
-        ack_packets_on_path(2..=2, ack_receive_time, &mut context, &mut manager, first_addr);
+        ack_packets_on_path(
+            2..=2,
+            ack_receive_time,
+            &mut context,
+            &mut manager,
+            first_addr,
+        );
 
         // Expectation 2:
-        assert_eq!(context.path_by_id(first_path_id).congestion_controller.on_packet_ack, 1);
-        assert_eq!(context.path_by_id(second_path_id).congestion_controller.on_packet_ack, 1);
+        assert_eq!(
+            context
+                .path_by_id(first_path_id)
+                .congestion_controller
+                .on_packet_ack,
+            1
+        );
+        assert_eq!(
+            context
+                .path_by_id(second_path_id)
+                .congestion_controller
+                .on_packet_ack,
+            1
+        );
     }
 
     #[test]
-    // - update_pto_timer should not be path specific since its shared
-    //   - pto.cancel is shared
-    //   - pto.update is based on path.pto_period
+    // since pto is shared across paths, acks on either paths should update pto timer
+    //
+    // Setup 1:
+    // - create path manager with two peer_validated and not AmplificationLimited paths
+    // -
+    // - send a packet on each path (make sure sent_packets is non-empty)
+    //  - packet 1 on path 1
+    //  - packet 2 on path 2
+    //
+    // Trigger 1:
+    // - send ack for packet 1 on path 1
+    //
+    // Expectation 1:
+    // - pto.timer should be armed
+    //
+    // Setup 2:
+    // - send a packet on path 1 (make sure sent_packets is non-empty)
+    //
+    // Trigger 2:
+    // - send ack for packet 2 on path 2
+    //
+    // Expectation 2:
+    // - pto.timer should be armed
     fn process_new_acked_packets_pto_timer() {
         // Setup:
         let space = PacketNumberSpace::ApplicationData;
         let packet_bytes = 128;
-        let (first_addr, first_path_id, _second_addr, second_path_id, mut manager, mut path_manager) =
+        let (first_addr, first_path_id, second_addr, second_path_id, mut manager, mut path_manager) =
             helper_generate_multi_path_manager(space);
         let mut context = MockContext::new(&mut path_manager);
 
@@ -1520,23 +1587,51 @@ mod test {
             &mut context,
         );
 
+        manager.pto.timer.cancel();
+
         // Trigger 1:
         // Ack packet 1 on path 1
         let ack_receive_time = time_sent + Duration::from_millis(500);
-        ack_packets_on_path(1..=1, ack_receive_time, &mut context, &mut manager, first_addr);
+        ack_packets_on_path(
+            1..=1,
+            ack_receive_time,
+            &mut context,
+            &mut manager,
+            first_addr,
+        );
 
         // Expectation 1:
-        assert_eq!(context.path_by_id(first_path_id).congestion_controller.on_packet_ack, 1);
-        assert_eq!(context.path_by_id(second_path_id).congestion_controller.on_packet_ack, 0);
+        assert!(manager.pto.timer.is_armed());
+
+        // Setup 2:
+        manager.pto.timer.cancel();
+        // Send packets 3 on first path so that sent_packets is non-empty
+        manager.on_packet_sent(
+            space.new_packet_number(VarInt::from_u8(3)),
+            transmission::Outcome {
+                ack_elicitation: AckElicitation::Eliciting,
+                is_congestion_controlled: true,
+                bytes_sent: packet_bytes,
+                packet_number: space.new_packet_number(VarInt::from_u8(1)),
+            },
+            time_sent,
+            first_path_id,
+            &mut context,
+        );
 
         // Trigger 2:
         // Ack packet 2 on path 1
         let ack_receive_time = time_sent + Duration::from_millis(500);
-        ack_packets_on_path(2..=2, ack_receive_time, &mut context, &mut manager, first_addr);
+        ack_packets_on_path(
+            2..=2,
+            ack_receive_time,
+            &mut context,
+            &mut manager,
+            second_addr,
+        );
 
         // Expectation 2:
-        assert_eq!(context.path_by_id(first_path_id).congestion_controller.on_packet_ack, 1);
-        assert_eq!(context.path_by_id(second_path_id).congestion_controller.on_packet_ack, 1);
+        assert!(manager.pto.timer.is_armed());
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.1
@@ -2884,15 +2979,8 @@ mod test {
         let second_path = path_manager.path(&second_addr).unwrap().1;
         assert_eq!(false, first_path.at_amplification_limit());
         assert_eq!(false, second_path.at_amplification_limit());
-        assert!(
-            first_path.is_peer_validated(),
-            true
-        );
-        assert!(
-            second_path.is_peer_validated(),
-            true
-        );
-
+        assert!(first_path.is_peer_validated(), true);
+        assert!(second_path.is_peer_validated(), true);
 
         (
             first_addr,
