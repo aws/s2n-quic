@@ -532,8 +532,8 @@ impl Manager {
         for (unacked_packet_number, unacked_sent_info) in self.sent_packets.iter() {
             let path_id = unacked_sent_info.path_id;
             let max_persistent_congestion_period = max_persistent_congestion_period_map
-                .get_mut(&path_id)
-                .unwrap();
+                .entry(path_id)
+                .or_insert_with(|| Duration::from_secs(0));
 
             if unacked_packet_number > largest_acked_packet {
                 // sent_packets is ordered by packet number, so all remaining packets will be larger
