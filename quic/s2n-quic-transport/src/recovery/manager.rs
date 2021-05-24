@@ -19,6 +19,7 @@ use s2n_quic_core::{
     varint::VarInt,
 };
 use smallvec::SmallVec;
+use std::collections::BTreeMap;
 
 type PacketDetails = (PacketNumber, SentPacketInfo, path::Id);
 
@@ -503,12 +504,12 @@ impl Manager {
 
         // TODO: Investigate a more efficient mechanism for managing sent_packets
         //       See https://github.com/awslabs/s2n-quic/issues/69
-        let (max_persistent_congestion_period, sent_packets_to_remove) =
+        let (max_persistent_congestion_period_map, sent_packets_to_remove) =
             self.detect_lost_packets(now, context);
 
         self.remove_lost_packets(
             now,
-            max_persistent_congestion_period,
+            max_persistent_congestion_period_map,
             sent_packets_to_remove,
             context,
         );
@@ -518,17 +519,23 @@ impl Manager {
         &mut self,
         now: Timestamp,
         context: &mut Ctx,
-    ) -> (Duration, Vec<(PacketNumber, u16, path::Id)>) {
+    ) -> (
+        BTreeMap<path::Id, Duration>,
+        Vec<(PacketNumber, u16, path::Id)>,
+    ) {
         let largest_acked_packet = &self
             .largest_acked_packet
             .expect("This function is only called after an ack has been received");
 
-        let mut max_persistent_congestion_period = Duration::from_secs(0);
         let mut sent_packets_to_remove = Vec::new();
+        let mut max_persistent_congestion_period_map: BTreeMap<path::Id, Duration> = BTreeMap::new();
 
         let mut persistent_congestion_period = Duration::from_secs(0);
         let mut prev_packet: Option<(&PacketNumber, Timestamp)> = None;
         for (unacked_packet_number, unacked_sent_info) in self.sent_packets.iter() {
+            let path_id = unacked_sent_info.path_id;
+            let max_persistent_congestion_period = max_persistent_congestion_period_map.get_mut(&path_id).unwrap();
+
             if unacked_packet_number > largest_acked_packet {
                 // sent_packets is ordered by packet number, so all remaining packets will be larger
                 break;
@@ -536,7 +543,7 @@ impl Manager {
 
             // TODO
             // make persistent_congestion_period and other path aware
-            let path = &context.path_by_id(unacked_sent_info.path_id);
+            let path = &context.path_by_id(path_id);
             // Calculate how long we wait until a packet is declared lost
             let time_threshold = Self::calculate_loss_time_threshold(&path.rtt_estimator);
             // Packets sent before this time are deemed lost.
@@ -592,8 +599,8 @@ impl Manager {
                     // Add the difference in time to the current period.
                     persistent_congestion_period +=
                         unacked_sent_info.time_sent - prev_packet.expect("checked above").1;
-                    max_persistent_congestion_period = max(
-                        max_persistent_congestion_period,
+                    *max_persistent_congestion_period = max(
+                        *max_persistent_congestion_period,
                         persistent_congestion_period,
                     );
                 } else {
@@ -637,13 +644,13 @@ impl Manager {
             }
         }
 
-        (max_persistent_congestion_period, sent_packets_to_remove)
+        (max_persistent_congestion_period_map, sent_packets_to_remove)
     }
 
     fn remove_lost_packets<CC: CongestionController, Ctx: Context<CC>>(
         &mut self,
         now: Timestamp,
-        max_persistent_congestion_period: Duration,
+        max_persistent_congestion_period_map: BTreeMap<path::Id, Duration>,
         sent_packets_to_remove: Vec<(PacketNumber, u16, path::Id)>,
         context: &mut Ctx,
     ) {
@@ -661,7 +668,9 @@ impl Manager {
             //# number spaces or an implementation that cannot compare send times
             //# across packet number spaces MAY use state for just the packet number
             //# space that was acknowledged.
-            let persistent_congestion = max_persistent_congestion_period
+            let persistent_congestion = *max_persistent_congestion_period_map
+                .get(&path_id)
+                .expect("this should be populated for each path in sent_packets_to_remove")
                 > path.rtt_estimator.persistent_congestion_threshold();
 
             if lost_bytes > 0 {
