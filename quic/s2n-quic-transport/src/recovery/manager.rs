@@ -517,7 +517,6 @@ impl Manager {
     fn detect_lost_packets<CC: CongestionController, Ctx: Context<CC>>(
         &mut self,
         now: Timestamp,
-        // sent_packets_to_remove: &mut Vec<(PacketNumber, u16, path::Id)>,
         context: &mut Ctx,
     ) -> (Duration, Vec<(PacketNumber, u16, path::Id)>) {
         let largest_acked_packet = &self
