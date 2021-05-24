@@ -525,8 +525,7 @@ impl Manager {
             .expect("This function is only called after an ack has been received");
 
         let mut sent_packets_to_remove = Vec::new();
-        let mut max_persistent_congestion_period_map: BTreeMap<path::Id, Duration> =
-            BTreeMap::new();
+        let mut max_persistent_congestion_period_map = BTreeMap::new();
 
         let mut persistent_congestion_period = Duration::from_secs(0);
         let mut prev_packet: Option<(&PacketNumber, Timestamp)> = None;
