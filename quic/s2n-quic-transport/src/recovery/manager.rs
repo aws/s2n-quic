@@ -503,17 +503,38 @@ impl Manager {
 
         // TODO: Investigate a more efficient mechanism for managing sent_packets
         //       See https://github.com/awslabs/s2n-quic/issues/69
-        let mut sent_packets_to_remove = Vec::new();
+        let (max_persistent_congestion_period, sent_packets_to_remove) =
+            self.detect_lost_packets(now, context);
 
+        self.remove_lost_packets(
+            now,
+            max_persistent_congestion_period,
+            sent_packets_to_remove,
+            context,
+        );
+    }
+
+    fn detect_lost_packets<CC: CongestionController, Ctx: Context<CC>>(
+        &mut self,
+        now: Timestamp,
+        // sent_packets_to_remove: &mut Vec<(PacketNumber, u16, path::Id)>,
+        context: &mut Ctx,
+    ) -> (Duration, Vec<(PacketNumber, u16, path::Id)>) {
         let largest_acked_packet = &self
             .largest_acked_packet
             .expect("This function is only called after an ack has been received");
 
-        let mut persistent_congestion_period = Duration::from_secs(0);
         let mut max_persistent_congestion_period = Duration::from_secs(0);
-        let mut prev_packet: Option<(&PacketNumber, Timestamp)> = None;
+        let mut sent_packets_to_remove = Vec::new();
 
+        let mut persistent_congestion_period = Duration::from_secs(0);
+        let mut prev_packet: Option<(&PacketNumber, Timestamp)> = None;
         for (unacked_packet_number, unacked_sent_info) in self.sent_packets.iter() {
+            if unacked_packet_number > largest_acked_packet {
+                // sent_packets is ordered by packet number, so all remaining packets will be larger
+                break;
+            }
+
             // TODO
             // make persistent_congestion_period and other path aware
             let path = &context.path_by_id(unacked_sent_info.path_id);
@@ -521,11 +542,6 @@ impl Manager {
             let time_threshold = Self::calculate_loss_time_threshold(&path.rtt_estimator);
             // Packets sent before this time are deemed lost.
             let lost_send_time = now.checked_sub(time_threshold);
-
-            if unacked_packet_number > largest_acked_packet {
-                // sent_packets is ordered by packet number, so all remaining packets will be larger
-                break;
-            }
 
             let time_threshold_exceeded = lost_send_time.map_or(false, |lost_send_time| {
                 unacked_sent_info.time_sent <= lost_send_time
@@ -622,6 +638,16 @@ impl Manager {
             }
         }
 
+        (max_persistent_congestion_period, sent_packets_to_remove)
+    }
+
+    fn remove_lost_packets<CC: CongestionController, Ctx: Context<CC>>(
+        &mut self,
+        now: Timestamp,
+        max_persistent_congestion_period: Duration,
+        sent_packets_to_remove: Vec<(PacketNumber, u16, path::Id)>,
+        context: &mut Ctx,
+    ) {
         // Remove the lost packets and account for the bytes on the proper congestion controller
         for (packet_number, lost_bytes, path_id) in sent_packets_to_remove {
             // TODO add test to verify multi path behavior
