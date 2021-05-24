@@ -519,22 +519,22 @@ impl Manager {
         &mut self,
         now: Timestamp,
         context: &mut Ctx,
-    ) -> (
-        BTreeMap<path::Id, Duration>,
-        Vec<(PacketNumber, u16, path::Id)>,
-    ) {
+    ) -> (BTreeMap<path::Id, Duration>, Vec<PacketDetails>) {
         let largest_acked_packet = &self
             .largest_acked_packet
             .expect("This function is only called after an ack has been received");
 
         let mut sent_packets_to_remove = Vec::new();
-        let mut max_persistent_congestion_period_map: BTreeMap<path::Id, Duration> = BTreeMap::new();
+        let mut max_persistent_congestion_period_map: BTreeMap<path::Id, Duration> =
+            BTreeMap::new();
 
         let mut persistent_congestion_period = Duration::from_secs(0);
         let mut prev_packet: Option<(&PacketNumber, Timestamp)> = None;
         for (unacked_packet_number, unacked_sent_info) in self.sent_packets.iter() {
             let path_id = unacked_sent_info.path_id;
-            let max_persistent_congestion_period = max_persistent_congestion_period_map.get_mut(&path_id).unwrap();
+            let max_persistent_congestion_period = max_persistent_congestion_period_map
+                .get_mut(&path_id)
+                .unwrap();
 
             if unacked_packet_number > largest_acked_packet {
                 // sent_packets is ordered by packet number, so all remaining packets will be larger
@@ -570,7 +570,7 @@ impl Manager {
             if time_threshold_exceeded || packet_number_threshold_exceeded {
                 sent_packets_to_remove.push((
                     *unacked_packet_number,
-                    unacked_sent_info.sent_bytes,
+                    *unacked_sent_info,
                     unacked_sent_info.path_id,
                 ));
 
@@ -651,11 +651,11 @@ impl Manager {
         &mut self,
         now: Timestamp,
         max_persistent_congestion_period_map: BTreeMap<path::Id, Duration>,
-        sent_packets_to_remove: Vec<(PacketNumber, u16, path::Id)>,
+        sent_packets_to_remove: Vec<PacketDetails>,
         context: &mut Ctx,
     ) {
         // Remove the lost packets and account for the bytes on the proper congestion controller
-        for (packet_number, lost_bytes, path_id) in sent_packets_to_remove {
+        for (packet_number, sent_info, path_id) in sent_packets_to_remove {
             // TODO add test to verify multi path behavior
             // congestion_controller.on_packets_lost
             // rtt_estimator.on_persistent_congestion
@@ -673,9 +673,9 @@ impl Manager {
                 .expect("this should be populated for each path in sent_packets_to_remove")
                 > path.rtt_estimator.persistent_congestion_threshold();
 
-            if lost_bytes > 0 {
+            if sent_info.sent_bytes > 0 {
                 path.congestion_controller.on_packets_lost(
-                    lost_bytes as u32,
+                    sent_info.sent_bytes as u32,
                     persistent_congestion,
                     now,
                 );
