@@ -1936,6 +1936,7 @@ mod test {
         let now = s2n_quic_platform::time::now();
         let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
         let mut context = MockContext::new(&mut path_manager);
+        let active_path_id = path::Id::new(0);
 
         manager.largest_acked_packet = Some(space.new_packet_number(VarInt::from_u8(10)));
 
@@ -1953,7 +1954,7 @@ mod test {
             old_packet_time_sent,
             outcome,
             time_sent,
-            path::Id::new(0),
+            active_path_id,
             &mut context,
         );
 
@@ -1982,13 +1983,13 @@ mod test {
             old_packet_packet_number,
             outcome,
             time_sent,
-            path::Id::new(0),
+            active_path_id,
             &mut context,
         );
 
         // Send a packet that is less than the largest acked but not lost
         let not_lost = space.new_packet_number(VarInt::from_u8(9));
-        manager.on_packet_sent(not_lost, outcome, time_sent, path::Id::new(0), &mut context);
+        manager.on_packet_sent(not_lost, outcome, time_sent, active_path_id, &mut context);
 
         // Send a packet larger than the largest acked (not lost)
         let larger_than_largest = manager.largest_acked_packet.unwrap().next().unwrap();
@@ -1996,7 +1997,7 @@ mod test {
             larger_than_largest,
             outcome,
             time_sent,
-            path::Id::new(0),
+            active_path_id,
             &mut context,
         );
 
@@ -2010,7 +2011,7 @@ mod test {
 
         let now = time_sent;
 
-        manager.detect_and_remove_lost_packets(now, &mut context);
+        manager.detect_and_remove_lost_packets(now, active_path_id, &mut context);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.1.2
         //= type=test
@@ -2059,6 +2060,8 @@ mod test {
         let mut context = MockContext::new(&mut path_manager);
         manager.largest_acked_packet = Some(space.new_packet_number(VarInt::from_u8(10)));
 
+        let active_path_id = path::Id::new(0);
+
         let time_sent = s2n_quic_platform::time::now();
         let outcome = transmission::Outcome {
             ack_elicitation: AckElicitation::Eliciting,
@@ -2069,9 +2072,9 @@ mod test {
 
         // Send a packet that is less than the largest acked but not lost
         let not_lost = space.new_packet_number(VarInt::from_u8(9));
-        manager.on_packet_sent(not_lost, outcome, time_sent, path::Id::new(0), &mut context);
+        manager.on_packet_sent(not_lost, outcome, time_sent, active_path_id, &mut context);
 
-        manager.detect_and_remove_lost_packets(time_sent, &mut context);
+        manager.detect_and_remove_lost_packets(time_sent, active_path_id, &mut context);
 
         // Verify no lost bytes are sent to the congestion controller and
         // on_packets_lost is not called
@@ -2092,6 +2095,8 @@ mod test {
         let mut manager = Manager::new(space, Duration::from_millis(100));
         let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
         let mut context = MockContext::new(&mut path_manager);
+        let active_path_id = path::Id::new(0);
+
         let time_zero = s2n_quic_platform::time::now() + Duration::from_secs(10);
         // The RFC doesn't mention it, but it is implied that the first RTT sample has already
         // been received when this example begins, otherwise packet #2 would not be considered
@@ -2116,7 +2121,7 @@ mod test {
             space.new_packet_number(VarInt::from_u8(1)),
             outcome,
             time_zero,
-            path::Id::new(0),
+            active_path_id,
             &mut context,
         );
 
@@ -2125,7 +2130,7 @@ mod test {
             space.new_packet_number(VarInt::from_u8(2)),
             outcome,
             time_zero + Duration::from_secs(1),
-            path::Id::new(0),
+            active_path_id,
             &mut context,
         );
 
@@ -2143,7 +2148,7 @@ mod test {
                 space.new_packet_number(VarInt::from_u8(t + 1)),
                 outcome,
                 time_zero + Duration::from_secs(t.into()),
-                path::Id::new(0),
+                active_path_id,
                 &mut context,
             );
         }
@@ -2153,7 +2158,7 @@ mod test {
             space.new_packet_number(VarInt::from_u8(8)),
             outcome,
             time_zero + Duration::from_secs(8),
-            path::Id::new(0),
+            active_path_id,
             &mut context,
         );
 
@@ -2162,7 +2167,7 @@ mod test {
             space.new_packet_number(VarInt::from_u8(9)),
             outcome,
             time_zero + Duration::from_secs(12),
-            path::Id::new(0),
+            active_path_id,
             &mut context,
         );
 
@@ -2200,7 +2205,7 @@ mod test {
             space.new_packet_number(VarInt::from_u8(10)),
             outcome,
             time_zero + Duration::from_secs(20),
-            path::Id::new(0),
+            active_path_id,
             &mut context,
         );
 
@@ -2590,12 +2595,13 @@ mod test {
         manager.largest_acked_packet = Some(space.new_packet_number(VarInt::from_u8(10)));
         let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
         let mut context = MockContext::new(&mut path_manager);
+        let active_path_id = path::Id::new(0);
 
         let mut expected_pto_backoff = context.path().pto_backoff;
 
         // Loss timer is armed but not expired yet, nothing happens
         manager.loss_timer.set(now + Duration::from_secs(10));
-        manager.on_timeout(now, &mut context);
+        manager.on_timeout(now, active_path_id, &mut context);
         assert_eq!(context.on_packet_loss_count, 0);
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
         //= type=test
@@ -2620,7 +2626,7 @@ mod test {
 
         // Loss timer is armed and expired, on_packet_loss is called
         manager.loss_timer.set(now - Duration::from_secs(1));
-        manager.on_timeout(now, &mut context);
+        manager.on_timeout(now, active_path_id, &mut context);
         assert_eq!(context.on_packet_loss_count, 1);
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
         //= type=test
@@ -2631,19 +2637,19 @@ mod test {
 
         // Loss timer is not armed, pto timer is not armed
         manager.loss_timer.cancel();
-        manager.on_timeout(now, &mut context);
+        manager.on_timeout(now, active_path_id, &mut context);
         assert_eq!(expected_pto_backoff, context.path().pto_backoff);
 
         // Loss timer is not armed, pto timer is armed but not expired
         manager.loss_timer.cancel();
         manager.pto.timer.set(now + Duration::from_secs(5));
-        manager.on_timeout(now, &mut context);
+        manager.on_timeout(now, active_path_id, &mut context);
         assert_eq!(expected_pto_backoff, context.path().pto_backoff);
 
         // Loss timer is not armed, pto timer is expired without bytes in flight
         expected_pto_backoff *= 2;
         manager.pto.timer.set(now - Duration::from_secs(5));
-        manager.on_timeout(now, &mut context);
+        manager.on_timeout(now, active_path_id, &mut context);
         assert_eq!(expected_pto_backoff, context.path().pto_backoff);
         assert_eq!(manager.pto.state, RequiresTransmission(1));
 
@@ -2665,7 +2671,7 @@ mod test {
             },
         );
         manager.pto.timer.set(now - Duration::from_secs(5));
-        manager.on_timeout(now, &mut context);
+        manager.on_timeout(now, active_path_id, &mut context);
         assert_eq!(expected_pto_backoff, context.path().pto_backoff);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.4
@@ -3092,6 +3098,10 @@ mod test {
 
         fn path_mut_by_id(&mut self, path_id: path::Id) -> &mut Path<MockCongestionController> {
             &mut self.path_manager[path_id]
+        }
+
+        fn path_id_by_peer_addr(&self, _addr: &SocketAddress) -> Option<path::Id> {
+            Some(self.path_id)
         }
 
         fn validate_packet_ack(
