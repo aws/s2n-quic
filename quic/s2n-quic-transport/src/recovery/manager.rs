@@ -534,7 +534,7 @@ impl Manager {
 
         // persistent_congestion is only updated for the active path. Managing state for
         // multiple paths requires extra allocations but is only necessary when also attempting
-        // connection_migration, which should not be very common.
+        // connection_migration; which should not be very common.
         let mut active_max_persistent_congestion_period = Duration::from_secs(0);
         let mut active_persistent_congestion_period = Duration::from_secs(0);
         let mut active_prev_packet: Option<(&PacketNumber, Timestamp)> = None;
