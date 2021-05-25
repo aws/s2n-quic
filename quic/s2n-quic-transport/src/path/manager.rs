@@ -54,7 +54,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     }
 
     /// Update the active path
-    pub fn update_active_path(&mut self, path_id: Id) {
+    fn update_active_path(&mut self, path_id: Id) {
         // TODO return an error if the path doesn't exist
         // Or take an index and verify INLINE_PATH_LEN
         self.last_known_validated_path = Some(self.active);
