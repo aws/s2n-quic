@@ -11,7 +11,7 @@ use crate::{
 use core::{cmp::max, time::Duration};
 use s2n_quic_core::{
     endpoint, frame,
-    inet::DatagramInfo,
+    inet::{DatagramInfo, SocketAddress},
     packet::number::{PacketNumber, PacketNumberRange, PacketNumberSpace},
     recovery::{CongestionController, RttEstimator, K_GRANULARITY},
     time::Timestamp,
@@ -19,7 +19,6 @@ use s2n_quic_core::{
     varint::VarInt,
 };
 use smallvec::SmallVec;
-use std::collections::BTreeMap;
 
 type PacketDetails = (PacketNumber, SentPacketInfo, path::Id);
 
@@ -114,11 +113,12 @@ impl Manager {
     pub fn on_timeout<CC: CongestionController, Ctx: Context<CC>>(
         &mut self,
         timestamp: Timestamp,
+        path_id: path::Id,
         context: &mut Ctx,
     ) {
         if self.loss_timer.is_armed() {
             if self.loss_timer.poll_expiration(timestamp).is_ready() {
-                self.detect_and_remove_lost_packets(timestamp, context)
+                self.detect_and_remove_lost_packets(timestamp, path_id, context)
             }
         } else {
             let pto_expired = self
@@ -437,7 +437,10 @@ impl Manager {
         //# Once a later packet within the same packet number space has been
         //# acknowledged, an endpoint SHOULD declare an earlier packet lost if it
         //# was sent a threshold amount of time in the past.
-        self.detect_and_remove_lost_packets(datagram.timestamp, context);
+        let active_path_id = context
+            .path_id_by_peer_addr(&datagram.remote_address)
+            .expect("a path should exist for this acked packet");
+        self.detect_and_remove_lost_packets(datagram.timestamp, active_path_id, context);
 
         let is_handshake_confirmed = context.is_handshake_confirmed();
         for acked_packet_info in newly_acked_packets {
@@ -496,6 +499,7 @@ impl Manager {
     fn detect_and_remove_lost_packets<CC: CongestionController, Ctx: Context<CC>>(
         &mut self,
         now: Timestamp,
+        active_path_id: path::Id,
         context: &mut Ctx,
     ) {
         // Cancel the loss timer. It will be armed again if any unacknowledged packets are
@@ -504,13 +508,14 @@ impl Manager {
 
         // TODO: Investigate a more efficient mechanism for managing sent_packets
         //       See https://github.com/awslabs/s2n-quic/issues/69
-        let (max_persistent_congestion_period_map, sent_packets_to_remove) =
-            self.detect_lost_packets(now, context);
+        let (max_persistent_congestion_period, sent_packets_to_remove) =
+            self.detect_lost_packets(now, active_path_id, context);
 
         self.remove_lost_packets(
             now,
-            max_persistent_congestion_period_map,
+            max_persistent_congestion_period,
             sent_packets_to_remove,
+            active_path_id,
             context,
         );
     }
@@ -518,17 +523,22 @@ impl Manager {
     fn detect_lost_packets<CC: CongestionController, Ctx: Context<CC>>(
         &mut self,
         now: Timestamp,
+        active_path_id: path::Id,
         context: &mut Ctx,
-    ) -> (BTreeMap<path::Id, Duration>, Vec<PacketDetails>) {
+    ) -> (Duration, Vec<PacketDetails>) {
         let largest_acked_packet = &self
             .largest_acked_packet
             .expect("This function is only called after an ack has been received");
 
         let mut sent_packets_to_remove = Vec::new();
-        let mut max_persistent_congestion_period_map = BTreeMap::new();
 
-        let mut persistent_congestion_period = Duration::from_secs(0);
-        let mut prev_packet: Option<(&PacketNumber, Timestamp)> = None;
+        // persistent_congestion is only updated for the active path. Managing state for
+        // multiple paths requires extra allocations but is only necessary when also attempting
+        // connection_migration, which should not be very common.
+        let mut active_max_persistent_congestion_period = Duration::from_secs(0);
+        let mut active_persistent_congestion_period = Duration::from_secs(0);
+        let mut active_prev_packet: Option<(&PacketNumber, Timestamp)> = None;
+
         for (unacked_packet_number, unacked_sent_info) in self.sent_packets.iter() {
             if unacked_packet_number > largest_acked_packet {
                 // sent_packets is ordered by packet number, so all remaining packets will be larger
@@ -536,12 +546,6 @@ impl Manager {
             }
 
             let path_id = unacked_sent_info.path_id;
-            let max_persistent_congestion_period = max_persistent_congestion_period_map
-                .entry(path_id)
-                .or_insert_with(|| Duration::from_secs(0));
-
-            // TODO
-            // make persistent_congestion_period and other path aware
             let path = &context.path_by_id(path_id);
             // Calculate how long we wait until a packet is declared lost
             let time_threshold = Self::calculate_loss_time_threshold(&path.rtt_estimator);
@@ -567,11 +571,7 @@ impl Manager {
             //#       acknowledged packet (Section 6.1.1), or it was sent long enough in
             //#       the past (Section 6.1.2).
             if time_threshold_exceeded || packet_number_threshold_exceeded {
-                sent_packets_to_remove.push((
-                    *unacked_packet_number,
-                    *unacked_sent_info,
-                    unacked_sent_info.path_id,
-                ));
+                sent_packets_to_remove.push((*unacked_packet_number, *unacked_sent_info, path_id));
 
                 if unacked_sent_info.congestion_controlled {
                     // The packet is "in-flight", ie congestion controlled
@@ -590,22 +590,22 @@ impl Manager {
                 //#    two send times are declared lost;
                 // Check if this lost packet is contiguous with the previous lost packet
                 // in order to update the persistent congestion period.
-                let is_contiguous = prev_packet.map_or(false, |(pn, _)| {
+                let is_contiguous = active_prev_packet.map_or(false, |(pn, _)| {
                     unacked_packet_number.checked_distance(*pn) == Some(1)
                 });
-                if is_contiguous {
+                if is_contiguous && path_id == active_path_id {
                     // The previous lost packet was 1 less than this one, so it is contiguous.
                     // Add the difference in time to the current period.
-                    persistent_congestion_period +=
-                        unacked_sent_info.time_sent - prev_packet.expect("checked above").1;
-                    *max_persistent_congestion_period = max(
-                        *max_persistent_congestion_period,
-                        persistent_congestion_period,
+                    active_persistent_congestion_period +=
+                        unacked_sent_info.time_sent - active_prev_packet.expect("checked above").1;
+                    active_max_persistent_congestion_period = max(
+                        active_max_persistent_congestion_period,
+                        active_persistent_congestion_period,
                     );
                 } else {
                     // There was a gap in packet number or this is the beginning of the period.
                     // Reset the current period to zero.
-                    persistent_congestion_period = Duration::from_secs(0);
+                    active_persistent_congestion_period = Duration::from_secs(0);
                 }
             } else {
                 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.1.2
@@ -634,23 +634,27 @@ impl Manager {
             //# sample prevents a sender from establishing persistent congestion with
             //# potentially too few probes.
             if context
-                .path_mut_by_id(unacked_sent_info.path_id)
+                .path_mut_by_id(path_id)
                 .rtt_estimator
                 .first_rtt_sample()
                 .map_or(false, |ts| unacked_sent_info.time_sent > ts)
             {
-                prev_packet = Some((unacked_packet_number, unacked_sent_info.time_sent));
+                active_prev_packet = Some((unacked_packet_number, unacked_sent_info.time_sent));
             }
         }
 
-        (max_persistent_congestion_period_map, sent_packets_to_remove)
+        (
+            active_max_persistent_congestion_period,
+            sent_packets_to_remove,
+        )
     }
 
     fn remove_lost_packets<CC: CongestionController, Ctx: Context<CC>>(
         &mut self,
         now: Timestamp,
-        max_persistent_congestion_period_map: BTreeMap<path::Id, Duration>,
+        max_persistent_congestion_period: Duration,
         sent_packets_to_remove: Vec<PacketDetails>,
+        active_path_id: path::Id,
         context: &mut Ctx,
     ) {
         // Remove the lost packets and account for the bytes on the proper congestion controller
@@ -667,9 +671,7 @@ impl Manager {
             //# number spaces or an implementation that cannot compare send times
             //# across packet number spaces MAY use state for just the packet number
             //# space that was acknowledged.
-            let persistent_congestion = *max_persistent_congestion_period_map
-                .get(&path_id)
-                .expect("this should be populated for each path in sent_packets_to_remove")
+            let persistent_congestion = max_persistent_congestion_period
                 > path.rtt_estimator.persistent_congestion_threshold();
 
             if sent_info.sent_bytes > 0 {
@@ -680,7 +682,7 @@ impl Manager {
                 );
             }
 
-            if persistent_congestion {
+            if persistent_congestion && path_id == active_path_id {
                 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.2
                 //# Endpoints SHOULD set the min_rtt to the newest RTT sample after
                 //# persistent congestion is established.
@@ -722,6 +724,8 @@ pub trait Context<CC: CongestionController> {
     fn path_by_id(&self, path_id: path::Id) -> &path::Path<CC>;
 
     fn path_mut_by_id(&mut self, path_id: path::Id) -> &mut path::Path<CC>;
+
+    fn path_id_by_peer_addr(&self, addr: &SocketAddress) -> Option<path::Id>;
 
     fn validate_packet_ack(
         &mut self,

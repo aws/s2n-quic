@@ -18,7 +18,7 @@ use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
     crypto::{tls, CryptoSuite},
     frame::{ack::AckRanges, crypto::CryptoRef, Ack, ConnectionClose},
-    inet::DatagramInfo,
+    inet::{DatagramInfo, SocketAddress},
     packet::{
         encoding::{PacketEncoder, PacketEncodingError},
         handshake::{CleartextHandshake, Handshake, ProtectedHandshake},
@@ -240,7 +240,7 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
 
         let (recovery_manager, mut context) =
             self.recovery(handshake_status, path_id, path_manager);
-        recovery_manager.on_timeout(timestamp, &mut context)
+        recovery_manager.on_timeout(timestamp, path_id, &mut context);
     }
 
     /// Called before the Handshake packet space is discarded
@@ -350,6 +350,10 @@ impl<'a, Config: endpoint::Config> recovery::Context<<Config::CongestionControll
 
     fn path_mut_by_id(&mut self, path_id: path::Id) -> &mut path::Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController> {
         &mut self.path_manager[path_id]
+    }
+
+    fn path_id_by_peer_addr(&self, addr: &SocketAddress) -> Option<path::Id> {
+        self.path_manager.path(addr).map( |x| x.0 )
     }
 
     fn validate_packet_ack(

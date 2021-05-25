@@ -24,7 +24,7 @@ use s2n_quic_core::{
         PathChallenge, PathResponse, ResetStream, RetireConnectionId, StopSending,
         StreamDataBlocked, StreamsBlocked,
     },
-    inet::DatagramInfo,
+    inet::{DatagramInfo, SocketAddress},
     packet::{
         encoding::{PacketEncoder, PacketEncodingError},
         number::{
@@ -319,13 +319,16 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         self.ack_manager.on_timeout(timestamp);
         self.key_set.on_timeout(timestamp);
 
+        let active_path_id = path_manager.active_path_id();
         let (recovery_manager, mut context) = self.recovery(
             handshake_status,
             local_id_registry,
-            path_manager.active_path_id(),
+            active_path_id,
             path_manager,
         );
-        recovery_manager.on_timeout(timestamp, &mut context);
+
+        // updating only the active path
+        recovery_manager.on_timeout(timestamp, active_path_id, &mut context);
 
         self.stream_manager.on_timeout(timestamp);
     }
@@ -460,6 +463,10 @@ impl<'a, Config: endpoint::Config> recovery::Context<<Config::CongestionControll
 
     fn path_mut_by_id(&mut self, path_id: path::Id) -> &mut path::Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController> {
         &mut self.path_manager[path_id]
+    }
+
+    fn path_id_by_peer_addr(&self, addr: &SocketAddress) -> Option<path::Id> {
+        self.path_manager.path(addr).map( |x| x.0 )
     }
 
     fn validate_packet_ack(
