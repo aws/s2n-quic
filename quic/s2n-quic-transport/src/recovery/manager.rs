@@ -512,7 +512,7 @@ impl Manager {
 
         // TODO: Investigate a more efficient mechanism for managing sent_packets
         //       See https://github.com/awslabs/s2n-quic/issues/69
-        let (max_persistent_congestion_period, sent_packets_to_remove) =
+        let (path_id, max_persistent_congestion_period, sent_packets_to_remove) =
             self.detect_lost_packets(now, path_id, context);
 
         self.remove_lost_packets(
@@ -529,16 +529,15 @@ impl Manager {
         now: Timestamp,
         path_id: path::Id,
         context: &mut Ctx,
-    ) -> (Duration, Vec<PacketDetails>) {
+    ) -> (path::Id, Duration, Vec<PacketDetails>) {
         let largest_acked_packet = &self
             .largest_acked_packet
             .expect("This function is only called after an ack has been received");
 
-        let mut sent_packets_to_remove = Vec::new();
-
         let mut max_persistent_congestion_period = Duration::from_secs(0);
+        let mut sent_packets_to_remove = Vec::new();
         let mut persistent_congestion_period = Duration::from_secs(0);
-        let mut prev_packet: Option<(&PacketNumber, Timestamp)> = None;
+        let mut prev_packet: Option<(&PacketNumber, path::Id, Timestamp)> = None;
 
         for (unacked_packet_number, unacked_sent_info) in self.sent_packets.iter() {
             if unacked_packet_number > largest_acked_packet {
@@ -595,17 +594,29 @@ impl Manager {
                 //#    two send times are declared lost;
                 // Check if this lost packet is contiguous with the previous lost packet
                 // in order to update the persistent congestion period.
-                let is_contiguous = prev_packet.map_or(false, |(pn, _)| {
-                    unacked_packet_number.checked_distance(*pn) == Some(1)
+                let is_contiguous = prev_packet.map_or(false, |(pn, p_id, _)| {
+                    unacked_packet_number.checked_distance(*pn) == Some(1) && p_id == path_id
                 });
+                println!(
+                    "is_contiguous: {:?}, path: {:?}",
+                    is_contiguous, unacked_path_id
+                );
+                println!(
+                    "----b---{:?} {:?}",
+                    persistent_congestion_period, max_persistent_congestion_period
+                );
                 if is_contiguous && unacked_path_id == path_id {
                     // The previous lost packet was 1 less than this one, so it is contiguous.
                     // Add the difference in time to the current period.
                     persistent_congestion_period +=
-                        unacked_sent_info.time_sent - prev_packet.expect("checked above").1;
+                        unacked_sent_info.time_sent - prev_packet.expect("checked above").2;
                     max_persistent_congestion_period = max(
                         max_persistent_congestion_period,
                         persistent_congestion_period,
+                    );
+                    println!(
+                        "------{:?} {:?}",
+                        persistent_congestion_period, max_persistent_congestion_period
                     );
                 } else {
                     // There was a gap in packet number or this is the beginning of the period.
@@ -644,11 +655,19 @@ impl Manager {
                 .first_rtt_sample()
                 .map_or(false, |ts| unacked_sent_info.time_sent > ts)
             {
-                prev_packet = Some((unacked_packet_number, unacked_sent_info.time_sent));
+                prev_packet = Some((
+                    unacked_packet_number,
+                    unacked_sent_info.path_id,
+                    unacked_sent_info.time_sent,
+                ));
             }
         }
 
-        (max_persistent_congestion_period, sent_packets_to_remove)
+        (
+            path_id,
+            max_persistent_congestion_period,
+            sent_packets_to_remove,
+        )
     }
 
     fn remove_lost_packets<CC: CongestionController, Ctx: Context<CC>>(
@@ -2053,6 +2072,157 @@ mod test {
         assert!(manager.loss_timer.is_armed());
         assert_eq!(Some(expected_loss_time), manager.loss_timer.iter().next());
     }
+
+    // persistent_congestion should only be calculated for the specified path
+    //
+    // Setup:
+    // - create path manager with two paths
+    // - create contiguous lost packets for path 1
+    //
+    // Trigger:
+    // - call detect_and_remove_lost_packets for path 1
+    //
+    // Expectation:
+    // - ensure path 1 is persistent_congestion
+    // - ensure path 2 is not persistent_congestion
+    // fn detect_and_remove_lost_packets_persistent_cogestion_path_aware() {
+    //   ...
+    // }
+
+    #[test]
+    // persistent_congestion should only be calculated for the specified path
+    //
+    // Setup:
+    // - create path manager with two paths
+    // - largest ack is 20 (way above K_PACKET_THRESHOLD)
+    // - 1-2 contiguous lost packets for path 1 (period: 2-1 = 1)
+    // - 3-6 contiguous lost packets for path 2 (period: 6-3 = 3)
+    // - 7-9 contiguous lost packets for path 1 (period: 9-7 = 2)
+    //
+    // Trigger:
+    // - call detect_lost_packets for path 1
+    //
+    // Expectation:
+    // - ensure max_persistent_congestion_period is 2 corresponding to range 7-9
+    // - ensure path_id is 1
+    fn detect_lost_packets_persistent_cogestion_path_aware() {
+        let space = PacketNumberSpace::ApplicationData;
+        let (
+            _first_addr,
+            first_path_id,
+            _second_addr,
+            second_path_id,
+            mut manager,
+            mut path_manager,
+        ) = helper_generate_multi_path_manager(space);
+        let mut context = MockContext::new(&mut path_manager);
+
+        let mut now = s2n_quic_platform::time::now();
+        manager.largest_acked_packet = Some(space.new_packet_number(VarInt::from_u8(20)));
+
+        // create first rtt samples so they can enter enter persistent_congestion
+        context
+            .path_mut_by_id(first_path_id)
+            .rtt_estimator
+            .update_rtt(
+                Duration::from_secs(0),
+                Duration::from_secs(8),
+                now,
+                true,
+                space,
+            );
+        context
+            .path_mut_by_id(second_path_id)
+            .rtt_estimator
+            .update_rtt(
+                Duration::from_secs(0),
+                Duration::from_secs(8),
+                now,
+                true,
+                space,
+            );
+
+        let outcome = transmission::Outcome {
+            ack_elicitation: AckElicitation::Eliciting,
+            is_congestion_controlled: true,
+            bytes_sent: 1,
+            packet_number: space.new_packet_number(VarInt::from_u8(1)),
+        };
+
+        // Send a packet that was sent too long ago (lost)
+        for i in 1..=2 {
+            now += Duration::from_secs(1);
+            manager.on_packet_sent(
+                space.new_packet_number(VarInt::from_u8(i)),
+                outcome,
+                now,
+                first_path_id,
+                &mut context,
+            );
+        }
+        // Send a packet that was sent too long ago (lost)
+        for i in 3..=6 {
+            now += Duration::from_secs(1);
+            manager.on_packet_sent(
+                space.new_packet_number(VarInt::from_u8(i)),
+                outcome,
+                now,
+                second_path_id,
+                &mut context,
+            );
+        }
+        // Send a packet that was sent too long ago (lost)
+        for i in 7..=9 {
+            now += Duration::from_secs(1);
+            manager.on_packet_sent(
+                space.new_packet_number(VarInt::from_u8(i)),
+                outcome,
+                now,
+                first_path_id,
+                &mut context,
+            );
+        }
+
+        // increase the time so all sent packets will be considered lost
+        now += Duration::from_secs(10);
+
+        let expected_time_threshold = Duration::from_secs(9);
+        assert_eq!(
+            expected_time_threshold,
+            Manager::calculate_loss_time_threshold(
+                &context.path_by_id(first_path_id).rtt_estimator
+            )
+        );
+
+        // 1-9 packets packets sent, each size 1 byte
+        let bytes_in_flight: u16 = manager
+            .sent_packets
+            .iter()
+            .map(|(_, info)| info.sent_bytes)
+            .sum();
+        assert_eq!(bytes_in_flight, 9);
+
+        let (path_id, max_persistent_congestion_period, _sent_packets_to_remove) =
+            manager.detect_lost_packets(now, first_path_id, &mut context);
+
+        assert_eq!(path_id, first_path_id);
+        assert_eq!(max_persistent_congestion_period, Duration::from_secs(2));
+    }
+
+    // persistent_congestion should only be calculated for the specified path
+    //
+    // Setup:
+    // - create path manager with two paths
+    //
+    // Trigger:
+    // - call remove_lost_packets for path 1
+    //
+    // Expectation:
+    // - ensure path 1 is persistent_congestion
+    // - ensure path 2 is not persistent_congestion
+    // fn remove_lost_packets_persistent_cogestion_path_aware() {
+    //   ...
+    // }
 
     #[test]
     fn detect_and_remove_lost_packets_nothing_lost() {
