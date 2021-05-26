@@ -101,7 +101,6 @@ pub mod testing {
 
         #[derive(Clone, Copy, Debug, Default, PartialEq)]
         pub struct CongestionController {
-            pub persistent_congestion: bool,
         }
 
         impl super::CongestionController for CongestionController {
@@ -132,10 +131,9 @@ pub mod testing {
             fn on_packets_lost(
                 &mut self,
                 _lost_bytes: u32,
-                persistent_congestion: bool,
+                _persistent_congestion: bool,
                 _timestamp: Timestamp,
             ) {
-                self.persistent_congestion = persistent_congestion;
             }
 
             fn on_congestion_event(&mut self, _event_time: Timestamp) {}

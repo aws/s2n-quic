@@ -667,8 +667,6 @@ impl Manager {
     ) {
         // Remove the lost packets and account for the bytes on the proper congestion controller
         for (packet_number, sent_info) in sent_packets_to_remove {
-            // TODO add test to verify multi path behavior
-            // congestion_controller.on_packets_lost
             let path = context.path_mut_by_id(sent_info.path_id);
 
             self.sent_packets.remove(packet_number);
@@ -2208,7 +2206,7 @@ mod test {
             mut path_manager,
         ) = helper_generate_multi_path_manager(space);
         let mut context = MockContext::new(&mut path_manager);
-        let now = s2n_quic_platform::time::now();
+        let mut now = s2n_quic_platform::time::now();
 
         assert_eq!(
             context
@@ -2225,6 +2223,41 @@ mod test {
             None
         );
 
+        // create first rtt samples so we can check it later
+        context
+            .path_mut_by_id(first_path_id)
+            .rtt_estimator
+            .update_rtt(
+                Duration::from_secs(0),
+                Duration::from_secs(0),
+                now,
+                true,
+                space,
+            );
+        context
+            .path_mut_by_id(second_path_id)
+            .rtt_estimator
+            .update_rtt(
+                Duration::from_secs(0),
+                Duration::from_secs(0),
+                now,
+                true,
+                space,
+            );
+        assert!(
+            context
+                .path_by_id(first_path_id)
+                .rtt_estimator
+                .first_rtt_sample().is_some()
+        );
+        assert!(
+            context
+                .path_by_id(second_path_id)
+                .rtt_estimator
+                .first_rtt_sample().is_some()
+        );
+
+        now += Duration::from_secs(10);
         let mut sent_packets_to_remove = Vec::new();
         sent_packets_to_remove.push((
             space.new_packet_number(VarInt::from_u8(9)),
@@ -2250,7 +2283,7 @@ mod test {
         // Trigger:
         manager.remove_lost_packets(
             now,
-            Duration::from_secs(8),
+            Duration::from_secs(20),
             sent_packets_to_remove,
             second_path_id,
             &mut context,
@@ -2264,12 +2297,24 @@ mod test {
                 .persistent_congestion,
             Some(false)
         );
+        assert!(
+            context
+                .path_by_id(first_path_id)
+                .rtt_estimator
+                .first_rtt_sample().is_some()
+        );
         assert_eq!(
             context
                 .path_by_id(second_path_id)
                 .congestion_controller
                 .persistent_congestion,
             Some(true)
+        );
+        assert!(
+            context
+                .path_by_id(second_path_id)
+                .rtt_estimator
+                .first_rtt_sample().is_none()
         );
     }
 
