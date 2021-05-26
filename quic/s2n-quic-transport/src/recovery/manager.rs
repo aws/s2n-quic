@@ -243,7 +243,6 @@ impl Manager {
         if self.space.is_application_data() && !is_handshake_confirmed {
             self.pto.cancel();
         } else {
-            // TODO does the PTO need to be tracked by path?
             self.pto
                 .update(pto_base_timestamp, path.pto_period(self.space));
         }
@@ -501,7 +500,7 @@ impl Manager {
     fn detect_and_remove_lost_packets<CC: CongestionController, Ctx: Context<CC>>(
         &mut self,
         now: Timestamp,
-        path_id: path::Id,
+        persistent_congestion_path_id: path::Id,
         context: &mut Ctx,
     ) {
         // Cancel the loss timer. It will be armed again if any unacknowledged packets are
@@ -510,14 +509,17 @@ impl Manager {
 
         // TODO: Investigate a more efficient mechanism for managing sent_packets
         //       See https://github.com/awslabs/s2n-quic/issues/69
-        let (path_id, max_persistent_congestion_period, sent_packets_to_remove) =
-            self.detect_lost_packets(now, path_id, context);
+        let (
+            persistent_congestion_path_id,
+            max_persistent_congestion_period,
+            sent_packets_to_remove,
+        ) = self.detect_lost_packets(now, persistent_congestion_path_id, context);
 
         self.remove_lost_packets(
             now,
             max_persistent_congestion_period,
             sent_packets_to_remove,
-            path_id,
+            persistent_congestion_path_id,
             context,
         );
     }
@@ -525,7 +527,7 @@ impl Manager {
     fn detect_lost_packets<CC: CongestionController, Ctx: Context<CC>>(
         &mut self,
         now: Timestamp,
-        path_id: path::Id,
+        persistent_congestion_path_id: path::Id,
         context: &mut Ctx,
     ) -> (path::Id, Duration, Vec<PacketDetails>) {
         let largest_acked_packet = &self
@@ -586,20 +588,15 @@ impl Manager {
                 //#
                 //# *  all packets, across all packet number spaces, sent between these
                 //#    two send times are declared lost;
-                // Check if this lost packet is contiguous with the previous lost packet
-                // in order to update the persistent congestion period.
-                let is_contiguous = prev_packet.map_or(false, |(pn, p_id, _)| {
-                    unacked_packet_number.checked_distance(*pn) == Some(1) && p_id == path_id
+                let is_contiguous = prev_packet.map_or(false, |(pn, prev_path_id, _)| {
+                    // Check if this lost packet is contiguous with the previous lost packet
+                    // in order to update the persistent congestion period.
+                    let contiguous = unacked_packet_number.checked_distance(*pn) == Some(1);
+                    // Check if the previous packet was sent on this path, otherwise don't
+                    // consider it a continuous range.
+                    contiguous && prev_path_id == persistent_congestion_path_id
                 });
-                println!(
-                    "is_contiguous: {:?}, path: {:?}",
-                    is_contiguous, unacked_path_id
-                );
-                println!(
-                    "----b---{:?} {:?}",
-                    persistent_congestion_period, max_persistent_congestion_period
-                );
-                if is_contiguous && unacked_path_id == path_id {
+                if is_contiguous && unacked_path_id == persistent_congestion_path_id {
                     // The previous lost packet was 1 less than this one, so it is contiguous.
                     // Add the difference in time to the current period.
                     persistent_congestion_period +=
@@ -607,10 +604,6 @@ impl Manager {
                     max_persistent_congestion_period = max(
                         max_persistent_congestion_period,
                         persistent_congestion_period,
-                    );
-                    println!(
-                        "------{:?} {:?}",
-                        persistent_congestion_period, max_persistent_congestion_period
                     );
                 } else {
                     // There was a gap in packet number or this is the beginning of the period.
@@ -658,7 +651,7 @@ impl Manager {
         }
 
         (
-            path_id,
+            persistent_congestion_path_id,
             max_persistent_congestion_period,
             sent_packets_to_remove,
         )
@@ -669,14 +662,13 @@ impl Manager {
         now: Timestamp,
         max_persistent_congestion_period: Duration,
         sent_packets_to_remove: Vec<PacketDetails>,
-        path_id: path::Id,
+        persistent_congestion_path_id: path::Id,
         context: &mut Ctx,
     ) {
         // Remove the lost packets and account for the bytes on the proper congestion controller
         for (packet_number, sent_info) in sent_packets_to_remove {
             // TODO add test to verify multi path behavior
             // congestion_controller.on_packets_lost
-            // rtt_estimator.on_persistent_congestion
             let path = context.path_mut_by_id(sent_info.path_id);
 
             self.sent_packets.remove(packet_number);
@@ -688,7 +680,7 @@ impl Manager {
             //# space that was acknowledged.
             let persistent_congestion = max_persistent_congestion_period
                 > path.rtt_estimator.persistent_congestion_threshold()
-                && sent_info.path_id == path_id;
+                && sent_info.path_id == persistent_congestion_path_id;
 
             if sent_info.sent_bytes > 0 {
                 path.congestion_controller.on_packets_lost(
@@ -2067,22 +2059,6 @@ mod test {
         assert!(manager.loss_timer.is_armed());
         assert_eq!(Some(expected_loss_time), manager.loss_timer.iter().next());
     }
-
-    // persistent_congestion should only be calculated for the specified path
-    //
-    // Setup:
-    // - create path manager with two paths
-    // - create contiguous lost packets for path 1
-    //
-    // Trigger:
-    // - call detect_and_remove_lost_packets for path 1
-    //
-    // Expectation:
-    // - ensure path 1 is persistent_congestion
-    // - ensure path 2 is not persistent_congestion
-    // fn detect_and_remove_lost_packets_persistent_cogestion_path_aware() {
-    //   ...
-    // }
 
     #[test]
     // persistent_congestion should only be calculated for the specified path
