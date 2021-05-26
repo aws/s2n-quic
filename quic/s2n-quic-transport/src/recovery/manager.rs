@@ -20,7 +20,7 @@ use s2n_quic_core::{
 };
 use smallvec::SmallVec;
 
-type PacketDetails = (PacketNumber, SentPacketInfo, path::Id);
+type PacketDetails = (PacketNumber, SentPacketInfo);
 
 #[derive(Debug)]
 pub struct Manager {
@@ -295,7 +295,7 @@ impl Manager {
                 context,
             );
 
-            let (_, largest_newly_acked_info, _) = largest_newly_acked;
+            let (_, largest_newly_acked_info) = largest_newly_acked;
             self.process_new_acked_packets(
                 &newly_acked_packets,
                 largest_newly_acked_info.time_sent,
@@ -315,7 +315,7 @@ impl Manager {
         frame: &frame::Ack<A>,
         context: &mut Ctx,
     ) -> Result<(Option<PacketDetails>, bool), transport::Error> {
-        let mut largest_newly_acked: Option<(PacketNumber, SentPacketInfo, path::Id)> = None;
+        let mut largest_newly_acked: Option<PacketDetails> = None;
         let mut includes_ack_eliciting = false;
 
         for ack_range in frame.ack_ranges() {
@@ -336,9 +336,8 @@ impl Manager {
                 if let Some(acked_packet_info) = self.sent_packets.remove(packet_number) {
                     newly_acked_packets.push(acked_packet_info);
 
-                    if largest_newly_acked.map_or(true, |(pn, _, _)| packet_number > pn) {
-                        largest_newly_acked =
-                            Some((packet_number, acked_packet_info, acked_packet_info.path_id));
+                    if largest_newly_acked.map_or(true, |(pn, _)| packet_number > pn) {
+                        largest_newly_acked = Some((packet_number, acked_packet_info));
                     }
 
                     new_packet_ack = true;
@@ -370,14 +369,13 @@ impl Manager {
     ) {
         let mut should_update_rtt = true;
         let is_handshake_confirmed = context.is_handshake_confirmed();
-        let (largest_newly_acked_packet_number, largest_newly_acked_info, largest_acked_path_id) =
-            largest_newly_acked;
+        let (largest_newly_acked_packet_number, largest_newly_acked_info) = largest_newly_acked;
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.4
         //# Packets sent on the old path MUST NOT contribute to
         //# congestion control or RTT estimation for the new path.
         should_update_rtt &= context
-            .path_by_id(largest_acked_path_id)
+            .path_by_id(largest_newly_acked_info.path_id)
             .peer_socket_address
             == datagram.remote_address;
 
@@ -394,7 +392,7 @@ impl Manager {
 
         if should_update_rtt {
             let latest_rtt = datagram.timestamp - largest_newly_acked_info.time_sent;
-            let path = context.path_mut_by_id(largest_acked_path_id);
+            let path = context.path_mut_by_id(largest_newly_acked_info.path_id);
             path.rtt_estimator.update_rtt(
                 frame.ack_delay(),
                 latest_rtt,
@@ -419,7 +417,7 @@ impl Manager {
             if ecn_counts.ce_count > self.ecn_ce_counter {
                 self.ecn_ce_counter = ecn_counts.ce_count;
                 context
-                    .path_mut_by_id(largest_acked_path_id)
+                    .path_mut_by_id(largest_newly_acked_info.path_id)
                     .congestion_controller
                     .on_congestion_event(datagram.timestamp);
             }
@@ -571,11 +569,7 @@ impl Manager {
             //#       acknowledged packet (Section 6.1.1), or it was sent long enough in
             //#       the past (Section 6.1.2).
             if time_threshold_exceeded || packet_number_threshold_exceeded {
-                sent_packets_to_remove.push((
-                    *unacked_packet_number,
-                    *unacked_sent_info,
-                    unacked_path_id,
-                ));
+                sent_packets_to_remove.push((*unacked_packet_number, *unacked_sent_info));
 
                 if unacked_sent_info.congestion_controlled {
                     // The packet is "in-flight", ie congestion controlled
@@ -679,11 +673,11 @@ impl Manager {
         context: &mut Ctx,
     ) {
         // Remove the lost packets and account for the bytes on the proper congestion controller
-        for (packet_number, sent_info, remove_path_id) in sent_packets_to_remove {
+        for (packet_number, sent_info) in sent_packets_to_remove {
             // TODO add test to verify multi path behavior
             // congestion_controller.on_packets_lost
             // rtt_estimator.on_persistent_congestion
-            let path = context.path_mut_by_id(remove_path_id);
+            let path = context.path_mut_by_id(sent_info.path_id);
 
             self.sent_packets.remove(packet_number);
 
@@ -693,7 +687,8 @@ impl Manager {
             //# across packet number spaces MAY use state for just the packet number
             //# space that was acknowledged.
             let persistent_congestion = max_persistent_congestion_period
-                > path.rtt_estimator.persistent_congestion_threshold();
+                > path.rtt_estimator.persistent_congestion_threshold()
+                && sent_info.path_id == path_id;
 
             if sent_info.sent_bytes > 0 {
                 path.congestion_controller.on_packets_lost(
@@ -703,7 +698,7 @@ impl Manager {
                 );
             }
 
-            if persistent_congestion && remove_path_id == path_id {
+            if persistent_congestion {
                 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.2
                 //# Endpoints SHOULD set the min_rtt to the newest RTT sample after
                 //# persistent congestion is established.
@@ -2106,6 +2101,7 @@ mod test {
     // - ensure max_persistent_congestion_period is 2 corresponding to range 7-9
     // - ensure path_id is 1
     fn detect_lost_packets_persistent_cogestion_path_aware() {
+        // Setup:
         let space = PacketNumberSpace::ApplicationData;
         let (
             _first_addr,
@@ -2142,6 +2138,7 @@ mod test {
                 space,
             );
 
+        // Trigger:
         let outcome = transmission::Outcome {
             ack_elicitation: AckElicitation::Eliciting,
             is_congestion_controlled: true,
@@ -2205,24 +2202,100 @@ mod test {
         let (path_id, max_persistent_congestion_period, _sent_packets_to_remove) =
             manager.detect_lost_packets(now, first_path_id, &mut context);
 
+        // Expectation:
         assert_eq!(path_id, first_path_id);
         assert_eq!(max_persistent_congestion_period, Duration::from_secs(2));
     }
 
+    #[test]
     // persistent_congestion should only be calculated for the specified path
     //
     // Setup:
-    // - create path manager with two paths
+    // - create path manager with two paths that are not persistent_congestion
+    // - create PacketDetails for lost packets on each path
     //
     // Trigger:
-    // - call remove_lost_packets for path 1
+    // - call remove_lost_packets for path 2
     //
     // Expectation:
-    // - ensure path 1 is persistent_congestion
-    // - ensure path 2 is not persistent_congestion
-    // fn remove_lost_packets_persistent_cogestion_path_aware() {
-    //   ...
-    // }
+    // - ensure path 1 is not persistent_congestion
+    // - ensure path 2 is persistent_congestion
+    fn remove_lost_packets_persistent_cogestion_path_aware() {
+        // Setup:
+        let space = PacketNumberSpace::ApplicationData;
+        let (
+            _first_addr,
+            first_path_id,
+            _second_addr,
+            second_path_id,
+            mut manager,
+            mut path_manager,
+        ) = helper_generate_multi_path_manager(space);
+        let mut context = MockContext::new(&mut path_manager);
+        let now = s2n_quic_platform::time::now();
+
+        assert_eq!(
+            context
+                .path_by_id(first_path_id)
+                .congestion_controller
+                .persistent_congestion,
+            None
+        );
+        assert_eq!(
+            context
+                .path_by_id(second_path_id)
+                .congestion_controller
+                .persistent_congestion,
+            None
+        );
+
+        let mut sent_packets_to_remove = Vec::new();
+        sent_packets_to_remove.push((
+            space.new_packet_number(VarInt::from_u8(9)),
+            SentPacketInfo {
+                congestion_controlled: true,
+                sent_bytes: 1,
+                time_sent: now,
+                ack_elicitation: AckElicitation::Eliciting,
+                path_id: first_path_id,
+            },
+        ));
+        sent_packets_to_remove.push((
+            space.new_packet_number(VarInt::from_u8(9)),
+            SentPacketInfo {
+                congestion_controlled: true,
+                sent_bytes: 1,
+                time_sent: now,
+                ack_elicitation: AckElicitation::Eliciting,
+                path_id: second_path_id,
+            },
+        ));
+
+        // Trigger:
+        manager.remove_lost_packets(
+            now,
+            Duration::from_secs(8),
+            sent_packets_to_remove,
+            second_path_id,
+            &mut context,
+        );
+
+        // Expectation:
+        assert_eq!(
+            context
+                .path_by_id(first_path_id)
+                .congestion_controller
+                .persistent_congestion,
+            Some(false)
+        );
+        assert_eq!(
+            context
+                .path_by_id(second_path_id)
+                .congestion_controller
+                .persistent_congestion,
+            Some(true)
+        );
+    }
 
     #[test]
     fn detect_and_remove_lost_packets_nothing_lost() {
