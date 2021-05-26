@@ -493,25 +493,19 @@ impl Manager {
         now: Timestamp,
         context: &mut Ctx,
     ) {
-        // persistent_congestion is only updated for the path on which we receive the ack.
-        // Managing state for multiple paths requires extra allocations but is only necessary
-        // when also attempting connection_migration; which should not be very common.
-        let current_path_id = context.path_id();
-
         // Cancel the loss timer. It will be armed again if any unacknowledged packets are
         // older than the largest acked packet, but not old enough to be considered lost yet
         self.loss_timer.cancel();
 
         // TODO: Investigate a more efficient mechanism for managing sent_packets
         //       See https://github.com/awslabs/s2n-quic/issues/69
-        let (current_path_id, max_persistent_congestion_period, sent_packets_to_remove) =
-            self.detect_lost_packets(now, current_path_id, context);
+        let (max_persistent_congestion_period, sent_packets_to_remove) =
+            self.detect_lost_packets(now, context);
 
         self.remove_lost_packets(
             now,
             max_persistent_congestion_period,
             sent_packets_to_remove,
-            current_path_id,
             context,
         );
     }
@@ -519,9 +513,8 @@ impl Manager {
     fn detect_lost_packets<CC: CongestionController, Ctx: Context<CC>>(
         &mut self,
         now: Timestamp,
-        persistent_congestion_path_id: path::Id,
         context: &mut Ctx,
-    ) -> (path::Id, Duration, Vec<PacketDetails>) {
+    ) -> (Duration, Vec<PacketDetails>) {
         let largest_acked_packet = &self
             .largest_acked_packet
             .expect("This function is only called after an ack has been received");
@@ -585,9 +578,14 @@ impl Manager {
                     let contiguous = unacked_packet_number.checked_distance(*pn) == Some(1);
                     contiguous
                         // Check that this lost packet was sent on this path
-                        && unacked_path_id == persistent_congestion_path_id
+                        //
+                        // persistent congestion is only updated for the path on which we receive
+                        // the ack. Managing state for multiple paths requires extra allocations
+                        // but is only necessary when also attempting connection_migration; which
+                        // should not be very common.
+                        && unacked_path_id == context.path_id()
                         // Check that previous packet was sent on this path
-                        && prev_path_id == persistent_congestion_path_id
+                        && prev_path_id == context.path_id()
                 });
                 if is_contiguous {
                     // Add the difference in time to the current period.
@@ -642,11 +640,7 @@ impl Manager {
             }
         }
 
-        (
-            persistent_congestion_path_id,
-            max_persistent_congestion_period,
-            sent_packets_to_remove,
-        )
+        (max_persistent_congestion_period, sent_packets_to_remove)
     }
 
     fn remove_lost_packets<CC: CongestionController, Ctx: Context<CC>>(
@@ -654,9 +648,9 @@ impl Manager {
         now: Timestamp,
         max_persistent_congestion_period: Duration,
         sent_packets_to_remove: Vec<PacketDetails>,
-        persistent_congestion_path_id: path::Id,
         context: &mut Ctx,
     ) {
+        let current_path_id = context.path_id();
         // Remove the lost packets and account for the bytes on the proper congestion controller
         for (packet_number, sent_info) in sent_packets_to_remove {
             let path = context.path_mut_by_id(sent_info.path_id);
@@ -670,7 +664,8 @@ impl Manager {
             //# space that was acknowledged.
             let persistent_congestion = max_persistent_congestion_period
                 > path.rtt_estimator.persistent_congestion_threshold()
-                && sent_info.path_id == persistent_congestion_path_id;
+                // Check that the packet was sent on this path
+                && sent_info.path_id == current_path_id;
 
             if sent_info.sent_bytes > 0 {
                 path.congestion_controller.on_packets_lost(
@@ -2134,11 +2129,10 @@ mod test {
             .sum();
         assert_eq!(bytes_in_flight, 9);
 
-        let (path_id, max_persistent_congestion_period, _sent_packets_to_remove) =
-            manager.detect_lost_packets(now, first_path_id, &mut context);
+        let (max_persistent_congestion_period, _sent_packets_to_remove) =
+            manager.detect_lost_packets(now, &mut context);
 
         // Expectation:
-        assert_eq!(path_id, first_path_id);
         assert_eq!(max_persistent_congestion_period, Duration::from_secs(2));
     }
 
@@ -2245,11 +2239,11 @@ mod test {
         ];
 
         // Trigger:
+        context.set_path_id(second_path_id);
         manager.remove_lost_packets(
             now,
             Duration::from_secs(20),
             sent_packets_to_remove,
-            second_path_id,
             &mut context,
         );
 

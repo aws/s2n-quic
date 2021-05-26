@@ -325,7 +325,6 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             path_manager,
         );
 
-        // updating only the active path
         recovery_manager.on_timeout(timestamp, &mut context);
 
         self.stream_manager.on_timeout(timestamp);
