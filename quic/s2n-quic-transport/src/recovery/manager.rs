@@ -1150,7 +1150,6 @@ mod test {
         manager.pto.timer.cancel();
 
         // Trigger 2:
-        // fixme
         context.set_path_id(second_path_id);
         manager.on_packet_sent(sent_packet, outcome, time_sent, &mut context);
 
@@ -1930,7 +1929,6 @@ mod test {
         let now = s2n_quic_platform::time::now();
         let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
         let mut context = MockContext::new(&mut path_manager);
-        let active_path_id = path::Id::new(0);
 
         manager.largest_acked_packet = Some(space.new_packet_number(VarInt::from_u8(10)));
 
@@ -1987,6 +1985,7 @@ mod test {
 
         let now = time_sent;
 
+        let active_path_id = path::Id::new(0);
         manager.detect_and_remove_lost_packets(now, active_path_id, &mut context);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.1.2
