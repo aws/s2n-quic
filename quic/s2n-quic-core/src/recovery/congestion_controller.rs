@@ -100,8 +100,7 @@ pub mod testing {
         }
 
         #[derive(Clone, Copy, Debug, Default, PartialEq)]
-        pub struct CongestionController {
-        }
+        pub struct CongestionController {}
 
         impl super::CongestionController for CongestionController {
             fn congestion_window(&self) -> u32 {

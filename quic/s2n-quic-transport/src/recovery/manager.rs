@@ -589,15 +589,15 @@ impl Manager {
                 //# *  all packets, across all packet number spaces, sent between these
                 //#    two send times are declared lost;
                 let is_contiguous = prev_packet.map_or(false, |(pn, prev_path_id, _)| {
-                    // Check if this lost packet is contiguous with the previous lost packet
-                    // in order to update the persistent congestion period.
+                    // Check if this lost packet is contiguous with the previous lost packet.
                     let contiguous = unacked_packet_number.checked_distance(*pn) == Some(1);
-                    // Check if the previous packet was sent on this path, otherwise don't
-                    // consider it a continuous range.
-                    contiguous && prev_path_id == persistent_congestion_path_id
+                    contiguous
+                        // Check that this lost packet was sent on this path
+                        && unacked_path_id == persistent_congestion_path_id
+                        // Check that previous packet was sent on this path
+                        && prev_path_id == persistent_congestion_path_id
                 });
-                if is_contiguous && unacked_path_id == persistent_congestion_path_id {
-                    // The previous lost packet was 1 less than this one, so it is contiguous.
+                if is_contiguous {
                     // Add the difference in time to the current period.
                     persistent_congestion_period +=
                         unacked_sent_info.time_sent - prev_packet.expect("checked above").2;
@@ -2244,18 +2244,16 @@ mod test {
                 true,
                 space,
             );
-        assert!(
-            context
-                .path_by_id(first_path_id)
-                .rtt_estimator
-                .first_rtt_sample().is_some()
-        );
-        assert!(
-            context
-                .path_by_id(second_path_id)
-                .rtt_estimator
-                .first_rtt_sample().is_some()
-        );
+        assert!(context
+            .path_by_id(first_path_id)
+            .rtt_estimator
+            .first_rtt_sample()
+            .is_some());
+        assert!(context
+            .path_by_id(second_path_id)
+            .rtt_estimator
+            .first_rtt_sample()
+            .is_some());
 
         now += Duration::from_secs(10);
         let mut sent_packets_to_remove = Vec::new();
@@ -2297,12 +2295,11 @@ mod test {
                 .persistent_congestion,
             Some(false)
         );
-        assert!(
-            context
-                .path_by_id(first_path_id)
-                .rtt_estimator
-                .first_rtt_sample().is_some()
-        );
+        assert!(context
+            .path_by_id(first_path_id)
+            .rtt_estimator
+            .first_rtt_sample()
+            .is_some());
         assert_eq!(
             context
                 .path_by_id(second_path_id)
@@ -2310,12 +2307,11 @@ mod test {
                 .persistent_congestion,
             Some(true)
         );
-        assert!(
-            context
-                .path_by_id(second_path_id)
-                .rtt_estimator
-                .first_rtt_sample().is_none()
-        );
+        assert!(context
+            .path_by_id(second_path_id)
+            .rtt_estimator
+            .first_rtt_sample()
+            .is_none());
     }
 
     #[test]
