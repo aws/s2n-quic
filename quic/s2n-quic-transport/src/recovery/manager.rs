@@ -11,7 +11,7 @@ use crate::{
 use core::{cmp::max, time::Duration};
 use s2n_quic_core::{
     endpoint, frame,
-    inet::{DatagramInfo, SocketAddress},
+    inet::DatagramInfo,
     packet::number::{PacketNumber, PacketNumberRange, PacketNumberSpace},
     recovery::{CongestionController, RttEstimator, K_GRANULARITY},
     time::Timestamp,
@@ -433,9 +433,7 @@ impl Manager {
         // persistent_congestion is only updated for the path on which we receive the ack.
         // Managing state for multiple paths requires extra allocations but is only necessary
         // when also attempting connection_migration; which should not be very common.
-        let acked_path_id = context
-            .path_id_by_peer_addr(&datagram.remote_address)
-            .expect("a path should exist for this acked packet");
+        let acked_path_id = context.path_id();
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.1.2
         //# Once a later packet within the same packet number space has been
@@ -731,7 +729,7 @@ pub trait Context<CC: CongestionController> {
 
     fn path_mut_by_id(&mut self, path_id: path::Id) -> &mut path::Path<CC>;
 
-    fn path_id_by_peer_addr(&self, addr: &SocketAddress) -> Option<path::Id>;
+    fn path_id(&self) -> path::Id;
 
     fn validate_packet_ack(
         &mut self,
@@ -3367,8 +3365,8 @@ mod test {
             &mut self.path_manager[path_id]
         }
 
-        fn path_id_by_peer_addr(&self, _addr: &SocketAddress) -> Option<path::Id> {
-            Some(self.path_id)
+        fn path_id(&self) -> path::Id {
+            self.path_id
         }
 
         fn validate_packet_ack(

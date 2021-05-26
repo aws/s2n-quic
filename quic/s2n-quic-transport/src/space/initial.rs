@@ -18,7 +18,7 @@ use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
     crypto::{tls, CryptoSuite},
     frame::{ack::AckRanges, crypto::CryptoRef, Ack, ConnectionClose},
-    inet::{DatagramInfo, SocketAddress},
+    inet::DatagramInfo,
     packet::{
         encoding::{PacketEncoder, PacketEncodingError},
         initial::{CleartextInitial, Initial, ProtectedInitial},
@@ -358,8 +358,8 @@ impl<'a, Config: endpoint::Config> recovery::Context<<Config::CongestionControll
         &mut self.path_manager[path_id]
     }
 
-    fn path_id_by_peer_addr(&self, addr: &SocketAddress) -> Option<path::Id> {
-        self.path_manager.path(addr).map( |x| x.0 )
+    fn path_id(&self) -> path::Id {
+        self.path_id
     }
 
     fn validate_packet_ack(
