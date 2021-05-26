@@ -2187,13 +2187,17 @@ mod test {
     // Setup:
     // - create path manager with two paths that are not persistent_congestion
     // - create PacketDetails for lost packets on each path
+    // - verify both paths are not in persistent_congestion
+    // - provide both paths with rrt sample so we can verify they are cleared later
     //
     // Trigger:
     // - call remove_lost_packets for path 2
     //
     // Expectation:
-    // - ensure path 1 is not persistent_congestion
+    // - ensure path 1 is NOT persistent_congestion
+    // - ensure path 1 first_rtt_sample is NOT cleared
     // - ensure path 2 is persistent_congestion
+    // - ensure path 2 first_rtt_sample is cleared
     fn remove_lost_packets_persistent_cogestion_path_aware() {
         // Setup:
         let space = PacketNumberSpace::ApplicationData;
