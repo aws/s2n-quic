@@ -2260,27 +2260,28 @@ mod test {
             .is_some());
 
         now += Duration::from_secs(10);
-        let mut sent_packets_to_remove = Vec::new();
-        sent_packets_to_remove.push((
-            space.new_packet_number(VarInt::from_u8(9)),
-            SentPacketInfo {
-                congestion_controlled: true,
-                sent_bytes: 1,
-                time_sent: now,
-                ack_elicitation: AckElicitation::Eliciting,
-                path_id: first_path_id,
-            },
-        ));
-        sent_packets_to_remove.push((
-            space.new_packet_number(VarInt::from_u8(9)),
-            SentPacketInfo {
-                congestion_controlled: true,
-                sent_bytes: 1,
-                time_sent: now,
-                ack_elicitation: AckElicitation::Eliciting,
-                path_id: second_path_id,
-            },
-        ));
+        let sent_packets_to_remove = vec![
+            (
+                space.new_packet_number(VarInt::from_u8(9)),
+                SentPacketInfo {
+                    congestion_controlled: true,
+                    sent_bytes: 1,
+                    time_sent: now,
+                    ack_elicitation: AckElicitation::Eliciting,
+                    path_id: first_path_id,
+                },
+            ),
+            (
+                space.new_packet_number(VarInt::from_u8(9)),
+                SentPacketInfo {
+                    congestion_controlled: true,
+                    sent_bytes: 1,
+                    time_sent: now,
+                    ack_elicitation: AckElicitation::Eliciting,
+                    path_id: second_path_id,
+                },
+            ),
+        ];
 
         // Trigger:
         manager.remove_lost_packets(
