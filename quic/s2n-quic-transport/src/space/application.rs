@@ -318,16 +318,15 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         self.ack_manager.on_timeout(timestamp);
         self.key_set.on_timeout(timestamp);
 
-        let active_path_id = path_manager.active_path_id();
         let (recovery_manager, mut context) = self.recovery(
             handshake_status,
             local_id_registry,
-            active_path_id,
+            path_manager.active_path_id(),
             path_manager,
         );
 
         // updating only the active path
-        recovery_manager.on_timeout(timestamp, active_path_id, &mut context);
+        recovery_manager.on_timeout(timestamp, &mut context);
 
         self.stream_manager.on_timeout(timestamp);
     }

@@ -234,7 +234,7 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
 
         let (recovery_manager, mut context) =
             self.recovery(handshake_status, path_id, path_manager);
-        recovery_manager.on_timeout(timestamp, path_id, &mut context);
+        recovery_manager.on_timeout(timestamp, &mut context);
     }
 
     /// Called before the Handshake packet space is discarded

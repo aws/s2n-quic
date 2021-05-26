@@ -237,7 +237,7 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
 
         let (recovery_manager, mut context) =
             self.recovery(handshake_status, path_id, path_manager);
-        recovery_manager.on_timeout(timestamp, path_id, &mut context);
+        recovery_manager.on_timeout(timestamp, &mut context);
     }
 
     /// Called before the Initial packet space is discarded
