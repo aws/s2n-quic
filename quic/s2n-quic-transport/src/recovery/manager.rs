@@ -148,7 +148,6 @@ impl Manager {
         packet_number: PacketNumber,
         outcome: transmission::Outcome,
         time_sent: Timestamp,
-        path_id: path::Id,
         context: &mut Ctx,
     ) {
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7
@@ -173,7 +172,7 @@ impl Manager {
                 congestion_controlled_bytes,
                 time_sent,
                 outcome.ack_elicitation,
-                path_id,
+                context.path_id(),
             ),
         );
 
@@ -185,7 +184,7 @@ impl Manager {
             //# A sender SHOULD restart its PTO timer every time an ack-eliciting
             //# packet is sent or acknowledged,
             let is_handshake_confirmed = context.is_handshake_confirmed();
-            let path = context.path_mut_by_id(path_id);
+            let path = context.path_mut_by_id(context.path_id());
             self.update_pto_timer(path, time_sent, is_handshake_confirmed);
             path.congestion_controller
                 .on_packet_sent(time_sent, congestion_controlled_bytes);
@@ -993,7 +992,7 @@ mod test {
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
             };
 
-            manager.on_packet_sent(sent_packet, outcome, time_sent, first_path_id, &mut context);
+            manager.on_packet_sent(sent_packet, outcome, time_sent, &mut context);
 
             assert!(manager.sent_packets.get(sent_packet).is_some());
             let actual_sent_packet = manager.sent_packets.get(sent_packet).unwrap();
@@ -1087,7 +1086,7 @@ mod test {
         // Setup 1:
         let (
             _first_addr,
-            first_path_id,
+            _first_path_id,
             _second_addr,
             second_path_id,
             mut manager,
@@ -1114,7 +1113,7 @@ mod test {
             packet_number: space.new_packet_number(VarInt::from_u8(1)),
         };
 
-        manager.on_packet_sent(sent_packet, outcome, time_sent, first_path_id, &mut context);
+        manager.on_packet_sent(sent_packet, outcome, time_sent, &mut context);
 
         // Expectation 1:
         assert!(manager.sent_packets.get(sent_packet).is_some());
@@ -1151,13 +1150,9 @@ mod test {
         manager.pto.timer.cancel();
 
         // Trigger 2:
-        manager.on_packet_sent(
-            sent_packet,
-            outcome,
-            time_sent,
-            second_path_id,
-            &mut context,
-        );
+        // fixme
+        context.set_path_id(second_path_id);
+        manager.on_packet_sent(sent_packet, outcome, time_sent, &mut context);
 
         // Expectation 2:
         assert!(manager.sent_packets.get(sent_packet).is_some());
@@ -1206,7 +1201,6 @@ mod test {
                     packet_number: space.new_packet_number(VarInt::from_u8(1)),
                 },
                 time_sent,
-                path::Id::new(0),
                 &mut context,
             );
         }
@@ -1314,7 +1308,6 @@ mod test {
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
             },
             time_sent,
-            path::Id::new(0),
             &mut context,
         );
         ack_packets(11..=11, ack_receive_time, &mut context, &mut manager);
@@ -1380,10 +1373,10 @@ mod test {
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
             },
             time_sent,
-            first_path_id,
             &mut context,
         );
         // Send packets 2 on second_path
+        context.set_path_id(second_path_id);
         manager.on_packet_sent(
             space.new_packet_number(VarInt::from_u8(2)),
             transmission::Outcome {
@@ -1393,7 +1386,6 @@ mod test {
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
             },
             time_sent,
-            second_path_id,
             &mut context,
         );
 
@@ -1490,10 +1482,10 @@ mod test {
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
             },
             time_sent,
-            first_path_id,
             &mut context,
         );
         // Send packets 2 on second_path
+        context.set_path_id(second_path_id);
         manager.on_packet_sent(
             space.new_packet_number(VarInt::from_u8(2)),
             transmission::Outcome {
@@ -1503,7 +1495,6 @@ mod test {
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
             },
             time_sent,
-            second_path_id,
             &mut context,
         );
 
@@ -1590,8 +1581,14 @@ mod test {
         // Setup:
         let space = PacketNumberSpace::ApplicationData;
         let packet_bytes = 128;
-        let (first_addr, first_path_id, second_addr, second_path_id, mut manager, mut path_manager) =
-            helper_generate_multi_path_manager(space);
+        let (
+            first_addr,
+            _first_path_id,
+            second_addr,
+            second_path_id,
+            mut manager,
+            mut path_manager,
+        ) = helper_generate_multi_path_manager(space);
         let mut context = MockContext::new(&mut path_manager);
 
         let time_sent = s2n_quic_platform::time::now() + Duration::from_secs(10);
@@ -1606,10 +1603,10 @@ mod test {
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
             },
             time_sent,
-            first_path_id,
             &mut context,
         );
         // Send packets 2 on second_path
+        context.set_path_id(second_path_id);
         manager.on_packet_sent(
             space.new_packet_number(VarInt::from_u8(2)),
             transmission::Outcome {
@@ -1619,7 +1616,6 @@ mod test {
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
             },
             time_sent,
-            second_path_id,
             &mut context,
         );
 
@@ -1651,7 +1647,6 @@ mod test {
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
             },
             time_sent,
-            first_path_id,
             &mut context,
         );
 
@@ -1695,7 +1690,6 @@ mod test {
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
             },
             time_sent,
-            path::Id::new(0),
             &mut context,
         );
         manager.on_packet_sent(
@@ -1707,7 +1701,6 @@ mod test {
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
             },
             time_sent,
-            path::Id::new(0),
             &mut context,
         );
 
@@ -1766,7 +1759,6 @@ mod test {
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
             },
             time_sent,
-            path::Id::new(0),
             &mut context,
         );
         manager.on_packet_sent(
@@ -1778,7 +1770,6 @@ mod test {
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
             },
             time_sent,
-            path::Id::new(0),
             &mut context,
         );
         assert_eq!(manager.sent_packets.iter().count(), 2);
@@ -1877,10 +1868,10 @@ mod test {
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
             },
             first_sent_time,
-            first_path_id,
             &mut context,
         );
         // send packet 0 packet on second path. sent +500
+        context.set_path_id(second_path_id);
         manager.on_packet_sent(
             space.new_packet_number(VarInt::from_u8(0)),
             transmission::Outcome {
@@ -1890,7 +1881,6 @@ mod test {
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
             },
             second_sent_time,
-            second_path_id,
             &mut context,
         );
         assert_eq!(manager.sent_packets.iter().count(), 2);
@@ -1954,13 +1944,7 @@ mod test {
 
         // Send a packet that was sent too long ago (lost)
         let old_packet_time_sent = space.new_packet_number(VarInt::from_u8(0));
-        manager.on_packet_sent(
-            old_packet_time_sent,
-            outcome,
-            time_sent,
-            active_path_id,
-            &mut context,
-        );
+        manager.on_packet_sent(old_packet_time_sent, outcome, time_sent, &mut context);
 
         // time threshold = max(kTimeThreshold * max(smoothed_rtt, latest_rtt), kGranularity)
         // time threshold = max(9/8 * 8) = 9
@@ -1983,27 +1967,15 @@ mod test {
         // K_PACKET_THRESHOLD away from the largest (lost)
         let old_packet_packet_number =
             space.new_packet_number(VarInt::new(10 - K_PACKET_THRESHOLD).unwrap());
-        manager.on_packet_sent(
-            old_packet_packet_number,
-            outcome,
-            time_sent,
-            active_path_id,
-            &mut context,
-        );
+        manager.on_packet_sent(old_packet_packet_number, outcome, time_sent, &mut context);
 
         // Send a packet that is less than the largest acked but not lost
         let not_lost = space.new_packet_number(VarInt::from_u8(9));
-        manager.on_packet_sent(not_lost, outcome, time_sent, active_path_id, &mut context);
+        manager.on_packet_sent(not_lost, outcome, time_sent, &mut context);
 
         // Send a packet larger than the largest acked (not lost)
         let larger_than_largest = manager.largest_acked_packet.unwrap().next().unwrap();
-        manager.on_packet_sent(
-            larger_than_largest,
-            outcome,
-            time_sent,
-            active_path_id,
-            &mut context,
-        );
+        manager.on_packet_sent(larger_than_largest, outcome, time_sent, &mut context);
 
         // Four packets sent, each size 1 byte
         let bytes_in_flight: u16 = manager
@@ -2125,29 +2097,28 @@ mod test {
                 space.new_packet_number(VarInt::from_u8(i)),
                 outcome,
                 now,
-                first_path_id,
                 &mut context,
             );
         }
         // Send a packet that was sent too long ago (lost)
         for i in 3..=6 {
             now += Duration::from_secs(1);
+            context.set_path_id(second_path_id);
             manager.on_packet_sent(
                 space.new_packet_number(VarInt::from_u8(i)),
                 outcome,
                 now,
-                second_path_id,
                 &mut context,
             );
         }
         // Send a packet that was sent too long ago (lost)
         for i in 7..=9 {
             now += Duration::from_secs(1);
+            context.set_path_id(first_path_id);
             manager.on_packet_sent(
                 space.new_packet_number(VarInt::from_u8(i)),
                 outcome,
                 now,
-                first_path_id,
                 &mut context,
             );
         }
@@ -2324,7 +2295,6 @@ mod test {
         let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
         let mut context = MockContext::new(&mut path_manager);
         manager.largest_acked_packet = Some(space.new_packet_number(VarInt::from_u8(10)));
-
         let active_path_id = path::Id::new(0);
 
         let time_sent = s2n_quic_platform::time::now();
@@ -2337,7 +2307,7 @@ mod test {
 
         // Send a packet that is less than the largest acked but not lost
         let not_lost = space.new_packet_number(VarInt::from_u8(9));
-        manager.on_packet_sent(not_lost, outcome, time_sent, active_path_id, &mut context);
+        manager.on_packet_sent(not_lost, outcome, time_sent, &mut context);
 
         manager.detect_and_remove_lost_packets(time_sent, active_path_id, &mut context);
 
@@ -2360,7 +2330,6 @@ mod test {
         let mut manager = Manager::new(space, Duration::from_millis(100));
         let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
         let mut context = MockContext::new(&mut path_manager);
-        let active_path_id = path::Id::new(0);
 
         let time_zero = s2n_quic_platform::time::now() + Duration::from_secs(10);
         // The RFC doesn't mention it, but it is implied that the first RTT sample has already
@@ -2386,7 +2355,6 @@ mod test {
             space.new_packet_number(VarInt::from_u8(1)),
             outcome,
             time_zero,
-            active_path_id,
             &mut context,
         );
 
@@ -2395,7 +2363,6 @@ mod test {
             space.new_packet_number(VarInt::from_u8(2)),
             outcome,
             time_zero + Duration::from_secs(1),
-            active_path_id,
             &mut context,
         );
 
@@ -2413,7 +2380,6 @@ mod test {
                 space.new_packet_number(VarInt::from_u8(t + 1)),
                 outcome,
                 time_zero + Duration::from_secs(t.into()),
-                active_path_id,
                 &mut context,
             );
         }
@@ -2423,7 +2389,6 @@ mod test {
             space.new_packet_number(VarInt::from_u8(8)),
             outcome,
             time_zero + Duration::from_secs(8),
-            active_path_id,
             &mut context,
         );
 
@@ -2432,7 +2397,6 @@ mod test {
             space.new_packet_number(VarInt::from_u8(9)),
             outcome,
             time_zero + Duration::from_secs(12),
-            active_path_id,
             &mut context,
         );
 
@@ -2470,7 +2434,6 @@ mod test {
             space.new_packet_number(VarInt::from_u8(10)),
             outcome,
             time_zero + Duration::from_secs(20),
-            active_path_id,
             &mut context,
         );
 
@@ -2518,7 +2481,6 @@ mod test {
             space.new_packet_number(VarInt::from_u8(1)),
             outcome,
             time_zero,
-            path::Id::new(0),
             &mut context,
         );
 
@@ -2527,7 +2489,6 @@ mod test {
             space.new_packet_number(VarInt::from_u8(2)),
             outcome,
             time_zero + Duration::from_secs(1),
-            path::Id::new(0),
             &mut context,
         );
 
@@ -2545,7 +2506,6 @@ mod test {
                 space.new_packet_number(VarInt::from_u8(t + 1)),
                 outcome,
                 time_zero + Duration::from_secs(t.into()),
-                path::Id::new(0),
                 &mut context,
             );
         }
@@ -2557,7 +2517,6 @@ mod test {
             space.new_packet_number(VarInt::from_u8(9)),
             outcome,
             time_zero + Duration::from_secs(8),
-            path::Id::new(0),
             &mut context,
         );
 
@@ -2566,7 +2525,6 @@ mod test {
             space.new_packet_number(VarInt::from_u8(10)),
             outcome,
             time_zero + Duration::from_secs(20),
-            path::Id::new(0),
             &mut context,
         );
 
@@ -2575,7 +2533,6 @@ mod test {
             space.new_packet_number(VarInt::from_u8(11)),
             outcome,
             time_zero + Duration::from_secs(30),
-            path::Id::new(0),
             &mut context,
         );
 
@@ -2628,7 +2585,6 @@ mod test {
             space.new_packet_number(VarInt::from_u8(1)),
             outcome,
             time_zero,
-            path::Id::new(0),
             &mut context,
         );
 
@@ -2637,7 +2593,6 @@ mod test {
             space.new_packet_number(VarInt::from_u8(2)),
             outcome,
             time_zero + Duration::from_secs(10),
-            path::Id::new(0),
             &mut context,
         );
 
@@ -2646,7 +2601,6 @@ mod test {
             space.new_packet_number(VarInt::from_u8(3)),
             outcome,
             time_zero + Duration::from_secs(20),
-            path::Id::new(0),
             &mut context,
         );
 
@@ -2754,7 +2708,6 @@ mod test {
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
             },
             now,
-            path::Id::new(0),
             &mut context,
         );
 
@@ -2885,7 +2838,6 @@ mod test {
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
             },
             now - Duration::from_secs(5),
-            path::Id::new(0),
             &mut context,
         );
 
@@ -3150,7 +3102,6 @@ mod test {
             space.new_packet_number(VarInt::from_u8(1)),
             outcome,
             s2n_quic_platform::time::now(),
-            path::Id::new(0),
             &mut context,
         );
 
@@ -3339,6 +3290,10 @@ mod test {
                 lost_packets: HashSet::default(),
                 path_manager,
             }
+        }
+
+        pub fn set_path_id(&mut self, path_id: path::Id) {
+            self.path_id = path_id;
         }
     }
 
