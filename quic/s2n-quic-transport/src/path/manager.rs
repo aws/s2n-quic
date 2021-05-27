@@ -155,6 +155,17 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
 
         // TODO set alpn if available
 
+        self.handle_connection_migration(datagram, congestion_controller_endpoint, random_generator)
+    }
+
+    #[allow(unreachable_code)]
+    #[allow(unused_variables)]
+    fn handle_connection_migration<Rnd: random::Generator>(
+      &mut self,
+        datagram: &DatagramInfo,
+        congestion_controller_endpoint: &mut CCE,
+        random_generator: &mut Rnd,
+    ) -> Result<(Id, bool), transport::Error> {
         // Since we are not currently supporting connection migration (whether it was deliberate or
         // not), we will error our at this point to avoid re-using a peer connection ID.
         // TODO: This would be better handled as a stateless reset so the peer can terminate the
