@@ -13,7 +13,7 @@ use s2n_quic_core::{
     inet::{DatagramInfo, SocketAddress},
     packet::number::PacketNumberSpace,
     random,
-    recovery::congestion_controller,
+    recovery::{congestion_controller, RttEstimator},
     stateless_reset,
     time::Timestamp,
     transport,
@@ -101,6 +101,11 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
             .map(|(id, path)| (Id(id as u8), path))
     }
 
+    /// Return a mutable reference to the active path
+    pub fn path_mut_by_id(&mut self, path_id: Id) -> Option<&mut Path<CCE::CongestionController>> {
+        self.paths.get_mut(path_id.0 as usize)
+    }
+
     /// Called when a datagram is received on a connection
     /// Upon success, returns a `(Id, bool)` containing the path ID and a boolean that is
     /// true if the path had been amplification limited prior to receiving the datagram
@@ -161,7 +166,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     #[allow(unreachable_code)]
     #[allow(unused_variables)]
     fn handle_connection_migration<Rnd: random::Generator>(
-      &mut self,
+        &mut self,
         datagram: &DatagramInfo,
         congestion_controller_endpoint: &mut CCE,
         random_generator: &mut Rnd,
@@ -181,9 +186,13 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         //# instead retain its congestion control state and round-trip estimate
         //# in those cases instead of reverting to initial values.
 
-        // TODO temporarily copy rtt and cc to maintain state when migrating to this new path.
-        let rtt = self.active_path().rtt_estimator;
-        let cc = self.active_path().congestion_controller.clone();
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.1
+        //# Note that since the endpoint will not have any round-trip
+        //# time measurements to this address, the estimate SHOULD be the default
+        //# initial value; see [QUIC-RECOVERY].
+        let rtt = RttEstimator::new(self.active_path().rtt_estimator.max_ack_delay());
+        let path_info = congestion_controller::PathInfo::new(&datagram.remote_address);
+        let cc = congestion_controller_endpoint.new_congestion_controller(path_info);
 
         let peer_connection_id = {
             if self.active_path().local_connection_id != datagram.destination_connection_id {
@@ -226,9 +235,14 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         let challenge = challenge::Challenge::new(
             datagram.timestamp,
             rtt.pto_period(1, PacketNumberSpace::ApplicationData),
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.4
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#8.2.4
             //= type=TODO
             //# A value of
+            //# three times the larger of the current Probe Timeout (PTO) or the PTO
+            //# for the new path (that is, using kInitialRtt as defined in
+            //# [QUIC-RECOVERY]) is RECOMMENDED.
+
+            //
             //# three times the larger of the current Probe Timeout (PTO) or the
             //# initial timeout (that is, 2*kInitialRtt) as defined in
             //# [QUIC-RECOVERY] is RECOMMENDED.
@@ -255,10 +269,12 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         )
         .with_challenge(challenge);
 
+        // create a new path
         let id = Id(self.paths.len() as u8);
         self.paths.push(path);
+        let unblocked = path.on_bytes_received(datagram.payload_len);
 
-        Ok((id, false))
+        Ok((id, unblocked))
     }
 
     pub fn timers(&self) -> impl Iterator<Item = Timestamp> + '_ {
@@ -327,11 +343,20 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         path_id: Id,
         response: &s2n_quic_core::frame::PathResponse,
     ) {
-        if self[path_id].is_validated() {
-            return;
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
+        //# A PATH_RESPONSE frame MUST be sent on the network path where the
+        //# PATH_CHALLENGE was received.
+        // This requirement is achieved because paths own their challenges.
+        // We compare the path_response data to the data stored in the
+        // receiving path's challenge.
+        if let Some(path) = self.path_mut_by_id(path_id) {
+            if !path.is_validated() {
+                path.validate_path_response(timestamp, response.data);
+            }
+        } else {
+            // TODO we should not have gotten a PATH_RESPONSE for a path that
+            // does not exist. Check if we drop the frame or if we error.
         }
-
-        self[path_id].validate_path_response(timestamp, response.data);
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
