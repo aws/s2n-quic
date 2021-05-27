@@ -649,6 +649,41 @@ mod tests {
     }
 
     #[test]
+    // a NOT validated path should NOT be assigned to last_known_validated_path
+    fn dont_promote_non_validated_path_to_last_known_validated_path() {
+        // Setup:
+        let (first_path_id, second_path_id, mut manager) = helper_manager_with_paths();
+        assert_eq!(
+            manager.paths[first_path_id.0 as usize].is_validated(),
+            false
+        );
+
+        // Trigger:
+        manager.update_active_path(second_path_id).unwrap();
+
+        // Expectation:
+        assert_eq!(manager.last_known_validated_path, None);
+    }
+
+    #[test]
+    // a validated path should be assigned to last_known_validated_path
+    fn promote_validated_path_to_last_known_validated_path() {
+        // Setup:
+        let (first_path_id, second_path_id, mut manager) = helper_manager_with_paths();
+        assert_eq!(
+            manager.paths[first_path_id.0 as usize].is_validated(),
+            false
+        );
+
+        // Trigger:
+        manager.paths[first_path_id.0 as usize].on_validated();
+        manager.update_active_path(second_path_id).unwrap();
+
+        // Expectation:
+        assert_eq!(manager.last_known_validated_path, Some(0));
+    }
+
+    #[test]
     fn test_path_validation() {
         let clock = NoopClock {};
         let mut path_rnd_generator = random::testing::Generator(123);
@@ -841,5 +876,54 @@ mod tests {
             .is_ok());
 
         assert_eq!(id_2, manager.paths[0].peer_connection_id);
+    }
+
+    fn helper_manager_with_paths() -> (Id, Id, Manager<unlimited::Endpoint>) {
+        let first_conn_id = connection::PeerId::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
+        let first_local_conn_id = connection::LocalId::TEST_ID;
+        let first_path = Path::new(
+            SocketAddress::default(),
+            first_conn_id,
+            first_local_conn_id,
+            RttEstimator::new(Duration::from_millis(30)),
+            Default::default(),
+            false,
+        );
+
+        // Create a challenge that will expire in 100ms
+        let clock = NoopClock {};
+        let expiration = Duration::from_millis(100);
+        let challenge = challenge::Challenge::new(
+            clock.get_time(),
+            Duration::from_millis(0),
+            expiration,
+            [0; 8],
+        );
+        let second_path = Path::new(
+            SocketAddress::default(),
+            first_conn_id,
+            first_local_conn_id,
+            RttEstimator::new(Duration::from_millis(30)),
+            Default::default(),
+            false,
+        )
+        .with_challenge(challenge);
+
+        let mut random_generator = random::testing::Generator(123);
+        let peer_id_registry =
+            ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server)
+                .create_peer_id_registry(
+                    InternalConnectionIdGenerator::new().generate_id(),
+                    first_path.peer_connection_id,
+                    None,
+                );
+
+        let mut manager = Manager::new(first_path, peer_id_registry);
+        manager.paths.push(second_path);
+
+        assert_eq!(manager.last_known_validated_path, None);
+        assert_eq!(manager.active, 0);
+
+        (Id(0), Id(1), manager)
     }
 }
