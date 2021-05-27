@@ -197,7 +197,6 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             packet_number,
             outcome,
             context.timestamp,
-            context.path_id,
             &mut recovery_context,
         );
 
@@ -325,6 +324,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             path_manager.active_path_id(),
             path_manager,
         );
+
         recovery_manager.on_timeout(timestamp, &mut context);
 
         self.stream_manager.on_timeout(timestamp);
@@ -460,6 +460,10 @@ impl<'a, Config: endpoint::Config> recovery::Context<<Config::CongestionControll
 
     fn path_mut_by_id(&mut self, path_id: path::Id) -> &mut path::Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController> {
         &mut self.path_manager[path_id]
+    }
+
+    fn path_id(&self) -> path::Id {
+        self.path_id
     }
 
     fn validate_packet_ack(

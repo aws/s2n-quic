@@ -144,13 +144,7 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
         let path_id = context.path_id;
         let (recovery_manager, mut recovery_context) =
             self.recovery(handshake_status, path_id, context.path_manager);
-        recovery_manager.on_packet_sent(
-            packet_number,
-            outcome,
-            time_sent,
-            path_id,
-            &mut recovery_context,
-        );
+        recovery_manager.on_packet_sent(packet_number, outcome, time_sent, &mut recovery_context);
 
         Ok((outcome, buffer))
     }
@@ -243,7 +237,7 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
 
         let (recovery_manager, mut context) =
             self.recovery(handshake_status, path_id, path_manager);
-        recovery_manager.on_timeout(timestamp, &mut context)
+        recovery_manager.on_timeout(timestamp, &mut context);
     }
 
     /// Called before the Initial packet space is discarded
@@ -356,6 +350,10 @@ impl<'a, Config: endpoint::Config> recovery::Context<<Config::CongestionControll
 
     fn path_mut_by_id(&mut self, path_id: path::Id) -> &mut path::Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController> {
         &mut self.path_manager[path_id]
+    }
+
+    fn path_id(&self) -> path::Id {
+        self.path_id
     }
 
     fn validate_packet_ack(
