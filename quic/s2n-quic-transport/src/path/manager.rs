@@ -55,11 +55,45 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
 
     /// Update the active path
     #[allow(dead_code)]
-    fn update_active_path(&mut self, path_id: Id) {
-        // TODO return an error if the path doesn't exist
-        // Or take an index and verify INLINE_PATH_LEN
-        self.last_known_validated_path = Some(self.active);
-        self.active = path_id.0;
+    fn update_active_path(&mut self, path_id: Id) -> Result<(), transport::Error> {
+        debug_assert!(path_id != Id(self.active));
+
+        if self.active_path().is_validated() {
+            self.last_known_validated_path = Some(self.active);
+        }
+
+        let new_path_idx = path_id.0;
+        // Attempt to consume a new connection id incase it has been retired since the last use.
+        let peer_connection_id = self
+            .paths
+            .get(new_path_idx as usize)
+            .map(|x| &x.peer_connection_id);
+
+        // The path's connection id might have retired since we last used it. Check if it is still
+        // active, otherwise try and consume a new connection id.
+        let use_peer_connection_id = match peer_connection_id {
+            Some(peer_connection_id) => {
+                if self.peer_id_registry.is_active(peer_connection_id) {
+                    *peer_connection_id
+                } else {
+                    // FIXME https://github.com/awslabs/s2n-quic/issues/669
+                    // If there are no new connection ids the peer is responsible for
+                    // providing additional connection ids to continue.
+                    //
+                    // Insufficient connection ids should not cause the connection to close.
+                    // Replace with an error code that is silently ignored.
+                    self.peer_id_registry
+                        .consume_new_id()
+                        .ok_or(transport::Error::INTERNAL_ERROR)?
+                }
+            }
+            None => panic!("the path attempting to become the active path does not exist"),
+        };
+
+        self[path_id].peer_connection_id = use_peer_connection_id;
+
+        self.active = new_path_idx;
+        Ok(())
     }
 
     /// Return the active path
@@ -204,6 +238,9 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
                 // their destination_connection_id, so we will change our destination_connection_id as well.
                 self.peer_id_registry
                     .consume_new_id()
+                    // TODO https://github.com/awslabs/s2n-quic/issues/669
+                    // Insufficient connection ids should not cause the connection to close.
+                    // Replace with an error code that is silently ignored.
                     .ok_or(transport::Error::INTERNAL_ERROR)?
             } else {
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.5
@@ -259,7 +296,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.1
         //# Until a peer's address is deemed valid, an endpoint MUST
         //# limit the rate at which it sends data to this address.
-        let path = Path::new(
+        let mut path = Path::new(
             datagram.remote_address,
             peer_connection_id,
             datagram.destination_connection_id,
@@ -269,10 +306,10 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         )
         .with_challenge(challenge);
 
+        let unblocked = path.on_bytes_received(datagram.payload_len);
         // create a new path
         let id = Id(self.paths.len() as u8);
         self.paths.push(path);
-        let unblocked = path.on_bytes_received(datagram.payload_len);
 
         Ok((id, unblocked))
     }
@@ -393,8 +430,9 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         if !self.peer_id_registry.is_active(&active_path_connection_id) {
             self.active_path_mut().peer_connection_id =
                 self.peer_id_registry.consume_new_id().expect(
-                    "Since we are only checking the active path and new ID was delivered, \
-                    there will always be a new ID available to consume if necessary",
+                    "Since we are only checking the active path and new ID was delivered \
+                    via the NEW_CONNECTION_ID frams, there will always be a new ID available \
+                    to consume if necessary",
                 );
         }
 
@@ -565,7 +603,7 @@ mod tests {
     fn test_invalid_path_fallback() {
         let first_conn_id = connection::PeerId::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
         let first_local_conn_id = connection::LocalId::TEST_ID;
-        let first_path = Path::new(
+        let mut first_path = Path::new(
             SocketAddress::default(),
             first_conn_id,
             first_local_conn_id,
@@ -573,6 +611,7 @@ mod tests {
             Default::default(),
             false,
         );
+        first_path.on_validated();
 
         // Create a challenge that will expire in 100ms
         let clock = NoopClock {};
@@ -597,9 +636,11 @@ mod tests {
         manager.paths.push(second_path);
         assert_eq!(manager.last_known_validated_path, None);
         assert_eq!(manager.active, 0);
-        manager.update_active_path(Id(1));
-        assert_eq!(manager.last_known_validated_path, Some(0));
+        assert!(manager.paths[0].is_validated());
+
+        manager.update_active_path(Id(1)).unwrap();
         assert_eq!(manager.active, 1);
+        assert_eq!(manager.last_known_validated_path, Some(0));
 
         // After a validation times out, the path should revert to the previous
         manager.on_timeout(clock.get_time() + Duration::from_millis(2000));
