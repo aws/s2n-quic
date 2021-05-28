@@ -410,7 +410,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         retire_prior_to: u32,
         stateless_reset_token: &stateless_reset::Token,
     ) -> Result<(), transport::Error> {
-        // Register the new connection ID
+        // Retire and register connection ID
         self.peer_id_registry.on_new_connection_id(
             connection_id,
             sequence_number,
