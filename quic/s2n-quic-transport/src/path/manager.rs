@@ -539,7 +539,7 @@ mod tests {
         random::{self, Generator},
         recovery::{congestion_controller::testing::unlimited, RttEstimator},
         stateless_reset,
-        stateless_reset::token::testing::TEST_TOKEN_1,
+        stateless_reset::token::testing::*,
         time::{Clock, NoopClock},
     };
     use std::net::SocketAddr;
@@ -649,6 +649,25 @@ mod tests {
     }
 
     #[test]
+    // a validated path should be assigned to last_known_validated_path
+    fn promote_validated_path_to_last_known_validated_path() {
+        // Setup:
+        let (first_path_id, second_path_id, mut manager) = helper_manager_with_paths();
+        assert_eq!(
+            manager.paths[first_path_id.0 as usize].is_validated(),
+            false
+        );
+
+        // Trigger:
+        manager.paths[first_path_id.0 as usize].on_validated();
+        assert_eq!(manager.paths[first_path_id.0 as usize].is_validated(), true);
+        manager.update_active_path(second_path_id).unwrap();
+
+        // Expectation:
+        assert_eq!(manager.last_known_validated_path, Some(0));
+    }
+
+    #[test]
     // a NOT validated path should NOT be assigned to last_known_validated_path
     fn dont_promote_non_validated_path_to_last_known_validated_path() {
         // Setup:
@@ -666,21 +685,32 @@ mod tests {
     }
 
     #[test]
-    // a validated path should be assigned to last_known_validated_path
-    fn promote_validated_path_to_last_known_validated_path() {
+    // update path to the new active path
+    fn update_path_to_active_path() {
         // Setup:
         let (first_path_id, second_path_id, mut manager) = helper_manager_with_paths();
-        assert_eq!(
-            manager.paths[first_path_id.0 as usize].is_validated(),
-            false
-        );
+        assert_eq!(manager.active, first_path_id.0);
 
         // Trigger:
-        manager.paths[first_path_id.0 as usize].on_validated();
         manager.update_active_path(second_path_id).unwrap();
 
         // Expectation:
-        assert_eq!(manager.last_known_validated_path, Some(0));
+        assert_eq!(manager.active, second_path_id.0);
+    }
+
+    #[test]
+    // dont update path to the new active path if insufficient connection ids
+    fn dont_update_path_to_active_path_if_no_connection_id_available() {
+        // Setup:
+        let (first_path_id, second_path_id, mut manager) =
+            helper_manager_register_second_path_conn_id(false);
+        assert_eq!(manager.active, first_path_id.0);
+
+        // Trigger:
+        assert!(manager.update_active_path(second_path_id).is_err());
+
+        // Expectation:
+        assert_eq!(manager.active, first_path_id.0);
     }
 
     #[test]
@@ -878,13 +908,16 @@ mod tests {
         assert_eq!(id_2, manager.paths[0].peer_connection_id);
     }
 
-    fn helper_manager_with_paths() -> (Id, Id, Manager<unlimited::Endpoint>) {
-        let first_conn_id = connection::PeerId::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
-        let first_local_conn_id = connection::LocalId::TEST_ID;
+    fn helper_manager_register_second_path_conn_id(
+        register_second_conn_id: bool,
+    ) -> (Id, Id, Manager<unlimited::Endpoint>) {
+        let first_conn_id = connection::PeerId::try_from_bytes(&[1]).unwrap();
+        let second_conn_id = connection::PeerId::try_from_bytes(&[2]).unwrap();
+        let local_conn_id = connection::LocalId::TEST_ID;
         let first_path = Path::new(
             SocketAddress::default(),
             first_conn_id,
-            first_local_conn_id,
+            local_conn_id,
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
@@ -901,8 +934,8 @@ mod tests {
         );
         let second_path = Path::new(
             SocketAddress::default(),
-            first_conn_id,
-            first_local_conn_id,
+            second_conn_id,
+            local_conn_id,
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
@@ -910,13 +943,18 @@ mod tests {
         .with_challenge(challenge);
 
         let mut random_generator = random::testing::Generator(123);
-        let peer_id_registry =
+        let mut peer_id_registry =
             ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server)
                 .create_peer_id_registry(
                     InternalConnectionIdGenerator::new().generate_id(),
                     first_path.peer_connection_id,
                     None,
                 );
+        if register_second_conn_id {
+            assert!(peer_id_registry
+                .on_new_connection_id(&second_conn_id, 1, 0, &TEST_TOKEN_2)
+                .is_ok());
+        }
 
         let mut manager = Manager::new(first_path, peer_id_registry);
         manager.paths.push(second_path);
@@ -925,5 +963,9 @@ mod tests {
         assert_eq!(manager.active, 0);
 
         (Id(0), Id(1), manager)
+    }
+
+    fn helper_manager_with_paths() -> (Id, Id, Manager<unlimited::Endpoint>) {
+        helper_manager_register_second_path_conn_id(true)
     }
 }
