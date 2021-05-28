@@ -187,7 +187,7 @@ mod tests {
             state.retransmit_timer.cancel();
             assert_eq!(Challenge::Pending(state).is_pending(now), false);
         } else {
-            assert!(false, "expected Pending");
+            panic!("expected Pending");
         }
     }
 }

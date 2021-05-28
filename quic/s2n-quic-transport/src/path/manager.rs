@@ -886,6 +886,8 @@ mod tests {
         assert_eq!(manager.paths.len(), 1);
     }
 
+    // TODO remove early return statement when challenges work
+    #[allow(unreachable_code)]
     #[test]
     fn connection_migration_challenge_behavior() {
         // Setup:
