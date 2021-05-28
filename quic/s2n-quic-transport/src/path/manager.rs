@@ -149,7 +149,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         &mut self,
         datagram: &DatagramInfo,
         limits: &connection::Limits,
-        can_migrate: bool,
+        handshake_confirmed: bool,
         congestion_controller_endpoint: &mut CCE,
         random_generator: &mut Rnd,
     ) -> Result<(Id, bool), transport::Error> {
@@ -178,7 +178,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         //# for the duration of the handshake.  An endpoint MUST NOT initiate
         //# connection migration before the handshake is confirmed, as defined
         //# in section 4.1.2 of [QUIC-TLS].
-        if !can_migrate {
+        if !handshake_confirmed {
             return Err(transport::Error::PROTOCOL_VIOLATION);
         }
 
