@@ -273,7 +273,10 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         let challenge = challenge::Challenge::new(
             datagram.timestamp,
             rtt.pto_period(1, PacketNumberSpace::ApplicationData),
+
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#8.2.4
+            //= type=TODO
+            //= tracking-issue=https://github.com/awslabs/s2n-quic/issues/412
             //# A value of
             //# three times the larger of the current Probe Timeout (PTO) or the PTO
             //# for the new path (that is, using kInitialRtt as defined in
