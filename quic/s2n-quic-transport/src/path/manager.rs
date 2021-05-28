@@ -144,7 +144,6 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     /// Upon success, returns a `(Id, bool)` containing the path ID and a boolean that is
     /// true if the path had been amplification limited prior to receiving the datagram
     /// and is now no longer amplification limited.
-    #[allow(unreachable_code)]
     #[allow(unused_variables)]
     pub fn on_datagram_received<Rnd: random::Generator>(
         &mut self,
@@ -781,9 +780,18 @@ mod tests {
     }
 
     #[test]
-    #[allow(unreachable_code)]
-    fn test_new_peer() {
-        let first_conn_id = connection::PeerId::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
+    // add new path when receiving a datagram on different remote address
+    // Setup:
+    // - create path manger with one path
+    //
+    // Trigger:
+    // - call on_datagram_received with new remote address
+    //
+    // Expectation:
+    // - assert we have two paths
+    fn test_adding_new_path() {
+        // Setup:
+        let first_conn_id = connection::PeerId::try_from_bytes(&[1]).unwrap();
         let first_path = Path::new(
             SocketAddress::default(),
             first_conn_id,
@@ -792,30 +800,24 @@ mod tests {
             Default::default(),
             false,
         );
-        let manager = manager(first_path, None);
-        assert_eq!(manager.paths.len(), 1);
-        assert_eq!(manager.path(&SocketAddress::default()).is_some(), true);
+        let mut manager = manager(first_path, None);
 
-        let new_addr: SocketAddr = "127.0.0.1:80".parse().unwrap();
+        // verify we have one path
+        assert_eq!(manager.path(&SocketAddress::default()).is_some(), true);
+        let new_addr: SocketAddr = "127.0.0.1:8001".parse().unwrap();
         let new_addr = SocketAddress::from(new_addr);
         assert!(manager.path(&new_addr).is_none());
         assert_eq!(manager.paths.len(), 1);
 
-        // TODO Remove when Connection Migration is supported
-        return;
-
-        let clock = NoopClock {};
+        // Trigger:
         let datagram = DatagramInfo {
-            timestamp: clock.get_time(),
+            timestamp: NoopClock {}.get_time(),
             remote_address: new_addr,
             payload_len: 0,
             ecn: ExplicitCongestionNotification::default(),
             destination_connection_id: connection::LocalId::TEST_ID,
         };
-
-        // NOTE This generator should be passed to on_datagram_received when migation is enabled
-        let mut _random_generator = random::testing::Generator(123);
-        let (_path_id, _unblocked) = manager
+        let (path_id, unblocked) = manager
             .on_datagram_received(
                 &datagram,
                 &connection::Limits::default(),
@@ -825,16 +827,111 @@ mod tests {
             )
             .unwrap();
 
+        // Expectation:
+        assert_eq!(path_id.0, 1);
+        assert_eq!(unblocked, false);
         assert_eq!(manager.path(&new_addr).is_some(), true);
         assert_eq!(manager.paths.len(), 2);
+    }
+
+    #[test]
+    // do NOT add new path if handshake is not confirmed
+    // Setup:
+    // - create path manger with one path
+    //
+    // Trigger:
+    // - call on_datagram_received with new remote address bit handshake_confirmed false
+    //
+    // Expectation:
+    // - asset on_datagram_received errors
+    // - assert we have one paths
+    fn do_not_add_new_path_if_handshake_not_confirmed() {
+        // Setup:
+        let first_conn_id = connection::PeerId::try_from_bytes(&[1]).unwrap();
+        let first_path = Path::new(
+            SocketAddress::default(),
+            first_conn_id,
+            connection::LocalId::TEST_ID,
+            RttEstimator::new(Duration::from_millis(30)),
+            Default::default(),
+            false,
+        );
+        let mut manager = manager(first_path, None);
+
+        // verify we have one path
+        let new_addr: SocketAddr = "127.0.0.1:8001".parse().unwrap();
+        let new_addr = SocketAddress::from(new_addr);
+        assert_eq!(manager.paths.len(), 1);
+
+        // Trigger:
+        let datagram = DatagramInfo {
+            timestamp: NoopClock {}.get_time(),
+            remote_address: new_addr,
+            payload_len: 0,
+            ecn: ExplicitCongestionNotification::default(),
+            destination_connection_id: connection::LocalId::TEST_ID,
+        };
+        let handshake_confirmed = false;
+        let on_datagram_result = manager.on_datagram_received(
+            &datagram,
+            &connection::Limits::default(),
+            handshake_confirmed,
+            &mut unlimited::Endpoint::default(),
+            &mut random::testing::Generator(123),
+        );
+
+        // Expectation:
+        assert!(on_datagram_result.is_err());
+        assert_eq!(manager.path(&new_addr).is_some(), false);
+        assert_eq!(manager.paths.len(), 1);
+    }
+
+    #[test]
+    fn connection_migration_challenge_behavior() {
+        // Setup:
+        let first_conn_id = connection::PeerId::try_from_bytes(&[1]).unwrap();
+        let first_path = Path::new(
+            SocketAddress::default(),
+            first_conn_id,
+            connection::LocalId::TEST_ID,
+            RttEstimator::new(Duration::from_millis(30)),
+            Default::default(),
+            false,
+        );
+        let mut manager = manager(first_path, None);
+
+        let new_addr: SocketAddr = "127.0.0.1:8001".parse().unwrap();
+        let new_addr = SocketAddress::from(new_addr);
+        let clock = NoopClock {};
+        let datagram = DatagramInfo {
+            timestamp: clock.get_time(),
+            remote_address: new_addr,
+            payload_len: 0,
+            ecn: ExplicitCongestionNotification::default(),
+            destination_connection_id: connection::LocalId::TEST_ID,
+        };
+
+        let (_path_id, _unblocked) = manager
+            .handle_connection_migration(
+                &datagram,
+                &mut unlimited::Endpoint::default(),
+                &mut random::testing::Generator(123),
+            )
+            .unwrap();
+
+        // verify we have two paths
+        assert_eq!(manager.path(&new_addr).is_some(), true);
+        assert_eq!(manager.paths.len(), 2);
+
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
         //= type=test
         //# An endpoint MUST
         //# perform path validation (Section 8.2) if it detects any change to a
         //# peer's address, unless it has previously validated that address.
-        let timer = clock.get_time() + Duration::from_millis(2000);
+        let timer = clock.get_time() + Duration::from_secs(9995_000);
         assert!(manager[Id(1)].is_challenge_pending(timer));
 
+        assert!(false);
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
         //= type=test
         //# The endpoint MUST use unpredictable data in every PATH_CHALLENGE
@@ -854,31 +951,6 @@ mod tests {
             //# peer's address, unless it has previously validated that address.
             &expected_data
         );
-
-        let new_addr: SocketAddr = "127.0.0.1:443".parse().unwrap();
-        let new_addr = SocketAddress::from(new_addr);
-        let datagram = DatagramInfo {
-            timestamp: clock.get_time(),
-            remote_address: new_addr,
-            payload_len: 0,
-            ecn: ExplicitCongestionNotification::default(),
-            destination_connection_id: connection::LocalId::TEST_ID,
-        };
-
-        // Verify an unconfirmed handshake does not add a new path
-        assert_eq!(
-            manager
-                .on_datagram_received(
-                    &datagram,
-                    &connection::Limits::default(),
-                    false,
-                    &mut unlimited::Endpoint::default(),
-                    &mut random::testing::Generator(123),
-                )
-                .is_err(),
-            true
-        );
-        assert_eq!(manager.paths.len(), 2);
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2

@@ -31,15 +31,15 @@ pub enum Challenge {
 
 impl Challenge {
     pub fn new(
-        timestamp: Timestamp,
+        expiration: Timestamp,
         retransmit_period: Duration,
-        expiration: Duration,
+        abandon_duration: Duration,
         data: Data,
     ) -> Self {
         let mut retransmit_timer = Timer::default();
-        retransmit_timer.set(timestamp);
+        retransmit_timer.set(expiration);
         let mut abandon_timer = Timer::default();
-        abandon_timer.set(timestamp + expiration);
+        abandon_timer.set(expiration + abandon_duration);
 
         let state = State {
             retransmit_timer,
@@ -84,7 +84,8 @@ impl Challenge {
 
     pub fn is_pending(&self, timestamp: Timestamp) -> bool {
         if let Challenge::Pending(state) = self {
-            return state.retransmit_timer.is_expired(timestamp);
+            return state.retransmit_timer.is_armed()
+                && !state.retransmit_timer.is_expired(timestamp);
         }
 
         false
@@ -122,26 +123,71 @@ mod tests {
 
     #[test]
     fn test_challenge_validation() {
-        let clock = NoopClock {};
-        let expiration = Duration::from_millis(100);
+        let now = NoopClock {}.get_time();
+        let expiration = now + Duration::from_millis(500);
+
         let expected_data: [u8; 8] = [0; 8];
 
         let challenge = Challenge::new(
-            clock.get_time(),
-            Duration::from_millis(0),
             expiration,
+            Duration::from_millis(0),
+            Duration::from_millis(10_000),
             expected_data,
         );
 
-        assert!(challenge.is_valid(clock.get_time(), &expected_data));
+        assert!(challenge.is_valid(now, &expected_data));
 
         let empty_challenge = Challenge::None;
-        assert!(!empty_challenge.is_valid(clock.get_time(), &expected_data));
+        assert!(!empty_challenge.is_valid(now, &expected_data));
 
         let invalid_data = [1; 8];
-        assert!(!challenge.is_valid(clock.get_time(), &invalid_data));
+        assert!(!challenge.is_valid(now, &invalid_data));
 
-        let expired = Duration::from_millis(150);
-        assert!(!challenge.is_valid(clock.get_time() + expired, &expected_data));
+        let abandoned = Duration::from_millis(11_000);
+        assert!(!challenge.is_valid(now + abandoned, &expected_data));
+    }
+
+    #[test]
+    fn is_pending_should_check_expiration_time() {
+        let now = NoopClock {}.get_time();
+        let expiration = now + Duration::from_millis(500);
+        let expected_data: [u8; 8] = [0; 8];
+
+        let challenge = Challenge::new(
+            expiration,
+            Duration::from_millis(0),
+            Duration::from_millis(10_000),
+            expected_data,
+        );
+
+        assert_eq!(challenge.is_pending(now), true);
+        assert_eq!(challenge.is_pending(now + Duration::from_millis(400)), true);
+        assert_eq!(
+            challenge.is_pending(now + Duration::from_millis(600)),
+            false
+        );
+    }
+
+    #[test]
+    fn cancelled_timer_should_not_be_pending() {
+        let now = NoopClock {}.get_time();
+        let expiration = now + Duration::from_millis(500);
+        let expected_data: [u8; 8] = [0; 8];
+
+        let challenge = Challenge::new(
+            expiration,
+            Duration::from_millis(0),
+            Duration::from_millis(10_000),
+            expected_data,
+        );
+
+        assert_eq!(challenge.is_pending(now), true);
+
+        if let Challenge::Pending(mut state) = challenge {
+            state.retransmit_timer.cancel();
+            assert_eq!(Challenge::Pending(state).is_pending(now), false);
+        } else {
+            assert!(false, "expected Pending");
+        }
     }
 }
