@@ -76,12 +76,12 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
                 if self.peer_id_registry.is_active(peer_connection_id) {
                     *peer_connection_id
                 } else {
-                    // FIXME https://github.com/awslabs/s2n-quic/issues/669
+                    // TODO https://github.com/awslabs/s2n-quic/issues/669
                     // If there are no new connection ids the peer is responsible for
                     // providing additional connection ids to continue.
                     //
                     // Insufficient connection ids should not cause the connection to close.
-                    // Replace with an error code that is silently ignored.
+                    // Investigate api after this is used.
                     self.peer_id_registry
                         .consume_new_id()
                         .ok_or(transport::Error::INTERNAL_ERROR)?
@@ -239,7 +239,9 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
                     .consume_new_id()
                     // TODO https://github.com/awslabs/s2n-quic/issues/669
                     // Insufficient connection ids should not cause the connection to close.
-                    // Replace with an error code that is silently ignored.
+                    // Investigate if there is a safer way to expose an error here.
+                    //
+                    // Currently all errors are ignored when calling on_datagram_received in endpoint/mod.rs
                     .ok_or(transport::Error::INTERNAL_ERROR)?
             } else {
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.5
@@ -272,17 +274,11 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
             datagram.timestamp,
             rtt.pto_period(1, PacketNumberSpace::ApplicationData),
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#8.2.4
-            //= type=TODO
             //# A value of
             //# three times the larger of the current Probe Timeout (PTO) or the PTO
             //# for the new path (that is, using kInitialRtt as defined in
             //# [QUIC-RECOVERY]) is RECOMMENDED.
 
-            //
-            //# three times the larger of the current Probe Timeout (PTO) or the
-            //# initial timeout (that is, 2*kInitialRtt) as defined in
-            //# [QUIC-RECOVERY] is RECOMMENDED.
-            //
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.4
             //= type=TODO
             //= tracking-issue=https://github.com/awslabs/s2n-quic/issues/412

@@ -31,15 +31,17 @@ pub enum Challenge {
 
 impl Challenge {
     pub fn new(
-        expiration: Timestamp,
+        now: Timestamp,
         retransmit_period: Duration,
         abandon_duration: Duration,
         data: Data,
     ) -> Self {
         let mut retransmit_timer = Timer::default();
-        retransmit_timer.set(expiration);
+        // set the timer to transmit now
+        retransmit_timer.set(now);
+
         let mut abandon_timer = Timer::default();
-        abandon_timer.set(expiration + abandon_duration);
+        abandon_timer.set(now + abandon_duration);
 
         let state = State {
             retransmit_timer,
@@ -75,6 +77,7 @@ impl Challenge {
     }
 
     pub fn on_timeout(&mut self, timestamp: Timestamp) {
+        // TODO do we need to handle the retransmit_timer also?
         if let Challenge::Pending(state) = self {
             if state.abandon_timer.is_expired(timestamp) {
                 *self = Challenge::Abandoned;
@@ -123,17 +126,14 @@ mod tests {
 
     #[test]
     fn test_challenge_validation() {
-        let now = NoopClock {}.get_time();
-        let expiration = now + Duration::from_millis(500);
-
-        let expected_data: [u8; 8] = [0; 8];
-
-        let challenge = Challenge::new(
-            expiration,
-            Duration::from_millis(0),
-            Duration::from_millis(10_000),
+        let (
+            now,
+            initial_transmit_time,
+            _retransmit_period,
+            abandon_duration,
             expected_data,
-        );
+            challenge,
+        ) = helper_challenge();
 
         assert!(challenge.is_valid(now, &expected_data));
 
@@ -143,43 +143,37 @@ mod tests {
         let invalid_data = [1; 8];
         assert!(!challenge.is_valid(now, &invalid_data));
 
-        let abandoned = Duration::from_millis(11_000);
-        assert!(!challenge.is_valid(now + abandoned, &expected_data));
+        assert!(!challenge.is_valid(initial_transmit_time + abandon_duration, &expected_data));
     }
 
     #[test]
     fn is_pending_should_check_expiration_time() {
-        let now = NoopClock {}.get_time();
-        let expiration = now + Duration::from_millis(500);
-        let expected_data: [u8; 8] = [0; 8];
-
-        let challenge = Challenge::new(
-            expiration,
-            Duration::from_millis(0),
-            Duration::from_millis(10_000),
-            expected_data,
-        );
+        let (
+            now,
+            initial_transmit_time,
+            _retransmit_period,
+            _abandon_duration,
+            _expected_data,
+            challenge,
+        ) = helper_challenge();
 
         assert_eq!(challenge.is_pending(now), true);
-        assert_eq!(challenge.is_pending(now + Duration::from_millis(400)), true);
         assert_eq!(
-            challenge.is_pending(now + Duration::from_millis(600)),
+            challenge.is_pending(initial_transmit_time + Duration::from_millis(10)),
             false
         );
     }
 
     #[test]
     fn cancelled_timer_should_not_be_pending() {
-        let now = NoopClock {}.get_time();
-        let expiration = now + Duration::from_millis(500);
-        let expected_data: [u8; 8] = [0; 8];
-
-        let challenge = Challenge::new(
-            expiration,
-            Duration::from_millis(0),
-            Duration::from_millis(10_000),
-            expected_data,
-        );
+        let (
+            now,
+            _initial_transmit_time,
+            _retransmit_period,
+            _abandon_duration,
+            _expected_data,
+            challenge,
+        ) = helper_challenge();
 
         assert_eq!(challenge.is_pending(now), true);
 
@@ -189,5 +183,29 @@ mod tests {
         } else {
             panic!("expected Pending");
         }
+    }
+
+    fn helper_challenge() -> (Timestamp, Timestamp, Duration, Duration, Data, Challenge) {
+        let now = NoopClock {}.get_time();
+        let initial_transmit_time = now + Duration::from_millis(10);
+        let retransmit_period = Duration::from_millis(500);
+        let abandon_duration = Duration::from_millis(10_000);
+        let expected_data: [u8; 8] = [0; 8];
+
+        let challenge = Challenge::new(
+            initial_transmit_time,
+            retransmit_period,
+            abandon_duration,
+            expected_data,
+        );
+
+        (
+            now,
+            initial_transmit_time,
+            retransmit_period,
+            abandon_duration,
+            expected_data,
+            challenge,
+        )
     }
 }
