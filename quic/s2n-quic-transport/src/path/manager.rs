@@ -67,27 +67,23 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         let peer_connection_id = self
             .paths
             .get(new_path_idx as usize)
-            .map(|x| &x.peer_connection_id);
+            .map(|path| &path.peer_connection_id)
+            .expect("the path should exits since we do not remove paths");
 
         // The path's connection id might have retired since we last used it. Check if it is still
         // active, otherwise try and consume a new connection id.
-        let use_peer_connection_id = match peer_connection_id {
-            Some(peer_connection_id) => {
-                if self.peer_id_registry.is_active(peer_connection_id) {
-                    *peer_connection_id
-                } else {
-                    // TODO https://github.com/awslabs/s2n-quic/issues/669
-                    // If there are no new connection ids the peer is responsible for
-                    // providing additional connection ids to continue.
-                    //
-                    // Insufficient connection ids should not cause the connection to close.
-                    // Investigate api after this is used.
-                    self.peer_id_registry
-                        .consume_new_id()
-                        .ok_or(transport::Error::INTERNAL_ERROR)?
-                }
-            }
-            None => panic!("the path attempting to become the active path does not exist"),
+        let use_peer_connection_id = if self.peer_id_registry.is_active(peer_connection_id) {
+            *peer_connection_id
+        } else {
+            // TODO https://github.com/awslabs/s2n-quic/issues/669
+            // If there are no new connection ids the peer is responsible for
+            // providing additional connection ids to continue.
+            //
+            // Insufficient connection ids should not cause the connection to close.
+            // Investigate api after this is used.
+            self.peer_id_registry
+                .consume_new_id()
+                .ok_or(transport::Error::INTERNAL_ERROR)?
         };
 
         self[path_id].peer_connection_id = use_peer_connection_id;
@@ -133,11 +129,6 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
             .enumerate()
             .find(|(_id, path)| *peer_address == path.peer_socket_address)
             .map(|(id, path)| (Id(id as u8), path))
-    }
-
-    /// Return a mutable reference to the active path
-    pub fn path_mut_by_id(&mut self, path_id: Id) -> Option<&mut Path<CCE::CongestionController>> {
-        self.paths.get_mut(path_id.0 as usize)
     }
 
     /// Called when a datagram is received on a connection
@@ -273,7 +264,6 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         let challenge = challenge::Challenge::new(
             datagram.timestamp,
             rtt.pto_period(1, PacketNumberSpace::ApplicationData),
-
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#8.2.4
             //= type=TODO
             //= tracking-issue=https://github.com/awslabs/s2n-quic/issues/412
@@ -384,14 +374,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         // This requirement is achieved because paths own their challenges.
         // We compare the path_response data to the data stored in the
         // receiving path's challenge.
-        if let Some(path) = self.path_mut_by_id(path_id) {
-            if !path.is_validated() {
-                path.validate_path_response(timestamp, response.data);
-            }
-        } else {
-            // TODO we should not have gotten a PATH_RESPONSE for a path that
-            // does not exist. Check if we drop the frame or if we error.
-        }
+        self[path_id].validate_path_response(timestamp, response.data);
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
