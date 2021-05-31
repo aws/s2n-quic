@@ -63,7 +63,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         }
 
         let new_path_idx = path_id.0;
-        // Attempt to consume a new connection id incase it has been retired since the last use.
+        // Attempt to consume a new connection id in case it has been retired since the last use.
         let peer_connection_id = self
             .paths
             .get(new_path_idx as usize)
@@ -412,7 +412,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
             self.active_path_mut().peer_connection_id =
                 self.peer_id_registry.consume_new_id().expect(
                     "Since we are only checking the active path and new ID was delivered \
-                    via the NEW_CONNECTION_ID frams, there will always be a new ID available \
+                    via the NEW_CONNECTION_ID frames, there will always be a new ID available \
                     to consume if necessary",
                 );
         }
@@ -680,7 +680,7 @@ mod tests {
     }
 
     #[test]
-    // dont update path to the new active path if insufficient connection ids
+    // Don't update path to the new active path if insufficient connection ids
     fn dont_update_path_to_active_path_if_no_connection_id_available() {
         // Setup:
         let (first_path_id, second_path_id, mut manager) =
