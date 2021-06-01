@@ -64,16 +64,12 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
 
         let new_path_idx = path_id.0;
         // Attempt to consume a new connection id in case it has been retired since the last use.
-        let peer_connection_id = self
-            .paths
-            .get(new_path_idx as usize)
-            .map(|path| &path.peer_connection_id)
-            .expect("the path should exits since we do not remove paths");
+        let peer_connection_id = self.paths[new_path_idx as usize].peer_connection_id;
 
         // The path's connection id might have retired since we last used it. Check if it is still
         // active, otherwise try and consume a new connection id.
-        let use_peer_connection_id = if self.peer_id_registry.is_active(peer_connection_id) {
-            *peer_connection_id
+        let use_peer_connection_id = if self.peer_id_registry.is_active(&peer_connection_id) {
+            peer_connection_id
         } else {
             // TODO https://github.com/awslabs/s2n-quic/issues/669
             // If there are no new connection ids the peer is responsible for
