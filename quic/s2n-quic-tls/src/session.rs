@@ -2,6 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::callback::{self, Callback};
+use amzn_s2n_tls::{
+    config::Config,
+    connection::{Connection, Mode},
+    error::Error,
+    raw::{s2n_blinding, s2n_error_type},
+};
 use bytes::BytesMut;
 use core::{marker::PhantomData, task::Poll};
 use s2n_quic_core::{
@@ -9,12 +15,6 @@ use s2n_quic_core::{
     endpoint, transport,
 };
 use s2n_quic_ring::RingCryptoSuite;
-use s2n_tls::{
-    config::Config,
-    connection::{Connection, Mode},
-    error::Error,
-    raw::{s2n_blinding, s2n_error_type},
-};
 
 #[derive(Debug)]
 pub struct Session {

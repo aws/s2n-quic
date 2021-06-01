@@ -1,8 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use amzn_s2n_tls::raw::*;
 use libc::{c_int, c_void};
-use s2n_tls::raw::*;
 use std::{
     fs::{File, OpenOptions},
     io::{BufWriter, Write},

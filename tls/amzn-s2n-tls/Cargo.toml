@@ -1,5 +1,5 @@
 [package]
-name = "s2n-tls"
+name = "amzn-s2n-tls"
 version = "0.1.0"
 authors = ["Cameron Bytheway <bythewc@amazon.com>"]
 edition = "2018"

@@ -1,6 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use amzn_s2n_tls::{call, connection::Connection, raw::*};
 use bytes::BytesMut;
 use core::{ffi::c_void, marker::PhantomData};
 use s2n_quic_core::{
@@ -13,7 +14,6 @@ use s2n_quic_ring::{
     ring::{aead, hkdf},
     Prk, RingCryptoSuite, SecretPair,
 };
-use s2n_tls::{call, connection::Connection, raw::*};
 
 /// The preallocated size of the outgoing buffer
 ///

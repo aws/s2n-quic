@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{certificate::IntoCertificate, keylog::KeyLogHandle, params::Params, session::Session};
-use s2n_codec::EncoderValue;
-use s2n_quic_core::{crypto::tls, endpoint};
-use s2n_tls::{
+use amzn_s2n_tls::{
     config::{self, Config},
     error::Error,
 };
+use s2n_codec::EncoderValue;
+use s2n_quic_core::{crypto::tls, endpoint};
 use std::sync::Arc;
 
 pub struct Client {
