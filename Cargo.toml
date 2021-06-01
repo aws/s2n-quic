@@ -4,6 +4,7 @@ members = [
     "common/s2n-*",
     "quic/s2n-*",
     "tls/s2n-*",
+    "tls/amzn-s2n-*",
 ]
 
 [profile.release]
