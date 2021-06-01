@@ -1,9 +1,9 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use amzn_s2n_tls_sys::*;
 use core::fmt;
 use libc::{c_char, c_int};
-use s2n_tls_sys::*;
 use std::ffi::CStr;
 
 // Ensures errors are converted

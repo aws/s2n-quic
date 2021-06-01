@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::error::Error;
-use s2n_tls_sys::*;
+use amzn_s2n_tls_sys::*;
 use std::sync::Once;
 
 static S2N_INIT: Once = Once::new();

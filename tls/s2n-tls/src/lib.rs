@@ -10,4 +10,4 @@ pub mod config;
 pub mod connection;
 pub mod init;
 
-pub use s2n_tls_sys as raw;
+pub use amzn_s2n_tls_sys as raw;

@@ -3,8 +3,8 @@
 
 use crate::error::Error;
 use alloc::rc::Rc;
+use amzn_s2n_tls_sys::*;
 use core::convert::TryInto;
-use s2n_tls_sys::*;
 use std::ffi::CString;
 
 struct Owned(*mut s2n_config);
@@ -171,7 +171,7 @@ impl Builder {
 #[cfg(feature = "quic")]
 impl Builder {
     pub fn enable_quic(&mut self) -> Result<&mut Self, Error> {
-        call!(s2n_tls_sys::s2n_config_enable_quic(self.as_mut_ptr()))?;
+        call!(amzn_s2n_tls_sys::s2n_config_enable_quic(self.as_mut_ptr()))?;
         Ok(self)
     }
 }

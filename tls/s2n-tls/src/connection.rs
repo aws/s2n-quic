@@ -4,11 +4,11 @@
 #![allow(clippy::missing_safety_doc)] // TODO add safety docs
 
 use crate::{config::Config, error::Error};
+use amzn_s2n_tls_sys::*;
 use core::{convert::TryInto, fmt, task::Poll};
 use libc::c_void;
-use s2n_tls_sys::*;
 
-pub use s2n_tls_sys::s2n_mode as Mode;
+pub use amzn_s2n_tls_sys::s2n_mode as Mode;
 
 pub struct Connection {
     connection: *mut s2n_connection,
