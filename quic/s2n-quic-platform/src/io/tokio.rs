@@ -73,7 +73,10 @@ impl Io {
         Ok(Self { builder })
     }
 
-    pub fn start<E: Endpoint>(self, endpoint: E) -> io::Result<tokio::task::JoinHandle<()>> {
+    pub fn start<E: Endpoint>(
+        self,
+        endpoint: E,
+    ) -> io::Result<(tokio::task::JoinHandle<()>, std::net::SocketAddr)> {
         let Builder {
             handle,
             rx_socket,
@@ -127,6 +130,8 @@ impl Io {
             endpoint,
         };
 
+        let local_addr = instance.rx_socket.local_addr()?;
+
         let task = handle.spawn(async move {
             if let Err(err) = instance.event_loop().await {
                 eprintln!("A fatal IO error occurred ({:?}): {}", err.kind(), err);
@@ -135,7 +140,7 @@ impl Io {
 
         drop(guard);
 
-        Ok(task)
+        Ok((task, local_addr))
     }
 }
 
@@ -629,7 +634,9 @@ mod tests {
 
         let endpoint = TestEndpoint::new(addr.into());
 
-        io.start(endpoint)?.await?;
+        let (join_handle, _local_addr) = io.start(endpoint)?;
+
+        join_handle.await?;
 
         Ok(())
     }

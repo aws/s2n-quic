@@ -322,7 +322,10 @@ impl<Providers: ServerProviders> Builder<Providers> {
     /// # }
     /// ```
     pub fn start(self) -> Result<Server, StartError> {
-        let acceptor = self.0.build().start()?;
-        Ok(Server { acceptor })
+        let (acceptor, local_addr) = self.0.build().start()?;
+        Ok(Server {
+            acceptor,
+            local_addr,
+        })
     }
 }

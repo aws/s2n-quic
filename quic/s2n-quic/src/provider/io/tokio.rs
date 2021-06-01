@@ -10,8 +10,8 @@ pub use self::tokio::{Builder, Io as Provider};
 impl super::Provider for Provider {
     type Error = io::Error;
 
-    fn start<E: Endpoint>(self, endpoint: E) -> Result<(), Self::Error> {
-        self.start(endpoint)?;
-        Ok(())
+    fn start<E: Endpoint>(self, endpoint: E) -> Result<std::net::SocketAddr, Self::Error> {
+        let (_join_handle, local_addr) = self.start(endpoint)?;
+        Ok(local_addr)
     }
 }

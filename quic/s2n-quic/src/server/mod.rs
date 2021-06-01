@@ -19,6 +19,7 @@ pub use providers::*;
 /// A QUIC server endpoint, capable of accepting connections
 pub struct Server {
     acceptor: Acceptor,
+    local_addr: std::net::SocketAddr,
 }
 
 impl fmt::Debug for Server {
@@ -140,7 +141,7 @@ impl Server {
     /// ```
     #[cfg(feature = "std")]
     pub fn local_addr(&self) -> Result<std::net::SocketAddr, std::io::Error> {
-        todo!()
+        Ok(self.local_addr)
     }
 }
 

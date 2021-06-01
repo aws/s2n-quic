@@ -55,7 +55,7 @@ impl<
         Token,
     >
 {
-    pub fn start(self) -> Result<Acceptor, StartError> {
+    pub fn start(self) -> Result<(Acceptor, std::net::SocketAddr), StartError> {
         let Self {
             congestion_controller,
             connection_close_formatter,
@@ -114,9 +114,9 @@ impl<
         let (endpoint, acceptor) = endpoint::Endpoint::new(endpoint_config);
 
         // Start the IO last
-        io.start(endpoint).map_err(StartError::new)?;
+        let local_addr = io.start(endpoint).map_err(StartError::new)?;
 
-        Ok(acceptor)
+        Ok((acceptor, local_addr))
     }
 }
 

@@ -9,7 +9,7 @@ use std::io;
 pub trait Provider: 'static {
     type Error: 'static + core::fmt::Display;
 
-    fn start<E: Endpoint>(self, endpoint: E) -> Result<(), Self::Error>;
+    fn start<E: Endpoint>(self, endpoint: E) -> Result<std::net::SocketAddr, Self::Error>;
 }
 
 cfg_if! {
