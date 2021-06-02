@@ -632,7 +632,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         //# packets received from an unvalidated address or limit the cumulative
         //# size of packets it sends to an unvalidated address to three times the
         //# size of packets it receives from that address.
-        let can_migrate = shared_state
+        let handshake_confirmed = shared_state
             .as_ref()
             .map(|s| s.space_manager.is_handshake_confirmed())
             .unwrap_or(false);
@@ -640,7 +640,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         let (id, unblocked) = self.path_manager.on_datagram_received(
             datagram,
             &self.limits,
-            can_migrate,
+            handshake_confirmed,
             congestion_controller_endpoint,
             random,
         )?;

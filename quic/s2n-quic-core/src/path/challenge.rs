@@ -31,15 +31,17 @@ pub enum Challenge {
 
 impl Challenge {
     pub fn new(
-        timestamp: Timestamp,
+        now: Timestamp,
         retransmit_period: Duration,
-        expiration: Duration,
+        abandon_duration: Duration,
         data: Data,
     ) -> Self {
         let mut retransmit_timer = Timer::default();
-        retransmit_timer.set(timestamp);
+        // set the timer to transmit now
+        retransmit_timer.set(now);
+
         let mut abandon_timer = Timer::default();
-        abandon_timer.set(timestamp + expiration);
+        abandon_timer.set(now + abandon_duration);
 
         let state = State {
             retransmit_timer,
@@ -75,6 +77,7 @@ impl Challenge {
     }
 
     pub fn on_timeout(&mut self, timestamp: Timestamp) {
+        // TODO do we need to handle the retransmit_timer also?
         if let Challenge::Pending(state) = self {
             if state.abandon_timer.is_expired(timestamp) {
                 *self = Challenge::Abandoned;
@@ -84,7 +87,8 @@ impl Challenge {
 
     pub fn is_pending(&self, timestamp: Timestamp) -> bool {
         if let Challenge::Pending(state) = self {
-            return state.retransmit_timer.is_expired(timestamp);
+            return state.retransmit_timer.is_armed()
+                && !state.retransmit_timer.is_expired(timestamp);
         }
 
         false
@@ -122,26 +126,80 @@ mod tests {
 
     #[test]
     fn test_challenge_validation() {
-        let clock = NoopClock {};
-        let expiration = Duration::from_millis(100);
+        let helper = helper_challenge();
+
+        assert!(helper.challenge.is_valid(helper.now, &helper.expected_data));
+
+        let empty_challenge = Challenge::None;
+        assert!(!empty_challenge.is_valid(helper.now, &helper.expected_data));
+
+        let invalid_data = [1; 8];
+        assert!(!helper.challenge.is_valid(helper.now, &invalid_data));
+
+        assert!(!helper.challenge.is_valid(
+            helper.initial_transmit_time + helper.abandon_duration,
+            &helper.expected_data
+        ));
+    }
+
+    #[test]
+    fn is_pending_should_check_expiration_time() {
+        let helper = helper_challenge();
+
+        assert_eq!(helper.challenge.is_pending(helper.now), true);
+        assert_eq!(
+            helper
+                .challenge
+                .is_pending(helper.initial_transmit_time + Duration::from_millis(10)),
+            false
+        );
+    }
+
+    #[test]
+    fn cancelled_timer_should_not_be_pending() {
+        let helper = helper_challenge();
+
+        assert_eq!(helper.challenge.is_pending(helper.now), true);
+
+        if let Challenge::Pending(mut state) = helper.challenge {
+            state.retransmit_timer.cancel();
+            assert_eq!(Challenge::Pending(state).is_pending(helper.now), false);
+        } else {
+            panic!("expected Pending");
+        }
+    }
+
+    fn helper_challenge() -> Helper {
+        let now = NoopClock {}.get_time();
+        let initial_transmit_time = now + Duration::from_millis(10);
+        let retransmit_period = Duration::from_millis(500);
+        let abandon_duration = Duration::from_millis(10_000);
         let expected_data: [u8; 8] = [0; 8];
 
         let challenge = Challenge::new(
-            clock.get_time(),
-            Duration::from_millis(0),
-            expiration,
+            initial_transmit_time,
+            retransmit_period,
+            abandon_duration,
             expected_data,
         );
 
-        assert!(challenge.is_valid(clock.get_time(), &expected_data));
+        Helper {
+            now,
+            initial_transmit_time,
+            retransmit_period,
+            abandon_duration,
+            expected_data,
+            challenge,
+        }
+    }
 
-        let empty_challenge = Challenge::None;
-        assert!(!empty_challenge.is_valid(clock.get_time(), &expected_data));
-
-        let invalid_data = [1; 8];
-        assert!(!challenge.is_valid(clock.get_time(), &invalid_data));
-
-        let expired = Duration::from_millis(150);
-        assert!(!challenge.is_valid(clock.get_time() + expired, &expected_data));
+    #[allow(dead_code)]
+    struct Helper {
+        now: Timestamp,
+        initial_transmit_time: Timestamp,
+        retransmit_period: Duration,
+        abandon_duration: Duration,
+        expected_data: Data,
+        challenge: Challenge,
     }
 }
