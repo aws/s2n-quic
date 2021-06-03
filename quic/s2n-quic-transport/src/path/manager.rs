@@ -248,35 +248,6 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         let mut data: challenge::Data = [0; 8];
         random_generator.public_random_fill(&mut data);
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
-        //# An endpoint MUST
-        //# perform path validation (Section 8.2) if it detects any change to a
-        //# peer's address, unless it has previously validated that address.
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.6.3
-        //# Servers SHOULD initiate path validation to the client's new address
-        //# upon receiving a probe packet from a different address.
-        // This will overwrite any in-progress path validation
-        let challenge = challenge::Challenge::new(
-            datagram.timestamp,
-            rtt.pto_period(1, PacketNumberSpace::ApplicationData),
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#8.2.4
-            //= type=TODO
-            //= tracking-issue=https://github.com/awslabs/s2n-quic/issues/412
-            //# A value of
-            //# three times the larger of the current Probe Timeout (PTO) or the PTO
-            //# for the new path (that is, using kInitialRtt as defined in
-            //# [QUIC-RECOVERY]) is RECOMMENDED.
-
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.4
-            //= type=TODO
-            //= tracking-issue=https://github.com/awslabs/s2n-quic/issues/412
-            //# This timer SHOULD be set as described in Section 6.2.1 of
-            //# [QUIC-RECOVERY] and MUST NOT be more aggressive.
-            rtt.pto_period(6, PacketNumberSpace::ApplicationData),
-            data,
-        );
-
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.1
         //# Until a peer's address is deemed valid, an endpoint MUST
         //# limit the rate at which it sends data to this address.
@@ -287,8 +258,41 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
             rtt,
             cc,
             true,
-        )
-        .with_challenge(challenge);
+        );
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.4
+        //= tracking-issue=https://github.com/awslabs/s2n-quic/issues/412
+        //# This timer SHOULD be set as described in Section 6.2.1 of
+        //# [QUIC-RECOVERY] and MUST NOT be more aggressive.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#8.2.4
+        //= tracking-issue=https://github.com/awslabs/s2n-quic/issues/412
+        //# A value of
+        //# three times the larger of the current Probe Timeout (PTO) or the PTO
+        //# for the new path (that is, using kInitialRtt as defined in
+        //# [QUIC-RECOVERY]) is RECOMMENDED.
+        let pto = path.pto_period(PacketNumberSpace::ApplicationData);
+        let pto = 3 * pto.max(
+            self
+            .active_path()
+            .pto_period(PacketNumberSpace::ApplicationData)
+            );
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
+        //# An endpoint MUST
+        //# perform path validation (Section 8.2) if it detects any change to a
+        //# peer's address, unless it has previously validated that address.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.6.3
+        //# Servers SHOULD initiate path validation to the client's new address
+        //# upon receiving a probe packet from a different address.
+        let challenge = challenge::Challenge::new(
+            datagram.timestamp,
+            rtt.pto_period(1, PacketNumberSpace::ApplicationData),
+            pto,
+            data,
+        );
+        path = path.with_challenge(challenge);
 
         let unblocked = path.on_bytes_received(datagram.payload_len);
         // create a new path
