@@ -902,7 +902,7 @@ mod tests {
             destination_connection_id: connection::LocalId::TEST_ID,
         };
 
-        let (_path_id, _unblocked) = manager
+        let (path_id, _unblocked) = manager
             .handle_connection_migration(
                 &datagram,
                 &mut unlimited::Endpoint::default(),
