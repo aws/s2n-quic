@@ -267,7 +267,9 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#8.2.4
         //= tracking-issue=https://github.com/awslabs/s2n-quic/issues/412
-        //# A value of
+        //# Endpoints SHOULD abandon path validation based on a timer.  When
+        //# setting this timer, implementations are cautioned that the new path
+        //# could have a longer round-trip time than the original. A value of
         //# three times the larger of the current Probe Timeout (PTO) or the PTO
         //# for the new path (that is, using kInitialRtt as defined in
         //# [QUIC-RECOVERY]) is RECOMMENDED.
