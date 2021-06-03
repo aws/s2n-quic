@@ -260,11 +260,6 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
             true,
         );
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.4
-        //= tracking-issue=https://github.com/awslabs/s2n-quic/issues/412
-        //# This timer SHOULD be set as described in Section 6.2.1 of
-        //# [QUIC-RECOVERY] and MUST NOT be more aggressive.
-
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#8.2.4
         //= tracking-issue=https://github.com/awslabs/s2n-quic/issues/412
         //# Endpoints SHOULD abandon path validation based on a timer.  When
@@ -273,8 +268,8 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         //# three times the larger of the current Probe Timeout (PTO) or the PTO
         //# for the new path (that is, using kInitialRtt as defined in
         //# [QUIC-RECOVERY]) is RECOMMENDED.
-        let pto = path.pto_period(PacketNumberSpace::ApplicationData);
-        let pto = 3 * pto.max(
+        let abandon_duration = path.pto_period(PacketNumberSpace::ApplicationData);
+        let abandon_duration = 3 * abandon_duration.max(
             self
             .active_path()
             .pto_period(PacketNumberSpace::ApplicationData)
@@ -290,8 +285,18 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         //# upon receiving a probe packet from a different address.
         let challenge = challenge::Challenge::new(
             datagram.timestamp,
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.4
+            //= tracking-issue=https://github.com/awslabs/s2n-quic/issues/412
+            //= type=TODO
+            //# If the timer fires
+            //# before the PATH_RESPONSE is received, the endpoint might send a new
+            //# PATH_CHALLENGE, and restart the timer for a longer period of time.
+            //# This timer SHOULD be set as described in Section 6.2.1 of
+            //# [QUIC-RECOVERY] and MUST NOT be more aggressive.
             rtt.pto_period(1, PacketNumberSpace::ApplicationData),
-            pto,
+
+            abandon_duration,
             data,
         );
         path = path.with_challenge(challenge);
