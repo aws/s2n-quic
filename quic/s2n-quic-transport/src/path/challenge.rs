@@ -54,7 +54,7 @@ impl Challenge {
         }
     }
 
-    pub fn is_before_abandon(&self, timestamp: Timestamp) -> bool {
+    pub fn is_pending(&self, timestamp: Timestamp) -> bool {
         !self.abandon_timer.is_expired(timestamp)
     }
 
@@ -74,6 +74,51 @@ mod tests {
     use s2n_quic_core::time::{Clock, Duration, NoopClock};
 
     #[test]
+    fn test_on_timeout() {
+        let mut helper = helper_challenge();
+        let expiration_time = helper.now + helper.abandon_duration;
+
+        helper.challenge.on_timeout(expiration_time - Duration::from_millis(10));
+        assert_eq!(helper.challenge.is_abandoned(), false);
+
+        helper.challenge.on_timeout(expiration_time + Duration::from_millis(10));
+        assert_eq!(helper.challenge.is_abandoned(), true);
+    }
+
+    #[test]
+    fn challenge_must_remains_abandoned_once_abandoned() {
+        let mut helper = helper_challenge();
+        let expiration_time = helper.now + helper.abandon_duration;
+
+        helper.challenge.on_timeout(expiration_time + Duration::from_millis(10));
+        assert_eq!(helper.challenge.is_abandoned(), true);
+
+        helper.challenge.on_timeout(expiration_time - Duration::from_millis(10));
+        assert_eq!(helper.challenge.is_abandoned(), true);
+    }
+
+    #[test]
+    fn test_is_pending() {
+        let helper = helper_challenge();
+        let expiration_time = helper.now + helper.abandon_duration;
+
+        assert_eq!(helper.challenge.is_pending(expiration_time - Duration::from_millis(10)), true);
+        assert_eq!(helper.challenge.is_pending(expiration_time), false);
+        assert_eq!(helper.challenge.is_pending(expiration_time + Duration::from_millis(10)), false);
+    }
+
+    #[test]
+    fn test_is_abandoned() {
+        let mut helper = helper_challenge();
+        let expiration_time = helper.now + helper.abandon_duration;
+
+        assert_eq!(helper.challenge.is_abandoned(), false);
+
+        helper.challenge.on_timeout(expiration_time + Duration::from_millis(10));
+        assert_eq!(helper.challenge.is_abandoned(), true);
+    }
+
+    #[test]
     fn test_is_valid() {
         let helper = helper_challenge();
 
@@ -82,33 +127,6 @@ mod tests {
         let wrong_data: [u8; 8] = [5; 8];
         assert_eq!(helper.challenge.is_valid(&wrong_data), false);
     }
-
-    // #[test]
-    // fn is_pending_should_check_expiration_time() {
-    //     let helper = helper_challenge();
-
-    //     assert_eq!(helper.challenge.is_pending(helper.now), true);
-    //     assert_eq!(
-    //         helper
-    //             .challenge
-    //             .is_pending(helper.initial_transmit_time + Duration::from_millis(10)),
-    //         false
-    //     );
-    // }
-
-    // #[test]
-    // fn cancelled_timer_should_not_be_pending() {
-    //     let helper = helper_challenge();
-
-    //     assert_eq!(helper.challenge.is_pending(helper.now), true);
-
-    //     if let Challenge::Pending(mut state) = helper.challenge {
-    //         state.retransmit_timer.cancel();
-    //         assert_eq!(Challenge::Pending(state).is_pending(helper.now), false);
-    //     } else {
-    //         panic!("expected Pending");
-    //     }
-    // }
 
     fn helper_challenge() -> Helper {
         let now = NoopClock {}.get_time();

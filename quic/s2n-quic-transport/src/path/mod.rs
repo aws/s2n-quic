@@ -156,7 +156,7 @@ impl<CC: CongestionController> Path<CC> {
 
     pub fn is_challenge_pending(&self, timestamp: Timestamp) -> bool {
         if let Some(challenge) = &self.challenge {
-            challenge.is_before_abandon(timestamp)
+            challenge.is_pending(timestamp)
         } else {
             false
         }
