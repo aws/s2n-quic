@@ -30,8 +30,6 @@ pub enum State {
 
 impl Challenge {
     pub fn new(
-        // now: Timestamp,
-        // retransmit_period: Duration,
         abandon: Timestamp,
         data: Data,
     ) -> Self {
@@ -72,71 +70,59 @@ impl Challenge {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::time::{Clock, Duration, NoopClock};
+    use s2n_quic_core::time::{Clock, Duration, NoopClock};
 
     #[test]
-    fn test_challenge_validation() {
+    fn test_is_valid() {
         let helper = helper_challenge();
 
-        assert!(helper.challenge.is_valid(helper.now, &helper.expected_data));
+        assert!(helper.challenge.is_valid(&helper.expected_data));
 
-        let empty_challenge = Challenge::None;
-        assert!(!empty_challenge.is_valid(helper.now, &helper.expected_data));
-
-        let invalid_data = [1; 8];
-        assert!(!helper.challenge.is_valid(helper.now, &invalid_data));
-
-        assert!(!helper.challenge.is_valid(
-            helper.initial_transmit_time + helper.abandon_duration,
-            &helper.expected_data
-        ));
+        let wrong_data: [u8; 8] = [5; 8];
+        assert_ne!(helper.challenge.is_valid(&wrong_data));
     }
 
-    #[test]
-    fn is_pending_should_check_expiration_time() {
-        let helper = helper_challenge();
+    // #[test]
+    // fn is_pending_should_check_expiration_time() {
+    //     let helper = helper_challenge();
 
-        assert_eq!(helper.challenge.is_pending(helper.now), true);
-        assert_eq!(
-            helper
-                .challenge
-                .is_pending(helper.initial_transmit_time + Duration::from_millis(10)),
-            false
-        );
-    }
+    //     assert_eq!(helper.challenge.is_pending(helper.now), true);
+    //     assert_eq!(
+    //         helper
+    //             .challenge
+    //             .is_pending(helper.initial_transmit_time + Duration::from_millis(10)),
+    //         false
+    //     );
+    // }
 
-    #[test]
-    fn cancelled_timer_should_not_be_pending() {
-        let helper = helper_challenge();
+    // #[test]
+    // fn cancelled_timer_should_not_be_pending() {
+    //     let helper = helper_challenge();
 
-        assert_eq!(helper.challenge.is_pending(helper.now), true);
+    //     assert_eq!(helper.challenge.is_pending(helper.now), true);
 
-        if let Challenge::Pending(mut state) = helper.challenge {
-            state.retransmit_timer.cancel();
-            assert_eq!(Challenge::Pending(state).is_pending(helper.now), false);
-        } else {
-            panic!("expected Pending");
-        }
-    }
+    //     if let Challenge::Pending(mut state) = helper.challenge {
+    //         state.retransmit_timer.cancel();
+    //         assert_eq!(Challenge::Pending(state).is_pending(helper.now), false);
+    //     } else {
+    //         panic!("expected Pending");
+    //     }
+    // }
 
     fn helper_challenge() -> Helper {
         let now = NoopClock {}.get_time();
-        let initial_transmit_time = now + Duration::from_millis(10);
-        let retransmit_period = Duration::from_millis(500);
+        // let initial_transmit_time = now + Duration::from_millis(10);
+        // let retransmit_period = Duration::from_millis(500);
         let abandon_duration = Duration::from_millis(10_000);
         let expected_data: [u8; 8] = [0; 8];
 
         let challenge = Challenge::new(
-            initial_transmit_time,
-            retransmit_period,
-            abandon_duration,
+            now + abandon_duration,
             expected_data,
         );
 
         Helper {
             now,
-            initial_transmit_time,
-            retransmit_period,
             abandon_duration,
             expected_data,
             challenge,
@@ -146,8 +132,6 @@ mod tests {
     #[allow(dead_code)]
     struct Helper {
         now: Timestamp,
-        initial_transmit_time: Timestamp,
-        retransmit_period: Duration,
         abandon_duration: Duration,
         expected_data: Data,
         challenge: Challenge,
