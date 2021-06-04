@@ -5,7 +5,7 @@ use crate::contexts::WriteContext;
 use s2n_quic_core::{
     ct::ConstantTimeEq,
     frame,
-    time::{Duration, Timer, Timestamp},
+    time::{Timer, Timestamp},
 };
 
 pub type Data = [u8; frame::path_challenge::DATA_LEN];
@@ -13,13 +13,11 @@ pub type Data = [u8; frame::path_challenge::DATA_LEN];
 #[derive(Clone, Debug)]
 pub struct Challenge {
     state: State,
-    // retransmit_timer: Timer,
-    // retransmit_period: Duration,
     abandon_timer: Timer,
     data: Data,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum State {
     /// A Challenge has been sent to the peer and the response is pending
     RequiresTransmission(u8),
@@ -29,10 +27,7 @@ pub enum State {
 }
 
 impl Challenge {
-    pub fn new(
-        abandon: Timestamp,
-        data: Data,
-    ) -> Self {
+    pub fn new(abandon: Timestamp, data: Data) -> Self {
         let mut abandon_timer = Timer::default();
         abandon_timer.set(abandon);
 
@@ -48,8 +43,9 @@ impl Challenge {
     }
 
     /// When a PATH_CHALLENGE is transmitted this handles any internal state operations.
-    pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
+    pub fn on_transmit<W: WriteContext>(&mut self, _context: &mut W) {
         // TODO check abandon, retransmit if left
+        // impl transmission::interest::Provider
     }
 
     pub fn on_timeout(&mut self, timestamp: Timestamp) {
@@ -58,12 +54,17 @@ impl Challenge {
         }
     }
 
-    pub fn is_expired(&self, timestamp: Timestamp) -> bool {
-        self.abandon_timer.is_expired(timestamp)
+    pub fn is_before_abandon(&self, timestamp: Timestamp) -> bool {
+        !self.abandon_timer.is_expired(timestamp)
+    }
+
+    pub fn is_abandoned(&self) -> bool {
+        self.state == State::Abandoned
     }
 
     pub fn is_valid(&self, data: &[u8]) -> bool {
-        ConstantTimeEq::ct_eq(&self.data[..], &data).unwrap_u8() == 0
+        // 1 represents true. https://docs.rs/subtle/2.4.0/subtle/struct.Choice.html
+        ConstantTimeEq::ct_eq(&self.data[..], &data).unwrap_u8() == 1
     }
 }
 
@@ -79,7 +80,7 @@ mod tests {
         assert!(helper.challenge.is_valid(&helper.expected_data));
 
         let wrong_data: [u8; 8] = [5; 8];
-        assert_ne!(helper.challenge.is_valid(&wrong_data));
+        assert_eq!(helper.challenge.is_valid(&wrong_data), false);
     }
 
     // #[test]
@@ -116,10 +117,7 @@ mod tests {
         let abandon_duration = Duration::from_millis(10_000);
         let expected_data: [u8; 8] = [0; 8];
 
-        let challenge = Challenge::new(
-            now + abandon_duration,
-            expected_data,
-        );
+        let challenge = Challenge::new(now + abandon_duration, expected_data);
 
         Helper {
             now,

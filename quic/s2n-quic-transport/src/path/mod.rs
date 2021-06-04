@@ -131,7 +131,10 @@ impl<CC: CongestionController> Path<CC> {
 
     pub fn on_timeout(&mut self, timestamp: Timestamp) {
         if let Some(challenge) = &mut self.challenge {
-            challenge.on_timeout(timestamp)
+            challenge.on_timeout(timestamp);
+            if challenge.is_abandoned() {
+                self.challenge = None;
+            }
         }
     }
 
@@ -153,13 +156,13 @@ impl<CC: CongestionController> Path<CC> {
 
     pub fn is_challenge_pending(&self, timestamp: Timestamp) -> bool {
         if let Some(challenge) = &self.challenge {
-            !challenge.is_expired(timestamp)
+            challenge.is_before_abandon(timestamp)
         } else {
             false
         }
     }
 
-    pub fn validate_path_response(&mut self, timestamp: Timestamp, response: &[u8]) {
+    pub fn validate_path_response(&mut self, response: &[u8]) {
         if let Some(challenge) = &self.challenge {
             if challenge.is_valid(response) {
                 self.on_validated();

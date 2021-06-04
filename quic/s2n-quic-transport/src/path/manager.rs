@@ -364,19 +364,14 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     //# contains the data that was sent in a previous PATH_CHALLENGE frame.
     //# A PATH_RESPONSE frame received on any network path validates the path
     //# on which the PATH_CHALLENGE was sent.
-    pub fn on_path_response(
-        &mut self,
-        timestamp: Timestamp,
-        path_id: Id,
-        response: &s2n_quic_core::frame::PathResponse,
-    ) {
+    pub fn on_path_response(&mut self, path_id: Id, response: &s2n_quic_core::frame::PathResponse) {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
         //# A PATH_RESPONSE frame MUST be sent on the network path where the
         //# PATH_CHALLENGE was received.
         // This requirement is achieved because paths own their challenges.
         // We compare the path_response data to the data stored in the
         // receiving path's challenge.
-        self[path_id].validate_path_response(timestamp, response.data);
+        self[path_id].validate_path_response(response.data);
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
@@ -427,7 +422,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
             path.on_timeout(timestamp);
         }
 
-        if !self.active_path().is_validated() && self.active_path().is_challenge_pending(timestamp)
+        if !self.active_path().is_validated() && !self.active_path().is_challenge_pending(timestamp)
         {
             if let Some(last_known_validated_path) = self.last_known_validated_path {
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.2
@@ -599,13 +594,8 @@ mod tests {
 
         // Create a challenge that will expire in 100ms
         let clock = NoopClock {};
-        let expiration = Duration::from_millis(100);
-        let challenge = challenge::Challenge::new(
-            clock.get_time(),
-            Duration::from_millis(0),
-            expiration,
-            [0; 8],
-        );
+        let expiration = Duration::from_millis(1000);
+        let challenge = challenge::Challenge::new(clock.get_time() + expiration, [0; 8]);
         let second_path = Path::new(
             SocketAddress::default(),
             first_conn_id,
@@ -627,9 +617,9 @@ mod tests {
         assert_eq!(manager.last_known_validated_path, Some(0));
 
         // After a validation times out, the path should revert to the previous
-        manager.on_timeout(clock.get_time() + Duration::from_millis(2000));
-        assert!(manager.last_known_validated_path.is_none());
+        manager.on_timeout(clock.get_time() + expiration + Duration::from_millis(100));
         assert_eq!(manager.active, 0);
+        assert!(manager.last_known_validated_path.is_none());
     }
 
     #[test]
@@ -706,12 +696,56 @@ mod tests {
 
         // Create a challenge that will expire in 100ms
         let expiration = Duration::from_millis(100);
-        let challenge = challenge::Challenge::new(
-            clock.get_time(),
-            Duration::from_millis(0),
-            expiration,
-            expected_data,
+        let challenge = challenge::Challenge::new(clock.get_time() + expiration, expected_data);
+        let first_conn_id = connection::PeerId::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
+        let first_path = Path::new(
+            SocketAddress::default(),
+            first_conn_id,
+            connection::LocalId::TEST_ID,
+            RttEstimator::new(Duration::from_millis(30)),
+            Default::default(),
+            false,
+        )
+        .with_challenge(challenge);
+
+        let mut manager = manager(first_path.clone(), None);
+        assert_eq!(manager.paths.len(), 1);
+
+        if let Some((_path_id, first_path)) = manager.path(&first_path.peer_socket_address) {
+            assert_eq!(first_path.is_validated(), false);
+        } else {
+            panic!("Path not found");
+        }
+
+        let frame = s2n_quic_core::frame::PathResponse {
+            data: &expected_data,
+        };
+
+        // A response 100ms before the challenge should succeed
+        manager.on_timeout(clock.get_time() + expiration - Duration::from_millis(100));
+
+        manager.on_path_response(
+            // clock.get_time() + expiration - Duration::from_millis(100),
+            Id(0),
+            &frame,
         );
+        if let Some((_path_id, first_path)) = manager.path(&first_path.peer_socket_address) {
+            assert_eq!(first_path.is_validated(), true);
+        } else {
+            panic!("path not found");
+        }
+    }
+
+    #[test]
+    fn test_path_validation_abandoned_challenge() {
+        let clock = NoopClock {};
+        let mut path_rnd_generator = random::testing::Generator(123);
+        let mut expected_data: [u8; 8] = [0; 8];
+        path_rnd_generator.public_random_fill(&mut expected_data);
+
+        // Create a challenge that will expire in 100ms
+        let expiration = Duration::from_millis(100);
+        let challenge = challenge::Challenge::new(clock.get_time() + expiration, expected_data);
         let first_conn_id = connection::PeerId::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
         let first_path = Path::new(
             SocketAddress::default(),
@@ -739,26 +773,12 @@ mod tests {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.4
         //= type=test
         //# Endpoints SHOULD abandon path validation based on a timer.
+
         // A response 100ms after the challenge should fail
-        manager.on_path_response(
-            clock.get_time() + expiration + Duration::from_millis(100),
-            Id(0),
-            &frame,
-        );
+        manager.on_timeout(clock.get_time() + expiration + Duration::from_millis(100));
+        manager.on_path_response(Id(0), &frame);
         if let Some((_path_id, first_path)) = manager.path(&first_path.peer_socket_address) {
             assert_eq!(first_path.is_validated(), false);
-        } else {
-            panic!("path not found");
-        }
-
-        // A response 100ms before the challenge should succeed
-        manager.on_path_response(
-            clock.get_time() + expiration - Duration::from_millis(100),
-            Id(0),
-            &frame,
-        );
-        if let Some((_path_id, first_path)) = manager.path(&first_path.peer_socket_address) {
-            assert_eq!(first_path.is_validated(), true);
         } else {
             panic!("path not found");
         }
@@ -932,15 +952,13 @@ mod tests {
         let mut expected_data: [u8; 8] = [0; 8];
         test_rnd_generator.public_random_fill(&mut expected_data);
 
-        assert_eq!(
-            manager[Id(1)].challenge_data().unwrap(),
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
-            //= type=test
-            //# An endpoint MUST
-            //# perform path validation (Section 8.2) if it detects any change to a
-            //# peer's address, unless it has previously validated that address.
-            &expected_data
-        );
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
+        //= type=test
+        //# An endpoint MUST
+        //# perform path validation (Section 8.2) if it detects any change to a
+        //# peer's address, unless it has previously validated that address.
+        manager[Id(1)].validate_path_response(&expected_data);
+        assert!(manager[Id(1)].is_validated());
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2
@@ -988,12 +1006,7 @@ mod tests {
         // Create a challenge that will expire in 100ms
         let clock = NoopClock {};
         let expiration = Duration::from_millis(100);
-        let challenge = challenge::Challenge::new(
-            clock.get_time(),
-            Duration::from_millis(0),
-            expiration,
-            [0; 8],
-        );
+        let challenge = challenge::Challenge::new(clock.get_time() + expiration, [0; 8]);
         let second_path = Path::new(
             SocketAddress::default(),
             second_conn_id,
