@@ -78,10 +78,14 @@ mod tests {
         let mut helper = helper_challenge();
         let expiration_time = helper.now + helper.abandon_duration;
 
-        helper.challenge.on_timeout(expiration_time - Duration::from_millis(10));
+        helper
+            .challenge
+            .on_timeout(expiration_time - Duration::from_millis(10));
         assert_eq!(helper.challenge.is_abandoned(), false);
 
-        helper.challenge.on_timeout(expiration_time + Duration::from_millis(10));
+        helper
+            .challenge
+            .on_timeout(expiration_time + Duration::from_millis(10));
         assert_eq!(helper.challenge.is_abandoned(), true);
     }
 
@@ -90,10 +94,14 @@ mod tests {
         let mut helper = helper_challenge();
         let expiration_time = helper.now + helper.abandon_duration;
 
-        helper.challenge.on_timeout(expiration_time + Duration::from_millis(10));
+        helper
+            .challenge
+            .on_timeout(expiration_time + Duration::from_millis(10));
         assert_eq!(helper.challenge.is_abandoned(), true);
 
-        helper.challenge.on_timeout(expiration_time - Duration::from_millis(10));
+        helper
+            .challenge
+            .on_timeout(expiration_time - Duration::from_millis(10));
         assert_eq!(helper.challenge.is_abandoned(), true);
     }
 
@@ -102,9 +110,19 @@ mod tests {
         let helper = helper_challenge();
         let expiration_time = helper.now + helper.abandon_duration;
 
-        assert_eq!(helper.challenge.is_pending(expiration_time - Duration::from_millis(10)), true);
+        assert_eq!(
+            helper
+                .challenge
+                .is_pending(expiration_time - Duration::from_millis(10)),
+            true
+        );
         assert_eq!(helper.challenge.is_pending(expiration_time), false);
-        assert_eq!(helper.challenge.is_pending(expiration_time + Duration::from_millis(10)), false);
+        assert_eq!(
+            helper
+                .challenge
+                .is_pending(expiration_time + Duration::from_millis(10)),
+            false
+        );
     }
 
     #[test]
@@ -114,7 +132,9 @@ mod tests {
 
         assert_eq!(helper.challenge.is_abandoned(), false);
 
-        helper.challenge.on_timeout(expiration_time + Duration::from_millis(10));
+        helper
+            .challenge
+            .on_timeout(expiration_time + Duration::from_millis(10));
         assert_eq!(helper.challenge.is_abandoned(), true);
     }
 
