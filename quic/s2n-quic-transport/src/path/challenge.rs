@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::contexts::WriteContext;
+use crate::{contexts::WriteContext, transmission};
 use s2n_quic_core::{
     ct::ConstantTimeEq,
     frame,
@@ -19,9 +19,11 @@ pub struct Challenge {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum State {
-
     /// A Challenge has been sent to the peer and the response is pending
     RequiresTransmission(u8),
+
+    /// Challenged have been sent and we await a response until the abandon timer fires
+    Idle,
 
     /// A timeout caused this Challenge to be abandoned, an new Challenge will have to be used
     Abandoned,
@@ -55,14 +57,23 @@ impl Challenge {
     }
 
     /// When a PATH_CHALLENGE is transmitted this handles any internal state operations.
-    pub fn on_transmit<W: WriteContext>(&mut self, _context: &mut W) {
-        // TODO check abandon, retransmit if left
-        // impl transmission::interest::Provider
-
+    pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
         //= type=TODO
         //# However, an endpoint SHOULD NOT send multiple
         //# PATH_CHALLENGE frames in a single packet.
+
+        match self.state {
+            State::RequiresTransmission(0) => self.state = State::Idle,
+            State::RequiresTransmission(remaining) => {
+                let frame = frame::PathChallenge { data: &self.data };
+                if context.write_frame(&frame).is_some() {
+                    let remaining = remaining - 1;
+                    self.state = State::RequiresTransmission(remaining);
+                }
+            }
+            _ => {}
+        }
     }
 
     pub fn on_timeout(&mut self, timestamp: Timestamp) {
@@ -82,6 +93,16 @@ impl Challenge {
     pub fn is_valid(&self, data: &[u8]) -> bool {
         // 1 represents true. https://docs.rs/subtle/2.4.0/subtle/struct.Choice.html
         ConstantTimeEq::ct_eq(&self.data[..], &data).unwrap_u8() == 1
+    }
+}
+
+impl transmission::interest::Provider for Challenge {
+    fn transmission_interest(&self) -> transmission::Interest {
+        if matches!(self.state, State::RequiresTransmission(_)) {
+            transmission::Interest::NewData
+        } else {
+            transmission::Interest::None
+        }
     }
 }
 
@@ -106,7 +127,6 @@ mod tests {
         //# packet loss.
         assert_eq!(helper.challenge.state, State::RequiresTransmission(2));
     }
-
 
     #[test]
     fn test_on_timeout() {
