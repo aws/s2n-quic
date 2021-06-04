@@ -41,6 +41,9 @@ impl Challenge {
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
             //# An endpoint MAY send multiple PATH_CHALLENGE frames to guard against
             //# packet loss.
+
+            // Re-transmitting twice guards against packet loss, while remaining
+            // below the amplification limit of 3.
             state: State::RequiresTransmission(2),
             abandon_timer,
             data,
@@ -88,7 +91,7 @@ mod tests {
     use s2n_quic_core::time::{Clock, Duration, NoopClock};
 
     #[test]
-    fn test_retransmit_limit() {
+    fn test_path_challenge_retransmited_2_times() {
         let mut helper = helper_challenge();
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
