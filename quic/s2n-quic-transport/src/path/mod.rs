@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! This module contains the Path implementation
+mod challenge;
 mod manager;
 
+pub use challenge::*;
 pub use manager::*;
 
 /// re-export core
@@ -13,7 +15,7 @@ use s2n_quic_core::time::Timestamp;
 use crate::{
     connection,
     connection::close::SocketAddress,
-    path::challenge::Challenge,
+    contexts::WriteContext,
     recovery::{CongestionController, RttEstimator},
     transmission,
 };
@@ -51,7 +53,7 @@ pub struct Path<CC: CongestionController> {
     peer_validated: bool,
 
     /// Challenge sent to the peer in a PATH_CHALLENGE
-    challenge: Challenge,
+    challenge: Option<Challenge>,
 }
 
 /// A Path holds the local and peer socket addresses, connection ids, and state. It can be
@@ -82,12 +84,12 @@ impl<CC: CongestionController> Path<CC> {
             },
             mtu: MINIMUM_MTU,
             peer_validated,
-            challenge: Challenge::None,
+            challenge: None,
         }
     }
 
     pub fn with_challenge(mut self, challenge: Challenge) -> Self {
-        self.challenge = challenge;
+        self.challenge = Some(challenge);
         self
     }
 
@@ -128,48 +130,52 @@ impl<CC: CongestionController> Path<CC> {
     }
 
     pub fn on_timeout(&mut self, timestamp: Timestamp) {
-        self.challenge.on_timeout(timestamp)
+        if let Some(challenge) = &mut self.challenge {
+            challenge.on_timeout(timestamp)
+        }
     }
 
     pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
-        self.challenge.timers()
+        match &self.challenge {
+            Some(challenge) => Some(challenge.timers()),
+            None => None,
+        }
+        .into_iter()
+        .flatten()
     }
 
     /// When transmitting on a path this handles any internal state operations.
-    pub fn on_transmit(&mut self, timestamp: Timestamp) {
-        self.challenge.on_transmit(timestamp)
-    }
-
-    pub fn challenge_data(&self) -> Option<&challenge::Data> {
-        self.challenge.data()
+    pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
+        if let Some(challenge) = &mut self.challenge {
+            challenge.on_transmit(context)
+        }
     }
 
     pub fn is_challenge_pending(&self, timestamp: Timestamp) -> bool {
-        self.challenge.is_pending(timestamp)
-    }
-
-    pub fn is_challenge_abandoned(&self) -> bool {
-        if let Challenge::Abandoned = self.challenge {
-            return true;
+        if let Some(challenge) = &self.challenge {
+            !challenge.is_expired(timestamp)
+        } else {
+            false
         }
-
-        false
     }
 
     pub fn validate_path_response(&mut self, timestamp: Timestamp, response: &[u8]) {
-        if self.challenge.is_valid(timestamp, response) {
-            self.on_validated();
+        if let Some(challenge) = &self.challenge {
+            if challenge.is_valid(response) {
+                self.on_validated();
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3
-            //= type=TODO
-            //# After verifying a new client address, the server SHOULD send new
-            //# address validation tokens (Section 8) to the client.
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3
+                //= type=TODO
+                //# After verifying a new client address, the server SHOULD send new
+                //# address validation tokens (Section 8) to the client.
+            }
         }
     }
 
     /// Called when the path is validated
+    // FIXME this should not be a public function
     pub fn on_validated(&mut self) {
-        self.challenge = Challenge::None;
+        self.challenge = None;
         self.state = State::Validated;
     }
 

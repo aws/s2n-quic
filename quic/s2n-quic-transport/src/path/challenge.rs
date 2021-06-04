@@ -1,7 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{
+use crate::contexts::WriteContext;
+use s2n_quic_core::{
     ct::ConstantTimeEq,
     frame,
     time::{Duration, Timer, Timestamp},
@@ -10,20 +11,18 @@ use crate::{
 pub type Data = [u8; frame::path_challenge::DATA_LEN];
 
 #[derive(Clone, Debug)]
-pub struct State {
-    retransmit_timer: Timer,
-    retransmit_period: Duration,
+pub struct Challenge {
+    state: State,
+    // retransmit_timer: Timer,
+    // retransmit_period: Duration,
     abandon_timer: Timer,
     data: Data,
 }
 
 #[derive(Clone, Debug)]
-pub enum Challenge {
-    /// There is no Challenge associated with this Path
-    None,
-
+pub enum State {
     /// A Challenge has been sent to the peer and the response is pending
-    Pending(State),
+    RequiresTransmission(u8),
 
     /// A timeout caused this Challenge to be abandoned, an new Challenge will have to be used
     Abandoned,
@@ -31,91 +30,42 @@ pub enum Challenge {
 
 impl Challenge {
     pub fn new(
-        now: Timestamp,
-        retransmit_period: Duration,
-        abandon_duration: Duration,
+        // now: Timestamp,
+        // retransmit_period: Duration,
+        abandon: Timestamp,
         data: Data,
     ) -> Self {
-        let mut retransmit_timer = Timer::default();
-        // set the timer to transmit now
-        retransmit_timer.set(now);
-
         let mut abandon_timer = Timer::default();
-        abandon_timer.set(now + abandon_duration);
+        abandon_timer.set(abandon);
 
-        let state = State {
-            retransmit_timer,
-            retransmit_period,
+        Self {
+            state: State::RequiresTransmission(2),
             abandon_timer,
             data,
-        };
-
-        Self::Pending(state)
+        }
     }
 
     pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
-        if let Challenge::Pending(state) = self {
-            Some(
-                core::iter::empty()
-                    .chain(state.abandon_timer.iter())
-                    .chain(state.retransmit_timer.iter()),
-            )
-        } else {
-            None
-        }
-        .into_iter()
-        .flatten()
+        self.abandon_timer.iter()
     }
 
     /// When a PATH_CHALLENGE is transmitted this handles any internal state operations.
-    pub fn on_transmit(&mut self, timestamp: Timestamp) {
-        if let Challenge::Pending(state) = self {
-            state
-                .retransmit_timer
-                .set(timestamp + state.retransmit_period);
-        }
+    pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
+        // TODO check abandon, retransmit if left
     }
 
     pub fn on_timeout(&mut self, timestamp: Timestamp) {
-        // TODO do we need to handle the retransmit_timer also?
-        if let Challenge::Pending(state) = self {
-            if state.abandon_timer.is_expired(timestamp) {
-                *self = Challenge::Abandoned;
-            }
+        if self.abandon_timer.poll_expiration(timestamp).is_ready() {
+            self.state = State::Abandoned;
         }
     }
 
-    pub fn is_pending(&self, timestamp: Timestamp) -> bool {
-        if let Challenge::Pending(state) = self {
-            return state.retransmit_timer.is_armed()
-                && !state.retransmit_timer.is_expired(timestamp);
-        }
-
-        false
+    pub fn is_expired(&self, timestamp: Timestamp) -> bool {
+        self.abandon_timer.is_expired(timestamp)
     }
 
-    pub fn data(&self) -> Option<&Data> {
-        if let Challenge::Pending(state) = self {
-            return Some(&state.data);
-        }
-        None
-    }
-
-    pub fn is_valid(&self, timestamp: Timestamp, data: &[u8]) -> bool {
-        if let Challenge::Pending(state) = self {
-            let mut valid = true;
-            if state.abandon_timer.is_expired(timestamp) {
-                valid = false;
-            }
-
-            if ConstantTimeEq::ct_eq(&state.data[..], &data).unwrap_u8() == 0 {
-                valid = false;
-            }
-
-            return valid;
-        }
-
-        false
+    pub fn is_valid(&self, data: &[u8]) -> bool {
+        ConstantTimeEq::ct_eq(&self.data[..], &data).unwrap_u8() == 0
     }
 }
 

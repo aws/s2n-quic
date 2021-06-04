@@ -270,10 +270,9 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         //# [QUIC-RECOVERY]) is RECOMMENDED.
         let abandon_duration = path.pto_period(PacketNumberSpace::ApplicationData);
         let abandon_duration = 3 * abandon_duration.max(
-            self
-            .active_path()
-            .pto_period(PacketNumberSpace::ApplicationData)
-            );
+            self.active_path()
+                .pto_period(PacketNumberSpace::ApplicationData),
+        );
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
         //# An endpoint MUST
@@ -284,8 +283,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         //# Servers SHOULD initiate path validation to the client's new address
         //# upon receiving a probe packet from a different address.
         let challenge = challenge::Challenge::new(
-            datagram.timestamp,
-
+            datagram.timestamp + abandon_duration,
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.4
             //= tracking-issue=https://github.com/awslabs/s2n-quic/issues/412
             //= type=TODO
@@ -294,9 +292,6 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
             //# PATH_CHALLENGE, and restart the timer for a longer period of time.
             //# This timer SHOULD be set as described in Section 6.2.1 of
             //# [QUIC-RECOVERY] and MUST NOT be more aggressive.
-            rtt.pto_period(1, PacketNumberSpace::ApplicationData),
-
-            abandon_duration,
             data,
         );
         path = path.with_challenge(challenge);
@@ -432,7 +427,8 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
             path.on_timeout(timestamp);
         }
 
-        if !self.active_path().is_validated() && self.active_path().is_challenge_abandoned() {
+        if !self.active_path().is_validated() && self.active_path().is_challenge_pending(timestamp)
+        {
             if let Some(last_known_validated_path) = self.last_known_validated_path {
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.2
                 //# To protect the connection from failing due to such a spurious
@@ -502,18 +498,18 @@ impl<'a, CCE: congestion_controller::Endpoint> PendingPaths<'a, CCE> {
         }
     }
 
-    pub fn next_path(&mut self) -> Option<(Id, &mut Manager<CCE>)> {
-        loop {
-            let index = self.index;
-            self.index += 1;
+    // pub fn next_path(&mut self) -> Option<(Id, &mut Manager<CCE>)> {
+    //     loop {
+    //         let index = self.index;
+    //         self.index += 1;
 
-            let path = self.path_manager.paths.get(index)?;
+    //         let path = self.path_manager.paths.get(index)?;
 
-            if path.is_challenge_pending(self.timestamp) {
-                return Some((Id(index as u8), self.path_manager));
-            }
-        }
-    }
+    //         if path.is_challenge_pending(self.timestamp) {
+    //             return Some((Id(index as u8), self.path_manager));
+    //         }
+    //     }
+    // }
 }
 
 #[cfg(test)]
@@ -902,7 +898,7 @@ mod tests {
             destination_connection_id: connection::LocalId::TEST_ID,
         };
 
-        let (path_id, _unblocked) = manager
+        let (_path_id, _unblocked) = manager
             .handle_connection_migration(
                 &datagram,
                 &mut unlimited::Endpoint::default(),
