@@ -19,6 +19,7 @@ pub struct Challenge {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum State {
+
     /// A Challenge has been sent to the peer and the response is pending
     RequiresTransmission(u8),
 
@@ -32,6 +33,14 @@ impl Challenge {
         abandon_timer.set(abandon);
 
         Self {
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
+            //# An endpoint SHOULD NOT probe a new path with packets containing a
+            //# PATH_CHALLENGE frame more frequently than it would send an Initial
+            //# packet.
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
+            //# An endpoint MAY send multiple PATH_CHALLENGE frames to guard against
+            //# packet loss.
             state: State::RequiresTransmission(2),
             abandon_timer,
             data,
@@ -46,6 +55,11 @@ impl Challenge {
     pub fn on_transmit<W: WriteContext>(&mut self, _context: &mut W) {
         // TODO check abandon, retransmit if left
         // impl transmission::interest::Provider
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
+        //= type=TODO
+        //# However, an endpoint SHOULD NOT send multiple
+        //# PATH_CHALLENGE frames in a single packet.
     }
 
     pub fn on_timeout(&mut self, timestamp: Timestamp) {
@@ -72,6 +86,24 @@ impl Challenge {
 mod tests {
     use super::*;
     use s2n_quic_core::time::{Clock, Duration, NoopClock};
+
+    #[test]
+    fn test_retransmit_limit() {
+        let mut helper = helper_challenge();
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
+        //= type=test
+        //# An endpoint SHOULD NOT probe a new path with packets containing a
+        //# PATH_CHALLENGE frame more frequently than it would send an Initial
+        //# packet.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
+        //= type=test
+        //# An endpoint MAY send multiple PATH_CHALLENGE frames to guard against
+        //# packet loss.
+        assert_eq!(helper.challenge.state, State::RequiresTransmission(2));
+    }
+
 
     #[test]
     fn test_on_timeout() {
