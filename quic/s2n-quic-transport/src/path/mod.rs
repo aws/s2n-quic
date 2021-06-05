@@ -129,6 +129,7 @@ impl<CC: CongestionController> Path<CC> {
         was_at_amplification_limit && !self.at_amplification_limit()
     }
 
+    // TODO test
     pub fn on_timeout(&mut self, timestamp: Timestamp) {
         if let Some(challenge) = &mut self.challenge {
             challenge.on_timeout(timestamp);
@@ -138,6 +139,7 @@ impl<CC: CongestionController> Path<CC> {
         }
     }
 
+    // TODO test
     pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
         match &self.challenge {
             Some(challenge) => Some(challenge.timers()),
@@ -147,6 +149,7 @@ impl<CC: CongestionController> Path<CC> {
         .flatten()
     }
 
+    // TODO test
     /// When transmitting on a path this handles any internal state operations.
     pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
         if let Some(challenge) = &mut self.challenge {
@@ -154,6 +157,7 @@ impl<CC: CongestionController> Path<CC> {
         }
     }
 
+    // TODO test
     pub fn is_challenge_pending(&self, timestamp: Timestamp) -> bool {
         if let Some(challenge) = &self.challenge {
             challenge.is_pending(timestamp)
@@ -162,6 +166,7 @@ impl<CC: CongestionController> Path<CC> {
         }
     }
 
+    // TODO test
     pub fn validate_path_response(&mut self, response: &[u8]) {
         if let Some(challenge) = &self.challenge {
             if challenge.is_valid(response) {
@@ -175,8 +180,8 @@ impl<CC: CongestionController> Path<CC> {
         }
     }
 
+    // TODO test
     /// Called when the path is validated
-    // FIXME this should not be a public function
     pub fn on_validated(&mut self) {
         self.challenge = None;
         self.state = State::Validated;
@@ -294,6 +299,18 @@ impl<CC: CongestionController> Path<CC> {
                 };
             }
         }
+    }
+}
+
+impl<CC: CongestionController> transmission::interest::Provider for Path<CC> {
+    fn transmission_interest(&self) -> transmission::Interest {
+        let mut interests = transmission::Interest::default();
+
+        if let Some(challenge) = &self.challenge {
+            interests += challenge.transmission_interest();
+        }
+
+        interests
     }
 }
 

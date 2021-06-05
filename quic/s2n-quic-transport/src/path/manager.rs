@@ -450,6 +450,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
 
 impl<CCE: congestion_controller::Endpoint> transmission::interest::Provider for Manager<CCE> {
     fn transmission_interest(&self) -> transmission::Interest {
+        // TODO get interest from pending paths
         self.peer_id_registry.transmission_interest()
     }
 }
