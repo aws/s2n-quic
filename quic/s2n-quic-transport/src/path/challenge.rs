@@ -19,13 +19,13 @@ pub struct Challenge {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum State {
-    /// A Challenge has been sent to the peer and the response is pending
+    /// A Challenge frame must be sent. The `u8` represents the remaining number of retries
     RequiresTransmission(u8),
 
-    /// Challenged have been sent and we await a response until the abandon timer fires
+    /// Challenged have been sent and we await a response until the abandon timer expires
     Idle,
 
-    /// A timeout caused this Challenge to be abandoned, an new Challenge will have to be used
+    /// The Challenge has been abandoned due to the abandon_timer
     Abandoned,
 }
 
@@ -58,15 +58,14 @@ impl Challenge {
 
     /// When a PATH_CHALLENGE is transmitted this handles any internal state operations.
     pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
-        //= type=TODO
-        //# However, an endpoint SHOULD NOT send multiple
-        //# PATH_CHALLENGE frames in a single packet.
-
         match self.state {
             State::RequiresTransmission(0) => self.state = State::Idle,
             State::RequiresTransmission(remaining) => {
                 let frame = frame::PathChallenge { data: &self.data };
+
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
+                //# However, an endpoint SHOULD NOT send multiple
+                //# PATH_CHALLENGE frames in a single packet.
                 if context.write_frame(&frame).is_some() {
                     let remaining = remaining - 1;
                     self.state = State::RequiresTransmission(remaining);
@@ -109,16 +108,10 @@ impl transmission::interest::Provider for Challenge {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use s2n_quic_core::time::{Clock, Duration, NoopClock};
+    use crate::contexts::testing::{MockWriteContext, OutgoingFrameBuffer};
     use s2n_quic_core::{
         connection, endpoint,
-    };
-    use crate::{
-        // connection::{ConnectionIdMapper, InternalConnectionIdGenerator},
-        contexts::testing::{MockWriteContext, OutgoingFrameBuffer},
-        // recovery,
-        // recovery::manager::PtoState::RequiresTransmission,
-        // space::rx_packet_numbers::ack_ranges::AckRanges,
+        time::{Clock, Duration, NoopClock},
     };
 
     #[test]
@@ -138,6 +131,16 @@ mod tests {
         assert_eq!(helper.challenge.state, State::RequiresTransmission(2));
     }
 
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
+    //= type=test
+    //# An endpoint SHOULD NOT probe a new path with packets containing a
+    //# PATH_CHALLENGE frame more frequently than it would send an Initial
+    //# packet.
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
+    //= type=test
+    //# An endpoint MAY send multiple PATH_CHALLENGE frames to guard against
+    //# packet loss.
     #[test]
     fn transmit_challenge_only_twice() {
         // Setup:
@@ -155,13 +158,18 @@ mod tests {
         helper.challenge.on_transmit(&mut context);
 
         // Expectation:
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
+        //= type=test
+        //# However, an endpoint SHOULD NOT send multiple
+        //# PATH_CHALLENGE frames in a single packet.
+        assert_eq!(context.frame_buffer.len(), 1);
+
         assert_eq!(helper.challenge.state, State::RequiresTransmission(1));
         let written_data = match context.frame_buffer.pop_front().unwrap().as_frame() {
-                frame::Frame::PathChallenge(frame) => {
-                    Some(frame.data.clone())
-                }
-                _ => None
-            }.unwrap();
+            frame::Frame::PathChallenge(frame) => Some(frame.data.clone()),
+            _ => None,
+        }
+        .unwrap();
         assert_eq!(&written_data, &helper.expected_data);
 
         // Trigger:
@@ -170,11 +178,10 @@ mod tests {
         // Expectation:
         assert_eq!(helper.challenge.state, State::RequiresTransmission(0));
         let written_data = match context.frame_buffer.pop_front().unwrap().as_frame() {
-                frame::Frame::PathChallenge(frame) => {
-                    Some(frame.data.clone())
-                }
-                _ => None
-            }.unwrap();
+            frame::Frame::PathChallenge(frame) => Some(frame.data.clone()),
+            _ => None,
+        }
+        .unwrap();
         assert_eq!(&written_data, &helper.expected_data);
 
         // Trigger:
