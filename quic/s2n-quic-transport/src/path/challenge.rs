@@ -110,6 +110,16 @@ impl transmission::interest::Provider for Challenge {
 mod tests {
     use super::*;
     use s2n_quic_core::time::{Clock, Duration, NoopClock};
+    use s2n_quic_core::{
+        connection, endpoint,
+    };
+    use crate::{
+        // connection::{ConnectionIdMapper, InternalConnectionIdGenerator},
+        contexts::testing::{MockWriteContext, OutgoingFrameBuffer},
+        // recovery,
+        // recovery::manager::PtoState::RequiresTransmission,
+        // space::rx_packet_numbers::ack_ranges::AckRanges,
+    };
 
     #[test]
     fn test_path_challenge_retransmited_2_times() {
@@ -126,6 +136,75 @@ mod tests {
         //# An endpoint MAY send multiple PATH_CHALLENGE frames to guard against
         //# packet loss.
         assert_eq!(helper.challenge.state, State::RequiresTransmission(2));
+    }
+
+    #[test]
+    fn transmit_challenge_only_twice() {
+        // Setup:
+        let mut helper = helper_challenge();
+        let mut frame_buffer = OutgoingFrameBuffer::new();
+        let mut context = MockWriteContext::new(
+            s2n_quic_platform::time::now(),
+            &mut frame_buffer,
+            transmission::Constraint::None,
+            endpoint::Type::Client,
+        );
+        assert_eq!(helper.challenge.state, State::RequiresTransmission(2));
+
+        // Trigger:
+        helper.challenge.on_transmit(&mut context);
+
+        // Expectation:
+        assert_eq!(helper.challenge.state, State::RequiresTransmission(1));
+        let written_data = match context.frame_buffer.pop_front().unwrap().as_frame() {
+                frame::Frame::PathChallenge(frame) => {
+                    Some(frame.data.clone())
+                }
+                _ => None
+            }.unwrap();
+        assert_eq!(&written_data, &helper.expected_data);
+
+        // Trigger:
+        helper.challenge.on_transmit(&mut context);
+
+        // Expectation:
+        assert_eq!(helper.challenge.state, State::RequiresTransmission(0));
+        let written_data = match context.frame_buffer.pop_front().unwrap().as_frame() {
+                frame::Frame::PathChallenge(frame) => {
+                    Some(frame.data.clone())
+                }
+                _ => None
+            }.unwrap();
+        assert_eq!(&written_data, &helper.expected_data);
+
+        // Trigger:
+        helper.challenge.on_transmit(&mut context);
+
+        // Expectation:
+        assert_eq!(helper.challenge.state, State::Idle);
+        assert_eq!(context.frame_buffer.len(), 0);
+    }
+
+    #[test]
+    fn maintain_idle_and_dont_transmit_when_idle_state() {
+        // Setup:
+        let mut helper = helper_challenge();
+        let mut frame_buffer = OutgoingFrameBuffer::new();
+        let mut context = MockWriteContext::new(
+            s2n_quic_platform::time::now(),
+            &mut frame_buffer,
+            transmission::Constraint::None,
+            endpoint::Type::Client,
+        );
+        helper.challenge.state = State::Idle;
+        assert_eq!(helper.challenge.state, State::Idle);
+
+        // Trigger:
+        helper.challenge.on_transmit(&mut context);
+
+        // Expectation:
+        assert_eq!(helper.challenge.state, State::Idle);
+        assert_eq!(context.frame_buffer.len(), 0);
     }
 
     #[test]
