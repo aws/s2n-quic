@@ -110,13 +110,13 @@ mod tests {
     use super::*;
     use crate::contexts::testing::{MockWriteContext, OutgoingFrameBuffer};
     use s2n_quic_core::{
-        connection, endpoint,
+        endpoint,
         time::{Clock, Duration, NoopClock},
     };
 
     #[test]
     fn test_path_challenge_retransmited_2_times() {
-        let mut helper = helper_challenge();
+        let helper = helper_challenge();
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
         //= type=test
@@ -166,11 +166,11 @@ mod tests {
 
         assert_eq!(helper.challenge.state, State::RequiresTransmission(1));
         let written_data = match context.frame_buffer.pop_front().unwrap().as_frame() {
-            frame::Frame::PathChallenge(frame) => Some(frame.data.clone()),
+            frame::Frame::PathChallenge(frame) => Some(*frame.data),
             _ => None,
         }
         .unwrap();
-        assert_eq!(&written_data, &helper.expected_data);
+        assert_eq!(written_data, helper.expected_data);
 
         // Trigger:
         helper.challenge.on_transmit(&mut context);
@@ -178,11 +178,11 @@ mod tests {
         // Expectation:
         assert_eq!(helper.challenge.state, State::RequiresTransmission(0));
         let written_data = match context.frame_buffer.pop_front().unwrap().as_frame() {
-            frame::Frame::PathChallenge(frame) => Some(frame.data.clone()),
+            frame::Frame::PathChallenge(frame) => Some(*frame.data),
             _ => None,
         }
         .unwrap();
-        assert_eq!(&written_data, &helper.expected_data);
+        assert_eq!(written_data, helper.expected_data);
 
         // Trigger:
         helper.challenge.on_transmit(&mut context);

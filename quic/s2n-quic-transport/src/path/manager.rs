@@ -478,6 +478,7 @@ impl<CCE: congestion_controller::Endpoint> core::ops::IndexMut<Id> for Manager<C
     }
 }
 
+#[allow(dead_code)]
 pub struct PendingPaths<'a, CCE: congestion_controller::Endpoint> {
     index: usize,
     path_manager: &'a mut Manager<CCE>,
@@ -492,19 +493,6 @@ impl<'a, CCE: congestion_controller::Endpoint> PendingPaths<'a, CCE> {
             timestamp,
         }
     }
-
-    // pub fn next_path(&mut self) -> Option<(Id, &mut Manager<CCE>)> {
-    //     loop {
-    //         let index = self.index;
-    //         self.index += 1;
-
-    //         let path = self.path_manager.paths.get(index)?;
-
-    //         if path.is_challenge_pending(self.timestamp) {
-    //             return Some((Id(index as u8), self.path_manager));
-    //         }
-    //     }
-    // }
 }
 
 #[cfg(test)]
@@ -724,11 +712,7 @@ mod tests {
         // A response 100ms before the challenge should succeed
         manager.on_timeout(clock.get_time() + expiration - Duration::from_millis(100));
 
-        manager.on_path_response(
-            // clock.get_time() + expiration - Duration::from_millis(100),
-            Id(0),
-            &frame,
-        );
+        manager.on_path_response(Id(0), &frame);
         if let Some((_path_id, first_path)) = manager.path(&first_path.peer_socket_address) {
             assert_eq!(first_path.is_validated(), true);
         } else {
