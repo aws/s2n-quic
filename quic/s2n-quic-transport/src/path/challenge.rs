@@ -22,7 +22,7 @@ pub enum State {
     /// A Challenge frame must be sent. The `u8` represents the remaining number of retries
     RequiresTransmission(u8),
 
-    /// Challenged have been sent and we await a response until the abandon timer expires
+    /// Challenge has been sent and we are awaiting a response until the abandon timer expires
     Idle,
 
     /// The Challenge has been abandoned due to the abandon_timer

@@ -298,13 +298,11 @@ impl<CC: CongestionController> Path<CC> {
 
 impl<CC: CongestionController> transmission::interest::Provider for Path<CC> {
     fn transmission_interest(&self) -> transmission::Interest {
-        let mut interests = transmission::Interest::default();
-
-        if let Some(challenge) = &self.challenge {
-            interests += challenge.transmission_interest();
-        }
-
-        interests
+        self.challenge
+            .as_ref()
+            .map_or(transmission::Interest::default(), |challenge| {
+                challenge.transmission_interest()
+            })
     }
 }
 

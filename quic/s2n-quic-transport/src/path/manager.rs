@@ -261,7 +261,6 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         );
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#8.2.4
-        //= tracking-issue=https://github.com/awslabs/s2n-quic/issues/412
         //# Endpoints SHOULD abandon path validation based on a timer.  When
         //# setting this timer, implementations are cautioned that the new path
         //# could have a longer round-trip time than the original. A value of
@@ -282,18 +281,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.6.3
         //# Servers SHOULD initiate path validation to the client's new address
         //# upon receiving a probe packet from a different address.
-        let challenge = challenge::Challenge::new(
-            datagram.timestamp + abandon_duration,
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.4
-            //= tracking-issue=https://github.com/awslabs/s2n-quic/issues/412
-            //= type=TODO
-            //# If the timer fires
-            //# before the PATH_RESPONSE is received, the endpoint might send a new
-            //# PATH_CHALLENGE, and restart the timer for a longer period of time.
-            //# This timer SHOULD be set as described in Section 6.2.1 of
-            //# [QUIC-RECOVERY] and MUST NOT be more aggressive.
-            data,
-        );
+        let challenge = challenge::Challenge::new(datagram.timestamp + abandon_duration, data);
         path = path.with_challenge(challenge);
 
         let unblocked = path.on_bytes_received(datagram.payload_len);
@@ -1041,6 +1029,14 @@ mod tests {
         assert_eq!(second_path_pto, Duration::from_millis(1_029));
         assert!(second_path_pto > first_path_pto);
 
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#8.2.4
+        //= type=test
+        //# Endpoints SHOULD abandon path validation based on a timer.  When
+        //# setting this timer, implementations are cautioned that the new path
+        //# could have a longer round-trip time than the original. A value of
+        //# three times the larger of the current Probe Timeout (PTO) or the PTO
+        //# for the new path (that is, using kInitialRtt as defined in
+        //# [QUIC-RECOVERY]) is RECOMMENDED.
         // abandon_duration should use max pto_period: second path
         let abandon_time = now + (second_path_pto * 3);
         assert_eq!(
