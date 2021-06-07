@@ -108,8 +108,6 @@ pub mod testing {
 
     pub fn helper_challenge() -> Helper {
         let now = NoopClock {}.get_time();
-        // let initial_transmit_time = now + Duration::from_millis(10);
-        // let retransmit_period = Duration::from_millis(500);
         let abandon_duration = Duration::from_millis(10_000);
         let expected_data: [u8; 8] = [0; 8];
 
