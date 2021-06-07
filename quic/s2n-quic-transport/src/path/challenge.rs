@@ -105,14 +105,43 @@ impl transmission::interest::Provider for Challenge {
     }
 }
 
+#[cfg(any(test, feature = "testing"))]
+pub mod testing {
+    use super::*;
+    use s2n_quic_core::time::{Clock, Duration, NoopClock};
+
+    pub fn helper_challenge() -> Helper {
+        let now = NoopClock {}.get_time();
+        // let initial_transmit_time = now + Duration::from_millis(10);
+        // let retransmit_period = Duration::from_millis(500);
+        let abandon_duration = Duration::from_millis(10_000);
+        let expected_data: [u8; 8] = [0; 8];
+
+        let challenge = Challenge::new(now + abandon_duration, expected_data);
+
+        Helper {
+            now,
+            abandon_duration,
+            expected_data,
+            challenge,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub struct Helper {
+        pub now: Timestamp,
+        pub abandon_duration: Duration,
+        pub expected_data: Data,
+        pub challenge: Challenge,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::contexts::testing::{MockWriteContext, OutgoingFrameBuffer};
-    use s2n_quic_core::{
-        endpoint,
-        time::{Clock, Duration, NoopClock},
-    };
+    use s2n_quic_core::{endpoint, time::Duration};
+    use testing::*;
 
     #[test]
     fn test_path_challenge_retransmited_2_times() {
@@ -287,30 +316,5 @@ mod tests {
 
         let wrong_data: [u8; 8] = [5; 8];
         assert_eq!(helper.challenge.is_valid(&wrong_data), false);
-    }
-
-    fn helper_challenge() -> Helper {
-        let now = NoopClock {}.get_time();
-        // let initial_transmit_time = now + Duration::from_millis(10);
-        // let retransmit_period = Duration::from_millis(500);
-        let abandon_duration = Duration::from_millis(10_000);
-        let expected_data: [u8; 8] = [0; 8];
-
-        let challenge = Challenge::new(now + abandon_duration, expected_data);
-
-        Helper {
-            now,
-            abandon_duration,
-            expected_data,
-            challenge,
-        }
-    }
-
-    #[allow(dead_code)]
-    struct Helper {
-        now: Timestamp,
-        abandon_duration: Duration,
-        expected_data: Data,
-        challenge: Challenge,
     }
 }

@@ -129,7 +129,6 @@ impl<CC: CongestionController> Path<CC> {
         was_at_amplification_limit && !self.at_amplification_limit()
     }
 
-    // TODO test
     pub fn on_timeout(&mut self, timestamp: Timestamp) {
         if let Some(challenge) = &mut self.challenge {
             challenge.on_timeout(timestamp);
@@ -139,7 +138,6 @@ impl<CC: CongestionController> Path<CC> {
         }
     }
 
-    // TODO test
     pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
         match &self.challenge {
             Some(challenge) => Some(challenge.timers()),
@@ -149,7 +147,6 @@ impl<CC: CongestionController> Path<CC> {
         .flatten()
     }
 
-    // TODO test
     /// When transmitting on a path this handles any internal state operations.
     pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
         if let Some(challenge) = &mut self.challenge {
@@ -157,7 +154,6 @@ impl<CC: CongestionController> Path<CC> {
         }
     }
 
-    // TODO test
     pub fn is_challenge_pending(&self, timestamp: Timestamp) -> bool {
         if let Some(challenge) = &self.challenge {
             challenge.is_pending(timestamp)
@@ -166,7 +162,6 @@ impl<CC: CongestionController> Path<CC> {
         }
     }
 
-    // TODO test
     pub fn validate_path_response(&mut self, response: &[u8]) {
         if let Some(challenge) = &self.challenge {
             if challenge.is_valid(response) {
@@ -180,7 +175,6 @@ impl<CC: CongestionController> Path<CC> {
         }
     }
 
-    // TODO test
     /// Called when the path is validated
     pub fn on_validated(&mut self) {
         self.challenge = None;
@@ -323,7 +317,7 @@ pub mod testing {
     use core::time::Duration;
     use s2n_quic_core::{connection, inet::SocketAddress, recovery::RttEstimator};
 
-    pub fn test_path() -> Path<Unlimited> {
+    pub fn helper_path() -> Path<Unlimited> {
         Path::new(
             SocketAddress::default(),
             connection::PeerId::try_from_bytes(&[]).unwrap(),
@@ -339,15 +333,89 @@ pub mod testing {
 mod tests {
     use core::time::Duration;
 
-    use crate::path::{testing, Path};
+    use super::*;
+    use crate::path::{challenge::testing::helper_challenge, testing, Path};
     use s2n_quic_core::{
         connection,
         inet::SocketAddress,
-        path::*,
         recovery::{CongestionController, CubicCongestionController, RttEstimator},
         time::{Clock, NoopClock},
         transmission,
     };
+
+    #[test]
+    fn on_timeout_should_set_challenge_to_none_on_challenge_abandonment() {
+        // Setup:
+        let mut path = testing::helper_path();
+        let helper_challenge = helper_challenge();
+        let expiration_time = helper_challenge.now + helper_challenge.abandon_duration;
+        path = path.with_challenge(helper_challenge.challenge);
+
+        // Expectation:
+        let expire_now = expiration_time + Duration::from_millis(10);
+        assert_eq!(path.is_challenge_pending(helper_challenge.now), true);
+        assert_eq!(path.challenge.is_some(), true);
+
+        // Trigger:
+        path.on_timeout(expire_now);
+
+        // Expectation:
+        assert_eq!(path.is_challenge_pending(helper_challenge.now), false);
+        assert_eq!(path.challenge.is_some(), false);
+    }
+
+    #[test]
+    fn is_challenge_pending_should_return_false_if_challenge_is_not_set() {
+        // Setup:
+        let mut path = testing::helper_path();
+        let helper_challenge = helper_challenge();
+
+        // Expectation:
+        assert_eq!(path.is_challenge_pending(helper_challenge.now), false);
+        assert_eq!(path.challenge.is_some(), false);
+
+        // Trigger:
+        path = path.with_challenge(helper_challenge.challenge);
+
+        // Expectation:
+        assert_eq!(path.is_challenge_pending(helper_challenge.now), true);
+        assert_eq!(path.challenge.is_some(), true);
+    }
+
+    #[test]
+    fn validate_path_response_should_only_validate_if_challenge_is_set() {
+        // Setup:
+        let mut path = testing::helper_path();
+        let helper_challenge = helper_challenge();
+
+        // Expectation:
+        assert_eq!(path.is_validated(), false);
+
+        // Trigger:
+        path = path.with_challenge(helper_challenge.challenge);
+        path.validate_path_response(&helper_challenge.expected_data);
+
+        // Expectation:
+        assert_eq!(path.is_validated(), true);
+    }
+
+    #[test]
+    fn on_validated_should_change_state_to_validated_and_clear_challenge() {
+        // Setup:
+        let mut path = testing::helper_path();
+        let helper_challenge = helper_challenge();
+        path = path.with_challenge(helper_challenge.challenge);
+
+        assert_eq!(path.is_validated(), false);
+        assert_eq!(path.challenge.is_some(), true);
+
+        // Trigger:
+        path.on_validated();
+
+        // Expectation:
+        assert_eq!(path.is_validated(), true);
+        assert_eq!(path.challenge.is_some(), false);
+    }
 
     #[test]
     fn amplification_limit_test() {
@@ -370,7 +438,7 @@ mod tests {
         //# adhere to the anti-amplification limits found in Section 8.1.
         // This tests the IP change because a new path is created when a new peer_address is
         // detected. This new path should always start in State::Pending.
-        let mut path = testing::test_path();
+        let mut path = testing::helper_path();
 
         // Verify we enforce the amplification limit if we can't send
         // at least 1 minimum sized packet
@@ -442,7 +510,7 @@ mod tests {
         //# PLPMTU.
 
         // TODO this would work better as a fuzz test
-        let mut path = testing::test_path();
+        let mut path = testing::helper_path();
 
         path.on_bytes_received(3);
         path.on_bytes_transmitted(8);
@@ -469,7 +537,7 @@ mod tests {
 
     #[test]
     fn peer_validated_test() {
-        let mut path = testing::test_path();
+        let mut path = testing::helper_path();
         path.peer_validated = false;
 
         assert!(!path.is_peer_validated());

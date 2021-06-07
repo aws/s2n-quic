@@ -270,7 +270,7 @@ impl Limiter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::path::testing::test_path;
+    use crate::path::testing::helper_path;
     use s2n_quic_core::{
         io::tx::Message as _,
         path::MINIMUM_MTU,
@@ -296,7 +296,7 @@ mod tests {
             .for_each(|(close_time, rtt, events, is_validated)| {
                 let mut sender = CloseSender::default();
                 let mut clock = Clock::default();
-                let mut path = test_path();
+                let mut path = helper_path();
                 let mut buffer = [0; MINIMUM_MTU as usize];
                 let mut transmission_count = 0usize;
 
