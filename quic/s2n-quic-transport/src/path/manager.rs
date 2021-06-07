@@ -248,35 +248,6 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         let mut data: challenge::Data = [0; 8];
         random_generator.public_random_fill(&mut data);
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
-        //# An endpoint MUST
-        //# perform path validation (Section 8.2) if it detects any change to a
-        //# peer's address, unless it has previously validated that address.
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.6.3
-        //# Servers SHOULD initiate path validation to the client's new address
-        //# upon receiving a probe packet from a different address.
-        // This will overwrite any in-progress path validation
-        let challenge = challenge::Challenge::new(
-            datagram.timestamp,
-            rtt.pto_period(1, PacketNumberSpace::ApplicationData),
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#8.2.4
-            //= type=TODO
-            //= tracking-issue=https://github.com/awslabs/s2n-quic/issues/412
-            //# A value of
-            //# three times the larger of the current Probe Timeout (PTO) or the PTO
-            //# for the new path (that is, using kInitialRtt as defined in
-            //# [QUIC-RECOVERY]) is RECOMMENDED.
-
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.4
-            //= type=TODO
-            //= tracking-issue=https://github.com/awslabs/s2n-quic/issues/412
-            //# This timer SHOULD be set as described in Section 6.2.1 of
-            //# [QUIC-RECOVERY] and MUST NOT be more aggressive.
-            rtt.pto_period(6, PacketNumberSpace::ApplicationData),
-            data,
-        );
-
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.1
         //# Until a peer's address is deemed valid, an endpoint MUST
         //# limit the rate at which it sends data to this address.
@@ -287,8 +258,31 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
             rtt,
             cc,
             true,
-        )
-        .with_challenge(challenge);
+        );
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#8.2.4
+        //# Endpoints SHOULD abandon path validation based on a timer.  When
+        //# setting this timer, implementations are cautioned that the new path
+        //# could have a longer round-trip time than the original. A value of
+        //# three times the larger of the current Probe Timeout (PTO) or the PTO
+        //# for the new path (that is, using kInitialRtt as defined in
+        //# [QUIC-RECOVERY]) is RECOMMENDED.
+        let abandon_duration = path.pto_period(PacketNumberSpace::ApplicationData);
+        let abandon_duration = 3 * abandon_duration.max(
+            self.active_path()
+                .pto_period(PacketNumberSpace::ApplicationData),
+        );
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
+        //# An endpoint MUST
+        //# perform path validation (Section 8.2) if it detects any change to a
+        //# peer's address, unless it has previously validated that address.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.6.3
+        //# Servers SHOULD initiate path validation to the client's new address
+        //# upon receiving a probe packet from a different address.
+        let challenge = challenge::Challenge::new(datagram.timestamp + abandon_duration, data);
+        path = path.with_challenge(challenge);
 
         let unblocked = path.on_bytes_received(datagram.payload_len);
         // create a new path
@@ -358,19 +352,14 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     //# contains the data that was sent in a previous PATH_CHALLENGE frame.
     //# A PATH_RESPONSE frame received on any network path validates the path
     //# on which the PATH_CHALLENGE was sent.
-    pub fn on_path_response(
-        &mut self,
-        timestamp: Timestamp,
-        path_id: Id,
-        response: &s2n_quic_core::frame::PathResponse,
-    ) {
+    pub fn on_path_response(&mut self, path_id: Id, response: &s2n_quic_core::frame::PathResponse) {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
         //# A PATH_RESPONSE frame MUST be sent on the network path where the
         //# PATH_CHALLENGE was received.
         // This requirement is achieved because paths own their challenges.
         // We compare the path_response data to the data stored in the
         // receiving path's challenge.
-        self[path_id].validate_path_response(timestamp, response.data);
+        self[path_id].validate_path_response(response.data);
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
@@ -421,7 +410,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
             path.on_timeout(timestamp);
         }
 
-        if !self.active_path().is_validated() && self.active_path().is_challenge_abandoned() {
+        if !self.active_path().is_validated() && !self.active_path().is_challenge_pending() {
             if let Some(last_known_validated_path) = self.last_known_validated_path {
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.2
                 //# To protect the connection from failing due to such a spurious
@@ -448,6 +437,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
 
 impl<CCE: congestion_controller::Endpoint> transmission::interest::Provider for Manager<CCE> {
     fn transmission_interest(&self) -> transmission::Interest {
+        // TODO get interest from pending paths
         self.peer_id_registry.transmission_interest()
     }
 }
@@ -476,6 +466,7 @@ impl<CCE: congestion_controller::Endpoint> core::ops::IndexMut<Id> for Manager<C
     }
 }
 
+#[allow(dead_code)]
 pub struct PendingPaths<'a, CCE: congestion_controller::Endpoint> {
     index: usize,
     path_manager: &'a mut Manager<CCE>,
@@ -488,19 +479,6 @@ impl<'a, CCE: congestion_controller::Endpoint> PendingPaths<'a, CCE> {
             index: 0,
             path_manager,
             timestamp,
-        }
-    }
-
-    pub fn next_path(&mut self) -> Option<(Id, &mut Manager<CCE>)> {
-        loop {
-            let index = self.index;
-            self.index += 1;
-
-            let path = self.path_manager.paths.get(index)?;
-
-            if path.is_challenge_pending(self.timestamp) {
-                return Some((Id(index as u8), self.path_manager));
-            }
         }
     }
 }
@@ -592,13 +570,8 @@ mod tests {
 
         // Create a challenge that will expire in 100ms
         let clock = NoopClock {};
-        let expiration = Duration::from_millis(100);
-        let challenge = challenge::Challenge::new(
-            clock.get_time(),
-            Duration::from_millis(0),
-            expiration,
-            [0; 8],
-        );
+        let expiration = Duration::from_millis(1000);
+        let challenge = challenge::Challenge::new(clock.get_time() + expiration, [0; 8]);
         let second_path = Path::new(
             SocketAddress::default(),
             first_conn_id,
@@ -620,74 +593,88 @@ mod tests {
         assert_eq!(manager.last_known_validated_path, Some(0));
 
         // After a validation times out, the path should revert to the previous
-        manager.on_timeout(clock.get_time() + Duration::from_millis(2000));
-        assert!(manager.last_known_validated_path.is_none());
+        manager.on_timeout(clock.get_time() + expiration + Duration::from_millis(100));
         assert_eq!(manager.active, 0);
+        assert!(manager.last_known_validated_path.is_none());
     }
 
     #[test]
     // a validated path should be assigned to last_known_validated_path
     fn promote_validated_path_to_last_known_validated_path() {
         // Setup:
-        let (first_path_id, second_path_id, mut manager) = helper_manager_with_paths();
+        let mut helper = helper_manager_with_paths();
         assert_eq!(
-            manager.paths[first_path_id.0 as usize].is_validated(),
+            helper.manager.paths[helper.first_path_id.0 as usize].is_validated(),
             false
         );
 
         // Trigger:
-        manager.paths[first_path_id.0 as usize].on_validated();
-        assert_eq!(manager.paths[first_path_id.0 as usize].is_validated(), true);
-        manager.update_active_path(second_path_id).unwrap();
+        helper.manager.paths[helper.first_path_id.0 as usize].on_validated();
+        assert_eq!(
+            helper.manager.paths[helper.first_path_id.0 as usize].is_validated(),
+            true
+        );
+        helper
+            .manager
+            .update_active_path(helper.second_path_id)
+            .unwrap();
 
         // Expectation:
-        assert_eq!(manager.last_known_validated_path, Some(0));
+        assert_eq!(helper.manager.last_known_validated_path, Some(0));
     }
 
     #[test]
     // a NOT validated path should NOT be assigned to last_known_validated_path
     fn dont_promote_non_validated_path_to_last_known_validated_path() {
         // Setup:
-        let (first_path_id, second_path_id, mut manager) = helper_manager_with_paths();
+        let mut helper = helper_manager_with_paths();
         assert_eq!(
-            manager.paths[first_path_id.0 as usize].is_validated(),
+            helper.manager.paths[helper.first_path_id.0 as usize].is_validated(),
             false
         );
 
         // Trigger:
-        manager.update_active_path(second_path_id).unwrap();
+        helper
+            .manager
+            .update_active_path(helper.second_path_id)
+            .unwrap();
 
         // Expectation:
-        assert_eq!(manager.last_known_validated_path, None);
+        assert_eq!(helper.manager.last_known_validated_path, None);
     }
 
     #[test]
     // update path to the new active path
     fn update_path_to_active_path() {
         // Setup:
-        let (first_path_id, second_path_id, mut manager) = helper_manager_with_paths();
-        assert_eq!(manager.active, first_path_id.0);
+        let mut helper = helper_manager_with_paths();
+        assert_eq!(helper.manager.active, helper.first_path_id.0);
 
         // Trigger:
-        manager.update_active_path(second_path_id).unwrap();
+        helper
+            .manager
+            .update_active_path(helper.second_path_id)
+            .unwrap();
 
         // Expectation:
-        assert_eq!(manager.active, second_path_id.0);
+        assert_eq!(helper.manager.active, helper.second_path_id.0);
     }
 
     #[test]
     // Don't update path to the new active path if insufficient connection ids
     fn dont_update_path_to_active_path_if_no_connection_id_available() {
         // Setup:
-        let (first_path_id, second_path_id, mut manager) =
-            helper_manager_register_second_path_conn_id(false);
-        assert_eq!(manager.active, first_path_id.0);
+        let mut helper = helper_manager_register_second_path_conn_id(false);
+        assert_eq!(helper.manager.active, helper.first_path_id.0);
 
         // Trigger:
-        assert!(manager.update_active_path(second_path_id).is_err());
+        assert!(helper
+            .manager
+            .update_active_path(helper.second_path_id)
+            .is_err());
 
         // Expectation:
-        assert_eq!(manager.active, first_path_id.0);
+        assert_eq!(helper.manager.active, helper.first_path_id.0);
     }
 
     #[test]
@@ -699,12 +686,52 @@ mod tests {
 
         // Create a challenge that will expire in 100ms
         let expiration = Duration::from_millis(100);
-        let challenge = challenge::Challenge::new(
-            clock.get_time(),
-            Duration::from_millis(0),
-            expiration,
-            expected_data,
-        );
+        let challenge = challenge::Challenge::new(clock.get_time() + expiration, expected_data);
+        let first_conn_id = connection::PeerId::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
+        let first_path = Path::new(
+            SocketAddress::default(),
+            first_conn_id,
+            connection::LocalId::TEST_ID,
+            RttEstimator::new(Duration::from_millis(30)),
+            Default::default(),
+            false,
+        )
+        .with_challenge(challenge);
+
+        let mut manager = manager(first_path.clone(), None);
+        assert_eq!(manager.paths.len(), 1);
+
+        if let Some((_path_id, first_path)) = manager.path(&first_path.peer_socket_address) {
+            assert_eq!(first_path.is_validated(), false);
+        } else {
+            panic!("Path not found");
+        }
+
+        let frame = s2n_quic_core::frame::PathResponse {
+            data: &expected_data,
+        };
+
+        // A response 100ms before the challenge should succeed
+        manager.on_timeout(clock.get_time() + expiration - Duration::from_millis(100));
+
+        manager.on_path_response(Id(0), &frame);
+        if let Some((_path_id, first_path)) = manager.path(&first_path.peer_socket_address) {
+            assert_eq!(first_path.is_validated(), true);
+        } else {
+            panic!("path not found");
+        }
+    }
+
+    #[test]
+    fn test_path_validation_abandoned_challenge() {
+        let clock = NoopClock {};
+        let mut path_rnd_generator = random::testing::Generator(123);
+        let mut expected_data: [u8; 8] = [0; 8];
+        path_rnd_generator.public_random_fill(&mut expected_data);
+
+        // Create a challenge that will expire in 100ms
+        let expiration = Duration::from_millis(100);
+        let challenge = challenge::Challenge::new(clock.get_time() + expiration, expected_data);
         let first_conn_id = connection::PeerId::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
         let first_path = Path::new(
             SocketAddress::default(),
@@ -732,26 +759,12 @@ mod tests {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.4
         //= type=test
         //# Endpoints SHOULD abandon path validation based on a timer.
+
         // A response 100ms after the challenge should fail
-        manager.on_path_response(
-            clock.get_time() + expiration + Duration::from_millis(100),
-            Id(0),
-            &frame,
-        );
+        manager.on_timeout(clock.get_time() + expiration + Duration::from_millis(100));
+        manager.on_path_response(Id(0), &frame);
         if let Some((_path_id, first_path)) = manager.path(&first_path.peer_socket_address) {
             assert_eq!(first_path.is_validated(), false);
-        } else {
-            panic!("path not found");
-        }
-
-        // A response 100ms before the challenge should succeed
-        manager.on_path_response(
-            clock.get_time() + expiration - Duration::from_millis(100),
-            Id(0),
-            &frame,
-        );
-        if let Some((_path_id, first_path)) = manager.path(&first_path.peer_socket_address) {
-            assert_eq!(first_path.is_validated(), true);
         } else {
             panic!("path not found");
         }
@@ -909,10 +922,7 @@ mod tests {
         //# perform path validation (Section 8.2) if it detects any change to a
         //# peer's address, unless it has previously validated that address.
         return;
-        assert!(manager[Id(1)].is_challenge_pending(now));
-
-        let expired_challenge = now + Duration::from_millis(1_000);
-        assert!(manager[Id(1)].is_challenge_pending(expired_challenge));
+        assert!(manager[Id(1)].is_challenge_pending());
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
         //= type=test
@@ -925,15 +935,126 @@ mod tests {
         let mut expected_data: [u8; 8] = [0; 8];
         test_rnd_generator.public_random_fill(&mut expected_data);
 
-        assert_eq!(
-            manager[Id(1)].challenge_data().unwrap(),
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
-            //= type=test
-            //# An endpoint MUST
-            //# perform path validation (Section 8.2) if it detects any change to a
-            //# peer's address, unless it has previously validated that address.
-            &expected_data
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
+        //= type=test
+        //# An endpoint MUST
+        //# perform path validation (Section 8.2) if it detects any change to a
+        //# peer's address, unless it has previously validated that address.
+        manager[Id(1)].validate_path_response(&expected_data);
+        assert!(manager[Id(1)].is_validated());
+    }
+
+    #[test]
+    // Abandon timer should use max PTO of active and new path(new path uses kInitialRtt)
+    // Setup 1:
+    // - create manager with path
+    // - create datagram for packet on second path
+    //
+    // Trigger 1:
+    // - call handle_connection_migration with packet for second path
+    //
+    // Expectation 1:
+    // - assert that new path uses max_ack_delay from the active path
+    //
+    // Trigger 2:
+    // - modify rtt for fist path to detect difference in PTO
+    //
+    // Expectation 2:
+    // - veify PTO of second path > PTO of first path
+    //
+    // Trigger 3:
+    // - call second_path.on_timeout with abandon_time - 10ms
+    //
+    // Expectation 3:
+    // - verify challenge is NOT abandoned
+    //
+    // Trigger 4:
+    // - call second_path.on_timeout with abandon_time + 10ms
+    //
+    // Expectation 4:
+    // - verify challenge is abandoned
+    fn connection_migration_new_path_abandon_timer() {
+        // Setup 1:
+        let first_path = Path::new(
+            SocketAddress::default(),
+            connection::PeerId::try_from_bytes(&[1]).unwrap(),
+            connection::LocalId::TEST_ID,
+            RttEstimator::new(Duration::from_millis(30)),
+            Default::default(),
+            false,
         );
+        let mut manager = manager(first_path, None);
+
+        let new_addr: SocketAddr = "127.0.0.1:8001".parse().unwrap();
+        let new_addr = SocketAddress::from(new_addr);
+        let now = NoopClock {}.get_time();
+        let datagram = DatagramInfo {
+            timestamp: now,
+            remote_address: new_addr,
+            payload_len: 0,
+            ecn: ExplicitCongestionNotification::default(),
+            destination_connection_id: connection::LocalId::TEST_ID,
+        };
+
+        // Trigger 1:
+        let (second_path_id, _unblocked) = manager
+            .handle_connection_migration(
+                &datagram,
+                &mut unlimited::Endpoint::default(),
+                &mut random::testing::Generator(123),
+            )
+            .unwrap();
+        let first_path_id = Id(0);
+
+        // Expectation 1:
+        // inherit max_ack_delay from the active path
+        assert_eq!(manager.active, first_path_id.0);
+        assert_eq!(
+            &manager[first_path_id].rtt_estimator.max_ack_delay(),
+            &manager[second_path_id].rtt_estimator.max_ack_delay()
+        );
+
+        // Trigger 2:
+        // modify rtt for first path so we can detect differences
+        manager[first_path_id].rtt_estimator.update_rtt(
+            Duration::from_millis(0),
+            Duration::from_millis(100),
+            now,
+            true,
+            PacketNumberSpace::ApplicationData,
+        );
+
+        // Expectation 2:
+        // verify the pto_period of the first path is less than the second path
+        let first_path_pto = manager[first_path_id].pto_period(PacketNumberSpace::ApplicationData);
+        let second_path_pto =
+            manager[second_path_id].pto_period(PacketNumberSpace::ApplicationData);
+
+        assert_eq!(first_path_pto, Duration::from_millis(330));
+        assert_eq!(second_path_pto, Duration::from_millis(1_029));
+        assert!(second_path_pto > first_path_pto);
+
+        // Trigger 3:
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#8.2.4
+        //= type=test
+        //# Endpoints SHOULD abandon path validation based on a timer.  When
+        //# setting this timer, implementations are cautioned that the new path
+        //# could have a longer round-trip time than the original. A value of
+        //# three times the larger of the current Probe Timeout (PTO) or the PTO
+        //# for the new path (that is, using kInitialRtt as defined in
+        //# [QUIC-RECOVERY]) is RECOMMENDED.
+        // abandon_duration should use max pto_period: second path
+        let abandon_time = now + (second_path_pto * 3);
+        manager[second_path_id].on_timeout(abandon_time - Duration::from_millis(10));
+
+        // Expectation 3:
+        assert_eq!(manager[second_path_id].is_challenge_pending(), true);
+
+        // Trigger 4:
+        manager[second_path_id].on_timeout(abandon_time + Duration::from_millis(10));
+        // Expectation 4:
+        assert_eq!(manager[second_path_id].is_challenge_pending(), false);
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2
@@ -963,9 +1084,7 @@ mod tests {
         assert_eq!(id_2, manager.paths[0].peer_connection_id);
     }
 
-    fn helper_manager_register_second_path_conn_id(
-        register_second_conn_id: bool,
-    ) -> (Id, Id, Manager<unlimited::Endpoint>) {
+    fn helper_manager_register_second_path_conn_id(register_second_conn_id: bool) -> Helper {
         let first_conn_id = connection::PeerId::try_from_bytes(&[1]).unwrap();
         let second_conn_id = connection::PeerId::try_from_bytes(&[2]).unwrap();
         let local_conn_id = connection::LocalId::TEST_ID;
@@ -979,14 +1098,9 @@ mod tests {
         );
 
         // Create a challenge that will expire in 100ms
-        let clock = NoopClock {};
+        let now = NoopClock {}.get_time();
         let expiration = Duration::from_millis(100);
-        let challenge = challenge::Challenge::new(
-            clock.get_time(),
-            Duration::from_millis(0),
-            expiration,
-            [0; 8],
-        );
+        let challenge = challenge::Challenge::new(now + expiration, [0; 8]);
         let second_path = Path::new(
             SocketAddress::default(),
             second_conn_id,
@@ -1017,10 +1131,22 @@ mod tests {
         assert_eq!(manager.last_known_validated_path, None);
         assert_eq!(manager.active, 0);
 
-        (Id(0), Id(1), manager)
+        Helper {
+            now,
+            first_path_id: Id(0),
+            second_path_id: Id(1),
+            manager,
+        }
     }
 
-    fn helper_manager_with_paths() -> (Id, Id, Manager<unlimited::Endpoint>) {
+    fn helper_manager_with_paths() -> Helper {
         helper_manager_register_second_path_conn_id(true)
+    }
+
+    struct Helper {
+        pub now: Timestamp,
+        pub first_path_id: Id,
+        pub second_path_id: Id,
+        pub manager: Manager<unlimited::Endpoint>,
     }
 }
