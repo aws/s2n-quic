@@ -615,65 +615,79 @@ mod tests {
     // a validated path should be assigned to last_known_validated_path
     fn promote_validated_path_to_last_known_validated_path() {
         // Setup:
-        let (first_path_id, second_path_id, mut manager) = helper_manager_with_paths();
+        let mut helper = helper_manager_with_paths();
         assert_eq!(
-            manager.paths[first_path_id.0 as usize].is_validated(),
+            helper.manager.paths[helper.first_path_id.0 as usize].is_validated(),
             false
         );
 
         // Trigger:
-        manager.paths[first_path_id.0 as usize].on_validated();
-        assert_eq!(manager.paths[first_path_id.0 as usize].is_validated(), true);
-        manager.update_active_path(second_path_id).unwrap();
+        helper.manager.paths[helper.first_path_id.0 as usize].on_validated();
+        assert_eq!(
+            helper.manager.paths[helper.first_path_id.0 as usize].is_validated(),
+            true
+        );
+        helper
+            .manager
+            .update_active_path(helper.second_path_id)
+            .unwrap();
 
         // Expectation:
-        assert_eq!(manager.last_known_validated_path, Some(0));
+        assert_eq!(helper.manager.last_known_validated_path, Some(0));
     }
 
     #[test]
     // a NOT validated path should NOT be assigned to last_known_validated_path
     fn dont_promote_non_validated_path_to_last_known_validated_path() {
         // Setup:
-        let (first_path_id, second_path_id, mut manager) = helper_manager_with_paths();
+        let mut helper = helper_manager_with_paths();
         assert_eq!(
-            manager.paths[first_path_id.0 as usize].is_validated(),
+            helper.manager.paths[helper.first_path_id.0 as usize].is_validated(),
             false
         );
 
         // Trigger:
-        manager.update_active_path(second_path_id).unwrap();
+        helper
+            .manager
+            .update_active_path(helper.second_path_id)
+            .unwrap();
 
         // Expectation:
-        assert_eq!(manager.last_known_validated_path, None);
+        assert_eq!(helper.manager.last_known_validated_path, None);
     }
 
     #[test]
     // update path to the new active path
     fn update_path_to_active_path() {
         // Setup:
-        let (first_path_id, second_path_id, mut manager) = helper_manager_with_paths();
-        assert_eq!(manager.active, first_path_id.0);
+        let mut helper = helper_manager_with_paths();
+        assert_eq!(helper.manager.active, helper.first_path_id.0);
 
         // Trigger:
-        manager.update_active_path(second_path_id).unwrap();
+        helper
+            .manager
+            .update_active_path(helper.second_path_id)
+            .unwrap();
 
         // Expectation:
-        assert_eq!(manager.active, second_path_id.0);
+        assert_eq!(helper.manager.active, helper.second_path_id.0);
     }
 
     #[test]
     // Don't update path to the new active path if insufficient connection ids
     fn dont_update_path_to_active_path_if_no_connection_id_available() {
         // Setup:
-        let (first_path_id, second_path_id, mut manager) =
-            helper_manager_register_second_path_conn_id(false);
-        assert_eq!(manager.active, first_path_id.0);
+        let mut helper = helper_manager_register_second_path_conn_id(false);
+        assert_eq!(helper.manager.active, helper.first_path_id.0);
 
         // Trigger:
-        assert!(manager.update_active_path(second_path_id).is_err());
+        assert!(helper
+            .manager
+            .update_active_path(helper.second_path_id)
+            .is_err());
 
         // Expectation:
-        assert_eq!(manager.active, first_path_id.0);
+        assert_eq!(helper.manager.active, helper.first_path_id.0);
     }
 
     #[test]
@@ -946,6 +960,110 @@ mod tests {
         assert!(manager[Id(1)].is_validated());
     }
 
+    #[test]
+    // Abandon timer should use max PTO of active and new path(new path uses kInitialRtt)
+    // Setup:
+    // - create manager with path
+    // - create datagram for packet on second path
+    //
+    // Trigger:
+    // - call handle_connection_migration with packet for second path
+    //
+    // Expectation:
+    // - assert that new path uses max_ack_delay from the active path
+    //
+    // Setup:
+    // - modify rtt for fist path to detect difference in PTO
+    //
+    // Expectation:
+    // - veify PTO of second path > PTO of first path
+    // - verify abandon_timer uses PTO of second path (test with +- 10ms)
+    // - verify abandon_timer does NOT uses PTO of first path (test with +- 10ms)
+    fn connection_migration_new_path_abandon_timer() {
+        // Setup:
+        let first_path = Path::new(
+            SocketAddress::default(),
+            connection::PeerId::try_from_bytes(&[1]).unwrap(),
+            connection::LocalId::TEST_ID,
+            RttEstimator::new(Duration::from_millis(30)),
+            Default::default(),
+            false,
+        );
+        let mut manager = manager(first_path, None);
+
+        let new_addr: SocketAddr = "127.0.0.1:8001".parse().unwrap();
+        let new_addr = SocketAddress::from(new_addr);
+        let now = NoopClock {}.get_time();
+        let datagram = DatagramInfo {
+            timestamp: now,
+            remote_address: new_addr,
+            payload_len: 0,
+            ecn: ExplicitCongestionNotification::default(),
+            destination_connection_id: connection::LocalId::TEST_ID,
+        };
+
+        // Trigger:
+        let (second_path_id, _unblocked) = manager
+            .handle_connection_migration(
+                &datagram,
+                &mut unlimited::Endpoint::default(),
+                &mut random::testing::Generator(123),
+            )
+            .unwrap();
+        let first_path_id = Id(0);
+
+        // Expectation:
+        // inherit max_ack_delay from the active path
+        assert_eq!(manager.active, first_path_id.0);
+        assert_eq!(
+            &manager[first_path_id].rtt_estimator.max_ack_delay(),
+            &manager[second_path_id].rtt_estimator.max_ack_delay()
+        );
+
+        // Setup:
+        // modify rtt for first path so we can detect differences
+        manager[first_path_id].rtt_estimator.update_rtt(
+            Duration::from_millis(0),
+            Duration::from_millis(100),
+            now,
+            true,
+            PacketNumberSpace::ApplicationData,
+        );
+        let first_path = &manager[first_path_id];
+        let second_path = &manager[second_path_id];
+
+        // Expectation:
+        // verify the pto_period of the first path is less than the second path
+        let first_path_pto = first_path.pto_period(PacketNumberSpace::ApplicationData);
+        let second_path_pto = second_path.pto_period(PacketNumberSpace::ApplicationData);
+
+        assert_eq!(first_path_pto, Duration::from_millis(330));
+        assert_eq!(second_path_pto, Duration::from_millis(1_029));
+        assert!(second_path_pto > first_path_pto);
+
+        // abandon_duration should use max pto_period: second path
+        let abandon_time = now + (second_path_pto * 3);
+        assert_eq!(
+            second_path.is_challenge_pending(abandon_time - Duration::from_millis(10)),
+            true
+        );
+        assert_eq!(
+            second_path.is_challenge_pending(abandon_time + Duration::from_millis(10)),
+            false
+        );
+
+        // abandon_duration should NOT use lesser of pto_period: first path
+        let not_abandon_time = now + (first_path_pto * 3); // using the minumum of the pto is not the correct abandon timer
+        assert_eq!(
+            second_path.is_challenge_pending(not_abandon_time - Duration::from_millis(10)),
+            true
+        );
+        assert_eq!(
+            second_path.is_challenge_pending(not_abandon_time + Duration::from_millis(10)),
+            true
+        );
+    }
+
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2
     //= type=test
     //# Upon receipt of an increased Retire Prior To field, the peer MUST
@@ -973,9 +1091,7 @@ mod tests {
         assert_eq!(id_2, manager.paths[0].peer_connection_id);
     }
 
-    fn helper_manager_register_second_path_conn_id(
-        register_second_conn_id: bool,
-    ) -> (Id, Id, Manager<unlimited::Endpoint>) {
+    fn helper_manager_register_second_path_conn_id(register_second_conn_id: bool) -> Helper {
         let first_conn_id = connection::PeerId::try_from_bytes(&[1]).unwrap();
         let second_conn_id = connection::PeerId::try_from_bytes(&[2]).unwrap();
         let local_conn_id = connection::LocalId::TEST_ID;
@@ -989,9 +1105,9 @@ mod tests {
         );
 
         // Create a challenge that will expire in 100ms
-        let clock = NoopClock {};
+        let now = NoopClock {}.get_time();
         let expiration = Duration::from_millis(100);
-        let challenge = challenge::Challenge::new(clock.get_time() + expiration, [0; 8]);
+        let challenge = challenge::Challenge::new(now + expiration, [0; 8]);
         let second_path = Path::new(
             SocketAddress::default(),
             second_conn_id,
@@ -1022,10 +1138,22 @@ mod tests {
         assert_eq!(manager.last_known_validated_path, None);
         assert_eq!(manager.active, 0);
 
-        (Id(0), Id(1), manager)
+        Helper {
+            now,
+            first_path_id: Id(0),
+            second_path_id: Id(1),
+            manager,
+        }
     }
 
-    fn helper_manager_with_paths() -> (Id, Id, Manager<unlimited::Endpoint>) {
+    fn helper_manager_with_paths() -> Helper {
         helper_manager_register_second_path_conn_id(true)
+    }
+
+    struct Helper {
+        pub now: Timestamp,
+        pub first_path_id: Id,
+        pub second_path_id: Id,
+        pub manager: Manager<unlimited::Endpoint>,
     }
 }
