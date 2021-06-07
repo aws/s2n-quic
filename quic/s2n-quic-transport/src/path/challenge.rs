@@ -81,10 +81,6 @@ impl Challenge {
         }
     }
 
-    pub fn is_pending(&self, timestamp: Timestamp) -> bool {
-        !self.abandon_timer.is_expired(timestamp)
-    }
-
     pub fn is_abandoned(&self) -> bool {
         self.state == State::Abandoned
     }
@@ -273,26 +269,6 @@ mod tests {
             .challenge
             .on_timeout(expiration_time - Duration::from_millis(10));
         assert_eq!(helper.challenge.is_abandoned(), true);
-    }
-
-    #[test]
-    fn test_is_pending() {
-        let helper = helper_challenge();
-        let expiration_time = helper.now + helper.abandon_duration;
-
-        assert_eq!(
-            helper
-                .challenge
-                .is_pending(expiration_time - Duration::from_millis(10)),
-            true
-        );
-        assert_eq!(helper.challenge.is_pending(expiration_time), false);
-        assert_eq!(
-            helper
-                .challenge
-                .is_pending(expiration_time + Duration::from_millis(10)),
-            false
-        );
     }
 
     #[test]

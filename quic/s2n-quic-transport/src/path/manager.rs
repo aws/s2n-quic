@@ -410,7 +410,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
             path.on_timeout(timestamp);
         }
 
-        if !self.active_path().is_validated() && !self.active_path().is_challenge_pending(timestamp)
+        if !self.active_path().is_validated() && !self.active_path().is_challenge_pending()
         {
             if let Some(last_known_validated_path) = self.last_known_validated_path {
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.2
@@ -923,10 +923,7 @@ mod tests {
         //# perform path validation (Section 8.2) if it detects any change to a
         //# peer's address, unless it has previously validated that address.
         return;
-        assert!(manager[Id(1)].is_challenge_pending(now));
-
-        let expired_challenge = now + Duration::from_millis(1_000);
-        assert!(manager[Id(1)].is_challenge_pending(expired_challenge));
+        assert!(manager[Id(1)].is_challenge_pending());
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
         //= type=test
@@ -950,25 +947,35 @@ mod tests {
 
     #[test]
     // Abandon timer should use max PTO of active and new path(new path uses kInitialRtt)
-    // Setup:
+    // Setup 1:
     // - create manager with path
     // - create datagram for packet on second path
     //
-    // Trigger:
+    // Trigger 1:
     // - call handle_connection_migration with packet for second path
     //
-    // Expectation:
+    // Expectation 1:
     // - assert that new path uses max_ack_delay from the active path
     //
-    // Setup:
+    // Trigger 2:
     // - modify rtt for fist path to detect difference in PTO
     //
-    // Expectation:
+    // Expectation 2:
     // - veify PTO of second path > PTO of first path
-    // - verify abandon_timer uses PTO of second path (test with +- 10ms)
-    // - verify abandon_timer does NOT uses PTO of first path (test with +- 10ms)
+    //
+    // Trigger 3:
+    // - call second_path.on_timeout with abandon_time - 10ms
+    //
+    // Expectation 3:
+    // - verify challenge is NOT abandoned
+    //
+    // Trigger 4:
+    // - call second_path.on_timeout with abandon_time + 10ms
+    //
+    // Expectation 4:
+    // - verify challenge is abandoned
     fn connection_migration_new_path_abandon_timer() {
-        // Setup:
+        // Setup 1:
         let first_path = Path::new(
             SocketAddress::default(),
             connection::PeerId::try_from_bytes(&[1]).unwrap(),
@@ -990,7 +997,7 @@ mod tests {
             destination_connection_id: connection::LocalId::TEST_ID,
         };
 
-        // Trigger:
+        // Trigger 1:
         let (second_path_id, _unblocked) = manager
             .handle_connection_migration(
                 &datagram,
@@ -1000,7 +1007,7 @@ mod tests {
             .unwrap();
         let first_path_id = Id(0);
 
-        // Expectation:
+        // Expectation 1:
         // inherit max_ack_delay from the active path
         assert_eq!(manager.active, first_path_id.0);
         assert_eq!(
@@ -1008,7 +1015,7 @@ mod tests {
             &manager[second_path_id].rtt_estimator.max_ack_delay()
         );
 
-        // Setup:
+        // Trigger 2:
         // modify rtt for first path so we can detect differences
         manager[first_path_id].rtt_estimator.update_rtt(
             Duration::from_millis(0),
@@ -1017,17 +1024,17 @@ mod tests {
             true,
             PacketNumberSpace::ApplicationData,
         );
-        let first_path = &manager[first_path_id];
-        let second_path = &manager[second_path_id];
 
-        // Expectation:
+        // Expectation 2:
         // verify the pto_period of the first path is less than the second path
-        let first_path_pto = first_path.pto_period(PacketNumberSpace::ApplicationData);
-        let second_path_pto = second_path.pto_period(PacketNumberSpace::ApplicationData);
+        let first_path_pto = manager[first_path_id].pto_period(PacketNumberSpace::ApplicationData);
+        let second_path_pto = manager[second_path_id].pto_period(PacketNumberSpace::ApplicationData);
 
         assert_eq!(first_path_pto, Duration::from_millis(330));
         assert_eq!(second_path_pto, Duration::from_millis(1_029));
         assert!(second_path_pto > first_path_pto);
+
+        // Trigger 3:
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#8.2.4
         //= type=test
@@ -1039,25 +1046,15 @@ mod tests {
         //# [QUIC-RECOVERY]) is RECOMMENDED.
         // abandon_duration should use max pto_period: second path
         let abandon_time = now + (second_path_pto * 3);
-        assert_eq!(
-            second_path.is_challenge_pending(abandon_time - Duration::from_millis(10)),
-            true
-        );
-        assert_eq!(
-            second_path.is_challenge_pending(abandon_time + Duration::from_millis(10)),
-            false
-        );
+        manager[second_path_id].on_timeout(abandon_time - Duration::from_millis(10));
 
-        // abandon_duration should NOT use lesser of pto_period: first path
-        let not_abandon_time = now + (first_path_pto * 3); // using the minumum of the pto is not the correct abandon timer
-        assert_eq!(
-            second_path.is_challenge_pending(not_abandon_time - Duration::from_millis(10)),
-            true
-        );
-        assert_eq!(
-            second_path.is_challenge_pending(not_abandon_time + Duration::from_millis(10)),
-            true
-        );
+        // Expectation 3:
+        assert_eq!(manager[second_path_id].is_challenge_pending(), true);
+
+        // Trigger 4:
+        manager[second_path_id].on_timeout(abandon_time + Duration::from_millis(10));
+        // Expectation 4:
+        assert_eq!(manager[second_path_id].is_challenge_pending(), false);
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2

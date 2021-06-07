@@ -154,9 +154,9 @@ impl<CC: CongestionController> Path<CC> {
         }
     }
 
-    pub fn is_challenge_pending(&self, timestamp: Timestamp) -> bool {
+    pub fn is_challenge_pending(&self) -> bool {
         if let Some(challenge) = &self.challenge {
-            challenge.is_pending(timestamp)
+            !challenge.is_abandoned()
         } else {
             false
         }
@@ -351,14 +351,14 @@ mod tests {
 
         // Expectation:
         let expire_now = expiration_time + Duration::from_millis(10);
-        assert_eq!(path.is_challenge_pending(helper_challenge.now), true);
+        assert_eq!(path.is_challenge_pending(), true);
         assert_eq!(path.challenge.is_some(), true);
 
         // Trigger:
         path.on_timeout(expire_now);
 
         // Expectation:
-        assert_eq!(path.is_challenge_pending(helper_challenge.now), false);
+        assert_eq!(path.is_challenge_pending(), false);
         assert_eq!(path.challenge.is_some(), false);
     }
 
@@ -369,14 +369,14 @@ mod tests {
         let helper_challenge = helper_challenge();
 
         // Expectation:
-        assert_eq!(path.is_challenge_pending(helper_challenge.now), false);
+        assert_eq!(path.is_challenge_pending(), false);
         assert_eq!(path.challenge.is_some(), false);
 
         // Trigger:
         path = path.with_challenge(helper_challenge.challenge);
 
         // Expectation:
-        assert_eq!(path.is_challenge_pending(helper_challenge.now), true);
+        assert_eq!(path.is_challenge_pending(), true);
         assert_eq!(path.challenge.is_some(), true);
     }
 
