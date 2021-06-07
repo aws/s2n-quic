@@ -29,6 +29,16 @@ pub enum State {
     Abandoned,
 }
 
+impl transmission::interest::Provider for State {
+    fn transmission_interest(&self) -> transmission::Interest {
+        if matches!(self, State::RequiresTransmission(_)) {
+            transmission::Interest::NewData
+        } else {
+            transmission::Interest::None
+        }
+    }
+}
+
 impl Challenge {
     pub fn new(abandon: Timestamp, data: Data) -> Self {
         let mut abandon_timer = Timer::default();
@@ -86,18 +96,13 @@ impl Challenge {
     }
 
     pub fn is_valid(&self, data: &[u8]) -> bool {
-        // 1 represents true. https://docs.rs/subtle/2.4.0/subtle/struct.Choice.html
-        ConstantTimeEq::ct_eq(&self.data[..], &data).unwrap_u8() == 1
+        ConstantTimeEq::ct_eq(&self.data[..], &data).into()
     }
 }
 
 impl transmission::interest::Provider for Challenge {
     fn transmission_interest(&self) -> transmission::Interest {
-        if matches!(self.state, State::RequiresTransmission(_)) {
-            transmission::Interest::NewData
-        } else {
-            transmission::Interest::None
-        }
+        self.state.transmission_interest()
     }
 }
 
