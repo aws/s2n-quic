@@ -139,12 +139,11 @@ impl<CC: CongestionController> Path<CC> {
     }
 
     pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
-        match &self.challenge {
-            Some(challenge) => Some(challenge.timers()),
-            None => None,
-        }
-        .into_iter()
-        .flatten()
+        self.challenge
+            .as_ref()
+            .map(|challenge| challenge.timers())
+            .into_iter()
+            .flatten()
     }
 
     /// When transmitting on a path this handles any internal state operations.
