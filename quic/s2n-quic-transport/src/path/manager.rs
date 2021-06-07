@@ -410,8 +410,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
             path.on_timeout(timestamp);
         }
 
-        if !self.active_path().is_validated() && !self.active_path().is_challenge_pending()
-        {
+        if !self.active_path().is_validated() && !self.active_path().is_challenge_pending() {
             if let Some(last_known_validated_path) = self.last_known_validated_path {
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.2
                 //# To protect the connection from failing due to such a spurious
@@ -1028,7 +1027,8 @@ mod tests {
         // Expectation 2:
         // verify the pto_period of the first path is less than the second path
         let first_path_pto = manager[first_path_id].pto_period(PacketNumberSpace::ApplicationData);
-        let second_path_pto = manager[second_path_id].pto_period(PacketNumberSpace::ApplicationData);
+        let second_path_pto =
+            manager[second_path_id].pto_period(PacketNumberSpace::ApplicationData);
 
         assert_eq!(first_path_pto, Duration::from_millis(330));
         assert_eq!(second_path_pto, Duration::from_millis(1_029));
