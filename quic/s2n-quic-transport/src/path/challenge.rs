@@ -66,14 +66,14 @@ impl Challenge {
 
     /// When a PATH_CHALLENGE is transmitted this handles any internal state operations.
     pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
-        let frame = frame::PathChallenge { data: &self.data };
-
         match self.state {
             State::RequiresTransmission(0) => self.state = State::Idle,
             State::RequiresTransmission(remaining) => {
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
                 //# However, an endpoint SHOULD NOT send multiple
                 //# PATH_CHALLENGE frames in a single packet.
+                let frame = frame::PathChallenge { data: &self.data };
+
                 if context.write_frame(&frame).is_some() {
                     let remaining = remaining - 1;
                     self.state = State::RequiresTransmission(remaining);
