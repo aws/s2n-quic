@@ -58,7 +58,7 @@ impl Challenge {
 
             // Re-transmitting twice guards against packet loss, while remaining
             // below the amplification limit of 3.
-            state: State::RequiresTransmission(2),
+            state: State::PendingTransmission,
             abandon_duration,
             abandon_timer: Timer::default(),
             data,
@@ -159,20 +159,9 @@ mod tests {
     use testing::*;
 
     #[test]
-    fn test_path_challenge_retransmited_2_times() {
+    fn create_challenge_in_pending_transmission() {
         let helper = helper_challenge();
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
-        //= type=test
-        //# An endpoint SHOULD NOT probe a new path with packets containing a
-        //# PATH_CHALLENGE frame more frequently than it would send an Initial
-        //# packet.
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
-        //= type=test
-        //# An endpoint MAY send multiple PATH_CHALLENGE frames to guard against
-        //# packet loss.
-        assert_eq!(helper.challenge.state, State::RequiresTransmission(2));
+        assert_eq!(helper.challenge.state, State::PendingTransmission);
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
@@ -191,12 +180,12 @@ mod tests {
         let mut helper = helper_challenge();
         let mut frame_buffer = OutgoingFrameBuffer::new();
         let mut context = MockWriteContext::new(
-            s2n_quic_platform::time::now(),
+            helper.now,
             &mut frame_buffer,
             transmission::Constraint::None,
             endpoint::Type::Client,
         );
-        assert_eq!(helper.challenge.state, State::RequiresTransmission(2));
+        assert_eq!(helper.challenge.state, State::PendingTransmission);
 
         // Trigger:
         helper.challenge.on_transmit(&mut context);
@@ -242,7 +231,7 @@ mod tests {
         let mut helper = helper_challenge();
         let mut frame_buffer = OutgoingFrameBuffer::new();
         let mut context = MockWriteContext::new(
-            s2n_quic_platform::time::now(),
+            helper.now,
             &mut frame_buffer,
             transmission::Constraint::None,
             endpoint::Type::Client,
@@ -263,6 +252,15 @@ mod tests {
         let mut helper = helper_challenge();
         let expiration_time = helper.now + helper.abandon_duration;
 
+        let mut frame_buffer = OutgoingFrameBuffer::new();
+        let mut context = MockWriteContext::new(
+            helper.now,
+            &mut frame_buffer,
+            transmission::Constraint::None,
+            endpoint::Type::Client,
+        );
+        helper.challenge.on_transmit(&mut context);
+
         helper
             .challenge
             .on_timeout(expiration_time - Duration::from_millis(10));
@@ -279,14 +277,29 @@ mod tests {
         let mut helper = helper_challenge();
         let expiration_time = helper.now + helper.abandon_duration;
 
+        let mut frame_buffer = OutgoingFrameBuffer::new();
+        let mut context = MockWriteContext::new(
+            helper.now,
+            &mut frame_buffer,
+            transmission::Constraint::None,
+            endpoint::Type::Client,
+        );
+        helper.challenge.on_transmit(&mut context);
+
+        // Trigger:
         helper
             .challenge
             .on_timeout(expiration_time + Duration::from_millis(10));
+
+        // Expectation:
         assert_eq!(helper.challenge.is_abandoned(), true);
 
+        // Trigger:
         helper
             .challenge
             .on_timeout(expiration_time - Duration::from_millis(10));
+
+        // Expectation:
         assert_eq!(helper.challenge.is_abandoned(), true);
     }
 
@@ -294,6 +307,15 @@ mod tests {
     fn test_is_abandoned() {
         let mut helper = helper_challenge();
         let expiration_time = helper.now + helper.abandon_duration;
+
+        let mut frame_buffer = OutgoingFrameBuffer::new();
+        let mut context = MockWriteContext::new(
+            helper.now,
+            &mut frame_buffer,
+            transmission::Constraint::None,
+            endpoint::Type::Client,
+        );
+        helper.challenge.on_transmit(&mut context);
 
         assert_eq!(helper.challenge.is_abandoned(), false);
 
