@@ -331,9 +331,12 @@ mod tests {
     use core::time::Duration;
 
     use super::*;
-    use crate::path::{challenge::testing::helper_challenge, testing, Path};
+    use crate::{
+        contexts::testing::{MockWriteContext, OutgoingFrameBuffer},
+        path::{challenge::testing::helper_challenge, testing, Path},
+    };
     use s2n_quic_core::{
-        connection,
+        connection, endpoint,
         inet::SocketAddress,
         recovery::{CongestionController, CubicCongestionController, RttEstimator},
         time::{Clock, NoopClock},
@@ -354,6 +357,14 @@ mod tests {
         assert_eq!(path.challenge.is_some(), true);
 
         // Trigger:
+        let mut frame_buffer = OutgoingFrameBuffer::new();
+        let mut context = MockWriteContext::new(
+            helper_challenge.now,
+            &mut frame_buffer,
+            transmission::Constraint::None,
+            endpoint::Type::Client,
+        );
+        path.on_transmit(&mut context);
         path.on_timeout(expire_now);
 
         // Expectation:

@@ -486,7 +486,10 @@ impl<'a, CCE: congestion_controller::Endpoint> PendingPaths<'a, CCE> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::connection::{ConnectionIdMapper, InternalConnectionIdGenerator};
+    use crate::{
+        connection::{ConnectionIdMapper, InternalConnectionIdGenerator},
+        contexts::testing::{MockWriteContext, OutgoingFrameBuffer},
+    };
     use core::time::Duration;
     use s2n_quic_core::{
         endpoint,
@@ -724,7 +727,7 @@ mod tests {
 
     #[test]
     fn test_path_validation_abandoned_challenge() {
-        let clock = NoopClock {};
+        let now = NoopClock {}.get_time();
         let mut path_rnd_generator = random::testing::Generator(123);
         let mut expected_data: [u8; 8] = [0; 8];
         path_rnd_generator.public_random_fill(&mut expected_data);
@@ -752,16 +755,25 @@ mod tests {
             panic!("Path not found");
         }
 
-        let frame = s2n_quic_core::frame::PathResponse {
-            data: &expected_data,
-        };
+        // send challenge and arm abandon timer
+        let mut frame_buffer = OutgoingFrameBuffer::new();
+        let mut context = MockWriteContext::new(
+            now,
+            &mut frame_buffer,
+            transmission::Constraint::None,
+            endpoint::Type::Client,
+        );
+        manager[Id(0)].on_transmit(&mut context);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.4
         //= type=test
         //# Endpoints SHOULD abandon path validation based on a timer.
 
         // A response 100ms after the challenge should fail
-        manager.on_timeout(clock.get_time() + expiration + Duration::from_millis(100));
+        manager.on_timeout(now + expiration + Duration::from_millis(100));
+        let frame = s2n_quic_core::frame::PathResponse {
+            data: &expected_data,
+        };
         manager.on_path_response(Id(0), &frame);
         if let Some((_path_id, first_path)) = manager.path(&first_path.peer_socket_address) {
             assert_eq!(first_path.is_validated(), false);
