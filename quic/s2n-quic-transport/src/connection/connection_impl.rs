@@ -275,6 +275,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         let initial_path = path::Path::new(
             parameters.peer_socket_address,
             parameters.peer_connection_id,
+            parameters.local_connection_id,
             rtt_estimator,
             parameters.congestion_controller,
             peer_validated,
@@ -539,6 +540,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             connection_id_mapper.remove_initial_id(&self.internal_connection_id);
         }
 
+        self.path_manager.on_timeout(timestamp);
         self.local_id_registry.on_timeout(timestamp);
 
         if let Some(shared_state) = shared_state {
@@ -579,6 +581,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             .chain(self.close_sender.timers())
             .chain(shared_state.iter().flat_map(|s| s.space_manager.timers()))
             .chain(self.local_id_registry.timers())
+            .chain(self.path_manager.timers())
             .min();
 
         self.timer_entry.update(earliest);
@@ -616,6 +619,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         shared_state: Option<&mut SharedConnectionState<Config>>,
         datagram: &DatagramInfo,
         congestion_controller_endpoint: &mut Config::CongestionControllerEndpoint,
+        random: &mut Config::RandomGenerator,
     ) -> Result<path::Id, connection::Error> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
         //# The design of QUIC relies on endpoints retaining a stable address
@@ -628,7 +632,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         //# packets received from an unvalidated address or limit the cumulative
         //# size of packets it sends to an unvalidated address to three times the
         //# size of packets it receives from that address.
-        let can_migrate = shared_state
+        let handshake_confirmed = shared_state
             .as_ref()
             .map(|s| s.space_manager.is_handshake_confirmed())
             .unwrap_or(false);
@@ -636,8 +640,9 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         let (id, unblocked) = self.path_manager.on_datagram_received(
             datagram,
             &self.limits,
-            can_migrate,
+            handshake_confirmed,
             congestion_controller_endpoint,
+            random,
         )?;
 
         if let Some(shared_state) = shared_state {

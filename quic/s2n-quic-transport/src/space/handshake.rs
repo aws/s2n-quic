@@ -139,8 +139,9 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
         )?;
 
         let time_sent = context.timestamp;
+        let path_id = context.path_id;
         let (recovery_manager, mut recovery_context) =
-            self.recovery(context.path_mut(), handshake_status);
+            self.recovery(handshake_status, path_id, context.path_manager);
         recovery_manager.on_packet_sent(packet_number, outcome, time_sent, &mut recovery_context);
 
         Ok((outcome, buffer))
@@ -224,14 +225,16 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
     /// Called when the connection timer expired
     pub fn on_timeout(
         &mut self,
-        path: &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
         handshake_status: &HandshakeStatus,
+        path_id: path::Id,
+        path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
         timestamp: Timestamp,
     ) {
         self.ack_manager.on_timeout(timestamp);
 
-        let (recovery_manager, mut context) = self.recovery(path, handshake_status);
-        recovery_manager.on_timeout(timestamp, &mut context)
+        let (recovery_manager, mut context) =
+            self.recovery(handshake_status, path_id, path_manager);
+        recovery_manager.on_timeout(timestamp, &mut context);
     }
 
     /// Called before the Handshake packet space is discarded
@@ -258,8 +261,9 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
 
     fn recovery<'a>(
         &'a mut self,
-        path: &'a mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
         handshake_status: &'a HandshakeStatus,
+        path_id: path::Id,
+        path_manager: &'a mut path::Manager<Config::CongestionControllerEndpoint>,
     ) -> (&'a mut recovery::Manager, RecoveryContext<'a, Config>) {
         (
             &mut self.recovery_manager,
@@ -269,7 +273,8 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
                 tx_packet_numbers: &mut self.tx_packet_numbers,
                 handshake_status,
                 config: PhantomData,
-                path,
+                path_id,
+                path_manager,
             },
         )
     }
@@ -312,7 +317,8 @@ struct RecoveryContext<'a, Config: endpoint::Config> {
     tx_packet_numbers: &'a mut TxPacketNumbers,
     handshake_status: &'a HandshakeStatus,
     config: PhantomData<Config>,
-    path: &'a mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
+    path_id: path::Id,
+    path_manager: &'a mut path::Manager<Config::CongestionControllerEndpoint>,
 }
 
 impl<'a, Config: endpoint::Config> recovery::Context<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>
@@ -324,12 +330,24 @@ impl<'a, Config: endpoint::Config> recovery::Context<<Config::CongestionControll
         self.handshake_status.is_confirmed()
     }
 
-    fn path(&self) -> &Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController> {
-        self.path
+    fn path(&self) -> &Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>{
+        &self.path_manager[self.path_id]
     }
 
-    fn path_mut(&mut self) -> &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController> {
-        &mut self.path
+    fn path_mut(&mut self) -> &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>{
+        &mut self.path_manager[self.path_id]
+    }
+
+    fn path_by_id(&self, path_id: path::Id) -> &path::Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController> {
+        &self.path_manager[path_id]
+    }
+
+    fn path_mut_by_id(&mut self, path_id: path::Id) -> &mut path::Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController> {
+        &mut self.path_manager[path_id]
+    }
+
+    fn path_id(&self) -> path::Id {
+        self.path_id
     }
 
     fn validate_packet_ack(
@@ -392,7 +410,8 @@ impl<Config: endpoint::Config> PacketSpace<Config> for HandshakeSpace<Config> {
     ) -> Result<(), transport::Error> {
         let path = &mut path_manager[path_id];
         path.on_peer_validated();
-        let (recovery_manager, mut context) = self.recovery(path, handshake_status);
+        let (recovery_manager, mut context) =
+            self.recovery(handshake_status, path_id, path_manager);
         recovery_manager.on_ack_frame(datagram, frame, &mut context)
     }
 

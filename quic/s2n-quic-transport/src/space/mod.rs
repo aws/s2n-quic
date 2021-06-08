@@ -12,10 +12,13 @@ use s2n_quic_core::{
     connection::limits::Limits,
     crypto::{tls, tls::Session, CryptoSuite},
     frame::{
-        ack::AckRanges, crypto::CryptoRef, stream::StreamRef, Ack, ConnectionClose, DataBlocked,
-        HandshakeDone, MaxData, MaxStreamData, MaxStreams, NewConnectionId, NewToken,
-        PathChallenge, PathResponse, ResetStream, RetireConnectionId, StopSending,
-        StreamDataBlocked, StreamsBlocked,
+        ack::AckRanges,
+        crypto::CryptoRef,
+        path_validation::{self, Probing},
+        stream::StreamRef,
+        Ack, ConnectionClose, DataBlocked, HandshakeDone, MaxData, MaxStreamData, MaxStreams,
+        NewConnectionId, NewToken, PathChallenge, PathResponse, ResetStream, RetireConnectionId,
+        StopSending, StreamDataBlocked, StreamsBlocked,
     },
     inet::DatagramInfo,
     packet::number::{PacketNumber, PacketNumberSpace},
@@ -184,16 +187,17 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
         timestamp: Timestamp,
     ) {
+        let path_id = path_manager.active_path_id();
         let path = path_manager.active_path_mut();
 
         // ensure the backoff doesn't grow too quickly
         let max_backoff = path.pto_backoff * 2;
 
         if let Some((space, handshake_status)) = self.initial_mut() {
-            space.on_timeout(path, handshake_status, timestamp)
+            space.on_timeout(handshake_status, path_id, path_manager, timestamp)
         }
         if let Some((space, handshake_status)) = self.handshake_mut() {
-            space.on_timeout(path, handshake_status, timestamp)
+            space.on_timeout(handshake_status, path_id, path_manager, timestamp)
         }
         if let Some((space, handshake_status)) = self.application_mut() {
             space.on_timeout(path_manager, handshake_status, local_id_registry, timestamp)
@@ -497,10 +501,12 @@ pub trait PacketSpace<Config: endpoint::Config> {
             }};
         }
 
+        let mut is_packet_probing = path_validation::Probe::Probing;
         while !payload.is_empty() {
             let (frame, remaining) = payload
                 .decode::<FrameMut>()
                 .map_err(transport::Error::from)?;
+            is_packet_probing |= frame.probe();
 
             match frame {
                 Frame::Padding(frame) => {

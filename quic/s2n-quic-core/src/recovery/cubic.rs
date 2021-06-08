@@ -685,7 +685,8 @@ mod test {
     }
 
     #[test]
-    #[compliance::tests("https://tools.ietf.org/rfc/rfc8312.txt#4.1")]
+    //= https://tools.ietf.org/rfc/rfc8312.txt#4.1
+    //= type=test
     fn w_cubic() {
         let max_datagram_size = 1200;
         let mut cubic = Cubic::new(max_datagram_size);
@@ -724,7 +725,8 @@ mod test {
     }
 
     #[test]
-    #[compliance::tests("https://tools.ietf.org/rfc/rfc8312.txt#4.6")]
+    //= https://tools.ietf.org/rfc/rfc8312.txt#4.6
+    //= type=test
     fn w_est() {
         let max_datagram_size = 1200;
         let mut cubic = Cubic::new(max_datagram_size);
@@ -741,7 +743,8 @@ mod test {
 
     #[allow(clippy::float_cmp)]
     #[test]
-    #[compliance::tests("https://tools.ietf.org/rfc/rfc8312.txt#4.5")]
+    //= https://tools.ietf.org/rfc/rfc8312.txt#4.5
+    //= type=test
     fn multiplicative_decrease() {
         let max_datagram_size = 1200.0;
         let mut cubic = Cubic::new(max_datagram_size as u16);
@@ -776,7 +779,8 @@ mod test {
     }
 
     #[test]
-    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.8")]
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.8
+    //= type=test
     fn is_congestion_limited() {
         let max_datagram_size = 1000;
         let mut cc = CubicCongestionController::new(max_datagram_size);
@@ -1141,7 +1145,10 @@ mod test {
         cc.bytes_in_flight = BytesInFlight::new(1000);
         cc.state = Recovery(now, Idle);
 
-        cc.on_packets_lost(100, false, now);
+        // break up on_packet_loss into two call to confirm double call
+        // behavior is valid (50 + 50 = 100 lost bytes)
+        cc.on_packets_lost(50, false, now);
+        cc.on_packets_lost(50, false, now);
 
         // No change to the congestion window
         assert_delta!(cc.congestion_window, 10000.0, 0.001);
@@ -1307,7 +1314,8 @@ mod test {
     }
 
     #[test]
-    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.2")]
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.2
+    //= type=test
     fn on_packet_ack_recovery_to_congestion_avoidance() {
         let mut cc = CubicCongestionController::new(5000);
         let now = NoopClock.get_time();
@@ -1331,7 +1339,8 @@ mod test {
     }
 
     #[test]
-    #[compliance::tests("https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.2")]
+    //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.3.2
+    //= type=test
     fn on_packet_ack_slow_start_to_congestion_avoidance() {
         let mut cc = CubicCongestionController::new(5000);
         let now = NoopClock.get_time();

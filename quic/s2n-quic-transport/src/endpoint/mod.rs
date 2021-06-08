@@ -356,8 +356,16 @@ impl<Cfg: Config> Endpoint<Cfg> {
                             shared_state.as_deref_mut(),
                             datagram,
                             endpoint_context.congestion_controller,
+                            endpoint_context.random_generator,
                         )
                         .map_err(|_| {
+                            // TODO https://github.com/awslabs/s2n-quic/issues/669
+                            // We are ignoring all errors here which seems like a bad
+                            // practice. If we truly want to ignor all error, lets change the
+                            // signature of on_datagram_received to not return a Result.
+                            // Otherwise we should introduce an Error code that signifies
+                            // it should be silently ignored.
+
                             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
                             //# If the peer
                             //# violates this requirement, the endpoint MUST either drop the incoming

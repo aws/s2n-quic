@@ -1,6 +1,5 @@
 [workspace]
 members = [
-    "common/compliance/compliance",
     "common/compliance/cargo-compliance",
     "common/s2n-*",
     "quic/s2n-*",

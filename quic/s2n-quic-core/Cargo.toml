@@ -29,7 +29,6 @@ zerocopy-derive = "=0.2.0"
 [dev-dependencies]
 bolero = "0.6"
 bolero-generator = { version = "0.6", default-features = false }
-compliance = { path = "../../common/compliance/compliance" }
 criterion = { version = "0.3", features = ["html_reports"] }
 insta = "1.0"
 plotters = { version = "0.3", default-features = false, features = ["svg_backend", "line_series"] }

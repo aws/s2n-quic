@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! This module contains the Path implementation
+mod challenge;
 mod manager;
 mod mtu;
 
+pub use challenge::*;
 pub use manager::*;
 
 /// re-export core
@@ -14,7 +16,7 @@ use s2n_quic_core::time::Timestamp;
 use crate::{
     connection,
     connection::close::SocketAddress,
-    path::challenge::Challenge,
+    contexts::WriteContext,
     recovery::{CongestionController, RttEstimator},
     transmission,
 };
@@ -26,17 +28,7 @@ enum State {
     Validated,
 
     /// Path has not been validated and is subject to amplification limits
-    AmplificationLimited {
-        tx_bytes: u32,
-        rx_bytes: u32,
-    },
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.1
-    //= type=TODO
-    //# The endpoint
-    //# MUST NOT send more than a minimum congestion window's worth of data
-    //# per estimated round-trip time (kMinimumWindow, as defined in
-    //# [QUIC-RECOVERY]).
-    PendingChallengeResponse,
+    AmplificationLimited { tx_bytes: u32, rx_bytes: u32 },
 }
 
 #[derive(Debug, Clone)]
@@ -45,6 +37,8 @@ pub struct Path<CC: CongestionController> {
     pub peer_socket_address: SocketAddress,
     /// The connection id of the peer
     pub peer_connection_id: connection::PeerId,
+    /// The local connection id which the peer sends to
+    pub local_connection_id: connection::LocalId,
     /// The path owns the roundtrip between peers
     pub rtt_estimator: RttEstimator,
     /// The congestion controller for the path
@@ -60,7 +54,7 @@ pub struct Path<CC: CongestionController> {
     peer_validated: bool,
 
     /// Challenge sent to the peer in a PATH_CHALLENGE
-    challenge: Challenge,
+    challenge: Option<Challenge>,
 }
 
 /// A Path holds the local and peer socket addresses, connection ids, and state. It can be
@@ -69,6 +63,7 @@ impl<CC: CongestionController> Path<CC> {
     pub fn new(
         peer_socket_address: SocketAddress,
         peer_connection_id: connection::PeerId,
+        local_connection_id: connection::LocalId,
         rtt_estimator: RttEstimator,
         congestion_controller: CC,
         peer_validated: bool,
@@ -76,6 +71,7 @@ impl<CC: CongestionController> Path<CC> {
         Path {
             peer_socket_address,
             peer_connection_id,
+            local_connection_id,
             rtt_estimator,
             congestion_controller,
             pto_backoff: INITIAL_PTO_BACKOFF,
@@ -89,12 +85,12 @@ impl<CC: CongestionController> Path<CC> {
             },
             mtu: MINIMUM_MTU,
             peer_validated,
-            challenge: Challenge::None,
+            challenge: None,
         }
     }
 
     pub fn with_challenge(mut self, challenge: Challenge) -> Self {
-        self.challenge = challenge;
+        self.challenge = Some(challenge);
         self
     }
 
@@ -135,48 +131,53 @@ impl<CC: CongestionController> Path<CC> {
     }
 
     pub fn on_timeout(&mut self, timestamp: Timestamp) {
-        self.challenge.on_timeout(timestamp)
+        if let Some(challenge) = &mut self.challenge {
+            challenge.on_timeout(timestamp);
+            if challenge.is_abandoned() {
+                self.challenge = None;
+            }
+        }
     }
 
     pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
-        self.challenge.timers()
+        self.challenge
+            .as_ref()
+            .map(|challenge| challenge.timers())
+            .into_iter()
+            .flatten()
     }
 
     /// When transmitting on a path this handles any internal state operations.
-    pub fn on_transmit(&mut self, timestamp: Timestamp) {
-        self.challenge.on_transmit(timestamp)
-    }
-
-    pub fn challenge_data(&self) -> Option<&challenge::Data> {
-        self.challenge.data()
-    }
-
-    pub fn is_challenge_pending(&self, timestamp: Timestamp) -> bool {
-        self.challenge.is_pending(timestamp)
-    }
-
-    pub fn is_challenge_abandoned(&self) -> bool {
-        if let Challenge::Abandoned = self.challenge {
-            return true;
+    pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
+        if let Some(challenge) = &mut self.challenge {
+            challenge.on_transmit(context)
         }
-
-        false
     }
 
-    pub fn validate_path_response(&mut self, timestamp: Timestamp, response: &[u8]) {
-        if self.challenge.is_valid(timestamp, response) {
-            self.on_validated();
+    pub fn is_challenge_pending(&self) -> bool {
+        if let Some(challenge) = &self.challenge {
+            !challenge.is_abandoned()
+        } else {
+            false
+        }
+    }
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3
-            //= type=TODO
-            //# After verifying a new client address, the server SHOULD send new
-            //# address validation tokens (Section 8) to the client.
+    pub fn validate_path_response(&mut self, response: &[u8]) {
+        if let Some(challenge) = &self.challenge {
+            if challenge.is_valid(response) {
+                self.on_validated();
+
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3
+                //= type=TODO
+                //# After verifying a new client address, the server SHOULD send new
+                //# address validation tokens (Section 8) to the client.
+            }
         }
     }
 
     /// Called when the path is validated
     pub fn on_validated(&mut self) {
-        self.challenge = Challenge::None;
+        self.challenge = None;
         self.state = State::Validated;
     }
 
@@ -212,19 +213,6 @@ impl<CC: CongestionController> Path<CC> {
     pub fn clamp_mtu(&self, requested_size: usize) -> usize {
         match self.state {
             State::Validated => requested_size.min(self.mtu as usize),
-
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.1
-            //= type=TODO
-            //# Until a peer's address is deemed valid, an endpoint MUST
-            //# limit the rate at which it sends data to this address.
-
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.1
-            //= type=TODO
-            //# The endpoint
-            //# MUST NOT send more than a minimum congestion window's worth of data
-            //# per estimated round-trip time (kMinimumWindow, as defined in
-            //# [QUIC-RECOVERY]).
-            State::PendingChallengeResponse => requested_size.min(self.mtu as usize),
 
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1
             //# Prior to validating the client address, servers MUST NOT send more
@@ -298,13 +286,23 @@ impl<CC: CongestionController> Path<CC> {
         match &self.state {
             // keep the current amplification limits
             State::AmplificationLimited { .. } => {}
-            State::Validated | State::PendingChallengeResponse => {
+            State::Validated => {
                 self.state = State::AmplificationLimited {
                     tx_bytes: 0,
                     rx_bytes: MINIMUM_MTU as _,
                 };
             }
         }
+    }
+}
+
+impl<CC: CongestionController> transmission::interest::Provider for Path<CC> {
+    fn transmission_interest(&self) -> transmission::Interest {
+        self.challenge
+            .as_ref()
+            .map_or(transmission::Interest::default(), |challenge| {
+                challenge.transmission_interest()
+            })
     }
 }
 
@@ -317,10 +315,11 @@ pub mod testing {
     use core::time::Duration;
     use s2n_quic_core::{connection, inet::SocketAddress, recovery::RttEstimator};
 
-    pub fn test_path() -> Path<Unlimited> {
+    pub fn helper_path() -> Path<Unlimited> {
         Path::new(
             SocketAddress::default(),
             connection::PeerId::try_from_bytes(&[]).unwrap(),
+            connection::LocalId::TEST_ID,
             RttEstimator::new(Duration::from_millis(30)),
             Unlimited::default(),
             true,
@@ -332,15 +331,89 @@ pub mod testing {
 mod tests {
     use core::time::Duration;
 
-    use crate::path::{testing, Path};
+    use super::*;
+    use crate::path::{challenge::testing::helper_challenge, testing, Path};
     use s2n_quic_core::{
         connection,
         inet::SocketAddress,
-        path::*,
         recovery::{CongestionController, CubicCongestionController, RttEstimator},
         time::{Clock, NoopClock},
         transmission,
     };
+
+    #[test]
+    fn on_timeout_should_set_challenge_to_none_on_challenge_abandonment() {
+        // Setup:
+        let mut path = testing::helper_path();
+        let helper_challenge = helper_challenge();
+        let expiration_time = helper_challenge.now + helper_challenge.abandon_duration;
+        path = path.with_challenge(helper_challenge.challenge);
+
+        // Expectation:
+        let expire_now = expiration_time + Duration::from_millis(10);
+        assert_eq!(path.is_challenge_pending(), true);
+        assert_eq!(path.challenge.is_some(), true);
+
+        // Trigger:
+        path.on_timeout(expire_now);
+
+        // Expectation:
+        assert_eq!(path.is_challenge_pending(), false);
+        assert_eq!(path.challenge.is_some(), false);
+    }
+
+    #[test]
+    fn is_challenge_pending_should_return_false_if_challenge_is_not_set() {
+        // Setup:
+        let mut path = testing::helper_path();
+        let helper_challenge = helper_challenge();
+
+        // Expectation:
+        assert_eq!(path.is_challenge_pending(), false);
+        assert_eq!(path.challenge.is_some(), false);
+
+        // Trigger:
+        path = path.with_challenge(helper_challenge.challenge);
+
+        // Expectation:
+        assert_eq!(path.is_challenge_pending(), true);
+        assert_eq!(path.challenge.is_some(), true);
+    }
+
+    #[test]
+    fn validate_path_response_should_only_validate_if_challenge_is_set() {
+        // Setup:
+        let mut path = testing::helper_path();
+        let helper_challenge = helper_challenge();
+
+        // Expectation:
+        assert_eq!(path.is_validated(), false);
+
+        // Trigger:
+        path = path.with_challenge(helper_challenge.challenge);
+        path.validate_path_response(&helper_challenge.expected_data);
+
+        // Expectation:
+        assert_eq!(path.is_validated(), true);
+    }
+
+    #[test]
+    fn on_validated_should_change_state_to_validated_and_clear_challenge() {
+        // Setup:
+        let mut path = testing::helper_path();
+        let helper_challenge = helper_challenge();
+        path = path.with_challenge(helper_challenge.challenge);
+
+        assert_eq!(path.is_validated(), false);
+        assert_eq!(path.challenge.is_some(), true);
+
+        // Trigger:
+        path.on_validated();
+
+        // Expectation:
+        assert_eq!(path.is_validated(), true);
+        assert_eq!(path.challenge.is_some(), false);
+    }
 
     #[test]
     fn amplification_limit_test() {
@@ -363,7 +436,7 @@ mod tests {
         //# adhere to the anti-amplification limits found in Section 8.1.
         // This tests the IP change because a new path is created when a new peer_address is
         // detected. This new path should always start in State::Pending.
-        let mut path = testing::test_path();
+        let mut path = testing::helper_path();
 
         // Verify we enforce the amplification limit if we can't send
         // at least 1 minimum sized packet
@@ -435,7 +508,7 @@ mod tests {
         //# PLPMTU.
 
         // TODO this would work better as a fuzz test
-        let mut path = testing::test_path();
+        let mut path = testing::helper_path();
 
         path.on_bytes_received(3);
         path.on_bytes_transmitted(8);
@@ -462,7 +535,7 @@ mod tests {
 
     #[test]
     fn peer_validated_test() {
-        let mut path = testing::test_path();
+        let mut path = testing::helper_path();
         path.peer_validated = false;
 
         assert!(!path.is_peer_validated());
@@ -477,6 +550,7 @@ mod tests {
         let mut path = Path::new(
             SocketAddress::default(),
             connection::PeerId::try_from_bytes(&[]).unwrap(),
+            connection::LocalId::TEST_ID,
             RttEstimator::new(Duration::from_millis(30)),
             CubicCongestionController::new(MINIMUM_MTU),
             false,

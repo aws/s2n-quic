@@ -118,8 +118,8 @@ impl<Payloads: crate::buffer::Buffer> Ring<Payloads> {
             .collect();
 
         Self {
-            payloads,
             messages,
+            payloads,
             iovecs,
             msg_names,
         }

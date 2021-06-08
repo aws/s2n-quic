@@ -324,6 +324,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             path_manager.active_path_id(),
             path_manager,
         );
+
         recovery_manager.on_timeout(timestamp, &mut context);
 
         self.stream_manager.on_timeout(timestamp);
@@ -445,12 +446,24 @@ impl<'a, Config: endpoint::Config> recovery::Context<<Config::CongestionControll
         self.handshake_status.is_confirmed()
     }
 
-    fn path(&self) -> &Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController> {
+    fn path(&self) -> &Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>{
         &self.path_manager[self.path_id]
     }
 
-    fn path_mut(&mut self) -> &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController> {
+    fn path_mut(&mut self) -> &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>{
         &mut self.path_manager[self.path_id]
+    }
+
+    fn path_by_id(&self, path_id: path::Id) -> &path::Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController> {
+        &self.path_manager[path_id]
+    }
+
+    fn path_mut_by_id(&mut self, path_id: path::Id) -> &mut path::Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController> {
+        &mut self.path_manager[path_id]
+    }
+
+    fn path_id(&self) -> path::Id {
+        self.path_id
     }
 
     fn validate_packet_ack(
@@ -491,7 +504,8 @@ impl<'a, Config: endpoint::Config> recovery::Context<<Config::CongestionControll
     fn on_rtt_update(&mut self) {
         // Update the stream manager if this RTT update was for the active path
         if self.path_manager.active_path_id() == self.path_id {
-            self.stream_manager.on_rtt_update(&self.path_manager.active_path().rtt_estimator)
+            self.stream_manager
+                .on_rtt_update(&self.path_manager.active_path().rtt_estimator)
         }
     }
 }

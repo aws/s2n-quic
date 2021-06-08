@@ -105,8 +105,8 @@ impl<'a> HeaderDecoder<'a> {
         let packet_len = self.decoded_len();
 
         Ok(HeaderDecoderResult {
-            header_len,
             packet_len,
+            header_len,
         })
     }
 
@@ -115,8 +115,8 @@ impl<'a> HeaderDecoder<'a> {
         let packet_len = self.initial_buffer_len;
 
         Ok(HeaderDecoderResult {
-            header_len,
             packet_len,
+            header_len,
         })
     }
 

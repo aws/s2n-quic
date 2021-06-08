@@ -1,0 +1,11 @@
+[[exception]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.1"
+quote = '''
+The endpoint
+MUST NOT send more than a minimum congestion window's worth of data
+per estimated round-trip time (kMinimumWindow, as defined in
+[QUIC-RECOVERY]).
+'''
+reason = '''
+This no longer exists in the 34 revision. This exception should be removed on update.
+'''

@@ -131,7 +131,7 @@ pub fn report_writer<Output: Write>(
                         arr,
                         obj!(|obj| {
                             kv!(obj, s!("source"), s!(annotation.source.to_string_lossy()));
-                            kv!(obj, s!("target_path"), s!(annotation.target_path()));
+                            kv!(obj, s!("target_path"), s!(annotation.resolve_target_path()));
 
                             if let Some(section) = annotation.target_section() {
                                 kv!(obj, s!("target_section"), s!(section));

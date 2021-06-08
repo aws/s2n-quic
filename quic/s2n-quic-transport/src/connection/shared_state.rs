@@ -32,9 +32,14 @@ impl<EndpointConfig: endpoint::Config> SynchronizedSharedConnectionState<Endpoin
     pub fn new(
         space_manager: PacketSpaceManager<EndpointConfig>,
         wakeup_handle: WakeupHandle<InternalConnectionId>,
+        internal_connection_id: InternalConnectionId,
     ) -> Self {
         Self {
-            inner: Mutex::new(SharedConnectionState::new(space_manager, wakeup_handle)),
+            inner: Mutex::new(SharedConnectionState::new(
+                space_manager,
+                wakeup_handle,
+                internal_connection_id,
+            )),
         }
     }
 
@@ -74,6 +79,7 @@ impl<EndpointConfig: endpoint::Config> SynchronizedSharedConnectionState<Endpoin
 pub struct SharedConnectionState<Config: endpoint::Config> {
     pub space_manager: PacketSpaceManager<Config>,
     pub wakeup_handle: WakeupHandle<InternalConnectionId>,
+    pub internal_connection_id: InternalConnectionId,
     pub error: Option<connection::Error>,
 }
 
@@ -82,10 +88,12 @@ impl<EndpointConfig: endpoint::Config> SharedConnectionState<EndpointConfig> {
     pub fn new(
         space_manager: PacketSpaceManager<EndpointConfig>,
         wakeup_handle: WakeupHandle<InternalConnectionId>,
+        internal_connection_id: InternalConnectionId,
     ) -> Self {
         Self {
             space_manager,
             wakeup_handle,
+            internal_connection_id,
             error: None,
         }
     }
@@ -210,6 +218,10 @@ impl<EndpointConfig: endpoint::Config> ConnectionApiProvider
             .expect("Application space must be available on active connections")
             .alpn
             .clone()
+    }
+
+    fn id(&self) -> u64 {
+        self.lock().internal_connection_id.into()
     }
 
     fn ping(&self) -> Result<(), connection::Error> {

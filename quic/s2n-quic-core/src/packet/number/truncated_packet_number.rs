@@ -20,6 +20,7 @@ pub struct TruncatedPacketNumber {
     pub(crate) value: TruncatedPacketNumberValue,
 }
 
+#[allow(clippy::len_without_is_empty)] // Clippy gets confused by the const on is_empty
 impl TruncatedPacketNumber {
     /// Returns the space for the given `TruncatedPacketNumber`
     #[inline]
@@ -116,7 +117,7 @@ impl TruncatedPacketNumberValue {
             Self::U32(_value) => PacketNumberLenValue::U32,
         };
 
-        PacketNumberLen { value, space }
+        PacketNumberLen { space, value }
     }
 }
 

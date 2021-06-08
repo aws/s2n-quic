@@ -191,8 +191,8 @@ impl Handle {
         recv_streams: flume::Sender<AcceptorMessage<ReceiveStream>>,
     ) -> Self {
         Self {
-            bidi_streams,
             recv_streams,
+            bidi_streams,
         }
     }
 

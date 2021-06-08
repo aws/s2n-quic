@@ -332,7 +332,7 @@ fn gen_negotiated_secrets() -> impl ValueGenerator<Output = (&'static Algorithm,
 
 fn gen_secrets(algo: hkdf::Algorithm) -> impl ValueGenerator<Output = SecretPair> {
     (gen_secret(algo), gen_secret(algo))
-        .map_gen(move |(client, server)| SecretPair { client, server })
+        .map_gen(move |(client, server)| SecretPair { server, client })
 }
 
 fn gen_secret(algo: hkdf::Algorithm) -> impl ValueGenerator<Output = Prk> {
