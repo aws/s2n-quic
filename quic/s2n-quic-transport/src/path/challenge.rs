@@ -21,7 +21,7 @@ pub struct Challenge {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum State {
     /// The abandon_timer must be armed when the first frame is sent
-    PendingTransmission,
+    New,
 
     /// A Challenge frame must be sent. The `u8` represents the remaining number of retries
     RequiresTransmission(u8),
@@ -36,7 +36,7 @@ pub enum State {
 impl transmission::interest::Provider for State {
     fn transmission_interest(&self) -> transmission::Interest {
         match self {
-            State::RequiresTransmission(_) | State::PendingTransmission => {
+            State::RequiresTransmission(_) | State::New => {
                 transmission::Interest::NewData
             }
             _ => transmission::Interest::None,
@@ -58,7 +58,7 @@ impl Challenge {
 
             // Re-transmitting twice guards against packet loss, while remaining
             // below the amplification limit of 3.
-            state: State::PendingTransmission,
+            state: State::New,
             abandon_duration,
             abandon_timer: Timer::default(),
             data,
@@ -71,10 +71,10 @@ impl Challenge {
 
     /// When a PATH_CHALLENGE is transmitted this handles any internal state operations.
     pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
-        match self.state {
-            State::PendingTransmission => {
-                let frame = frame::PathChallenge { data: &self.data };
+        let frame = frame::PathChallenge { data: &self.data };
 
+        match self.state {
+            State::New => {
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
                 //# However, an endpoint SHOULD NOT send multiple
                 //# PATH_CHALLENGE frames in a single packet.
@@ -87,8 +87,6 @@ impl Challenge {
             }
             State::RequiresTransmission(0) => self.state = State::Idle,
             State::RequiresTransmission(remaining) => {
-                let frame = frame::PathChallenge { data: &self.data };
-
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
                 //# However, an endpoint SHOULD NOT send multiple
                 //# PATH_CHALLENGE frames in a single packet.
@@ -161,7 +159,7 @@ mod tests {
     #[test]
     fn create_challenge_in_pending_transmission() {
         let helper = helper_challenge();
-        assert_eq!(helper.challenge.state, State::PendingTransmission);
+        assert_eq!(helper.challenge.state, State::New);
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
@@ -185,7 +183,7 @@ mod tests {
             transmission::Constraint::None,
             endpoint::Type::Client,
         );
-        assert_eq!(helper.challenge.state, State::PendingTransmission);
+        assert_eq!(helper.challenge.state, State::New);
 
         // Trigger:
         helper.challenge.on_transmit(&mut context);
@@ -332,7 +330,7 @@ mod tests {
         let expiration_time = helper.now + helper.abandon_duration;
 
         assert_eq!(helper.challenge.is_abandoned(), false);
-        assert_eq!(helper.challenge.state, State::PendingTransmission);
+        assert_eq!(helper.challenge.state, State::New);
 
         // Trigger 1:
         helper
