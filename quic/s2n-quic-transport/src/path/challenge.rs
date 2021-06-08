@@ -20,7 +20,7 @@ pub struct Challenge {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum State {
-    /// A Challenge frame must be sent. The `u8` represents the remaining number of retries
+    /// The abandon_timer must be armed when the first frame is sent
     PendingTransmission,
 
     /// A Challenge frame must be sent. The `u8` represents the remaining number of retries
