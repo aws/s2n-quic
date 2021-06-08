@@ -572,7 +572,7 @@ mod tests {
         first_path.on_validated();
 
         // Create a challenge that will expire in 100ms
-        let clock = NoopClock {};
+        let now = NoopClock {}.get_time();
         let expiration = Duration::from_millis(1000);
         let challenge = challenge::Challenge::new(expiration, [0; 8]);
         let second_path = Path::new(
@@ -595,8 +595,18 @@ mod tests {
         assert_eq!(manager.active, 1);
         assert_eq!(manager.last_known_validated_path, Some(0));
 
+        // send challenge and arm abandon timer
+        let mut frame_buffer = OutgoingFrameBuffer::new();
+        let mut context = MockWriteContext::new(
+            now,
+            &mut frame_buffer,
+            transmission::Constraint::None,
+            endpoint::Type::Client,
+        );
+        manager[Id(1)].on_transmit(&mut context);
+
         // After a validation times out, the path should revert to the previous
-        manager.on_timeout(clock.get_time() + expiration + Duration::from_millis(100));
+        manager.on_timeout(now + expiration + Duration::from_millis(100));
         assert_eq!(manager.active, 0);
         assert!(manager.last_known_validated_path.is_none());
     }
@@ -974,6 +984,9 @@ mod tests {
     // Expectation 2:
     // - veify PTO of second path > PTO of first path
     //
+    // Setup 3:
+    // - call on_transmit for second path to send challenge and arm abandon timer
+    //
     // Trigger 3:
     // - call second_path.on_timeout with abandon_time - 10ms
     //
@@ -1046,8 +1059,18 @@ mod tests {
         assert_eq!(second_path_pto, Duration::from_millis(1_029));
         assert!(second_path_pto > first_path_pto);
 
-        // Trigger 3:
+        // Setup 3:
+        // send challenge and arm abandon timer
+        let mut frame_buffer = OutgoingFrameBuffer::new();
+        let mut context = MockWriteContext::new(
+            now,
+            &mut frame_buffer,
+            transmission::Constraint::None,
+            endpoint::Type::Client,
+        );
+        manager[second_path_id].on_transmit(&mut context);
 
+        // Trigger 3:
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#8.2.4
         //= type=test
         //# Endpoints SHOULD abandon path validation based on a timer.  When
