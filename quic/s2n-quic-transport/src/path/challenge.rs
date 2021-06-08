@@ -21,6 +21,9 @@ pub struct Challenge {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum State {
     /// A Challenge frame must be sent. The `u8` represents the remaining number of retries
+    PendingTransmission,
+
+    /// A Challenge frame must be sent. The `u8` represents the remaining number of retries
     RequiresTransmission(u8),
 
     /// Challenge has been sent and we are awaiting a response until the abandon timer expires
@@ -32,10 +35,11 @@ pub enum State {
 
 impl transmission::interest::Provider for State {
     fn transmission_interest(&self) -> transmission::Interest {
-        if matches!(self, State::RequiresTransmission(_)) {
-            transmission::Interest::NewData
-        } else {
-            transmission::Interest::None
+        match self {
+            State::RequiresTransmission(_) | State::PendingTransmission => {
+                transmission::Interest::NewData
+            }
+            _ => transmission::Interest::None,
         }
     }
 }
@@ -68,13 +72,21 @@ impl Challenge {
     /// When a PATH_CHALLENGE is transmitted this handles any internal state operations.
     pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
         match self.state {
-            State::RequiresTransmission(0) => self.state = State::Idle,
-            State::RequiresTransmission(remaining) => {
-                if !self.abandon_timer.is_armed() {
+            State::PendingTransmission => {
+                let frame = frame::PathChallenge { data: &self.data };
+
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
+                //# However, an endpoint SHOULD NOT send multiple
+                //# PATH_CHALLENGE frames in a single packet.
+                if context.write_frame(&frame).is_some() {
+                    self.state = State::RequiresTransmission(1);
+
                     self.abandon_timer
                         .set(context.current_time() + self.abandon_duration);
                 }
-
+            }
+            State::RequiresTransmission(0) => self.state = State::Idle,
+            State::RequiresTransmission(remaining) => {
                 let frame = frame::PathChallenge { data: &self.data };
 
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
