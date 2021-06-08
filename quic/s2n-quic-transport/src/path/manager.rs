@@ -281,7 +281,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.6.3
         //# Servers SHOULD initiate path validation to the client's new address
         //# upon receiving a probe packet from a different address.
-        let challenge = challenge::Challenge::new(datagram.timestamp + abandon_duration, data);
+        let challenge = challenge::Challenge::new(abandon_duration, data);
         path = path.with_challenge(challenge);
 
         let unblocked = path.on_bytes_received(datagram.payload_len);
@@ -486,7 +486,10 @@ impl<'a, CCE: congestion_controller::Endpoint> PendingPaths<'a, CCE> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::connection::{ConnectionIdMapper, InternalConnectionIdGenerator};
+    use crate::{
+        connection::{ConnectionIdMapper, InternalConnectionIdGenerator},
+        contexts::testing::{MockWriteContext, OutgoingFrameBuffer},
+    };
     use core::time::Duration;
     use s2n_quic_core::{
         endpoint,
@@ -569,9 +572,9 @@ mod tests {
         first_path.on_validated();
 
         // Create a challenge that will expire in 100ms
-        let clock = NoopClock {};
+        let now = NoopClock {}.get_time();
         let expiration = Duration::from_millis(1000);
-        let challenge = challenge::Challenge::new(clock.get_time() + expiration, [0; 8]);
+        let challenge = challenge::Challenge::new(expiration, [0; 8]);
         let second_path = Path::new(
             SocketAddress::default(),
             first_conn_id,
@@ -592,8 +595,18 @@ mod tests {
         assert_eq!(manager.active, 1);
         assert_eq!(manager.last_known_validated_path, Some(0));
 
+        // send challenge and arm abandon timer
+        let mut frame_buffer = OutgoingFrameBuffer::new();
+        let mut context = MockWriteContext::new(
+            now,
+            &mut frame_buffer,
+            transmission::Constraint::None,
+            endpoint::Type::Client,
+        );
+        manager[Id(1)].on_transmit(&mut context);
+
         // After a validation times out, the path should revert to the previous
-        manager.on_timeout(clock.get_time() + expiration + Duration::from_millis(100));
+        manager.on_timeout(now + expiration + Duration::from_millis(100));
         assert_eq!(manager.active, 0);
         assert!(manager.last_known_validated_path.is_none());
     }
@@ -686,7 +699,7 @@ mod tests {
 
         // Create a challenge that will expire in 100ms
         let expiration = Duration::from_millis(100);
-        let challenge = challenge::Challenge::new(clock.get_time() + expiration, expected_data);
+        let challenge = challenge::Challenge::new(expiration, expected_data);
         let first_conn_id = connection::PeerId::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
         let first_path = Path::new(
             SocketAddress::default(),
@@ -724,14 +737,14 @@ mod tests {
 
     #[test]
     fn test_path_validation_abandoned_challenge() {
-        let clock = NoopClock {};
+        let now = NoopClock {}.get_time();
         let mut path_rnd_generator = random::testing::Generator(123);
         let mut expected_data: [u8; 8] = [0; 8];
         path_rnd_generator.public_random_fill(&mut expected_data);
 
         // Create a challenge that will expire in 100ms
         let expiration = Duration::from_millis(100);
-        let challenge = challenge::Challenge::new(clock.get_time() + expiration, expected_data);
+        let challenge = challenge::Challenge::new(expiration, expected_data);
         let first_conn_id = connection::PeerId::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
         let first_path = Path::new(
             SocketAddress::default(),
@@ -752,16 +765,25 @@ mod tests {
             panic!("Path not found");
         }
 
-        let frame = s2n_quic_core::frame::PathResponse {
-            data: &expected_data,
-        };
+        // send challenge and arm abandon timer
+        let mut frame_buffer = OutgoingFrameBuffer::new();
+        let mut context = MockWriteContext::new(
+            now,
+            &mut frame_buffer,
+            transmission::Constraint::None,
+            endpoint::Type::Client,
+        );
+        manager[Id(0)].on_transmit(&mut context);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.4
         //= type=test
         //# Endpoints SHOULD abandon path validation based on a timer.
 
         // A response 100ms after the challenge should fail
-        manager.on_timeout(clock.get_time() + expiration + Duration::from_millis(100));
+        manager.on_timeout(now + expiration + Duration::from_millis(100));
+        let frame = s2n_quic_core::frame::PathResponse {
+            data: &expected_data,
+        };
         manager.on_path_response(Id(0), &frame);
         if let Some((_path_id, first_path)) = manager.path(&first_path.peer_socket_address) {
             assert_eq!(first_path.is_validated(), false);
@@ -955,25 +977,7 @@ mod tests {
     //
     // Expectation 1:
     // - assert that new path uses max_ack_delay from the active path
-    //
-    // Trigger 2:
-    // - modify rtt for fist path to detect difference in PTO
-    //
-    // Expectation 2:
-    // - veify PTO of second path > PTO of first path
-    //
-    // Trigger 3:
-    // - call second_path.on_timeout with abandon_time - 10ms
-    //
-    // Expectation 3:
-    // - verify challenge is NOT abandoned
-    //
-    // Trigger 4:
-    // - call second_path.on_timeout with abandon_time + 10ms
-    //
-    // Expectation 4:
-    // - verify challenge is abandoned
-    fn connection_migration_new_path_abandon_timer() {
+    fn connection_migration_use_max_ack_delay_from_active_path() {
         // Setup 1:
         let first_path = Path::new(
             SocketAddress::default(),
@@ -1013,8 +1017,68 @@ mod tests {
             &manager[first_path_id].rtt_estimator.max_ack_delay(),
             &manager[second_path_id].rtt_estimator.max_ack_delay()
         );
+    }
 
-        // Trigger 2:
+    #[test]
+    // Abandon timer should use max PTO of active and new path(new path uses kInitialRtt)
+    // Setup 1:
+    // - create manager with path
+    // - create datagram for packet on second path
+    // - call handle_connection_migration with packet for second path
+    //
+    // Trigger 1:
+    // - modify rtt for fist path to detect difference in PTO
+    //
+    // Expectation 1:
+    // - veify PTO of second path > PTO of first path
+    //
+    // Setup 2:
+    // - call on_transmit for second path to send challenge and arm abandon timer
+    //
+    // Trigger 2:
+    // - call second_path.on_timeout with abandon_time - 10ms
+    //
+    // Expectation 2:
+    // - verify challenge is NOT abandoned
+    //
+    // Trigger 3:
+    // - call second_path.on_timeout with abandon_time + 10ms
+    //
+    // Expectation 3:
+    // - verify challenge is abandoned
+    fn connection_migration_new_path_abandon_timer() {
+        // Setup 1:
+        let first_path = Path::new(
+            SocketAddress::default(),
+            connection::PeerId::try_from_bytes(&[1]).unwrap(),
+            connection::LocalId::TEST_ID,
+            RttEstimator::new(Duration::from_millis(30)),
+            Default::default(),
+            false,
+        );
+        let mut manager = manager(first_path, None);
+
+        let new_addr: SocketAddr = "127.0.0.1:8001".parse().unwrap();
+        let new_addr = SocketAddress::from(new_addr);
+        let now = NoopClock {}.get_time();
+        let datagram = DatagramInfo {
+            timestamp: now,
+            remote_address: new_addr,
+            payload_len: 0,
+            ecn: ExplicitCongestionNotification::default(),
+            destination_connection_id: connection::LocalId::TEST_ID,
+        };
+
+        let (second_path_id, _unblocked) = manager
+            .handle_connection_migration(
+                &datagram,
+                &mut unlimited::Endpoint::default(),
+                &mut random::testing::Generator(123),
+            )
+            .unwrap();
+        let first_path_id = Id(0);
+
+        // Trigger 1:
         // modify rtt for first path so we can detect differences
         manager[first_path_id].rtt_estimator.update_rtt(
             Duration::from_millis(0),
@@ -1024,7 +1088,7 @@ mod tests {
             PacketNumberSpace::ApplicationData,
         );
 
-        // Expectation 2:
+        // Expectation 1:
         // verify the pto_period of the first path is less than the second path
         let first_path_pto = manager[first_path_id].pto_period(PacketNumberSpace::ApplicationData);
         let second_path_pto =
@@ -1034,8 +1098,18 @@ mod tests {
         assert_eq!(second_path_pto, Duration::from_millis(1_029));
         assert!(second_path_pto > first_path_pto);
 
-        // Trigger 3:
+        // Setup 2:
+        // send challenge and arm abandon timer
+        let mut frame_buffer = OutgoingFrameBuffer::new();
+        let mut context = MockWriteContext::new(
+            now,
+            &mut frame_buffer,
+            transmission::Constraint::None,
+            endpoint::Type::Client,
+        );
+        manager[second_path_id].on_transmit(&mut context);
 
+        // Trigger 2:
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#8.2.4
         //= type=test
         //# Endpoints SHOULD abandon path validation based on a timer.  When
@@ -1048,12 +1122,12 @@ mod tests {
         let abandon_time = now + (second_path_pto * 3);
         manager[second_path_id].on_timeout(abandon_time - Duration::from_millis(10));
 
-        // Expectation 3:
+        // Expectation 2:
         assert_eq!(manager[second_path_id].is_challenge_pending(), true);
 
-        // Trigger 4:
+        // Trigger 3:
         manager[second_path_id].on_timeout(abandon_time + Duration::from_millis(10));
-        // Expectation 4:
+        // Expectation 3:
         assert_eq!(manager[second_path_id].is_challenge_pending(), false);
     }
 
@@ -1100,7 +1174,7 @@ mod tests {
         // Create a challenge that will expire in 100ms
         let now = NoopClock {}.get_time();
         let expiration = Duration::from_millis(100);
-        let challenge = challenge::Challenge::new(now + expiration, [0; 8]);
+        let challenge = challenge::Challenge::new(expiration, [0; 8]);
         let second_path = Path::new(
             SocketAddress::default(),
             second_conn_id,
