@@ -326,6 +326,44 @@ mod tests {
     }
 
     #[test]
+    fn test_dont_abandon_if_in_pending_transmission() {
+        // Setup 1:
+        let mut helper = helper_challenge();
+        let expiration_time = helper.now + helper.abandon_duration;
+
+        assert_eq!(helper.challenge.is_abandoned(), false);
+        assert_eq!(helper.challenge.state, State::PendingTransmission);
+
+        // Trigger 1:
+        helper
+            .challenge
+            .on_timeout(expiration_time + Duration::from_millis(10));
+        assert_eq!(helper.challenge.is_abandoned(), false);
+
+        let mut frame_buffer = OutgoingFrameBuffer::new();
+        let mut context = MockWriteContext::new(
+            helper.now,
+            &mut frame_buffer,
+            transmission::Constraint::None,
+            endpoint::Type::Client,
+        );
+
+        // Trigger 2:
+        helper.challenge.on_transmit(&mut context);
+
+        // Expectation 2:
+        assert_eq!(helper.challenge.state, State::RequiresTransmission(1));
+
+        // Trigger 3:
+        helper
+            .challenge
+            .on_timeout(expiration_time + Duration::from_millis(10));
+
+        // Expectation 3:
+        assert_eq!(helper.challenge.is_abandoned(), true);
+    }
+
+    #[test]
     fn test_is_valid() {
         let helper = helper_challenge();
 
