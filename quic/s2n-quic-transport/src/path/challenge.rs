@@ -145,6 +145,10 @@ mod tests {
     use s2n_quic_core::{endpoint, time::Duration};
     use testing::*;
 
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
+    //= type=test
+    //# An endpoint MAY send multiple PATH_CHALLENGE frames to guard against
+    //# packet loss.
     #[test]
     fn create_challenge_that_requires_two_transmissions() {
         let helper = helper_challenge();
@@ -156,11 +160,6 @@ mod tests {
     //# An endpoint SHOULD NOT probe a new path with packets containing a
     //# PATH_CHALLENGE frame more frequently than it would send an Initial
     //# packet.
-
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
-    //= type=test
-    //# An endpoint MAY send multiple PATH_CHALLENGE frames to guard against
-    //# packet loss.
     #[test]
     fn transmit_challenge_only_twice() {
         // Setup:
