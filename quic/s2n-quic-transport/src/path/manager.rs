@@ -281,7 +281,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.6.3
         //# Servers SHOULD initiate path validation to the client's new address
         //# upon receiving a probe packet from a different address.
-        let challenge = challenge::Challenge::new(datagram.timestamp + abandon_duration, data);
+        let challenge = challenge::Challenge::new(abandon_duration, data);
         path = path.with_challenge(challenge);
 
         let unblocked = path.on_bytes_received(datagram.payload_len);
@@ -571,7 +571,7 @@ mod tests {
         // Create a challenge that will expire in 100ms
         let clock = NoopClock {};
         let expiration = Duration::from_millis(1000);
-        let challenge = challenge::Challenge::new(clock.get_time() + expiration, [0; 8]);
+        let challenge = challenge::Challenge::new(expiration, [0; 8]);
         let second_path = Path::new(
             SocketAddress::default(),
             first_conn_id,
@@ -686,7 +686,7 @@ mod tests {
 
         // Create a challenge that will expire in 100ms
         let expiration = Duration::from_millis(100);
-        let challenge = challenge::Challenge::new(clock.get_time() + expiration, expected_data);
+        let challenge = challenge::Challenge::new(expiration, expected_data);
         let first_conn_id = connection::PeerId::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
         let first_path = Path::new(
             SocketAddress::default(),
@@ -731,7 +731,7 @@ mod tests {
 
         // Create a challenge that will expire in 100ms
         let expiration = Duration::from_millis(100);
-        let challenge = challenge::Challenge::new(clock.get_time() + expiration, expected_data);
+        let challenge = challenge::Challenge::new(expiration, expected_data);
         let first_conn_id = connection::PeerId::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
         let first_path = Path::new(
             SocketAddress::default(),
@@ -1100,7 +1100,7 @@ mod tests {
         // Create a challenge that will expire in 100ms
         let now = NoopClock {}.get_time();
         let expiration = Duration::from_millis(100);
-        let challenge = challenge::Challenge::new(now + expiration, [0; 8]);
+        let challenge = challenge::Challenge::new(expiration, [0; 8]);
         let second_path = Path::new(
             SocketAddress::default(),
             second_conn_id,

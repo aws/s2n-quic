@@ -5,7 +5,7 @@ use crate::{contexts::WriteContext, transmission};
 use s2n_quic_core::{
     ct::ConstantTimeEq,
     frame,
-    time::{Timer, Timestamp},
+    time::{Duration, Timer, Timestamp},
 };
 
 pub type Data = [u8; frame::path_challenge::DATA_LEN];
@@ -13,6 +13,7 @@ pub type Data = [u8; frame::path_challenge::DATA_LEN];
 #[derive(Clone, Debug)]
 pub struct Challenge {
     state: State,
+    abandon_duration: Duration,
     abandon_timer: Timer,
     data: Data,
 }
@@ -40,10 +41,7 @@ impl transmission::interest::Provider for State {
 }
 
 impl Challenge {
-    pub fn new(abandon: Timestamp, data: Data) -> Self {
-        let mut abandon_timer = Timer::default();
-        abandon_timer.set(abandon);
-
+    pub fn new(abandon_duration: Duration, data: Data) -> Self {
         Self {
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
             //# An endpoint SHOULD NOT probe a new path with packets containing a
@@ -57,7 +55,8 @@ impl Challenge {
             // Re-transmitting twice guards against packet loss, while remaining
             // below the amplification limit of 3.
             state: State::RequiresTransmission(2),
-            abandon_timer,
+            abandon_duration,
+            abandon_timer: Timer::default(),
             data,
         }
     }
@@ -71,6 +70,11 @@ impl Challenge {
         match self.state {
             State::RequiresTransmission(0) => self.state = State::Idle,
             State::RequiresTransmission(remaining) => {
+                if !self.abandon_timer.is_armed() {
+                    self.abandon_timer
+                        .set(context.current_time() + self.abandon_duration);
+                }
+
                 let frame = frame::PathChallenge { data: &self.data };
 
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
@@ -116,7 +120,7 @@ pub mod testing {
         let abandon_duration = Duration::from_millis(10_000);
         let expected_data: [u8; 8] = [0; 8];
 
-        let challenge = Challenge::new(now + abandon_duration, expected_data);
+        let challenge = Challenge::new(abandon_duration, expected_data);
 
         Helper {
             now,
