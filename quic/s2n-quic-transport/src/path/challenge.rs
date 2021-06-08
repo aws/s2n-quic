@@ -20,9 +20,6 @@ pub struct Challenge {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum State {
-    /// The abandon_timer must be armed when the first frame is sent
-    New,
-
     /// A Challenge frame must be sent. The `u8` represents the remaining number of retries
     RequiresTransmission(u8),
 
@@ -36,9 +33,7 @@ pub enum State {
 impl transmission::interest::Provider for State {
     fn transmission_interest(&self) -> transmission::Interest {
         match self {
-            State::RequiresTransmission(_) | State::New => {
-                transmission::Interest::NewData
-            }
+            State::RequiresTransmission(_) => transmission::Interest::NewData,
             _ => transmission::Interest::None,
         }
     }
@@ -58,7 +53,7 @@ impl Challenge {
 
             // Re-transmitting twice guards against packet loss, while remaining
             // below the amplification limit of 3.
-            state: State::New,
+            state: State::RequiresTransmission(2),
             abandon_duration,
             abandon_timer: Timer::default(),
             data,
@@ -74,17 +69,6 @@ impl Challenge {
         let frame = frame::PathChallenge { data: &self.data };
 
         match self.state {
-            State::New => {
-                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
-                //# However, an endpoint SHOULD NOT send multiple
-                //# PATH_CHALLENGE frames in a single packet.
-                if context.write_frame(&frame).is_some() {
-                    self.state = State::RequiresTransmission(1);
-
-                    self.abandon_timer
-                        .set(context.current_time() + self.abandon_duration);
-                }
-            }
             State::RequiresTransmission(0) => self.state = State::Idle,
             State::RequiresTransmission(remaining) => {
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
@@ -93,6 +77,11 @@ impl Challenge {
                 if context.write_frame(&frame).is_some() {
                     let remaining = remaining - 1;
                     self.state = State::RequiresTransmission(remaining);
+
+                    if !self.abandon_timer.is_armed() {
+                        self.abandon_timer
+                            .set(context.current_time() + self.abandon_duration);
+                    }
                 }
             }
             _ => {}
@@ -157,9 +146,9 @@ mod tests {
     use testing::*;
 
     #[test]
-    fn create_challenge_in_pending_transmission() {
+    fn create_challenge_that_requires_two_transmissions() {
         let helper = helper_challenge();
-        assert_eq!(helper.challenge.state, State::New);
+        assert_eq!(helper.challenge.state, State::RequiresTransmission(2));
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
@@ -183,7 +172,7 @@ mod tests {
             transmission::Constraint::None,
             endpoint::Type::Client,
         );
-        assert_eq!(helper.challenge.state, State::New);
+        assert_eq!(helper.challenge.state, State::RequiresTransmission(2));
 
         // Trigger:
         helper.challenge.on_transmit(&mut context);
@@ -221,6 +210,27 @@ mod tests {
         // Expectation:
         assert_eq!(helper.challenge.state, State::Idle);
         assert_eq!(context.frame_buffer.len(), 0);
+    }
+
+    #[test]
+    fn successful_on_transmit_arms_the_timer() {
+        // Setup:
+        let mut helper = helper_challenge();
+        let mut frame_buffer = OutgoingFrameBuffer::new();
+        let mut context = MockWriteContext::new(
+            helper.now,
+            &mut frame_buffer,
+            transmission::Constraint::None,
+            endpoint::Type::Client,
+        );
+        assert_eq!(helper.challenge.state, State::RequiresTransmission(2));
+        assert_eq!(helper.challenge.abandon_timer.is_armed(), false);
+
+        // Trigger:
+        helper.challenge.on_transmit(&mut context);
+
+        // Expectation:
+        assert_eq!(helper.challenge.abandon_timer.is_armed(), true);
     }
 
     #[test]
@@ -320,44 +330,6 @@ mod tests {
         helper
             .challenge
             .on_timeout(expiration_time + Duration::from_millis(10));
-        assert_eq!(helper.challenge.is_abandoned(), true);
-    }
-
-    #[test]
-    fn test_dont_abandon_if_in_pending_transmission() {
-        // Setup 1:
-        let mut helper = helper_challenge();
-        let expiration_time = helper.now + helper.abandon_duration;
-
-        assert_eq!(helper.challenge.is_abandoned(), false);
-        assert_eq!(helper.challenge.state, State::New);
-
-        // Trigger 1:
-        helper
-            .challenge
-            .on_timeout(expiration_time + Duration::from_millis(10));
-        assert_eq!(helper.challenge.is_abandoned(), false);
-
-        let mut frame_buffer = OutgoingFrameBuffer::new();
-        let mut context = MockWriteContext::new(
-            helper.now,
-            &mut frame_buffer,
-            transmission::Constraint::None,
-            endpoint::Type::Client,
-        );
-
-        // Trigger 2:
-        helper.challenge.on_transmit(&mut context);
-
-        // Expectation 2:
-        assert_eq!(helper.challenge.state, State::RequiresTransmission(1));
-
-        // Trigger 3:
-        helper
-            .challenge
-            .on_timeout(expiration_time + Duration::from_millis(10));
-
-        // Expectation 3:
         assert_eq!(helper.challenge.is_abandoned(), true);
     }
 
