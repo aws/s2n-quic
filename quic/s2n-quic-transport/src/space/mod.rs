@@ -648,7 +648,8 @@ pub trait PacketSpace<Config: endpoint::Config> {
                 Frame::PathChallenge(frame) => {
                     let on_error = with_frame_type!(frame);
                     processed_packet.on_processed_frame(&frame);
-                    self.handle_path_challenge_frame(frame, datagram, path_manager).map_err(on_error)?;
+                    self.handle_path_challenge_frame(frame, datagram, path_manager)
+                        .map_err(on_error)?;
                 }
                 Frame::PathResponse(frame) => {
                     let on_error = with_frame_type!(frame);

@@ -10,7 +10,7 @@ pub use manager::*;
 
 /// re-export core
 pub use s2n_quic_core::path::*;
-use s2n_quic_core::time::Timestamp;
+use s2n_quic_core::{frame, time::Timestamp};
 
 use crate::{
     connection,
@@ -54,6 +54,8 @@ pub struct Path<CC: CongestionController> {
 
     /// Challenge sent to the peer in a PATH_CHALLENGE
     challenge: Option<Challenge>,
+    /// Received a Challenge and should echo back data in PATH_RESPONSE
+    response_data: Option<challenge::Data>,
 }
 
 /// A Path holds the local and peer socket addresses, connection ids, and state. It can be
@@ -85,6 +87,7 @@ impl<CC: CongestionController> Path<CC> {
             mtu: MINIMUM_MTU,
             peer_validated,
             challenge: None,
+            response_data: None,
         }
     }
 
@@ -148,6 +151,18 @@ impl<CC: CongestionController> Path<CC> {
 
     /// When transmitting on a path this handles any internal state operations.
     pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
+        if let Some(response_data) = &mut self.response_data {
+            let frame = frame::PathResponse {
+                data: &response_data,
+            };
+            if context.write_frame(&frame).is_some() {
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
+                //# An endpoint MUST NOT send more than one PATH_RESPONSE frame in
+                //# response to one PATH_CHALLENGE frame; see Section 13.3.
+                self.response_data = None;
+            }
+        }
+
         if let Some(challenge) = &mut self.challenge {
             challenge.on_transmit(context)
         }
@@ -161,7 +176,15 @@ impl<CC: CongestionController> Path<CC> {
         }
     }
 
-    pub fn validate_path_response(&mut self, response: &[u8]) {
+    pub fn on_path_challenge(&mut self, response: &challenge::Data) {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
+        //# On receiving a PATH_CHALLENGE frame, an endpoint MUST respond by
+        //# echoing the data contained in the PATH_CHALLENGE frame in a
+        //# PATH_RESPONSE frame
+        self.response_data = Some(response.clone());
+    }
+
+    pub fn on_path_response(&mut self, response: &[u8]) {
         if let Some(challenge) = &self.challenge {
             if challenge.is_valid(response) {
                 self.on_validated();
@@ -297,11 +320,18 @@ impl<CC: CongestionController> Path<CC> {
 
 impl<CC: CongestionController> transmission::interest::Provider for Path<CC> {
     fn transmission_interest(&self) -> transmission::Interest {
-        self.challenge
-            .as_ref()
-            .map_or(transmission::Interest::default(), |challenge| {
-                challenge.transmission_interest()
-            })
+        core::iter::empty()
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
+            //# An endpoint MUST NOT delay transmission of a
+            //# packet containing a PATH_RESPONSE frame unless constrained by
+            //# congestion control.
+            .chain(self.response_data.map(|_| transmission::Interest::NewData))
+            .chain(
+                self.challenge
+                    .as_ref()
+                    .map(|challenge| challenge.transmission_interest()),
+            )
+            .sum()
     }
 }
 
@@ -401,7 +431,7 @@ mod tests {
 
         // Trigger:
         path = path.with_challenge(helper_challenge.challenge);
-        path.validate_path_response(&helper_challenge.expected_data);
+        path.on_path_response(&helper_challenge.expected_data);
 
         // Expectation:
         assert_eq!(path.is_validated(), true);

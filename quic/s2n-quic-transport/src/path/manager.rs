@@ -328,23 +328,15 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     //# PATH_RESPONSE frame.
     pub fn on_path_challenge(
         &mut self,
-        _peer_address: &SocketAddress,
-        _challenge: frame::path_challenge::PathChallenge,
+        peer_address: &SocketAddress,
+        challenge: frame::path_challenge::PathChallenge,
     ) {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
-        //= type=TODO
-        //= tracking-issue=406
-        //= feature=Connection migration
-        //# An endpoint MUST NOT delay transmission of a
-        //# packet containing a PATH_RESPONSE frame unless constrained by
-        //# congestion control.
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
-        //= type=TODO
-        //= tracking-issue=407
-        //= feature=Connection migration
-        //# An endpoint MUST NOT send more than one PATH_RESPONSE frame in
-        //# response to one PATH_CHALLENGE frame; see Section 13.3.
+        //# A PATH_RESPONSE frame MUST be sent on the network path where the
+        //# PATH_CHALLENGE was received.
+        if let Some((_id, path)) = self.path_mut(peer_address) {
+            path.on_path_challenge(challenge.data)
+        }
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.3
@@ -373,7 +365,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         // Since an off-path attacher could forward packets, all paths should be
         // checked for path validation.
         for path in self.paths.iter_mut() {
-            path.validate_path_response(response.data);
+            path.on_path_response(response.data);
         }
     }
 
@@ -452,8 +444,11 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
 
 impl<CCE: congestion_controller::Endpoint> transmission::interest::Provider for Manager<CCE> {
     fn transmission_interest(&self) -> transmission::Interest {
-        // TODO get interest from pending paths
-        self.peer_id_registry.transmission_interest()
+        core::iter::empty()
+            .chain(Some(self.peer_id_registry.transmission_interest()))
+            // query PATH_CHALLENGE and PATH_RESPONSE interest for each path
+            .chain(self.paths.iter().map(|path| path.transmission_interest()))
+            .sum()
     }
 }
 
@@ -977,7 +972,7 @@ mod tests {
         //# An endpoint MUST
         //# perform path validation (Section 8.2) if it detects any change to a
         //# peer's address, unless it has previously validated that address.
-        manager[Id(1)].validate_path_response(&expected_data);
+        manager[Id(1)].on_path_response(&expected_data);
         assert!(manager[Id(1)].is_validated());
     }
 
