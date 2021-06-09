@@ -181,7 +181,7 @@ impl<CC: CongestionController> Path<CC> {
         //# On receiving a PATH_CHALLENGE frame, an endpoint MUST respond by
         //# echoing the data contained in the PATH_CHALLENGE frame in a
         //# PATH_RESPONSE frame
-        self.response_data = Some(response.clone());
+        self.response_data = Some(*response);
     }
 
     pub fn on_path_response(&mut self, response: &[u8]) {

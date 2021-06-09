@@ -329,7 +329,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     pub fn on_path_challenge(
         &mut self,
         peer_address: &SocketAddress,
-        challenge: frame::path_challenge::PathChallenge,
+        challenge: &frame::path_challenge::PathChallenge,
     ) {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
         //# A PATH_RESPONSE frame MUST be sent on the network path where the
@@ -344,7 +344,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     //# contains the data that was sent in a previous PATH_CHALLENGE frame.
     //# A PATH_RESPONSE frame received on any network path validates the path
     //# on which the PATH_CHALLENGE was sent.
-    pub fn on_path_response(&mut self, response: &s2n_quic_core::frame::PathResponse) {
+    pub fn on_path_response(&mut self, response: &frame::PathResponse) {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
         //# A PATH_RESPONSE frame MUST be sent on the network path where the
         //# PATH_CHALLENGE was received.
@@ -737,7 +737,7 @@ mod tests {
         // A response 100ms before the challenge should succeed
         manager.on_timeout(clock.get_time() + expiration - Duration::from_millis(100));
 
-        manager.on_path_response(Id(0), &frame);
+        manager.on_path_response(&frame);
         if let Some((_path_id, first_path)) = manager.path(&first_path.peer_socket_address) {
             assert_eq!(first_path.is_validated(), true);
         } else {
@@ -794,7 +794,7 @@ mod tests {
         let frame = s2n_quic_core::frame::PathResponse {
             data: &expected_data,
         };
-        manager.on_path_response(Id(0), &frame);
+        manager.on_path_response(&frame);
         if let Some((_path_id, first_path)) = manager.path(&first_path.peer_socket_address) {
             assert_eq!(first_path.is_validated(), false);
         } else {
