@@ -352,14 +352,29 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     //# contains the data that was sent in a previous PATH_CHALLENGE frame.
     //# A PATH_RESPONSE frame received on any network path validates the path
     //# on which the PATH_CHALLENGE was sent.
-    pub fn on_path_response(&mut self, path_id: Id, response: &s2n_quic_core::frame::PathResponse) {
+    pub fn on_path_response(&mut self, response: &s2n_quic_core::frame::PathResponse) {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
         //# A PATH_RESPONSE frame MUST be sent on the network path where the
         //# PATH_CHALLENGE was received.
-        // This requirement is achieved because paths own their challenges.
-        // We compare the path_response data to the data stored in the
-        // receiving path's challenge.
-        self[path_id].validate_path_response(response.data);
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
+        //# This requirement MUST NOT be enforced by the endpoint that initiates
+        //# path validation, as that would enable an attack on migration; see
+        //# Section 9.3.3.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.3
+        //# A PATH_RESPONSE frame received on any network path validates the path
+        //# on which the PATH_CHALLENGE was sent.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.3
+        //# An off-path attacker that can observe packets might forward copies of
+        //# genuine packets to endpoints.
+
+        // Since an off-path attacher could forward packets, all paths should be
+        // checked for path validation.
+        for path in self.paths.iter_mut() {
+            path.validate_path_response(response.data);
+        }
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3

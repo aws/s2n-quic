@@ -701,9 +701,13 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         Ok(())
     }
 
-    fn handle_path_response_frame(&mut self, frame: PathResponse) -> Result<(), transport::Error> {
-        // TODO map this frame to a Path
-        eprintln!("UNIMPLEMENTED APPLICATION FRAME {:?}", frame);
+    fn handle_path_response_frame(
+        &mut self,
+        frame: PathResponse,
+        _datagram: &DatagramInfo,
+        path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
+    ) -> Result<(), transport::Error> {
+        path_manager.on_path_response(&frame);
         Ok(())
     }
 
