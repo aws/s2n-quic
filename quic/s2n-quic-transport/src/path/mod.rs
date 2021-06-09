@@ -180,7 +180,7 @@ impl<CC: CongestionController> Path<CC> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
         //# On receiving a PATH_CHALLENGE frame, an endpoint MUST respond by
         //# echoing the data contained in the PATH_CHALLENGE frame in a
-        //# PATH_RESPONSE frame
+        //# PATH_RESPONSE frame.
         self.response_data = Some(*response);
     }
 
@@ -477,7 +477,7 @@ mod tests {
     //= type=test
     //# On receiving a PATH_CHALLENGE frame, an endpoint MUST respond by
     //# echoing the data contained in the PATH_CHALLENGE frame in a
-    //# PATH_RESPONSE frame
+    //# PATH_RESPONSE frame.
     #[test]
     fn on_path_challenge_should_replace_reponse_data() {
         // Setup:

@@ -319,13 +319,6 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         self.peer_id_registry.on_packet_loss(ack_set)
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
-    //= type=TODO
-    //= tracking-issue=404
-    //= feature=Client connection migration
-    //# On receiving a PATH_CHALLENGE frame, an endpoint MUST respond by
-    //# echoing the data contained in the PATH_CHALLENGE frame in a
-    //# PATH_RESPONSE frame.
     pub fn on_path_challenge(
         &mut self,
         peer_address: &SocketAddress,
