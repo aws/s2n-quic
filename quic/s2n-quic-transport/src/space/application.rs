@@ -695,15 +695,19 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
     fn handle_path_challenge_frame(
         &mut self,
         frame: PathChallenge,
+        datagram: &DatagramInfo,
+        path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
     ) -> Result<(), transport::Error> {
-        // TODO
-        eprintln!("UNIMPLEMENTED APPLICATION FRAME {:?}", frame);
+        path_manager.on_path_challenge(&datagram.remote_address, &frame);
         Ok(())
     }
 
-    fn handle_path_response_frame(&mut self, frame: PathResponse) -> Result<(), transport::Error> {
-        // TODO map this frame to a Path
-        eprintln!("UNIMPLEMENTED APPLICATION FRAME {:?}", frame);
+    fn handle_path_response_frame(
+        &mut self,
+        frame: PathResponse,
+        path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
+    ) -> Result<(), transport::Error> {
+        path_manager.on_path_response(&frame);
         Ok(())
     }
 

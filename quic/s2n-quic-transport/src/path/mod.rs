@@ -10,7 +10,7 @@ pub use manager::*;
 
 /// re-export core
 pub use s2n_quic_core::path::*;
-use s2n_quic_core::time::Timestamp;
+use s2n_quic_core::{frame, time::Timestamp};
 
 use crate::{
     connection,
@@ -54,6 +54,8 @@ pub struct Path<CC: CongestionController> {
 
     /// Challenge sent to the peer in a PATH_CHALLENGE
     challenge: Option<Challenge>,
+    /// Received a Challenge and should echo back data in PATH_RESPONSE
+    response_data: Option<challenge::Data>,
 }
 
 /// A Path holds the local and peer socket addresses, connection ids, and state. It can be
@@ -85,6 +87,7 @@ impl<CC: CongestionController> Path<CC> {
             mtu: MINIMUM_MTU,
             peer_validated,
             challenge: None,
+            response_data: None,
         }
     }
 
@@ -148,6 +151,18 @@ impl<CC: CongestionController> Path<CC> {
 
     /// When transmitting on a path this handles any internal state operations.
     pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
+        if let Some(response_data) = &mut self.response_data {
+            let frame = frame::PathResponse {
+                data: &response_data,
+            };
+            if context.write_frame(&frame).is_some() {
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
+                //# An endpoint MUST NOT send more than one PATH_RESPONSE frame in
+                //# response to one PATH_CHALLENGE frame; see Section 13.3.
+                self.response_data = None;
+            }
+        }
+
         if let Some(challenge) = &mut self.challenge {
             challenge.on_transmit(context)
         }
@@ -161,7 +176,15 @@ impl<CC: CongestionController> Path<CC> {
         }
     }
 
-    pub fn validate_path_response(&mut self, response: &[u8]) {
+    pub fn on_path_challenge(&mut self, response: &challenge::Data) {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
+        //# On receiving a PATH_CHALLENGE frame, an endpoint MUST respond by
+        //# echoing the data contained in the PATH_CHALLENGE frame in a
+        //# PATH_RESPONSE frame.
+        self.response_data = Some(*response);
+    }
+
+    pub fn on_path_response(&mut self, response: &[u8]) {
         if let Some(challenge) = &self.challenge {
             if challenge.is_valid(response) {
                 self.on_validated();
@@ -297,11 +320,18 @@ impl<CC: CongestionController> Path<CC> {
 
 impl<CC: CongestionController> transmission::interest::Provider for Path<CC> {
     fn transmission_interest(&self) -> transmission::Interest {
-        self.challenge
-            .as_ref()
-            .map_or(transmission::Interest::default(), |challenge| {
-                challenge.transmission_interest()
-            })
+        core::iter::empty()
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
+            //# An endpoint MUST NOT delay transmission of a
+            //# packet containing a PATH_RESPONSE frame unless constrained by
+            //# congestion control.
+            .chain(self.response_data.map(|_| transmission::Interest::NewData))
+            .chain(
+                self.challenge
+                    .as_ref()
+                    .map(|challenge| challenge.transmission_interest()),
+            )
+            .sum()
     }
 }
 
@@ -344,6 +374,43 @@ mod tests {
     };
 
     #[test]
+    fn response_data_should_only_be_sent_once() {
+        // Setup:
+        let mut path = testing::helper_path();
+        let now = NoopClock {}.get_time();
+
+        let mut frame_buffer = OutgoingFrameBuffer::new();
+        let mut context = MockWriteContext::new(
+            now,
+            &mut frame_buffer,
+            transmission::Constraint::None,
+            endpoint::Type::Client,
+        );
+
+        // set response data
+        let expected_data: [u8; 8] = [0; 8];
+        path.on_path_challenge(&expected_data);
+        assert_eq!(path.response_data.unwrap(), expected_data);
+
+        // Trigger:
+        path.on_transmit(&mut context); // send response data
+
+        // Expectation:
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
+        //= type=test
+        //# An endpoint MUST NOT send more than one PATH_RESPONSE frame in
+        //# response to one PATH_CHALLENGE frame; see Section 13.3.
+        assert_eq!(path.response_data.is_some(), false);
+
+        assert_eq!(context.frame_buffer.len(), 1);
+        let written_data = match context.frame_buffer.pop_front().unwrap().as_frame() {
+            frame::Frame::PathResponse(frame) => Some(*frame.data),
+            _ => None,
+        };
+        assert_eq!(written_data.unwrap(), expected_data);
+    }
+
+    #[test]
     fn on_timeout_should_set_challenge_to_none_on_challenge_abandonment() {
         // Setup:
         let mut path = testing::helper_path();
@@ -351,12 +418,6 @@ mod tests {
         let expiration_time = helper_challenge.now + helper_challenge.abandon_duration;
         path = path.with_challenge(helper_challenge.challenge);
 
-        // Expectation:
-        let expire_now = expiration_time + Duration::from_millis(10);
-        assert_eq!(path.is_challenge_pending(), true);
-        assert_eq!(path.challenge.is_some(), true);
-
-        // Trigger:
         let mut frame_buffer = OutgoingFrameBuffer::new();
         let mut context = MockWriteContext::new(
             helper_challenge.now,
@@ -364,8 +425,14 @@ mod tests {
             transmission::Constraint::None,
             endpoint::Type::Client,
         );
-        path.on_transmit(&mut context);
-        path.on_timeout(expire_now);
+        path.on_transmit(&mut context); // send challenge and arm timer
+
+        // Expectation:
+        assert_eq!(path.is_challenge_pending(), true);
+        assert_eq!(path.challenge.is_some(), true);
+
+        // Trigger:
+        path.on_timeout(expiration_time + Duration::from_millis(10));
 
         // Expectation:
         assert_eq!(path.is_challenge_pending(), false);
@@ -391,6 +458,48 @@ mod tests {
     }
 
     #[test]
+    fn on_path_challenge_should_set_reponse_data() {
+        // Setup:
+        let mut path = testing::helper_path();
+
+        // Expectation:
+        assert_eq!(path.response_data.is_some(), false);
+
+        // Trigger:
+        let expected_data: [u8; 8] = [0; 8];
+        path.on_path_challenge(&expected_data);
+
+        // Expectation:
+        assert_eq!(path.response_data.is_some(), true);
+    }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
+    //= type=test
+    //# On receiving a PATH_CHALLENGE frame, an endpoint MUST respond by
+    //# echoing the data contained in the PATH_CHALLENGE frame in a
+    //# PATH_RESPONSE frame.
+    #[test]
+    fn on_path_challenge_should_replace_reponse_data() {
+        // Setup:
+        let mut path = testing::helper_path();
+        let expected_data: [u8; 8] = [0; 8];
+
+        // Trigger 1:
+        path.on_path_challenge(&expected_data);
+
+        // Expectation 1:
+        assert_eq!(path.response_data.unwrap(), expected_data);
+
+        // Trigger 2:
+        let new_expected_data: [u8; 8] = [1; 8];
+        path.on_path_challenge(&new_expected_data);
+
+        // Expectation 2:
+        assert_ne!(expected_data, new_expected_data);
+        assert_eq!(path.response_data.unwrap(), new_expected_data);
+    }
+
+    #[test]
     fn validate_path_response_should_only_validate_if_challenge_is_set() {
         // Setup:
         let mut path = testing::helper_path();
@@ -401,7 +510,7 @@ mod tests {
 
         // Trigger:
         path = path.with_challenge(helper_challenge.challenge);
-        path.validate_path_response(&helper_challenge.expected_data);
+        path.on_path_response(&helper_challenge.expected_data);
 
         // Expectation:
         assert_eq!(path.is_validated(), true);

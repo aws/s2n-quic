@@ -319,32 +319,17 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         self.peer_id_registry.on_packet_loss(ack_set)
     }
 
-    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
-    //= type=TODO
-    //= tracking-issue=404
-    //= feature=Client connection migration
-    //# On receiving a PATH_CHALLENGE frame, an endpoint MUST respond by
-    //# echoing the data contained in the PATH_CHALLENGE frame in a
-    //# PATH_RESPONSE frame.
     pub fn on_path_challenge(
         &mut self,
-        _peer_address: &SocketAddress,
-        _challenge: frame::path_challenge::PathChallenge,
+        peer_address: &SocketAddress,
+        challenge: &frame::path_challenge::PathChallenge,
     ) {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
-        //= type=TODO
-        //= tracking-issue=406
-        //= feature=Connection migration
-        //# An endpoint MUST NOT delay transmission of a
-        //# packet containing a PATH_RESPONSE frame unless constrained by
-        //# congestion control.
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
-        //= type=TODO
-        //= tracking-issue=407
-        //= feature=Connection migration
-        //# An endpoint MUST NOT send more than one PATH_RESPONSE frame in
-        //# response to one PATH_CHALLENGE frame; see Section 13.3.
+        //# A PATH_RESPONSE frame MUST be sent on the network path where the
+        //# PATH_CHALLENGE was received.
+        if let Some((_id, path)) = self.path_mut(peer_address) {
+            path.on_path_challenge(challenge.data)
+        }
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.3
@@ -352,14 +337,28 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     //# contains the data that was sent in a previous PATH_CHALLENGE frame.
     //# A PATH_RESPONSE frame received on any network path validates the path
     //# on which the PATH_CHALLENGE was sent.
-    pub fn on_path_response(&mut self, path_id: Id, response: &s2n_quic_core::frame::PathResponse) {
+    pub fn on_path_response(&mut self, response: &frame::PathResponse) {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
         //# A PATH_RESPONSE frame MUST be sent on the network path where the
         //# PATH_CHALLENGE was received.
-        // This requirement is achieved because paths own their challenges.
-        // We compare the path_response data to the data stored in the
-        // receiving path's challenge.
-        self[path_id].validate_path_response(response.data);
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
+        //# This requirement MUST NOT be enforced by the endpoint that initiates
+        //# path validation, as that would enable an attack on migration; see
+        //# Section 9.3.3.
+        //
+        // The 'attack on migration' refers to the following scenario:
+        // If the packet forwarded by the off-attacker is received before the
+        // genuine packet, the genuine packet will be discarded as a duplicate
+        // and path validation will fail.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.3
+        //# A PATH_RESPONSE frame received on any network path validates the path
+        //# on which the PATH_CHALLENGE was sent.
+
+        for path in self.paths.iter_mut() {
+            path.on_path_response(response.data);
+        }
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
@@ -437,8 +436,11 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
 
 impl<CCE: congestion_controller::Endpoint> transmission::interest::Provider for Manager<CCE> {
     fn transmission_interest(&self) -> transmission::Interest {
-        // TODO get interest from pending paths
-        self.peer_id_registry.transmission_interest()
+        core::iter::empty()
+            .chain(Some(self.peer_id_registry.transmission_interest()))
+            // query PATH_CHALLENGE and PATH_RESPONSE interest for each path
+            .chain(self.paths.iter().map(|path| path.transmission_interest()))
+            .sum()
     }
 }
 
@@ -691,105 +693,147 @@ mod tests {
     }
 
     #[test]
-    fn test_path_validation() {
-        let clock = NoopClock {};
-        let mut path_rnd_generator = random::testing::Generator(123);
-        let mut expected_data: [u8; 8] = [0; 8];
-        path_rnd_generator.public_random_fill(&mut expected_data);
-
-        // Create a challenge that will expire in 100ms
-        let expiration = Duration::from_millis(100);
-        let challenge = challenge::Challenge::new(expiration, expected_data);
-        let first_conn_id = connection::PeerId::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
-        let first_path = Path::new(
-            SocketAddress::default(),
-            first_conn_id,
-            connection::LocalId::TEST_ID,
-            RttEstimator::new(Duration::from_millis(30)),
-            Default::default(),
-            false,
-        )
-        .with_challenge(challenge);
-
-        let mut manager = manager(first_path.clone(), None);
-        assert_eq!(manager.paths.len(), 1);
-
-        if let Some((_path_id, first_path)) = manager.path(&first_path.peer_socket_address) {
-            assert_eq!(first_path.is_validated(), false);
-        } else {
-            panic!("Path not found");
-        }
-
-        let frame = s2n_quic_core::frame::PathResponse {
-            data: &expected_data,
-        };
-
-        // A response 100ms before the challenge should succeed
-        manager.on_timeout(clock.get_time() + expiration - Duration::from_millis(100));
-
-        manager.on_path_response(Id(0), &frame);
-        if let Some((_path_id, first_path)) = manager.path(&first_path.peer_socket_address) {
-            assert_eq!(first_path.is_validated(), true);
-        } else {
-            panic!("path not found");
-        }
-    }
-
-    #[test]
-    fn test_path_validation_abandoned_challenge() {
-        let now = NoopClock {}.get_time();
-        let mut path_rnd_generator = random::testing::Generator(123);
-        let mut expected_data: [u8; 8] = [0; 8];
-        path_rnd_generator.public_random_fill(&mut expected_data);
-
-        // Create a challenge that will expire in 100ms
-        let expiration = Duration::from_millis(100);
-        let challenge = challenge::Challenge::new(expiration, expected_data);
-        let first_conn_id = connection::PeerId::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
-        let first_path = Path::new(
-            SocketAddress::default(),
-            first_conn_id,
-            connection::LocalId::TEST_ID,
-            RttEstimator::new(Duration::from_millis(30)),
-            Default::default(),
-            false,
-        )
-        .with_challenge(challenge);
-
-        let mut manager = manager(first_path.clone(), None);
-        assert_eq!(manager.paths.len(), 1);
-
-        if let Some((_path_id, first_path)) = manager.path(&first_path.peer_socket_address) {
-            assert_eq!(first_path.is_validated(), false);
-        } else {
-            panic!("Path not found");
-        }
+    // A path should be validated if a PATH_RESPONSE contains data sent
+    // via PATH_CHALLENGE
+    //
+    // Setup:
+    // - create manager with 2 paths
+    // - first path is active
+    // - second path is pending challenge/validation
+    //
+    // Trigger 1:
+    // - call on_timeout just BEFORE challenge should expire
+    //
+    // Expectation 1:
+    // - verify second path is pending challenge
+    // - verify second path is NOT validated
+    //
+    // Trigger 2:
+    // - call on_path_response with expected data for second path
+    //
+    // Expectation 2:
+    // - verify second path is validated
+    fn validate_path_before_challenge_expiration() {
+        // Setup:
+        let mut helper = helper_manager_with_paths();
+        assert_eq!(helper.manager.paths.len(), 2);
+        assert_eq!(helper.manager.active, helper.first_path_id.0);
 
         // send challenge and arm abandon timer
         let mut frame_buffer = OutgoingFrameBuffer::new();
         let mut context = MockWriteContext::new(
-            now,
+            helper.now,
             &mut frame_buffer,
             transmission::Constraint::None,
             endpoint::Type::Client,
         );
-        manager[Id(0)].on_transmit(&mut context);
+        helper.manager[helper.second_path_id].on_transmit(&mut context);
+        assert_eq!(
+            helper.manager[helper.second_path_id].is_challenge_pending(),
+            true
+        );
 
+        // Trigger 1:
+        // A response 100ms before the challenge is abandoned
+        helper
+            .manager
+            .on_timeout(helper.now + helper.challenge_expiration - Duration::from_millis(100));
+
+        // Expectation 1:
+        assert_eq!(
+            helper.manager[helper.second_path_id].is_challenge_pending(),
+            true
+        );
+        assert_eq!(helper.manager[helper.second_path_id].is_validated(), false);
+
+        // Trigger 2:
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
+        //= type=test
+        //# This requirement MUST NOT be enforced by the endpoint that initiates
+        //# path validation, as that would enable an attack on migration; see
+        //# Section 9.3.3.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.3
+        //= type=test
+        //# A PATH_RESPONSE frame received on any network path validates the path
+        //# on which the PATH_CHALLENGE was sent.
+        //
+        // The above requirements are satisfied because on_path_response is a path
+        // agnostic function
+        let frame = s2n_quic_core::frame::PathResponse {
+            data: &helper.expected_data,
+        };
+        helper.manager.on_path_response(&frame);
+
+        // Expectation 2:
+        assert_eq!(helper.manager[helper.second_path_id].is_validated(), true);
+    }
+
+    #[test]
+    // A path should NOT be validated if the challenge has been abandoned
+    //
+    // Setup:
+    // - create manager with 2 paths
+    // - first path is active
+    // - second path is pending challenge/validation
+    //
+    // Trigger 1:
+    // - call on_timeout just AFTER challenge should expire
+    //
+    // Expectation 1:
+    // - verify second path is NOT pending challenge
+    // - verify second path is NOT validated
+    //
+    //
+    // Trigger 2:
+    // - call on_path_response with expected data for second path
+    //
+    // Expectation 2:
+    // - verify second path is NOT validated
+    fn dont_validate_path_if_path_challenge_is_abandoned() {
+        // Setup:
+        let mut helper = helper_manager_with_paths();
+        assert_eq!(helper.manager.paths.len(), 2);
+        assert_eq!(helper.manager.active, helper.first_path_id.0);
+
+        // send challenge and arm abandon timer
+        let mut frame_buffer = OutgoingFrameBuffer::new();
+        let mut context = MockWriteContext::new(
+            helper.now,
+            &mut frame_buffer,
+            transmission::Constraint::None,
+            endpoint::Type::Client,
+        );
+        helper.manager[helper.second_path_id].on_transmit(&mut context);
+        assert_eq!(
+            helper.manager[helper.second_path_id].is_challenge_pending(),
+            true
+        );
+
+        // Trigger 1:
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.4
         //= type=test
         //# Endpoints SHOULD abandon path validation based on a timer.
-
         // A response 100ms after the challenge should fail
-        manager.on_timeout(now + expiration + Duration::from_millis(100));
+        helper
+            .manager
+            .on_timeout(helper.now + helper.challenge_expiration + Duration::from_millis(100));
+
+        // Expectation 1:
+        assert_eq!(
+            helper.manager[helper.second_path_id].is_challenge_pending(),
+            false
+        );
+        assert_eq!(helper.manager[helper.second_path_id].is_validated(), false);
+
+        // Trigger 2:
         let frame = s2n_quic_core::frame::PathResponse {
-            data: &expected_data,
+            data: &helper.expected_data,
         };
-        manager.on_path_response(Id(0), &frame);
-        if let Some((_path_id, first_path)) = manager.path(&first_path.peer_socket_address) {
-            assert_eq!(first_path.is_validated(), false);
-        } else {
-            panic!("path not found");
-        }
+        helper.manager.on_path_response(&frame);
+
+        // Expectation 2:
+        assert_eq!(helper.manager[helper.second_path_id].is_validated(), false);
     }
 
     #[test]
@@ -962,7 +1006,7 @@ mod tests {
         //# An endpoint MUST
         //# perform path validation (Section 8.2) if it detects any change to a
         //# peer's address, unless it has previously validated that address.
-        manager[Id(1)].validate_path_response(&expected_data);
+        manager[Id(1)].on_path_response(&expected_data);
         assert!(manager[Id(1)].is_validated());
     }
 
@@ -1173,8 +1217,9 @@ mod tests {
 
         // Create a challenge that will expire in 100ms
         let now = NoopClock {}.get_time();
-        let expiration = Duration::from_millis(100);
-        let challenge = challenge::Challenge::new(expiration, [0; 8]);
+        let challenge_expiration = Duration::from_millis(10_000);
+        let expected_data = [0; 8];
+        let challenge = challenge::Challenge::new(challenge_expiration, expected_data);
         let second_path = Path::new(
             SocketAddress::default(),
             second_conn_id,
@@ -1207,6 +1252,8 @@ mod tests {
 
         Helper {
             now,
+            challenge_expiration,
+            expected_data,
             first_path_id: Id(0),
             second_path_id: Id(1),
             manager,
@@ -1219,6 +1266,8 @@ mod tests {
 
     struct Helper {
         pub now: Timestamp,
+        pub expected_data: challenge::Data,
+        pub challenge_expiration: Duration,
         pub first_path_id: Id,
         pub second_path_id: Id,
         pub manager: Manager<unlimited::Endpoint>,

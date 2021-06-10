@@ -457,6 +457,27 @@ pub trait PacketSpace<Config: endpoint::Config> {
             .with_frame_type(frame.tag().into()))
     }
 
+    fn handle_path_response_frame(
+        &mut self,
+        frame: PathResponse,
+        _path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
+    ) -> Result<(), transport::Error> {
+        Err(transport::Error::PROTOCOL_VIOLATION
+            .with_reason(Self::INVALID_FRAME_ERROR)
+            .with_frame_type(frame.tag().into()))
+    }
+
+    fn handle_path_challenge_frame(
+        &mut self,
+        frame: PathChallenge,
+        _datagram: &DatagramInfo,
+        _path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
+    ) -> Result<(), transport::Error> {
+        Err(transport::Error::PROTOCOL_VIOLATION
+            .with_reason(Self::INVALID_FRAME_ERROR)
+            .with_frame_type(frame.tag().into()))
+    }
+
     default_frame_handler!(handle_stream_frame, StreamRef);
     default_frame_handler!(handle_data_blocked_frame, DataBlocked);
     default_frame_handler!(handle_max_data_frame, MaxData);
@@ -467,8 +488,6 @@ pub trait PacketSpace<Config: endpoint::Config> {
     default_frame_handler!(handle_stream_data_blocked_frame, StreamDataBlocked);
     default_frame_handler!(handle_streams_blocked_frame, StreamsBlocked);
     default_frame_handler!(handle_new_token_frame, NewToken);
-    default_frame_handler!(handle_path_challenge_frame, PathChallenge);
-    default_frame_handler!(handle_path_response_frame, PathResponse);
 
     fn on_processed_packet(
         &mut self,
@@ -629,12 +648,15 @@ pub trait PacketSpace<Config: endpoint::Config> {
                 Frame::PathChallenge(frame) => {
                     let on_error = with_frame_type!(frame);
                     processed_packet.on_processed_frame(&frame);
-                    self.handle_path_challenge_frame(frame).map_err(on_error)?;
+                    self.handle_path_challenge_frame(frame, datagram, path_manager)
+                        .map_err(on_error)?;
                 }
                 Frame::PathResponse(frame) => {
                     let on_error = with_frame_type!(frame);
                     processed_packet.on_processed_frame(&frame);
-                    self.handle_path_response_frame(frame).map_err(on_error)?;
+
+                    self.handle_path_response_frame(frame, path_manager)
+                        .map_err(on_error)?;
                 }
                 Frame::HandshakeDone(frame) => {
                     let on_error = with_frame_type!(frame);
