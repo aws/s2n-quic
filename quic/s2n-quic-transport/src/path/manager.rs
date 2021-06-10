@@ -348,11 +348,9 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         //# Section 9.3.3.
         //
         // The 'attack on migration' refers to the following scenario:
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.3
-        //# An off-path attacker that can observe packets might forward copies of
-        //# genuine packets to endpoints.  If the copied packet arrives before
-        //# the genuine packet, this will appear as a NAT rebinding.  Any genuine
-        //# packet will be discarded as a duplicate.
+        // If the packet forwarded by the off-attacker is received before the
+        // genuine packet, the genuine packet will be discarded as a duplicate
+        // and path validation will fail.
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.3
         //# A PATH_RESPONSE frame received on any network path validates the path
