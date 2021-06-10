@@ -433,9 +433,19 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         // TODO clean up other paths
     }
 
-    pub fn transmission_constraint(&self) -> transmission::Constraint {
-        // FIXME need a way to 'sum' up transmission contraints from all paths
-        self.active_path().transmission_constraint()
+    pub fn is_amplification_limited(&self) -> bool {
+        // false unless ALL paths are amplification_limited
+        self.paths
+            .iter()
+            .all(|path| path.transmission_constraint().is_amplification_limited())
+    }
+
+    pub fn can_transmit(&self, interest: transmission::Interest) -> bool {
+        // true if ANY of the paths can transmit
+        self.paths.iter().any(|path| {
+            let constraint = path.transmission_constraint();
+            interest.can_transmit(constraint)
+        })
     }
 }
 

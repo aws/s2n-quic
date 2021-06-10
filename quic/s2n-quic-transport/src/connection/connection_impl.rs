@@ -1013,30 +1013,26 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
         match self.state {
             ConnectionState::Active | ConnectionState::Handshaking => {
-                let mut transmission = Interest::default();
-
-                transmission += self.path_manager.transmission_interest();
-
-                let constraint = self.path_manager.transmission_constraint();
+                let mut transmission_interest = Interest::default();
+                transmission_interest += self.path_manager.transmission_interest();
 
                 // don't iterate over everything if we can't send anyway
-                if !constraint.is_amplification_limited() {
+                if !self.path_manager.is_amplification_limited() {
                     if let Some(shared_state) = shared_state.as_ref() {
-                        transmission += shared_state.space_manager.transmission_interest();
+                        transmission_interest += shared_state.space_manager.transmission_interest();
                     }
-                    transmission += self.local_id_registry.transmission_interest();
+                    transmission_interest += self.local_id_registry.transmission_interest();
                 }
 
-                interests.transmission = transmission.can_transmit(constraint);
+                interests.transmission = self.path_manager.can_transmit(transmission_interest);
                 interests.new_connection_id = self.local_id_registry.connection_id_interest()
                     != connection::id::Interest::None;
             }
             ConnectionState::Closing => {
-                let constraint = self.path_manager.transmission_constraint();
-                let transmission = self.close_sender.transmission_interest();
+                let transmission_interest = self.close_sender.transmission_interest();
 
                 interests.closing = true;
-                interests.transmission = transmission.can_transmit(constraint);
+                interests.transmission = self.path_manager.can_transmit(transmission_interest);
                 interests.finalization = self.close_sender.finalization_status().is_final();
             }
             ConnectionState::Draining | ConnectionState::Finished => {
