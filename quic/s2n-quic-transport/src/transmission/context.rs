@@ -19,6 +19,8 @@ pub struct Context<'a, 'b, Config: endpoint::Config> {
     pub packet_number: PacketNumber,
     pub transmission_constraint: transmission::Constraint,
     pub timestamp: Timestamp,
+    pub header_len: usize,
+    pub tag_len: usize,
     pub config: PhantomData<Config>,
 }
 
@@ -82,6 +84,14 @@ impl<'a, 'b, Config: endpoint::Config> WriteContext for Context<'a, 'b, Config> 
     fn local_endpoint_type(&self) -> endpoint::Type {
         Config::ENDPOINT_TYPE
     }
+
+    fn header_len(&self) -> usize {
+        self.header_len
+    }
+
+    fn tag_len(&self) -> usize {
+        self.tag_len
+    }
 }
 
 // Overrides a context's transmission constraint to allow only retransmissions to be written to
@@ -138,5 +148,13 @@ impl<'a, C: WriteContext> WriteContext for RetransmissionContext<'a, C> {
 
     fn local_endpoint_type(&self) -> endpoint::Type {
         self.context.local_endpoint_type()
+    }
+
+    fn header_len(&self) -> usize {
+        self.context.header_len()
+    }
+
+    fn tag_len(&self) -> usize {
+        self.context.tag_len()
     }
 }

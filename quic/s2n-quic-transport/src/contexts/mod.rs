@@ -50,6 +50,12 @@ pub trait WriteContext {
 
     /// Returns the local endpoint type (client or server)
     fn local_endpoint_type(&self) -> endpoint::Type;
+
+    /// Returns the length of the packet header in bytes
+    fn header_len(&self) -> usize;
+
+    /// Returns the length of the authentication tag in bytes
+    fn tag_len(&self) -> usize;
 }
 
 /// Enumerates error values for `on_transmit` calls

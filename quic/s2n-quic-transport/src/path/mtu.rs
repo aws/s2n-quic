@@ -263,9 +263,13 @@ impl Controller {
             return Ok(());
         }
 
-        let header_len = 0; // TODO: add header_len to write context
-        let probe_payload_size = self.probed_size as usize - header_len;
-        if context.remaining_capacity() <= probe_payload_size {
+        // Each packet contains overhead in the form of a packet header and an authentication tag.
+        // This overhead contributes to the overall size of the packet, so the payload we write
+        // to the packet will account for this overhead to reach the target probed size.
+        let probe_payload_size =
+            self.probed_size as usize - context.header_len() - context.tag_len();
+
+        if context.remaining_capacity() < probe_payload_size {
             // There isn't enough capacity in the buffer to write the datagram we
             // want to probe, so we've reached the maximum pmtu and the search is complete.
             self.state = State::SearchComplete;
