@@ -432,6 +432,11 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         self.active_path_mut().on_closing();
         // TODO clean up other paths
     }
+
+    pub fn transmission_constraint(&self) -> transmission::Constraint {
+        // FIXME need a way to 'sum' up transmission contraints from all paths
+        self.active_path().transmission_constraint()
+    }
 }
 
 impl<CCE: congestion_controller::Endpoint> transmission::interest::Provider for Manager<CCE> {

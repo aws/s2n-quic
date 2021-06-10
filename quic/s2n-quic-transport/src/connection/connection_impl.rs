@@ -1017,7 +1017,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
                 transmission += self.path_manager.transmission_interest();
 
-                let constraint = self.path_manager.active_path().transmission_constraint();
+                let constraint = self.path_manager.transmission_constraint();
 
                 // don't iterate over everything if we can't send anyway
                 if !constraint.is_amplification_limited() {
@@ -1032,7 +1032,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                     != connection::id::Interest::None;
             }
             ConnectionState::Closing => {
-                let constraint = self.path_manager.active_path().transmission_constraint();
+                let constraint = self.path_manager.transmission_constraint();
                 let transmission = self.close_sender.transmission_interest();
 
                 interests.closing = true;
