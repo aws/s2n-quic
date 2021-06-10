@@ -282,7 +282,7 @@ impl Controller {
         //# datagram size are more likely to be dropped by the network.
 
         context.write_frame(&frame::Ping);
-        let padding_size = probe_payload_size - &frame::Ping.encoding_size();
+        let padding_size = probe_payload_size - frame::Ping.encoding_size();
         if let Some(packet_number) = context.write_frame(&frame::Padding {
             length: padding_size,
         }) {
