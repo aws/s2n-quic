@@ -346,17 +346,18 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         //# This requirement MUST NOT be enforced by the endpoint that initiates
         //# path validation, as that would enable an attack on migration; see
         //# Section 9.3.3.
+        //
+        // The 'attack on migration' refers to the following scenario:
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.3
+        //# An off-path attacker that can observe packets might forward copies of
+        //# genuine packets to endpoints.  If the copied packet arrives before
+        //# the genuine packet, this will appear as a NAT rebinding.  Any genuine
+        //# packet will be discarded as a duplicate.
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.3
         //# A PATH_RESPONSE frame received on any network path validates the path
         //# on which the PATH_CHALLENGE was sent.
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.3
-        //# An off-path attacker that can observe packets might forward copies of
-        //# genuine packets to endpoints.
-
-        // Since an off-path attacher could forward packets, all paths should be
-        // checked for path validation.
         for path in self.paths.iter_mut() {
             path.on_path_response(response.data);
         }
