@@ -238,6 +238,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
     fn transmission_context<'a>(
         &'a mut self,
         outcome: &'a mut transmission::Outcome,
+        path_id: path::Id,
         timestamp: Timestamp,
     ) -> ConnectionTransmissionContext<'a, Config> {
         // TODO get this from somewhere
@@ -246,7 +247,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         ConnectionTransmissionContext {
             quic_version: self.quic_version,
             timestamp,
-            path_id: self.path_manager.active_path_id(),
+            path_id,
             path_manager: &mut self.path_manager,
             source_connection_id: &self.local_connection_id,
             local_id_registry: &mut self.local_id_registry,
@@ -353,7 +354,11 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             s2n_quic_core::connection::error::as_frame(error, close_formatter, &close_context)
         {
             let mut outcome = transmission::Outcome::default();
-            let mut context = self.transmission_context(&mut outcome, timestamp);
+            let mut context = self.transmission_context(
+                &mut outcome,
+                self.path_manager.active_path_id(),
+                timestamp,
+            );
 
             if let Some(packet) = shared_state.space_manager.on_transmit_close(
                 &early_connection_close,
@@ -456,17 +461,16 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     ) -> Result<(), ConnectionOnTransmitError> {
         let mut count = 0;
 
-        debug_assert!(
-            !self.path_manager.active_path().at_amplification_limit(),
-            "connection should not express transmission interest if amplification limited"
-        );
-
         match self.state {
             ConnectionState::Handshaking | ConnectionState::Active => {
                 if let Some(shared_state) = shared_state {
                     let mut outcome = transmission::Outcome::default();
                     while let Ok(_idx) = queue.push(ConnectionTransmission {
-                        context: self.transmission_context(&mut outcome, timestamp),
+                        context: self.transmission_context(
+                            &mut outcome,
+                            self.path_manager.active_path_id(),
+                            timestamp,
+                        ),
                         shared_state,
                     }) {
                         count += 1;
