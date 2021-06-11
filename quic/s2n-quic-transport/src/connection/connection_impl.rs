@@ -238,6 +238,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
     fn transmission_context<'a>(
         &'a mut self,
         outcome: &'a mut transmission::Outcome,
+        path_id: path::Id,
         timestamp: Timestamp,
     ) -> ConnectionTransmissionContext<'a, Config> {
         // TODO get this from somewhere
@@ -246,7 +247,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         ConnectionTransmissionContext {
             quic_version: self.quic_version,
             timestamp,
-            path_id: self.path_manager.active_path_id(),
+            path_id,
             path_manager: &mut self.path_manager,
             source_connection_id: &self.local_connection_id,
             local_id_registry: &mut self.local_id_registry,
@@ -353,7 +354,11 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             s2n_quic_core::connection::error::as_frame(error, close_formatter, &close_context)
         {
             let mut outcome = transmission::Outcome::default();
-            let mut context = self.transmission_context(&mut outcome, timestamp);
+            let mut context = self.transmission_context(
+                &mut outcome,
+                self.path_manager.active_path_id(),
+                timestamp,
+            );
 
             if let Some(packet) = shared_state.space_manager.on_transmit_close(
                 &early_connection_close,
@@ -457,7 +462,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         let mut count = 0;
 
         debug_assert!(
-            !self.path_manager.active_path().at_amplification_limit(),
+            !self.path_manager.is_amplification_limited(),
             "connection should not express transmission interest if amplification limited"
         );
 
@@ -466,7 +471,11 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 if let Some(shared_state) = shared_state {
                     let mut outcome = transmission::Outcome::default();
                     while let Ok(_idx) = queue.push(ConnectionTransmission {
-                        context: self.transmission_context(&mut outcome, timestamp),
+                        context: self.transmission_context(
+                            &mut outcome,
+                            self.path_manager.active_path_id(),
+                            timestamp,
+                        ),
                         shared_state,
                     }) {
                         count += 1;
@@ -1009,30 +1018,27 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
         match self.state {
             ConnectionState::Active | ConnectionState::Handshaking => {
-                let mut transmission = Interest::default();
-
-                transmission += self.path_manager.transmission_interest();
-
-                let constraint = self.path_manager.active_path().transmission_constraint();
+                let mut transmission_interest = Interest::default();
+                transmission_interest += self.path_manager.transmission_interest();
 
                 // don't iterate over everything if we can't send anyway
-                if !constraint.is_amplification_limited() {
+                if !self.path_manager.is_amplification_limited() {
                     if let Some(shared_state) = shared_state.as_ref() {
-                        transmission += shared_state.space_manager.transmission_interest();
+                        transmission_interest += shared_state.space_manager.transmission_interest();
                     }
-                    transmission += self.local_id_registry.transmission_interest();
+                    transmission_interest += self.local_id_registry.transmission_interest();
                 }
 
-                interests.transmission = transmission.can_transmit(constraint);
+                interests.transmission = self.path_manager.can_transmit(transmission_interest);
                 interests.new_connection_id = self.local_id_registry.connection_id_interest()
                     != connection::id::Interest::None;
             }
             ConnectionState::Closing => {
                 let constraint = self.path_manager.active_path().transmission_constraint();
-                let transmission = self.close_sender.transmission_interest();
+                let transmission_interest = self.close_sender.transmission_interest();
 
                 interests.closing = true;
-                interests.transmission = transmission.can_transmit(constraint);
+                interests.transmission = transmission_interest.can_transmit(constraint);
                 interests.finalization = self.close_sender.finalization_status().is_final();
             }
             ConnectionState::Draining | ConnectionState::Finished => {

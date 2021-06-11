@@ -304,11 +304,6 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         // transmitted.
     }
 
-    /// Iterate paths pending a path verification
-    pub fn pending_paths(&mut self, timestamp: Timestamp) -> PendingPaths<CCE> {
-        PendingPaths::new(self, timestamp)
-    }
-
     /// Called when packets are acknowledged
     pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
         self.peer_id_registry.on_packet_ack(ack_set)
@@ -432,6 +427,21 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         self.active_path_mut().on_closing();
         // TODO clean up other paths
     }
+
+    /// true if ALL paths are amplification_limited
+    pub fn is_amplification_limited(&self) -> bool {
+        self.paths
+            .iter()
+            .all(|path| path.transmission_constraint().is_amplification_limited())
+    }
+
+    /// true if ANY of the paths can transmit
+    pub fn can_transmit(&self, interest: transmission::Interest) -> bool {
+        self.paths.iter().any(|path| {
+            let constraint = path.transmission_constraint();
+            interest.can_transmit(constraint)
+        })
+    }
 }
 
 impl<CCE: congestion_controller::Endpoint> transmission::interest::Provider for Manager<CCE> {
@@ -465,23 +475,6 @@ impl<CCE: congestion_controller::Endpoint> core::ops::Index<Id> for Manager<CCE>
 impl<CCE: congestion_controller::Endpoint> core::ops::IndexMut<Id> for Manager<CCE> {
     fn index_mut(&mut self, id: Id) -> &mut Self::Output {
         &mut self.paths[id.0 as usize]
-    }
-}
-
-#[allow(dead_code)]
-pub struct PendingPaths<'a, CCE: congestion_controller::Endpoint> {
-    index: usize,
-    path_manager: &'a mut Manager<CCE>,
-    timestamp: Timestamp,
-}
-
-impl<'a, CCE: congestion_controller::Endpoint> PendingPaths<'a, CCE> {
-    pub fn new(path_manager: &'a mut Manager<CCE>, timestamp: Timestamp) -> Self {
-        Self {
-            index: 0,
-            path_manager,
-            timestamp,
-        }
     }
 }
 
@@ -1200,6 +1193,63 @@ mod tests {
             .is_ok());
 
         assert_eq!(id_2, manager.paths[0].peer_connection_id);
+    }
+
+    #[test]
+    fn amplification_limited_true_if_all_paths_amplificaiton_limited() {
+        // Setup:
+        let helper = helper_manager_with_paths();
+        let fp = &helper.manager[helper.first_path_id];
+        assert_eq!(fp.at_amplification_limit(), true);
+        let sp = &helper.manager[helper.second_path_id];
+        assert_eq!(sp.at_amplification_limit(), true);
+
+        // Expectation:
+        assert_eq!(helper.manager.is_amplification_limited(), true);
+    }
+
+    #[test]
+    fn amplification_limited_false_if_any_paths_amplificaiton_limited() {
+        // Setup:
+        let mut helper = helper_manager_with_paths();
+        let fp = &helper.manager[helper.first_path_id];
+        assert_eq!(fp.at_amplification_limit(), true);
+        let sp = &mut helper.manager[helper.second_path_id];
+        sp.on_bytes_received(1200);
+        assert_eq!(sp.at_amplification_limit(), false);
+
+        // Expectation:
+        assert_eq!(helper.manager.is_amplification_limited(), false);
+    }
+
+    #[test]
+    fn can_transmit_false_if_no_path_can_transmit() {
+        // Setup:
+        let helper = helper_manager_with_paths();
+        let interest = transmission::Interest::Forced;
+        let fp = &helper.manager[helper.first_path_id];
+        assert_eq!(interest.can_transmit(fp.transmission_constraint()), false);
+        let sp = &helper.manager[helper.second_path_id];
+        assert_eq!(interest.can_transmit(sp.transmission_constraint()), false);
+
+        // Expectation:
+        assert_eq!(helper.manager.can_transmit(interest), false);
+    }
+
+    #[test]
+    fn can_transmit_true_if_any_path_can_transmit() {
+        // Setup:
+        let mut helper = helper_manager_with_paths();
+        let interest = transmission::Interest::Forced;
+        let fp = &helper.manager[helper.first_path_id];
+        assert_eq!(interest.can_transmit(fp.transmission_constraint()), false);
+
+        let sp = &mut helper.manager[helper.second_path_id];
+        sp.on_bytes_received(1200);
+        assert_eq!(interest.can_transmit(sp.transmission_constraint()), true);
+
+        // Expectation:
+        assert_eq!(helper.manager.can_transmit(interest), true);
     }
 
     fn helper_manager_register_second_path_conn_id(register_second_conn_id: bool) -> Helper {
