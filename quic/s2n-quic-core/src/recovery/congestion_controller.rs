@@ -168,6 +168,7 @@ pub mod testing {
             pub on_packets_lost: u32,
             pub on_rtt_update: u32,
             pub on_packet_ack: u32,
+            pub on_mtu_update: u32,
         }
 
         impl super::CongestionController for CongestionController {
@@ -212,7 +213,9 @@ pub mod testing {
             }
 
             fn on_congestion_event(&mut self, _event_time: Timestamp) {}
-            fn on_mtu_update(&mut self, _max_data_size: u16) {}
+            fn on_mtu_update(&mut self, _max_data_size: u16) {
+                self.on_mtu_update += 1;
+            }
             fn on_packet_discarded(&mut self, bytes_sent: usize) {
                 self.bytes_in_flight = self.bytes_in_flight.saturating_sub(bytes_sent as u32);
             }

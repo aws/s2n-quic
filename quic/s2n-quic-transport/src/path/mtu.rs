@@ -97,16 +97,16 @@ const BASE_PLPMTU: u16 = MINIMUM_MTU;
 //# value of MAX_PROBES is 3.
 const MAX_PROBES: u8 = 3;
 
-//= https://tools.ietf.org/rfc/rfc894.txt
-//# The minimum length of the data field of a packet sent over an
-//# Ethernet is 1500 octets, thus the maximum length of an IP datagram
-//# sent over an Ethernet is 1500 octets.
+// The minimum length of the data field of a packet sent over an
+// Ethernet is 1500 octets, thus the maximum length of an IP datagram
+// sent over an Ethernet is 1500 octets.
+// See https://tools.ietf.org/rfc/rfc894.txt
 const ETHERNET_MTU: u16 = 1500;
 
-//= https://tools.ietf.org/rfc/rfc768.txt
-//# Length  is the length  in octets  of this user datagram  including  this
-//# header  and the data.   (This  means  the minimum value of the length is
-//# eight.)
+// Length  is the length  in octets  of this user datagram  including  this
+// header  and the data.   (This  means  the minimum value of the length is
+// eight.)
+// See https://tools.ietf.org/rfc/rfc768.txt
 const UPD_HEADER_LEN: u16 = 8;
 
 // IPv4 header ranges from 20-60 bytes, depending on Options
@@ -204,19 +204,19 @@ impl Controller {
     /// Called when the connection timer expires
     pub fn on_timeout(&mut self, now: Timestamp) {
         if self.pmtu_raise_timer.poll_expiration(now).is_ready() {
-            // Reset the max_probe_size to the max_plpmtu to allow for larger
-            // probe sizes
-            self.max_probe_size = self.max_plpmtu;
-            // send another probe
             self.request_new_search();
         }
     }
 
+    //= https://tools.ietf.org/rfc/rfc8899.txt#4.2
+    //# When
+    //# supported, this mechanism MAY also be used by DPLPMTUD to acknowledge
+    //# reception of a probe packet.
     /// This method gets called when a packet delivery got acknowledged
     pub fn on_packet_ack<A: ack::Set, CC: CongestionController>(
         &mut self,
         ack_set: &A,
-        mut congestion_controller: CC,
+        congestion_controller: &mut CC,
     ) {
         if let State::Searching(packet_number, transmit_time) = self.state {
             if ack_set.contains(packet_number) {
@@ -226,12 +226,12 @@ impl Controller {
 
                 self.probed_size = self.next_probe_size();
 
-                if self.plpmtu + PROBE_THRESHOLD > self.probed_size {
+                if self.probed_size - self.plpmtu < PROBE_THRESHOLD {
                     // The next probe size is within the threshold of the current MTU
                     // so its not worth additional probing.
                     self.state = State::SearchComplete;
-                    self.pmtu_raise_timer
-                        .set(transmit_time + PMTU_RAISE_TIMER_DURATION);
+
+                    self.arm_pmtu_raise_timer(transmit_time);
                 } else {
                     self.request_new_search();
                 }
@@ -239,6 +239,10 @@ impl Controller {
         }
     }
 
+    //= https://tools.ietf.org/rfc/rfc8899.txt#3
+    //# The PL is REQUIRED to be
+    //# robust in the case where probe packets are lost due to other
+    //# reasons (including link transmission error, congestion).
     /// This method gets called when a packet loss is reported
     pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
         if let State::Searching(packet_number, _) = self.state {
@@ -281,6 +285,15 @@ impl Controller {
         //# frames, since packets that are larger than the current maximum
         //# datagram size are more likely to be dropped by the network.
 
+        //= https://tools.ietf.org/rfc/rfc8899.txt#3
+        //# Probe loss recovery: It is RECOMMENDED to use probe packets that
+        //# do not carry any user data that would require retransmission if
+        //# lost.
+
+        //= https://tools.ietf.org/rfc/rfc8899.txt#4.1
+        //# DPLPMTUD MAY choose to use only one of these methods to simplify the
+        //# implementation.
+
         context.write_frame(&frame::Ping);
         let padding_size = probe_payload_size - frame::Ping.encoding_size();
         if let Some(packet_number) = context.write_frame(&frame::Padding {
@@ -308,6 +321,20 @@ impl Controller {
         self.state = State::SearchRequested;
         self.probe_count = 0;
     }
+
+    /// Arm the PMTU Raise Timer if there is still room to increase the
+    /// MTU before hitting the max plpmtu
+    fn arm_pmtu_raise_timer(&mut self, now: Timestamp) {
+        // Reset the max_probe_size to the max_plpmtu to allow for larger probe sizes
+        self.max_probe_size = self.max_plpmtu;
+        self.probed_size = self.next_probe_size();
+
+        if self.probed_size - self.plpmtu > PROBE_THRESHOLD {
+            // There is still some room to try a larger MTU again,
+            // so arm the pmtu raise timer
+            self.pmtu_raise_timer.set(now + PMTU_RAISE_TIMER_DURATION);
+        }
+    }
 }
 
 impl transmission::interest::Provider for Controller {
@@ -316,5 +343,289 @@ impl transmission::interest::Provider for Controller {
             State::SearchRequested => transmission::Interest::NewData,
             _ => transmission::Interest::None,
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::contexts::testing::{MockWriteContext, OutgoingFrameBuffer};
+    use s2n_quic_core::{
+        endpoint,
+        frame::Frame,
+        packet::number::{PacketNumberRange, PacketNumberSpace},
+        recovery::congestion_controller::testing::mock::CongestionController,
+        varint::VarInt,
+    };
+    use s2n_quic_platform::time::now;
+    use std::net::SocketAddr;
+
+    fn new_controller(max_plpmtu: u16) -> Controller {
+        let addr: SocketAddr = "127.0.0.1:443".parse().unwrap();
+        Controller::new(max_plpmtu, addr.into())
+    }
+
+    /// Creates an application space packet number with the given value
+    pub fn pn(nr: usize) -> PacketNumber {
+        PacketNumberSpace::ApplicationData.new_packet_number(VarInt::new(nr as u64).unwrap())
+    }
+
+    #[test]
+    #[should_panic]
+    fn new_max_plpmtu_too_small() {
+        new_controller(BASE_PLPMTU - 1);
+    }
+
+    #[test]
+    #[should_panic]
+    fn new_max_plpmtu_smaller_than_common_mtu() {
+        let controller = new_controller(BASE_PLPMTU + 1);
+        assert_eq!(BASE_PLPMTU + 1, controller.probed_size);
+    }
+
+    #[test]
+    fn new_ipv4() {
+        let addr: SocketAddr = "127.0.0.1:443".parse().unwrap();
+        let controller = Controller::new(1500, addr.into());
+        assert_eq!(1500, controller.max_plpmtu);
+        assert_eq!(1500, controller.max_probe_size);
+        //= https://tools.ietf.org/rfc/rfc8899.txt#5.1.2
+        //= type=test
+        //# When using
+        //# IPv4, there is no currently equivalent size specified, and a
+        //# default BASE_PLPMTU of 1200 bytes is RECOMMENDED.
+        assert_eq!(BASE_PLPMTU as usize, controller.mtu());
+        assert_eq!(0, controller.probe_count);
+        assert_eq!(State::Disabled, controller.state);
+        assert!(!controller.pmtu_raise_timer.is_armed());
+        assert_eq!(1472, controller.probed_size);
+    }
+
+    #[test]
+    fn new_ipv6() {
+        let addr: SocketAddr = "[2001:0db8:85a3:0001:0002:8a2e:0370:7334]:9000"
+            .parse()
+            .unwrap();
+        let controller = Controller::new(2000, addr.into());
+        assert_eq!(2000, controller.max_plpmtu);
+        assert_eq!(2000, controller.max_probe_size);
+        assert_eq!(BASE_PLPMTU as usize, controller.mtu());
+        assert_eq!(0, controller.probe_count);
+        assert_eq!(State::Disabled, controller.state);
+        assert!(!controller.pmtu_raise_timer.is_armed());
+        assert_eq!(1452, controller.probed_size);
+    }
+
+    #[test]
+    #[should_panic]
+    fn enable_already_enabled() {
+        let mut controller = new_controller(1500);
+        controller.enable();
+        controller.enable();
+    }
+
+    #[test]
+    fn enable() {
+        let mut controller = new_controller(1500);
+        controller.enable();
+        assert_eq!(State::SearchRequested, controller.state);
+    }
+
+    //= https://tools.ietf.org/rfc/rfc8899.txt#4.2
+    //= type=test
+    //# When
+    //# supported, this mechanism MAY also be used by DPLPMTUD to acknowledge
+    //# reception of a probe packet.
+    #[test]
+    fn on_packet_ack_within_threshold() {
+        let max_plpmtu = 1472 + PROBE_THRESHOLD * 2;
+        let mut controller = new_controller(max_plpmtu);
+        let pn = pn(1);
+        let mut cc = CongestionController::default();
+        let now = now();
+        controller.state = State::Searching(pn, now);
+        controller.probed_size = BASE_PLPMTU;
+        controller.max_probe_size = BASE_PLPMTU + PROBE_THRESHOLD * 2 - 1;
+
+        controller.on_packet_ack(&PacketNumberRange::new(pn, pn), &mut cc);
+
+        assert_eq!(
+            BASE_PLPMTU + (max_plpmtu - BASE_PLPMTU) / 2,
+            controller.probed_size
+        );
+        assert_eq!(1, cc.on_mtu_update);
+        assert_eq!(State::SearchComplete, controller.state);
+        assert!(controller.pmtu_raise_timer.is_armed());
+        assert_eq!(
+            Some(now + PMTU_RAISE_TIMER_DURATION),
+            controller.timers().next()
+        );
+
+        // Enough time passes that its time to try raising the PMTU again
+        let now = now + PMTU_RAISE_TIMER_DURATION;
+        controller.on_timeout(now);
+
+        assert_eq!(State::SearchRequested, controller.state);
+        assert_eq!(
+            BASE_PLPMTU + (max_plpmtu - BASE_PLPMTU) / 2,
+            controller.probed_size
+        );
+    }
+
+    #[test]
+    fn on_packet_ack_within_threshold_of_max_plpmtu() {
+        let max_plpmtu = 1472 + (PROBE_THRESHOLD * 2 - 1);
+        let mut controller = new_controller(max_plpmtu);
+        let pn = pn(1);
+        let mut cc = CongestionController::default();
+        let now = now();
+        controller.state = State::Searching(pn, now);
+
+        controller.on_packet_ack(&PacketNumberRange::new(pn, pn), &mut cc);
+
+        assert_eq!(1472 + (max_plpmtu - 1472) / 2, controller.probed_size);
+        assert_eq!(1, cc.on_mtu_update);
+        assert_eq!(State::SearchComplete, controller.state);
+        assert!(!controller.pmtu_raise_timer.is_armed());
+    }
+
+    #[test]
+    fn on_packet_ack_search_requested() {
+        let max_plpmtu = 1472 + (PROBE_THRESHOLD * 2);
+        let mut controller = new_controller(max_plpmtu);
+        let pn = pn(1);
+        let mut cc = CongestionController::default();
+        let now = now();
+        controller.state = State::Searching(pn, now);
+
+        controller.on_packet_ack(&PacketNumberRange::new(pn, pn), &mut cc);
+
+        assert_eq!(1472 + (max_plpmtu - 1472) / 2, controller.probed_size);
+        assert_eq!(1, cc.on_mtu_update);
+        assert_eq!(State::SearchRequested, controller.state);
+        assert!(!controller.pmtu_raise_timer.is_armed());
+    }
+
+    //= https://tools.ietf.org/rfc/rfc8899.txt#3
+    //= type=test
+    //# The PL is REQUIRED to be
+    //# robust in the case where probe packets are lost due to other
+    //# reasons (including link transmission error, congestion).
+    #[test]
+    fn on_packet_loss() {
+        let max_plpmtu = 1500;
+        let mut controller = new_controller(max_plpmtu);
+        let pn = pn(1);
+        let now = now();
+        controller.state = State::Searching(pn, now);
+        let probed_size = controller.probed_size;
+
+        controller.on_packet_loss(&PacketNumberRange::new(pn, pn));
+
+        assert_eq!(max_plpmtu, controller.max_probe_size);
+        assert_eq!(probed_size, controller.probed_size);
+        assert_eq!(State::SearchRequested, controller.state);
+    }
+
+    #[test]
+    fn on_packet_loss_max_probes() {
+        let max_plpmtu = 1500;
+        let mut controller = new_controller(max_plpmtu);
+        let pn = pn(1);
+        let now = now();
+        controller.state = State::Searching(pn, now);
+        controller.probe_count = MAX_PROBES;
+
+        controller.on_packet_loss(&PacketNumberRange::new(pn, pn));
+
+        assert_eq!(1472, controller.max_probe_size);
+        assert_eq!(
+            BASE_PLPMTU + (1472 - BASE_PLPMTU) / 2,
+            controller.probed_size
+        );
+        assert_eq!(State::SearchRequested, controller.state);
+    }
+
+    #[test]
+    fn on_transmit_search_not_requested() {
+        let mut controller = new_controller(1500);
+        controller.state = State::SearchComplete;
+        let mut frame_buffer = OutgoingFrameBuffer::new();
+        let mut write_context = MockWriteContext::new(
+            now(),
+            &mut frame_buffer,
+            transmission::Constraint::None,
+            endpoint::Type::Server,
+        );
+
+        assert!(controller.on_transmit(&mut write_context).is_ok());
+        assert!(frame_buffer.is_empty());
+        assert_eq!(State::SearchComplete, controller.state);
+    }
+
+    #[test]
+    fn on_transmit_no_capacity() {
+        let mut controller = new_controller(1500);
+        controller.state = State::SearchRequested;
+        let mut frame_buffer = OutgoingFrameBuffer::new();
+        frame_buffer.set_max_packet_size(Some(controller.probed_size as usize - 1));
+        let mut write_context = MockWriteContext::new(
+            now(),
+            &mut frame_buffer,
+            transmission::Constraint::None,
+            endpoint::Type::Server,
+        );
+
+        assert!(controller.on_transmit(&mut write_context).is_ok());
+        assert!(frame_buffer.is_empty());
+        assert_eq!(State::SearchComplete, controller.state);
+    }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.4
+    //= type=test
+    //# Endpoints could limit the content of PMTU probes to PING and PADDING
+    //# frames, since packets that are larger than the current maximum
+    //# datagram size are more likely to be dropped by the network.
+
+    //= https://tools.ietf.org/rfc/rfc8899.txt#3
+    //= type=test
+    //# Probe loss recovery: It is RECOMMENDED to use probe packets that
+    //# do not carry any user data that would require retransmission if
+    //# lost.
+
+    //= https://tools.ietf.org/rfc/rfc8899.txt#4.1
+    //= type=test
+    //# DPLPMTUD MAY choose to use only one of these methods to simplify the
+    //# implementation.
+    #[test]
+    fn on_transmit() {
+        let mut controller = new_controller(1500);
+        controller.state = State::SearchRequested;
+        let now = now();
+        let mut frame_buffer = OutgoingFrameBuffer::new();
+        frame_buffer.set_max_packet_size(Some(controller.probed_size as usize));
+        let mut write_context = MockWriteContext::new(
+            now,
+            &mut frame_buffer,
+            transmission::Constraint::None,
+            endpoint::Type::Server,
+        );
+        let packet_number = write_context.packet_number();
+
+        assert!(controller.on_transmit(&mut write_context).is_ok());
+        assert_eq!(0, write_context.remaining_capacity());
+        assert_eq!(
+            Frame::Ping { 0: frame::Ping },
+            write_context.frame_buffer.pop_front().unwrap().as_frame()
+        );
+        assert_eq!(
+            Frame::Padding {
+                0: frame::Padding {
+                    length: controller.probed_size as usize - 1
+                }
+            },
+            write_context.frame_buffer.pop_front().unwrap().as_frame()
+        );
+        assert_eq!(State::Searching(packet_number, now), controller.state);
     }
 }

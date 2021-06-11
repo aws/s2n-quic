@@ -2,6 +2,15 @@ target = "https://tools.ietf.org/rfc/rfc8899.txt#5.1.1"
 
 [[exception]]
 quote = '''
+This value MUST NOT be smaller than 1 second and
+SHOULD be larger than 15 seconds.
+'''
+reason = '''
+s2n-quic does not use the probe timer.
+'''
+
+[[exception]]
+quote = '''
 CONFIRMATION_TIMER:  When an acknowledged PL is used, this timer MUST
 NOT be used.
 '''
