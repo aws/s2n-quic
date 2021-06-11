@@ -107,7 +107,7 @@ const ETHERNET_MTU: u16 = 1500;
 // header  and the data.   (This  means  the minimum value of the length is
 // eight.)
 // See https://tools.ietf.org/rfc/rfc768.txt
-const UPD_HEADER_LEN: u16 = 8;
+const UDP_HEADER_LEN: u16 = 8;
 
 // IPv4 header ranges from 20-60 bytes, depending on Options
 const IPV4_MIN_HEADER_LEN: u16 = 20;
@@ -173,7 +173,7 @@ impl Controller {
         // The most likely MTU is based on standard Ethernet MTU minus the minimum length
         // IP headers (without IPv4 options or IPv6 extensions) and UPD header
         let initial_probed_size =
-            (ETHERNET_MTU - UPD_HEADER_LEN - min_ip_header_len).min(max_plpmtu);
+            (ETHERNET_MTU - UDP_HEADER_LEN - min_ip_header_len).min(max_plpmtu);
 
         Self {
             state: State::Disabled,
