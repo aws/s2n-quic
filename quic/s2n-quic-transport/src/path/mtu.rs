@@ -360,6 +360,7 @@ mod test {
     use s2n_quic_platform::time::now;
     use std::net::SocketAddr;
 
+    /// Creates a new mtu::Controller with an IPv4 address and the given `max_plpmtu`
     fn new_controller(max_plpmtu: u16) -> Controller {
         let addr: SocketAddr = "127.0.0.1:443".parse().unwrap();
         Controller::new(max_plpmtu, addr.into())
@@ -377,7 +378,6 @@ mod test {
     }
 
     #[test]
-    #[should_panic]
     fn new_max_plpmtu_smaller_than_common_mtu() {
         let controller = new_controller(BASE_PLPMTU + 1);
         assert_eq!(BASE_PLPMTU + 1, controller.probed_size);
