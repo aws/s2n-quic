@@ -127,6 +127,24 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
             .map(|(id, path)| (Id(id as u8), path))
     }
 
+    /// Returns an iterator over all paths
+    pub fn paths(&self) -> impl Iterator<Item = (Id, &Path<CCE::CongestionController>)> {
+        self.paths
+            .iter()
+            .enumerate()
+            .map(|(id, path)| (Id(id as u8), path))
+    }
+
+    /// Returns an iterator over all paths
+    pub fn paths_mut(
+        &mut self,
+    ) -> impl Iterator<Item = (Id, &mut Path<CCE::CongestionController>)> {
+        self.paths
+            .iter_mut()
+            .enumerate()
+            .map(|(id, path)| (Id(id as u8), path))
+    }
+
     /// Called when a datagram is received on a connection
     /// Upon success, returns a `(Id, bool)` containing the path ID and a boolean that is
     /// true if the path had been amplification limited prior to receiving the datagram

@@ -484,6 +484,26 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                         }
                     }
 
+                    // for path in self.path_manager.paths() {
+                    //     // if path.0 == self.path_manager.active_path_id() {
+                    //     //     continue;
+                    //     // }
+
+                    //     while let Ok(_idx) = queue.push(ConnectionTransmission {
+                    //         context: self.transmission_context(
+                    //             &mut outcome,
+                    //             self.path_manager.active_path_id(),
+                    //             timestamp,
+                    //         ),
+                    //         shared_state,
+                    //     }) {
+                    //         count += 1;
+                    //         if self.path_manager.active_path().at_amplification_limit() {
+                    //             break;
+                    //         }
+                    //     }
+                    // }
+
                     if outcome.ack_elicitation.is_ack_eliciting() {
                         self.on_ack_eliciting_packet_sent(timestamp);
                     }
