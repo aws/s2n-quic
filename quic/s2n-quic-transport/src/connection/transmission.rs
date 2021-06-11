@@ -29,6 +29,7 @@ pub struct ConnectionTransmissionContext<'a, Config: endpoint::Config> {
     pub outcome: &'a mut transmission::Outcome,
     pub ecn: ExplicitCongestionNotification,
     pub min_packet_len: Option<usize>,
+    pub is_path_validated: bool,
 }
 
 impl<'a, Config: endpoint::Config> ConnectionTransmissionContext<'a, Config> {

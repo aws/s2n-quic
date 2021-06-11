@@ -240,6 +240,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         outcome: &'a mut transmission::Outcome,
         path_id: path::Id,
         timestamp: Timestamp,
+        is_path_validated: bool,
     ) -> ConnectionTransmissionContext<'a, Config> {
         // TODO get this from somewhere
         let ecn = Default::default();
@@ -254,6 +255,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
             outcome,
             ecn,
             min_packet_len: None,
+            is_path_validated,
         }
     }
 }
@@ -358,6 +360,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 &mut outcome,
                 self.path_manager.active_path_id(),
                 timestamp,
+                true,
             );
 
             if let Some(packet) = shared_state.space_manager.on_transmit_close(
@@ -475,6 +478,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                             &mut outcome,
                             self.path_manager.active_path_id(),
                             timestamp,
+                            true,
                         ),
                         shared_state,
                     }) {
@@ -484,25 +488,33 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                         }
                     }
 
-                    // for path in self.path_manager.paths() {
-                    //     // if path.0 == self.path_manager.active_path_id() {
-                    //     //     continue;
-                    //     // }
+                    // TODO: this allocation is needed to avoid borrow issues. This should
+                    // be addressed as part of refactoring the path_manager.paths interface
+                    let path_ids: Vec<(path::Id, bool)> = self
+                        .path_manager
+                        .paths()
+                        .map(|(id, path)| (id, path.is_validated()))
+                        .collect();
+                    for (id, is_validated) in path_ids.into_iter() {
+                        if id == self.path_manager.active_path_id() {
+                            continue;
+                        }
 
-                    //     while let Ok(_idx) = queue.push(ConnectionTransmission {
-                    //         context: self.transmission_context(
-                    //             &mut outcome,
-                    //             self.path_manager.active_path_id(),
-                    //             timestamp,
-                    //         ),
-                    //         shared_state,
-                    //     }) {
-                    //         count += 1;
-                    //         if self.path_manager.active_path().at_amplification_limit() {
-                    //             break;
-                    //         }
-                    //     }
-                    // }
+                        while let Ok(_idx) = queue.push(ConnectionTransmission {
+                            context: self.transmission_context(
+                                &mut outcome,
+                                id,
+                                timestamp,
+                                is_validated,
+                            ),
+                            shared_state,
+                        }) {
+                            count += 1;
+                            if self.path_manager[id].at_amplification_limit() {
+                                break;
+                            }
+                        }
+                    }
 
                     if outcome.ack_elicitation.is_ack_eliciting() {
                         self.on_ack_eliciting_packet_sent(timestamp);
