@@ -461,6 +461,11 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     ) -> Result<(), ConnectionOnTransmitError> {
         let mut count = 0;
 
+        debug_assert!(
+            !self.path_manager.is_amplification_limited(),
+            "connection should not express transmission interest if amplification limited"
+        );
+
         match self.state {
             ConnectionState::Handshaking | ConnectionState::Active => {
                 if let Some(shared_state) = shared_state {
@@ -1029,10 +1034,11 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                     != connection::id::Interest::None;
             }
             ConnectionState::Closing => {
+                let constraint = self.path_manager.active_path().transmission_constraint();
                 let transmission_interest = self.close_sender.transmission_interest();
 
                 interests.closing = true;
-                interests.transmission = self.path_manager.can_transmit(transmission_interest);
+                interests.transmission = transmission_interest.can_transmit(constraint);
                 interests.finalization = self.close_sender.finalization_status().is_final();
             }
             ConnectionState::Draining | ConnectionState::Finished => {

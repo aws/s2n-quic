@@ -428,15 +428,15 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         // TODO clean up other paths
     }
 
+    /// true if ALL paths are amplification_limited
     pub fn is_amplification_limited(&self) -> bool {
-        // true if ALL paths are amplification_limited
         self.paths
             .iter()
             .all(|path| path.transmission_constraint().is_amplification_limited())
     }
 
+    /// true if ANY of the paths can transmit
     pub fn can_transmit(&self, interest: transmission::Interest) -> bool {
-        // true if ANY of the paths can transmit
         self.paths.iter().any(|path| {
             let constraint = path.transmission_constraint();
             interest.can_transmit(constraint)
