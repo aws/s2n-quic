@@ -233,6 +233,13 @@ impl Controller {
 
                     self.arm_pmtu_raise_timer(transmit_time);
                 } else {
+                    //= https://tools.ietf.org/rfc/rfc8899.txt#8
+                    //# To avoid excessive load, the interval between individual probe
+                    //# packets MUST be at least one RTT, and the interval between rounds of
+                    //# probing is determined by the PMTU_RAISE_TIMER.
+
+                    // Subsequent probe packets are sent based on the round trip transmission and
+                    // acknowledgement/loss of a packet, so the interval will be at least 1 RTT.
                     self.request_new_search();
                 }
             }
@@ -264,6 +271,9 @@ impl Controller {
     /// Queries the component for any outgoing frames that need to get sent
     pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) -> Result<(), OnTransmitError> {
         if !matches!(self.state, State::SearchRequested) {
+            //= https://tools.ietf.org/rfc/rfc8899.txt#5.2
+            //# When used with an acknowledged PL (e.g., SCTP), DPLPMTUD SHOULD NOT continue to
+            //# generate PLPMTU probes in this state.
             return Ok(());
         }
 
@@ -313,6 +323,9 @@ impl Controller {
 
     /// Calculates the next MTU size to probe for, based on a binary search
     fn next_probe_size(&self) -> u16 {
+        //= https://tools.ietf.org/rfc/rfc8899.txt#5.3.2
+        //# Implementations SHOULD select the set of probe packet sizes to
+        //# maximize the gain in PLPMTU from each search step.
         self.plpmtu + ((self.max_probe_size - self.plpmtu) / 2)
     }
 
@@ -489,6 +502,16 @@ mod test {
         assert!(!controller.pmtu_raise_timer.is_armed());
     }
 
+    //= https://tools.ietf.org/rfc/rfc8899.txt#5.3.2
+    //= type=test
+    //# Implementations SHOULD select the set of probe packet sizes to
+    //# maximize the gain in PLPMTU from each search step.
+
+    //= https://tools.ietf.org/rfc/rfc8899.txt#8
+    //= type=test
+    //# To avoid excessive load, the interval between individual probe
+    //# packets MUST be at least one RTT, and the interval between rounds of
+    //# probing is determined by the PMTU_RAISE_TIMER.
     #[test]
     fn on_packet_ack_search_requested() {
         let max_plpmtu = 1472 + (PROBE_THRESHOLD * 2);
@@ -546,6 +569,11 @@ mod test {
         assert_eq!(State::SearchRequested, controller.state);
     }
 
+    //= https://tools.ietf.org/rfc/rfc8899.txt#5.2
+    //= type=test
+    //# When used with an
+    //# acknowledged PL (e.g., SCTP), DPLPMTUD SHOULD NOT continue to
+    //# generate PLPMTU probes in this state.
     #[test]
     fn on_transmit_search_not_requested() {
         let mut controller = new_controller(1500);
