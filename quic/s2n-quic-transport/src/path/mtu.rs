@@ -184,7 +184,7 @@ impl Controller {
                 // A new MTU has been confirmed, notify the congestion controller
                 congestion_controller.on_mtu_update(self.plpmtu);
 
-                self.probed_size = self.next_probe_size();
+                self.update_probed_size();
 
                 //= https://tools.ietf.org/rfc/rfc8899.txt#8
                 //# To avoid excessive load, the interval between individual probe
@@ -210,7 +210,7 @@ impl Controller {
                     // We've sent MAX_PROBES without acknowledgement, so
                     // attempt a smaller probe size
                     self.max_probe_size = self.probed_size;
-                    self.probed_size = self.next_probe_size();
+                    self.update_probed_size();
                     self.request_new_search(None);
                 } else {
                     // Try the same probe size again
@@ -277,12 +277,12 @@ impl Controller {
         self.plpmtu as usize
     }
 
-    /// Calculates the next MTU size to probe for, based on a binary search
-    fn next_probe_size(&self) -> u16 {
+    /// Sets `probed_size` to the next MTU size to probe for based on a binary search
+    fn update_probed_size(&mut self) {
         //= https://tools.ietf.org/rfc/rfc8899.txt#5.3.2
         //# Implementations SHOULD select the set of probe packet sizes to
         //# maximize the gain in PLPMTU from each search step.
-        self.plpmtu + ((self.max_probe_size - self.plpmtu) / 2)
+        self.probed_size = self.plpmtu + ((self.max_probe_size - self.plpmtu) / 2)
     }
 
     /// Requests a new search to be initiated
@@ -310,7 +310,7 @@ impl Controller {
     fn arm_pmtu_raise_timer(&mut self, now: Timestamp) {
         // Reset the max_probe_size to the max_plpmtu to allow for larger probe sizes
         self.max_probe_size = self.max_plpmtu;
-        self.probed_size = self.next_probe_size();
+        self.update_probed_size();
 
         if self.probed_size - self.plpmtu >= PROBE_THRESHOLD {
             // There is still some room to try a larger MTU again,
