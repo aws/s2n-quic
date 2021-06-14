@@ -77,6 +77,8 @@ impl<'a, Config: endpoint::Config, P: Payload> PacketPayloadEncoder
             packet_number: self.packet_number,
             transmission_constraint: self.transmission_constraint,
             timestamp: self.timestamp,
+            header_len,
+            tag_len,
             config: Default::default(),
         };
 

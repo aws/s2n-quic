@@ -286,4 +286,12 @@ impl<'a> WriteContext for MockWriteContext<'a> {
     fn local_endpoint_type(&self) -> endpoint::Type {
         self.endpoint
     }
+
+    fn header_len(&self) -> usize {
+        0
+    }
+
+    fn tag_len(&self) -> usize {
+        0
+    }
 }

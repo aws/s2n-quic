@@ -4,6 +4,7 @@
 //! This module contains the Path implementation
 mod challenge;
 mod manager;
+mod mtu;
 
 pub use challenge::*;
 pub use manager::*;
