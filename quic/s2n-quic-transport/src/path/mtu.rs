@@ -573,6 +573,7 @@ mod test {
         let now = now();
         controller.state = State::Searching(pn, now);
         controller.probe_count = MAX_PROBES;
+        assert_eq!(max_plpmtu, controller.max_probe_size);
 
         controller.on_packet_loss(&PacketNumberRange::new(pn, pn));
 
