@@ -269,6 +269,10 @@ impl Controller {
     }
 
     /// Queries the component for any outgoing frames that need to get sent
+    ///
+    /// This method assumes that no other data (other than the packet header) has been written
+    /// to the supplied `WriteContext`. The necessitates the caller ensuring the probe packet
+    /// written by this method to be in its own connection transmission.
     pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) -> Result<(), OnTransmitError> {
         if !matches!(self.state, State::SearchRequested) {
             //= https://tools.ietf.org/rfc/rfc8899.txt#5.2
