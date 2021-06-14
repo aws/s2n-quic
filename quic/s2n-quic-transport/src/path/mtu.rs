@@ -385,6 +385,16 @@ mod test {
     }
 
     #[test]
+    fn base_plpmtu_is_1200() {
+        //= https://tools.ietf.org/rfc/rfc8899.txt#5.1.2
+        //= type=test
+        //# When using
+        //# IPv4, there is no currently equivalent size specified, and a
+        //# default BASE_PLPMTU of 1200 bytes is RECOMMENDED.
+        assert_eq!(BASE_PLPMTU, 1200);
+    }
+
+    #[test]
     #[should_panic]
     fn new_max_plpmtu_too_small() {
         new_controller(BASE_PLPMTU - 1);
@@ -402,11 +412,6 @@ mod test {
         let controller = Controller::new(1500, addr.into());
         assert_eq!(1500, controller.max_plpmtu);
         assert_eq!(1500, controller.max_probe_size);
-        //= https://tools.ietf.org/rfc/rfc8899.txt#5.1.2
-        //= type=test
-        //# When using
-        //# IPv4, there is no currently equivalent size specified, and a
-        //# default BASE_PLPMTU of 1200 bytes is RECOMMENDED.
         assert_eq!(BASE_PLPMTU as usize, controller.mtu());
         assert_eq!(0, controller.probe_count);
         assert_eq!(State::Disabled, controller.state);
