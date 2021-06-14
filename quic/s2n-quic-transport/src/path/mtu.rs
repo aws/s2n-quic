@@ -193,7 +193,7 @@ impl Controller {
         // TODO: Look up current MTU in a cache. If there is a cache hit
         //       move directly to SearchComplete and arm the PMTU raise timer.
         //       Otherwise, start searching for a larger PMTU immediately
-        self.request_new_search();
+        self.request_new_search(None);
     }
 
     /// Returns all timers for the component
@@ -204,7 +204,7 @@ impl Controller {
     /// Called when the connection timer expires
     pub fn on_timeout(&mut self, now: Timestamp) {
         if self.pmtu_raise_timer.poll_expiration(now).is_ready() {
-            self.request_new_search();
+            self.request_new_search(None);
         }
     }
 
@@ -226,22 +226,14 @@ impl Controller {
 
                 self.probed_size = self.next_probe_size();
 
-                if self.probed_size - self.plpmtu < PROBE_THRESHOLD {
-                    // The next probe size is within the threshold of the current MTU
-                    // so its not worth additional probing.
-                    self.state = State::SearchComplete;
+                //= https://tools.ietf.org/rfc/rfc8899.txt#8
+                //# To avoid excessive load, the interval between individual probe
+                //# packets MUST be at least one RTT, and the interval between rounds of
+                //# probing is determined by the PMTU_RAISE_TIMER.
 
-                    self.arm_pmtu_raise_timer(transmit_time);
-                } else {
-                    //= https://tools.ietf.org/rfc/rfc8899.txt#8
-                    //# To avoid excessive load, the interval between individual probe
-                    //# packets MUST be at least one RTT, and the interval between rounds of
-                    //# probing is determined by the PMTU_RAISE_TIMER.
-
-                    // Subsequent probe packets are sent based on the round trip transmission and
-                    // acknowledgement/loss of a packet, so the interval will be at least 1 RTT.
-                    self.request_new_search();
-                }
+                // Subsequent probe packets are sent based on the round trip transmission and
+                // acknowledgement/loss of a packet, so the interval will be at least 1 RTT.
+                self.request_new_search(Some(transmit_time));
             }
         }
     }
@@ -259,7 +251,7 @@ impl Controller {
                     // attempt a smaller probe size
                     self.max_probe_size = self.probed_size;
                     self.probed_size = self.next_probe_size();
-                    self.request_new_search();
+                    self.request_new_search(None);
                 } else {
                     // Try the same probe size again
                     self.state = State::SearchRequested
@@ -334,9 +326,23 @@ impl Controller {
     }
 
     /// Requests a new search to be initiated
-    fn request_new_search(&mut self) {
-        self.state = State::SearchRequested;
-        self.probe_count = 0;
+    ///
+    /// If `last_probe_time` is supplied, the PMTU Raise Timer will be armed as
+    /// necessary if the probed_size is already within the PROBE_THRESHOLD
+    /// of the current PLPMTU
+    fn request_new_search(&mut self, last_probe_time: Option<Timestamp>) {
+        if self.probed_size - self.plpmtu >= PROBE_THRESHOLD {
+            self.probe_count = 0;
+            self.state = State::SearchRequested;
+        } else {
+            // The next probe size is within the threshold of the current MTU
+            // so its not worth additional probing.
+            self.state = State::SearchComplete;
+
+            if let Some(last_probe_time) = last_probe_time {
+                self.arm_pmtu_raise_timer(last_probe_time);
+            }
+        }
     }
 
     /// Arm the PMTU Raise Timer if there is still room to increase the
@@ -346,7 +352,7 @@ impl Controller {
         self.max_probe_size = self.max_plpmtu;
         self.probed_size = self.next_probe_size();
 
-        if self.probed_size - self.plpmtu > PROBE_THRESHOLD {
+        if self.probed_size - self.plpmtu >= PROBE_THRESHOLD {
             // There is still some room to try a larger MTU again,
             // so arm the pmtu raise timer
             self.pmtu_raise_timer.set(now + PMTU_RAISE_TIMER_DURATION);
@@ -406,8 +412,11 @@ mod test {
 
     #[test]
     fn new_max_plpmtu_smaller_than_common_mtu() {
-        let controller = new_controller(BASE_PLPMTU + 1);
+        let mut controller = new_controller(BASE_PLPMTU + 1);
         assert_eq!(BASE_PLPMTU + 1, controller.probed_size);
+
+        controller.enable();
+        assert_eq!(State::SearchComplete, controller.state);
     }
 
     #[test]
