@@ -416,7 +416,10 @@ mod test {
         assert_eq!(0, controller.probe_count);
         assert_eq!(State::Disabled, controller.state);
         assert!(!controller.pmtu_raise_timer.is_armed());
-        assert_eq!(1472, controller.probed_size);
+        assert_eq!(
+            ETHERNET_MTU - UDP_HEADER_LEN - IPV4_MIN_HEADER_LEN,
+            controller.probed_size
+        );
     }
 
     #[test]
@@ -431,7 +434,10 @@ mod test {
         assert_eq!(0, controller.probe_count);
         assert_eq!(State::Disabled, controller.state);
         assert!(!controller.pmtu_raise_timer.is_armed());
-        assert_eq!(1452, controller.probed_size);
+        assert_eq!(
+            ETHERNET_MTU - UDP_HEADER_LEN - IPV6_MIN_HEADER_LEN,
+            controller.probed_size
+        );
     }
 
     #[test]
