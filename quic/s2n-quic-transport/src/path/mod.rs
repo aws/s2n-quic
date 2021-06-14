@@ -84,6 +84,11 @@ impl<CC: CongestionController> Path<CC> {
                 tx_bytes: 0,
                 rx_bytes: 0,
             },
+            //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.2.1
+            //= type=TODO path should doesnt automatically have MINIMUM_MTU
+            //# When an endpoint is unable to expand the datagram size to 1200 bytes
+            //# due to the anti-amplification limit, the path MTU will not be
+            //# validated.
             mtu: MINIMUM_MTU,
             peer_validated,
             challenge: None,
@@ -206,6 +211,23 @@ impl<CC: CongestionController> Path<CC> {
     /// Returns whether this path has passed address validation
     pub fn is_validated(&self) -> bool {
         self.state == State::Validated
+    }
+
+    /// Returns whether this path has passed address validation
+    pub fn is_mtu_validated(&self) -> bool {
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.2.4
+        //= type=TODO
+        //# An endpoint
+        //# that has no valid network path to its peer MAY signal this using the
+        //# NO_VIABLE_PATH connection error, noting that this is only possible if
+        //# the network path exists but does not support the required MTU
+        //# (Section 14).
+
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.2.4
+        //# However, the endpoint MUST initiate
+        //# another path validation with an expanded datagram to verify that the
+        //# path supports the required MTU.
+        self.mtu >= MINIMUM_MTU
     }
 
     /// Marks the path as peer validated

@@ -29,7 +29,7 @@ pub struct ConnectionTransmissionContext<'a, Config: endpoint::Config> {
     pub outcome: &'a mut transmission::Outcome,
     pub ecn: ExplicitCongestionNotification,
     pub min_packet_len: Option<usize>,
-    pub is_path_validated: bool,
+    pub is_mtu_validated: bool,
 }
 
 impl<'a, Config: endpoint::Config> ConnectionTransmissionContext<'a, Config> {
@@ -144,6 +144,25 @@ impl<'a, Config: endpoint::Config> tx::Message for ConnectionTransmission<'a, Co
                 Some(PacketNumberSpace::Initial)
             }
         };
+
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.2.4
+        //= type=TODO
+        //# An endpoint MUST expand datagrams that contain a PATH_CHALLENGE frame
+        //# to at least the smallest allowed maximum datagram size of 1200 bytes,
+        //# unless the anti-amplification limit for the path does not permit
+        //# sending a datagram of this size.
+
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.2.4
+        //= type=TODO
+        //# An endpoint MUST expand datagrams that contain a PATH_RESPONSE frame
+        //# to at least the smallest allowed maximum datagram size of 1200 bytes.
+
+        //= https://www.rfc-editor.org/rfc/rfc9000.txt#8.2.4
+        //= type=TODO
+        //# However, an endpoint MUST NOT expand the
+        //# datagram containing the PATH_RESPONSE if the resulting data exceeds
+        //# the anti-amplification limit.  This is expected to only occur if the
+        //# received PATH_CHALLENGE was not sent in an expanded datagram.
 
         //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4
         //# When packets of different types need to be sent,

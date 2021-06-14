@@ -240,7 +240,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         outcome: &'a mut transmission::Outcome,
         path_id: path::Id,
         timestamp: Timestamp,
-        is_path_validated: bool,
+        is_mtu_validated: bool,
     ) -> ConnectionTransmissionContext<'a, Config> {
         // TODO get this from somewhere
         let ecn = Default::default();
@@ -255,7 +255,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
             outcome,
             ecn,
             min_packet_len: None,
-            is_path_validated,
+            is_mtu_validated,
         }
     }
 }
@@ -493,9 +493,9 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                     let path_ids: Vec<(path::Id, bool)> = self
                         .path_manager
                         .paths()
-                        .map(|(id, path)| (id, path.is_validated()))
+                        .map(|(id, path)| (id, path.is_mtu_validated()))
                         .collect();
-                    for (id, is_validated) in path_ids.into_iter() {
+                    for (id, is_mtu_validated) in path_ids.into_iter() {
                         if id == self.path_manager.active_path_id() {
                             continue;
                         }
@@ -505,7 +505,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                                 &mut outcome,
                                 id,
                                 timestamp,
-                                is_validated,
+                                is_mtu_validated,
                             ),
                             shared_state,
                         }) {
