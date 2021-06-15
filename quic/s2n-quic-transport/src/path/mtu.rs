@@ -2,10 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    contexts::{OnTransmitError, WriteContext},
-    path::MINIMUM_MTU,
-    timer::VirtualTimer,
-    transmission,
+    contexts::WriteContext, path::MINIMUM_MTU, timer::VirtualTimer, transmission,
     transmission::Interest,
 };
 use core::time::Duration;
@@ -225,12 +222,12 @@ impl Controller {
     /// This method assumes that no other data (other than the packet header) has been written
     /// to the supplied `WriteContext`. This necessitates the caller ensuring the probe packet
     /// written by this method to be in its own connection transmission.
-    pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) -> Result<(), OnTransmitError> {
+    pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
         if !matches!(self.state, State::SearchRequested) {
             //= https://tools.ietf.org/rfc/rfc8899.txt#5.2
             //# When used with an acknowledged PL (e.g., SCTP), DPLPMTUD SHOULD NOT continue to
             //# generate PLPMTU probes in this state.
-            return Ok(());
+            return;
         }
 
         // Each packet contains overhead in the form of a packet header and an authentication tag.
@@ -243,7 +240,7 @@ impl Controller {
             // There isn't enough capacity in the buffer to write the datagram we
             // want to probe, so we've reached the maximum pmtu and the search is complete.
             self.state = State::SearchComplete;
-            return Ok(());
+            return;
         }
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.4
@@ -268,8 +265,6 @@ impl Controller {
             self.probe_count += 1;
             self.state = State::Searching(packet_number, context.current_time());
         }
-
-        Ok(())
     }
 
     /// Gets the currently validated maximum transmission unit
@@ -571,7 +566,7 @@ mod test {
             endpoint::Type::Server,
         );
 
-        assert!(controller.on_transmit(&mut write_context).is_ok());
+        controller.on_transmit(&mut write_context);
         assert!(frame_buffer.is_empty());
         assert_eq!(State::SearchComplete, controller.state);
     }
@@ -589,7 +584,7 @@ mod test {
             endpoint::Type::Server,
         );
 
-        assert!(controller.on_transmit(&mut write_context).is_ok());
+        controller.on_transmit(&mut write_context);
         assert!(frame_buffer.is_empty());
         assert_eq!(State::SearchComplete, controller.state);
     }
@@ -625,7 +620,7 @@ mod test {
         );
         let packet_number = write_context.packet_number();
 
-        assert!(controller.on_transmit(&mut write_context).is_ok());
+        controller.on_transmit(&mut write_context);
         assert_eq!(0, write_context.remaining_capacity());
         assert_eq!(
             Frame::Ping { 0: frame::Ping },
