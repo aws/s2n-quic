@@ -322,6 +322,15 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         // transmitted.
     }
 
+    /// new function that only writes the challenge or response from the specific path
+    pub fn on_transmit_probing<W: transmission::WriteContext>(
+        &mut self,
+        context: &mut W,
+        path_id: Id
+    ) {
+        self.path(path_id).on_transmit_probing()
+    }
+
     /// Called when packets are acknowledged
     pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
         self.peer_id_registry.on_packet_ack(ack_set)

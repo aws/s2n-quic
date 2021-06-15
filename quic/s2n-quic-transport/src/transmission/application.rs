@@ -22,6 +22,7 @@ pub struct Payload<'a, S: Stream, CCE: congestion_controller::Endpoint> {
     pub local_id_registry: &'a mut connection::LocalIdRegistry,
     pub path_manager: &'a mut path::Manager<CCE>,
     pub recovery_manager: &'a mut recovery::Manager,
+    pub path_id: path::id,
 }
 
 impl<'a, S: Stream, CCE: congestion_controller::Endpoint> super::Payload for Payload<'a, S, CCE> {
@@ -32,6 +33,12 @@ impl<'a, S: Stream, CCE: congestion_controller::Endpoint> super::Payload for Pay
 
     fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
         let did_send_ack = self.ack_manager.on_transmit(context);
+
+
+        // this can be simplified to only checking the active path
+        (self.path_manager.requires_probing, self.path_manager.is_active_path(path_id))
+            (_, false) => probe_on_transmit
+            (_, true) => probe_on_transmit + app_on_transmit
 
         // Payloads can only transmit and retransmit
         if context.transmission_constraint().can_transmit()

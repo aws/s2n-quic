@@ -287,6 +287,9 @@ impl<'a, Config: endpoint::Config> tx::Message for ConnectionTransmission<'a, Co
                 .filter(|pn_space| pn_space.is_application_data())
                 .map(|_| encoder.capacity());
 
+            // if path probing
+            // apply padding to atleast 1200 bytes
+
             match space.on_transmit(
                 &mut self.context,
                 transmission_constraint,

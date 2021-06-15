@@ -159,6 +159,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
                 local_id_registry: context.local_id_registry,
                 path_manager: context.path_manager,
                 recovery_manager: &mut self.recovery_manager,
+                context.path().id, // pass the path id for the path we are transmitting on
             },
             timestamp: context.timestamp,
             transmission_constraint,
