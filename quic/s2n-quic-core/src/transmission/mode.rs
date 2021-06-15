@@ -5,7 +5,7 @@
 pub enum Mode {
     /// Loss recovery probing to detect lost packets
     LossRecoveryProbing,
-    /// Maximum transmission probing to determine the path MTU
+    /// Maximum transmission unit probing to determine the path MTU
     MtuProbing,
     /// Path validation to verify peer address reachability
     PathValidation,
