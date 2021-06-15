@@ -306,12 +306,21 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
 
     /// Called when packets are acknowledged
     pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
-        self.peer_id_registry.on_packet_ack(ack_set)
+        self.peer_id_registry.on_packet_ack(ack_set);
+
+        for path in self.paths.iter_mut() {
+            path.mtu_controller
+                .on_packet_ack(ack_set, &mut path.congestion_controller);
+        }
     }
 
     /// Called when packets are lost
     pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
-        self.peer_id_registry.on_packet_loss(ack_set)
+        self.peer_id_registry.on_packet_loss(ack_set);
+
+        for path in self.paths.iter_mut() {
+            path.mtu_controller.on_packet_loss(ack_set);
+        }
     }
 
     pub fn on_path_challenge(

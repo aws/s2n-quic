@@ -111,8 +111,6 @@ pub struct Controller {
     pmtu_raise_timer: VirtualTimer,
 }
 
-// TODO: Remove when used
-#[allow(dead_code)]
 impl Controller {
     /// Construct a new mtu::Controller with the given `max_plpmtu` and `peer_socket_address`
     pub fn new(max_plpmtu: u16, peer_socket_address: &SocketAddress) -> Self {

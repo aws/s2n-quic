@@ -47,8 +47,8 @@ pub struct Path<CC: CongestionController> {
     pub pto_backoff: u32,
     /// Tracks whether this path has passed Address or Path validation
     state: State,
-    /// Maximum transmission unit of the path
-    mtu: u16,
+    /// Controller for determining the maximum transmission unit of the path
+    mtu_controller: mtu::Controller,
 
     /// True if the path has been validated by the peer
     peer_validated: bool,
@@ -85,7 +85,7 @@ impl<CC: CongestionController> Path<CC> {
                 tx_bytes: 0,
                 rx_bytes: 0,
             },
-            mtu: MINIMUM_MTU,
+            mtu_controller: mtu::Controller::new(DEFAULT_MAX_MTU, &peer_socket_address),
             peer_validated,
             challenge: None,
             response_data: None,
@@ -140,14 +140,19 @@ impl<CC: CongestionController> Path<CC> {
                 self.challenge = None;
             }
         }
+        self.mtu_controller.on_timeout(timestamp);
     }
 
     pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
-        self.challenge
-            .as_ref()
-            .map(|challenge| challenge.timers())
-            .into_iter()
-            .flatten()
+        core::iter::empty()
+            .chain(
+                self.challenge
+                    .as_ref()
+                    .map(|challenge| challenge.timers())
+                    .into_iter()
+                    .flatten(),
+            )
+            .chain(self.mtu_controller.timers())
     }
 
     /// When transmitting on a path this handles any internal state operations.
@@ -167,6 +172,8 @@ impl<CC: CongestionController> Path<CC> {
         if let Some(challenge) = &mut self.challenge {
             challenge.on_transmit(context)
         }
+
+        self.mtu_controller.on_transmit(context)
     }
 
     pub fn is_challenge_pending(&self) -> bool {
@@ -202,6 +209,9 @@ impl<CC: CongestionController> Path<CC> {
     pub fn on_validated(&mut self) {
         self.challenge = None;
         self.state = State::Validated;
+
+        // Enable the mtu controller to allow for PMTU discovery
+        self.mtu_controller.enable()
     }
 
     /// Returns whether this path has passed address validation
@@ -235,7 +245,7 @@ impl<CC: CongestionController> Path<CC> {
     //# PLPMTU.
     pub fn clamp_mtu(&self, requested_size: usize) -> usize {
         match self.state {
-            State::Validated => requested_size.min(self.mtu as usize),
+            State::Validated => requested_size.min(self.mtu_controller.mtu()),
 
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1
             //# Prior to validating the client address, servers MUST NOT send more
@@ -246,7 +256,9 @@ impl<CC: CongestionController> Path<CC> {
                     .checked_mul(3)
                     .and_then(|v| v.checked_sub(tx_bytes))
                     .unwrap_or(0);
-                requested_size.min(limit as usize).min(self.mtu as usize)
+                requested_size
+                    .min(limit as usize)
+                    .min(self.mtu_controller.mtu())
             }
         }
     }
@@ -285,7 +297,7 @@ impl<CC: CongestionController> Path<CC> {
         //# Prior to validating the client address, servers MUST NOT send more
         //# than three times as many bytes as the number of bytes they have
         //# received.
-        let mtu = self.mtu as usize;
+        let mtu = self.mtu_controller.mtu();
         self.clamp_mtu(mtu) < mtu
     }
 
