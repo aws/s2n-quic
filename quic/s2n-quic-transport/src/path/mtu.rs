@@ -15,7 +15,7 @@ use s2n_quic_core::{
     time::Timestamp,
 };
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 enum State {
     //= https://tools.ietf.org/rfc/rfc8899.txt#5.2
     //# The DISABLED state is the initial state before probing has started.
@@ -85,7 +85,7 @@ const PROBE_THRESHOLD: u16 = 20;
 //# seconds, as recommended by PLPMTUD [RFC4821].
 const PMTU_RAISE_TIMER_DURATION: Duration = Duration::from_secs(600);
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Controller {
     state: State,
     //= https://tools.ietf.org/rfc/rfc8899.txt#2
@@ -118,7 +118,7 @@ pub struct Controller {
 #[allow(dead_code)]
 impl Controller {
     /// Construct a new mtu::Controller with the given `max_plpmtu` and `peer_socket_address`
-    pub fn new(max_plpmtu: u16, peer_socket_address: SocketAddress) -> Self {
+    pub fn new(max_plpmtu: u16, peer_socket_address: &SocketAddress) -> Self {
         debug_assert!(
             max_plpmtu >= BASE_PLPMTU,
             "max_plpmtu must be at least {}",
@@ -346,7 +346,7 @@ mod test {
     /// Creates a new mtu::Controller with an IPv4 address and the given `max_plpmtu`
     fn new_controller(max_plpmtu: u16) -> Controller {
         let addr: SocketAddr = "127.0.0.1:443".parse().unwrap();
-        Controller::new(max_plpmtu, addr.into())
+        Controller::new(max_plpmtu, &addr.into())
     }
 
     /// Creates an application space packet number with the given value
@@ -382,7 +382,7 @@ mod test {
     #[test]
     fn new_ipv4() {
         let addr: SocketAddr = "127.0.0.1:443".parse().unwrap();
-        let controller = Controller::new(1500, addr.into());
+        let controller = Controller::new(1500, &addr.into());
         assert_eq!(1500, controller.max_plpmtu);
         assert_eq!(1500, controller.max_probe_size);
         assert_eq!(BASE_PLPMTU as usize, controller.mtu());
@@ -400,7 +400,7 @@ mod test {
         let addr: SocketAddr = "[2001:0db8:85a3:0001:0002:8a2e:0370:7334]:9000"
             .parse()
             .unwrap();
-        let controller = Controller::new(2000, addr.into());
+        let controller = Controller::new(2000, &addr.into());
         assert_eq!(2000, controller.max_plpmtu);
         assert_eq!(2000, controller.max_probe_size);
         assert_eq!(BASE_PLPMTU as usize, controller.mtu());
