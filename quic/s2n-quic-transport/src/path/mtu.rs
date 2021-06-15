@@ -270,6 +270,11 @@ impl Controller {
         self.plpmtu as usize
     }
 
+    /// Gets the MTU current being probed for
+    pub fn probed_sized(&self) -> usize {
+        self.probed_size as usize
+    }
+
     /// Sets `probed_size` to the next MTU size to probe for based on a binary search
     fn update_probed_size(&mut self) {
         //= https://tools.ietf.org/rfc/rfc8899.txt#5.3.2
