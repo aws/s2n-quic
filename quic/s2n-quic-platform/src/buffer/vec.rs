@@ -6,10 +6,10 @@ use core::{
     fmt,
     ops::{Index, IndexMut},
 };
+use s2n_quic_core::path::DEFAULT_MAX_MTU;
 
 // TODO decide on better defaults
 const DEFAULT_MESSAGE_COUNT: usize = 4096;
-const DEFAULT_MTU: usize = 1500;
 
 pub struct VecBuffer(SegmentBuffer<alloc::vec::Vec<u8>>);
 
@@ -29,7 +29,7 @@ impl Default for VecBuffer {
         if cfg!(test) {
             Self::new(64, 1200)
         } else {
-            Self::new(DEFAULT_MESSAGE_COUNT, DEFAULT_MTU)
+            Self::new(DEFAULT_MESSAGE_COUNT, DEFAULT_MAX_MTU as usize)
         }
     }
 }
