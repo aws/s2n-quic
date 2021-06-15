@@ -347,6 +347,7 @@ mod tests {
             s2n_quic_platform::time::now(),
             &mut frame_buffer,
             transmission::Constraint::None,
+            transmission::Mode::Normal,
             endpoint::Type::Server,
         );
 
@@ -409,6 +410,7 @@ mod tests {
             s2n_quic_platform::time::now(),
             &mut frame_buffer,
             transmission::Constraint::None,
+            transmission::Mode::Normal,
             endpoint::Type::Server,
         );
         write_context.transmission_constraint = transmission::Constraint::CongestionLimited;

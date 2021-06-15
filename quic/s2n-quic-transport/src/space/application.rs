@@ -162,6 +162,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             },
             timestamp: context.timestamp,
             transmission_constraint,
+            transmission_mode: context.transmission_mode,
             tx_packet_numbers: &mut self.tx_packet_numbers,
         };
 
@@ -229,6 +230,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             },
             timestamp: context.timestamp,
             transmission_constraint: transmission::Constraint::None,
+            transmission_mode: transmission::Mode::Normal,
             tx_packet_numbers: &mut self.tx_packet_numbers,
         };
 

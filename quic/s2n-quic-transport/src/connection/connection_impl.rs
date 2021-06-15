@@ -240,6 +240,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         outcome: &'a mut transmission::Outcome,
         path_id: path::Id,
         timestamp: Timestamp,
+        transmission_mode: transmission::Mode,
     ) -> ConnectionTransmissionContext<'a, Config> {
         // TODO get this from somewhere
         let ecn = Default::default();
@@ -254,6 +255,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
             outcome,
             ecn,
             min_packet_len: None,
+            transmission_mode,
         }
     }
 }
@@ -358,6 +360,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 &mut outcome,
                 self.path_manager.active_path_id(),
                 timestamp,
+                transmission::Mode::Normal,
             );
 
             if let Some(packet) = shared_state.space_manager.on_transmit_close(
@@ -475,6 +478,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                             &mut outcome,
                             self.path_manager.active_path_id(),
                             timestamp,
+                            transmission::Mode::Normal,
                         ),
                         shared_state,
                     }) {

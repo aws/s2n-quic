@@ -596,6 +596,7 @@ mod tests {
             now,
             &mut frame_buffer,
             transmission::Constraint::None,
+            transmission::Mode::Normal,
             endpoint::Type::Client,
         );
         manager[Id(1)].on_transmit(&mut context);
@@ -718,6 +719,7 @@ mod tests {
             helper.now,
             &mut frame_buffer,
             transmission::Constraint::None,
+            transmission::Mode::Normal,
             endpoint::Type::Client,
         );
         helper.manager[helper.second_path_id].on_transmit(&mut context);
@@ -795,6 +797,7 @@ mod tests {
             helper.now,
             &mut frame_buffer,
             transmission::Constraint::None,
+            transmission::Mode::Normal,
             endpoint::Type::Client,
         );
         helper.manager[helper.second_path_id].on_transmit(&mut context);
@@ -1142,6 +1145,7 @@ mod tests {
             now,
             &mut frame_buffer,
             transmission::Constraint::None,
+            transmission::Mode::Normal,
             endpoint::Type::Client,
         );
         manager[second_path_id].on_transmit(&mut context);

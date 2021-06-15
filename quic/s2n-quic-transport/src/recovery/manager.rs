@@ -810,6 +810,14 @@ impl Pto {
 
     /// Queries the component for any outgoing frames that need to get sent
     pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
+        if !context.transmission_mode().is_loss_recovery_probing() {
+            // If we aren't currently in loss recovery probing mode, don't
+            // send a probe. We could be in this state even if PtoState is
+            // RequiresTransmission if we are just transmitting a ConnectionClose
+            // frame.
+            return;
+        }
+
         match self.state {
             PtoState::RequiresTransmission(0) => self.state = PtoState::Idle,
             PtoState::RequiresTransmission(remaining) => {
@@ -2936,6 +2944,7 @@ mod test {
             s2n_quic_platform::time::now(),
             &mut frame_buffer,
             transmission::Constraint::CongestionLimited, // Recovery manager ignores constraints
+            transmission::Mode::LossRecoveryProbing,
             endpoint::Type::Client,
         );
 
@@ -2988,6 +2997,25 @@ mod test {
         manager.pto.state = RequiresTransmission(2);
         manager.on_transmit(&mut context);
         assert_eq!(manager.pto.state, RequiresTransmission(1));
+    }
+
+    #[test]
+    fn on_transmit_normal_transmission_mode() {
+        let space = PacketNumberSpace::ApplicationData;
+        let mut manager = Manager::new(space, Duration::from_millis(10));
+        let mut frame_buffer = OutgoingFrameBuffer::new();
+        let mut context = MockWriteContext::new(
+            s2n_quic_platform::time::now(),
+            &mut frame_buffer,
+            transmission::Constraint::CongestionLimited, // Recovery manager ignores constraints
+            transmission::Mode::Normal,
+            endpoint::Type::Client,
+        );
+
+        manager.pto.state = RequiresTransmission(2);
+        manager.on_transmit(&mut context);
+        assert_eq!(0, frame_buffer.frames.len());
+        assert_eq!(manager.pto.state, RequiresTransmission(2));
     }
 
     // Helper function that will call on_ack_frame with the given packet numbers

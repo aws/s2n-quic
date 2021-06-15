@@ -742,6 +742,7 @@ fn peer_closing_streams_transmits_max_streams() {
             s2n_quic_platform::time::now(),
             &mut frame_buffer,
             transmission::Constraint::None,
+            transmission::Mode::Normal,
             endpoint::Type::Server,
         );
         let packet_number = write_context.packet_number();
@@ -823,6 +824,7 @@ fn send_streams_blocked_frame_when_blocked_by_peer() {
             s2n_quic_platform::time::now(),
             &mut frame_buffer,
             transmission::Constraint::None,
+            transmission::Mode::Normal,
             endpoint::Type::Server,
         );
         let packet_number = write_context.packet_number();
@@ -987,6 +989,7 @@ where
         s2n_quic_platform::time::now(),
         &mut frame_buffer,
         transmission::Constraint::None,
+        transmission::Mode::Normal,
         endpoint::Type::Server,
     );
     let packet_number = write_context.packet_number();
@@ -1015,6 +1018,7 @@ where
         s2n_quic_platform::time::now(),
         &mut frame_buffer,
         transmission::Constraint::None,
+        transmission::Mode::Normal,
         endpoint::Type::Server,
     );
     let packet_number = write_context.packet_number();
@@ -1090,6 +1094,7 @@ fn send_data_blocked_frame_when_blocked_by_connection_flow_limits() {
         s2n_quic_platform::time::now(),
         &mut frame_buffer,
         transmission::Constraint::None,
+        transmission::Mode::Normal,
         endpoint::Type::Server,
     );
     let packet_number = write_context.packet_number();
@@ -2281,6 +2286,7 @@ fn on_transmit_queries_streams_for_data() {
         s2n_quic_platform::time::now(),
         &mut frame_buffer,
         transmission::Constraint::None,
+        transmission::Mode::Normal,
         endpoint::Type::Server,
     );
 
@@ -2335,6 +2341,7 @@ fn on_transmit_queries_streams_for_data() {
         s2n_quic_platform::time::now(),
         &mut frame_buffer,
         transmission::Constraint::None,
+        transmission::Mode::Normal,
         endpoint::Type::Server,
     );
 
@@ -2368,6 +2375,7 @@ fn on_transmit_queries_streams_for_data() {
         s2n_quic_platform::time::now(),
         &mut frame_buffer,
         transmission::Constraint::None,
+        transmission::Mode::Normal,
         endpoint::Type::Server,
     );
 
@@ -2392,6 +2400,7 @@ fn on_transmit_queries_streams_for_data() {
         s2n_quic_platform::time::now(),
         &mut frame_buffer,
         transmission::Constraint::None,
+        transmission::Mode::Normal,
         endpoint::Type::Server,
     );
 
@@ -2416,6 +2425,7 @@ fn on_transmit_queries_streams_for_data() {
         s2n_quic_platform::time::now(),
         &mut frame_buffer,
         transmission::Constraint::None,
+        transmission::Mode::Normal,
         endpoint::Type::Server,
     );
 
@@ -2437,6 +2447,7 @@ fn on_transmit_queries_streams_for_data() {
         s2n_quic_platform::time::now(),
         &mut frame_buffer,
         transmission::Constraint::None,
+        transmission::Mode::Normal,
         endpoint::Type::Server,
     );
 

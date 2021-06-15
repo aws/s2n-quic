@@ -45,6 +45,7 @@ pub struct Transmission<'a, Config: endpoint::Config, P: Payload> {
     pub packet_number: PacketNumber,
     pub timestamp: Timestamp,
     pub transmission_constraint: transmission::Constraint,
+    pub transmission_mode: transmission::Mode,
     pub tx_packet_numbers: &'a mut TxPacketNumbers,
 }
 
@@ -76,6 +77,7 @@ impl<'a, Config: endpoint::Config, P: Payload> PacketPayloadEncoder
             buffer,
             packet_number: self.packet_number,
             transmission_constraint: self.transmission_constraint,
+            transmission_mode: self.transmission_mode,
             timestamp: self.timestamp,
             header_len,
             tag_len,

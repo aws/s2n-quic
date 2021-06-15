@@ -385,6 +385,7 @@ mod tests {
             now,
             &mut frame_buffer,
             transmission::Constraint::None,
+            transmission::Mode::Normal,
             endpoint::Type::Client,
         );
 
@@ -424,6 +425,7 @@ mod tests {
             helper_challenge.now,
             &mut frame_buffer,
             transmission::Constraint::None,
+            transmission::Mode::Normal,
             endpoint::Type::Client,
         );
         path.on_transmit(&mut context); // send challenge and arm timer

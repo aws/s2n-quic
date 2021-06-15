@@ -24,6 +24,9 @@ pub trait WriteContext {
     /// Returns the transmission constraint for the current packet
     fn transmission_constraint(&self) -> transmission::Constraint;
 
+    /// Returns the transmission mode for the current packet
+    fn transmission_mode(&self) -> transmission::Mode;
+
     /// Returns the number of available bytes remaining in the current payload
     fn remaining_capacity(&self) -> usize;
 

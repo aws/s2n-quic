@@ -8,8 +8,10 @@ use crate::{
 use core::ops;
 
 pub mod constraint;
+pub mod mode;
 
 pub use constraint::Constraint;
+pub use mode::Mode;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Outcome {
