@@ -298,10 +298,14 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
 
     /// Writes any frames the path manager wishes to transmit to the given context
     pub fn on_transmit<W: transmission::WriteContext>(&mut self, context: &mut W) {
-        self.peer_id_registry.on_transmit(context)
+        self.peer_id_registry.on_transmit(context);
 
         // TODO Add in per-path constraints based on whether a Challenge needs to be
         // transmitted.
+
+        for path in self.paths.iter_mut() {
+            path.on_transmit(context);
+        }
     }
 
     /// Called when packets are acknowledged
