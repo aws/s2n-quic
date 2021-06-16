@@ -473,25 +473,27 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             ConnectionState::Handshaking | ConnectionState::Active => {
                 if let Some(shared_state) = shared_state {
                     let mut outcome = transmission::Outcome::default();
-                    while let Ok(_idx) = queue.push(ConnectionTransmission {
-                        context: self.transmission_context(
-                            &mut outcome,
-                            self.path_manager.active_path_id(),
-                            timestamp,
-                            transmission::Mode::Normal,
-                        ),
-                        shared_state,
-                    }) {
+                    while self.path_manager.active_path().at_amplification_limit()
+                        && queue
+                            .push(ConnectionTransmission {
+                                context: self.transmission_context(
+                                    &mut outcome,
+                                    self.path_manager.active_path_id(),
+                                    timestamp,
+                                    transmission::Mode::Normal,
+                                ),
+                                shared_state,
+                            })
+                            .is_ok()
+                    {
                         count += 1;
-                        if self.path_manager.active_path().at_amplification_limit() {
-                            break;
-                        }
                     }
 
                     if outcome.ack_elicitation.is_ack_eliciting() {
                         self.on_ack_eliciting_packet_sent(timestamp);
                     }
 
+                    // TODO: Is this in the right place?
                     publisher.on_packet_sent(event::builders::PacketSent {
                         packet_header: event::builders::PacketHeader {
                             packet_type: outcome.packet_number.space().into(),
@@ -500,6 +502,25 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                         }
                         .into(),
                     });
+
+                    // Send an MTU probe if necessary. At this point all non MTU probing data
+                    // will have been transmitted, so the MTU probe transmission will only contain
+                    // the MTU probe packet.
+                    if !self.path_manager.active_path().at_amplification_limit()
+                        && queue
+                            .push(ConnectionTransmission {
+                                context: self.transmission_context(
+                                    &mut outcome,
+                                    self.path_manager.active_path_id(),
+                                    timestamp,
+                                    transmission::Mode::MtuProbing,
+                                ),
+                                shared_state,
+                            })
+                            .is_ok()
+                    {
+                        count += 1
+                    };
                 }
                 // TODO  leave the psuedo in comment, TODO send this stuff
                 // for path_id in path_manager.pending_path_validation() {
@@ -508,7 +529,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 //  prob_path(path) // for mtu discovery or path
                 //  if not validated, send challenge_frame;
                 //  }
-                //  TODO send probe for MTU changes
             }
             ConnectionState::Closing => {
                 let path = self.path_manager.active_path_mut();

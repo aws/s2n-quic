@@ -208,6 +208,10 @@ impl<CC: CongestionController> Path<CC> {
 
     /// Called when the path is validated
     pub fn on_validated(&mut self) {
+        if self.is_validated() {
+            return;
+        }
+
         self.challenge = None;
         self.state = State::Validated;
 
@@ -561,6 +565,22 @@ mod tests {
         // Expectation:
         assert_eq!(path.is_validated(), true);
         assert_eq!(path.challenge.is_some(), false);
+    }
+
+    #[test]
+    fn on_validated_when_already_validated_does_nothing() {
+        // Setup:
+        let mut path = testing::helper_path();
+        path = path.with_challenge(helper_challenge().challenge);
+        path.on_validated();
+        path = path.with_challenge(helper_challenge().challenge);
+
+        // Trigger:
+        path.on_validated();
+
+        // Expectation:
+        assert_eq!(path.is_validated(), true);
+        assert_eq!(path.challenge.is_some(), true);
     }
 
     #[test]
