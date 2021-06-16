@@ -221,7 +221,7 @@ impl Controller {
     /// to the supplied `WriteContext`. This necessitates the caller ensuring the probe packet
     /// written by this method to be in its own connection transmission.
     pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
-        if !matches!(self.state, State::SearchRequested) {
+        if self.state != State::SearchRequested || !context.transmission_mode().is_mtu_probing() {
             //= https://tools.ietf.org/rfc/rfc8899.txt#5.2
             //# When used with an acknowledged PL (e.g., SCTP), DPLPMTUD SHOULD NOT continue to
             //# generate PLPMTU probes in this state.
@@ -566,6 +566,39 @@ mod test {
             now(),
             &mut frame_buffer,
             transmission::Constraint::None,
+            transmission::Mode::MtuProbing,
+            endpoint::Type::Server,
+        );
+
+        assert!(controller.on_transmit(&mut write_context).is_ok());
+        assert!(frame_buffer.is_empty());
+        assert_eq!(State::SearchComplete, controller.state);
+    }
+
+    #[test]
+    fn on_transmit_not_mtu_probing() {
+        let mut controller = new_controller(1500);
+        controller.state = State::SearchRequested;
+        let mut frame_buffer = OutgoingFrameBuffer::new();
+        let mut write_context = MockWriteContext::new(
+            now(),
+            &mut frame_buffer,
+            transmission::Constraint::None,
+            transmission::Mode::Normal,
+            endpoint::Type::Server,
+        );
+
+        assert!(controller.on_transmit(&mut write_context).is_ok());
+        assert!(frame_buffer.is_empty());
+        assert_eq!(State::SearchRequested, controller.state);
+
+        controller.state = State::SearchComplete;
+        let mut frame_buffer = OutgoingFrameBuffer::new();
+        let mut write_context = MockWriteContext::new(
+            now(),
+            &mut frame_buffer,
+            transmission::Constraint::None,
+            transmission::Mode::Normal,
             endpoint::Type::Server,
         );
 
@@ -584,6 +617,7 @@ mod test {
             now(),
             &mut frame_buffer,
             transmission::Constraint::None,
+            transmission::Mode::MtuProbing,
             endpoint::Type::Server,
         );
 
@@ -619,6 +653,7 @@ mod test {
             now,
             &mut frame_buffer,
             transmission::Constraint::None,
+            transmission::Mode::MtuProbing,
             endpoint::Type::Server,
         );
         let packet_number = write_context.packet_number();

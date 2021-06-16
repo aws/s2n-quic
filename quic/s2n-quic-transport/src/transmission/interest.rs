@@ -108,12 +108,6 @@ mod test {
         assert!(LostData.can_transmit(RetransmissionOnly));
         assert!(Forced.can_transmit(RetransmissionOnly));
 
-        // Probing
-        assert!(!None.can_transmit(Constraint::Probing));
-        assert!(NewData.can_transmit(Constraint::Probing));
-        assert!(LostData.can_transmit(Constraint::Probing));
-        assert!(Forced.can_transmit(Constraint::Probing));
-
         // No Constraint
         assert!(!None.can_transmit(Constraint::None));
         assert!(NewData.can_transmit(Constraint::None));

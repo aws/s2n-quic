@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{contexts::WriteContext, endpoint, transmission};
+use crate::{contexts::WriteContext, endpoint, transmission, transmission::Mode};
 use core::marker::PhantomData;
 use s2n_codec::{Encoder, EncoderBuffer, EncoderValue};
 use s2n_quic_core::{
@@ -18,6 +18,7 @@ pub struct Context<'a, 'b, Config: endpoint::Config> {
     pub buffer: &'a mut EncoderBuffer<'b>,
     pub packet_number: PacketNumber,
     pub transmission_constraint: transmission::Constraint,
+    pub transmission_mode: transmission::Mode,
     pub timestamp: Timestamp,
     pub header_len: usize,
     pub tag_len: usize,
@@ -31,6 +32,10 @@ impl<'a, 'b, Config: endpoint::Config> WriteContext for Context<'a, 'b, Config> 
 
     fn transmission_constraint(&self) -> transmission::Constraint {
         self.transmission_constraint
+    }
+
+    fn transmission_mode(&self) -> Mode {
+        self.transmission_mode
     }
 
     fn remaining_capacity(&self) -> usize {
@@ -50,7 +55,6 @@ impl<'a, 'b, Config: endpoint::Config> WriteContext for Context<'a, 'b, Config> 
                     assert!(!frame.is_congestion_controlled());
                 }
                 transmission::Constraint::RetransmissionOnly => {}
-                transmission::Constraint::Probing => {}
                 transmission::Constraint::None => {}
             }
         }
@@ -118,6 +122,10 @@ impl<'a, C: WriteContext> WriteContext for RetransmissionContext<'a, C> {
         );
 
         transmission::Constraint::RetransmissionOnly
+    }
+
+    fn transmission_mode(&self) -> Mode {
+        self.context.transmission_mode()
     }
 
     fn remaining_capacity(&self) -> usize {

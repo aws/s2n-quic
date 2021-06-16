@@ -14,7 +14,7 @@ use s2n_quic_core::{
     packet::number::{PacketNumber, PacketNumberSpace},
     time::Timestamp,
     transmission,
-    transmission::Constraint,
+    transmission::{Constraint, Mode},
     varint::VarInt,
 };
 
@@ -218,6 +218,7 @@ pub struct MockWriteContext<'a> {
     pub current_time: Timestamp,
     pub frame_buffer: &'a mut OutgoingFrameBuffer,
     pub transmission_constraint: Constraint,
+    pub transmission_mode: Mode,
     pub endpoint: endpoint::Type,
 }
 
@@ -226,12 +227,14 @@ impl<'a> MockWriteContext<'a> {
         current_time: Timestamp,
         frame_buffer: &'a mut OutgoingFrameBuffer,
         transmission_constraint: Constraint,
+        transmission_mode: Mode,
         endpoint: endpoint::Type,
     ) -> MockWriteContext<'a> {
         MockWriteContext {
             current_time,
             frame_buffer,
             transmission_constraint,
+            transmission_mode,
             endpoint,
         }
     }
@@ -244,6 +247,10 @@ impl<'a> WriteContext for MockWriteContext<'a> {
 
     fn transmission_constraint(&self) -> Constraint {
         self.transmission_constraint
+    }
+
+    fn transmission_mode(&self) -> Mode {
+        self.transmission_mode
     }
 
     fn remaining_capacity(&self) -> usize {
@@ -262,7 +269,6 @@ impl<'a> WriteContext for MockWriteContext<'a> {
                 assert!(!frame.is_congestion_controlled());
             }
             transmission::Constraint::RetransmissionOnly => {}
-            transmission::Constraint::Probing => {}
             transmission::Constraint::None => {}
         }
         self.frame_buffer.write_frame(frame)

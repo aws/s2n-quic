@@ -169,6 +169,7 @@ mod tests {
             helper.now,
             &mut frame_buffer,
             transmission::Constraint::None,
+            transmission::Mode::Normal,
             endpoint::Type::Client,
         );
         assert_eq!(helper.challenge.state, State::RequiresTransmission(2));
@@ -220,6 +221,7 @@ mod tests {
             helper.now,
             &mut frame_buffer,
             transmission::Constraint::None,
+            transmission::Mode::Normal,
             endpoint::Type::Client,
         );
         assert_eq!(helper.challenge.state, State::RequiresTransmission(2));
@@ -241,6 +243,7 @@ mod tests {
             helper.now,
             &mut frame_buffer,
             transmission::Constraint::None,
+            transmission::Mode::Normal,
             endpoint::Type::Client,
         );
         helper.challenge.state = State::Idle;
@@ -264,6 +267,7 @@ mod tests {
             helper.now,
             &mut frame_buffer,
             transmission::Constraint::None,
+            transmission::Mode::Normal,
             endpoint::Type::Client,
         );
         helper.challenge.on_transmit(&mut context);
@@ -289,6 +293,7 @@ mod tests {
             helper.now,
             &mut frame_buffer,
             transmission::Constraint::None,
+            transmission::Mode::Normal,
             endpoint::Type::Client,
         );
         helper.challenge.on_transmit(&mut context);
@@ -320,6 +325,7 @@ mod tests {
             helper.now,
             &mut frame_buffer,
             transmission::Constraint::None,
+            transmission::Mode::Normal,
             endpoint::Type::Client,
         );
         helper.challenge.on_transmit(&mut context);

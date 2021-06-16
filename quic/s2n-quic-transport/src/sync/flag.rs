@@ -187,6 +187,7 @@ mod tests {
             time::now(),
             &mut frame_buffer,
             transmission::Constraint::None,
+            transmission::Mode::Normal,
             endpoint::Type::Server,
         );
 

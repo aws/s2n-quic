@@ -190,6 +190,7 @@ impl TestEnvironment {
             self.current_time,
             &mut self.sent_frames,
             self.transmission_constraint,
+            transmission::Mode::Normal,
             self.endpoint,
         );
         assert!(self
@@ -211,6 +212,7 @@ impl TestEnvironment {
             self.current_time,
             &mut self.sent_frames,
             self.transmission_constraint,
+            transmission::Mode::Normal,
             self.endpoint,
         );
         self.stream.on_transmit(&mut write_ctx).ok()?;
