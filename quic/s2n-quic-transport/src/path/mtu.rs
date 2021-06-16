@@ -570,7 +570,7 @@ mod test {
             endpoint::Type::Server,
         );
 
-        assert!(controller.on_transmit(&mut write_context).is_ok());
+        controller.on_transmit(&mut write_context);
         assert!(frame_buffer.is_empty());
         assert_eq!(State::SearchComplete, controller.state);
     }
@@ -588,7 +588,7 @@ mod test {
             endpoint::Type::Server,
         );
 
-        assert!(controller.on_transmit(&mut write_context).is_ok());
+        controller.on_transmit(&mut write_context);
         assert!(frame_buffer.is_empty());
         assert_eq!(State::SearchRequested, controller.state);
 
