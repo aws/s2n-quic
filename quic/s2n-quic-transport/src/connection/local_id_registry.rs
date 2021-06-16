@@ -1131,6 +1131,7 @@ mod tests {
             s2n_quic_platform::time::now(),
             &mut frame_buffer,
             transmission::Constraint::None,
+            transmission::Mode::Normal,
             endpoint::Type::Server,
         );
         reg1.on_transmit(&mut write_context);
@@ -1219,6 +1220,7 @@ mod tests {
             s2n_quic_platform::time::now(),
             &mut frame_buffer,
             transmission::Constraint::RetransmissionOnly,
+            transmission::Mode::Normal,
             endpoint::Type::Server,
         );
         reg1.on_transmit(&mut write_context);
@@ -1276,6 +1278,7 @@ mod tests {
             s2n_quic_platform::time::now(),
             &mut frame_buffer,
             transmission::Constraint::None,
+            transmission::Mode::Normal,
             endpoint::Type::Server,
         );
 

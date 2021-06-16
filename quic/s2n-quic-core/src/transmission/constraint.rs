@@ -16,8 +16,6 @@ pub enum Constraint {
     CongestionLimited,
     /// Congestion controller fast retransmission
     RetransmissionOnly,
-    /// Probe packets need transmission
-    Probing,
     /// No constraints
     None,
 }
@@ -39,14 +37,9 @@ impl Constraint {
         matches!(self, Self::RetransmissionOnly)
     }
 
-    /// True if the transmission is being sent as a probe
-    pub fn is_probing(self) -> bool {
-        matches!(self, Self::Probing)
-    }
-
     /// True if new data can be transmitted
     pub fn can_transmit(self) -> bool {
-        self.is_none() || self.is_probing()
+        self.is_none()
     }
 
     /// True if lost data can be retransmitted

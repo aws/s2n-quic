@@ -419,15 +419,16 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
             )?;
         }
 
-        // If the current transmission is a probe, we can include some already transmitted,
-        // unacknowledged data in the probe packet since there is a higher likelihood this
-        // data has been lost. If lost data has already been written to the packet, we
+        // If the current transmission is a loss recovery probe, we can include some already
+        // transmitted, unacknowledged data in the probe packet since there is a higher likelihood
+        // this data has been lost. If lost data has already been written to the packet, we
         // skip this feature as an optimization to avoid having to filter out already written
         // lost data. Since it is unlikely there is lost data requiring retransmission at the
         // same time as a probe transmission is being sent, this optimization does not have
         // much impact on the effectiveness of this feature.
-        let retransmit_unacked_data_in_probe =
-            Writer::RETRANSMIT_IN_PROBE && constraint.is_probing() && !transmitted_lost;
+        let retransmit_unacked_data_in_probe = Writer::RETRANSMIT_IN_PROBE
+            && context.transmission_mode().is_loss_recovery_probing()
+            && !transmitted_lost;
 
         if retransmit_unacked_data_in_probe {
             let mut viewer = self.buffer.viewer();
@@ -582,6 +583,7 @@ mod tests {
             current_time: s2n_quic_platform::time::now(),
             frame_buffer: &mut frame_buffer,
             transmission_constraint: transmission::Constraint::None,
+            transmission_mode: transmission::Mode::Normal,
             endpoint: endpoint::Type::Server,
         };
         let mut lost = HashSet::new();

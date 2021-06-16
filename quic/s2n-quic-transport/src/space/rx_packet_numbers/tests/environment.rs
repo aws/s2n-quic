@@ -9,6 +9,7 @@ pub struct TestEnvironment {
     pub sent_frames: OutgoingFrameBuffer,
     pub current_time: Timestamp,
     pub transmission_constraint: transmission::Constraint,
+    pub transmission_mode: transmission::Mode,
     pub local_endpoint_type: endpoint::Type,
 }
 
@@ -28,6 +29,7 @@ impl TestEnvironment {
             sent_frames,
             current_time: s2n_quic_platform::time::now(),
             transmission_constraint: transmission::Constraint::None,
+            transmission_mode: transmission::Mode::Normal,
             local_endpoint_type: endpoint::Type::Server,
         }
     }
@@ -37,6 +39,7 @@ impl TestEnvironment {
             self.current_time,
             &mut self.sent_frames,
             self.transmission_constraint,
+            self.transmission_mode,
             self.local_endpoint_type,
         )
     }

@@ -826,6 +826,7 @@ pub(crate) mod tests {
             s2n_quic_platform::time::now(),
             &mut frame_buffer,
             transmission::Constraint::None,
+            transmission::Mode::Normal,
             endpoint::Type::Server,
         );
         let packet_number = write_context.packet_number();
