@@ -76,9 +76,10 @@ impl<'a, Config: endpoint::Config> tx::Message for ConnectionTransmission<'a, Co
         let shared_state = &mut self.shared_state;
         let space_manager = &mut shared_state.space_manager;
 
-        // TODO: if MTU probing, don't clamp (or clamp to probe size)
-        //       if recovery probing, clamp to min mtu
-        let mtu = self.context.path().clamp_mtu(buffer.len());
+        let mtu = self
+            .context
+            .path()
+            .clamp_mtu(buffer.len(), self.context.transmission_mode);
         debug_assert_ne!(
             mtu, 0,
             "the amplification limit should be checked before trying to transmit"

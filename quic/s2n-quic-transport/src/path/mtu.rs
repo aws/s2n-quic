@@ -328,7 +328,7 @@ impl transmission::interest::Provider for Controller {
 }
 
 #[cfg(test)]
-mod test {
+pub(crate) mod test {
     use super::*;
     use crate::contexts::testing::{MockWriteContext, OutgoingFrameBuffer};
     use s2n_quic_core::{
@@ -350,6 +350,14 @@ mod test {
     /// Creates an application space packet number with the given value
     pub fn pn(nr: usize) -> PacketNumber {
         PacketNumberSpace::ApplicationData.new_packet_number(VarInt::new(nr as u64).unwrap())
+    }
+
+    /// Creates a new mtu::Controller with the given mtu and probed size
+    pub fn test_controller(mtu: u16, probed_size: u16) -> Controller {
+        let mut controller = new_controller(u16::max_value());
+        controller.plpmtu = mtu;
+        controller.probed_size = probed_size;
+        controller
     }
 
     #[test]
