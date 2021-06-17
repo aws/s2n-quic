@@ -473,7 +473,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             ConnectionState::Handshaking | ConnectionState::Active => {
                 if let Some(shared_state) = shared_state {
                     let mut outcome = transmission::Outcome::default();
-                    while self.path_manager.active_path().at_amplification_limit()
+                    while !self.path_manager.active_path().at_amplification_limit()
                         && queue
                             .push(ConnectionTransmission {
                                 context: self.transmission_context(
