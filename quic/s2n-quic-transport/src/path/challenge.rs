@@ -225,13 +225,13 @@ mod tests {
             endpoint::Type::Client,
         );
         assert_eq!(helper.challenge.state, State::RequiresTransmission(2));
-        assert_eq!(helper.challenge.abandon_timer.is_armed(), false);
+        assert!(!helper.challenge.abandon_timer.is_armed());
 
         // Trigger:
         helper.challenge.on_transmit(&mut context);
 
         // Expectation:
-        assert_eq!(helper.challenge.abandon_timer.is_armed(), true);
+        assert!(helper.challenge.abandon_timer.is_armed());
     }
 
     #[test]
@@ -275,12 +275,12 @@ mod tests {
         helper
             .challenge
             .on_timeout(expiration_time - Duration::from_millis(10));
-        assert_eq!(helper.challenge.is_abandoned(), false);
+        assert!(!helper.challenge.is_abandoned());
 
         helper
             .challenge
             .on_timeout(expiration_time + Duration::from_millis(10));
-        assert_eq!(helper.challenge.is_abandoned(), true);
+        assert!(helper.challenge.is_abandoned());
     }
 
     #[test]
@@ -304,7 +304,7 @@ mod tests {
             .on_timeout(expiration_time + Duration::from_millis(10));
 
         // Expectation:
-        assert_eq!(helper.challenge.is_abandoned(), true);
+        assert!(helper.challenge.is_abandoned());
 
         // Trigger:
         helper
@@ -312,7 +312,7 @@ mod tests {
             .on_timeout(expiration_time - Duration::from_millis(10));
 
         // Expectation:
-        assert_eq!(helper.challenge.is_abandoned(), true);
+        assert!(helper.challenge.is_abandoned());
     }
 
     #[test]
@@ -330,12 +330,12 @@ mod tests {
         );
         helper.challenge.on_transmit(&mut context);
 
-        assert_eq!(helper.challenge.is_abandoned(), false);
+        assert!(!helper.challenge.is_abandoned());
 
         helper
             .challenge
             .on_timeout(expiration_time + Duration::from_millis(10));
-        assert_eq!(helper.challenge.is_abandoned(), true);
+        assert!(helper.challenge.is_abandoned());
     }
 
     #[test]
@@ -345,6 +345,6 @@ mod tests {
         assert!(helper.challenge.is_valid(&helper.expected_data));
 
         let wrong_data: [u8; 8] = [5; 8];
-        assert_eq!(helper.challenge.is_valid(&wrong_data), false);
+        assert!(!helper.challenge.is_valid(&wrong_data));
     }
 }

@@ -1779,12 +1779,9 @@ fn add_and_remove_streams_from_on_connection_window_lists() {
     manager.with_asserted_stream(stream_1, |stream| {
         stream.on_connection_window_available_retrieve_window = 0;
     });
-    assert_eq!(
-        true,
-        manager
-            .streams_waiting_for_connection_flow_control_credits()
-            .is_empty()
-    );
+    assert!(manager
+        .streams_waiting_for_connection_flow_control_credits()
+        .is_empty());
 }
 
 #[test]
@@ -1856,12 +1853,9 @@ fn max_data_causes_on_connection_window_available_to_be_called_on_streams() {
         assert_connection_window_state(&mut manager, *stream_id, 1, 0);
     }
     assert_connection_window_state(&mut manager, stream_2, 0, 0);
-    assert_eq!(
-        true,
-        manager
-            .streams_waiting_for_connection_flow_control_credits()
-            .is_empty()
-    );
+    assert!(manager
+        .streams_waiting_for_connection_flow_control_credits()
+        .is_empty());
 
     // Let stream_3 grab more of the connection window than it requires
     manager.with_asserted_stream(stream_3, |stream| {
@@ -1956,12 +1950,9 @@ fn max_data_causes_on_connection_window_available_to_be_called_on_streams() {
     assert_connection_window_state(&mut manager, stream_1, 3, 0);
 
     // All done
-    assert_eq!(
-        true,
-        manager
-            .streams_waiting_for_connection_flow_control_credits()
-            .is_empty()
-    );
+    assert!(manager
+        .streams_waiting_for_connection_flow_control_credits()
+        .is_empty());
 }
 
 #[test]
@@ -2002,12 +1993,9 @@ fn add_and_remove_streams_from_delivery_notification_window_lists() {
     manager.with_asserted_stream(stream_1, |stream| {
         stream.interests.delivery_notifications = false;
     });
-    assert_eq!(
-        true,
-        manager
-            .streams_waiting_for_delivery_notifications()
-            .is_empty()
-    );
+    assert!(manager
+        .streams_waiting_for_delivery_notifications()
+        .is_empty());
 }
 
 #[test]
@@ -2143,12 +2131,9 @@ fn close_is_forwarded_to_all_streams() {
         [stream_2],
         *manager.streams_waiting_for_connection_flow_control_credits()
     );
-    assert_eq!(
-        true,
-        manager
-            .streams_waiting_for_delivery_notifications()
-            .is_empty()
-    );
+    assert!(manager
+        .streams_waiting_for_delivery_notifications()
+        .is_empty());
     assert_eq!([stream_4], *manager.streams_waiting_for_transmission());
 }
 
@@ -2189,7 +2174,7 @@ fn add_and_remove_streams_from_transmission_lists() {
     manager.with_asserted_stream(stream_1, |stream| {
         stream.on_transmit_try_write_frames = 0;
     });
-    assert_eq!(true, manager.streams_waiting_for_transmission().is_empty());
+    assert!(manager.streams_waiting_for_transmission().is_empty());
 }
 
 #[test]
@@ -2230,10 +2215,7 @@ fn add_and_remove_streams_from_retransmission_lists() {
     manager.with_asserted_stream(stream_1, |stream| {
         stream.on_transmit_try_write_frames = 0;
     });
-    assert_eq!(
-        true,
-        manager.streams_waiting_for_retransmission().is_empty()
-    );
+    assert!(manager.streams_waiting_for_retransmission().is_empty());
 }
 
 #[test]
@@ -2305,10 +2287,7 @@ fn on_transmit_queries_streams_for_data() {
     // Only lost data may be written when constrained to retransmission only
     assert_stream_write_state(&mut manager, stream_5, 1, 0);
     assert_eq!(1, write_context.frame_buffer.len());
-    assert_eq!(
-        true,
-        manager.streams_waiting_for_retransmission().is_empty()
-    );
+    assert!(manager.streams_waiting_for_retransmission().is_empty());
 
     write_context.transmission_constraint = transmission::Constraint::None;
 
@@ -2321,7 +2300,7 @@ fn on_transmit_queries_streams_for_data() {
     // All streams have written a frame
     assert_eq!(4, frame_buffer.len());
     frame_buffer.clear();
-    assert_eq!(true, manager.streams_waiting_for_transmission().is_empty());
+    assert!(manager.streams_waiting_for_transmission().is_empty());
 
     manager.with_asserted_stream(stream_1, |stream| {
         stream.on_transmit_try_write_frames = 10;
@@ -2459,7 +2438,7 @@ fn on_transmit_queries_streams_for_data() {
 
     assert_eq!(10, frame_buffer.len());
     frame_buffer.clear();
-    assert_eq!(true, manager.streams_waiting_for_transmission().is_empty());
+    assert!(manager.streams_waiting_for_transmission().is_empty());
 }
 
 fn invalid_stream_id(local_ep_type: endpoint::Type) -> StreamId {

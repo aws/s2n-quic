@@ -650,10 +650,10 @@ impl<T: IntervalBound> IntervalSet<T> {
 
             for interval in self.intervals.iter() {
                 // make sure that a few items exist
-                for value in interval.clone().take(3) {
+                for value in (*interval).take(3) {
                     assert!(self.contains(&value), "set should contain value");
                 }
-                for value in interval.clone().rev().take(3) {
+                for value in (*interval).rev().take(3) {
                     assert!(self.contains(&value), "set should contain value");
                 }
 
