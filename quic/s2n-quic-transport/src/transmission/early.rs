@@ -28,6 +28,11 @@ impl<'a> super::Payload for Payload<'a> {
     }
 
     fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
+        debug_assert!(
+            !context.transmission_mode().is_mtu_probing(),
+            "Early transmissions should not be used for MTU probing"
+        );
+
         let did_send_ack = self.ack_manager.on_transmit(context);
 
         // Payloads can only transmit and retransmit

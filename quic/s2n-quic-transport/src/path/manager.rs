@@ -302,10 +302,6 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
 
         // TODO Add in per-path constraints based on whether a Challenge needs to be
         // transmitted.
-
-        for path in self.paths.iter_mut() {
-            path.on_transmit(context);
-        }
     }
 
     /// Called when packets are acknowledged
@@ -313,8 +309,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         self.peer_id_registry.on_packet_ack(ack_set);
 
         for path in self.paths.iter_mut() {
-            path.mtu_controller
-                .on_packet_ack(ack_set, &mut path.congestion_controller);
+            path.on_packet_ack(ack_set);
         }
     }
 
@@ -323,7 +318,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         self.peer_id_registry.on_packet_loss(ack_set);
 
         for path in self.paths.iter_mut() {
-            path.mtu_controller.on_packet_loss(ack_set);
+            path.on_packet_loss(ack_set);
         }
     }
 

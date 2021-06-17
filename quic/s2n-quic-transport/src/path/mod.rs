@@ -11,7 +11,7 @@ pub use manager::*;
 
 /// re-export core
 pub use s2n_quic_core::path::*;
-use s2n_quic_core::{frame, time::Timestamp};
+use s2n_quic_core::{ack, frame, time::Timestamp};
 
 use crate::{
     connection,
@@ -49,7 +49,7 @@ pub struct Path<CC: CongestionController> {
     /// Tracks whether this path has passed Address or Path validation
     state: State,
     /// Controller for determining the maximum transmission unit of the path
-    mtu_controller: mtu::Controller,
+    pub mtu_controller: mtu::Controller,
 
     /// True if the path has been validated by the peer
     peer_validated: bool,
@@ -156,6 +156,17 @@ impl<CC: CongestionController> Path<CC> {
             .chain(self.mtu_controller.timers())
     }
 
+    /// Called when packets are acknowledged
+    pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
+        self.mtu_controller
+            .on_packet_ack(ack_set, &mut self.congestion_controller)
+    }
+
+    /// Called when packets are lost
+    pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
+        self.mtu_controller.on_packet_loss(ack_set)
+    }
+
     /// When transmitting on a path this handles any internal state operations.
     pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
         if let Some(response_data) = &mut self.response_data {
@@ -173,8 +184,6 @@ impl<CC: CongestionController> Path<CC> {
         if let Some(challenge) = &mut self.challenge {
             challenge.on_transmit(context)
         }
-
-        self.mtu_controller.on_transmit(context)
     }
 
     pub fn is_challenge_pending(&self) -> bool {

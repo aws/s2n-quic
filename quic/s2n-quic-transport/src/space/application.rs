@@ -12,6 +12,10 @@ use crate::{
     stream::AbstractStreamManager,
     sync::flag,
     transmission,
+    transmission::{
+        application::{MtuProbe, Normal},
+        Mode,
+    },
 };
 use bytes::Bytes;
 use core::{convert::TryInto, marker::PhantomData};
@@ -147,19 +151,31 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
 
         let destination_connection_id = context.path().peer_connection_id;
 
+        let payload = match context.transmission_mode {
+            Mode::LossRecoveryProbing | Mode::Normal => {
+                transmission::application::Payload::Normal(Normal {
+                    ack_manager: &mut self.ack_manager,
+                    handshake_status,
+                    ping: &mut self.ping,
+                    stream_manager: &mut self.stream_manager,
+                    local_id_registry: context.local_id_registry,
+                    path_manager: context.path_manager,
+                    recovery_manager: &mut self.recovery_manager,
+                })
+            }
+            Mode::MtuProbing => transmission::application::Payload::MtuProbe(MtuProbe {
+                path: &mut context.path_manager[context.path_id],
+            }),
+            Mode::PathValidation => {
+                todo!()
+            }
+        };
+
         let payload = transmission::Transmission {
             config: <PhantomData<Config>>::default(),
             outcome: &mut outcome,
             packet_number,
-            payload: transmission::application::Payload {
-                ack_manager: &mut self.ack_manager,
-                handshake_status,
-                ping: &mut self.ping,
-                stream_manager: &mut self.stream_manager,
-                local_id_registry: context.local_id_registry,
-                path_manager: context.path_manager,
-                recovery_manager: &mut self.recovery_manager,
-            },
+            payload,
             timestamp: context.timestamp,
             transmission_constraint,
             transmission_mode: context.transmission_mode,
