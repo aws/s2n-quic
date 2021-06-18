@@ -503,9 +503,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                         .into(),
                     });
 
-                    // Send an MTU probe if necessary. At this point all non MTU probing data
-                    // will have been transmitted, so the MTU probe transmission will only contain
-                    // the MTU probe packet.
+                    // Send an MTU probe if necessary
                     if !self.path_manager.active_path().at_amplification_limit()
                         && queue
                             .push(ConnectionTransmission {
