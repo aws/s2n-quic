@@ -1287,15 +1287,13 @@ fn push_data_after_stream_is_reset_due_to_stop_sending() {
             test_env.poll_push(Bytes::from_static(b"1"))
         );
 
-        if *acknowledge_reset_early {
-            assert_eq!(stream_interests(&["fin"]), test_env.stream.interests());
-        } else {
+        if !*acknowledge_reset_early {
             assert_eq!(stream_interests(&["ack"]), test_env.stream.interests());
             // The user is already aware about the reset.
             // Deliverying an ack now should bring us into the final state
             test_env.ack_packet(pn(0), ExpectWakeup(Some(false)));
-            assert_eq!(stream_interests(&["fin"]), test_env.stream.interests());
         }
+        assert_eq!(stream_interests(&["fin"]), test_env.stream.interests());
 
         // The second call checks whether the same result is delivered after the
         // user had been notified.
@@ -2422,10 +2420,7 @@ fn stream_does_not_try_to_acquire_connection_flow_control_credits_after_reset() 
             );
             test_env.stream.on_connection_window_available();
             assert_eq!(previous_readiness, test_env.stream.interests());
-            assert_eq!(
-                false,
-                test_env.stream.interests().connection_flow_control_credits
-            );
+            assert!(!test_env.stream.interests().connection_flow_control_credits);
             assert_eq!(
                 VarInt::from_u32(1500),
                 test_env.tx_connection_flow_controller.available_window()

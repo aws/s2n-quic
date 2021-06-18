@@ -92,10 +92,10 @@ impl SocketAddress {
     }
 
     /// Converts the IP address into a IPv6 mapped address
-    pub fn to_ipv6_mapped(&self) -> SocketAddressV6 {
+    pub fn to_ipv6_mapped(self) -> SocketAddressV6 {
         match self {
             Self::IpV4(addr) => addr.to_ipv6_mapped(),
-            Self::IpV6(addr) => *addr,
+            Self::IpV6(addr) => addr,
         }
     }
 }

@@ -937,7 +937,7 @@ pub(crate) mod tests {
             Some(TEST_TOKEN_1),
         );
 
-        assert_eq!(true, reg.is_active(&id_1));
+        assert!(reg.is_active(&id_1));
     }
 
     #[test]
@@ -951,9 +951,9 @@ pub(crate) mod tests {
             Some(TEST_TOKEN_1),
         );
 
-        assert_eq!(true, reg.is_active(&id_1));
+        assert!(reg.is_active(&id_1));
         reg.registered_ids[0].status = PendingRetirement;
-        assert_eq!(false, reg.is_active(&id_1));
+        assert!(!reg.is_active(&id_1));
     }
 
     #[test]
@@ -967,9 +967,9 @@ pub(crate) mod tests {
             Some(TEST_TOKEN_1),
         );
 
-        assert_eq!(true, reg.is_active(&id_1));
+        assert!(reg.is_active(&id_1));
         let id_unknown = id(b"unknown");
-        assert_eq!(false, reg.is_active(&id_unknown));
+        assert!(!reg.is_active(&id_unknown));
     }
 
     #[test]

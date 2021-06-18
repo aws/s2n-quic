@@ -441,7 +441,7 @@ mod tests {
         //= type=test
         //# An endpoint MUST NOT send more than one PATH_RESPONSE frame in
         //# response to one PATH_CHALLENGE frame; see Section 13.3.
-        assert_eq!(path.response_data.is_some(), false);
+        assert!(!path.response_data.is_some());
 
         assert_eq!(context.frame_buffer.len(), 1);
         let written_data = match context.frame_buffer.pop_front().unwrap().as_frame() {
@@ -470,15 +470,15 @@ mod tests {
         path.on_transmit(&mut context); // send challenge and arm timer
 
         // Expectation:
-        assert_eq!(path.is_challenge_pending(), true);
-        assert_eq!(path.challenge.is_some(), true);
+        assert!(path.is_challenge_pending());
+        assert!(path.challenge.is_some());
 
         // Trigger:
         path.on_timeout(expiration_time + Duration::from_millis(10));
 
         // Expectation:
-        assert_eq!(path.is_challenge_pending(), false);
-        assert_eq!(path.challenge.is_some(), false);
+        assert!(!path.is_challenge_pending());
+        assert!(!path.challenge.is_some());
     }
 
     #[test]
@@ -488,15 +488,15 @@ mod tests {
         let helper_challenge = helper_challenge();
 
         // Expectation:
-        assert_eq!(path.is_challenge_pending(), false);
-        assert_eq!(path.challenge.is_some(), false);
+        assert!(!path.is_challenge_pending());
+        assert!(!path.challenge.is_some());
 
         // Trigger:
         path = path.with_challenge(helper_challenge.challenge);
 
         // Expectation:
-        assert_eq!(path.is_challenge_pending(), true);
-        assert_eq!(path.challenge.is_some(), true);
+        assert!(path.is_challenge_pending());
+        assert!(path.challenge.is_some());
     }
 
     #[test]
@@ -505,14 +505,14 @@ mod tests {
         let mut path = testing::helper_path();
 
         // Expectation:
-        assert_eq!(path.response_data.is_some(), false);
+        assert!(!path.response_data.is_some());
 
         // Trigger:
         let expected_data: [u8; 8] = [0; 8];
         path.on_path_challenge(&expected_data);
 
         // Expectation:
-        assert_eq!(path.response_data.is_some(), true);
+        assert!(path.response_data.is_some());
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
@@ -548,14 +548,14 @@ mod tests {
         let helper_challenge = helper_challenge();
 
         // Expectation:
-        assert_eq!(path.is_validated(), false);
+        assert!(!path.is_validated());
 
         // Trigger:
         path = path.with_challenge(helper_challenge.challenge);
         path.on_path_response(&helper_challenge.expected_data);
 
         // Expectation:
-        assert_eq!(path.is_validated(), true);
+        assert!(path.is_validated());
     }
 
     #[test]
@@ -565,15 +565,15 @@ mod tests {
         let helper_challenge = helper_challenge();
         path = path.with_challenge(helper_challenge.challenge);
 
-        assert_eq!(path.is_validated(), false);
-        assert_eq!(path.challenge.is_some(), true);
+        assert!(!path.is_validated());
+        assert!(path.challenge.is_some());
 
         // Trigger:
         path.on_validated();
 
         // Expectation:
-        assert_eq!(path.is_validated(), true);
-        assert_eq!(path.challenge.is_some(), false);
+        assert!(path.is_validated());
+        assert!(!path.challenge.is_some());
     }
 
     #[test]
@@ -620,14 +620,14 @@ mod tests {
         let mut unblocked = path.on_bytes_received(1200);
         assert!(unblocked);
         path.on_bytes_transmitted((1200 * 2) + 1);
-        assert_eq!(path.at_amplification_limit(), true);
+        assert!(path.at_amplification_limit());
         assert_eq!(
             path.transmission_constraint(),
             transmission::Constraint::AmplificationLimited
         );
 
         unblocked = path.on_bytes_received(1200);
-        assert_eq!(path.at_amplification_limit(), false);
+        assert!(!path.at_amplification_limit());
         assert_eq!(
             path.transmission_constraint(),
             transmission::Constraint::None
@@ -635,7 +635,7 @@ mod tests {
         assert!(unblocked);
 
         path.on_bytes_transmitted((1200 * 6) + 1);
-        assert_eq!(path.at_amplification_limit(), true);
+        assert!(path.at_amplification_limit());
         assert_eq!(
             path.transmission_constraint(),
             transmission::Constraint::AmplificationLimited
@@ -646,7 +646,7 @@ mod tests {
         path.on_validated();
         path.on_bytes_transmitted(24);
         // Validated paths should always be able to transmit
-        assert_eq!(path.at_amplification_limit(), false);
+        assert!(!path.at_amplification_limit());
         assert_eq!(
             path.transmission_constraint(),
             transmission::Constraint::None
