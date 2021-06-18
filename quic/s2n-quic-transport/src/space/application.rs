@@ -164,7 +164,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
                 })
             }
             Mode::MtuProbing => transmission::application::Payload::MtuProbe(MtuProbe {
-                path: &mut context.path_manager[context.path_id],
+                mtu_controller: &mut context.path_manager[context.path_id].mtu_controller,
             }),
             Mode::PathValidation => {
                 todo!()

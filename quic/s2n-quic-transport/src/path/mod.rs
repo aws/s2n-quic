@@ -4,7 +4,7 @@
 //! This module contains the Path implementation
 mod challenge;
 mod manager;
-mod mtu;
+pub(crate) mod mtu;
 
 pub use challenge::*;
 pub use manager::*;
@@ -588,8 +588,8 @@ mod tests {
         path.on_validated();
 
         // Expectation:
-        assert_eq!(path.is_validated(), true);
-        assert_eq!(path.challenge.is_some(), true);
+        assert!(path.is_validated());
+        assert!(path.challenge.is_some());
     }
 
     #[test]

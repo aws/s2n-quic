@@ -5,7 +5,7 @@ use crate::{
     connection,
     contexts::WriteContext,
     path,
-    path::Path,
+    path::mtu,
     recovery,
     recovery::congestion_controller,
     space::{rx_packet_numbers::AckManager, HandshakeStatus},
@@ -19,7 +19,7 @@ use s2n_quic_core::packet::number::PacketNumberSpace;
 
 pub enum Payload<'a, S: Stream, CCE: congestion_controller::Endpoint> {
     Normal(Normal<'a, S, CCE>),
-    MtuProbe(MtuProbe<'a, CCE>),
+    MtuProbe(MtuProbe<'a>),
 }
 
 impl<'a, S: Stream, CCE: congestion_controller::Endpoint> super::Payload for Payload<'a, S, CCE> {
@@ -109,11 +109,11 @@ impl<'a, S: Stream, CCE: congestion_controller::Endpoint> Normal<'a, S, CCE> {
     }
 }
 
-pub struct MtuProbe<'a, CCE: congestion_controller::Endpoint> {
-    pub path: &'a mut Path<CCE::CongestionController>,
+pub struct MtuProbe<'a> {
+    pub mtu_controller: &'a mut mtu::Controller,
 }
 
-impl<'a, CCE: congestion_controller::Endpoint> MtuProbe<'a, CCE> {
+impl<'a> MtuProbe<'a> {
     fn size_hint(&self, range: RangeInclusive<usize>) -> usize {
         // MTU Probes use the full datagram
         *range.end()
@@ -121,11 +121,11 @@ impl<'a, CCE: congestion_controller::Endpoint> MtuProbe<'a, CCE> {
 
     fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
         if context.transmission_constraint().can_transmit() {
-            self.path.mtu_controller.on_transmit(context)
+            self.mtu_controller.on_transmit(context)
         }
     }
 
     fn transmission_interest(&self) -> transmission::Interest {
-        self.path.mtu_controller.transmission_interest()
+        self.mtu_controller.transmission_interest()
     }
 }
