@@ -1049,6 +1049,11 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                         transmission_interest += shared_state.space_manager.transmission_interest();
                     }
                     transmission_interest += self.local_id_registry.transmission_interest();
+                    transmission_interest += self
+                        .path_manager
+                        .active_path()
+                        .mtu_controller
+                        .transmission_interest();
                 }
 
                 interests.transmission = self.path_manager.can_transmit(transmission_interest);
