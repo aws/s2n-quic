@@ -12,10 +12,6 @@ use crate::{
     stream::AbstractStreamManager,
     sync::flag,
     transmission,
-    transmission::{
-        application::{MtuProbe, Normal},
-        Mode,
-    },
 };
 use bytes::Bytes;
 use core::{convert::TryInto, marker::PhantomData};
@@ -150,40 +146,29 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         };
 
         let destination_connection_id = context.path().peer_connection_id;
-
-        let payload = match context.transmission_mode {
-            Mode::LossRecoveryProbing | Mode::Normal => {
-                transmission::application::Payload::Normal(Normal {
-                    ack_manager: &mut self.ack_manager,
-                    handshake_status,
-                    ping: &mut self.ping,
-                    stream_manager: &mut self.stream_manager,
-                    local_id_registry: context.local_id_registry,
-                    path_manager: context.path_manager,
-                    recovery_manager: &mut self.recovery_manager,
-                })
-            }
-            Mode::MtuProbing => transmission::application::Payload::MtuProbe(MtuProbe {
-                mtu_controller: &mut context.path_manager[context.path_id].mtu_controller,
-            }),
-            Mode::PathValidation => {
-                todo!()
-            }
-        };
+        let timestamp = context.timestamp;
+        let transmission_mode = context.transmission_mode;
+        let min_packet_len = context.min_packet_len;
 
         let payload = transmission::Transmission {
             config: <PhantomData<Config>>::default(),
             outcome: &mut outcome,
             packet_number,
-            payload,
-            timestamp: context.timestamp,
+            payload: transmission::application::Payload::new(
+                context,
+                &mut self.ack_manager,
+                handshake_status,
+                &mut self.ping,
+                &mut self.stream_manager,
+                &mut self.recovery_manager,
+            ),
+            timestamp,
             transmission_constraint,
-            transmission_mode: context.transmission_mode,
+            transmission_mode,
             tx_packet_numbers: &mut self.tx_packet_numbers,
         };
 
         let spin_bit = self.spin_bit;
-        let min_packet_len = context.min_packet_len;
         let header_key = &self.header_key;
         let (_protected_packet, buffer) =
             self.key_set
