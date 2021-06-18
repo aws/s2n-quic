@@ -612,17 +612,11 @@ mod tests {
     fn promote_validated_path_to_last_known_validated_path() {
         // Setup:
         let mut helper = helper_manager_with_paths();
-        assert_eq!(
-            helper.manager.paths[helper.first_path_id.0 as usize].is_validated(),
-            false
-        );
+        assert!(!helper.manager.paths[helper.first_path_id.0 as usize].is_validated());
 
         // Trigger:
         helper.manager.paths[helper.first_path_id.0 as usize].on_validated();
-        assert_eq!(
-            helper.manager.paths[helper.first_path_id.0 as usize].is_validated(),
-            true
-        );
+        assert!(helper.manager.paths[helper.first_path_id.0 as usize].is_validated());
         helper
             .manager
             .update_active_path(helper.second_path_id)
@@ -637,10 +631,7 @@ mod tests {
     fn dont_promote_non_validated_path_to_last_known_validated_path() {
         // Setup:
         let mut helper = helper_manager_with_paths();
-        assert_eq!(
-            helper.manager.paths[helper.first_path_id.0 as usize].is_validated(),
-            false
-        );
+        assert!(!helper.manager.paths[helper.first_path_id.0 as usize].is_validated());
 
         // Trigger:
         helper
@@ -723,10 +714,7 @@ mod tests {
             endpoint::Type::Client,
         );
         helper.manager[helper.second_path_id].on_transmit(&mut context);
-        assert_eq!(
-            helper.manager[helper.second_path_id].is_challenge_pending(),
-            true
-        );
+        assert!(helper.manager[helper.second_path_id].is_challenge_pending());
 
         // Trigger 1:
         // A response 100ms before the challenge is abandoned
@@ -735,11 +723,8 @@ mod tests {
             .on_timeout(helper.now + helper.challenge_expiration - Duration::from_millis(100));
 
         // Expectation 1:
-        assert_eq!(
-            helper.manager[helper.second_path_id].is_challenge_pending(),
-            true
-        );
-        assert_eq!(helper.manager[helper.second_path_id].is_validated(), false);
+        assert!(helper.manager[helper.second_path_id].is_challenge_pending(),);
+        assert!(!helper.manager[helper.second_path_id].is_validated());
 
         // Trigger 2:
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
@@ -761,7 +746,7 @@ mod tests {
         helper.manager.on_path_response(&frame);
 
         // Expectation 2:
-        assert_eq!(helper.manager[helper.second_path_id].is_validated(), true);
+        assert!(helper.manager[helper.second_path_id].is_validated());
     }
 
     #[test]
@@ -801,10 +786,7 @@ mod tests {
             endpoint::Type::Client,
         );
         helper.manager[helper.second_path_id].on_transmit(&mut context);
-        assert_eq!(
-            helper.manager[helper.second_path_id].is_challenge_pending(),
-            true
-        );
+        assert!(helper.manager[helper.second_path_id].is_challenge_pending());
 
         // Trigger 1:
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.4
@@ -816,11 +798,8 @@ mod tests {
             .on_timeout(helper.now + helper.challenge_expiration + Duration::from_millis(100));
 
         // Expectation 1:
-        assert_eq!(
-            helper.manager[helper.second_path_id].is_challenge_pending(),
-            false
-        );
-        assert_eq!(helper.manager[helper.second_path_id].is_validated(), false);
+        assert!(!helper.manager[helper.second_path_id].is_challenge_pending());
+        assert!(!helper.manager[helper.second_path_id].is_validated());
 
         // Trigger 2:
         let frame = s2n_quic_core::frame::PathResponse {
@@ -829,7 +808,7 @@ mod tests {
         helper.manager.on_path_response(&frame);
 
         // Expectation 2:
-        assert_eq!(helper.manager[helper.second_path_id].is_validated(), false);
+        assert!(!helper.manager[helper.second_path_id].is_validated());
     }
 
     #[test]
@@ -856,7 +835,7 @@ mod tests {
         let mut manager = manager(first_path, None);
 
         // verify we have one path
-        assert_eq!(manager.path(&SocketAddress::default()).is_some(), true);
+        assert!(manager.path(&SocketAddress::default()).is_some());
         let new_addr: SocketAddr = "127.0.0.1:8001".parse().unwrap();
         let new_addr = SocketAddress::from(new_addr);
         assert!(manager.path(&new_addr).is_none());
@@ -882,8 +861,8 @@ mod tests {
 
         // Expectation:
         assert_eq!(path_id.0, 1);
-        assert_eq!(unblocked, false);
-        assert_eq!(manager.path(&new_addr).is_some(), true);
+        assert!(!unblocked);
+        assert!(manager.path(&new_addr).is_some());
         assert_eq!(manager.paths.len(), 2);
     }
 
@@ -935,7 +914,7 @@ mod tests {
 
         // Expectation:
         assert!(on_datagram_result.is_err());
-        assert_eq!(manager.path(&new_addr).is_some(), false);
+        assert!(!manager.path(&new_addr).is_some());
         assert_eq!(manager.paths.len(), 1);
     }
 
@@ -975,7 +954,7 @@ mod tests {
             .unwrap();
 
         // verify we have two paths
-        assert_eq!(manager.path(&new_addr).is_some(), true);
+        assert!(manager.path(&new_addr).is_some());
         assert_eq!(manager.paths.len(), 2);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
@@ -1164,12 +1143,12 @@ mod tests {
         manager[second_path_id].on_timeout(abandon_time - Duration::from_millis(10));
 
         // Expectation 2:
-        assert_eq!(manager[second_path_id].is_challenge_pending(), true);
+        assert!(manager[second_path_id].is_challenge_pending());
 
         // Trigger 3:
         manager[second_path_id].on_timeout(abandon_time + Duration::from_millis(10));
         // Expectation 3:
-        assert_eq!(manager[second_path_id].is_challenge_pending(), false);
+        assert!(!manager[second_path_id].is_challenge_pending());
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2
@@ -1204,12 +1183,12 @@ mod tests {
         // Setup:
         let helper = helper_manager_with_paths();
         let fp = &helper.manager[helper.first_path_id];
-        assert_eq!(fp.at_amplification_limit(), true);
+        assert!(fp.at_amplification_limit());
         let sp = &helper.manager[helper.second_path_id];
-        assert_eq!(sp.at_amplification_limit(), true);
+        assert!(sp.at_amplification_limit());
 
         // Expectation:
-        assert_eq!(helper.manager.is_amplification_limited(), true);
+        assert!(helper.manager.is_amplification_limited());
     }
 
     #[test]
@@ -1217,13 +1196,13 @@ mod tests {
         // Setup:
         let mut helper = helper_manager_with_paths();
         let fp = &helper.manager[helper.first_path_id];
-        assert_eq!(fp.at_amplification_limit(), true);
+        assert!(fp.at_amplification_limit());
         let sp = &mut helper.manager[helper.second_path_id];
         sp.on_bytes_received(1200);
-        assert_eq!(sp.at_amplification_limit(), false);
+        assert!(!sp.at_amplification_limit());
 
         // Expectation:
-        assert_eq!(helper.manager.is_amplification_limited(), false);
+        assert!(!helper.manager.is_amplification_limited());
     }
 
     #[test]
@@ -1232,12 +1211,12 @@ mod tests {
         let helper = helper_manager_with_paths();
         let interest = transmission::Interest::Forced;
         let fp = &helper.manager[helper.first_path_id];
-        assert_eq!(interest.can_transmit(fp.transmission_constraint()), false);
+        assert!(!interest.can_transmit(fp.transmission_constraint()));
         let sp = &helper.manager[helper.second_path_id];
-        assert_eq!(interest.can_transmit(sp.transmission_constraint()), false);
+        assert!(!interest.can_transmit(sp.transmission_constraint()));
 
         // Expectation:
-        assert_eq!(helper.manager.can_transmit(interest), false);
+        assert!(!helper.manager.can_transmit(interest));
     }
 
     #[test]
@@ -1246,14 +1225,14 @@ mod tests {
         let mut helper = helper_manager_with_paths();
         let interest = transmission::Interest::Forced;
         let fp = &helper.manager[helper.first_path_id];
-        assert_eq!(interest.can_transmit(fp.transmission_constraint()), false);
+        assert!(!interest.can_transmit(fp.transmission_constraint()));
 
         let sp = &mut helper.manager[helper.second_path_id];
         sp.on_bytes_received(1200);
-        assert_eq!(interest.can_transmit(sp.transmission_constraint()), true);
+        assert!(interest.can_transmit(sp.transmission_constraint()));
 
         // Expectation:
-        assert_eq!(helper.manager.can_transmit(interest), true);
+        assert!(helper.manager.can_transmit(interest));
     }
 
     fn helper_manager_register_second_path_conn_id(register_second_conn_id: bool) -> Helper {

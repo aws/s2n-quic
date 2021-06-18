@@ -305,15 +305,15 @@ fn write_and_read_buffer() {
     let mut buf = StreamReceiveBuffer::new();
 
     assert_eq!(0, buf.len());
-    assert_eq!(true, buf.is_empty());
+    assert!(buf.is_empty());
     assert_eq!(None, buf.pop());
 
     buf.write_at(0u32.into(), &[0, 1, 2, 3]).unwrap();
     assert_eq!(4, buf.len());
-    assert_eq!(false, buf.is_empty());
+    assert!(!buf.is_empty());
     assert_eq!(&[0u8, 1, 2, 3], buf.pop().unwrap().deref());
     assert_eq!(0, buf.len());
-    assert_eq!(true, buf.is_empty());
+    assert!(buf.is_empty());
     assert_eq!(None, buf.pop());
 
     buf.write_at(0u32.into(), &[0, 1, 2, 3]).unwrap();

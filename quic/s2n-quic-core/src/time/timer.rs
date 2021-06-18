@@ -80,13 +80,13 @@ mod tests {
         let now = NoopClock.get_time();
         let mut timer = Timer::default();
 
-        assert_eq!(false, timer.is_armed());
+        assert!(!timer.is_armed());
 
         timer.set(now);
-        assert_eq!(true, timer.is_armed());
+        assert!(timer.is_armed());
 
         timer.cancel();
-        assert_eq!(false, timer.is_armed());
+        assert!(!timer.is_armed());
     }
 
     #[test]
@@ -94,18 +94,18 @@ mod tests {
         let mut now = NoopClock.get_time();
         let mut timer = Timer::default();
 
-        assert_eq!(false, timer.is_expired(now));
+        assert!(!timer.is_expired(now));
 
         timer.set(now + Duration::from_millis(100));
 
         now += Duration::from_millis(99);
-        assert_eq!(false, timer.is_expired(now));
+        assert!(!timer.is_expired(now));
 
         now += Duration::from_millis(1);
-        assert_eq!(true, timer.is_expired(now));
+        assert!(timer.is_expired(now));
 
         timer.cancel();
-        assert_eq!(false, timer.is_expired(now));
+        assert!(!timer.is_expired(now));
     }
 
     #[test]
@@ -115,12 +115,12 @@ mod tests {
 
         timer.set(now + Duration::from_millis(100));
 
-        assert_eq!(false, timer.poll_expiration(now).is_ready());
-        assert_eq!(true, timer.is_armed());
+        assert!(!timer.poll_expiration(now).is_ready());
+        assert!(timer.is_armed());
 
         now += Duration::from_millis(100);
 
-        assert_eq!(true, timer.poll_expiration(now).is_ready());
-        assert_eq!(false, timer.is_armed());
+        assert!(timer.poll_expiration(now).is_ready());
+        assert!(!timer.is_armed());
     }
 }

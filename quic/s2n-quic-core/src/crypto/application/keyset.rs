@@ -485,7 +485,7 @@ mod tests {
         // The first encryption should use the expected keyphase, and put us into the
         // KEY_UPDATE_WINDOW.
         assert_eq!(keyset.active_key().encrypted_packets(), 0);
-        assert_eq!(keyset.active_key().needs_update(), false);
+        assert!(!keyset.active_key().needs_update());
         assert!(keyset
             .encrypt_packet(buffer, |buffer, _key, _phase| {
                 let payload = ProtectedPayload::new(0, &mut decoder_bytes);
@@ -502,7 +502,7 @@ mod tests {
 
         // Subsequent encryptions should be in the next phase and our key should need an update.
         assert_eq!(keyset.encryption_phase(), KeyPhase::One);
-        assert_eq!(keyset.active_key().needs_update(), true);
+        assert!(keyset.active_key().needs_update());
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6

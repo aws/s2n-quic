@@ -137,9 +137,9 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
             return Poll::Ready(Err(s2n_quic_core::endpoint::CloseError));
         }
 
-        // The mem::replace is needed to work around a limitation which does not allow us to pass
+        // The mem::take is needed to work around a limitation which does not allow us to pass
         // the new queue directly - even though we will populate the field again after the call.
-        let dequeued_wakeups = core::mem::replace(&mut self.dequeued_wakeups, VecDeque::new());
+        let dequeued_wakeups = core::mem::take(&mut self.dequeued_wakeups);
         self.dequeued_wakeups = self.wakeup_queue.poll_pending_wakeups(dequeued_wakeups, cx);
         let nr_wakeups = self.dequeued_wakeups.len();
         let close_packet_buffer = &mut self.close_packet_buffer;

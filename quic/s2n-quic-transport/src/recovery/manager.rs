@@ -3243,8 +3243,8 @@ mod test {
             .on_validated();
         let first_path = path_manager.path(&first_addr).unwrap().1;
         let second_path = path_manager.path(&second_addr).unwrap().1;
-        assert_eq!(false, first_path.at_amplification_limit());
-        assert_eq!(false, second_path.at_amplification_limit());
+        assert!(!first_path.at_amplification_limit());
+        assert!(!second_path.at_amplification_limit());
         assert!(first_path.is_peer_validated());
         assert!(second_path.is_peer_validated());
 

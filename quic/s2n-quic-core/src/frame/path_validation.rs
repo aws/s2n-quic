@@ -102,7 +102,7 @@ mod test {
         let mut probe = Probe::Probing;
         probe |= Probe::Probing;
 
-        assert_eq!(true, probe.is_probing())
+        assert!(probe.is_probing())
     }
 
     #[test]
@@ -110,6 +110,6 @@ mod test {
         let mut probe = Probe::Probing;
         probe |= Probe::NonProbing;
 
-        assert_eq!(false, probe.is_probing())
+        assert!(!probe.is_probing())
     }
 }
