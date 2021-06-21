@@ -28,16 +28,16 @@ pub fn s2n_tls_bindings(s2n_dir: Option<&str>) -> bindgen::Builder {
         // try to be compatible with older versions
         .rust_target(bindgen::RustTarget::Stable_1_36)
         // only export s2n-related stuff
-        .blacklist_type("iovec")
-        .blacklist_type("FILE")
-        .blacklist_type("_IO_.*")
-        .blacklist_type("__.*")
+        .blocklist_type("iovec")
+        .blocklist_type("FILE")
+        .blocklist_type("_IO_.*")
+        .blocklist_type("__.*")
         // rust can't access thread-local variables
         // https://github.com/rust-lang/rust/issues/29594
-        .blacklist_item("s2n_errno")
-        .whitelist_type("s2n_.*")
-        .whitelist_function("s2n_.*")
-        .whitelist_var("s2n_.*")
+        .blocklist_item("s2n_errno")
+        .allowlist_type("s2n_.*")
+        .allowlist_function("s2n_.*")
+        .allowlist_var("s2n_.*")
         .rustified_enum("s2n_.*")
         .raw_line(PRELUDE)
         .ctypes_prefix("::libc")
