@@ -58,10 +58,8 @@ impl<'a, Config: endpoint::Config> Payload<'a, Config> {
 
 impl<'a, Config: endpoint::Config> super::Payload for Payload<'a, Config> {
     fn size_hint(&self, range: RangeInclusive<usize>) -> usize {
-        match self {
-            Payload::Normal(inner) => inner.size_hint(range),
-            Payload::MtuProbe(inner) => inner.size_hint(range),
-        }
+        // We need at least 1 byte to write a HANDSHAKE_DONE or PING frame
+        (*range.start()).max(1)
     }
 
     fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
@@ -96,11 +94,6 @@ pub struct Normal<'a, S: Stream, CCE: congestion_controller::Endpoint> {
 }
 
 impl<'a, S: Stream, CCE: congestion_controller::Endpoint> Normal<'a, S, CCE> {
-    fn size_hint(&self, range: RangeInclusive<usize>) -> usize {
-        // We need at least 1 byte to write a HANDSHAKE_DONE or PING frame
-        (*range.start()).max(1)
-    }
-
     fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
         let did_send_ack = self.ack_manager.on_transmit(context);
 
@@ -146,11 +139,6 @@ pub struct MtuProbe<'a> {
 }
 
 impl<'a> MtuProbe<'a> {
-    fn size_hint(&self, range: RangeInclusive<usize>) -> usize {
-        // MTU Probes use the full datagram
-        *range.end()
-    }
-
     fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
         if context.transmission_constraint().can_transmit() {
             self.mtu_controller.on_transmit(context)

@@ -19,6 +19,7 @@ use crate::{
     recovery::RttEstimator,
     space::PacketSpace,
     transmission,
+    transmission::interest::Provider,
 };
 use core::time::Duration;
 use s2n_quic_core::{
@@ -504,7 +505,12 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                     });
 
                     // Send an MTU probe if necessary
-                    if !self.path_manager.active_path().at_amplification_limit()
+                    if self
+                        .path_manager
+                        .active_path()
+                        .mtu_controller
+                        .transmission_interest()
+                        .can_transmit(self.path_manager.active_path().transmission_constraint())
                         && queue
                             .push(ConnectionTransmission {
                                 context: self.transmission_context(
