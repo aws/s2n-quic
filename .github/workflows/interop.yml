@@ -75,7 +75,7 @@ jobs:
         with:
           submodules: true
 
-      - uses: actions-rs/toolchain@v1
+      - uses: actions-rs/toolchain@v1.0.7
         id: toolchain
         with:
           toolchain: stable
@@ -87,7 +87,7 @@ jobs:
           key: ${{ matrix.mode }}
 
       - name: Run cargo build
-        uses: actions-rs/cargo@v1
+        uses: actions-rs/cargo@v1.0.3
         with:
           command: build
           args: --bin s2n-quic-qns ${{ matrix.mode == 'release' && '--release' || '' }}
@@ -243,7 +243,7 @@ jobs:
                 $from
           done
 
-      - uses: aws-actions/configure-aws-credentials@v1
+      - uses: aws-actions/configure-aws-credentials@v1.5.9
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -335,7 +335,7 @@ jobs:
           DIFF_STATUS=$(jq --raw-output 'if .regression then "failure" else "success" end' web/logs/latest/result.json)
           echo "::set-output name=DIFF_STATUS::$DIFF_STATUS"
 
-      - uses: aws-actions/configure-aws-credentials@v1
+      - uses: aws-actions/configure-aws-credentials@v1.5.9
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
