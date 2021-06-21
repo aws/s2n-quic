@@ -8,7 +8,7 @@ license = "Apache-2.0"
 [dependencies]
 anyhow = "1"
 fnv = { version = "1", default-features = false }
-goblin = "0.3"
+goblin = "0.4"
 glob = "0.3"
 lazy_static = "1"
 pathdiff = "0.2"
