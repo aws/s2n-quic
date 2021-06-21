@@ -3,6 +3,7 @@ build/
 corpus/
 crashes/
 target/
+specs/**/*.txt
 **/*.rs.bk
 Cargo.lock
 *.tar.gz

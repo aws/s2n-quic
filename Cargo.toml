@@ -1,9 +1,18 @@
 [workspace]
 members = [
-    "common/compliance/cargo-compliance",
-    "common/s2n-*",
-    "quic/s2n-*",
-    "tls/s2n-*",
+    "common/s2n-codec",
+    "quic/s2n-quic",
+    "quic/s2n-quic-core",
+    "quic/s2n-quic-integration",
+    "quic/s2n-quic-platform",
+    "quic/s2n-quic-qns",
+    "quic/s2n-quic-ring",
+    "quic/s2n-quic-rustls",
+    "quic/s2n-quic-tls",
+    "quic/s2n-quic-tls-default",
+    "quic/s2n-quic-transport",
+    "tls/s2n-tls",
+    "tls/s2n-tls-sys",
 ]
 
 [profile.release]

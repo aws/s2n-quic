@@ -7,16 +7,17 @@ mkdir -p target/compliance
 BLOB=${1:-main}
 
 # ensure the tool is built
-test -f target/release/cargo-compliance || \
-  cargo build --bin cargo-compliance --release
+if test ! -f target/compliance/bin/duvet; then
+  DIR=$(mktemp -d)
+  git clone git@github.com:awslabs/duvet.git $DIR
+  cargo install --path $DIR --root target/compliance/
+fi
 
-./target/release/cargo-compliance \
+./target/compliance/bin/duvet \
   report \
   --spec-pattern 'specs/**/*.toml' \
   --source-pattern 'quic/**/*.rs' \
   --workspace \
-  --exclude compliance \
-  --exclude cargo-compliance \
   --require-tests false \
   --blob-link "https://github.com/awslabs/s2n-quic/blob/$BLOB" \
   --issue-link 'https://github.com/awslabs/s2n-quic/issues' \

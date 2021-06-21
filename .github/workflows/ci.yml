@@ -135,7 +135,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: doc
-          args: --all-features --no-deps --workspace --exclude cargo-compliance --exclude compliance --exclude s2n-quic-qns
+          args: --all-features --no-deps --workspace --exclude s2n-quic-qns
 
       - uses: aws-actions/configure-aws-credentials@v1
         with:
@@ -277,22 +277,28 @@ jobs:
       - uses: actions-rs/toolchain@v1
         id: toolchain
         with:
-          toolchain: ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
+          toolchain: stable
           override: true
 
       - uses: camshaft/rust-cache@v1
 
-      - name: Cache cargo-compliance
+      - uses: actions/checkout@v2
+        with:
+          repository: awslabs/duvet
+          ref: main
+          path: target/duvet
+
+      - name: Cache duvet
         uses: actions/cache@v2.1.5
         continue-on-error: true
         with:
-          path: target/release/cargo-compliance
-          key: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-cargo-compliance-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('common/compliance/**') }}
+          path: target/compliance/bin
+          key: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-duvet-${{ hashFiles('scripts/compliance') }}
 
-      - name: Build cargo compliance
-        run: test -f target/release/cargo-compliance || cargo build --bin cargo-compliance --release
+      - name: Build duvet
+        run: test -f target/compliance/bin/duvet || cargo install --path target/duvet --root target/compliance
 
-      - name: Run cargo compliance
+      - name: Run compliance
         run: ./scripts/compliance ${{ github.sha }}
 
       - uses: aws-actions/configure-aws-credentials@v1
@@ -319,7 +325,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GRCOV_CONFIG: --branch --llvm --ignore-not-existing --source-dir .
-      GRCOV_IGNORE: --ignore '**/compliance/**' --ignore 'quic/s2n-quic-qns/**' --ignore '**/tests/**' --ignore '**/test/**' --ignore '**/testing/**' --ignore '**/testing.rs' --ignore '**/tests.rs' --ignore '**/.cargo/registry/**' --ignore '*flume*'
+      GRCOV_IGNORE: --ignore 'quic/s2n-quic-qns/**' --ignore '**/tests/**' --ignore '**/test/**' --ignore '**/testing/**' --ignore '**/testing.rs' --ignore '**/tests.rs' --ignore '**/.cargo/registry/**' --ignore '*flume*'
     steps:
       - uses: actions/checkout@v2
         with:
