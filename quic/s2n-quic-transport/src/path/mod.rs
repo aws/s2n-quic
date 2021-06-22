@@ -265,7 +265,7 @@ impl<CC: CongestionController> Path<CC> {
             // When MTU Probing, clamp to the size of the MTU we are attempting to validate
             Mode::MtuProbing => self.mtu_controller.probed_sized(),
             // Otherwise use the confirmed MTU
-            _ => self.mtu_controller.mtu(),
+            Mode::Normal | Mode::PathValidation => self.mtu_controller.mtu(),
         };
 
         match self.state {
