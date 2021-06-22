@@ -217,11 +217,6 @@ impl<CC: CongestionController> Path<CC> {
 
     /// Called when the path is validated
     pub fn on_validated(&mut self) {
-        if self.is_validated() {
-            debug_assert!(self.challenge.is_none());
-            return;
-        }
-
         self.challenge = None;
         self.state = State::Validated;
 

@@ -147,7 +147,9 @@ impl Controller {
 
     /// Enable path MTU probing
     pub fn enable(&mut self) {
-        debug_assert_eq!(self.state, State::Disabled);
+        if self.state != State::Disabled {
+            return;
+        }
 
         // TODO: Look up current MTU in a cache. If there is a cache hit
         //       move directly to SearchComplete and arm the PMTU raise timer.
@@ -436,11 +438,14 @@ pub(crate) mod test {
     }
 
     #[test]
-    #[should_panic]
     fn enable_already_enabled() {
         let mut controller = new_controller(1500);
+        assert_eq!(State::Disabled, controller.state);
         controller.enable();
+        assert_eq!(State::SearchRequested, controller.state);
+        controller.state = State::SearchComplete;
         controller.enable();
+        assert_eq!(State::SearchComplete, controller.state);
     }
 
     #[test]
