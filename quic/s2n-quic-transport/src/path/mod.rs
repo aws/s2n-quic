@@ -104,12 +104,14 @@ impl<CC: CongestionController> Path<CC> {
             return;
         }
 
-        debug_assert_ne!(
-            self.clamp_mtu(bytes, transmission::Mode::Normal),
-            0,
-            "path should not transmit when amplification limited; tried to transmit {}",
-            bytes
-        );
+        if self.is_validated() {
+            debug_assert_ne!(
+                self.clamp_mtu(bytes, transmission::Mode::Normal),
+                0,
+                "path should not transmit when amplification limited; tried to transmit {}",
+                bytes
+            );
+        }
 
         if let State::AmplificationLimited { tx_bytes, .. } = &mut self.state {
             *tx_bytes += bytes as u32;
