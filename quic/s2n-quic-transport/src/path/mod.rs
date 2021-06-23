@@ -231,6 +231,18 @@ impl<CC: CongestionController> Path<CC> {
         self.peer_validated
     }
 
+    fn mtu(&self, transmission_mode: transmission::Mode) -> usize {
+        match transmission_mode {
+            // Use the minimum MTU for loss recovery probes to allow detection of packets
+            // lost when the previously confirmed path MTU is no longer supported.
+            Mode::LossRecoveryProbing => MINIMUM_MTU as usize,
+            // When MTU Probing, clamp to the size of the MTU we are attempting to validate
+            Mode::MtuProbing => self.mtu_controller.probed_sized(),
+            // Otherwise use the confirmed MTU
+            Mode::Normal | Mode::PathValidation => self.mtu_controller.mtu(),
+        }
+    }
+
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.1
     //# The server MUST also limit the number of bytes it sends before
     //# validating the address of the client; see Section 8.
@@ -246,15 +258,7 @@ impl<CC: CongestionController> Path<CC> {
     //# packet) with a size at the PL that is larger than the current
     //# PLPMTU.
     pub fn clamp_mtu(&self, requested_size: usize, transmission_mode: transmission::Mode) -> usize {
-        let mtu = match transmission_mode {
-            // Use the minimum MTU for loss recovery probes to allow detection of packets
-            // lost when the previously confirmed path MTU is no longer supported.
-            Mode::LossRecoveryProbing => MINIMUM_MTU as usize,
-            // When MTU Probing, clamp to the size of the MTU we are attempting to validate
-            Mode::MtuProbing => self.mtu_controller.probed_sized(),
-            // Otherwise use the confirmed MTU
-            Mode::Normal | Mode::PathValidation => self.mtu_controller.mtu(),
-        };
+        let mtu = self.mtu(transmission_mode);
 
         match self.state {
             State::Validated => requested_size.min(mtu),
@@ -685,10 +689,11 @@ mod tests {
         for &transmission_mode in &[
             Mode::Normal,
             Mode::PathValidation,
-            // Mode::MtuProbing,
-            // Mode::LossRecoveryProbing,
+            Mode::MtuProbing,
+            Mode::LossRecoveryProbing,
         ] {
             let mut path = testing::helper_path();
+            let mtu = path.mtu(transmission_mode);
 
             path.on_bytes_received(3);
             path.on_bytes_transmitted(8);
@@ -696,10 +701,7 @@ mod tests {
             // Verify we can transmit up to the mtu
             assert_eq!(path.clamp_mtu(1, transmission_mode), 1);
             assert_eq!(path.clamp_mtu(10, transmission_mode), 10);
-            assert_eq!(
-                path.clamp_mtu((1800) as usize, transmission_mode),
-                MINIMUM_MTU as usize
-            );
+            assert_eq!(path.clamp_mtu(1800, transmission_mode), mtu);
 
             path.on_bytes_transmitted(1);
             // Verify we can't transmit any more bytes
@@ -710,10 +712,7 @@ mod tests {
             // Verify we can transmit up to 3 more bytes
             assert_eq!(path.clamp_mtu(1, transmission_mode), 1);
             assert_eq!(path.clamp_mtu(10, transmission_mode), 10);
-            assert_eq!(
-                path.clamp_mtu((1800) as usize, transmission_mode),
-                MINIMUM_MTU as usize
-            );
+            assert_eq!(path.clamp_mtu(1800, transmission_mode), mtu);
 
             path.on_validated();
             // Validated paths should always be able to transmit
@@ -748,7 +747,7 @@ mod tests {
     }
 
     #[test]
-    fn clamp_mtu_for_not_validated_path_rounds_up_to_mtu() {
+    fn path_mtu() {
         let mut path = testing::helper_path();
         path.on_bytes_received(1);
         let mtu = 1472;
@@ -757,19 +756,19 @@ mod tests {
 
         assert_eq!(
             path.mtu_controller.mtu(),
-            path.clamp_mtu(10000, transmission::Mode::Normal)
+            path.mtu(transmission::Mode::Normal)
         );
         assert_eq!(
             path.mtu_controller.mtu(),
-            path.clamp_mtu(10000, transmission::Mode::PathValidation)
+            path.mtu(transmission::Mode::PathValidation)
         );
         assert_eq!(
             MINIMUM_MTU as usize,
-            path.clamp_mtu(10000, transmission::Mode::LossRecoveryProbing)
+            path.mtu(transmission::Mode::LossRecoveryProbing)
         );
         assert_eq!(
             path.mtu_controller.probed_sized(),
-            path.clamp_mtu(10000, transmission::Mode::MtuProbing)
+            path.mtu(transmission::Mode::MtuProbing)
         );
     }
 
