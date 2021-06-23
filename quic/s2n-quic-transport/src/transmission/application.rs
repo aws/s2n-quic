@@ -21,6 +21,7 @@ use s2n_quic_core::packet::number::PacketNumberSpace;
 pub enum Payload<'a, Config: endpoint::Config> {
     Normal(Normal<'a, Config::Stream, Config::CongestionControllerEndpoint>),
     MtuProbe(MtuProbe<'a>),
+    PathValidation(PathValidation<'a, Config::CongestionControllerEndpoint>),
 }
 
 impl<'a, Config: endpoint::Config> Payload<'a, Config> {
@@ -50,7 +51,10 @@ impl<'a, Config: endpoint::Config> Payload<'a, Config> {
                 mtu_controller: &mut context.path_mut().mtu_controller,
             }),
             Mode::PathValidation => {
-                todo!()
+                transmission::application::Payload::PathValidation(PathValidation {
+                    path_manager: context.path_manager,
+                    id: context.path_id,
+                })
             }
         }
     }
@@ -66,6 +70,7 @@ impl<'a, Config: endpoint::Config> super::Payload for Payload<'a, Config> {
         match self {
             Payload::Normal(inner) => inner.on_transmit(context),
             Payload::MtuProbe(inner) => inner.on_transmit(context),
+            Payload::PathValidation(inner) => inner.on_transmit(context),
         }
     }
 
@@ -79,6 +84,7 @@ impl<'a, Config: endpoint::Config> transmission::interest::Provider for Payload<
         match self {
             Payload::Normal(inner) => inner.transmission_interest(),
             Payload::MtuProbe(inner) => inner.transmission_interest(),
+            Payload::PathValidation(inner) => inner.transmission_interest(),
         }
     }
 }
@@ -147,5 +153,20 @@ impl<'a> MtuProbe<'a> {
 
     fn transmission_interest(&self) -> transmission::Interest {
         self.mtu_controller.transmission_interest()
+    }
+}
+
+pub struct PathValidation<'a, CCE: congestion_controller::Endpoint> {
+    path_manager: &'a mut path::Manager<CCE>,
+    id: path::Id,
+}
+
+impl<'a, CCE: congestion_controller::Endpoint> PathValidation<'a, CCE> {
+    fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
+        self.path_manager[self.id].on_transmit(context)
+    }
+
+    fn transmission_interest(&self) -> transmission::Interest {
+        self.path_manager[self.id].transmission_interest()
     }
 }
