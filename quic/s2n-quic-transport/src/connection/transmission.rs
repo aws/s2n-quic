@@ -273,6 +273,10 @@ impl<'a, Config: endpoint::Config> tx::Message for ConnectionTransmission<'a, Co
                 .filter(|pn_space| pn_space.is_application_data())
                 .map(|_| encoder.capacity());
 
+            if self.context.transmission_mode.is_path_validation() {
+                self.context.min_packet_len = Some(encoder.capacity());
+            }
+
             match space.on_transmit(
                 &mut self.context,
                 transmission_constraint,

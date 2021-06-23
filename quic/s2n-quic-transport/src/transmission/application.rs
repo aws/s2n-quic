@@ -53,7 +53,7 @@ impl<'a, Config: endpoint::Config> Payload<'a, Config> {
             Mode::PathValidation => {
                 transmission::application::Payload::PathValidation(PathValidation {
                     path_manager: context.path_manager,
-                    id: context.path_id,
+                    path_id: context.path_id,
                 })
             }
         }
@@ -158,15 +158,15 @@ impl<'a> MtuProbe<'a> {
 
 pub struct PathValidation<'a, CCE: congestion_controller::Endpoint> {
     path_manager: &'a mut path::Manager<CCE>,
-    id: path::Id,
+    path_id: path::Id,
 }
 
 impl<'a, CCE: congestion_controller::Endpoint> PathValidation<'a, CCE> {
     fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
-        self.path_manager[self.id].on_transmit(context)
+        self.path_manager[self.path_id].on_transmit(context)
     }
 
     fn transmission_interest(&self) -> transmission::Interest {
-        self.path_manager[self.id].transmission_interest()
+        self.path_manager[self.path_id].transmission_interest()
     }
 }
