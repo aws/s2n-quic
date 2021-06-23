@@ -128,22 +128,19 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     }
 
     /// Returns an iterator over all paths
-    pub fn paths(&self) -> impl Iterator<Item = (Id, &Path<CCE::CongestionController>)> {
-        self.paths
-            .iter()
-            .enumerate()
-            .map(|(id, path)| (Id(id as u8), path))
+    pub fn pending_paths(&mut self) -> PendingPaths<CCE> {
+        PendingPaths::new(self)
     }
 
-    /// Returns an iterator over all paths
-    pub fn paths_mut(
-        &mut self,
-    ) -> impl Iterator<Item = (Id, &mut Path<CCE::CongestionController>)> {
-        self.paths
-            .iter_mut()
-            .enumerate()
-            .map(|(id, path)| (Id(id as u8), path))
-    }
+    // /// Returns an iterator over all paths
+    // pub fn paths_mut(
+    //     &mut self,
+    // ) -> impl Iterator<Item = (Id, &mut Path<CCE::CongestionController>)> {
+    //     self.paths
+    //         .iter_mut()
+    //         .enumerate()
+    //         .map(|(id, path)| (Id(id as u8), path))
+    // }
 
     /// Called when a datagram is received on a connection
     /// Upon success, returns a `(Id, bool)` containing the path ID and a boolean that is
@@ -467,6 +464,34 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
             let constraint = path.transmission_constraint();
             interest.can_transmit(constraint)
         })
+    }
+}
+
+pub struct PendingPaths<'a, CCE: congestion_controller::Endpoint> {
+    index: u8,
+    path_manager: &'a mut Manager<CCE>,
+}
+
+impl<'a, CCE: congestion_controller::Endpoint> PendingPaths<'a, CCE> {
+    pub fn new(path_manager: &'a mut Manager<CCE>) -> Self {
+        Self {
+            index: 0,
+            path_manager,
+        }
+    }
+
+    pub fn next_path(&mut self) -> Option<(Id, &mut Manager<CCE>)> {
+        loop {
+            let path = self.path_manager.paths.get(self.index as usize)?;
+
+            // We have to advance the index before returning or we risk
+            // returning the same path over and over.
+            self.index += 1;
+
+            if path.is_challenge_pending() {
+                return Some((Id(self.index - 1), self.path_manager));
+            }
+        }
     }
 }
 
