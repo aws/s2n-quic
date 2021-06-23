@@ -76,7 +76,10 @@ impl<'a, Config: endpoint::Config> tx::Message for ConnectionTransmission<'a, Co
         let shared_state = &mut self.shared_state;
         let space_manager = &mut shared_state.space_manager;
 
-        let mtu = self.context.path().clamp_mtu(buffer.len());
+        let mtu = self
+            .context
+            .path()
+            .clamp_mtu(buffer.len(), self.context.transmission_mode);
         debug_assert_ne!(
             mtu, 0,
             "the amplification limit should be checked before trying to transmit"

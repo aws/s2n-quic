@@ -2,10 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    contexts::{OnTransmitError, WriteContext},
-    path::MINIMUM_MTU,
-    timer::VirtualTimer,
-    transmission,
+    contexts::WriteContext, path::MINIMUM_MTU, timer::VirtualTimer, transmission,
     transmission::Interest,
 };
 use core::time::Duration;
@@ -15,7 +12,7 @@ use s2n_quic_core::{
     time::Timestamp,
 };
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 enum State {
     //= https://tools.ietf.org/rfc/rfc8899.txt#5.2
     //# The DISABLED state is the initial state before probing has started.
@@ -85,7 +82,7 @@ const PROBE_THRESHOLD: u16 = 20;
 //# seconds, as recommended by PLPMTUD [RFC4821].
 const PMTU_RAISE_TIMER_DURATION: Duration = Duration::from_secs(600);
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Controller {
     state: State,
     //= https://tools.ietf.org/rfc/rfc8899.txt#2
@@ -114,21 +111,23 @@ pub struct Controller {
     pmtu_raise_timer: VirtualTimer,
 }
 
-// TODO: Remove when used
-#[allow(dead_code)]
 impl Controller {
-    /// Construct a new mtu::Controller with the given `max_plpmtu` and `peer_socket_address`
-    pub fn new(max_plpmtu: u16, peer_socket_address: SocketAddress) -> Self {
-        debug_assert!(
-            max_plpmtu >= BASE_PLPMTU,
-            "max_plpmtu must be at least {}",
-            BASE_PLPMTU
-        );
-
+    /// Construct a new mtu::Controller with the given `max_mtu` and `peer_socket_address`
+    ///
+    /// The UDP header length and IP header length will be subtracted from `max_mtu` to
+    /// determine the max_plpmtu used for limiting the UDP payload length.
+    pub fn new(max_mtu: u16, peer_socket_address: &SocketAddress) -> Self {
         let min_ip_header_len = match peer_socket_address {
             SocketAddress::IpV4(_) => IPV4_MIN_HEADER_LEN,
             SocketAddress::IpV6(_) => IPV6_MIN_HEADER_LEN,
         };
+        debug_assert!(
+            max_mtu >= BASE_PLPMTU + UDP_HEADER_LEN + min_ip_header_len,
+            "max_mtu must be at least {}",
+            BASE_PLPMTU + UDP_HEADER_LEN + min_ip_header_len
+        );
+
+        let max_plpmtu = max_mtu - UDP_HEADER_LEN - min_ip_header_len;
 
         // The most likely MTU is based on standard Ethernet MTU minus the minimum length
         // IP headers (without IPv4 options or IPv6 extensions) and UPD header
@@ -148,7 +147,9 @@ impl Controller {
 
     /// Enable path MTU probing
     pub fn enable(&mut self) {
-        debug_assert_eq!(self.state, State::Disabled);
+        if self.state != State::Disabled {
+            return;
+        }
 
         // TODO: Look up current MTU in a cache. If there is a cache hit
         //       move directly to SearchComplete and arm the PMTU raise timer.
@@ -225,12 +226,12 @@ impl Controller {
     /// This method assumes that no other data (other than the packet header) has been written
     /// to the supplied `WriteContext`. This necessitates the caller ensuring the probe packet
     /// written by this method to be in its own connection transmission.
-    pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) -> Result<(), OnTransmitError> {
+    pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
         if self.state != State::SearchRequested || !context.transmission_mode().is_mtu_probing() {
             //= https://tools.ietf.org/rfc/rfc8899.txt#5.2
             //# When used with an acknowledged PL (e.g., SCTP), DPLPMTUD SHOULD NOT continue to
             //# generate PLPMTU probes in this state.
-            return Ok(());
+            return;
         }
 
         // Each packet contains overhead in the form of a packet header and an authentication tag.
@@ -243,7 +244,7 @@ impl Controller {
             // There isn't enough capacity in the buffer to write the datagram we
             // want to probe, so we've reached the maximum pmtu and the search is complete.
             self.state = State::SearchComplete;
-            return Ok(());
+            return;
         }
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.4
@@ -268,13 +269,16 @@ impl Controller {
             self.probe_count += 1;
             self.state = State::Searching(packet_number, context.current_time());
         }
-
-        Ok(())
     }
 
     /// Gets the currently validated maximum transmission unit
     pub fn mtu(&self) -> usize {
         self.plpmtu as usize
+    }
+
+    /// Gets the MTU currently being probed for
+    pub fn probed_sized(&self) -> usize {
+        self.probed_size as usize
     }
 
     /// Sets `probed_size` to the next MTU size to probe for based on a binary search
@@ -329,6 +333,19 @@ impl transmission::interest::Provider for Controller {
     }
 }
 
+#[cfg(any(test, feature = "testing"))]
+pub mod testing {
+    use crate::path::mtu::{test, Controller};
+
+    /// Creates a new mtu::Controller with the given mtu and probed size
+    pub fn test_controller(mtu: u16, probed_size: u16) -> Controller {
+        let mut controller = test::new_controller(u16::max_value());
+        controller.plpmtu = mtu;
+        controller.probed_size = probed_size;
+        controller
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -344,13 +361,13 @@ mod test {
     use std::net::SocketAddr;
 
     /// Creates a new mtu::Controller with an IPv4 address and the given `max_plpmtu`
-    fn new_controller(max_plpmtu: u16) -> Controller {
+    pub fn new_controller(max_plpmtu: u16) -> Controller {
         let addr: SocketAddr = "127.0.0.1:443".parse().unwrap();
-        Controller::new(max_plpmtu, addr.into())
+        Controller::new(max_plpmtu, &addr.into())
     }
 
     /// Creates an application space packet number with the given value
-    pub fn pn(nr: usize) -> PacketNumber {
+    fn pn(nr: usize) -> PacketNumber {
         PacketNumberSpace::ApplicationData.new_packet_number(VarInt::new(nr as u64).unwrap())
     }
 
@@ -367,12 +384,12 @@ mod test {
     #[test]
     #[should_panic]
     fn new_max_plpmtu_too_small() {
-        new_controller(BASE_PLPMTU - 1);
+        new_controller(BASE_PLPMTU + UDP_HEADER_LEN + IPV4_MIN_HEADER_LEN - 1);
     }
 
     #[test]
     fn new_max_plpmtu_smaller_than_common_mtu() {
-        let mut controller = new_controller(BASE_PLPMTU + 1);
+        let mut controller = new_controller(BASE_PLPMTU + UDP_HEADER_LEN + IPV4_MIN_HEADER_LEN + 1);
         assert_eq!(BASE_PLPMTU + 1, controller.probed_size);
 
         controller.enable();
@@ -382,9 +399,15 @@ mod test {
     #[test]
     fn new_ipv4() {
         let addr: SocketAddr = "127.0.0.1:443".parse().unwrap();
-        let controller = Controller::new(1500, addr.into());
-        assert_eq!(1500, controller.max_plpmtu);
-        assert_eq!(1500, controller.max_probe_size);
+        let controller = Controller::new(1600, &addr.into());
+        assert_eq!(
+            1600 - UDP_HEADER_LEN - IPV4_MIN_HEADER_LEN,
+            controller.max_plpmtu
+        );
+        assert_eq!(
+            1600 - UDP_HEADER_LEN - IPV4_MIN_HEADER_LEN,
+            controller.max_probe_size
+        );
         assert_eq!(BASE_PLPMTU as usize, controller.mtu());
         assert_eq!(0, controller.probe_count);
         assert_eq!(State::Disabled, controller.state);
@@ -400,9 +423,15 @@ mod test {
         let addr: SocketAddr = "[2001:0db8:85a3:0001:0002:8a2e:0370:7334]:9000"
             .parse()
             .unwrap();
-        let controller = Controller::new(2000, addr.into());
-        assert_eq!(2000, controller.max_plpmtu);
-        assert_eq!(2000, controller.max_probe_size);
+        let controller = Controller::new(2000, &addr.into());
+        assert_eq!(
+            2000 - UDP_HEADER_LEN - IPV6_MIN_HEADER_LEN,
+            controller.max_plpmtu
+        );
+        assert_eq!(
+            2000 - UDP_HEADER_LEN - IPV6_MIN_HEADER_LEN,
+            controller.max_probe_size
+        );
         assert_eq!(BASE_PLPMTU as usize, controller.mtu());
         assert_eq!(0, controller.probe_count);
         assert_eq!(State::Disabled, controller.state);
@@ -414,11 +443,14 @@ mod test {
     }
 
     #[test]
-    #[should_panic]
     fn enable_already_enabled() {
         let mut controller = new_controller(1500);
+        assert_eq!(State::Disabled, controller.state);
         controller.enable();
+        assert_eq!(State::SearchRequested, controller.state);
+        controller.state = State::SearchComplete;
         controller.enable();
+        assert_eq!(State::SearchComplete, controller.state);
     }
 
     #[test]
@@ -435,8 +467,8 @@ mod test {
     //# reception of a probe packet.
     #[test]
     fn on_packet_ack_within_threshold() {
-        let max_plpmtu = 1472 + PROBE_THRESHOLD * 2;
-        let mut controller = new_controller(max_plpmtu);
+        let mut controller = new_controller(1472 + PROBE_THRESHOLD * 2);
+        let max_plpmtu = controller.max_plpmtu;
         let pn = pn(1);
         let mut cc = CongestionController::default();
         let now = now();
@@ -471,8 +503,8 @@ mod test {
 
     #[test]
     fn on_packet_ack_within_threshold_of_max_plpmtu() {
-        let max_plpmtu = 1472 + (PROBE_THRESHOLD * 2 - 1);
-        let mut controller = new_controller(max_plpmtu);
+        let mut controller = new_controller(1472 + (PROBE_THRESHOLD * 2 - 1));
+        let max_plpmtu = controller.max_plpmtu;
         let pn = pn(1);
         let mut cc = CongestionController::default();
         let now = now();
@@ -498,8 +530,8 @@ mod test {
     //# probing is determined by the PMTU_RAISE_TIMER.
     #[test]
     fn on_packet_ack_search_requested() {
-        let max_plpmtu = 1472 + (PROBE_THRESHOLD * 2);
-        let mut controller = new_controller(max_plpmtu);
+        let mut controller = new_controller(1500 + (PROBE_THRESHOLD * 2));
+        let max_plpmtu = controller.max_plpmtu;
         let pn = pn(1);
         let mut cc = CongestionController::default();
         let now = now();
@@ -520,8 +552,8 @@ mod test {
     //# reasons (including link transmission error, congestion).
     #[test]
     fn on_packet_loss() {
-        let max_plpmtu = 1500;
-        let mut controller = new_controller(max_plpmtu);
+        let mut controller = new_controller(1500);
+        let max_plpmtu = controller.max_plpmtu;
         let pn = pn(1);
         let now = now();
         controller.state = State::Searching(pn, now);
@@ -536,8 +568,8 @@ mod test {
 
     #[test]
     fn on_packet_loss_max_probes() {
-        let max_plpmtu = 1500;
-        let mut controller = new_controller(max_plpmtu);
+        let mut controller = new_controller(1500);
+        let max_plpmtu = controller.max_plpmtu;
         let pn = pn(1);
         let now = now();
         controller.state = State::Searching(pn, now);
@@ -572,7 +604,7 @@ mod test {
             endpoint::Type::Server,
         );
 
-        assert!(controller.on_transmit(&mut write_context).is_ok());
+        controller.on_transmit(&mut write_context);
         assert!(frame_buffer.is_empty());
         assert_eq!(State::SearchComplete, controller.state);
     }
@@ -590,7 +622,7 @@ mod test {
             endpoint::Type::Server,
         );
 
-        assert!(controller.on_transmit(&mut write_context).is_ok());
+        controller.on_transmit(&mut write_context);
         assert!(frame_buffer.is_empty());
         assert_eq!(State::SearchRequested, controller.state);
 
@@ -604,7 +636,7 @@ mod test {
             endpoint::Type::Server,
         );
 
-        assert!(controller.on_transmit(&mut write_context).is_ok());
+        controller.on_transmit(&mut write_context);
         assert!(frame_buffer.is_empty());
         assert_eq!(State::SearchComplete, controller.state);
     }
@@ -623,7 +655,7 @@ mod test {
             endpoint::Type::Server,
         );
 
-        assert!(controller.on_transmit(&mut write_context).is_ok());
+        controller.on_transmit(&mut write_context);
         assert!(frame_buffer.is_empty());
         assert_eq!(State::SearchComplete, controller.state);
     }
@@ -660,7 +692,7 @@ mod test {
         );
         let packet_number = write_context.packet_number();
 
-        assert!(controller.on_transmit(&mut write_context).is_ok());
+        controller.on_transmit(&mut write_context);
         assert_eq!(0, write_context.remaining_capacity());
         assert_eq!(
             Frame::Ping { 0: frame::Ping },

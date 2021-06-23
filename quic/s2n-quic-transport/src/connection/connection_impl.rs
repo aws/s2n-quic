@@ -19,6 +19,7 @@ use crate::{
     recovery::RttEstimator,
     space::PacketSpace,
     transmission,
+    transmission::interest::Provider,
 };
 use core::time::Duration;
 use s2n_quic_core::{
@@ -473,33 +474,63 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             ConnectionState::Handshaking | ConnectionState::Active => {
                 if let Some(shared_state) = shared_state {
                     let mut outcome = transmission::Outcome::default();
-                    while let Ok(_idx) = queue.push(ConnectionTransmission {
-                        context: self.transmission_context(
-                            &mut outcome,
-                            self.path_manager.active_path_id(),
-                            timestamp,
-                            transmission::Mode::Normal,
-                        ),
-                        shared_state,
-                    }) {
+                    while !self.path_manager.active_path().at_amplification_limit()
+                        && queue
+                            .push(ConnectionTransmission {
+                                context: self.transmission_context(
+                                    &mut outcome,
+                                    self.path_manager.active_path_id(),
+                                    timestamp,
+                                    transmission::Mode::Normal,
+                                ),
+                                shared_state,
+                            })
+                            .is_ok()
+                    {
                         count += 1;
-                        if self.path_manager.active_path().at_amplification_limit() {
-                            break;
-                        }
+                        publisher.on_packet_sent(event::builders::PacketSent {
+                            packet_header: event::builders::PacketHeader {
+                                packet_type: outcome.packet_number.space().into(),
+                                packet_number: outcome.packet_number.as_u64(),
+                                version: Some(self.quic_version),
+                            }
+                            .into(),
+                        });
                     }
 
                     if outcome.ack_elicitation.is_ack_eliciting() {
                         self.on_ack_eliciting_packet_sent(timestamp);
                     }
 
-                    publisher.on_packet_sent(event::builders::PacketSent {
-                        packet_header: event::builders::PacketHeader {
-                            packet_type: outcome.packet_number.space().into(),
-                            packet_number: outcome.packet_number.as_u64(),
-                            version: Some(self.quic_version),
-                        }
-                        .into(),
-                    });
+                    // Send an MTU probe if necessary
+                    if self
+                        .path_manager
+                        .active_path()
+                        .mtu_controller
+                        .transmission_interest()
+                        .can_transmit(self.path_manager.active_path().transmission_constraint())
+                        && queue
+                            .push(ConnectionTransmission {
+                                context: self.transmission_context(
+                                    &mut outcome,
+                                    self.path_manager.active_path_id(),
+                                    timestamp,
+                                    transmission::Mode::MtuProbing,
+                                ),
+                                shared_state,
+                            })
+                            .is_ok()
+                    {
+                        count += 1;
+                        publisher.on_packet_sent(event::builders::PacketSent {
+                            packet_header: event::builders::PacketHeader {
+                                packet_type: outcome.packet_number.space().into(),
+                                packet_number: outcome.packet_number.as_u64(),
+                                version: Some(self.quic_version),
+                            }
+                            .into(),
+                        });
+                    };
                 }
                 // TODO  leave the psuedo in comment, TODO send this stuff
                 // for path_id in path_manager.pending_path_validation() {
@@ -508,7 +539,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 //  prob_path(path) // for mtu discovery or path
                 //  if not validated, send challenge_frame;
                 //  }
-                //  TODO send probe for MTU changes
             }
             ConnectionState::Closing => {
                 let path = self.path_manager.active_path_mut();
@@ -1031,6 +1061,11 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                         transmission_interest += shared_state.space_manager.transmission_interest();
                     }
                     transmission_interest += self.local_id_registry.transmission_interest();
+                    transmission_interest += self
+                        .path_manager
+                        .active_path()
+                        .mtu_controller
+                        .transmission_interest();
                 }
 
                 interests.transmission = self.path_manager.can_transmit(transmission_interest);

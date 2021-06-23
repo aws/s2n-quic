@@ -3,33 +3,97 @@
 
 use crate::{
     connection,
+    connection::ConnectionTransmissionContext,
     contexts::WriteContext,
-    path, recovery,
+    endpoint, path,
+    path::mtu,
+    recovery,
     recovery::congestion_controller,
     space::{rx_packet_numbers::AckManager, HandshakeStatus},
     stream::{AbstractStreamManager, StreamTrait as Stream},
-    sync::flag::Ping,
+    sync::{flag, flag::Ping},
     transmission,
+    transmission::{interest::Provider, Interest, Mode},
 };
 use core::ops::RangeInclusive;
 use s2n_quic_core::packet::number::PacketNumberSpace;
 
-pub struct Payload<'a, S: Stream, CCE: congestion_controller::Endpoint> {
-    pub ack_manager: &'a mut AckManager,
-    pub handshake_status: &'a mut HandshakeStatus,
-    pub ping: &'a mut Ping,
-    pub stream_manager: &'a mut AbstractStreamManager<S>,
-    pub local_id_registry: &'a mut connection::LocalIdRegistry,
-    pub path_manager: &'a mut path::Manager<CCE>,
-    pub recovery_manager: &'a mut recovery::Manager,
+pub enum Payload<'a, Config: endpoint::Config> {
+    Normal(Normal<'a, Config::Stream, Config::CongestionControllerEndpoint>),
+    MtuProbe(MtuProbe<'a>),
 }
 
-impl<'a, S: Stream, CCE: congestion_controller::Endpoint> super::Payload for Payload<'a, S, CCE> {
+impl<'a, Config: endpoint::Config> Payload<'a, Config> {
+    /// Constructs a transmission::application::Payload appropriate for the given
+    /// `transmission::Mode` in the given `ConnectionTransmissionContext`
+    pub fn new(
+        context: &'a mut ConnectionTransmissionContext<Config>,
+        ack_manager: &'a mut AckManager,
+        handshake_status: &'a mut HandshakeStatus,
+        ping: &'a mut flag::Ping,
+        stream_manager: &'a mut AbstractStreamManager<Config::Stream>,
+        recovery_manager: &'a mut recovery::Manager,
+    ) -> Self {
+        match context.transmission_mode {
+            Mode::LossRecoveryProbing | Mode::Normal => {
+                transmission::application::Payload::Normal(Normal {
+                    ack_manager,
+                    handshake_status,
+                    ping,
+                    stream_manager,
+                    local_id_registry: context.local_id_registry,
+                    path_manager: context.path_manager,
+                    recovery_manager,
+                })
+            }
+            Mode::MtuProbing => transmission::application::Payload::MtuProbe(MtuProbe {
+                mtu_controller: &mut context.path_mut().mtu_controller,
+            }),
+            Mode::PathValidation => {
+                todo!()
+            }
+        }
+    }
+}
+
+impl<'a, Config: endpoint::Config> super::Payload for Payload<'a, Config> {
     fn size_hint(&self, range: RangeInclusive<usize>) -> usize {
         // We need at least 1 byte to write a HANDSHAKE_DONE or PING frame
         (*range.start()).max(1)
     }
 
+    fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
+        match self {
+            Payload::Normal(inner) => inner.on_transmit(context),
+            Payload::MtuProbe(inner) => inner.on_transmit(context),
+        }
+    }
+
+    fn packet_number_space(&self) -> PacketNumberSpace {
+        PacketNumberSpace::ApplicationData
+    }
+}
+
+impl<'a, Config: endpoint::Config> transmission::interest::Provider for Payload<'a, Config> {
+    fn transmission_interest(&self) -> Interest {
+        match self {
+            Payload::Normal(inner) => inner.transmission_interest(),
+            Payload::MtuProbe(inner) => inner.transmission_interest(),
+        }
+    }
+}
+
+pub struct Normal<'a, S: Stream, CCE: congestion_controller::Endpoint> {
+    ack_manager: &'a mut AckManager,
+    handshake_status: &'a mut HandshakeStatus,
+    ping: &'a mut Ping,
+    stream_manager: &'a mut AbstractStreamManager<S>,
+    local_id_registry: &'a mut connection::LocalIdRegistry,
+    path_manager: &'a mut path::Manager<CCE>,
+    recovery_manager: &'a mut recovery::Manager,
+}
+
+impl<'a, S: Stream, CCE: congestion_controller::Endpoint> Normal<'a, S, CCE> {
     fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
         let did_send_ack = self.ack_manager.on_transmit(context);
 
@@ -59,14 +123,6 @@ impl<'a, S: Stream, CCE: congestion_controller::Endpoint> super::Payload for Pay
         }
     }
 
-    fn packet_number_space(&self) -> PacketNumberSpace {
-        PacketNumberSpace::ApplicationData
-    }
-}
-
-impl<'a, S: Stream, CCE: congestion_controller::Endpoint> transmission::interest::Provider
-    for Payload<'a, S, CCE>
-{
     fn transmission_interest(&self) -> transmission::Interest {
         transmission::Interest::default()
             + self.ack_manager.transmission_interest()
@@ -75,5 +131,21 @@ impl<'a, S: Stream, CCE: congestion_controller::Endpoint> transmission::interest
             + self.local_id_registry.transmission_interest()
             + self.path_manager.transmission_interest()
             + self.recovery_manager.transmission_interest()
+    }
+}
+
+pub struct MtuProbe<'a> {
+    mtu_controller: &'a mut mtu::Controller,
+}
+
+impl<'a> MtuProbe<'a> {
+    fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
+        if context.transmission_constraint().can_transmit() {
+            self.mtu_controller.on_transmit(context)
+        }
+    }
+
+    fn transmission_interest(&self) -> transmission::Interest {
+        self.mtu_controller.transmission_interest()
     }
 }

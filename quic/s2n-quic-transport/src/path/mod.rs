@@ -4,14 +4,14 @@
 //! This module contains the Path implementation
 mod challenge;
 mod manager;
-mod mtu;
+pub(crate) mod mtu;
 
 pub use challenge::*;
 pub use manager::*;
 
 /// re-export core
 pub use s2n_quic_core::path::*;
-use s2n_quic_core::{frame, time::Timestamp};
+use s2n_quic_core::{ack, frame, time::Timestamp};
 
 use crate::{
     connection,
@@ -19,6 +19,7 @@ use crate::{
     contexts::WriteContext,
     recovery::{CongestionController, RttEstimator},
     transmission,
+    transmission::Mode,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -47,8 +48,8 @@ pub struct Path<CC: CongestionController> {
     pub pto_backoff: u32,
     /// Tracks whether this path has passed Address or Path validation
     state: State,
-    /// Maximum transmission unit of the path
-    mtu: u16,
+    /// Controller for determining the maximum transmission unit of the path
+    pub mtu_controller: mtu::Controller,
 
     /// True if the path has been validated by the peer
     peer_validated: bool,
@@ -85,7 +86,7 @@ impl<CC: CongestionController> Path<CC> {
                 tx_bytes: 0,
                 rx_bytes: 0,
             },
-            mtu: MINIMUM_MTU,
+            mtu_controller: mtu::Controller::new(DEFAULT_MAX_MTU, &peer_socket_address),
             peer_validated,
             challenge: None,
             response_data: None,
@@ -104,7 +105,7 @@ impl<CC: CongestionController> Path<CC> {
         }
 
         debug_assert_ne!(
-            self.clamp_mtu(bytes),
+            self.clamp_mtu(bytes, transmission::Mode::Normal),
             0,
             "path should not transmit when amplification limited; tried to transmit {}",
             bytes
@@ -140,14 +141,30 @@ impl<CC: CongestionController> Path<CC> {
                 self.challenge = None;
             }
         }
+        self.mtu_controller.on_timeout(timestamp);
     }
 
     pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
-        self.challenge
-            .as_ref()
-            .map(|challenge| challenge.timers())
-            .into_iter()
-            .flatten()
+        core::iter::empty()
+            .chain(
+                self.challenge
+                    .as_ref()
+                    .map(|challenge| challenge.timers())
+                    .into_iter()
+                    .flatten(),
+            )
+            .chain(self.mtu_controller.timers())
+    }
+
+    /// Called when packets are acknowledged
+    pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
+        self.mtu_controller
+            .on_packet_ack(ack_set, &mut self.congestion_controller)
+    }
+
+    /// Called when packets are lost
+    pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
+        self.mtu_controller.on_packet_loss(ack_set)
     }
 
     /// When transmitting on a path this handles any internal state operations.
@@ -202,6 +219,9 @@ impl<CC: CongestionController> Path<CC> {
     pub fn on_validated(&mut self) {
         self.challenge = None;
         self.state = State::Validated;
+
+        // Enable the mtu controller to allow for PMTU discovery
+        self.mtu_controller.enable()
     }
 
     /// Returns whether this path has passed address validation
@@ -233,9 +253,19 @@ impl<CC: CongestionController> Path<CC> {
     //# A PL MUST NOT send a datagram (other than a probe
     //# packet) with a size at the PL that is larger than the current
     //# PLPMTU.
-    pub fn clamp_mtu(&self, requested_size: usize) -> usize {
+    pub fn clamp_mtu(&self, requested_size: usize, transmission_mode: transmission::Mode) -> usize {
+        let mtu = match transmission_mode {
+            // Use the minimum MTU for loss recovery probes to allow detection of packets
+            // lost when the previously confirmed path MTU is no longer supported.
+            Mode::LossRecoveryProbing => MINIMUM_MTU as usize,
+            // When MTU Probing, clamp to the size of the MTU we are attempting to validate
+            Mode::MtuProbing => self.mtu_controller.probed_sized(),
+            // Otherwise use the confirmed MTU
+            Mode::Normal | Mode::PathValidation => self.mtu_controller.mtu(),
+        };
+
         match self.state {
-            State::Validated => requested_size.min(self.mtu as usize),
+            State::Validated => requested_size.min(mtu),
 
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1
             //# Prior to validating the client address, servers MUST NOT send more
@@ -246,7 +276,7 @@ impl<CC: CongestionController> Path<CC> {
                     .checked_mul(3)
                     .and_then(|v| v.checked_sub(tx_bytes))
                     .unwrap_or(0);
-                requested_size.min(limit as usize).min(self.mtu as usize)
+                requested_size.min(limit as usize).min(mtu)
             }
         }
     }
@@ -280,13 +310,18 @@ impl<CC: CongestionController> Path<CC> {
     }
 
     /// Returns whether this path should be limited according to connection establishment amplification limits
+    ///
+    /// Note: This method is more conservative than strictly necessary in declaring a path at the
+    ///       amplification limit. The path must be able to transmit at least a packet of the
+    ///       `MINIMUM_MTU` bytes, otherwise the path is considered at the amplification limit.
+    ///       TODO: Evaluate if this approach is too conservative
     pub fn at_amplification_limit(&self) -> bool {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1
         //# Prior to validating the client address, servers MUST NOT send more
         //# than three times as many bytes as the number of bytes they have
         //# received.
-        let mtu = self.mtu as usize;
-        self.clamp_mtu(mtu) < mtu
+        let mtu = MINIMUM_MTU as usize;
+        self.clamp_mtu(mtu, transmission::Mode::Normal) < mtu
     }
 
     /// Returns the current PTO period
@@ -538,6 +573,21 @@ mod tests {
     }
 
     #[test]
+    fn on_validated_when_already_validated_does_nothing() {
+        // Setup:
+        let mut path = testing::helper_path();
+        path = path.with_challenge(helper_challenge().challenge);
+        path.on_validated();
+
+        // Trigger:
+        path.on_validated();
+
+        // Expectation:
+        assert!(path.is_validated());
+        assert!(path.challenge.is_none());
+    }
+
+    #[test]
     fn amplification_limit_test() {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.4
         //= type=test
@@ -604,7 +654,7 @@ mod tests {
     }
 
     #[test]
-    fn mtu_test() {
+    fn amplification_limited_mtu_test() {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1
         //= type=test
         //# Prior to validating the client address, servers MUST NOT send more
@@ -630,29 +680,65 @@ mod tests {
         //# PLPMTU.
 
         // TODO this would work better as a fuzz test
+
+        for &transmission_mode in &[
+            Mode::Normal,
+            Mode::PathValidation,
+            Mode::MtuProbing,
+            Mode::LossRecoveryProbing,
+        ] {
+            let mut path = testing::helper_path();
+
+            path.on_bytes_received(3);
+            path.on_bytes_transmitted(8);
+
+            // Verify we can transmit one more byte
+            assert_eq!(path.clamp_mtu(1, transmission_mode), 1);
+            assert_eq!(path.clamp_mtu(10, transmission_mode), 1);
+
+            path.on_bytes_transmitted(1);
+            // Verify we can't transmit any more bytes
+            assert_eq!(path.clamp_mtu(1, transmission_mode), 0);
+            assert_eq!(path.clamp_mtu(10, transmission_mode), 0);
+
+            path.on_bytes_received(1);
+            // Verify we can transmit up to 3 more bytes
+            assert_eq!(path.clamp_mtu(1, transmission_mode), 1);
+            assert_eq!(path.clamp_mtu(2, transmission_mode), 2);
+            assert_eq!(path.clamp_mtu(4, transmission_mode), 3);
+
+            path.on_validated();
+            // Validated paths should always be able to transmit
+            assert_eq!(path.clamp_mtu(4, transmission_mode), 4);
+        }
+    }
+
+    #[test]
+    fn clamp_mtu_test() {
         let mut path = testing::helper_path();
-
-        path.on_bytes_received(3);
-        path.on_bytes_transmitted(8);
-
-        // Verify we can transmit one more byte
-        assert_eq!(path.clamp_mtu(1), 1);
-        assert_eq!(path.clamp_mtu(10), 1);
-
-        path.on_bytes_transmitted(1);
-        // Verify we can't transmit any more bytes
-        assert_eq!(path.clamp_mtu(1), 0);
-        assert_eq!(path.clamp_mtu(10), 0);
-
-        path.on_bytes_received(1);
-        // Verify we can transmit up to 3 more bytes
-        assert_eq!(path.clamp_mtu(1), 1);
-        assert_eq!(path.clamp_mtu(2), 2);
-        assert_eq!(path.clamp_mtu(4), 3);
-
         path.on_validated();
-        // Validated paths should always be able to transmit
-        assert_eq!(path.clamp_mtu(4), 4);
+
+        let mtu = 1472;
+        let probed_size = 1500;
+
+        path.mtu_controller = mtu::testing::test_controller(mtu, probed_size);
+
+        assert_eq!(
+            path.mtu_controller.mtu(),
+            path.clamp_mtu(10000, transmission::Mode::Normal)
+        );
+        assert_eq!(
+            path.mtu_controller.mtu(),
+            path.clamp_mtu(10000, transmission::Mode::PathValidation)
+        );
+        assert_eq!(
+            MINIMUM_MTU as usize,
+            path.clamp_mtu(10000, transmission::Mode::LossRecoveryProbing)
+        );
+        assert_eq!(
+            path.mtu_controller.probed_sized(),
+            path.clamp_mtu(10000, transmission::Mode::MtuProbing)
+        );
     }
 
     #[test]
