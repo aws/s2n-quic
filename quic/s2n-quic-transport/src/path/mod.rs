@@ -104,24 +104,15 @@ impl<CC: CongestionController> Path<CC> {
             return;
         }
 
-        let is_validated = self.is_validated();
-        if is_validated {
-            debug_assert_ne!(
-                self.clamp_mtu(bytes, transmission::Mode::Normal),
-                0,
-                "path should not transmit when amplification limited; tried to transmit {}",
-                bytes
-            );
-        }
+        debug_assert_ne!(
+            self.clamp_mtu(bytes, transmission::Mode::Normal),
+            0,
+            "path should not transmit when amplification limited; tried to transmit {}",
+            bytes
+        );
 
-        if let State::AmplificationLimited { tx_bytes, rx_bytes } = &mut self.state {
-            *tx_bytes = if is_validated {
-                *tx_bytes + bytes as u32
-            } else {
-                // during path validation we ignore the limit and send the max mtu limit
-                // to also do mtu validation.
-                *rx_bytes
-            };
+        if let State::AmplificationLimited { tx_bytes, .. } = &mut self.state {
+            *tx_bytes += bytes as u32
         }
     }
 
@@ -288,7 +279,12 @@ impl<CC: CongestionController> Path<CC> {
                     .checked_mul(3)
                     .and_then(|v| v.checked_sub(tx_bytes))
                     .unwrap_or(0);
-                requested_size.min(limit as usize).min(mtu)
+
+                if limit > 0 {
+                    requested_size.min(mtu)
+                } else {
+                    0
+                }
             }
         }
     }
@@ -627,10 +623,12 @@ mod tests {
         let mut unblocked = path.on_bytes_received(1200);
         assert!(unblocked);
         path.on_bytes_transmitted((1200 * 2) + 1);
-        assert!(path.at_amplification_limit());
+
+        // we round up to the nearest mtu
+        assert!(!path.at_amplification_limit());
         assert_eq!(
             path.transmission_constraint(),
-            transmission::Constraint::AmplificationLimited
+            transmission::Constraint::None
         );
 
         unblocked = path.on_bytes_received(1200);
@@ -639,7 +637,9 @@ mod tests {
             path.transmission_constraint(),
             transmission::Constraint::None
         );
-        assert!(unblocked);
+        // If we were not amplification limited previously, receiving
+        // more bytes doesn't unblock
+        assert!(!unblocked);
 
         path.on_bytes_transmitted((1200 * 6) + 1);
         assert!(path.at_amplification_limit());
@@ -648,7 +648,7 @@ mod tests {
             transmission::Constraint::AmplificationLimited
         );
         unblocked = path.on_bytes_received(1200);
-        assert!(!unblocked);
+        assert!(unblocked);
 
         path.on_validated();
         path.on_bytes_transmitted(24);
@@ -696,17 +696,21 @@ mod tests {
         for &transmission_mode in &[
             Mode::Normal,
             Mode::PathValidation,
-            Mode::MtuProbing,
-            Mode::LossRecoveryProbing,
+            // Mode::MtuProbing,
+            // Mode::LossRecoveryProbing,
         ] {
             let mut path = testing::helper_path();
 
             path.on_bytes_received(3);
             path.on_bytes_transmitted(8);
 
-            // Verify we can transmit one more byte
+            // Verify we can transmit up to the mtu
             assert_eq!(path.clamp_mtu(1, transmission_mode), 1);
-            assert_eq!(path.clamp_mtu(10, transmission_mode), 1);
+            assert_eq!(path.clamp_mtu(10, transmission_mode), 10);
+            assert_eq!(
+                path.clamp_mtu((1800) as usize, transmission_mode),
+                MINIMUM_MTU as usize
+            );
 
             path.on_bytes_transmitted(1);
             // Verify we can't transmit any more bytes
@@ -716,8 +720,11 @@ mod tests {
             path.on_bytes_received(1);
             // Verify we can transmit up to 3 more bytes
             assert_eq!(path.clamp_mtu(1, transmission_mode), 1);
-            assert_eq!(path.clamp_mtu(2, transmission_mode), 2);
-            assert_eq!(path.clamp_mtu(4, transmission_mode), 3);
+            assert_eq!(path.clamp_mtu(10, transmission_mode), 10);
+            assert_eq!(
+                path.clamp_mtu((1800) as usize, transmission_mode),
+                MINIMUM_MTU as usize
+            );
 
             path.on_validated();
             // Validated paths should always be able to transmit
@@ -726,13 +733,11 @@ mod tests {
     }
 
     #[test]
-    fn clamp_mtu_test() {
+    fn clamp_mtu_for_validated_path() {
         let mut path = testing::helper_path();
         path.on_validated();
-
         let mtu = 1472;
         let probed_size = 1500;
-
         path.mtu_controller = mtu::testing::test_controller(mtu, probed_size);
 
         assert_eq!(
@@ -751,6 +756,51 @@ mod tests {
             path.mtu_controller.probed_sized(),
             path.clamp_mtu(10000, transmission::Mode::MtuProbing)
         );
+    }
+
+    #[test]
+    fn clamp_mtu_for_not_validated_path_rounds_up_to_mtu() {
+        let mut path = testing::helper_path();
+        path.on_bytes_received(1);
+        let mtu = 1472;
+        let probed_size = 1500;
+        path.mtu_controller = mtu::testing::test_controller(mtu, probed_size);
+
+        assert_eq!(
+            path.mtu_controller.mtu(),
+            path.clamp_mtu(10000, transmission::Mode::Normal)
+        );
+        assert_eq!(
+            path.mtu_controller.mtu(),
+            path.clamp_mtu(10000, transmission::Mode::PathValidation)
+        );
+        assert_eq!(
+            MINIMUM_MTU as usize,
+            path.clamp_mtu(10000, transmission::Mode::LossRecoveryProbing)
+        );
+        assert_eq!(
+            path.mtu_controller.probed_sized(),
+            path.clamp_mtu(10000, transmission::Mode::MtuProbing)
+        );
+    }
+
+    #[test]
+    fn clamp_mtu_when_tx_more_than_rx() {
+        let mut path = testing::helper_path();
+        let mtu = 1472;
+        let probed_size = 1500;
+        path.mtu_controller = mtu::testing::test_controller(mtu, probed_size);
+
+        assert_eq!(0, path.clamp_mtu(10000, transmission::Mode::Normal));
+
+        path.on_bytes_received(1);
+        assert_eq!(
+            path.mtu_controller.mtu(),
+            path.clamp_mtu(10000, transmission::Mode::Normal)
+        );
+
+        path.on_bytes_transmitted(100);
+        assert_eq!(0, path.clamp_mtu(10000, transmission::Mode::Normal));
     }
 
     #[test]
