@@ -104,7 +104,8 @@ impl<CC: CongestionController> Path<CC> {
             return;
         }
 
-        if self.is_validated() {
+        let is_validated = self.is_validated();
+        if is_validated {
             debug_assert_ne!(
                 self.clamp_mtu(bytes, transmission::Mode::Normal),
                 0,
@@ -113,8 +114,14 @@ impl<CC: CongestionController> Path<CC> {
             );
         }
 
-        if let State::AmplificationLimited { tx_bytes, .. } = &mut self.state {
-            *tx_bytes += bytes as u32;
+        if let State::AmplificationLimited { tx_bytes, rx_bytes } = &mut self.state {
+            *tx_bytes = if is_validated {
+                *tx_bytes + bytes as u32
+            } else {
+                // during path validation we ignore the limit and send the max mtu limit
+                // to also do mtu validation.
+                *rx_bytes
+            };
         }
     }
 
