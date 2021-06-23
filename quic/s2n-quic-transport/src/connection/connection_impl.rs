@@ -259,6 +259,59 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
             transmission_mode,
         }
     }
+
+    fn transmit_path_validation<'a, Tx: tx::Queue, Pub: event::Publisher>(
+        &mut self,
+        shared_state: &mut SharedConnectionState<Config>,
+        queue: &mut Tx,
+        timestamp: Timestamp,
+        outcome: &'a mut transmission::Outcome,
+        publisher: &mut Pub,
+    ) -> usize {
+        let mut count = 0;
+        // TODO: this allocation is needed to avoid borrow issues. This should
+        // be addressed as part of refactoring the path_manager.paths interface
+        let path_ids: Vec<(path::Id, bool)> = self
+            .path_manager
+            .paths()
+            .map(|(id, _path)| (id, true))
+            .collect();
+        for (id, _od) in path_ids.into_iter() {
+            if id == self.path_manager.active_path_id() {
+                continue;
+            }
+
+            let tx_bytes = self.path_manager[id].clamp_mtu(
+                path::MINIMUM_MTU as usize,
+                transmission::Mode::PathValidation,
+            );
+            if tx_bytes > 0
+                && queue
+                    .push(ConnectionTransmission {
+                        context: self.transmission_context(
+                            outcome,
+                            id,
+                            timestamp,
+                            transmission::Mode::PathValidation,
+                        ),
+                        shared_state,
+                    })
+                    .is_ok()
+            {
+                count += 1;
+                publisher.on_packet_sent(event::builders::PacketSent {
+                    packet_header: event::builders::PacketHeader {
+                        packet_type: outcome.packet_number.space().into(),
+                        packet_number: outcome.packet_number.as_u64(),
+                        version: Some(self.quic_version),
+                    }
+                    .into(),
+                });
+            }
+        }
+
+        count
+    }
 }
 
 impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
@@ -474,6 +527,15 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             ConnectionState::Handshaking | ConnectionState::Active => {
                 if let Some(shared_state) = shared_state {
                     let mut outcome = transmission::Outcome::default();
+
+                    count += self.transmit_path_validation(
+                        shared_state,
+                        queue,
+                        timestamp,
+                        &mut outcome,
+                        publisher,
+                    );
+
                     while !self.path_manager.active_path().at_amplification_limit()
                         && queue
                             .push(ConnectionTransmission {
