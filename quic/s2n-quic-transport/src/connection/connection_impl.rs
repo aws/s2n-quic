@@ -488,21 +488,19 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                             .is_ok()
                     {
                         count += 1;
+                        publisher.on_packet_sent(event::builders::PacketSent {
+                            packet_header: event::builders::PacketHeader {
+                                packet_type: outcome.packet_number.space().into(),
+                                packet_number: outcome.packet_number.as_u64(),
+                                version: Some(self.quic_version),
+                            }
+                            .into(),
+                        });
                     }
 
                     if outcome.ack_elicitation.is_ack_eliciting() {
                         self.on_ack_eliciting_packet_sent(timestamp);
                     }
-
-                    // TODO: Is this in the right place?
-                    publisher.on_packet_sent(event::builders::PacketSent {
-                        packet_header: event::builders::PacketHeader {
-                            packet_type: outcome.packet_number.space().into(),
-                            packet_number: outcome.packet_number.as_u64(),
-                            version: Some(self.quic_version),
-                        }
-                        .into(),
-                    });
 
                     // Send an MTU probe if necessary
                     if self
@@ -523,7 +521,15 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                             })
                             .is_ok()
                     {
-                        count += 1
+                        count += 1;
+                        publisher.on_packet_sent(event::builders::PacketSent {
+                            packet_header: event::builders::PacketHeader {
+                                packet_type: outcome.packet_number.space().into(),
+                                packet_number: outcome.packet_number.as_u64(),
+                                version: Some(self.quic_version),
+                            }
+                            .into(),
+                        });
                     };
                 }
                 // TODO  leave the psuedo in comment, TODO send this stuff
