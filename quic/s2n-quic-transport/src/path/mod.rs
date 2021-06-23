@@ -159,6 +159,9 @@ impl<CC: CongestionController> Path<CC> {
     }
 
     /// When transmitting on a path this handles any internal state operations.
+    ///
+    /// PATH_CHALLENGE and PATH_RESPONSE should be transmitted first here since
+    /// those frames are prioritized to complete path validation.
     pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
         if let Some(response_data) = &mut self.response_data {
             let frame = frame::PathResponse {
