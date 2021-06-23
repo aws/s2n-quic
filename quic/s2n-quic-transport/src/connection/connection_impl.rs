@@ -311,40 +311,6 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
             }
         }
 
-        // for (id, _od) in path_ids.into_iter() {
-        //     if id == self.path_manager.active_path_id() {
-        //         continue;
-        //     }
-
-        //     let tx_bytes = self.path_manager[id].clamp_mtu(
-        //         path::MINIMUM_MTU as usize,
-        //         transmission::Mode::PathValidation,
-        //     );
-        //     if tx_bytes > 0
-        //         && queue
-        //             .push(ConnectionTransmission {
-        //                 context: self.transmission_context(
-        //                     outcome,
-        //                     id,
-        //                     timestamp,
-        //                     transmission::Mode::PathValidation,
-        //                 ),
-        //                 shared_state,
-        //             })
-        //             .is_ok()
-        //     {
-        //         count += 1;
-        //         publisher.on_packet_sent(event::builders::PacketSent {
-        //             packet_header: event::builders::PacketHeader {
-        //                 packet_type: outcome.packet_number.space().into(),
-        //                 packet_number: outcome.packet_number.as_u64(),
-        //                 version: Some(self.quic_version),
-        //             }
-        //             .into(),
-        //         });
-        //     }
-        // }
-
         count
     }
 }
