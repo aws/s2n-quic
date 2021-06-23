@@ -260,32 +260,6 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         }
     }
 
-    // fn _po<'a>(
-    //     &'a self,
-    //     outcome: &'a mut transmission::Outcome,
-    //     path_id: path::Id,
-    //     timestamp: Timestamp,
-    //     transmission_mode: transmission::Mode,
-    //     path_manager: &'a mut path::Manager<Config::CongestionControllerEndpoint>,
-    // ) -> ConnectionTransmissionContext<'a, Config> {
-    //     // TODO get this from somewhere
-    //     let ecn = Default::default();
-
-    //     ConnectionTransmissionContext {
-    //         quic_version: self.quic_version,
-    //         timestamp,
-    //         path_id,
-    //         path_manager,
-    //         source_connection_id: &self.local_connection_id,
-    //         local_id_registry: &mut self.local_id_registry,
-    //         outcome,
-    //         ecn,
-    //         min_packet_len: None,
-    //         transmission_mode,
-    //     }
-    // }
-
-
     fn transmit_path_validation<'a, Tx: tx::Queue, Pub: event::Publisher>(
         &mut self,
         shared_state: &mut SharedConnectionState<Config>,
@@ -295,17 +269,14 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         publisher: &mut Pub,
     ) -> usize {
         let mut count = 0;
-        // TODO: this allocation is needed to avoid borrow issues. This should
-        // be addressed as part of refactoring the path_manager.paths interface
-        // let path_ids: Vec<(path::Id, bool)> = self
-        //     .path_manager
-        //     .paths()
-        //     .map(|(id, _path)| (id, true))
-        //     .collect();
-        let mut pp = self.path_manager.pending_paths();
+        let mut pending_paths = self.path_manager.pending_paths();
         let ecn = Default::default();
-        while let Some((path_id, manager)) = pp.next_path() {
-            let tx_bytes = manager[path_id].clamp_mtu(
+        while let Some((path_id, path_manager)) = pending_paths.next_path() {
+            if path_id == path_manager.active_path_id() {
+                continue;
+            }
+
+            let tx_bytes = path_manager[path_id].clamp_mtu(
                 path::MINIMUM_MTU as usize,
                 transmission::Mode::PathValidation,
             );
@@ -316,7 +287,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
                             quic_version: self.quic_version,
                             timestamp,
                             path_id,
-                            path_manager: manager,
+                            path_manager,
                             source_connection_id: &self.local_connection_id,
                             local_id_registry: &mut self.local_id_registry,
                             outcome,
@@ -324,13 +295,6 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
                             min_packet_len: None,
                             transmission_mode: transmission::Mode::PathValidation,
                         },
-
-                        // context: self.transmission_context(
-                        //     outcome,
-                        //     path_id,
-                        //     timestamp,
-                        //     transmission::Mode::PathValidation,
-                        // ),
                         shared_state,
                     })
                     .is_ok()

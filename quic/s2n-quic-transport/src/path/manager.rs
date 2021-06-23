@@ -132,16 +132,6 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         PendingPaths::new(self)
     }
 
-    // /// Returns an iterator over all paths
-    // pub fn paths_mut(
-    //     &mut self,
-    // ) -> impl Iterator<Item = (Id, &mut Path<CCE::CongestionController>)> {
-    //     self.paths
-    //         .iter_mut()
-    //         .enumerate()
-    //         .map(|(id, path)| (Id(id as u8), path))
-    // }
-
     /// Called when a datagram is received on a connection
     /// Upon success, returns a `(Id, bool)` containing the path ID and a boolean that is
     /// true if the path had been amplification limited prior to receiving the datagram
