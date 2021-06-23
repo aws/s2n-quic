@@ -721,7 +721,7 @@ mod tests {
         let mtu = 1472;
         let probed_size = 1500;
 
-        path.mtu_controller = mtu::test::test_controller(mtu, probed_size);
+        path.mtu_controller = mtu::testing::test_controller(mtu, probed_size);
 
         assert_eq!(
             path.mtu_controller.mtu(),

@@ -333,8 +333,21 @@ impl transmission::interest::Provider for Controller {
     }
 }
 
+#[cfg(any(test, feature = "testing"))]
+pub mod testing {
+    use crate::path::mtu::{test, Controller};
+
+    /// Creates a new mtu::Controller with the given mtu and probed size
+    pub fn test_controller(mtu: u16, probed_size: u16) -> Controller {
+        let mut controller = test::new_controller(u16::max_value());
+        controller.plpmtu = mtu;
+        controller.probed_size = probed_size;
+        controller
+    }
+}
+
 #[cfg(test)]
-pub(crate) mod test {
+mod test {
     use super::*;
     use crate::contexts::testing::{MockWriteContext, OutgoingFrameBuffer};
     use s2n_quic_core::{
@@ -348,22 +361,14 @@ pub(crate) mod test {
     use std::net::SocketAddr;
 
     /// Creates a new mtu::Controller with an IPv4 address and the given `max_plpmtu`
-    fn new_controller(max_plpmtu: u16) -> Controller {
+    pub fn new_controller(max_plpmtu: u16) -> Controller {
         let addr: SocketAddr = "127.0.0.1:443".parse().unwrap();
         Controller::new(max_plpmtu, &addr.into())
     }
 
     /// Creates an application space packet number with the given value
-    pub fn pn(nr: usize) -> PacketNumber {
+    fn pn(nr: usize) -> PacketNumber {
         PacketNumberSpace::ApplicationData.new_packet_number(VarInt::new(nr as u64).unwrap())
-    }
-
-    /// Creates a new mtu::Controller with the given mtu and probed size
-    pub fn test_controller(mtu: u16, probed_size: u16) -> Controller {
-        let mut controller = new_controller(u16::max_value());
-        controller.plpmtu = mtu;
-        controller.probed_size = probed_size;
-        controller
     }
 
     #[test]
