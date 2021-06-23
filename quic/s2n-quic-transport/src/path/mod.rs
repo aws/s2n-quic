@@ -693,12 +693,12 @@ mod tests {
             Mode::LossRecoveryProbing,
         ] {
             let mut path = testing::helper_path();
+            // Verify we can transmit up to the mtu
             let mtu = path.mtu(transmission_mode);
 
             path.on_bytes_received(3);
             path.on_bytes_transmitted(8);
 
-            // Verify we can transmit up to the mtu
             assert_eq!(path.clamp_mtu(1, transmission_mode), 1);
             assert_eq!(path.clamp_mtu(10, transmission_mode), 10);
             assert_eq!(path.clamp_mtu(1800, transmission_mode), mtu);
