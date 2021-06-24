@@ -8,7 +8,7 @@ pub enum Mode {
     /// Maximum transmission unit probing to determine the path MTU
     MtuProbing,
     /// Path validation to verify peer address reachability
-    PathValidation,
+    PathValidationOnly,
     /// Normal transmission
     Normal,
 }
@@ -26,7 +26,7 @@ impl Mode {
 
     /// Is the transmission a probe for path validation
     pub fn is_path_validation(&self) -> bool {
-        matches!(self, Mode::PathValidation)
+        matches!(self, Mode::PathValidationOnly)
     }
 
     /// Is this transmission not a probe

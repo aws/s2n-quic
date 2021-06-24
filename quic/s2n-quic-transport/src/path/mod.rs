@@ -239,7 +239,7 @@ impl<CC: CongestionController> Path<CC> {
             // When MTU Probing, clamp to the size of the MTU we are attempting to validate
             Mode::MtuProbing => self.mtu_controller.probed_sized(),
             // Otherwise use the confirmed MTU
-            Mode::Normal | Mode::PathValidation => self.mtu_controller.mtu(),
+            Mode::Normal | Mode::PathValidationOnly => self.mtu_controller.mtu(),
         }
     }
 
@@ -688,7 +688,7 @@ mod tests {
 
         for &transmission_mode in &[
             Mode::Normal,
-            Mode::PathValidation,
+            Mode::PathValidationOnly,
             Mode::MtuProbing,
             Mode::LossRecoveryProbing,
         ] {
@@ -734,7 +734,7 @@ mod tests {
         );
         assert_eq!(
             path.mtu_controller.mtu(),
-            path.clamp_mtu(10000, transmission::Mode::PathValidation)
+            path.clamp_mtu(10000, transmission::Mode::PathValidationOnly)
         );
         assert_eq!(
             MINIMUM_MTU as usize,
@@ -760,7 +760,7 @@ mod tests {
         );
         assert_eq!(
             path.mtu_controller.mtu(),
-            path.mtu(transmission::Mode::PathValidation)
+            path.mtu(transmission::Mode::PathValidationOnly)
         );
         assert_eq!(
             MINIMUM_MTU as usize,
