@@ -45,6 +45,7 @@ impl<'a, Config: endpoint::Config> Payload<'a, Config> {
                     local_id_registry: context.local_id_registry,
                     path_manager: context.path_manager,
                     recovery_manager,
+                    path_id: context.path_id,
                 })
             }
             Mode::MtuProbing => transmission::application::Payload::MtuProbe(MtuProbe {
@@ -97,11 +98,16 @@ pub struct Normal<'a, S: Stream, CCE: congestion_controller::Endpoint> {
     local_id_registry: &'a mut connection::LocalIdRegistry,
     path_manager: &'a mut path::Manager<CCE>,
     recovery_manager: &'a mut recovery::Manager,
+    path_id: path::Id,
 }
 
 impl<'a, S: Stream, CCE: congestion_controller::Endpoint> Normal<'a, S, CCE> {
     fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
         let did_send_ack = self.ack_manager.on_transmit(context);
+
+        if !self.path_manager[self.path_id].at_amplification_limit() {
+            self.path_manager[self.path_id].on_transmit(context)
+        }
 
         // Payloads can only transmit and retransmit
         if context.transmission_constraint().can_transmit()
@@ -137,6 +143,7 @@ impl<'a, S: Stream, CCE: congestion_controller::Endpoint> Normal<'a, S, CCE> {
             + self.local_id_registry.transmission_interest()
             + self.path_manager.transmission_interest()
             + self.recovery_manager.transmission_interest()
+            + self.path_manager[self.path_id].transmission_interest()
     }
 }
 
@@ -163,7 +170,9 @@ pub struct PathValidation<'a, CCE: congestion_controller::Endpoint> {
 
 impl<'a, CCE: congestion_controller::Endpoint> PathValidation<'a, CCE> {
     fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
-        self.path_manager[self.path_id].on_transmit(context)
+        if !self.path_manager[self.path_id].at_amplification_limit() {
+            self.path_manager[self.path_id].on_transmit(context)
+        }
     }
 
     fn transmission_interest(&self) -> transmission::Interest {
