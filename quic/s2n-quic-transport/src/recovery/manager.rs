@@ -262,7 +262,7 @@ impl Manager {
         let largest_acked_packet_number =
             self.space.new_packet_number(frame.largest_acknowledged());
         let mut newly_acked_packets =
-            SmallVec::<[SentPacketInfo; ACKED_PACKETS_INITIAL_CAPACITY]>::new();
+            SmallVec::<[PacketDetails; ACKED_PACKETS_INITIAL_CAPACITY]>::new();
 
         // Update the largest acked packet if the largest packet acked in this frame is larger
         self.largest_acked_packet = Some(
@@ -307,7 +307,7 @@ impl Manager {
     // Process ack_range and return largest_newly_acked and if the packet is ack eliciting.
     fn process_ack_range<A: frame::ack::AckRanges, CC: CongestionController, Ctx: Context<CC>>(
         &mut self,
-        newly_acked_packets: &mut SmallVec<[SentPacketInfo; ACKED_PACKETS_INITIAL_CAPACITY]>,
+        newly_acked_packets: &mut SmallVec<[PacketDetails; ACKED_PACKETS_INITIAL_CAPACITY]>,
         datagram: &DatagramInfo,
         frame: &frame::Ack<A>,
         context: &mut Ctx,
@@ -331,7 +331,7 @@ impl Manager {
 
             for packet_number in acked_packets {
                 if let Some(acked_packet_info) = self.sent_packets.remove(packet_number) {
-                    newly_acked_packets.push(acked_packet_info);
+                    newly_acked_packets.push((packet_number, acked_packet_info));
 
                     if largest_newly_acked.map_or(true, |(pn, _)| packet_number > pn) {
                         largest_newly_acked = Some((packet_number, acked_packet_info));
@@ -423,7 +423,7 @@ impl Manager {
 
     fn process_new_acked_packets<CC: CongestionController, Ctx: Context<CC>>(
         &mut self,
-        newly_acked_packets: &SmallVec<[SentPacketInfo; ACKED_PACKETS_INITIAL_CAPACITY]>,
+        newly_acked_packets: &SmallVec<[PacketDetails; ACKED_PACKETS_INITIAL_CAPACITY]>,
         largest_newly_acked_time_sent: Timestamp,
         datagram: &DatagramInfo,
         context: &mut Ctx,
@@ -435,13 +435,18 @@ impl Manager {
         self.detect_and_remove_lost_packets(datagram.timestamp, context);
 
         let is_handshake_confirmed = context.is_handshake_confirmed();
-        for acked_packet_info in newly_acked_packets {
+        for (packet_number, acked_packet_info) in newly_acked_packets {
             let path = context.path_mut_by_id(acked_packet_info.path_id);
             path.congestion_controller.on_packet_ack(
                 largest_newly_acked_time_sent,
                 acked_packet_info.sent_bytes as usize,
                 &path.rtt_estimator,
                 datagram.timestamp,
+            );
+            path.mtu_controller.on_packet_ack(
+                *packet_number,
+                acked_packet_info.sent_bytes,
+                &mut path.congestion_controller,
             );
 
             //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
@@ -667,13 +672,33 @@ impl Manager {
                 // Check that the packet was sent on this path
                 && sent_info.path_id == current_path_id;
 
-            if sent_info.sent_bytes > 0 {
+            if sent_info.sent_bytes as usize > path.mtu_controller.mtu() {
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.4
+                //# Loss of a QUIC packet that is carried in a PMTU probe is therefore not a
+                //# reliable indication of congestion and SHOULD NOT trigger a congestion
+                //# control reaction; see Section 3, Bullet 7 of [DPLPMTUD].
+
+                //= https://tools.ietf.org/rfc/rfc8899.txt#3
+                //# Loss of a probe packet SHOULD NOT be treated as an
+                //# indication of congestion and SHOULD NOT trigger a congestion
+                //# control reaction [RFC4821] because this could result in
+                //# unnecessary reduction of the sending rate.
+                path.congestion_controller
+                    .on_packet_discarded(sent_info.sent_bytes as usize)
+            } else if sent_info.sent_bytes > 0 {
                 path.congestion_controller.on_packets_lost(
                     sent_info.sent_bytes as u32,
                     persistent_congestion,
                     now,
                 );
             }
+
+            path.mtu_controller.on_packet_loss(
+                packet_number,
+                sent_info.sent_bytes,
+                now,
+                &mut path.congestion_controller,
+            );
 
             if persistent_congestion {
                 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.2

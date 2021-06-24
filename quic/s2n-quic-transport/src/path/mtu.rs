@@ -8,7 +8,11 @@ use crate::{
 use core::time::Duration;
 use s2n_codec::EncoderValue;
 use s2n_quic_core::{
-    ack, frame, inet::SocketAddress, packet::number::PacketNumber, recovery::CongestionController,
+    counter::{Counter, Saturating},
+    frame,
+    inet::SocketAddress,
+    packet::number::PacketNumber,
+    recovery::CongestionController,
     time::Timestamp,
 };
 
@@ -17,13 +21,6 @@ enum State {
     //= https://tools.ietf.org/rfc/rfc8899.txt#5.2
     //# The DISABLED state is the initial state before probing has started.
     Disabled,
-    //= https://tools.ietf.org/rfc/rfc8899.txt#5.2
-    //# The BASE state is used to confirm that the BASE_PLPMTU size is
-    //# supported by the network path and is designed to allow an
-    //# application to continue working when there are transient reductions
-    //# in the actual PMTU.
-    #[allow(dead_code)] // TODO: confirm if BASE is needed
-    Base,
     // SEARCH_REQUESTED is used to indicate a probe packet has been requested
     // to be transmitted, but has not been transmitted yet.
     SearchRequested,
@@ -75,6 +72,14 @@ const IPV6_MIN_HEADER_LEN: u16 = 40;
 // the current Path MTU, probing will be considered complete.
 const PROBE_THRESHOLD: u16 = 20;
 
+// When the black_hole_counter exceeds this threshold, on_black_hole_detected will be
+// called to reduce the MTU to the BASE_PLPMTU.
+const BLACK_HOLE_THRESHOLD: u8 = 3;
+
+// After a black hole has been detected, the mtu::Controller will wait this duration
+// before probing for a larger MTU again.
+const BLACK_HOLE_COOL_OFF_DURATION: Duration = Duration::from_secs(60);
+
 //= https://tools.ietf.org/rfc/rfc8899.txt#5.1.1
 //# The PMTU_RAISE_TIMER is configured to the period a
 //# sender will continue to use the current PLPMTU, after which it
@@ -104,6 +109,9 @@ pub struct Controller {
     //# The PROBE_COUNT is a count of the number of successive
     //# unsuccessful probe packets that have been sent.
     probe_count: u8,
+    // A count of the number of packets with a size > MINIMUM_MTU lost since
+    // the last time a packet with size equal to the current MTU was acknowledged.
+    black_hole_counter: Counter<u8, Saturating>,
     //= https://tools.ietf.org/rfc/rfc8899.txt#5.1.1
     //# The PMTU_RAISE_TIMER is configured to the period a
     //# sender will continue to use the current PLPMTU, after which it
@@ -141,6 +149,7 @@ impl Controller {
             max_plpmtu,
             max_probe_size: max_plpmtu,
             probe_count: 0,
+            black_hole_counter: Default::default(),
             pmtu_raise_timer: VirtualTimer::default(),
         }
     }
@@ -174,13 +183,20 @@ impl Controller {
     //# supported, this mechanism MAY also be used by DPLPMTUD to acknowledge
     //# reception of a probe packet.
     /// This method gets called when a packet delivery got acknowledged
-    pub fn on_packet_ack<A: ack::Set, CC: CongestionController>(
+    pub fn on_packet_ack<CC: CongestionController>(
         &mut self,
-        ack_set: &A,
+        packet_number: PacketNumber,
+        sent_bytes: u16,
         congestion_controller: &mut CC,
     ) {
-        if let State::Searching(packet_number, transmit_time) = self.state {
-            if ack_set.contains(packet_number) {
+        if sent_bytes >= self.plpmtu {
+            // Reset the black hole counter since a packet the size of the current MTU or larger
+            // has been acknowledged, indicating the path can still support the current MTU
+            self.black_hole_counter = Default::default();
+        }
+
+        if let State::Searching(probe_packet_number, transmit_time) = self.state {
+            if packet_number == probe_packet_number {
                 self.plpmtu = self.probed_size;
                 // A new MTU has been confirmed, notify the congestion controller
                 congestion_controller.on_mtu_update(self.plpmtu);
@@ -204,9 +220,15 @@ impl Controller {
     //# robust in the case where probe packets are lost due to other
     //# reasons (including link transmission error, congestion).
     /// This method gets called when a packet loss is reported
-    pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
-        if let State::Searching(packet_number, _) = self.state {
-            if ack_set.contains(packet_number) {
+    pub fn on_packet_loss<CC: CongestionController>(
+        &mut self,
+        packet_number: PacketNumber,
+        lost_bytes: u16,
+        now: Timestamp,
+        congestion_controller: &mut CC,
+    ) {
+        if let State::Searching(probe_packet_number, _) = self.state {
+            if packet_number == probe_packet_number {
                 if self.probe_count == MAX_PROBES {
                     // We've sent MAX_PROBES without acknowledgement, so
                     // attempt a smaller probe size
@@ -218,6 +240,15 @@ impl Controller {
                     self.state = State::SearchRequested
                 }
             }
+        }
+
+        if lost_bytes > BASE_PLPMTU && lost_bytes <= self.plpmtu {
+            // A non-probe packet larger than the BASE_PLPMTU has been lost
+            self.black_hole_counter += 1;
+        }
+
+        if self.black_hole_counter > BLACK_HOLE_THRESHOLD {
+            self.on_black_hole_detected(now, congestion_controller);
         }
     }
 
@@ -304,14 +335,30 @@ impl Controller {
             self.state = State::SearchComplete;
 
             if let Some(last_probe_time) = last_probe_time {
-                self.arm_pmtu_raise_timer(last_probe_time);
+                self.arm_pmtu_raise_timer(last_probe_time + PMTU_RAISE_TIMER_DURATION);
             }
         }
     }
 
+    /// Called when excessive packets larger than the BASE_PLPMTU have been lost
+    fn on_black_hole_detected<CC: CongestionController>(
+        &mut self,
+        now: Timestamp,
+        congestion_controller: &mut CC,
+    ) {
+        self.black_hole_counter = Default::default();
+        // Reset the plpmtu back to the BASE_PLPMTU and notify the congestion controller
+        self.plpmtu = BASE_PLPMTU;
+        congestion_controller.on_mtu_update(BASE_PLPMTU);
+        // Cancel any current probes
+        self.state = State::SearchComplete;
+        // Arm the PMTU raise timer to try a larger MTU again after a cooling off period
+        self.arm_pmtu_raise_timer(now + BLACK_HOLE_COOL_OFF_DURATION);
+    }
+
     /// Arm the PMTU Raise Timer if there is still room to increase the
     /// MTU before hitting the max plpmtu
-    fn arm_pmtu_raise_timer(&mut self, now: Timestamp) {
+    fn arm_pmtu_raise_timer(&mut self, timestamp: Timestamp) {
         // Reset the max_probe_size to the max_plpmtu to allow for larger probe sizes
         self.max_probe_size = self.max_plpmtu;
         self.update_probed_size();
@@ -319,7 +366,7 @@ impl Controller {
         if self.probed_size - self.plpmtu >= PROBE_THRESHOLD {
             // There is still some room to try a larger MTU again,
             // so arm the pmtu raise timer
-            self.pmtu_raise_timer.set(now + PMTU_RAISE_TIMER_DURATION);
+            self.pmtu_raise_timer.set(timestamp);
         }
     }
 }
@@ -351,11 +398,8 @@ mod test {
     use super::*;
     use crate::contexts::testing::{MockWriteContext, OutgoingFrameBuffer};
     use s2n_quic_core::{
-        endpoint,
-        frame::Frame,
-        packet::number::{PacketNumberRange, PacketNumberSpace},
-        recovery::congestion_controller::testing::mock::CongestionController,
-        varint::VarInt,
+        endpoint, frame::Frame, packet::number::PacketNumberSpace,
+        recovery::congestion_controller::testing::mock::CongestionController, varint::VarInt,
     };
     use s2n_quic_platform::time::now;
     use std::net::SocketAddr;
@@ -476,7 +520,7 @@ mod test {
         controller.probed_size = BASE_PLPMTU;
         controller.max_probe_size = BASE_PLPMTU + PROBE_THRESHOLD * 2 - 1;
 
-        controller.on_packet_ack(&PacketNumberRange::new(pn, pn), &mut cc);
+        controller.on_packet_ack(pn, BASE_PLPMTU, &mut cc);
 
         assert_eq!(
             BASE_PLPMTU + (max_plpmtu - BASE_PLPMTU) / 2,
@@ -510,7 +554,7 @@ mod test {
         let now = now();
         controller.state = State::Searching(pn, now);
 
-        controller.on_packet_ack(&PacketNumberRange::new(pn, pn), &mut cc);
+        controller.on_packet_ack(pn, controller.probed_size, &mut cc);
 
         assert_eq!(1472 + (max_plpmtu - 1472) / 2, controller.probed_size);
         assert_eq!(1, cc.on_mtu_update);
@@ -537,7 +581,7 @@ mod test {
         let now = now();
         controller.state = State::Searching(pn, now);
 
-        controller.on_packet_ack(&PacketNumberRange::new(pn, pn), &mut cc);
+        controller.on_packet_ack(pn, controller.probed_size, &mut cc);
 
         assert_eq!(1472 + (max_plpmtu - 1472) / 2, controller.probed_size);
         assert_eq!(1, cc.on_mtu_update);
@@ -555,12 +599,14 @@ mod test {
         let mut controller = new_controller(1500);
         let max_plpmtu = controller.max_plpmtu;
         let pn = pn(1);
+        let mut cc = CongestionController::default();
         let now = now();
         controller.state = State::Searching(pn, now);
         let probed_size = controller.probed_size;
 
-        controller.on_packet_loss(&PacketNumberRange::new(pn, pn));
+        controller.on_packet_loss(pn, controller.probed_size, now, &mut cc);
 
+        assert_eq!(0, cc.on_mtu_update);
         assert_eq!(max_plpmtu, controller.max_probe_size);
         assert_eq!(probed_size, controller.probed_size);
         assert_eq!(State::SearchRequested, controller.state);
@@ -571,13 +617,15 @@ mod test {
         let mut controller = new_controller(1500);
         let max_plpmtu = controller.max_plpmtu;
         let pn = pn(1);
+        let mut cc = CongestionController::default();
         let now = now();
         controller.state = State::Searching(pn, now);
         controller.probe_count = MAX_PROBES;
         assert_eq!(max_plpmtu, controller.max_probe_size);
 
-        controller.on_packet_loss(&PacketNumberRange::new(pn, pn));
+        controller.on_packet_loss(pn, controller.probed_size, now, &mut cc);
 
+        assert_eq!(0, cc.on_mtu_update);
         assert_eq!(1472, controller.max_probe_size);
         assert_eq!(
             BASE_PLPMTU + (1472 - BASE_PLPMTU) / 2,
