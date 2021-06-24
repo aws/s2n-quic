@@ -186,6 +186,10 @@ impl<CC: CongestionController> Path<CC> {
         }
     }
 
+    pub fn is_response_pending(&self) -> bool {
+        self.response_data.is_some()
+    }
+
     pub fn on_path_challenge(&mut self, response: &challenge::Data) {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
         //# On receiving a PATH_CHALLENGE frame, an endpoint MUST respond by
