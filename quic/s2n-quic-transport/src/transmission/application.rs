@@ -114,7 +114,7 @@ impl<'a, S: Stream, CCE: congestion_controller::Endpoint> Normal<'a, S, CCE> {
             let _ = self.handshake_status.on_transmit(context);
 
             // prioritize PATH_CHALLENGE and PATH_RESPONSE frames higher than app data
-            self.path_manager[self.path_id].on_transmit(context);
+            self.path_manager.active_path_mut().on_transmit(context);
 
             self.local_id_registry.on_transmit(context);
 

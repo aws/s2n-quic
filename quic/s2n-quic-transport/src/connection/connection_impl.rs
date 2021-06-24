@@ -260,7 +260,12 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         }
     }
 
-    fn transmit_path_validation_frames<'a, Tx: tx::Queue, Pub: event::Publisher>(
+    /// Send path validation frames for the non-active path.
+    ///
+    /// Since non-probing frames can only be sent on the active path, a separate
+    /// transmission context with Mode::PathValidationOnly is used to send on
+    /// other paths.
+    fn transmit_non_active_path<'a, Tx: tx::Queue, Pub: event::Publisher>(
         &mut self,
         shared_state: &mut SharedConnectionState<Config>,
         queue: &mut Tx,
@@ -272,15 +277,14 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         let mut pending_paths = self.path_manager.paths_pending_validation();
         let ecn = Default::default();
         while let Some((path_id, path_manager)) = pending_paths.next_path() {
+            // It is more efficient to coalesce path validation and other
+            // frames for the active path so we skip PathValidationOnly
+            // and handle transmission for the active path seperately.
             if path_id == path_manager.active_path_id() {
                 continue;
             }
 
-            let tx_bytes = path_manager[path_id].clamp_mtu(
-                path::MINIMUM_MTU as usize,
-                transmission::Mode::PathValidationOnly,
-            );
-            if tx_bytes > 0
+            if !path_manager[path_id].at_amplification_limit()
                 && queue
                     .push(ConnectionTransmission {
                         context: ConnectionTransmissionContext {
@@ -529,14 +533,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 if let Some(shared_state) = shared_state {
                     let mut outcome = transmission::Outcome::default();
 
-                    count += self.transmit_path_validation_frames(
-                        shared_state,
-                        queue,
-                        timestamp,
-                        &mut outcome,
-                        publisher,
-                    );
-
                     while !self.path_manager.active_path().at_amplification_limit()
                         && queue
                             .push(ConnectionTransmission {
@@ -594,6 +590,14 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                             .into(),
                         });
                     };
+
+                    count += self.transmit_non_active_path(
+                        shared_state,
+                        queue,
+                        timestamp,
+                        &mut outcome,
+                        publisher,
+                    );
                 }
                 // TODO  leave the psuedo in comment, TODO send this stuff
                 // for path_id in path_manager.pending_path_validation() {

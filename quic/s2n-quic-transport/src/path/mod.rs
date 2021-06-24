@@ -239,11 +239,11 @@ impl<CC: CongestionController> Path<CC> {
         match transmission_mode {
             // Use the minimum MTU for loss recovery probes to allow detection of packets
             // lost when the previously confirmed path MTU is no longer supported.
-            Mode::LossRecoveryProbing => MINIMUM_MTU as usize,
+            Mode::LossRecoveryProbing | Mode::PathValidationOnly => MINIMUM_MTU as usize,
             // When MTU Probing, clamp to the size of the MTU we are attempting to validate
             Mode::MtuProbing => self.mtu_controller.probed_sized(),
             // Otherwise use the confirmed MTU
-            Mode::Normal | Mode::PathValidationOnly => self.mtu_controller.mtu(),
+            Mode::Normal => self.mtu_controller.mtu(),
         }
     }
 
@@ -737,7 +737,7 @@ mod tests {
             path.clamp_mtu(10000, transmission::Mode::Normal)
         );
         assert_eq!(
-            path.mtu_controller.mtu(),
+            MINIMUM_MTU as usize,
             path.clamp_mtu(10000, transmission::Mode::PathValidationOnly)
         );
         assert_eq!(
@@ -763,7 +763,7 @@ mod tests {
             path.mtu(transmission::Mode::Normal)
         );
         assert_eq!(
-            path.mtu_controller.mtu(),
+            MINIMUM_MTU as usize,
             path.mtu(transmission::Mode::PathValidationOnly)
         );
         assert_eq!(
