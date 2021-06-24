@@ -73,7 +73,12 @@ const IPV6_MIN_HEADER_LEN: u16 = 40;
 const PROBE_THRESHOLD: u16 = 20;
 
 // When the black_hole_counter exceeds this threshold, on_black_hole_detected will be
-// called to reduce the MTU to the BASE_PLPMTU.
+// called to reduce the MTU to the BASE_PLPMTU. The black_hole_counter is incremented when
+// a packet is lost that is:
+//      1) not an MTU probe
+//      2) larger than the BASE_PLPMTU
+//      3) sent after the largest MTU-sized acknowledged packet number
+// This is a possible indication that the path cannot support the MTU that was previously confirmed.
 const BLACK_HOLE_THRESHOLD: u8 = 3;
 
 // After a black hole has been detected, the mtu::Controller will wait this duration
