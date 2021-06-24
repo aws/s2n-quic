@@ -273,6 +273,14 @@ impl<'a, Config: endpoint::Config> tx::Message for ConnectionTransmission<'a, Co
                 .filter(|pn_space| pn_space.is_application_data())
                 .map(|_| encoder.capacity());
 
+            // TODO: There is an edge case. on the active path we first send challenge/response ad then app data.
+            //
+            // We only want to pad if we are sending a challenge/response frame. If we send 2 challenges
+            // and dont need to send a response, then we will be padding unnecessarily and wasting
+            // tx bytes.
+            //
+            // However that might be an optimization we might not care about for now since if we
+            // dont receive a PATH_RESPONSE we need to abandon conn migration anyway.
             if !self.context.path_manager[self.context.path_id].is_validated() {
                 self.context.min_packet_len = Some(encoder.capacity());
             }
