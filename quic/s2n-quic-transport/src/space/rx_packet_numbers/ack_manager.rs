@@ -265,6 +265,11 @@ impl AckManager {
 
             should_activate |= self.processed_packets_since_transmission >= packet_tolerance;
 
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.3
+            //# An endpoint that receives a PATH_CHALLENGE on an active path SHOULD
+            //# send a non-probing packet in response.
+            should_activate |= processed_packet.path_challenge_received;
+
             if should_activate {
                 self.transmission_state.activate();
             } else if !self.ack_delay_timer.is_armed() {

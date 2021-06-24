@@ -1,0 +1,23 @@
+target = "https://tools.ietf.org/rfc/rfc9000.txt#8.2.3"
+
+[[exception]]
+quote = '''
+If an endpoint sends a PATH_CHALLENGE frame in a datagram that is not
+expanded to at least 1200 bytes and if the response to it validates
+the peer address, the path is validated but not the path MTU.
+'''
+reason = '''
+s2n-quic rounds up path validation frames to 1200 bytes so MTU is
+always validated as part of path validation.
+'''
+
+[[exception]]
+quote = '''
+However, the endpoint MUST initiate
+another path validation with an expanded datagram to verify that the
+path supports the required MTU.
+'''
+reason = '''
+s2n-quic rounds up path validation frames to 1200 bytes so MTU is
+always validated as part of path validation.
+'''
