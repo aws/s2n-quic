@@ -112,6 +112,9 @@ pub struct Controller {
     // A count of the number of packets with a size > MINIMUM_MTU lost since
     // the last time a packet with size equal to the current MTU was acknowledged.
     black_hole_counter: Counter<u8, Saturating>,
+    // The largest packet number of a packet the size of the current MTU that has
+    // been acknowledged.
+    largest_acked_mtu_sized_packet: Option<PacketNumber>,
     //= https://tools.ietf.org/rfc/rfc8899.txt#5.1.1
     //# The PMTU_RAISE_TIMER is configured to the period a
     //# sender will continue to use the current PLPMTU, after which it
@@ -150,6 +153,7 @@ impl Controller {
             max_probe_size: max_plpmtu,
             probe_count: 0,
             black_hole_counter: Default::default(),
+            largest_acked_mtu_sized_packet: None,
             pmtu_raise_timer: VirtualTimer::default(),
         }
     }
@@ -189,10 +193,19 @@ impl Controller {
         sent_bytes: u16,
         congestion_controller: &mut CC,
     ) {
-        if sent_bytes >= self.plpmtu {
+        if self.state == State::Disabled {
+            return;
+        }
+
+        if sent_bytes >= self.plpmtu
+            && self
+                .largest_acked_mtu_sized_packet
+                .map_or(true, |pn| packet_number > pn)
+        {
             // Reset the black hole counter since a packet the size of the current MTU or larger
             // has been acknowledged, indicating the path can still support the current MTU
             self.black_hole_counter = Default::default();
+            self.largest_acked_mtu_sized_packet = Some(packet_number);
         }
 
         if let State::Searching(probe_packet_number, transmit_time) = self.state {
@@ -227,8 +240,10 @@ impl Controller {
         now: Timestamp,
         congestion_controller: &mut CC,
     ) {
-        if let State::Searching(probe_packet_number, _) = self.state {
-            if packet_number == probe_packet_number {
+        match self.state {
+            State::Disabled => {}
+            State::Searching(probe_pn, _) if probe_pn == packet_number => {
+                // The MTU probe was lost
                 if self.probe_count == MAX_PROBES {
                     // We've sent MAX_PROBES without acknowledgement, so
                     // attempt a smaller probe size
@@ -240,15 +255,21 @@ impl Controller {
                     self.state = State::SearchRequested
                 }
             }
-        }
+            _ => {
+                if (BASE_PLPMTU + 1..=self.plpmtu).contains(&lost_bytes)
+                    && self
+                        .largest_acked_mtu_sized_packet
+                        .map_or(true, |pn| packet_number > pn)
+                {
+                    // A non-probe packet larger than the BASE_PLPMTU that was sent after the last
+                    // acknowledged MTU-sized packet has been lost
+                    self.black_hole_counter += 1;
+                }
 
-        if lost_bytes > BASE_PLPMTU && lost_bytes <= self.plpmtu {
-            // A non-probe packet larger than the BASE_PLPMTU has been lost
-            self.black_hole_counter += 1;
-        }
-
-        if self.black_hole_counter > BLACK_HOLE_THRESHOLD {
-            self.on_black_hole_detected(now, congestion_controller);
+                if self.black_hole_counter > BLACK_HOLE_THRESHOLD {
+                    self.on_black_hole_detected(now, congestion_controller);
+                }
+            }
         }
     }
 
@@ -340,7 +361,7 @@ impl Controller {
         }
     }
 
-    /// Called when excessive packets larger than the BASE_PLPMTU have been lost
+    /// Called when an excessive number of packets larger than the BASE_PLPMTU have been lost
     fn on_black_hole_detected<CC: CongestionController>(
         &mut self,
         now: Timestamp,
@@ -592,17 +613,45 @@ mod test {
     #[test]
     fn on_packet_ack_resets_black_hole_counter() {
         let mut controller = new_controller(1500 + (PROBE_THRESHOLD * 2));
-        let pn = pn(1);
+        let pnum = pn(3);
         let mut cc = CongestionController::default();
+        controller.enable();
 
         controller.black_hole_counter += 1;
         // ack a packet smaller than the plpmtu
-        controller.on_packet_ack(pn, controller.plpmtu - 1, &mut cc);
+        controller.on_packet_ack(pnum, controller.plpmtu - 1, &mut cc);
         assert_eq!(controller.black_hole_counter, 1);
+        assert_eq!(None, controller.largest_acked_mtu_sized_packet);
 
         // ack a packet the size of the plpmtu
-        controller.on_packet_ack(pn, controller.plpmtu, &mut cc);
+        controller.on_packet_ack(pnum, controller.plpmtu, &mut cc);
         assert_eq!(controller.black_hole_counter, 0);
+        assert_eq!(Some(pnum), controller.largest_acked_mtu_sized_packet);
+
+        controller.black_hole_counter += 1;
+
+        // ack an older packet
+        let pnum_2 = pn(2);
+        controller.on_packet_ack(pnum_2, controller.plpmtu, &mut cc);
+        assert_eq!(controller.black_hole_counter, 1);
+        assert_eq!(Some(pnum), controller.largest_acked_mtu_sized_packet);
+    }
+
+    #[test]
+    fn on_packet_ack_disabled_controller() {
+        let mut controller = new_controller(1500 + (PROBE_THRESHOLD * 2));
+        let pnum = pn(3);
+        let mut cc = CongestionController::default();
+
+        controller.black_hole_counter += 1;
+        controller.largest_acked_mtu_sized_packet = Some(pnum);
+
+        // on_packet_ack will be called with packet numbers from Initial and Handshake space prior to
+        // the mtu::Controller being enabled, so it should not fail in this scenario.
+        let pn = PacketNumberSpace::Handshake.new_packet_number(VarInt::from_u8(10));
+        controller.on_packet_ack(pn, controller.plpmtu, &mut cc);
+        assert_eq!(controller.black_hole_counter, 1);
+        assert_eq!(Some(pnum), controller.largest_acked_mtu_sized_packet);
     }
 
     //= https://tools.ietf.org/rfc/rfc8899.txt#3
@@ -656,11 +705,22 @@ mod test {
         let mut cc = CongestionController::default();
         let now = now();
         controller.plpmtu = 1472;
+        controller.enable();
 
         for i in 0..BLACK_HOLE_THRESHOLD + 1 {
             let pn = pn(i as usize);
             assert_eq!(controller.black_hole_counter, i);
             controller.on_packet_loss(pn, BASE_PLPMTU + 1, now, &mut cc);
+
+            // Losing a packet the size of the BASE_PLPMTU should not increase the black_hole_counter
+            let black_hole_counter = controller.black_hole_counter;
+            controller.on_packet_loss(pn, BASE_PLPMTU, now, &mut cc);
+            assert_eq!(black_hole_counter, controller.black_hole_counter);
+
+            // Losing a packet larger than the PLPMTU should not increase the black_hole_counter
+            let black_hole_counter = controller.black_hole_counter;
+            controller.on_packet_loss(pn, controller.plpmtu + 1, now, &mut cc);
+            assert_eq!(black_hole_counter, controller.black_hole_counter);
         }
 
         assert_eq!(controller.black_hole_counter, 0);
@@ -671,6 +731,24 @@ mod test {
             Some(now + BLACK_HOLE_COOL_OFF_DURATION),
             controller.pmtu_raise_timer.iter().next()
         );
+    }
+
+    #[test]
+    fn on_packet_loss_disabled_controller() {
+        let mut controller = new_controller(1500);
+        let mut cc = CongestionController::default();
+        let now = now();
+
+        for i in 0..BLACK_HOLE_THRESHOLD + 1 {
+            // on_packet_loss will be called with packet numbers from Initial and Handshake space prior to
+            // the mtu::Controller being enabled, so it should not fail in this scenario.
+            let pn = PacketNumberSpace::Initial.new_packet_number(VarInt::from_u8(i));
+            assert_eq!(controller.black_hole_counter, 0);
+            controller.on_packet_loss(pn, BASE_PLPMTU + 1, now, &mut cc);
+        }
+
+        assert_eq!(controller.black_hole_counter, 0);
+        assert_eq!(0, cc.on_mtu_update);
     }
 
     //= https://tools.ietf.org/rfc/rfc8899.txt#5.2
