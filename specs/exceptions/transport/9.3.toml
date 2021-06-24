@@ -1,0 +1,10 @@
+[[exception]]
+target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3"
+quote = '''
+An endpoint MAY send data to an unvalidated peer address, but it MUST
+protect against potential attacks as described in Section 9.3.1 and
+Section 9.3.2.
+'''
+reason = '''
+s2n-quic does not send data prior to path validation.
+'''

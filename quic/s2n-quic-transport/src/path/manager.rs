@@ -54,7 +54,8 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     }
 
     /// Update the active path
-    #[allow(dead_code)]
+    ///
+    /// Must not be called with path_id equal to the active path.
     fn update_active_path(&mut self, path_id: Id) -> Result<(), transport::Error> {
         debug_assert!(path_id != Id(self.active));
 
@@ -266,8 +267,11 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
             true,
         );
 
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.4
+        //# Endpoints SHOULD abandon path validation based on a timer.
+
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#8.2.4
-        //# Endpoints SHOULD abandon path validation based on a timer.  When
+        //# When
         //# setting this timer, implementations are cautioned that the new path
         //# could have a longer round-trip time than the original. A value of
         //# three times the larger of the current Probe Timeout (PTO) or the PTO
@@ -362,6 +366,24 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         }
     }
 
+    pub fn on_non_probing_packet(&mut self, path_id: Id) -> Result<(), transport::Error> {
+        if self.active_path_id() != path_id {
+            self.update_active_path(path_id)?;
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3
+            //# After changing the address to which it sends non-probing packets, an
+            //# endpoint can abandon any path validation for other addresses.
+            self.abandon_path_validation();
+        }
+        Ok(())
+    }
+
+    fn abandon_path_validation(&mut self) {
+        for path in self.paths.iter_mut() {
+            path.abandon_challenge();
+        }
+    }
+
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
     //# Tokens are
     //# invalidated when their associated connection ID is retired via a
@@ -405,38 +427,41 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         Ok(())
     }
 
-    pub fn on_timeout(&mut self, timestamp: Timestamp) {
+    pub fn on_timeout(&mut self, timestamp: Timestamp) -> Result<(), connection::Error> {
         for path in self.paths.iter_mut() {
             path.on_timeout(timestamp);
         }
 
         if !self.active_path().is_validated() && !self.active_path().is_challenge_pending() {
-            if let Some(last_known_validated_path) = self.last_known_validated_path {
-                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.2
-                //# To protect the connection from failing due to such a spurious
-                //# migration, an endpoint MUST revert to using the last validated peer
-                //# address when validation of a new peer address fails.
-                self.active = last_known_validated_path;
-                self.last_known_validated_path = None;
+            match self.last_known_validated_path {
+                Some(last_known_validated_path) => {
+                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.2
+                    //# To protect the connection from failing due to such a spurious
+                    //# migration, an endpoint MUST revert to using the last validated peer
+                    //# address when validation of a new peer address fails.
+                    self.active = last_known_validated_path;
+                    self.last_known_validated_path = None;
+                }
+                None => {
+                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
+                    //= type=TODO
+                    //# An endpoint capable of connection
+                    //# migration MAY wait for a new path to become available before
+                    //# discarding connection state.
+
+                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
+                    //# When an endpoint has no validated path on which to send packets, it
+                    //# MAY discard connection state.
+
+                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.2
+                    //# If an endpoint has no state about the last validated peer address, it
+                    //# MUST close the connection silently by discarding all connection
+                    //# state.
+                    return Err(connection::Error::NoPath);
+                }
             }
         }
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
-        //= type=TODO
-        //# When an endpoint has no validated path on which to send packets, it
-        //# MAY discard connection state.
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
-        //= type=TODO
-        //# An endpoint capable of connection
-        //# migration MAY wait for a new path to become available before
-        //# discarding connection state.
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.2
-        //= type=TODO
-        //# If an endpoint has no state about the last validated peer address, it
-        //# MUST close the connection silently by discarding all connection
-        //# state.
+        Ok(())
     }
 
     /// Notifies the path manager of the connection closing event

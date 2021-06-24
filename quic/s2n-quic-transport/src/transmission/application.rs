@@ -115,6 +115,9 @@ impl<'a, S: Stream, CCE: congestion_controller::Endpoint> Normal<'a, S, CCE> {
             // soon as possible
             let _ = self.handshake_status.on_transmit(context);
 
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2
+            //# An endpoint MAY include other frames with the PATH_CHALLENGE and
+            //# PATH_RESPONSE frames used for path validation.
             // prioritize PATH_CHALLENGE and PATH_RESPONSE frames higher than app data
             self.path_manager.active_path_mut().on_transmit(context);
 
