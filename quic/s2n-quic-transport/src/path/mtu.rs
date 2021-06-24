@@ -589,6 +589,22 @@ mod test {
         assert!(!controller.pmtu_raise_timer.is_armed());
     }
 
+    #[test]
+    fn on_packet_ack_resets_black_hole_counter() {
+        let mut controller = new_controller(1500 + (PROBE_THRESHOLD * 2));
+        let pn = pn(1);
+        let mut cc = CongestionController::default();
+
+        controller.black_hole_counter += 1;
+        // ack a packet smaller than the plpmtu
+        controller.on_packet_ack(pn, controller.plpmtu - 1, &mut cc);
+        assert_eq!(controller.black_hole_counter, 1);
+
+        // ack a packet the size of the plpmtu
+        controller.on_packet_ack(pn, controller.plpmtu, &mut cc);
+        assert_eq!(controller.black_hole_counter, 0);
+    }
+
     //= https://tools.ietf.org/rfc/rfc8899.txt#3
     //= type=test
     //# The PL is REQUIRED to be
@@ -632,6 +648,29 @@ mod test {
             controller.probed_size
         );
         assert_eq!(State::SearchRequested, controller.state);
+    }
+
+    #[test]
+    fn on_packet_loss_black_hole() {
+        let mut controller = new_controller(1500);
+        let mut cc = CongestionController::default();
+        let now = now();
+        controller.plpmtu = 1472;
+
+        for i in 0..BLACK_HOLE_THRESHOLD + 1 {
+            let pn = pn(i as usize);
+            assert_eq!(controller.black_hole_counter, i);
+            controller.on_packet_loss(pn, BASE_PLPMTU + 1, now, &mut cc);
+        }
+
+        assert_eq!(controller.black_hole_counter, 0);
+        assert_eq!(1, cc.on_mtu_update);
+        assert_eq!(BASE_PLPMTU, controller.plpmtu);
+        assert_eq!(State::SearchComplete, controller.state);
+        assert_eq!(
+            Some(now + BLACK_HOLE_COOL_OFF_DURATION),
+            controller.pmtu_raise_timer.iter().next()
+        );
     }
 
     //= https://tools.ietf.org/rfc/rfc8899.txt#5.2
