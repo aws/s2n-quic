@@ -51,7 +51,7 @@ impl<'a, Config: endpoint::Config> Payload<'a, Config> {
             Mode::MtuProbing => transmission::application::Payload::MtuProbe(MtuProbe {
                 mtu_controller: &mut context.path_mut().mtu_controller,
             }),
-            Mode::PathValidation => {
+            Mode::PathValidationOnly => {
                 transmission::application::Payload::PathValidation(PathValidation {
                     path_manager: context.path_manager,
                     path_id: context.path_id,

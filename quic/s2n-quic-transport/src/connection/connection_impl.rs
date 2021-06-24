@@ -278,7 +278,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
 
             let tx_bytes = path_manager[path_id].clamp_mtu(
                 path::MINIMUM_MTU as usize,
-                transmission::Mode::PathValidation,
+                transmission::Mode::PathValidationOnly,
             );
             if tx_bytes > 0
                 && queue
@@ -293,7 +293,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
                             outcome,
                             ecn,
                             min_packet_len: None,
-                            transmission_mode: transmission::Mode::PathValidation,
+                            transmission_mode: transmission::Mode::PathValidationOnly,
                         },
                         shared_state,
                     })
