@@ -127,9 +127,10 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
             .map(|(id, path)| (Id(id as u8), path))
     }
 
-    /// Returns an iterator over all paths
-    pub fn pending_paths(&mut self) -> PendingPaths<CCE> {
-        PendingPaths::new(self)
+    /// Returns an iterator over all paths pending path_challenge or path_response
+    /// transmission.
+    pub fn pending_paths(&mut self) -> PathsPendingValidation<CCE> {
+        PathsPendingValidation::new(self)
     }
 
     /// Called when a datagram is received on a connection
@@ -468,12 +469,12 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     }
 }
 
-pub struct PendingPaths<'a, CCE: congestion_controller::Endpoint> {
+pub struct PathsPendingValidation<'a, CCE: congestion_controller::Endpoint> {
     index: u8,
     path_manager: &'a mut Manager<CCE>,
 }
 
-impl<'a, CCE: congestion_controller::Endpoint> PendingPaths<'a, CCE> {
+impl<'a, CCE: congestion_controller::Endpoint> PathsPendingValidation<'a, CCE> {
     pub fn new(path_manager: &'a mut Manager<CCE>) -> Self {
         Self {
             index: 0,
@@ -489,7 +490,7 @@ impl<'a, CCE: congestion_controller::Endpoint> PendingPaths<'a, CCE> {
             // returning the same path over and over.
             self.index += 1;
 
-            if path.is_challenge_pending() {
+            if path.is_challenge_pending() || path.is_response_pending() {
                 return Some((Id(self.index - 1), self.path_manager));
             }
         }
@@ -1285,6 +1286,61 @@ mod tests {
 
         // Expectation:
         assert!(helper.manager.can_transmit(interest));
+    }
+
+    #[test]
+    // Return all paths that are pending challenge or response.
+    fn pending_paths_should_return_paths_pending_validation() {
+        // Setup:
+        let mut helper = helper_manager_with_paths();
+        let third_conn_id = connection::PeerId::try_from_bytes(&[3]).unwrap();
+        let mut third_path = Path::new(
+            SocketAddress::default(),
+            third_conn_id,
+            connection::LocalId::TEST_ID,
+            RttEstimator::new(Duration::from_millis(30)),
+            Default::default(),
+            false,
+        );
+        let expected_response_data = [0; 8];
+        third_path.on_path_challenge(&expected_response_data);
+        helper.manager.paths.push(third_path);
+
+        // not pending challenge or response
+        assert!(!helper.manager[helper.first_path_id].is_challenge_pending());
+        assert!(!helper.manager[helper.first_path_id].is_response_pending());
+
+        // pending challenge
+        assert!(helper.manager[helper.second_path_id].is_challenge_pending());
+        assert!(!helper.manager[helper.second_path_id].is_response_pending());
+
+        // pending response
+        assert!(!helper.manager[Id(2)].is_challenge_pending());
+        assert!(helper.manager[Id(2)].is_response_pending());
+
+        let mut pending_paths = helper.manager.pending_paths();
+
+        // Trigger:
+        let next = pending_paths.next_path();
+
+        // Expectation:
+        assert!(next.is_some());
+        let (path_id, _path_manager) = next.unwrap();
+        assert_eq!(path_id.0, 1);
+
+        // Trigger:
+        let next = pending_paths.next_path();
+
+        // Expectation:
+        assert!(next.is_some());
+        let (path_id, _path_manager) = next.unwrap();
+        assert_eq!(path_id.0, 2);
+
+        // Trigger:
+        let next = pending_paths.next_path();
+
+        // Expectation:
+        assert!(next.is_none());
     }
 
     fn helper_manager_register_second_path_conn_id(register_second_conn_id: bool) -> Helper {

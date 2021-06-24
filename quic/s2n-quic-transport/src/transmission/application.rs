@@ -105,10 +105,6 @@ impl<'a, S: Stream, CCE: congestion_controller::Endpoint> Normal<'a, S, CCE> {
     fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
         let did_send_ack = self.ack_manager.on_transmit(context);
 
-        if !self.path_manager[self.path_id].at_amplification_limit() {
-            self.path_manager[self.path_id].on_transmit(context)
-        }
-
         // Payloads can only transmit and retransmit
         if context.transmission_constraint().can_transmit()
             || context.transmission_constraint().can_retransmit()
@@ -116,6 +112,9 @@ impl<'a, S: Stream, CCE: congestion_controller::Endpoint> Normal<'a, S, CCE> {
             // send HANDSHAKE_DONE frames first, if needed, to ensure the handshake is confirmed as
             // soon as possible
             let _ = self.handshake_status.on_transmit(context);
+
+            // prioritize PATH_CHALLENGE and PATH_RESPONSE frames higher than app data
+            self.path_manager[self.path_id].on_transmit(context);
 
             self.local_id_registry.on_transmit(context);
 

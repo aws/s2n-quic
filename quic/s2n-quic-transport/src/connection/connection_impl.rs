@@ -260,7 +260,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         }
     }
 
-    fn transmit_non_active_path<'a, Tx: tx::Queue, Pub: event::Publisher>(
+    fn transmit_path_validation_frames<'a, Tx: tx::Queue, Pub: event::Publisher>(
         &mut self,
         shared_state: &mut SharedConnectionState<Config>,
         queue: &mut Tx,
@@ -529,7 +529,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 if let Some(shared_state) = shared_state {
                     let mut outcome = transmission::Outcome::default();
 
-                    count += self.transmit_non_active_path(
+                    count += self.transmit_path_validation_frames(
                         shared_state,
                         queue,
                         timestamp,
