@@ -364,6 +364,11 @@ impl<CC: CongestionController> Path<CC> {
             }
         }
     }
+
+    pub fn can_transmit(&self, interest: transmission::Interest) -> bool {
+        let constraint = self.transmission_constraint();
+        interest.can_transmit(constraint)
+    }
 }
 
 impl<CC: CongestionController> transmission::interest::Provider for Path<CC> {

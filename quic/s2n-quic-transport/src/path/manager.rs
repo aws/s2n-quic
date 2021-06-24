@@ -461,10 +461,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
 
     /// true if ANY of the paths can transmit
     pub fn can_transmit(&self, interest: transmission::Interest) -> bool {
-        self.paths.iter().any(|path| {
-            let constraint = path.transmission_constraint();
-            interest.can_transmit(constraint)
-        })
+        self.paths.iter().any(|path| path.can_transmit(interest))
     }
 }
 
