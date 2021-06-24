@@ -469,6 +469,11 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     }
 }
 
+/// Iterate over all paths that have an interest in sending PATH_CHALLENGE
+/// or PATH_RESPONSE frames.
+///
+/// This abstraction allows for iterating over pending paths while also
+/// having mut access to the Manager.
 pub struct PathsPendingValidation<'a, CCE: congestion_controller::Endpoint> {
     index: u8,
     path_manager: &'a mut Manager<CCE>,

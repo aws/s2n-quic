@@ -273,17 +273,10 @@ impl<'a, Config: endpoint::Config> tx::Message for ConnectionTransmission<'a, Co
                 .filter(|pn_space| pn_space.is_application_data())
                 .map(|_| encoder.capacity());
 
-            // TODO: There is an edge case:
-            //
-            // On the active path we first send path validation frames, followed by other frames.
-            //
-            // Padding should only happened when sending a path validation frames. If all the path
-            // validation frames have already been sent but the path is not yet validated, then
-            // the packet will be padded unnecessarily. This will waste tx bytes.
-            //
-            // However fixing this might be an optimization for later since the path is abandoned
-            // if path validation fails and this state should be transient.
-            if !self.context.path_manager[self.context.path_id].is_validated() {
+            let path = &self.context.path_manager[self.context.path_id];
+            let validation_frames_pending =
+                path.is_challenge_pending() || path.is_response_pending();
+            if !path.is_validated() && validation_frames_pending {
                 self.context.min_packet_len = Some(encoder.capacity());
             }
 
