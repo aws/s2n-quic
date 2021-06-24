@@ -129,7 +129,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
 
     /// Returns an iterator over all paths pending path_challenge or path_response
     /// transmission.
-    pub fn pending_paths(&mut self) -> PathsPendingValidation<CCE> {
+    pub fn paths_pending_validation(&mut self) -> PathsPendingValidation<CCE> {
         PathsPendingValidation::new(self)
     }
 
@@ -1310,7 +1310,7 @@ mod tests {
         assert!(!helper.manager[Id(2)].is_challenge_pending());
         assert!(helper.manager[Id(2)].is_response_pending());
 
-        let mut pending_paths = helper.manager.pending_paths();
+        let mut pending_paths = helper.manager.paths_pending_validation();
 
         // Trigger:
         let next = pending_paths.next_path();

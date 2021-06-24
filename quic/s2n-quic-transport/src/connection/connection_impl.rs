@@ -269,7 +269,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         publisher: &mut Pub,
     ) -> usize {
         let mut count = 0;
-        let mut pending_paths = self.path_manager.pending_paths();
+        let mut pending_paths = self.path_manager.paths_pending_validation();
         let ecn = Default::default();
         while let Some((path_id, path_manager)) = pending_paths.next_path() {
             if path_id == path_manager.active_path_id() {
