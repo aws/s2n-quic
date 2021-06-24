@@ -198,7 +198,7 @@ impl Controller {
         sent_bytes: u16,
         congestion_controller: &mut CC,
     ) {
-        if self.state == State::Disabled {
+        if self.state == State::Disabled || !packet_number.space().is_application_data() {
             return;
         }
 
@@ -261,7 +261,8 @@ impl Controller {
                 }
             }
             _ => {
-                if (BASE_PLPMTU + 1..=self.plpmtu).contains(&lost_bytes)
+                if packet_number.space().is_application_data()
+                    && (BASE_PLPMTU + 1..=self.plpmtu).contains(&lost_bytes)
                     && self
                         .largest_acked_mtu_sized_packet
                         .map_or(true, |pn| packet_number > pn)
@@ -653,6 +654,24 @@ mod test {
 
         // on_packet_ack will be called with packet numbers from Initial and Handshake space prior to
         // the mtu::Controller being enabled, so it should not fail in this scenario.
+        let pn = pn(10);
+        controller.on_packet_ack(pn, controller.plpmtu, &mut cc);
+        assert_eq!(controller.black_hole_counter, 1);
+        assert_eq!(Some(pnum), controller.largest_acked_mtu_sized_packet);
+    }
+
+    #[test]
+    fn on_packet_ack_not_application_space() {
+        let mut controller = new_controller(1500 + (PROBE_THRESHOLD * 2));
+        let pnum = pn(3);
+        let mut cc = CongestionController::default();
+        controller.enable();
+
+        controller.black_hole_counter += 1;
+        controller.largest_acked_mtu_sized_packet = Some(pnum);
+
+        // on_packet_ack will be called with packet numbers from Initial and Handshake space,
+        // so it should not fail in this scenario.
         let pn = PacketNumberSpace::Handshake.new_packet_number(VarInt::from_u8(10));
         controller.on_packet_ack(pn, controller.plpmtu, &mut cc);
         assert_eq!(controller.black_hole_counter, 1);
@@ -745,8 +764,25 @@ mod test {
         let now = now();
 
         for i in 0..BLACK_HOLE_THRESHOLD + 1 {
-            // on_packet_loss will be called with packet numbers from Initial and Handshake space prior to
-            // the mtu::Controller being enabled, so it should not fail in this scenario.
+            let pn = pn(i as usize);
+            assert_eq!(controller.black_hole_counter, 0);
+            controller.on_packet_loss(pn, BASE_PLPMTU + 1, now, &mut cc);
+        }
+
+        assert_eq!(controller.black_hole_counter, 0);
+        assert_eq!(0, cc.on_mtu_update);
+    }
+
+    #[test]
+    fn on_packet_loss_not_application_space() {
+        let mut controller = new_controller(1500);
+        let mut cc = CongestionController::default();
+        let now = now();
+        controller.enable();
+
+        for i in 0..BLACK_HOLE_THRESHOLD + 1 {
+            // on_packet_loss may be called with packet numbers from Initial and Handshake space
+            // so it should not fail in this scenario.
             let pn = PacketNumberSpace::Initial.new_packet_number(VarInt::from_u8(i));
             assert_eq!(controller.black_hole_counter, 0);
             controller.on_packet_loss(pn, BASE_PLPMTU + 1, now, &mut cc);
