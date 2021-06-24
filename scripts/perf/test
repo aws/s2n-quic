@@ -42,7 +42,7 @@ echo "waiting for server to boot"
 sleep 3
 
 echo "executing request"
-./target/perf/quinn/bin/client \
+./target/perf/quinn/bin/perf_client \
   --download-size "$DOWNLOAD_B" \
   --upload-size "$UPLOAD_B" \
   --insecure \
