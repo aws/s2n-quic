@@ -170,7 +170,8 @@ pub struct PathValidation<'a, CCE: congestion_controller::Endpoint> {
 
 impl<'a, CCE: congestion_controller::Endpoint> PathValidation<'a, CCE> {
     fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
-        if !self.path_manager[self.path_id].at_amplification_limit() {
+        let interest = self.transmission_interest();
+        if !self.path_manager[self.path_id].can_transmit(interest) {
             self.path_manager[self.path_id].on_transmit(context)
         }
     }
