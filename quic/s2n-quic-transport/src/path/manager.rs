@@ -370,6 +370,18 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         }
     }
 
+    pub fn on_non_probing_packet(
+        &mut self,
+        datagram: &DatagramInfo,
+    ) -> Result<(), transport::Error> {
+        if let Some((id, _path)) = self.path(&datagram.remote_address) {
+            if self.active_path_id() != id {
+                self.update_active_path(id)?
+            }
+        }
+        Ok(())
+    }
+
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
     //# Tokens are
     //# invalidated when their associated connection ID is retired via a
