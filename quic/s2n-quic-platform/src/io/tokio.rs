@@ -123,7 +123,6 @@ impl Io {
             rx_socket: rx_socket.into(),
             tx_socket: tx_socket.into(),
             rx: Default::default(),
-            tx: Default::default(),
             endpoint,
         };
 
@@ -282,7 +281,6 @@ struct Instance<E> {
     rx_socket: std::net::UdpSocket,
     tx_socket: std::net::UdpSocket,
     rx: socket::Queue<buffer::Buffer>,
-    tx: socket::Queue<buffer::Buffer>,
     endpoint: E,
 }
 
@@ -293,17 +291,16 @@ impl<E: Endpoint> Instance<E> {
             rx_socket,
             tx_socket,
             mut rx,
-            mut tx,
             mut endpoint,
         } = self;
 
         cfg_if! {
             if #[cfg(any(s2n_quic_platform_socket_msg, s2n_quic_platform_socket_mmsg))] {
                 let rx_socket = tokio::io::unix::AsyncFd::new(rx_socket)?;
-                let tx_socket = tokio::io::unix::AsyncFd::new(tx_socket)?;
+                //let tx_socket = tokio::io::unix::AsyncFd::new(tx_socket)?;
             } else {
                 let rx_socket = async_fd_shim::AsyncFd::new(rx_socket)?;
-                let tx_socket = async_fd_shim::AsyncFd::new(tx_socket)?;
+                //let tx_socket = async_fd_shim::AsyncFd::new(tx_socket)?;
             }
         }
 
@@ -313,6 +310,8 @@ impl<E: Endpoint> Instance<E> {
         let mut prev_time = Instant::now() + DEFAULT_TIMEOUT;
         let sleep = tokio::time::sleep_until(prev_time);
         tokio::pin!(sleep);
+
+        let mut concurrent_tx = crate::socket::concurent::ConcurrentTx::new(tx_socket);
 
         loop {
             // Poll for readability if we have free slots available
@@ -326,14 +325,7 @@ impl<E: Endpoint> Instance<E> {
             };
 
             // Poll for writablity if we have occupied slots available
-            let tx_interest = tx.occupied_len() > 0;
-            let tx_task = async {
-                if tx_interest {
-                    tx_socket.writable().await
-                } else {
-                    futures::future::pending().await
-                }
-            };
+            let tx_task = concurrent_tx.writable();
 
             let wakeups = endpoint.wakeups(clock.get_time());
             // pin the wakeups future so we don't have to move it into the Select future.
@@ -344,17 +336,15 @@ impl<E: Endpoint> Instance<E> {
             let mut reset_clock = false;
 
             if let Ok((rx_result, tx_result, timeout_result)) = select.await {
+                if let Some(_) = tx_result {
+                    // noop
+                }
+
                 if let Some(guard) = rx_result {
                     if let Ok(result) = guard?.try_io(|socket| rx.rx(socket)) {
                         result?;
                     }
                     endpoint.receive(&mut rx.rx_queue(), clock.get_time());
-                }
-
-                if let Some(guard) = tx_result {
-                    if let Ok(result) = guard?.try_io(|socket| tx.tx(socket)) {
-                        result?;
-                    }
                 }
 
                 // if the timer expired ensure it is reset to the default timeout
@@ -366,7 +356,9 @@ impl<E: Endpoint> Instance<E> {
                 return Ok(());
             }
 
-            endpoint.transmit(&mut tx.tx_queue(), clock.get_time());
+            let mut tx_queue = concurrent_tx.tx_queue();
+
+            endpoint.transmit(&mut tx_queue, clock.get_time());
 
             if let Some(delay) = endpoint.timeout() {
                 let next_time = clock.0 + unsafe { delay.as_duration() };

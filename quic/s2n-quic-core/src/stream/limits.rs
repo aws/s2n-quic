@@ -5,7 +5,7 @@ use crate::{transport::parameters::InitialMaxStreamsUni, varint::VarInt};
 
 // TODO investigate a good default
 /// The default send buffer size for Streams
-const DEFAULT_STREAM_MAX_SEND_BUFFER_SIZE: u32 = 512 * 1024;
+const DEFAULT_STREAM_MAX_SEND_BUFFER_SIZE: u32 = u32::MAX;
 
 /// Per-stream limits
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]

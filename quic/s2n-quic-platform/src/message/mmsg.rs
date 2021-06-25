@@ -71,19 +71,19 @@ impl MessageTrait for mmsghdr {
 }
 
 pub struct Ring<Payloads> {
-    messages: Vec<Message>,
+    pub messages: Vec<Message>,
 
     // this field holds references to allocated payloads, but is never read directly
     #[allow(dead_code)]
-    payloads: Payloads,
+    pub payloads: Payloads,
 
     // this field holds references to allocated iovecs, but is never read directly
     #[allow(dead_code)]
-    iovecs: Vec<iovec>,
+    pub iovecs: Vec<iovec>,
 
     // this field holds references to allocated msg_names, but is never read directly
     #[allow(dead_code)]
-    msg_names: Vec<sockaddr_in6>,
+    pub msg_names: Vec<sockaddr_in6>,
 }
 
 /// Even though `Ring` contains raw pointers, it owns all of the data

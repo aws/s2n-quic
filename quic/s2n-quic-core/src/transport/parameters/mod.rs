@@ -596,6 +596,8 @@ varint_transport_parameter!(InitialMaxData, 0x04);
 
 impl InitialMaxData {
     /// Tuned for 300MiB/s throughput with a 100ms RTT
+    pub const RECOMMENDED: Self = Self(VarInt::from_u32(u32::MAX));
+    /*
     pub const RECOMMENDED: Self = Self(VarInt::from_u32(
         // ideal throughput in MiB/s
         300
@@ -605,6 +607,7 @@ impl InitialMaxData {
         // ideal RTT in ms
         / 100,
     ));
+    */
 }
 
 impl TransportParameterValidator for InitialMaxData {}
@@ -779,7 +782,7 @@ duration_transport_parameter!(MaxAckDelay, 0x0b, VarInt::from_u8(25));
 
 impl MaxAckDelay {
     /// The recommended value comes from the default of 25ms
-    pub const RECOMMENDED: Self = Self(VarInt::from_u8(25));
+    pub const RECOMMENDED: Self = Self(VarInt::from_u8(255));
 }
 
 impl TransportParameterValidator for MaxAckDelay {

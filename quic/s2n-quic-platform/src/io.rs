@@ -3,3 +3,5 @@
 
 #[cfg(feature = "tokio")]
 pub mod tokio;
+
+pub mod thread_socket;

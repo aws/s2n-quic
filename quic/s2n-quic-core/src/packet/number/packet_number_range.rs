@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::packet::number::PacketNumber;
+use crate::{packet::number::PacketNumber, varint::VarInt};
 
 /// An inclusive range of `PacketNumber`s
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -58,6 +58,25 @@ impl Iterator for PacketNumberRange {
     }
 }
 
+impl DoubleEndedIterator for PacketNumberRange {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if !self.exhausted && self.start <= self.end {
+            let current = self.end;
+            if let Some(next) = PacketNumber::as_varint(current).checked_sub(VarInt::from_u8(1)) {
+                self.end = self.end.space().new_packet_number(next);
+                self.exhausted = self.start > self.end;
+            } else {
+                // PacketNumber range has been exceeded
+                self.exhausted = true;
+            }
+            Some(current)
+        } else {
+            self.exhausted = true;
+            None
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use crate::{
@@ -81,6 +100,45 @@ mod test {
         }
 
         assert_eq!(counter, 11);
+    }
+
+    #[test]
+    fn double_ended_iterator() {
+        let mut counter = 10;
+        let start = PacketNumberSpace::Handshake.new_packet_number(VarInt::from_u8(1));
+        let end = PacketNumberSpace::Handshake.new_packet_number(VarInt::from_u8(10));
+
+        let mut range = PacketNumberRange::new(start, end);
+        assert_eq!(start, range.start());
+        assert_eq!(end, range.end());
+
+        while let Some(packet_number) = range.next_back() {
+            assert_eq!(counter, packet_number.as_u64());
+            counter -= 1;
+        }
+
+        assert_eq!(counter, 0);
+    }
+
+    #[test]
+    fn double_ended_iterator_zero() {
+        let mut items = vec![];
+        let start = PacketNumberSpace::Handshake.new_packet_number(VarInt::from_u8(0));
+        let end = PacketNumberSpace::Handshake.new_packet_number(VarInt::from_u8(9));
+
+        let mut range = PacketNumberRange::new(start, end);
+        assert_eq!(start, range.start());
+        assert_eq!(end, range.end());
+
+        while let Some(packet_number) = range.next_back() {
+            items.push(packet_number.as_u64());
+        }
+
+        items.reverse();
+
+        for (idx, value) in items.iter().enumerate() {
+            assert_eq!(idx as u64, *value);
+        }
     }
 
     #[test]

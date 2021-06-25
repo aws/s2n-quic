@@ -11,6 +11,8 @@ pub mod mmsg;
 
 pub mod std;
 
+pub mod concurent;
+
 cfg_if! {
     if #[cfg(s2n_quic_platform_socket_mmsg)] {
         pub use mmsg as default;

@@ -7,7 +7,8 @@ license = "Apache-2.0"
 
 [features]
 default = ["std"]
-std = ["thiserror"]
+alloc = []
+std = ["alloc", "thiserror"]
 testing = ["std", "generator", "s2n-codec/testing", "checked-counters"]
 generator = ["bolero-generator"]
 checked-counters = []
@@ -33,6 +34,9 @@ criterion = { version = "0.3", features = ["html_reports"] }
 insta = "1.0"
 plotters = { version = "0.3", default-features = false, features = ["svg_backend", "line_series"] }
 s2n-codec = { version = "0.1", path = "../../common/s2n-codec", features = ["testing"] }
+
+[target.'cfg(loom)'.dependencies]
+loom = "0.5"
 
 [[test]]
 name = "crypto"

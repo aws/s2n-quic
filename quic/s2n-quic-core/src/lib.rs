@@ -3,6 +3,9 @@
 
 #![cfg_attr(not(any(test, feature = "std")), no_std)]
 
+#[cfg(feature = "alloc")]
+extern crate alloc;
+
 pub mod ack;
 pub mod application;
 pub mod connection;
@@ -22,6 +25,7 @@ pub mod recovery;
 pub mod slice;
 pub mod stateless_reset;
 pub mod stream;
+pub mod sync;
 pub mod time;
 pub mod token;
 pub mod transmission;

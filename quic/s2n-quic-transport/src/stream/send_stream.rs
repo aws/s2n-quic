@@ -371,6 +371,7 @@ impl OutgoingDataFlowController for StreamFlowController {
         //# control.
 
         if end_offset > self.max_stream_data {
+            //eprint!("S! ");
             // Can't send any data due to being blocked on the Stream window
             self.state = StreamFlowControllerState::BlockedOnStreamWindow;
             self.stream_data_blocked_sync
@@ -384,6 +385,7 @@ impl OutgoingDataFlowController for StreamFlowController {
         self.try_acquire_connection_window();
 
         if end_offset > self.acquired_connection_flow_controller_window {
+            //eprint!("C! ");
             // Can't send due to being blocked on the connection flow control window
             self.state = StreamFlowControllerState::BlockedOnConnectionWindow;
         }

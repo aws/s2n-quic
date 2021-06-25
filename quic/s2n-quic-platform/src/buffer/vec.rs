@@ -9,7 +9,7 @@ use core::{
 use s2n_quic_core::path::DEFAULT_MAX_MTU;
 
 // TODO decide on better defaults
-const DEFAULT_MESSAGE_COUNT: usize = 4096;
+const DEFAULT_MESSAGE_COUNT: usize = 4096 * 4;
 
 pub struct VecBuffer(SegmentBuffer<alloc::vec::Vec<u8>>);
 

@@ -173,6 +173,7 @@ impl CongestionController for CubicCongestionController {
             //# utilized.  When this occurs, the congestion window SHOULD NOT be
             //# increased in either slow start or congestion avoidance.  This can
             //# happen due to insufficient application data or flow control limits.
+
             return;
         }
 
@@ -239,6 +240,8 @@ impl CongestionController for CubicCongestionController {
         timestamp: Timestamp,
     ) {
         debug_assert!(lost_bytes > 0);
+
+        // eprint!("L! ");
 
         self.bytes_in_flight -= lost_bytes;
         self.on_congestion_event(timestamp);
