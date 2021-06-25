@@ -145,7 +145,7 @@ impl Perf {
         }
 
         async fn handle_receive_stream(mut stream: ReceiveStream) -> Result<()> {
-            let mut chunks = vec![Bytes::new(); 16];
+            let mut chunks = vec![Bytes::new(); 64];
 
             loop {
                 let (len, is_open) = stream.receive_vectored(&mut chunks).await?;
@@ -164,7 +164,7 @@ impl Perf {
         }
 
         async fn handle_send_stream(mut stream: SendStream, len: u64) -> Result<()> {
-            let mut chunks = vec![Bytes::new(); 16];
+            let mut chunks = vec![Bytes::new(); 64];
 
             //= https://tools.ietf.org/id/draft-banks-quic-performance-00.txt#4.1
             //# Since the goal here is to measure the efficiency of the QUIC
