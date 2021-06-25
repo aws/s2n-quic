@@ -19,7 +19,7 @@ use crate::{
     contexts::WriteContext,
     recovery::{CongestionController, RttEstimator},
     transmission,
-    transmission::Mode,
+    transmission::{interest::Provider, Mode},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -367,10 +367,10 @@ impl<CC: CongestionController> Path<CC> {
             }
         }
     }
-}
 
-impl<CC: CongestionController> transmission::interest::Provider for Path<CC> {
-    fn transmission_interest(&self) -> transmission::Interest {
+    /// Indicate if the path is interested in transmitting PATH_CHALLENGE or
+    /// PATH_RESPONSE frames.
+    pub fn path_validation_transmission_interest(&self) -> transmission::Interest {
         core::iter::empty()
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
             //# An endpoint MUST NOT delay transmission of a
@@ -383,6 +383,12 @@ impl<CC: CongestionController> transmission::interest::Provider for Path<CC> {
                     .map(|challenge| challenge.transmission_interest()),
             )
             .sum()
+    }
+}
+
+impl<CC: CongestionController> transmission::interest::Provider for Path<CC> {
+    fn transmission_interest(&self) -> transmission::Interest {
+        self.path_validation_transmission_interest()
     }
 }
 
