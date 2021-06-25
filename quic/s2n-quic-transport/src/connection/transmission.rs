@@ -274,9 +274,7 @@ impl<'a, Config: endpoint::Config> tx::Message for ConnectionTransmission<'a, Co
                 .map(|_| encoder.capacity());
 
             let path = &self.context.path_manager[self.context.path_id];
-            let validation_frames_pending =
-                path.is_challenge_pending() || path.is_response_pending();
-            if !path.is_validated() && validation_frames_pending {
+            if !path.is_validated() && !path.path_validation_transmission_interest().is_none() {
                 self.context.min_packet_len = Some(encoder.capacity());
             }
 
