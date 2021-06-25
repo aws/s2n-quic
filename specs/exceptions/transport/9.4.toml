@@ -1,5 +1,19 @@
-[[exception]]
 target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.4"
+
+[[exception]]
+quote = '''
+On confirming a peer's ownership of its new address, an endpoint MUST
+immediately reset the congestion controller and round-trip time
+estimator for the new path to initial values (see Appendices A.3 and
+B.3 in [QUIC-RECOVERY]) unless the only change in the peer's address
+is its port number.
+'''
+reason = '''
+s2n-quic creates a new congestion controller for each path so there
+is no need to reset to initial values after path validation.
+'''
+
+[[exception]]
 quote = '''
 Because port-only changes are commonly the
 result of NAT rebinding or other middlebox activity, the endpoint MAY
@@ -14,7 +28,6 @@ short drop in performance during a rebind.
 '''
 
 [[exception]]
-target = "https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.4"
 quote = '''
 This timer SHOULD be set as described in Section 6.2.1 of
 [QUIC-RECOVERY] and MUST NOT be more aggressive.

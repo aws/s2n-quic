@@ -273,6 +273,13 @@ impl<'a, Config: endpoint::Config> tx::Message for ConnectionTransmission<'a, Co
                 .filter(|pn_space| pn_space.is_application_data())
                 .map(|_| encoder.capacity());
 
+            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#8.2.1
+            //# An endpoint MUST expand datagrams that contain a PATH_CHALLENGE frame
+            //# to at least the smallest allowed maximum datagram size of 1200 bytes.
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#8.2.2
+            //# An endpoint MUST expand datagrams that contain a PATH_RESPONSE frame
+            //# to at least the smallest allowed maximum datagram size of 1200 bytes.
             // Pad the packet when sending path validation frames so that MTU is also validated.
             let path = &self.context.path_manager[self.context.path_id];
             if !path.is_validated() && !path.path_validation_transmission_interest().is_none() {

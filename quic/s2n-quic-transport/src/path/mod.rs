@@ -381,6 +381,11 @@ impl<CC: CongestionController> Path<CC> {
 
     /// Indicate if the path is interested in transmitting PATH_CHALLENGE or
     /// PATH_RESPONSE frames.
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3
+    //# If the recipient permits the migration, it MUST send subsequent
+    //# packets to the new peer address and MUST initiate path validation
+    //# (Section 8.2) to verify the peer's ownership of the address if
+    //# validation is not already underway.
     pub fn path_validation_transmission_interest(&self) -> transmission::Interest {
         core::iter::empty()
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
