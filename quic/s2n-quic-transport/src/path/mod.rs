@@ -169,8 +169,8 @@ impl<CC: CongestionController> Path<CC> {
 
     /// When transmitting on a path this handles any internal state operations.
     ///
-    /// PATH_CHALLENGE and PATH_RESPONSE should be transmitted first here since
-    /// those frames are prioritized to complete path validation.
+    /// PATH_CHALLENGE and PATH_RESPONSE should be transmitted first to
+    /// prioritize path validation and remove anti-amplification limits.
     pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
         if let Some(response_data) = &mut self.response_data {
             let frame = frame::PathResponse {
@@ -289,9 +289,9 @@ impl<CC: CongestionController> Path<CC> {
             // https://github.com/awslabs/s2n-quic/issues/695
             // Note: while a 3X check if performed, the `limit` value is not used
             // to restrict the MTU. The reason for this is two fold:
-            // - Expanding to the full MTU allow for MTU validation during connection migration
+            // - Expanding to the full MTU allow for MTU validation during connection migration.
             // - Networking infrastructure care more about number of packets than byes for
-            // anti-amplification
+            // anti-amplification.
             State::AmplificationLimited { tx_bytes, rx_bytes } => {
                 let limit = rx_bytes
                     .checked_mul(3)

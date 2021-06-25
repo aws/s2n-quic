@@ -273,6 +273,7 @@ impl<'a, Config: endpoint::Config> tx::Message for ConnectionTransmission<'a, Co
                 .filter(|pn_space| pn_space.is_application_data())
                 .map(|_| encoder.capacity());
 
+            // Pad the packet when sending path validation frames so that MTU is also validated.
             let path = &self.context.path_manager[self.context.path_id];
             if !path.is_validated() && !path.path_validation_transmission_interest().is_none() {
                 self.context.min_packet_len = Some(encoder.capacity());

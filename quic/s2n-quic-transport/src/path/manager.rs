@@ -473,7 +473,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
 /// or PATH_RESPONSE frames.
 ///
 /// This abstraction allows for iterating over pending paths while also
-/// having mut access to the Manager.
+/// having mutable access to the Manager.
 pub struct PathsPendingValidation<'a, CCE: congestion_controller::Endpoint> {
     index: u8,
     path_manager: &'a mut Manager<CCE>,
@@ -491,8 +491,8 @@ impl<'a, CCE: congestion_controller::Endpoint> PathsPendingValidation<'a, CCE> {
         loop {
             let path = self.path_manager.paths.get(self.index as usize)?;
 
-            // We have to advance the index before returning or we risk
-            // returning the same path over and over.
+            // Advance the index otherwise this will continue to process the
+            // same path.
             self.index += 1;
 
             if path.is_challenge_pending() || path.is_response_pending() {
