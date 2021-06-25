@@ -11,12 +11,12 @@ if ! command -v "inferno-collapse-perf" &> /dev/null; then
   cargo install inferno
 fi
 
-if [ ! -f target/perf/quinn/bin/client ]; then
+if [ ! -f target/perf/quinn/bin/perf_client ]; then
   mkdir -p target/perf/quinn
-  cargo install \
+  cargo +stable install \
     --git https://github.com/quinn-rs/quinn \
-    --rev b7e95fdba758e4def6a202fb5c718bf61415cf72 \
-    --bin client \
+    --rev 3f908a2c8c1ec4585212d776fafe536ea17bf2b4 \
+    --bin perf_client \
     --root target/perf/quinn \
     --target-dir target/perf/quinn \
     perf
