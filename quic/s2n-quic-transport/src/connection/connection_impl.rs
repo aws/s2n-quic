@@ -591,6 +591,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                         });
                     };
 
+                    // Handle transmission on active path prior to other paths
                     count += self.transmit_non_active_path(
                         shared_state,
                         queue,
@@ -599,13 +600,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                         publisher,
                     );
                 }
-                // TODO  leave the psuedo in comment, TODO send this stuff
-                // for path_id in path_manager.pending_path_validation() {
-                // queue.push(path transmission context)
-                // need shared_state, look at application_transmission for examples
-                //  prob_path(path) // for mtu discovery or path
-                //  if not validated, send challenge_frame;
-                //  }
             }
             ConnectionState::Closing => {
                 let path = self.path_manager.active_path_mut();
