@@ -117,9 +117,8 @@ pub struct Controller {
     // A count of the number of packets with a size > MINIMUM_MTU lost since
     // the last time a packet with size equal to the current MTU was acknowledged.
     black_hole_counter: Counter<u8, Saturating>,
-    // The largest packet number of a packet the size of the current MTU (or greater) that has
-    // been acknowledged. Used when tracking packets that have been lost for the purpose of
-    // detecting a black hole.
+    // The largest acknowledged packet with size >= the plpmtu. Used when tracking
+    // packets that have been lost for the purpose of detecting a black hole.
     largest_acked_mtu_sized_packet: Option<PacketNumber>,
     //= https://tools.ietf.org/rfc/rfc8899.txt#5.1.1
     //# The PMTU_RAISE_TIMER is configured to the period a
