@@ -8,6 +8,7 @@ use s2n_quic_core::{
     frame::{
         ack_elicitation::{AckElicitable, AckElicitation},
         congestion_controlled::CongestionControlled,
+        path_validation::Probing as PathValidationProbing,
     },
     packet::number::PacketNumber,
     time::Timestamp,
@@ -42,10 +43,19 @@ impl<'a, 'b, Config: endpoint::Config> WriteContext for Context<'a, 'b, Config> 
         self.buffer.remaining_capacity()
     }
 
-    fn write_frame<Frame: EncoderValue + AckElicitable + CongestionControlled>(
+    fn write_frame<
+        Frame: EncoderValue + AckElicitable + CongestionControlled + PathValidationProbing,
+    >(
         &mut self,
         frame: &Frame,
     ) -> Option<PacketNumber> {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.1
+        //# A packet containing only probing frames is a "probing packet", and a
+        //# packet containing any other frame is a "non-probing packet".
+        if self.transmission_mode == Mode::PathValidation {
+            debug_assert!(frame.probe().is_validation_probing());
+        }
+
         if cfg!(debug_assertions) {
             match self.transmission_constraint() {
                 transmission::Constraint::AmplificationLimited => {
@@ -132,7 +142,9 @@ impl<'a, C: WriteContext> WriteContext for RetransmissionContext<'a, C> {
         self.context.remaining_capacity()
     }
 
-    fn write_frame<Frame: EncoderValue + AckElicitable + CongestionControlled>(
+    fn write_frame<
+        Frame: EncoderValue + AckElicitable + CongestionControlled + PathValidationProbing,
+    >(
         &mut self,
         frame: &Frame,
     ) -> Option<PacketNumber> {

@@ -12,7 +12,7 @@ pub enum Probe {
 
 impl Probe {
     /// Returns true if the `Probe` is set to `Probing`
-    pub fn is_probing(self) -> bool {
+    pub fn is_validation_probing(self) -> bool {
         matches!(self, Self::Probing)
     }
 }
@@ -102,7 +102,7 @@ mod test {
         let mut probe = Probe::Probing;
         probe |= Probe::Probing;
 
-        assert!(probe.is_probing())
+        assert!(probe.is_validation_probing())
     }
 
     #[test]
@@ -110,6 +110,6 @@ mod test {
         let mut probe = Probe::Probing;
         probe |= Probe::NonProbing;
 
-        assert!(!probe.is_probing())
+        assert!(!probe.is_validation_probing())
     }
 }
