@@ -25,7 +25,7 @@ static DATA: Bytes = {
     Bytes::from_static(&INNER)
 };
 
-const DATA_LEN: usize = (DEFAULT_STREAM_LEN as usize) * 8;
+const DATA_LEN: usize = (DEFAULT_STREAM_LEN as usize) * 128;
 const DEFAULT_STREAM_LEN: u64 = 1024;
 const DATA_MOD: usize = 256; // Only the first 256 offsets of DATA are unique
 
