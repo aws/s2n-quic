@@ -529,6 +529,7 @@ mod test {
     #[test]
     fn enable() {
         let mut controller = new_controller(1500);
+        assert_eq!(State::Disabled, controller.state);
         controller.enable();
         assert_eq!(State::SearchRequested, controller.state);
     }
@@ -654,10 +655,10 @@ mod test {
         controller.black_hole_counter += 1;
         controller.largest_acked_mtu_sized_packet = Some(pnum);
 
-        // on_packet_ack will be called with packet numbers from Initial and Handshake space prior to
-        // the mtu::Controller being enabled, so it should not fail in this scenario.
         let pn = pn(10);
         controller.on_packet_ack(pn, controller.plpmtu, &mut cc);
+
+        assert_eq!(State::Disabled, controller.state);
         assert_eq!(controller.black_hole_counter, 1);
         assert_eq!(Some(pnum), controller.largest_acked_mtu_sized_packet);
     }
@@ -735,18 +736,19 @@ mod test {
 
         for i in 0..BLACK_HOLE_THRESHOLD + 1 {
             let pn = pn(i as usize);
-            assert_eq!(controller.black_hole_counter, i);
-            controller.on_packet_loss(pn, BASE_PLPMTU + 1, now, &mut cc);
 
             // Losing a packet the size of the BASE_PLPMTU should not increase the black_hole_counter
-            let black_hole_counter = controller.black_hole_counter;
             controller.on_packet_loss(pn, BASE_PLPMTU, now, &mut cc);
-            assert_eq!(black_hole_counter, controller.black_hole_counter);
+            assert_eq!(controller.black_hole_counter, i);
 
             // Losing a packet larger than the PLPMTU should not increase the black_hole_counter
-            let black_hole_counter = controller.black_hole_counter;
             controller.on_packet_loss(pn, controller.plpmtu + 1, now, &mut cc);
-            assert_eq!(black_hole_counter, controller.black_hole_counter);
+            assert_eq!(controller.black_hole_counter, i);
+
+            controller.on_packet_loss(pn, BASE_PLPMTU + 1, now, &mut cc);
+            if i < BLACK_HOLE_THRESHOLD {
+                assert_eq!(controller.black_hole_counter, i + 1);
+            }
         }
 
         assert_eq!(controller.black_hole_counter, 0);
@@ -772,6 +774,7 @@ mod test {
             controller.on_packet_loss(pn, BASE_PLPMTU + 1, now, &mut cc);
         }
 
+        assert_eq!(State::Disabled, controller.state);
         assert_eq!(controller.black_hole_counter, 0);
         assert_eq!(0, cc.on_mtu_update);
     }
@@ -787,12 +790,10 @@ mod test {
             // on_packet_loss may be called with packet numbers from Initial and Handshake space
             // so it should not fail in this scenario.
             let pn = PacketNumberSpace::Initial.new_packet_number(VarInt::from_u8(i));
-            assert_eq!(controller.black_hole_counter, 0);
             controller.on_packet_loss(pn, BASE_PLPMTU + 1, now, &mut cc);
+            assert_eq!(controller.black_hole_counter, 0);
+            assert_eq!(0, cc.on_mtu_update);
         }
-
-        assert_eq!(controller.black_hole_counter, 0);
-        assert_eq!(0, cc.on_mtu_update);
     }
 
     //= https://tools.ietf.org/rfc/rfc8899.txt#5.2
