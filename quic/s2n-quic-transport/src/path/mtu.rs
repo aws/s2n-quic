@@ -260,7 +260,7 @@ impl Controller {
                     self.state = State::SearchRequested
                 }
             }
-            _ => {
+            State::Searching(_, _) | State::SearchComplete | State::SearchRequested => {
                 if packet_number.space().is_application_data()
                     && (BASE_PLPMTU + 1..=self.plpmtu).contains(&lost_bytes)
                     && self
