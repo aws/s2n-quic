@@ -250,6 +250,9 @@ impl<CC: CongestionController> Path<CC> {
         match transmission_mode {
             // Use the minimum MTU for loss recovery probes to allow detection of packets
             // lost when the previously confirmed path MTU is no longer supported.
+            //
+            // The priority during PathValidationOnly is to validate the path, so the
+            // minimum MTU is used to avoid packet loss due to MTU limits.
             Mode::LossRecoveryProbing | Mode::PathValidationOnly => MINIMUM_MTU as usize,
             // When MTU Probing, clamp to the size of the MTU we are attempting to validate
             Mode::MtuProbing => self.mtu_controller.probed_sized(),
