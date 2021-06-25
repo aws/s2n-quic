@@ -429,12 +429,12 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
             }
         }
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.2
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
         //= type=TODO
         //# When an endpoint has no validated path on which to send packets, it
         //# MAY discard connection state.
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.2
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
         //= type=TODO
         //# An endpoint capable of connection
         //# migration MAY wait for a new path to become available before
