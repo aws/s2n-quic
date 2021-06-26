@@ -49,9 +49,14 @@ impl<'a, 'b, Config: endpoint::Config> WriteContext for Context<'a, 'b, Config> 
         &mut self,
         frame: &Frame,
     ) -> Option<PacketNumber> {
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.1
-        //# A packet containing only probing frames is a "probing packet", and a
-        //# packet containing any other frame is a "non-probing packet".
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
+        //# Servers do not send non-
+        //# probing packets (see Section 9.1) toward a client address until they
+        //# see a non-probing packet from that address.
+        //
+        // The transmission_mode PathValidation is used by the non-active path
+        // to only transmit non-probing frames. A packet containing only non-probing
+        // frames is also a non-probing packet.
         if self.transmission_mode == Mode::PathValidation {
             debug_assert!(frame.probe().is_validation_probing());
         }

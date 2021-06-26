@@ -33,7 +33,9 @@ pub trait WriteContext {
 
     /// Attempt to write a frame. If this was successful the number of the packet
     /// that will be used to send the frame will be returned.
-    fn write_frame<Frame: EncoderValue + AckElicitable + CongestionControlled + PathValidationProbing>(
+    fn write_frame<
+        Frame: EncoderValue + AckElicitable + CongestionControlled + PathValidationProbing,
+    >(
         &mut self,
         frame: &Frame,
     ) -> Option<PacketNumber>;
