@@ -11,7 +11,7 @@ pub use manager::*;
 
 /// re-export core
 pub use s2n_quic_core::path::*;
-use s2n_quic_core::{ack, frame, time::Timestamp};
+use s2n_quic_core::{frame, time::Timestamp};
 
 use crate::{
     connection,
@@ -154,17 +154,6 @@ impl<CC: CongestionController> Path<CC> {
                     .flatten(),
             )
             .chain(self.mtu_controller.timers())
-    }
-
-    /// Called when packets are acknowledged
-    pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
-        self.mtu_controller
-            .on_packet_ack(ack_set, &mut self.congestion_controller)
-    }
-
-    /// Called when packets are lost
-    pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
-        self.mtu_controller.on_packet_loss(ack_set)
     }
 
     /// When transmitting on a path this handles any internal state operations.

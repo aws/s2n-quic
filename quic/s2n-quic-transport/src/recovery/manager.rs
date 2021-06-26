@@ -339,6 +339,13 @@ impl Manager {
 
                     new_packet_ack = true;
                     includes_ack_eliciting |= acked_packet_info.ack_elicitation.is_ack_eliciting();
+
+                    let path = context.path_mut_by_id(acked_packet_info.path_id);
+                    path.mtu_controller.on_packet_ack(
+                        packet_number,
+                        acked_packet_info.sent_bytes,
+                        &mut path.congestion_controller,
+                    );
                 }
             }
 
@@ -667,13 +674,33 @@ impl Manager {
                 // Check that the packet was sent on this path
                 && sent_info.path_id == current_path_id;
 
-            if sent_info.sent_bytes > 0 {
+            if sent_info.sent_bytes as usize > path.mtu_controller.mtu() {
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.4
+                //# Loss of a QUIC packet that is carried in a PMTU probe is therefore not a
+                //# reliable indication of congestion and SHOULD NOT trigger a congestion
+                //# control reaction; see Section 3, Bullet 7 of [DPLPMTUD].
+
+                //= https://tools.ietf.org/rfc/rfc8899.txt#3
+                //# Loss of a probe packet SHOULD NOT be treated as an
+                //# indication of congestion and SHOULD NOT trigger a congestion
+                //# control reaction [RFC4821] because this could result in
+                //# unnecessary reduction of the sending rate.
+                path.congestion_controller
+                    .on_packet_discarded(sent_info.sent_bytes as usize)
+            } else if sent_info.sent_bytes > 0 {
                 path.congestion_controller.on_packets_lost(
                     sent_info.sent_bytes as u32,
                     persistent_congestion,
                     now,
                 );
             }
+
+            path.mtu_controller.on_packet_loss(
+                packet_number,
+                sent_info.sent_bytes,
+                now,
+                &mut path.congestion_controller,
+            );
 
             if persistent_congestion {
                 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.2
@@ -890,6 +917,7 @@ mod test {
     use crate::{
         connection::{ConnectionIdMapper, InternalConnectionIdGenerator},
         contexts::testing::{MockWriteContext, OutgoingFrameBuffer},
+        path::MINIMUM_MTU,
         recovery,
         recovery::manager::PtoState::RequiresTransmission,
         space::rx_packet_numbers::ack_ranges::AckRanges,
@@ -2309,6 +2337,52 @@ mod test {
         assert_eq!(context.lost_packets.len(), 0);
         assert_eq!(context.path().congestion_controller.lost_bytes, 0);
         assert_eq!(context.path().congestion_controller.on_packets_lost, 0);
+    }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.4
+    //= type=test
+    //# Loss of a QUIC packet that is carried in a PMTU probe is therefore not a
+    //# reliable indication of congestion and SHOULD NOT trigger a congestion
+    //# control reaction; see Section 3, Bullet 7 of [DPLPMTUD].
+
+    //= https://tools.ietf.org/rfc/rfc8899.txt#3
+    //= type=test
+    //# Loss of a probe packet SHOULD NOT be treated as an
+    //# indication of congestion and SHOULD NOT trigger a congestion
+    //# control reaction [RFC4821] because this could result in
+    //# unnecessary reduction of the sending rate.
+    #[test]
+    fn detect_and_remove_lost_packets_mtu_probe() {
+        let space = PacketNumberSpace::ApplicationData;
+        let mut manager = Manager::new(space, Duration::from_millis(100));
+        let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
+        let mut context = MockContext::new(&mut path_manager);
+        manager.largest_acked_packet = Some(space.new_packet_number(VarInt::from_u8(10)));
+
+        let time_sent = s2n_quic_platform::time::now();
+        let outcome = transmission::Outcome {
+            ack_elicitation: AckElicitation::Eliciting,
+            is_congestion_controlled: true,
+            bytes_sent: MINIMUM_MTU as usize + 1,
+            packet_number: space.new_packet_number(VarInt::from_u8(1)),
+        };
+
+        // Send an MTU probe packet
+        let lost_packet = space.new_packet_number(VarInt::from_u8(2));
+        manager.on_packet_sent(lost_packet, outcome, time_sent, &mut context);
+        assert_eq!(
+            context.path().congestion_controller.bytes_in_flight,
+            MINIMUM_MTU as u32 + 1
+        );
+
+        manager.detect_and_remove_lost_packets(time_sent, &mut context);
+
+        // Verify no lost bytes are sent to the congestion controller and
+        // on_packets_lost is not called, but bytes_in_flight is reduced
+        assert_eq!(context.lost_packets.len(), 1);
+        assert_eq!(context.path().congestion_controller.lost_bytes, 0);
+        assert_eq!(context.path().congestion_controller.on_packets_lost, 0);
+        assert_eq!(context.path().congestion_controller.bytes_in_flight, 0);
     }
 
     #[test]
