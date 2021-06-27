@@ -54,7 +54,6 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     }
 
     /// Update the active path
-    #[allow(dead_code)]
     fn update_active_path(&mut self, path_id: Id) -> Result<(), transport::Error> {
         debug_assert!(path_id != Id(self.active));
 
