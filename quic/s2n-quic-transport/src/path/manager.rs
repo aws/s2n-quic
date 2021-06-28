@@ -369,14 +369,9 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         }
     }
 
-    pub fn on_non_probing_packet(
-        &mut self,
-        datagram: &DatagramInfo,
-    ) -> Result<(), transport::Error> {
-        if let Some((id, _path)) = self.path(&datagram.remote_address) {
-            if self.active_path_id() != id {
-                self.update_active_path(id)?
-            }
+    pub fn on_non_probing_packet(&mut self, path_id: Id) -> Result<(), transport::Error> {
+        if self.active_path_id() != path_id {
+            self.update_active_path(path_id)?
         }
         Ok(())
     }
