@@ -278,8 +278,8 @@ impl<CC: CongestionController> Path<CC> {
             // https://github.com/awslabs/s2n-quic/issues/695
             // Note: while a 3X check if performed, the `limit` value is not used
             // to restrict the MTU. The reason for this is two fold:
-            // - Expanding to the full MTU allow for MTU validation during connection migration.
-            // - Networking infrastructure care more about number of packets than byes for
+            // - Expanding to the full MTU allows for MTU validation during connection migration
+            // - Networking infrastructure cares more about number of packets than bytes for
             // anti-amplification.
             State::AmplificationLimited { tx_bytes, rx_bytes } => {
                 let limit = rx_bytes
