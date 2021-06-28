@@ -21,7 +21,6 @@ pub struct Subscriber;
 // TODO we should implement Display for Events or maybe opt into serde as a feature
 impl super::Subscriber for Subscriber {
     fn on_event<E: Event>(&mut self, meta: &common::Meta, event: &E) {
-        info!("{:?}", meta);
-        info!("{:?}", event);
+        info!(group_id = meta.group_id, "{:?}", event);
     }
 }

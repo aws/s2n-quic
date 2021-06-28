@@ -11,6 +11,8 @@ mod server;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
+    tracing_subscriber::fmt::init();
+
     Arguments::from_args().run().await
 }
 
