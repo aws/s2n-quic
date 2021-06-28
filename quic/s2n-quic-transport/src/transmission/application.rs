@@ -53,7 +53,7 @@ impl<'a, Config: endpoint::Config> Payload<'a, Config> {
             }),
             Mode::PathValidationOnly => {
                 transmission::application::Payload::PathValidation(PathValidation {
-                    path: &mut context.path_manager[context.path_id],
+                    path: context.path_mut(),
                 })
             }
         }
