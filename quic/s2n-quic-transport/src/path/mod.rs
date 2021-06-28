@@ -156,17 +156,6 @@ impl<CC: CongestionController> Path<CC> {
             .chain(self.mtu_controller.timers())
     }
 
-    /// Called when packets are acknowledged
-    pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
-        self.mtu_controller
-            .on_packet_ack(ack_set, &mut self.congestion_controller)
-    }
-
-    /// Called when packets are lost
-    pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
-        self.mtu_controller.on_packet_loss(ack_set)
-    }
-
     /// Only PATH_CHALLENGE and PATH_RESPONSE frames should be transmitted here.
     pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
         if let Some(response_data) = &mut self.response_data {

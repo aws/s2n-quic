@@ -57,7 +57,7 @@ impl<'a, 'b, Config: endpoint::Config> WriteContext for Context<'a, 'b, Config> 
         // The transmission_mode PathValidation is used by the non-active path
         // to only transmit probing frames. A packet containing only probing
         // frames is also a probing packet.
-        if self.transmission_mode == Mode::PathValidation {
+        if self.transmission_mode == Mode::PathValidationOnly {
             debug_assert!(frame.path_validation().is_probing());
         }
 
