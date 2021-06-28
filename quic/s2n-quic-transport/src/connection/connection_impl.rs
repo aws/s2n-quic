@@ -79,6 +79,17 @@ impl From<connection::Error> for ConnectionState {
                 // If the idle timer expired we directly move into the final state
                 ConnectionState::Finished
             }
+            connection::Error::NoPath => {
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
+                //# When an endpoint has no validated path on which to send packets, it
+                //# MAY discard connection state.
+
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.2
+                //# If an endpoint has no state about the last validated peer address, it
+                //# MUST close the connection silently by discarding all connection
+                //# state.
+                ConnectionState::Finished
+            }
             connection::Error::Closed { initiator }
             | connection::Error::Transport { initiator, .. }
             | connection::Error::Application { initiator, .. }
@@ -644,7 +655,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             connection_id_mapper.remove_initial_id(&self.internal_connection_id);
         }
 
-        self.path_manager.on_timeout(timestamp);
+        self.path_manager.on_timeout(timestamp)?;
         self.local_id_registry.on_timeout(timestamp);
 
         if let Some(shared_state) = shared_state {
