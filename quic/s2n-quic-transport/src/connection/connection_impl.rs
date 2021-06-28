@@ -259,6 +259,64 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
             transmission_mode,
         }
     }
+
+    /// Send path validation frames for the non-active path.
+    ///
+    /// Since non-probing frames can only be sent on the active path, a separate
+    /// transmission context with Mode::PathValidationOnly is used to send on
+    /// other paths.
+    fn path_validation_only_transmission<'a, Tx: tx::Queue, Pub: event::Publisher>(
+        &mut self,
+        shared_state: &mut SharedConnectionState<Config>,
+        queue: &mut Tx,
+        timestamp: Timestamp,
+        outcome: &'a mut transmission::Outcome,
+        publisher: &mut Pub,
+    ) -> usize {
+        let mut count = 0;
+        let mut pending_paths = self.path_manager.paths_pending_validation();
+        let ecn = Default::default();
+        while let Some((path_id, path_manager)) = pending_paths.next_path() {
+            // It is more efficient to coalesce path validation and other
+            // frames for the active path so we skip PathValidationOnly
+            // and handle transmission for the active path seperately.
+            if path_id == path_manager.active_path_id() {
+                continue;
+            }
+
+            if !path_manager[path_id].at_amplification_limit()
+                && queue
+                    .push(ConnectionTransmission {
+                        context: ConnectionTransmissionContext {
+                            quic_version: self.quic_version,
+                            timestamp,
+                            path_id,
+                            path_manager,
+                            source_connection_id: &self.local_connection_id,
+                            local_id_registry: &mut self.local_id_registry,
+                            outcome,
+                            ecn,
+                            min_packet_len: None,
+                            transmission_mode: transmission::Mode::PathValidationOnly,
+                        },
+                        shared_state,
+                    })
+                    .is_ok()
+            {
+                count += 1;
+                publisher.on_packet_sent(event::builders::PacketSent {
+                    packet_header: event::builders::PacketHeader {
+                        packet_type: outcome.packet_number.space().into(),
+                        packet_number: outcome.packet_number.as_u64(),
+                        version: Some(self.quic_version),
+                    }
+                    .into(),
+                });
+            }
+        }
+
+        count
+    }
 }
 
 impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
@@ -474,6 +532,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             ConnectionState::Handshaking | ConnectionState::Active => {
                 if let Some(shared_state) = shared_state {
                     let mut outcome = transmission::Outcome::default();
+
                     while !self.path_manager.active_path().at_amplification_limit()
                         && queue
                             .push(ConnectionTransmission {
@@ -531,14 +590,17 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                             .into(),
                         });
                     };
+
+                    // PathValidationOnly handles transmission on non-active paths. Transmission
+                    // on the active path should be handled prior to this.
+                    count += self.path_validation_only_transmission(
+                        shared_state,
+                        queue,
+                        timestamp,
+                        &mut outcome,
+                        publisher,
+                    );
                 }
-                // TODO  leave the psuedo in comment, TODO send this stuff
-                // for path_id in path_manager.pending_path_validation() {
-                // queue.push(path transmission context)
-                // need shared_state, look at application_transmission for examples
-                //  prob_path(path) // for mtu discovery or path
-                //  if not validated, send challenge_frame;
-                //  }
             }
             ConnectionState::Closing => {
                 let path = self.path_manager.active_path_mut();
