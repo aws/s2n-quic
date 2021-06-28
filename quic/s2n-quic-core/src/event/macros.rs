@@ -66,6 +66,7 @@ macro_rules! events {
             $(
                 paste!(
                     $(#[$attrs])*
+                    #[inline(always)]
                     fn [<on_ $name:snake>](&mut self, meta: &common::Meta, event: &events::$name) {
                         let _ = meta;
                         let _ = event;
@@ -73,6 +74,7 @@ macro_rules! events {
                 );
             )*
 
+            #[inline(always)]
             fn on_event<E: Event>(&mut self, meta: &common::Meta, event: &E) {
                 let _ = meta;
                 let _ = event;
@@ -85,6 +87,7 @@ macro_rules! events {
         {
             $(
                 paste!(
+                    #[inline(always)]
                     fn [<on_ $name:snake>](&mut self, meta: &common::Meta, event: &events::$name) {
                         self.0.[<on_ $name:snake>](meta, event);
                         self.1.[<on_ $name:snake>](meta, event);
@@ -92,6 +95,7 @@ macro_rules! events {
                 );
             )*
 
+            #[inline(always)]
             fn on_event<E: Event>(&mut self, meta: &common::Meta, event: &E) {
                 self.0.on_event(meta, event);
                 self.1.on_event(meta, event);
@@ -105,8 +109,6 @@ macro_rules! events {
                     fn [<on_ $name:snake>](&mut self, event: builders::$name);
                 );
             )*
-
-            fn on_event<E: Event>(&mut self, event: &E);
         }
 
         pub struct PublisherSubscriber<'a, Sub: Subscriber> {
@@ -127,15 +129,14 @@ macro_rules! events {
             $(
                 paste!(
                     $(#[$attrs])*
+                    #[inline(always)]
                     fn [<on_ $name:snake>](&mut self, event: builders::$name) {
-                        self.subscriber.[<on_ $name:snake>](&self.meta, &event.into());
+                        let event = event.into();
+                        self.subscriber.[<on_ $name:snake>](&self.meta, &event);
+                        self.subscriber.on_event(&self.meta, &event);
                     }
                 );
             )*
-
-            fn on_event<E: Event>(&mut self, event: &E) {
-                self.subscriber.on_event(&self.meta, event);
-            }
         }
 
         #[cfg(any(test, feature = "testing"))]
@@ -156,11 +157,6 @@ macro_rules! events {
                         }
                     );
                 )*
-
-
-                fn on_event<E: Event>(&mut self, event: &E) {
-                    std::eprintln!("{:?}", event);
-                }
             }
         }
     };
