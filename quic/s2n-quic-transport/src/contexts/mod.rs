@@ -11,6 +11,7 @@ use s2n_quic_core::{
     frame::{
         ack_elicitation::{AckElicitable, AckElicitation},
         congestion_controlled::CongestionControlled,
+        path_validation::Probing as PathValidationProbing,
     },
     packet::number::PacketNumber,
     time::Timestamp,
@@ -32,7 +33,9 @@ pub trait WriteContext {
 
     /// Attempt to write a frame. If this was successful the number of the packet
     /// that will be used to send the frame will be returned.
-    fn write_frame<Frame: EncoderValue + AckElicitable + CongestionControlled>(
+    fn write_frame<
+        Frame: EncoderValue + AckElicitable + CongestionControlled + PathValidationProbing,
+    >(
         &mut self,
         frame: &Frame,
     ) -> Option<PacketNumber>;

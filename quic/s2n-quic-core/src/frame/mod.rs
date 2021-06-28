@@ -61,10 +61,10 @@ macro_rules! frames {
         }
 
         impl<'a, $ack, $data> path_validation::Probing for Frame<'a, $ack, $data> {
-            fn probe(&self) -> path_validation::Probe {
+            fn path_validation(&self) -> path_validation::Probe {
                 match self {
                     $(
-                        Frame::$ty(frame) => frame.probe(),
+                        Frame::$ty(frame) => frame.path_validation(),
                     )*
                 }
             }
