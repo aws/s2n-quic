@@ -276,6 +276,9 @@ impl<'a, Config: endpoint::Config> tx::Message for ConnectionTransmission<'a, Co
 
             // Pad the packet when sending path validation frames so that MTU is also validated.
             let path = &self.context.path_manager[self.context.path_id];
+            // We need to check is_validated because it is possible to recieve a PATH_CHALLENGE on
+            // an active path for Off-Path Packet Forwarding prevention. However, we would only
+            // like to pad when validating the MTU.
             if !path.is_validated() && !path.transmission_interest().is_none() {
                 self.context.min_packet_len = Some(encoder.capacity());
             }
