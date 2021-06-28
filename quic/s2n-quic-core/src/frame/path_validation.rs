@@ -12,7 +12,7 @@ pub enum Probe {
 
 impl Probe {
     /// Returns true if the `Probe` is set to `Probing`
-    pub fn is_validation_probing(self) -> bool {
+    pub fn is_probing(self) -> bool {
         matches!(self, Self::Probing)
     }
 }
@@ -40,7 +40,7 @@ impl BitOrAssign<Probe> for Probe {
 /// Trait to retrieve if a frame is probing
 pub trait Probing {
     #[inline]
-    fn probe(&self) -> Probe {
+    fn path_validation(&self) -> Probe {
         Probe::NonProbing
     }
 }
@@ -58,26 +58,26 @@ impl Probing for crate::frame::MaxStreamData {}
 impl Probing for crate::frame::MaxStreams {}
 impl Probing for crate::frame::NewConnectionId<'_> {
     #[inline]
-    fn probe(&self) -> Probe {
+    fn path_validation(&self) -> Probe {
         Probe::Probing
     }
 }
 impl Probing for crate::frame::NewToken<'_> {}
 impl Probing for crate::frame::Padding {
     #[inline]
-    fn probe(&self) -> Probe {
+    fn path_validation(&self) -> Probe {
         Probe::Probing
     }
 }
 impl Probing for crate::frame::PathChallenge<'_> {
     #[inline]
-    fn probe(&self) -> Probe {
+    fn path_validation(&self) -> Probe {
         Probe::Probing
     }
 }
 impl Probing for crate::frame::PathResponse<'_> {
     #[inline]
-    fn probe(&self) -> Probe {
+    fn path_validation(&self) -> Probe {
         Probe::Probing
     }
 }

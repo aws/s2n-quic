@@ -55,10 +55,10 @@ impl<'a, 'b, Config: endpoint::Config> WriteContext for Context<'a, 'b, Config> 
         //# see a non-probing packet from that address.
         //
         // The transmission_mode PathValidation is used by the non-active path
-        // to only transmit non-probing frames. A packet containing only non-probing
-        // frames is also a non-probing packet.
+        // to only transmit probing frames. A packet containing only probing
+        // frames is also a probing packet.
         if self.transmission_mode == Mode::PathValidation {
-            debug_assert!(frame.probe().is_validation_probing());
+            debug_assert!(frame.path_validation().is_probing());
         }
 
         if cfg!(debug_assertions) {
