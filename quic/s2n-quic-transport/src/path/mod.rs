@@ -19,7 +19,7 @@ use crate::{
     contexts::WriteContext,
     recovery::{CongestionController, RttEstimator},
     transmission,
-    transmission::{interest::Provider, Mode},
+    transmission::Mode,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -156,10 +156,18 @@ impl<CC: CongestionController> Path<CC> {
             .chain(self.mtu_controller.timers())
     }
 
-    /// When transmitting on a path this handles any internal state operations.
-    ///
-    /// PATH_CHALLENGE and PATH_RESPONSE should be transmitted first to
-    /// prioritize path validation and remove anti-amplification limits.
+    /// Called when packets are acknowledged
+    pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
+        self.mtu_controller
+            .on_packet_ack(ack_set, &mut self.congestion_controller)
+    }
+
+    /// Called when packets are lost
+    pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
+        self.mtu_controller.on_packet_loss(ack_set)
+    }
+
+    /// Only PATH_CHALLENGE and PATH_RESPONSE frames should be transmitted here.
     pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
         if let Some(response_data) = &mut self.response_data {
             let frame = frame::PathResponse {
@@ -367,10 +375,12 @@ impl<CC: CongestionController> Path<CC> {
             }
         }
     }
+}
 
+impl<CC: CongestionController> transmission::interest::Provider for Path<CC> {
     /// Indicate if the path is interested in transmitting PATH_CHALLENGE or
     /// PATH_RESPONSE frames.
-    pub fn path_validation_transmission_interest(&self) -> transmission::Interest {
+    fn transmission_interest(&self) -> transmission::Interest {
         core::iter::empty()
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
             //# An endpoint MUST NOT delay transmission of a
@@ -383,12 +393,6 @@ impl<CC: CongestionController> Path<CC> {
                     .map(|challenge| challenge.transmission_interest()),
             )
             .sum()
-    }
-}
-
-impl<CC: CongestionController> transmission::interest::Provider for Path<CC> {
-    fn transmission_interest(&self) -> transmission::Interest {
-        self.path_validation_transmission_interest()
     }
 }
 
