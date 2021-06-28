@@ -137,7 +137,7 @@ jobs:
           command: doc
           args: --all-features --no-deps --workspace --exclude cargo-compliance --exclude compliance --exclude s2n-quic-qns
 
-      - uses: aws-actions/configure-aws-credentials@v1.5.9
+      - uses: aws-actions/configure-aws-credentials@v1.5.10
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -295,7 +295,7 @@ jobs:
       - name: Run cargo compliance
         run: ./scripts/compliance ${{ github.sha }}
 
-      - uses: aws-actions/configure-aws-credentials@v1.5.9
+      - uses: aws-actions/configure-aws-credentials@v1.5.10
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -425,7 +425,7 @@ jobs:
       - name: Run script
         run: sudo env "PATH=$PATH" ./scripts/perf/test-all
 
-      - uses: aws-actions/configure-aws-credentials@v1.5.9
+      - uses: aws-actions/configure-aws-credentials@v1.5.10
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -465,7 +465,7 @@ jobs:
         run: |
           ./scripts/recovery-sim
 
-      - uses: aws-actions/configure-aws-credentials@v1.5.9
+      - uses: aws-actions/configure-aws-credentials@v1.5.10
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
