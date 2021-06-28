@@ -36,7 +36,9 @@ impl<'a, Config: endpoint::Config> Payload<'a, Config> {
         stream_manager: &'a mut AbstractStreamManager<Config::Stream>,
         recovery_manager: &'a mut recovery::Manager,
     ) -> Self {
-        debug_assert!(context.path_id == context.path_manager.active_path_id());
+        if context.transmission_mode != Mode::PathValidationOnly {
+            debug_assert_eq!(context.path_id, context.path_manager.active_path_id());
+        }
 
         match context.transmission_mode {
             Mode::LossRecoveryProbing | Mode::Normal => {
