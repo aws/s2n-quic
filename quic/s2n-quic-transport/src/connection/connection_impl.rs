@@ -265,7 +265,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
     /// Since non-probing frames can only be sent on the active path, a separate
     /// transmission context with Mode::PathValidationOnly is used to send on
     /// other paths.
-    fn transmit_non_active_path<'a, Tx: tx::Queue, Pub: event::Publisher>(
+    fn path_validation_only_transmission<'a, Tx: tx::Queue, Pub: event::Publisher>(
         &mut self,
         shared_state: &mut SharedConnectionState<Config>,
         queue: &mut Tx,
@@ -591,8 +591,9 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                         });
                     };
 
-                    // Handle transmission on active path prior to other paths
-                    count += self.transmit_non_active_path(
+                    // PathValidationOnly handles transmission on non-active paths. Transmission
+                    // on the active path should be handled prior to this.
+                    count += self.path_validation_only_transmission(
                         shared_state,
                         queue,
                         timestamp,
