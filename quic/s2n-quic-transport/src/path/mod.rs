@@ -98,6 +98,10 @@ impl<CC: CongestionController> Path<CC> {
         self
     }
 
+    pub fn abandon_challenge(&mut self) {
+        self.challenge = None;
+    }
+
     /// Called when bytes have been transmitted on this path
     pub fn on_bytes_transmitted(&mut self, bytes: usize) {
         if bytes == 0 {
