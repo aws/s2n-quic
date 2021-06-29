@@ -341,7 +341,9 @@ impl<E: Endpoint> Instance<E> {
 
             let select = Select::new(rx_task, tx_task, &mut wakeups, &mut sleep);
 
-            if let Ok((rx_result, tx_result)) = select.await {
+            let mut reset_clock = false;
+
+            if let Ok((rx_result, tx_result, timeout_result)) = select.await {
                 if let Some(guard) = rx_result {
                     if let Ok(result) = guard?.try_io(|socket| rx.rx(socket)) {
                         result?;
@@ -353,6 +355,11 @@ impl<E: Endpoint> Instance<E> {
                     if let Ok(result) = guard?.try_io(|socket| tx.tx(socket)) {
                         result?;
                     }
+                }
+
+                // if the timer expired ensure it is reset to the default timeout
+                if timeout_result {
+                    reset_clock = true;
                 }
             } else {
                 // The endpoint has shut down
@@ -367,7 +374,9 @@ impl<E: Endpoint> Instance<E> {
                     sleep.as_mut().reset(next_time);
                     prev_time = next_time;
                 }
-            };
+            } else if reset_clock {
+                sleep.as_mut().reset(Instant::now() + DEFAULT_TIMEOUT);
+            }
         }
     }
 }
@@ -419,7 +428,7 @@ where
     }
 }
 
-type SelectResult<Rx, Tx> = Result<(Option<Rx>, Option<Tx>), CloseError>;
+type SelectResult<Rx, Tx> = Result<(Option<Rx>, Option<Tx>, bool), CloseError>;
 
 impl<Rx, Tx, Wakeup, Sleep> Future for Select<Rx, Tx, Wakeup, Sleep>
 where
@@ -452,7 +461,10 @@ where
             *this.tx_out = Some(v);
         }
 
+        let mut timeout_result = false;
+
         if this.sleep.poll(cx).is_ready() {
+            timeout_result = true;
             should_wake = true;
             // A ready from the sleep future should not yield, as it's unlikely that any of the
             // other tasks will yield on this loop.
@@ -465,7 +477,7 @@ where
         }
 
         if core::mem::replace(this.is_ready, true) {
-            Poll::Ready(Ok((this.rx_out.take(), this.tx_out.take())))
+            Poll::Ready(Ok((this.rx_out.take(), this.tx_out.take(), timeout_result)))
         } else {
             // yield once so the other futures have the chance to wake up
             // before returning
