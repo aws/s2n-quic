@@ -457,6 +457,10 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
                     //# If an endpoint has no state about the last validated peer address, it
                     //# MUST close the connection silently by discarding all connection
                     //# state.
+
+                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10
+                    //# An endpoint MAY discard connection state if it does not have a
+                    //# validated path on which it can send packets; see Section 8.2
                     return Err(connection::Error::NoValidPath);
                 }
             }

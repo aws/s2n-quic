@@ -559,6 +559,10 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         .close_on_matching_stateless_reset(payload, timestamp)
                         .is_some();
 
+                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.2
+                    //# For instance, an endpoint MAY send a stateless reset in
+                    //# response to any further incoming packets.
+
                     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
                     //# An endpoint MAY send a stateless reset in response to receiving a packet
                     //# that it cannot associate with an active connection.
