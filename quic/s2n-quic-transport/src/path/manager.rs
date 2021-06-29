@@ -55,7 +55,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
 
     /// Update the active path
     ///
-    /// Must not be called with path_id equal to the active path.
+    /// Must not be called with the active path's path_id.
     fn update_active_path(&mut self, path_id: Id) -> Result<(), transport::Error> {
         debug_assert!(path_id != Id(self.active));
 

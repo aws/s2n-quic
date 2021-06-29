@@ -142,7 +142,7 @@ impl<CC: CongestionController> Path<CC> {
         if let Some(challenge) = &mut self.challenge {
             challenge.on_timeout(timestamp);
             if challenge.is_abandoned() {
-                self.challenge = None;
+                self.abandon_challenge();
             }
         }
         self.mtu_controller.on_timeout(timestamp);
@@ -511,6 +511,20 @@ mod tests {
         // Expectation:
         assert!(path.is_challenge_pending());
         assert!(path.challenge.is_some());
+    }
+
+    #[test]
+    fn abandon_challenge() {
+        // Setup:
+        let mut path = testing::helper_path();
+        let helper_challenge = helper_challenge();
+        path = path.with_challenge(helper_challenge.challenge);
+
+        // Trigger:
+        path.abandon_challenge();
+
+        // Expectation:
+        assert!(path.challenge.is_none());
     }
 
     #[test]
