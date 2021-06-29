@@ -79,7 +79,7 @@ impl From<connection::Error> for ConnectionState {
                 // If the idle timer expired we directly move into the final state
                 ConnectionState::Finished
             }
-            connection::Error::NoPath => {
+            connection::Error::NoValidPath => {
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
                 //# When an endpoint has no validated path on which to send packets, it
                 //# MAY discard connection state.

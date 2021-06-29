@@ -457,7 +457,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
                     //# If an endpoint has no state about the last validated peer address, it
                     //# MUST close the connection silently by discarding all connection
                     //# state.
-                    return Err(connection::Error::NoPath);
+                    return Err(connection::Error::NoValidPath);
                 }
             }
         }
