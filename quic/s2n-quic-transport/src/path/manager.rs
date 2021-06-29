@@ -677,7 +677,9 @@ mod tests {
         manager[Id(1)].on_transmit(&mut context);
 
         // After a validation times out, the path should revert to the previous
-        manager.on_timeout(now + expiration + Duration::from_millis(100));
+        assert!(manager
+            .on_timeout(now + expiration + Duration::from_millis(100))
+            .is_ok());
         assert_eq!(manager.active, 0);
         assert!(manager.last_known_validated_path.is_none());
     }
@@ -793,9 +795,10 @@ mod tests {
 
         // Trigger 1:
         // A response 100ms before the challenge is abandoned
-        helper
+        assert!(helper
             .manager
-            .on_timeout(helper.now + helper.challenge_expiration - Duration::from_millis(100));
+            .on_timeout(helper.now + helper.challenge_expiration - Duration::from_millis(100))
+            .is_ok());
 
         // Expectation 1:
         assert!(helper.manager[helper.second_path_id].is_challenge_pending(),);
@@ -868,9 +871,10 @@ mod tests {
         //= type=test
         //# Endpoints SHOULD abandon path validation based on a timer.
         // A response 100ms after the challenge should fail
-        helper
+        assert!(helper
             .manager
-            .on_timeout(helper.now + helper.challenge_expiration + Duration::from_millis(100));
+            .on_timeout(helper.now + helper.challenge_expiration + Duration::from_millis(100))
+            .is_ok());
 
         // Expectation 1:
         assert!(!helper.manager[helper.second_path_id].is_challenge_pending());
