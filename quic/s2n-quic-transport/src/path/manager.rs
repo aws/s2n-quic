@@ -227,6 +227,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
 
                 // Peer has intentionally tried to migrate to this new path because they changed
                 // their destination_connection_id, so we will change our destination_connection_id as well.
+                // FIXME: add a test that this is called and that a new connection id is consumed
                 self.peer_id_registry
                     .consume_new_id()
                     // TODO https://github.com/awslabs/s2n-quic/issues/669
