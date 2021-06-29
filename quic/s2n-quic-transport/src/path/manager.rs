@@ -365,7 +365,10 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     }
 
     /// Process a non-probing (path validation probing) packet.
-    pub fn on_non_path_validation_probing_packet(&mut self, path_id: Id) -> Result<(), transport::Error> {
+    pub fn on_non_path_validation_probing_packet(
+        &mut self,
+        path_id: Id,
+    ) -> Result<(), transport::Error> {
         if self.active_path_id() != path_id {
             self.update_active_path(path_id)?;
 
@@ -753,10 +756,10 @@ mod tests {
         assert_eq!(helper.manager.active, helper.first_path_id.0);
 
         // Trigger:
-        assert!(helper
-            .manager
-            .update_active_path(helper.second_path_id)
-            .is_err());
+        assert_eq!(
+            helper.manager.update_active_path(helper.second_path_id),
+            Err(transport::Error::INTERNAL_ERROR)
+        );
 
         // Expectation:
         assert_eq!(helper.manager.active, helper.first_path_id.0);
@@ -1377,10 +1380,13 @@ mod tests {
         assert!(next.is_none());
     }
 
-    fn helper_manager_with_paths_base(register_second_conn_id: bool, validate_path_zero: bool) -> Helper {
-        let zero_conn_id = connection::PeerId::try_from_bytes(&[0]).unwrap();
-        let first_conn_id = connection::PeerId::try_from_bytes(&[1]).unwrap();
-        let second_conn_id = connection::PeerId::try_from_bytes(&[2]).unwrap();
+    fn helper_manager_with_paths_base(
+        register_second_conn_id: bool,
+        validate_path_zero: bool,
+    ) -> Helper {
+        let zero_conn_id = connection::PeerId::try_from_bytes(&[1, 1]).unwrap();
+        let first_conn_id = connection::PeerId::try_from_bytes(&[2, 2]).unwrap();
+        let second_conn_id = connection::PeerId::try_from_bytes(&[3, 3]).unwrap();
         let zero_path_id = Id(0);
         let first_path_id = Id(1);
         let second_path_id = Id(2);
@@ -1428,24 +1434,31 @@ mod tests {
                     zero_path.peer_connection_id,
                     None,
                 );
+
         assert!(peer_id_registry
-            .on_new_connection_id(&first_conn_id, first_path_id.0 as u32, 0, &TEST_TOKEN_1)
+            .on_new_connection_id(&first_conn_id, 1, 0, &TEST_TOKEN_1)
             .is_ok());
+
         if register_second_conn_id {
             assert!(peer_id_registry
-                .on_new_connection_id(&second_conn_id, second_path_id.0 as u32, 0, &TEST_TOKEN_2)
+                .on_new_connection_id(&second_conn_id, 2, 0, &TEST_TOKEN_2)
                 .is_ok());
         }
 
         let mut manager = Manager::new(zero_path, peer_id_registry);
+        assert!(manager.peer_id_registry.is_active(&first_conn_id));
         manager.paths.push(first_path);
         manager.paths.push(second_path);
-
         assert_eq!(manager.paths.len(), 3);
+
+        // update active path to first_path
         assert_eq!(manager.active, zero_path_id.0);
         assert!(manager.active_path().is_validated());
         assert!(manager.update_active_path(first_path_id).is_ok());
+        assert!(manager.peer_id_registry.consume_new_id().is_some());
 
+        // assert first_path is active and last_known_validated_path
+        assert!(manager.peer_id_registry.is_active(&first_conn_id));
         assert_eq!(manager.active, first_path_id.0);
         assert_eq!(manager.last_known_validated_path, Some(zero_path_id.0));
 
@@ -1453,9 +1466,9 @@ mod tests {
             now,
             challenge_expiration,
             expected_data,
-            zero_path_id: zero_path_id,
-            first_path_id: first_path_id,
-            second_path_id: second_path_id,
+            zero_path_id,
+            first_path_id,
+            second_path_id,
             manager,
         }
     }
