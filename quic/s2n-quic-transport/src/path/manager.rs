@@ -54,8 +54,6 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     }
 
     /// Update the active path
-    ///
-    /// Must not be called with the active path's path_id.
     fn update_active_path(&mut self, path_id: Id) -> Result<(), transport::Error> {
         debug_assert!(path_id != Id(self.active));
 
@@ -366,19 +364,25 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         }
     }
 
-    pub fn on_non_probing_packet(&mut self, path_id: Id) -> Result<(), transport::Error> {
+    /// Process a non-probing (path validation probing) packet.
+    pub fn on_non_path_validation_probing_packet(&mut self, path_id: Id) -> Result<(), transport::Error> {
         if self.active_path_id() != path_id {
             self.update_active_path(path_id)?;
 
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3
             //# After changing the address to which it sends non-probing packets, an
             //# endpoint can abandon any path validation for other addresses.
-            self.abandon_path_validation();
+            //
+            // Abandon other path validations only if the active path is validated since an
+            // attacker could block all path validation attempts simply by forwarding packets.
+            if self.active_path().is_validated() {
+                self.abandon_all_path_challenges();
+            }
         }
         Ok(())
     }
 
-    fn abandon_path_validation(&mut self) {
+    fn abandon_all_path_challenges(&mut self) {
         for path in self.paths.iter_mut() {
             path.abandon_challenge();
         }
