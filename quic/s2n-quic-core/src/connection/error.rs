@@ -40,7 +40,7 @@ pub enum Error {
     IdleTimerExpired,
 
     /// The connection was closed because there are no valid paths
-    NoPath,
+    NoValidPath,
 
     /// All Stream IDs for Streams on a given connection had been exhausted
     StreamIdExhausted,
@@ -110,7 +110,7 @@ pub fn as_frame<'a, F: connection::close::Formatter>(
         Error::StatelessReset => None,
         // Nothing gets sent on idle timeouts
         Error::IdleTimerExpired => None,
-        Error::NoPath => None,
+        Error::NoValidPath => None,
         Error::StreamIdExhausted => {
             let error =
                 transport::Error::PROTOCOL_VIOLATION.with_reason("stream IDs have been exhausted");
@@ -197,7 +197,7 @@ impl From<Error> for std::io::ErrorKind {
             Error::Application { .. } => ErrorKind::ConnectionReset,
             Error::StatelessReset => ErrorKind::ConnectionReset,
             Error::IdleTimerExpired => ErrorKind::TimedOut,
-            Error::NoPath => ErrorKind::Other,
+            Error::NoValidPath => ErrorKind::Other,
             Error::StreamIdExhausted => ErrorKind::Other,
             Error::Unspecified => ErrorKind::Other,
         }
