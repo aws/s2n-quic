@@ -96,7 +96,7 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
     }
 
     fn transmit<Tx: tx::Queue>(&mut self, queue: &mut Tx, timestamp: Timestamp) {
-        self.On_timeout(timestamp);
+        self.on_timeout(timestamp);
 
         // Iterate over all connections which want to transmit data
         let mut transmit_result = Ok(());

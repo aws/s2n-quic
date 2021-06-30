@@ -247,13 +247,6 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
             }
         };
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
-        //# The endpoint MUST use unpredictable data in every PATH_CHALLENGE
-        //# frame so that it can associate the peer's response with the
-        //# corresponding PATH_CHALLENGE.
-        let mut data: challenge::Data = [0; 8];
-        random_generator.public_random_fill(&mut data);
-
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.1
         //# Until a peer's address is deemed valid, an endpoint MUST
         //# limit the rate at which it sends data to this address.
@@ -266,6 +259,23 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
             true,
         );
 
+        let unblocked = path.on_bytes_received(datagram.payload_len);
+        // create a new path
+        let id = Id(self.paths.len() as u8);
+        self.paths.push(path);
+        self.set_challenge(id, random_generator);
+
+        Ok((id, unblocked))
+    }
+
+    fn set_challenge<Rnd: random::Generator>(&mut self, path_id: Id, random_generator: &mut Rnd) {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
+        //# The endpoint MUST use unpredictable data in every PATH_CHALLENGE
+        //# frame so that it can associate the peer's response with the
+        //# corresponding PATH_CHALLENGE.
+        let mut data: challenge::Data = [0; 8];
+        random_generator.public_random_fill(&mut data);
+
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.4
         //# Endpoints SHOULD abandon path validation based on a timer.
 
@@ -276,7 +286,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         //# three times the larger of the current Probe Timeout (PTO) or the PTO
         //# for the new path (that is, using kInitialRtt as defined in
         //# [QUIC-RECOVERY]) is RECOMMENDED.
-        let abandon_duration = path.pto_period(PacketNumberSpace::ApplicationData);
+        let abandon_duration = self[path_id].pto_period(PacketNumberSpace::ApplicationData);
         let abandon_duration = 3 * abandon_duration.max(
             self.active_path()
                 .pto_period(PacketNumberSpace::ApplicationData),
@@ -291,14 +301,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         //# Servers SHOULD initiate path validation to the client's new address
         //# upon receiving a probe packet from a different address.
         let challenge = challenge::Challenge::new(abandon_duration, data);
-        path = path.with_challenge(challenge);
-
-        let unblocked = path.on_bytes_received(datagram.payload_len);
-        // create a new path
-        let id = Id(self.paths.len() as u8);
-        self.paths.push(path);
-
-        Ok((id, unblocked))
+        self[path_id].with_challenge(challenge);
     }
 
     pub fn timers(&self) -> impl Iterator<Item = Timestamp> + '_ {
@@ -381,6 +384,16 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
             // attacker could block all path validation attempts simply by forwarding packets.
             if self.active_path().is_validated() {
                 self.abandon_all_path_challenges();
+            } else {
+                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3
+                //= type=TODO
+                //# If the recipient permits the migration, it MUST send subsequent
+                //# packets to the new peer address and MUST initiate path validation
+                //# (Section 8.2) to verify the peer's ownership of the address if
+                //# validation is not already underway.
+                // let challenge = challenge::Challenge::new(abandon_duration, data);
+                // self.active_path_mut().with_challenge(challenge);
+                // self.set_challenge(self.active_path_id(), random_generator);
             }
         }
         Ok(())
