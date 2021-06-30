@@ -584,22 +584,6 @@ mod tests {
     };
     use std::net::SocketAddr;
 
-    // Helper function to easily create a PathManager
-    fn manager(
-        first_path: Path<unlimited::CongestionController>,
-        stateless_reset_token: Option<stateless_reset::Token>,
-    ) -> Manager<unlimited::Endpoint> {
-        let mut random_generator = random::testing::Generator(123);
-        let peer_id_registry =
-            ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server)
-                .create_peer_id_registry(
-                    InternalConnectionIdGenerator::new().generate_id(),
-                    first_path.peer_connection_id,
-                    stateless_reset_token,
-                );
-        Manager::new(first_path, peer_id_registry)
-    }
-
     #[test]
     fn get_path_by_address_test() {
         let first_conn_id = connection::PeerId::try_from_bytes(&[0, 1, 2, 3, 4, 5]).unwrap();
@@ -901,6 +885,48 @@ mod tests {
     }
 
     #[test]
+    // if there is no last_known_validated_path after a on_timeout then return a
+    // NoValidPath error
+    fn silently_return_when_there_is_no_valid_path() {
+        // Setup:
+        let now = NoopClock {}.get_time();
+        let expiration = Duration::from_millis(1000);
+        let challenge = challenge::Challenge::new(expiration, [0; 8]);
+        let first_path = Path::new(
+            SocketAddress::default(),
+            connection::PeerId::try_from_bytes(&[1]).unwrap(),
+            connection::LocalId::TEST_ID,
+            RttEstimator::new(Duration::from_millis(30)),
+            Default::default(),
+            false,
+        )
+        .with_challenge(challenge);
+        let mut manager = manager(first_path, None);
+        let first_path_id = Id(0);
+
+        assert!(!manager[first_path_id].is_validated());
+        assert!(manager[first_path_id].is_challenge_pending());
+        assert_eq!(manager.last_known_validated_path, None);
+
+        // Trigger:
+        // send challenge and arm abandon timer
+        let mut frame_buffer = OutgoingFrameBuffer::new();
+        let mut context = MockWriteContext::new(
+            now,
+            &mut frame_buffer,
+            transmission::Constraint::None,
+            transmission::Mode::Normal,
+            endpoint::Type::Client,
+        );
+        manager[first_path_id].on_transmit(&mut context);
+        let res = manager.on_timeout(now + expiration + Duration::from_millis(100));
+
+        // Expectation:
+        assert!(!manager[first_path_id].is_challenge_pending());
+        assert_eq!(res.unwrap_err(), connection::Error::NoValidPath);
+    }
+
+    #[test]
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3
     //= type=test
     //# After changing the address to which it sends non-probing packets, an
@@ -945,10 +971,6 @@ mod tests {
         assert!(!helper.manager[helper.first_path_id].is_challenge_pending());
         assert!(!helper.manager[helper.second_path_id].is_challenge_pending());
     }
-
-    // on_timeout
-    //      None case
-    //      err NoValidPath
 
     #[test]
     // add new path when receiving a datagram on different remote address
@@ -1550,5 +1572,21 @@ mod tests {
         pub first_path_id: Id,
         pub second_path_id: Id,
         pub manager: Manager<unlimited::Endpoint>,
+    }
+
+    // Helper function to easily create a PathManager
+    fn manager(
+        first_path: Path<unlimited::CongestionController>,
+        stateless_reset_token: Option<stateless_reset::Token>,
+    ) -> Manager<unlimited::Endpoint> {
+        let mut random_generator = random::testing::Generator(123);
+        let peer_id_registry =
+            ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server)
+                .create_peer_id_registry(
+                    InternalConnectionIdGenerator::new().generate_id(),
+                    first_path.peer_connection_id,
+                    stateless_reset_token,
+                );
+        Manager::new(first_path, peer_id_registry)
     }
 }
