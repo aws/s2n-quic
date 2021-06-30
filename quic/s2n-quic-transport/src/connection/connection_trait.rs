@@ -27,7 +27,7 @@ use s2n_quic_core::{
         zero_rtt::ProtectedZeroRtt,
         ProtectedPacket,
     },
-    stateless_reset,
+    random, stateless_reset,
     time::Timestamp,
 };
 
@@ -110,42 +110,46 @@ pub trait ConnectionTrait: Sized {
     // Packet handling
 
     /// Is called when a handshake packet had been received
-    fn handle_handshake_packet<Pub: event::Publisher>(
+    fn handle_handshake_packet<Pub: event::Publisher, Rnd: random::Generator>(
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedHandshake,
         publisher: &mut Pub,
+        random_generator: &mut Rnd,
     ) -> Result<(), ProcessingError>;
 
     /// Is called when a initial packet had been received
-    fn handle_initial_packet<Pub: event::Publisher>(
+    fn handle_initial_packet<Pub: event::Publisher, Rnd: random::Generator>(
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedInitial,
         publisher: &mut Pub,
+        random_generator: &mut Rnd,
     ) -> Result<(), ProcessingError>;
 
     /// Is called when an unprotected initial packet had been received
-    fn handle_cleartext_initial_packet(
+    fn handle_cleartext_initial_packet<Rnd: random::Generator>(
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: CleartextInitial,
+        random_generator: &mut Rnd,
     ) -> Result<(), ProcessingError>;
 
     /// Is called when a short packet had been received
-    fn handle_short_packet<Pub: event::Publisher>(
+    fn handle_short_packet<Pub: event::Publisher, Rnd: random::Generator>(
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedShort,
         publisher: &mut Pub,
+        random_generator: &mut Rnd,
     ) -> Result<(), ProcessingError>;
 
     /// Is called when a version negotiation packet had been received
@@ -194,13 +198,14 @@ pub trait ConnectionTrait: Sized {
     fn quic_version(&self) -> u32;
 
     /// Handles reception of a single QUIC packet
-    fn handle_packet<Pub: event::Publisher>(
+    fn handle_packet<Pub: event::Publisher, Rnd: random::Generator>(
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedPacket,
         publisher: &mut Pub,
+        random_generator: &mut Rnd,
     ) -> Result<(), ProcessingError> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2.1
         //# If a client receives a packet that uses a different version than it
@@ -219,21 +224,36 @@ pub trait ConnectionTrait: Sized {
         // independently.
 
         match packet {
-            ProtectedPacket::Short(packet) => {
-                self.handle_short_packet(shared_state, datagram, path_id, packet, publisher)
-            }
+            ProtectedPacket::Short(packet) => self.handle_short_packet(
+                shared_state,
+                datagram,
+                path_id,
+                packet,
+                publisher,
+                random_generator,
+            ),
             ProtectedPacket::VersionNegotiation(packet) => {
                 self.handle_version_negotiation_packet(shared_state, datagram, path_id, packet)
             }
-            ProtectedPacket::Initial(packet) => {
-                self.handle_initial_packet(shared_state, datagram, path_id, packet, publisher)
-            }
+            ProtectedPacket::Initial(packet) => self.handle_initial_packet(
+                shared_state,
+                datagram,
+                path_id,
+                packet,
+                publisher,
+                random_generator,
+            ),
             ProtectedPacket::ZeroRtt(packet) => {
                 self.handle_zero_rtt_packet(shared_state, datagram, path_id, packet)
             }
-            ProtectedPacket::Handshake(packet) => {
-                self.handle_handshake_packet(shared_state, datagram, path_id, packet, publisher)
-            }
+            ProtectedPacket::Handshake(packet) => self.handle_handshake_packet(
+                shared_state,
+                datagram,
+                path_id,
+                packet,
+                publisher,
+                random_generator,
+            ),
             ProtectedPacket::Retry(packet) => {
                 self.handle_retry_packet(shared_state, datagram, path_id, packet)
             }
@@ -242,7 +262,11 @@ pub trait ConnectionTrait: Sized {
 
     /// This is called to handle the remaining and yet undecoded packets inside
     /// a datagram.
-    fn handle_remaining_packets<Validator: connection::id::Validator, Pub: event::Publisher>(
+    fn handle_remaining_packets<
+        Validator: connection::id::Validator,
+        Pub: event::Publisher,
+        Rnd: random::Generator,
+    >(
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
@@ -250,6 +274,7 @@ pub trait ConnectionTrait: Sized {
         connection_id_validator: &Validator,
         mut payload: DecoderBufferMut,
         publisher: &mut Pub,
+        random_generator: &mut Rnd,
     ) -> Result<(), connection::Error> {
         let connection_info = ConnectionInfo::new(&datagram.remote_address);
 
@@ -270,7 +295,14 @@ pub trait ConnectionTrait: Sized {
                     break;
                 }
 
-                let result = self.handle_packet(shared_state, datagram, path_id, packet, publisher);
+                let result = self.handle_packet(
+                    shared_state,
+                    datagram,
+                    path_id,
+                    packet,
+                    publisher,
+                    random_generator,
+                );
 
                 if let Err(ProcessingError::ConnectionError(err)) = result {
                     // CryptoErrors returned as a result of a packet failing decryption will be

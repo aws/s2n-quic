@@ -369,9 +369,10 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     }
 
     /// Process a non-probing (path validation probing) packet.
-    pub fn on_non_path_validation_probing_packet(
+    pub fn on_non_path_validation_probing_packet<Rnd: random::Generator>(
         &mut self,
         path_id: Id,
+        random_generator: &mut Rnd,
     ) -> Result<(), transport::Error> {
         if self.active_path_id() != path_id {
             self.update_active_path(path_id)?;
@@ -393,7 +394,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
                 //# validation is not already underway.
                 // let challenge = challenge::Challenge::new(abandon_duration, data);
                 // self.active_path_mut().with_challenge(challenge);
-                // self.set_challenge(self.active_path_id(), random_generator);
+                self.set_challenge(self.active_path_id(), random_generator);
             }
         }
         Ok(())

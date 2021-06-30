@@ -406,6 +406,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                             path_id,
                             packet,
                             &mut publisher,
+                            endpoint_context.random_generator,
                         ) {
                             match err {
                                 ProcessingError::DuplicatePacket => {
@@ -443,6 +444,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                             endpoint_context.connection_id_format,
                             remaining,
                             &mut publisher,
+                            endpoint_context.random_generator,
                         ) {
                             conn.close(
                                 Some(shared_state),
