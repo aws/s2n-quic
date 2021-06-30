@@ -93,9 +93,8 @@ impl<CC: CongestionController> Path<CC> {
         }
     }
 
-    pub fn with_challenge(mut self, challenge: Challenge) -> Self {
+    pub fn with_challenge(&mut self, challenge: Challenge) {
         self.challenge = Some(challenge);
-        self
     }
 
     pub fn abandon_challenge(&mut self) {
