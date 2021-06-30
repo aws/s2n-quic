@@ -396,15 +396,12 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
             // attacker could block all path validation attempts simply by forwarding packets.
             if self.active_path().is_validated() {
                 self.abandon_all_path_challenges();
-            } else {
+            } else if !self.active_path().is_challenge_pending() {
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3
-                //= type=TODO
                 //# If the recipient permits the migration, it MUST send subsequent
                 //# packets to the new peer address and MUST initiate path validation
                 //# (Section 8.2) to verify the peer's ownership of the address if
                 //# validation is not already underway.
-                // let challenge = challenge::Challenge::new(abandon_duration, data);
-                // self.active_path_mut().with_challenge(challenge);
                 self.set_challenge(self.active_path_id(), random_generator);
             }
         }
