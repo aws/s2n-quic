@@ -35,7 +35,7 @@ use s2n_quic_core::{
         version_negotiation::ProtectedVersionNegotiation,
         zero_rtt::ProtectedZeroRtt,
     },
-    stateless_reset,
+    random, stateless_reset,
     time::Timestamp,
 };
 
@@ -791,13 +791,14 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Is called when a initial packet had been received
-    fn handle_initial_packet<Pub: event::Publisher>(
+    fn handle_initial_packet<Pub: event::Publisher, Rnd: random::Generator>(
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedInitial,
         publisher: &mut Pub,
+        random_generator: &mut Rnd,
     ) -> Result<(), ProcessingError> {
         if let Some((space, _status)) = shared_state.space_manager.initial_mut() {
             let packet = space.validate_and_decrypt_packet(packet)?;
@@ -811,19 +812,26 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 .into(),
             });
 
-            self.handle_cleartext_initial_packet(shared_state, datagram, path_id, packet)?;
+            self.handle_cleartext_initial_packet(
+                shared_state,
+                datagram,
+                path_id,
+                packet,
+                random_generator,
+            )?;
         }
 
         Ok(())
     }
 
     /// Is called when an unprotected initial packet had been received
-    fn handle_cleartext_initial_packet(
+    fn handle_cleartext_initial_packet<Rnd: random::Generator>(
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: CleartextInitial,
+        random_generator: &mut Rnd,
     ) -> Result<(), ProcessingError> {
         if let Some((space, handshake_status)) = shared_state.space_manager.initial_mut() {
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2
@@ -851,6 +859,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 &mut self.path_manager,
                 handshake_status,
                 &mut self.local_id_registry,
+                random_generator,
             )?;
 
             // try to move the crypto state machine forward
@@ -864,13 +873,14 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Is called when a handshake packet had been received
-    fn handle_handshake_packet<Pub: event::Publisher>(
+    fn handle_handshake_packet<Pub: event::Publisher, Rnd: random::Generator>(
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedHandshake,
         publisher: &mut Pub,
+        random_generator: &mut Rnd,
     ) -> Result<(), ProcessingError> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2.1
         //= type=TODO
@@ -905,6 +915,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 &mut self.path_manager,
                 handshake_status,
                 &mut self.local_id_registry,
+                random_generator,
             )?;
 
             if Self::Config::ENDPOINT_TYPE.is_server() {
@@ -933,13 +944,14 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Is called when a short packet had been received
-    fn handle_short_packet<Pub: event::Publisher>(
+    fn handle_short_packet<Pub: event::Publisher, Rnd: random::Generator>(
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: ProtectedShort,
         publisher: &mut Pub,
+        random_generator: &mut Rnd,
     ) -> Result<(), ProcessingError> {
         //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#5.7
         //# Endpoints in either role MUST NOT decrypt 1-RTT packets from
@@ -993,6 +1005,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 &mut self.path_manager,
                 handshake_status,
                 &mut self.local_id_registry,
+                random_generator,
             )?;
 
             // Currently, the application space does not have any crypto state.
