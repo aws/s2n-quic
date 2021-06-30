@@ -1331,6 +1331,7 @@ mod tests {
     fn pending_paths_should_return_paths_pending_validation() {
         // Setup:
         let mut helper = helper_manager_with_paths();
+        let third_path_id = Id(3);
         let third_conn_id = connection::PeerId::try_from_bytes(&[3]).unwrap();
         let mut third_path = Path::new(
             SocketAddress::default(),
@@ -1353,8 +1354,8 @@ mod tests {
         assert!(!helper.manager[helper.second_path_id].is_response_pending());
 
         // pending response
-        assert!(!helper.manager[Id(2)].is_challenge_pending());
-        assert!(helper.manager[Id(2)].is_response_pending());
+        assert!(!helper.manager[third_path_id].is_challenge_pending());
+        assert!(helper.manager[third_path_id].is_response_pending());
 
         let mut pending_paths = helper.manager.paths_pending_validation();
 
@@ -1364,7 +1365,7 @@ mod tests {
         // Expectation:
         assert!(next.is_some());
         let (path_id, _path_manager) = next.unwrap();
-        assert_eq!(path_id.0, 1);
+        assert_eq!(path_id, helper.second_path_id);
 
         // Trigger:
         let next = pending_paths.next_path();
@@ -1372,7 +1373,7 @@ mod tests {
         // Expectation:
         assert!(next.is_some());
         let (path_id, _path_manager) = next.unwrap();
-        assert_eq!(path_id.0, 2);
+        assert_eq!(path_id, third_path_id);
 
         // Trigger:
         let next = pending_paths.next_path();
@@ -1385,9 +1386,9 @@ mod tests {
         register_second_conn_id: bool,
         validate_path_zero: bool,
     ) -> Helper {
-        let zero_conn_id = connection::PeerId::try_from_bytes(&[1, 1]).unwrap();
-        let first_conn_id = connection::PeerId::try_from_bytes(&[2, 2]).unwrap();
-        let second_conn_id = connection::PeerId::try_from_bytes(&[3, 3]).unwrap();
+        let zero_conn_id = connection::PeerId::try_from_bytes(&[0]).unwrap();
+        let first_conn_id = connection::PeerId::try_from_bytes(&[1]).unwrap();
+        let second_conn_id = connection::PeerId::try_from_bytes(&[2]).unwrap();
         let zero_path_id = Id(0);
         let first_path_id = Id(1);
         let second_path_id = Id(2);
