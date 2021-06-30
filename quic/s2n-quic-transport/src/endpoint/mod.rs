@@ -96,7 +96,7 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
     }
 
     fn transmit<Tx: tx::Queue>(&mut self, queue: &mut Tx, timestamp: Timestamp) {
-        self.on_timeout(timestamp);
+        self.On_timeout(timestamp);
 
         // Iterate over all connections which want to transmit data
         let mut transmit_result = Ok(());
@@ -346,6 +346,10 @@ impl<Cfg: Config> Endpoint<Cfg> {
         {
             let mut check_for_stateless_reset = false;
 
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
+            //# If a client receives
+            //# packets from an unknown server address, the client MUST discard these
+            //# packets.
             let _ = self
                 .connections
                 .with_connection(internal_id, |conn, mut shared_state| {
