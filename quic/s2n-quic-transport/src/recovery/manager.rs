@@ -1855,8 +1855,8 @@ mod test {
     //
     // Trigger:
     // - send packet on each path
-    //   - packet 1: 1st path: time 200
-    //   - packet 0: 2nd path: time 500
+    //   - packet 0: 2nd path: time 300
+    //   - packet 1: 1st path: time 300
     // - send ack for both packet on 1st path
     //
     // Expectation:
@@ -1879,22 +1879,9 @@ mod test {
 
         // Trigger:
         let time_sent = s2n_quic_platform::time::now() + Duration::from_secs(10);
-        let first_sent_time = time_sent + Duration::from_millis(200);
-        let second_sent_time = time_sent + Duration::from_millis(500);
+        let sent_time = time_sent + Duration::from_millis(300);
         let ack_receive_time = time_sent + Duration::from_millis(1000);
 
-        // send packet 1 (largest) on first path. sent + 200
-        manager.on_packet_sent(
-            space.new_packet_number(VarInt::from_u8(1)),
-            transmission::Outcome {
-                ack_elicitation: AckElicitation::Eliciting,
-                is_congestion_controlled: true,
-                bytes_sent: packet_bytes,
-                packet_number: space.new_packet_number(VarInt::from_u8(1)),
-            },
-            first_sent_time,
-            &mut context,
-        );
         // send packet 0 packet on second path. sent +500
         context.set_path_id(second_path_id);
         manager.on_packet_sent(
@@ -1905,7 +1892,21 @@ mod test {
                 bytes_sent: packet_bytes,
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
             },
-            second_sent_time,
+            sent_time,
+            &mut context,
+        );
+
+        // send packet 1 (largest) on first path. sent + 200
+        context.set_path_id(first_path_id);
+        manager.on_packet_sent(
+            space.new_packet_number(VarInt::from_u8(1)),
+            transmission::Outcome {
+                ack_elicitation: AckElicitation::Eliciting,
+                is_congestion_controlled: true,
+                bytes_sent: packet_bytes,
+                packet_number: space.new_packet_number(VarInt::from_u8(1)),
+            },
+            sent_time,
             &mut context,
         );
         assert_eq!(manager.sent_packets.iter().count(), 2);
@@ -1934,7 +1935,7 @@ mod test {
         // assert first path
         assert_eq!(
             first_path.rtt_estimator.latest_rtt(),
-            ack_receive_time - first_sent_time
+            ack_receive_time - sent_time
         );
         assert_eq!(first_path.congestion_controller.on_rtt_update, 1);
 
