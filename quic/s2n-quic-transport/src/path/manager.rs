@@ -652,15 +652,15 @@ mod tests {
         let now = NoopClock {}.get_time();
         let expiration = Duration::from_millis(1000);
         let challenge = challenge::Challenge::new(expiration, [0; 8]);
-        let second_path = Path::new(
+        let mut second_path = Path::new(
             SocketAddress::default(),
             first_conn_id,
             first_local_conn_id,
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
-        )
-        .with_challenge(challenge);
+        );
+        second_path.with_challenge(challenge);
 
         let mut manager = manager(first_path, None);
         manager.paths.push(second_path);
@@ -919,15 +919,15 @@ mod tests {
         let now = NoopClock {}.get_time();
         let expiration = Duration::from_millis(1000);
         let challenge = challenge::Challenge::new(expiration, [0; 8]);
-        let first_path = Path::new(
+        let mut first_path = Path::new(
             SocketAddress::default(),
             connection::PeerId::try_from_bytes(&[1]).unwrap(),
             connection::LocalId::TEST_ID,
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
-        )
-        .with_challenge(challenge);
+        );
+        first_path.with_challenge(challenge);
         let mut manager = manager(first_path, None);
         let first_path_id = Id(0);
 
@@ -971,7 +971,10 @@ mod tests {
         // Trigger:
         helper
             .manager
-            .on_non_path_validation_probing_packet(helper.second_path_id)
+            .on_non_path_validation_probing_packet(
+                helper.second_path_id,
+                &mut random::testing::Generator(123),
+            )
             .unwrap();
 
         // Expectation:
@@ -980,6 +983,29 @@ mod tests {
 
         assert!(helper.manager[helper.second_path_id].is_challenge_pending());
         assert!(!helper.manager[helper.second_path_id].is_validated());
+    }
+
+    #[test]
+    fn set_challenge_if_not_set_when_path_becomes_active() {
+        // Setup:
+        let mut helper = helper_manager_with_paths();
+        helper.manager[helper.second_path_id].abandon_challenge();
+
+        assert!(!helper.manager[helper.second_path_id].is_validated());
+        assert!(!helper.manager[helper.second_path_id].is_challenge_pending());
+        assert_eq!(helper.manager.active_path_id(), helper.first_path_id);
+
+        // Trigger:
+        helper
+            .manager
+            .on_non_path_validation_probing_packet(
+                helper.second_path_id,
+                &mut random::testing::Generator(123),
+            )
+            .unwrap();
+
+        // Expectation:
+        assert!(helper.manager[helper.second_path_id].is_challenge_pending());
     }
 
     #[test]
@@ -1520,15 +1546,15 @@ mod tests {
         let challenge_expiration = Duration::from_millis(10_000);
         let expected_data = [0; 8];
         let challenge = challenge::Challenge::new(challenge_expiration, expected_data);
-        let second_path = Path::new(
+        let mut second_path = Path::new(
             SocketAddress::default(),
             second_conn_id,
             local_conn_id,
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
-        )
-        .with_challenge(challenge);
+        );
+        second_path.with_challenge(challenge);
 
         let mut random_generator = random::testing::Generator(123);
         let mut peer_id_registry =

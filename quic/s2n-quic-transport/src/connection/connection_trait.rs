@@ -262,6 +262,7 @@ pub trait ConnectionTrait: Sized {
 
     /// This is called to handle the remaining and yet undecoded packets inside
     /// a datagram.
+    #[allow(clippy::too_many_arguments)]
     fn handle_remaining_packets<
         Validator: connection::id::Validator,
         Pub: event::Publisher,
