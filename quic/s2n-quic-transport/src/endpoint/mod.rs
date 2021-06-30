@@ -286,6 +286,11 @@ impl<Cfg: Config> Endpoint<Cfg> {
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.2.2
             //# Servers MUST drop incoming packets under all other circumstances.
 
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
+            //# If a client receives
+            //# packets from an unknown server address, the client MUST discard these
+            //# packets.
+
             // Packet is not decodable. Skip it.
             // TODO: Potentially add a metric
 
@@ -346,10 +351,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
         {
             let mut check_for_stateless_reset = false;
 
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
-            //# If a client receives
-            //# packets from an unknown server address, the client MUST discard these
-            //# packets.
             let _ = self
                 .connections
                 .with_connection(internal_id, |conn, mut shared_state| {
