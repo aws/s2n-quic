@@ -118,7 +118,7 @@ impl PeerIdInfo {
 
 /// The current status of the connection ID.
 #[derive(Clone, Debug, PartialEq)]
-pub enum PeerIdStatus {
+enum PeerIdStatus {
     /// Connection IDs received in NEW_CONNECTION_ID frames start in the `New` status.
     New,
     /// Once a connection ID is used on a path it moves to the `InUse` status.
@@ -455,24 +455,6 @@ impl PeerIdRegistry {
 
         None
     }
-
-    // pub fn get_cnt(
-    //     &self,
-    // ) -> usize {
-    //         self.registered_ids
-    //             .iter()
-    //             .count()
-    // }
-
-    // pub fn get_status(&self, peer_id: &connection::PeerId) -> PeerIdStatus {
-    //     for id_info in self.registered_ids.iter() {
-    //         if &id_info.id == peer_id {
-    //             return id_info.status.clone();
-    //         }
-    //     }
-
-    //     PeerIdStatus::InUsePendingNewConnectionId
-    // }
 
     // Validate that the ACTIVE_CONNECTION_ID_LIMIT has not been exceeded
     fn check_active_connection_id_limit(
