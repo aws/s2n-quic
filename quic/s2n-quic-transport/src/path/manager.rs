@@ -1299,7 +1299,11 @@ mod tests {
     #[test]
     fn can_transmit_false_if_no_path_can_transmit() {
         // Setup:
-        let helper = helper_manager_with_paths();
+        let helper = helper_manager_with_paths_base(true, false);
+
+        let zp = &helper.manager[helper.zero_path_id];
+        assert!(!transmission::Interest::None.can_transmit(zp.transmission_constraint()));
+
         let interest = transmission::Interest::Forced;
         let fp = &helper.manager[helper.first_path_id];
         assert!(!interest.can_transmit(fp.transmission_constraint()));
@@ -1315,10 +1319,12 @@ mod tests {
         // Setup:
         let mut helper = helper_manager_with_paths();
         let interest = transmission::Interest::Forced;
+
         let fp = &helper.manager[helper.first_path_id];
         assert!(!interest.can_transmit(fp.transmission_constraint()));
-
         let sp = &mut helper.manager[helper.second_path_id];
+
+        // Trigger:
         sp.on_bytes_received(1200);
         assert!(interest.can_transmit(sp.transmission_constraint()));
 
@@ -1401,9 +1407,6 @@ mod tests {
             Default::default(),
             false,
         );
-        if validate_path_zero {
-            zero_path.on_validated();
-        }
         let first_path = Path::new(
             SocketAddress::default(),
             first_conn_id,
@@ -1447,6 +1450,10 @@ mod tests {
                 .is_ok());
         }
 
+        if validate_path_zero {
+            zero_path.on_validated();
+        }
+
         let mut manager = Manager::new(zero_path, peer_id_registry);
         assert!(manager.peer_id_registry.is_active(&first_conn_id));
         manager.paths.push(first_path);
@@ -1455,14 +1462,20 @@ mod tests {
 
         // update active path to first_path
         assert_eq!(manager.active, zero_path_id.0);
-        assert!(manager.active_path().is_validated());
+        if validate_path_zero {
+            assert!(manager.active_path().is_validated());
+        }
         assert!(manager.update_active_path(first_path_id).is_ok());
         assert!(manager.peer_id_registry.consume_new_id().is_some());
 
         // assert first_path is active and last_known_validated_path
         assert!(manager.peer_id_registry.is_active(&first_conn_id));
         assert_eq!(manager.active, first_path_id.0);
-        assert_eq!(manager.last_known_validated_path, Some(zero_path_id.0));
+        if validate_path_zero {
+            assert_eq!(manager.last_known_validated_path, Some(zero_path_id.0));
+        } else {
+            assert_eq!(manager.last_known_validated_path, None);
+        }
 
         Helper {
             now,
