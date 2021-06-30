@@ -689,9 +689,9 @@ mod tests {
         manager[Id(1)].on_transmit(&mut context);
 
         // After a validation times out, the path should revert to the previous
-        assert!(manager
+        manager
             .on_timeout(now + expiration + Duration::from_millis(100))
-            .is_ok());
+            .unwrap();
         assert_eq!(manager.active, 0);
         assert!(manager.last_known_validated_path.is_none());
     }
@@ -806,10 +806,10 @@ mod tests {
 
         // Trigger 1:
         // A response 100ms before the challenge is abandoned
-        assert!(helper
+        helper
             .manager
             .on_timeout(helper.now + helper.challenge_expiration - Duration::from_millis(100))
-            .is_ok());
+            .unwrap();
 
         // Expectation 1:
         assert!(helper.manager[helper.second_path_id].is_challenge_pending(),);
@@ -881,10 +881,10 @@ mod tests {
         //= type=test
         //# Endpoints SHOULD abandon path validation based on a timer.
         // A response 100ms after the challenge should fail
-        assert!(helper
+        helper
             .manager
             .on_timeout(helper.now + helper.challenge_expiration + Duration::from_millis(100))
-            .is_ok());
+            .unwrap();
 
         // Expectation 1:
         assert!(!helper.manager[helper.second_path_id].is_challenge_pending());
@@ -899,6 +899,56 @@ mod tests {
         // Expectation 2:
         assert!(!helper.manager[helper.second_path_id].is_validated());
     }
+
+    #[test]
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3
+    //= type=test
+    //# After changing the address to which it sends non-probing packets, an
+    //# endpoint can abandon any path validation for other addresses.
+    //
+    // A non-probing (path validation probing) packet will cause the path to become an active
+    // path but the path is still not validated.
+    fn on_non_path_validation_probing_packet() {
+        // Setup:
+        let mut helper = helper_manager_with_paths();
+        assert!(!helper.manager[helper.second_path_id].is_validated());
+        assert!(helper.manager[helper.second_path_id].is_challenge_pending());
+        assert_eq!(helper.manager.active_path_id(), helper.first_path_id);
+
+        // Trigger:
+        helper
+            .manager
+            .on_non_path_validation_probing_packet(helper.second_path_id)
+            .unwrap();
+
+        // Expectation:
+        assert!(!helper.manager[helper.second_path_id].is_validated());
+        assert_eq!(helper.manager.active_path_id(), helper.second_path_id);
+
+        assert!(helper.manager[helper.second_path_id].is_challenge_pending());
+        assert!(!helper.manager[helper.second_path_id].is_validated());
+    }
+
+    #[test]
+    fn abandon_all_path_challenges() {
+        // Setup:
+        let mut helper = helper_manager_with_paths();
+        assert!(!helper.manager[helper.zero_path_id].is_challenge_pending());
+        assert!(!helper.manager[helper.first_path_id].is_challenge_pending());
+        assert!(helper.manager[helper.second_path_id].is_challenge_pending());
+
+        // Trigger:
+        helper.manager.abandon_all_path_challenges();
+
+        // Expectation:
+        assert!(!helper.manager[helper.zero_path_id].is_challenge_pending());
+        assert!(!helper.manager[helper.first_path_id].is_challenge_pending());
+        assert!(!helper.manager[helper.second_path_id].is_challenge_pending());
+    }
+
+    // on_timeout
+    //      None case
+    //      err NoValidPath
 
     #[test]
     // add new path when receiving a datagram on different remote address
@@ -1501,9 +1551,4 @@ mod tests {
         pub second_path_id: Id,
         pub manager: Manager<unlimited::Endpoint>,
     }
-    // abandon_all_path_challenges
-    // on_non_path_validation_probing_packet
-    // on_timeout
-    //      None case
-    //      err NoValidPath
 }
