@@ -1479,8 +1479,8 @@ mod tests {
 
         Helper {
             now,
-            challenge_expiration,
             expected_data,
+            challenge_expiration,
             zero_path_id,
             first_path_id,
             second_path_id,
@@ -1501,4 +1501,9 @@ mod tests {
         pub second_path_id: Id,
         pub manager: Manager<unlimited::Endpoint>,
     }
+    // abandon_all_path_challenges
+    // on_non_path_validation_probing_packet
+    // on_timeout
+    //      None case
+    //      err NoValidPath
 }
