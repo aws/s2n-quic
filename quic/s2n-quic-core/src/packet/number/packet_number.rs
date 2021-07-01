@@ -137,6 +137,15 @@ impl PacketNumber {
         Some(Self::from_varint(value, space))
     }
 
+    /// Compute the prev packet number in the space. If the packet number has
+    /// underflowed `None` will be returned.
+    #[inline]
+    pub fn prev(self) -> Option<Self> {
+        let value = Self::as_varint(self).checked_sub(VarInt::from_u8(1))?;
+        let space = self.space();
+        Some(Self::from_varint(value, space))
+    }
+
     /// Create a nonce for crypto from the packet number value
     ///
     /// Note: This should not be used by anything other than crypto-related

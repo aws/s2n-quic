@@ -337,9 +337,9 @@ impl Manager {
                     largest_newly_acked = Some((packet_number, acked_packet_info));
                 }
 
-                if let Some((_start, end)) = newly_acked_range.as_mut() {
+                if let Some((start, end)) = newly_acked_range.as_mut() {
                     debug_assert!(
-                        packet_number > *_start && packet_number > *end,
+                        packet_number > *start && packet_number > *end,
                         "remove_range should return packet numbers in ascending order"
                     );
                     *end = packet_number;

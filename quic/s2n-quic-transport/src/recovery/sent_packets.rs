@@ -12,14 +12,53 @@ use s2n_quic_core::{
 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.1
 
 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.1.1
+
+/// A data structure for tracking sent packets that are pending acknowledgement
+///
+/// The following assumptions are made and exploited
+///
+/// * Packet numbers are monotonically generated and inserted
+/// * Packet numbers will mostly be removed in ranges
+/// * Packet numbers that are deemed lost will also be removed and retransmitted
+///
+/// This is implemented as a buffer ring with a moving range for the lower and upper bound of
+/// contained packet numbers. The following example illustrates how each field tracks state:
+///
+/// ```ignore
+/// packets = [ PN(2), None, PN(0), PN(1) ]
+///                           ^ index = 2
+/// start = PN(0)
+/// end = PN(2)
+/// ```
+///
+/// Upon inserting `PN(3)` the state is now:
+///
+/// ```ignore
+/// packets = [ PN(2), PN(3), PN(0), PN(1) ]
+///                           ^ index = 2
+/// start = PN(0)
+/// end = PN(3)
+/// ```
+///
+/// Upon removing `PN(0)` the state is now:
+///
+/// ```ignore
+/// packets = [ PN(2), PN(3), None, PN(1) ]
+///                              ^ index = 3
+/// start = PN(1)
+/// end = PN(3)
+/// ```
 #[derive(Clone, Debug)]
 pub struct SentPackets {
-    packets: Vec<Option<SentPacketInfo>>,
-    // The smallest contained packet number in the set
+    /// The sent packet info buffer
+    packets: Box<[Option<SentPacketInfo>]>,
+    /// The smallest contained inclusive packet number in the set
     start: PacketNumber,
-    // The largest contained packet number in the set
+    /// The largest contained inclusive packet number in the set
     end: PacketNumber,
-    // The starting index of the first occupied packet
+    /// The starting index of the first occupied packet
+    ///
+    /// This field will be set to the `packets.len()` if the set is empty
     index: usize,
 }
 
@@ -30,10 +69,15 @@ const DEFAULT_CAPACITY: usize = 8;
 
 impl Default for SentPackets {
     fn default() -> Self {
+        // we use the Initial packet number space as a filler until an actual
+        // packet number is inserted
         let base = PacketNumberSpace::Initial.new_packet_number(0u8.into());
-        let packets = vec![None; DEFAULT_CAPACITY];
+
+        let packets = vec![None; DEFAULT_CAPACITY].into_boxed_slice();
+
         // Set the index to the len (OOB) to indicate that it's empty
         let index = packets.len();
+
         Self {
             packets,
             start: base,
@@ -49,14 +93,12 @@ impl SentPackets {
         if self.is_empty() {
             self.start = packet_number;
             self.end = packet_number;
-            unsafe {
-                // Safety: packets should always have an element
-                *self.packets.get_unchecked_mut(0) = Some(sent_packet_info);
-            }
+            self.packets[0] = Some(sent_packet_info);
             self.index = 0;
             return;
         }
 
+        // The implementation assumes monotonicity of insertion
         debug_assert!(
             packet_number > self.start && packet_number > self.end,
             "packet numbers should be monotonic: {:?} > {:?} && {:?}",
@@ -78,93 +120,84 @@ impl SentPackets {
                     break;
                 }
             }
+
+            // allocate a new packet buffer and copy the previous values
             let mut packets = Vec::with_capacity(new_len);
+            // The packets are stored in a ring so we copy from the index
+            // to the end, then from the start to the index
             packets.extend_from_slice(&self.packets[self.index..]);
             packets.extend_from_slice(&self.packets[..self.index]);
             packets.resize(new_len, None);
-            self.index = 0;
-            self.packets = packets;
 
-            self.pn_index(packet_number).unwrap()
+            // reset the index to the beginning of the buffer
+            self.index = 0;
+            self.packets = packets.into_boxed_slice();
+
+            // use the distance as the index
+            distance as usize
         } else {
-            let mut index = self.pn_index(packet_number).unwrap();
+            // we can't use pn_index_get here since it will bail due to `packet_number > self.end`
+            let mut index = self.pn_index_unbound(packet_number).unwrap();
             index %= self.packets.len();
             index
         };
 
-        unsafe {
-            debug_assert!(index < self.packets.len());
-            *self.packets.get_unchecked_mut(index) = Some(sent_packet_info);
-            self.end = self.end.max(packet_number);
-        }
+        self.packets[index] = Some(sent_packet_info);
+        self.end = packet_number;
     }
 
     /// Returns a reference to the `SentPacketInfo` associated with the given `packet_number`
     #[inline]
     pub fn get(&self, packet_number: PacketNumber) -> Option<&SentPacketInfo> {
         let index = self.pn_index_get(packet_number)?;
-        unsafe {
-            // Safety: index is wrapped around packets.len
-            debug_assert!(index < self.packets.len());
-            self.packets.get_unchecked(index).as_ref()
-        }
+        self.packets[index].as_ref()
     }
 
     /// Removes the `SentPacketInfo` associated with the given `packet_number`
     /// and returns the `SentPacketInfo` if it was present
     pub fn remove(&mut self, packet_number: PacketNumber) -> Option<SentPacketInfo> {
         let index = self.pn_index_get(packet_number)?;
+        let info = self.packets[index].take()?;
 
-        let info = unsafe {
-            // Safety: index is wrapped around packets.len
-            debug_assert!(index < self.packets.len());
-            self.packets.get_unchecked_mut(index).take()?
-        };
-
+        // update the bounds
         match (self.start == packet_number, self.end == packet_number) {
-            // the set is now empty, reset it
+            // the bounds are inclusive so the set is now empty, reset it
+            //              [_, _, _, 3]
+            // remove(3) => [_, _, _, _]
             (true, true) => {
-                self.index = self.packets.len();
+                self.clear();
             }
             // the packet was removed from the front
+            //              [0, 1, _, 3, 4]
+            // remove(0) => [_, 1, _, 3, 4]
+            // remove(1) => [_, _, _, 3, 4]
+            // remove(3) => [_, _, _, _, 4]
             (true, false) => {
-                let (start, _) = self.iter().next().expect("set should not be empty");
-                self.index = index + (start.as_u64() - self.start.as_u64()) as usize;
-                self.index %= self.packets.len();
-                self.start = start;
+                self.set_start(packet_number.next().unwrap());
             }
+            // the packet was removed from the back
+            //              [0, 1, _, 3, 4]
+            // remove(4) => [0, 1, _, 3, _]
+            // remove(3) => [0, 1, _, _, _]
+            // remove(1) => [0, _, _, _, _]
             (false, true) => {
-                let (end, _) = self.iter().next_back().expect("set should not be empty");
-                self.end = end;
+                self.set_end(packet_number.prev().unwrap());
             }
+            // the packet was removed from the middle
+            //              [0, 1, 2]
+            // remove(2) => [0, _, 2]
             (false, false) => {
-                // removing from the middle - do nothing
+                // nothing to do
             }
         }
 
         Some(info)
     }
 
-    pub fn remove_range(
-        &mut self,
-        range: PacketNumberRange,
-    ) -> impl Iterator<Item = (PacketNumber, SentPacketInfo)> + '_ {
-        let start = range.start().max(self.start);
-        let end = range.end().min(self.end);
-        let range = if self.is_empty() || start > end {
-            None
-        } else {
-            Some(PacketNumberRange::new(start, end))
-        };
-
-        // TODO optimize this into a specialized iterator
-        range
-            .into_iter()
-            .flatten()
-            .filter_map(move |packet_number| {
-                let info = self.remove(packet_number)?;
-                Some((packet_number, info))
-            })
+    /// Removes a range of packets from the set and returns their information if present
+    #[inline]
+    pub fn remove_range(&mut self, range: PacketNumberRange) -> RemoveIter {
+        RemoveIter::new(self, range)
     }
 
     /// Gets an iterator over the sent packet entries, sorted by PacketNumber
@@ -179,23 +212,28 @@ impl SentPackets {
         self.index == self.packets.len()
     }
 
+    /// Clears all of the packet information in the sent
     #[inline]
-    fn pn_index(&self, packet_number: PacketNumber) -> Option<usize> {
-        let index = self.index;
-        // the set is empty
-        if index == self.packets.len() {
+    pub fn clear(&mut self) {
+        self.index = self.packets.len();
+    }
+
+    #[inline]
+    fn pn_index_unbound(&self, packet_number: PacketNumber) -> Option<usize> {
+        // the set is empty so there are no valid entries
+        if self.is_empty() {
             return None;
         }
 
         let offset = packet_number.checked_distance(self.start)?;
 
-        let index = index.checked_add(offset as usize)?;
+        let index = self.index.checked_add(offset as usize)?;
         Some(index)
     }
 
     #[inline]
     fn pn_index_get(&self, packet_number: PacketNumber) -> Option<usize> {
-        let index = self.pn_index(packet_number)?;
+        let index = self.pn_index_unbound(packet_number)?;
 
         // make sure it's within the inserted packet numbers
         if packet_number > self.end {
@@ -210,24 +248,88 @@ impl SentPackets {
     fn pn_range(&self) -> PacketNumberRange {
         PacketNumberRange::new(self.start, self.end)
     }
+
+    fn set_start(&mut self, packet_number: PacketNumber) {
+        // this function assumes we have at least one element
+        debug_assert!(!self.is_empty());
+        debug_assert!(packet_number >= self.start);
+        debug_assert!(packet_number <= self.end);
+
+        // find the next occupied slot
+        for packet_number in PacketNumberRange::new(packet_number, self.end) {
+            if self.get(packet_number).is_some() {
+                let index = self
+                    .pn_index_get(packet_number)
+                    .expect("packet should be in bounds");
+
+                self.index = index;
+                self.start = packet_number;
+                debug_assert!(self.start <= self.end);
+                debug_assert_eq!(self.pn_index_get(packet_number), Some(index));
+                return;
+            }
+        }
+
+        unreachable!("could not find an occupied entry; set should be empty");
+    }
+
+    fn set_end(&mut self, packet_number: PacketNumber) {
+        // this function assumes we have at least one element
+        debug_assert!(!self.is_empty());
+        debug_assert!(packet_number >= self.start);
+        debug_assert!(packet_number <= self.end);
+
+        // find the next occupied slot
+        for packet_number in PacketNumberRange::new(self.start, packet_number).rev() {
+            if self.get(packet_number).is_some() {
+                self.end = packet_number;
+                debug_assert!(self.start <= self.end);
+                return;
+            }
+        }
+
+        unreachable!("could not find an occupied entry; set should be empty");
+    }
 }
 
+/// An iterator over all of the contained packet numbers
+///
+/// This iterator is optimized to reduce the amount of bounds checks being performed
+#[derive(Debug)]
 pub struct Iter<'a> {
     sent_packets: &'a SentPackets,
-    range: PacketNumberRange,
+    packet_number: Option<PacketNumber>,
+    index: usize,
+    remaining: usize,
 }
 
 impl<'a> Iter<'a> {
     fn new(sent_packets: &'a SentPackets) -> Self {
-        let mut range = sent_packets.pn_range();
-        // exhaust the range to make it empty
-        if sent_packets.is_empty() {
-            let _ = range.next();
-        }
-        Self {
+        let start = sent_packets.start;
+        let end = sent_packets.end;
+        let index = sent_packets.index;
+
+        let mut iter = Self {
             sent_packets,
-            range,
+            packet_number: Some(start),
+            index,
+            // start with an empty iterator
+            remaining: 0,
+        };
+
+        // make sure we have at least one packet
+        if iter.sent_packets.is_empty() {
+            return iter;
         }
+
+        // set the number of remaining entries based on the bounded range
+        iter.remaining = (end.as_u64() - start.as_u64()) as usize;
+        // we always have at least 1 items since the range is inclusive
+        iter.remaining += 1;
+
+        debug_assert!(iter.remaining <= iter.sent_packets.packets.len());
+
+        iter
     }
 }
 
@@ -235,23 +337,148 @@ impl<'a> Iterator for Iter<'a> {
     type Item = (PacketNumber, &'a SentPacketInfo);
 
     fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            let pn = self.range.next()?;
-            if let Some(info) = self.sent_packets.get(pn) {
-                return Some((pn, info));
+        while self.remaining > 0 {
+            self.remaining -= 1;
+
+            let packet_number = self.packet_number?;
+            self.packet_number = packet_number.next();
+
+            let index = self.index;
+            self.index = (index + 1) % self.sent_packets.packets.len();
+
+            if let Some(info) = self.sent_packets.packets[index].as_ref() {
+                return Some((packet_number, info));
             }
         }
+
+        None
     }
 }
 
-impl<'a> DoubleEndedIterator for Iter<'a> {
-    fn next_back(&mut self) -> Option<Self::Item> {
-        loop {
-            let pn = self.range.next_back()?;
-            if let Some(info) = self.sent_packets.get(pn) {
-                return Some((pn, info));
+/// An iterator which removes a set of packet numbers in a range
+///
+/// This iterator is optimized to reduce the amount of bounds checks being performed
+#[derive(Debug)]
+pub struct RemoveIter<'a> {
+    sent_packets: &'a mut SentPackets,
+    packet_number: Option<PacketNumber>,
+    index: usize,
+    remaining: usize,
+}
+
+impl<'a> RemoveIter<'a> {
+    fn new(sent_packets: &'a mut SentPackets, range: PacketNumberRange) -> Self {
+        let mut start = sent_packets.start;
+        let mut end = sent_packets.end;
+
+        let prev_range = sent_packets.pn_range();
+
+        let index = sent_packets.index;
+
+        let mut iter = Self {
+            sent_packets,
+            packet_number: None,
+            index,
+            // start with an empty iterator
+            remaining: 0,
+        };
+
+        // make sure we have at least one packet
+        if iter.sent_packets.is_empty() {
+            return iter;
+        }
+
+        // ensure the range overlaps with the contained items
+        if range.end() < start || range.start() > end {
+            return iter;
+        }
+
+        use core::cmp::Ordering::*;
+
+        match (range.start().cmp(&start), range.end().cmp(&end)) {
+            (Less, Equal) | (Less, Greater) | (Equal, Greater) | (Equal, Equal) => {
+                // deleting all entries
+
+                // clear the sent packets
+                //
+                // NOTE: this doesn't actually delete anything in the buffer
+                iter.sent_packets.clear();
+
+                // no need to update index as it's already set to the lower bound
+            }
+            (Less, Less) | (Equal, Less) => {
+                // deleting start
+                end = range.end();
+
+                iter.sent_packets.set_start(end.next().unwrap());
+            }
+            (Greater, Greater) | (Greater, Equal) => {
+                // deleting end
+                start = range.start();
+
+                iter.index = iter
+                    .sent_packets
+                    .pn_index_get(start)
+                    .expect("packet number bounds have already been checked");
+
+                iter.sent_packets.set_end(start.prev().unwrap());
+            }
+            (Greater, Less) => {
+                // deleting middle part
+                start = range.start();
+                end = range.end();
+
+                iter.index = iter
+                    .sent_packets
+                    .pn_index_get(start)
+                    .expect("packet number bounds have already been checked");
             }
         }
+
+        // Update the starting packet number
+        iter.packet_number = Some(start);
+        // set the number of remaining entries based on the bounded range
+        iter.remaining = (end.as_u64() - start.as_u64()) as usize;
+        // we always have at least 1 items since the range is inclusive
+        iter.remaining += 1;
+
+        debug_assert!(prev_range.start() <= start);
+        debug_assert!(prev_range.end() >= end);
+        debug_assert!(iter.remaining <= iter.sent_packets.packets.len());
+
+        iter
+    }
+}
+
+impl<'a> Iterator for RemoveIter<'a> {
+    type Item = (PacketNumber, SentPacketInfo);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while self.remaining > 0 {
+            self.remaining -= 1;
+
+            let packet_number = self.packet_number?;
+            self.packet_number = packet_number.next();
+
+            let index = self.index;
+            self.index = (index + 1) % self.sent_packets.packets.len();
+
+            if let Some(info) = self.sent_packets.packets[index].take() {
+                return Some((packet_number, info));
+            }
+        }
+
+        None
+    }
+}
+
+#[cfg(debug_assertions)]
+impl<'a> Drop for RemoveIter<'a> {
+    fn drop(&mut self) {
+        assert!(
+            self.remaining == 0,
+            "dropping a remove iterator before draining it will leave occupied packets"
+        );
     }
 }
 
@@ -299,9 +526,11 @@ impl SentPacketInfo {
 #[cfg(test)]
 mod test {
     use crate::{
+        interval_set::IntervalSet,
         path,
         recovery::{SentPacketInfo, SentPackets},
     };
+    use bolero::{check, generator::*};
     use s2n_quic_core::{
         frame::ack_elicitation::AckElicitation,
         packet::number::{PacketNumberRange, PacketNumberSpace},
@@ -494,9 +723,6 @@ mod test {
         );
     }
 
-    use crate::interval_set::IntervalSet;
-    use bolero::{check, generator::*};
-
     #[derive(Clone, Copy, Debug, TypeGenerator)]
     enum Operation {
         // Inserts the current packet number
@@ -512,7 +738,7 @@ mod test {
     fn model(ops: &[Operation]) {
         use s2n_quic_core::packet::number::PacketNumber;
 
-        let mut current = PacketNumberSpace::Initial.new_packet_number(VarInt::from_u8(0));
+        let mut current = PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u8(0));
 
         #[derive(Debug, Default)]
         struct Model {
@@ -571,6 +797,16 @@ mod test {
             }
 
             fn check_consistency(&self) {
+                if let Some(expected_start) = self.active.min_value() {
+                    assert_eq!(self.subject.start, expected_start);
+                } else {
+                    assert!(self.subject.is_empty());
+                }
+
+                if let Some(expected_end) = self.active.max_value() {
+                    assert_eq!(self.subject.end, expected_end);
+                }
+
                 let mut subject = self.subject.iter();
                 let mut oracle = self.oracle.iter();
                 loop {
@@ -599,7 +835,7 @@ mod test {
                     current = current.next().unwrap();
                 }
                 Operation::Remove(pn) => {
-                    let pn = PacketNumberSpace::Initial.new_packet_number(pn);
+                    let pn = PacketNumberSpace::ApplicationData.new_packet_number(pn);
 
                     model.remove(pn);
                 }
@@ -609,8 +845,8 @@ mod test {
                     } else {
                         (start, end)
                     };
-                    let start = PacketNumberSpace::Initial.new_packet_number(start);
-                    let end = PacketNumberSpace::Initial.new_packet_number(end);
+                    let start = PacketNumberSpace::ApplicationData.new_packet_number(start);
+                    let end = PacketNumberSpace::ApplicationData.new_packet_number(end);
                     let range = PacketNumberRange::new(start, end);
 
                     model.remove_range(range);
