@@ -64,12 +64,6 @@ impl<B: Buffer> Queue<B> {
                     _ => {
                         let err = io::Error::last_os_error();
 
-                        // TODO handle EMSGSIZE
-                        // > By default, Linux UDP does path MTU (Maximum Transmission Unit)
-                        // > discovery.  This means the kernel will keep track of the MTU to a
-                        // > specific target IP address and return EMSGSIZE when a UDP packet
-                        // > write exceeds it.
-
                         if count > 0 && err.kind() == io::ErrorKind::WouldBlock {
                             break;
                         } else {
