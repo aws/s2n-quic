@@ -689,7 +689,7 @@ mod tests {
             .unwrap();
 
         // Expectation:
-        assert_eq!(helper.manager.last_known_validated_path, Some(0));
+        assert_eq!(helper.manager.last_known_validated_path, Some(1));
     }
 
     #[test]
@@ -706,7 +706,7 @@ mod tests {
             .unwrap();
 
         // Expectation:
-        assert_eq!(helper.manager.last_known_validated_path, None);
+        assert_eq!(helper.manager.last_known_validated_path, Some(0));
     }
 
     #[test]
@@ -730,7 +730,7 @@ mod tests {
     // Don't update path to the new active path if insufficient connection ids
     fn dont_update_path_to_active_path_if_no_connection_id_available() {
         // Setup:
-        let mut helper = helper_manager_register_second_path_conn_id(false);
+        let mut helper = helper_manager_with_paths_base(false, true);
         assert_eq!(helper.manager.active, helper.first_path_id.0);
 
         // Trigger:
@@ -767,7 +767,6 @@ mod tests {
     fn validate_path_before_challenge_expiration() {
         // Setup:
         let mut helper = helper_manager_with_paths();
-        assert_eq!(helper.manager.paths.len(), 2);
         assert_eq!(helper.manager.active, helper.first_path_id.0);
 
         // send challenge and arm abandon timer
@@ -839,7 +838,6 @@ mod tests {
     fn dont_validate_path_if_path_challenge_is_abandoned() {
         // Setup:
         let mut helper = helper_manager_with_paths();
-        assert_eq!(helper.manager.paths.len(), 2);
         assert_eq!(helper.manager.active, helper.first_path_id.0);
 
         // send challenge and arm abandon timer
@@ -1262,7 +1260,9 @@ mod tests {
     #[test]
     fn amplification_limited_true_if_all_paths_amplificaiton_limited() {
         // Setup:
-        let helper = helper_manager_with_paths();
+        let helper = helper_manager_with_paths_base(true, false);
+        let zp = &helper.manager[helper.zero_path_id];
+        assert!(zp.at_amplification_limit());
         let fp = &helper.manager[helper.first_path_id];
         assert!(fp.at_amplification_limit());
         let sp = &helper.manager[helper.second_path_id];
@@ -1289,7 +1289,11 @@ mod tests {
     #[test]
     fn can_transmit_false_if_no_path_can_transmit() {
         // Setup:
-        let helper = helper_manager_with_paths();
+        let helper = helper_manager_with_paths_base(true, false);
+
+        let zp = &helper.manager[helper.zero_path_id];
+        assert!(!transmission::Interest::None.can_transmit(zp.transmission_constraint()));
+
         let interest = transmission::Interest::Forced;
         let fp = &helper.manager[helper.first_path_id];
         assert!(!interest.can_transmit(fp.transmission_constraint()));
@@ -1321,6 +1325,7 @@ mod tests {
     fn pending_paths_should_return_paths_pending_validation() {
         // Setup:
         let mut helper = helper_manager_with_paths();
+        let third_path_id = Id(3);
         let third_conn_id = connection::PeerId::try_from_bytes(&[3]).unwrap();
         let mut third_path = Path::new(
             SocketAddress::default(),
@@ -1343,8 +1348,8 @@ mod tests {
         assert!(!helper.manager[helper.second_path_id].is_response_pending());
 
         // pending response
-        assert!(!helper.manager[Id(2)].is_challenge_pending());
-        assert!(helper.manager[Id(2)].is_response_pending());
+        assert!(!helper.manager[third_path_id].is_challenge_pending());
+        assert!(helper.manager[third_path_id].is_response_pending());
 
         let mut pending_paths = helper.manager.paths_pending_validation();
 
@@ -1354,7 +1359,7 @@ mod tests {
         // Expectation:
         assert!(next.is_some());
         let (path_id, _path_manager) = next.unwrap();
-        assert_eq!(path_id.0, 1);
+        assert_eq!(path_id, helper.second_path_id);
 
         // Trigger:
         let next = pending_paths.next_path();
@@ -1362,7 +1367,7 @@ mod tests {
         // Expectation:
         assert!(next.is_some());
         let (path_id, _path_manager) = next.unwrap();
-        assert_eq!(path_id.0, 2);
+        assert_eq!(path_id, third_path_id);
 
         // Trigger:
         let next = pending_paths.next_path();
@@ -1371,10 +1376,25 @@ mod tests {
         assert!(next.is_none());
     }
 
-    fn helper_manager_register_second_path_conn_id(register_second_conn_id: bool) -> Helper {
+    fn helper_manager_with_paths_base(
+        register_second_conn_id: bool,
+        validate_path_zero: bool,
+    ) -> Helper {
+        let zero_conn_id = connection::PeerId::try_from_bytes(&[0]).unwrap();
         let first_conn_id = connection::PeerId::try_from_bytes(&[1]).unwrap();
         let second_conn_id = connection::PeerId::try_from_bytes(&[2]).unwrap();
+        let zero_path_id = Id(0);
+        let first_path_id = Id(1);
+        let second_path_id = Id(2);
         let local_conn_id = connection::LocalId::TEST_ID;
+        let mut zero_path = Path::new(
+            SocketAddress::default(),
+            zero_conn_id,
+            local_conn_id,
+            RttEstimator::new(Duration::from_millis(30)),
+            Default::default(),
+            false,
+        );
         let first_path = Path::new(
             SocketAddress::default(),
             first_conn_id,
@@ -1404,39 +1424,67 @@ mod tests {
             ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server)
                 .create_peer_id_registry(
                     InternalConnectionIdGenerator::new().generate_id(),
-                    first_path.peer_connection_id,
+                    zero_path.peer_connection_id,
                     None,
                 );
+        assert!(peer_id_registry
+            .on_new_connection_id(&first_conn_id, 1, 0, &TEST_TOKEN_1)
+            .is_ok());
+
         if register_second_conn_id {
             assert!(peer_id_registry
-                .on_new_connection_id(&second_conn_id, 1, 0, &TEST_TOKEN_2)
+                .on_new_connection_id(&second_conn_id, 2, 0, &TEST_TOKEN_2)
                 .is_ok());
         }
 
-        let mut manager = Manager::new(first_path, peer_id_registry);
-        manager.paths.push(second_path);
+        if validate_path_zero {
+            zero_path.on_validated();
+        }
 
-        assert_eq!(manager.last_known_validated_path, None);
-        assert_eq!(manager.active, 0);
+        let mut manager = Manager::new(zero_path, peer_id_registry);
+        assert!(manager.peer_id_registry.is_active(&first_conn_id));
+        manager.paths.push(first_path);
+        manager.paths.push(second_path);
+        assert_eq!(manager.paths.len(), 3);
+
+        // update active path to first_path
+        assert_eq!(manager.active, zero_path_id.0);
+        if validate_path_zero {
+            assert!(manager.active_path().is_validated());
+        }
+        assert!(manager.update_active_path(first_path_id).is_ok());
+        assert!(manager.peer_id_registry.consume_new_id().is_some());
+
+        // assert first_path is active and last_known_validated_path
+        assert!(manager.peer_id_registry.is_active(&first_conn_id));
+        assert_eq!(manager.active, first_path_id.0);
+
+        if validate_path_zero {
+            assert_eq!(manager.last_known_validated_path, Some(zero_path_id.0));
+        } else {
+            assert_eq!(manager.last_known_validated_path, None);
+        }
 
         Helper {
             now,
-            challenge_expiration,
             expected_data,
-            first_path_id: Id(0),
-            second_path_id: Id(1),
+            challenge_expiration,
+            zero_path_id,
+            first_path_id,
+            second_path_id,
             manager,
         }
     }
 
     fn helper_manager_with_paths() -> Helper {
-        helper_manager_register_second_path_conn_id(true)
+        helper_manager_with_paths_base(true, true)
     }
 
     struct Helper {
         pub now: Timestamp,
         pub expected_data: challenge::Data,
         pub challenge_expiration: Duration,
+        pub zero_path_id: Id,
         pub first_path_id: Id,
         pub second_path_id: Id,
         pub manager: Manager<unlimited::Endpoint>,
