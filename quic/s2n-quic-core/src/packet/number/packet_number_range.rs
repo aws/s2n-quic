@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{packet::number::PacketNumber, varint::VarInt};
+use crate::packet::number::PacketNumber;
 
 /// An inclusive range of `PacketNumber`s
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -62,8 +62,8 @@ impl DoubleEndedIterator for PacketNumberRange {
     fn next_back(&mut self) -> Option<Self::Item> {
         if !self.exhausted && self.start <= self.end {
             let current = self.end;
-            if let Some(next) = PacketNumber::as_varint(current).checked_sub(VarInt::from_u8(1)) {
-                self.end = self.end.space().new_packet_number(next);
+            if let Some(prev) = current.prev() {
+                self.end = prev;
                 self.exhausted = self.start > self.end;
             } else {
                 // PacketNumber range has been exceeded

@@ -213,6 +213,7 @@ impl SentPackets {
         Some(index)
     }
 
+    #[inline]
     fn set_start(&mut self, packet_number: PacketNumber) {
         // this function assumes we have at least one element
         debug_assert!(!self.is_empty());
@@ -237,6 +238,7 @@ impl SentPackets {
         unreachable!("could not find an occupied entry; set should be empty");
     }
 
+    #[inline]
     fn set_end(&mut self, packet_number: PacketNumber) {
         // this function assumes we have at least one element
         debug_assert!(!self.is_empty());
@@ -292,6 +294,7 @@ pub struct Iter<'a> {
 }
 
 impl<'a> Iter<'a> {
+    #[inline]
     fn new(sent_packets: &'a SentPackets) -> Self {
         let start = sent_packets.start;
         let end = sent_packets.end;
@@ -324,6 +327,7 @@ impl<'a> Iter<'a> {
 impl<'a> Iterator for Iter<'a> {
     type Item = (PacketNumber, &'a SentPacketInfo);
 
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         while self.remaining > 0 {
             self.remaining -= 1;
@@ -355,6 +359,7 @@ pub struct RemoveIter<'a> {
 }
 
 impl<'a> RemoveIter<'a> {
+    #[inline]
     fn new(sent_packets: &'a mut SentPackets, range: PacketNumberRange) -> Self {
         let mut start = sent_packets.start;
         let mut end = sent_packets.end;
@@ -437,6 +442,7 @@ impl<'a> RemoveIter<'a> {
 impl<'a> Iterator for RemoveIter<'a> {
     type Item = (PacketNumber, SentPacketInfo);
 
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         while self.remaining > 0 {
             self.remaining -= 1;
@@ -707,6 +713,7 @@ mod test {
         );
     }
 
+    /// An operation to be performed against a model
     #[derive(Clone, Copy, Debug, TypeGenerator)]
     enum Operation {
         // Inserts the current packet number
@@ -724,6 +731,7 @@ mod test {
 
         let mut current = PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u8(0));
 
+        /// Tracks the subject against an oracle to ensure differential equivalency
         #[derive(Debug, Default)]
         struct Model {
             subject: SentPackets,
