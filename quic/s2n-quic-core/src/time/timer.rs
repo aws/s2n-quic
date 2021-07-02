@@ -101,6 +101,11 @@ mod tests {
         now += Duration::from_millis(99);
         assert!(!timer.is_expired(now));
 
+        assert!(
+            timer.is_expired(now + Duration::from_micros(1)),
+            "if a timer is less than 1ms in the future is should expire"
+        );
+
         now += Duration::from_millis(1);
         assert!(timer.is_expired(now));
 
