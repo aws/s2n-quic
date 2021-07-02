@@ -30,7 +30,7 @@ impl Timer {
     /// Returns true if the timer has expired
     pub fn is_expired(&self, current_time: Timestamp) -> bool {
         match self.expiration {
-            Some(timeout) => timeout <= current_time,
+            Some(timeout) => timeout.has_elapsed(current_time),
             _ => false,
         }
     }

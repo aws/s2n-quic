@@ -117,10 +117,22 @@ impl Timestamp {
         Self::as_duration_impl(self)
     }
 
-    /// Returns the timestamp as a [`Duration`] since the
-    /// clock epoch.
+    /// Returns the timestamp as a [`Duration`] since the clock epoch.
     const fn as_duration_impl(self) -> Duration {
         Duration::from_micros(self.0.get())
+    }
+
+    /// Compares the timestamp to the current time and returns true if it is in the past
+    ///
+    /// Note that this compares milliseconds, as any finer resolution would result in
+    /// excessive timer churn.
+    pub const fn has_elapsed(self, now: Self) -> bool {
+        let mut now = now.0.get();
+
+        // even if the timestamp is less than 1ms in the future, consider it elapsed
+        now += Duration::from_millis(1).as_micros() as u64;
+
+        self.0.get() < now
     }
 }
 

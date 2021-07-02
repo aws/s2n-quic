@@ -411,7 +411,18 @@ impl<E: Endpoint> Instance<E> {
             endpoint.transmit(&mut tx.tx_queue(), clock.get_time());
 
             if let Some(delay) = endpoint.timeout() {
-                let next_time = clock.0 + unsafe { delay.as_duration() };
+                let delay = unsafe {
+                    // Safety: the same clock epoch is being used
+                    delay.as_duration()
+                };
+
+                // floor the delay to milliseconds to reduce timer churn
+                let delay = Duration::from_millis(delay.as_millis() as u64);
+
+                // add the delay to the clock's epoch
+                let next_time = clock.0 + delay;
+
+                // if the clock has changed let the sleep future know
                 if next_time != prev_time {
                     sleep.as_mut().reset(next_time);
                     prev_time = next_time;
