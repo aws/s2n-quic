@@ -6,8 +6,9 @@ edition = "2018"
 license = "Apache-2.0"
 
 [features]
-default = ["std"]
-std = ["thiserror"]
+default = ["alloc", "std"]
+alloc = []
+std = ["alloc", "thiserror"]
 testing = ["std", "generator", "s2n-codec/testing", "checked-counters"]
 generator = ["bolero-generator"]
 checked-counters = []
