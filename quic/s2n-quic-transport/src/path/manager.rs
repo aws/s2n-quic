@@ -363,12 +363,12 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     }
 
     /// Process a non-probing (path validation probing) packet.
-    #[allow(dead_code)]
     pub fn on_non_path_validation_probing_packet(
         &mut self,
         _path_id: Id,
     ) -> Result<(), transport::Error> {
-        unimplemented!()
+        // TODO
+        Ok(())
     }
 
     #[allow(dead_code)]
