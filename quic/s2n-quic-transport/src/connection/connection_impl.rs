@@ -656,7 +656,11 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             connection_id_mapper.remove_initial_id(&self.internal_connection_id);
         }
 
-        self.path_manager.on_timeout(timestamp)?;
+        if let Some(shared_state) = shared_state.as_ref() {
+            let handshake_confirmed = shared_state.space_manager.is_handshake_confirmed();
+            self.path_manager
+                .on_timeout(timestamp, handshake_confirmed)?;
+        };
         self.local_id_registry.on_timeout(timestamp);
 
         if let Some(shared_state) = shared_state {

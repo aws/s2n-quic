@@ -446,7 +446,17 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         Ok(())
     }
 
-    pub fn on_timeout(&mut self, timestamp: Timestamp) -> Result<(), connection::Error> {
+    pub fn on_timeout(
+        &mut self,
+        timestamp: Timestamp,
+        handshake_confirmed: bool,
+    ) -> Result<(), connection::Error> {
+        // This handles path_validation and mtu_controller timers. These are only active after
+        // the handshake so return early if we are pre-handhshake.
+        if !handshake_confirmed {
+            return Ok(());
+        }
+
         for path in self.paths.iter_mut() {
             path.on_timeout(timestamp);
         }
@@ -703,7 +713,7 @@ mod tests {
 
         // After a validation times out, the path should revert to the previous
         manager
-            .on_timeout(now + expiration + Duration::from_millis(100))
+            .on_timeout(now + expiration + Duration::from_millis(100), true)
             .unwrap();
         assert_eq!(manager.active, 0);
         assert!(manager.last_known_validated_path.is_none());
@@ -821,7 +831,10 @@ mod tests {
         // A response 100ms before the challenge is abandoned
         helper
             .manager
-            .on_timeout(helper.now + helper.challenge_expiration - Duration::from_millis(100))
+            .on_timeout(
+                helper.now + helper.challenge_expiration - Duration::from_millis(100),
+                true,
+            )
             .unwrap();
 
         // Expectation 1:
@@ -896,7 +909,10 @@ mod tests {
         // A response 100ms after the challenge should fail
         helper
             .manager
-            .on_timeout(helper.now + helper.challenge_expiration + Duration::from_millis(100))
+            .on_timeout(
+                helper.now + helper.challenge_expiration + Duration::from_millis(100),
+                true,
+            )
             .unwrap();
 
         // Expectation 1:
@@ -964,7 +980,7 @@ mod tests {
             endpoint::Type::Client,
         );
         manager[first_path_id].on_transmit(&mut context);
-        let res = manager.on_timeout(now + expiration + Duration::from_millis(100));
+        let res = manager.on_timeout(now + expiration + Duration::from_millis(100), true);
 
         // Expectation:
         assert!(!manager[first_path_id].is_challenge_pending());
