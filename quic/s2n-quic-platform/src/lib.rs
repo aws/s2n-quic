@@ -8,6 +8,9 @@
 
 extern crate alloc;
 
+#[macro_use]
+mod macros;
+
 pub mod buffer;
 pub mod io;
 pub mod message;

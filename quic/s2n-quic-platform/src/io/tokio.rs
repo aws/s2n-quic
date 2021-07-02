@@ -17,6 +17,8 @@ use s2n_quic_core::{
     time::{self, Clock as ClockTrait},
 };
 use std::io;
+#[cfg(target_os = "linux")]
+use std::os::unix::io::AsRawFd;
 use tokio::{net::UdpSocket, runtime::Handle, time::Instant};
 
 #[derive(Debug)]
@@ -116,6 +118,46 @@ impl Io {
 
         if let Some(size) = recv_buffer_size {
             rx_socket.set_recv_buffer_size(size)?;
+        }
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14
+        //# UDP datagrams MUST NOT be fragmented at the IP layer.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14
+        //# In IPv4 ([IPv4]), the DF bit MUST be set if possible, to prevent
+        //# fragmentation on the path.
+
+        //= https://tools.ietf.org/rfc/rfc8899.txt#3
+        //# In IPv4, a probe packet MUST be sent with the Don't
+        //# Fragment (DF) bit set in the IP header and without network layer
+        //# endpoint fragmentation.
+
+        //= https://tools.ietf.org/rfc/rfc8899.txt#4.5
+        //# A PL implementing this specification MUST suspend network layer
+        //# processing of outgoing packets that enforces a PMTU
+        //# [RFC1191][RFC8201] for each flow utilizing DPLPMTUD and instead use
+        //# DPLPMTUD to control the size of packets that are sent by a flow.
+        #[cfg(target_os = "linux")]
+        {
+            // IP_PMTUDISC_PROBE setting will set the DF (Don't Fragment) flag
+            // while also ignoring the Path MTU. This means packets will not
+            // be fragmented, and the EMSGSIZE error will not be returned for
+            // packets larger than the Path MTU according to the kernel.
+            libc!(setsockopt(
+                tx_socket.as_raw_fd(),
+                libc::IPPROTO_IP,
+                libc::IP_MTU_DISCOVER,
+                &libc::IP_PMTUDISC_PROBE as *const _ as _,
+                core::mem::size_of_val(&libc::IP_PMTUDISC_PROBE) as _,
+            ))?;
+            #[cfg(feature = "ipv6")]
+            libc!(setsockopt(
+                tx_socket.as_raw_fd(),
+                libc::IPPROTO_IPV6,
+                libc::IPV6_MTU_DISCOVER,
+                &libc::IP_PMTUDISC_PROBE as *const _ as _,
+                core::mem::size_of_val(&libc::IP_PMTUDISC_PROBE) as _,
+            ))?;
         }
 
         let instance = Instance {
