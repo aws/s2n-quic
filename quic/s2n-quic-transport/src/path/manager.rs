@@ -362,7 +362,6 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         }
     }
 
-
     /// Process a non-probing (path validation probing) packet.
     #[allow(dead_code)]
     pub fn on_non_path_validation_probing_packet(
@@ -876,6 +875,21 @@ mod tests {
 
         // Expectation 2:
         assert!(!helper.manager[helper.second_path_id].is_validated());
+    }
+
+    #[test]
+    fn abandon_all_path_challenges() {
+        // Setup:
+        let mut helper = helper_manager_with_paths();
+        assert!(!helper.manager[helper.first_path_id].is_challenge_pending());
+        assert!(helper.manager[helper.second_path_id].is_challenge_pending());
+
+        // Trigger:
+        helper.manager.abandon_all_path_challenges();
+
+        // Expectation:
+        assert!(!helper.manager[helper.first_path_id].is_challenge_pending());
+        assert!(!helper.manager[helper.second_path_id].is_challenge_pending());
     }
 
     #[test]
