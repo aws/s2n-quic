@@ -78,6 +78,14 @@ impl core::iter::Sum for Interest {
 
 pub trait Provider {
     fn transmission_interest(&self) -> Interest;
+
+    /// Returns if there is any interest in transmission
+    ///
+    /// This can be used to quickly check a set of providers, rather than having to sum up all of
+    /// the interests.
+    fn has_transmission_interest(&self) -> bool {
+        !self.transmission_interest().is_none()
+    }
 }
 
 #[cfg(test)]

@@ -543,6 +543,14 @@ impl<CCE: congestion_controller::Endpoint> transmission::interest::Provider for 
             .chain(self.paths.iter().map(|path| path.transmission_interest()))
             .sum()
     }
+
+    fn has_transmission_interest(&self) -> bool {
+        self.peer_id_registry.has_transmission_interest()
+            || self
+                .paths
+                .iter()
+                .any(|path| path.has_transmission_interest())
+    }
 }
 
 /// Internal Id of a path in the manager
