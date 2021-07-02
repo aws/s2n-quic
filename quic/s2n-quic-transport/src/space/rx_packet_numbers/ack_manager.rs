@@ -339,9 +339,37 @@ mod tests {
     };
     use insta::assert_debug_snapshot;
     use s2n_quic_core::{
-        ack, endpoint,
-        frame::{ping, Frame},
+        ack, connection, endpoint,
+        frame::{ack_elicitation::AckElicitation, ping, Frame},
+        time::{Clock, NoopClock},
     };
+
+    #[test]
+    fn activate() {
+        // Setup:
+        let mut manager =
+            AckManager::new(PacketNumberSpace::ApplicationData, ack::Settings::default());
+
+        let pn = PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u8(1));
+        let datagram = DatagramInfo {
+            ecn: Default::default(),
+            payload_len: 1200,
+            remote_address: Default::default(),
+            timestamp: NoopClock {}.get_time(),
+            destination_connection_id: connection::LocalId::TEST_ID,
+        };
+        let mut processed_packet = ProcessedPacket::new(pn, &datagram);
+        processed_packet.path_challenge_on_active_path = true;
+        processed_packet.ack_elicitation = AckElicitation::Eliciting;
+
+        assert!(!manager.transmission_state.is_active());
+
+        // Trigger:
+        manager.on_processed_packet(&processed_packet);
+
+        // Expectation:
+        assert!(manager.transmission_state.is_active());
+    }
 
     #[test]
     fn on_transmit_complete_transmission_constrained() {
