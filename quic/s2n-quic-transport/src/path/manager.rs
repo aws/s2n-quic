@@ -266,8 +266,11 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
             true,
         );
 
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.4
+        //# Endpoints SHOULD abandon path validation based on a timer.
+        //
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#8.2.4
-        //# Endpoints SHOULD abandon path validation based on a timer.  When
+        //# When
         //# setting this timer, implementations are cautioned that the new path
         //# could have a longer round-trip time than the original. A value of
         //# three times the larger of the current Probe Timeout (PTO) or the PTO
@@ -1180,9 +1183,13 @@ mod tests {
         manager[second_path_id].on_transmit(&mut context);
 
         // Trigger 2:
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.4
+        //= type=test
+        //# Endpoints SHOULD abandon path validation based on a timer.
+        //
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#8.2.4
         //= type=test
-        //# Endpoints SHOULD abandon path validation based on a timer.  When
+        //# When
         //# setting this timer, implementations are cautioned that the new path
         //# could have a longer round-trip time than the original. A value of
         //# three times the larger of the current Probe Timeout (PTO) or the PTO

@@ -276,6 +276,19 @@ impl<'a, Config: endpoint::Config> tx::Message for ConnectionTransmission<'a, Co
 
             // Pad the packet when sending path validation frames so that MTU is also validated.
             let path = &self.context.path_manager[self.context.path_id];
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
+            //# An endpoint MUST expand datagrams that contain a PATH_CHALLENGE frame
+            //# to at least the smallest allowed maximum datagram size of 1200 bytes.
+            //
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
+            //# An endpoint MUST expand datagrams that contain a PATH_RESPONSE frame
+            //# to at least the smallest allowed maximum datagram size of 1200 bytes.
+            // Pad the packet when sending path validation frames so that MTU is also validated.
+            //
+            // The path's transmission_interest indicates if a PATH_CHALLENGE or PATH_RESPONSE
+            // frame is to be written.
+            //
             // We need to check is_validated because it is possible to recieve a PATH_CHALLENGE on
             // an active path for Off-Path Packet Forwarding prevention. However, we would only
             // like to pad when validating the MTU.
