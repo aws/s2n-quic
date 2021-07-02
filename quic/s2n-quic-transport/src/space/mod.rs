@@ -674,6 +674,9 @@ pub trait PacketSpace<Config: endpoint::Config> {
 
             payload = remaining;
         }
+        if is_path_validation_probing.is_probing() {
+            path_manager.on_non_path_validation_probing_packet(path_id)?;
+        }
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.1
         //# A packet MUST NOT be acknowledged until packet protection has been

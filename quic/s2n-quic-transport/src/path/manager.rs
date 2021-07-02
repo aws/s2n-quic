@@ -362,6 +362,22 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         }
     }
 
+    /// Process a non-probing (path validation probing) packet.
+    pub fn on_non_path_validation_probing_packet(
+        &mut self,
+        _path_id: Id,
+    ) -> Result<(), transport::Error> {
+        // TODO
+        Ok(())
+    }
+
+    #[allow(dead_code)]
+    fn abandon_all_path_challenges(&mut self) {
+        for path in self.paths.iter_mut() {
+            path.abandon_challenge();
+        }
+    }
+
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10.3
     //# Tokens are
     //# invalidated when their associated connection ID is retired via a
@@ -859,6 +875,21 @@ mod tests {
 
         // Expectation 2:
         assert!(!helper.manager[helper.second_path_id].is_validated());
+    }
+
+    #[test]
+    fn abandon_all_path_challenges() {
+        // Setup:
+        let mut helper = helper_manager_with_paths();
+        assert!(!helper.manager[helper.first_path_id].is_challenge_pending());
+        assert!(helper.manager[helper.second_path_id].is_challenge_pending());
+
+        // Trigger:
+        helper.manager.abandon_all_path_challenges();
+
+        // Expectation:
+        assert!(!helper.manager[helper.first_path_id].is_challenge_pending());
+        assert!(!helper.manager[helper.second_path_id].is_challenge_pending());
     }
 
     #[test]
