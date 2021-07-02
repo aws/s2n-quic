@@ -108,38 +108,15 @@ impl SentPackets {
         );
 
         // check if we need to increase capacity
-        let distance = packet_number.as_u64() - self.start.as_u64();
+        let distance = (packet_number.as_u64() - self.start.as_u64()) as usize;
 
-        let index = if distance >= self.packets.len() as u64 {
-            let mut new_len = self.packets.len();
+        let index = if distance >= self.packets.len() {
+            self.resize(distance);
 
-            // grow capacity until we can fit the inserted PN
-            loop {
-                new_len *= 2;
-                if distance < (new_len as u64) {
-                    break;
-                }
-            }
-
-            // allocate a new packet buffer and copy the previous values
-            let mut packets = Vec::with_capacity(new_len);
-            // The packets are stored in a ring so we copy from the index
-            // to the end, then from the start to the index
-            packets.extend_from_slice(&self.packets[self.index..]);
-            packets.extend_from_slice(&self.packets[..self.index]);
-            packets.resize(new_len, None);
-
-            // reset the index to the beginning of the buffer
-            self.index = 0;
-            self.packets = packets.into_boxed_slice();
-
-            // use the distance as the index
-            distance as usize
+            // use the distance as the index since we've already resized beyond it
+            distance
         } else {
-            // we can't use pn_index_get here since it will bail due to `packet_number > self.end`
-            let mut index = self.pn_index_unbound(packet_number).unwrap();
-            index %= self.packets.len();
-            index
+            (self.index + distance) % self.packets.len()
         };
 
         self.packets[index] = Some(sent_packet_info);
@@ -149,14 +126,14 @@ impl SentPackets {
     /// Returns a reference to the `SentPacketInfo` associated with the given `packet_number`
     #[inline]
     pub fn get(&self, packet_number: PacketNumber) -> Option<&SentPacketInfo> {
-        let index = self.pn_index_get(packet_number)?;
+        let index = self.pn_index(packet_number)?;
         self.packets[index].as_ref()
     }
 
     /// Removes the `SentPacketInfo` associated with the given `packet_number`
     /// and returns the `SentPacketInfo` if it was present
     pub fn remove(&mut self, packet_number: PacketNumber) -> Option<SentPacketInfo> {
-        let index = self.pn_index_get(packet_number)?;
+        let index = self.pn_index(packet_number)?;
         let info = self.packets[index].take()?;
 
         // update the bounds
@@ -219,34 +196,21 @@ impl SentPackets {
     }
 
     #[inline]
-    fn pn_index_unbound(&self, packet_number: PacketNumber) -> Option<usize> {
+    fn pn_index(&self, packet_number: PacketNumber) -> Option<usize> {
         // the set is empty so there are no valid entries
         if self.is_empty() {
             return None;
         }
-
-        let offset = packet_number.checked_distance(self.start)?;
-
-        let index = self.index.checked_add(offset as usize)?;
-        Some(index)
-    }
-
-    #[inline]
-    fn pn_index_get(&self, packet_number: PacketNumber) -> Option<usize> {
-        let index = self.pn_index_unbound(packet_number)?;
 
         // make sure it's within the inserted packet numbers
         if packet_number > self.end {
             return None;
         }
 
+        let offset = packet_number.checked_distance(self.start)?;
+        let index = self.index.checked_add(offset as usize)?;
         let index = index % self.packets.len();
         Some(index)
-    }
-
-    #[inline]
-    fn pn_range(&self) -> PacketNumberRange {
-        PacketNumberRange::new(self.start, self.end)
     }
 
     fn set_start(&mut self, packet_number: PacketNumber) {
@@ -259,13 +223,13 @@ impl SentPackets {
         for packet_number in PacketNumberRange::new(packet_number, self.end) {
             if self.get(packet_number).is_some() {
                 let index = self
-                    .pn_index_get(packet_number)
+                    .pn_index(packet_number)
                     .expect("packet should be in bounds");
 
                 self.index = index;
                 self.start = packet_number;
                 debug_assert!(self.start <= self.end);
-                debug_assert_eq!(self.pn_index_get(packet_number), Some(index));
+                debug_assert_eq!(self.pn_index(packet_number), Some(index));
                 return;
             }
         }
@@ -289,6 +253,30 @@ impl SentPackets {
         }
 
         unreachable!("could not find an occupied entry; set should be empty");
+    }
+
+    fn resize(&mut self, len: usize) {
+        let mut new_len = self.packets.len();
+
+        // grow capacity until we can fit the inserted PN
+        loop {
+            new_len *= 2;
+            if len < new_len {
+                break;
+            }
+        }
+
+        // allocate a new packet buffer and copy the previous values
+        let mut packets = Vec::with_capacity(new_len);
+        // The packets are stored in a ring so we copy from the index
+        // to the end, then from the start to the index
+        packets.extend_from_slice(&self.packets[self.index..]);
+        packets.extend_from_slice(&self.packets[..self.index]);
+        packets.resize(new_len, None);
+
+        // reset the index to the beginning of the buffer
+        self.index = 0;
+        self.packets = packets.into_boxed_slice();
     }
 }
 
@@ -371,8 +359,6 @@ impl<'a> RemoveIter<'a> {
         let mut start = sent_packets.start;
         let mut end = sent_packets.end;
 
-        let prev_range = sent_packets.pn_range();
-
         let index = sent_packets.index;
 
         let mut iter = Self {
@@ -418,7 +404,7 @@ impl<'a> RemoveIter<'a> {
 
                 iter.index = iter
                     .sent_packets
-                    .pn_index_get(start)
+                    .pn_index(start)
                     .expect("packet number bounds have already been checked");
 
                 iter.sent_packets.set_end(start.prev().unwrap());
@@ -430,7 +416,7 @@ impl<'a> RemoveIter<'a> {
 
                 iter.index = iter
                     .sent_packets
-                    .pn_index_get(start)
+                    .pn_index(start)
                     .expect("packet number bounds have already been checked");
             }
         }
@@ -442,8 +428,6 @@ impl<'a> RemoveIter<'a> {
         // we always have at least 1 items since the range is inclusive
         iter.remaining += 1;
 
-        debug_assert!(prev_range.start() <= start);
-        debug_assert!(prev_range.end() >= end);
         debug_assert!(iter.remaining <= iter.sent_packets.packets.len());
 
         iter
