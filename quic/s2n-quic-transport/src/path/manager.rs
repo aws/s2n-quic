@@ -54,13 +54,8 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     }
 
     /// Update the active path
-    #[allow(dead_code)]
     fn update_active_path(&mut self, path_id: Id) -> Result<(), transport::Error> {
         debug_assert!(path_id != Id(self.active));
-
-        if self.active_path().is_validated() {
-            self.last_known_validated_path = Some(self.active);
-        }
 
         let new_path_idx = path_id.0;
         // Attempt to consume a new connection id in case it has been retired since the last use.
@@ -81,6 +76,10 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
                 .consume_new_id()
                 .ok_or(transport::Error::INTERNAL_ERROR)?
         };
+
+        if self.active_path().is_validated() {
+            self.last_known_validated_path = Some(self.active);
+        }
 
         self[path_id].peer_connection_id = use_peer_connection_id;
 
@@ -380,13 +379,24 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     /// Process a non-probing (path validation probing) packet.
     pub fn on_non_path_validation_probing_packet(
         &mut self,
-        _path_id: Id,
+        path_id: Id,
     ) -> Result<(), transport::Error> {
-        // TODO
+        if self.active_path_id() != path_id {
+            self.update_active_path(path_id)?;
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3
+            //# After changing the address to which it sends non-probing packets, an
+            //# endpoint can abandon any path validation for other addresses.
+            //
+            // Abandon other path validations only if the active path is validated since an
+            // attacker could block all path validation attempts simply by forwarding packets.
+            if self.active_path().is_validated() {
+                self.abandon_all_path_challenges();
+            }
+        }
         Ok(())
     }
 
-    #[allow(dead_code)]
     fn abandon_all_path_challenges(&mut self) {
         for path in self.paths.iter_mut() {
             path.abandon_challenge();
@@ -891,10 +901,63 @@ mod tests {
     }
 
     #[test]
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3
+    //= type=test
+    //# After changing the address to which it sends non-probing packets, an
+    //# endpoint can abandon any path validation for other addresses.
+    //
+    // A non-probing (path validation probing) packet will cause the path to become an active
+    // path but the path is still not validated.
+    fn dont_abandon_path_challenge_if_new_path_is_not_validated() {
+        // Setup:
+        let mut helper = helper_manager_with_paths();
+        assert!(!helper.manager[helper.first_path_id].is_validated());
+        assert!(helper.manager[helper.first_path_id].is_challenge_pending());
+
+        assert!(!helper.manager[helper.second_path_id].is_validated());
+        assert!(helper.manager[helper.second_path_id].is_challenge_pending());
+        assert_eq!(helper.manager.active_path_id(), helper.first_path_id);
+
+        // Trigger:
+        helper
+            .manager
+            .on_non_path_validation_probing_packet(helper.second_path_id)
+            .unwrap();
+
+        // Expectation:
+        assert!(!helper.manager[helper.second_path_id].is_validated());
+        assert_eq!(helper.manager.active_path_id(), helper.second_path_id);
+        assert!(helper.manager[helper.second_path_id].is_challenge_pending());
+    }
+
+    #[test]
+    fn abandon_path_challenges_if_new_path_is_validated() {
+        // Setup:
+        let mut helper = helper_manager_with_paths();
+        assert!(helper.manager[helper.first_path_id].is_challenge_pending());
+        assert!(helper.manager[helper.second_path_id].is_challenge_pending());
+        assert_eq!(helper.manager.active_path_id(), helper.first_path_id);
+
+        helper.manager[helper.second_path_id].on_validated();
+        assert!(helper.manager[helper.second_path_id].is_validated());
+
+        // Trigger:
+        helper
+            .manager
+            .on_non_path_validation_probing_packet(helper.second_path_id)
+            .unwrap();
+
+        // Expectation:
+        assert_eq!(helper.manager.active_path_id(), helper.second_path_id);
+        assert!(!helper.manager[helper.first_path_id].is_challenge_pending());
+        assert!(!helper.manager[helper.second_path_id].is_challenge_pending());
+    }
+
+    #[test]
     fn abandon_all_path_challenges() {
         // Setup:
         let mut helper = helper_manager_with_paths();
-        assert!(!helper.manager[helper.first_path_id].is_challenge_pending());
+        assert!(helper.manager[helper.first_path_id].is_challenge_pending());
         assert!(helper.manager[helper.second_path_id].is_challenge_pending());
 
         // Trigger:
@@ -1359,7 +1422,7 @@ mod tests {
         helper.manager.paths.push(third_path);
 
         // not pending challenge or response
-        assert!(!helper.manager[helper.first_path_id].is_challenge_pending());
+        assert!(helper.manager[helper.first_path_id].is_challenge_pending());
         assert!(!helper.manager[helper.first_path_id].is_response_pending());
 
         // pending challenge
@@ -1376,7 +1439,13 @@ mod tests {
         let next = pending_paths.next_path();
 
         // Expectation:
-        assert!(next.is_some());
+        let (path_id, _path_manager) = next.unwrap();
+        assert_eq!(path_id, helper.first_path_id);
+
+        // Trigger:
+        let next = pending_paths.next_path();
+
+        // Expectation:
         let (path_id, _path_manager) = next.unwrap();
         assert_eq!(path_id, helper.second_path_id);
 
@@ -1384,7 +1453,6 @@ mod tests {
         let next = pending_paths.next_path();
 
         // Expectation:
-        assert!(next.is_some());
         let (path_id, _path_manager) = next.unwrap();
         assert_eq!(path_id, third_path_id);
 
@@ -1414,6 +1482,11 @@ mod tests {
             Default::default(),
             false,
         );
+        let now = NoopClock {}.get_time();
+        let challenge_expiration = Duration::from_millis(10_000);
+        let expected_data = [0; 8];
+        let challenge = challenge::Challenge::new(challenge_expiration, expected_data);
+
         let first_path = Path::new(
             SocketAddress::default(),
             first_conn_id,
@@ -1421,12 +1494,11 @@ mod tests {
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
-        );
+        )
+        .with_challenge(challenge);
 
         // Create a challenge that will expire in 100ms
-        let now = NoopClock {}.get_time();
-        let challenge_expiration = Duration::from_millis(10_000);
-        let expected_data = [0; 8];
+        let expected_data = [1; 8];
         let challenge = challenge::Challenge::new(challenge_expiration, expected_data);
         let second_path = Path::new(
             SocketAddress::default(),
