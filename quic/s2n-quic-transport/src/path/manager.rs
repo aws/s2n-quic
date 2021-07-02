@@ -103,6 +103,11 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         Id(self.active)
     }
 
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3
+    //= type=TODO
+    //= tracking-issue=714
+    //# An endpoint MAY skip validation of a peer address if
+    //# that address has been seen recently.
     /// Returns the Path for the provided address if the PathManager knows about it
     pub fn path(
         &self,
@@ -257,6 +262,13 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.1
         //# Until a peer's address is deemed valid, an endpoint MUST
         //# limit the rate at which it sends data to this address.
+        //
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3
+        //# An endpoint MAY send data to an unvalidated peer address, but it MUST
+        //# protect against potential attacks as described in Section 9.3.1 and
+        //# Section 9.3.2.
+        //
+        // New paths start in AmplificationLimited state until they are validated.
         let mut path = Path::new(
             datagram.remote_address,
             peer_connection_id,
@@ -266,8 +278,11 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
             true,
         );
 
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.4
+        //# Endpoints SHOULD abandon path validation based on a timer.
+        //
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#8.2.4
-        //# Endpoints SHOULD abandon path validation based on a timer.  When
+        //# When
         //# setting this timer, implementations are cautioned that the new path
         //# could have a longer round-trip time than the original. A value of
         //# three times the larger of the current Probe Timeout (PTO) or the PTO
@@ -1209,9 +1224,13 @@ mod tests {
         manager[second_path_id].on_transmit(&mut context);
 
         // Trigger 2:
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.4
+        //= type=test
+        //# Endpoints SHOULD abandon path validation based on a timer.
+        //
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#8.2.4
         //= type=test
-        //# Endpoints SHOULD abandon path validation based on a timer.  When
+        //# When
         //# setting this timer, implementations are cautioned that the new path
         //# could have a longer round-trip time than the original. A value of
         //# three times the larger of the current Probe Timeout (PTO) or the PTO

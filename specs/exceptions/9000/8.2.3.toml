@@ -1,0 +1,12 @@
+target = "https://tools.ietf.org/rfc/rfc9000.txt#8.2.3"
+
+[[exception]]
+quote = '''
+However, the endpoint MUST initiate
+another path validation with an expanded datagram to verify that the
+path supports the required MTU.
+'''
+reason = '''
+s2n-quic rounds up path validation frames to 1200 bytes so MTU is
+always validated as part of path validation.
+'''
