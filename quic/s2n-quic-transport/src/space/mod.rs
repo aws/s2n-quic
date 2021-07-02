@@ -648,6 +648,13 @@ pub trait PacketSpace<Config: endpoint::Config> {
                 Frame::PathChallenge(frame) => {
                     let on_error = with_frame_type!(frame);
                     processed_packet.on_processed_frame(&frame);
+
+                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.3
+                    //# An endpoint that receives a PATH_CHALLENGE on an active path SHOULD
+                    //# send a non-probing packet in response.
+                    if path_manager.active_path_id() == path_id {
+                        processed_packet.path_challenge_on_active_path = true;
+                    }
                     self.handle_path_challenge_frame(frame, datagram, path_manager)
                         .map_err(on_error)?;
                 }

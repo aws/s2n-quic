@@ -13,6 +13,7 @@ pub struct ProcessedPacket<'a> {
     pub(crate) packet_number: PacketNumber,
     pub(crate) datagram: &'a DatagramInfo,
     pub(crate) ack_elicitation: AckElicitation,
+    pub(crate) path_challenge_on_active_path: bool,
 }
 
 impl<'a> ProcessedPacket<'a> {
@@ -22,6 +23,7 @@ impl<'a> ProcessedPacket<'a> {
             packet_number,
             datagram,
             ack_elicitation: AckElicitation::default(),
+            path_challenge_on_active_path: false,
         }
     }
 
