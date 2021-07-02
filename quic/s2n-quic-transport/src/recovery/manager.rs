@@ -327,31 +327,39 @@ impl Manager {
             // notify components of packets acked
             context.on_packet_ack(datagram, &acked_packets);
 
-            let mut new_packet_ack = false;
+            let mut newly_acked_range: Option<(PacketNumber, PacketNumber)> = None;
 
-            for packet_number in acked_packets {
-                if let Some(acked_packet_info) = self.sent_packets.remove(packet_number) {
-                    newly_acked_packets.push(acked_packet_info);
+            for (packet_number, acked_packet_info) in self.sent_packets.remove_range(acked_packets)
+            {
+                newly_acked_packets.push(acked_packet_info);
 
-                    if largest_newly_acked.map_or(true, |(pn, _)| packet_number > pn) {
-                        largest_newly_acked = Some((packet_number, acked_packet_info));
-                    }
-
-                    new_packet_ack = true;
-                    includes_ack_eliciting |= acked_packet_info.ack_elicitation.is_ack_eliciting();
-
-                    let path = context.path_mut_by_id(acked_packet_info.path_id);
-                    path.mtu_controller.on_packet_ack(
-                        packet_number,
-                        acked_packet_info.sent_bytes,
-                        &mut path.congestion_controller,
-                    );
+                if largest_newly_acked.map_or(true, |(pn, _)| packet_number > pn) {
+                    largest_newly_acked = Some((packet_number, acked_packet_info));
                 }
+
+                if let Some((start, end)) = newly_acked_range.as_mut() {
+                    debug_assert!(
+                        packet_number > *start && packet_number > *end,
+                        "remove_range should return packet numbers in ascending order"
+                    );
+                    *end = packet_number;
+                } else {
+                    newly_acked_range = Some((packet_number, packet_number));
+                };
+
+                includes_ack_eliciting |= acked_packet_info.ack_elicitation.is_ack_eliciting();
+
+                let path = context.path_mut_by_id(acked_packet_info.path_id);
+                path.mtu_controller.on_packet_ack(
+                    packet_number,
+                    acked_packet_info.sent_bytes,
+                    &mut path.congestion_controller,
+                );
             }
 
-            if new_packet_ack {
+            if let Some((start, end)) = newly_acked_range {
                 // notify components of packets that are newly acked
-                context.on_new_packet_ack(datagram, &acked_packets);
+                context.on_new_packet_ack(datagram, &PacketNumberRange::new(start, end));
             }
         }
 
@@ -522,14 +530,14 @@ impl Manager {
         now: Timestamp,
         context: &mut Ctx,
     ) -> (Duration, Vec<PacketDetails>) {
-        let largest_acked_packet = &self
+        let largest_acked_packet = self
             .largest_acked_packet
             .expect("This function is only called after an ack has been received");
 
         let mut max_persistent_congestion_period = Duration::from_secs(0);
         let mut sent_packets_to_remove = Vec::new();
         let mut persistent_congestion_period = Duration::from_secs(0);
-        let mut prev_packet: Option<(&PacketNumber, path::Id, Timestamp)> = None;
+        let mut prev_packet: Option<(PacketNumber, path::Id, Timestamp)> = None;
 
         for (unacked_packet_number, unacked_sent_info) in self.sent_packets.iter() {
             if unacked_packet_number > largest_acked_packet {
@@ -549,7 +557,7 @@ impl Manager {
             });
 
             let packet_number_threshold_exceeded = largest_acked_packet
-                .checked_distance(*unacked_packet_number)
+                .checked_distance(unacked_packet_number)
                 .expect("largest_acked_packet >= unacked_packet_number")
                 >= K_PACKET_THRESHOLD;
 
@@ -563,13 +571,13 @@ impl Manager {
             //#       acknowledged packet (Section 6.1.1), or it was sent long enough in
             //#       the past (Section 6.1.2).
             if time_threshold_exceeded || packet_number_threshold_exceeded {
-                sent_packets_to_remove.push((*unacked_packet_number, *unacked_sent_info));
+                sent_packets_to_remove.push((unacked_packet_number, *unacked_sent_info));
 
                 if unacked_sent_info.congestion_controlled {
                     // The packet is "in-flight", ie congestion controlled
                     // TODO merge contiguous packet numbers
                     let range =
-                        PacketNumberRange::new(*unacked_packet_number, *unacked_packet_number);
+                        PacketNumberRange::new(unacked_packet_number, unacked_packet_number);
                     context.on_packet_loss(&range);
                 }
 
@@ -582,7 +590,7 @@ impl Manager {
                 //#    two send times are declared lost;
                 let is_contiguous = prev_packet.map_or(false, |(pn, prev_path_id, _)| {
                     // Check if this lost packet is contiguous with the previous lost packet.
-                    let contiguous = unacked_packet_number.checked_distance(*pn) == Some(1);
+                    let contiguous = unacked_packet_number.checked_distance(pn) == Some(1);
                     contiguous
                         // Check that this lost packet was sent on this path
                         //
