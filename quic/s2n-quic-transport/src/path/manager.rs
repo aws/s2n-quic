@@ -54,13 +54,8 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     }
 
     /// Update the active path
-    #[allow(dead_code)]
     fn update_active_path(&mut self, path_id: Id) -> Result<(), transport::Error> {
         debug_assert!(path_id != Id(self.active));
-
-        if self.active_path().is_validated() {
-            self.last_known_validated_path = Some(self.active);
-        }
 
         let new_path_idx = path_id.0;
         // Attempt to consume a new connection id in case it has been retired since the last use.
@@ -81,6 +76,10 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
                 .consume_new_id()
                 .ok_or(transport::Error::INTERNAL_ERROR)?
         };
+
+        if self.active_path().is_validated() {
+            self.last_known_validated_path = Some(self.active);
+        }
 
         self[path_id].peer_connection_id = use_peer_connection_id;
 
@@ -380,13 +379,24 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     /// Process a non-probing (path validation probing) packet.
     pub fn on_non_path_validation_probing_packet(
         &mut self,
-        _path_id: Id,
+        path_id: Id,
     ) -> Result<(), transport::Error> {
-        // TODO
+        if self.active_path_id() != path_id {
+            self.update_active_path(path_id)?;
+
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3
+            //# After changing the address to which it sends non-probing packets, an
+            //# endpoint can abandon any path validation for other addresses.
+            //
+            // Abandon other path validations only if the active path is validated since an
+            // attacker could block all path validation attempts simply by forwarding packets.
+            if self.active_path().is_validated() {
+                self.abandon_all_path_challenges();
+            }
+        }
         Ok(())
     }
 
-    #[allow(dead_code)]
     fn abandon_all_path_challenges(&mut self) {
         for path in self.paths.iter_mut() {
             path.abandon_challenge();
@@ -887,6 +897,35 @@ mod tests {
         helper.manager.on_path_response(&frame);
 
         // Expectation 2:
+        assert!(!helper.manager[helper.second_path_id].is_validated());
+    }
+
+    #[test]
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3
+    //= type=test
+    //# After changing the address to which it sends non-probing packets, an
+    //# endpoint can abandon any path validation for other addresses.
+    //
+    // A non-probing (path validation probing) packet will cause the path to become an active
+    // path but the path is still not validated.
+    fn on_non_path_validation_probing_packet() {
+        // Setup:
+        let mut helper = helper_manager_with_paths();
+        assert!(!helper.manager[helper.second_path_id].is_validated());
+        assert!(helper.manager[helper.second_path_id].is_challenge_pending());
+        assert_eq!(helper.manager.active_path_id(), helper.first_path_id);
+
+        // Trigger:
+        helper
+            .manager
+            .on_non_path_validation_probing_packet(helper.second_path_id)
+            .unwrap();
+
+        // Expectation:
+        assert!(!helper.manager[helper.second_path_id].is_validated());
+        assert_eq!(helper.manager.active_path_id(), helper.second_path_id);
+
+        assert!(helper.manager[helper.second_path_id].is_challenge_pending());
         assert!(!helper.manager[helper.second_path_id].is_validated());
     }
 
