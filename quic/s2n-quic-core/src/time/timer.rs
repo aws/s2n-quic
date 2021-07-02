@@ -30,7 +30,7 @@ impl Timer {
     /// Returns true if the timer has expired
     pub fn is_expired(&self, current_time: Timestamp) -> bool {
         match self.expiration {
-            Some(timeout) => timeout <= current_time,
+            Some(timeout) => timeout.has_elapsed(current_time),
             _ => false,
         }
     }
@@ -100,6 +100,11 @@ mod tests {
 
         now += Duration::from_millis(99);
         assert!(!timer.is_expired(now));
+
+        assert!(
+            timer.is_expired(now + Duration::from_micros(1)),
+            "if a timer is less than 1ms in the future is should expire"
+        );
 
         now += Duration::from_millis(1);
         assert!(timer.is_expired(now));
