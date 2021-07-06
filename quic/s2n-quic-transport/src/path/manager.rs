@@ -312,7 +312,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         //# Servers SHOULD initiate path validation to the client's new address
         //# upon receiving a probe packet from a different address.
         let challenge = challenge::Challenge::new(abandon_duration, data);
-        self[path_id].with_challenge(challenge);
+        self[path_id].set_challenge(challenge);
     }
 
     pub fn timers(&self) -> impl Iterator<Item = Timestamp> + '_ {
@@ -680,7 +680,7 @@ mod tests {
             Default::default(),
             false,
         );
-        second_path.with_challenge(challenge);
+        second_path.set_challenge(challenge);
 
         let mut manager = manager(first_path, None);
         manager.paths.push(second_path);
@@ -1544,7 +1544,7 @@ mod tests {
             Default::default(),
             false,
         );
-        first_path.with_challenge(challenge);
+        first_path.set_challenge(challenge);
 
         // Create a challenge that will expire in 100ms
         let expected_data = [1; 8];
@@ -1557,7 +1557,7 @@ mod tests {
             Default::default(),
             false,
         );
-        second_path.with_challenge(challenge);
+        second_path.set_challenge(challenge);
 
         let mut random_generator = random::testing::Generator(123);
         let mut peer_id_registry =
