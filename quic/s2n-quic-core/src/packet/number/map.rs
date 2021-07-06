@@ -55,7 +55,7 @@ pub struct Map<V> {
 
 /// Start with 8 sent packets at a time
 ///
-/// Capacity will grow exponentially as more concurrent packets are being sent.
+/// Capacity will grow exponentially as more packet number entries are added
 const DEFAULT_CAPACITY: usize = 8;
 
 impl<V> Default for Map<V> {

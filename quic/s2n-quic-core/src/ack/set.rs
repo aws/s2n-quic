@@ -20,6 +20,7 @@ pub trait Set {
     /// Largest packet number in the set
     fn largest(&self) -> PacketNumber;
 
+    /// Returns the range of packet numbers contained in the set
     fn as_range(&self) -> PacketNumberRange {
         PacketNumberRange::new(self.smallest(), self.largest())
     }
