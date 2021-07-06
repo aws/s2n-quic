@@ -672,15 +672,15 @@ mod tests {
         let now = NoopClock {}.get_time();
         let expiration = Duration::from_millis(1000);
         let challenge = challenge::Challenge::new(expiration, [0; 8]);
-        let second_path = Path::new(
+        let mut second_path = Path::new(
             SocketAddress::default(),
             first_conn_id,
             first_local_conn_id,
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
-        )
-        .with_challenge(challenge);
+        );
+        second_path.with_challenge(challenge);
 
         let mut manager = manager(first_path, None);
         manager.paths.push(second_path);
@@ -913,6 +913,38 @@ mod tests {
 
     #[test]
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3
+    //# If the recipient permits the migration, it MUST send subsequent
+    //# packets to the new peer address and MUST initiate path validation
+    //# (Section 8.2) to verify the peer's ownership of the address if
+    //# validation is not already underway.
+    fn initiate_path_challenge_if_new_path_is_not_validated() {
+        // Setup:
+        let mut helper = helper_manager_with_paths();
+        assert!(!helper.manager[helper.first_path_id].is_validated());
+        assert!(helper.manager[helper.first_path_id].is_challenge_pending());
+
+        assert!(!helper.manager[helper.second_path_id].is_validated());
+        helper.manager[helper.second_path_id].abandon_challenge();
+        assert!(!helper.manager[helper.second_path_id].is_challenge_pending());
+        assert_eq!(helper.manager.active_path_id(), helper.first_path_id);
+
+        // Trigger:
+        helper
+            .manager
+            .on_non_path_validation_probing_packet(
+                helper.second_path_id,
+                &mut random::testing::Generator(123),
+            )
+            .unwrap();
+
+        // Expectation:
+        assert!(!helper.manager[helper.second_path_id].is_validated());
+        assert_eq!(helper.manager.active_path_id(), helper.second_path_id);
+        assert!(helper.manager[helper.second_path_id].is_challenge_pending());
+    }
+
+    #[test]
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3
     //= type=test
     //# After changing the address to which it sends non-probing packets, an
     //# endpoint can abandon any path validation for other addresses.
@@ -932,7 +964,10 @@ mod tests {
         // Trigger:
         helper
             .manager
-            .on_non_path_validation_probing_packet(helper.second_path_id)
+            .on_non_path_validation_probing_packet(
+                helper.second_path_id,
+                &mut random::testing::Generator(123),
+            )
             .unwrap();
 
         // Expectation:
@@ -955,7 +990,10 @@ mod tests {
         // Trigger:
         helper
             .manager
-            .on_non_path_validation_probing_packet(helper.second_path_id)
+            .on_non_path_validation_probing_packet(
+                helper.second_path_id,
+                &mut random::testing::Generator(123),
+            )
             .unwrap();
 
         // Expectation:
@@ -1498,28 +1536,28 @@ mod tests {
         let expected_data = [0; 8];
         let challenge = challenge::Challenge::new(challenge_expiration, expected_data);
 
-        let first_path = Path::new(
+        let mut first_path = Path::new(
             SocketAddress::default(),
             first_conn_id,
             local_conn_id,
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
-        )
-        .with_challenge(challenge);
+        );
+        first_path.with_challenge(challenge);
 
         // Create a challenge that will expire in 100ms
         let expected_data = [1; 8];
         let challenge = challenge::Challenge::new(challenge_expiration, expected_data);
-        let second_path = Path::new(
+        let mut second_path = Path::new(
             SocketAddress::default(),
             second_conn_id,
             local_conn_id,
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
-        )
-        .with_challenge(challenge);
+        );
+        second_path.with_challenge(challenge);
 
         let mut random_generator = random::testing::Generator(123);
         let mut peer_id_registry =
