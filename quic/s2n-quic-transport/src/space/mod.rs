@@ -22,6 +22,7 @@ use s2n_quic_core::{
     },
     inet::DatagramInfo,
     packet::number::{PacketNumber, PacketNumberSpace},
+    random,
     time::Timestamp,
     transport,
 };
@@ -496,7 +497,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
 
     // TODO: Reduce arguments, https://github.com/awslabs/s2n-quic/issues/312
     #[allow(clippy::too_many_arguments)]
-    fn handle_cleartext_payload<'a>(
+    fn handle_cleartext_payload<'a, Rnd: random::Generator>(
         &mut self,
         packet_number: PacketNumber,
         mut payload: DecoderBufferMut<'a>,
@@ -505,6 +506,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
         path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
         handshake_status: &mut HandshakeStatus,
         local_id_registry: &mut connection::LocalIdRegistry,
+        random_generator: &mut Rnd,
     ) -> Result<(), connection::Error> {
         use s2n_quic_core::{
             frame::{Frame, FrameMut},
@@ -682,7 +684,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
             payload = remaining;
         }
         if is_path_validation_probing.is_probing() {
-            path_manager.on_non_path_validation_probing_packet(path_id)?;
+            path_manager.on_non_path_validation_probing_packet(path_id, random_generator)?;
         }
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.1

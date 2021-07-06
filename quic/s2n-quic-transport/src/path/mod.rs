@@ -93,9 +93,8 @@ impl<CC: CongestionController> Path<CC> {
         }
     }
 
-    pub fn with_challenge(mut self, challenge: Challenge) -> Self {
+    pub fn set_challenge(&mut self, challenge: Challenge) {
         self.challenge = Some(challenge);
-        self
     }
 
     pub fn abandon_challenge(&mut self) {
@@ -471,7 +470,7 @@ mod tests {
         let mut path = testing::helper_path();
         let helper_challenge = helper_challenge();
         let expiration_time = helper_challenge.now + helper_challenge.abandon_duration;
-        path = path.with_challenge(helper_challenge.challenge);
+        path.set_challenge(helper_challenge.challenge);
 
         let mut frame_buffer = OutgoingFrameBuffer::new();
         let mut context = MockWriteContext::new(
@@ -506,7 +505,7 @@ mod tests {
         assert!(!path.challenge.is_some());
 
         // Trigger:
-        path = path.with_challenge(helper_challenge.challenge);
+        path.set_challenge(helper_challenge.challenge);
 
         // Expectation:
         assert!(path.is_challenge_pending());
@@ -518,7 +517,7 @@ mod tests {
         // Setup:
         let mut path = testing::helper_path();
         let helper_challenge = helper_challenge();
-        path = path.with_challenge(helper_challenge.challenge);
+        path.set_challenge(helper_challenge.challenge);
 
         // Trigger:
         path.abandon_challenge();
@@ -579,7 +578,7 @@ mod tests {
         assert!(!path.is_validated());
 
         // Trigger:
-        path = path.with_challenge(helper_challenge.challenge);
+        path.set_challenge(helper_challenge.challenge);
         path.on_path_response(&helper_challenge.expected_data);
 
         // Expectation:
@@ -591,7 +590,7 @@ mod tests {
         // Setup:
         let mut path = testing::helper_path();
         let helper_challenge = helper_challenge();
-        path = path.with_challenge(helper_challenge.challenge);
+        path.set_challenge(helper_challenge.challenge);
 
         assert!(!path.is_validated());
         assert!(path.challenge.is_some());
@@ -608,7 +607,7 @@ mod tests {
     fn on_validated_when_already_validated_does_nothing() {
         // Setup:
         let mut path = testing::helper_path();
-        path = path.with_challenge(helper_challenge().challenge);
+        path.set_challenge(helper_challenge().challenge);
         path.on_validated();
 
         // Trigger:
