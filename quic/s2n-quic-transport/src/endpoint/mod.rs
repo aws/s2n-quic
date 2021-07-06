@@ -433,15 +433,17 @@ impl<Cfg: Config> Endpoint<Cfg> {
                             }
                         }
 
-                        if let Err(err) = conn.handle_remaining_packets(
-                            shared_state,
-                            datagram,
-                            path_id,
-                            endpoint_context.connection_id_format,
-                            remaining,
-                            &mut publisher,
-                            endpoint_context.random_generator,
-                        ) {
+                        if let Err(err) =
+                            conn.handle_remaining_packets(connection::HandleRemainingPackets {
+                                shared_state,
+                                datagram,
+                                path_id,
+                                connection_id_validator: endpoint_context.connection_id_format,
+                                payload: remaining,
+                                publisher: &mut publisher,
+                                random_generator: endpoint_context.random_generator,
+                            })
+                        {
                             conn.close(
                                 Some(shared_state),
                                 err,

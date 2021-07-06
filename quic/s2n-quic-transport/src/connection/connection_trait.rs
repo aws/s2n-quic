@@ -262,47 +262,42 @@ pub trait ConnectionTrait: Sized {
 
     /// This is called to handle the remaining and yet undecoded packets inside
     /// a datagram.
-    #[allow(clippy::too_many_arguments)]
     fn handle_remaining_packets<
         Validator: connection::id::Validator,
         Pub: event::Publisher,
         Rnd: random::Generator,
     >(
         &mut self,
-        shared_state: &mut SharedConnectionState<Self::Config>,
-        datagram: &DatagramInfo,
-        path_id: path::Id,
-        connection_id_validator: &Validator,
-        mut payload: DecoderBufferMut,
-        publisher: &mut Pub,
-        random_generator: &mut Rnd,
+        mut args: args::HandleRemainingPackets<Validator, Self::Config, Pub, Rnd>,
     ) -> Result<(), connection::Error> {
-        let connection_info = ConnectionInfo::new(&datagram.remote_address);
+        let connection_info = ConnectionInfo::new(&args.datagram.remote_address);
 
-        while !payload.is_empty() {
-            if let Ok((packet, remaining)) =
-                ProtectedPacket::decode(payload, &connection_info, connection_id_validator)
-            {
-                payload = remaining;
+        while !args.payload.is_empty() {
+            if let Ok((packet, remaining)) = ProtectedPacket::decode(
+                args.payload,
+                &connection_info,
+                args.connection_id_validator,
+            ) {
+                args.payload = remaining;
 
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#12.2
                 //# Senders MUST NOT coalesce QUIC packets
                 //# with different connection IDs into a single UDP datagram.  Receivers
                 //# SHOULD ignore any subsequent packets with a different Destination
                 //# Connection ID than the first packet in the datagram.
-                if datagram.destination_connection_id.as_bytes()
+                if args.datagram.destination_connection_id.as_bytes()
                     != packet.destination_connection_id()
                 {
                     break;
                 }
 
                 let result = self.handle_packet(
-                    shared_state,
-                    datagram,
-                    path_id,
+                    args.shared_state,
+                    args.datagram,
+                    args.path_id,
                     packet,
-                    publisher,
-                    random_generator,
+                    args.publisher,
+                    args.random_generator,
                 );
 
                 if let Err(ProcessingError::ConnectionError(err)) = result {
@@ -330,5 +325,26 @@ pub trait ConnectionTrait: Sized {
         }
 
         Ok(())
+    }
+}
+
+pub mod args {
+
+    use super::*;
+
+    pub struct HandleRemainingPackets<
+        'a,
+        Validator: connection::id::Validator,
+        Config: endpoint::Config,
+        Pub: event::Publisher,
+        Rnd: random::Generator,
+    > {
+        pub shared_state: &'a mut SharedConnectionState<Config>,
+        pub datagram: &'a DatagramInfo,
+        pub path_id: path::Id,
+        pub connection_id_validator: &'a Validator,
+        pub payload: DecoderBufferMut<'a>,
+        pub publisher: &'a mut Pub,
+        pub random_generator: &'a mut Rnd,
     }
 }

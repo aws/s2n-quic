@@ -293,15 +293,15 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                 },
                 endpoint_context.event_subscriber,
             );
-            connection.handle_remaining_packets(
-                locked_shared_state,
+            connection.handle_remaining_packets(connection::HandleRemainingPackets {
+                shared_state: locked_shared_state,
                 datagram,
                 path_id,
-                endpoint_context.connection_id_format,
-                remaining,
-                &mut publisher,
-                endpoint_context.random_generator,
-            )?;
+                connection_id_validator: endpoint_context.connection_id_format,
+                payload: remaining,
+                publisher: &mut publisher,
+                random_generator: endpoint_context.random_generator,
+            })?;
 
             //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.3
             //= type=TODO
