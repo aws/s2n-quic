@@ -57,6 +57,11 @@ pub use packet_number_len::PacketNumberLen;
 mod packet_number_range;
 pub use packet_number_range::PacketNumberRange;
 
+#[cfg(feature = "alloc")]
+pub mod map;
+#[cfg(feature = "alloc")]
+pub use map::Map;
+
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#17.1
 //# the sender MUST use a packet number size able to represent more than
 //# twice as large a range than the difference between the largest
