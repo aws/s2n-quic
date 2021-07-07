@@ -9,6 +9,7 @@ use s2n_quic_core::{
 };
 
 pub type Data = [u8; frame::path_challenge::DATA_LEN];
+const DISABLED_DATA: Data = [0; frame::path_challenge::DATA_LEN];
 
 #[derive(Clone, Debug)]
 pub struct Challenge {
@@ -20,6 +21,10 @@ pub struct Challenge {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum State {
+    /// When a PATH_CHALLENGE is not used for path validation. This is the case when
+    /// initiating the connection.
+    Disabled,
+
     /// A Challenge frame must be sent. The `u8` represents the remaining number of retries
     RequiresTransmission(u8),
 
@@ -28,6 +33,9 @@ pub enum State {
 
     /// The Challenge has been abandoned due to the abandon_timer
     Abandoned,
+
+    /// When the PATH_CHALLENGE was validated by a PATH_RESPONSE
+    Validated,
 }
 
 impl transmission::interest::Provider for State {
@@ -57,6 +65,15 @@ impl Challenge {
             abandon_duration,
             abandon_timer: Timer::default(),
             data,
+        }
+    }
+
+    pub fn disabled() -> Self {
+        Self {
+            state: State::Disabled,
+            abandon_duration: Duration::default(),
+            abandon_timer: Timer::default(),
+            data: DISABLED_DATA,
         }
     }
 
@@ -92,6 +109,18 @@ impl Challenge {
         if self.abandon_timer.poll_expiration(timestamp).is_ready() {
             self.state = State::Abandoned;
         }
+    }
+
+    pub fn validate(&mut self) {
+        self.state = State::Validated
+    }
+
+    pub fn abandon(&mut self) {
+        self.state = State::Abandoned
+    }
+
+    pub fn is_disabled(&self) -> bool {
+        self.state == State::Disabled
     }
 
     pub fn is_abandoned(&self) -> bool {

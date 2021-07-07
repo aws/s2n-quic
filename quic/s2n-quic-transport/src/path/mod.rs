@@ -55,7 +55,7 @@ pub struct Path<CC: CongestionController> {
     peer_validated: bool,
 
     /// Challenge sent to the peer in a PATH_CHALLENGE
-    challenge: Option<Challenge>,
+    challenge: Challenge,
     /// Received a Challenge and should echo back data in PATH_RESPONSE
     response_data: Option<challenge::Data>,
 }
@@ -88,17 +88,17 @@ impl<CC: CongestionController> Path<CC> {
             },
             mtu_controller: mtu::Controller::new(DEFAULT_MAX_MTU, &peer_socket_address),
             peer_validated,
-            challenge: None,
+            challenge: Challenge::disabled(),
             response_data: None,
         }
     }
 
     pub fn set_challenge(&mut self, challenge: Challenge) {
-        self.challenge = Some(challenge);
+        self.challenge = challenge;
     }
 
     pub fn abandon_challenge(&mut self) {
-        self.challenge = None;
+        self.challenge.abandon();
     }
 
     /// Called when bytes have been transmitted on this path
@@ -138,24 +138,13 @@ impl<CC: CongestionController> Path<CC> {
     }
 
     pub fn on_timeout(&mut self, timestamp: Timestamp) {
-        if let Some(challenge) = &mut self.challenge {
-            challenge.on_timeout(timestamp);
-            if challenge.is_abandoned() {
-                self.abandon_challenge();
-            }
-        }
+        self.challenge.on_timeout(timestamp);
         self.mtu_controller.on_timeout(timestamp);
     }
 
     pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
         core::iter::empty()
-            .chain(
-                self.challenge
-                    .as_ref()
-                    .map(|challenge| challenge.timers())
-                    .into_iter()
-                    .flatten(),
-            )
+            .chain(self.challenge.timers())
             .chain(self.mtu_controller.timers())
     }
 
@@ -173,17 +162,11 @@ impl<CC: CongestionController> Path<CC> {
             }
         }
 
-        if let Some(challenge) = &mut self.challenge {
-            challenge.on_transmit(context)
-        }
+        self.challenge.on_transmit(context)
     }
 
     pub fn is_challenge_pending(&self) -> bool {
-        if let Some(challenge) = &self.challenge {
-            !challenge.is_abandoned()
-        } else {
-            false
-        }
+        !self.challenge.is_abandoned()
     }
 
     pub fn is_response_pending(&self) -> bool {
@@ -199,21 +182,19 @@ impl<CC: CongestionController> Path<CC> {
     }
 
     pub fn on_path_response(&mut self, response: &[u8]) {
-        if let Some(challenge) = &self.challenge {
-            if challenge.is_valid(response) {
-                self.on_validated();
+        if self.challenge.is_valid(response) {
+            self.on_validated();
 
-                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3
-                //= type=TODO
-                //# After verifying a new client address, the server SHOULD send new
-                //# address validation tokens (Section 8) to the client.
-            }
+            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3
+            //= type=TODO
+            //# After verifying a new client address, the server SHOULD send new
+            //# address validation tokens (Section 8) to the client.
         }
     }
 
     /// Called when the path is validated
     pub fn on_validated(&mut self) {
-        self.challenge = None;
+        self.challenge.validate();
         self.state = State::Validated;
 
         // Enable the mtu controller to allow for PMTU discovery
@@ -379,11 +360,7 @@ impl<CC: CongestionController> transmission::interest::Provider for Path<CC> {
             //# packet containing a PATH_RESPONSE frame unless constrained by
             //# congestion control.
             .chain(self.response_data.map(|_| transmission::Interest::NewData))
-            .chain(
-                self.challenge
-                    .as_ref()
-                    .map(|challenge| challenge.transmission_interest()),
-            )
+            .chain(Some(self.challenge.transmission_interest()))
             .sum()
     }
 }
