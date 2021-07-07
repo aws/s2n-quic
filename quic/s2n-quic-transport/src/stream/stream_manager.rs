@@ -964,6 +964,19 @@ impl<S: StreamTrait> transmission::interest::Provider for AbstractStreamManager<
                 .outgoing_connection_flow_controller
                 .transmission_interest()
     }
+
+    fn has_transmission_interest(&self) -> bool {
+        self.inner.streams.has_transmission_interest()
+            || self.inner.stream_controller.has_transmission_interest()
+            || self
+                .inner
+                .incoming_connection_flow_controller
+                .has_transmission_interest()
+            || self
+                .inner
+                .outgoing_connection_flow_controller
+                .has_transmission_interest()
+    }
 }
 
 impl<S: StreamTrait> connection::finalization::Provider for AbstractStreamManager<S> {

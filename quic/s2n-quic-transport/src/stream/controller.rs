@@ -241,6 +241,18 @@ impl transmission::interest::Provider for Controller {
                 .streams_blocked_sync
                 .transmission_interest()
     }
+
+    fn has_transmission_interest(&self) -> bool {
+        self.bidi_controller.has_transmission_interest()
+            || self
+                .incoming_controller
+                .max_streams_sync
+                .has_transmission_interest()
+            || self
+                .outgoing_controller
+                .streams_blocked_sync
+                .has_transmission_interest()
+    }
 }
 
 /// The bidirectional controller consists of both outgoing and incoming
