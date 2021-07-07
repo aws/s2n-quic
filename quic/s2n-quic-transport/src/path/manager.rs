@@ -216,14 +216,6 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         congestion_controller_endpoint: &mut CCE,
         random_generator: &mut Rnd,
     ) -> Result<(Id, bool), transport::Error> {
-        // Since we are not currently supporting connection migration (whether it was deliberate or
-        // not), we will error our at this point to avoid re-using a peer connection ID.
-        // TODO: This would be better handled as a stateless reset so the peer can terminate the
-        //       connection immediately. https://github.com/awslabs/s2n-quic/issues/317
-        // We only enable connection migration for testing
-        #[cfg(not(any(feature = "testing", test)))]
-        return Err(transport::Error::INTERNAL_ERROR);
-
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.4
         //= type=TODO
         //# Because port-only changes are commonly the

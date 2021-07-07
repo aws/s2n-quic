@@ -217,3 +217,16 @@ index 1d81d25..4ec44da 100644
      @staticmethod
      def abbreviation():
          return "G"
+@@ -1542,9 +1543,9 @@ TESTCASES = [
+     TestCaseIPv6,
+     # The next three tests are disabled due to Wireshark not being able
+     # to decrypt packets sent on the new path.
+-    # TestCasePortRebinding,
+-    # TestCaseAddressRebinding,
+-    # TestCaseConnectionMigration,
++    TestCasePortRebinding,
++    TestCaseAddressRebinding,
++    TestCaseConnectionMigration,
+ ]
+
+ MEASUREMENTS = [
