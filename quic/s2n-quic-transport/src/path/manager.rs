@@ -472,38 +472,47 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         Ok(())
     }
 
-    pub fn on_timeout(&mut self, timestamp: Timestamp) {
+    pub fn on_timeout(&mut self, timestamp: Timestamp) -> Result<(), connection::Error> {
         for path in self.paths.iter_mut() {
             path.on_timeout(timestamp);
         }
 
         if !self.active_path().is_validated() && !self.active_path().is_challenge_pending() {
-            if let Some(last_known_validated_path) = self.last_known_validated_path {
-                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.2
-                //# To protect the connection from failing due to such a spurious
-                //# migration, an endpoint MUST revert to using the last validated peer
-                //# address when validation of a new peer address fails.
-                self.active = last_known_validated_path;
-                self.last_known_validated_path = None;
+            match self.last_known_validated_path {
+                Some(last_known_validated_path) => {
+                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.2
+                    //# To protect the connection from failing due to such a spurious
+                    //# migration, an endpoint MUST revert to using the last validated peer
+                    //# address when validation of a new peer address fails.
+                    self.active = last_known_validated_path;
+                    self.last_known_validated_path = None;
+                }
+                None => {
+                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
+                    //# When an endpoint has no validated path on which to send packets, it
+                    //# MAY discard connection state.
+
+                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
+                    //= type=TODO
+                    //= tracking-issue=713
+                    //# An endpoint capable of connection
+                    //# migration MAY wait for a new path to become available before
+                    //# discarding connection state.
+
+                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.2
+                    //# If an endpoint has no state about the last validated peer address, it
+                    //# MUST close the connection silently by discarding all connection
+                    //# state.
+
+                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10
+                    //# An endpoint MAY discard connection state if it does not have a
+                    //# validated path on which it can send packets; see Section 8.2
+                    return Err(connection::Error::NoValidPath);
+                }
             }
         }
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
-        //= type=TODO
-        //# When an endpoint has no validated path on which to send packets, it
-        //# MAY discard connection state.
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
-        //= type=TODO
-        //# An endpoint capable of connection
-        //# migration MAY wait for a new path to become available before
-        //# discarding connection state.
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.2
-        //= type=TODO
-        //# If an endpoint has no state about the last validated peer address, it
-        //# MUST close the connection silently by discarding all connection
-        //# state.
+        Ok(())
     }
 
     /// Notifies the path manager of the connection closing event
@@ -729,7 +738,9 @@ mod tests {
         manager[Id(1)].on_transmit(&mut context);
 
         // After a validation times out, the path should revert to the previous
-        manager.on_timeout(now + expiration + Duration::from_millis(100));
+        manager
+            .on_timeout(now + expiration + Duration::from_millis(100))
+            .unwrap();
         assert_eq!(manager.active, 0);
         assert!(manager.last_known_validated_path.is_none());
     }
@@ -869,7 +880,8 @@ mod tests {
         // A response 100ms before the challenge is abandoned
         helper
             .manager
-            .on_timeout(helper.now + helper.challenge_expiration - Duration::from_millis(100));
+            .on_timeout(helper.now + helper.challenge_expiration - Duration::from_millis(100))
+            .unwrap();
 
         // Expectation 1:
         assert!(helper.manager[helper.second_path_id].is_challenge_pending(),);
@@ -943,7 +955,8 @@ mod tests {
         // A response 100ms after the challenge should fail
         helper
             .manager
-            .on_timeout(helper.now + helper.challenge_expiration + Duration::from_millis(100));
+            .on_timeout(helper.now + helper.challenge_expiration + Duration::from_millis(100))
+            .unwrap();
 
         // Expectation 1:
         assert!(!helper.manager[helper.second_path_id].is_challenge_pending());
