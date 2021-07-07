@@ -166,7 +166,7 @@ impl<CC: CongestionController> Path<CC> {
     }
 
     pub fn is_challenge_pending(&self) -> bool {
-        !self.challenge.is_abandoned()
+        self.challenge.is_pending()
     }
 
     pub fn is_response_pending(&self) -> bool {
@@ -182,7 +182,7 @@ impl<CC: CongestionController> Path<CC> {
     }
 
     pub fn on_path_response(&mut self, response: &[u8]) {
-        if self.challenge.is_valid(response) {
+        if self.challenge.on_validate(response) {
             self.on_validated();
 
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3
@@ -194,7 +194,6 @@ impl<CC: CongestionController> Path<CC> {
 
     /// Called when the path is validated
     pub fn on_validated(&mut self) {
-        self.challenge.validate();
         self.state = State::Validated;
 
         // Enable the mtu controller to allow for PMTU discovery

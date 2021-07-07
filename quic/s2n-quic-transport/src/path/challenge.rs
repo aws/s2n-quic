@@ -21,8 +21,8 @@ pub struct Challenge {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum State {
-    /// When a PATH_CHALLENGE is not used for path validation. This is the case when
-    /// initiating the connection.
+    /// PATH_CHALLENGE is not used for path validation. This is the case when initiating
+    /// a new connection.
     Disabled,
 
     /// A Challenge frame must be sent. The `u8` represents the remaining number of retries
@@ -111,24 +111,24 @@ impl Challenge {
         }
     }
 
-    pub fn validate(&mut self) {
-        self.state = State::Validated
-    }
-
     pub fn abandon(&mut self) {
         self.state = State::Abandoned
     }
 
-    pub fn is_disabled(&self) -> bool {
-        self.state == State::Disabled
+    pub fn is_pending(&self) -> bool {
+        match self.state {
+            State::Idle | State::RequiresTransmission(_) => true,
+            _ => false,
+        }
     }
 
-    pub fn is_abandoned(&self) -> bool {
-        self.state == State::Abandoned
-    }
-
-    pub fn is_valid(&self, data: &[u8]) -> bool {
-        ConstantTimeEq::ct_eq(&self.data[..], &data).into()
+    pub fn on_validate(&mut self, data: &[u8]) -> bool {
+        if ConstantTimeEq::ct_eq(&self.data[..], &data).into() {
+            self.state = State::Validated;
+            true
+        } else {
+            false
+        }
     }
 }
 
