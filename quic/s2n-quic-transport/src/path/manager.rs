@@ -251,6 +251,8 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
             }
         };
 
+        let max_mtu = self.active_path().mtu_controller.max_mtu();
+
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
         //# The endpoint MUST use unpredictable data in every PATH_CHALLENGE
         //# frame so that it can associate the peer's response with the
@@ -275,6 +277,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
             rtt,
             cc,
             true,
+            max_mtu,
         );
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.4
@@ -575,6 +578,7 @@ mod tests {
     use crate::{
         connection::{ConnectionIdMapper, InternalConnectionIdGenerator},
         contexts::testing::{MockWriteContext, OutgoingFrameBuffer},
+        path::DEFAULT_MAX_MTU,
     };
     use core::time::Duration;
     use s2n_quic_core::{
@@ -615,6 +619,7 @@ mod tests {
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
+            DEFAULT_MAX_MTU,
         );
 
         let second_conn_id = connection::PeerId::try_from_bytes(&[5, 4, 3, 2, 1]).unwrap();
@@ -625,6 +630,7 @@ mod tests {
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
+            DEFAULT_MAX_MTU,
         );
 
         let mut manager = manager(first_path.clone(), None);
@@ -654,6 +660,7 @@ mod tests {
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
+            DEFAULT_MAX_MTU,
         );
         first_path.on_validated();
 
@@ -668,6 +675,7 @@ mod tests {
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
+            DEFAULT_MAX_MTU,
         )
         .with_challenge(challenge);
 
@@ -988,6 +996,7 @@ mod tests {
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
+            DEFAULT_MAX_MTU,
         );
         let mut manager = manager(first_path, None);
 
@@ -1044,6 +1053,7 @@ mod tests {
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
+            DEFAULT_MAX_MTU,
         );
         let mut manager = manager(first_path, None);
 
@@ -1088,6 +1098,7 @@ mod tests {
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
+            DEFAULT_MAX_MTU,
         );
         let mut manager = manager(first_path, None);
 
@@ -1162,6 +1173,7 @@ mod tests {
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
+            DEFAULT_MAX_MTU,
         );
         let mut manager = manager(first_path, None);
 
@@ -1231,6 +1243,7 @@ mod tests {
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
+            DEFAULT_MAX_MTU,
         );
         let mut manager = manager(first_path, None);
 
@@ -1328,6 +1341,7 @@ mod tests {
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
+            DEFAULT_MAX_MTU,
         );
         let mut manager = manager(first_path, None);
 
@@ -1416,6 +1430,7 @@ mod tests {
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
+            DEFAULT_MAX_MTU,
         );
         let expected_response_data = [0; 8];
         third_path.on_path_challenge(&expected_response_data);
@@ -1481,6 +1496,7 @@ mod tests {
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
+            DEFAULT_MAX_MTU,
         );
         let now = NoopClock {}.get_time();
         let challenge_expiration = Duration::from_millis(10_000);
@@ -1494,6 +1510,7 @@ mod tests {
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
+            DEFAULT_MAX_MTU,
         )
         .with_challenge(challenge);
 
@@ -1507,6 +1524,7 @@ mod tests {
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
+            DEFAULT_MAX_MTU,
         )
         .with_challenge(challenge);
 

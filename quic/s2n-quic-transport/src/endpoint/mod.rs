@@ -170,6 +170,10 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
     fn timeout(&self) -> Option<Timestamp> {
         self.timer_manager.next_expiration()
     }
+
+    fn set_max_mtu(&mut self, max_mtu: u16) {
+        self.config.set_max_mtu(max_mtu)
+    }
 }
 
 impl<Cfg: Config> Endpoint<Cfg> {
@@ -727,6 +731,10 @@ pub mod testing {
             todo!()
         }
 
+        fn set_max_mtu(&mut self, _max_mtu: u16) {
+            todo!()
+        }
+
         const ENDPOINT_TYPE: endpoint::Type = endpoint::Type::Server;
     }
 
@@ -748,6 +756,10 @@ pub mod testing {
         type EventSubscriber = Subscriber;
 
         fn context(&mut self) -> super::Context<Self> {
+            todo!()
+        }
+
+        fn set_max_mtu(&mut self, _max_mtu: u16) {
             todo!()
         }
 

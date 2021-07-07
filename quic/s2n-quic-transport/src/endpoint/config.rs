@@ -39,6 +39,9 @@ pub trait Config: 'static + Sized + core::fmt::Debug {
 
     /// Returns the context for the endpoint configuration
     fn context(&mut self) -> Context<Self>;
+
+    /// Sets the largest maximum transmission unit (MTU) that can be sent on a path
+    fn set_max_mtu(&mut self, max_mtu: u16);
 }
 
 #[derive(Debug)]
@@ -70,4 +73,6 @@ pub struct Context<'a, Cfg: Config> {
     pub connection_close_formatter: &'a mut Cfg::ConnectionCloseFormatter,
 
     pub event_subscriber: &'a mut Cfg::EventSubscriber,
+
+    pub max_mtu: u16,
 }

@@ -65,4 +65,6 @@ pub struct Parameters<Cfg: endpoint::Config> {
     pub quic_version: u32,
     /// The limits that were advertised to the peer
     pub limits: connection::Limits,
+    /// The largest maximum transmission unit (MTU) that can be sent on a path
+    pub max_mtu: u16,
 }

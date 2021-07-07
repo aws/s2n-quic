@@ -936,7 +936,7 @@ mod test {
         frame::ack_elicitation::AckElicitation,
         inet::{DatagramInfo, ExplicitCongestionNotification, SocketAddress},
         packet::number::PacketNumberSpace,
-        path::INITIAL_PTO_BACKOFF,
+        path::{DEFAULT_MAX_MTU, INITIAL_PTO_BACKOFF},
         random,
         recovery::{
             congestion_controller::testing::{
@@ -969,6 +969,7 @@ mod test {
             RttEstimator::new(max_ack_delay),
             Unlimited::default(),
             false,
+            DEFAULT_MAX_MTU,
         );
 
         manager
@@ -1315,6 +1316,7 @@ mod test {
             context.path().rtt_estimator,
             MockCongestionController::default(),
             false,
+            DEFAULT_MAX_MTU,
         );
         context.path_mut().pto_backoff = 2;
         let ack_receive_time = ack_receive_time + Duration::from_millis(500);
@@ -2755,6 +2757,7 @@ mod test {
             RttEstimator::new(manager.max_ack_delay),
             MockCongestionController::default(),
             false,
+            DEFAULT_MAX_MTU,
         );
         context.path_mut().on_validated();
         context.path_mut().pto_backoff = 2;
@@ -2834,6 +2837,7 @@ mod test {
             RttEstimator::new(Duration::from_millis(10)),
             Unlimited::default(),
             false,
+            DEFAULT_MAX_MTU,
         );
 
         path.on_validated();
@@ -2860,6 +2864,7 @@ mod test {
             RttEstimator::new(max_ack_delay),
             Unlimited::default(),
             false,
+            DEFAULT_MAX_MTU,
         );
 
         // Update RTT with the smallest possible sample
@@ -3357,6 +3362,7 @@ mod test {
             RttEstimator::new(max_ack_delay),
             MockCongestionController::default(),
             true,
+            DEFAULT_MAX_MTU,
         );
 
         path::Manager::new(path, registry)

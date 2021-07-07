@@ -334,6 +334,11 @@ impl Controller {
         self.plpmtu as usize
     }
 
+    /// Gets the maximum MTU that can be sent on a path
+    pub fn max_mtu(&self) -> u16 {
+        self.max_plpmtu
+    }
+
     /// Gets the MTU currently being probed for
     pub fn probed_sized(&self) -> usize {
         self.probed_size as usize

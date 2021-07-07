@@ -70,6 +70,7 @@ impl<CC: CongestionController> Path<CC> {
         rtt_estimator: RttEstimator,
         congestion_controller: CC,
         peer_validated: bool,
+        max_mtu: u16,
     ) -> Path<CC> {
         Path {
             peer_socket_address,
@@ -86,7 +87,7 @@ impl<CC: CongestionController> Path<CC> {
                 tx_bytes: 0,
                 rx_bytes: 0,
             },
-            mtu_controller: mtu::Controller::new(DEFAULT_MAX_MTU, &peer_socket_address),
+            mtu_controller: mtu::Controller::new(max_mtu, &peer_socket_address),
             peer_validated,
             challenge: None,
             response_data: None,
@@ -392,7 +393,7 @@ impl<CC: CongestionController> transmission::interest::Provider for Path<CC> {
 #[cfg(any(test, feature = "testing"))]
 pub mod testing {
     use crate::{
-        path::Path,
+        path::{Path, DEFAULT_MAX_MTU},
         recovery::congestion_controller::testing::unlimited::CongestionController as Unlimited,
     };
     use core::time::Duration;
@@ -406,6 +407,7 @@ pub mod testing {
             RttEstimator::new(Duration::from_millis(30)),
             Unlimited::default(),
             true,
+            DEFAULT_MAX_MTU,
         )
     }
 }
@@ -843,6 +845,7 @@ mod tests {
             RttEstimator::new(Duration::from_millis(30)),
             CubicCongestionController::new(MINIMUM_MTU),
             false,
+            DEFAULT_MAX_MTU,
         );
         let now = NoopClock.get_time();
         path.on_validated();
