@@ -21,9 +21,8 @@ pub struct Challenge {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum State {
-    /// PATH_CHALLENGE is not used for path validation. This is the case when initiating
-    /// a new connection.
-    Disabled,
+    /// PATH_CHALLENGE is not used for path validation when initiating a new connection
+    InitialPathDisabled,
 
     /// A Challenge frame must be sent. The `u8` represents the remaining number of retries
     RequiresTransmission(u8),
@@ -70,7 +69,7 @@ impl Challenge {
 
     pub fn disabled() -> Self {
         Self {
-            state: State::Disabled,
+            state: State::InitialPathDisabled,
             abandon_duration: Duration::default(),
             abandon_timer: Timer::default(),
             data: DISABLED_DATA,
@@ -113,16 +112,13 @@ impl Challenge {
 
     pub fn abandon(&mut self) {
         match self.state {
-            State::Disabled => (),
+            State::InitialPathDisabled => (),
             _ => self.state = State::Abandoned,
         }
     }
 
     pub fn is_pending(&self) -> bool {
-        match self.state {
-            State::Idle | State::RequiresTransmission(_) => true,
-            _ => false,
-        }
+        matches!(self.state, State::Idle | State::RequiresTransmission(_))
     }
 
     pub fn on_validate(&mut self, data: &[u8]) -> bool {
@@ -195,7 +191,7 @@ mod tests {
     #[test]
     fn create_disabled_challenge() {
         let challenge = Challenge::disabled();
-        assert_eq!(challenge.state, State::Disabled);
+        assert_eq!(challenge.state, State::InitialPathDisabled);
         assert!(!challenge.abandon_timer.is_armed());
     }
 
@@ -374,11 +370,11 @@ mod tests {
         );
         challenge.on_transmit(&mut context);
 
-        assert_eq!(challenge.state, State::Disabled);
+        assert_eq!(challenge.state, State::InitialPathDisabled);
 
         let large_expiration_time = now + Duration::from_secs(1_000_000);
         challenge.on_timeout(large_expiration_time);
-        assert_eq!(challenge.state, State::Disabled);
+        assert_eq!(challenge.state, State::InitialPathDisabled);
     }
 
     #[test]
@@ -419,9 +415,9 @@ mod tests {
     #[test]
     fn dont_validate_disabled_state() {
         let mut helper = helper_challenge();
-        helper.challenge.state = State::Disabled;
+        helper.challenge.state = State::InitialPathDisabled;
 
         assert!(!helper.challenge.on_validate(&helper.expected_data));
-        assert_eq!(helper.challenge.state, State::Disabled);
+        assert_eq!(helper.challenge.state, State::InitialPathDisabled);
     }
 }

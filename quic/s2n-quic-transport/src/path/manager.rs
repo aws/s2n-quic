@@ -689,7 +689,7 @@ mod tests {
             Default::default(),
             false,
         );
-        first_path.on_validated();
+        first_path.validate();
 
         // Create a challenge that will expire in 100ms
         let now = NoopClock {}.get_time();
@@ -742,7 +742,7 @@ mod tests {
         assert!(!helper.manager.paths[helper.first_path_id.0 as usize].is_validated());
 
         // Trigger:
-        helper.manager.paths[helper.first_path_id.0 as usize].on_validated();
+        helper.manager.paths[helper.first_path_id.0 as usize].validate();
         assert!(helper.manager.paths[helper.first_path_id.0 as usize].is_validated());
         helper
             .manager
@@ -1032,7 +1032,7 @@ mod tests {
         assert!(helper.manager[helper.second_path_id].is_challenge_pending());
         assert_eq!(helper.manager.active_path_id(), helper.first_path_id);
 
-        helper.manager[helper.second_path_id].on_validated();
+        helper.manager[helper.second_path_id].validate();
         assert!(helper.manager[helper.second_path_id].is_validated());
 
         // Trigger:
@@ -1574,7 +1574,7 @@ mod tests {
             false,
         );
         if validate_path_zero {
-            zero_path.on_validated();
+            zero_path.validate();
         }
         assert!(!zero_path.is_challenge_pending());
 

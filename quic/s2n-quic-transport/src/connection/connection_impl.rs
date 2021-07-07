@@ -930,7 +930,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 //# Once the server has successfully processed a
                 //# Handshake packet from the client, it can consider the client address
                 //# to have been validated.
-                self.path_manager[path_id].on_validated();
+                self.path_manager[path_id].validate();
             }
 
             // try to move the crypto state machine forward

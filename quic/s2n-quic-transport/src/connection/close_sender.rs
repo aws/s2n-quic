@@ -301,7 +301,7 @@ mod tests {
                 let mut transmission_count = 0usize;
 
                 if *is_validated {
-                    path.on_validated();
+                    path.validate();
                 } else {
                     // give the path some initial credits
                     path.on_bytes_received(MINIMUM_MTU as usize);

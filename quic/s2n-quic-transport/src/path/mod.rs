@@ -183,7 +183,7 @@ impl<CC: CongestionController> Path<CC> {
 
     pub fn on_path_response(&mut self, response: &[u8]) {
         if self.challenge.on_validate(response) {
-            self.on_validated();
+            self.validate();
 
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3
             //= type=TODO
@@ -193,7 +193,7 @@ impl<CC: CongestionController> Path<CC> {
     }
 
     /// Called when the path is validated
-    pub fn on_validated(&mut self) {
+    pub fn validate(&mut self) {
         self.state = State::Validated;
 
         // Enable the mtu controller to allow for PMTU discovery
@@ -387,474 +387,474 @@ pub mod testing {
 
 #[cfg(test)]
 mod tests {
-    //use core::time::Duration;
-
-    //use super::*;
-    //use crate::{
-    //    contexts::testing::{MockWriteContext, OutgoingFrameBuffer},
-    //    path::{challenge::testing::helper_challenge, testing, Path},
-    //};
-    //use s2n_quic_core::{
-    //    connection, endpoint,
-    //    inet::SocketAddress,
-    //    recovery::{CongestionController, CubicCongestionController, RttEstimator},
-    //    time::{Clock, NoopClock},
-    //    transmission,
-    //};
-
-    //#[test]
-    //fn response_data_should_only_be_sent_once() {
-    //    // Setup:
-    //    let mut path = testing::helper_path();
-    //    let now = NoopClock {}.get_time();
-
-    //    let mut frame_buffer = OutgoingFrameBuffer::new();
-    //    let mut context = MockWriteContext::new(
-    //        now,
-    //        &mut frame_buffer,
-    //        transmission::Constraint::None,
-    //        transmission::Mode::Normal,
-    //        endpoint::Type::Client,
-    //    );
-
-    //    // set response data
-    //    let expected_data: [u8; 8] = [0; 8];
-    //    path.on_path_challenge(&expected_data);
-    //    assert_eq!(path.response_data.unwrap(), expected_data);
-
-    //    // Trigger:
-    //    path.on_transmit(&mut context); // send response data
-
-    //    // Expectation:
-    //    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
-    //    //= type=test
-    //    //# An endpoint MUST NOT send more than one PATH_RESPONSE frame in
-    //    //# response to one PATH_CHALLENGE frame; see Section 13.3.
-    //    assert!(!path.response_data.is_some());
-
-    //    assert_eq!(context.frame_buffer.len(), 1);
-    //    let written_data = match context.frame_buffer.pop_front().unwrap().as_frame() {
-    //        frame::Frame::PathResponse(frame) => Some(*frame.data),
-    //        _ => None,
-    //    };
-    //    assert_eq!(written_data.unwrap(), expected_data);
-    //}
-
-    //#[test]
-    //fn on_timeout_should_set_challenge_to_none_on_challenge_abandonment() {
-    //    // Setup:
-    //    let mut path = testing::helper_path();
-    //    let helper_challenge = helper_challenge();
-    //    let expiration_time = helper_challenge.now + helper_challenge.abandon_duration;
-    //    path.set_challenge(helper_challenge.challenge);
-
-    //    let mut frame_buffer = OutgoingFrameBuffer::new();
-    //    let mut context = MockWriteContext::new(
-    //        helper_challenge.now,
-    //        &mut frame_buffer,
-    //        transmission::Constraint::None,
-    //        transmission::Mode::Normal,
-    //        endpoint::Type::Client,
-    //    );
-    //    path.on_transmit(&mut context); // send challenge and arm timer
-
-    //    // Expectation:
-    //    assert!(path.is_challenge_pending());
-    //    assert!(path.challenge.is_some());
-
-    //    // Trigger:
-    //    path.on_timeout(expiration_time + Duration::from_millis(10));
-
-    //    // Expectation:
-    //    assert!(!path.is_challenge_pending());
-    //    assert!(!path.challenge.is_some());
-    //}
-
-    //#[test]
-    //fn is_challenge_pending_should_return_false_if_challenge_is_not_set() {
-    //    // Setup:
-    //    let mut path = testing::helper_path();
-    //    let helper_challenge = helper_challenge();
-
-    //    // Expectation:
-    //    assert!(!path.is_challenge_pending());
-    //    assert!(!path.challenge.is_some());
-
-    //    // Trigger:
-    //    path.set_challenge(helper_challenge.challenge);
-
-    //    // Expectation:
-    //    assert!(path.is_challenge_pending());
-    //    assert!(path.challenge.is_some());
-    //}
-
-    //#[test]
-    //fn abandon_challenge() {
-    //    // Setup:
-    //    let mut path = testing::helper_path();
-    //    let helper_challenge = helper_challenge();
-    //    path.set_challenge(helper_challenge.challenge);
-
-    //    // Trigger:
-    //    path.abandon_challenge();
-
-    //    // Expectation:
-    //    assert!(path.challenge.is_none());
-    //}
-
-    //#[test]
-    //fn on_path_challenge_should_set_reponse_data() {
-    //    // Setup:
-    //    let mut path = testing::helper_path();
-
-    //    // Expectation:
-    //    assert!(!path.response_data.is_some());
-
-    //    // Trigger:
-    //    let expected_data: [u8; 8] = [0; 8];
-    //    path.on_path_challenge(&expected_data);
-
-    //    // Expectation:
-    //    assert!(path.response_data.is_some());
-    //}
-
-    ////= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
-    ////= type=test
-    ////# On receiving a PATH_CHALLENGE frame, an endpoint MUST respond by
-    ////# echoing the data contained in the PATH_CHALLENGE frame in a
-    ////# PATH_RESPONSE frame.
-    //#[test]
-    //fn on_path_challenge_should_replace_reponse_data() {
-    //    // Setup:
-    //    let mut path = testing::helper_path();
-    //    let expected_data: [u8; 8] = [0; 8];
-
-    //    // Trigger 1:
-    //    path.on_path_challenge(&expected_data);
-
-    //    // Expectation 1:
-    //    assert_eq!(path.response_data.unwrap(), expected_data);
-
-    //    // Trigger 2:
-    //    let new_expected_data: [u8; 8] = [1; 8];
-    //    path.on_path_challenge(&new_expected_data);
-
-    //    // Expectation 2:
-    //    assert_ne!(expected_data, new_expected_data);
-    //    assert_eq!(path.response_data.unwrap(), new_expected_data);
-    //}
-
-    //#[test]
-    //fn validate_path_response_should_only_validate_if_challenge_is_set() {
-    //    // Setup:
-    //    let mut path = testing::helper_path();
-    //    let helper_challenge = helper_challenge();
-
-    //    // Expectation:
-    //    assert!(!path.is_validated());
-
-    //    // Trigger:
-    //    path.set_challenge(helper_challenge.challenge);
-    //    path.on_path_response(&helper_challenge.expected_data);
-
-    //    // Expectation:
-    //    assert!(path.is_validated());
-    //}
-
-    //#[test]
-    //fn on_validated_should_change_state_to_validated_and_clear_challenge() {
-    //    // Setup:
-    //    let mut path = testing::helper_path();
-    //    let helper_challenge = helper_challenge();
-    //    path.set_challenge(helper_challenge.challenge);
-
-    //    assert!(!path.is_validated());
-    //    assert!(path.challenge.is_some());
-
-    //    // Trigger:
-    //    path.on_validated();
-
-    //    // Expectation:
-    //    assert!(path.is_validated());
-    //    assert!(!path.challenge.is_some());
-    //}
-
-    //#[test]
-    //fn on_validated_when_already_validated_does_nothing() {
-    //    // Setup:
-    //    let mut path = testing::helper_path();
-    //    path.set_challenge(helper_challenge().challenge);
-    //    path.on_validated();
-
-    //    // Trigger:
-    //    path.on_validated();
-
-    //    // Expectation:
-    //    assert!(path.is_validated());
-    //    assert!(path.challenge.is_none());
-    //}
-
-    //#[test]
-    //fn amplification_limit_test() {
-    //    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.4
-    //    //= type=test
-    //    //# If the client IP address has changed, the server MUST
-    //    //# adhere to the anti-amplification limits found in Section 8.1.
-    //    // This is tested here by verifying a new Path starts in State::AmplificationLimited
-
-    //    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1
-    //    //= type=test
-    //    //# For the purposes of
-    //    //# avoiding amplification prior to address validation, servers MUST
-    //    //# count all of the payload bytes received in datagrams that are
-    //    //# uniquely attributed to a single connection.
-
-    //    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.4
-    //    //= type=test
-    //    //# If the client IP address has changed, the server MUST
-    //    //# adhere to the anti-amplification limits found in Section 8.1.
-    //    // This tests the IP change because a new path is created when a new peer_address is
-    //    // detected. This new path should always start in State::Pending.
-    //    let mut path = testing::helper_path();
-
-    //    // Verify we enforce the amplification limit if we can't send
-    //    // at least 1 minimum sized packet
-    //    let mut unblocked = path.on_bytes_received(1200);
-    //    assert!(unblocked);
-    //    path.on_bytes_transmitted((1200 * 2) + 1);
-
-    //    // we round up to the nearest mtu
-    //    assert!(!path.at_amplification_limit());
-    //    assert_eq!(
-    //        path.transmission_constraint(),
-    //        transmission::Constraint::None
-    //    );
-
-    //    unblocked = path.on_bytes_received(1200);
-    //    assert!(!path.at_amplification_limit());
-    //    assert_eq!(
-    //        path.transmission_constraint(),
-    //        transmission::Constraint::None
-    //    );
-    //    // If we were not amplification limited previously, receiving
-    //    // more bytes doesn't unblock
-    //    assert!(!unblocked);
-
-    //    path.on_bytes_transmitted((1200 * 6) + 1);
-    //    assert!(path.at_amplification_limit());
-    //    assert_eq!(
-    //        path.transmission_constraint(),
-    //        transmission::Constraint::AmplificationLimited
-    //    );
-    //    unblocked = path.on_bytes_received(1200);
-    //    assert!(unblocked);
-
-    //    path.on_validated();
-    //    path.on_bytes_transmitted(24);
-    //    // Validated paths should always be able to transmit
-    //    assert!(!path.at_amplification_limit());
-    //    assert_eq!(
-    //        path.transmission_constraint(),
-    //        transmission::Constraint::None
-    //    );
-
-    //    // If we were already not amplification limited, receiving
-    //    // more bytes doesn't unblock
-    //    unblocked = path.on_bytes_received(1200);
-    //    assert!(!unblocked);
-    //}
-
-    //#[test]
-    //fn amplification_limited_mtu_test() {
-    //    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1
-    //    //= type=test
-    //    //# Prior to validating the client address, servers MUST NOT send more
-    //    //# than three times as many bytes as the number of bytes they have
-    //    //# received.
-
-    //    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.1
-    //    //= type=test
-    //    //# The server MUST also limit the number of bytes it sends before
-    //    //# validating the address of the client; see Section 8.
-
-    //    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.2
-    //    //= type=test
-    //    //# All QUIC
-    //    //# packets that are not sent in a PMTU probe SHOULD be sized to fit
-    //    //# within the maximum datagram size to avoid the datagram being
-    //    //# fragmented or dropped ([RFC8085]).
-
-    //    //= https://tools.ietf.org/rfc/rfc8899.txt#3
-    //    //= type=test
-    //    //# A PL MUST NOT send a datagram (other than a probe
-    //    //# packet) with a size at the PL that is larger than the current
-    //    //# PLPMTU.
-
-    //    // TODO this would work better as a fuzz test
-
-    //    for &transmission_mode in &[
-    //        Mode::Normal,
-    //        Mode::PathValidationOnly,
-    //        Mode::MtuProbing,
-    //        Mode::LossRecoveryProbing,
-    //    ] {
-    //        let mut path = testing::helper_path();
-    //        // Verify we can transmit up to the mtu
-    //        let mtu = path.mtu(transmission_mode);
-
-    //        path.on_bytes_received(3);
-    //        path.on_bytes_transmitted(8);
-
-    //        assert_eq!(path.clamp_mtu(1, transmission_mode), 1);
-    //        assert_eq!(path.clamp_mtu(10, transmission_mode), 10);
-    //        assert_eq!(path.clamp_mtu(1800, transmission_mode), mtu);
-
-    //        path.on_bytes_transmitted(1);
-    //        // Verify we can't transmit any more bytes
-    //        assert_eq!(path.clamp_mtu(1, transmission_mode), 0);
-    //        assert_eq!(path.clamp_mtu(10, transmission_mode), 0);
-
-    //        path.on_bytes_received(1);
-    //        // Verify we can transmit up to 3 more bytes
-    //        assert_eq!(path.clamp_mtu(1, transmission_mode), 1);
-    //        assert_eq!(path.clamp_mtu(10, transmission_mode), 10);
-    //        assert_eq!(path.clamp_mtu(1800, transmission_mode), mtu);
-
-    //        path.on_validated();
-    //        // Validated paths should always be able to transmit
-    //        assert_eq!(path.clamp_mtu(4, transmission_mode), 4);
-    //    }
-    //}
-
-    //#[test]
-    //fn clamp_mtu_for_validated_path() {
-    //    let mut path = testing::helper_path();
-    //    path.on_validated();
-    //    let mtu = 1472;
-    //    let probed_size = 1500;
-    //    path.mtu_controller = mtu::testing::test_controller(mtu, probed_size);
-
-    //    assert_eq!(
-    //        path.mtu_controller.mtu(),
-    //        path.clamp_mtu(10000, transmission::Mode::Normal)
-    //    );
-    //    assert_eq!(
-    //        MINIMUM_MTU as usize,
-    //        path.clamp_mtu(10000, transmission::Mode::PathValidationOnly)
-    //    );
-    //    assert_eq!(
-    //        MINIMUM_MTU as usize,
-    //        path.clamp_mtu(10000, transmission::Mode::LossRecoveryProbing)
-    //    );
-    //    assert_eq!(
-    //        path.mtu_controller.probed_sized(),
-    //        path.clamp_mtu(10000, transmission::Mode::MtuProbing)
-    //    );
-    //}
-
-    //#[test]
-    //fn path_mtu() {
-    //    let mut path = testing::helper_path();
-    //    path.on_bytes_received(1);
-    //    let mtu = 1472;
-    //    let probed_size = 1500;
-    //    path.mtu_controller = mtu::testing::test_controller(mtu, probed_size);
-
-    //    assert_eq!(
-    //        path.mtu_controller.mtu(),
-    //        path.mtu(transmission::Mode::Normal)
-    //    );
-    //    assert_eq!(
-    //        MINIMUM_MTU as usize,
-    //        path.mtu(transmission::Mode::PathValidationOnly)
-    //    );
-    //    assert_eq!(
-    //        MINIMUM_MTU as usize,
-    //        path.mtu(transmission::Mode::LossRecoveryProbing)
-    //    );
-    //    assert_eq!(
-    //        path.mtu_controller.probed_sized(),
-    //        path.mtu(transmission::Mode::MtuProbing)
-    //    );
-    //}
-
-    //#[test]
-    //fn clamp_mtu_when_tx_more_than_rx() {
-    //    let mut path = testing::helper_path();
-    //    let mtu = 1472;
-    //    let probed_size = 1500;
-    //    path.mtu_controller = mtu::testing::test_controller(mtu, probed_size);
-
-    //    assert_eq!(0, path.clamp_mtu(10000, transmission::Mode::Normal));
-
-    //    path.on_bytes_received(1);
-    //    assert_eq!(
-    //        path.mtu_controller.mtu(),
-    //        path.clamp_mtu(10000, transmission::Mode::Normal)
-    //    );
-
-    //    path.on_bytes_transmitted(100);
-    //    assert_eq!(0, path.clamp_mtu(10000, transmission::Mode::Normal));
-    //}
-
-    //#[test]
-    //fn peer_validated_test() {
-    //    let mut path = testing::helper_path();
-    //    path.peer_validated = false;
-
-    //    assert!(!path.is_peer_validated());
-
-    //    path.on_peer_validated();
-
-    //    assert!(path.is_peer_validated());
-    //}
-
-    //#[test]
-    //fn transmission_constraint_test() {
-    //    let mut path = Path::new(
-    //        SocketAddress::default(),
-    //        connection::PeerId::try_from_bytes(&[]).unwrap(),
-    //        connection::LocalId::TEST_ID,
-    //        RttEstimator::new(Duration::from_millis(30)),
-    //        CubicCongestionController::new(MINIMUM_MTU),
-    //        false,
-    //    );
-    //    let now = NoopClock.get_time();
-    //    path.on_validated();
-
-    //    assert_eq!(
-    //        path.transmission_constraint(),
-    //        transmission::Constraint::None
-    //    );
-
-    //    // Fill up the congestion controller
-    //    path.congestion_controller
-    //        .on_packet_sent(now, path.congestion_controller.congestion_window() as usize);
-
-    //    assert_eq!(
-    //        path.transmission_constraint(),
-    //        transmission::Constraint::CongestionLimited
-    //    );
-
-    //    // Lose a byte to enter recovery
-    //    path.congestion_controller.on_packets_lost(1, false, now);
-
-    //    assert_eq!(
-    //        path.transmission_constraint(),
-    //        transmission::Constraint::RetransmissionOnly
-    //    );
-
-    //    // Lose remaining bytes
-    //    path.congestion_controller.on_packets_lost(
-    //        path.congestion_controller.congestion_window(),
-    //        false,
-    //        now,
-    //    );
-
-    //    // Since we are no longer congestion limited, there is no transmission constraint
-    //    assert_eq!(
-    //        path.transmission_constraint(),
-    //        transmission::Constraint::None
-    //    );
-    //}
+    use core::time::Duration;
+
+    use super::*;
+    use crate::{
+        contexts::testing::{MockWriteContext, OutgoingFrameBuffer},
+        path::{challenge::testing::helper_challenge, testing, Path},
+    };
+    use s2n_quic_core::{
+        connection, endpoint,
+        inet::SocketAddress,
+        recovery::{CongestionController, CubicCongestionController, RttEstimator},
+        time::{Clock, NoopClock},
+        transmission,
+    };
+
+    #[test]
+    fn response_data_should_only_be_sent_once() {
+        // Setup:
+        let mut path = testing::helper_path();
+        let now = NoopClock {}.get_time();
+
+        let mut frame_buffer = OutgoingFrameBuffer::new();
+        let mut context = MockWriteContext::new(
+            now,
+            &mut frame_buffer,
+            transmission::Constraint::None,
+            transmission::Mode::Normal,
+            endpoint::Type::Client,
+        );
+
+        // set response data
+        let expected_data: [u8; 8] = [0; 8];
+        path.on_path_challenge(&expected_data);
+        assert_eq!(path.response_data.unwrap(), expected_data);
+
+        // Trigger:
+        path.on_transmit(&mut context); // send response data
+
+        // Expectation:
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
+        //= type=test
+        //# An endpoint MUST NOT send more than one PATH_RESPONSE frame in
+        //# response to one PATH_CHALLENGE frame; see Section 13.3.
+        assert!(!path.response_data.is_some());
+
+        assert_eq!(context.frame_buffer.len(), 1);
+        let written_data = match context.frame_buffer.pop_front().unwrap().as_frame() {
+            frame::Frame::PathResponse(frame) => Some(*frame.data),
+            _ => None,
+        };
+        assert_eq!(written_data.unwrap(), expected_data);
+    }
+
+    #[test]
+    fn on_timeout_should_set_challenge_to_none_on_challenge_abandonment() {
+        // Setup:
+        let mut path = testing::helper_path();
+        let helper_challenge = helper_challenge();
+        let expiration_time = helper_challenge.now + helper_challenge.abandon_duration;
+        path.set_challenge(helper_challenge.challenge);
+
+        let mut frame_buffer = OutgoingFrameBuffer::new();
+        let mut context = MockWriteContext::new(
+            helper_challenge.now,
+            &mut frame_buffer,
+            transmission::Constraint::None,
+            transmission::Mode::Normal,
+            endpoint::Type::Client,
+        );
+        path.on_transmit(&mut context); // send challenge and arm timer
+
+        // Expectation:
+        assert!(path.is_challenge_pending());
+        assert!(path.challenge.is_pending());
+
+        // Trigger:
+        path.on_timeout(expiration_time + Duration::from_millis(10));
+
+        // Expectation:
+        assert!(!path.is_challenge_pending());
+        assert!(!path.challenge.is_pending());
+    }
+
+    #[test]
+    fn is_challenge_pending_should_return_false_if_challenge_is_not_set() {
+        // Setup:
+        let mut path = testing::helper_path();
+        let helper_challenge = helper_challenge();
+
+        // Expectation:
+        assert!(!path.is_challenge_pending());
+        assert!(!path.challenge.is_pending());
+
+        // Trigger:
+        path.set_challenge(helper_challenge.challenge);
+
+        // Expectation:
+        assert!(path.is_challenge_pending());
+        assert!(path.challenge.is_pending());
+    }
+
+    #[test]
+    fn abandon_challenge() {
+        // Setup:
+        let mut path = testing::helper_path();
+        let helper_challenge = helper_challenge();
+        path.set_challenge(helper_challenge.challenge);
+
+        // Trigger:
+        path.abandon_challenge();
+
+        // Expectation:
+        assert!(!path.challenge.is_pending());
+    }
+
+    #[test]
+    fn on_path_challenge_should_set_reponse_data() {
+        // Setup:
+        let mut path = testing::helper_path();
+
+        // Expectation:
+        assert!(!path.response_data.is_some());
+
+        // Trigger:
+        let expected_data: [u8; 8] = [0; 8];
+        path.on_path_challenge(&expected_data);
+
+        // Expectation:
+        assert!(path.response_data.is_some());
+    }
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
+    //= type=test
+    //# On receiving a PATH_CHALLENGE frame, an endpoint MUST respond by
+    //# echoing the data contained in the PATH_CHALLENGE frame in a
+    //# PATH_RESPONSE frame.
+    #[test]
+    fn on_path_challenge_should_replace_reponse_data() {
+        // Setup:
+        let mut path = testing::helper_path();
+        let expected_data: [u8; 8] = [0; 8];
+
+        // Trigger 1:
+        path.on_path_challenge(&expected_data);
+
+        // Expectation 1:
+        assert_eq!(path.response_data.unwrap(), expected_data);
+
+        // Trigger 2:
+        let new_expected_data: [u8; 8] = [1; 8];
+        path.on_path_challenge(&new_expected_data);
+
+        // Expectation 2:
+        assert_ne!(expected_data, new_expected_data);
+        assert_eq!(path.response_data.unwrap(), new_expected_data);
+    }
+
+    #[test]
+    fn validate_path_response_should_only_validate_if_challenge_is_set() {
+        // Setup:
+        let mut path = testing::helper_path();
+        let helper_challenge = helper_challenge();
+
+        // Expectation:
+        assert!(!path.is_validated());
+
+        // Trigger:
+        path.set_challenge(helper_challenge.challenge);
+        path.on_path_response(&helper_challenge.expected_data);
+
+        // Expectation:
+        assert!(path.is_validated());
+    }
+
+    #[test]
+    fn on_validated_should_change_state_to_validated_and_clear_challenge() {
+        // Setup:
+        let mut path = testing::helper_path();
+        let helper_challenge = helper_challenge();
+        path.set_challenge(helper_challenge.challenge);
+
+        assert!(!path.is_validated());
+        assert!(path.challenge.is_pending());
+
+        // Trigger:
+        path.validate();
+
+        // Expectation:
+        assert!(path.is_validated());
+        assert!(path.challenge.is_pending());
+    }
+
+    #[test]
+    fn on_validated_when_already_validated_does_nothing() {
+        // Setup:
+        let mut path = testing::helper_path();
+        path.set_challenge(helper_challenge().challenge);
+        path.validate();
+
+        // Trigger:
+        path.validate();
+
+        // Expectation:
+        assert!(path.is_validated());
+        assert!(path.challenge.is_pending());
+    }
+
+    #[test]
+    fn amplification_limit_test() {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.4
+        //= type=test
+        //# If the client IP address has changed, the server MUST
+        //# adhere to the anti-amplification limits found in Section 8.1.
+        // This is tested here by verifying a new Path starts in State::AmplificationLimited
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1
+        //= type=test
+        //# For the purposes of
+        //# avoiding amplification prior to address validation, servers MUST
+        //# count all of the payload bytes received in datagrams that are
+        //# uniquely attributed to a single connection.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1.4
+        //= type=test
+        //# If the client IP address has changed, the server MUST
+        //# adhere to the anti-amplification limits found in Section 8.1.
+        // This tests the IP change because a new path is created when a new peer_address is
+        // detected. This new path should always start in State::Pending.
+        let mut path = testing::helper_path();
+
+        // Verify we enforce the amplification limit if we can't send
+        // at least 1 minimum sized packet
+        let mut unblocked = path.on_bytes_received(1200);
+        assert!(unblocked);
+        path.on_bytes_transmitted((1200 * 2) + 1);
+
+        // we round up to the nearest mtu
+        assert!(!path.at_amplification_limit());
+        assert_eq!(
+            path.transmission_constraint(),
+            transmission::Constraint::None
+        );
+
+        unblocked = path.on_bytes_received(1200);
+        assert!(!path.at_amplification_limit());
+        assert_eq!(
+            path.transmission_constraint(),
+            transmission::Constraint::None
+        );
+        // If we were not amplification limited previously, receiving
+        // more bytes doesn't unblock
+        assert!(!unblocked);
+
+        path.on_bytes_transmitted((1200 * 6) + 1);
+        assert!(path.at_amplification_limit());
+        assert_eq!(
+            path.transmission_constraint(),
+            transmission::Constraint::AmplificationLimited
+        );
+        unblocked = path.on_bytes_received(1200);
+        assert!(unblocked);
+
+        path.validate();
+        path.on_bytes_transmitted(24);
+        // Validated paths should always be able to transmit
+        assert!(!path.at_amplification_limit());
+        assert_eq!(
+            path.transmission_constraint(),
+            transmission::Constraint::None
+        );
+
+        // If we were already not amplification limited, receiving
+        // more bytes doesn't unblock
+        unblocked = path.on_bytes_received(1200);
+        assert!(!unblocked);
+    }
+
+    #[test]
+    fn amplification_limited_mtu_test() {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1
+        //= type=test
+        //# Prior to validating the client address, servers MUST NOT send more
+        //# than three times as many bytes as the number of bytes they have
+        //# received.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.1
+        //= type=test
+        //# The server MUST also limit the number of bytes it sends before
+        //# validating the address of the client; see Section 8.
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14.2
+        //= type=test
+        //# All QUIC
+        //# packets that are not sent in a PMTU probe SHOULD be sized to fit
+        //# within the maximum datagram size to avoid the datagram being
+        //# fragmented or dropped ([RFC8085]).
+
+        //= https://tools.ietf.org/rfc/rfc8899.txt#3
+        //= type=test
+        //# A PL MUST NOT send a datagram (other than a probe
+        //# packet) with a size at the PL that is larger than the current
+        //# PLPMTU.
+
+        // TODO this would work better as a fuzz test
+
+        for &transmission_mode in &[
+            Mode::Normal,
+            Mode::PathValidationOnly,
+            Mode::MtuProbing,
+            Mode::LossRecoveryProbing,
+        ] {
+            let mut path = testing::helper_path();
+            // Verify we can transmit up to the mtu
+            let mtu = path.mtu(transmission_mode);
+
+            path.on_bytes_received(3);
+            path.on_bytes_transmitted(8);
+
+            assert_eq!(path.clamp_mtu(1, transmission_mode), 1);
+            assert_eq!(path.clamp_mtu(10, transmission_mode), 10);
+            assert_eq!(path.clamp_mtu(1800, transmission_mode), mtu);
+
+            path.on_bytes_transmitted(1);
+            // Verify we can't transmit any more bytes
+            assert_eq!(path.clamp_mtu(1, transmission_mode), 0);
+            assert_eq!(path.clamp_mtu(10, transmission_mode), 0);
+
+            path.on_bytes_received(1);
+            // Verify we can transmit up to 3 more bytes
+            assert_eq!(path.clamp_mtu(1, transmission_mode), 1);
+            assert_eq!(path.clamp_mtu(10, transmission_mode), 10);
+            assert_eq!(path.clamp_mtu(1800, transmission_mode), mtu);
+
+            path.validate();
+            // Validated paths should always be able to transmit
+            assert_eq!(path.clamp_mtu(4, transmission_mode), 4);
+        }
+    }
+
+    #[test]
+    fn clamp_mtu_for_validated_path() {
+        let mut path = testing::helper_path();
+        path.validate();
+        let mtu = 1472;
+        let probed_size = 1500;
+        path.mtu_controller = mtu::testing::test_controller(mtu, probed_size);
+
+        assert_eq!(
+            path.mtu_controller.mtu(),
+            path.clamp_mtu(10000, transmission::Mode::Normal)
+        );
+        assert_eq!(
+            MINIMUM_MTU as usize,
+            path.clamp_mtu(10000, transmission::Mode::PathValidationOnly)
+        );
+        assert_eq!(
+            MINIMUM_MTU as usize,
+            path.clamp_mtu(10000, transmission::Mode::LossRecoveryProbing)
+        );
+        assert_eq!(
+            path.mtu_controller.probed_sized(),
+            path.clamp_mtu(10000, transmission::Mode::MtuProbing)
+        );
+    }
+
+    #[test]
+    fn path_mtu() {
+        let mut path = testing::helper_path();
+        path.on_bytes_received(1);
+        let mtu = 1472;
+        let probed_size = 1500;
+        path.mtu_controller = mtu::testing::test_controller(mtu, probed_size);
+
+        assert_eq!(
+            path.mtu_controller.mtu(),
+            path.mtu(transmission::Mode::Normal)
+        );
+        assert_eq!(
+            MINIMUM_MTU as usize,
+            path.mtu(transmission::Mode::PathValidationOnly)
+        );
+        assert_eq!(
+            MINIMUM_MTU as usize,
+            path.mtu(transmission::Mode::LossRecoveryProbing)
+        );
+        assert_eq!(
+            path.mtu_controller.probed_sized(),
+            path.mtu(transmission::Mode::MtuProbing)
+        );
+    }
+
+    #[test]
+    fn clamp_mtu_when_tx_more_than_rx() {
+        let mut path = testing::helper_path();
+        let mtu = 1472;
+        let probed_size = 1500;
+        path.mtu_controller = mtu::testing::test_controller(mtu, probed_size);
+
+        assert_eq!(0, path.clamp_mtu(10000, transmission::Mode::Normal));
+
+        path.on_bytes_received(1);
+        assert_eq!(
+            path.mtu_controller.mtu(),
+            path.clamp_mtu(10000, transmission::Mode::Normal)
+        );
+
+        path.on_bytes_transmitted(100);
+        assert_eq!(0, path.clamp_mtu(10000, transmission::Mode::Normal));
+    }
+
+    #[test]
+    fn peer_validated_test() {
+        let mut path = testing::helper_path();
+        path.peer_validated = false;
+
+        assert!(!path.is_peer_validated());
+
+        path.on_peer_validated();
+
+        assert!(path.is_peer_validated());
+    }
+
+    #[test]
+    fn transmission_constraint_test() {
+        let mut path = Path::new(
+            SocketAddress::default(),
+            connection::PeerId::try_from_bytes(&[]).unwrap(),
+            connection::LocalId::TEST_ID,
+            RttEstimator::new(Duration::from_millis(30)),
+            CubicCongestionController::new(MINIMUM_MTU),
+            false,
+        );
+        let now = NoopClock.get_time();
+        path.validate();
+
+        assert_eq!(
+            path.transmission_constraint(),
+            transmission::Constraint::None
+        );
+
+        // Fill up the congestion controller
+        path.congestion_controller
+            .on_packet_sent(now, path.congestion_controller.congestion_window() as usize);
+
+        assert_eq!(
+            path.transmission_constraint(),
+            transmission::Constraint::CongestionLimited
+        );
+
+        // Lose a byte to enter recovery
+        path.congestion_controller.on_packets_lost(1, false, now);
+
+        assert_eq!(
+            path.transmission_constraint(),
+            transmission::Constraint::RetransmissionOnly
+        );
+
+        // Lose remaining bytes
+        path.congestion_controller.on_packets_lost(
+            path.congestion_controller.congestion_window(),
+            false,
+            now,
+        );
+
+        // Since we are no longer congestion limited, there is no transmission constraint
+        assert_eq!(
+            path.transmission_constraint(),
+            transmission::Constraint::None
+        );
+    }
 }
