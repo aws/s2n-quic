@@ -53,7 +53,7 @@ impl<'a, Config: endpoint::Config, P: Payload> PacketPayloadEncoder
     for Transmission<'a, Config, P>
 {
     fn encoding_size_hint<E: Encoder>(&mut self, encoder: &E, minimum_len: usize) -> usize {
-        if !self.transmission_interest().is_none() {
+        if self.has_transmission_interest() {
             self.payload.size_hint(minimum_len..=encoder.capacity())
         } else {
             0
@@ -115,5 +115,9 @@ impl<'a, Config: endpoint::Config, P: Payload> transmission::interest::Provider
 {
     fn transmission_interest(&self) -> transmission::Interest {
         self.payload.transmission_interest()
+    }
+
+    fn has_transmission_interest(&self) -> bool {
+        self.payload.has_transmission_interest()
     }
 }

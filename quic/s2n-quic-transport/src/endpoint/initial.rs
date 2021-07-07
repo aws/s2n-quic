@@ -264,7 +264,13 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             )?;
 
             connection
-                .handle_cleartext_initial_packet(locked_shared_state, datagram, path_id, packet)
+                .handle_cleartext_initial_packet(
+                    locked_shared_state,
+                    datagram,
+                    path_id,
+                    packet,
+                    endpoint_context.random_generator,
+                )
                 .map_err(|err| {
                     use connection::ProcessingError;
                     match err {
@@ -295,6 +301,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                 endpoint_context.connection_id_format,
                 remaining,
                 &mut publisher,
+                endpoint_context.random_generator,
             )?;
 
             //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.3
