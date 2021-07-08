@@ -59,6 +59,8 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         path_id: Id,
         random_generator: &mut Rnd,
     ) -> Result<(), transport::Error> {
+        println!("update active path");
+
         debug_assert!(path_id != Id(self.active));
 
         let new_path_idx = path_id.0;
@@ -95,6 +97,11 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         if !self.active_path().is_challenge_pending() {
             self.set_challenge(self.active_path_id(), random_generator);
         }
+
+        println!(
+            "update active path: conn_id: {:?}, path_id: {:?}",
+            use_peer_connection_id, path_id
+        );
 
         self[path_id].peer_connection_id = use_peer_connection_id;
 
@@ -283,6 +290,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         self.paths.push(path);
         self.set_challenge(id, random_generator);
 
+        println!("connection migration attempted: path_id: {:?}", id);
         Ok((id, unblocked))
     }
 

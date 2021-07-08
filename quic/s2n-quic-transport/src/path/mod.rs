@@ -196,12 +196,17 @@ impl<CC: CongestionController> Path<CC> {
         //# echoing the data contained in the PATH_CHALLENGE frame in a
         //# PATH_RESPONSE frame.
         self.response_data = Some(*response);
+
+        println!("path challenge received: response data set");
     }
 
     pub fn on_path_response(&mut self, response: &[u8]) {
+        println!("path response received");
+
         if let Some(challenge) = &self.challenge {
             if challenge.is_valid(response) {
                 self.on_validated();
+                println!("path response received: path validated");
 
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3
                 //= type=TODO
