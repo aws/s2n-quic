@@ -29,7 +29,7 @@ impl Default for VecBuffer {
         if cfg!(test) {
             Self::new(64, 1200)
         } else {
-            Self::new(DEFAULT_MESSAGE_COUNT, DEFAULT_MAX_MTU as usize)
+            Self::new(DEFAULT_MESSAGE_COUNT, DEFAULT_MAX_MTU.into())
         }
     }
 }

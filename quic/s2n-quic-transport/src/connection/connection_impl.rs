@@ -35,6 +35,7 @@ use s2n_quic_core::{
         version_negotiation::ProtectedVersionNegotiation,
         zero_rtt::ProtectedZeroRtt,
     },
+    path::MaxMtu,
     random, stateless_reset,
     time::Timestamp,
 };
@@ -737,6 +738,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         datagram: &DatagramInfo,
         congestion_controller_endpoint: &mut Config::CongestionControllerEndpoint,
         random: &mut Config::RandomGenerator,
+        max_mtu: MaxMtu,
     ) -> Result<path::Id, connection::Error> {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
         //# The design of QUIC relies on endpoints retaining a stable address
@@ -760,6 +762,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             handshake_confirmed,
             congestion_controller_endpoint,
             random,
+            max_mtu,
         )?;
 
         if let Some(shared_state) = shared_state {

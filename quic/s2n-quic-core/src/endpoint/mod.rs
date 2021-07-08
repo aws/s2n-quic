@@ -11,6 +11,7 @@ use core::{
 };
 
 pub mod limits;
+use crate::path::MaxMtu;
 pub use limits::Limits;
 
 /// Enumerates endpoint types
@@ -106,7 +107,7 @@ pub trait Endpoint: 'static + Send + Sized {
     fn timeout(&self) -> Option<Timestamp>;
 
     /// Sets the largest maximum transmission unit (MTU) that can be sent on a path
-    fn set_max_mtu(&mut self, max_mtu: u16);
+    fn set_max_mtu(&mut self, max_mtu: MaxMtu);
 }
 
 /// A future which polls an endpoint for application-space wakeups

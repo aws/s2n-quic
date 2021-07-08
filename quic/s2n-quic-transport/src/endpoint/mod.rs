@@ -45,6 +45,7 @@ use s2n_quic_core::{
     crypto::tls::Endpoint as _,
     event,
     inet::{ExplicitCongestionNotification, SocketAddress},
+    path::MaxMtu,
     stateless_reset::token::Generator as _,
 };
 
@@ -171,7 +172,7 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
         self.timer_manager.next_expiration()
     }
 
-    fn set_max_mtu(&mut self, max_mtu: u16) {
+    fn set_max_mtu(&mut self, max_mtu: MaxMtu) {
         self.config.set_max_mtu(max_mtu)
     }
 }
@@ -361,6 +362,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                             datagram,
                             endpoint_context.congestion_controller,
                             endpoint_context.random_generator,
+                            endpoint_context.max_mtu,
                         )
                         .map_err(|_| {
                             // TODO https://github.com/awslabs/s2n-quic/issues/669
@@ -733,7 +735,7 @@ pub mod testing {
             todo!()
         }
 
-        fn set_max_mtu(&mut self, _max_mtu: u16) {
+        fn set_max_mtu(&mut self, _max_mtu: MaxMtu) {
             todo!()
         }
 
@@ -761,7 +763,7 @@ pub mod testing {
             todo!()
         }
 
-        fn set_max_mtu(&mut self, _max_mtu: u16) {
+        fn set_max_mtu(&mut self, _max_mtu: MaxMtu) {
             todo!()
         }
 

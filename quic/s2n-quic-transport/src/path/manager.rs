@@ -12,6 +12,7 @@ use s2n_quic_core::{
     ack, connection, frame,
     inet::{DatagramInfo, SocketAddress},
     packet::number::PacketNumberSpace,
+    path::MaxMtu,
     random,
     recovery::{congestion_controller, RttEstimator},
     stateless_reset,
@@ -149,6 +150,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         handshake_confirmed: bool,
         congestion_controller_endpoint: &mut CCE,
         random_generator: &mut Rnd,
+        max_mtu: MaxMtu,
     ) -> Result<(Id, bool), transport::Error> {
         if let Some((id, path)) = self.path_mut(&datagram.remote_address) {
             let unblocked = path.on_bytes_received(datagram.payload_len);
@@ -190,7 +192,12 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
 
         // TODO set alpn if available
 
-        self.handle_connection_migration(datagram, congestion_controller_endpoint, random_generator)
+        self.handle_connection_migration(
+            datagram,
+            congestion_controller_endpoint,
+            random_generator,
+            max_mtu,
+        )
     }
 
     #[allow(unreachable_code)]
@@ -200,6 +207,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         datagram: &DatagramInfo,
         congestion_controller_endpoint: &mut CCE,
         random_generator: &mut Rnd,
+        max_mtu: MaxMtu,
     ) -> Result<(Id, bool), transport::Error> {
         // Since we are not currently supporting connection migration (whether it was deliberate or
         // not), we will error our at this point to avoid re-using a peer connection ID.
@@ -223,7 +231,6 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         let rtt = RttEstimator::new(self.active_path().rtt_estimator.max_ack_delay());
         let path_info = congestion_controller::PathInfo::new(&datagram.remote_address);
         let cc = congestion_controller_endpoint.new_congestion_controller(path_info);
-        let max_mtu = self.active_path().mtu_controller.max_mtu();
 
         let peer_connection_id = {
             if self.active_path().local_connection_id != datagram.destination_connection_id {
@@ -1078,6 +1085,7 @@ mod tests {
                 true,
                 &mut unlimited::Endpoint::default(),
                 &mut random::testing::Generator(123),
+                DEFAULT_MAX_MTU,
             )
             .unwrap();
 
@@ -1133,6 +1141,7 @@ mod tests {
             handshake_confirmed,
             &mut unlimited::Endpoint::default(),
             &mut random::testing::Generator(123),
+            DEFAULT_MAX_MTU,
         );
 
         // Expectation:
@@ -1174,6 +1183,7 @@ mod tests {
                 &datagram,
                 &mut unlimited::Endpoint::default(),
                 &mut random::testing::Generator(123),
+                DEFAULT_MAX_MTU,
             )
             .unwrap();
 
@@ -1250,6 +1260,7 @@ mod tests {
                 &datagram,
                 &mut unlimited::Endpoint::default(),
                 &mut random::testing::Generator(123),
+                DEFAULT_MAX_MTU,
             )
             .unwrap();
         let first_path_id = Id(0);
@@ -1319,6 +1330,7 @@ mod tests {
                 &datagram,
                 &mut unlimited::Endpoint::default(),
                 &mut random::testing::Generator(123),
+                DEFAULT_MAX_MTU,
             )
             .unwrap();
         let first_path_id = Id(0);

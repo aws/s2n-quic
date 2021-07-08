@@ -70,7 +70,7 @@ impl<CC: CongestionController> Path<CC> {
         rtt_estimator: RttEstimator,
         congestion_controller: CC,
         peer_validated: bool,
-        max_mtu: u16,
+        max_mtu: MaxMtu,
     ) -> Path<CC> {
         Path {
             peer_socket_address,

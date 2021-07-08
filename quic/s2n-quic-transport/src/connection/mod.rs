@@ -35,6 +35,7 @@ pub(crate) use peer_id_registry::PeerIdRegistry;
 pub(crate) use shared_state::{SharedConnectionState, SynchronizedSharedConnectionState};
 pub(crate) use transmission::{ConnectionTransmission, ConnectionTransmissionContext};
 
+use crate::path::MaxMtu;
 pub use api::Connection;
 pub use connection_impl::ConnectionImpl as Implementation;
 /// re-export core
@@ -66,5 +67,5 @@ pub struct Parameters<Cfg: endpoint::Config> {
     /// The limits that were advertised to the peer
     pub limits: connection::Limits,
     /// The largest maximum transmission unit (MTU) that can be sent on a path
-    pub max_mtu: u16,
+    pub max_mtu: MaxMtu,
 }

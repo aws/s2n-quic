@@ -3,7 +3,7 @@
 
 //! Configuration parameters for `Endpoint`s
 
-use crate::{connection, stream};
+use crate::{connection, path::MaxMtu, stream};
 use s2n_quic_core::{
     crypto::tls, endpoint, event, random, recovery::congestion_controller, stateless_reset,
 };
@@ -41,7 +41,7 @@ pub trait Config: 'static + Sized + core::fmt::Debug {
     fn context(&mut self) -> Context<Self>;
 
     /// Sets the largest maximum transmission unit (MTU) that can be sent on a path
-    fn set_max_mtu(&mut self, max_mtu: u16);
+    fn set_max_mtu(&mut self, max_mtu: MaxMtu);
 }
 
 #[derive(Debug)]
@@ -74,5 +74,5 @@ pub struct Context<'a, Cfg: Config> {
 
     pub event_subscriber: &'a mut Cfg::EventSubscriber,
 
-    pub max_mtu: u16,
+    pub max_mtu: MaxMtu,
 }

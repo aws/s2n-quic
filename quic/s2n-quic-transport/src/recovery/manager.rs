@@ -3314,6 +3314,7 @@ mod test {
                     true,
                     &mut Endpoint::default(),
                     &mut random::testing::Generator(123),
+                    DEFAULT_MAX_MTU,
                 )
                 .unwrap();
 

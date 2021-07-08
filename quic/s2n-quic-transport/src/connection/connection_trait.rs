@@ -27,6 +27,7 @@ use s2n_quic_core::{
         zero_rtt::ProtectedZeroRtt,
         ProtectedPacket,
     },
+    path::MaxMtu,
     random, stateless_reset,
     time::Timestamp,
 };
@@ -186,6 +187,7 @@ pub trait ConnectionTrait: Sized {
         datagram: &DatagramInfo,
         congestion_controller_endpoint: &mut <Self::Config as endpoint::Config>::CongestionControllerEndpoint,
         random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
+        max_mtu: MaxMtu,
     ) -> Result<path::Id, connection::Error>;
 
     /// Returns the Connections interests

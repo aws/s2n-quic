@@ -14,16 +14,12 @@ use pin_project::pin_project;
 use s2n_quic_core::{
     endpoint::{CloseError, Endpoint},
     inet::SocketAddress,
-    path::{DEFAULT_MAX_MTU, MINIMUM_MTU},
+    path::MaxMtu,
     time::{self, Clock as ClockTrait},
 };
 #[cfg(target_os = "linux")]
 use std::os::unix::io::AsRawFd;
-use std::{
-    convert::{TryFrom, TryInto},
-    io,
-    io::ErrorKind,
-};
+use std::{convert::TryInto, io, io::ErrorKind};
 use tokio::{net::UdpSocket, runtime::Handle, time::Instant};
 
 #[derive(Debug)]
@@ -92,7 +88,7 @@ impl Io {
             max_mtu,
         } = self.builder;
 
-        endpoint.set_max_mtu(max_mtu.0);
+        endpoint.set_max_mtu(max_mtu);
 
         let handle = if let Some(handle) = handle {
             handle
@@ -246,30 +242,6 @@ fn bind<A: std::net::ToSocketAddrs>(addr: A) -> io::Result<socket2::Socket> {
     Ok(socket)
 }
 
-#[derive(Debug)]
-struct MaxMtu(u16);
-
-impl Default for MaxMtu {
-    fn default() -> Self {
-        MaxMtu(DEFAULT_MAX_MTU)
-    }
-}
-
-impl TryFrom<u16> for MaxMtu {
-    type Error = io::Error;
-
-    fn try_from(value: u16) -> Result<Self, Self::Error> {
-        if value < MINIMUM_MTU {
-            return Err(io::Error::new(
-                ErrorKind::InvalidInput,
-                format!("MaxMtu must be at least {}", MINIMUM_MTU),
-            ));
-        }
-
-        Ok(MaxMtu(value))
-    }
-}
-
 #[derive(Debug, Default)]
 pub struct Builder {
     handle: Option<Handle>,
@@ -348,7 +320,9 @@ impl Builder {
 
     /// Sets the largest maximum transmission unit (MTU) that can be sent on a path
     pub fn with_max_mtu(mut self, max_mtu: u16) -> io::Result<Self> {
-        self.max_mtu = max_mtu.try_into()?;
+        self.max_mtu = max_mtu
+            .try_into()
+            .map_err(|err| io::Error::new(ErrorKind::InvalidInput, err))?;
         Ok(self)
     }
 
@@ -644,7 +618,7 @@ mod tests {
         addr: SocketAddress,
         messages: BTreeMap<u32, Option<Timestamp>>,
         now: Option<Timestamp>,
-        max_mtu: u16,
+        max_mtu: MaxMtu,
     }
 
     impl TestEndpoint {
@@ -715,7 +689,7 @@ mod tests {
             self.now.map(|now| now + Duration::from_millis(50))
         }
 
-        fn set_max_mtu(&mut self, max_mtu: u16) {
+        fn set_max_mtu(&mut self, max_mtu: MaxMtu) {
             self.max_mtu = max_mtu
         }
     }

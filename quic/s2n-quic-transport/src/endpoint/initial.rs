@@ -261,6 +261,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                 datagram,
                 endpoint_context.congestion_controller,
                 endpoint_context.random_generator,
+                endpoint_context.max_mtu,
             )?;
 
             connection
