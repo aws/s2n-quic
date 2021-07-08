@@ -320,7 +320,7 @@ impl Controller {
         }
     }
 
-    /// Gets the currently validated maximum transmission unit
+    /// Gets the currently validated maximum transmission unit, not including IP or UDP header len
     pub fn mtu(&self) -> usize {
         self.plpmtu as usize
     }

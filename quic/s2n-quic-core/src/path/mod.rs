@@ -25,6 +25,10 @@ const IP_MIN_HEADER_LEN: u16 = IPV6_MIN_HEADER_LEN;
 #[cfg(not(feature = "ipv6"))]
 const IP_MIN_HEADER_LEN: u16 = IPV4_MIN_HEADER_LEN;
 
+// The minimum allowed Max MTU is the minimum UDP datagram size of 1200 bytes plus
+// the UDP header length and minimal IP header length
+const MIN_ALLOWED_MAX_MTU: u16 = MINIMUM_MTU + UDP_HEADER_LEN + IP_MIN_HEADER_LEN;
+
 // Initial PTO backoff multiplier is 1 indicating no additional increase to the backoff.
 pub const INITIAL_PTO_BACKOFF: u32 = 1;
 
@@ -41,9 +45,8 @@ impl TryFrom<u16> for MaxMtu {
     type Error = MaxMtuError;
 
     fn try_from(value: u16) -> Result<Self, Self::Error> {
-        let min_allowed = MINIMUM_MTU + UDP_HEADER_LEN + IP_MIN_HEADER_LEN;
-        if value < min_allowed {
-            return Err(MaxMtuError(min_allowed));
+        if value < MIN_ALLOWED_MAX_MTU {
+            return Err(MaxMtuError(MIN_ALLOWED_MAX_MTU));
         }
 
         Ok(MaxMtu(value))
