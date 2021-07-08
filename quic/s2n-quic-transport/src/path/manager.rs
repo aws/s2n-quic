@@ -54,7 +54,11 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     }
 
     /// Update the active path
-    fn update_active_path(&mut self, path_id: Id) -> Result<(), transport::Error> {
+    fn update_active_path<Rnd: random::Generator>(
+        &mut self,
+        path_id: Id,
+        random_generator: &mut Rnd,
+    ) -> Result<(), transport::Error> {
         debug_assert!(path_id != Id(self.active));
 
         let new_path_idx = path_id.0;
@@ -79,6 +83,17 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
 
         if self.active_path().is_validated() {
             self.last_known_validated_path = Some(self.active);
+        }
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.3
+        //# In response to an apparent migration, endpoints MUST validate the
+        //# previously active path using a PATH_CHALLENGE frame.
+        //
+        // TODO: https://github.com/awslabs/s2n-quic/issues/711
+        // The usage of 'apparent' is vague and its not clear if the previous path should
+        // always be validated or only if the new active path is not validated.
+        if !self.active_path().is_challenge_pending() {
+            self.set_challenge(self.active_path_id(), random_generator);
         }
 
         self[path_id].peer_connection_id = use_peer_connection_id;
@@ -386,7 +401,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         random_generator: &mut Rnd,
     ) -> Result<(), transport::Error> {
         if self.active_path_id() != path_id {
-            self.update_active_path(path_id)?;
+            self.update_active_path(path_id, random_generator)?;
 
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3
             //# After changing the address to which it sends non-probing packets, an
@@ -696,7 +711,9 @@ mod tests {
         assert_eq!(manager.active, 0);
         assert!(manager.paths[0].is_validated());
 
-        manager.update_active_path(Id(1)).unwrap();
+        manager
+            .update_active_path(Id(1), &mut random::testing::Generator(123))
+            .unwrap();
         assert_eq!(manager.active, 1);
         assert_eq!(manager.last_known_validated_path, Some(0));
 
@@ -729,7 +746,7 @@ mod tests {
         assert!(helper.manager.paths[helper.first_path_id.0 as usize].is_validated());
         helper
             .manager
-            .update_active_path(helper.second_path_id)
+            .update_active_path(helper.second_path_id, &mut random::testing::Generator(123))
             .unwrap();
 
         // Expectation:
@@ -746,7 +763,7 @@ mod tests {
         // Trigger:
         helper
             .manager
-            .update_active_path(helper.second_path_id)
+            .update_active_path(helper.second_path_id, &mut random::testing::Generator(123))
             .unwrap();
 
         // Expectation:
@@ -763,7 +780,7 @@ mod tests {
         // Trigger:
         helper
             .manager
-            .update_active_path(helper.second_path_id)
+            .update_active_path(helper.second_path_id, &mut random::testing::Generator(123))
             .unwrap();
 
         // Expectation:
@@ -778,13 +795,36 @@ mod tests {
         assert_eq!(helper.manager.active, helper.first_path_id.0);
 
         // Trigger:
-        assert!(helper
-            .manager
-            .update_active_path(helper.second_path_id)
-            .is_err());
+        assert_eq!(
+            helper
+                .manager
+                .update_active_path(helper.second_path_id, &mut random::testing::Generator(123)),
+            Err(transport::Error::INTERNAL_ERROR)
+        );
 
         // Expectation:
         assert_eq!(helper.manager.active, helper.first_path_id.0);
+    }
+
+    #[test]
+    fn set_path_challenge_on_active_path_on_connection_migration() {
+        // Setup:
+        let mut helper = helper_manager_with_paths();
+        helper.manager[helper.zero_path_id].abandon_challenge();
+        assert!(!helper.manager[helper.zero_path_id].is_challenge_pending());
+        assert_eq!(
+            helper.manager.last_known_validated_path.unwrap(),
+            helper.zero_path_id.0
+        );
+
+        // Trigger:
+        helper
+            .manager
+            .update_active_path(helper.second_path_id, &mut random::testing::Generator(123))
+            .unwrap();
+
+        // Expectation:
+        assert!(helper.manager[helper.first_path_id].is_challenge_pending());
     }
 
     #[test]
@@ -1014,6 +1054,7 @@ mod tests {
     fn abandon_all_path_challenges() {
         // Setup:
         let mut helper = helper_manager_with_paths();
+        assert!(helper.manager[helper.zero_path_id].is_challenge_pending());
         assert!(helper.manager[helper.first_path_id].is_challenge_pending());
         assert!(helper.manager[helper.second_path_id].is_challenge_pending());
 
@@ -1021,6 +1062,7 @@ mod tests {
         helper.manager.abandon_all_path_challenges();
 
         // Expectation:
+        assert!(!helper.manager[helper.zero_path_id].is_challenge_pending());
         assert!(!helper.manager[helper.first_path_id].is_challenge_pending());
         assert!(!helper.manager[helper.second_path_id].is_challenge_pending());
     }
@@ -1479,10 +1521,13 @@ mod tests {
         helper.manager.paths.push(third_path);
 
         // not pending challenge or response
-        assert!(helper.manager[helper.first_path_id].is_challenge_pending());
-        assert!(!helper.manager[helper.first_path_id].is_response_pending());
+        helper.manager[helper.zero_path_id].abandon_challenge();
+        assert!(!helper.manager[helper.zero_path_id].is_challenge_pending());
+        assert!(!helper.manager[helper.zero_path_id].is_response_pending());
 
         // pending challenge
+        assert!(helper.manager[helper.first_path_id].is_challenge_pending());
+        assert!(!helper.manager[helper.first_path_id].is_response_pending());
         assert!(helper.manager[helper.second_path_id].is_challenge_pending());
         assert!(!helper.manager[helper.second_path_id].is_response_pending());
 
@@ -1492,26 +1537,15 @@ mod tests {
 
         let mut pending_paths = helper.manager.paths_pending_validation();
 
-        // Trigger:
-        let next = pending_paths.next_path();
+        // inclusive range from 1 to 3
+        for i in 1..=3 {
+            // Trigger:
+            let next = pending_paths.next_path();
 
-        // Expectation:
-        let (path_id, _path_manager) = next.unwrap();
-        assert_eq!(path_id, helper.first_path_id);
-
-        // Trigger:
-        let next = pending_paths.next_path();
-
-        // Expectation:
-        let (path_id, _path_manager) = next.unwrap();
-        assert_eq!(path_id, helper.second_path_id);
-
-        // Trigger:
-        let next = pending_paths.next_path();
-
-        // Expectation:
-        let (path_id, _path_manager) = next.unwrap();
-        assert_eq!(path_id, third_path_id);
+            // Expectation:
+            let (path_id, _path_manager) = next.unwrap();
+            assert_eq!(path_id, Id(i));
+        }
 
         // Trigger:
         let next = pending_paths.next_path();
@@ -1539,6 +1573,11 @@ mod tests {
             Default::default(),
             false,
         );
+        if validate_path_zero {
+            zero_path.on_validated();
+        }
+        assert!(!zero_path.is_challenge_pending());
+
         let now = NoopClock {}.get_time();
         let challenge_expiration = Duration::from_millis(10_000);
         let expected_data = [0; 8];
@@ -1585,10 +1624,6 @@ mod tests {
                 .is_ok());
         }
 
-        if validate_path_zero {
-            zero_path.on_validated();
-        }
-
         let mut manager = Manager::new(zero_path, peer_id_registry);
         assert!(manager.peer_id_registry.is_active(&first_conn_id));
         manager.paths.push(first_path);
@@ -1600,7 +1635,14 @@ mod tests {
         if validate_path_zero {
             assert!(manager.active_path().is_validated());
         }
-        assert!(manager.update_active_path(first_path_id).is_ok());
+
+        assert!(manager
+            .update_active_path(first_path_id, &mut random::testing::Generator(123))
+            .is_ok());
+        if validate_path_zero {
+            assert!(manager[zero_path_id].is_challenge_pending());
+        }
+
         assert!(manager.peer_id_registry.consume_new_id().is_some());
 
         // assert first_path is active and last_known_validated_path
