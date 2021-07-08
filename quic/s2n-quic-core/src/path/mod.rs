@@ -38,12 +38,12 @@ impl Default for MaxMtu {
 }
 
 impl TryFrom<u16> for MaxMtu {
-    type Error = String;
+    type Error = MaxMtuError;
 
     fn try_from(value: u16) -> Result<Self, Self::Error> {
         let min_allowed = MINIMUM_MTU + UDP_HEADER_LEN + IP_MIN_HEADER_LEN;
         if value < min_allowed {
-            return Err(format!("MaxMtu must be at least {}", min_allowed));
+            return Err(MaxMtuError(min_allowed));
         }
 
         Ok(MaxMtu(value))
@@ -61,3 +61,6 @@ impl From<MaxMtu> for u16 {
         value.0
     }
 }
+
+#[derive(Debug)]
+pub struct MaxMtuError(pub u16);
