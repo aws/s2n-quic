@@ -92,11 +92,8 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         // TODO: https://github.com/awslabs/s2n-quic/issues/711
         // The usage of 'apparent' is vague and its not clear if the previous path should
         // always be validated or only if the new active path is not validated.
-        if let Some(last_known_validated_path_id) = self.last_known_validated_path {
-            let last_valid_path_id = Id(last_known_validated_path_id);
-            if !self[last_valid_path_id].is_challenge_pending() {
-                self.set_challenge(last_valid_path_id, random_generator);
-            }
+        if !self.active_path().is_challenge_pending() {
+            self.set_challenge(self.active_path_id(), random_generator);
         }
 
         self[path_id].peer_connection_id = use_peer_connection_id;
@@ -802,7 +799,7 @@ mod tests {
     }
 
     #[test]
-    fn set_path_challenge_on_last_active_path_on_connection_migration() {
+    fn set_path_challenge_on_active_path_on_connection_migration() {
         // Setup:
         let mut helper = helper_manager_with_paths();
         helper.manager[helper.zero_path_id].abandon_challenge();
@@ -819,7 +816,7 @@ mod tests {
             .unwrap();
 
         // Expectation:
-        assert!(helper.manager[helper.zero_path_id].is_challenge_pending());
+        assert!(helper.manager[helper.first_path_id].is_challenge_pending());
     }
 
     #[test]
