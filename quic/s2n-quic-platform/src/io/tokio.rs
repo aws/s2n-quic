@@ -664,8 +664,11 @@ mod tests {
             let len = entries.len();
             for entry in entries {
                 let payload: &[u8] = entry.payload_mut();
-                let payload = payload.try_into().unwrap();
-                let id = u32::from_be_bytes(payload);
+                if payload.len() != 4 {
+                    panic!("invalid payload {:?}", payload);
+                }
+                let id = payload.try_into().unwrap();
+                let id = u32::from_be_bytes(id);
                 self.messages.remove(&id);
             }
             queue.finish(len);

@@ -1,24 +1,28 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::buffer::{Buffer, SegmentBuffer};
+use crate::buffer::Buffer;
 use core::{
     fmt,
-    ops::{Index, IndexMut},
+    ops::{Deref, DerefMut},
 };
 use s2n_quic_core::path::DEFAULT_MAX_MTU;
 
 // TODO decide on better defaults
-const DEFAULT_MESSAGE_COUNT: usize = 4096;
+const DEFAULT_MESSAGE_COUNT: usize = 1024;
 
-pub struct VecBuffer(SegmentBuffer<alloc::vec::Vec<u8>>);
+pub struct VecBuffer {
+    region: alloc::vec::Vec<u8>,
+    mtu: usize,
+}
 
 impl VecBuffer {
     /// Create a contiguous buffer with the specified number of messages
     pub fn new(message_count: usize, mtu: usize) -> Self {
         let len = message_count * mtu;
-        let vec = alloc::vec![0; len];
-        Self(SegmentBuffer::new(vec, mtu))
+        let region = alloc::vec![0; len];
+
+        Self { region, mtu }
     }
 }
 
@@ -45,24 +49,24 @@ impl fmt::Debug for VecBuffer {
 
 impl Buffer for VecBuffer {
     fn len(&self) -> usize {
-        self.0.len()
+        self.region.len()
     }
 
     fn mtu(&self) -> usize {
-        self.0.mtu()
+        self.mtu
     }
 }
 
-impl Index<usize> for VecBuffer {
-    type Output = [u8];
+impl Deref for VecBuffer {
+    type Target = [u8];
 
-    fn index(&self, index: usize) -> &Self::Output {
-        self.0.index(index)
+    fn deref(&self) -> &[u8] {
+        self.region.as_ref()
     }
 }
 
-impl IndexMut<usize> for VecBuffer {
-    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        self.0.index_mut(index)
+impl DerefMut for VecBuffer {
+    fn deref_mut(&mut self) -> &mut [u8] {
+        self.region.as_mut()
     }
 }

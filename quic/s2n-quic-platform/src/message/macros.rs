@@ -4,8 +4,10 @@
 #![allow(unused_macros)]
 
 macro_rules! impl_message_delegate {
-    ($name:ident, $field:tt) => {
+    ($name:ident, $field:tt, $field_ty:ty) => {
         impl $crate::message::Message for $name {
+            const SUPPORTS_GSO: bool = <$field_ty as $crate::message::Message>::SUPPORTS_GSO;
+
             fn ecn(&self) -> ExplicitCongestionNotification {
                 $crate::message::Message::ecn(&self.$field)
             }
@@ -22,16 +24,20 @@ macro_rules! impl_message_delegate {
                 $crate::message::Message::set_remote_address(&mut self.$field, remote_address)
             }
 
-            fn reset_remote_address(&mut self) {
-                $crate::message::Message::reset_remote_address(&mut self.$field)
-            }
-
             fn payload_len(&self) -> usize {
                 $crate::message::Message::payload_len(&self.$field)
             }
 
             unsafe fn set_payload_len(&mut self, payload_len: usize) {
                 $crate::message::Message::set_payload_len(&mut self.$field, payload_len)
+            }
+
+            fn set_segment_size(&mut self, size: usize) {
+                $crate::message::Message::set_segment_size(&mut self.$field, size)
+            }
+
+            unsafe fn reset(&mut self, mtu: usize) {
+                $crate::message::Message::reset(&mut self.$field, mtu)
             }
 
             fn replicate_fields_from(&mut self, other: &Self) {

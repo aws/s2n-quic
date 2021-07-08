@@ -84,6 +84,14 @@ impl<Ring: message::Ring> Queue<Ring> {
         self.ring.mtu()
     }
 
+    pub fn max_gso(&self) -> usize {
+        self.ring.max_gso()
+    }
+
+    pub fn disable_gso(&mut self) {
+        self.ring.disable_gso()
+    }
+
     /// Returns the number of slots in the buffer
     pub fn capacity(&self) -> usize {
         self.ring.len()
@@ -102,22 +110,28 @@ impl<Ring: message::Ring> Queue<Ring> {
     /// Returns a slice of all of the `free` messages
     pub fn free_mut(&mut self) -> Free<Ring::Message> {
         let mtu = self.mtu();
+        let max_gso = self.max_gso();
         Slice {
             messages: self.ring.as_mut_slice(),
             primary: &mut self.free,
             secondary: &mut self.occupied,
             behavior: behavior::Free { mtu },
+            max_gso,
+            gso_segment: None,
         }
     }
 
     /// Returns a slice of all of the `occupied` messages
     pub fn occupied_mut(&mut self) -> Occupied<Ring::Message> {
         let mtu = self.mtu();
+        let max_gso = self.max_gso();
         Slice {
             messages: self.ring.as_mut_slice(),
             primary: &mut self.occupied,
             secondary: &mut self.free,
             behavior: behavior::Occupied { mtu },
+            max_gso,
+            gso_segment: None,
         }
     }
 
@@ -126,11 +140,14 @@ impl<Ring: message::Ring> Queue<Ring> {
     /// The messages will be wiped on release.
     pub fn occupied_wipe_mut(&mut self) -> OccupiedWipe<Ring::Message> {
         let mtu = self.mtu();
+        let max_gso = self.max_gso();
         Slice {
             messages: self.ring.as_mut_slice(),
             primary: &mut self.occupied,
             secondary: &mut self.free,
             behavior: behavior::OccupiedWipe { mtu },
+            max_gso,
+            gso_segment: None,
         }
     }
 }
@@ -284,7 +301,9 @@ mod tests {
                     .for_each(|(capacity, ops)| {
                         use $ring;
                         let payloads = VecBuffer::new(*capacity, MTU);
-                        let ring = Ring::new(payloads);
+                        // limit GSO segments as this harness assumes no GSO
+                        let max_gso = 1;
+                        let ring = Ring::new(payloads, max_gso);
                         let queue = Queue::new(ring);
                         assert_eq!(queue.mtu(), MTU);
                         check(queue, *capacity, ops);

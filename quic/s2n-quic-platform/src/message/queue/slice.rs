@@ -8,7 +8,7 @@ use s2n_quic_core::io::{rx, tx};
 
 /// A view of the currently enqueued messages for a given segment
 #[derive(Debug)]
-pub struct Slice<'a, Message, Behavior> {
+pub struct Slice<'a, Message: message::Message, Behavior> {
     /// A slice of all of the messages in the buffer
     pub(crate) messages: &'a mut [Message],
     /// Reference to the primary segment
@@ -17,17 +17,25 @@ pub struct Slice<'a, Message, Behavior> {
     pub(crate) secondary: &'a mut Segment,
     /// Reset the messages after use
     pub(crate) behavior: Behavior,
+    /// The maximum allowed number of GSO segments
+    pub(crate) max_gso: usize,
+    /// The index to the previously pushed segment
+    pub(crate) gso_segment: Option<GsoSegment>,
+}
+
+#[derive(Debug, Default)]
+pub struct GsoSegment {
+    index: usize,
+    count: usize,
+    size: usize,
 }
 
 impl<'a, Message: message::Message, B: Behavior> Slice<'a, Message, B> {
-    pub fn into_slice_mut(self) -> &'a mut [Message] {
-        &mut self.messages[self.primary.range()]
-    }
-
     /// Finishes the borrow of the `Slice` with a specified `count`
     ///
     /// Calling this method will move `count` messages from one segment
     /// to the other; e.g. `ready` to `pending`.
+    #[inline]
     pub fn finish(mut self, count: usize) {
         self.advance(count);
     }
@@ -39,6 +47,8 @@ impl<'a, Message: message::Message, B: Behavior> Slice<'a, Message, B> {
             "cannot finish more messages than available"
         );
 
+        self.flush_gso();
+
         let (start, end, overflow, capacity) = self.compute_behavior_arguments(count);
 
         let (primary, secondary) = self.messages.split_at_mut(capacity);
@@ -49,7 +59,9 @@ impl<'a, Message: message::Message, B: Behavior> Slice<'a, Message, B> {
     }
 
     /// Preserves the messages in the current segment
-    pub fn cancel(self, count: usize) {
+    pub fn cancel(mut self, count: usize) {
+        self.flush_gso();
+
         let (start, end, overflow, capacity) = self.compute_behavior_arguments(count);
 
         let (primary, secondary) = self.messages.split_at_mut(capacity);
@@ -72,15 +84,50 @@ impl<'a, Message: message::Message, B: Behavior> Slice<'a, Message, B> {
     }
 }
 
-impl<'a, Message, R> Deref for Slice<'a, Message, R> {
+impl<'a, Message: message::Message, B> Slice<'a, Message, B> {
+    fn flush_gso(&mut self) {
+        if let Some(gso) = self.gso_segment.take() {
+            if gso.count > 1 {
+                let mid = self.messages.len() / 2;
+                let (primary, secondary) = self.messages.split_at_mut(mid);
+                let index = gso.index;
+
+                // try to wrap around the midpoint
+                let (primary, secondary) = if let Some(index) = index.checked_sub(mid) {
+                    let primary = &mut primary[index];
+                    let secondary = &mut secondary[index];
+                    (secondary, primary)
+                } else {
+                    let primary = &mut primary[index];
+                    let secondary = &mut secondary[index];
+                    (primary, secondary)
+                };
+
+                primary.set_segment_size(gso.size);
+                secondary.replicate_fields_from(primary);
+            }
+        }
+    }
+}
+
+impl<'a, Message: message::Message, R> Drop for Slice<'a, Message, R> {
+    #[inline]
+    fn drop(&mut self) {
+        self.flush_gso()
+    }
+}
+
+impl<'a, Message: message::Message, R> Deref for Slice<'a, Message, R> {
     type Target = [Message];
 
+    #[inline]
     fn deref(&self) -> &Self::Target {
         &self.messages[self.primary.range()]
     }
 }
 
-impl<'a, Message, R> DerefMut for Slice<'a, Message, R> {
+impl<'a, Message: message::Message, R> DerefMut for Slice<'a, Message, R> {
+    #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.messages[self.primary.range()]
     }
@@ -89,15 +136,18 @@ impl<'a, Message, R> DerefMut for Slice<'a, Message, R> {
 impl<'a, Message: rx::Entry + message::Message, B: Behavior> rx::Queue for Slice<'a, Message, B> {
     type Entry = Message;
 
+    #[inline]
     fn as_slice_mut(&mut self) -> &mut [Message] {
         let range = self.primary.range();
         &mut self.messages[range]
     }
 
+    #[inline]
     fn len(&self) -> usize {
         self.primary.len
     }
 
+    #[inline]
     fn finish(&mut self, count: usize) {
         self.advance(count)
     }
@@ -106,26 +156,116 @@ impl<'a, Message: rx::Entry + message::Message, B: Behavior> rx::Queue for Slice
 impl<'a, Message: tx::Entry + message::Message, B: Behavior> tx::Queue for Slice<'a, Message, B> {
     type Entry = Message;
 
-    fn push<M: tx::Message>(&mut self, message: M) -> Result<usize, tx::Error> {
+    fn push<M: tx::Message>(&mut self, mut message: M) -> Result<usize, tx::Error> {
+        if Message::SUPPORTS_GSO {
+            if let Some(gso) = self.gso_segment.as_mut() {
+                let max_segments = self.max_gso;
+                debug_assert!(
+                    max_segments > 1,
+                    "gso_segment should only be set when max_gso > 1"
+                );
+
+                let prev_message = &mut self.messages[gso.index];
+
+                if message.can_gso()
+                    && prev_message.remote_address() == Some(message.remote_address())
+                {
+                    debug_assert!(
+                        gso.count < max_segments,
+                        "{} cannot exceed {}",
+                        gso.count,
+                        max_segments
+                    );
+
+                    let payload_len = prev_message.payload_len();
+
+                    unsafe {
+                        // Safety: all payloads should have enough capacity to extend max_segments *
+                        // gso.size
+                        prev_message.set_payload_len(payload_len + gso.size);
+                    }
+
+                    // allow the message to write up to `gso.size` bytes
+                    let buffer = &mut message::Message::payload_mut(prev_message)[payload_len..];
+
+                    match message.write_payload(buffer) {
+                        0 => {
+                            unsafe {
+                                // revert the len to what it was before
+                                prev_message.set_payload_len(payload_len);
+                            }
+                            return Err(tx::Error::EmptyPayload);
+                        }
+                        size => {
+                            unsafe {
+                                // set the len to the actual amount written to the payload
+                                prev_message.set_payload_len(payload_len + size);
+                            }
+                            // increment the number of segments
+                            gso.count += 1;
+
+                            debug_assert!(
+                                gso.count <= max_segments,
+                                "{} cannot exceed {}",
+                                gso.count,
+                                max_segments
+                            );
+
+                            let index = gso.index;
+
+                            // the last segment can be smaller but we can't write any more if it is
+                            let size_mismatch = gso.size != size;
+
+                            // we're bounded by the max_segments amount
+                            let at_segment_limit = gso.count >= max_segments;
+
+                            // we also can't write more data than u16::MAX
+                            let at_payload_limit = gso.size * (gso.count + 1) > u16::MAX as usize;
+
+                            if size_mismatch || at_segment_limit || at_payload_limit {
+                                self.flush_gso();
+                            }
+
+                            return Ok(index);
+                        }
+                    }
+                }
+
+                // move on to the next index
+                self.flush_gso();
+            }
+        }
+
         let index = self
             .primary
-            .index(&self.secondary)
+            .index(self.secondary)
             .ok_or(tx::Error::AtCapacity)?;
 
-        self.messages[index].set(message)?;
+        let size = self.messages[index].set(message)?;
         self.advance(1);
+
+        if Message::SUPPORTS_GSO && self.max_gso > 1 {
+            self.gso_segment = Some(GsoSegment {
+                index,
+                count: 1,
+                size,
+            });
+        }
 
         Ok(index)
     }
 
+    #[inline]
     fn as_slice_mut(&mut self) -> &mut [Message] {
         &mut self.messages[self.secondary.range()]
     }
 
+    #[inline]
     fn capacity(&self) -> usize {
         self.primary.len
     }
 
+    #[inline]
     fn len(&self) -> usize {
         self.secondary.len
     }

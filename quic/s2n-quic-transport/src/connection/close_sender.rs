@@ -115,22 +115,32 @@ pub struct Transmission<'a, CC: CongestionController> {
 }
 
 impl<'a, CC: CongestionController> tx::Message for Transmission<'a, CC> {
+    #[inline]
     fn remote_address(&mut self) -> SocketAddress {
         self.path.peer_socket_address
     }
 
+    #[inline]
     fn ecn(&mut self) -> ExplicitCongestionNotification {
         ExplicitCongestionNotification::default()
     }
 
+    #[inline]
     fn ipv6_flow_label(&mut self) -> u32 {
         0
     }
 
+    #[inline]
+    fn can_gso(&self) -> bool {
+        true
+    }
+
+    #[inline]
     fn delay(&mut self) -> Duration {
         Duration::default()
     }
 
+    #[inline]
     fn write_payload(&mut self, buffer: &mut [u8]) -> usize {
         let len = self.packet.len();
 

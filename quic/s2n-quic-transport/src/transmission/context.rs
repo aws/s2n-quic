@@ -65,22 +65,27 @@ impl<'a, 'b, Config: endpoint::Config> Context<'a, 'b, Config> {
 }
 
 impl<'a, 'b, Config: endpoint::Config> WriteContext for Context<'a, 'b, Config> {
+    #[inline]
     fn current_time(&self) -> Timestamp {
         self.timestamp
     }
 
+    #[inline]
     fn transmission_constraint(&self) -> transmission::Constraint {
         self.transmission_constraint
     }
 
+    #[inline]
     fn transmission_mode(&self) -> Mode {
         self.transmission_mode
     }
 
+    #[inline]
     fn remaining_capacity(&self) -> usize {
         self.buffer.remaining_capacity()
     }
 
+    #[inline]
     fn write_frame<
         Frame: EncoderValue + AckElicitable + CongestionControlled + PathValidationProbing,
     >(
@@ -91,6 +96,7 @@ impl<'a, 'b, Config: endpoint::Config> WriteContext for Context<'a, 'b, Config> 
         self.write_frame_forced(frame)
     }
 
+    #[inline]
     fn write_fitted_frame<
         Frame: EncoderValue + AckElicitable + CongestionControlled + PathValidationProbing,
     >(
@@ -107,6 +113,7 @@ impl<'a, 'b, Config: endpoint::Config> WriteContext for Context<'a, 'b, Config> 
         self.packet_number
     }
 
+    #[inline]
     fn write_frame_forced<Frame: EncoderValue + AckElicitable + CongestionControlled>(
         &mut self,
         frame: &Frame,
@@ -122,22 +129,27 @@ impl<'a, 'b, Config: endpoint::Config> WriteContext for Context<'a, 'b, Config> 
         Some(self.packet_number)
     }
 
+    #[inline]
     fn ack_elicitation(&self) -> AckElicitation {
         self.outcome.ack_elicitation
     }
 
+    #[inline]
     fn packet_number(&self) -> PacketNumber {
         self.packet_number
     }
 
+    #[inline]
     fn local_endpoint_type(&self) -> endpoint::Type {
         Config::ENDPOINT_TYPE
     }
 
+    #[inline]
     fn header_len(&self) -> usize {
         self.header_len
     }
 
+    #[inline]
     fn tag_len(&self) -> usize {
         self.tag_len
     }
@@ -156,10 +168,12 @@ impl<'a, C: WriteContext> RetransmissionContext<'a, C> {
 }
 
 impl<'a, C: WriteContext> WriteContext for RetransmissionContext<'a, C> {
+    #[inline]
     fn current_time(&self) -> Timestamp {
         self.context.current_time()
     }
 
+    #[inline]
     fn transmission_constraint(&self) -> transmission::Constraint {
         debug_assert!(
             self.context.transmission_constraint().can_retransmit(),
@@ -169,14 +183,17 @@ impl<'a, C: WriteContext> WriteContext for RetransmissionContext<'a, C> {
         transmission::Constraint::RetransmissionOnly
     }
 
+    #[inline]
     fn transmission_mode(&self) -> Mode {
         self.context.transmission_mode()
     }
 
+    #[inline]
     fn remaining_capacity(&self) -> usize {
         self.context.remaining_capacity()
     }
 
+    #[inline]
     fn write_frame<
         Frame: EncoderValue + AckElicitable + CongestionControlled + PathValidationProbing,
     >(
@@ -186,6 +203,7 @@ impl<'a, C: WriteContext> WriteContext for RetransmissionContext<'a, C> {
         self.context.write_frame(frame)
     }
 
+    #[inline]
     fn write_fitted_frame<
         Frame: EncoderValue + AckElicitable + CongestionControlled + PathValidationProbing,
     >(
@@ -195,6 +213,7 @@ impl<'a, C: WriteContext> WriteContext for RetransmissionContext<'a, C> {
         self.context.write_fitted_frame(frame)
     }
 
+    #[inline]
     fn write_frame_forced<Frame: EncoderValue + AckElicitable + CongestionControlled>(
         &mut self,
         frame: &Frame,
@@ -202,22 +221,27 @@ impl<'a, C: WriteContext> WriteContext for RetransmissionContext<'a, C> {
         self.context.write_frame_forced(frame)
     }
 
+    #[inline]
     fn ack_elicitation(&self) -> AckElicitation {
         self.context.ack_elicitation()
     }
 
+    #[inline]
     fn packet_number(&self) -> PacketNumber {
         self.context.packet_number()
     }
 
+    #[inline]
     fn local_endpoint_type(&self) -> endpoint::Type {
         self.context.local_endpoint_type()
     }
 
+    #[inline]
     fn header_len(&self) -> usize {
         self.context.header_len()
     }
 
+    #[inline]
     fn tag_len(&self) -> usize {
         self.context.tag_len()
     }

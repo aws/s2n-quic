@@ -1,10 +1,13 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::message::{msg::Ring as MsgRing, Message as MessageTrait};
+use crate::message::{
+    msg::{self, Ring as MsgRing},
+    Message as MessageTrait,
+};
 use alloc::vec::Vec;
 use core::{fmt, mem::zeroed};
-use libc::{iovec, mmsghdr, sockaddr_in6};
+use libc::mmsghdr;
 use s2n_quic_core::{
     inet::{ExplicitCongestionNotification, SocketAddress},
     io::{rx, tx},
@@ -13,7 +16,7 @@ use s2n_quic_core::{
 #[repr(transparent)]
 pub struct Message(pub(crate) mmsghdr);
 
-impl_message_delegate!(Message, 0);
+impl_message_delegate!(Message, 0, mmsghdr);
 
 impl fmt::Debug for Message {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -26,44 +29,62 @@ impl fmt::Debug for Message {
 }
 
 impl MessageTrait for mmsghdr {
+    const SUPPORTS_GSO: bool = true;
+
+    #[inline]
     fn ecn(&self) -> ExplicitCongestionNotification {
         self.msg_hdr.ecn()
     }
 
+    #[inline]
     fn set_ecn(&mut self, ecn: ExplicitCongestionNotification) {
         self.msg_hdr.set_ecn(ecn)
     }
 
+    #[inline]
     fn remote_address(&self) -> Option<SocketAddress> {
         self.msg_hdr.remote_address()
     }
 
+    #[inline]
     fn set_remote_address(&mut self, remote_address: &SocketAddress) {
         self.msg_hdr.set_remote_address(remote_address)
     }
 
-    fn reset_remote_address(&mut self) {
-        self.msg_hdr.reset_remote_address()
-    }
-
+    #[inline]
     fn payload_len(&self) -> usize {
         self.msg_len as usize
     }
 
+    #[inline]
     unsafe fn set_payload_len(&mut self, len: usize) {
         debug_assert!(len <= core::u32::MAX as usize);
         self.msg_len = len as _;
         self.msg_hdr.set_payload_len(len);
     }
 
+    #[inline]
+    fn set_segment_size(&mut self, size: usize) {
+        self.msg_hdr.set_segment_size(size)
+    }
+
+    #[inline]
+    unsafe fn reset(&mut self, mtu: usize) {
+        self.set_payload_len(mtu);
+        self.msg_hdr.reset(mtu)
+    }
+
+    #[inline]
     fn payload_ptr(&self) -> *const u8 {
         self.msg_hdr.payload_ptr()
     }
 
+    #[inline]
     fn payload_ptr_mut(&mut self) -> *mut u8 {
         self.msg_hdr.payload_ptr_mut()
     }
 
+    #[inline]
     fn replicate_fields_from(&mut self, other: &Self) {
         self.msg_len = other.msg_len;
         self.msg_hdr.replicate_fields_from(&other.msg_hdr)
@@ -72,18 +93,7 @@ impl MessageTrait for mmsghdr {
 
 pub struct Ring<Payloads> {
     messages: Vec<Message>,
-
-    // this field holds references to allocated payloads, but is never read directly
-    #[allow(dead_code)]
-    payloads: Payloads,
-
-    // this field holds references to allocated iovecs, but is never read directly
-    #[allow(dead_code)]
-    iovecs: Vec<iovec>,
-
-    // this field holds references to allocated msg_names, but is never read directly
-    #[allow(dead_code)]
-    msg_names: Vec<sockaddr_in6>,
+    storage: msg::Storage<Payloads>,
 }
 
 /// Even though `Ring` contains raw pointers, it owns all of the data
@@ -92,18 +102,19 @@ unsafe impl<Payloads: Send> Send for Ring<Payloads> {}
 
 impl<Payloads: crate::buffer::Buffer + Default> Default for Ring<Payloads> {
     fn default() -> Self {
-        Self::new(Payloads::default())
+        Self::new(
+            Payloads::default(),
+            crate::features::get().gso.default_max_segments(),
+        )
     }
 }
 
 impl<Payloads: crate::buffer::Buffer> Ring<Payloads> {
-    pub fn new(payloads: Payloads) -> Self {
+    pub fn new(payloads: Payloads, max_gso: usize) -> Self {
         let MsgRing {
             mut messages,
-            payloads,
-            iovecs,
-            msg_names,
-        } = MsgRing::new(payloads);
+            storage,
+        } = MsgRing::new(payloads, max_gso);
 
         // convert msghdr into mmsghdr
         let messages = messages
@@ -117,30 +128,40 @@ impl<Payloads: crate::buffer::Buffer> Ring<Payloads> {
             })
             .collect();
 
-        Self {
-            messages,
-            payloads,
-            iovecs,
-            msg_names,
-        }
+        Self { messages, storage }
     }
 }
 
 impl<Payloads: crate::buffer::Buffer> super::Ring for Ring<Payloads> {
     type Message = Message;
 
+    #[inline]
     fn len(&self) -> usize {
-        self.payloads.len()
+        self.messages.len() / 2
     }
 
+    #[inline]
     fn mtu(&self) -> usize {
-        self.payloads.mtu()
+        self.storage.mtu()
     }
 
+    #[inline]
+    fn max_gso(&self) -> usize {
+        self.storage.max_gso()
+    }
+
+    #[inline]
+    fn disable_gso(&mut self) {
+        // TODO recompute message offsets
+        self.storage.disable_gso()
+    }
+
+    #[inline]
     fn as_slice(&self) -> &[Self::Message] {
         &self.messages[..]
     }
 
+    #[inline]
     fn as_mut_slice(&mut self) -> &mut [Self::Message] {
         &mut self.messages[..]
     }
@@ -169,28 +190,34 @@ impl tx::Entry for Message {
         Ok(len)
     }
 
+    #[inline]
     fn payload(&self) -> &[u8] {
         MessageTrait::payload(self)
     }
 
+    #[inline]
     fn payload_mut(&mut self) -> &mut [u8] {
         MessageTrait::payload_mut(self)
     }
 }
 
 impl rx::Entry for Message {
+    #[inline]
     fn remote_address(&self) -> Option<SocketAddress> {
         MessageTrait::remote_address(self)
     }
 
+    #[inline]
     fn ecn(&self) -> ExplicitCongestionNotification {
         MessageTrait::ecn(self)
     }
 
+    #[inline]
     fn payload(&self) -> &[u8] {
         MessageTrait::payload(self)
     }
 
+    #[inline]
     fn payload_mut(&mut self) -> &mut [u8] {
         MessageTrait::payload_mut(self)
     }

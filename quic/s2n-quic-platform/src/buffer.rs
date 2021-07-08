@@ -1,16 +1,14 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-mod segment;
+use core::ops::{Deref, DerefMut};
+
 mod vec;
 // TODO support mmap buffers
 
-pub use segment::*;
 pub use vec::*;
 
-use core::ops::{Index, IndexMut};
-
-pub trait Buffer: Index<usize, Output = [u8]> + IndexMut<usize> {
+pub trait Buffer: Deref<Target = [u8]> + DerefMut {
     fn len(&self) -> usize;
 
     fn is_empty(&self) -> bool {

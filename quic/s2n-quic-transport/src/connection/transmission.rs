@@ -57,22 +57,31 @@ pub struct ConnectionTransmission<'a, 'sub, Config: endpoint::Config> {
 }
 
 impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<'a, 'sub, Config> {
+    #[inline]
     fn remote_address(&mut self) -> SocketAddress {
         self.context.path().peer_socket_address
     }
 
+    #[inline]
     fn ecn(&mut self) -> ExplicitCongestionNotification {
         self.context.ecn
     }
 
+    #[inline]
     fn delay(&mut self) -> Duration {
         // TODO return delay from pacer
         Default::default()
     }
 
+    #[inline]
     fn ipv6_flow_label(&mut self) -> u32 {
         // TODO compute flow label from connection id
         0
+    }
+
+    #[inline]
+    fn can_gso(&self) -> bool {
+        !self.context.transmission_mode.is_mtu_probing()
     }
 
     fn write_payload(&mut self, buffer: &mut [u8]) -> usize {
