@@ -125,9 +125,7 @@ impl Challenge {
     }
 
     pub fn on_validate(&mut self, data: &[u8]) -> bool {
-        let matches: bool = ConstantTimeEq::ct_eq(&self.data[..], &data).into();
-
-        if self.is_pending() && matches {
+        if self.is_pending() && ConstantTimeEq::ct_eq(&self.data[..], &data).into() {
             self.state = State::Validated;
             true
         } else {
