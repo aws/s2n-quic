@@ -261,6 +261,38 @@ jobs:
           name: interop-${{ matrix.client }}-client-${{ matrix.server }}-server
           path: quic-interop-runner/results/result.json
 
+  verify-connection-migration:
+    runs-on: ubuntu-latest
+    needs: [interop]
+    strategy:
+      matrix: ${{ fromJson(needs.env.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: actions/download-artifact@v2
+        with:
+          path: results/
+
+      - name: Download latest results
+        id: download
+        run: |
+          rm -f result.json
+          INTEROP_BASE_URL="https://interop.seemann.io/logs/"
+          wget ${INTEROP_BASE_URL}latest/result.json || echo '{}' > result.json
+          mv result.json latest.json
+          INTEROP_LOG_URL=${INTEROP_BASE_URL}$(jq --raw-output '.log_dir' latest.json)/SERVER_CLIENT/TEST/
+          echo "::set-output name=INTEROP_LOG_URL::$INTEROP_LOG_URL"
+
+      - name: Parse logs to validate connection migration
+        if: github.event.pull_request
+        run: |
+          mkdir -p web/logs/latest
+          MAIN_SHA=${{ steps.mainsha.outputs.MAIN_SHA }}
+          python3 .github/interop/verify_connection_migration.py \
+            --interop_log_url "${{ steps.download.outputs.INTEROP_LOG_URL }}" \
+            results/**/result.json > \
+              web/logs/latest/result.json
+
   generate-report:
     runs-on: ubuntu-latest
     needs: [interop]
