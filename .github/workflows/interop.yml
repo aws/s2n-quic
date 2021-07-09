@@ -273,23 +273,14 @@ jobs:
         with:
           path: results/
 
-      - name: Download latest results
-        id: download
-        run: |
-          rm -f result.json
-          INTEROP_BASE_URL="https://interop.seemann.io/logs/"
-          wget ${INTEROP_BASE_URL}latest/result.json || echo '{}' > result.json
-          mv result.json latest.json
-          INTEROP_LOG_URL=${INTEROP_BASE_URL}$(jq --raw-output '.log_dir' latest.json)/SERVER_CLIENT/TEST/
-          echo "::set-output name=INTEROP_LOG_URL::$INTEROP_LOG_URL"
-
       - name: Parse logs to validate connection migration
         if: github.event.pull_request
         run: |
           mkdir -p web/logs/latest
           MAIN_SHA=${{ steps.mainsha.outputs.MAIN_SHA }}
-          python3 .github/interop/verify_connection_migration.py \
-            --interop_log_url "${{ steps.download.outputs.INTEROP_LOG_URL }}" \
+          python3 .github/interop/verify_cm.py \
+            --log_path "${{ steps.download.outputs.INTEROP_LOG_URL }}" \
+            --clients "${{ matrix.client }}" \
             results/**/result.json > \
               web/logs/latest/result.json
 
