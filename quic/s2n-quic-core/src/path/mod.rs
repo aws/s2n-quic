@@ -1,14 +1,18 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use core::convert::TryFrom;
+use core::{
+    convert::{TryFrom, TryInto},
+    num::NonZeroU16,
+};
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14
 //# The maximum datagram size MUST be at least 1200 bytes.
 pub const MINIMUM_MTU: u16 = 1200;
 
 // TODO decide on better defaults
-pub const DEFAULT_MAX_MTU: MaxMtu = MaxMtu(1500);
+// Safety: 1500 is greater than zero
+pub const DEFAULT_MAX_MTU: MaxMtu = MaxMtu(unsafe { NonZeroU16::new_unchecked(1500) });
 
 // Length is the length in octets of this user datagram  including  this
 // header and the data. (This means the minimum value of the length is
@@ -33,7 +37,7 @@ const MIN_ALLOWED_MAX_MTU: u16 = MINIMUM_MTU + UDP_HEADER_LEN + IP_MIN_HEADER_LE
 pub const INITIAL_PTO_BACKOFF: u32 = 1;
 
 #[derive(Clone, Copy, Debug)]
-pub struct MaxMtu(u16);
+pub struct MaxMtu(NonZeroU16);
 
 impl Default for MaxMtu {
     fn default() -> Self {
@@ -46,24 +50,26 @@ impl TryFrom<u16> for MaxMtu {
 
     fn try_from(value: u16) -> Result<Self, Self::Error> {
         if value < MIN_ALLOWED_MAX_MTU {
-            return Err(MaxMtuError(MIN_ALLOWED_MAX_MTU));
+            return Err(MaxMtuError(MIN_ALLOWED_MAX_MTU.try_into().unwrap()));
         }
 
-        Ok(MaxMtu(value))
+        Ok(MaxMtu(value.try_into().expect(
+            "Value must be greater than zero according to the check above",
+        )))
     }
 }
 
 impl From<MaxMtu> for usize {
     fn from(value: MaxMtu) -> Self {
-        value.0 as usize
+        value.0.get() as usize
     }
 }
 
 impl From<MaxMtu> for u16 {
     fn from(value: MaxMtu) -> Self {
-        value.0
+        value.0.get()
     }
 }
 
 #[derive(Debug)]
-pub struct MaxMtuError(pub u16);
+pub struct MaxMtuError(pub NonZeroU16);

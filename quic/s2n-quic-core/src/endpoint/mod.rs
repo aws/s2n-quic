@@ -3,6 +3,7 @@
 
 use crate::{
     io::{rx, tx},
+    path::MaxMtu,
     time::Timestamp,
 };
 use core::{
@@ -11,7 +12,6 @@ use core::{
 };
 
 pub mod limits;
-use crate::path::MaxMtu;
 pub use limits::Limits;
 
 /// Enumerates endpoint types
