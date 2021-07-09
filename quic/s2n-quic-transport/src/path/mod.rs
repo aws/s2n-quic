@@ -183,7 +183,7 @@ impl<CC: CongestionController> Path<CC> {
 
     pub fn on_path_response(&mut self, response: &[u8]) {
         if self.challenge.on_validate(response) {
-            self.validate();
+            self.on_validated();
 
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3
             //= type=TODO
@@ -193,11 +193,16 @@ impl<CC: CongestionController> Path<CC> {
     }
 
     /// Called when the path is validated
-    pub fn validate(&mut self) {
+    pub fn on_validated(&mut self) {
         self.state = State::Validated;
 
         // Enable the mtu controller to allow for PMTU discovery
         self.mtu_controller.enable()
+    }
+
+    /// Called when a handshake packet is received
+    pub fn on_handshake_packet(&mut self) {
+        self.on_validated();
     }
 
     /// Returns whether this path has passed address validation
@@ -572,7 +577,7 @@ mod tests {
         assert!(path.challenge.is_pending());
 
         // Trigger:
-        path.validate();
+        path.on_validated();
 
         // Expectation:
         assert!(path.is_validated());
@@ -584,10 +589,10 @@ mod tests {
         // Setup:
         let mut path = testing::helper_path();
         path.set_challenge(helper_challenge().challenge);
-        path.validate();
+        path.on_validated();
 
         // Trigger:
-        path.validate();
+        path.on_validated();
 
         // Expectation:
         assert!(path.is_validated());
@@ -649,7 +654,7 @@ mod tests {
         unblocked = path.on_bytes_received(1200);
         assert!(unblocked);
 
-        path.validate();
+        path.on_validated();
         path.on_bytes_transmitted(24);
         // Validated paths should always be able to transmit
         assert!(!path.at_amplification_limit());
@@ -720,7 +725,7 @@ mod tests {
             assert_eq!(path.clamp_mtu(10, transmission_mode), 10);
             assert_eq!(path.clamp_mtu(1800, transmission_mode), mtu);
 
-            path.validate();
+            path.on_validated();
             // Validated paths should always be able to transmit
             assert_eq!(path.clamp_mtu(4, transmission_mode), 4);
         }
@@ -729,7 +734,7 @@ mod tests {
     #[test]
     fn clamp_mtu_for_validated_path() {
         let mut path = testing::helper_path();
-        path.validate();
+        path.on_validated();
         let mtu = 1472;
         let probed_size = 1500;
         path.mtu_controller = mtu::testing::test_controller(mtu, probed_size);
@@ -820,7 +825,7 @@ mod tests {
             false,
         );
         let now = NoopClock.get_time();
-        path.validate();
+        path.on_validated();
 
         assert_eq!(
             path.transmission_constraint(),
