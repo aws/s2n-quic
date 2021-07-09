@@ -3,7 +3,7 @@
 
 //! This module contains the implementation of QUIC `Connections` and their management
 
-use crate::{endpoint, recovery::congestion_controller};
+use crate::{endpoint, path::MaxMtu, recovery::congestion_controller};
 use s2n_quic_core::{connection, inet::SocketAddress, time::Timestamp};
 
 mod api;
@@ -35,7 +35,6 @@ pub(crate) use peer_id_registry::PeerIdRegistry;
 pub(crate) use shared_state::{SharedConnectionState, SynchronizedSharedConnectionState};
 pub(crate) use transmission::{ConnectionTransmission, ConnectionTransmissionContext};
 
-use crate::path::MaxMtu;
 pub use api::Connection;
 pub use connection_impl::ConnectionImpl as Implementation;
 /// re-export core
