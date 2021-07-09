@@ -9,6 +9,7 @@ use s2n_quic_core::{
 };
 
 pub type Data = [u8; frame::path_challenge::DATA_LEN];
+const DISABLED_DATA: Data = [0; frame::path_challenge::DATA_LEN];
 
 #[derive(Clone, Debug)]
 pub struct Challenge {
@@ -20,14 +21,20 @@ pub struct Challenge {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum State {
+    /// PATH_CHALLENGE is not used for path validation when initiating a new connection
+    InitialPathDisabled,
+
     /// A Challenge frame must be sent. The `u8` represents the remaining number of retries
     RequiresTransmission(u8),
 
     /// Challenge has been sent and we are awaiting a response until the abandon timer expires
-    Idle,
+    PendingResponse,
 
     /// The Challenge has been abandoned due to the abandon_timer
     Abandoned,
+
+    /// When the PATH_CHALLENGE was validated by a PATH_RESPONSE
+    Validated,
 }
 
 impl transmission::interest::Provider for State {
@@ -60,6 +67,15 @@ impl Challenge {
         }
     }
 
+    pub fn disabled() -> Self {
+        Self {
+            state: State::InitialPathDisabled,
+            abandon_duration: Duration::default(),
+            abandon_timer: Timer::default(),
+            data: DISABLED_DATA,
+        }
+    }
+
     pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
         self.abandon_timer.iter()
     }
@@ -67,7 +83,7 @@ impl Challenge {
     /// When a PATH_CHALLENGE is transmitted this handles any internal state operations.
     pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
         match self.state {
-            State::RequiresTransmission(0) => self.state = State::Idle,
+            State::RequiresTransmission(0) => self.state = State::PendingResponse,
             State::RequiresTransmission(remaining) => {
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
                 //# However, an endpoint SHOULD NOT send multiple
@@ -90,16 +106,31 @@ impl Challenge {
 
     pub fn on_timeout(&mut self, timestamp: Timestamp) {
         if self.abandon_timer.poll_expiration(timestamp).is_ready() {
-            self.state = State::Abandoned;
+            self.abandon();
         }
     }
 
-    pub fn is_abandoned(&self) -> bool {
-        self.state == State::Abandoned
+    pub fn abandon(&mut self) {
+        if self.is_pending() {
+            self.state = State::Abandoned;
+            self.abandon_timer.cancel();
+        }
     }
 
-    pub fn is_valid(&self, data: &[u8]) -> bool {
-        ConstantTimeEq::ct_eq(&self.data[..], &data).into()
+    pub fn is_pending(&self) -> bool {
+        matches!(
+            self.state,
+            State::PendingResponse | State::RequiresTransmission(_)
+        )
+    }
+
+    pub fn on_validated(&mut self, data: &[u8]) -> bool {
+        if self.is_pending() && ConstantTimeEq::ct_eq(&self.data[..], &data).into() {
+            self.state = State::Validated;
+            true
+        } else {
+            false
+        }
     }
 }
 
@@ -142,7 +173,10 @@ pub mod testing {
 mod tests {
     use super::*;
     use crate::contexts::testing::{MockWriteContext, OutgoingFrameBuffer};
-    use s2n_quic_core::{endpoint, time::Duration};
+    use s2n_quic_core::{
+        endpoint,
+        time::{Clock, Duration, NoopClock},
+    };
     use testing::*;
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
@@ -153,6 +187,13 @@ mod tests {
     fn create_challenge_that_requires_two_transmissions() {
         let helper = helper_challenge();
         assert_eq!(helper.challenge.state, State::RequiresTransmission(2));
+    }
+
+    #[test]
+    fn create_disabled_challenge() {
+        let challenge = Challenge::disabled();
+        assert_eq!(challenge.state, State::InitialPathDisabled);
+        assert!(!challenge.abandon_timer.is_armed());
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
@@ -208,7 +249,7 @@ mod tests {
         helper.challenge.on_transmit(&mut context);
 
         // Expectation:
-        assert_eq!(helper.challenge.state, State::Idle);
+        assert_eq!(helper.challenge.state, State::PendingResponse);
         assert_eq!(context.frame_buffer.len(), 0);
     }
 
@@ -235,7 +276,7 @@ mod tests {
     }
 
     #[test]
-    fn maintain_idle_and_dont_transmit_when_idle_state() {
+    fn maintain_idle_and_dont_transmit_when_pending_response_state() {
         // Setup:
         let mut helper = helper_challenge();
         let mut frame_buffer = OutgoingFrameBuffer::new();
@@ -246,14 +287,14 @@ mod tests {
             transmission::Mode::Normal,
             endpoint::Type::Client,
         );
-        helper.challenge.state = State::Idle;
-        assert_eq!(helper.challenge.state, State::Idle);
+        helper.challenge.state = State::PendingResponse;
+        assert_eq!(helper.challenge.state, State::PendingResponse);
 
         // Trigger:
         helper.challenge.on_transmit(&mut context);
 
         // Expectation:
-        assert_eq!(helper.challenge.state, State::Idle);
+        assert_eq!(helper.challenge.state, State::PendingResponse);
         assert_eq!(context.frame_buffer.len(), 0);
     }
 
@@ -275,12 +316,12 @@ mod tests {
         helper
             .challenge
             .on_timeout(expiration_time - Duration::from_millis(10));
-        assert!(!helper.challenge.is_abandoned());
+        assert!(helper.challenge.is_pending());
 
         helper
             .challenge
             .on_timeout(expiration_time + Duration::from_millis(10));
-        assert!(helper.challenge.is_abandoned());
+        assert!(!helper.challenge.is_pending());
     }
 
     #[test]
@@ -304,7 +345,7 @@ mod tests {
             .on_timeout(expiration_time + Duration::from_millis(10));
 
         // Expectation:
-        assert!(helper.challenge.is_abandoned());
+        assert!(!helper.challenge.is_pending());
 
         // Trigger:
         helper
@@ -312,7 +353,29 @@ mod tests {
             .on_timeout(expiration_time - Duration::from_millis(10));
 
         // Expectation:
-        assert!(helper.challenge.is_abandoned());
+        assert!(!helper.challenge.is_pending());
+    }
+
+    #[test]
+    fn dont_abandon_disabled_state() {
+        let mut challenge = Challenge::disabled();
+        let now = NoopClock {}.get_time();
+
+        let mut frame_buffer = OutgoingFrameBuffer::new();
+        let mut context = MockWriteContext::new(
+            now,
+            &mut frame_buffer,
+            transmission::Constraint::None,
+            transmission::Mode::Normal,
+            endpoint::Type::Client,
+        );
+        challenge.on_transmit(&mut context);
+
+        assert_eq!(challenge.state, State::InitialPathDisabled);
+
+        let large_expiration_time = now + Duration::from_secs(1_000_000);
+        challenge.on_timeout(large_expiration_time);
+        assert_eq!(challenge.state, State::InitialPathDisabled);
     }
 
     #[test]
@@ -330,21 +393,51 @@ mod tests {
         );
         helper.challenge.on_transmit(&mut context);
 
-        assert!(!helper.challenge.is_abandoned());
+        assert!(helper.challenge.is_pending());
 
         helper
             .challenge
             .on_timeout(expiration_time + Duration::from_millis(10));
-        assert!(helper.challenge.is_abandoned());
+        assert!(!helper.challenge.is_pending());
     }
 
     #[test]
-    fn test_is_valid() {
-        let helper = helper_challenge();
-
-        assert!(helper.challenge.is_valid(&helper.expected_data));
+    fn test_on_validate() {
+        let mut helper = helper_challenge();
 
         let wrong_data: [u8; 8] = [5; 8];
-        assert!(!helper.challenge.is_valid(&wrong_data));
+        assert!(!helper.challenge.on_validated(&wrong_data));
+        assert!(helper.challenge.is_pending());
+
+        assert!(helper.challenge.on_validated(&helper.expected_data));
+        assert_eq!(helper.challenge.state, State::Validated);
+    }
+
+    #[test]
+    fn dont_validate_disabled_state() {
+        let mut helper = helper_challenge();
+        helper.challenge.state = State::InitialPathDisabled;
+
+        assert!(!helper.challenge.on_validated(&helper.expected_data));
+        assert_eq!(helper.challenge.state, State::InitialPathDisabled);
+    }
+
+    #[test]
+    fn dont_abandon_a_validated_challenge() {
+        let mut helper = helper_challenge();
+        helper.challenge.state = State::Validated;
+
+        helper.challenge.abandon();
+
+        assert_eq!(helper.challenge.state, State::Validated);
+    }
+
+    #[test]
+    fn cancel_abandon_timer_on_abandon() {
+        let mut helper = helper_challenge();
+
+        helper.challenge.abandon();
+
+        assert!(!helper.challenge.abandon_timer.is_armed());
     }
 }
