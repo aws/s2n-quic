@@ -3,8 +3,11 @@
 
 use core::{
     convert::{TryFrom, TryInto},
+    fmt,
+    fmt::Display,
     num::NonZeroU16,
 };
+use std::fmt::Formatter;
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#14
 //# The maximum datagram size MUST be at least 1200 bytes.
@@ -72,4 +75,10 @@ impl From<MaxMtu> for u16 {
 }
 
 #[derive(Debug)]
-pub struct MaxMtuError(pub NonZeroU16);
+pub struct MaxMtuError(NonZeroU16);
+
+impl Display for MaxMtuError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "MaxMtu must be at least {}", self.0)
+    }
+}

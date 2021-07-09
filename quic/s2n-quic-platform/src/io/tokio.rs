@@ -14,7 +14,7 @@ use pin_project::pin_project;
 use s2n_quic_core::{
     endpoint::{CloseError, Endpoint},
     inet::SocketAddress,
-    path::{MaxMtu, MaxMtuError},
+    path::MaxMtu,
     time::{self, Clock as ClockTrait},
 };
 #[cfg(target_os = "linux")]
@@ -320,12 +320,9 @@ impl Builder {
 
     /// Sets the largest maximum transmission unit (MTU) that can be sent on a path
     pub fn with_max_mtu(mut self, max_mtu: u16) -> io::Result<Self> {
-        self.max_mtu = max_mtu.try_into().map_err(|MaxMtuError(min_allowed)| {
-            io::Error::new(
-                ErrorKind::InvalidInput,
-                format!("MaxMtu must be at least {}", min_allowed),
-            )
-        })?;
+        self.max_mtu = max_mtu
+            .try_into()
+            .map_err(|err| io::Error::new(ErrorKind::InvalidInput, format!("{}", err)))?;
         Ok(self)
     }
 
