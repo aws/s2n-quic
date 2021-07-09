@@ -231,7 +231,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             timestamp: datagram.timestamp,
             quic_version: packet.version,
             limits,
-            max_mtu: endpoint_context.max_mtu,
+            max_mtu: self.max_mtu,
         };
 
         let space_manager = PacketSpaceManager::new(
@@ -261,7 +261,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                 datagram,
                 endpoint_context.congestion_controller,
                 endpoint_context.random_generator,
-                endpoint_context.max_mtu,
+                self.max_mtu,
             )?;
 
             connection

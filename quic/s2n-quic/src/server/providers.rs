@@ -2,11 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
-use s2n_quic_core::{
-    connection::id::Generator,
-    crypto,
-    path::{MaxMtu, DEFAULT_MAX_MTU},
-};
+use s2n_quic_core::{connection::id::Generator, crypto};
 use s2n_quic_transport::{acceptor::Acceptor, connection, endpoint, stream};
 
 impl_providers_state! {
@@ -113,7 +109,6 @@ impl<
             sync,
             tls,
             token,
-            max_mtu: DEFAULT_MAX_MTU,
         };
 
         let (endpoint, acceptor) = endpoint::Endpoint::new(endpoint_config);
@@ -150,7 +145,6 @@ struct EndpointConfig<
     sync: Sync,
     tls: Tls,
     token: Token,
-    max_mtu: MaxMtu,
 }
 
 impl<
@@ -239,11 +233,6 @@ impl<
             token: &mut self.token,
             connection_limits: &mut self.limits,
             event_subscriber: &mut self.event,
-            max_mtu: self.max_mtu,
         }
-    }
-
-    fn set_max_mtu(&mut self, max_mtu: MaxMtu) {
-        self.max_mtu = max_mtu
     }
 }
