@@ -1000,8 +1000,10 @@ mod test {
         ) = helper_generate_multi_path_manager(space);
         let mut context = MockContext::new(&mut path_manager);
 
-        // Call on validated so the path is not amplification limited so we can verify PTO arming
-        context.path_mut().on_handshake_packet(); // used for validation
+        // Validate the path so it is not amplification limited and we can verify PTO arming
+        //
+        // simulate receiving a handshake packet to force path validation
+        context.path_mut().on_handshake_packet();
 
         // PTO = smoothed_rtt + max(4*rttvar, kGranularity) + max_ack_delay
         // PTO = DEFAULT_INITIAL_RTT + 4*DEFAULT_INITIAL_RTT/2 + 10
@@ -1127,7 +1129,8 @@ mod test {
             mut path_manager,
         ) = helper_generate_multi_path_manager(space);
         let mut context = MockContext::new(&mut path_manager);
-        context.path_mut().on_handshake_packet(); // used for validation
+        // simulate receiving a handshake packet to force path validation
+        context.path_mut().on_handshake_packet();
 
         // PTO = smoothed_rtt + max(4*rttvar, kGranularity) + max_ack_delay
         // PTO = DEFAULT_INITIAL_RTT + 4*DEFAULT_INITIAL_RTT/2 + 10
@@ -2740,7 +2743,9 @@ mod test {
         // Arm the PTO so we can verify it is cancelled
         manager.pto.timer.set(now + Duration::from_secs(10));
         // Validate the path so it is not at the anti-amplification limit
-        context.path_mut().on_handshake_packet(); // used for validation
+        //
+        // simulate receiving a handshake packet to force path validation
+        context.path_mut().on_handshake_packet();
         context.path_mut().on_peer_validated();
         manager.update_pto_timer(&context.path(), now, is_handshake_confirmed);
 
@@ -2756,7 +2761,8 @@ mod test {
             MockCongestionController::default(),
             false,
         );
-        context.path_mut().on_handshake_packet(); // used for validation
+        // simulate receiving a handshake packet to force path validation
+        context.path_mut().on_handshake_packet();
         context.path_mut().pto_backoff = 2;
         let is_handshake_confirmed = false;
         manager.update_pto_timer(&context.path(), now, is_handshake_confirmed);
@@ -2836,7 +2842,8 @@ mod test {
             false,
         );
 
-        path.on_handshake_packet(); // used for validation
+        // simulate receiving a handshake packet to force path validation
+        path.on_handshake_packet();
 
         manager.update_pto_timer(&path, now, is_handshake_confirmed);
 
@@ -3318,16 +3325,18 @@ mod test {
         }
 
         // start out with both paths validate and not AmplificationLimited
+        //
+        // simulate receiving a handshake packet to force path validation
         path_manager
             .path_mut(&first_addr)
             .unwrap()
             .1
-            .on_handshake_packet(); // used for validation
+            .on_handshake_packet();
         path_manager
             .path_mut(&second_addr)
             .unwrap()
             .1
-            .on_handshake_packet(); // used for validation
+            .on_handshake_packet();
         let first_path = path_manager.path(&first_addr).unwrap().1;
         let second_path = path_manager.path(&second_addr).unwrap().1;
         assert!(!first_path.at_amplification_limit());
