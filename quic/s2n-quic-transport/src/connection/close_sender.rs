@@ -301,7 +301,7 @@ mod tests {
                 let mut transmission_count = 0usize;
 
                 if *is_validated {
-                    path.validate();
+                    path.on_handshake_packet(); // used for validation
                 } else {
                     // give the path some initial credits
                     path.on_bytes_received(MINIMUM_MTU as usize);

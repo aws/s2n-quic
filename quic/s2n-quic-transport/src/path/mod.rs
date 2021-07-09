@@ -192,17 +192,19 @@ impl<CC: CongestionController> Path<CC> {
         }
     }
 
+    /// Called when a handshake packet is received.
+    ///
+    /// Receiving a handshake packet acts as path validation for the initial path
+    pub fn on_handshake_packet(&mut self) {
+        self.on_validated();
+    }
+
     /// Called when the path is validated
-    pub fn on_validated(&mut self) {
+    fn on_validated(&mut self) {
         self.state = State::Validated;
 
         // Enable the mtu controller to allow for PMTU discovery
         self.mtu_controller.enable()
-    }
-
-    /// Called when a handshake packet is received
-    pub fn on_handshake_packet(&mut self) {
-        self.on_validated();
     }
 
     /// Returns whether this path has passed address validation
