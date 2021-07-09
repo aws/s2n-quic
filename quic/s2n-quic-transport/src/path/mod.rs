@@ -182,7 +182,7 @@ impl<CC: CongestionController> Path<CC> {
     }
 
     pub fn on_path_response(&mut self, response: &[u8]) {
-        if self.challenge.on_validate(response) {
+        if self.challenge.on_validated(response) {
             self.on_validated();
 
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3

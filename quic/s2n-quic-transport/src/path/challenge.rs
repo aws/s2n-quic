@@ -124,7 +124,7 @@ impl Challenge {
         )
     }
 
-    pub fn on_validate(&mut self, data: &[u8]) -> bool {
+    pub fn on_validated(&mut self, data: &[u8]) -> bool {
         if self.is_pending() && ConstantTimeEq::ct_eq(&self.data[..], &data).into() {
             self.state = State::Validated;
             true
@@ -406,10 +406,10 @@ mod tests {
         let mut helper = helper_challenge();
 
         let wrong_data: [u8; 8] = [5; 8];
-        assert!(!helper.challenge.on_validate(&wrong_data));
+        assert!(!helper.challenge.on_validated(&wrong_data));
         assert!(helper.challenge.is_pending());
 
-        assert!(helper.challenge.on_validate(&helper.expected_data));
+        assert!(helper.challenge.on_validated(&helper.expected_data));
         assert_eq!(helper.challenge.state, State::Validated);
     }
 
@@ -418,7 +418,7 @@ mod tests {
         let mut helper = helper_challenge();
         helper.challenge.state = State::InitialPathDisabled;
 
-        assert!(!helper.challenge.on_validate(&helper.expected_data));
+        assert!(!helper.challenge.on_validated(&helper.expected_data));
         assert_eq!(helper.challenge.state, State::InitialPathDisabled);
     }
 
