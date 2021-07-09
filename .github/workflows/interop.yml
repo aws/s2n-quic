@@ -284,6 +284,11 @@ jobs:
             results/**/result.json > \
               web/logs/latest/result.json
 
+      - uses: ouzi-dev/commit-status-updater@v1.1.0
+        with:
+          name: 'interop / verify-cm'
+          status: 'pending'
+
   generate-report:
     runs-on: ubuntu-latest
     needs: [interop]
