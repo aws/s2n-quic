@@ -8,7 +8,6 @@
 set -e
 
 INTEROP_DIR=target/quic-interop-runner
-export RUST_LOG="debug"
 
 # Setup the s2n-quic docker image
 sudo docker build . --file quic/s2n-quic-qns/etc/Dockerfile.build --tag awslabs/s2n-quic-qns

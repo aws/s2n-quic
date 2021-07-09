@@ -7,6 +7,8 @@
 set -e
 set -o pipefail
 
+export RUST_LOG="debug"
+
 # Set up the routing needed for the simulation
 /setup.sh
 
