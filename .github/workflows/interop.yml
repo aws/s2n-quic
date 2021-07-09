@@ -263,7 +263,7 @@ jobs:
 
   verify-connection-migration:
     runs-on: ubuntu-latest
-    needs: [interop]
+    needs: [env, interop]
     strategy:
       matrix: ${{ fromJson(needs.env.outputs.matrix) }}
     steps:
