@@ -14,11 +14,12 @@ use pin_project::pin_project;
 use s2n_quic_core::{
     endpoint::{CloseError, Endpoint},
     inet::SocketAddress,
+    path::MaxMtu,
     time::{self, Clock as ClockTrait},
 };
-use std::io;
 #[cfg(target_os = "linux")]
 use std::os::unix::io::AsRawFd;
+use std::{convert::TryInto, io, io::ErrorKind};
 use tokio::{net::UdpSocket, runtime::Handle, time::Instant};
 
 #[derive(Debug)]
@@ -75,7 +76,7 @@ impl Io {
         Ok(Self { builder })
     }
 
-    pub fn start<E: Endpoint>(self, endpoint: E) -> io::Result<tokio::task::JoinHandle<()>> {
+    pub fn start<E: Endpoint>(self, mut endpoint: E) -> io::Result<tokio::task::JoinHandle<()>> {
         let Builder {
             handle,
             rx_socket,
@@ -84,7 +85,10 @@ impl Io {
             send_addr,
             recv_buffer_size,
             send_buffer_size,
+            max_mtu,
         } = self.builder;
+
+        endpoint.set_max_mtu(max_mtu);
 
         let handle = if let Some(handle) = handle {
             handle
@@ -247,6 +251,7 @@ pub struct Builder {
     send_addr: Vec<std::net::SocketAddr>,
     recv_buffer_size: Option<usize>,
     send_buffer_size: Option<usize>,
+    max_mtu: MaxMtu,
 }
 
 impl Builder {
@@ -310,6 +315,14 @@ impl Builder {
     /// Sets the size of the operating system’s receive buffer associated with the rx socket
     pub fn with_recv_buffer_size(mut self, recv_buffer_size: usize) -> io::Result<Self> {
         self.recv_buffer_size = Some(recv_buffer_size);
+        Ok(self)
+    }
+
+    /// Sets the largest maximum transmission unit (MTU) that can be sent on a path
+    pub fn with_max_mtu(mut self, max_mtu: u16) -> io::Result<Self> {
+        self.max_mtu = max_mtu
+            .try_into()
+            .map_err(|err| io::Error::new(ErrorKind::InvalidInput, format!("{}", err)))?;
         Ok(self)
     }
 
@@ -596,6 +609,7 @@ mod tests {
             rx::{self, Entry as _},
             tx,
         },
+        path::DEFAULT_MAX_MTU,
         time::Timestamp,
     };
     use std::collections::BTreeMap;
@@ -604,6 +618,7 @@ mod tests {
         addr: SocketAddress,
         messages: BTreeMap<u32, Option<Timestamp>>,
         now: Option<Timestamp>,
+        max_mtu: MaxMtu,
     }
 
     impl TestEndpoint {
@@ -613,6 +628,7 @@ mod tests {
                 addr,
                 messages,
                 now: None,
+                max_mtu: DEFAULT_MAX_MTU,
             }
         }
     }
@@ -671,6 +687,10 @@ mod tests {
 
         fn timeout(&self) -> Option<Timestamp> {
             self.now.map(|now| now + Duration::from_millis(50))
+        }
+
+        fn set_max_mtu(&mut self, max_mtu: MaxMtu) {
+            self.max_mtu = max_mtu
         }
     }
 

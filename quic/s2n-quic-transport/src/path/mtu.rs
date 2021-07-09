@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    contexts::WriteContext, path::MINIMUM_MTU, timer::VirtualTimer, transmission,
+    contexts::WriteContext,
+    path::{MaxMtu, MINIMUM_MTU},
+    timer::VirtualTimer,
+    transmission,
     transmission::Interest,
 };
 use core::time::Duration;
@@ -12,6 +15,7 @@ use s2n_quic_core::{
     frame,
     inet::SocketAddress,
     packet::number::PacketNumber,
+    path::{IPV4_MIN_HEADER_LEN, IPV6_MIN_HEADER_LEN, UDP_HEADER_LEN},
     recovery::CongestionController,
     time::Timestamp,
 };
@@ -57,17 +61,6 @@ const MAX_PROBES: u8 = 3;
 // See https://tools.ietf.org/rfc/rfc894.txt
 const ETHERNET_MTU: u16 = 1500;
 
-// Length  is the length  in octets  of this user datagram  including  this
-// header  and the data.   (This  means  the minimum value of the length is
-// eight.)
-// See https://tools.ietf.org/rfc/rfc768.txt
-const UDP_HEADER_LEN: u16 = 8;
-
-// IPv4 header ranges from 20-60 bytes, depending on Options
-const IPV4_MIN_HEADER_LEN: u16 = 20;
-// IPv6 header is always 40 bytes, plus extensions
-const IPV6_MIN_HEADER_LEN: u16 = 40;
-
 // If the next value to probe is within the PROBE_THRESHOLD bytes of
 // the current Path MTU, probing will be considered complete.
 const PROBE_THRESHOLD: u16 = 20;
@@ -99,15 +92,14 @@ pub struct Controller {
     //# The Packetization Layer PMTU is an estimate of the largest size
     //# of PL datagram that can be sent by a path, controlled by PLPMTUD
     plpmtu: u16,
-    //= https://tools.ietf.org/rfc/rfc8899.txt#5.1.2
-    //# The MAX_PLPMTU is the largest size of PLPMTU.
-    max_plpmtu: u16,
+    // The maximum size the UDP payload can reach for any probe packet.
+    max_udp_payload: u16,
     //= https://tools.ietf.org/rfc/rfc8899.txt#5.1.3
     //# The PROBED_SIZE is the size of the current probe packet
     //# as determined at the PL.  This is a tentative value for the
     //# PLPMTU, which is awaiting confirmation by an acknowledgment.
     probed_size: u16,
-    // The maximum size datagram to probe for. In contrast to the max_plpmtu,
+    // The maximum size datagram to probe for. In contrast to the max_udp_payload,
     // this value will decrease if probes are not acknowledged.
     max_probe_size: u16,
     //= https://tools.ietf.org/rfc/rfc8899.txt#5.1.3
@@ -131,31 +123,30 @@ impl Controller {
     /// Construct a new mtu::Controller with the given `max_mtu` and `peer_socket_address`
     ///
     /// The UDP header length and IP header length will be subtracted from `max_mtu` to
-    /// determine the max_plpmtu used for limiting the UDP payload length.
-    pub fn new(max_mtu: u16, peer_socket_address: &SocketAddress) -> Self {
+    /// determine the max_udp_payload used for limiting the payload length of probe packets.
+    pub fn new(max_mtu: MaxMtu, peer_socket_address: &SocketAddress) -> Self {
         let min_ip_header_len = match peer_socket_address {
             SocketAddress::IpV4(_) => IPV4_MIN_HEADER_LEN,
             SocketAddress::IpV6(_) => IPV6_MIN_HEADER_LEN,
         };
+        let max_udp_payload = u16::from(max_mtu) - UDP_HEADER_LEN - min_ip_header_len;
         debug_assert!(
-            max_mtu >= BASE_PLPMTU + UDP_HEADER_LEN + min_ip_header_len,
-            "max_mtu must be at least {}",
-            BASE_PLPMTU + UDP_HEADER_LEN + min_ip_header_len
+            max_udp_payload >= BASE_PLPMTU,
+            "max_udp_payload must be at least {}",
+            BASE_PLPMTU
         );
 
-        let max_plpmtu = max_mtu - UDP_HEADER_LEN - min_ip_header_len;
-
-        // The most likely MTU is based on standard Ethernet MTU minus the minimum length
-        // IP headers (without IPv4 options or IPv6 extensions) and UPD header
+        // The UDP payload size for the most likely MTU is based on standard Ethernet MTU minus
+        // the minimum length IP headers (without IPv4 options or IPv6 extensions) and UPD header
         let initial_probed_size =
-            (ETHERNET_MTU - UDP_HEADER_LEN - min_ip_header_len).min(max_plpmtu);
+            (ETHERNET_MTU - UDP_HEADER_LEN - min_ip_header_len).min(max_udp_payload);
 
         Self {
             state: State::Disabled,
             plpmtu: BASE_PLPMTU,
             probed_size: initial_probed_size,
-            max_plpmtu,
-            max_probe_size: max_plpmtu,
+            max_udp_payload,
+            max_probe_size: max_udp_payload,
             probe_count: 0,
             black_hole_counter: Default::default(),
             largest_acked_mtu_sized_packet: None,
@@ -329,7 +320,7 @@ impl Controller {
         }
     }
 
-    /// Gets the currently validated maximum transmission unit
+    /// Gets the currently validated maximum transmission unit, not including IP or UDP header len
     pub fn mtu(&self) -> usize {
         self.plpmtu as usize
     }
@@ -387,8 +378,8 @@ impl Controller {
     /// Arm the PMTU Raise Timer if there is still room to increase the
     /// MTU before hitting the max plpmtu
     fn arm_pmtu_raise_timer(&mut self, timestamp: Timestamp) {
-        // Reset the max_probe_size to the max_plpmtu to allow for larger probe sizes
-        self.max_probe_size = self.max_plpmtu;
+        // Reset the max_probe_size to the max_udp_payload to allow for larger probe sizes
+        self.max_probe_size = self.max_udp_payload;
         self.update_probed_size();
 
         if self.probed_size - self.plpmtu >= PROBE_THRESHOLD {
@@ -430,12 +421,12 @@ mod test {
         recovery::congestion_controller::testing::mock::CongestionController, varint::VarInt,
     };
     use s2n_quic_platform::time::now;
-    use std::net::SocketAddr;
+    use std::{convert::TryInto, net::SocketAddr};
 
-    /// Creates a new mtu::Controller with an IPv4 address and the given `max_plpmtu`
-    pub fn new_controller(max_plpmtu: u16) -> Controller {
+    /// Creates a new mtu::Controller with an IPv4 address and the given `max_mtu`
+    pub fn new_controller(max_mtu: u16) -> Controller {
         let addr: SocketAddr = "127.0.0.1:443".parse().unwrap();
-        Controller::new(max_plpmtu, &addr.into())
+        Controller::new(max_mtu.try_into().unwrap(), &addr.into())
     }
 
     /// Creates an application space packet number with the given value
@@ -455,12 +446,12 @@ mod test {
 
     #[test]
     #[should_panic]
-    fn new_max_plpmtu_too_small() {
+    fn new_max_mtu_too_small() {
         new_controller(BASE_PLPMTU + UDP_HEADER_LEN + IPV4_MIN_HEADER_LEN - 1);
     }
 
     #[test]
-    fn new_max_plpmtu_smaller_than_common_mtu() {
+    fn new_max_mtu_smaller_than_common_mtu() {
         let mut controller = new_controller(BASE_PLPMTU + UDP_HEADER_LEN + IPV4_MIN_HEADER_LEN + 1);
         assert_eq!(BASE_PLPMTU + 1, controller.probed_size);
 
@@ -471,10 +462,10 @@ mod test {
     #[test]
     fn new_ipv4() {
         let addr: SocketAddr = "127.0.0.1:443".parse().unwrap();
-        let controller = Controller::new(1600, &addr.into());
+        let controller = Controller::new(1600.try_into().unwrap(), &addr.into());
         assert_eq!(
             1600 - UDP_HEADER_LEN - IPV4_MIN_HEADER_LEN,
-            controller.max_plpmtu
+            controller.max_udp_payload
         );
         assert_eq!(
             1600 - UDP_HEADER_LEN - IPV4_MIN_HEADER_LEN,
@@ -495,10 +486,10 @@ mod test {
         let addr: SocketAddr = "[2001:0db8:85a3:0001:0002:8a2e:0370:7334]:9000"
             .parse()
             .unwrap();
-        let controller = Controller::new(2000, &addr.into());
+        let controller = Controller::new(2000.try_into().unwrap(), &addr.into());
         assert_eq!(
             2000 - UDP_HEADER_LEN - IPV6_MIN_HEADER_LEN,
-            controller.max_plpmtu
+            controller.max_udp_payload
         );
         assert_eq!(
             2000 - UDP_HEADER_LEN - IPV6_MIN_HEADER_LEN,
@@ -541,7 +532,7 @@ mod test {
     #[test]
     fn on_packet_ack_within_threshold() {
         let mut controller = new_controller(1472 + PROBE_THRESHOLD * 2);
-        let max_plpmtu = controller.max_plpmtu;
+        let max_udp_payload = controller.max_udp_payload;
         let pn = pn(1);
         let mut cc = CongestionController::default();
         let now = now();
@@ -552,7 +543,7 @@ mod test {
         controller.on_packet_ack(pn, BASE_PLPMTU, &mut cc);
 
         assert_eq!(
-            BASE_PLPMTU + (max_plpmtu - BASE_PLPMTU) / 2,
+            BASE_PLPMTU + (max_udp_payload - BASE_PLPMTU) / 2,
             controller.probed_size
         );
         assert_eq!(1, cc.on_mtu_update);
@@ -569,7 +560,7 @@ mod test {
 
         assert_eq!(State::SearchRequested, controller.state);
         assert_eq!(
-            BASE_PLPMTU + (max_plpmtu - BASE_PLPMTU) / 2,
+            BASE_PLPMTU + (max_udp_payload - BASE_PLPMTU) / 2,
             controller.probed_size
         );
     }
@@ -577,7 +568,7 @@ mod test {
     #[test]
     fn on_packet_ack_within_threshold_of_max_plpmtu() {
         let mut controller = new_controller(1472 + (PROBE_THRESHOLD * 2 - 1));
-        let max_plpmtu = controller.max_plpmtu;
+        let max_udp_payload = controller.max_udp_payload;
         let pn = pn(1);
         let mut cc = CongestionController::default();
         let now = now();
@@ -585,7 +576,7 @@ mod test {
 
         controller.on_packet_ack(pn, controller.probed_size, &mut cc);
 
-        assert_eq!(1472 + (max_plpmtu - 1472) / 2, controller.probed_size);
+        assert_eq!(1472 + (max_udp_payload - 1472) / 2, controller.probed_size);
         assert_eq!(1, cc.on_mtu_update);
         assert_eq!(State::SearchComplete, controller.state);
         assert!(!controller.pmtu_raise_timer.is_armed());
@@ -604,7 +595,7 @@ mod test {
     #[test]
     fn on_packet_ack_search_requested() {
         let mut controller = new_controller(1500 + (PROBE_THRESHOLD * 2));
-        let max_plpmtu = controller.max_plpmtu;
+        let max_udp_payload = controller.max_udp_payload;
         let pn = pn(1);
         let mut cc = CongestionController::default();
         let now = now();
@@ -612,7 +603,7 @@ mod test {
 
         controller.on_packet_ack(pn, controller.probed_size, &mut cc);
 
-        assert_eq!(1472 + (max_plpmtu - 1472) / 2, controller.probed_size);
+        assert_eq!(1472 + (max_udp_payload - 1472) / 2, controller.probed_size);
         assert_eq!(1, cc.on_mtu_update);
         assert_eq!(State::SearchRequested, controller.state);
         assert!(!controller.pmtu_raise_timer.is_armed());
@@ -688,7 +679,7 @@ mod test {
     #[test]
     fn on_packet_loss() {
         let mut controller = new_controller(1500);
-        let max_plpmtu = controller.max_plpmtu;
+        let max_udp_payload = controller.max_udp_payload;
         let pn = pn(1);
         let mut cc = CongestionController::default();
         let now = now();
@@ -698,7 +689,7 @@ mod test {
         controller.on_packet_loss(pn, controller.probed_size, now, &mut cc);
 
         assert_eq!(0, cc.on_mtu_update);
-        assert_eq!(max_plpmtu, controller.max_probe_size);
+        assert_eq!(max_udp_payload, controller.max_probe_size);
         assert_eq!(probed_size, controller.probed_size);
         assert_eq!(State::SearchRequested, controller.state);
     }
@@ -706,13 +697,13 @@ mod test {
     #[test]
     fn on_packet_loss_max_probes() {
         let mut controller = new_controller(1500);
-        let max_plpmtu = controller.max_plpmtu;
+        let max_udp_payload = controller.max_udp_payload;
         let pn = pn(1);
         let mut cc = CongestionController::default();
         let now = now();
         controller.state = State::Searching(pn, now);
         controller.probe_count = MAX_PROBES;
-        assert_eq!(max_plpmtu, controller.max_probe_size);
+        assert_eq!(max_udp_payload, controller.max_probe_size);
 
         controller.on_packet_loss(pn, controller.probed_size, now, &mut cc);
 

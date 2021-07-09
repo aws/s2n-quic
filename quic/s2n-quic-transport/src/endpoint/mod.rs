@@ -45,6 +45,7 @@ use s2n_quic_core::{
     crypto::tls::Endpoint as _,
     event,
     inet::{ExplicitCongestionNotification, SocketAddress},
+    path::MaxMtu,
     stateless_reset::token::Generator as _,
 };
 
@@ -73,6 +74,8 @@ pub struct Endpoint<Cfg: Config> {
     retry_dispatch: retry::Dispatch,
     stateless_reset_dispatch: stateless_reset::Dispatch,
     close_packet_buffer: packet_buffer::Buffer,
+    /// The largest maximum transmission unit (MTU) that can be sent on a path
+    max_mtu: MaxMtu,
 }
 
 // Safety: The endpoint is marked as `!Send`, because the struct contains `Rc`s.
@@ -170,6 +173,10 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
     fn timeout(&self) -> Option<Timestamp> {
         self.timer_manager.next_expiration()
     }
+
+    fn set_max_mtu(&mut self, max_mtu: MaxMtu) {
+        self.max_mtu = max_mtu
+    }
 }
 
 impl<Cfg: Config> Endpoint<Cfg> {
@@ -193,6 +200,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             retry_dispatch: retry::Dispatch::default(),
             stateless_reset_dispatch: stateless_reset::Dispatch::default(),
             close_packet_buffer: Default::default(),
+            max_mtu: Default::default(),
         };
 
         (endpoint, acceptor)
@@ -345,6 +353,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             .lookup_internal_connection_id(&datagram.destination_connection_id)
         {
             let mut check_for_stateless_reset = false;
+            let max_mtu = self.max_mtu;
 
             let _ = self
                 .connections
@@ -357,6 +366,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                             datagram,
                             endpoint_context.congestion_controller,
                             endpoint_context.random_generator,
+                            max_mtu,
                         )
                         .map_err(|_| {
                             // TODO https://github.com/awslabs/s2n-quic/issues/669

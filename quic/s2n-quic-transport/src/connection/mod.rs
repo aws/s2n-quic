@@ -3,7 +3,7 @@
 
 //! This module contains the implementation of QUIC `Connections` and their management
 
-use crate::{endpoint, recovery::congestion_controller};
+use crate::{endpoint, path::MaxMtu, recovery::congestion_controller};
 use s2n_quic_core::{connection, inet::SocketAddress, time::Timestamp};
 
 mod api;
@@ -65,4 +65,6 @@ pub struct Parameters<Cfg: endpoint::Config> {
     pub quic_version: u32,
     /// The limits that were advertised to the peer
     pub limits: connection::Limits,
+    /// The largest maximum transmission unit (MTU) that can be sent on a path
+    pub max_mtu: MaxMtu,
 }

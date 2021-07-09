@@ -12,6 +12,7 @@ use s2n_quic_core::{
     ack, connection, frame,
     inet::{DatagramInfo, SocketAddress},
     packet::number::PacketNumberSpace,
+    path::MaxMtu,
     random,
     recovery::{congestion_controller, RttEstimator},
     stateless_reset,
@@ -164,6 +165,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         handshake_confirmed: bool,
         congestion_controller_endpoint: &mut CCE,
         random_generator: &mut Rnd,
+        max_mtu: MaxMtu,
     ) -> Result<(Id, bool), transport::Error> {
         if let Some((id, path)) = self.path_mut(&datagram.remote_address) {
             let unblocked = path.on_bytes_received(datagram.payload_len);
@@ -205,7 +207,12 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
 
         // TODO set alpn if available
 
-        self.handle_connection_migration(datagram, congestion_controller_endpoint, random_generator)
+        self.handle_connection_migration(
+            datagram,
+            congestion_controller_endpoint,
+            random_generator,
+            max_mtu,
+        )
     }
 
     #[allow(unreachable_code)]
@@ -215,6 +222,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         datagram: &DatagramInfo,
         congestion_controller_endpoint: &mut CCE,
         random_generator: &mut Rnd,
+        max_mtu: MaxMtu,
     ) -> Result<(Id, bool), transport::Error> {
         // Since we are not currently supporting connection migration (whether it was deliberate or
         // not), we will error our at this point to avoid re-using a peer connection ID.
@@ -283,6 +291,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
             rtt,
             cc,
             true,
+            max_mtu,
         );
 
         let unblocked = path.on_bytes_received(datagram.payload_len);
@@ -609,6 +618,7 @@ mod tests {
     use crate::{
         connection::{ConnectionIdMapper, InternalConnectionIdGenerator},
         contexts::testing::{MockWriteContext, OutgoingFrameBuffer},
+        path::DEFAULT_MAX_MTU,
     };
     use core::time::Duration;
     use s2n_quic_core::{
@@ -649,6 +659,7 @@ mod tests {
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
+            DEFAULT_MAX_MTU,
         );
 
         let second_conn_id = connection::PeerId::try_from_bytes(&[5, 4, 3, 2, 1]).unwrap();
@@ -659,6 +670,7 @@ mod tests {
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
+            DEFAULT_MAX_MTU,
         );
 
         let mut manager = manager(first_path.clone(), None);
@@ -688,6 +700,7 @@ mod tests {
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
+            DEFAULT_MAX_MTU,
         );
         // simulate receiving a handshake packet to force path validation
         first_path.on_handshake_packet();
@@ -703,6 +716,7 @@ mod tests {
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
+            DEFAULT_MAX_MTU,
         );
         second_path.set_challenge(challenge);
 
@@ -1090,6 +1104,7 @@ mod tests {
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
+            DEFAULT_MAX_MTU,
         );
         let mut manager = manager(first_path, None);
 
@@ -1115,6 +1130,7 @@ mod tests {
                 true,
                 &mut unlimited::Endpoint::default(),
                 &mut random::testing::Generator(123),
+                DEFAULT_MAX_MTU,
             )
             .unwrap();
 
@@ -1146,6 +1162,7 @@ mod tests {
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
+            DEFAULT_MAX_MTU,
         );
         let mut manager = manager(first_path, None);
 
@@ -1169,6 +1186,7 @@ mod tests {
             handshake_confirmed,
             &mut unlimited::Endpoint::default(),
             &mut random::testing::Generator(123),
+            DEFAULT_MAX_MTU,
         );
 
         // Expectation:
@@ -1190,6 +1208,7 @@ mod tests {
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
+            DEFAULT_MAX_MTU,
         );
         let mut manager = manager(first_path, None);
 
@@ -1209,6 +1228,7 @@ mod tests {
                 &datagram,
                 &mut unlimited::Endpoint::default(),
                 &mut random::testing::Generator(123),
+                DEFAULT_MAX_MTU,
             )
             .unwrap();
 
@@ -1264,6 +1284,7 @@ mod tests {
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
+            DEFAULT_MAX_MTU,
         );
         let mut manager = manager(first_path, None);
 
@@ -1284,6 +1305,7 @@ mod tests {
                 &datagram,
                 &mut unlimited::Endpoint::default(),
                 &mut random::testing::Generator(123),
+                DEFAULT_MAX_MTU,
             )
             .unwrap();
         let first_path_id = Id(0);
@@ -1333,6 +1355,7 @@ mod tests {
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
+            DEFAULT_MAX_MTU,
         );
         let mut manager = manager(first_path, None);
 
@@ -1352,6 +1375,7 @@ mod tests {
                 &datagram,
                 &mut unlimited::Endpoint::default(),
                 &mut random::testing::Generator(123),
+                DEFAULT_MAX_MTU,
             )
             .unwrap();
         let first_path_id = Id(0);
@@ -1430,6 +1454,7 @@ mod tests {
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
+            DEFAULT_MAX_MTU,
         );
         let mut manager = manager(first_path, None);
 
@@ -1518,6 +1543,7 @@ mod tests {
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
+            DEFAULT_MAX_MTU,
         );
         let expected_response_data = [0; 8];
         third_path.on_path_challenge(&expected_response_data);
@@ -1575,6 +1601,7 @@ mod tests {
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
+            DEFAULT_MAX_MTU,
         );
         if validate_path_zero {
             // simulate receiving a handshake packet to force path validation
@@ -1594,6 +1621,7 @@ mod tests {
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
+            DEFAULT_MAX_MTU,
         );
         first_path.set_challenge(challenge);
 
@@ -1607,6 +1635,7 @@ mod tests {
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
+            DEFAULT_MAX_MTU,
         );
         second_path.set_challenge(challenge);
 
