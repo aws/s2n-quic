@@ -419,10 +419,10 @@ mod tests {
 
     #[test]
     fn is_disabled() {
-        let mut helper = Challenge::disabled();
+        let challenge = Challenge::disabled();
 
-        assert_eq!(helper.challenge.state, State::InitialPathDisabled);
-        assert!(helper.challenge.is_disabled());
+        assert_eq!(challenge.state, State::InitialPathDisabled);
+        assert!(challenge.is_disabled());
     }
 
     #[test]
