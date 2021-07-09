@@ -166,6 +166,10 @@ impl<CC: CongestionController> Path<CC> {
         self.challenge.on_transmit(context)
     }
 
+    pub fn is_challenge_disabled(&self) -> bool {
+        self.challenge.is_disabled()
+    }
+
     pub fn is_challenge_pending(&self) -> bool {
         self.challenge.is_pending()
     }
