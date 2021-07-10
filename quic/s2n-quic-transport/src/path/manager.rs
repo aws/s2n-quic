@@ -1058,6 +1058,7 @@ mod tests {
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
+            DEFAULT_MAX_MTU,
         );
         first_path.set_challenge(challenge);
         let mut manager = manager(first_path, None);
