@@ -172,21 +172,6 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
             return Ok((id, unblocked));
         }
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.5
-        //= type=TODO
-        //= tracking-issue=316
-        //# Similarly, an endpoint MUST NOT reuse a connection ID when sending to
-        //# more than one destination address.
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.5
-        //= type=TODO
-        //= tracking-issue=316
-        //# Due to network changes outside
-        //# the control of its peer, an endpoint might receive packets from a new
-        //# source address with the same destination connection ID, in which case
-        //# it MAY continue to use the current connection ID with the new remote
-        //# address while still sending from the same local address.
-
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
         //# The design of QUIC relies on endpoints retaining a stable address
         //# for the duration of the handshake.  An endpoint MUST NOT initiate
