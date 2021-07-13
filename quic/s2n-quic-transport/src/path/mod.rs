@@ -169,7 +169,7 @@ impl<CC: CongestionController> Path<CC> {
     // PATH_CHALLENGE is not used for validating the initial path and is disabled. Check if
     // the challenge is disabled before excuting the following block since there won't be
     // a last_known_validated_path.
-    pub fn is_challenge_abandoned(&self) -> bool {
+    pub fn failed_validation(&self) -> bool {
         !self.challenge.is_disabled() && !self.is_validated() && !self.is_challenge_pending()
     }
 
@@ -502,6 +502,49 @@ mod tests {
         // Expectation:
         assert!(path.is_challenge_pending());
         assert!(path.challenge.is_pending());
+    }
+
+    #[test]
+    fn first_path_in_disabled_state_cant_fail_validation() {
+        // Setup:
+        let path = testing::helper_path();
+
+        // Expectation:
+        assert!(path.challenge.is_disabled());
+        assert!(!path.is_challenge_pending());
+        assert!(!path.is_validated());
+
+        assert!(!path.failed_validation());
+    }
+
+    #[test]
+    fn failed_validation() {
+        // Setup:
+        let mut path = testing::helper_path();
+        let helper_challenge = helper_challenge();
+
+        path.set_challenge(helper_challenge.challenge);
+        let mut frame_buffer = OutgoingFrameBuffer::new();
+        let mut context = MockWriteContext::new(
+            helper_challenge.now,
+            &mut frame_buffer,
+            transmission::Constraint::None,
+            transmission::Mode::Normal,
+            endpoint::Type::Client,
+        );
+        path.on_transmit(&mut context); // send challenge and arm timer
+
+        let expiration_time = helper_challenge.now + helper_challenge.abandon_duration;
+
+        // Trigger:
+        path.on_timeout(expiration_time + Duration::from_millis(10));
+
+        // Expectation:
+        assert!(!path.challenge.is_disabled());
+        assert!(!path.is_challenge_pending());
+        assert!(!path.is_validated());
+
+        assert!(path.failed_validation());
     }
 
     #[test]

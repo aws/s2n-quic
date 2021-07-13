@@ -487,7 +487,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         }
 
         let active_path = self.active_path();
-        if active_path.is_challenge_abandoned() {
+        if active_path.failed_validation() {
             match self.last_known_validated_path {
                 Some(last_known_validated_path) => {
                     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.2
