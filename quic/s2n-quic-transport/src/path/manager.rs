@@ -487,13 +487,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         }
 
         let active_path = self.active_path();
-        // PATH_CHALLENGE is not used for validating the initial path and is disabled. Check if
-        // the challenge is disabled before excuting the following block since there won't be
-        // a last_known_validated_path.
-        if !active_path.is_challenge_disabled()
-            && !active_path.is_validated()
-            && !active_path.is_challenge_pending()
-        {
+        if active_path.is_challenge_abandoned() {
             match self.last_known_validated_path {
                 Some(last_known_validated_path) => {
                     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.2
