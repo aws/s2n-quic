@@ -133,12 +133,13 @@ pub trait ConnectionTrait: Sized {
     ) -> Result<(), ProcessingError>;
 
     /// Is called when an unprotected initial packet had been received
-    fn handle_cleartext_initial_packet<Rnd: random::Generator>(
+    fn handle_cleartext_initial_packet<Pub: event::Publisher, Rnd: random::Generator>(
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: CleartextInitial,
+        publisher: &mut Pub,
         random_generator: &mut Rnd,
     ) -> Result<(), ProcessingError>;
 

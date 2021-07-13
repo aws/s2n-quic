@@ -264,12 +264,20 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                 self.max_mtu,
             )?;
 
+            let mut publisher = event::PublisherSubscriber::new(
+                event::builders::Meta {
+                    endpoint_type: Config::ENDPOINT_TYPE,
+                    group_id: internal_connection_id.into(),
+                },
+                endpoint_context.event_subscriber,
+            );
             connection
                 .handle_cleartext_initial_packet(
                     locked_shared_state,
                     datagram,
                     path_id,
                     packet,
+                    &mut publisher,
                     endpoint_context.random_generator,
                 )
                 .map_err(|err| {
@@ -288,13 +296,6 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                     }
                 })?;
 
-            let mut publisher = event::PublisherSubscriber::new(
-                event::builders::Meta {
-                    endpoint_type: Config::ENDPOINT_TYPE,
-                    group_id: internal_connection_id.into(),
-                },
-                endpoint_context.event_subscriber,
-            );
             connection.handle_remaining_packets(
                 locked_shared_state,
                 datagram,

@@ -8,17 +8,20 @@ use futures::stream::StreamExt;
 use s2n_quic::{
     provider::{
         endpoint_limits,
+        event::{self, Subscriber},
         tls::default::certificate::{Certificate, IntoCertificate, IntoPrivateKey, PrivateKey},
     },
     stream::BidirectionalStream,
     Connection, Server,
 };
+use s2n_quic_core::event::{common, events};
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
 use structopt::StructOpt;
 use tokio::spawn;
+use tracing::info;
 
 #[derive(Debug, StructOpt)]
 pub struct Interop {
@@ -186,6 +189,7 @@ impl Interop {
             .with_io(("::", self.port))?
             .with_tls(tls)?
             .with_endpoint_limits(limits)?
+            .with_event(EventProvider)?
             .start()
             .unwrap();
 
@@ -224,8 +228,10 @@ impl Interop {
             Some("handshakecorruption") => true,
             Some("transfercorruption") => true,
             Some("ecn") => false,
-            Some("rebind-addr") => false,
             Some("crosstraffic") => true,
+            Some("rebind-addr") => true,
+            Some("rebind-port") => true,
+            Some("connectionmigration") => true,
             None => true,
             _ => false,
         };
@@ -234,5 +240,25 @@ impl Interop {
             eprintln!("unsupported");
             std::process::exit(127);
         }
+    }
+}
+
+pub struct EventSubscriber;
+
+impl Subscriber for EventSubscriber {
+    fn on_active_path_updated(&mut self, meta: &common::Meta, event: &events::ActivePathUpdated) {
+        info!(group_id = meta.group_id, "{:?}", event);
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct EventProvider;
+
+impl event::Provider for EventProvider {
+    type Subscriber = EventSubscriber;
+    type Error = core::convert::Infallible;
+
+    fn start(self) -> core::result::Result<Self::Subscriber, Self::Error> {
+        Ok(EventSubscriber)
     }
 }
