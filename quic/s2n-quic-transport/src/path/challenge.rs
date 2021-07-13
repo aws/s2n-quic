@@ -117,6 +117,10 @@ impl Challenge {
         }
     }
 
+    pub fn is_disabled(&self) -> bool {
+        matches!(self.state, State::InitialPathDisabled)
+    }
+
     pub fn is_pending(&self) -> bool {
         matches!(
             self.state,
@@ -411,6 +415,14 @@ mod tests {
 
         assert!(helper.challenge.on_validated(&helper.expected_data));
         assert_eq!(helper.challenge.state, State::Validated);
+    }
+
+    #[test]
+    fn is_disabled() {
+        let challenge = Challenge::disabled();
+
+        assert_eq!(challenge.state, State::InitialPathDisabled);
+        assert!(challenge.is_disabled());
     }
 
     #[test]
