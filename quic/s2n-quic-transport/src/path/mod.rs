@@ -166,10 +166,11 @@ impl<CC: CongestionController> Path<CC> {
         self.challenge.on_transmit(context)
     }
 
-    // PATH_CHALLENGE is not used for validating the initial path and is disabled. Check if
-    // the challenge is disabled before excuting the following block since there won't be
-    // a last_known_validated_path.
+    /// Check if path validation was attempted and failed.
     pub fn failed_validation(&self) -> bool {
+        // PATH_CHALLENGE is not used for validating the initial path and is disabled. Check if
+        // the challenge is disabled before excuting the following block since there won't be
+        // a last_known_validated_path.
         !self.challenge.is_disabled() && !self.is_validated() && !self.is_challenge_pending()
     }
 
