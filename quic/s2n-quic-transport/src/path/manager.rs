@@ -172,21 +172,6 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
             return Ok((id, unblocked));
         }
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.5
-        //= type=TODO
-        //= tracking-issue=316
-        //# Similarly, an endpoint MUST NOT reuse a connection ID when sending to
-        //# more than one destination address.
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.5
-        //= type=TODO
-        //= tracking-issue=316
-        //# Due to network changes outside
-        //# the control of its peer, an endpoint might receive packets from a new
-        //# source address with the same destination connection ID, in which case
-        //# it MAY continue to use the current connection ID with the new remote
-        //# address while still sending from the same local address.
-
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
         //# The design of QUIC relies on endpoints retaining a stable address
         //# for the duration of the handshake.  An endpoint MUST NOT initiate
@@ -1267,8 +1252,6 @@ mod tests {
         assert_eq!(manager.paths.len(), 1);
     }
 
-    // TODO remove early return statement when challenges work
-    #[allow(unreachable_code)]
     #[test]
     fn connection_migration_challenge_behavior() {
         // Setup:
@@ -1309,11 +1292,10 @@ mod tests {
         assert_eq!(manager.paths.len(), 2);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
-        //= type=TODO
+        //= type=test
         //# An endpoint MUST
         //# perform path validation (Section 8.2) if it detects any change to a
         //# peer's address, unless it has previously validated that address.
-        return;
         assert!(manager[Id(1)].is_challenge_pending());
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
