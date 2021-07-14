@@ -1252,8 +1252,6 @@ mod tests {
         assert_eq!(manager.paths.len(), 1);
     }
 
-    // TODO remove early return statement when challenges work
-    #[allow(unreachable_code)]
     #[test]
     fn connection_migration_challenge_behavior() {
         // Setup:
@@ -1294,11 +1292,10 @@ mod tests {
         assert_eq!(manager.paths.len(), 2);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
-        //= type=TODO
+        //= type=test
         //# An endpoint MUST
         //# perform path validation (Section 8.2) if it detects any change to a
         //# peer's address, unless it has previously validated that address.
-        return;
         assert!(manager[Id(1)].is_challenge_pending());
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
