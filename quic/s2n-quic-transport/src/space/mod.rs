@@ -531,6 +531,15 @@ pub trait PacketSpace<Config: endpoint::Config> {
                 .map_err(transport::Error::from)?;
             is_path_validation_probing |= frame.path_validation();
 
+            publisher.on_frame_received(event::builders::FrameReceived {
+                packet_header: event::builders::PacketHeader {
+                    packet_type: packet_number.space().into(),
+                    packet_number: packet_number.as_u64(),
+                    version: publisher.quic_version(),
+                }
+                .into(),
+                frame: &(frame.as_event()),
+            });
             match frame {
                 Frame::Padding(frame) => {
                     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.1

@@ -247,6 +247,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             internal_connection_id,
         ));
 
+        let quic_version = connection_parameters.quic_version;
         let mut connection = <Config as endpoint::Config>::Connection::new(connection_parameters);
 
         // The scope is needed in order to lock the shared state only for a certain duration.
@@ -269,6 +270,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                     endpoint_type: Config::ENDPOINT_TYPE,
                     group_id: internal_connection_id.into(),
                 },
+                Some(quic_version),
                 endpoint_context.event_subscriber,
             );
             connection

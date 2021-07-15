@@ -27,15 +27,38 @@ common!(
     }
 
     //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#A.4
-    //# Note: short vs long header is implicit through PacketType
     struct PacketHeader {
         pub packet_type: common::PacketType,
         pub packet_number: u64,
         pub version: Option<u32>,
     }
 
+    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#A.7
+    enum Frame {
+        Padding,
+        Ping,
+        Ack,
+        ResetStream,
+        StopSending,
+        Crypto,
+        NewToken,
+        Stream,
+        MaxData,
+        MaxStreamData,
+        MaxStreams,
+        DataBlocked,
+        StreamDataBlocked,
+        StreamsBlocked,
+        NewConnectionId,
+        RetireConnectionId,
+        PathChallenge,
+        PathResponse,
+        ConnectionClose,
+        HandshakeDone,
+        Unknown,
+    }
+
     //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#A.2
-    //# PacketType
     enum PacketType {
         Initial,
         Handshake,
@@ -73,7 +96,7 @@ events!(
     struct VersionInformation<'a> {
         pub server_versions: &'a [u32],
         pub client_versions: &'a [u32],
-        pub chosen_version: u32,
+        pub chosen_version: Option<u32>,
     }
 
     #[name = "transport:alpn_information"]
@@ -112,5 +135,15 @@ events!(
         pub dst_addr: &'a SocketAddress,
         pub src_cid: &'a PeerId,
         pub dst_cid: &'a PeerId,
+    }
+
+    #[name = "transport:frame_received"]
+    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.5
+    // This diverges a bit from the qlog spec, which prefers to log data as part of the
+    // packet events.
+    /// Frame was received
+    struct FrameReceived<'a> {
+        pub packet_header: common::PacketHeader,
+        pub frame: &'a common::Frame,
     }
 );
