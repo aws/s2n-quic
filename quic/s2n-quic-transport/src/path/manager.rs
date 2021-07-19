@@ -261,9 +261,9 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
                     // Investigate if there is a safer way to expose an error here.
                     //
                     // Currently all errors are ignored when calling on_datagram_received in endpoint/mod.rs
-                    .ok_or(
-                        transport::Error::INTERNAL_ERROR.with_reason("insufficient connection ids"),
-                    )?
+                    .ok_or_else(|| {
+                        transport::Error::INTERNAL_ERROR.with_reason("insufficient connection ids")
+                    })?
             } else {
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.5
                 //# Due to network changes outside
