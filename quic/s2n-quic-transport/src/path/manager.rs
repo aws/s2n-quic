@@ -21,15 +21,16 @@ use s2n_quic_core::{
 };
 use smallvec::SmallVec;
 
-/// The amount of Paths that can be maintained without using the heap
-const INLINE_PATH_LEN: usize = 5;
+/// The amount of Paths that can be maintained without using the heap.
+/// This value is also used to limit the number of connection migrations.
+const MAX_ALLOWED_PATHS: usize = 5;
 
 /// The PathManager handles paths for a specific connection.
 /// It will handle path validation operations, and track the active path for a connection.
 #[derive(Debug)]
 pub struct Manager<CCE: congestion_controller::Endpoint> {
     /// Path array
-    paths: SmallVec<[Path<CCE::CongestionController>; INLINE_PATH_LEN]>,
+    paths: SmallVec<[Path<CCE::CongestionController>; MAX_ALLOWED_PATHS]>,
 
     /// Registry of `connection::PeerId`s
     peer_id_registry: PeerIdRegistry,
@@ -215,7 +216,20 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         //       connection immediately. https://github.com/awslabs/s2n-quic/issues/317
         // We only enable connection migration for testing
         #[cfg(not(any(feature = "testing", test)))]
-        return Err(transport::Error::INTERNAL_ERROR);
+        return Err(
+            transport::Error::INTERNAL_ERROR.with_reason("Connection Migration is not supported")
+        );
+
+        let new_path_idx = self.paths.len();
+        // TODO: Support deletion of old paths: https://github.com/awslabs/s2n-quic/issues/741
+        // The current path manager implementation does not delete or reuse indices
+        // in the path array. This can result in an unbounded number of paths. To prevent
+        // this we limit the max number of paths per connection.
+        if new_path_idx >= MAX_ALLOWED_PATHS {
+            return Err(transport::Error::INTERNAL_ERROR
+                .with_reason("exceeded the max allowed paths per connection"));
+        }
+        let new_path_id = Id(new_path_idx as u8);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.4
         //= type=TODO
@@ -247,7 +261,9 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
                     // Investigate if there is a safer way to expose an error here.
                     //
                     // Currently all errors are ignored when calling on_datagram_received in endpoint/mod.rs
-                    .ok_or(transport::Error::INTERNAL_ERROR)?
+                    .ok_or_else(|| {
+                        transport::Error::INTERNAL_ERROR.with_reason("insufficient connection ids")
+                    })?
             } else {
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.5
                 //# Due to network changes outside
@@ -281,11 +297,10 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
 
         let unblocked = path.on_bytes_received(datagram.payload_len);
         // create a new path
-        let id = Id(self.paths.len() as u8);
         self.paths.push(path);
-        self.set_challenge(id, random_generator);
+        self.set_challenge(new_path_id, random_generator);
 
-        Ok((id, unblocked))
+        Ok((new_path_id, unblocked))
     }
 
     fn set_challenge<Rnd: random::Generator>(&mut self, path_id: Id, random_generator: &mut Rnd) {
@@ -1250,6 +1265,47 @@ mod tests {
         assert!(on_datagram_result.is_err());
         assert!(!manager.path(&new_addr).is_some());
         assert_eq!(manager.paths.len(), 1);
+    }
+
+    #[test]
+    fn limit_number_of_connection_migrations() {
+        // Setup:
+        let first_path = Path::new(
+            SocketAddress::default(),
+            connection::PeerId::try_from_bytes(&[1]).unwrap(),
+            connection::LocalId::TEST_ID,
+            RttEstimator::new(Duration::from_millis(30)),
+            Default::default(),
+            false,
+            DEFAULT_MAX_MTU,
+        );
+        let mut manager = manager(first_path, None);
+        let mut total_paths = 1;
+
+        for i in 1..std::u8::MAX {
+            let new_addr: SocketAddr = format!("127.0.0.1:{}", i).parse().unwrap();
+            let new_addr = SocketAddress::from(new_addr);
+            let now = NoopClock {}.get_time();
+            let datagram = DatagramInfo {
+                timestamp: now,
+                remote_address: new_addr,
+                payload_len: 0,
+                ecn: ExplicitCongestionNotification::default(),
+                destination_connection_id: connection::LocalId::TEST_ID,
+            };
+
+            let res = manager.handle_connection_migration(
+                &datagram,
+                &mut unlimited::Endpoint::default(),
+                &mut random::testing::Generator(123),
+                DEFAULT_MAX_MTU,
+            );
+            match res {
+                Ok(_) => total_paths += 1,
+                Err(_) => break,
+            }
+        }
+        assert_eq!(total_paths, MAX_ALLOWED_PATHS);
     }
 
     #[test]
