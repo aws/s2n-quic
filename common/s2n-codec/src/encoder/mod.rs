@@ -54,11 +54,13 @@ pub trait Encoder: Sized {
     fn len(&self) -> usize;
 
     /// Returns `true` if no bytes have been written
+    #[inline]
     fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
     /// Returns the number of available bytes in the buffer
+    #[inline]
     fn remaining_capacity(&self) -> usize {
         self.capacity().saturating_sub(self.len())
     }

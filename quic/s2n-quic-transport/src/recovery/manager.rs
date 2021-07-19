@@ -78,7 +78,7 @@ const K_PACKET_THRESHOLD: u64 = 3;
 /// Initial capacity of the SmallVec used for keeping track of packets
 /// acked in an ack frame
 // TODO: Determine if there is a more appropriate default
-const ACKED_PACKETS_INITIAL_CAPACITY: usize = 10;
+const ACKED_PACKETS_INITIAL_CAPACITY: usize = 32;
 
 impl Manager {
     /// Constructs a new `recovery::Manager`
@@ -449,7 +449,6 @@ impl Manager {
         //# was sent a threshold amount of time in the past.
         self.detect_and_remove_lost_packets(datagram.timestamp, context);
 
-        let is_handshake_confirmed = context.is_handshake_confirmed();
         for acked_packet_info in newly_acked_packets {
             let path = context.path_mut_by_id(acked_packet_info.path_id);
             path.congestion_controller.on_packet_ack(
@@ -471,12 +470,14 @@ impl Manager {
             if path.is_peer_validated() {
                 path.reset_pto_backoff();
             }
-
-            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
-            //# A sender SHOULD restart its PTO timer every time an ack-eliciting
-            //# packet is sent or acknowledged,
-            self.update_pto_timer(path, datagram.timestamp, is_handshake_confirmed);
         }
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
+        //# A sender SHOULD restart its PTO timer every time an ack-eliciting
+        //# packet is sent or acknowledged,
+        let path = context.path();
+        let is_handshake_confirmed = context.is_handshake_confirmed();
+        self.update_pto_timer(path, datagram.timestamp, is_handshake_confirmed);
     }
 
     /// Returns `true` if the recovery manager requires a probe packet to be sent.

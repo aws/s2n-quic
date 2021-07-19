@@ -150,6 +150,7 @@ impl<
     }
 
     /// Queries the component for any outgoing frames that need to get sent
+    #[inline]
     pub fn on_transmit<W: WriteContext>(
         &mut self,
         stream_id: StreamId,

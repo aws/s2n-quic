@@ -17,17 +17,20 @@ pub struct Timer {
 
 impl Timer {
     /// Sets the timer to expire at the given timestamp
+    #[inline]
     pub fn set(&mut self, time: Timestamp) {
         self.expiration = Some(time);
     }
 
     /// Cancels the timer.
     /// After cancellation, a timer will no longer report as expired.
+    #[inline]
     pub fn cancel(&mut self) {
         self.expiration = None;
     }
 
     /// Returns true if the timer has expired
+    #[inline]
     pub fn is_expired(&self, current_time: Timestamp) -> bool {
         match self.expiration {
             Some(timeout) => timeout.has_elapsed(current_time),
@@ -36,6 +39,7 @@ impl Timer {
     }
 
     /// Returns true if the timer is armed
+    #[inline]
     pub fn is_armed(&self) -> bool {
         self.expiration.is_some()
     }
@@ -44,6 +48,7 @@ impl Timer {
     /// If the timer's expiration occurs before the current time, it will be cancelled.
     /// The method returns whether the timer was expired and had been
     /// cancelled.
+    #[inline]
     pub fn poll_expiration(&mut self, current_time: Timestamp) -> Poll<()> {
         if self.is_expired(current_time) {
             self.cancel();
@@ -54,6 +59,7 @@ impl Timer {
     }
 
     /// Iterates over the contained timers
+    #[inline]
     pub fn iter(&self) -> impl Iterator<Item = Timestamp> {
         Iter(self.expiration)
     }
@@ -64,6 +70,7 @@ pub struct Iter(Option<Timestamp>);
 impl Iterator for Iter {
     type Item = Timestamp;
 
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         self.0.take()
     }

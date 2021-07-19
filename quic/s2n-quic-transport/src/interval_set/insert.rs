@@ -9,6 +9,7 @@ use core::{
     ops::Range,
 };
 
+#[inline]
 pub(crate) fn insert<T: IntervalBound + Ord>(
     ranges: &mut VecDeque<Interval<T>>,
     mut range: Interval<T>,
@@ -43,6 +44,7 @@ impl Insertion {
     ///
     /// Returns `Some(index)` if the `Interval` is already present in the iterator,
     /// otherwise `None` is returned.
+    #[inline]
     fn scan<'a, T: 'a + Ord + IntervalBound, I: Iterator<Item = (usize, &'a Interval<T>)>>(
         &mut self,
         ranges: I,
@@ -192,6 +194,7 @@ impl Insertion {
     }
 
     /// Applies the `Insertion` to the given set of `Interval`s.
+    #[inline]
     fn apply<T>(
         self,
         ranges: &mut VecDeque<Interval<T>>,
@@ -247,10 +250,12 @@ impl Insertion {
         Ok(index)
     }
 
+    #[inline]
     fn set_start(&mut self, start: usize) {
         self.replace_range.start = min(self.replace_range.start, start);
     }
 
+    #[inline]
     fn set_end(&mut self, end: usize) {
         self.replace_range.end = max(self.replace_range.end, end);
     }

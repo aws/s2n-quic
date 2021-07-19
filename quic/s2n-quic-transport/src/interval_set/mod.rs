@@ -230,6 +230,7 @@ impl<T> IntervalSet<T> {
     /// set.clear();
     /// assert!(set.is_empty());
     /// ```
+    #[inline]
     pub fn clear(&mut self) {
         self.intervals.clear()
     }
@@ -244,6 +245,7 @@ impl<T> IntervalSet<T> {
     /// assert!(set.insert(0..4).is_ok());
     /// assert_eq!(set.pop_min(), Some((0..4).into()));
     /// ```
+    #[inline]
     pub fn pop_min(&mut self) -> Option<Interval<T>> {
         self.intervals.pop_front()
     }
@@ -454,7 +456,19 @@ impl<T: IntervalBound> IntervalSet<T> {
     /// assert_eq!(set_a.iter().collect::<Vec<_>>(), vec![4, 5, 6, 7, 8]);
     /// ```
     pub fn intersection(&mut self, other: &Self) -> Result<(), IntervalSetError> {
+        if self.is_empty() {
+            return Ok(());
+        }
+
+        if other.is_empty() {
+            self.clear();
+            return Ok(());
+        }
+
+        // TODO optimize this to remove the allocation
+        //      https://github.com/awslabs/s2n-quic/issues/746
         self.intervals = self.intersection_iter(other).collect();
+
         Ok(())
     }
 

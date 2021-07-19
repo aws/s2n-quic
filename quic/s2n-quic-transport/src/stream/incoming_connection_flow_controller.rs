@@ -110,6 +110,7 @@ impl IncomingConnectionFlowControllerImpl {
         self.read_window_sync.on_packet_loss(ack_set)
     }
 
+    #[inline]
     pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) -> Result<(), OnTransmitError> {
         // Stream ID does not matter here, since it does not get transmitted
         self.read_window_sync
@@ -172,6 +173,7 @@ impl IncomingConnectionFlowController {
     }
 
     /// Queries the component for any outgoing frames that need to get sent
+    #[inline]
     pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) -> Result<(), OnTransmitError> {
         self.inner.borrow_mut().on_transmit(context)
     }

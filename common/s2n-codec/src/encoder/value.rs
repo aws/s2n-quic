@@ -13,6 +13,7 @@ pub trait EncoderValue: Sized {
     fn encode<E: Encoder>(&self, encoder: &mut E);
 
     /// Encodes the value into the encoder, while potentially mutating the value itself
+    #[inline]
     fn encode_mut<E: Encoder>(&mut self, encoder: &mut E) {
         self.encode(encoder)
     }

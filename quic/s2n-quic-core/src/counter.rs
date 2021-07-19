@@ -32,11 +32,13 @@ pub struct Saturating;
 
 impl<T, Behavior> Counter<T, Behavior> {
     /// Creates a new counter with an initial value
+    #[inline]
     pub const fn new(value: T) -> Self {
         Self(value, PhantomData)
     }
 
     /// Tries to convert V to T and add it to the current counter value
+    #[inline]
     pub fn try_add<V>(&mut self, value: V) -> Result<(), T::Error>
     where
         T: TryFrom<V>,
@@ -48,6 +50,7 @@ impl<T, Behavior> Counter<T, Behavior> {
     }
 
     /// Tries to convert V to T and subtract it from the current counter value
+    #[inline]
     pub fn try_sub<V>(&mut self, value: V) -> Result<(), T::Error>
     where
         T: TryFrom<V>,
@@ -73,6 +76,7 @@ macro_rules! assign_trait {
         where
             T: $saturating_trait<R> + $checked_trait<R> + ops::$op + UpcastFrom<R>,
         {
+            #[inline]
             fn $method(&mut self, rhs: R) {
                 if cfg!(feature = "checked-counters") {
                     (self.0).$checked(rhs).expect("counter overflow");
@@ -88,6 +92,7 @@ macro_rules! assign_trait {
         where
             T: $saturating_trait<R>,
         {
+            #[inline]
             fn $method(&mut self, rhs: R) {
                 (self.0).$saturating_method(rhs);
             }
@@ -114,6 +119,7 @@ assign_trait!(
 );
 
 impl<T, B> UpcastFrom<Counter<T, B>> for T {
+    #[inline]
     fn upcast_from(value: Counter<T, B>) -> Self {
         value.0
     }
@@ -123,6 +129,7 @@ impl<T, B> UpcastFrom<&Counter<T, B>> for T
 where
     T: for<'a> UpcastFrom<&'a T>,
 {
+    #[inline]
     fn upcast_from(value: &Counter<T, B>) -> Self {
         T::upcast_from(&value.0)
     }
@@ -131,6 +138,7 @@ where
 impl<T, B> ops::Deref for Counter<T, B> {
     type Target = T;
 
+    #[inline]
     fn deref(&self) -> &Self::Target {
         &self.0
     }
@@ -140,8 +148,9 @@ impl<T, B, R> PartialEq<R> for Counter<T, B>
 where
     Self: PartialOrd<R>,
 {
+    #[inline]
     fn eq(&self, other: &R) -> bool {
-        self.partial_cmp(&other) == Some(Ordering::Equal)
+        self.partial_cmp(other) == Some(Ordering::Equal)
     }
 }
 
@@ -149,6 +158,7 @@ impl<T, B> PartialOrd<T> for Counter<T, B>
 where
     T: PartialOrd<T>,
 {
+    #[inline]
     fn partial_cmp(&self, other: &T) -> Option<Ordering> {
         self.0.partial_cmp(other)
     }
@@ -158,6 +168,7 @@ impl<T, B> PartialOrd for Counter<T, B>
 where
     T: PartialOrd<T>,
 {
+    #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         self.0.partial_cmp(&other.0)
     }
@@ -169,6 +180,7 @@ impl<T, B> Ord for Counter<T, B>
 where
     T: Ord,
 {
+    #[inline]
     fn cmp(&self, other: &Self) -> Ordering {
         self.0.cmp(&other.0)
     }
