@@ -216,17 +216,18 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         //       connection immediately. https://github.com/awslabs/s2n-quic/issues/317
         // We only enable connection migration for testing
         #[cfg(not(any(feature = "testing", test)))]
-        return Err(transport::Error::INTERNAL_ERROR);
+        return Err(
+            transport::Error::INTERNAL_ERROR.with_reason("Connection Migration is not supported")
+        );
 
         let new_path_idx = self.paths.len();
-        // https://github.com/awslabs/s2n-quic/issues/741
+        // TODO: Support deletion of old paths: https://github.com/awslabs/s2n-quic/issues/741
         // The current path manager implementation does not delete or reuse indices
-        // in the path array. This can result in an unbounded number of paths if
-        // and opens up an attack vector. The temporary work around for this is to
-        // limit the max number of paths per connection.
-        // paths is 0-indexed
+        // in the path array. This can result in an unbounded number of paths. To prevent
+        // this we limit the max number of paths per connection.
         if new_path_idx >= MAX_ALLOWED_PATHS {
-            return Err(transport::Error::INTERNAL_ERROR);
+            return Err(transport::Error::INTERNAL_ERROR
+                .with_reason("exceeded the max allowed paths per connection"));
         }
         let new_path_id = Id(new_path_idx as u8);
 
@@ -260,7 +261,9 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
                     // Investigate if there is a safer way to expose an error here.
                     //
                     // Currently all errors are ignored when calling on_datagram_received in endpoint/mod.rs
-                    .ok_or(transport::Error::INTERNAL_ERROR)?
+                    .ok_or(
+                        transport::Error::INTERNAL_ERROR.with_reason("insufficient connection ids"),
+                    )?
             } else {
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.5
                 //# Due to network changes outside
