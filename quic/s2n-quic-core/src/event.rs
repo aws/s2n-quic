@@ -150,8 +150,10 @@ events!(
     #[name = "recovery:packet_lost"]
     //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.4.5
     /// Packet was lost
-    struct PacketLost {
+    struct PacketLost<'a> {
         pub packet_header: common::PacketHeader,
-        // pub trigger: u8,
+        pub src_addr: &'a SocketAddress,
+        pub src_cid: &'a PeerId,
+        pub is_mtu_probe: bool,
     }
 );
