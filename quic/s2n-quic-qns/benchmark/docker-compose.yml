@@ -8,7 +8,7 @@ services:
     stdin_open: true
     tty: true
     volumes:
-      - ./logs/sim:/logs
+      - ${OUTPUT_DIR}/logs/sim:/logs
     environment:
       - WAITFORSERVER=$WAITFORSERVER
       - SCENARIO=$SCENARIO
@@ -27,20 +27,24 @@ services:
       - "server:193.167.100.100"
 
   server:
-    image: awslabs/s2n-quic-qns
+    build:
+      context: ${ROOT_DIR}
+      dockerfile: ${ROOT_DIR}/quic/s2n-quic-qns/etc/Dockerfile.build
+      args:
+        release: "true"
     container_name: server
     hostname: server
     stdin_open: true
     tty: true
     volumes:
-      - ./logs/server:/logs
+      - ${OUTPUT_DIR}/logs/server:/logs
     environment:
       - CRON=$CRON
       - ROLE=server
       - SERVER_PARAMS=$SERVER_PARAMS
       - SSLKEYLOGFILE=/logs/keys.log
       - QLOGDIR=/logs/qlog/
-      - TESTCASE=$TESTCASE_SERVER
+      - QNS_MODE=perf
       - VERSION=$VERSION
     depends_on:
       - sim
@@ -54,24 +58,27 @@ services:
         ipv6_address: fd00:cafe:cafe:100::100
 
   client:
-    image: quinn/perf-client
+    build:
+      context: ${ROOT_DIR}
+      dockerfile: ${ROOT_DIR}/quic/s2n-quic-qns/benchmark/client/Dockerfile.build
     container_name: client
     hostname: client
     stdin_open: true
     tty: true
     volumes:
-      - ./logs/client:/logs
+      - ${OUTPUT_DIR}/logs/client:/logs
     environment:
       - CRON=$CRON
       - ROLE=client
       - CLIENT_PARAMS=$CLIENT_PARAMS
+      - QNS_MODE=perf
       - SSLKEYLOGFILE=/logs/keys.log
       - QLOGDIR=/logs/qlog/
-      - TESTCASE=$TESTCASE_CLIENT
       - REQUESTS=$REQUESTS
       - VERSION=$VERSION
       - DOWNLOAD_B=$DOWNLOAD_B
       - UPLOAD_B=$UPLOAD_B
+      - RUST_LOG=info
     depends_on:
       - sim
     cap_add:
