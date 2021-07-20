@@ -147,7 +147,7 @@ impl Manager {
             latest_rtt: path.rtt_estimator.latest_rtt(),
             rtt_variance: path.rtt_estimator.rttvar(),
             max_ack_delay: path.rtt_estimator.max_ack_delay(),
-            pto_backoff: path.pto_backoff,
+            pto_count: (path.pto_backoff as f32).log2() as u32,
             congestion_window: path.congestion_controller.congestion_window(),
             bytes_in_flight: path.congestion_controller.bytes_in_flight(),
         });

@@ -160,7 +160,7 @@ events!(
     }
 
     #[name = "recovery:metrics_updated"]
-    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.1.8
+    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.4.2
     /// Recovery metrics updated
     struct RecoveryMetrics {
         pub min_rtt: Duration,
@@ -168,7 +168,7 @@ events!(
         pub latest_rtt: Duration,
         pub rtt_variance: Duration,
         pub max_ack_delay: Duration,
-        pub pto_backoff: u32,
+        pub pto_count: u32,
         pub congestion_window: u32,
         pub bytes_in_flight: u32,
     }
