@@ -674,10 +674,19 @@ impl<Cfg: Config> Endpoint<Cfg> {
         for internal_id in self.timer_manager.expirations(timestamp) {
             self.connections
                 .with_connection(internal_id, |conn, mut shared_state| {
+                    let mut publisher = event::PublisherSubscriber::new(
+                        event::builders::Meta {
+                            endpoint_type: Cfg::ENDPOINT_TYPE,
+                            group_id: conn.internal_connection_id().into(),
+                        },
+                        endpoint_context.event_subscriber,
+                    );
+
                     if let Err(error) = conn.on_timeout(
                         shared_state.as_deref_mut(),
                         connection_id_mapper,
                         timestamp,
+                        &mut publisher,
                     ) {
                         conn.close(
                             shared_state,

@@ -197,13 +197,31 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         let max_backoff = path.pto_backoff * 2;
 
         if let Some((space, handshake_status)) = self.initial_mut() {
-            space.on_timeout(handshake_status, path_id, path_manager, timestamp, publisher)
+            space.on_timeout(
+                handshake_status,
+                path_id,
+                path_manager,
+                timestamp,
+                publisher,
+            )
         }
         if let Some((space, handshake_status)) = self.handshake_mut() {
-            space.on_timeout(handshake_status, path_id, path_manager, timestamp, publisher)
+            space.on_timeout(
+                handshake_status,
+                path_id,
+                path_manager,
+                timestamp,
+                publisher,
+            )
         }
         if let Some((space, handshake_status)) = self.application_mut() {
-            space.on_timeout(path_manager, handshake_status, local_id_registry, timestamp, publisher)
+            space.on_timeout(
+                path_manager,
+                handshake_status,
+                local_id_registry,
+                timestamp,
+                publisher,
+            )
         }
 
         let path = path_manager.active_path_mut();
