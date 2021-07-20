@@ -183,11 +183,12 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
     }
 
     /// Called when the connection timer expired
-    pub fn on_timeout(
+    pub fn on_timeout<Pub: event::Publisher>(
         &mut self,
         local_id_registry: &mut connection::LocalIdRegistry,
         path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
         timestamp: Timestamp,
+        publisher: &mut Pub,
     ) {
         let path_id = path_manager.active_path_id();
         let path = path_manager.active_path_mut();
@@ -196,13 +197,13 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         let max_backoff = path.pto_backoff * 2;
 
         if let Some((space, handshake_status)) = self.initial_mut() {
-            space.on_timeout(handshake_status, path_id, path_manager, timestamp)
+            space.on_timeout(handshake_status, path_id, path_manager, timestamp, publisher)
         }
         if let Some((space, handshake_status)) = self.handshake_mut() {
-            space.on_timeout(handshake_status, path_id, path_manager, timestamp)
+            space.on_timeout(handshake_status, path_id, path_manager, timestamp, publisher)
         }
         if let Some((space, handshake_status)) = self.application_mut() {
-            space.on_timeout(path_manager, handshake_status, local_id_registry, timestamp)
+            space.on_timeout(path_manager, handshake_status, local_id_registry, timestamp, publisher)
         }
 
         let path = path_manager.active_path_mut();
@@ -406,7 +407,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
         path: &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
     ) -> Result<(), transport::Error>;
 
-    fn handle_ack_frame<A: AckRanges>(
+    fn handle_ack_frame<A: AckRanges, Pub: event::Publisher>(
         &mut self,
         frame: Ack<A>,
         datagram: &DatagramInfo,
@@ -414,6 +415,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
         path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
         handshake_status: &mut HandshakeStatus,
         local_id_registry: &mut connection::LocalIdRegistry,
+        publisher: &mut Pub,
     ) -> Result<(), transport::Error>;
 
     fn handle_connection_close_frame(
@@ -578,6 +580,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
                         path_manager,
                         handshake_status,
                         local_id_registry,
+                        publisher,
                     )
                     .map_err(on_error)?;
                 }

@@ -17,6 +17,7 @@ use bytes::Bytes;
 use core::{convert::TryInto, marker::PhantomData};
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
+    event,
     crypto::{application::KeySet, tls, CryptoSuite},
     frame::{
         ack::AckRanges, crypto::CryptoRef, stream::StreamRef, Ack, ConnectionClose, DataBlocked,
@@ -311,12 +312,13 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
     }
 
     /// Called when the connection timer expired
-    pub fn on_timeout(
+    pub fn on_timeout<Pub: event::Publisher>(
         &mut self,
         path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
         handshake_status: &mut HandshakeStatus,
         local_id_registry: &mut connection::LocalIdRegistry,
         timestamp: Timestamp,
+        publisher: &mut Pub,
     ) {
         self.ack_manager.on_timeout(timestamp);
         self.key_set.on_timeout(timestamp);
@@ -328,7 +330,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             path_manager,
         );
 
-        recovery_manager.on_timeout(timestamp, &mut context);
+        recovery_manager.on_timeout(timestamp, &mut context, publisher);
 
         self.stream_manager.on_timeout(timestamp);
     }
@@ -532,7 +534,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         Ok(())
     }
 
-    fn handle_ack_frame<A: AckRanges>(
+    fn handle_ack_frame<A: AckRanges, Pub: event::Publisher>(
         &mut self,
         frame: Ack<A>,
         datagram: &DatagramInfo,
@@ -540,6 +542,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
         handshake_status: &mut HandshakeStatus,
         local_id_registry: &mut connection::LocalIdRegistry,
+        publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
         //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.1.2
         //= type=TODO
@@ -551,7 +554,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         path.on_peer_validated();
         let (recovery_manager, mut context) =
             self.recovery(handshake_status, local_id_registry, path_id, path_manager);
-        recovery_manager.on_ack_frame(datagram, frame, &mut context)
+        recovery_manager.on_ack_frame(datagram, frame, &mut context, publisher)
     }
 
     fn handle_connection_close_frame(

@@ -16,6 +16,7 @@ use crate::{
 use core::marker::PhantomData;
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
+    event,
     crypto::{tls, CryptoSuite},
     frame::{ack::AckRanges, crypto::CryptoRef, Ack, ConnectionClose},
     inet::DatagramInfo,
@@ -228,18 +229,19 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
     }
 
     /// Called when the connection timer expired
-    pub fn on_timeout(
+    pub fn on_timeout<Pub: event::Publisher>(
         &mut self,
         handshake_status: &HandshakeStatus,
         path_id: path::Id,
         path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
         timestamp: Timestamp,
+        publisher: &mut Pub,
     ) {
         self.ack_manager.on_timeout(timestamp);
 
         let (recovery_manager, mut context) =
             self.recovery(handshake_status, path_id, path_manager);
-        recovery_manager.on_timeout(timestamp, &mut context);
+        recovery_manager.on_timeout(timestamp, &mut context, publisher);
     }
 
     /// Called before the Initial packet space is discarded
@@ -409,7 +411,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for InitialSpace<Config> {
         Ok(())
     }
 
-    fn handle_ack_frame<A: AckRanges>(
+    fn handle_ack_frame<A: AckRanges, Pub: event::Publisher>(
         &mut self,
         frame: Ack<A>,
         datagram: &DatagramInfo,
@@ -417,10 +419,11 @@ impl<Config: endpoint::Config> PacketSpace<Config> for InitialSpace<Config> {
         path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
         handshake_status: &mut HandshakeStatus,
         _local_id_registry: &mut connection::LocalIdRegistry,
+        publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
         let (recovery_manager, mut context) =
             self.recovery(handshake_status, path_id, path_manager);
-        recovery_manager.on_ack_frame(datagram, frame, &mut context)
+        recovery_manager.on_ack_frame(datagram, frame, &mut context, publisher)
     }
 
     fn handle_connection_close_frame(
