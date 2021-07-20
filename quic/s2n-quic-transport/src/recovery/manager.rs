@@ -116,6 +116,7 @@ impl Manager {
         context: &mut Ctx,
         publisher: &mut Pub,
     ) {
+        let path = context.path_mut();
         if self.loss_timer.is_armed() {
             if self.loss_timer.poll_expiration(timestamp).is_ready() {
                 self.detect_and_remove_lost_packets(timestamp, context, publisher)
@@ -136,9 +137,14 @@ impl Manager {
                 // Note: the psuedocode updates the pto timer in OnLossDetectionTimeout
                 // (see section A.9). We don't do that here since it will be rearmed in
                 // `on_packet_sent`, which immediately follows a timeout.
-                context.path_mut().pto_backoff *= 2;
+                path.pto_backoff *= 2;
             }
         }
+
+        publisher.on_recovery_metrics(event::builders::RecoveryMetrics {
+            // min_rtt: path.rtt_estimator.min_rtt,
+            min_rtt: 0,
+        });
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.5

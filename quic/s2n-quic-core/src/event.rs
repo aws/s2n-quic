@@ -157,4 +157,11 @@ events!(
         pub bytes_lost: u16,
         pub is_mtu_probe: bool,
     }
+
+    #[name = "recovery:metrics_updated"]
+    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.1.8
+    /// Recovery metrics updated
+    struct RecoveryMetrics {
+        pub min_rtt: u32,
+    }
 );
