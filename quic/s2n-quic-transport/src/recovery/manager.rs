@@ -10,7 +10,7 @@ use crate::{
 };
 use core::{cmp::max, time::Duration};
 use s2n_quic_core::{
-    endpoint, frame,
+    endpoint, event, frame,
     inet::DatagramInfo,
     packet::number::{PacketNumber, PacketNumberRange, PacketNumberSpace},
     recovery::{CongestionController, RttEstimator, K_GRANULARITY},
@@ -110,14 +110,15 @@ impl Manager {
             .chain(self.loss_timer.iter())
     }
 
-    pub fn on_timeout<CC: CongestionController, Ctx: Context<CC>>(
+    pub fn on_timeout<CC: CongestionController, Ctx: Context<CC>, Pub: event::Publisher>(
         &mut self,
         timestamp: Timestamp,
         context: &mut Ctx,
+        publisher: &mut Pub,
     ) {
         if self.loss_timer.is_armed() {
             if self.loss_timer.poll_expiration(timestamp).is_ready() {
-                self.detect_and_remove_lost_packets(timestamp, context)
+                self.detect_and_remove_lost_packets(timestamp, context, publisher)
             }
         } else {
             let pto_expired = self
@@ -253,11 +254,17 @@ impl Manager {
 
     /// Process ACK frame. Update congestion controler, timers and meta data around acked
     /// packet ranges.
-    pub fn on_ack_frame<A: frame::ack::AckRanges, CC: CongestionController, Ctx: Context<CC>>(
+    pub fn on_ack_frame<
+        A: frame::ack::AckRanges,
+        CC: CongestionController,
+        Ctx: Context<CC>,
+        Pub: event::Publisher,
+    >(
         &mut self,
         datagram: &DatagramInfo,
         frame: frame::Ack<A>,
         context: &mut Ctx,
+        publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
         let largest_acked_packet_number =
             self.space.new_packet_number(frame.largest_acknowledged());
@@ -298,6 +305,7 @@ impl Manager {
                 largest_newly_acked_info.time_sent,
                 datagram,
                 context,
+                publisher,
             );
         }
 
@@ -436,18 +444,23 @@ impl Manager {
         }
     }
 
-    fn process_new_acked_packets<CC: CongestionController, Ctx: Context<CC>>(
+    fn process_new_acked_packets<
+        CC: CongestionController,
+        Ctx: Context<CC>,
+        Pub: event::Publisher,
+    >(
         &mut self,
         newly_acked_packets: &SmallVec<[SentPacketInfo; ACKED_PACKETS_INITIAL_CAPACITY]>,
         largest_newly_acked_time_sent: Timestamp,
         datagram: &DatagramInfo,
         context: &mut Ctx,
+        publisher: &mut Pub,
     ) {
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.1.2
         //# Once a later packet within the same packet number space has been
         //# acknowledged, an endpoint SHOULD declare an earlier packet lost if it
         //# was sent a threshold amount of time in the past.
-        self.detect_and_remove_lost_packets(datagram.timestamp, context);
+        self.detect_and_remove_lost_packets(datagram.timestamp, context, publisher);
 
         for acked_packet_info in newly_acked_packets {
             let path = context.path_mut_by_id(acked_packet_info.path_id);
@@ -508,10 +521,15 @@ impl Manager {
     //# DetectAndRemoveLostPackets is called every time an ACK is received or the time threshold
     //# loss detection timer expires. This function operates on the sent_packets for that packet
     //# number space and returns a list of packets newly detected as lost.
-    fn detect_and_remove_lost_packets<CC: CongestionController, Ctx: Context<CC>>(
+    fn detect_and_remove_lost_packets<
+        CC: CongestionController,
+        Ctx: Context<CC>,
+        Pub: event::Publisher,
+    >(
         &mut self,
         now: Timestamp,
         context: &mut Ctx,
+        publisher: &mut Pub,
     ) {
         // Cancel the loss timer. It will be armed again if any unacknowledged packets are
         // older than the largest acked packet, but not old enough to be considered lost yet
@@ -527,6 +545,7 @@ impl Manager {
             max_persistent_congestion_period,
             sent_packets_to_remove,
             context,
+            publisher,
         );
     }
 
@@ -663,12 +682,13 @@ impl Manager {
         (max_persistent_congestion_period, sent_packets_to_remove)
     }
 
-    fn remove_lost_packets<CC: CongestionController, Ctx: Context<CC>>(
+    fn remove_lost_packets<CC: CongestionController, Ctx: Context<CC>, Pub: event::Publisher>(
         &mut self,
         now: Timestamp,
         max_persistent_congestion_period: Duration,
         sent_packets_to_remove: Vec<PacketDetails>,
         context: &mut Ctx,
+        publisher: &mut Pub,
     ) {
         let current_path_id = context.path_id();
         // Remove the lost packets and account for the bytes on the proper congestion controller
@@ -676,6 +696,15 @@ impl Manager {
             let path = context.path_mut_by_id(sent_info.path_id);
 
             self.sent_packets.remove(packet_number);
+
+            publisher.on_packet_lost(event::builders::PacketLost {
+                packet_header: event::builders::PacketHeader {
+                    packet_type: packet_number.space().into(),
+                    packet_number: packet_number.as_u64(),
+                    version: Some(0), // TODO: eventually use publisher.quic_version
+                }
+                .into(),
+            });
 
             //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7.6.2
             //# A sender that does not have state for all packet
