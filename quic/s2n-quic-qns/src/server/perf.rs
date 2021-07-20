@@ -5,8 +5,9 @@ use crate::Result;
 use bytes::Bytes;
 use futures::future::try_join_all;
 use s2n_quic::{
-    provider::tls::default::certificate::{
-        Certificate, IntoCertificate, IntoPrivateKey, PrivateKey,
+    provider::{
+        event,
+        tls::default::certificate::{Certificate, IntoCertificate, IntoPrivateKey, PrivateKey},
     },
     stream::{BidirectionalStream, ReceiveStream, SendStream},
     Connection, Server,
@@ -234,6 +235,7 @@ impl Perf {
         let server = Server::builder()
             .with_io(("::", self.port))?
             .with_tls(tls)?
+            .with_event(event::disabled::Provider)?
             .start()
             .unwrap();
 

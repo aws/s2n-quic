@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{endpoint, packet::number::PacketNumberSpace};
+use crate::{connection::PeerId, endpoint, inet::SocketAddress, packet::number::PacketNumberSpace};
 use paste::paste;
 
 #[macro_use]
@@ -99,5 +99,18 @@ events!(
     /// Packet was received
     struct PacketReceived {
         pub packet_header: common::PacketHeader,
+    }
+
+    #[name = "connectivity:active_path_updated"]
+    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.1.8
+    /// Active path was updated
+    struct ActivePathUpdated<'a> {
+        // TODO: many events seem to require PacketHeader. Make it more ergonomic
+        // to include this field.
+        // pub packet_header: common::PacketHeader,
+        pub src_addr: &'a SocketAddress,
+        pub dst_addr: &'a SocketAddress,
+        pub src_cid: &'a PeerId,
+        pub dst_cid: &'a PeerId,
     }
 );

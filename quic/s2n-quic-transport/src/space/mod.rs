@@ -11,6 +11,7 @@ use s2n_quic_core::{
     ack,
     connection::limits::Limits,
     crypto::{tls, tls::Session, CryptoSuite},
+    event,
     frame::{
         ack::AckRanges,
         crypto::CryptoRef,
@@ -497,7 +498,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
 
     // TODO: Reduce arguments, https://github.com/awslabs/s2n-quic/issues/312
     #[allow(clippy::too_many_arguments)]
-    fn handle_cleartext_payload<'a, Rnd: random::Generator>(
+    fn handle_cleartext_payload<'a, Rnd: random::Generator, Pub: event::Publisher>(
         &mut self,
         packet_number: PacketNumber,
         mut payload: DecoderBufferMut<'a>,
@@ -507,6 +508,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
         handshake_status: &mut HandshakeStatus,
         local_id_registry: &mut connection::LocalIdRegistry,
         random_generator: &mut Rnd,
+        publisher: &mut Pub,
     ) -> Result<(), connection::Error> {
         use s2n_quic_core::{
             frame::{Frame, FrameMut},
@@ -684,7 +686,11 @@ pub trait PacketSpace<Config: endpoint::Config> {
             payload = remaining;
         }
         if is_path_validation_probing.is_probing() {
-            path_manager.on_non_path_validation_probing_packet(path_id, random_generator)?;
+            path_manager.on_non_path_validation_probing_packet(
+                path_id,
+                random_generator,
+                publisher,
+            )?;
         }
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.1

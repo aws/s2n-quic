@@ -9,7 +9,7 @@ use crate::{
     transmission,
 };
 use s2n_quic_core::{
-    ack, connection, frame,
+    ack, connection, event, frame,
     inet::{DatagramInfo, SocketAddress},
     packet::number::PacketNumberSpace,
     path::MaxMtu,
@@ -56,10 +56,11 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     }
 
     /// Update the active path
-    fn update_active_path<Rnd: random::Generator>(
+    fn update_active_path<Rnd: random::Generator, Pub: event::Publisher>(
         &mut self,
         path_id: Id,
         random_generator: &mut Rnd,
+        publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
         debug_assert!(path_id != Id(self.active));
 
@@ -82,6 +83,14 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
                 .consume_new_id()
                 .ok_or(transport::Error::INTERNAL_ERROR)?
         };
+        self[path_id].peer_connection_id = use_peer_connection_id;
+
+        publisher.on_active_path_updated(event::builders::ActivePathUpdated {
+            src_addr: &self.active_path().peer_socket_address,
+            dst_addr: &self[path_id].peer_socket_address,
+            src_cid: &self.active_path().peer_connection_id,
+            dst_cid: &self[path_id].peer_connection_id,
+        });
 
         if self.active_path().is_validated() {
             self.last_known_validated_path = Some(self.active);
@@ -97,8 +106,6 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         if !self.active_path().is_challenge_pending() {
             self.set_challenge(self.active_path_id(), random_generator);
         }
-
-        self[path_id].peer_connection_id = use_peer_connection_id;
 
         self.active = new_path_idx;
         Ok(())
@@ -215,7 +222,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         // TODO: This would be better handled as a stateless reset so the peer can terminate the
         //       connection immediately. https://github.com/awslabs/s2n-quic/issues/317
         // We only enable connection migration for testing
-        #[cfg(not(any(feature = "testing", test)))]
+        #[cfg(not(any(feature = "connection_migration", feature = "testing", test)))]
         return Err(
             transport::Error::INTERNAL_ERROR.with_reason("Connection Migration is not supported")
         );
@@ -404,13 +411,14 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     }
 
     /// Process a non-probing (path validation probing) packet.
-    pub fn on_non_path_validation_probing_packet<Rnd: random::Generator>(
+    pub fn on_non_path_validation_probing_packet<Rnd: random::Generator, Pub: event::Publisher>(
         &mut self,
         path_id: Id,
         random_generator: &mut Rnd,
+        publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
         if self.active_path_id() != path_id {
-            self.update_active_path(path_id, random_generator)?;
+            self.update_active_path(path_id, random_generator, publisher)?;
 
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3
             //# After changing the address to which it sends non-probing packets, an
@@ -632,6 +640,7 @@ mod tests {
     use core::time::Duration;
     use s2n_quic_core::{
         endpoint,
+        event::testing::Publisher,
         inet::{DatagramInfo, ExplicitCongestionNotification},
         random::{self, Generator},
         recovery::{congestion_controller::testing::unlimited, RttEstimator},
@@ -736,7 +745,7 @@ mod tests {
         assert!(manager.paths[0].is_validated());
 
         manager
-            .update_active_path(Id(1), &mut random::testing::Generator(123))
+            .update_active_path(Id(1), &mut random::testing::Generator(123), &mut Publisher)
             .unwrap();
         assert_eq!(manager.active, 1);
         assert_eq!(manager.last_known_validated_path, Some(0));
@@ -773,7 +782,11 @@ mod tests {
         assert!(helper.manager.paths[helper.first_path_id.0 as usize].is_validated());
         helper
             .manager
-            .update_active_path(helper.second_path_id, &mut random::testing::Generator(123))
+            .update_active_path(
+                helper.second_path_id,
+                &mut random::testing::Generator(123),
+                &mut Publisher,
+            )
             .unwrap();
 
         // Expectation:
@@ -790,7 +803,11 @@ mod tests {
         // Trigger:
         helper
             .manager
-            .update_active_path(helper.second_path_id, &mut random::testing::Generator(123))
+            .update_active_path(
+                helper.second_path_id,
+                &mut random::testing::Generator(123),
+                &mut Publisher,
+            )
             .unwrap();
 
         // Expectation:
@@ -807,7 +824,11 @@ mod tests {
         // Trigger:
         helper
             .manager
-            .update_active_path(helper.second_path_id, &mut random::testing::Generator(123))
+            .update_active_path(
+                helper.second_path_id,
+                &mut random::testing::Generator(123),
+                &mut Publisher,
+            )
             .unwrap();
 
         // Expectation:
@@ -823,9 +844,11 @@ mod tests {
 
         // Trigger:
         assert_eq!(
-            helper
-                .manager
-                .update_active_path(helper.second_path_id, &mut random::testing::Generator(123)),
+            helper.manager.update_active_path(
+                helper.second_path_id,
+                &mut random::testing::Generator(123),
+                &mut Publisher
+            ),
             Err(transport::Error::INTERNAL_ERROR)
         );
 
@@ -847,7 +870,11 @@ mod tests {
         // Trigger:
         helper
             .manager
-            .update_active_path(helper.second_path_id, &mut random::testing::Generator(123))
+            .update_active_path(
+                helper.second_path_id,
+                &mut random::testing::Generator(123),
+                &mut Publisher,
+            )
             .unwrap();
 
         // Expectation:
@@ -1011,6 +1038,7 @@ mod tests {
             .on_non_path_validation_probing_packet(
                 helper.second_path_id,
                 &mut random::testing::Generator(123),
+                &mut Publisher,
             )
             .unwrap();
 
@@ -1103,6 +1131,7 @@ mod tests {
             .on_non_path_validation_probing_packet(
                 helper.second_path_id,
                 &mut random::testing::Generator(123),
+                &mut Publisher,
             )
             .unwrap();
 
@@ -1130,6 +1159,7 @@ mod tests {
             .on_non_path_validation_probing_packet(
                 helper.second_path_id,
                 &mut random::testing::Generator(123),
+                &mut Publisher,
             )
             .unwrap();
 
@@ -1780,7 +1810,11 @@ mod tests {
         }
 
         assert!(manager
-            .update_active_path(first_path_id, &mut random::testing::Generator(123))
+            .update_active_path(
+                first_path_id,
+                &mut random::testing::Generator(123),
+                &mut Publisher
+            )
             .is_ok());
         if validate_path_zero {
             assert!(manager[zero_path_id].is_challenge_pending());

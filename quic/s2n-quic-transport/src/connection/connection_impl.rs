@@ -821,6 +821,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 datagram,
                 path_id,
                 packet,
+                publisher,
                 random_generator,
             )?;
         }
@@ -829,12 +830,13 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Is called when an unprotected initial packet had been received
-    fn handle_cleartext_initial_packet<Rnd: random::Generator>(
+    fn handle_cleartext_initial_packet<Pub: event::Publisher, Rnd: random::Generator>(
         &mut self,
         shared_state: &mut SharedConnectionState<Self::Config>,
         datagram: &DatagramInfo,
         path_id: path::Id,
         packet: CleartextInitial,
+        publisher: &mut Pub,
         random_generator: &mut Rnd,
     ) -> Result<(), ProcessingError> {
         if let Some((space, handshake_status)) = shared_state.space_manager.initial_mut() {
@@ -864,6 +866,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 handshake_status,
                 &mut self.local_id_registry,
                 random_generator,
+                publisher,
             )?;
 
             // try to move the crypto state machine forward
@@ -920,6 +923,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 handshake_status,
                 &mut self.local_id_registry,
                 random_generator,
+                publisher,
             )?;
 
             if Self::Config::ENDPOINT_TYPE.is_server() {
@@ -1010,6 +1014,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 handshake_status,
                 &mut self.local_id_registry,
                 random_generator,
+                publisher,
             )?;
 
             // Currently, the application space does not have any crypto state.

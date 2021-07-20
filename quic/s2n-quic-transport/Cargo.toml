@@ -5,6 +5,9 @@ authors = ["Cameron Bytheway <bythewc@amazon.com>", "Matthias Einwag <einwag@ama
 edition = "2018"
 license = "Apache-2.0"
 
+[features]
+connection-migration = []
+
 [dependencies]
 bytes = { version = "1", default-features = false }
 hashbrown = "0.11"
