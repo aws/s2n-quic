@@ -91,10 +91,12 @@ pub struct CubicCongestionController {
 type BytesInFlight = Counter<u32>;
 
 impl CongestionController for CubicCongestionController {
+    #[inline]
     fn congestion_window(&self) -> u32 {
         self.congestion_window as u32
     }
 
+    #[inline]
     fn is_congestion_limited(&self) -> bool {
         let available_congestion_window = self
             .congestion_window()
@@ -102,10 +104,12 @@ impl CongestionController for CubicCongestionController {
         available_congestion_window < self.max_datagram_size as u32
     }
 
+    #[inline]
     fn requires_fast_retransmission(&self) -> bool {
         matches!(self.state, Recovery(_, RequiresTransmission))
     }
 
+    #[inline]
     fn on_packet_sent(&mut self, time_sent: Timestamp, bytes_sent: usize) {
         self.bytes_in_flight
             .try_add(bytes_sent)
@@ -143,6 +147,7 @@ impl CongestionController for CubicCongestionController {
         self.time_of_last_sent_packet = Some(time_sent);
     }
 
+    #[inline]
     fn on_rtt_update(&mut self, time_sent: Timestamp, rtt_estimator: &RttEstimator) {
         // Update the Slow Start algorithm each time the RTT
         // estimate is updated to find the slow start threshold.
@@ -155,6 +160,7 @@ impl CongestionController for CubicCongestionController {
         );
     }
 
+    #[inline]
     fn on_packet_ack(
         &mut self,
         largest_acked_time_sent: Timestamp,
@@ -232,6 +238,7 @@ impl CongestionController for CubicCongestionController {
         debug_assert!(self.congestion_window >= self.cubic.minimum_window());
     }
 
+    #[inline]
     fn on_packets_lost(
         &mut self,
         lost_bytes: u32,
@@ -255,6 +262,7 @@ impl CongestionController for CubicCongestionController {
         }
     }
 
+    #[inline]
     fn on_congestion_event(&mut self, event_time: Timestamp) {
         // No reaction if already in a recovery period.
         if matches!(self.state, Recovery(_, _)) {
@@ -306,6 +314,7 @@ impl CongestionController for CubicCongestionController {
     //# A PL that maintains the congestion window in terms of a limit to
     //# the number of outstanding fixed-size packets SHOULD adapt this
     //# limit to compensate for the size of the actual packets.
+    #[inline]
     fn on_mtu_update(&mut self, max_datagram_size: u16) {
         let old_max_datagram_size = self.max_datagram_size;
         self.max_datagram_size = max_datagram_size;
@@ -326,6 +335,7 @@ impl CongestionController for CubicCongestionController {
     //# be acknowledged because their acknowledgements cannot be processed
     //# anymore.  The sender MUST discard all recovery state associated with
     //# those packets and MUST remove them from the count of bytes in flight.
+    #[inline]
     fn on_packet_discarded(&mut self, bytes_sent: usize) {
         self.bytes_in_flight
             .try_sub(bytes_sent)
@@ -358,6 +368,7 @@ impl CubicCongestionController {
     //# Endpoints SHOULD use an initial congestion window of 10 times the
     //# maximum datagram size (max_datagram_size), limited to the larger
     //# of 14720 bytes or twice the maximum datagram size.
+    #[inline]
     fn initial_window(max_datagram_size: u16) -> u32 {
         const INITIAL_WINDOW_LIMIT: u32 = 14720;
         min(
@@ -366,6 +377,7 @@ impl CubicCongestionController {
         )
     }
 
+    #[inline]
     fn congestion_avoidance(&mut self, t: Duration, rtt: Duration, sent_bytes: usize) {
         let w_cubic = self.cubic.w_cubic(t);
         let w_est = self.cubic.w_est(t, rtt);
@@ -434,12 +446,14 @@ impl CubicCongestionController {
         }
     }
 
+    #[inline]
     fn packets_to_bytes(&self, cwnd: f32) -> f32 {
         cwnd * self.max_datagram_size as f32
     }
 
     /// Returns true if the congestion window is under utilized and should not grow larger
     /// without further evidence of the stability of the current window.
+    #[inline]
     fn is_congestion_window_under_utilized(&self) -> bool {
         // This value is based on kMaxBurstBytes from Chromium
         // https://source.chromium.org/chromium/chromium/src/+/master:net/third_party/quiche/src/quic/core/congestion_control/tcp_cubic_sender_bytes.cc;l=23;drc=f803516d2656ed829e54b2e819731763ca6cf4d9
@@ -506,6 +520,7 @@ impl Cubic {
     }
 
     /// Reset to the original state
+    #[inline]
     pub fn reset(&mut self) {
         self.w_max = 0.0;
         self.w_last_max = 0.0;
@@ -527,6 +542,7 @@ impl Cubic {
     //#    K = cubic_root(W_max*(1-beta_cubic)/C) (Eq. 2)
     //#
     //# where beta_cubic is the CUBIC multiplication decrease factor
+    #[inline]
     fn w_cubic(&self, t: Duration) -> f32 {
         C * (t.as_secs_f32() - self.k.as_secs_f32()).powf(3.0) + self.w_max as f32
     }
@@ -534,6 +550,7 @@ impl Cubic {
     //= https://tools.ietf.org/rfc/rfc8312#4.2
     //# W_est(t) = W_max*beta_cubic +
     //               [3*(1-beta_cubic)/(1+beta_cubic)] * (t/RTT) (Eq. 4)
+    #[inline]
     fn w_est(&self, t: Duration, rtt: Duration) -> f32 {
         self.w_max.mul_add(
             BETA_CUBIC,
@@ -552,6 +569,7 @@ impl Cubic {
     //#    ssthresh = max(ssthresh, 2);  // threshold is at least 2 MSS
     //#    cwnd = cwnd * beta_cubic;     // window reduction
     // This does not change the units of the congestion window
+    #[inline]
     fn multiplicative_decrease(&mut self, cwnd: f32) -> f32 {
         self.w_max = self.bytes_to_packets(cwnd);
 
@@ -621,6 +639,7 @@ impl Cubic {
     //# t is the elapsed time since the beginning of the current congestion
     //# avoidance, K is set to 0, and W_max is set to the congestion window
     //# size at the beginning of the current congestion avoidance.
+    #[inline]
     fn on_slow_start_exit(&mut self, cwnd: f32) {
         self.w_max = self.bytes_to_packets(cwnd);
 
@@ -634,10 +653,12 @@ impl Cubic {
     //# window can decrease to as a response to loss, increase in the peer-
     //# reported ECN-CE count, or persistent congestion.  The RECOMMENDED
     //# value is 2 * max_datagram_size.
+    #[inline]
     fn minimum_window(&self) -> f32 {
         2.0 * self.max_datagram_size as f32
     }
 
+    #[inline]
     fn bytes_to_packets(&self, bytes: f32) -> f32 {
         bytes / self.max_datagram_size as f32
     }

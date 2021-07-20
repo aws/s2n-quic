@@ -43,24 +43,28 @@ impl Default for PacketNumber {
 }
 
 impl Hash for PacketNumber {
+    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.0.hash(state)
     }
 }
 
 impl PartialEq for PacketNumber {
+    #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.cmp(other) == Ordering::Equal
     }
 }
 
 impl PartialOrd for PacketNumber {
+    #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
 impl Ord for PacketNumber {
+    #[inline]
     fn cmp(&self, other: &Self) -> Ordering {
         if cfg!(debug_assertions) {
             self.space().assert_eq(other.space());
@@ -86,6 +90,7 @@ impl fmt::Display for PacketNumber {
 
 impl PacketNumber {
     /// Creates a PacketNumber for a given VarInt and PacketNumberSpace
+    #[inline]
     pub(crate) const fn from_varint(value: VarInt, space: PacketNumberSpace) -> Self {
         let tag = space.as_tag() as u64;
         let pn = (tag << PACKET_SPACE_SHIFT) | value.as_u64();
@@ -97,6 +102,7 @@ impl PacketNumber {
     }
 
     /// Returns the `PacketNumberSpace` for the given `PacketNumber`
+    #[inline]
     pub fn space(self) -> PacketNumberSpace {
         let tag = self.0.get() >> PACKET_SPACE_SHIFT;
         PacketNumberSpace::from_tag(tag as u8)
@@ -156,12 +162,14 @@ impl PacketNumber {
     }
 
     /// Returns the value with the top 2 bits removed
+    #[inline]
     pub const fn as_u64(self) -> u64 {
         self.0.get() & PACKET_NUMBER_MASK
     }
 
     /// Computes the distance between this packet number and the given packet number,
     /// returning None if overflow occurred.
+    #[inline]
     pub fn checked_distance(self, rhs: PacketNumber) -> Option<u64> {
         self.space().assert_eq(rhs.space());
         Self::as_u64(self).checked_sub(Self::as_u64(rhs))

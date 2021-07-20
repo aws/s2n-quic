@@ -9,6 +9,7 @@ use core::{
     ops::Range,
 };
 
+#[inline]
 pub(crate) fn remove<T: IntervalBound + Ord>(
     ranges: &mut VecDeque<Interval<T>>,
     range: Interval<T>,
@@ -50,6 +51,7 @@ impl<'a, T: 'a + IntervalBound + Ord> Removal<T> {
     /// applicable interval ranges
     ///
     /// Returns `Some(index)` if the removal can be applied to a single interval
+    #[inline]
     fn scan<I: Iterator<Item = (usize, &'a mut Interval<T>)>>(
         &mut self,
         ranges: I,
@@ -229,6 +231,7 @@ impl<'a, T: 'a + IntervalBound + Ord> Removal<T> {
     }
 
     /// Applies the `Removal` to the given set of `Interval`s.
+    #[inline]
     fn apply(self, ranges: &mut VecDeque<Interval<T>>) -> Result<usize, IntervalSetError> {
         let replace_range = self.replace_range;
 
@@ -257,14 +260,17 @@ impl<'a, T: 'a + IntervalBound + Ord> Removal<T> {
         }
     }
 
+    #[inline]
     fn set_start(&mut self, start: usize) {
         self.replace_range.start = min(self.replace_range.start, start);
     }
 
+    #[inline]
     fn set_end(&mut self, end: usize) {
         self.replace_range.end = max(self.replace_range.end, end);
     }
 
+    #[inline]
     fn push_range(&mut self, start: T, end: T) -> Option<()> {
         debug_assert!(self.push_range.is_none());
         self.push_range = Some(Interval { start, end });

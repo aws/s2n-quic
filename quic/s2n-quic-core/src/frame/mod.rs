@@ -41,6 +41,7 @@ macro_rules! frames {
         }
 
         impl<'a, $ack, $data> Frame<'a, $ack, $data> {
+            #[inline]
             pub fn tag(&self) -> Tag {
                 match self {
                     $(
@@ -51,6 +52,7 @@ macro_rules! frames {
         }
 
         impl<'a, $ack, $data> ack_elicitation::AckElicitable for Frame<'a, $ack, $data> {
+            #[inline]
             fn ack_elicitation(&self) -> ack_elicitation::AckElicitation {
                 match self {
                     $(
@@ -61,6 +63,7 @@ macro_rules! frames {
         }
 
         impl<'a, $ack, $data> path_validation::Probing for Frame<'a, $ack, $data> {
+            #[inline]
             fn path_validation(&self) -> path_validation::Probe {
                 match self {
                     $(
@@ -88,6 +91,7 @@ macro_rules! frames {
         }
 
         impl<'a, $ack: ack::AckRanges, $data: EncoderValue> EncoderValue for Frame<'a, $ack, $data> {
+            #[inline]
             fn encode<E: Encoder>(&self, buffer: &mut E)  {
                 match self {
                     $(
@@ -104,6 +108,7 @@ macro_rules! frames {
             type Output = Frame<'a, $ack, $data>;
 
             $(
+                #[inline]
                 fn $handler(&mut self, frame: $module::$ty $(<$($generics)*>)?) -> Result<Self::Output, DecoderError> {
                     Ok(Frame::$ty(frame))
                 }
@@ -124,6 +129,7 @@ macro_rules! frames {
                 Err(DecoderError::InvariantViolation("invalid frame"))
             }
 
+            #[inline]
             fn decode_frame(
                 &mut self,
                 buffer: DecoderBufferMut<'a>,
@@ -188,6 +194,7 @@ macro_rules! simple_frame_codec {
         );
 
         impl s2n_codec::EncoderValue for $name {
+            #[inline]
             fn encode<E: s2n_codec::Encoder>(&self, buffer: &mut E) {
                 buffer.encode(&$tag);
                 $(

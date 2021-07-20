@@ -67,6 +67,7 @@ impl<'a> EncoderBuffer<'a> {
 }
 
 impl<'a> Encoder for EncoderBuffer<'a> {
+    #[inline]
     fn write_sized<F: FnOnce(&mut [u8])>(&mut self, len: usize, write: F) {
         self.assert_capacity(len);
         let end = self.position + len;
@@ -74,6 +75,7 @@ impl<'a> Encoder for EncoderBuffer<'a> {
         self.position = end;
     }
 
+    #[inline]
     fn write_slice(&mut self, slice: &[u8]) {
         self.assert_capacity(slice.len());
         let position = self.position;
@@ -83,6 +85,7 @@ impl<'a> Encoder for EncoderBuffer<'a> {
         self.position = end;
     }
 
+    #[inline]
     fn write_repeated(&mut self, count: usize, value: u8) {
         self.assert_capacity(count);
         let start = self.position;
@@ -93,10 +96,12 @@ impl<'a> Encoder for EncoderBuffer<'a> {
         self.position = end;
     }
 
+    #[inline]
     fn capacity(&self) -> usize {
         self.bytes.len()
     }
 
+    #[inline]
     fn len(&self) -> usize {
         self.position
     }

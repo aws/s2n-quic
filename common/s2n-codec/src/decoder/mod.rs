@@ -392,6 +392,7 @@ macro_rules! impl_buffer {
         }
 
         impl<'a> PartialEq<[u8]> for $name<'a> {
+            #[inline]
             fn eq(&self, rhs: &[u8]) -> bool {
                 let bytes: &[u8] = self.bytes.as_ref();
                 bytes.eq(rhs)

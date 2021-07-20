@@ -75,6 +75,7 @@ fn xor_mask(payload: &mut [u8], mask: &[u8]) {
     }
 }
 
+#[inline]
 pub(crate) fn apply_header_protection(
     mask: HeaderProtectionMask,
     payload: EncryptedPayload,
@@ -92,6 +93,7 @@ pub(crate) fn apply_header_protection(
     ProtectedPayload::new(header_len, payload)
 }
 
+#[inline]
 pub(crate) fn remove_header_protection(
     space: PacketNumberSpace,
     mask: HeaderProtectionMask,

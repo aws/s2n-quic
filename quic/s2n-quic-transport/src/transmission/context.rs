@@ -26,6 +26,44 @@ pub struct Context<'a, 'b, Config: endpoint::Config> {
     pub config: PhantomData<Config>,
 }
 
+impl<'a, 'b, Config: endpoint::Config> Context<'a, 'b, Config> {
+    #[inline]
+    fn check_frame_constraint<
+        Frame: AckElicitable + CongestionControlled + PathValidationProbing,
+    >(
+        &self,
+        frame: &Frame,
+    ) {
+        // only apply checks with debug_assertions enabled
+        if !cfg!(debug_assertions) {
+            return;
+        }
+
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
+        //# Servers do not send non-
+        //# probing packets (see Section 9.1) toward a client address until they
+        //# see a non-probing packet from that address.
+        //
+        // The transmission_mode PathValidation is used by the non-active path
+        // to only transmit probing frames. A packet containing only probing
+        // frames is also a probing packet.
+        if self.transmission_mode == Mode::PathValidationOnly {
+            assert!(frame.path_validation().is_probing());
+        }
+
+        match self.transmission_constraint() {
+            transmission::Constraint::AmplificationLimited => {
+                unreachable!("frames should not be written when we're amplification limited")
+            }
+            transmission::Constraint::CongestionLimited => {
+                assert!(!frame.is_congestion_controlled());
+            }
+            transmission::Constraint::RetransmissionOnly => {}
+            transmission::Constraint::None => {}
+        }
+    }
+}
+
 impl<'a, 'b, Config: endpoint::Config> WriteContext for Context<'a, 'b, Config> {
     fn current_time(&self) -> Timestamp {
         self.timestamp
@@ -49,32 +87,24 @@ impl<'a, 'b, Config: endpoint::Config> WriteContext for Context<'a, 'b, Config> 
         &mut self,
         frame: &Frame,
     ) -> Option<PacketNumber> {
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
-        //# Servers do not send non-
-        //# probing packets (see Section 9.1) toward a client address until they
-        //# see a non-probing packet from that address.
-        //
-        // The transmission_mode PathValidation is used by the non-active path
-        // to only transmit probing frames. A packet containing only probing
-        // frames is also a probing packet.
-        if self.transmission_mode == Mode::PathValidationOnly {
-            debug_assert!(frame.path_validation().is_probing());
-        }
-
-        if cfg!(debug_assertions) {
-            match self.transmission_constraint() {
-                transmission::Constraint::AmplificationLimited => {
-                    unreachable!("frames should not be written when we're amplification limited")
-                }
-                transmission::Constraint::CongestionLimited => {
-                    assert!(!frame.is_congestion_controlled());
-                }
-                transmission::Constraint::RetransmissionOnly => {}
-                transmission::Constraint::None => {}
-            }
-        }
-
+        self.check_frame_constraint(frame);
         self.write_frame_forced(frame)
+    }
+
+    fn write_fitted_frame<
+        Frame: EncoderValue + AckElicitable + CongestionControlled + PathValidationProbing,
+    >(
+        &mut self,
+        frame: &Frame,
+    ) -> PacketNumber {
+        self.check_frame_constraint(frame);
+        debug_assert!(frame.encoding_size() <= self.buffer.remaining_capacity());
+
+        self.buffer.encode(frame);
+        self.outcome.ack_elicitation |= frame.ack_elicitation();
+        self.outcome.is_congestion_controlled |= frame.is_congestion_controlled();
+
+        self.packet_number
     }
 
     fn write_frame_forced<Frame: EncoderValue + AckElicitable + CongestionControlled>(
@@ -154,6 +184,15 @@ impl<'a, C: WriteContext> WriteContext for RetransmissionContext<'a, C> {
         frame: &Frame,
     ) -> Option<PacketNumber> {
         self.context.write_frame(frame)
+    }
+
+    fn write_fitted_frame<
+        Frame: EncoderValue + AckElicitable + CongestionControlled + PathValidationProbing,
+    >(
+        &mut self,
+        frame: &Frame,
+    ) -> PacketNumber {
+        self.context.write_fitted_frame(frame)
     }
 
     fn write_frame_forced<Frame: EncoderValue + AckElicitable + CongestionControlled>(

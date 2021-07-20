@@ -300,6 +300,7 @@ struct SetRemoveIter<'a> {
 impl<'a> Iterator for SetRemoveIter<'a> {
     type Item = Interval<VarInt>;
 
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(idx) = self.next.take() {
             let transmission = self.transmissions.remove(idx);
@@ -356,6 +357,7 @@ impl TransmissionSlab {
         TransmissionId(NonZeroU16::new(1 + id).unwrap())
     }
 
+    #[inline]
     fn remove(&mut self, index: TransmissionId) -> Transmission {
         let index = index.0.get() - 1;
         let entry = &mut self.entries[index as usize];

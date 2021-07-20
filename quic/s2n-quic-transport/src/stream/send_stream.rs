@@ -337,6 +337,7 @@ impl StreamFlowController {
 
 /// Queries the component for interest in transmitting frames
 impl transmission::interest::Provider for StreamFlowController {
+    #[inline]
     fn transmission_interest(&self) -> Interest {
         self.stream_data_blocked_sync.transmission_interest()
     }
@@ -979,6 +980,7 @@ impl SendStream {
 }
 
 impl StreamInterestProvider for SendStream {
+    #[inline]
     fn interests(&self) -> StreamInterests {
         let finalization = self.final_state_observed
             && match self.state {

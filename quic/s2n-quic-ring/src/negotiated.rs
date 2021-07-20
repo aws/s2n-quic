@@ -41,6 +41,7 @@ impl KeyPair {
 
     /// Update the ciphersuite as defined in
     /// https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6
+    #[inline]
     pub fn update(&self) -> Self {
         Self {
             sealer: self.sealer.update(),
@@ -50,6 +51,7 @@ impl KeyPair {
 }
 
 impl Key for KeyPair {
+    #[inline]
     fn decrypt(
         &self,
         packet_number: u64,
@@ -59,6 +61,7 @@ impl Key for KeyPair {
         self.opener.decrypt(packet_number, header, payload)
     }
 
+    #[inline]
     fn encrypt(
         &self,
         packet_number: u64,
@@ -68,14 +71,17 @@ impl Key for KeyPair {
         self.sealer.encrypt(packet_number, header, payload)
     }
 
+    #[inline]
     fn tag_len(&self) -> usize {
         self.sealer.tag_len()
     }
 
+    #[inline]
     fn aead_confidentiality_limit(&self) -> u64 {
         self.sealer.aead_confidentiality_limit()
     }
 
+    #[inline]
     fn aead_integrity_limit(&self) -> u64 {
         self.opener.aead_integrity_limit()
     }
@@ -119,12 +125,14 @@ macro_rules! negotiated_crypto {
 
             /// Update the ciphersuite as defined in
             /// https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6
+            #[inline]
             pub fn update(&self) -> Self {
                 Self(self.0.update())
             }
         }
 
         impl s2n_quic_core::crypto::Key for $name {
+            #[inline]
             fn decrypt(
                 &self,
                 packet_number: u64,
@@ -134,6 +142,7 @@ macro_rules! negotiated_crypto {
                 self.0.decrypt(packet_number, header, payload)
             }
 
+            #[inline]
             fn encrypt(
                 &self,
                 packet_number: u64,
@@ -143,14 +152,17 @@ macro_rules! negotiated_crypto {
                 self.0.encrypt(packet_number, header, payload)
             }
 
+            #[inline]
             fn tag_len(&self) -> usize {
                 self.0.tag_len()
             }
 
+            #[inline]
             fn aead_confidentiality_limit(&self) -> u64 {
                 self.0.aead_confidentiality_limit()
             }
 
+            #[inline]
             fn aead_integrity_limit(&self) -> u64 {
                 self.0.aead_integrity_limit()
             }

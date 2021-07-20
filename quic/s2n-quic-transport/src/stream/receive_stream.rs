@@ -821,6 +821,7 @@ impl ReceiveStream {
 }
 
 impl StreamInterestProvider for ReceiveStream {
+    #[inline]
     fn interests(&self) -> StreamInterests {
         let delivery_notifications = self.stop_sending_sync.is_inflight()
             || self.flow_controller.read_window_sync.is_inflight();

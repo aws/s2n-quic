@@ -233,13 +233,14 @@ impl<'a> EncryptedShort<'a> {
 impl<'a> CleartextShort<'a> {
     #[inline]
     pub fn destination_connection_id(&self) -> &[u8] {
-        &self.destination_connection_id
+        self.destination_connection_id
     }
 }
 
 impl<DCID: EncoderValue, Payload: EncoderValue> EncoderValue
     for Short<DCID, KeyPhase, TruncatedPacketNumber, Payload>
 {
+    #[inline]
     fn encode<E: Encoder>(&self, encoder: &mut E) {
         self.encode_header(self.packet_number.len(), encoder);
         self.packet_number.encode(encoder);
@@ -248,6 +249,7 @@ impl<DCID: EncoderValue, Payload: EncoderValue> EncoderValue
 }
 
 impl<DCID: EncoderValue, PacketNumber, Payload> Short<DCID, KeyPhase, PacketNumber, Payload> {
+    #[inline]
     fn encode_header<E: Encoder>(&self, packet_number_len: PacketNumberLen, encoder: &mut E) {
         (ENCODING_TAG
             | self.spin_bit.into_packet_tag_mask()
@@ -264,14 +266,17 @@ impl<DCID: EncoderValue, Payload: PacketPayloadEncoder, K: OneRttKey, H: OneRttH
 {
     type PayloadLenCursor = ();
 
+    #[inline]
     fn packet_number(&self) -> PacketNumber {
         self.packet_number
     }
 
+    #[inline]
     fn encode_header<E: Encoder>(&self, packet_number_len: PacketNumberLen, encoder: &mut E) {
         Short::encode_header(self, packet_number_len, encoder);
     }
 
+    #[inline]
     fn payload(&mut self) -> &mut Payload {
         &mut self.payload
     }

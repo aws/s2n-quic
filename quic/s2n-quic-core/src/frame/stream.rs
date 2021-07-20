@@ -98,6 +98,7 @@ pub type StreamRef<'a> = Stream<&'a [u8]>;
 pub type StreamMut<'a> = Stream<&'a mut [u8]>;
 
 impl<Data> Stream<Data> {
+    #[inline]
     pub fn tag(&self) -> u8 {
         let mut tag: u8 = STREAM_TAG;
 
@@ -117,6 +118,7 @@ impl<Data> Stream<Data> {
     }
 
     /// Converts the stream data from one type to another
+    #[inline]
     pub fn map_data<F: FnOnce(Data) -> Out, Out>(self, map: F) -> Stream<Out> {
         Stream {
             stream_id: self.stream_id,
@@ -135,6 +137,7 @@ impl<Data: EncoderValue> Stream<Data> {
     ///
     /// If ok, the new payload length is returned, otherwise the frame cannot
     /// fit.
+    #[inline]
     pub fn try_fit(&mut self, capacity: usize) -> Result<usize, FitError> {
         let mut fixed_len = 0;
         fixed_len += size_of::<Tag>();
@@ -210,6 +213,7 @@ decoder_parameterized_value!(
 );
 
 impl<Data: EncoderValue> EncoderValue for Stream<Data> {
+    #[inline]
     fn encode<E: Encoder>(&self, buffer: &mut E) {
         buffer.encode(&self.tag());
         buffer.encode(&self.stream_id);
@@ -227,6 +231,7 @@ impl<Data: EncoderValue> EncoderValue for Stream<Data> {
 
     /// We hand optimize this encoding size so we can quickly estimate
     /// how large a STREAM frame will be
+    #[inline]
     fn encoding_size_for_encoder<E: Encoder>(&self, encoder: &E) -> usize {
         let mut len = 0;
         len += size_of::<Tag>();
@@ -258,18 +263,21 @@ impl<Data: EncoderValue> EncoderValue for Stream<Data> {
 }
 
 impl<'a> From<Stream<DecoderBuffer<'a>>> for StreamRef<'a> {
+    #[inline]
     fn from(s: Stream<DecoderBuffer<'a>>) -> Self {
         s.map_data(|data| data.into_less_safe_slice())
     }
 }
 
 impl<'a> From<Stream<DecoderBufferMut<'a>>> for StreamRef<'a> {
+    #[inline]
     fn from(s: Stream<DecoderBufferMut<'a>>) -> Self {
         s.map_data(|data| &data.into_less_safe_slice()[..])
     }
 }
 
 impl<'a> From<Stream<DecoderBufferMut<'a>>> for StreamMut<'a> {
+    #[inline]
     fn from(s: Stream<DecoderBufferMut<'a>>) -> Self {
         s.map_data(|data| data.into_less_safe_slice())
     }

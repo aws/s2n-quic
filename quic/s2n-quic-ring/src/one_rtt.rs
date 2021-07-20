@@ -7,6 +7,7 @@ header_key!(RingOneRttHeaderKey);
 negotiated_crypto!(RingOneRttKey, RingOneRttHeaderKey);
 
 impl OneRttKey for RingOneRttKey {
+    #[inline]
     fn derive_next_key(&self) -> Self {
         Self(self.0.update())
     }

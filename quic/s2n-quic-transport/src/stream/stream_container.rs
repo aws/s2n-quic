@@ -161,7 +161,7 @@ impl<S: StreamTrait> InterestLists<S> {
     }
 
     /// Update all interest lists based on latest interest reported by a Node
-    fn update_interests(&mut self, node: &Rc<StreamNode<S>>, interests: StreamInterests) {
+    fn update_interests(&mut self, node: &Rc<StreamNode<S>>, interests: StreamInterests) -> bool {
         // Note that all comparisons start by checking whether the stream is
         // already part of the given list. This is required in order for the
         // following operation to be safe. Inserting an element in a list while
@@ -218,9 +218,12 @@ impl<S: StreamTrait> InterestLists<S> {
         if interests.finalization != node.done_streams_link.is_linked() {
             if interests.finalization {
                 self.done_streams.push_back(node.clone());
+                true
             } else {
                 unreachable!("Done streams should never report not done later");
             }
+        } else {
+            false
         }
     }
 }
@@ -256,6 +259,8 @@ impl<S> core::fmt::Debug for StreamContainer<S> {
 
 macro_rules! iterate_uninterruptible {
     ($sel:ident, $list_name:tt, $link_name:ident, $controller:ident, $func:ident) => {
+        let mut did_finalize = false;
+
         for stream in $sel.interest_lists.$list_name.take() {
             debug_assert!(!stream.$link_name.is_linked());
 
@@ -265,10 +270,12 @@ macro_rules! iterate_uninterruptible {
                 mut_stream.interests()
             };
 
-            $sel.interest_lists.update_interests(&stream, interests);
+            did_finalize |= $sel.interest_lists.update_interests(&stream, interests);
         }
 
-        $sel.finalize_done_streams($controller);
+        if did_finalize {
+            $sel.finalize_done_streams($controller);
+        }
     };
 }
 
@@ -276,6 +283,7 @@ macro_rules! iterate_interruptible {
     ($sel:ident, $list_name:tt, $link_name:ident, $controller:ident, $func:ident) => {
         let mut extracted_list = $sel.interest_lists.$list_name.take();
         let mut cursor = extracted_list.front_mut();
+        let mut did_finalize = false;
 
         while let Some(stream) = cursor.remove() {
             // Note that while we iterate over the intrusive lists here
@@ -287,7 +295,7 @@ macro_rules! iterate_interruptible {
 
             // Update the interests after the interaction
             let interests = mut_stream.interests();
-            $sel.interest_lists.update_interests(&stream, interests);
+            did_finalize |= $sel.interest_lists.update_interests(&stream, interests);
 
             match result {
                 StreamContainerIterationResult::BreakAndInsertAtBack => {
@@ -301,7 +309,9 @@ macro_rules! iterate_interruptible {
             }
         }
 
-        $sel.finalize_done_streams($controller);
+        if did_finalize {
+            $sel.finalize_done_streams($controller);
+        }
     };
 }
 
@@ -385,8 +395,9 @@ impl<S: StreamTrait> StreamContainer<S> {
 
         // Update the interest lists after the interactions and then remove
         // all finalized streams
-        self.interest_lists.update_interests(&node_ptr, interests);
-        self.finalize_done_streams(controller);
+        if self.interest_lists.update_interests(&node_ptr, interests) {
+            self.finalize_done_streams(controller);
+        }
 
         Some(result)
     }
@@ -556,6 +567,7 @@ impl<S: StreamTrait> StreamContainer<S> {
         // all Nodes back into the main interest list. `stream_map` is not
         // populated by the interest maps.
 
+        let mut did_finalize = false;
         for stream in self.stream_map.iter() {
             debug_assert!(stream.tree_link.is_linked());
 
@@ -567,13 +579,16 @@ impl<S: StreamTrait> StreamContainer<S> {
             // Safety: The stream reference is obtained from the RBTree, which
             // stores it's nodes as `Rc`
             let stream_node_rc = unsafe { stream_node_rc_from_ref(stream) };
-            self.interest_lists
+            did_finalize |= self
+                .interest_lists
                 .update_interests(&stream_node_rc, interests);
         }
 
-        // Cleanup all `done` streams after we finished interacting with all
-        // of them.
-        self.finalize_done_streams(controller);
+        if did_finalize {
+            // Cleanup all `done` streams after we finished interacting with all
+            // of them.
+            self.finalize_done_streams(controller);
+        }
     }
 
     /// Returns all timers for the component

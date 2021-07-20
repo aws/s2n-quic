@@ -94,15 +94,18 @@ impl<CC: CongestionController> Path<CC> {
         }
     }
 
+    #[inline]
     pub fn set_challenge(&mut self, challenge: Challenge) {
         self.challenge = challenge;
     }
 
+    #[inline]
     pub fn abandon_challenge(&mut self) {
         self.challenge.abandon();
     }
 
     /// Called when bytes have been transmitted on this path
+    #[inline]
     pub fn on_bytes_transmitted(&mut self, bytes: usize) {
         if bytes == 0 {
             return;
@@ -123,6 +126,7 @@ impl<CC: CongestionController> Path<CC> {
     /// Called when bytes have been received on this path
     /// Returns true if receiving these bytes unblocked the
     /// path from being amplification limited
+    #[inline]
     pub fn on_bytes_received(&mut self, bytes: usize) -> bool {
         let was_at_amplification_limit = self.at_amplification_limit();
 
@@ -138,11 +142,13 @@ impl<CC: CongestionController> Path<CC> {
         was_at_amplification_limit && !self.at_amplification_limit()
     }
 
+    #[inline]
     pub fn on_timeout(&mut self, timestamp: Timestamp) {
         self.challenge.on_timeout(timestamp);
         self.mtu_controller.on_timeout(timestamp);
     }
 
+    #[inline]
     pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
         core::iter::empty()
             .chain(self.challenge.timers())
@@ -150,6 +156,7 @@ impl<CC: CongestionController> Path<CC> {
     }
 
     /// Only PATH_CHALLENGE and PATH_RESPONSE frames should be transmitted here.
+    #[inline]
     pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
         if let Some(response_data) = &mut self.response_data {
             let frame = frame::PathResponse {
@@ -167,6 +174,7 @@ impl<CC: CongestionController> Path<CC> {
     }
 
     /// Check if path validation was attempted and failed.
+    #[inline]
     pub fn failed_validation(&self) -> bool {
         // PATH_CHALLENGE is not used for validating the initial path and is disabled. Check if
         // the challenge is disabled before excuting the following block since there won't be
@@ -174,14 +182,17 @@ impl<CC: CongestionController> Path<CC> {
         !self.challenge.is_disabled() && !self.is_validated() && !self.is_challenge_pending()
     }
 
+    #[inline]
     pub fn is_challenge_pending(&self) -> bool {
         self.challenge.is_pending()
     }
 
+    #[inline]
     pub fn is_response_pending(&self) -> bool {
         self.response_data.is_some()
     }
 
+    #[inline]
     pub fn on_path_challenge(&mut self, response: &challenge::Data) {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
         //# On receiving a PATH_CHALLENGE frame, an endpoint MUST respond by
@@ -190,6 +201,7 @@ impl<CC: CongestionController> Path<CC> {
         self.response_data = Some(*response);
     }
 
+    #[inline]
     pub fn on_path_response(&mut self, response: &[u8]) {
         if self.challenge.on_validated(response) {
             self.on_validated();
@@ -204,11 +216,13 @@ impl<CC: CongestionController> Path<CC> {
     /// Called when a handshake packet is received.
     ///
     /// Receiving a handshake packet acts as path validation for the initial path
+    #[inline]
     pub fn on_handshake_packet(&mut self) {
         self.on_validated();
     }
 
     /// Called when the path is validated
+    #[inline]
     fn on_validated(&mut self) {
         self.state = State::Validated;
 
@@ -217,20 +231,24 @@ impl<CC: CongestionController> Path<CC> {
     }
 
     /// Returns whether this path has passed address validation
+    #[inline]
     pub fn is_validated(&self) -> bool {
         self.state == State::Validated
     }
 
     /// Marks the path as peer validated
+    #[inline]
     pub fn on_peer_validated(&mut self) {
         self.peer_validated = true;
     }
 
     /// Returns whether this path has been validated by the peer
+    #[inline]
     pub fn is_peer_validated(&self) -> bool {
         self.peer_validated
     }
 
+    #[inline]
     fn mtu(&self, transmission_mode: transmission::Mode) -> usize {
         match transmission_mode {
             // Use the minimum MTU for loss recovery probes to allow detection of packets
@@ -260,6 +278,7 @@ impl<CC: CongestionController> Path<CC> {
     //# A PL MUST NOT send a datagram (other than a probe
     //# packet) with a size at the PL that is larger than the current
     //# PLPMTU.
+    #[inline]
     pub fn clamp_mtu(&self, requested_size: usize, transmission_mode: transmission::Mode) -> usize {
         let mtu = self.mtu(transmission_mode);
 
@@ -292,6 +311,7 @@ impl<CC: CongestionController> Path<CC> {
         }
     }
 
+    #[inline]
     pub fn transmission_constraint(&self) -> transmission::Constraint {
         if self.at_amplification_limit() {
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1
@@ -326,6 +346,7 @@ impl<CC: CongestionController> Path<CC> {
     ///       amplification limit. The path must be able to transmit at least a packet of the
     ///       `MINIMUM_MTU` bytes, otherwise the path is considered at the amplification limit.
     ///       TODO: Evaluate if this approach is too conservative
+    #[inline]
     pub fn at_amplification_limit(&self) -> bool {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1
         //# Prior to validating the client address, servers MUST NOT send more
@@ -336,6 +357,7 @@ impl<CC: CongestionController> Path<CC> {
     }
 
     /// Returns the current PTO period
+    #[inline]
     pub fn pto_period(
         &self,
         space: s2n_quic_core::packet::number::PacketNumberSpace,
@@ -344,6 +366,7 @@ impl<CC: CongestionController> Path<CC> {
     }
 
     /// Resets the PTO backoff to the initial value
+    #[inline]
     pub fn reset_pto_backoff(&mut self) {
         self.pto_backoff = INITIAL_PTO_BACKOFF;
     }
@@ -368,6 +391,7 @@ impl<CC: CongestionController> Path<CC> {
 impl<CC: CongestionController> transmission::interest::Provider for Path<CC> {
     /// Indicate if the path is interested in transmitting PATH_CHALLENGE or
     /// PATH_RESPONSE frames.
+    #[inline]
     fn transmission_interest(&self) -> transmission::Interest {
         core::iter::empty()
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2

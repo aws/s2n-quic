@@ -128,6 +128,7 @@ impl<T: Copy + Clone + Default + Eq + PartialEq + PartialOrd, S: ValueToFrameWri
     }
 
     /// Queries the component for any outgoing frames that need to get sent
+    #[inline]
     pub fn on_transmit<W: WriteContext>(
         &mut self,
         stream_id: StreamId,
@@ -160,12 +161,14 @@ impl<T: Copy + Clone + Default + Eq + PartialEq + PartialOrd, S: ValueToFrameWri
 
     /// Returns whether the value has been delivered at least once since delivery was first
     /// requested, or requested again after `stop_sync` was called.
+    #[inline]
     pub fn has_delivered(&self) -> bool {
         self.delivered
     }
 }
 
 impl<T, S> transmission::interest::Provider for PeriodicSync<T, S> {
+    #[inline]
     fn transmission_interest(&self) -> transmission::Interest {
         self.delivery.transmission_interest()
     }

@@ -25,6 +25,7 @@ impl Default for Interest {
 }
 
 impl Interest {
+    #[inline]
     pub fn can_transmit(self, limit: Constraint) -> bool {
         match (self, limit) {
             // nothing can be transmitted when we're at amplification limits
@@ -45,6 +46,7 @@ impl Interest {
         }
     }
 
+    #[inline]
     pub fn is_none(self) -> bool {
         matches!(self, Interest::None)
     }
@@ -53,18 +55,21 @@ impl Interest {
 impl core::ops::Add for Interest {
     type Output = Self;
 
+    #[inline]
     fn add(self, rhs: Self) -> Self {
         self.max(rhs)
     }
 }
 
 impl core::ops::AddAssign for Interest {
+    #[inline]
     fn add_assign(&mut self, rhs: Self) {
         *self = (*self) + rhs;
     }
 }
 
 impl core::iter::Sum for Interest {
+    #[inline]
     fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
         let mut interest = Self::default();
 
@@ -83,6 +88,7 @@ pub trait Provider {
     ///
     /// This can be used to quickly check a set of providers, rather than having to sum up all of
     /// the interests.
+    #[inline]
     fn has_transmission_interest(&self) -> bool {
         !self.transmission_interest().is_none()
     }

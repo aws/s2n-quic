@@ -112,16 +112,19 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     }
 
     /// Return the active path
+    #[inline]
     pub fn active_path(&self) -> &Path<CCE::CongestionController> {
         &self.paths[self.active as usize]
     }
 
     /// Return a mutable reference to the active path
+    #[inline]
     pub fn active_path_mut(&mut self) -> &mut Path<CCE::CongestionController> {
         &mut self.paths[self.active as usize]
     }
 
     /// Return the Id of the active path
+    #[inline]
     pub fn active_path_id(&self) -> Id {
         Id(self.active)
     }
@@ -132,6 +135,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     //# An endpoint MAY skip validation of a peer address if
     //# that address has been seen recently.
     /// Returns the Path for the provided address if the PathManager knows about it
+    #[inline]
     pub fn path(
         &self,
         peer_address: &SocketAddress,
@@ -144,6 +148,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     }
 
     /// Returns the Path for the provided address if the PathManager knows about it
+    #[inline]
     pub fn path_mut(
         &mut self,
         peer_address: &SocketAddress,
@@ -346,11 +351,13 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         self[path_id].set_challenge(challenge);
     }
 
+    #[inline]
     pub fn timers(&self) -> impl Iterator<Item = Timestamp> + '_ {
         self.paths.iter().flat_map(|p| p.timers())
     }
 
     /// Writes any frames the path manager wishes to transmit to the given context
+    #[inline]
     pub fn on_transmit<W: transmission::WriteContext>(&mut self, context: &mut W) {
         self.peer_id_registry.on_transmit(context)
 
@@ -359,15 +366,18 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     }
 
     /// Called when packets are acknowledged
+    #[inline]
     pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
         self.peer_id_registry.on_packet_ack(ack_set);
     }
 
     /// Called when packets are lost
+    #[inline]
     pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
         self.peer_id_registry.on_packet_loss(ack_set);
     }
 
+    #[inline]
     pub fn on_path_challenge(
         &mut self,
         peer_address: &SocketAddress,
@@ -386,6 +396,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     //# contains the data that was sent in a previous PATH_CHALLENGE frame.
     //# A PATH_RESPONSE frame received on any network path validates the path
     //# on which the PATH_CHALLENGE was sent.
+    #[inline]
     pub fn on_path_response(&mut self, response: &frame::PathResponse) {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
         //# A PATH_RESPONSE frame MUST be sent on the network path where the
@@ -440,6 +451,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         Ok(())
     }
 
+    #[inline]
     fn abandon_all_path_challenges(&mut self) {
         for path in self.paths.iter_mut() {
             path.abandon_challenge();
@@ -539,6 +551,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     }
 
     /// true if ALL paths are amplification_limited
+    #[inline]
     pub fn is_amplification_limited(&self) -> bool {
         self.paths
             .iter()
@@ -546,6 +559,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     }
 
     /// true if ANY of the paths can transmit
+    #[inline]
     pub fn can_transmit(&self, interest: transmission::Interest) -> bool {
         self.paths.iter().any(|path| {
             let constraint = path.transmission_constraint();
@@ -572,6 +586,7 @@ impl<'a, CCE: congestion_controller::Endpoint> PathsPendingValidation<'a, CCE> {
         }
     }
 
+    #[inline]
     pub fn next_path(&mut self) -> Option<(Id, &mut Manager<CCE>)> {
         loop {
             let path = self.path_manager.paths.get(self.index as usize)?;
@@ -588,6 +603,7 @@ impl<'a, CCE: congestion_controller::Endpoint> PathsPendingValidation<'a, CCE> {
 }
 
 impl<CCE: congestion_controller::Endpoint> transmission::interest::Provider for Manager<CCE> {
+    #[inline]
     fn transmission_interest(&self) -> transmission::Interest {
         core::iter::empty()
             .chain(Some(self.peer_id_registry.transmission_interest()))
@@ -596,6 +612,7 @@ impl<CCE: congestion_controller::Endpoint> transmission::interest::Provider for 
             .sum()
     }
 
+    #[inline]
     fn has_transmission_interest(&self) -> bool {
         self.peer_id_registry.has_transmission_interest()
             || self
@@ -618,12 +635,14 @@ impl Id {
 impl<CCE: congestion_controller::Endpoint> core::ops::Index<Id> for Manager<CCE> {
     type Output = Path<CCE::CongestionController>;
 
+    #[inline]
     fn index(&self, id: Id) -> &Self::Output {
         &self.paths[id.0 as usize]
     }
 }
 
 impl<CCE: congestion_controller::Endpoint> core::ops::IndexMut<Id> for Manager<CCE> {
+    #[inline]
     fn index_mut(&mut self, id: Id) -> &mut Self::Output {
         &mut self.paths[id.0 as usize]
     }
