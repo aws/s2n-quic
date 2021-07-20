@@ -109,17 +109,22 @@ macro_rules! events {
                     fn [<on_ $name:snake>](&mut self, event: builders::$name);
                 );
             )*
+
+            fn quic_version(&self) -> Option<u32>;
         }
 
         pub struct PublisherSubscriber<'a, Sub: Subscriber> {
             meta: common::Meta,
+            /// The QUIC protocol version which is used for this particular connection
+            quic_version: Option<u32>,
             subscriber: &'a mut Sub,
         }
 
         impl<'a, Sub: Subscriber> PublisherSubscriber<'a, Sub> {
-            pub fn new(meta: builders::Meta, subscriber: &'a mut Sub) -> PublisherSubscriber<'a, Sub> {
+            pub fn new(meta: builders::Meta, quic_version: Option<u32>, subscriber: &'a mut Sub) -> PublisherSubscriber<'a, Sub> {
                 PublisherSubscriber {
                     meta: meta.into(),
+                    quic_version,
                     subscriber
                 }
             }
@@ -137,6 +142,10 @@ macro_rules! events {
                     }
                 );
             )*
+
+            fn quic_version(&self) -> Option<u32> {
+                self.quic_version
+            }
         }
 
         #[cfg(any(test, feature = "testing"))]
@@ -157,6 +166,10 @@ macro_rules! events {
                         }
                     );
                 )*
+
+                fn quic_version(&self) -> Option<u32> {
+                    Some(0)
+                }
             }
         }
     };

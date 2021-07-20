@@ -3,6 +3,7 @@
 
 #![forbid(unsafe_code)]
 
+use crate::event;
 use core::fmt;
 use s2n_codec::{
     DecoderBuffer, DecoderBufferMut, DecoderBufferMutResult, DecoderError,
@@ -46,6 +47,15 @@ macro_rules! frames {
                 match self {
                     $(
                         Frame::$ty(frame) => frame.tag(),
+                    )*
+                }
+            }
+
+            #[inline]
+            pub fn as_event(&self)  -> event::common::Frame {
+                match &self {
+                    $(
+                        Frame::$ty(_) => event::common::Frame::$ty,
                     )*
                 }
             }
