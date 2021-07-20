@@ -142,8 +142,8 @@ events!(
     // This diverges a bit from the qlog spec, which prefers to log data as part of the
     // packet events.
     /// Frame was received
-    struct FrameReceived<'a> {
+    struct FrameReceived {
         pub packet_header: common::PacketHeader,
-        pub frame: &'a common::Frame,
+        pub frame: common::Frame,
     }
 );

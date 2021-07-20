@@ -538,7 +538,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
                     version: publisher.quic_version(),
                 }
                 .into(),
-                frame: &(frame.as_event()),
+                frame: frame.as_event(),
             });
             match frame {
                 Frame::Padding(frame) => {
