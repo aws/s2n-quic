@@ -72,7 +72,12 @@ macro_rules! packet_space_api {
         }
 
         $(
-            pub fn $discard(&mut self, path: &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>) {
+            pub fn $discard<Pub: event::Publisher>(
+                &mut self,
+                path: &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
+        path_id: path::Id,
+        publisher: &mut Pub,
+            ) {
                 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.2
                 //# When Initial or Handshake keys are discarded, the PTO and loss
                 //# detection timers MUST be reset, because discarding keys indicates
@@ -80,7 +85,7 @@ macro_rules! packet_space_api {
                 //# a now discarded packet number space.
                 path.reset_pto_backoff();
                 if let Some(mut space) = self.$field.take() {
-                    space.on_discard(path);
+                    space.on_discard(path,  path_id, publisher);
                 }
 
                 //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9.1
@@ -559,6 +564,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
                     version: publisher.quic_version(),
                 }
                 .into(),
+                path_id: path_id.as_u8() as u64,
                 frame: frame.as_event(),
             });
             match frame {

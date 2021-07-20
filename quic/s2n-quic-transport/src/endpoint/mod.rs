@@ -152,6 +152,14 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
         for internal_id in &self.dequeued_wakeups {
             self.connections
                 .with_connection(*internal_id, |conn, mut shared_state| {
+                    let mut publisher = event::PublisherSubscriber::new(
+                        event::builders::Meta {
+                            endpoint_type: Cfg::ENDPOINT_TYPE,
+                            group_id: conn.internal_connection_id().into(),
+                        },
+                        Some(conn.quic_version()),
+                        endpoint_context.event_subscriber,
+                    );
                     if let Err(error) = conn.on_wakeup(shared_state.as_deref_mut(), timestamp) {
                         conn.close(
                             shared_state,
@@ -159,6 +167,7 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
                             endpoint_context.connection_close_formatter,
                             close_packet_buffer,
                             timestamp,
+                            &mut publisher,
                         );
                     }
                 });
@@ -421,6 +430,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                                         endpoint_context.connection_close_formatter,
                                         close_packet_buffer,
                                         datagram.timestamp,
+                                        &mut publisher,
                                     );
                                     return Err(());
                                 }
@@ -454,6 +464,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                                 endpoint_context.connection_close_formatter,
                                 close_packet_buffer,
                                 datagram.timestamp,
+                                &mut publisher,
                             );
                             return Err(());
                         }
@@ -654,12 +665,21 @@ impl<Cfg: Config> Endpoint<Cfg> {
         //# and not send any further packets on this connection.
         self.connections
             .with_connection(internal_id, |conn, shared_state| {
+                let mut publisher = event::PublisherSubscriber::new(
+                    event::builders::Meta {
+                        endpoint_type: Cfg::ENDPOINT_TYPE,
+                        group_id: conn.internal_connection_id().into(),
+                    },
+                    Some(conn.quic_version()),
+                    endpoint_context.event_subscriber,
+                );
                 conn.close(
                     shared_state,
                     connection::Error::StatelessReset,
                     endpoint_context.connection_close_formatter,
                     close_packet_buffer,
                     timestamp,
+                    &mut publisher,
                 );
             });
 
@@ -695,6 +715,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                             endpoint_context.connection_close_formatter,
                             close_packet_buffer,
                             timestamp,
+                            &mut publisher,
                         );
                     }
                 });

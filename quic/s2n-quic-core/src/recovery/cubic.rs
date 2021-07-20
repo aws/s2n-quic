@@ -97,6 +97,11 @@ impl CongestionController for CubicCongestionController {
     }
 
     #[inline]
+    fn bytes_in_flight(&self) -> u32 {
+        *self.bytes_in_flight
+    }
+
+    #[inline]
     fn is_congestion_limited(&self) -> bool {
         let available_congestion_window = self
             .congestion_window()

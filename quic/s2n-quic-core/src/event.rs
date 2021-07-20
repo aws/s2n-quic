@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{connection::PeerId, endpoint, inet::SocketAddress, packet::number::PacketNumberSpace};
+use core::time::Duration;
 use paste::paste;
 
 #[macro_use]
@@ -132,18 +133,21 @@ events!(
         // to include this field.
         // pub packet_header: common::PacketHeader,
         pub src_addr: &'a SocketAddress,
-        pub dst_addr: &'a SocketAddress,
         pub src_cid: &'a PeerId,
+        pub src_path_id: u64,
+        pub dst_addr: &'a SocketAddress,
         pub dst_cid: &'a PeerId,
+        pub dst_path_id: u64,
     }
 
     #[name = "transport:frame_received"]
-    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.5
+    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.6
     // This diverges a bit from the qlog spec, which prefers to log data as part of the
     // packet events.
     /// Frame was received
     struct FrameReceived {
         pub packet_header: common::PacketHeader,
+        pub path_id: u64,
         pub frame: common::Frame,
     }
 
@@ -152,9 +156,25 @@ events!(
     /// Packet was lost
     struct PacketLost<'a> {
         pub packet_header: common::PacketHeader,
+        pub path_id: u64,
         pub src_addr: &'a SocketAddress,
         pub src_cid: &'a PeerId,
         pub bytes_lost: u16,
         pub is_mtu_probe: bool,
+    }
+
+    #[name = "recovery:metrics_updated"]
+    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.4.2
+    /// Recovery metrics updated
+    struct RecoveryMetrics {
+        pub path_id: u64,
+        pub min_rtt: Duration,
+        pub smoothed_rtt: Duration,
+        pub latest_rtt: Duration,
+        pub rtt_variance: Duration,
+        pub max_ack_delay: Duration,
+        pub pto_count: u32,
+        pub congestion_window: u32,
+        pub bytes_in_flight: u32,
     }
 );
