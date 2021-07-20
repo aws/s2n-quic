@@ -1,0 +1,43 @@
+#!/bin/bash
+#
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+
+set -e
+set -o pipefail
+
+# Set up the routing needed for the simulation
+/setup.sh
+
+# The following variables are available for use:
+# - ROLE contains the role of this execution context, client or server
+# - SERVER_PARAMS contains user-supplied command line parameters
+# - CLIENT_PARAMS contains user-supplied command line parameters
+
+LOG_DIR=/logs
+LOG=$LOG_DIR/logs.txt
+
+QNS_BIN="perf_client"
+
+if [ "$TEST_TYPE" == "MEASUREMENT" ] && [ -x "$(command -v s2n-quic-qns-release)" ]; then
+    echo "using optimized build"
+    QNS_BIN="s2n-quic-qns-release"
+fi
+
+CERT_ARGS=""
+
+if [ -d "/certs" ]; then
+    CERT_ARGS="--private-key /certs/priv.key --certificate /certs/cert.pem"
+fi
+
+# Wait for the simulator to start up.
+/wait-for-it.sh sim:57832 -s -t 30
+RUST_LOG=debug \
+$QNS_BIN  \
+  --download-size "$DOWNLOAD_B" \
+  --upload-size "$UPLOAD_B" \
+  --insecure \
+  --duration 60 \
+  --local-addr "193.167.0.100:443" \
+  server4:443  2>&1 | tee $LOG

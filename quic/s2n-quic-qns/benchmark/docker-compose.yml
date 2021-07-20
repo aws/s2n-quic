@@ -1,0 +1,154 @@
+version: "2.4"
+
+services:
+  sim:
+    image: martenseemann/quic-network-simulator
+    container_name: sim
+    hostname: sim
+    stdin_open: true
+    tty: true
+    volumes:
+      - ./logs/sim:/logs
+    environment:
+      - WAITFORSERVER=$WAITFORSERVER
+      - SCENARIO=$SCENARIO
+    cap_add:
+      - NET_ADMIN
+    expose:
+      - "57832"
+    networks:
+      leftnet:
+        ipv4_address: 193.167.0.2
+        ipv6_address: fd00:cafe:cafe:0::2
+      rightnet:
+        ipv4_address: 193.167.100.2
+        ipv6_address: fd00:cafe:cafe:100::2
+    extra_hosts:
+      - "server:193.167.100.100"
+
+  server:
+    image: awslabs/s2n-quic-qns
+    container_name: server
+    hostname: server
+    stdin_open: true
+    tty: true
+    volumes:
+      - ./logs/server:/logs
+    environment:
+      - CRON=$CRON
+      - ROLE=server
+      - SERVER_PARAMS=$SERVER_PARAMS
+      - SSLKEYLOGFILE=/logs/keys.log
+      - QLOGDIR=/logs/qlog/
+      - TESTCASE=$TESTCASE_SERVER
+      - VERSION=$VERSION
+    depends_on:
+      - sim
+    cap_add:
+      - NET_ADMIN
+    ulimits:
+      memlock: 67108864
+    networks:
+      rightnet:
+        ipv4_address: 193.167.100.100
+        ipv6_address: fd00:cafe:cafe:100::100
+
+  client:
+    image: quinn/perf-client
+    container_name: client
+    hostname: client
+    stdin_open: true
+    tty: true
+    volumes:
+      - ./logs/client:/logs
+    environment:
+      - CRON=$CRON
+      - ROLE=client
+      - CLIENT_PARAMS=$CLIENT_PARAMS
+      - SSLKEYLOGFILE=/logs/keys.log
+      - QLOGDIR=/logs/qlog/
+      - TESTCASE=$TESTCASE_CLIENT
+      - REQUESTS=$REQUESTS
+      - VERSION=$VERSION
+      - DOWNLOAD_B=$DOWNLOAD_B
+      - UPLOAD_B=$UPLOAD_B
+    depends_on:
+      - sim
+    cap_add:
+      - NET_ADMIN
+    ulimits:
+      memlock: 67108864
+    networks:
+      leftnet:
+        ipv4_address: 193.167.0.100
+        ipv6_address: fd00:cafe:cafe:0::100
+    extra_hosts:
+      - "server4:193.167.100.100"
+      - "server6:fd00:cafe:cafe:100::100"
+      - "server46:193.167.100.100"
+      - "server46:fd00:cafe:cafe:100::100"
+
+  iperf_server:
+    image: martenseemann/quic-interop-iperf-endpoint
+    container_name: iperf_server
+    stdin_open: true
+    tty: true
+    environment:
+      - ROLE=server
+      - CLIENT=client4
+      - IPERF_CONGESTION=$IPERF_CONGESTION
+    depends_on:
+      - sim
+    cap_add:
+      - NET_ADMIN
+    networks:
+      rightnet:
+        ipv4_address: 193.167.100.110
+        ipv6_address: fd00:cafe:cafe:100::110
+    extra_hosts:
+      - "client4:193.167.0.90"
+      - "client6:fd00:cafe:cafe:0::100"
+      - "client46:193.167.0.90"
+      - "client46:fd00:cafe:cafe:0::100"
+
+  iperf_client:
+    image: martenseemann/quic-interop-iperf-endpoint
+    container_name: iperf_client
+    stdin_open: true
+    tty: true
+    environment:
+      - ROLE=client
+      - IPERF_CONGESTION=$IPERF_CONGESTION
+    depends_on:
+      - sim
+    cap_add:
+      - NET_ADMIN
+    networks:
+      leftnet:
+        ipv4_address: 193.167.0.90
+        ipv6_address: fd00:cafe:cafe:0::90
+    extra_hosts:
+      - "server4:193.167.100.110"
+      - "server6:fd00:cafe:cafe:100::110"
+      - "server46:193.167.100.110"
+      - "server46:fd00:cafe:cafe:100::110"
+
+networks:
+  leftnet:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: 'false'
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: 193.167.0.0/24
+        - subnet: fd00:cafe:cafe:0::/64
+  rightnet:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: 'false'
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: 193.167.100.0/24
+        - subnet: fd00:cafe:cafe:100::/64

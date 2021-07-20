@@ -1,0 +1,68 @@
+FROM rust:latest as planner
+WORKDIR app
+RUN cargo install cargo-chef
+COPY Cargo.toml /app
+COPY common /app/common
+COPY tls /app/tls
+COPY quic /app/quic
+RUN cargo chef prepare  --recipe-path recipe.json
+
+FROM rust:latest as cacher
+WORKDIR app
+RUN cargo install cargo-chef
+COPY --from=planner /app/recipe.json recipe.json
+RUN cargo chef cook --recipe-path recipe.json
+
+FROM rust:latest AS builder
+WORKDIR app
+
+ARG release="true"
+
+RUN set -eux; \
+  apt-get update; \
+  apt-get install -y cmake clang;
+
+# copy sources
+COPY Cargo.toml /app
+COPY common /app/common
+COPY tls /app/tls
+COPY quic /app/quic
+
+# Copy over the cached dependencies
+COPY --from=cacher /app/target target
+COPY --from=cacher /usr/local/cargo /usr/local/cargo
+
+# build runner
+RUN set -eux; \
+  RUSTFLAGS="-g -C link-arg=-s -C panic=abort" cargo \
+    build \
+    --bin s2n-quic-qns \
+    --release; \
+    cp target/release/s2n-quic-qns .; \
+  rm -rf target
+
+FROM martenseemann/quic-network-simulator-endpoint:latest
+
+ENV RUST_BACKTRACE="1"
+
+# install libcrypto
+RUN set -eux; \
+  apt-get update; \
+  apt-get -y install libssl-dev; \
+  rm -rf /var/lib/apt/lists/*; \
+  apt-get clean; \
+  rm -rf /tmp/*; \
+  echo done;
+
+# copy entrypoint
+COPY quic/s2n-quic-qns/benchmark/server/run_endpoint.sh .
+RUN chmod +x run_endpoint.sh
+
+# copy runner
+COPY --from=builder /app/s2n-quic-qns /usr/bin/s2n-quic-qns
+RUN set -eux; \
+  chmod +x /usr/bin/s2n-quic-qns; \
+  ldd /usr/bin/s2n-quic-qns; \
+  # ensure the binary works \
+  s2n-quic-qns --help; \
+  echo done
