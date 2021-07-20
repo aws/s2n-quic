@@ -44,7 +44,7 @@ pub trait WriteContext {
 
     /// Writes a pre-fitted frame.
     ///
-    /// Callers should ensure the frame fits within the outgoing buffer when use this function.
+    /// Callers should ensure the frame fits within the outgoing buffer when using this function.
     /// The context should panic if otherwise.
     fn write_fitted_frame<
         Frame: EncoderValue + AckElicitable + CongestionControlled + PathValidationProbing,

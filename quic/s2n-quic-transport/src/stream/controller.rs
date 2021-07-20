@@ -229,7 +229,7 @@ impl transmission::interest::Provider for Controller {
     }
 }
 
-/// The bidirectional controller consists of both outgoing and incoming
+/// The controller pair consists of both outgoing and incoming
 /// controllers that are both notified when a stream is opened, regardless
 /// of which side initiated the stream.
 #[derive(Debug)]

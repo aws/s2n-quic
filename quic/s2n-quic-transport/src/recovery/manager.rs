@@ -475,6 +475,10 @@ impl Manager {
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
         //# A sender SHOULD restart its PTO timer every time an ack-eliciting
         //# packet is sent or acknowledged,
+        debug_assert!(
+            !newly_acked_packets.is_empty(),
+            "this method assumes there was at least one newly-acked packet"
+        );
         let path = context.path();
         let is_handshake_confirmed = context.is_handshake_confirmed();
         self.update_pto_timer(path, datagram.timestamp, is_handshake_confirmed);
