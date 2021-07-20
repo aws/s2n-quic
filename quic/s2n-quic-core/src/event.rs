@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{connection::PeerId, endpoint, inet::SocketAddress, packet::number::PacketNumberSpace};
+use core::time::Duration;
 use paste::paste;
 
 #[macro_use]
@@ -162,6 +163,13 @@ events!(
     //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.1.8
     /// Recovery metrics updated
     struct RecoveryMetrics {
-        pub min_rtt: u32,
+        pub min_rtt: Duration,
+        pub smoothed_rtt: Duration,
+        pub latest_rtt: Duration,
+        pub rtt_variance: Duration,
+        pub max_ack_delay: Duration,
+        pub pto_backoff: u32,
+        pub congestion_window: u32,
+        pub bytes_in_flight: u32,
     }
 );
