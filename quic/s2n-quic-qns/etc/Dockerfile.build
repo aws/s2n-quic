@@ -16,8 +16,6 @@ RUN cargo chef cook --recipe-path recipe.json
 FROM rust:latest AS builder
 WORKDIR app
 
-ARG release="false"
-
 RUN set -eux; \
   apt-get update; \
   apt-get install -y cmake clang;
@@ -33,6 +31,7 @@ COPY --from=cacher /app/target target
 COPY --from=cacher /usr/local/cargo /usr/local/cargo
 
 # build runner
+ARG release="false"
 RUN set -eux; \
   if [ "$release" = "true" ]; then \
     RUSTFLAGS="-C link-arg=-s -C panic=abort" \

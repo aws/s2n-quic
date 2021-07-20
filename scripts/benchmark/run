@@ -7,10 +7,6 @@
 
 set -e
 
-# Setup the s2n-quic docker image
-#sudo docker build . --file quic/s2n-quic-qns/benchmark/server/Dockerfile.build --tag awslabs/s2n-quic-qns
-sudo docker build . --file quic/s2n-quic-qns/benchmark/client/Dockerfile.build --tag quinn/perf-client
-
 function ensure_executable() {
   if ! command -v $1 &> /dev/null; then
     echo "$1 needs to be installed"
@@ -30,7 +26,10 @@ case "$(uname -s)" in
      ;;
 esac
 
-SCENARIO="simple-p2p --delay=15ms --bandwidth=10Mbps --queue=25" \
-DOWNLOAD_B="10000000" \
+ROOT_DIR=$(realpath "$(dirname $0)/../../")
+
+ROOT_DIR="$ROOT_DIR" \
+SCENARIO="simple-p2p --delay=15ms --bandwidth=100Mbps --queue=2048" \
+DOWNLOAD_B="100000" \
 UPLOAD_B="0" \
 docker-compose --file quic/s2n-quic-qns/benchmark/docker-compose.yml up --abort-on-container-exit --timeout 1 sim client server
