@@ -636,11 +636,12 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     /// Handles all timeouts on the `Connection`.
     ///
     /// `timestamp` passes the current time.
-    fn on_timeout(
+    fn on_timeout<Pub: event::Publisher>(
         &mut self,
         shared_state: Option<&mut SharedConnectionState<Self::Config>>,
         connection_id_mapper: &mut ConnectionIdMapper,
         timestamp: Timestamp,
+        publisher: &mut Pub,
     ) -> Result<(), connection::Error> {
         if self.close_sender.on_timeout(timestamp).is_ready() {
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-34.txt#10.2
@@ -666,6 +667,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 &mut self.local_id_registry,
                 &mut self.path_manager,
                 timestamp,
+                publisher,
             );
         }
 

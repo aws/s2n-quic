@@ -86,11 +86,12 @@ pub trait ConnectionTrait: Sized {
     /// Handles all timeouts on the `Connection`.
     ///
     /// `timestamp` passes the current time.
-    fn on_timeout(
+    fn on_timeout<Pub: event::Publisher>(
         &mut self,
         shared_state: Option<&mut SharedConnectionState<Self::Config>>,
         connection_id_mapper: &mut ConnectionIdMapper,
         timestamp: Timestamp,
+        publisher: &mut Pub,
     ) -> Result<(), connection::Error>;
 
     /// Updates the per-connection timer based on individual component timers.
