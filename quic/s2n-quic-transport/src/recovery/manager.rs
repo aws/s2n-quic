@@ -740,6 +740,7 @@ impl Manager {
                 .into(),
                 src_addr: &path.peer_socket_address,
                 src_cid: &path.peer_connection_id,
+                bytes_lost: sent_info.sent_bytes,
                 is_mtu_probe,
             });
 

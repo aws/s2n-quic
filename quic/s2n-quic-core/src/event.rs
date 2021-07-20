@@ -154,6 +154,7 @@ events!(
         pub packet_header: common::PacketHeader,
         pub src_addr: &'a SocketAddress,
         pub src_cid: &'a PeerId,
+        pub bytes_lost: u16,
         pub is_mtu_probe: bool,
     }
 );
