@@ -735,7 +735,7 @@ impl Manager {
                 packet_header: event::builders::PacketHeader {
                     packet_type: packet_number.space().into(),
                     packet_number: packet_number.as_u64(),
-                    version: Some(0), // TODO: eventually use publisher.quic_version
+                    version: publisher.quic_version(),
                 }
                 .into(),
                 src_addr: &path.peer_socket_address,

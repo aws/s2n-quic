@@ -679,6 +679,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                             endpoint_type: Cfg::ENDPOINT_TYPE,
                             group_id: conn.internal_connection_id().into(),
                         },
+                        Some(conn.quic_version()),
                         endpoint_context.event_subscriber,
                     );
 
