@@ -563,6 +563,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
                     version: publisher.quic_version(),
                 }
                 .into(),
+                path_id: path_id.as_u8(),
                 frame: frame.as_event(),
             });
             match frame {

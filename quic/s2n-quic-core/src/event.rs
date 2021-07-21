@@ -133,9 +133,11 @@ events!(
         // to include this field.
         // pub packet_header: common::PacketHeader,
         pub src_addr: &'a SocketAddress,
-        pub dst_addr: &'a SocketAddress,
         pub src_cid: &'a PeerId,
+        pub src_path_id: u8,
+        pub dst_addr: &'a SocketAddress,
         pub dst_cid: &'a PeerId,
+        pub dst_path_id: u8,
     }
 
     #[name = "transport:frame_received"]
@@ -145,6 +147,7 @@ events!(
     /// Frame was received
     struct FrameReceived {
         pub packet_header: common::PacketHeader,
+        pub path_id: u8,
         pub frame: common::Frame,
     }
 

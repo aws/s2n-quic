@@ -64,7 +64,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     ) -> Result<(), transport::Error> {
         debug_assert!(path_id != Id(self.active));
 
-        let new_path_idx = path_id.0;
+        let new_path_idx = path_id.as_u8();
         // Attempt to consume a new connection id in case it has been retired since the last use.
         let peer_connection_id = self.paths[new_path_idx as usize].peer_connection_id;
 
@@ -87,9 +87,11 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
 
         publisher.on_active_path_updated(event::builders::ActivePathUpdated {
             src_addr: &self.active_path().peer_socket_address,
-            dst_addr: &self[path_id].peer_socket_address,
             src_cid: &self.active_path().peer_connection_id,
+            src_path_id: self.active,
             dst_cid: &self[path_id].peer_connection_id,
+            dst_addr: &self[path_id].peer_socket_address,
+            dst_path_id: new_path_idx,
         });
 
         if self.active_path().is_validated() {
