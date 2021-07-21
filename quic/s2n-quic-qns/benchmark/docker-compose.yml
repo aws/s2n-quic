@@ -2,7 +2,9 @@ version: "2.4"
 
 services:
   sim:
-    image: martenseemann/quic-network-simulator
+    build:
+      context: ${ROOT_DIR}
+      dockerfile: ${ROOT_DIR}/quic/s2n-quic-qns/benchmark/sim/Dockerfile.build
     container_name: sim
     hostname: sim
     stdin_open: true
@@ -103,7 +105,7 @@ services:
     environment:
       - ROLE=server
       - CLIENT=client4
-      - IPERF_CONGESTION=$IPERF_CONGESTION
+      - IPERF_CONGESTION=cubic
     depends_on:
       - sim
     cap_add:
@@ -125,7 +127,7 @@ services:
     tty: true
     environment:
       - ROLE=client
-      - IPERF_CONGESTION=$IPERF_CONGESTION
+      - IPERF_CONGESTION=cubic
     depends_on:
       - sim
     cap_add:

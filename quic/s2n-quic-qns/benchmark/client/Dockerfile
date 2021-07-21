@@ -1,10 +1,5 @@
 FROM martenseemann/quic-network-simulator-endpoint:latest
 
-
-RUN set -eux; \
-  apt-get update; \
-  apt-get install -y stra;
-
 # copy runner
 COPY perf-client /usr/bin/perf-client
 RUN set -eux; \
