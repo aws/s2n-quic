@@ -17,12 +17,12 @@ function ensure_executable() {
 ensure_executable "docker-compose"
 
 case "$(uname -s)" in
-        Linux)
-sudo modprobe ip6table_filter
-;;
-*)
-# TODO possibly add other things for Darwin
-;;
+   Linux)
+     sudo modprobe ip6table_filter
+     ;;
+   *)
+     # TODO possibly add other things for Darwin
+     ;;
 esac
 
 ROOT_DIR=$(realpath "$(dirname $0)/../../")

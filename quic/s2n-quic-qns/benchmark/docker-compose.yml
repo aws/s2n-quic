@@ -44,6 +44,7 @@ services:
       - CRON=$CRON
       - ROLE=server
       - SERVER_PARAMS=$SERVER_PARAMS
+      - QNS_MODE=perf
       - SSLKEYLOGFILE=/logs/keys.log
       - QLOGDIR=/logs/qlog/
       - QNS_MODE=perf
