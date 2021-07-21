@@ -40,6 +40,7 @@ pub trait WriteContext {
     >(
         &mut self,
         frame: &Frame,
+        p: bool,
     ) -> Option<PacketNumber>;
 
     /// Writes a pre-fitted frame.
@@ -51,6 +52,7 @@ pub trait WriteContext {
     >(
         &mut self,
         frame: &Frame,
+        p: bool,
     ) -> PacketNumber;
 
     /// Attempt to write a frame, bypassing congestion controller constraint checks.

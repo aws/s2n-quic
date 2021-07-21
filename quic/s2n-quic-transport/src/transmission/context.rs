@@ -86,6 +86,7 @@ impl<'a, 'b, Config: endpoint::Config> WriteContext for Context<'a, 'b, Config> 
     >(
         &mut self,
         frame: &Frame,
+        p: bool,
     ) -> Option<PacketNumber> {
         self.check_frame_constraint(frame);
         self.write_frame_forced(frame)
@@ -96,6 +97,7 @@ impl<'a, 'b, Config: endpoint::Config> WriteContext for Context<'a, 'b, Config> 
     >(
         &mut self,
         frame: &Frame,
+        p: bool,
     ) -> PacketNumber {
         self.check_frame_constraint(frame);
         debug_assert!(frame.encoding_size() <= self.buffer.remaining_capacity());
