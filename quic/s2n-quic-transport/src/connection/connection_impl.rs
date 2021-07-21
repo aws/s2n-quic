@@ -23,7 +23,7 @@ use crate::{
 };
 use core::time::Duration;
 use s2n_quic_core::{
-    event::{self, common::PacketType},
+    event::{self, common::PacketType, Publisher as _},
     inet::DatagramInfo,
     io::tx,
     packet::{
@@ -248,14 +248,14 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         })
     }
 
-    fn transmission_context<'a>(
+    fn transmission_context<'a, 'sub>(
         &'a mut self,
         outcome: &'a mut transmission::Outcome,
         path_id: path::Id,
         timestamp: Timestamp,
         transmission_mode: transmission::Mode,
-        publisher: &'a mut event::PublisherSubscriber<'a, Config::EventSubscriber>,
-    ) -> ConnectionTransmissionContext<'a, Config> {
+        publisher: &'a mut event::PublisherSubscriber<'sub, Config::EventSubscriber>,
+    ) -> ConnectionTransmissionContext<'a, 'sub, Config> {
         // TODO get this from somewhere
         let ecn = Default::default();
 
@@ -279,13 +279,13 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
     /// Since non-probing frames can only be sent on the active path, a separate
     /// transmission context with Mode::PathValidationOnly is used to send on
     /// other paths.
-    fn path_validation_only_transmission<'a, Tx: tx::Queue>(
+    fn path_validation_only_transmission<'a, 'sub, Tx: tx::Queue>(
         &mut self,
         shared_state: &mut SharedConnectionState<Config>,
         queue: &mut Tx,
         timestamp: Timestamp,
         outcome: &'a mut transmission::Outcome,
-        publisher: &'a mut event::PublisherSubscriber<'a, Config::EventSubscriber>,
+        publisher: &'a mut event::PublisherSubscriber<'sub, Config::EventSubscriber>,
     ) -> usize {
         let mut count = 0;
         let mut pending_paths = self.path_manager.paths_pending_validation();
@@ -395,7 +395,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         close_formatter: &Config::ConnectionCloseFormatter,
         packet_buffer: &mut endpoint::PacketBuffer,
         timestamp: Timestamp,
-        publisher: &'sub mut event::PublisherSubscriber<'sub, Config::EventSubscriber>,
+        publisher: &mut event::PublisherSubscriber<'sub, Config::EventSubscriber>,
     ) {
         match self.state {
             ConnectionState::Closing | ConnectionState::Draining | ConnectionState::Finished => {
@@ -532,12 +532,12 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Queries the connection for outgoing packets
-    fn on_transmit<Tx: tx::Queue>(
+    fn on_transmit<'sub, Tx: tx::Queue>(
         &mut self,
         shared_state: Option<&mut SharedConnectionState<Config>>,
         queue: &mut Tx,
         timestamp: Timestamp,
-        publisher: &mut event::PublisherSubscriber<Config::EventSubscriber>,
+        publisher: &mut event::PublisherSubscriber<'sub, Config::EventSubscriber>,
     ) -> Result<(), ConnectionOnTransmitError> {
         let mut count = 0;
 

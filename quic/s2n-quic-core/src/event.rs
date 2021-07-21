@@ -163,6 +163,7 @@ events!(
     //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.4.2
     /// Recovery metrics updated
     struct RecoveryMetrics {
+        pub path_id: u8,
         pub min_rtt: Duration,
         pub smoothed_rtt: Duration,
         pub latest_rtt: Duration,

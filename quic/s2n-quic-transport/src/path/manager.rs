@@ -630,6 +630,10 @@ impl Id {
     pub fn new(id: u8) -> Self {
         Self(id)
     }
+
+    pub fn as_u8(&self) -> u8 {
+        self.0
+    }
 }
 
 impl<CCE: congestion_controller::Endpoint> core::ops::Index<Id> for Manager<CCE> {

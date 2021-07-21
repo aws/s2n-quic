@@ -140,8 +140,10 @@ impl Manager {
             }
         }
 
+        let path_id = context.path_id().as_u8();
         let path = context.path_mut();
         publisher.on_recovery_metrics(event::builders::RecoveryMetrics {
+            path_id,
             min_rtt: path.rtt_estimator.min_rtt(),
             smoothed_rtt: path.rtt_estimator.smoothed_rtt(),
             latest_rtt: path.rtt_estimator.latest_rtt(),
@@ -322,8 +324,10 @@ impl Manager {
             );
         }
 
+        let path_id = context.path_id().as_u8();
         let path = context.path_mut();
         publisher.on_recovery_metrics(event::builders::RecoveryMetrics {
+            path_id,
             min_rtt: path.rtt_estimator.min_rtt(),
             smoothed_rtt: path.rtt_estimator.smoothed_rtt(),
             latest_rtt: path.rtt_estimator.latest_rtt(),
@@ -537,13 +541,15 @@ impl Manager {
         publisher: &mut Pub,
     ) {
         debug_assert_ne!(self.space, PacketNumberSpace::ApplicationData);
-        // Remove any unacknowledged packets from flight.
-        for (_, unacked_sent_info) in self.sent_packets.iter() {
-            path.congestion_controller
-                .on_packet_discarded(unacked_sent_info.sent_bytes as usize);
-        }
 
+        let path_id = self
+            .sent_packets
+            .iter()
+            .next()
+            .map(|(_, sent_info)| sent_info.path_id.as_u8())
+            .unwrap_or(0);
         publisher.on_recovery_metrics(event::builders::RecoveryMetrics {
+            path_id,
             min_rtt: path.rtt_estimator.min_rtt(),
             smoothed_rtt: path.rtt_estimator.smoothed_rtt(),
             latest_rtt: path.rtt_estimator.latest_rtt(),
@@ -553,6 +559,12 @@ impl Manager {
             congestion_window: path.congestion_controller.congestion_window(),
             bytes_in_flight: path.congestion_controller.bytes_in_flight(),
         });
+
+        // Remove any unacknowledged packets from flight.
+        for (_, unacked_sent_info) in self.sent_packets.iter() {
+            path.congestion_controller
+                .on_packet_discarded(unacked_sent_info.sent_bytes as usize);
+        }
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.10

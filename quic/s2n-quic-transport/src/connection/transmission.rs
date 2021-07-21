@@ -21,7 +21,7 @@ use s2n_quic_core::{
 };
 
 #[derive(Debug)]
-pub struct ConnectionTransmissionContext<'a, Config: endpoint::Config> {
+pub struct ConnectionTransmissionContext<'a, 'sub, Config: endpoint::Config> {
     pub quic_version: u32,
     pub timestamp: Timestamp,
     pub path_id: path::Id,
@@ -32,10 +32,10 @@ pub struct ConnectionTransmissionContext<'a, Config: endpoint::Config> {
     pub ecn: ExplicitCongestionNotification,
     pub min_packet_len: Option<usize>,
     pub transmission_mode: transmission::Mode,
-    pub publisher: &'a mut event::PublisherSubscriber<'a, Config::EventSubscriber>,
+    pub publisher: &'a mut event::PublisherSubscriber<'sub, Config::EventSubscriber>,
 }
 
-impl<'a, Config: endpoint::Config> ConnectionTransmissionContext<'a, Config> {
+impl<'a, 'sub, Config: endpoint::Config> ConnectionTransmissionContext<'a, 'sub, Config> {
     pub fn path(
         &self,
     ) -> &Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>
@@ -51,12 +51,12 @@ impl<'a, Config: endpoint::Config> ConnectionTransmissionContext<'a, Config> {
     }
 }
 
-pub struct ConnectionTransmission<'a, Config: endpoint::Config> {
-    pub context: ConnectionTransmissionContext<'a, Config>,
+pub struct ConnectionTransmission<'a, 'sub, Config: endpoint::Config> {
+    pub context: ConnectionTransmissionContext<'a, 'sub, Config>,
     pub shared_state: &'a mut SharedConnectionState<Config>,
 }
 
-impl<'a, Config: endpoint::Config> tx::Message for ConnectionTransmission<'a, Config> {
+impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<'a, 'sub, Config> {
     fn remote_address(&mut self) -> SocketAddress {
         self.context.path().peer_socket_address
     }
@@ -227,7 +227,8 @@ impl<'a, Config: endpoint::Config> tx::Message for ConnectionTransmission<'a, Co
                     //# Handshake packet
 
                     if Config::ENDPOINT_TYPE.is_client() {
-                        space_manager.discard_initial(self.context.path_mut(), self.context.publisher);
+                        let path = &mut self.context.path_manager[self.context.path_id];
+                        space_manager.discard_initial(path, self.context.publisher);
                     }
 
                     encoder
@@ -254,7 +255,8 @@ impl<'a, Config: endpoint::Config> tx::Message for ConnectionTransmission<'a, Co
             //# An endpoint MUST discard its handshake keys when the TLS handshake is
             //# confirmed (Section 4.1.2).
             if space_manager.is_handshake_confirmed() {
-                space_manager.discard_handshake(self.context.path_mut(), self.context.publisher);
+                let path = &mut self.context.path_manager[self.context.path_id];
+                space_manager.discard_handshake(path, self.context.publisher);
             }
 
             encoder
