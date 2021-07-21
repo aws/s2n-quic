@@ -47,7 +47,6 @@ services:
       - QNS_MODE=perf
       - SSLKEYLOGFILE=/logs/keys.log
       - QLOGDIR=/logs/qlog/
-      - QNS_MODE=perf
       - VERSION=$VERSION
     depends_on:
       - sim
