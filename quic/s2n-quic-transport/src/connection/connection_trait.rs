@@ -48,13 +48,14 @@ pub trait ConnectionTrait: Sized {
 
     /// Initiates closing the connection as described in
     /// https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10
-    fn close(
+    fn close<Pub: event::Publisher>(
         &mut self,
         shared_state: Option<&mut SharedConnectionState<Self::Config>>,
         error: connection::Error,
         close_formatter: &<Self::Config as endpoint::Config>::ConnectionCloseFormatter,
         packet_buffer: &mut endpoint::PacketBuffer,
         timestamp: Timestamp,
+        publisher: &mut Pub,
     );
 
     /// Marks a connection which advertised itself as having completed the handshake

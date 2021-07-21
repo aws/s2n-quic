@@ -245,11 +245,13 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
     }
 
     /// Called before the Initial packet space is discarded
-    pub fn on_discard(
+    pub fn on_discard<Pub: event::Publisher>(
         &mut self,
         path: &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
+        publisher: &mut Pub,
     ) {
-        self.recovery_manager.on_packet_number_space_discarded(path);
+        self.recovery_manager
+            .on_packet_number_space_discarded(path, publisher);
     }
 
     pub fn requires_probe(&self) -> bool {

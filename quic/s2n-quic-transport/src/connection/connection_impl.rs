@@ -385,13 +385,14 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
     /// Initiates closing the connection as described in
     /// https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10
-    fn close(
+    fn close<Pub: event::Publisher>(
         &mut self,
         shared_state: Option<&mut SharedConnectionState<Self::Config>>,
         error: connection::Error,
         close_formatter: &Config::ConnectionCloseFormatter,
         packet_buffer: &mut endpoint::PacketBuffer,
         timestamp: Timestamp,
+        publisher: &mut Pub,
     ) {
         match self.state {
             ConnectionState::Closing | ConnectionState::Draining | ConnectionState::Finished => {
@@ -469,10 +470,10 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         //# the endpoint MAY discard all other connection state.
         shared_state
             .space_manager
-            .discard_initial(self.path_manager.active_path_mut());
+            .discard_initial(self.path_manager.active_path_mut(), publisher);
         shared_state
             .space_manager
-            .discard_handshake(self.path_manager.active_path_mut());
+            .discard_handshake(self.path_manager.active_path_mut(), publisher);
         shared_state.space_manager.discard_zero_rtt_crypto();
 
         // We don't discard the application space so the application can
@@ -934,7 +935,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 //# successfully processes a Handshake packet.
                 shared_state
                     .space_manager
-                    .discard_initial(self.path_manager.active_path_mut());
+                    .discard_initial(self.path_manager.active_path_mut(), publisher);
 
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1
                 //# Once the server has successfully processed a

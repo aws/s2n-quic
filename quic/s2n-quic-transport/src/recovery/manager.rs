@@ -264,8 +264,9 @@ impl Manager {
         self.pto.on_transmit(context)
     }
 
-    /// Process ACK frame. Update congestion controler, timers and meta data around acked
-    /// packet ranges.
+    /// Process ACK frame.
+    ///
+    /// Update congestion controler, timers and meta data around acked packet ranges.
     pub fn on_ack_frame<
         A: frame::ack::AckRanges,
         CC: CongestionController,
@@ -320,6 +321,18 @@ impl Manager {
                 publisher,
             );
         }
+
+        let path = context.path_mut();
+        publisher.on_recovery_metrics(event::builders::RecoveryMetrics {
+            min_rtt: path.rtt_estimator.min_rtt(),
+            smoothed_rtt: path.rtt_estimator.smoothed_rtt(),
+            latest_rtt: path.rtt_estimator.latest_rtt(),
+            rtt_variance: path.rtt_estimator.rttvar(),
+            max_ack_delay: path.rtt_estimator.max_ack_delay(),
+            pto_count: (path.pto_backoff as f32).log2() as u32,
+            congestion_window: path.congestion_controller.congestion_window(),
+            bytes_in_flight: path.congestion_controller.bytes_in_flight(),
+        });
 
         Ok(())
     }
@@ -517,9 +530,11 @@ impl Manager {
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#B.9
     //# When Initial or Handshake keys are discarded, packets sent in that
     //# space no longer count toward bytes in flight.
-    pub fn on_packet_number_space_discarded<CC: CongestionController>(
+    /// Clears bytes in flight for sent packets.
+    pub fn on_packet_number_space_discarded<CC: CongestionController, Pub: event::Publisher>(
         &mut self,
         path: &mut Path<CC>,
+        publisher: &mut Pub,
     ) {
         debug_assert_ne!(self.space, PacketNumberSpace::ApplicationData);
         // Remove any unacknowledged packets from flight.
@@ -527,6 +542,17 @@ impl Manager {
             path.congestion_controller
                 .on_packet_discarded(unacked_sent_info.sent_bytes as usize);
         }
+
+        publisher.on_recovery_metrics(event::builders::RecoveryMetrics {
+            min_rtt: path.rtt_estimator.min_rtt(),
+            smoothed_rtt: path.rtt_estimator.smoothed_rtt(),
+            latest_rtt: path.rtt_estimator.latest_rtt(),
+            rtt_variance: path.rtt_estimator.rttvar(),
+            max_ack_delay: path.rtt_estimator.max_ack_delay(),
+            pto_count: (path.pto_backoff as f32).log2() as u32,
+            congestion_window: path.congestion_controller.congestion_window(),
+            bytes_in_flight: path.congestion_controller.bytes_in_flight(),
+        });
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.10
