@@ -788,6 +788,7 @@ impl Manager {
                     version: publisher.quic_version(),
                 }
                 .into(),
+                path_id: current_path_id.as_u8(),
                 src_addr: &path.peer_socket_address,
                 src_cid: &path.peer_connection_id,
                 bytes_lost: sent_info.sent_bytes,

@@ -153,6 +153,7 @@ events!(
     /// Packet was lost
     struct PacketLost<'a> {
         pub packet_header: common::PacketHeader,
+        pub path_id: u8,
         pub src_addr: &'a SocketAddress,
         pub src_cid: &'a PeerId,
         pub bytes_lost: u16,
