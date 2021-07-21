@@ -151,6 +151,17 @@ events!(
         pub frame: common::Frame,
     }
 
+    #[name = "transport:frame_sent"]
+    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.5
+    // This diverges a bit from the qlog spec, which prefers to log data as part of the
+    // packet events.
+    /// Frame was sent
+    struct FrameSent {
+        pub packet_header: common::PacketHeader,
+        pub path_id: u8,
+        pub frame: common::Frame,
+    }
+
     #[name = "recovery:packet_lost"]
     //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.4.5
     /// Packet was lost
