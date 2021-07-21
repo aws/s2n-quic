@@ -48,14 +48,14 @@ pub trait ConnectionTrait: Sized {
 
     /// Initiates closing the connection as described in
     /// https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10
-    fn close<Pub: event::Publisher>(
+    fn close<'sub>(
         &mut self,
         shared_state: Option<&mut SharedConnectionState<Self::Config>>,
         error: connection::Error,
         close_formatter: &<Self::Config as endpoint::Config>::ConnectionCloseFormatter,
         packet_buffer: &mut endpoint::PacketBuffer,
         timestamp: Timestamp,
-        publisher: &mut Pub,
+        publisher: &mut event::PublisherSubscriber<'sub, <Self::Config as endpoint::Config>::EventSubscriber>,
     );
 
     /// Marks a connection which advertised itself as having completed the handshake
@@ -76,12 +76,12 @@ pub trait ConnectionTrait: Sized {
     ) -> Result<(), LocalIdRegistrationError>;
 
     /// Queries the connection for outgoing packets
-    fn on_transmit<Tx: tx::Queue, Pub: event::Publisher>(
+    fn on_transmit<Tx: tx::Queue>(
         &mut self,
         shared_state: Option<&mut SharedConnectionState<Self::Config>>,
         queue: &mut Tx,
         timestamp: Timestamp,
-        publisher: &mut Pub,
+        publisher: &mut event::PublisherSubscriber<<Self::Config as endpoint::Config>::EventSubscriber>,
     ) -> Result<(), ConnectionOnTransmitError>;
 
     /// Handles all timeouts on the `Connection`.

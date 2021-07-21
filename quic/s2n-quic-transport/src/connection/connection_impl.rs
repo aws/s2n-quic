@@ -254,6 +254,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         path_id: path::Id,
         timestamp: Timestamp,
         transmission_mode: transmission::Mode,
+        publisher: &'a mut event::PublisherSubscriber<'a, Config::EventSubscriber>,
     ) -> ConnectionTransmissionContext<'a, Config> {
         // TODO get this from somewhere
         let ecn = Default::default();
@@ -269,6 +270,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
             ecn,
             min_packet_len: None,
             transmission_mode,
+            publisher,
         }
     }
 
@@ -277,13 +279,13 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
     /// Since non-probing frames can only be sent on the active path, a separate
     /// transmission context with Mode::PathValidationOnly is used to send on
     /// other paths.
-    fn path_validation_only_transmission<'a, Tx: tx::Queue, Pub: event::Publisher>(
+    fn path_validation_only_transmission<'a, Tx: tx::Queue>(
         &mut self,
         shared_state: &mut SharedConnectionState<Config>,
         queue: &mut Tx,
         timestamp: Timestamp,
         outcome: &'a mut transmission::Outcome,
-        publisher: &mut Pub,
+        publisher: &'a mut event::PublisherSubscriber<'a, Config::EventSubscriber>,
     ) -> usize {
         let mut count = 0;
         let mut pending_paths = self.path_manager.paths_pending_validation();
@@ -310,6 +312,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
                             ecn,
                             min_packet_len: None,
                             transmission_mode: transmission::Mode::PathValidationOnly,
+                            publisher,
                         },
                         shared_state,
                     })
@@ -385,14 +388,14 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
     /// Initiates closing the connection as described in
     /// https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10
-    fn close<Pub: event::Publisher>(
+    fn close<'sub>(
         &mut self,
         shared_state: Option<&mut SharedConnectionState<Self::Config>>,
         error: connection::Error,
         close_formatter: &Config::ConnectionCloseFormatter,
         packet_buffer: &mut endpoint::PacketBuffer,
         timestamp: Timestamp,
-        publisher: &mut Pub,
+        publisher: &'sub mut event::PublisherSubscriber<'sub, Config::EventSubscriber>,
     ) {
         match self.state {
             ConnectionState::Closing | ConnectionState::Draining | ConnectionState::Finished => {
@@ -434,6 +437,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 self.path_manager.active_path_id(),
                 timestamp,
                 transmission::Mode::Normal,
+                publisher,
             );
 
             if let Some(packet) = shared_state.space_manager.on_transmit_close(
@@ -528,12 +532,12 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Queries the connection for outgoing packets
-    fn on_transmit<Tx: tx::Queue, Pub: event::Publisher>(
+    fn on_transmit<Tx: tx::Queue>(
         &mut self,
-        shared_state: Option<&mut SharedConnectionState<Self::Config>>,
+        shared_state: Option<&mut SharedConnectionState<Config>>,
         queue: &mut Tx,
         timestamp: Timestamp,
-        publisher: &mut Pub,
+        publisher: &mut event::PublisherSubscriber<Config::EventSubscriber>,
     ) -> Result<(), ConnectionOnTransmitError> {
         let mut count = 0;
 
@@ -555,6 +559,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                                     self.path_manager.active_path_id(),
                                     timestamp,
                                     transmission::Mode::Normal,
+                                    publisher,
                                 ),
                                 shared_state,
                             })
@@ -589,6 +594,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                                     self.path_manager.active_path_id(),
                                     timestamp,
                                     transmission::Mode::MtuProbing,
+                                    publisher,
                                 ),
                                 shared_state,
                             })
