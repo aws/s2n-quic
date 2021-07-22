@@ -3,7 +3,6 @@
 
 use crate::{
     connection,
-    connection::ConnectionTransmissionContext,
     contexts::WriteContext,
     endpoint, path,
     path::mtu,
@@ -15,7 +14,7 @@ use crate::{
     transmission,
     transmission::{Interest, Mode},
 };
-use core::ops::RangeInclusive;
+use core::{marker::PhantomData, ops::RangeInclusive};
 use s2n_quic_core::packet::number::PacketNumberSpace;
 
 pub enum Payload<'a, Config: endpoint::Config> {
@@ -29,35 +28,39 @@ impl<'a, Config: endpoint::Config> Payload<'a, Config> {
     /// Constructs a transmission::application::Payload appropriate for the given
     /// `transmission::Mode` in the given `ConnectionTransmissionContext`
     pub fn new(
-        context: &'a mut ConnectionTransmissionContext<Config>,
+        _config: PhantomData<Config>,
+        path_id: path::Id,
+        path_manager: &'a mut path::Manager<Config::CongestionControllerEndpoint>,
+        local_id_registry: &'a mut connection::LocalIdRegistry,
+        transmission_mode: transmission::Mode,
         ack_manager: &'a mut AckManager,
         handshake_status: &'a mut HandshakeStatus,
         ping: &'a mut flag::Ping,
         stream_manager: &'a mut AbstractStreamManager<Config::Stream>,
         recovery_manager: &'a mut recovery::Manager,
     ) -> Self {
-        if context.transmission_mode != Mode::PathValidationOnly {
-            debug_assert_eq!(context.path_id, context.path_manager.active_path_id());
+        if transmission_mode != Mode::PathValidationOnly {
+            debug_assert_eq!(path_id, path_manager.active_path_id());
         }
 
-        match context.transmission_mode {
+        match transmission_mode {
             Mode::LossRecoveryProbing | Mode::Normal => {
                 transmission::application::Payload::Normal(Normal {
                     ack_manager,
                     handshake_status,
                     ping,
                     stream_manager,
-                    local_id_registry: context.local_id_registry,
-                    path_manager: context.path_manager,
+                    local_id_registry,
+                    path_manager,
                     recovery_manager,
                 })
             }
             Mode::MtuProbing => transmission::application::Payload::MtuProbe(MtuProbe {
-                mtu_controller: &mut context.path_mut().mtu_controller,
+                mtu_controller: &mut path_manager[path_id].mtu_controller,
             }),
             Mode::PathValidationOnly => {
                 transmission::application::Payload::PathValidationOnly(PathValidationOnly {
-                    path: context.path_mut(),
+                    path: &mut path_manager[path_id],
                 })
             }
         }

@@ -140,6 +140,17 @@ events!(
         pub dst_path_id: u64,
     }
 
+    #[name = "transport:frame_sent"]
+    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.5
+    // This diverges a bit from the qlog spec, which prefers to log data as part of the
+    // packet events.
+    /// Frame was sent
+    struct FrameSent {
+        // pub packet_header: common::PacketHeader,
+        // pub path_id: u64,
+        pub frame: common::Frame,
+    }
+
     #[name = "transport:frame_received"]
     //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.6
     // This diverges a bit from the qlog spec, which prefers to log data as part of the

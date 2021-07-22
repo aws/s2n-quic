@@ -23,6 +23,7 @@ use crate::{
 use core::{marker::PhantomData, ops::RangeInclusive};
 use s2n_codec::{Encoder, EncoderBuffer};
 use s2n_quic_core::{
+    event,
     frame::Padding,
     packet::{
         encoding::PacketPayloadEncoder,
@@ -38,7 +39,7 @@ pub trait Payload: interest::Provider {
     fn packet_number_space(&self) -> PacketNumberSpace;
 }
 
-pub struct Transmission<'a, Config: endpoint::Config, P: Payload> {
+pub struct Transmission<'a, 'sub, Config: endpoint::Config, P: Payload> {
     pub config: PhantomData<Config>,
     pub outcome: &'a mut transmission::Outcome,
     pub payload: P,
@@ -47,10 +48,12 @@ pub struct Transmission<'a, Config: endpoint::Config, P: Payload> {
     pub transmission_constraint: transmission::Constraint,
     pub transmission_mode: transmission::Mode,
     pub tx_packet_numbers: &'a mut TxPacketNumbers,
+    pub publisher:
+        &'a mut event::PublisherSubscriber<'sub, <Config as endpoint::Config>::EventSubscriber>,
 }
 
-impl<'a, Config: endpoint::Config, P: Payload> PacketPayloadEncoder
-    for Transmission<'a, Config, P>
+impl<'a, 'sub, Config: endpoint::Config, P: Payload> PacketPayloadEncoder
+    for Transmission<'a, 'sub, Config, P>
 {
     fn encoding_size_hint<E: Encoder>(&mut self, encoder: &E, minimum_len: usize) -> usize {
         if self.has_transmission_interest() {
@@ -82,6 +85,7 @@ impl<'a, Config: endpoint::Config, P: Payload> PacketPayloadEncoder
             header_len,
             tag_len,
             config: Default::default(),
+            publisher: &mut self.publisher,
         };
 
         self.payload.on_transmit(&mut context);
@@ -110,8 +114,8 @@ impl<'a, Config: endpoint::Config, P: Payload> PacketPayloadEncoder
     }
 }
 
-impl<'a, Config: endpoint::Config, P: Payload> transmission::interest::Provider
-    for Transmission<'a, Config, P>
+impl<'a, 'sub, Config: endpoint::Config, P: Payload> transmission::interest::Provider
+    for Transmission<'a, 'sub, Config, P>
 {
     fn transmission_interest(&self) -> transmission::Interest {
         self.payload.transmission_interest()

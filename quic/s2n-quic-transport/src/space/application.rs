@@ -156,7 +156,11 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             outcome: &mut outcome,
             packet_number,
             payload: transmission::application::Payload::new(
-                context,
+                <PhantomData<Config>>::default(),
+                context.path_id,
+                &mut context.path_manager,
+                &mut context.local_id_registry,
+                context.transmission_mode,
                 &mut self.ack_manager,
                 handshake_status,
                 &mut self.ping,
@@ -167,6 +171,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             transmission_constraint,
             transmission_mode,
             tx_packet_numbers: &mut self.tx_packet_numbers,
+            publisher: context.publisher,
         };
 
         let spin_bit = self.spin_bit;
@@ -175,7 +180,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             self.key_set
                 .encrypt_packet(buffer, |buffer, key, key_phase| {
                     let packet = Short {
-                        destination_connection_id: destination_connection_id.as_ref(),
+                        destination_connection_id,
                         spin_bit,
                         key_phase,
                         packet_number,
@@ -234,6 +239,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             transmission_constraint: transmission::Constraint::None,
             transmission_mode: transmission::Mode::Normal,
             tx_packet_numbers: &mut self.tx_packet_numbers,
+            publisher: context.publisher,
         };
 
         let spin_bit = self.spin_bit;
@@ -243,7 +249,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             self.key_set
                 .encrypt_packet(buffer, |buffer, key, key_phase| {
                     let packet = Short {
-                        destination_connection_id: destination_connection_id.as_ref(),
+                        destination_connection_id,
                         spin_bit,
                         key_phase,
                         packet_number,
