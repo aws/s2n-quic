@@ -32,7 +32,7 @@ OUTPUT_DIR="${ROOT_DIR}/target/benchmark/results"
 CLIENT_PCAP="logs/sim/trace_node_left.pcap"
 DOWNLOAD_MB=1000
 UPLOAD_MB=0
-DURATION=15
+DURATION=30
 SCENARIO=${1:-"simple-p2p --delay=15ms --bandwidth=2Mbps --queue=25"}
 NAME=${SCENARIO//[^a-zA-Z0-9]/-}
 
