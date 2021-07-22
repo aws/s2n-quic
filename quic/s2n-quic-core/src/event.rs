@@ -146,4 +146,15 @@ events!(
         pub packet_header: common::PacketHeader,
         pub frame: common::Frame,
     }
+
+    #[name = "recovery:packet_lost"]
+    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.4.5
+    /// Packet was lost
+    struct PacketLost<'a> {
+        pub packet_header: common::PacketHeader,
+        pub src_addr: &'a SocketAddress,
+        pub src_cid: &'a PeerId,
+        pub bytes_lost: u16,
+        pub is_mtu_probe: bool,
+    }
 );
