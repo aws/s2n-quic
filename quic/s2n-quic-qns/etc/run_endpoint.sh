@@ -21,7 +21,7 @@ LOG=$LOG_DIR/logs.txt
 QNS_BIN="s2n-quic-qns"
 QNS_MODE=${QNS_MODE:-interop}
 
-if [ "$QNS_MODE" == "MEASUREMENT" ] && [ "$ROLE" == "server" ]; then
+if [ "$QNS_MODE" == "interop" ] && [ "$ROLE" == "server" ]; then
     SERVER_PARAMS+="--www-dir /www"
 fi
 

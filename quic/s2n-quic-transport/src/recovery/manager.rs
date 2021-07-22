@@ -572,7 +572,6 @@ impl Manager {
             //#       the past (Section 6.1.2).
             if time_threshold_exceeded || packet_number_threshold_exceeded {
                 sent_packets_to_remove.push((unacked_packet_number, *unacked_sent_info));
-                eprint!("L ");
 
                 if unacked_sent_info.congestion_controlled {
                     // The packet is "in-flight", ie congestion controlled
