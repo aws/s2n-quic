@@ -229,6 +229,7 @@ impl Perf {
         let tls = s2n_quic::provider::tls::default::Server::builder()
             .with_certificate(certificate, private_key)?
             .with_alpn_protocols(self.alpn_protocols.iter().map(String::as_bytes))?
+            .with_key_logging()?
             .build()?;
 
         let server = Server::builder()

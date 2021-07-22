@@ -32,5 +32,5 @@ $QNS_BIN  \
   --download-size "$DOWNLOAD_B" \
   --upload-size "$UPLOAD_B" \
   --insecure \
-  --duration 60 \
+  --duration "$DURATION" \
   server4:443  2>&1 | tee $LOG

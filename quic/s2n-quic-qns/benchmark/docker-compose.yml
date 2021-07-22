@@ -80,6 +80,7 @@ services:
       - VERSION=$VERSION
       - DOWNLOAD_B=$DOWNLOAD_B
       - UPLOAD_B=$UPLOAD_B
+      - DURATION=$DURATION
       - RUST_LOG=info
     depends_on:
       - sim
@@ -128,6 +129,7 @@ services:
     environment:
       - ROLE=client
       - IPERF_CONGESTION=cubic
+      - IPERF_TIME=$DURATION
     depends_on:
       - sim
     cap_add:

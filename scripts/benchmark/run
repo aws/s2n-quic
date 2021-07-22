@@ -15,6 +15,8 @@ function ensure_executable() {
 }
 
 ensure_executable "docker-compose"
+ensure_executable "tshark"
+ensure_executable "gnuplot"
 
 case "$(uname -s)" in
    Linux)
@@ -27,15 +29,48 @@ esac
 
 ROOT_DIR=$(realpath "$(dirname $0)/../../")
 OUTPUT_DIR="${ROOT_DIR}/target/benchmark/results"
-mkdir -p OUTPUT_DIR
+CLIENT_PCAP="logs/sim/trace_node_left.pcap"
+DOWNLOAD_MB=1000
+UPLOAD_MB=0
+DURATION=15
+SCENARIO=${1:-"simple-p2p --delay=15ms --bandwidth=2Mbps --queue=25"}
+NAME=${SCENARIO//[^a-zA-Z0-9]/-}
 
-DOWNLOAD_MB=${1:-10}
-UPLOAD_MB=${2:-0}
-SCENARIO=${3:-"simple-p2p --delay=15ms --bandwidth=10Mbps --queue=25"}
+mkdir -p ${OUTPUT_DIR/NAME}
+TMP=$(mktemp -d -t s2n-quic-bench-XXXXXXXXXX)
 
 ROOT_DIR="$ROOT_DIR" \
-OUTPUT_DIR="$OUTPUT_DIR" \
+OUTPUT_DIR="$OUTPUT_DIR/$NAME/s2n-quic" \
 DOWNLOAD_B=$(($DOWNLOAD_MB * 1000000)) \
 UPLOAD_B=$(($UPLOAD_MB * 1000000)) \
-SCENARIO=${SCENARIO} \
+DURATION="$DURATION" \
+SCENARIO="$SCENARIO" \
 docker-compose --file quic/s2n-quic-qns/benchmark/docker-compose.yml up --abort-on-container-exit --timeout 1 sim client server
+
+tshark -r "$OUTPUT_DIR/$NAME/s2n-quic/$CLIENT_PCAP" -t u -qz io,stat,1,"SUM(quic.packet_length)"quic.packet_length\&\&ip.dst==193.167.0.100 | awk -F '[\\|\s]' '{ print $2 $3}' > "${TMP}/s2n-quic.nsv"
+
+ROOT_DIR="$ROOT_DIR" \
+OUTPUT_DIR="$OUTPUT_DIR/$NAME/iperf" \
+SCENARIO="$SCENARIO" \
+DURATION="$DURATION" \
+docker-compose --file quic/s2n-quic-qns/benchmark/docker-compose.yml up --abort-on-container-exit --timeout 1 sim iperf_client iperf_server
+
+tshark -r "$OUTPUT_DIR/$NAME/iperf/$CLIENT_PCAP" -t u -qz io,stat,1,"SUM(data.len)"data.len\&\&ip.dst==193.167.0.90 | awk -F '[\\|\s]' '{ print $2 $3}' > "${TMP}/iperf.nsv"
+
+gnuplot <<__EOF
+    set grid
+    set autoscale
+    set title "${SCENARIO}"
+    set timefmt "%H:%M:%S"
+    set xdata time
+    set xlabel "Time measurement"
+    set ylabel "Megabits/second"
+    set term svg
+    set output "${OUTPUT_DIR}/${NAME}.svg"
+    plot "${TMP}/s2n-quic.nsv" using 1:(\$2/125000) title 's2n-quic' with lines lt 1, \
+        "${TMP}/iperf.nsv" using 1:(\$2/125000) title 'iperf TCP' with lines lt 2
+__EOF
+
+rm -rf $TMP
+
+echo "plot available in $OUTPUT_DIR/${NAME}.svg"
