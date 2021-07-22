@@ -18,4 +18,4 @@ set -e
 ./scripts/benchmark/run "drop-rate --delay=15ms --bandwidth=10Mbps --queue=25 --rate_to_client=5 --rate_to_server=5"
 
 cd target/benchmark/results
-tree -H "." -L 1 -T "Benchmark Results" --noreport --charset utf-8 -P "*.svg" > index.html
+tree -H "." -T "Benchmark Results" --noreport --charset utf-8 -I "*index.html" > index.html

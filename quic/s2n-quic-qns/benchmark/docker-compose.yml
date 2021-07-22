@@ -11,7 +11,7 @@ services:
     stdin_open: true
     tty: true
     volumes:
-      - ${OUTPUT_DIR}/logs/sim:/logs
+      - ${OUTPUT_DIR}/sim:/logs
     environment:
       - WAITFORSERVER=$WAITFORSERVER
       - SCENARIO=$SCENARIO
@@ -40,7 +40,7 @@ services:
     stdin_open: true
     tty: true
     volumes:
-      - ${OUTPUT_DIR}/logs/server:/logs
+      - ${OUTPUT_DIR}/server:/logs
     environment:
       - CRON=$CRON
       - ROLE=server
@@ -69,7 +69,7 @@ services:
     stdin_open: true
     tty: true
     volumes:
-      - ${OUTPUT_DIR}/logs/client:/logs
+      - ${OUTPUT_DIR}/client:/logs
     environment:
       - CRON=$CRON
       - ROLE=client
