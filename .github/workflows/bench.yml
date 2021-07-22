@@ -94,7 +94,7 @@ jobs:
           sudo apt-get -o Acquire::Retries=3 install -y gnuplot
 
       - name: Run script
-        run: sudo env "PATH=$PATH" ./scripts/bench/run-all
+        run: sudo env "PATH=$PATH" ./scripts/benchmark/run-all
 
       - uses: aws-actions/configure-aws-credentials@v1.5.9
         with:
@@ -106,7 +106,7 @@ jobs:
         id: s3
         run: |
           TARGET="${{ github.sha }}/bench"
-          aws s3 sync target/bench/results "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
+          aws s3 sync target/benchmark/results "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
           URL="$CDN/$TARGET/index.html"
           echo "::set-output name=URL::$URL"
 
