@@ -130,6 +130,14 @@ macro_rules! events {
             }
         }
 
+        impl<'a, Sub: Subscriber> core::fmt::Debug for PublisherSubscriber<'a, Sub> {
+            fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+                f.debug_struct("PublisherSubscriber")
+                    .field("meta", &self.meta)
+                    .finish()
+            }
+        }
+
         impl<'a, Sub: Subscriber> Publisher for PublisherSubscriber<'a, Sub> {
             $(
                 paste!(

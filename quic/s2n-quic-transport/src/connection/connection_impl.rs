@@ -23,7 +23,7 @@ use crate::{
 };
 use core::time::Duration;
 use s2n_quic_core::{
-    event::{self, common::PacketType},
+    event::{self, common::PacketType, Publisher as _},
     inet::DatagramInfo,
     io::tx,
     packet::{
@@ -248,13 +248,14 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         })
     }
 
-    fn transmission_context<'a>(
+    fn transmission_context<'a, 'sub>(
         &'a mut self,
         outcome: &'a mut transmission::Outcome,
         path_id: path::Id,
         timestamp: Timestamp,
         transmission_mode: transmission::Mode,
-    ) -> ConnectionTransmissionContext<'a, Config> {
+        publisher: &'a mut event::PublisherSubscriber<'sub, Config::EventSubscriber>,
+    ) -> ConnectionTransmissionContext<'a, 'sub, Config> {
         // TODO get this from somewhere
         let ecn = Default::default();
 
@@ -269,6 +270,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
             ecn,
             min_packet_len: None,
             transmission_mode,
+            publisher,
         }
     }
 
@@ -277,13 +279,13 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
     /// Since non-probing frames can only be sent on the active path, a separate
     /// transmission context with Mode::PathValidationOnly is used to send on
     /// other paths.
-    fn path_validation_only_transmission<'a, Tx: tx::Queue, Pub: event::Publisher>(
+    fn path_validation_only_transmission<'a, 'sub, Tx: tx::Queue>(
         &mut self,
         shared_state: &mut SharedConnectionState<Config>,
         queue: &mut Tx,
         timestamp: Timestamp,
         outcome: &'a mut transmission::Outcome,
-        publisher: &mut Pub,
+        publisher: &'a mut event::PublisherSubscriber<'sub, Config::EventSubscriber>,
     ) -> usize {
         let mut count = 0;
         let mut pending_paths = self.path_manager.paths_pending_validation();
@@ -310,6 +312,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
                             ecn,
                             min_packet_len: None,
                             transmission_mode: transmission::Mode::PathValidationOnly,
+                            publisher,
                         },
                         shared_state,
                     })
@@ -385,13 +388,14 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
     /// Initiates closing the connection as described in
     /// https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10
-    fn close(
+    fn close<'sub>(
         &mut self,
         shared_state: Option<&mut SharedConnectionState<Self::Config>>,
         error: connection::Error,
         close_formatter: &Config::ConnectionCloseFormatter,
         packet_buffer: &mut endpoint::PacketBuffer,
         timestamp: Timestamp,
+        publisher: &mut event::PublisherSubscriber<'sub, Config::EventSubscriber>,
     ) {
         match self.state {
             ConnectionState::Closing | ConnectionState::Draining | ConnectionState::Finished => {
@@ -423,6 +427,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
         let remote_address = self.path_manager.active_path().peer_socket_address;
         let close_context = s2n_quic_core::connection::close::Context::new(&remote_address);
+        let active_path_id = self.path_manager.active_path_id();
 
         if let Some((early_connection_close, connection_close)) =
             s2n_quic_core::connection::error::as_frame(error, close_formatter, &close_context)
@@ -430,9 +435,10 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             let mut outcome = transmission::Outcome::default();
             let mut context = self.transmission_context(
                 &mut outcome,
-                self.path_manager.active_path_id(),
+                active_path_id,
                 timestamp,
                 transmission::Mode::Normal,
+                publisher,
             );
 
             if let Some(packet) = shared_state.space_manager.on_transmit_close(
@@ -467,12 +473,16 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         //# An endpoint's selected connection ID and the QUIC version are
         //# sufficient information to identify packets for a closing connection;
         //# the endpoint MAY discard all other connection state.
-        shared_state
-            .space_manager
-            .discard_initial(self.path_manager.active_path_mut());
-        shared_state
-            .space_manager
-            .discard_handshake(self.path_manager.active_path_mut());
+        shared_state.space_manager.discard_initial(
+            self.path_manager.active_path_mut(),
+            active_path_id,
+            publisher,
+        );
+        shared_state.space_manager.discard_handshake(
+            self.path_manager.active_path_mut(),
+            active_path_id,
+            publisher,
+        );
         shared_state.space_manager.discard_zero_rtt_crypto();
 
         // We don't discard the application space so the application can
@@ -527,12 +537,12 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     /// Queries the connection for outgoing packets
-    fn on_transmit<Tx: tx::Queue, Pub: event::Publisher>(
+    fn on_transmit<'sub, Tx: tx::Queue>(
         &mut self,
-        shared_state: Option<&mut SharedConnectionState<Self::Config>>,
+        shared_state: Option<&mut SharedConnectionState<Config>>,
         queue: &mut Tx,
         timestamp: Timestamp,
-        publisher: &mut Pub,
+        publisher: &mut event::PublisherSubscriber<'sub, Config::EventSubscriber>,
     ) -> Result<(), ConnectionOnTransmitError> {
         let mut count = 0;
 
@@ -554,6 +564,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                                     self.path_manager.active_path_id(),
                                     timestamp,
                                     transmission::Mode::Normal,
+                                    publisher,
                                 ),
                                 shared_state,
                             })
@@ -588,6 +599,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                                     self.path_manager.active_path_id(),
                                     timestamp,
                                     transmission::Mode::MtuProbing,
+                                    publisher,
                                 ),
                                 shared_state,
                             })
@@ -932,9 +944,11 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9.1
                 //# a server MUST discard Initial keys when it first
                 //# successfully processes a Handshake packet.
-                shared_state
-                    .space_manager
-                    .discard_initial(self.path_manager.active_path_mut());
+                shared_state.space_manager.discard_initial(
+                    self.path_manager.active_path_mut(),
+                    path_id,
+                    publisher,
+                );
 
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.1
                 //# Once the server has successfully processed a

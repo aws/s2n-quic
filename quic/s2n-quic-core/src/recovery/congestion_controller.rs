@@ -32,6 +32,9 @@ pub trait CongestionController: 'static + Clone + Send + Debug {
     /// Returns the size of the current congestion window in bytes
     fn congestion_window(&self) -> u32;
 
+    /// Returns the current bytes in flight
+    fn bytes_in_flight(&self) -> u32;
+
     /// Returns `true` if the congestion window does not have sufficient
     /// space for a packet of `max_datagram_size` considering the current
     /// bytes in flight
@@ -107,6 +110,10 @@ pub mod testing {
                 u32::max_value()
             }
 
+            fn bytes_in_flight(&self) -> u32 {
+                0
+            }
+
             fn is_congestion_limited(&self) -> bool {
                 false
             }
@@ -174,6 +181,10 @@ pub mod testing {
         impl super::CongestionController for CongestionController {
             fn congestion_window(&self) -> u32 {
                 u32::max_value()
+            }
+
+            fn bytes_in_flight(&self) -> u32 {
+                0
             }
 
             fn is_congestion_limited(&self) -> bool {
