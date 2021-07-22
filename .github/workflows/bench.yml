@@ -63,6 +63,7 @@ jobs:
 
   bench:
     runs-on: ubuntu-latest
+    needs: [env, tshark]
     steps:
       - uses: actions/checkout@v2
         with:
