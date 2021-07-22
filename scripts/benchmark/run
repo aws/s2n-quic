@@ -39,23 +39,27 @@ NAME=${SCENARIO//[^a-zA-Z0-9]/-}
 mkdir -p ${OUTPUT_DIR/NAME}
 TMP=$(mktemp -d -t s2n-quic-bench-XXXXXXXXXX)
 
+LOG_DIR="$OUTPUT_DIR/~logs/$NAME/s2n-quic"
+
 ROOT_DIR="$ROOT_DIR" \
-OUTPUT_DIR="$OUTPUT_DIR/~logs/$NAME/s2n-quic" \
+LOG_DIR="$LOG_DIR" \
 DOWNLOAD_B=$(($DOWNLOAD_MB * 1000000)) \
 UPLOAD_B=$(($UPLOAD_MB * 1000000)) \
 DURATION="$DURATION" \
 SCENARIO="$SCENARIO" \
 docker-compose --file quic/s2n-quic-qns/benchmark/docker-compose.yml up --abort-on-container-exit --timeout 1 sim client server
 
-tshark -r "$OUTPUT_DIR/~logs/$NAME/s2n-quic/$CLIENT_PCAP" -t u -qz io,stat,1,"SUM(quic.packet_length)"quic.packet_length\&\&ip.dst==193.167.0.100 | awk -F '[\\|\s]' '{ print $2 $3}' > "${TMP}/s2n-quic.nsv"
+tshark -r "$LOG_DIR/$CLIENT_PCAP" -t u -qz io,stat,1,"SUM(quic.packet_length)"quic.packet_length\&\&ip.dst==193.167.0.100 | awk -F '[\\|\s]' '{ print $2 $3}' > "${TMP}/s2n-quic.nsv"
+
+LOG_DIR="$OUTPUT_DIR/~logs/$NAME/iperf"
 
 ROOT_DIR="$ROOT_DIR" \
-OUTPUT_DIR="$OUTPUT_DIR/~logs/$NAME/iperf" \
+LOG_DIR="$LOG_DIR" \
 SCENARIO="$SCENARIO" \
 DURATION="$DURATION" \
 docker-compose --file quic/s2n-quic-qns/benchmark/docker-compose.yml up --abort-on-container-exit --timeout 1 sim iperf_client iperf_server
 
-tshark -r "$OUTPUT_DIR/~logs/$NAME/iperf/$CLIENT_PCAP" -t u -qz io,stat,1,"SUM(data.len)"data.len\&\&ip.dst==193.167.0.90 | awk -F '[\\|\s]' '{ print $2 $3}' > "${TMP}/iperf.nsv"
+tshark -r "$LOG_DIR/$CLIENT_PCAP" -t u -qz io,stat,1,"SUM(data.len)"data.len\&\&ip.dst==193.167.0.90 | awk -F '[\\|\s]' '{ print $2 $3}' > "${TMP}/iperf.nsv"
 
 gnuplot <<__EOF
     set grid
