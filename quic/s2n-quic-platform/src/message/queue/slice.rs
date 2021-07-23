@@ -100,7 +100,7 @@ impl<'a, Message: message::Message, B> Slice<'a, Message, B> {
             // only set the `msg_control` if there was more than one payload written to the message
             if gso.count > 1 {
                 // since messages are double the number of payloads, we need to calculate a primary
-                // and secondary index so we can accuratly replicate the fields.
+                // and secondary index so we can accurately replicate the fields.
                 let mid = self.messages.len() / 2;
                 let (primary, secondary) = self.messages.split_at_mut(mid);
                 let index = gso.index;
