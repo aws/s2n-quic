@@ -11,6 +11,7 @@ pub struct Stream;
 impl FrameWriter for Stream {
     type Context = VarInt;
 
+    #[inline]
     fn write_chunk<W: WriteContext>(
         &self,
         offset: VarInt,
@@ -48,6 +49,7 @@ impl FrameWriter for Stream {
         Ok(())
     }
 
+    #[inline]
     fn write_fin<W: WriteContext>(
         &self,
         offset: VarInt,

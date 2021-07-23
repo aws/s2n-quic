@@ -18,6 +18,8 @@ use s2n_quic_core::inet::{ExplicitCongestionNotification, SocketAddress};
 
 /// An abstract message that can be sent and received on a network
 pub trait Message {
+    const SUPPORTS_GSO: bool;
+
     /// Returns the ECN values for the message
     fn ecn(&self) -> ExplicitCongestionNotification;
 
@@ -29,9 +31,6 @@ pub trait Message {
 
     /// Sets the `SocketAddress` for the message
     fn set_remote_address(&mut self, remote_address: &SocketAddress);
-
-    /// Resets the `SocketAddress` for the message
-    fn reset_remote_address(&mut self);
 
     /// Returns the length of the payload
     fn payload_len(&self) -> usize;
@@ -65,6 +64,15 @@ pub trait Message {
         unsafe { core::slice::from_raw_parts_mut(self.payload_ptr_mut(), self.payload_len()) }
     }
 
+    /// Sets the segment size for the message payload
+    fn set_segment_size(&mut self, size: usize);
+
+    /// Resets the message for future use
+    ///
+    /// # Safety
+    /// This method should only set the MTU to the original value
+    unsafe fn reset(&mut self, mtu: usize);
+
     /// Returns a pointer to the Message
     fn as_ptr(&self) -> *const c_void {
         self as *const _ as *const _
@@ -95,6 +103,15 @@ pub trait Ring {
 
     /// Returns the maximum transmission unit for the ring
     fn mtu(&self) -> usize;
+
+    /// Returns the maximum number of GSO segments that can be used
+    fn max_gso(&self) -> usize;
+
+    /// Disables the ability for the ring to send GSO messages
+    ///
+    /// This will be called in case the runtime encounters an IO error and will
+    /// try again with GSO disabled.
+    fn disable_gso(&mut self);
 
     /// Returns all of the messages in the ring
     ///

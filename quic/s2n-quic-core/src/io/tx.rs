@@ -85,6 +85,9 @@ pub trait Message {
     /// Returns the IPv6 flow label for the message
     fn ipv6_flow_label(&mut self) -> u32;
 
+    /// Returns true if the packet can be used in a GSO packet
+    fn can_gso(&self) -> bool;
+
     /// Writes the payload of the message to an output buffer
     fn write_payload(&mut self, buffer: &mut [u8]) -> usize;
 }
@@ -104,6 +107,10 @@ impl<Payload: AsRef<[u8]>> Message for (SocketAddress, Payload) {
 
     fn ipv6_flow_label(&mut self) -> u32 {
         0
+    }
+
+    fn can_gso(&self) -> bool {
+        true
     }
 
     fn write_payload(&mut self, buffer: &mut [u8]) -> usize {

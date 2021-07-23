@@ -40,12 +40,22 @@ impl Socket for std::net::UdpSocket {
 
 pub trait Error {
     fn would_block(&self) -> bool;
+    fn was_interrupted(&self) -> bool;
+    fn permission_denied(&self) -> bool;
 }
 
 #[cfg(feature = "std")]
 impl Error for std::io::Error {
     fn would_block(&self) -> bool {
         self.kind() == std::io::ErrorKind::WouldBlock
+    }
+
+    fn was_interrupted(&self) -> bool {
+        self.kind() == std::io::ErrorKind::Interrupted
+    }
+
+    fn permission_denied(&self) -> bool {
+        self.kind() == std::io::ErrorKind::PermissionDenied
     }
 }
 
@@ -54,7 +64,7 @@ pub struct Queue<B: Buffer>(queue::Queue<Ring<B>>);
 
 impl<B: Buffer> Queue<B> {
     pub fn new(buffer: B) -> Self {
-        let queue = queue::Queue::new(Ring::new(buffer));
+        let queue = queue::Queue::new(Ring::new(buffer, 1));
 
         Self(queue)
     }
@@ -77,13 +87,15 @@ impl<B: Buffer> Queue<B> {
                     Ok(_) => {
                         count += 1;
                     }
+                    Err(err) if count > 0 && err.would_block() => {
+                        break;
+                    }
+                    Err(err) if err.was_interrupted() || err.permission_denied() => {
+                        break;
+                    }
                     Err(err) => {
-                        if count > 0 && err.would_block() {
-                            break;
-                        } else {
-                            entries.finish(count);
-                            return Err(err);
-                        }
+                        entries.finish(count);
+                        return Err(err);
                     }
                 }
             }
@@ -114,13 +126,15 @@ impl<B: Buffer> Queue<B> {
                     count += 1;
                 }
                 Ok((_payload_len, None)) => {}
+                Err(err) if count > 0 && err.would_block() => {
+                    break;
+                }
+                Err(err) if err.was_interrupted() => {
+                    break;
+                }
                 Err(err) => {
-                    if count > 0 && err.would_block() {
-                        break;
-                    } else {
-                        entries.finish(count);
-                        return Err(err);
-                    }
+                    entries.finish(count);
+                    return Err(err);
                 }
             }
         }
