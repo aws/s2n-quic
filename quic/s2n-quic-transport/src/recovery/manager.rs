@@ -471,14 +471,25 @@ impl Manager {
         //# was sent a threshold amount of time in the past.
         self.detect_and_remove_lost_packets(datagram.timestamp, context, publisher);
 
+        let current_path_id = context.path_id();
+        let is_handshake_confirmed = context.is_handshake_confirmed();
+        let mut current_path_acked_bytes = 0;
+
         for acked_packet_info in newly_acked_packets {
             let path = context.path_mut_by_id(acked_packet_info.path_id);
-            path.congestion_controller.on_packet_ack(
-                largest_newly_acked_time_sent,
-                acked_packet_info.sent_bytes as usize,
-                &path.rtt_estimator,
-                datagram.timestamp,
-            );
+
+            let sent_bytes = acked_packet_info.sent_bytes as usize;
+
+            if acked_packet_info.path_id == current_path_id {
+                current_path_acked_bytes += sent_bytes;
+            } else {
+                path.congestion_controller.on_packet_ack(
+                    largest_newly_acked_time_sent,
+                    sent_bytes,
+                    &path.rtt_estimator,
+                    datagram.timestamp,
+                );
+            }
 
             //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
             //# The PTO backoff factor is reset when an acknowledgement is received,
@@ -492,6 +503,10 @@ impl Manager {
             if path.is_peer_validated() {
                 path.reset_pto_backoff();
             }
+
+            if acked_packet_info.path_id != current_path_id {
+                self.update_pto_timer(path, datagram.timestamp, is_handshake_confirmed);
+            }
         }
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
@@ -501,12 +516,22 @@ impl Manager {
             !newly_acked_packets.is_empty(),
             "this method assumes there was at least one newly-acked packet"
         );
-        let path = context.path();
-        let is_handshake_confirmed = context.is_handshake_confirmed();
-        self.update_pto_timer(path, datagram.timestamp, is_handshake_confirmed);
+        let path = context.path_mut();
+
+        if current_path_acked_bytes > 0 {
+            path.congestion_controller.on_packet_ack(
+                largest_newly_acked_time_sent,
+                current_path_acked_bytes,
+                &path.rtt_estimator,
+                datagram.timestamp,
+            );
+
+            self.update_pto_timer(path, datagram.timestamp, is_handshake_confirmed);
+        }
     }
 
     /// Returns `true` if the recovery manager requires a probe packet to be sent.
+    #[inline]
     pub fn requires_probe(&self) -> bool {
         matches!(self.pto.state, PtoState::RequiresTransmission(_))
     }
@@ -526,10 +551,17 @@ impl Manager {
         publisher.on_recovery_metrics(self.recovery_event(path_id.as_u8(), path));
 
         // Remove any unacknowledged packets from flight.
+        let mut discarded_bytes = 0;
         for (_, unacked_sent_info) in self.sent_packets.iter() {
-            path.congestion_controller
-                .on_packet_discarded(unacked_sent_info.sent_bytes as usize);
+            debug_assert_eq!(
+                unacked_sent_info.path_id,
+                path_id,
+                "this implementation assumes the connection has a single path when discarding packets"
+            );
+            discarded_bytes += unacked_sent_info.sent_bytes as usize;
         }
+        path.congestion_controller
+            .on_packet_discarded(discarded_bytes);
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#A.10
@@ -706,6 +738,7 @@ impl Manager {
         publisher: &mut Pub,
     ) {
         let current_path_id = context.path_id();
+
         // Remove the lost packets and account for the bytes on the proper congestion controller
         for (packet_number, sent_info) in sent_packets_to_remove {
             let path = context.path_mut_by_id(sent_info.path_id);
@@ -760,12 +793,14 @@ impl Manager {
                 is_mtu_probe,
             });
 
-            path.mtu_controller.on_packet_loss(
-                packet_number,
-                sent_info.sent_bytes,
-                now,
-                &mut path.congestion_controller,
-            );
+            if is_mtu_probe {
+                path.mtu_controller.on_packet_loss(
+                    packet_number,
+                    sent_info.sent_bytes,
+                    now,
+                    &mut path.congestion_controller,
+                );
+            }
 
             if persistent_congestion {
                 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.2
