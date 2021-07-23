@@ -425,6 +425,12 @@ jobs:
       - name: Run script
         run: sudo env "PATH=$PATH" ./scripts/perf/test-all
 
+      - name: Prepare artifacts
+        run: |
+          cd ./target/perf/results
+          zip perf.zip *.script
+          rm *.script
+
       - uses: aws-actions/configure-aws-credentials@v1.5.9
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -436,7 +442,9 @@ jobs:
         run: |
           TARGET="${{ github.sha }}/perf"
           aws s3 sync target/perf/results "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
-          URL="$CDN/$TARGET/index.html"
+          URL="$CDN/$TARGET/perf.zip"
+          URL=$(echo -n $URL | jq -sRr @url)
+          URL="https://profiler.firefox.com/from-url/$URL"
           echo "::set-output name=URL::$URL"
 
       - uses: ouzi-dev/commit-status-updater@v1.1.0

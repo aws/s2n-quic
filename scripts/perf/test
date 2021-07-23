@@ -63,8 +63,6 @@ cat \
   | inferno-collapse-perf \
   > $OUT/$FILE.folded
 
-zip $OUT/$FILE.zip $OUT/$FILE.script
-
 echo "generating flamegraph"
 mkdir -p target/perf/results
 inferno-flamegraph $OUT/$FILE.folded \
