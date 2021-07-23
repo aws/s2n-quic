@@ -443,7 +443,7 @@ jobs:
           TARGET="${{ github.sha }}/perf"
           aws s3 sync target/perf/results "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
           URL="$CDN/$TARGET/perf.zip"
-          URL=$(echo -n $URL | jq -sRr @url)
+          URL=$(echo -n $URL | jq -sRr @uri)
           URL="https://profiler.firefox.com/from-url/$URL"
           echo "::set-output name=URL::$URL"
 
