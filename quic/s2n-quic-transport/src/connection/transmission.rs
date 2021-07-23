@@ -81,6 +81,10 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
 
     #[inline]
     fn can_gso(&self) -> bool {
+        // If a packet can be GSO'd it means it's limited to the previously written packet
+        // size. This becomes a problem for MTU probes where they will likely exceed that amount.
+        // As such, if we're probing we want to let the IO layer know to not GSO the current
+        // packet.
         !self.context.transmission_mode.is_mtu_probing()
     }
 

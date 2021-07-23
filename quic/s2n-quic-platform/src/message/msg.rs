@@ -32,7 +32,7 @@ impl fmt::Debug for Message {
     }
 }
 
-/// The is the maximum number of bytes allocated for cmsg data
+/// The maximum number of bytes allocated for cmsg data
 ///
 /// This should be enough for UDP_SEGMENT + IP_TOS + IP_PKTINFO. It may need to be increased
 /// to allow for future control messages.
@@ -134,8 +134,10 @@ impl MessageTrait for msghdr {
 
     #[inline]
     fn set_segment_size(&mut self, size: usize) {
-        let cmsg =
-            unsafe { core::slice::from_raw_parts_mut(self.msg_control as *mut u8, MAX_CMSG_LEN) };
+        let cmsg = unsafe {
+            // Safety: the msg_control buffer should always be allocated to MAX_CMSG_LEN
+            core::slice::from_raw_parts_mut(self.msg_control as *mut u8, MAX_CMSG_LEN)
+        };
         let remaining = &mut cmsg[(self.msg_controllen as usize)..];
         let len = features::Gso::set(remaining, size);
         // add the values as a usize to make sure we work cross-platform
@@ -245,6 +247,7 @@ impl<Payloads: crate::buffer::Buffer> Storage<Payloads> {
     #[inline]
     pub fn disable_gso(&mut self) {
         // TODO recompute message offsets
+        // https://github.com/awslabs/s2n-quic/issues/762
         self.max_gso = 1;
     }
 }

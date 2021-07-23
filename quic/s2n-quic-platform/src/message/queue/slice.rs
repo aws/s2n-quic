@@ -85,9 +85,22 @@ impl<'a, Message: message::Message, B: Behavior> Slice<'a, Message, B> {
 }
 
 impl<'a, Message: message::Message, B> Slice<'a, Message, B> {
+    /// Flushes the current GSO message, if any
+    ///
+    /// In the `gso_segment` field, we track which message is currently being
+    /// built. If there ended up being multiple payloads written to the single message
+    /// we need to set the msg_control values to indicate the GSO size.
+    #[inline]
     fn flush_gso(&mut self) {
+        if !Message::SUPPORTS_GSO {
+            return;
+        }
+
         if let Some(gso) = self.gso_segment.take() {
+            // only set the `msg_control` if there was more than one payload written to the message
             if gso.count > 1 {
+                // since messages are double the number of payloads, we need to calculate a primary
+                // and secondary index so we can accuratly replicate the fields.
                 let mid = self.messages.len() / 2;
                 let (primary, secondary) = self.messages.split_at_mut(mid);
                 let index = gso.index;
@@ -103,8 +116,105 @@ impl<'a, Message: message::Message, B> Slice<'a, Message, B> {
                     (primary, secondary)
                 };
 
+                // let the primary message know that we sent multiple payloads in a single message
                 primary.set_segment_size(gso.size);
+                // replicate the fields from the primary to the secondary
                 secondary.replicate_fields_from(primary);
+            }
+        }
+    }
+
+    /// Tries to send a message as a GSO segment
+    ///
+    /// Returns the Err(Message) if it was not able to. Otherwise, the index of the GSO'd message is returned.
+    #[inline]
+    fn try_gso<M: tx::Message>(&mut self, mut message: M) -> Result<Result<usize, M>, tx::Error> {
+        if !Message::SUPPORTS_GSO {
+            return Ok(Err(message));
+        }
+
+        let gso = if let Some(gso) = self.gso_segment.as_mut() {
+            gso
+        } else {
+            return Ok(Err(message));
+        };
+
+        let max_segments = self.max_gso;
+        debug_assert!(
+            max_segments > 1,
+            "gso_segment should only be set when max_gso > 1"
+        );
+
+        let prev_message = &mut self.messages[gso.index];
+
+        // check to make sure the message can be GSO'd and that the remote_addresses match
+        if !(message.can_gso() && prev_message.remote_address() == Some(message.remote_address())) {
+            self.flush_gso();
+            return Ok(Err(message));
+        }
+
+        debug_assert!(
+            gso.count < max_segments,
+            "{} cannot exceed {}",
+            gso.count,
+            max_segments
+        );
+
+        let payload_len = prev_message.payload_len();
+
+        unsafe {
+            // Safety: all payloads should have enough capacity to extend max_segments *
+            // gso.size
+            prev_message.set_payload_len(payload_len + gso.size);
+        }
+
+        // allow the message to write up to `gso.size` bytes
+        let buffer = &mut message::Message::payload_mut(prev_message)[payload_len..];
+
+        match message.write_payload(buffer) {
+            0 => {
+                unsafe {
+                    // revert the len to what it was before
+                    prev_message.set_payload_len(payload_len);
+                }
+                Err(tx::Error::EmptyPayload)
+            }
+            size => {
+                unsafe {
+                    debug_assert!(
+                        gso.size >= size,
+                        "the payload tried to write more than available"
+                    );
+                    // set the len to the actual amount written to the payload
+                    prev_message.set_payload_len(payload_len + size.min(gso.size));
+                }
+                // increment the number of segments that we've written
+                gso.count += 1;
+
+                debug_assert!(
+                    gso.count <= max_segments,
+                    "{} cannot exceed {}",
+                    gso.count,
+                    max_segments
+                );
+
+                let index = gso.index;
+
+                // the last segment can be smaller but we can't write any more if it is
+                let size_mismatch = gso.size != size;
+
+                // we're bounded by the max_segments amount
+                let at_segment_limit = gso.count >= max_segments;
+
+                // we also can't write more data than u16::MAX
+                let at_payload_limit = gso.size * (gso.count + 1) > u16::MAX as usize;
+
+                // if we've hit any limits, then flush the GSO information to the message
+                if size_mismatch || at_segment_limit || at_payload_limit {
+                    self.flush_gso();
+                }
+
+                Ok(Ok(index))
             }
         }
     }
@@ -156,86 +266,15 @@ impl<'a, Message: rx::Entry + message::Message, B: Behavior> rx::Queue for Slice
 impl<'a, Message: tx::Entry + message::Message, B: Behavior> tx::Queue for Slice<'a, Message, B> {
     type Entry = Message;
 
-    fn push<M: tx::Message>(&mut self, mut message: M) -> Result<usize, tx::Error> {
-        if Message::SUPPORTS_GSO {
-            if let Some(gso) = self.gso_segment.as_mut() {
-                let max_segments = self.max_gso;
-                debug_assert!(
-                    max_segments > 1,
-                    "gso_segment should only be set when max_gso > 1"
-                );
+    #[inline]
+    fn push<M: tx::Message>(&mut self, message: M) -> Result<usize, tx::Error> {
+        // first try to write a GSO payload
+        let message = match self.try_gso(message)? {
+            Ok(index) => return Ok(index),
+            Err(message) => message,
+        };
 
-                let prev_message = &mut self.messages[gso.index];
-
-                if message.can_gso()
-                    && prev_message.remote_address() == Some(message.remote_address())
-                {
-                    debug_assert!(
-                        gso.count < max_segments,
-                        "{} cannot exceed {}",
-                        gso.count,
-                        max_segments
-                    );
-
-                    let payload_len = prev_message.payload_len();
-
-                    unsafe {
-                        // Safety: all payloads should have enough capacity to extend max_segments *
-                        // gso.size
-                        prev_message.set_payload_len(payload_len + gso.size);
-                    }
-
-                    // allow the message to write up to `gso.size` bytes
-                    let buffer = &mut message::Message::payload_mut(prev_message)[payload_len..];
-
-                    match message.write_payload(buffer) {
-                        0 => {
-                            unsafe {
-                                // revert the len to what it was before
-                                prev_message.set_payload_len(payload_len);
-                            }
-                            return Err(tx::Error::EmptyPayload);
-                        }
-                        size => {
-                            unsafe {
-                                // set the len to the actual amount written to the payload
-                                prev_message.set_payload_len(payload_len + size);
-                            }
-                            // increment the number of segments
-                            gso.count += 1;
-
-                            debug_assert!(
-                                gso.count <= max_segments,
-                                "{} cannot exceed {}",
-                                gso.count,
-                                max_segments
-                            );
-
-                            let index = gso.index;
-
-                            // the last segment can be smaller but we can't write any more if it is
-                            let size_mismatch = gso.size != size;
-
-                            // we're bounded by the max_segments amount
-                            let at_segment_limit = gso.count >= max_segments;
-
-                            // we also can't write more data than u16::MAX
-                            let at_payload_limit = gso.size * (gso.count + 1) > u16::MAX as usize;
-
-                            if size_mismatch || at_segment_limit || at_payload_limit {
-                                self.flush_gso();
-                            }
-
-                            return Ok(index);
-                        }
-                    }
-                }
-
-                // move on to the next index
-                self.flush_gso();
-            }
-        }
-
+        // find the index of the current message
         let index = self
             .primary
             .index(self.secondary)
@@ -244,6 +283,7 @@ impl<'a, Message: tx::Entry + message::Message, B: Behavior> tx::Queue for Slice
         let size = self.messages[index].set(message)?;
         self.advance(1);
 
+        // if we support GSO then mark the message as GSO-capable
         if Message::SUPPORTS_GSO && self.max_gso > 1 {
             self.gso_segment = Some(GsoSegment {
                 index,

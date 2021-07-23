@@ -153,6 +153,7 @@ impl<Payloads: crate::buffer::Buffer> super::Ring for Ring<Payloads> {
     #[inline]
     fn disable_gso(&mut self) {
         // TODO recompute message offsets
+        // https://github.com/awslabs/s2n-quic/issues/762
         self.storage.disable_gso()
     }
 
