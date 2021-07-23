@@ -56,8 +56,14 @@ echo "folding events"
 perf script \
   --input $TMP/$FILE.perf \
   2>/dev/null \
+  > $OUT/$FILE.script
+
+cat \
+  $OUT/$FILE.script \
   | inferno-collapse-perf \
   > $OUT/$FILE.folded
+
+zip $OUT/$FILE.zip $OUT/$FILE.script
 
 echo "generating flamegraph"
 mkdir -p target/perf/results
