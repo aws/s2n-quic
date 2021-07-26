@@ -27,6 +27,8 @@ pub struct KeySet<K> {
     //# connection.
     packet_decryption_failures: u64,
     aead_integrity_limit: u64,
+    /// The number of times the key has been rotated
+    generation: u16,
 
     /// Set of keys for the current and next phase
     crypto: [limited::Key<K>; 2],
@@ -54,22 +56,25 @@ impl<K: OneRttKey> KeySet<K> {
         let aead_integrity_limit = crypto.aead_integrity_limit();
         let next_key = limited::Key::new(crypto.derive_next_key());
         let active_key = limited::Key::new(crypto);
+
         Self {
             key_phase: KeyPhase::Zero,
             key_derivation_timer: Default::default(),
             packet_decryption_failures: 0,
             aead_integrity_limit,
+            generation: 0,
             crypto: [active_key, next_key],
         }
     }
 
     /// Rotating the phase will switch the active key
-    pub fn rotate_phase(&mut self) {
-        self.key_phase = KeyPhase::next_phase(self.key_phase)
+    fn rotate_phase(&mut self) {
+        self.generation += 1;
+        self.key_phase = KeyPhase::next_phase(self.key_phase);
     }
 
     /// Derive a new key based on the active key, and store it in the non-active slot
-    pub fn derive_and_store_next_key(&mut self) {
+    fn derive_and_store_next_key(&mut self) {
         //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.3
         //# Once generated, the next set of packet protection keys SHOULD be
         //# retained, even if the packet that was received was subsequently
@@ -99,12 +104,14 @@ impl<K: OneRttKey> KeySet<K> {
 
     /// Passes the key for the the requested phase to a callback function. Integrity limits are
     /// enforced.
+    ///
+    /// Returns the decrypted packet and generation if the key phase was rotated.
     pub fn decrypt_packet<'a>(
         &mut self,
         packet: EncryptedShort<'a>,
         largest_acknowledged_packet_number: PacketNumber,
         pto: Timestamp,
-    ) -> Result<CleartextShort<'a>, ProcessingError> {
+    ) -> Result<(CleartextShort<'a>, Option<u16>), ProcessingError> {
         let mut phase_to_use = self.key_phase() as u8;
         let packet_phase = packet.key_phase();
         let phase_switch = phase_to_use != (packet_phase as u8);
@@ -131,7 +138,7 @@ impl<K: OneRttKey> KeySet<K> {
 
         match packet.decrypt(self.key_for_phase(phase_to_use.into()).key()) {
             Ok(packet) => {
-                if packet_phase != self.key_phase() {
+                let generation = if packet_phase != self.key_phase() {
                     //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.2
                     //# Sending keys MUST be updated before sending an
                     //# acknowledgement for the packet that was received with updated keys.
@@ -156,9 +163,12 @@ impl<K: OneRttKey> KeySet<K> {
                     //# retain old keys for some time after unprotecting a packet sent using
                     //# the new keys.
                     self.set_derivation_timer(pto);
-                }
+                    Some(self.generation)
+                } else {
+                    None
+                };
 
-                Ok(packet)
+                Ok((packet, generation))
             }
             Err(e) => {
                 //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.6
@@ -438,7 +448,7 @@ mod tests {
                 .decrypt_packet(
                     encrypted_packet,
                     PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u8(0)),
-                    clock.get_time()
+                    clock.get_time(),
                 )
                 .err(),
             Some(ProcessingError::ConnectionError(

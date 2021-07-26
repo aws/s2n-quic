@@ -110,6 +110,7 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
                     event::builders::Meta {
                         endpoint_type: Cfg::ENDPOINT_TYPE,
                         group_id: connection.internal_connection_id().into(),
+                        duration_since_start: timestamp,
                     },
                     Some(connection.quic_version()),
                     endpoint_context.event_subscriber,
@@ -154,6 +155,7 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
                         event::builders::Meta {
                             endpoint_type: Cfg::ENDPOINT_TYPE,
                             group_id: conn.internal_connection_id().into(),
+                            duration_since_start: timestamp,
                         },
                         Some(conn.quic_version()),
                         endpoint_context.event_subscriber,
@@ -319,6 +321,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             event::builders::Meta {
                 endpoint_type: Cfg::ENDPOINT_TYPE,
                 group_id: 7, // TODO: generate a new internal connection id
+                duration_since_start: timestamp,
             },
             packet.version(),
             endpoint_context.event_subscriber,
@@ -405,6 +408,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                             event::builders::Meta {
                                 endpoint_type: Cfg::ENDPOINT_TYPE,
                                 group_id: conn.internal_connection_id().into(),
+                                duration_since_start: timestamp,
                             },
                             Some(conn.quic_version()),
                             endpoint_context.event_subscriber,
@@ -667,6 +671,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     event::builders::Meta {
                         endpoint_type: Cfg::ENDPOINT_TYPE,
                         group_id: conn.internal_connection_id().into(),
+                        duration_since_start: timestamp,
                     },
                     Some(conn.quic_version()),
                     endpoint_context.event_subscriber,
@@ -696,6 +701,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         event::builders::Meta {
                             endpoint_type: Cfg::ENDPOINT_TYPE,
                             group_id: conn.internal_connection_id().into(),
+                            duration_since_start: timestamp,
                         },
                         Some(conn.quic_version()),
                         endpoint_context.event_subscriber,

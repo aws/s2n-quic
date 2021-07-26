@@ -18,15 +18,6 @@ pub mod builders {
 }
 
 common!(
-    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#4
-    //# When the qlog "group_id" field is used, it is recommended to use
-    //# QUIC's Original Destination Connection ID (ODCID, the CID chosen by
-    //# the client when first contacting the server)
-    struct Meta {
-        pub endpoint_type: endpoint::Type,
-        pub group_id: u64,
-    }
-
     //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#A.4
     struct PacketHeader {
         pub packet_type: common::PacketType,
@@ -90,6 +81,13 @@ common!(
         VersionNegotiation,
         StatelessReset,
         Unknown,
+    }
+
+    enum KeyType {
+        Initial,
+        Handshake,
+        ZeroRtt,
+        OneRtt { generation: u16 },
     }
 );
 
@@ -208,5 +206,12 @@ events!(
         pub pto_count: u32,
         pub congestion_window: u32,
         pub bytes_in_flight: u32,
+    }
+
+    #[name = "security:key_update"]
+    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.2.1
+    /// Crypto key updated
+    struct KeyUpdate {
+        pub key_type: common::KeyType,
     }
 );

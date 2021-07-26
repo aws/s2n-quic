@@ -374,17 +374,18 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
     }
 
     /// Validate packets in the Application packet space
-    pub fn validate_and_decrypt_packet<'a>(
+    pub fn validate_and_decrypt_packet<'a, Pub: event::Publisher>(
         &mut self,
         protected: ProtectedShort<'a>,
         datagram: &DatagramInfo,
         rtt_estimator: &RttEstimator,
+        publisher: &mut Pub,
     ) -> Result<CleartextShort<'a>, ProcessingError> {
         let largest_acked = self.ack_manager.largest_received_packet_number_acked();
         let packet = protected.unprotect(&self.header_key, largest_acked)?;
         let packet_number = packet.packet_number;
 
-        let decrypted_packet = self.key_set.decrypt_packet(
+        let decrypted = self.key_set.decrypt_packet(
             packet,
             largest_acked,
             //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6.3
@@ -399,6 +400,11 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             //# keys.
             datagram.timestamp + rtt_estimator.pto_period(1, PacketNumberSpace::ApplicationData),
         );
+        if let Ok((_, Some(generation))) = decrypted {
+            publisher.on_key_update(event::builders::KeyUpdate {
+                key_type: event::common::KeyType::OneRtt { generation },
+            });
+        }
 
         //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#9.5
         //# For authentication to be
@@ -412,7 +418,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             return Err(ProcessingError::DuplicatePacket);
         }
 
-        decrypted_packet
+        decrypted.map(|x| x.0)
     }
 }
 
