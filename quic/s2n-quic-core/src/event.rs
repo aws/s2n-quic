@@ -147,7 +147,7 @@ events!(
     /// Frame was sent
     struct FrameSent {
         pub packet_header: common::PacketHeader,
-        // pub path_id: u64,
+        pub path_id: u64,
         pub frame: common::Frame,
     }
 

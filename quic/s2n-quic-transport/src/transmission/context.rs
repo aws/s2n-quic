@@ -121,7 +121,7 @@ impl<'a, 'b, 'sub, Config: endpoint::Config> WriteContext for Context<'a, 'b, 's
                 version: self.publisher.quic_version(),
             }
             .into(),
-            // path_id: path_id.as_u8() as u64,
+            path_id: self.outcome.path_id as u64,
             frame: frame.as_event(),
         });
         self.packet_number
@@ -146,6 +146,7 @@ impl<'a, 'b, 'sub, Config: endpoint::Config> WriteContext for Context<'a, 'b, 's
                 version: self.publisher.quic_version(),
             }
             .into(),
+            path_id: self.outcome.path_id as u64,
             frame: frame.as_event(),
         });
         Some(self.packet_number)
