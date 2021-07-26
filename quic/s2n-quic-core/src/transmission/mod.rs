@@ -13,12 +13,25 @@ pub mod mode;
 pub use constraint::Constraint;
 pub use mode::Mode;
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug)]
 pub struct Outcome {
     pub ack_elicitation: AckElicitation,
     pub is_congestion_controlled: bool,
     pub bytes_sent: usize,
     pub packet_number: number::PacketNumber,
+    pub path_id: u8,
+}
+
+impl Outcome {
+    pub fn new(packet_number: number::PacketNumber, path_id: u8) -> Outcome {
+        Outcome {
+            ack_elicitation: AckElicitation::NonEliciting,
+            is_congestion_controlled: false,
+            bytes_sent: 0,
+            packet_number,
+            path_id,
+        }
+    }
 }
 
 impl AckElicitable for Outcome {
