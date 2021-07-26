@@ -62,17 +62,6 @@ macro_rules! frames {
             }
         }
 
-        impl<'a, $ack, $data> event::AsEvent for Frame<'a, $ack, $data> {
-            #[inline]
-            fn as_event(&self) -> common::Frame {
-                match &self {
-                    $(
-                        Frame::$ty(_) => common::Frame::$ty,
-                    )*
-                }
-            }
-        }
-
         impl<'a, $ack, $data> ack_elicitation::AckElicitable for Frame<'a, $ack, $data> {
             #[inline]
             fn ack_elicitation(&self) -> ack_elicitation::AckElicitation {
