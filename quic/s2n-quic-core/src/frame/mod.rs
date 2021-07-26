@@ -3,8 +3,7 @@
 
 #![forbid(unsafe_code)]
 
-use crate::event::common;
-use crate::frame::event::AsEvent as _;
+use crate::{event::common, frame::event::AsEvent as _};
 use core::fmt;
 use s2n_codec::{
     DecoderBuffer, DecoderBufferMut, DecoderBufferMutResult, DecoderError,
@@ -13,8 +12,8 @@ use s2n_codec::{
 
 pub mod ack_elicitation;
 pub mod congestion_controlled;
-pub mod path_validation;
 pub mod event;
+pub mod path_validation;
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19
 //# As described in Section 12.4, packets contain one or more frames.

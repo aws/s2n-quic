@@ -11,8 +11,8 @@ use s2n_quic_core::{
     frame::{
         ack_elicitation::{AckElicitable, AckElicitation},
         congestion_controlled::CongestionControlled,
+        event::AsEvent,
         path_validation::Probing as PathValidationProbing,
-        event::AsEvent
     },
     packet::number::PacketNumber,
     time::Timestamp,
