@@ -180,9 +180,9 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             self.key_set
                 .encrypt_packet(buffer, |buffer, key, key_phase| {
                     let packet = Short {
-                        destination_connection_id,
                         spin_bit,
                         key_phase,
+                        destination_connection_id,
                         packet_number,
                         payload,
                     };
@@ -249,9 +249,9 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             self.key_set
                 .encrypt_packet(buffer, |buffer, key, key_phase| {
                     let packet = Short {
-                        destination_connection_id,
                         spin_bit,
                         key_phase,
+                        destination_connection_id,
                         packet_number,
                         payload,
                     };

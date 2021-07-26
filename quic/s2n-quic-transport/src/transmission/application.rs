@@ -27,6 +27,7 @@ pub enum Payload<'a, Config: endpoint::Config> {
 impl<'a, Config: endpoint::Config> Payload<'a, Config> {
     /// Constructs a transmission::application::Payload appropriate for the given
     /// `transmission::Mode` in the given `ConnectionTransmissionContext`
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         _config: PhantomData<Config>,
         path_id: path::Id,
