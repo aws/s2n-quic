@@ -115,6 +115,13 @@ impl<'a, 'b, 'sub, Config: endpoint::Config> WriteContext for Context<'a, 'b, 's
         self.outcome.is_congestion_controlled |= frame.is_congestion_controlled();
 
         self.publisher.on_frame_sent(event::builders::FrameSent {
+            packet_header: event::builders::PacketHeader {
+                packet_type: self.packet_number.space().into(),
+                packet_number: self.packet_number.as_u64(),
+                version: self.publisher.quic_version(),
+            }
+            .into(),
+            // path_id: path_id.as_u8() as u64,
             frame: frame.as_event(),
         });
         self.packet_number
@@ -133,6 +140,12 @@ impl<'a, 'b, 'sub, Config: endpoint::Config> WriteContext for Context<'a, 'b, 's
         self.outcome.is_congestion_controlled |= frame.is_congestion_controlled();
 
         self.publisher.on_frame_sent(event::builders::FrameSent {
+            packet_header: event::builders::PacketHeader {
+                packet_type: self.packet_number.space().into(),
+                packet_number: self.packet_number.as_u64(),
+                version: self.publisher.quic_version(),
+            }
+            .into(),
             frame: frame.as_event(),
         });
         Some(self.packet_number)
