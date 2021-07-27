@@ -250,4 +250,10 @@ events!(
     struct KeyUpdate {
         pub key_type: common::KeyType,
     }
+
+    #[name = "connectivity:connection_closed"]
+    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.1.3
+    /// Connection was closed
+    struct ConnectionClosed {
+    }
 );
