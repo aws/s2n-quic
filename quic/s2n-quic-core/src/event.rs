@@ -1,7 +1,10 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{connection::PeerId, endpoint, inet::SocketAddress, packet::number::PacketNumberSpace};
+use crate::{
+    connection, connection::PeerId, endpoint, inet::SocketAddress,
+    packet::number::PacketNumberSpace,
+};
 use core::time::Duration;
 use paste::paste;
 
@@ -253,7 +256,8 @@ events!(
 
     #[name = "connectivity:connection_closed"]
     //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.1.3
-    /// Connection was closed
-    struct ConnectionClosed {
+    /// Connection closed
+    struct ConnectionClosed<'a> {
+        pub error: &'a connection::Error,
     }
 );
