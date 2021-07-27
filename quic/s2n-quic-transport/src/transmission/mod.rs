@@ -16,7 +16,7 @@ pub use interest::Interest;
 pub use s2n_quic_core::transmission::*;
 
 use crate::{
-    endpoint,
+    endpoint, path,
     space::TxPacketNumbers,
     transmission::{self, interest::Provider as _},
 };
@@ -48,6 +48,7 @@ pub struct Transmission<'a, 'sub, Config: endpoint::Config, P: Payload> {
     pub transmission_constraint: transmission::Constraint,
     pub transmission_mode: transmission::Mode,
     pub tx_packet_numbers: &'a mut TxPacketNumbers,
+    pub path_id: path::Id,
     pub publisher:
         &'a mut event::PublisherSubscriber<'sub, <Config as endpoint::Config>::EventSubscriber>,
 }
@@ -85,6 +86,7 @@ impl<'a, 'sub, Config: endpoint::Config, P: Payload> PacketPayloadEncoder
             header_len,
             tag_len,
             config: Default::default(),
+            path_id: self.path_id,
             publisher: &mut self.publisher,
         };
 

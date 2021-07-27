@@ -104,7 +104,7 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
         }
 
         let packet_number_encoder = self.packet_number_encoder();
-        let mut outcome = transmission::Outcome::new(packet_number, context.path_id.as_u8());
+        let mut outcome = transmission::Outcome::new(packet_number);
 
         let destination_connection_id = context.path().peer_connection_id;
         let payload = transmission::Transmission {
@@ -121,6 +121,7 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
             transmission_constraint,
             transmission_mode: context.transmission_mode,
             tx_packet_numbers: &mut self.tx_packet_numbers,
+            path_id: context.path_id,
             publisher: context.publisher,
         };
 
@@ -159,7 +160,7 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
         let packet_number = self.tx_packet_numbers.next();
 
         let packet_number_encoder = self.packet_number_encoder();
-        let mut outcome = transmission::Outcome::new(packet_number, context.path_id.as_u8());
+        let mut outcome = transmission::Outcome::new(packet_number);
 
         let destination_connection_id = context.path().peer_connection_id;
         let payload = transmission::Transmission {
@@ -174,6 +175,7 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
             transmission_constraint: transmission::Constraint::None,
             transmission_mode: transmission::Mode::Normal,
             tx_packet_numbers: &mut self.tx_packet_numbers,
+            path_id: context.path_id,
             publisher: context.publisher,
         };
 

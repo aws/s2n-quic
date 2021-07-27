@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{contexts::WriteContext, endpoint, transmission, transmission::Mode};
+use crate::{contexts::WriteContext, endpoint, path, transmission, transmission::Mode};
 use core::marker::PhantomData;
 use s2n_codec::{Encoder, EncoderBuffer, EncoderValue};
 use s2n_quic_core::{
@@ -27,6 +27,7 @@ pub struct Context<'a, 'b, 'sub, Config: endpoint::Config> {
     pub header_len: usize,
     pub tag_len: usize,
     pub config: PhantomData<Config>,
+    pub path_id: path::Id,
     pub publisher:
         &'a mut event::PublisherSubscriber<'sub, <Config as endpoint::Config>::EventSubscriber>,
 }
@@ -121,7 +122,7 @@ impl<'a, 'b, 'sub, Config: endpoint::Config> WriteContext for Context<'a, 'b, 's
                 version: self.publisher.quic_version(),
             }
             .into(),
-            path_id: self.outcome.path_id as u64,
+            path_id: self.path_id.as_u8() as u64,
             frame: frame.as_event(),
         });
         self.packet_number
@@ -146,7 +147,7 @@ impl<'a, 'b, 'sub, Config: endpoint::Config> WriteContext for Context<'a, 'b, 's
                 version: self.publisher.quic_version(),
             }
             .into(),
-            path_id: self.outcome.path_id as u64,
+            path_id: self.path_id.as_u8() as u64,
             frame: frame.as_event(),
         });
         Some(self.packet_number)

@@ -432,8 +432,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         if let Some((early_connection_close, connection_close)) =
             s2n_quic_core::connection::error::as_frame(error, close_formatter, &close_context)
         {
-            let mut outcome =
-                transmission::Outcome::new(PacketNumber::default(), active_path_id.as_u8());
+            let mut outcome = transmission::Outcome::new(PacketNumber::default());
             let mut context = self.transmission_context(
                 &mut outcome,
                 active_path_id,
@@ -555,10 +554,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         match self.state {
             ConnectionState::Handshaking | ConnectionState::Active => {
                 if let Some(shared_state) = shared_state {
-                    let mut outcome = transmission::Outcome::new(
-                        PacketNumber::default(),
-                        self.path_manager.active_path_id().as_u8(),
-                    );
+                    let mut outcome = transmission::Outcome::new(PacketNumber::default());
 
                     while !self.path_manager.active_path().at_amplification_limit()
                         && queue

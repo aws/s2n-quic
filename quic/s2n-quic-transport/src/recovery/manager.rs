@@ -1103,7 +1103,6 @@ mod test {
                 is_congestion_controlled: i % 3 == 0,
                 bytes_sent: (2 * i) as usize,
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
-                path_id: 0,
             };
 
             manager.on_packet_sent(sent_packet, outcome, time_sent, &mut context);
@@ -1226,7 +1225,6 @@ mod test {
             is_congestion_controlled: true,
             bytes_sent: packet_bytes,
             packet_number: space.new_packet_number(VarInt::from_u8(1)),
-            path_id: 0,
         };
 
         manager.on_packet_sent(sent_packet, outcome, time_sent, &mut context);
@@ -1260,7 +1258,6 @@ mod test {
             is_congestion_controlled: true,
             bytes_sent: packet_bytes,
             packet_number: space.new_packet_number(VarInt::from_u8(2)),
-            path_id: 0,
         };
 
         // Reset the timer so we can confirm it was set correctly
@@ -1315,7 +1312,6 @@ mod test {
                     is_congestion_controlled: true,
                     bytes_sent: packet_bytes,
                     packet_number: space.new_packet_number(VarInt::from_u8(1)),
-                    path_id: 0,
                 },
                 time_sent,
                 &mut context,
@@ -1424,7 +1420,6 @@ mod test {
                 is_congestion_controlled: true,
                 bytes_sent: packet_bytes,
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
-                path_id: 0,
             },
             time_sent,
             &mut context,
@@ -1490,7 +1485,6 @@ mod test {
                 is_congestion_controlled: true,
                 bytes_sent: packet_bytes,
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
-                path_id: 0,
             },
             time_sent,
             &mut context,
@@ -1504,7 +1498,6 @@ mod test {
                 is_congestion_controlled: true,
                 bytes_sent: packet_bytes,
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
-                path_id: 0,
             },
             time_sent,
             &mut context,
@@ -1601,7 +1594,6 @@ mod test {
                 is_congestion_controlled: true,
                 bytes_sent: packet_bytes,
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
-                path_id: 0,
             },
             time_sent,
             &mut context,
@@ -1615,7 +1607,6 @@ mod test {
                 is_congestion_controlled: true,
                 bytes_sent: packet_bytes,
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
-                path_id: 0,
             },
             time_sent,
             &mut context,
@@ -1724,7 +1715,6 @@ mod test {
                 is_congestion_controlled: true,
                 bytes_sent: packet_bytes,
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
-                path_id: 0,
             },
             time_sent,
             &mut context,
@@ -1738,7 +1728,6 @@ mod test {
                 is_congestion_controlled: true,
                 bytes_sent: packet_bytes,
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
-                path_id: 0,
             },
             time_sent,
             &mut context,
@@ -1770,7 +1759,6 @@ mod test {
                 is_congestion_controlled: true,
                 bytes_sent: packet_bytes,
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
-                path_id: 0,
             },
             time_sent,
             &mut context,
@@ -1814,7 +1802,6 @@ mod test {
                 is_congestion_controlled: true,
                 bytes_sent: packet_bytes,
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
-                path_id: 0,
             },
             time_sent,
             &mut context,
@@ -1826,7 +1813,6 @@ mod test {
                 is_congestion_controlled: true,
                 bytes_sent: packet_bytes,
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
-                path_id: 0,
             },
             time_sent,
             &mut context,
@@ -1885,7 +1871,6 @@ mod test {
                 is_congestion_controlled: true,
                 bytes_sent: packet_bytes,
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
-                path_id: 0,
             },
             time_sent,
             &mut context,
@@ -1897,7 +1882,6 @@ mod test {
                 is_congestion_controlled: true,
                 bytes_sent: packet_bytes,
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
-                path_id: 0,
             },
             time_sent,
             &mut context,
@@ -1996,7 +1980,6 @@ mod test {
                 is_congestion_controlled: true,
                 bytes_sent: packet_bytes,
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
-                path_id: 0,
             },
             sent_time,
             &mut context,
@@ -2011,7 +1994,6 @@ mod test {
                 is_congestion_controlled: true,
                 bytes_sent: packet_bytes,
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
-                path_id: 0,
             },
             sent_time,
             &mut context,
@@ -2072,7 +2054,6 @@ mod test {
             is_congestion_controlled: true,
             bytes_sent: 1,
             packet_number: space.new_packet_number(VarInt::from_u8(1)),
-            path_id: 0,
         };
 
         // Send a packet that was sent too long ago (lost)
@@ -2220,7 +2201,6 @@ mod test {
             is_congestion_controlled: true,
             bytes_sent: 1,
             packet_number: space.new_packet_number(VarInt::from_u8(1)),
-            path_id: 0,
         };
 
         // Send a packet that was sent too long ago (lost)
@@ -2435,7 +2415,6 @@ mod test {
             is_congestion_controlled: true,
             bytes_sent: 1,
             packet_number: space.new_packet_number(VarInt::from_u8(1)),
-            path_id: 0,
         };
 
         // Send a packet that is less than the largest acked but not lost
@@ -2477,7 +2456,6 @@ mod test {
             is_congestion_controlled: true,
             bytes_sent: MINIMUM_MTU as usize + 1,
             packet_number: space.new_packet_number(VarInt::from_u8(1)),
-            path_id: 0,
         };
 
         // Send an MTU probe packet
@@ -2528,7 +2506,6 @@ mod test {
             is_congestion_controlled: true,
             bytes_sent: 1,
             packet_number: space.new_packet_number(VarInt::from_u8(1)),
-            path_id: 0,
         };
 
         // t=0: Send packet #1 (app data)
@@ -2655,7 +2632,6 @@ mod test {
             is_congestion_controlled: true,
             bytes_sent: 1,
             packet_number: space.new_packet_number(VarInt::from_u8(1)),
-            path_id: 0,
         };
 
         // t=0: Send packet #1 (app data)
@@ -2760,7 +2736,6 @@ mod test {
             is_congestion_controlled: true,
             bytes_sent: 1,
             packet_number: space.new_packet_number(VarInt::from_u8(1)),
-            path_id: 0,
         };
 
         // t=0: Send packet #1 (app data)
@@ -2893,7 +2868,6 @@ mod test {
                 is_congestion_controlled: true,
                 bytes_sent: 1,
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
-                path_id: 0,
             },
             now,
             &mut context,
@@ -3026,7 +3000,6 @@ mod test {
                 is_congestion_controlled: true,
                 bytes_sent: 1,
                 packet_number: space.new_packet_number(VarInt::from_u8(1)),
-                path_id: 0,
             },
             now - Duration::from_secs(5),
             &mut context,
@@ -3308,7 +3281,6 @@ mod test {
             is_congestion_controlled: true,
             bytes_sent: 100,
             packet_number: space.new_packet_number(VarInt::from_u8(1)),
-            path_id: 0,
         };
         manager.on_packet_sent(
             space.new_packet_number(VarInt::from_u8(1)),
