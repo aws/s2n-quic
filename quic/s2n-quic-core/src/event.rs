@@ -17,6 +17,7 @@ pub mod builders {
     pub use super::{common_builders::*, event_builders::*};
 }
 
+#[rustfmt::skip]
 common!(
     //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#4
     //# When the qlog "group_id" field is used, it is recommended to use
