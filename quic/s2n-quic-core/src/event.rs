@@ -1,7 +1,12 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{connection::PeerId, endpoint, inet::SocketAddress, packet::number::PacketNumberSpace};
+use crate::{
+    connection::{LocalId, PeerId},
+    endpoint,
+    inet::SocketAddress,
+    packet::number::PacketNumberSpace,
+};
 use core::time::Duration;
 use paste::paste;
 
@@ -254,5 +259,16 @@ events!(
     /// Crypto key updated
     struct KeyUpdate {
         pub key_type: common::KeyType,
+    }
+
+    #[name = "connectivity:connection_started"]
+    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.1.2
+    /// Connection started
+    struct ConnectionStarted<'a> {
+        // TODO uncomment once we record the local SocketAddress
+        // pub src_addr: &'a SocketAddress,
+        pub src_cid: &'a LocalId,
+        pub dst_addr: &'a SocketAddress,
+        pub dst_cid: &'a PeerId,
     }
 );

@@ -18,6 +18,7 @@ use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     crypto::{tls, tls::Endpoint as TLSEndpoint, CryptoSuite, InitialKey},
     event,
+    event::Publisher as _,
     inet::DatagramInfo,
     packet::initial::ProtectedInitial,
     stateless_reset::token::Generator as _,
@@ -257,6 +258,12 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             wakeup_handle,
             internal_connection_id,
         ));
+
+        publisher.on_connection_started(event::builders::ConnectionStarted {
+            src_cid: &connection_parameters.local_connection_id,
+            dst_cid: &connection_parameters.peer_connection_id,
+            dst_addr: &connection_parameters.peer_socket_address,
+        });
 
         let mut connection = <Config as endpoint::Config>::Connection::new(connection_parameters);
 
