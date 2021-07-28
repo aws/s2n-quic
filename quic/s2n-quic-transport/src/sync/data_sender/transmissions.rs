@@ -332,6 +332,16 @@ struct TransmissionId(NonZeroU16);
 struct TransmissionSlabEntry {
     transmission: Transmission,
     next_free: u16,
+
+    #[cfg(debug_assertions)]
+    /// Tracks if the entry is occupied or not
+    ///
+    /// This is only needed with debug_assertions since the next_free logic actually
+    /// takes care of this for us. This is all assuming the caller doesn't ever double-free
+    /// any entries.
+    ///
+    /// This field exists to make sure these invariants stay true while testing.
+    occupied: bool,
 }
 
 impl TransmissionSlab {
@@ -344,9 +354,15 @@ impl TransmissionSlab {
         let new_entry = TransmissionSlabEntry {
             transmission,
             next_free: 0,
+
+            #[cfg(debug_assertions)]
+            occupied: true,
         };
 
         if let Some(entry) = self.entries.get_mut(index) {
+            #[cfg(debug_assertions)]
+            assert!(!entry.occupied);
+
             self.next_free = entry.next_free;
             *entry = new_entry;
         } else {
@@ -361,6 +377,12 @@ impl TransmissionSlab {
     fn remove(&mut self, index: TransmissionId) -> Transmission {
         let index = index.0.get() - 1;
         let entry = &mut self.entries[index as usize];
+
+        #[cfg(debug_assertions)]
+        {
+            entry.occupied = false;
+        }
+
         entry.next_free = self.next_free;
         self.next_free = index;
         self.len -= 1;
@@ -370,14 +392,24 @@ impl TransmissionSlab {
     fn chain(&mut self, prev: TransmissionId, next: TransmissionId) {
         let prev_entry = self.get_mut(prev);
 
+        #[cfg(debug_assertions)]
+        assert!(prev_entry.occupied);
+
         let next_entry = core::mem::replace(&mut prev_entry.transmission.next, Some(next));
+
+        #[cfg(debug_assertions)]
+        assert!(self.get_mut(next).occupied);
 
         self.get_mut(next).transmission.next = next_entry;
     }
 
     fn get_mut(&mut self, idx: TransmissionId) -> &mut TransmissionSlabEntry {
-        let index = idx.0.get() - 1;
-        &mut self.entries[index as usize]
+        let index = (idx.0.get() - 1) as usize;
+
+        #[cfg(debug_assertions)]
+        assert!(self.entries[index].occupied);
+
+        &mut self.entries[index]
     }
 
     fn has_capacity(&self) -> bool {
@@ -395,8 +427,64 @@ impl TransmissionSlab {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bolero::{check, generator::*};
     use core::mem::size_of;
     use insta::assert_debug_snapshot;
+
+    #[derive(Clone, Copy, Debug, TypeGenerator)]
+    enum Operation {
+        Insert,
+        Remove(usize),
+        Clear,
+    }
+
+    #[test]
+    fn transmission_slab_test() {
+        check!().with_type::<Vec<Operation>>().for_each(|ops| {
+            let mut subject = TransmissionSlab::default();
+            let mut oracle = Vec::new();
+            let mut offset = VarInt::from_u8(0);
+            // keeps track of the peak len of the oracle so we can make sure it matches the slab
+            // entries.len
+            let mut peak_len = 0;
+
+            for op in ops {
+                match op {
+                    Operation::Insert => {
+                        let id = subject.insert(Transmission {
+                            offset,
+                            len: 1,
+                            next: None,
+                        });
+                        oracle.push((offset, id));
+                        offset += 1;
+                        peak_len = peak_len.max(oracle.len());
+
+                        assert_eq!(subject.entries.len(), peak_len);
+                        assert_eq!(subject.len as usize, oracle.len());
+                    }
+                    Operation::Remove(index) => {
+                        if oracle.is_empty() {
+                            continue;
+                        }
+
+                        let index = index % oracle.len();
+                        let (offset, id) = oracle.remove(index);
+                        let transmission = subject.remove(id);
+                        assert_eq!(offset, transmission.offset);
+
+                        assert_eq!(subject.entries.len(), peak_len);
+                        assert_eq!(subject.len as usize, oracle.len());
+                    }
+                    Operation::Clear => {
+                        subject.clear();
+                        oracle.clear();
+                        peak_len = 0;
+                    }
+                }
+            }
+        });
+    }
 
     #[test]
     fn size_test() {
