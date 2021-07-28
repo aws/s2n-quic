@@ -793,14 +793,14 @@ impl Manager {
                 is_mtu_probe,
             });
 
-            if is_mtu_probe {
-                path.mtu_controller.on_packet_loss(
-                    packet_number,
-                    sent_info.sent_bytes,
-                    now,
-                    &mut path.congestion_controller,
-                );
-            }
+            // Notify the MTU controller of packet loss even if it wasn't a probe since it uses
+            // that information for blackhole detection.
+            path.mtu_controller.on_packet_loss(
+                packet_number,
+                sent_info.sent_bytes,
+                now,
+                &mut path.congestion_controller,
+            );
 
             if persistent_congestion {
                 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#5.2
