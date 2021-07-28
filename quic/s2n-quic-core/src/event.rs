@@ -17,7 +17,6 @@ pub mod builders {
     pub use super::{common_builders::*, event_builders::*};
 }
 
-#[rustfmt::skip]
 common!(
     //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#4
     //# When the qlog "group_id" field is used, it is recommended to use
@@ -37,27 +36,48 @@ common!(
 
     //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#A.7
     enum Frame {
-        #[non_exhaustive] Padding,
-        #[non_exhaustive] Ping,
-        #[non_exhaustive] Ack,
-        #[non_exhaustive] ResetStream,
-        #[non_exhaustive] StopSending,
-        #[non_exhaustive] Crypto,
-        #[non_exhaustive] NewToken,
-        #[non_exhaustive] Stream,
-        #[non_exhaustive] MaxData,
-        #[non_exhaustive] MaxStreamData,
-        #[non_exhaustive] MaxStreams,
-        #[non_exhaustive] DataBlocked,
-        #[non_exhaustive] StreamDataBlocked,
-        #[non_exhaustive] StreamsBlocked,
-        #[non_exhaustive] NewConnectionId,
-        #[non_exhaustive] RetireConnectionId,
-        #[non_exhaustive] PathChallenge,
-        #[non_exhaustive] PathResponse,
-        #[non_exhaustive] ConnectionClose,
-        #[non_exhaustive] HandshakeDone,
-        #[non_exhaustive] Unknown,
+        #[non_exhaustive]
+        Padding,
+        #[non_exhaustive]
+        Ping,
+        #[non_exhaustive]
+        Ack,
+        #[non_exhaustive]
+        ResetStream,
+        #[non_exhaustive]
+        StopSending,
+        #[non_exhaustive]
+        Crypto,
+        #[non_exhaustive]
+        NewToken,
+        #[non_exhaustive]
+        Stream,
+        #[non_exhaustive]
+        MaxData,
+        #[non_exhaustive]
+        MaxStreamData,
+        #[non_exhaustive]
+        MaxStreams,
+        #[non_exhaustive]
+        DataBlocked,
+        #[non_exhaustive]
+        StreamDataBlocked,
+        #[non_exhaustive]
+        StreamsBlocked,
+        #[non_exhaustive]
+        NewConnectionId,
+        #[non_exhaustive]
+        RetireConnectionId,
+        #[non_exhaustive]
+        PathChallenge,
+        #[non_exhaustive]
+        PathResponse,
+        #[non_exhaustive]
+        ConnectionClose,
+        #[non_exhaustive]
+        HandshakeDone,
+        #[non_exhaustive]
+        Unknown,
     }
 
     //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#A.2
