@@ -141,17 +141,15 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
             return Poll::Ready(Err(s2n_quic_core::endpoint::CloseError));
         }
 
-        // The mem::take is needed to work around a limitation which does not allow us to pass
-        // the new queue directly - even though we will populate the field again after the call.
-        let dequeued_wakeups = core::mem::take(&mut self.dequeued_wakeups);
-        self.dequeued_wakeups = self.wakeup_queue.poll_pending_wakeups(dequeued_wakeups, cx);
+        self.wakeup_queue
+            .poll_pending_wakeups(&mut self.dequeued_wakeups, cx);
         let nr_wakeups = self.dequeued_wakeups.len();
         let close_packet_buffer = &mut self.close_packet_buffer;
         let endpoint_context = self.config.context();
 
-        for internal_id in &self.dequeued_wakeups {
+        for internal_id in self.dequeued_wakeups.drain(..) {
             self.connections
-                .with_connection(*internal_id, |conn, mut shared_state| {
+                .with_connection(internal_id, |conn, mut shared_state| {
                     let mut publisher = event::PublisherSubscriber::new(
                         event::builders::Meta {
                             endpoint_type: Cfg::ENDPOINT_TYPE,
