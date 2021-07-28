@@ -9,8 +9,16 @@ mod client;
 mod file;
 mod server;
 
+#[cfg(feature = "dhat")]
+#[global_allocator]
+static ALLOCATOR: dhat::DhatAlloc = dhat::DhatAlloc;
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
+    // setup heap profiling if enabled
+    #[cfg(feature = "dhat")]
+    let _dhat = dhat::Dhat::start_heap_profiling();
+
     tracing_subscriber::fmt::init();
 
     Arguments::from_args().run().await

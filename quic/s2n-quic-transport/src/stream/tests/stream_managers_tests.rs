@@ -357,10 +357,9 @@ fn create_wakeup_queue_and_handle() -> (
 
 /// Asserts that a given number of wakeups had been enqueued
 fn assert_wakeups(wakeup_queue: &mut WakeupQueue<InternalConnectionId>, expected_wakeups: usize) {
-    let dequeued_wakeups = VecDeque::new();
+    let mut dequeued_wakeups = VecDeque::new();
     let (waker, _counter) = new_count_waker();
-    let dequeued_wakeups =
-        wakeup_queue.poll_pending_wakeups(dequeued_wakeups, &Context::from_waker(&waker));
+    wakeup_queue.poll_pending_wakeups(&mut dequeued_wakeups, &Context::from_waker(&waker));
 
     assert_eq!(expected_wakeups, dequeued_wakeups.len());
 }
