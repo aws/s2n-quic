@@ -103,11 +103,9 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
         }
 
         let packet_number_encoder = self.packet_number_encoder();
-        let mut outcome = transmission::Outcome {
-            packet_number,
-            ..Default::default()
-        };
+        let mut outcome = transmission::Outcome::new(packet_number);
 
+        let destination_connection_id = context.path().peer_connection_id;
         let payload = transmission::Transmission {
             config: <PhantomData<Config>>::default(),
             outcome: &mut outcome,
@@ -122,11 +120,13 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
             transmission_constraint,
             transmission_mode: context.transmission_mode,
             tx_packet_numbers: &mut self.tx_packet_numbers,
+            path_id: context.path_id,
+            publisher: context.publisher,
         };
 
         let packet = Handshake {
             version: context.quic_version,
-            destination_connection_id: context.path().peer_connection_id.as_ref(),
+            destination_connection_id,
             source_connection_id: context.source_connection_id.as_ref(),
             packet_number,
             payload,
@@ -158,11 +158,9 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
         let packet_number = self.tx_packet_numbers.next();
 
         let packet_number_encoder = self.packet_number_encoder();
-        let mut outcome = transmission::Outcome {
-            packet_number,
-            ..Default::default()
-        };
+        let mut outcome = transmission::Outcome::new(packet_number);
 
+        let destination_connection_id = context.path().peer_connection_id;
         let payload = transmission::Transmission {
             config: <PhantomData<Config>>::default(),
             outcome: &mut outcome,
@@ -175,11 +173,13 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
             transmission_constraint: transmission::Constraint::None,
             transmission_mode: transmission::Mode::Normal,
             tx_packet_numbers: &mut self.tx_packet_numbers,
+            path_id: context.path_id,
+            publisher: context.publisher,
         };
 
         let packet = Handshake {
             version: context.quic_version,
-            destination_connection_id: context.path().peer_connection_id.as_ref(),
+            destination_connection_id,
             source_connection_id: context.source_connection_id.as_ref(),
             packet_number,
             payload,

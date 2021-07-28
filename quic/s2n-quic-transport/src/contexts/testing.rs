@@ -9,6 +9,7 @@ use s2n_quic_core::{
     frame::{
         ack_elicitation::{AckElicitable, AckElicitation},
         congestion_controlled::CongestionControlled,
+        event::AsEvent,
         FrameMut,
     },
     packet::number::{PacketNumber, PacketNumberSpace},
@@ -277,7 +278,11 @@ impl<'a> WriteContext for MockWriteContext<'a> {
     }
 
     fn write_fitted_frame<
-        Frame: s2n_codec::EncoderValue + AckElicitable + CongestionControlled + PathValidationProbing,
+        Frame: s2n_codec::EncoderValue
+            + AckElicitable
+            + CongestionControlled
+            + PathValidationProbing
+            + AsEvent,
     >(
         &mut self,
         frame: &Frame,

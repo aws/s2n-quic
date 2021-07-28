@@ -36,26 +36,47 @@ common!(
 
     //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#A.7
     enum Frame {
+        #[non_exhaustive]
         Padding,
+        #[non_exhaustive]
         Ping,
+        #[non_exhaustive]
         Ack,
+        #[non_exhaustive]
         ResetStream,
+        #[non_exhaustive]
         StopSending,
+        #[non_exhaustive]
         Crypto,
+        #[non_exhaustive]
         NewToken,
+        #[non_exhaustive]
         Stream,
+        #[non_exhaustive]
         MaxData,
+        #[non_exhaustive]
         MaxStreamData,
+        #[non_exhaustive]
         MaxStreams,
+        #[non_exhaustive]
         DataBlocked,
+        #[non_exhaustive]
         StreamDataBlocked,
+        #[non_exhaustive]
         StreamsBlocked,
+        #[non_exhaustive]
         NewConnectionId,
+        #[non_exhaustive]
         RetireConnectionId,
+        #[non_exhaustive]
         PathChallenge,
+        #[non_exhaustive]
         PathResponse,
+        #[non_exhaustive]
         ConnectionClose,
+        #[non_exhaustive]
         HandshakeDone,
+        #[non_exhaustive]
         Unknown,
     }
 
@@ -138,6 +159,17 @@ events!(
         pub dst_addr: &'a SocketAddress,
         pub dst_cid: &'a PeerId,
         pub dst_path_id: u64,
+    }
+
+    #[name = "transport:frame_sent"]
+    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.5
+    // This diverges a bit from the qlog spec, which prefers to log data as part of the
+    // packet events.
+    /// Frame was sent
+    struct FrameSent {
+        pub packet_header: common::PacketHeader,
+        pub path_id: u64,
+        pub frame: common::Frame,
     }
 
     #[name = "transport:frame_received"]

@@ -3,7 +3,7 @@
 
 #![forbid(unsafe_code)]
 
-use crate::event;
+use crate::{event::common, frame::event::AsEvent as _};
 use core::fmt;
 use s2n_codec::{
     DecoderBuffer, DecoderBufferMut, DecoderBufferMutResult, DecoderError,
@@ -12,6 +12,7 @@ use s2n_codec::{
 
 pub mod ack_elicitation;
 pub mod congestion_controlled;
+pub mod event;
 pub mod path_validation;
 
 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19
@@ -52,10 +53,10 @@ macro_rules! frames {
             }
 
             #[inline]
-            pub fn as_event(&self)  -> event::common::Frame {
+            pub fn as_event(&self)  -> common::Frame {
                 match &self {
                     $(
-                        Frame::$ty(_) => event::common::Frame::$ty,
+                        Frame::$ty(inner) => inner.as_event(),
                     )*
                 }
             }

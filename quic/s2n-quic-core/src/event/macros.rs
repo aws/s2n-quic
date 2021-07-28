@@ -193,7 +193,9 @@ macro_rules! common {
     $(
         $(#[$enum_attrs:meta])*
         enum $enum_name:ident {
-            $( $enum_fields : tt, )*
+            $(
+                $(#[$enum_attr:meta])? $enum_fields: ident,
+            )*
         }
     )*
     ) => {
@@ -217,7 +219,9 @@ macro_rules! common {
                 #[non_exhaustive]
                 #[derive(Copy, Clone, Debug)]
                 pub enum $enum_name {
-                    $( $enum_fields, )*
+                    $(
+                        $(#[$enum_attr])? $enum_fields,
+                    )*
                 }
             )*
         }

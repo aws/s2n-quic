@@ -1,20 +1,23 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{contexts::WriteContext, endpoint, transmission, transmission::Mode};
+use crate::{contexts::WriteContext, endpoint, path, transmission, transmission::Mode};
 use core::marker::PhantomData;
 use s2n_codec::{Encoder, EncoderBuffer, EncoderValue};
 use s2n_quic_core::{
+    event,
+    event::Publisher as _,
     frame::{
         ack_elicitation::{AckElicitable, AckElicitation},
         congestion_controlled::CongestionControlled,
+        event::AsEvent,
         path_validation::Probing as PathValidationProbing,
     },
     packet::number::PacketNumber,
     time::Timestamp,
 };
 
-pub struct Context<'a, 'b, Config: endpoint::Config> {
+pub struct Context<'a, 'b, 'sub, Config: endpoint::Config> {
     pub outcome: &'a mut transmission::Outcome,
     pub buffer: &'a mut EncoderBuffer<'b>,
     pub packet_number: PacketNumber,
@@ -24,9 +27,12 @@ pub struct Context<'a, 'b, Config: endpoint::Config> {
     pub header_len: usize,
     pub tag_len: usize,
     pub config: PhantomData<Config>,
+    pub path_id: path::Id,
+    pub publisher:
+        &'a mut event::PublisherSubscriber<'sub, <Config as endpoint::Config>::EventSubscriber>,
 }
 
-impl<'a, 'b, Config: endpoint::Config> Context<'a, 'b, Config> {
+impl<'a, 'b, 'sub, Config: endpoint::Config> Context<'a, 'b, 'sub, Config> {
     #[inline]
     fn check_frame_constraint<
         Frame: AckElicitable + CongestionControlled + PathValidationProbing,
@@ -64,8 +70,7 @@ impl<'a, 'b, Config: endpoint::Config> Context<'a, 'b, Config> {
     }
 }
 
-impl<'a, 'b, Config: endpoint::Config> WriteContext for Context<'a, 'b, Config> {
-    #[inline]
+impl<'a, 'b, 'sub, Config: endpoint::Config> WriteContext for Context<'a, 'b, 'sub, Config> {
     fn current_time(&self) -> Timestamp {
         self.timestamp
     }
@@ -87,7 +92,7 @@ impl<'a, 'b, Config: endpoint::Config> WriteContext for Context<'a, 'b, Config> 
 
     #[inline]
     fn write_frame<
-        Frame: EncoderValue + AckElicitable + CongestionControlled + PathValidationProbing,
+        Frame: EncoderValue + AckElicitable + CongestionControlled + PathValidationProbing + AsEvent,
     >(
         &mut self,
         frame: &Frame,
@@ -98,7 +103,7 @@ impl<'a, 'b, Config: endpoint::Config> WriteContext for Context<'a, 'b, Config> 
 
     #[inline]
     fn write_fitted_frame<
-        Frame: EncoderValue + AckElicitable + CongestionControlled + PathValidationProbing,
+        Frame: EncoderValue + AckElicitable + CongestionControlled + PathValidationProbing + AsEvent,
     >(
         &mut self,
         frame: &Frame,
@@ -110,11 +115,20 @@ impl<'a, 'b, Config: endpoint::Config> WriteContext for Context<'a, 'b, Config> 
         self.outcome.ack_elicitation |= frame.ack_elicitation();
         self.outcome.is_congestion_controlled |= frame.is_congestion_controlled();
 
+        self.publisher.on_frame_sent(event::builders::FrameSent {
+            packet_header: event::builders::PacketHeader {
+                packet_type: self.packet_number.space().into(),
+                packet_number: self.packet_number.as_u64(),
+                version: self.publisher.quic_version(),
+            }
+            .into(),
+            path_id: self.path_id.as_u8() as u64,
+            frame: frame.as_event(),
+        });
         self.packet_number
     }
 
-    #[inline]
-    fn write_frame_forced<Frame: EncoderValue + AckElicitable + CongestionControlled>(
+    fn write_frame_forced<Frame: EncoderValue + AckElicitable + CongestionControlled + AsEvent>(
         &mut self,
         frame: &Frame,
     ) -> Option<PacketNumber> {
@@ -126,6 +140,16 @@ impl<'a, 'b, Config: endpoint::Config> WriteContext for Context<'a, 'b, Config> 
         self.outcome.ack_elicitation |= frame.ack_elicitation();
         self.outcome.is_congestion_controlled |= frame.is_congestion_controlled();
 
+        self.publisher.on_frame_sent(event::builders::FrameSent {
+            packet_header: event::builders::PacketHeader {
+                packet_type: self.packet_number.space().into(),
+                packet_number: self.packet_number.as_u64(),
+                version: self.publisher.quic_version(),
+            }
+            .into(),
+            path_id: self.path_id.as_u8() as u64,
+            frame: frame.as_event(),
+        });
         Some(self.packet_number)
     }
 
@@ -195,7 +219,7 @@ impl<'a, C: WriteContext> WriteContext for RetransmissionContext<'a, C> {
 
     #[inline]
     fn write_frame<
-        Frame: EncoderValue + AckElicitable + CongestionControlled + PathValidationProbing,
+        Frame: EncoderValue + AckElicitable + CongestionControlled + PathValidationProbing + AsEvent,
     >(
         &mut self,
         frame: &Frame,
@@ -205,7 +229,7 @@ impl<'a, C: WriteContext> WriteContext for RetransmissionContext<'a, C> {
 
     #[inline]
     fn write_fitted_frame<
-        Frame: EncoderValue + AckElicitable + CongestionControlled + PathValidationProbing,
+        Frame: EncoderValue + AckElicitable + CongestionControlled + PathValidationProbing + AsEvent,
     >(
         &mut self,
         frame: &Frame,
@@ -213,8 +237,7 @@ impl<'a, C: WriteContext> WriteContext for RetransmissionContext<'a, C> {
         self.context.write_fitted_frame(frame)
     }
 
-    #[inline]
-    fn write_frame_forced<Frame: EncoderValue + AckElicitable + CongestionControlled>(
+    fn write_frame_forced<Frame: EncoderValue + AckElicitable + CongestionControlled + AsEvent>(
         &mut self,
         frame: &Frame,
     ) -> Option<PacketNumber> {

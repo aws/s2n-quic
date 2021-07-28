@@ -141,10 +141,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
 
         let packet_number_encoder = self.packet_number_encoder();
 
-        let mut outcome = transmission::Outcome {
-            packet_number,
-            ..Default::default()
-        };
+        let mut outcome = transmission::Outcome::new(packet_number);
 
         let destination_connection_id = context.path().peer_connection_id;
         let timestamp = context.timestamp;
@@ -155,8 +152,11 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             config: <PhantomData<Config>>::default(),
             outcome: &mut outcome,
             packet_number,
-            payload: transmission::application::Payload::new(
-                context,
+            payload: transmission::application::Payload::<Config>::new(
+                context.path_id,
+                &mut context.path_manager,
+                &mut context.local_id_registry,
+                context.transmission_mode,
                 &mut self.ack_manager,
                 handshake_status,
                 &mut self.ping,
@@ -167,6 +167,8 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             transmission_constraint,
             transmission_mode,
             tx_packet_numbers: &mut self.tx_packet_numbers,
+            path_id: context.path_id,
+            publisher: context.publisher,
         };
 
         let spin_bit = self.spin_bit;
@@ -175,9 +177,9 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             self.key_set
                 .encrypt_packet(buffer, |buffer, key, key_phase| {
                     let packet = Short {
-                        destination_connection_id: destination_connection_id.as_ref(),
                         spin_bit,
                         key_phase,
+                        destination_connection_id,
                         packet_number,
                         payload,
                     };
@@ -216,10 +218,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
 
         let packet_number_encoder = self.packet_number_encoder();
 
-        let mut outcome = transmission::Outcome {
-            packet_number,
-            ..Default::default()
-        };
+        let mut outcome = transmission::Outcome::new(packet_number);
         let destination_connection_id = context.path().peer_connection_id;
 
         let payload = transmission::Transmission {
@@ -234,6 +233,8 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             transmission_constraint: transmission::Constraint::None,
             transmission_mode: transmission::Mode::Normal,
             tx_packet_numbers: &mut self.tx_packet_numbers,
+            path_id: context.path_id,
+            publisher: context.publisher,
         };
 
         let spin_bit = self.spin_bit;
@@ -243,9 +244,9 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             self.key_set
                 .encrypt_packet(buffer, |buffer, key, key_phase| {
                     let packet = Short {
-                        destination_connection_id: destination_connection_id.as_ref(),
                         spin_bit,
                         key_phase,
+                        destination_connection_id,
                         packet_number,
                         payload,
                     };
