@@ -178,13 +178,15 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
     }
 
     /// Returns all of the component timers
-    pub fn timers(&self) -> impl Iterator<Item = Timestamp> + '_ {
+    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
         // the spaces are `Option`s and can be iterated over, either returning
         // the value or `None`.
         core::iter::empty()
             .chain(self.initial.iter().flat_map(|space| space.timers()))
             .chain(self.handshake.iter().flat_map(|space| space.timers()))
             .chain(self.application.iter().flat_map(|space| space.timers()))
+            .min()
+            .into_iter()
     }
 
     /// Called when the connection timer expired

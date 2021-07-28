@@ -618,6 +618,8 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
             .chain(self.inner.stream_controller.timers())
             .chain(self.inner.outgoing_connection_flow_controller.timers())
             .chain(self.inner.streams.timers())
+            .min()
+            .into_iter()
     }
 
     /// Called when the connection timer expires

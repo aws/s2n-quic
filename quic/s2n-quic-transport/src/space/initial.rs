@@ -226,6 +226,8 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
         core::iter::empty()
             .chain(self.ack_manager.timers())
             .chain(self.recovery_manager.timers())
+            .min()
+            .into_iter()
     }
 
     /// Called when the connection timer expired

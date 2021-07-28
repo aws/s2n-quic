@@ -186,12 +186,11 @@ impl State {
             ..
         } = self
         {
-            Some(close_timer.iter().chain(limiter.timers()))
+            close_timer.iter().chain(limiter.timers()).min()
         } else {
             None
         }
         .into_iter()
-        .flatten()
     }
 
     pub fn on_timeout(&mut self, now: Timestamp) -> Poll<()> {

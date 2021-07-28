@@ -153,6 +153,8 @@ impl<CC: CongestionController> Path<CC> {
         core::iter::empty()
             .chain(self.challenge.timers())
             .chain(self.mtu_controller.timers())
+            .min()
+            .into_iter()
     }
 
     /// Only PATH_CHALLENGE and PATH_RESPONSE frames should be transmitted here.

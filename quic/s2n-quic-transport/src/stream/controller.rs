@@ -196,6 +196,8 @@ impl Controller {
         core::iter::empty()
             .chain(self.bidi_controller.timers())
             .chain(self.uni_controller.timers())
+            .min()
+            .into_iter()
     }
 
     /// Called when the connection timer expires

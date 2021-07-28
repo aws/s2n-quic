@@ -354,8 +354,8 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     }
 
     #[inline]
-    pub fn timers(&self) -> impl Iterator<Item = Timestamp> + '_ {
-        self.paths.iter().flat_map(|p| p.timers())
+    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
+        self.paths.iter().flat_map(|p| p.timers()).min().into_iter()
     }
 
     /// Writes any frames the path manager wishes to transmit to the given context

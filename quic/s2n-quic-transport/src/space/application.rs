@@ -310,6 +310,8 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             .chain(self.recovery_manager.timers())
             .chain(self.key_set.timers())
             .chain(self.stream_manager.timers())
+            .min()
+            .into_iter()
     }
 
     /// Called when the connection timer expired

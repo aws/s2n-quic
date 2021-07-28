@@ -108,6 +108,8 @@ impl Manager {
             .chain(self.pto.timers())
             .filter(move |_| !is_loss_timer_armed)
             .chain(self.loss_timer.iter())
+            .min()
+            .into_iter()
     }
 
     pub fn on_timeout<CC: CongestionController, Ctx: Context<CC>, Pub: event::Publisher>(

@@ -74,7 +74,26 @@ impl Iterator for Iter {
     fn next(&mut self) -> Option<Self::Item> {
         self.0.take()
     }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.0.iter().size_hint()
+    }
+
+    #[inline]
+    fn min(self) -> Option<Self::Item> {
+        self.0
+    }
 }
+
+impl core::iter::ExactSizeIterator for Iter {
+    fn len(&self) -> usize {
+        self.0.iter().len()
+    }
+}
+
+// Let consumers know that they don't need to do additional fusing
+impl core::iter::FusedIterator for Iter {}
 
 #[cfg(test)]
 mod tests {
