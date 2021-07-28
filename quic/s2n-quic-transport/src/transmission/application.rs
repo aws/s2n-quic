@@ -14,7 +14,7 @@ use crate::{
     transmission,
     transmission::{Interest, Mode},
 };
-use core::{marker::PhantomData, ops::RangeInclusive};
+use core::ops::RangeInclusive;
 use s2n_quic_core::packet::number::PacketNumberSpace;
 
 pub enum Payload<'a, Config: endpoint::Config> {
@@ -29,7 +29,6 @@ impl<'a, Config: endpoint::Config> Payload<'a, Config> {
     /// `transmission::Mode` in the given `ConnectionTransmissionContext`
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        _config: PhantomData<Config>,
         path_id: path::Id,
         path_manager: &'a mut path::Manager<Config::CongestionControllerEndpoint>,
         local_id_registry: &'a mut connection::LocalIdRegistry,

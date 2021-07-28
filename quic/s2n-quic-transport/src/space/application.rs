@@ -152,8 +152,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             config: <PhantomData<Config>>::default(),
             outcome: &mut outcome,
             packet_number,
-            payload: transmission::application::Payload::new(
-                <PhantomData<Config>>::default(),
+            payload: transmission::application::Payload::<Config>::new(
                 context.path_id,
                 &mut context.path_manager,
                 &mut context.local_id_registry,

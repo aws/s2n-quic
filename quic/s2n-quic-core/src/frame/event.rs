@@ -5,10 +5,7 @@ use crate::event::common;
 
 /// Trait to retrieve subcription event type of the frame
 pub trait AsEvent {
-    #[inline]
-    fn as_event(&self) -> common::Frame {
-        common::Frame::Padding
-    }
+    fn as_event(&self) -> common::Frame;
 }
 
 macro_rules! as_event {
