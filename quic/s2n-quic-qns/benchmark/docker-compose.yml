@@ -100,14 +100,14 @@ services:
       - "server46:fd00:cafe:cafe:100::100"
 
   iperf_server:
-    image: martenseemann/quic-interop-iperf-endpoint
+    build:
+      context: ${ROOT_DIR}
+      dockerfile: ${ROOT_DIR}/quic/s2n-quic-qns/benchmark/iperf/Dockerfile.build
     container_name: iperf_server
     stdin_open: true
     tty: true
     environment:
       - ROLE=server
-      - CLIENT=client4
-      - IPERF_CONGESTION=cubic
     depends_on:
       - sim
     cap_add:
@@ -123,14 +123,19 @@ services:
       - "client46:fd00:cafe:cafe:0::100"
 
   iperf_client:
-    image: martenseemann/quic-interop-iperf-endpoint
+    build:
+      context: ${ROOT_DIR}
+      dockerfile: ${ROOT_DIR}/quic/s2n-quic-qns/benchmark/iperf/Dockerfile.build
     container_name: iperf_client
     stdin_open: true
     tty: true
+    volumes:
+      - ${LOG_DIR}/iperf:/logs
     environment:
       - ROLE=client
+      - SERVER=server4
       - IPERF_CONGESTION=cubic
-      - IPERF_TIME=$DURATION
+      - DURATION=$DURATION
     depends_on:
       - sim
     cap_add:
