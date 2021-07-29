@@ -24,7 +24,7 @@ use s2n_quic_core::{
     io::{rx, tx},
     packet::{initial::ProtectedInitial, ProtectedPacket},
     stateless_reset::token::LEN as StatelessResetTokenLen,
-    time::Timestamp,
+    time::{Clock, Timestamp},
     token::{self, Format},
 };
 
@@ -84,13 +84,23 @@ pub struct Endpoint<Cfg: Config> {
 unsafe impl<Cfg: Config> Send for Endpoint<Cfg> {}
 
 impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
-    fn receive<Rx: rx::Queue>(&mut self, queue: &mut Rx, timestamp: Timestamp) {
+    fn receive<Rx: rx::Queue, C: Clock>(&mut self, queue: &mut Rx, clock: &C) {
         use rx::Entry;
 
         let entries = queue.as_slice_mut();
+        let mut now: Option<Timestamp> = None;
 
         for entry in entries.iter_mut() {
             if let Some(remote_address) = entry.remote_address() {
+                let timestamp = match now {
+                    Some(now) => now,
+                    _ => {
+                        let time = clock.get_time();
+                        now = Some(time);
+                        time
+                    }
+                };
+
                 self.receive_datagram(remote_address, entry.ecn(), entry.payload_mut(), timestamp)
             }
         }
@@ -98,14 +108,26 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
         queue.finish(len);
     }
 
-    fn transmit<Tx: tx::Queue>(&mut self, queue: &mut Tx, timestamp: Timestamp) {
-        self.on_timeout(timestamp);
+    fn transmit<Tx: tx::Queue, C: Clock>(&mut self, queue: &mut Tx, clock: &C) {
+        self.on_timeout(clock.get_time());
 
         // Iterate over all connections which want to transmit data
         let mut transmit_result = Ok(());
         let endpoint_context = self.config.context();
+
+        let mut now: Option<Timestamp> = None;
+
         self.connections
             .iterate_transmission_list(|connection, shared_state| {
+                let timestamp = match now {
+                    Some(now) => now,
+                    _ => {
+                        let time = clock.get_time();
+                        now = Some(time);
+                        time
+                    }
+                };
+
                 let mut publisher = event::PublisherSubscriber::new(
                     event::builders::Meta {
                         endpoint_type: Cfg::ENDPOINT_TYPE,
@@ -132,10 +154,10 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
         }
     }
 
-    fn poll_wakeups(
+    fn poll_wakeups<C: Clock>(
         &mut self,
         cx: &mut task::Context<'_>,
-        timestamp: Timestamp,
+        clock: &C,
     ) -> Poll<Result<usize, s2n_quic_core::endpoint::CloseError>> {
         if !self.connections.is_open() {
             return Poll::Ready(Err(s2n_quic_core::endpoint::CloseError));
@@ -147,9 +169,20 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
         let close_packet_buffer = &mut self.close_packet_buffer;
         let endpoint_context = self.config.context();
 
+        let mut now: Option<Timestamp> = None;
+
         for internal_id in self.dequeued_wakeups.drain(..) {
             self.connections
                 .with_connection(internal_id, |conn, mut shared_state| {
+                    let timestamp = match now {
+                        Some(now) => now,
+                        _ => {
+                            let time = clock.get_time();
+                            now = Some(time);
+                            time
+                        }
+                    };
+
                     let mut publisher = event::PublisherSubscriber::new(
                         event::builders::Meta {
                             endpoint_type: Cfg::ENDPOINT_TYPE,
@@ -158,6 +191,7 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
                         Some(conn.quic_version()),
                         endpoint_context.event_subscriber,
                     );
+
                     if let Err(error) = conn.on_wakeup(shared_state.as_deref_mut(), timestamp) {
                         conn.close(
                             shared_state,

@@ -4,7 +4,7 @@
 use crate::{
     io::{rx, tx},
     path::MaxMtu,
-    time::Timestamp,
+    time::{Clock, Timestamp},
 };
 use core::{
     future::Future,
@@ -79,28 +79,28 @@ impl Location {
 /// The main interface for a QUIC endpoint
 pub trait Endpoint: 'static + Send + Sized {
     /// Receives and processes datagrams for the Rx queue
-    fn receive<Rx: rx::Queue>(&mut self, rx: &mut Rx, timestamp: Timestamp);
+    fn receive<Rx: rx::Queue, C: Clock>(&mut self, rx: &mut Rx, clock: &C);
 
     /// Transmits outgoing datagrams into the Tx queue
-    fn transmit<Tx: tx::Queue>(&mut self, tx: &mut Tx, timestamp: Timestamp);
+    fn transmit<Tx: tx::Queue, C: Clock>(&mut self, tx: &mut Tx, clock: &C);
 
     /// Returns a future which polls for application-space wakeups
     ///
     /// When successful, the number of wakups is returned.
-    fn wakeups(&mut self, timestamp: Timestamp) -> Wakeups<Self> {
+    fn wakeups<'a, C: Clock>(&'a mut self, clock: &'a C) -> Wakeups<'a, Self, C> {
         Wakeups {
             endpoint: self,
-            timestamp,
+            clock,
         }
     }
 
     /// Polls for any application-space wakeups
     ///
     /// When successful, the number of wakups is returned.
-    fn poll_wakeups(
+    fn poll_wakeups<C: Clock>(
         &mut self,
         cx: &mut Context<'_>,
-        timestamp: Timestamp,
+        clock: &C,
     ) -> Poll<Result<usize, CloseError>>;
 
     /// Returns the latest Timestamp at which `transmit` should be called
@@ -111,17 +111,17 @@ pub trait Endpoint: 'static + Send + Sized {
 }
 
 /// A future which polls an endpoint for application-space wakeups
-pub struct Wakeups<'a, E: Endpoint> {
+pub struct Wakeups<'a, E: Endpoint, C: Clock> {
     endpoint: &'a mut E,
-    timestamp: Timestamp,
+    clock: &'a C,
 }
 
-impl<'a, E: Endpoint> Future for Wakeups<'a, E> {
+impl<'a, E: Endpoint, C: Clock> Future for Wakeups<'a, E, C> {
     type Output = Result<usize, CloseError>;
 
     fn poll(mut self: core::pin::Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let timestamp = self.timestamp;
-        self.endpoint.poll_wakeups(cx, timestamp)
+        let clock = self.clock;
+        self.endpoint.poll_wakeups(cx, clock)
     }
 }
 
