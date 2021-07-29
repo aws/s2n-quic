@@ -504,14 +504,12 @@ impl<F: OutgoingDataFlowController, W: FrameWriter> transmission::interest::Prov
         &self,
         query: &mut Q,
     ) -> transmission::interest::Result {
-        let is_blocked = self.flow_controller().is_blocked();
-
         if W::WRITES_FIN {
             match self.state {
                 State::Finishing(FinState::Lost) => {
                     return query.on_lost_data();
                 }
-                State::Finishing(FinState::Pending) if !is_blocked => {
+                State::Finishing(FinState::Pending) if !self.flow_controller().is_blocked() => {
                     query.on_new_data()?;
                 }
                 _ => {}
@@ -520,7 +518,9 @@ impl<F: OutgoingDataFlowController, W: FrameWriter> transmission::interest::Prov
 
         if !self.lost.is_empty() {
             query.on_lost_data()?;
-        } else if !is_blocked && self.transmission_offset < self.buffer.total_len() {
+        } else if self.transmission_offset < self.buffer.total_len()
+            && !self.flow_controller().is_blocked()
+        {
             query.on_new_data()?;
         }
 

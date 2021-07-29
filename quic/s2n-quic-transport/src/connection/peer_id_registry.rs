@@ -286,11 +286,12 @@ impl PeerIdRegistry {
 
         // Iterate over all registered IDs, retiring any as necessary
         for id_info in self.registered_ids.iter_mut() {
-            is_duplicate |= id_info.validate_new_connection_id(
-                new_id,
-                stateless_reset_token,
-                sequence_number,
-            )?;
+            is_duplicate = is_duplicate
+                || id_info.validate_new_connection_id(
+                    new_id,
+                    stateless_reset_token,
+                    sequence_number,
+                )?;
 
             if id_info.is_retire_ready(self.retire_prior_to) {
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#5.1.2
