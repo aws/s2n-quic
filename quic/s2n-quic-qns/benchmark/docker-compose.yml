@@ -130,7 +130,7 @@ services:
     stdin_open: true
     tty: true
     volumes:
-      - ${LOG_DIR}/iperf:/logs
+      - ${LOG_DIR}/client:/logs
     environment:
       - ROLE=client
       - SERVER=server4
