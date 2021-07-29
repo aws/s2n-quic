@@ -427,7 +427,9 @@ jobs:
         run: ./scripts/perf/build
 
       - name: Run script
-        run: sudo env "PATH=$PATH" ./scripts/perf/test-all
+        run: |
+          mkdir -p ./target/perf/results
+          sudo env "PATH=$PATH" ./scripts/perf/test-all
 
       - name: Prepare artifacts
         run: |
