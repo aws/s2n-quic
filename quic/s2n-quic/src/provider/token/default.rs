@@ -64,7 +64,7 @@ impl BaseKey {
         // duplicates.
         let mut key_material = Zeroizing::new([0; digest::SHA256_OUTPUT_LEN]);
         random.private_random_fill(&mut key_material[..]);
-        let key = hmac::Key::new(hmac::HMAC_SHA256, &key_material.as_ref());
+        let key = hmac::Key::new(hmac::HMAC_SHA256, key_material.as_ref());
 
         // TODO clear the filter instead of recreating. This is pending a merge to crates.io
         // (https://github.com/axiomhq/rust-cuckoofilter/pull/52)
@@ -172,7 +172,7 @@ impl Format {
         //# packets remain constant.
         ctx.update(&token.original_destination_connection_id);
         ctx.update(&token.nonce);
-        ctx.update(&context.destination_connection_id.as_bytes());
+        ctx.update(context.destination_connection_id.as_bytes());
         match context.peer_address {
             SocketAddress::IpV4(addr) => ctx.update(addr.as_bytes()),
             SocketAddress::IpV6(addr) => ctx.update(addr.as_bytes()),
@@ -196,7 +196,7 @@ impl Format {
 
         let tag = self.tag_retry_token(token, context)?;
 
-        if ring::constant_time::verify_slices_are_equal(&token.hmac, &tag.as_ref()).is_ok() {
+        if ring::constant_time::verify_slices_are_equal(&token.hmac, tag.as_ref()).is_ok() {
             // Only add the token once it has been validated. This will prevent the filter from
             // being filled with garbage tokens.
 

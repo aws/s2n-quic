@@ -160,7 +160,7 @@ impl<CC: CongestionController> Path<CC> {
     pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
         if let Some(response_data) = &mut self.response_data {
             let frame = frame::PathResponse {
-                data: &response_data,
+                data: response_data,
             };
             if context.write_frame(&frame).is_some() {
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2

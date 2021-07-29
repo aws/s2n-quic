@@ -36,7 +36,7 @@ impl<'a> Iterator for LinesIter<'a> {
         let rel_offset = content.find('\n').unwrap_or_else(|| content.len());
 
         let value = Str {
-            value: &content[..rel_offset].trim_end_matches('\r'),
+            value: content[..rel_offset].trim_end_matches('\r'),
             pos: self.offset,
             line: self.line,
         };

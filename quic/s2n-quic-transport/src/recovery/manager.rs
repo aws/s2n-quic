@@ -2845,7 +2845,7 @@ mod test {
         context.path_mut().on_bytes_transmitted((1200 * 3) + 1);
         // Arm the PTO so we can verify it is cancelled
         manager.pto.timer.set(now + Duration::from_secs(10));
-        manager.update_pto_timer(&context.path(), now, is_handshake_confirmed);
+        manager.update_pto_timer(context.path(), now, is_handshake_confirmed);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.2.1
         //= type=test
@@ -2861,7 +2861,7 @@ mod test {
         // simulate receiving a handshake packet to force path validation
         context.path_mut().on_handshake_packet();
         context.path_mut().on_peer_validated();
-        manager.update_pto_timer(&context.path(), now, is_handshake_confirmed);
+        manager.update_pto_timer(context.path(), now, is_handshake_confirmed);
 
         // Since the path is peer validated and sent packets is empty, PTO is cancelled
         assert!(!manager.pto.timer.is_armed());
@@ -2880,7 +2880,7 @@ mod test {
         context.path_mut().on_handshake_packet();
         context.path_mut().pto_backoff = 2;
         let is_handshake_confirmed = false;
-        manager.update_pto_timer(&context.path(), now, is_handshake_confirmed);
+        manager.update_pto_timer(context.path(), now, is_handshake_confirmed);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
         //= type=test
@@ -2890,7 +2890,7 @@ mod test {
 
         // Set is handshake confirmed back to true
         let is_handshake_confirmed = true;
-        manager.update_pto_timer(&context.path(), now, is_handshake_confirmed);
+        manager.update_pto_timer(context.path(), now, is_handshake_confirmed);
 
         // Now the PTO is armed
         assert!(manager.pto.timer.is_armed());
@@ -2918,7 +2918,7 @@ mod test {
             true,
             space,
         );
-        manager.update_pto_timer(&context.path(), now, is_handshake_confirmed);
+        manager.update_pto_timer(context.path(), now, is_handshake_confirmed);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
         //# When an ack-eliciting packet is transmitted, the sender schedules a
