@@ -212,7 +212,7 @@ impl Report {
 
             let entry = report
                 .targets
-                .entry(&target)
+                .entry(target)
                 .or_insert_with(|| TargetReport {
                     target,
                     references: BTreeSet::new(),
@@ -249,15 +249,15 @@ impl Report {
             .for_each(|(_, target)| target.statuses.populate(&target.references));
 
         if let Some(dir) = &self.lcov {
-            lcov::report(&report, &dir)?;
+            lcov::report(&report, dir)?;
         }
 
         if let Some(file) = &self.json {
-            json::report(&report, &file)?;
+            json::report(&report, file)?;
         }
 
         if let Some(dir) = &self.html {
-            html::report(&report, &dir)?;
+            html::report(&report, dir)?;
         }
 
         if self.ci {

@@ -219,17 +219,17 @@ impl<'a> EncryptedInitial<'a> {
 impl<'a> CleartextInitial<'a> {
     #[inline]
     pub fn destination_connection_id(&self) -> &[u8] {
-        &self.destination_connection_id
+        self.destination_connection_id
     }
 
     #[inline]
     pub fn source_connection_id(&self) -> &[u8] {
-        &self.source_connection_id
+        self.source_connection_id
     }
 
     #[inline]
     pub fn token(&self) -> &[u8] {
-        &self.token
+        self.token
     }
 }
 

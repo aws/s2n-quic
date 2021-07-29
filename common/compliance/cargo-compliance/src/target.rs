@@ -64,7 +64,7 @@ impl TargetPath {
 
         // URL style path
         if path.contains("://") {
-            let url = Url::parse(&path)?;
+            let url = Url::parse(path)?;
             return Ok(Self::Url(url));
         }
 
@@ -121,7 +121,7 @@ impl FromStr for TargetPath {
 
     fn from_str(path: &str) -> Result<Self, Self::Err> {
         if path.contains("://") {
-            let url = Url::parse(&path)?;
+            let url = Url::parse(path)?;
             return Ok(Self::Url(url));
         }
 

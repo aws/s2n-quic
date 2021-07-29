@@ -255,7 +255,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 >
                     (
                     datagram,
-                    &packet,
+                    packet,
                     local_connection_id,
                     context.random_generator,
                     context.token

@@ -88,11 +88,11 @@ impl Project {
         self.cargo_files(&mut sources)?;
 
         for pattern in &self.source_patterns {
-            self.source_file(&pattern, &mut sources)?;
+            self.source_file(pattern, &mut sources)?;
         }
 
         for pattern in &self.spec_patterns {
-            self.spec_file(&pattern, &mut sources)?;
+            self.spec_file(pattern, &mut sources)?;
         }
 
         Ok(sources)

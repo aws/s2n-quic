@@ -39,8 +39,8 @@ fn main() {
                         server_header_key,
                         client_header_key,
                         packet_number,
-                        &header,
-                        &payload
+                        header,
+                        payload
                     )
                     .is_ok());
                     assert!(test_round_trip(
@@ -49,8 +49,8 @@ fn main() {
                         client_header_key,
                         server_header_key,
                         packet_number,
-                        &header,
-                        &payload
+                        header,
+                        payload
                     )
                     .is_ok());
                 }
@@ -66,8 +66,8 @@ fn main() {
                         server_header_key,
                         client_header_key,
                         packet_number,
-                        &header,
-                        &payload
+                        header,
+                        payload
                     )
                     .is_ok());
                     assert!(test_round_trip(
@@ -76,8 +76,8 @@ fn main() {
                         client_header_key,
                         server_header_key,
                         packet_number,
-                        &header,
-                        &payload
+                        header,
+                        payload
                     )
                     .is_ok());
                     let server_key = server_key.update();
@@ -87,8 +87,8 @@ fn main() {
                         server_header_key,
                         client_header_key,
                         packet_number,
-                        &header,
-                        &payload
+                        header,
+                        payload
                     )
                     .is_err());
                     assert!(test_round_trip(
@@ -97,8 +97,8 @@ fn main() {
                         client_header_key,
                         server_header_key,
                         packet_number,
-                        &header,
-                        &payload
+                        header,
+                        payload
                     )
                     .is_err());
                     let client_key = client_key.update();
@@ -108,8 +108,8 @@ fn main() {
                         server_header_key,
                         client_header_key,
                         packet_number,
-                        &header,
-                        &payload
+                        header,
+                        payload
                     )
                     .is_ok());
                     assert!(test_round_trip(
@@ -118,8 +118,8 @@ fn main() {
                         client_header_key,
                         server_header_key,
                         packet_number,
-                        &header,
-                        &payload
+                        header,
+                        payload
                     )
                     .is_ok());
                 }
@@ -135,8 +135,8 @@ fn main() {
                         server_header_key,
                         client_header_key,
                         packet_number,
-                        &header,
-                        &payload
+                        header,
+                        payload
                     )
                     .is_ok());
                     assert!(test_round_trip(
@@ -145,8 +145,8 @@ fn main() {
                         client_header_key,
                         server_header_key,
                         packet_number,
-                        &header,
-                        &payload
+                        header,
+                        payload
                     )
                     .is_ok());
                     let server_key = server_key.update();
@@ -156,8 +156,8 @@ fn main() {
                         server_header_key,
                         client_header_key,
                         packet_number,
-                        &header,
-                        &payload
+                        header,
+                        payload
                     )
                     .is_err());
                     assert!(test_round_trip(
@@ -166,8 +166,8 @@ fn main() {
                         client_header_key,
                         server_header_key,
                         packet_number,
-                        &header,
-                        &payload
+                        header,
+                        payload
                     )
                     .is_err());
                     let client_key = client_key.update();
@@ -177,8 +177,8 @@ fn main() {
                         server_header_key,
                         client_header_key,
                         packet_number,
-                        &header,
-                        &payload
+                        header,
+                        payload
                     )
                     .is_ok());
                     assert!(test_round_trip(
@@ -187,8 +187,8 @@ fn main() {
                         client_header_key,
                         server_header_key,
                         packet_number,
-                        &header,
-                        &payload
+                        header,
+                        payload
                     )
                     .is_ok());
                 }
@@ -200,8 +200,8 @@ fn main() {
                         header_key,
                         header_key,
                         packet_number,
-                        &header,
-                        &payload
+                        header,
+                        payload
                     )
                     .is_ok());
                 }
@@ -290,8 +290,8 @@ fn gen_dcid() -> impl ValueGenerator<Output = Vec<u8>> {
 
 fn gen_handshake() -> impl ValueGenerator<Output = CryptoTest> {
     gen_negotiated_secrets().map(|(algo, secrets)| {
-        let server_keys = RingHandshakeKey::new_server(&algo, secrets.clone()).unwrap();
-        let client_keys = RingHandshakeKey::new_client(&algo, secrets).unwrap();
+        let server_keys = RingHandshakeKey::new_server(algo, secrets.clone()).unwrap();
+        let client_keys = RingHandshakeKey::new_client(algo, secrets).unwrap();
         CryptoTest::Handshake {
             server_keys,
             client_keys,
@@ -301,8 +301,8 @@ fn gen_handshake() -> impl ValueGenerator<Output = CryptoTest> {
 
 fn gen_one_rtt() -> impl ValueGenerator<Output = CryptoTest> {
     gen_negotiated_secrets().map(|(algo, secrets)| {
-        let server_keys = RingOneRttKey::new_server(&algo, secrets.clone()).unwrap();
-        let client_keys = RingOneRttKey::new_client(&algo, secrets).unwrap();
+        let server_keys = RingOneRttKey::new_server(algo, secrets.clone()).unwrap();
+        let client_keys = RingOneRttKey::new_client(algo, secrets).unwrap();
         CryptoTest::OneRtt {
             server_keys,
             client_keys,

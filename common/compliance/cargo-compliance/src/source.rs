@@ -31,7 +31,7 @@ impl<'a> SourceFile<'a> {
             Self::Text(pattern, file) => {
                 let text = std::fs::read_to_string(file)?;
                 pattern
-                    .extract(&text, &file, &mut annotations)
+                    .extract(&text, file, &mut annotations)
                     .with_context(|| file.display().to_string())?;
                 Ok(annotations)
             }
