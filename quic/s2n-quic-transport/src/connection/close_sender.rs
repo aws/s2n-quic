@@ -53,7 +53,7 @@ impl CloseSender {
         path: &'a mut Path<CC>,
     ) -> Transmission<'a, CC> {
         debug_assert!(
-            !self.transmission_interest().is_none(),
+            self.has_transmission_interest(),
             "transmission should only be called when transmission interest is expressed"
         );
 
@@ -87,7 +87,10 @@ impl finalization::Provider for CloseSender {
 }
 
 impl transmission::interest::Provider for CloseSender {
-    fn transmission_interest(&self) -> transmission::Interest {
+    fn transmission_interest<Q: transmission::interest::Query>(
+        &self,
+        query: &mut Q,
+    ) -> transmission::interest::Result {
         if matches!(
             self.state,
             State::Closing {
@@ -101,10 +104,10 @@ impl transmission::interest::Provider for CloseSender {
             //# flight.
 
             // this packet only contains a CONNECTION_CLOSE so bypass the CC
-            transmission::Interest::Forced
-        } else {
-            transmission::Interest::None
+            query.on_forced()?;
         }
+
+        Ok(())
     }
 }
 
@@ -322,8 +325,7 @@ mod tests {
                 sender.close(PACKET.clone(), *close_time, clock.get_time());
 
                 // transmit an initial packet
-                let interest = sender.transmission_interest();
-                assert!(interest.can_transmit(path.transmission_constraint()));
+                assert!(sender.can_transmit(path.transmission_constraint()));
                 sender.transmission(&mut path).write_payload(&mut buffer);
 
                 for (gap, packet_size) in events {
@@ -344,7 +346,7 @@ mod tests {
                     // send a single packet
                     let transmission_count_before = transmission_count;
                     for _ in 0..3 {
-                        let interest = sender.transmission_interest();
+                        let interest = sender.get_transmission_interest();
                         if interest.can_transmit(path.transmission_constraint()) {
                             sender.transmission(&mut path).write_payload(&mut buffer);
                             transmission_count += 1;

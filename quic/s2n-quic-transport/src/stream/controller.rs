@@ -5,7 +5,7 @@ use crate::{
     contexts::OnTransmitError,
     sync::{IncrementalValueSync, PeriodicSync, ValueToFrameWriter},
     transmission,
-    transmission::{interest::Provider, Interest, WriteContext},
+    transmission::{interest::Provider, WriteContext},
 };
 use core::{
     task::{Context, Poll, Waker},
@@ -218,14 +218,13 @@ impl Controller {
 /// Queries the component for interest in transmitting frames
 impl transmission::interest::Provider for Controller {
     #[inline]
-    fn transmission_interest(&self) -> Interest {
-        self.bidi_controller.transmission_interest() + self.uni_controller.transmission_interest()
-    }
-
-    #[inline]
-    fn has_transmission_interest(&self) -> bool {
-        self.bidi_controller.has_transmission_interest()
-            || self.uni_controller.has_transmission_interest()
+    fn transmission_interest<Q: transmission::interest::Query>(
+        &self,
+        query: &mut Q,
+    ) -> transmission::interest::Result {
+        self.bidi_controller.transmission_interest(query)?;
+        self.uni_controller.transmission_interest(query)?;
+        Ok(())
     }
 }
 
@@ -290,12 +289,14 @@ impl ControllerPair {
 }
 
 impl transmission::interest::Provider for ControllerPair {
-    fn transmission_interest(&self) -> Interest {
-        self.incoming.transmission_interest() + self.outgoing.transmission_interest()
-    }
-
-    fn has_transmission_interest(&self) -> bool {
-        self.incoming.has_transmission_interest() || self.outgoing.has_transmission_interest()
+    #[inline]
+    fn transmission_interest<Q: transmission::interest::Query>(
+        &self,
+        query: &mut Q,
+    ) -> transmission::interest::Result {
+        self.incoming.transmission_interest(query)?;
+        self.outgoing.transmission_interest(query)?;
+        Ok(())
     }
 }
 
@@ -490,8 +491,11 @@ impl OutgoingController {
 
 impl transmission::interest::Provider for OutgoingController {
     #[inline]
-    fn transmission_interest(&self) -> Interest {
-        self.streams_blocked_sync.transmission_interest()
+    fn transmission_interest<Q: transmission::interest::Query>(
+        &self,
+        query: &mut Q,
+    ) -> transmission::interest::Result {
+        self.streams_blocked_sync.transmission_interest(query)
     }
 }
 
@@ -639,8 +643,11 @@ impl IncomingController {
 
 impl transmission::interest::Provider for IncomingController {
     #[inline]
-    fn transmission_interest(&self) -> Interest {
-        self.max_streams_sync.transmission_interest()
+    fn transmission_interest<Q: transmission::interest::Query>(
+        &self,
+        query: &mut Q,
+    ) -> transmission::interest::Result {
+        self.max_streams_sync.transmission_interest(query)
     }
 }
 

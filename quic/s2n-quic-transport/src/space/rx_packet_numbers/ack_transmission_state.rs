@@ -133,15 +133,19 @@ impl AckTransmissionState {
 }
 
 impl transmission::interest::Provider for AckTransmissionState {
-    fn transmission_interest(&self) -> transmission::Interest {
+    #[inline]
+    fn transmission_interest<Q: transmission::interest::Query>(
+        &self,
+        query: &mut Q,
+    ) -> transmission::interest::Result {
         if self.is_active() {
             //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7
             //# packets containing only ACK frames do not count
             //# towards bytes in flight and are not congestion controlled
-            transmission::Interest::Forced
-        } else {
-            transmission::Interest::None
+            query.on_forced()?;
         }
+
+        Ok(())
     }
 }
 

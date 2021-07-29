@@ -568,6 +568,16 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
             interest.can_transmit(constraint)
         })
     }
+
+    #[inline]
+    pub fn transmission_constraint(&self) -> transmission::Constraint {
+        // Return the lowest constraint which will ensure we don't get blocked on transmission by a single path
+        self.paths
+            .iter()
+            .map(|path| path.transmission_constraint())
+            .min()
+            .unwrap_or(transmission::Constraint::None)
+    }
 }
 
 /// Iterate over all paths that have an interest in sending PATH_CHALLENGE
@@ -606,21 +616,18 @@ impl<'a, CCE: congestion_controller::Endpoint> PathsPendingValidation<'a, CCE> {
 
 impl<CCE: congestion_controller::Endpoint> transmission::interest::Provider for Manager<CCE> {
     #[inline]
-    fn transmission_interest(&self) -> transmission::Interest {
-        core::iter::empty()
-            .chain(Some(self.peer_id_registry.transmission_interest()))
-            // query PATH_CHALLENGE and PATH_RESPONSE interest for each path
-            .chain(self.paths.iter().map(|path| path.transmission_interest()))
-            .sum()
-    }
+    fn transmission_interest<Q: transmission::interest::Query>(
+        &self,
+        query: &mut Q,
+    ) -> transmission::interest::Result {
+        self.peer_id_registry.transmission_interest(query)?;
 
-    #[inline]
-    fn has_transmission_interest(&self) -> bool {
-        self.peer_id_registry.has_transmission_interest()
-            || self
-                .paths
-                .iter()
-                .any(|path| path.has_transmission_interest())
+        for path in self.paths.iter() {
+            // query PATH_CHALLENGE and PATH_RESPONSE interest for each path
+            path.transmission_interest(query)?;
+        }
+
+        Ok(())
     }
 }
 

@@ -155,8 +155,10 @@ fn execute_instructions(test_env: &mut TestEnvironment, instructions: &[Instruct
                 assert_eq!(*expect_success, result.is_ok(), "Unexpected reset result");
             }
             Instruction::SetMaxData(max_data) => {
-                let was_waiting_for_connection_window =
-                    test_env.stream.interests().connection_flow_control_credits;
+                let was_waiting_for_connection_window = test_env
+                    .stream
+                    .get_stream_interests()
+                    .connection_flow_control_credits;
                 test_env.tx_connection_flow_controller.on_max_data(MaxData {
                     maximum_data: *max_data,
                 });
@@ -241,7 +243,7 @@ fn execute_instructions(test_env: &mut TestEnvironment, instructions: &[Instruct
                 );
             }
             Instruction::CheckInterests(expected_interests) => {
-                assert_eq!(*expected_interests, test_env.stream.interests());
+                assert_eq!(*expected_interests, test_env.stream.get_stream_interests());
             }
             Instruction::AckPacket(packet_number, expect_writer_wakeup) => {
                 test_env.ack_packet(*packet_number, *expect_writer_wakeup);
@@ -262,10 +264,16 @@ fn sent_data_gets_enqueued_as_frames() {
     let data3 = Bytes::from_static(b"789");
 
     assert_eq!(test_env.poll_push(data1.clone()), Poll::Ready(Ok(())),);
-    assert_eq!(stream_interests(&["tx"]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&["tx"]),
+        test_env.stream.get_stream_interests()
+    );
 
     assert_eq!(test_env.poll_push(data2.clone()), Poll::Ready(Ok(())),);
-    assert_eq!(stream_interests(&["tx"]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&["tx"]),
+        test_env.stream.get_stream_interests()
+    );
 
     test_env.assert_write_frames(1);
     let mut sent_frame = test_env.sent_frames.pop_front().expect("Frame is written");
@@ -285,13 +293,16 @@ fn sent_data_gets_enqueued_as_frames() {
         sent_frame.as_frame()
     );
 
-    assert_eq!(stream_interests(&["ack"]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&["ack"]),
+        test_env.stream.get_stream_interests()
+    );
     test_env.assert_write_frames(0);
 
     assert_eq!(test_env.poll_push(data3.clone()), Poll::Ready(Ok(())),);
     assert_eq!(
         stream_interests(&["ack", "tx"]),
-        test_env.stream.interests()
+        test_env.stream.get_stream_interests()
     );
 
     test_env.assert_write_frames(1);
@@ -305,7 +316,10 @@ fn sent_data_gets_enqueued_as_frames() {
         )),
         sent_frame.as_frame()
     );
-    assert_eq!(stream_interests(&["ack"]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&["ack"]),
+        test_env.stream.get_stream_interests()
+    );
 }
 
 #[test]
@@ -1276,7 +1290,10 @@ fn push_data_after_stream_is_reset_due_to_stop_sending() {
 
         if *acknowledge_reset_early {
             test_env.ack_packet(pn(0), ExpectWakeup(Some(false)));
-            assert_eq!(stream_interests(&[]), test_env.stream.interests());
+            assert_eq!(
+                stream_interests(&[]),
+                test_env.stream.get_stream_interests()
+            );
         }
 
         // Poll two times.
@@ -1288,12 +1305,18 @@ fn push_data_after_stream_is_reset_due_to_stop_sending() {
         );
 
         if !*acknowledge_reset_early {
-            assert_eq!(stream_interests(&["ack"]), test_env.stream.interests());
+            assert_eq!(
+                stream_interests(&["ack"]),
+                test_env.stream.get_stream_interests()
+            );
             // The user is already aware about the reset.
             // Deliverying an ack now should bring us into the final state
             test_env.ack_packet(pn(0), ExpectWakeup(Some(false)));
         }
-        assert_eq!(stream_interests(&["fin"]), test_env.stream.interests());
+        assert_eq!(
+            stream_interests(&["fin"]),
+            test_env.stream.get_stream_interests()
+        );
 
         // The second call checks whether the same result is delivered after the
         // user had been notified.
@@ -1302,7 +1325,10 @@ fn push_data_after_stream_is_reset_due_to_stop_sending() {
             test_env.poll_push(Bytes::from_static(b"1"))
         );
 
-        assert_eq!(stream_interests(&["fin"]), test_env.stream.interests());
+        assert_eq!(
+            stream_interests(&["fin"]),
+            test_env.stream.get_stream_interests()
+        );
     }
 }
 
@@ -1760,13 +1786,22 @@ fn finish_after_stream_is_reset_locally() {
         let error_code = ApplicationErrorCode::new(5).unwrap();
 
         assert!(test_env.reset(error_code).is_ok());
-        assert_eq!(stream_interests(&["tx"]), test_env.stream.interests());
+        assert_eq!(
+            stream_interests(&["tx"]),
+            test_env.stream.get_stream_interests()
+        );
         test_env.assert_write_reset_frame(error_code, pn(0), VarInt::from_u32(0));
-        assert_eq!(stream_interests(&["ack"]), test_env.stream.interests());
+        assert_eq!(
+            stream_interests(&["ack"]),
+            test_env.stream.get_stream_interests()
+        );
 
         if *acknowledge_reset_early {
             test_env.ack_packet(pn(0), ExpectWakeup(Some(false)));
-            assert_eq!(stream_interests(&["fin"]), test_env.stream.interests());
+            assert_eq!(
+                stream_interests(&["fin"]),
+                test_env.stream.get_stream_interests()
+            );
         }
 
         assert_eq!(
@@ -1780,7 +1815,10 @@ fn finish_after_stream_is_reset_locally() {
             test_env.ack_packet(pn(0), ExpectWakeup(Some(false)));
         }
 
-        assert_eq!(stream_interests(&["fin"]), test_env.stream.interests());
+        assert_eq!(
+            stream_interests(&["fin"]),
+            test_env.stream.get_stream_interests()
+        );
     }
 }
 
@@ -1803,7 +1841,10 @@ fn finish_after_stream_is_reset_due_to_stop_sending() {
 
         if *acknowledge_reset_early {
             test_env.ack_packet(pn(0), ExpectWakeup(Some(false)));
-            assert_eq!(stream_interests(&[]), test_env.stream.interests());
+            assert_eq!(
+                stream_interests(&[]),
+                test_env.stream.get_stream_interests()
+            );
         }
 
         // Poll two times.
@@ -1817,11 +1858,17 @@ fn finish_after_stream_is_reset_due_to_stop_sending() {
         // Now that the user is aware the outstanding acknowledge can finalize
         // the stream
         if !*acknowledge_reset_early {
-            assert_eq!(stream_interests(&["ack"]), test_env.stream.interests());
+            assert_eq!(
+                stream_interests(&["ack"]),
+                test_env.stream.get_stream_interests()
+            );
             test_env.ack_packet(pn(0), ExpectWakeup(Some(false)));
         }
 
-        assert_eq!(stream_interests(&["fin"]), test_env.stream.interests());
+        assert_eq!(
+            stream_interests(&["fin"]),
+            test_env.stream.get_stream_interests()
+        );
 
         // The second call checks whether the same result is delivered after the
         // user had been notified.
@@ -1830,7 +1877,10 @@ fn finish_after_stream_is_reset_due_to_stop_sending() {
             test_env.poll_finish()
         );
 
-        assert_eq!(stream_interests(&["fin"]), test_env.stream.interests());
+        assert_eq!(
+            stream_interests(&["fin"]),
+            test_env.stream.get_stream_interests()
+        );
     }
 }
 
@@ -2093,7 +2143,11 @@ fn reset_does_not_cause_an_action_if_stream_is_already_reset() {
             }
 
             // The reset should not lead to an outgoing packet
-            assert!(test_env.stream.interests().transmission.is_none());
+            assert!(test_env
+                .stream
+                .get_stream_interests()
+                .transmission
+                .is_none());
             execute_instructions(&mut test_env, &[Instruction::CheckNoTx]);
 
             // Accessing the stream should lead to the original reset error
@@ -2147,7 +2201,11 @@ fn reset_does_not_cause_an_action_if_stream_is_finished_and_acknowledged() {
             }
 
             // The reset should not lead to an outgoing packet
-            assert!(test_env.stream.interests().transmission.is_none());
+            assert!(test_env
+                .stream
+                .get_stream_interests()
+                .transmission
+                .is_none());
             execute_instructions(&mut test_env, &[Instruction::CheckNoTx]);
 
             // Accessing the stream should still return the finished state
@@ -2410,7 +2468,7 @@ fn stream_does_not_try_to_acquire_connection_flow_control_credits_after_reset() 
                 VarInt::from_u32(0),
                 test_env.tx_connection_flow_controller.available_window()
             );
-            let previous_readiness = test_env.stream.interests();
+            let previous_readiness = test_env.stream.get_stream_interests();
             test_env.tx_connection_flow_controller.on_max_data(MaxData {
                 maximum_data: VarInt::from_u32(2500),
             });
@@ -2419,8 +2477,13 @@ fn stream_does_not_try_to_acquire_connection_flow_control_credits_after_reset() 
                 test_env.tx_connection_flow_controller.available_window()
             );
             test_env.stream.on_connection_window_available();
-            assert_eq!(previous_readiness, test_env.stream.interests());
-            assert!(!test_env.stream.interests().connection_flow_control_credits);
+            assert_eq!(previous_readiness, test_env.stream.get_stream_interests());
+            assert!(
+                !test_env
+                    .stream
+                    .get_stream_interests()
+                    .connection_flow_control_credits
+            );
             assert_eq!(
                 VarInt::from_u32(1500),
                 test_env.tx_connection_flow_controller.available_window()

@@ -303,11 +303,15 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
 }
 
 impl<Config: endpoint::Config> transmission::interest::Provider for HandshakeSpace<Config> {
-    fn transmission_interest(&self) -> transmission::Interest {
-        transmission::Interest::default()
-            + self.ack_manager.transmission_interest()
-            + self.crypto_stream.transmission_interest()
-            + self.recovery_manager.transmission_interest()
+    #[inline]
+    fn transmission_interest<Q: transmission::interest::Query>(
+        &self,
+        query: &mut Q,
+    ) -> transmission::interest::Result {
+        self.ack_manager.transmission_interest(query)?;
+        self.crypto_stream.transmission_interest(query)?;
+        self.recovery_manager.transmission_interest(query)?;
+        Ok(())
     }
 }
 

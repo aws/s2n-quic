@@ -215,13 +215,13 @@ impl<S: StreamTrait> InterestLists<S> {
             waiting_for_stream_flow_control_credits
         );
 
-        if interests.finalization != node.done_streams_link.is_linked() {
-            if interests.finalization {
+        if !interests.retained != node.done_streams_link.is_linked() {
+            if !interests.retained {
                 self.done_streams.push_back(node.clone());
-                true
             } else {
-                unreachable!("Done streams should never report not done later");
+                panic!("Done streams should never report not done later");
             }
+            true
         } else {
             false
         }
@@ -267,7 +267,7 @@ macro_rules! iterate_uninterruptible {
             let interests = {
                 let mut mut_stream = stream.inner.borrow_mut();
                 $func(&mut *mut_stream);
-                mut_stream.interests()
+                mut_stream.get_stream_interests()
             };
 
             did_finalize |= $sel.interest_lists.update_interests(&stream, interests);
@@ -294,7 +294,7 @@ macro_rules! iterate_interruptible {
             let result = $func(&mut *mut_stream);
 
             // Update the interests after the interaction
-            let interests = mut_stream.interests();
+            let interests = mut_stream.get_stream_interests();
             did_finalize |= $sel.interest_lists.update_interests(&stream, interests);
 
             match result {
@@ -329,7 +329,7 @@ impl<S: StreamTrait> StreamContainer<S> {
     pub fn insert_stream(&mut self, stream: S) {
         // Even though it likely might have none, it seems like it
         // would be better to avoid future bugs
-        let interests = stream.interests();
+        let interests = stream.get_stream_interests();
 
         let new_stream = Rc::new(StreamNode::new(stream));
 
@@ -371,7 +371,7 @@ impl<S: StreamTrait> StreamContainer<S> {
     {
         let node_ptr: Rc<StreamNode<S>>;
         let result: R;
-        let interests: StreamInterests;
+        let interests;
 
         // This block is required since we mutably borrow `self` inside the
         // block in order to obtain a Stream reference and to executing the
@@ -390,7 +390,7 @@ impl<S: StreamTrait> StreamContainer<S> {
 
             let stream: &mut S = &mut *node.inner.borrow_mut();
             result = func(stream);
-            interests = stream.interests();
+            interests = stream.get_stream_interests();
         }
 
         // Update the interest lists after the interactions and then remove
@@ -573,7 +573,7 @@ impl<S: StreamTrait> StreamContainer<S> {
 
             let mut mut_stream = stream.inner.borrow_mut();
             func(&mut *mut_stream);
-            let interests = mut_stream.interests();
+            let interests = mut_stream.get_stream_interests();
 
             // Update the interest lists here
             // Safety: The stream reference is obtained from the RBTree, which
@@ -606,14 +606,18 @@ impl<S: StreamTrait> StreamContainer<S> {
 }
 
 impl<S: StreamTrait> transmission::interest::Provider for StreamContainer<S> {
-    fn transmission_interest(&self) -> transmission::Interest {
+    #[inline]
+    fn transmission_interest<Q: transmission::interest::Query>(
+        &self,
+        query: &mut Q,
+    ) -> transmission::interest::Result {
         if !self.interest_lists.waiting_for_retransmission.is_empty() {
-            transmission::Interest::LostData
+            query.on_lost_data()?;
         } else if !self.interest_lists.waiting_for_transmission.is_empty() {
-            transmission::Interest::NewData
-        } else {
-            transmission::Interest::None
+            query.on_new_data()?;
         }
+
+        Ok(())
     }
 }
 

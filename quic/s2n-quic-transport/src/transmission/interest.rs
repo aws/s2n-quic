@@ -50,49 +50,133 @@ impl Interest {
     pub fn is_none(self) -> bool {
         matches!(self, Interest::None)
     }
-}
-
-impl core::ops::Add for Interest {
-    type Output = Self;
 
     #[inline]
-    fn add(self, rhs: Self) -> Self {
-        self.max(rhs)
-    }
-}
-
-impl core::ops::AddAssign for Interest {
-    #[inline]
-    fn add_assign(&mut self, rhs: Self) {
-        *self = (*self) + rhs;
-    }
-}
-
-impl core::iter::Sum for Interest {
-    #[inline]
-    fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
-        let mut interest = Self::default();
-
-        for item in iter {
-            interest += item;
-        }
-
-        interest
+    pub fn merge_with<F: FnOnce(&mut Self) -> Result>(&mut self, f: F) -> Result {
+        f(self)
     }
 }
 
 pub trait Provider {
-    fn transmission_interest(&self) -> Interest;
+    fn transmission_interest<Q: Query>(&self, query: &mut Q) -> Result;
 
-    /// Returns if there is any interest in transmission
-    ///
-    /// This can be used to quickly check a set of providers, rather than having to sum up all of
-    /// the interests.
+    #[inline]
+    fn get_transmission_interest(&self) -> Interest {
+        let mut interest = Interest::None;
+        let _ = self.transmission_interest(&mut interest);
+        interest
+    }
+
     #[inline]
     fn has_transmission_interest(&self) -> bool {
-        !self.transmission_interest().is_none()
+        let mut query = HasTransmissionInterestQuery;
+        self.transmission_interest(&mut query).is_err()
+    }
+
+    #[inline]
+    fn can_transmit(&self, mut constraint: Constraint) -> bool {
+        self.transmission_interest(&mut constraint).is_err()
     }
 }
+
+pub trait Query {
+    fn on_interest(&mut self, interest: Interest) -> Result;
+
+    #[inline]
+    fn on_new_data(&mut self) -> Result {
+        self.on_interest(Interest::NewData)
+    }
+
+    #[inline]
+    fn on_lost_data(&mut self) -> Result {
+        self.on_interest(Interest::LostData)
+    }
+
+    #[inline]
+    fn on_forced(&mut self) -> Result {
+        self.on_interest(Interest::Forced)
+    }
+}
+
+impl Query for Interest {
+    #[inline]
+    fn on_interest(&mut self, interest: Interest) -> Result {
+        match (*self, interest) {
+            // we don't need to keep querying if we're already at the max interest
+            (Interest::Forced, _) | (_, Interest::Forced) => {
+                *self = Interest::Forced;
+                return Err(QueryBreak);
+            }
+            (Interest::LostData, _) | (_, Interest::LostData) => *self = Interest::LostData,
+            (Interest::NewData, _) | (_, Interest::NewData) => *self = Interest::NewData,
+            (Interest::None, _) => {}
+        }
+
+        Ok(())
+    }
+}
+
+#[test]
+fn interest_query_test() {
+    use Interest::*;
+
+    let levels = [None, NewData, LostData, Forced];
+    for a in levels.iter().copied() {
+        for b in levels.iter().copied() {
+            let mut query = a;
+            let result = query.on_interest(b);
+
+            assert_eq!(query, a.max(b));
+            assert_eq!(matches!(a, Forced) || matches!(b, Forced), result.is_err());
+        }
+    }
+}
+
+impl Query for Constraint {
+    #[inline]
+    fn on_interest(&mut self, interest: Interest) -> Result {
+        // If we can transmit with the given constraint bail since we now have an answer
+        if interest.can_transmit(*self) {
+            return Err(QueryBreak);
+        }
+
+        Ok(())
+    }
+}
+
+pub struct HasTransmissionInterestQuery;
+
+impl Query for HasTransmissionInterestQuery {
+    #[inline]
+    fn on_interest(&mut self, interest: Interest) -> Result {
+        if interest.is_none() {
+            Ok(())
+        } else {
+            // If we've got anything other than `None` then bail since we now have an answer
+            Err(QueryBreak)
+        }
+    }
+
+    // any calls to interest should bail the query
+    #[inline]
+    fn on_new_data(&mut self) -> Result {
+        Err(QueryBreak)
+    }
+
+    #[inline]
+    fn on_lost_data(&mut self) -> Result {
+        Err(QueryBreak)
+    }
+
+    #[inline]
+    fn on_forced(&mut self) -> Result {
+        Err(QueryBreak)
+    }
+}
+
+pub struct QueryBreak;
+
+pub type Result<T = (), E = QueryBreak> = core::result::Result<T, E>;
 
 #[cfg(test)]
 mod test {

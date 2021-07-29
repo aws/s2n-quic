@@ -909,7 +909,7 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
     where
         F: FnOnce(&mut S) -> R,
     {
-        let prev_transmission_interest = self.inner.streams.transmission_interest();
+        let had_transmission_interest = self.inner.streams.has_transmission_interest();
 
         let result = self
             .inner
@@ -922,8 +922,8 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         // A wakeup is only triggered if the the transmission list is
         // now empty, but was previously not. The edge triggered behavior
         // minimizes the amount of necessary wakeups.
-        let require_wakeup = prev_transmission_interest.is_none()
-            && !self.inner.streams.transmission_interest().is_none();
+        let require_wakeup =
+            !had_transmission_interest && self.inner.streams.has_transmission_interest();
 
         // TODO: This currently wakes the connection task while inside the connection Mutex.
         // It will be better if we return the `Waker` instead and perform the wakeup afterwards.
@@ -951,31 +951,21 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
 }
 
 impl<S: StreamTrait> transmission::interest::Provider for AbstractStreamManager<S> {
-    fn transmission_interest(&self) -> transmission::Interest {
-        transmission::Interest::default()
-            + self.inner.streams.transmission_interest()
-            + self.inner.stream_controller.transmission_interest()
-            + self
-                .inner
-                .incoming_connection_flow_controller
-                .transmission_interest()
-            + self
-                .inner
-                .outgoing_connection_flow_controller
-                .transmission_interest()
-    }
+    #[inline]
+    fn transmission_interest<Q: transmission::interest::Query>(
+        &self,
+        query: &mut Q,
+    ) -> transmission::interest::Result {
+        self.inner.streams.transmission_interest(query)?;
+        self.inner.stream_controller.transmission_interest(query)?;
+        self.inner
+            .incoming_connection_flow_controller
+            .transmission_interest(query)?;
+        self.inner
+            .outgoing_connection_flow_controller
+            .transmission_interest(query)?;
 
-    fn has_transmission_interest(&self) -> bool {
-        self.inner.streams.has_transmission_interest()
-            || self.inner.stream_controller.has_transmission_interest()
-            || self
-                .inner
-                .incoming_connection_flow_controller
-                .has_transmission_interest()
-            || self
-                .inner
-                .outgoing_connection_flow_controller
-                .has_transmission_interest()
+        Ok(())
     }
 }
 

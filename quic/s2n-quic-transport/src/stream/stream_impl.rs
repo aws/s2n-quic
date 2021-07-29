@@ -301,7 +301,8 @@ impl StreamTrait for StreamImpl {
 
 impl StreamInterestProvider for StreamImpl {
     #[inline]
-    fn interests(&self) -> StreamInterests {
-        self.receive_stream.interests() + self.send_stream.interests()
+    fn stream_interests(&self, interests: &mut StreamInterests) {
+        self.send_stream.stream_interests(interests);
+        self.receive_stream.stream_interests(interests);
     }
 }

@@ -68,8 +68,12 @@ impl DerefMut for HandshakeStatus {
 }
 
 impl transmission::interest::Provider for HandshakeStatus {
-    fn transmission_interest(&self) -> transmission::Interest {
-        self.0.transmission_interest()
+    #[inline]
+    fn transmission_interest<Q: transmission::interest::Query>(
+        &self,
+        query: &mut Q,
+    ) -> transmission::interest::Result {
+        self.0.transmission_interest(query)
     }
 }
 
@@ -95,7 +99,7 @@ mod tests {
 
         assert!(!status.is_confirmed());
         assert_eq!(
-            status.transmission_interest(),
+            status.get_transmission_interest(),
             transmission::Interest::default(),
             "status should not express interest in default state"
         );
@@ -111,14 +115,14 @@ mod tests {
         assert!(status.is_confirmed());
 
         assert_eq!(
-            status.transmission_interest(),
+            status.get_transmission_interest(),
             transmission::Interest::NewData,
             "status should express interest in deliver after handshake done"
         );
 
         status.on_handshake_done();
         assert_eq!(
-            status.transmission_interest(),
+            status.get_transmission_interest(),
             transmission::Interest::NewData,
             "status should accept duplicate calls to handshake_done"
         );
@@ -136,7 +140,7 @@ mod tests {
         assert!(status.is_confirmed());
 
         assert!(
-            status.transmission_interest().is_none(),
+            !status.has_transmission_interest(),
             "status should not express interest after complete",
         );
 
@@ -163,7 +167,7 @@ mod tests {
         assert!(!status.is_confirmed());
 
         assert!(
-            status.transmission_interest().is_none(),
+            !status.has_transmission_interest(),
             "status should not express interest in default state"
         );
 
@@ -177,7 +181,7 @@ mod tests {
         assert!(status.is_confirmed());
 
         assert!(
-            status.transmission_interest().is_none(),
+            !status.has_transmission_interest(),
             "status should not express interest after complete",
         );
 

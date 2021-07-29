@@ -490,7 +490,7 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
 
             if self.flow_controller().is_blocked() {
                 use transmission::interest::{Interest, Provider};
-                assert_ne!(self.transmission_interest(), Interest::NewData);
+                assert_ne!(self.get_transmission_interest(), Interest::NewData);
             }
         }
     }
@@ -499,30 +499,32 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
 impl<F: OutgoingDataFlowController, W: FrameWriter> transmission::interest::Provider
     for DataSender<F, W>
 {
-    fn transmission_interest(&self) -> transmission::Interest {
-        let mut interest = transmission::Interest::None;
-
+    #[inline]
+    fn transmission_interest<Q: transmission::interest::Query>(
+        &self,
+        query: &mut Q,
+    ) -> transmission::interest::Result {
         let is_blocked = self.flow_controller().is_blocked();
 
         if W::WRITES_FIN {
             match self.state {
-                State::Finishing(FinState::Lost) => return transmission::Interest::LostData,
+                State::Finishing(FinState::Lost) => {
+                    return query.on_lost_data();
+                }
                 State::Finishing(FinState::Pending) if !is_blocked => {
-                    interest += transmission::Interest::NewData
+                    query.on_new_data()?;
                 }
                 _ => {}
             }
         };
 
-        interest += if !self.lost.is_empty() {
-            transmission::Interest::LostData
+        if !self.lost.is_empty() {
+            query.on_lost_data()?;
         } else if !is_blocked && self.transmission_offset < self.buffer.total_len() {
-            transmission::Interest::NewData
-        } else {
-            transmission::Interest::None
-        };
+            query.on_new_data()?;
+        }
 
-        interest
+        Ok(())
     }
 }
 
@@ -609,7 +611,7 @@ mod tests {
                     is_finished = true;
                 }
                 Event::Transmit(capacity, constraint) => {
-                    let interest = sender.transmission_interest();
+                    let interest = sender.get_transmission_interest();
 
                     let prev_len = context.frame_buffer.len();
                     context.transmission_constraint = constraint;
@@ -673,7 +675,7 @@ mod tests {
         sender.flow_controller_mut().clear_blocked();
         sender.flow_controller_mut().max_offset = VarInt::MAX;
 
-        while !sender.transmission_interest().is_none() {
+        while sender.has_transmission_interest() {
             let prev_len = context.frame_buffer.len();
             let _ = sender.on_transmit(*id, &mut context);
             context.frame_buffer.flush();

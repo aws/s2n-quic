@@ -592,7 +592,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                         .path_manager
                         .active_path()
                         .mtu_controller
-                        .transmission_interest()
                         .can_transmit(self.path_manager.active_path().transmission_constraint())
                         && queue
                             .push(ConnectionTransmission {
@@ -1156,7 +1155,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         shared_state: Option<&SharedConnectionState<Self::Config>>,
     ) -> ConnectionInterests {
         use crate::connection::finalization::Provider as _;
-        use transmission::{interest::Provider as _, Interest};
+        use transmission::interest::Provider as _;
 
         let mut interests = ConnectionInterests::default();
 
@@ -1166,32 +1165,16 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
         match self.state {
             ConnectionState::Active | ConnectionState::Handshaking => {
-                let mut transmission_interest = Interest::default();
-                transmission_interest += self.path_manager.transmission_interest();
+                let constraint = self.path_manager.transmission_constraint();
 
-                // don't iterate over everything if we can't send anyway
-                if !self.path_manager.is_amplification_limited() {
-                    if let Some(shared_state) = shared_state.as_ref() {
-                        transmission_interest += shared_state.space_manager.transmission_interest();
-                    }
-                    transmission_interest += self.local_id_registry.transmission_interest();
-                    transmission_interest += self
-                        .path_manager
-                        .active_path()
-                        .mtu_controller
-                        .transmission_interest();
-                }
-
-                interests.transmission = self.path_manager.can_transmit(transmission_interest);
+                interests.transmission = (self, &shared_state).can_transmit(constraint);
                 interests.new_connection_id = self.local_id_registry.connection_id_interest()
                     != connection::id::Interest::None;
             }
             ConnectionState::Closing => {
                 let constraint = self.path_manager.active_path().transmission_constraint();
-                let transmission_interest = self.close_sender.transmission_interest();
-
                 interests.closing = true;
-                interests.transmission = transmission_interest.can_transmit(constraint);
+                interests.transmission = self.close_sender.can_transmit(constraint);
                 interests.finalization = self.close_sender.finalization_status().is_final();
             }
             ConnectionState::Draining | ConnectionState::Finished => {
@@ -1206,5 +1189,33 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         }
 
         interests
+    }
+}
+
+impl<Config: endpoint::Config> transmission::interest::Provider
+    for (
+        &ConnectionImpl<Config>,
+        &Option<&SharedConnectionState<Config>>,
+    )
+{
+    #[inline]
+    fn transmission_interest<Q: transmission::interest::Query>(
+        &self,
+        query: &mut Q,
+    ) -> transmission::interest::Result {
+        self.0.path_manager.transmission_interest(query)?;
+
+        if let Some(shared_state) = self.1.as_ref() {
+            shared_state.space_manager.transmission_interest(query)?;
+        }
+
+        self.0.local_id_registry.transmission_interest(query)?;
+        self.0
+            .path_manager
+            .active_path()
+            .mtu_controller
+            .transmission_interest(query)?;
+
+        Ok(())
     }
 }

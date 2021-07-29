@@ -313,7 +313,7 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
             // We need to check is_validated because it is possible to recieve a PATH_CHALLENGE on
             // an active path for Off-Path Packet Forwarding prevention. However, we would only
             // like to pad when validating the MTU.
-            if !path.is_validated() && !path.transmission_interest().is_none() {
+            if !path.is_validated() && path.has_transmission_interest() {
                 self.context.min_packet_len = Some(encoder.capacity());
             }
 
@@ -360,8 +360,6 @@ fn has_transmission<P: transmission::interest::Provider>(
     transmission_constraint: transmission::Constraint,
 ) -> bool {
     transmission_interest_provider.map_or(false, |provider| {
-        provider
-            .transmission_interest()
-            .can_transmit(transmission_constraint)
+        provider.can_transmit(transmission_constraint)
     })
 }

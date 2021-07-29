@@ -14,7 +14,7 @@ use crate::{
         OnceSync, PeriodicSync, ValueToFrameWriter,
     },
     transmission,
-    transmission::{interest::Provider as _, Interest},
+    transmission::interest::Provider as _,
 };
 use bytes::Bytes;
 use core::{
@@ -338,8 +338,11 @@ impl StreamFlowController {
 /// Queries the component for interest in transmitting frames
 impl transmission::interest::Provider for StreamFlowController {
     #[inline]
-    fn transmission_interest(&self) -> Interest {
-        self.stream_data_blocked_sync.transmission_interest()
+    fn transmission_interest<Q: transmission::interest::Query>(
+        &self,
+        query: &mut Q,
+    ) -> transmission::interest::Result {
+        self.stream_data_blocked_sync.transmission_interest(query)
     }
 }
 
@@ -981,55 +984,52 @@ impl SendStream {
 
 impl StreamInterestProvider for SendStream {
     #[inline]
-    fn interests(&self) -> StreamInterests {
-        let finalization = self.final_state_observed
-            && match self.state {
-                SendStreamState::Sending => {
-                    // In this state `final_state_observed` will only be set
-                    // when all data has actually been transmitted. Therefore we
-                    // don't need an extra check based on the writers state.
-                    true
-                }
-                SendStreamState::ResetAcknowledged(_) => true,
-                _ => false,
-            };
-
-        // Check whether the flow controller reports being blocked on the
-        // connection flow control window or the stream flow control window
-        let connection_flow_control_credits = self.data_sender.flow_controller().state()
-            == StreamFlowControllerState::BlockedOnConnectionWindow;
-        let stream_flow_control_credits = self.data_sender.flow_controller().state()
-            == StreamFlowControllerState::BlockedOnStreamWindow;
-
-        let delivery_notifications =
-            self.data_sender.is_inflight() || self.reset_sync.is_inflight();
-
-        let transmission = match self.state {
+    fn stream_interests(&self, interests: &mut StreamInterests) {
+        match self.state {
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#3.3
             //# A sender MUST NOT send any of these frames from a terminal state
             //# ("Data Recvd" or "Reset Recvd").
-            SendStreamState::Sending if self.final_state_observed => Default::default(),
-            SendStreamState::ResetAcknowledged(_) => Default::default(),
-
+            SendStreamState::Sending if self.final_state_observed => {
+                return;
+            }
+            SendStreamState::ResetAcknowledged(_) => {
+                if self.final_state_observed {
+                    return;
+                }
+            }
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#3.3
             //# A sender MUST NOT send a STREAM or
             //# STREAM_DATA_BLOCKED frame for a stream in the "Reset Sent" state or
             //# any terminal state, that is, after sending a RESET_STREAM frame.
-            SendStreamState::ResetSent(_) => self.reset_sync.transmission_interest(),
-
-            _ => {
-                self.data_sender.transmission_interest()
-                    + self.reset_sync.transmission_interest()
-                    + self.data_sender.flow_controller().transmission_interest()
+            SendStreamState::ResetSent(_) => {
+                interests.with_transmission(|query| self.reset_sync.transmission_interest(query))
             }
-        };
-
-        StreamInterests {
-            connection_flow_control_credits,
-            stream_flow_control_credits,
-            finalization,
-            delivery_notifications,
-            transmission,
+            _ => interests.with_transmission(|query| {
+                self.data_sender.transmission_interest(query)?;
+                self.data_sender
+                    .flow_controller()
+                    .transmission_interest(query)?;
+                self.reset_sync.transmission_interest(query)?;
+                Ok(())
+            }),
         }
+
+        // let the stream container we still have work to do
+        interests.retained = true;
+
+        // Check whether the flow controller reports being blocked on the
+        // connection flow control window or the stream flow control window
+        match self.data_sender.flow_controller().state() {
+            StreamFlowControllerState::BlockedOnStreamWindow => {
+                interests.stream_flow_control_credits = true
+            }
+            StreamFlowControllerState::BlockedOnConnectionWindow => {
+                interests.connection_flow_control_credits = true
+            }
+            _ => {}
+        }
+
+        interests.delivery_notifications |=
+            self.data_sender.is_inflight() || self.reset_sync.is_inflight();
     }
 }

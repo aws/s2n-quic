@@ -187,7 +187,11 @@ impl<
 }
 
 impl<T, S> transmission::interest::Provider for IncrementalValueSync<T, S> {
-    fn transmission_interest(&self) -> transmission::Interest {
-        self.delivery.transmission_interest()
+    #[inline]
+    fn transmission_interest<Q: transmission::interest::Query>(
+        &self,
+        query: &mut Q,
+    ) -> transmission::interest::Result {
+        self.delivery.transmission_interest(query)
     }
 }

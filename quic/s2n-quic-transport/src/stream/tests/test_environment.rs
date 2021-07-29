@@ -45,13 +45,16 @@ pub fn pn(nr: usize) -> PacketNumber {
 /// - fin => finalization
 /// - cf => connection_flow_control_credits
 pub fn stream_interests(interests: &[&str]) -> StreamInterests {
-    let mut result = StreamInterests::default();
+    let mut result = StreamInterests {
+        retained: true,
+        ..Default::default()
+    };
     for interest in interests {
         match *interest {
             "ack" => result.delivery_notifications = true,
             "tx" => result.transmission = transmission::Interest::NewData,
             "lost" => result.transmission = transmission::Interest::LostData,
-            "fin" => result.finalization = true,
+            "fin" => result.retained = false,
             "cf" => result.connection_flow_control_credits = true,
             "sf" => result.stream_flow_control_credits = true,
             other => unreachable!("Unsupported interest {}", other),

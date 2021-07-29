@@ -882,8 +882,11 @@ pub trait Context<CC: CongestionController> {
 }
 
 impl transmission::interest::Provider for Manager {
-    fn transmission_interest(&self) -> transmission::Interest {
-        self.pto.transmission_interest()
+    fn transmission_interest<Q: transmission::interest::Query>(
+        &self,
+        query: &mut Q,
+    ) -> transmission::interest::Result {
+        self.pto.transmission_interest(query)
     }
 }
 
@@ -1020,12 +1023,16 @@ impl Pto {
 }
 
 impl transmission::interest::Provider for Pto {
-    fn transmission_interest(&self) -> transmission::Interest {
+    #[inline]
+    fn transmission_interest<Q: transmission::interest::Query>(
+        &self,
+        query: &mut Q,
+    ) -> transmission::interest::Result {
         if matches!(self.state, PtoState::RequiresTransmission(_)) {
-            transmission::Interest::Forced
-        } else {
-            transmission::Interest::None
+            query.on_forced()?;
         }
+
+        Ok(())
     }
 }
 

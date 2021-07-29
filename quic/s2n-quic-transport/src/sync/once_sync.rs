@@ -125,7 +125,11 @@ impl<T: Copy + Clone + Eq + PartialEq, S: ValueToFrameWriter<T>> OnceSync<T, S> 
 }
 
 impl<T, S> transmission::interest::Provider for OnceSync<T, S> {
-    fn transmission_interest(&self) -> transmission::Interest {
-        self.delivery.transmission_interest()
+    #[inline]
+    fn transmission_interest<Q: transmission::interest::Query>(
+        &self,
+        query: &mut Q,
+    ) -> transmission::interest::Result {
+        self.delivery.transmission_interest(query)
     }
 }

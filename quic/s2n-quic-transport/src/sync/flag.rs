@@ -147,11 +147,15 @@ impl<W: Writer> Flag<W> {
 }
 
 impl<W: Writer> transmission::interest::Provider for Flag<W> {
-    fn transmission_interest(&self) -> transmission::Interest {
+    #[inline]
+    fn transmission_interest<Q: transmission::interest::Query>(
+        &self,
+        query: &mut Q,
+    ) -> transmission::interest::Result {
         match &self.delivery {
-            DeliveryState::RequiresTransmission => transmission::Interest::NewData,
-            DeliveryState::RequiresRetransmission => transmission::Interest::LostData,
-            _ => transmission::Interest::None,
+            DeliveryState::RequiresTransmission => query.on_new_data(),
+            DeliveryState::RequiresRetransmission => query.on_lost_data(),
+            _ => Ok(()),
         }
     }
 }
@@ -194,9 +198,8 @@ mod tests {
         let mut pinger = Ping::default();
 
         assert!(pinger.is_idle());
-        assert_eq!(
-            pinger.transmission_interest(),
-            transmission::Interest::default(),
+        assert!(
+            !pinger.has_transmission_interest(),
             "status should not express interest in default state"
         );
 
@@ -211,14 +214,14 @@ mod tests {
         assert!(!pinger.is_idle());
 
         assert_eq!(
-            pinger.transmission_interest(),
+            pinger.get_transmission_interest(),
             transmission::Interest::NewData,
             "status should express interest in deliver after calling send"
         );
 
         pinger.send();
         assert_eq!(
-            pinger.transmission_interest(),
+            pinger.get_transmission_interest(),
             transmission::Interest::NewData,
             "status should accept duplicate calls to send"
         );
@@ -301,7 +304,7 @@ mod tests {
         pinger.on_packet_loss(&latest_packet_number);
 
         assert_eq!(
-            pinger.transmission_interest(),
+            pinger.get_transmission_interest(),
             transmission::Interest::LostData,
             "transmission should be active on latest packet loss"
         );
@@ -337,7 +340,7 @@ mod tests {
         assert_eq!(pinger.delivery, DeliveryState::Delivered);
 
         assert!(
-            pinger.transmission_interest().is_none(),
+            !pinger.has_transmission_interest(),
             "status should not express interest after complete",
         );
 

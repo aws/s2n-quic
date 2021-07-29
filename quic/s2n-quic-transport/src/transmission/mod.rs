@@ -119,11 +119,10 @@ impl<'a, 'sub, Config: endpoint::Config, P: Payload> PacketPayloadEncoder
 impl<'a, 'sub, Config: endpoint::Config, P: Payload> transmission::interest::Provider
     for Transmission<'a, 'sub, Config, P>
 {
-    fn transmission_interest(&self) -> transmission::Interest {
-        self.payload.transmission_interest()
-    }
-
-    fn has_transmission_interest(&self) -> bool {
-        self.payload.has_transmission_interest()
+    fn transmission_interest<Q: transmission::interest::Query>(
+        &self,
+        query: &mut Q,
+    ) -> transmission::interest::Result {
+        self.payload.transmission_interest(query)
     }
 }

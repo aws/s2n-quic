@@ -38,10 +38,14 @@ pub enum State {
 }
 
 impl transmission::interest::Provider for State {
-    fn transmission_interest(&self) -> transmission::Interest {
+    #[inline]
+    fn transmission_interest<Q: transmission::interest::Query>(
+        &self,
+        query: &mut Q,
+    ) -> transmission::interest::Result {
         match self {
-            State::RequiresTransmission(_) => transmission::Interest::NewData,
-            _ => transmission::Interest::None,
+            State::RequiresTransmission(_) => query.on_interest(transmission::Interest::NewData),
+            _ => Ok(()),
         }
     }
 }
@@ -139,8 +143,12 @@ impl Challenge {
 }
 
 impl transmission::interest::Provider for Challenge {
-    fn transmission_interest(&self) -> transmission::Interest {
-        self.state.transmission_interest()
+    #[inline]
+    fn transmission_interest<Q: transmission::interest::Query>(
+        &self,
+        query: &mut Q,
+    ) -> transmission::interest::Result {
+        self.state.transmission_interest(query)
     }
 }
 

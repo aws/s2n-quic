@@ -18,8 +18,7 @@ use crate::{
     connection::close::SocketAddress,
     contexts::WriteContext,
     recovery::{CongestionController, RttEstimator},
-    transmission,
-    transmission::Mode,
+    transmission::{self, Mode},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -392,15 +391,21 @@ impl<CC: CongestionController> transmission::interest::Provider for Path<CC> {
     /// Indicate if the path is interested in transmitting PATH_CHALLENGE or
     /// PATH_RESPONSE frames.
     #[inline]
-    fn transmission_interest(&self) -> transmission::Interest {
-        core::iter::empty()
-            //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
-            //# An endpoint MUST NOT delay transmission of a
-            //# packet containing a PATH_RESPONSE frame unless constrained by
-            //# congestion control.
-            .chain(self.response_data.map(|_| transmission::Interest::NewData))
-            .chain(Some(self.challenge.transmission_interest()))
-            .sum()
+    fn transmission_interest<Q: transmission::interest::Query>(
+        &self,
+        query: &mut Q,
+    ) -> transmission::interest::Result {
+        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
+        //# An endpoint MUST NOT delay transmission of a
+        //# packet containing a PATH_RESPONSE frame unless constrained by
+        //# congestion control.
+        if self.response_data.is_some() {
+            query.on_new_data()?;
+        }
+
+        self.challenge.transmission_interest(query)?;
+
+        Ok(())
     }
 }
 

@@ -58,10 +58,13 @@ impl<'a> super::Payload for Payload<'a> {
 }
 
 impl<'a> transmission::interest::Provider for Payload<'a> {
-    fn transmission_interest(&self) -> transmission::Interest {
-        transmission::Interest::default()
-            + self.ack_manager.transmission_interest()
-            + self.crypto_stream.transmission_interest()
-            + self.recovery_manager.transmission_interest()
+    fn transmission_interest<Q: transmission::interest::Query>(
+        &self,
+        query: &mut Q,
+    ) -> transmission::interest::Result {
+        self.ack_manager.transmission_interest(query)?;
+        self.crypto_stream.transmission_interest(query)?;
+        self.recovery_manager.transmission_interest(query)?;
+        Ok(())
     }
 }
