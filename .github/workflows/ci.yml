@@ -92,6 +92,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           args: --all-features --all-targets -- -D warnings
+          name: clippy (${{ matrix.toolchain }}) / report
 
   udeps:
     runs-on: ubuntu-latest
