@@ -75,11 +75,11 @@ gnuplot <<__EOF
     set xdata time
     set xlabel "Time measurement"
     set ylabel "Megabits/second"
-    set term svg
+    set term svg size 900,480
     set output "${OUTPUT_DIR}/${NAME}.svg"
     plot "${TMP}/s2n-quic.nsv" using 1:(\$2/125000) title 's2n-quic Network' with lines lt 1, \
-        "${TMP}/iperf.nsv" using 1:(\$2/125000) title 'iperf TCP Network' with lines lt 2, \
-        "${TMP}/s2n-quic.tsv" using (timecolumn(1) + "${QUIC_OFFSET}"):2 title 's2n-quic Streams' with lines lt 3, \
+        "${TMP}/s2n-quic.tsv" using (timecolumn(1) + "${QUIC_OFFSET}"):2 title 's2n-quic Streams' with lines lt 2, \
+        "${TMP}/iperf.nsv" using 1:(\$2/125000) title 'iperf TCP Network' with lines lt 3, \
         "${TMP}/iperf.tsv" using (timecolumn(1) + "${IPERF_OFFSET}"):2 title 'iperf TCP Streams' with lines lt 4
 __EOF
 
