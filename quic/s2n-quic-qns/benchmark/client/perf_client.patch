@@ -1,8 +1,888 @@
+diff --git a/perf/Cargo.toml b/perf/Cargo.toml
+index 494d4996..fe545dd9 100644
+--- a/perf/Cargo.toml
++++ b/perf/Cargo.toml
+@@ -13,6 +13,8 @@ hdrhistogram = { version = "7.2", default-features = false }
+ quinn = { path = "../quinn" }
+ rcgen = "0.8"
+ rustls = { version = "0.19", features = ["dangerous_configuration"] }
++serde = { version = "1.0", features = ["derive"] }
++serde_json = "1.0"
+ socket2 = "0.4"
+ webpki = "0.21"
+ structopt = "0.3"
+diff --git a/perf/src/bin/perf_client.rs b/perf/src/bin/perf_client.rs
+index 0b2f6af3..fedd61a1 100644
+--- a/perf/src/bin/perf_client.rs
++++ b/perf/src/bin/perf_client.rs
+@@ -7,12 +7,15 @@ use std::{
+ use anyhow::{Context, Result};
+ use bytes::Bytes;
+ use futures::StreamExt;
+-use hdrhistogram::Histogram;
++use perf::stats::{Stats, StreamStats};
+ use structopt::StructOpt;
+ use tokio::sync::Semaphore;
+ use tracing::{debug, error, info};
+ 
+ use perf::bind_socket;
++use std::fs::File;
++use std::ops::DerefMut;
++use std::path::{Path, PathBuf};
+ 
+ /// Connects to a QUIC perf server and maintains a specified pattern of requests until interrupted
+ #[derive(StructOpt)]
+@@ -42,6 +45,9 @@ struct Opt {
+     /// The time to run in seconds
+     #[structopt(long, default_value = "60")]
+     duration: u64,
++    /// The interval in seconds at which stats are reported
++    #[structopt(long, default_value = "1")]
++    interval: u64,
+     /// Send buffer size in bytes
+     #[structopt(long, default_value = "2097152")]
+     send_buffer_size: usize,
+@@ -54,6 +60,9 @@ struct Opt {
+     /// Whether to print connection statistics
+     #[structopt(long)]
+     conn_stats: bool,
++    /// File path to output JSON statistics to. If the file is '-', stdout will be used
++    #[structopt(long)]
++    json: Option<PathBuf>,
+ }
+ 
+ #[tokio::main(flavor = "current_thread")]
+@@ -67,6 +76,10 @@ async fn main() {
+     }
+ }
+ 
++/// Statistics for the currently open streams
++#[derive(Clone)]
++struct OpenStreamStats(Arc<Mutex<Vec<Arc<StreamStats>>>>);
++
+ async fn run(opt: Opt) -> Result<()> {
+     let mut host_parts = opt.host.split(':');
+     let host_name = host_parts.next().unwrap();
+@@ -124,7 +137,7 @@ async fn run(opt: Opt) -> Result<()> {
+         .ciphersuites
+         .push(&rustls::ciphersuite::TLS13_CHACHA20_POLY1305_SHA256);
+ 
+-    let stats = Arc::new(Mutex::new(Stats::default()));
++    let stream_stats = OpenStreamStats(Arc::new(Mutex::new(vec![])));
+ 
+     let quinn::NewConnection {
+         connection,
+@@ -144,14 +157,14 @@ async fn run(opt: Opt) -> Result<()> {
+             drive_uni(
+                 connection.clone(),
+                 acceptor,
+-                stats.clone(),
++                stream_stats.clone(),
+                 opt.uni_requests,
+                 opt.upload_size,
+                 opt.download_size
+             ),
+             drive_bi(
+                 connection.clone(),
+-                stats.clone(),
++                stream_stats.clone(),
+                 opt.bi_requests,
+                 opt.upload_size,
+                 opt.download_size
+@@ -159,12 +172,19 @@ async fn run(opt: Opt) -> Result<()> {
+         )
+     };
+ 
+-    let print_fut = async {
++    let mut stats = Stats::default();
++
++    let stats_fut = async {
++        let interval_duration = Duration::from_secs(opt.interval);
++
+         loop {
+-            tokio::time::sleep(Duration::from_secs(2)).await;
++            let start = Instant::now();
++            tokio::time::sleep(interval_duration).await;
+             {
+-                let guard = stats.lock().unwrap();
+-                guard.print();
++                let mut guard = stream_stats.0.lock().unwrap();
++                stats.on_interval(start, guard.deref_mut());
++
++                stats.print();
+                 if opt.conn_stats {
+                     println!("{:?}\n", connection.stats());
+                 }
+@@ -174,12 +194,13 @@ async fn run(opt: Opt) -> Result<()> {
+ 
+     tokio::select! {
+         _ = drive_fut => {}
+-        _ = print_fut => {}
++        _ = stats_fut => {}
+         _ = tokio::signal::ctrl_c() => {
+             info!("shutting down");
+             connection.close(0u32.into(), b"interrupted");
+         }
+-        _ = tokio::time::sleep(Duration::from_secs(opt.duration)) => {
++        // Add a small duration so the final interval can be reported
++        _ = tokio::time::sleep(Duration::from_secs(opt.duration) + Duration::from_millis(200)) => {
+             info!("shutting down");
+             connection.close(0u32.into(), b"done");
+         }
+@@ -187,12 +208,23 @@ async fn run(opt: Opt) -> Result<()> {
+ 
+     endpoint.wait_idle().await;
+ 
+-    // TODO: Print stats
++    match opt.json {
++        Some(path) if path == Path::new("-") => stats.print_json(std::io::stdout()),
++        Some(path) => {
++            let file = File::create(path)?;
++            stats.print_json(file)
++        }
++        _ => {}
++    }
+ 
+     Ok(())
+ }
+ 
+-async fn drain_stream(mut stream: quinn::RecvStream, stats: &mut RequestStats) -> Result<()> {
++async fn drain_stream(
++    mut stream: quinn::RecvStream,
++    download: u64,
++    stream_stats: OpenStreamStats,
++) -> Result<()> {
+     #[rustfmt::skip]
+     let mut bufs = [
+         Bytes::new(), Bytes::new(), Bytes::new(), Bytes::new(),
+@@ -204,17 +236,29 @@ async fn drain_stream(mut stream: quinn::RecvStream, stats: &mut RequestStats) -
+         Bytes::new(), Bytes::new(), Bytes::new(), Bytes::new(),
+         Bytes::new(), Bytes::new(), Bytes::new(), Bytes::new(),
+     ];
+-    while stream.read_chunks(&mut bufs[..]).await?.is_some() {
+-        if stats.first_byte.is_none() {
+-            stats.first_byte = Some(Instant::now());
++    let download_start = Instant::now();
++    let recv_stream_stats = Arc::new(StreamStats::new_receiver(stream.id(), download));
++    stream_stats
++        .0
++        .lock()
++        .unwrap()
++        .push(recv_stream_stats.clone());
++
++    let mut first_byte = true;
++
++    while let Some(size) = stream.read_chunks(&mut bufs[..]).await? {
++        if first_byte {
++            recv_stream_stats.on_first_byte(download_start.elapsed());
++            first_byte = false;
+         }
++        let bytes_received = bufs[..size].iter().map(|b| b.len()).sum();
++        recv_stream_stats.on_bytes(bytes_received);
+     }
+ 
+-    let now = Instant::now();
+-    if stats.first_byte.is_none() {
+-        stats.first_byte = Some(now);
++    if first_byte {
++        recv_stream_stats.on_first_byte(download_start.elapsed());
+     }
+-    stats.download_end = Some(now);
++    recv_stream_stats.finish(download_start.elapsed());
+ 
+     debug!("response finished on {}", stream.id());
+     Ok(())
+@@ -223,7 +267,7 @@ async fn drain_stream(mut stream: quinn::RecvStream, stats: &mut RequestStats) -
+ async fn drive_uni(
+     connection: quinn::Connection,
+     acceptor: UniAcceptor,
+-    stats: Arc<Mutex<Stats>>,
++    stream_stats: OpenStreamStats,
+     concurrency: u64,
+     upload: u64,
+     download: u64,
+@@ -232,23 +276,14 @@ async fn drive_uni(
+ 
+     loop {
+         let permit = sem.clone().acquire_owned().await.unwrap();
+-        let mut request_stats = RequestStats::new(upload, download);
+         let send = connection.open_uni().await?;
+         let acceptor = acceptor.clone();
+-        let stats = stats.clone();
++        let stream_stats = stream_stats.clone();
+ 
+         debug!("sending request on {}", send.id());
+         tokio::spawn(async move {
+-            if let Err(e) = request_uni(send, acceptor, upload, download, &mut request_stats).await
+-            {
++            if let Err(e) = request_uni(send, acceptor, upload, download, stream_stats).await {
+                 error!("sending request failed: {:#}", e);
+-            } else {
+-                request_stats.success = true;
+-            }
+-
+-            {
+-                let mut guard = stats.lock().unwrap();
+-                guard.record(request_stats);
+             }
+ 
+             drop(permit);
+@@ -261,9 +296,9 @@ async fn request_uni(
+     acceptor: UniAcceptor,
+     upload: u64,
+     download: u64,
+-    stats: &mut RequestStats,
++    stream_stats: OpenStreamStats,
+ ) -> Result<()> {
+-    request(send, upload, download, stats).await?;
++    request(send, upload, download, stream_stats.clone()).await?;
+     let recv = {
+         let mut guard = acceptor.0.lock().await;
+         guard
+@@ -271,7 +306,7 @@ async fn request_uni(
+             .await
+             .ok_or_else(|| anyhow::anyhow!("End of stream"))
+     }??;
+-    drain_stream(recv, stats).await?;
++    drain_stream(recv, download, stream_stats).await?;
+     Ok(())
+ }
+ 
+@@ -279,10 +314,21 @@ async fn request(
+     mut send: quinn::SendStream,
+     mut upload: u64,
+     download: u64,
+-    stats: &mut RequestStats,
++    stream_stats: OpenStreamStats,
+ ) -> Result<()> {
+-    stats.upload_start = Some(Instant::now());
++    let upload_start = Instant::now();
+     send.write_all(&download.to_be_bytes()).await?;
++    if upload == 0 {
++        send.finish().await?;
++        return Ok(());
++    }
++
++    let send_stream_stats = Arc::new(StreamStats::new_sender(send.id(), upload));
++    stream_stats
++        .0
++        .lock()
++        .unwrap()
++        .push(send_stream_stats.clone());
+ 
+     const DATA: [u8; 1024 * 1024] = [42; 1024 * 1024];
+     while upload > 0 {
+@@ -290,12 +336,11 @@ async fn request(
+         send.write_chunk(Bytes::from_static(&DATA[..chunk_len as usize]))
+             .await
+             .context("sending response")?;
++        send_stream_stats.on_bytes(chunk_len as usize);
+         upload -= chunk_len;
+     }
+     send.finish().await?;
+-
+-    let now = Instant::now();
+-    stats.download_start = Some(now);
++    send_stream_stats.finish(upload_start.elapsed());
+ 
+     debug!("upload finished on {}", send.id());
+     Ok(())
+@@ -303,7 +348,7 @@ async fn request(
+ 
+ async fn drive_bi(
+     connection: quinn::Connection,
+-    stats: Arc<Mutex<Stats>>,
++    stream_stats: OpenStreamStats,
+     concurrency: u64,
+     upload: u64,
+     download: u64,
+@@ -312,21 +357,13 @@ async fn drive_bi(
+ 
+     loop {
+         let permit = sem.clone().acquire_owned().await.unwrap();
+-        let mut request_stats = RequestStats::new(upload, download);
+         let (send, recv) = connection.open_bi().await?;
+-        let stats = stats.clone();
++        let stream_stats = stream_stats.clone();
+ 
+         debug!("sending request on {}", send.id());
+         tokio::spawn(async move {
+-            if let Err(e) = request_bi(send, recv, upload, download, &mut request_stats).await {
++            if let Err(e) = request_bi(send, recv, upload, download, stream_stats).await {
+                 error!("request failed: {:#}", e);
+-            } else {
+-                request_stats.success = true;
+-            }
+-
+-            {
+-                let mut guard = stats.lock().unwrap();
+-                guard.record(request_stats);
+             }
+ 
+             drop(permit);
+@@ -339,10 +376,10 @@ async fn request_bi(
+     recv: quinn::RecvStream,
+     upload: u64,
+     download: u64,
+-    stats: &mut RequestStats,
++    stream_stats: OpenStreamStats,
+ ) -> Result<()> {
+-    request(send, upload, download, stats).await?;
+-    drain_stream(recv, stats).await?;
++    request(send, upload, download, stream_stats.clone()).await?;
++    drain_stream(recv, download, stream_stats).await?;
+     Ok(())
+ }
+ 
+@@ -368,142 +405,3 @@ impl rustls::ServerCertVerifier for SkipServerVerification {
+         Ok(rustls::ServerCertVerified::assertion())
+     }
+ }
+-
+-struct RequestStats {
+-    start: Instant,
+-    upload_start: Option<Instant>,
+-    download_start: Option<Instant>,
+-    first_byte: Option<Instant>,
+-    download_end: Option<Instant>,
+-    upload_size: u64,
+-    download_size: u64,
+-    success: bool,
+-}
+-
+-impl RequestStats {
+-    pub fn new(upload_size: u64, download_size: u64) -> Self {
+-        Self {
+-            start: Instant::now(),
+-            upload_start: None,
+-            download_start: None,
+-            first_byte: None,
+-            upload_size,
+-            download_size,
+-            download_end: None,
+-            success: false,
+-        }
+-    }
+-}
+-
+-struct Stats {
+-    /// Test start time
+-    start: Instant,
+-    /// Durations of complete requests
+-    duration: Histogram<u64>,
+-    /// Time from finishing the upload until receiving the first byte of the response
+-    fbl: Histogram<u64>,
+-    /// Throughput for uploads
+-    upload_throughput: Histogram<u64>,
+-    /// Throughput for downloads
+-    download_throughput: Histogram<u64>,
+-    /// The total amount of requests executed
+-    requests: usize,
+-    /// The amount of successful requests
+-    success: usize,
+-}
+-
+-impl Default for Stats {
+-    fn default() -> Self {
+-        Self {
+-            start: Instant::now(),
+-            duration: Histogram::new(3).unwrap(),
+-            fbl: Histogram::new(3).unwrap(),
+-            upload_throughput: Histogram::new(3).unwrap(),
+-            download_throughput: Histogram::new(3).unwrap(),
+-            requests: 0,
+-            success: 0,
+-        }
+-    }
+-}
+-
+-impl Stats {
+-    pub fn record(&mut self, request: RequestStats) {
+-        self.requests += 1;
+-        self.success += if request.success { 1 } else { 0 };
+-
+-        // Record the remaining metrics only if the request is successful
+-        // In this case all timings are available
+-        if !request.success {
+-            return;
+-        }
+-
+-        let duration = request.download_end.unwrap().duration_since(request.start);
+-        self.duration.record(duration.as_millis() as u64).unwrap();
+-
+-        let fbl = request
+-            .first_byte
+-            .unwrap()
+-            .duration_since(request.download_start.unwrap());
+-        self.fbl.record(fbl.as_millis() as u64).unwrap();
+-
+-        let download_duration = request
+-            .download_end
+-            .unwrap()
+-            .duration_since(request.download_start.unwrap());
+-        let download_bps = throughput_bps(download_duration, request.download_size);
+-        self.download_throughput
+-            .record(download_bps as u64)
+-            .unwrap();
+-
+-        let upload_duration = request
+-            .download_start
+-            .unwrap()
+-            .duration_since(request.upload_start.unwrap());
+-        let upload_bps = throughput_bps(upload_duration, request.upload_size);
+-        self.upload_throughput.record(upload_bps as u64).unwrap();
+-    }
+-
+-    pub fn print(&self) {
+-        let dt = self.start.elapsed();
+-        let rps = self.requests as f64 / dt.as_secs_f64();
+-
+-        println!("Overall stats:");
+-        println!(
+-            "RPS: {:.2} ({} requests in {:4.2?})",
+-            rps, self.requests, dt,
+-        );
+-        println!(
+-            "Success rate: {:4.2}%",
+-            100.0 * self.success as f64 / self.requests as f64,
+-        );
+-        println!();
+-
+-        println!("Stream metrics:\n");
+-
+-        println!("      │ Duration  │ FBL       | Upload Throughput | Download Throughput");
+-        println!("──────┼───────────┼───────────┼───────────────────┼────────────────────");
+-
+-        let print_metric = |label: &'static str, get_metric: fn(&Histogram<u64>) -> u64| {
+-            println!(
+-                " {} │ {:>9} │ {:>9} │ {:11.2} MiB/s │ {:13.2} MiB/s",
+-                label,
+-                format!("{:.2?}", Duration::from_millis(get_metric(&self.duration))),
+-                format!("{:.2?}", Duration::from_millis(get_metric(&self.fbl))),
+-                get_metric(&self.upload_throughput) as f64 / 1024.0 / 1024.0,
+-                get_metric(&self.download_throughput) as f64 / 1024.0 / 1024.0,
+-            );
+-        };
+-
+-        print_metric("AVG ", |hist| hist.mean() as u64);
+-        print_metric("P0  ", |hist| hist.value_at_quantile(0.00));
+-        print_metric("P10 ", |hist| hist.value_at_quantile(0.10));
+-        print_metric("P50 ", |hist| hist.value_at_quantile(0.50));
+-        print_metric("P90 ", |hist| hist.value_at_quantile(0.90));
+-        print_metric("P100", |hist| hist.value_at_quantile(1.00));
+-        println!();
+-    }
+-}
+-
+-fn throughput_bps(duration: Duration, size: u64) -> f64 {
+-    (size as f64) / (duration.as_secs_f64())
+-}
+diff --git a/perf/src/lib.rs b/perf/src/lib.rs
+index 6feba17c..bba20c88 100644
+--- a/perf/src/lib.rs
++++ b/perf/src/lib.rs
+@@ -4,6 +4,8 @@ use anyhow::{Context, Result};
+ use socket2::{Domain, Protocol, Socket, Type};
+ use tracing::warn;
+ 
++pub mod stats;
++
+ pub fn bind_socket(
+     addr: SocketAddr,
+     send_buffer_size: usize,
+diff --git a/perf/src/stats.rs b/perf/src/stats.rs
+new file mode 100644
+index 00000000..bb363be5
+--- /dev/null
++++ b/perf/src/stats.rs
+@@ -0,0 +1,382 @@
++use hdrhistogram::Histogram;
++use quinn::StreamId;
++use std::io::Write;
++use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
++use std::sync::Arc;
++use std::time::{Duration, Instant, SystemTime};
++
++pub struct Stats {
++    /// Test start time
++    start_instant: Instant,
++    /// Test start system time
++    start: SystemTime,
++    /// Durations of uploads
++    upload_duration: Histogram<u64>,
++    /// Durations of downloads
++    download_duration: Histogram<u64>,
++    /// Time from finishing the upload until receiving the first byte of the response
++    fbl: Histogram<u64>,
++    /// Throughput for uploads
++    upload_throughput: Histogram<u64>,
++    /// Throughput for downloads
++    download_throughput: Histogram<u64>,
++    /// The total amount of requests executed
++    requests: usize,
++    /// Stats accumulated over each interval
++    intervals: Vec<Interval>,
++}
++
++impl Default for Stats {
++    fn default() -> Self {
++        Self {
++            start_instant: Instant::now(),
++            start: SystemTime::now(),
++            upload_duration: Histogram::new(3).unwrap(),
++            download_duration: Histogram::new(3).unwrap(),
++            fbl: Histogram::new(3).unwrap(),
++            upload_throughput: Histogram::new(3).unwrap(),
++            download_throughput: Histogram::new(3).unwrap(),
++            requests: 0,
++            intervals: vec![],
++        }
++    }
++}
++
++impl Stats {
++    pub fn on_interval(&mut self, start: Instant, stream_stats: &mut Vec<Arc<StreamStats>>) {
++        let mut interval = Interval::new(start - self.start_instant, self.start_instant.elapsed());
++
++        stream_stats.retain(|stream_stats| {
++            self.record(stream_stats.clone());
++            interval.record_stream_stats(stream_stats.clone());
++            // Retain if not finished yet
++            !stream_stats.finished.load(Ordering::SeqCst)
++        });
++
++        self.intervals.push(interval);
++    }
++
++    fn record(&mut self, stream_stats: Arc<StreamStats>) {
++        if stream_stats.finished.load(Ordering::SeqCst) {
++            let duration = stream_stats.duration.load(Ordering::SeqCst) as u64;
++            let bps = throughput_bytes_per_second(duration, stream_stats.request_size);
++
++            if stream_stats.sender {
++                self.upload_throughput.record(bps as u64).unwrap();
++                self.upload_duration.record(duration).unwrap();
++            } else {
++                self.download_throughput.record(bps as u64).unwrap();
++                self.download_duration.record(duration).unwrap();
++                self.fbl
++                    .record(stream_stats.first_byte_latency.load(Ordering::SeqCst) as u64)
++                    .unwrap();
++                self.requests += 1;
++            }
++        }
++    }
++
++    pub fn print(&self) {
++        let dt = self.start_instant.elapsed();
++        let rps = self.requests as f64 / dt.as_secs_f64();
++
++        println!("Overall stats:");
++        println!(
++            "RPS: {:.2} ({} requests in {:4.2?})",
++            rps, self.requests, dt,
++        );
++        println!();
++
++        println!("Stream metrics:\n");
++
++        println!("      │ Upload Duration │ Download Duration | FBL        | Upload Throughput | Download Throughput");
++        println!("──────┼─────────────────┼───────────────────┼────────────┼───────────────────┼────────────────────");
++
++        let print_metric = |label: &'static str, get_metric: fn(&Histogram<u64>) -> u64| {
++            println!(
++                " {} │ {:>15} │ {:>17} │  {:>9} │ {:11.2} MiB/s │ {:13.2} MiB/s",
++                label,
++                format!(
++                    "{:.2?}",
++                    Duration::from_micros(get_metric(&self.upload_duration))
++                ),
++                format!(
++                    "{:.2?}",
++                    Duration::from_micros(get_metric(&self.download_duration))
++                ),
++                format!("{:.2?}", Duration::from_micros(get_metric(&self.fbl))),
++                get_metric(&self.upload_throughput) as f64 / 1024.0 / 1024.0,
++                get_metric(&self.download_throughput) as f64 / 1024.0 / 1024.0,
++            );
++        };
++
++        print_metric("AVG ", |hist| hist.mean() as u64);
++        print_metric("P0  ", |hist| hist.value_at_quantile(0.00));
++        print_metric("P10 ", |hist| hist.value_at_quantile(0.10));
++        print_metric("P50 ", |hist| hist.value_at_quantile(0.50));
++        print_metric("P90 ", |hist| hist.value_at_quantile(0.90));
++        print_metric("P100", |hist| hist.value_at_quantile(1.00));
++        println!();
++    }
++
++    pub fn print_json<W: Write>(&self, out: W) {
++        json::print(&self, out);
++    }
++}
++
++pub struct StreamStats {
++    id: StreamId,
++    request_size: u64,
++    bytes: AtomicUsize,
++    sender: bool,
++    finished: AtomicBool,
++    duration: AtomicU64,
++    first_byte_latency: AtomicU64,
++}
++
++impl StreamStats {
++    pub fn new_sender(id: StreamId, upload_size: u64) -> Self {
++        Self {
++            id,
++            request_size: upload_size,
++            bytes: Default::default(),
++            sender: true,
++            finished: Default::default(),
++            duration: Default::default(),
++            first_byte_latency: Default::default(),
++        }
++    }
++
++    pub fn new_receiver(id: StreamId, download_size: u64) -> Self {
++        Self {
++            id,
++            request_size: download_size,
++            bytes: Default::default(),
++            sender: false,
++            finished: Default::default(),
++            duration: Default::default(),
++            first_byte_latency: Default::default(),
++        }
++    }
++
++    pub fn on_first_byte(&self, latency: Duration) {
++        self.first_byte_latency
++            .store(latency.as_micros() as u64, Ordering::SeqCst);
++    }
++
++    pub fn on_bytes(&self, bytes: usize) {
++        self.bytes.fetch_add(bytes, Ordering::SeqCst);
++    }
++
++    pub fn finish(&self, duration: Duration) {
++        self.duration
++            .store(duration.as_micros() as u64, Ordering::SeqCst);
++        self.finished.store(true, Ordering::SeqCst);
++    }
++}
++
++struct Interval {
++    streams: Vec<StreamIntervalStats>,
++    period: IntervalPeriod,
++}
++
++impl Interval {
++    fn new(start: Duration, end: Duration) -> Self {
++        let period = IntervalPeriod {
++            start: start.as_secs_f64(),
++            end: end.as_secs_f64(),
++            seconds: (end - start).as_secs_f64(),
++        };
++
++        Self {
++            streams: vec![],
++            period,
++        }
++    }
++
++    fn record_stream_stats(&mut self, stream_stats: Arc<StreamStats>) {
++        let bytes = stream_stats.bytes.swap(0, Ordering::SeqCst);
++        self.streams.push(StreamIntervalStats {
++            id: stream_stats.id,
++            bytes,
++            sender: stream_stats.sender,
++        })
++    }
++}
++
++struct IntervalPeriod {
++    start: f64,
++    end: f64,
++    seconds: f64,
++}
++
++struct StreamIntervalStats {
++    id: StreamId,
++    bytes: usize,
++    sender: bool,
++}
++
++fn throughput_bytes_per_second(duration_in_micros: u64, size: u64) -> f64 {
++    (size as f64) / (duration_in_micros as f64 / 1000000.0)
++}
++
++mod json {
++    use crate::stats;
++    use crate::stats::{Stats, StreamIntervalStats};
++    use serde::{self, ser::SerializeStruct, Serialize, Serializer};
++    use std::io::Write;
++    use std::time::{SystemTime, UNIX_EPOCH};
++
++    pub(crate) fn print<W: Write>(stats: &Stats, out: W) {
++        let report = Report {
++            start: Start {
++                timestamp: stats.start,
++            },
++            intervals: &stats
++                .intervals
++                .iter()
++                .map(|interval| Interval::from_stats_interval(interval))
++                .collect(),
++        };
++
++        serde_json::to_writer(out, &report).unwrap();
++    }
++
++    #[derive(Serialize)]
++    struct Report<'a> {
++        start: Start,
++        intervals: &'a Vec<Interval>,
++        // TODO: add end stats
++    }
++
++    #[derive(Serialize)]
++    struct Start {
++        #[serde(serialize_with = "serialize_timestamp")]
++        timestamp: SystemTime,
++    }
++
++    fn serialize_timestamp<S>(time: &SystemTime, s: S) -> Result<S::Ok, S::Error>
++    where
++        S: serde::Serializer,
++    {
++        use serde::ser::SerializeMap;
++        let mut state = s.serialize_map(Some(1))?;
++        state.serialize_entry(
++            "timesecs",
++            &time.duration_since(UNIX_EPOCH).unwrap().as_secs(),
++        )?;
++        state.end()
++    }
++
++    struct Interval {
++        streams: Vec<Stream>,
++        recv_sum: Sum,
++        send_sum: Sum,
++    }
++
++    impl Interval {
++        fn from_stats_interval(interval: &stats::Interval) -> Self {
++            Self {
++                streams: interval
++                    .streams
++                    .iter()
++                    .map(|stats| Stream::from_stream_interval_stats(stats, &interval.period))
++                    .collect(),
++                recv_sum: Sum::from_stream_interval_stats(
++                    &interval.streams,
++                    &interval.period,
++                    false,
++                ),
++                send_sum: Sum::from_stream_interval_stats(
++                    &interval.streams,
++                    &interval.period,
++                    true,
++                ),
++            }
++        }
++    }
++
++    impl Serialize for Interval {
++        fn serialize<S>(
++            &self,
++            serializer: S,
++        ) -> Result<<S as Serializer>::Ok, <S as Serializer>::Error>
++        where
++            S: Serializer,
++        {
++            let mut state = serializer.serialize_struct("Interval", 2)?;
++            state.serialize_field("streams", &self.streams)?;
++            // iperf3 outputs duplicate "sum" entries when run in bidirectional mode
++            // serde does not support duplicate keys, so only output one of the sums
++            if self.send_sum.bytes > 0 {
++                state.serialize_field("sum", &self.send_sum)?;
++            } else {
++                state.serialize_field("sum", &self.recv_sum)?;
++            }
++            state.end()
++        }
++    }
++
++    #[derive(Serialize)]
++    struct Stream {
++        id: u64,
++        start: f64,
++        end: f64,
++        seconds: f64,
++        bytes: usize,
++        bits_per_second: f64,
++        sender: bool,
++    }
++
++    impl Stream {
++        fn from_stream_interval_stats(
++            stats: &stats::StreamIntervalStats,
++            period: &stats::IntervalPeriod,
++        ) -> Self {
++            let bits_per_second = stats.bytes as f64 * 8.0 / period.seconds;
++
++            Self {
++                id: stats.id.0,
++                start: period.start,
++                end: period.end,
++                seconds: period.seconds,
++                bytes: stats.bytes,
++                bits_per_second,
++                sender: stats.sender,
++            }
++        }
++    }
++
++    #[derive(Serialize)]
++    struct Sum {
++        start: f64,
++        end: f64,
++        seconds: f64,
++        bytes: usize,
++        bits_per_second: f64,
++        sender: bool,
++    }
++
++    impl Sum {
++        fn from_stream_interval_stats(
++            stats: &[StreamIntervalStats],
++            period: &stats::IntervalPeriod,
++            sender: bool,
++        ) -> Self {
++            let bytes = stats
++                .iter()
++                .filter(|stat| stat.sender == sender)
++                .map(|stat| stat.bytes)
++                .sum();
++            let bits_per_second = bytes as f64 * 8.0 / period.seconds;
++
++            Self {
++                start: period.start,
++                end: period.end,
++                seconds: period.seconds,
++                bytes,
++                bits_per_second,
++                sender,
++            }
++        }
++    }
++}
 diff --git a/quinn/src/platform/unix.rs b/quinn/src/platform/unix.rs
-index 9f76b75e..b63e0771 100644
+index 9344ecf1..39653290 100644
 --- a/quinn/src/platform/unix.rs
 +++ b/quinn/src/platform/unix.rs
-@@ -511,7 +511,7 @@ mod gso {
+@@ -528,7 +528,7 @@ mod gso {
          if rc != -1 {
              // As defined in linux/udp.h
              // #define UDP_MAX_SEGMENTS        (1 << 6UL)
