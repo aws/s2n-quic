@@ -33,4 +33,5 @@ $QNS_BIN  \
   --upload-size "$UPLOAD_B" \
   --insecure \
   --duration "$DURATION" \
+  --json "/logs/perf_client.json" \
   server4:443  2>&1 | tee $LOG
