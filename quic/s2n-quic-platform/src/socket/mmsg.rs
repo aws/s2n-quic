@@ -14,8 +14,8 @@ use std::{io, os::unix::io::AsRawFd};
 pub struct Queue<B: Buffer>(queue::Queue<Ring<B>>);
 
 impl<B: Buffer> Queue<B> {
-    pub fn new(buffer: B) -> Self {
-        let queue = queue::Queue::new(Ring::new(buffer));
+    pub fn new(buffer: B, max_gso: usize) -> Self {
+        let queue = queue::Queue::new(Ring::new(buffer, max_gso));
 
         Self(queue)
     }
@@ -78,6 +78,31 @@ impl<B: Buffer> Queue<B> {
                 let count = status as usize;
                 entries.finish(count);
                 Ok(count)
+            }
+            Err(err) if err.kind() == io::ErrorKind::Interrupted => {
+                entries.cancel(0);
+                Ok(0)
+            }
+            Err(err) if err.kind() == io::ErrorKind::PermissionDenied => {
+                // just drop the packets on permission errors - most likely a firewall issue
+                let count = vlen as usize;
+                entries.finish(count);
+                Ok(count)
+            }
+            // check to see if we need to disable GSO
+            #[cfg(target_os = "linux")]
+            Err(err) if unsafe { *libc::__errno_location() } == libc::EIO => {
+                let count = vlen as usize;
+                entries.finish(count);
+
+                if self.0.max_gso() > 1 {
+                    self.0.disable_gso();
+                    // unfortunately we've already assembled GSO packets so just drop them
+                    // and wait for a retransmission
+                    Ok(count)
+                } else {
+                    Err(err)
+                }
             }
             Err(err) => {
                 entries.cancel(0);
@@ -142,6 +167,10 @@ impl<B: Buffer> Queue<B> {
                 let count = status as usize;
                 entries.finish(count);
                 Ok(count)
+            }
+            Err(err) if err.kind() == io::ErrorKind::Interrupted => {
+                entries.cancel(0);
+                Ok(0)
             }
             Err(err) => {
                 entries.cancel(0);

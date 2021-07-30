@@ -14,8 +14,8 @@ use std::{io, os::unix::io::AsRawFd};
 pub struct Queue<B: Buffer>(queue::Queue<Ring<B>>);
 
 impl<B: Buffer> Queue<B> {
-    pub fn new(buffer: B) -> Self {
-        let queue = queue::Queue::new(Ring::new(buffer));
+    pub fn new(buffer: B, max_segments: usize) -> Self {
+        let queue = queue::Queue::new(Ring::new(buffer, max_segments));
 
         Self(queue)
     }
@@ -59,13 +59,34 @@ impl<B: Buffer> Queue<B> {
                 Ok(_len) => {
                     count += 1;
                 }
-                Err(err) => {
-                    if count > 0 && err.kind() == io::ErrorKind::WouldBlock {
-                        break;
+                Err(err) if count > 0 && err.kind() == io::ErrorKind::WouldBlock => {
+                    break;
+                }
+                Err(err) if err.kind() == io::ErrorKind::Interrupted => {
+                    break;
+                }
+                Err(err) if err.kind() == io::ErrorKind::PermissionDenied => {
+                    // just drop the packets on permission errors - most likely a firewall issue
+                    count += 1;
+                }
+                // check to see if we need to disable GSO
+                #[cfg(target_os = "linux")]
+                Err(err) if unsafe { *libc::__errno_location() } == libc::EIO => {
+                    // unfortunately we've already assembled GSO packets so just drop them
+                    // and wait for a retransmission
+                    let len = entries.len();
+                    entries.finish(len);
+
+                    if self.0.max_gso() > 1 {
+                        self.0.disable_gso();
+                        return Ok(count);
                     } else {
-                        entries.finish(count);
                         return Err(err);
                     }
+                }
+                Err(err) => {
+                    entries.finish(count);
+                    return Err(err);
                 }
             }
         }
@@ -126,6 +147,9 @@ impl<B: Buffer> Queue<B> {
                     }
 
                     count += 1;
+                }
+                Err(err) if err.kind() == io::ErrorKind::Interrupted => {
+                    break;
                 }
                 Err(err) => {
                     if count > 0 && err.kind() == io::ErrorKind::WouldBlock {

@@ -21,7 +21,7 @@ pin-project = { version = "1", optional = true }
 s2n-quic-core = { version = "0.1.0", path = "../s2n-quic-core", default-features = false }
 socket2 = { version = "0.4", features = ["all"], optional = true }
 tokio = { version = "1", default-features = false, features = ["macros", "net", "rt", "time"], optional = true }
-zeroize = { version = "1", default-features = false, optional = true }
+zeroize = { version = "=1.2", default-features = false, optional = true }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

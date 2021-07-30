@@ -79,7 +79,7 @@ impl Builder {
             // Safety: the KeyLog is stored on `self` to ensure it outlives `config`
             if let Some(keylog) = self.keylog.as_ref() {
                 self.config
-                    .set_key_log_callback(Some(KeyLog::callback), Arc::as_ptr(&keylog) as *mut _)?;
+                    .set_key_log_callback(Some(KeyLog::callback), Arc::as_ptr(keylog) as *mut _)?;
             } else {
                 // disable key logging if it failed to create a file
                 self.config

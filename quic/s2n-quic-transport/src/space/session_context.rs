@@ -153,7 +153,7 @@ impl<'a, Config: endpoint::Config> tls::Context<<Config::TLSEndpoint as tls::End
         let peer_flow_control_limits = peer_parameters.flow_control_limits();
 
         let stream_manager = AbstractStreamManager::new(
-            &self.limits,
+            self.limits,
             Config::ENDPOINT_TYPE,
             self.limits.initial_flow_control_limits(),
             peer_flow_control_limits,
@@ -201,7 +201,7 @@ impl<'a, Config: endpoint::Config> tls::Context<<Config::TLSEndpoint as tls::End
 
                 // All of the other spaces are discarded by the time the handshake is confirmed so
                 // we only need to notify the application space
-                application.on_handshake_done(&self.path, self.local_id_registry, self.now);
+                application.on_handshake_done(self.path, self.local_id_registry, self.now);
             }
             Ok(())
         } else {

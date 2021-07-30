@@ -68,31 +68,37 @@ impl RttEstimator {
     }
 
     /// Gets the latest round trip time sample
+    #[inline]
     pub fn latest_rtt(&self) -> Duration {
         self.latest_rtt
     }
 
     /// Gets the weighted average round trip time
+    #[inline]
     pub fn smoothed_rtt(&self) -> Duration {
         self.smoothed_rtt
     }
 
     /// Gets the minimum round trip time
+    #[inline]
     pub fn min_rtt(&self) -> Duration {
         self.min_rtt
     }
 
     /// Gets the variance in observed round trip time samples
+    #[inline]
     pub fn rttvar(&self) -> Duration {
         self.rttvar
     }
 
     /// Gets the timestamp of the first RTT sample
+    #[inline]
     pub fn first_rtt_sample(&self) -> Option<Timestamp> {
         self.first_rtt_sample
     }
 
     /// Gets the max_ack_delay
+    #[inline]
     pub fn max_ack_delay(&self) -> Duration {
         self.max_ack_delay
     }
@@ -100,6 +106,7 @@ impl RttEstimator {
     //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
     //# The PTO period is the amount of time that a sender ought to wait for
     //# an acknowledgement of a sent packet.
+    #[inline]
     pub fn pto_period(&self, pto_backoff: u32, space: PacketNumberSpace) -> Duration {
         //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.1
         //# When an ack-eliciting packet is transmitted, the sender schedules a

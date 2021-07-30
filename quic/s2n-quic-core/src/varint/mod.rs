@@ -43,7 +43,7 @@ pub const MAX_VARINT_VALUE: u64 = 4_611_686_018_427_387_903;
 pub struct VarIntError;
 
 // https://godbolt.org/z/ToTvPD
-#[inline]
+#[inline(always)]
 fn read_table(x: u64) -> (u64, usize, u64) {
     debug_assert!(x <= MAX_VARINT_VALUE);
 
@@ -75,6 +75,7 @@ fn read_table(x: u64) -> (u64, usize, u64) {
     }
 }
 
+#[inline(always)]
 fn encoding_size(x: u64) -> usize {
     debug_assert!(x <= MAX_VARINT_VALUE);
 
@@ -406,6 +407,7 @@ mod encoder_tests {
 }
 
 impl AsRef<u64> for VarInt {
+    #[inline]
     fn as_ref(&self) -> &u64 {
         &self.0
     }
@@ -414,6 +416,7 @@ impl AsRef<u64> for VarInt {
 impl Deref for VarInt {
     type Target = u64;
 
+    #[inline]
     fn deref(&self) -> &Self::Target {
         &self.0
     }
@@ -422,6 +425,7 @@ impl Deref for VarInt {
 macro_rules! impl_from_lesser {
     ($ty:ty) => {
         impl From<$ty> for VarInt {
+            #[inline]
             fn from(value: $ty) -> Self {
                 Self(value.into())
             }
@@ -434,6 +438,7 @@ impl_from_lesser!(u16);
 impl_from_lesser!(u32);
 
 impl From<VarInt> for u64 {
+    #[inline]
     fn from(v: VarInt) -> u64 {
         v.0
     }
@@ -442,6 +447,7 @@ impl From<VarInt> for u64 {
 impl TryFrom<usize> for VarInt {
     type Error = VarIntError;
 
+    #[inline]
     fn try_from(value: usize) -> Result<Self, Self::Error> {
         Self::new(value as u64)
     }
@@ -450,6 +456,7 @@ impl TryFrom<usize> for VarInt {
 impl TryInto<usize> for VarInt {
     type Error = <usize as TryFrom<u64>>::Error;
 
+    #[inline]
     fn try_into(self) -> Result<usize, Self::Error> {
         self.0.try_into()
     }
@@ -458,6 +465,7 @@ impl TryInto<usize> for VarInt {
 impl TryFrom<u64> for VarInt {
     type Error = VarIntError;
 
+    #[inline]
     fn try_from(value: u64) -> Result<Self, Self::Error> {
         Self::new(value)
     }
@@ -466,6 +474,7 @@ impl TryFrom<u64> for VarInt {
 impl TryFrom<u128> for VarInt {
     type Error = VarIntError;
 
+    #[inline]
     fn try_from(value: u128) -> Result<Self, Self::Error> {
         if value > MAX_VARINT_VALUE as u128 {
             Err(VarIntError)
@@ -706,24 +715,28 @@ impl core::ops::RemAssign<usize> for VarInt {
 }
 
 impl PartialEq<u64> for VarInt {
+    #[inline]
     fn eq(&self, other: &u64) -> bool {
         self.0.eq(other)
     }
 }
 
 impl PartialEq<usize> for VarInt {
+    #[inline]
     fn eq(&self, other: &usize) -> bool {
         self.0.eq(&(*other as u64))
     }
 }
 
 impl PartialOrd<u64> for VarInt {
+    #[inline]
     fn partial_cmp(&self, other: &u64) -> Option<core::cmp::Ordering> {
         self.0.partial_cmp(other)
     }
 }
 
 impl PartialOrd<usize> for VarInt {
+    #[inline]
     fn partial_cmp(&self, other: &usize) -> Option<core::cmp::Ordering> {
         self.0.partial_cmp(&(*other as u64))
     }

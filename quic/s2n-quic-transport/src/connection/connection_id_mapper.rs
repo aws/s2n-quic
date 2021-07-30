@@ -100,7 +100,7 @@ impl LocalIdMap {
 
     /// Gets the `InternalConnectionId` (if any) associated with the given local id
     pub(crate) fn get(&self, local_id: &connection::LocalId) -> Option<InternalConnectionId> {
-        self.map.get(&local_id).copied()
+        self.map.get(local_id).copied()
     }
 
     /// Inserts the given `LocalId` into the map if it is not already in the map,

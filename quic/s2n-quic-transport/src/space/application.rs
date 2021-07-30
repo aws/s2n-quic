@@ -18,6 +18,7 @@ use core::{convert::TryInto, marker::PhantomData};
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
     crypto::{application::KeySet, tls, CryptoSuite},
+    event,
     frame::{
         ack::AckRanges, crypto::CryptoRef, stream::StreamRef, Ack, ConnectionClose, DataBlocked,
         HandshakeDone, MaxData, MaxStreamData, MaxStreams, NewConnectionId, NewToken,
@@ -140,10 +141,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
 
         let packet_number_encoder = self.packet_number_encoder();
 
-        let mut outcome = transmission::Outcome {
-            packet_number,
-            ..Default::default()
-        };
+        let mut outcome = transmission::Outcome::new(packet_number);
 
         let destination_connection_id = context.path().peer_connection_id;
         let timestamp = context.timestamp;
@@ -154,8 +152,11 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             config: <PhantomData<Config>>::default(),
             outcome: &mut outcome,
             packet_number,
-            payload: transmission::application::Payload::new(
-                context,
+            payload: transmission::application::Payload::<Config>::new(
+                context.path_id,
+                &mut context.path_manager,
+                &mut context.local_id_registry,
+                context.transmission_mode,
                 &mut self.ack_manager,
                 handshake_status,
                 &mut self.ping,
@@ -166,6 +167,8 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             transmission_constraint,
             transmission_mode,
             tx_packet_numbers: &mut self.tx_packet_numbers,
+            path_id: context.path_id,
+            publisher: context.publisher,
         };
 
         let spin_bit = self.spin_bit;
@@ -174,9 +177,9 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             self.key_set
                 .encrypt_packet(buffer, |buffer, key, key_phase| {
                     let packet = Short {
-                        destination_connection_id: destination_connection_id.as_ref(),
                         spin_bit,
                         key_phase,
+                        destination_connection_id,
                         packet_number,
                         payload,
                     };
@@ -215,10 +218,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
 
         let packet_number_encoder = self.packet_number_encoder();
 
-        let mut outcome = transmission::Outcome {
-            packet_number,
-            ..Default::default()
-        };
+        let mut outcome = transmission::Outcome::new(packet_number);
         let destination_connection_id = context.path().peer_connection_id;
 
         let payload = transmission::Transmission {
@@ -233,6 +233,8 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             transmission_constraint: transmission::Constraint::None,
             transmission_mode: transmission::Mode::Normal,
             tx_packet_numbers: &mut self.tx_packet_numbers,
+            path_id: context.path_id,
+            publisher: context.publisher,
         };
 
         let spin_bit = self.spin_bit;
@@ -242,9 +244,9 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             self.key_set
                 .encrypt_packet(buffer, |buffer, key, key_phase| {
                     let packet = Short {
-                        destination_connection_id: destination_connection_id.as_ref(),
                         spin_bit,
                         key_phase,
+                        destination_connection_id,
                         packet_number,
                         payload,
                     };
@@ -311,12 +313,13 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
     }
 
     /// Called when the connection timer expired
-    pub fn on_timeout(
+    pub fn on_timeout<Pub: event::Publisher>(
         &mut self,
         path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
         handshake_status: &mut HandshakeStatus,
         local_id_registry: &mut connection::LocalIdRegistry,
         timestamp: Timestamp,
+        publisher: &mut Pub,
     ) {
         self.ack_manager.on_timeout(timestamp);
         self.key_set.on_timeout(timestamp);
@@ -328,7 +331,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             path_manager,
         );
 
-        recovery_manager.on_timeout(timestamp, &mut context);
+        recovery_manager.on_timeout(timestamp, &mut context, publisher);
 
         self.stream_manager.on_timeout(timestamp);
     }
@@ -532,7 +535,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         Ok(())
     }
 
-    fn handle_ack_frame<A: AckRanges>(
+    fn handle_ack_frame<A: AckRanges, Pub: event::Publisher>(
         &mut self,
         frame: Ack<A>,
         datagram: &DatagramInfo,
@@ -540,6 +543,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
         handshake_status: &mut HandshakeStatus,
         local_id_registry: &mut connection::LocalIdRegistry,
+        publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
         //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.1.2
         //= type=TODO
@@ -551,7 +555,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         path.on_peer_validated();
         let (recovery_manager, mut context) =
             self.recovery(handshake_status, local_id_registry, path_id, path_manager);
-        recovery_manager.on_ack_frame(datagram, frame, &mut context)
+        recovery_manager.on_ack_frame(datagram, frame, &mut context, publisher)
     }
 
     fn handle_connection_close_frame(

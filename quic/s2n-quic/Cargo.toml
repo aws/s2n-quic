@@ -16,6 +16,7 @@ default = [
 ]
 # Sends debug information in CONNECTION_CLOSE frames
 connection-close-debug = []
+connection-migration = ["s2n-quic-transport/connection-migration"]
 default-token-provider = ["ring", "zerocopy", "zerocopy-derive"]
 default-tls-provider = ["s2n-quic-tls-default"]
 protocol-extensions = []
@@ -46,7 +47,7 @@ thiserror = { version = "1.0", optional = true }
 tokio = { version = "1", optional = true, default-features = false }
 zerocopy = { version = "0.3", optional = true }
 zerocopy-derive = { version = "=0.2.0", optional = true }
-zeroize = { version = "1", default-features = false }
+zeroize = { version = "=1.2", default-features = false }
 tracing = { version = "0.1", optional = true }
 
 [dev-dependencies]

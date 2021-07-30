@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::contexts::WriteContext;
+use crate::contexts::{PathValidationProbing, WriteContext};
 use alloc::collections::VecDeque;
 use s2n_codec::{encoder::EncoderBuffer, DecoderBufferMut};
 use s2n_quic_core::{
@@ -9,6 +9,7 @@ use s2n_quic_core::{
     frame::{
         ack_elicitation::{AckElicitable, AckElicitation},
         congestion_controlled::CongestionControlled,
+        event::AsEvent,
         FrameMut,
     },
     packet::number::{PacketNumber, PacketNumberSpace},
@@ -257,7 +258,9 @@ impl<'a> WriteContext for MockWriteContext<'a> {
         self.frame_buffer.remaining_capacity()
     }
 
-    fn write_frame<Frame: s2n_codec::EncoderValue + AckElicitable + CongestionControlled>(
+    fn write_frame<
+        Frame: s2n_codec::EncoderValue + AckElicitable + CongestionControlled + PathValidationProbing,
+    >(
         &mut self,
         frame: &Frame,
     ) -> Option<PacketNumber> {
@@ -272,6 +275,20 @@ impl<'a> WriteContext for MockWriteContext<'a> {
             transmission::Constraint::None => {}
         }
         self.frame_buffer.write_frame(frame)
+    }
+
+    fn write_fitted_frame<
+        Frame: s2n_codec::EncoderValue
+            + AckElicitable
+            + CongestionControlled
+            + PathValidationProbing
+            + AsEvent,
+    >(
+        &mut self,
+        frame: &Frame,
+    ) -> PacketNumber {
+        self.write_frame(frame)
+            .expect("frame should fit in current buffer")
     }
 
     fn write_frame_forced<Frame: s2n_codec::EncoderValue + AckElicitable>(

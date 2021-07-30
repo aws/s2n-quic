@@ -12,6 +12,7 @@ extern crate alloc;
 mod macros;
 
 pub mod buffer;
+pub mod features;
 pub mod io;
 pub mod message;
 pub mod socket;

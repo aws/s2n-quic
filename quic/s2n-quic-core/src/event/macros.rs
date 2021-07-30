@@ -109,19 +109,32 @@ macro_rules! events {
                     fn [<on_ $name:snake>](&mut self, event: builders::$name);
                 );
             )*
+
+            fn quic_version(&self) -> Option<u32>;
         }
 
         pub struct PublisherSubscriber<'a, Sub: Subscriber> {
             meta: common::Meta,
+            /// The QUIC protocol version which is used for this particular connection
+            quic_version: Option<u32>,
             subscriber: &'a mut Sub,
         }
 
         impl<'a, Sub: Subscriber> PublisherSubscriber<'a, Sub> {
-            pub fn new(meta: builders::Meta, subscriber: &'a mut Sub) -> PublisherSubscriber<'a, Sub> {
+            pub fn new(meta: builders::Meta, quic_version: Option<u32>, subscriber: &'a mut Sub) -> PublisherSubscriber<'a, Sub> {
                 PublisherSubscriber {
                     meta: meta.into(),
+                    quic_version,
                     subscriber
                 }
+            }
+        }
+
+        impl<'a, Sub: Subscriber> core::fmt::Debug for PublisherSubscriber<'a, Sub> {
+            fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+                f.debug_struct("PublisherSubscriber")
+                    .field("meta", &self.meta)
+                    .finish()
             }
         }
 
@@ -137,6 +150,10 @@ macro_rules! events {
                     }
                 );
             )*
+
+            fn quic_version(&self) -> Option<u32> {
+                self.quic_version
+            }
         }
 
         #[cfg(any(test, feature = "testing"))]
@@ -157,6 +174,10 @@ macro_rules! events {
                         }
                     );
                 )*
+
+                fn quic_version(&self) -> Option<u32> {
+                    Some(0)
+                }
             }
         }
     };
@@ -172,7 +193,9 @@ macro_rules! common {
     $(
         $(#[$enum_attrs:meta])*
         enum $enum_name:ident {
-            $( $enum_fields : tt, )*
+            $(
+                $(#[$enum_attr:meta])? $enum_fields: ident,
+            )*
         }
     )*
     ) => {
@@ -196,7 +219,9 @@ macro_rules! common {
                 #[non_exhaustive]
                 #[derive(Copy, Clone, Debug)]
                 pub enum $enum_name {
-                    $( $enum_fields, )*
+                    $(
+                        $(#[$enum_attr])? $enum_fields,
+                    )*
                 }
             )*
         }

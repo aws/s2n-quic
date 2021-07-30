@@ -12,6 +12,7 @@ use crate::{
 use core::time::Duration;
 use s2n_codec::{Encoder, EncoderBuffer};
 use s2n_quic_core::{
+    event,
     frame::ack_elicitation::AckElicitable,
     inet::{ExplicitCongestionNotification, SocketAddress},
     io::tx,
@@ -20,7 +21,7 @@ use s2n_quic_core::{
 };
 
 #[derive(Debug)]
-pub struct ConnectionTransmissionContext<'a, Config: endpoint::Config> {
+pub struct ConnectionTransmissionContext<'a, 'sub, Config: endpoint::Config> {
     pub quic_version: u32,
     pub timestamp: Timestamp,
     pub path_id: path::Id,
@@ -31,9 +32,10 @@ pub struct ConnectionTransmissionContext<'a, Config: endpoint::Config> {
     pub ecn: ExplicitCongestionNotification,
     pub min_packet_len: Option<usize>,
     pub transmission_mode: transmission::Mode,
+    pub publisher: &'a mut event::PublisherSubscriber<'sub, Config::EventSubscriber>,
 }
 
-impl<'a, Config: endpoint::Config> ConnectionTransmissionContext<'a, Config> {
+impl<'a, 'sub, Config: endpoint::Config> ConnectionTransmissionContext<'a, 'sub, Config> {
     pub fn path(
         &self,
     ) -> &Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>
@@ -49,28 +51,41 @@ impl<'a, Config: endpoint::Config> ConnectionTransmissionContext<'a, Config> {
     }
 }
 
-pub struct ConnectionTransmission<'a, Config: endpoint::Config> {
-    pub context: ConnectionTransmissionContext<'a, Config>,
+pub struct ConnectionTransmission<'a, 'sub, Config: endpoint::Config> {
+    pub context: ConnectionTransmissionContext<'a, 'sub, Config>,
     pub shared_state: &'a mut SharedConnectionState<Config>,
 }
 
-impl<'a, Config: endpoint::Config> tx::Message for ConnectionTransmission<'a, Config> {
+impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<'a, 'sub, Config> {
+    #[inline]
     fn remote_address(&mut self) -> SocketAddress {
         self.context.path().peer_socket_address
     }
 
+    #[inline]
     fn ecn(&mut self) -> ExplicitCongestionNotification {
         self.context.ecn
     }
 
+    #[inline]
     fn delay(&mut self) -> Duration {
         // TODO return delay from pacer
         Default::default()
     }
 
+    #[inline]
     fn ipv6_flow_label(&mut self) -> u32 {
         // TODO compute flow label from connection id
         0
+    }
+
+    #[inline]
+    fn can_gso(&self) -> bool {
+        // If a packet can be GSO'd it means it's limited to the previously written packet
+        // size. This becomes a problem for MTU probes where they will likely exceed that amount.
+        // As such, if we're probing we want to let the IO layer know to not GSO the current
+        // packet.
+        !self.context.transmission_mode.is_mtu_probing()
     }
 
     fn write_payload(&mut self, buffer: &mut [u8]) -> usize {
@@ -225,7 +240,12 @@ impl<'a, Config: endpoint::Config> tx::Message for ConnectionTransmission<'a, Co
                     //# Handshake packet
 
                     if Config::ENDPOINT_TYPE.is_client() {
-                        space_manager.discard_initial(self.context.path_mut());
+                        let path = &mut self.context.path_manager[self.context.path_id];
+                        space_manager.discard_initial(
+                            path,
+                            self.context.path_id,
+                            self.context.publisher,
+                        );
                     }
 
                     encoder
@@ -252,7 +272,8 @@ impl<'a, Config: endpoint::Config> tx::Message for ConnectionTransmission<'a, Co
             //# An endpoint MUST discard its handshake keys when the TLS handshake is
             //# confirmed (Section 4.1.2).
             if space_manager.is_handshake_confirmed() {
-                space_manager.discard_handshake(self.context.path_mut());
+                let path = &mut self.context.path_manager[self.context.path_id];
+                space_manager.discard_handshake(path, self.context.path_id, self.context.publisher);
             }
 
             encoder

@@ -9,7 +9,7 @@ use crate::{
     transmission,
 };
 use s2n_quic_core::{
-    ack, connection, frame,
+    ack, connection, event, frame,
     inet::{DatagramInfo, SocketAddress},
     packet::number::PacketNumberSpace,
     path::MaxMtu,
@@ -21,15 +21,16 @@ use s2n_quic_core::{
 };
 use smallvec::SmallVec;
 
-/// The amount of Paths that can be maintained without using the heap
-const INLINE_PATH_LEN: usize = 5;
+/// The amount of Paths that can be maintained without using the heap.
+/// This value is also used to limit the number of connection migrations.
+const MAX_ALLOWED_PATHS: usize = 5;
 
 /// The PathManager handles paths for a specific connection.
 /// It will handle path validation operations, and track the active path for a connection.
 #[derive(Debug)]
 pub struct Manager<CCE: congestion_controller::Endpoint> {
     /// Path array
-    paths: SmallVec<[Path<CCE::CongestionController>; INLINE_PATH_LEN]>,
+    paths: SmallVec<[Path<CCE::CongestionController>; MAX_ALLOWED_PATHS]>,
 
     /// Registry of `connection::PeerId`s
     peer_id_registry: PeerIdRegistry,
@@ -55,14 +56,15 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     }
 
     /// Update the active path
-    fn update_active_path<Rnd: random::Generator>(
+    fn update_active_path<Rnd: random::Generator, Pub: event::Publisher>(
         &mut self,
         path_id: Id,
         random_generator: &mut Rnd,
+        publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
         debug_assert!(path_id != Id(self.active));
 
-        let new_path_idx = path_id.0;
+        let new_path_idx = path_id.as_u8();
         // Attempt to consume a new connection id in case it has been retired since the last use.
         let peer_connection_id = self.paths[new_path_idx as usize].peer_connection_id;
 
@@ -81,6 +83,16 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
                 .consume_new_id()
                 .ok_or(transport::Error::INTERNAL_ERROR)?
         };
+        self[path_id].peer_connection_id = use_peer_connection_id;
+
+        publisher.on_active_path_updated(event::builders::ActivePathUpdated {
+            src_addr: &self.active_path().peer_socket_address,
+            src_cid: &self.active_path().peer_connection_id,
+            src_path_id: self.active as u64,
+            dst_cid: &self[path_id].peer_connection_id,
+            dst_addr: &self[path_id].peer_socket_address,
+            dst_path_id: new_path_idx as u64,
+        });
 
         if self.active_path().is_validated() {
             self.last_known_validated_path = Some(self.active);
@@ -97,23 +109,24 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
             self.set_challenge(self.active_path_id(), random_generator);
         }
 
-        self[path_id].peer_connection_id = use_peer_connection_id;
-
         self.active = new_path_idx;
         Ok(())
     }
 
     /// Return the active path
+    #[inline]
     pub fn active_path(&self) -> &Path<CCE::CongestionController> {
         &self.paths[self.active as usize]
     }
 
     /// Return a mutable reference to the active path
+    #[inline]
     pub fn active_path_mut(&mut self) -> &mut Path<CCE::CongestionController> {
         &mut self.paths[self.active as usize]
     }
 
     /// Return the Id of the active path
+    #[inline]
     pub fn active_path_id(&self) -> Id {
         Id(self.active)
     }
@@ -124,6 +137,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     //# An endpoint MAY skip validation of a peer address if
     //# that address has been seen recently.
     /// Returns the Path for the provided address if the PathManager knows about it
+    #[inline]
     pub fn path(
         &self,
         peer_address: &SocketAddress,
@@ -136,6 +150,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     }
 
     /// Returns the Path for the provided address if the PathManager knows about it
+    #[inline]
     pub fn path_mut(
         &mut self,
         peer_address: &SocketAddress,
@@ -171,21 +186,6 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
             let unblocked = path.on_bytes_received(datagram.payload_len);
             return Ok((id, unblocked));
         }
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.5
-        //= type=TODO
-        //= tracking-issue=316
-        //# Similarly, an endpoint MUST NOT reuse a connection ID when sending to
-        //# more than one destination address.
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.5
-        //= type=TODO
-        //= tracking-issue=316
-        //# Due to network changes outside
-        //# the control of its peer, an endpoint might receive packets from a new
-        //# source address with the same destination connection ID, in which case
-        //# it MAY continue to use the current connection ID with the new remote
-        //# address while still sending from the same local address.
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
         //# The design of QUIC relies on endpoints retaining a stable address
@@ -229,8 +229,21 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         // TODO: This would be better handled as a stateless reset so the peer can terminate the
         //       connection immediately. https://github.com/awslabs/s2n-quic/issues/317
         // We only enable connection migration for testing
-        #[cfg(not(any(feature = "testing", test)))]
-        return Err(transport::Error::INTERNAL_ERROR);
+        #[cfg(not(any(feature = "connection_migration", feature = "testing", test)))]
+        return Err(
+            transport::Error::INTERNAL_ERROR.with_reason("Connection Migration is not supported")
+        );
+
+        let new_path_idx = self.paths.len();
+        // TODO: Support deletion of old paths: https://github.com/awslabs/s2n-quic/issues/741
+        // The current path manager implementation does not delete or reuse indices
+        // in the path array. This can result in an unbounded number of paths. To prevent
+        // this we limit the max number of paths per connection.
+        if new_path_idx >= MAX_ALLOWED_PATHS {
+            return Err(transport::Error::INTERNAL_ERROR
+                .with_reason("exceeded the max allowed paths per connection"));
+        }
+        let new_path_id = Id(new_path_idx as u8);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.4
         //= type=TODO
@@ -262,7 +275,9 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
                     // Investigate if there is a safer way to expose an error here.
                     //
                     // Currently all errors are ignored when calling on_datagram_received in endpoint/mod.rs
-                    .ok_or(transport::Error::INTERNAL_ERROR)?
+                    .ok_or_else(|| {
+                        transport::Error::INTERNAL_ERROR.with_reason("insufficient connection ids")
+                    })?
             } else {
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.5
                 //# Due to network changes outside
@@ -296,11 +311,10 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
 
         let unblocked = path.on_bytes_received(datagram.payload_len);
         // create a new path
-        let id = Id(self.paths.len() as u8);
         self.paths.push(path);
-        self.set_challenge(id, random_generator);
+        self.set_challenge(new_path_id, random_generator);
 
-        Ok((id, unblocked))
+        Ok((new_path_id, unblocked))
     }
 
     fn set_challenge<Rnd: random::Generator>(&mut self, path_id: Id, random_generator: &mut Rnd) {
@@ -339,11 +353,13 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         self[path_id].set_challenge(challenge);
     }
 
+    #[inline]
     pub fn timers(&self) -> impl Iterator<Item = Timestamp> + '_ {
         self.paths.iter().flat_map(|p| p.timers())
     }
 
     /// Writes any frames the path manager wishes to transmit to the given context
+    #[inline]
     pub fn on_transmit<W: transmission::WriteContext>(&mut self, context: &mut W) {
         self.peer_id_registry.on_transmit(context)
 
@@ -352,15 +368,18 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     }
 
     /// Called when packets are acknowledged
+    #[inline]
     pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
         self.peer_id_registry.on_packet_ack(ack_set);
     }
 
     /// Called when packets are lost
+    #[inline]
     pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
         self.peer_id_registry.on_packet_loss(ack_set);
     }
 
+    #[inline]
     pub fn on_path_challenge(
         &mut self,
         peer_address: &SocketAddress,
@@ -379,6 +398,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     //# contains the data that was sent in a previous PATH_CHALLENGE frame.
     //# A PATH_RESPONSE frame received on any network path validates the path
     //# on which the PATH_CHALLENGE was sent.
+    #[inline]
     pub fn on_path_response(&mut self, response: &frame::PathResponse) {
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.2
         //# A PATH_RESPONSE frame MUST be sent on the network path where the
@@ -404,13 +424,14 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     }
 
     /// Process a non-probing (path validation probing) packet.
-    pub fn on_non_path_validation_probing_packet<Rnd: random::Generator>(
+    pub fn on_non_path_validation_probing_packet<Rnd: random::Generator, Pub: event::Publisher>(
         &mut self,
         path_id: Id,
         random_generator: &mut Rnd,
+        publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
         if self.active_path_id() != path_id {
-            self.update_active_path(path_id, random_generator)?;
+            self.update_active_path(path_id, random_generator, publisher)?;
 
             //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3
             //# After changing the address to which it sends non-probing packets, an
@@ -432,6 +453,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         Ok(())
     }
 
+    #[inline]
     fn abandon_all_path_challenges(&mut self) {
         for path in self.paths.iter_mut() {
             path.abandon_challenge();
@@ -481,38 +503,47 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
         Ok(())
     }
 
-    pub fn on_timeout(&mut self, timestamp: Timestamp) {
+    pub fn on_timeout(&mut self, timestamp: Timestamp) -> Result<(), connection::Error> {
         for path in self.paths.iter_mut() {
             path.on_timeout(timestamp);
         }
 
-        if !self.active_path().is_validated() && !self.active_path().is_challenge_pending() {
-            if let Some(last_known_validated_path) = self.last_known_validated_path {
-                //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.2
-                //# To protect the connection from failing due to such a spurious
-                //# migration, an endpoint MUST revert to using the last validated peer
-                //# address when validation of a new peer address fails.
-                self.active = last_known_validated_path;
-                self.last_known_validated_path = None;
+        if self.active_path().failed_validation() {
+            match self.last_known_validated_path {
+                Some(last_known_validated_path) => {
+                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.2
+                    //# To protect the connection from failing due to such a spurious
+                    //# migration, an endpoint MUST revert to using the last validated peer
+                    //# address when validation of a new peer address fails.
+                    self.active = last_known_validated_path;
+                    self.last_known_validated_path = None;
+                }
+                None => {
+                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
+                    //# When an endpoint has no validated path on which to send packets, it
+                    //# MAY discard connection state.
+
+                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
+                    //= type=TODO
+                    //= tracking-issue=713
+                    //# An endpoint capable of connection
+                    //# migration MAY wait for a new path to become available before
+                    //# discarding connection state.
+
+                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.2
+                    //# If an endpoint has no state about the last validated peer address, it
+                    //# MUST close the connection silently by discarding all connection
+                    //# state.
+
+                    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10
+                    //# An endpoint MAY discard connection state if it does not have a
+                    //# validated path on which it can send packets; see Section 8.2
+                    return Err(connection::Error::NoValidPath);
+                }
             }
         }
 
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
-        //= type=TODO
-        //# When an endpoint has no validated path on which to send packets, it
-        //# MAY discard connection state.
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
-        //= type=TODO
-        //# An endpoint capable of connection
-        //# migration MAY wait for a new path to become available before
-        //# discarding connection state.
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.2
-        //= type=TODO
-        //# If an endpoint has no state about the last validated peer address, it
-        //# MUST close the connection silently by discarding all connection
-        //# state.
+        Ok(())
     }
 
     /// Notifies the path manager of the connection closing event
@@ -522,6 +553,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     }
 
     /// true if ALL paths are amplification_limited
+    #[inline]
     pub fn is_amplification_limited(&self) -> bool {
         self.paths
             .iter()
@@ -529,6 +561,7 @@ impl<CCE: congestion_controller::Endpoint> Manager<CCE> {
     }
 
     /// true if ANY of the paths can transmit
+    #[inline]
     pub fn can_transmit(&self, interest: transmission::Interest) -> bool {
         self.paths.iter().any(|path| {
             let constraint = path.transmission_constraint();
@@ -555,6 +588,7 @@ impl<'a, CCE: congestion_controller::Endpoint> PathsPendingValidation<'a, CCE> {
         }
     }
 
+    #[inline]
     pub fn next_path(&mut self) -> Option<(Id, &mut Manager<CCE>)> {
         loop {
             let path = self.path_manager.paths.get(self.index as usize)?;
@@ -571,6 +605,7 @@ impl<'a, CCE: congestion_controller::Endpoint> PathsPendingValidation<'a, CCE> {
 }
 
 impl<CCE: congestion_controller::Endpoint> transmission::interest::Provider for Manager<CCE> {
+    #[inline]
     fn transmission_interest(&self) -> transmission::Interest {
         core::iter::empty()
             .chain(Some(self.peer_id_registry.transmission_interest()))
@@ -579,6 +614,7 @@ impl<CCE: congestion_controller::Endpoint> transmission::interest::Provider for 
             .sum()
     }
 
+    #[inline]
     fn has_transmission_interest(&self) -> bool {
         self.peer_id_registry.has_transmission_interest()
             || self
@@ -596,17 +632,23 @@ impl Id {
     pub fn new(id: u8) -> Self {
         Self(id)
     }
+
+    pub fn as_u8(&self) -> u8 {
+        self.0
+    }
 }
 
 impl<CCE: congestion_controller::Endpoint> core::ops::Index<Id> for Manager<CCE> {
     type Output = Path<CCE::CongestionController>;
 
+    #[inline]
     fn index(&self, id: Id) -> &Self::Output {
         &self.paths[id.0 as usize]
     }
 }
 
 impl<CCE: congestion_controller::Endpoint> core::ops::IndexMut<Id> for Manager<CCE> {
+    #[inline]
     fn index_mut(&mut self, id: Id) -> &mut Self::Output {
         &mut self.paths[id.0 as usize]
     }
@@ -623,6 +665,7 @@ mod tests {
     use core::time::Duration;
     use s2n_quic_core::{
         endpoint,
+        event::testing::Publisher,
         inet::{DatagramInfo, ExplicitCongestionNotification},
         random::{self, Generator},
         recovery::{congestion_controller::testing::unlimited, RttEstimator},
@@ -727,7 +770,7 @@ mod tests {
         assert!(manager.paths[0].is_validated());
 
         manager
-            .update_active_path(Id(1), &mut random::testing::Generator(123))
+            .update_active_path(Id(1), &mut random::testing::Generator(123), &mut Publisher)
             .unwrap();
         assert_eq!(manager.active, 1);
         assert_eq!(manager.last_known_validated_path, Some(0));
@@ -744,7 +787,9 @@ mod tests {
         manager[Id(1)].on_transmit(&mut context);
 
         // After a validation times out, the path should revert to the previous
-        manager.on_timeout(now + expiration + Duration::from_millis(100));
+        manager
+            .on_timeout(now + expiration + Duration::from_millis(100))
+            .unwrap();
         assert_eq!(manager.active, 0);
         assert!(manager.last_known_validated_path.is_none());
     }
@@ -762,7 +807,11 @@ mod tests {
         assert!(helper.manager.paths[helper.first_path_id.0 as usize].is_validated());
         helper
             .manager
-            .update_active_path(helper.second_path_id, &mut random::testing::Generator(123))
+            .update_active_path(
+                helper.second_path_id,
+                &mut random::testing::Generator(123),
+                &mut Publisher,
+            )
             .unwrap();
 
         // Expectation:
@@ -779,7 +828,11 @@ mod tests {
         // Trigger:
         helper
             .manager
-            .update_active_path(helper.second_path_id, &mut random::testing::Generator(123))
+            .update_active_path(
+                helper.second_path_id,
+                &mut random::testing::Generator(123),
+                &mut Publisher,
+            )
             .unwrap();
 
         // Expectation:
@@ -796,7 +849,11 @@ mod tests {
         // Trigger:
         helper
             .manager
-            .update_active_path(helper.second_path_id, &mut random::testing::Generator(123))
+            .update_active_path(
+                helper.second_path_id,
+                &mut random::testing::Generator(123),
+                &mut Publisher,
+            )
             .unwrap();
 
         // Expectation:
@@ -812,9 +869,11 @@ mod tests {
 
         // Trigger:
         assert_eq!(
-            helper
-                .manager
-                .update_active_path(helper.second_path_id, &mut random::testing::Generator(123)),
+            helper.manager.update_active_path(
+                helper.second_path_id,
+                &mut random::testing::Generator(123),
+                &mut Publisher
+            ),
             Err(transport::Error::INTERNAL_ERROR)
         );
 
@@ -836,7 +895,11 @@ mod tests {
         // Trigger:
         helper
             .manager
-            .update_active_path(helper.second_path_id, &mut random::testing::Generator(123))
+            .update_active_path(
+                helper.second_path_id,
+                &mut random::testing::Generator(123),
+                &mut Publisher,
+            )
             .unwrap();
 
         // Expectation:
@@ -885,7 +948,8 @@ mod tests {
         // A response 100ms before the challenge is abandoned
         helper
             .manager
-            .on_timeout(helper.now + helper.challenge_expiration - Duration::from_millis(100));
+            .on_timeout(helper.now + helper.challenge_expiration - Duration::from_millis(100))
+            .unwrap();
 
         // Expectation 1:
         assert!(helper.manager[helper.second_path_id].is_challenge_pending(),);
@@ -959,7 +1023,8 @@ mod tests {
         // A response 100ms after the challenge should fail
         helper
             .manager
-            .on_timeout(helper.now + helper.challenge_expiration + Duration::from_millis(100));
+            .on_timeout(helper.now + helper.challenge_expiration + Duration::from_millis(100))
+            .unwrap();
 
         // Expectation 1:
         assert!(!helper.manager[helper.second_path_id].is_challenge_pending());
@@ -998,6 +1063,7 @@ mod tests {
             .on_non_path_validation_probing_packet(
                 helper.second_path_id,
                 &mut random::testing::Generator(123),
+                &mut Publisher,
             )
             .unwrap();
 
@@ -1005,6 +1071,65 @@ mod tests {
         assert!(!helper.manager[helper.second_path_id].is_validated());
         assert_eq!(helper.manager.active_path_id(), helper.second_path_id);
         assert!(helper.manager[helper.second_path_id].is_challenge_pending());
+    }
+
+    #[test]
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
+    //= type=test
+    //# When an endpoint has no validated path on which to send packets, it
+    //# MAY discard connection state.
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9.3.2
+    //= type=test
+    //# If an endpoint has no state about the last validated peer address, it
+    //# MUST close the connection silently by discarding all connection
+    //# state.
+
+    //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#10
+    //= type=test
+    //# An endpoint MAY discard connection state if it does not have a
+    //# validated path on which it can send packets; see Section 8.2
+    //
+    // If there is no last_known_validated_path after a on_timeout then return a
+    // NoValidPath error
+    fn silently_return_when_there_is_no_valid_path() {
+        // Setup:
+        let now = NoopClock {}.get_time();
+        let expiration = Duration::from_millis(1000);
+        let challenge = challenge::Challenge::new(expiration, [0; 8]);
+        let mut first_path = Path::new(
+            SocketAddress::default(),
+            connection::PeerId::try_from_bytes(&[1]).unwrap(),
+            connection::LocalId::TEST_ID,
+            RttEstimator::new(Duration::from_millis(30)),
+            Default::default(),
+            false,
+            DEFAULT_MAX_MTU,
+        );
+        first_path.set_challenge(challenge);
+        let mut manager = manager(first_path, None);
+        let first_path_id = Id(0);
+
+        assert!(!manager[first_path_id].is_validated());
+        assert!(manager[first_path_id].is_challenge_pending());
+        assert_eq!(manager.last_known_validated_path, None);
+
+        // Trigger:
+        // send challenge and arm abandon timer
+        let mut frame_buffer = OutgoingFrameBuffer::new();
+        let mut context = MockWriteContext::new(
+            now,
+            &mut frame_buffer,
+            transmission::Constraint::None,
+            transmission::Mode::Normal,
+            endpoint::Type::Client,
+        );
+        manager[first_path_id].on_transmit(&mut context);
+        let res = manager.on_timeout(now + expiration + Duration::from_millis(100));
+
+        // Expectation:
+        assert!(!manager[first_path_id].is_challenge_pending());
+        assert_eq!(res.unwrap_err(), connection::Error::NoValidPath);
     }
 
     #[test]
@@ -1031,6 +1156,7 @@ mod tests {
             .on_non_path_validation_probing_packet(
                 helper.second_path_id,
                 &mut random::testing::Generator(123),
+                &mut Publisher,
             )
             .unwrap();
 
@@ -1058,6 +1184,7 @@ mod tests {
             .on_non_path_validation_probing_packet(
                 helper.second_path_id,
                 &mut random::testing::Generator(123),
+                &mut Publisher,
             )
             .unwrap();
 
@@ -1195,8 +1322,47 @@ mod tests {
         assert_eq!(manager.paths.len(), 1);
     }
 
-    // TODO remove early return statement when challenges work
-    #[allow(unreachable_code)]
+    #[test]
+    fn limit_number_of_connection_migrations() {
+        // Setup:
+        let first_path = Path::new(
+            SocketAddress::default(),
+            connection::PeerId::try_from_bytes(&[1]).unwrap(),
+            connection::LocalId::TEST_ID,
+            RttEstimator::new(Duration::from_millis(30)),
+            Default::default(),
+            false,
+            DEFAULT_MAX_MTU,
+        );
+        let mut manager = manager(first_path, None);
+        let mut total_paths = 1;
+
+        for i in 1..std::u8::MAX {
+            let new_addr: SocketAddr = format!("127.0.0.1:{}", i).parse().unwrap();
+            let new_addr = SocketAddress::from(new_addr);
+            let now = NoopClock {}.get_time();
+            let datagram = DatagramInfo {
+                timestamp: now,
+                remote_address: new_addr,
+                payload_len: 0,
+                ecn: ExplicitCongestionNotification::default(),
+                destination_connection_id: connection::LocalId::TEST_ID,
+            };
+
+            let res = manager.handle_connection_migration(
+                &datagram,
+                &mut unlimited::Endpoint::default(),
+                &mut random::testing::Generator(123),
+                DEFAULT_MAX_MTU,
+            );
+            match res {
+                Ok(_) => total_paths += 1,
+                Err(_) => break,
+            }
+        }
+        assert_eq!(total_paths, MAX_ALLOWED_PATHS);
+    }
+
     #[test]
     fn connection_migration_challenge_behavior() {
         // Setup:
@@ -1237,11 +1403,10 @@ mod tests {
         assert_eq!(manager.paths.len(), 2);
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
-        //= type=TODO
+        //= type=test
         //# An endpoint MUST
         //# perform path validation (Section 8.2) if it detects any change to a
         //# peer's address, unless it has previously validated that address.
-        return;
         assert!(manager[Id(1)].is_challenge_pending());
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#8.2.1
@@ -1670,7 +1835,11 @@ mod tests {
         }
 
         assert!(manager
-            .update_active_path(first_path_id, &mut random::testing::Generator(123))
+            .update_active_path(
+                first_path_id,
+                &mut random::testing::Generator(123),
+                &mut Publisher
+            )
             .is_ok());
         if validate_path_zero {
             assert!(manager[zero_path_id].is_challenge_pending());

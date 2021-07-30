@@ -3,6 +3,7 @@
 
 use crate::message::Message as MessageTrait;
 use alloc::vec::Vec;
+use core::pin::Pin;
 use s2n_quic_core::{
     inet::{ExplicitCongestionNotification, SocketAddress},
     io::{rx, tx},
@@ -19,6 +20,8 @@ pub struct Message {
 }
 
 impl MessageTrait for Message {
+    const SUPPORTS_GSO: bool = false;
+
     fn ecn(&self) -> ExplicitCongestionNotification {
         ExplicitCongestionNotification::default()
     }
@@ -41,16 +44,21 @@ impl MessageTrait for Message {
         self.address = remote_address;
     }
 
-    fn reset_remote_address(&mut self) {
-        self.address = Default::default();
-    }
-
     fn payload_len(&self) -> usize {
         self.payload_len as usize
     }
 
     unsafe fn set_payload_len(&mut self, len: usize) {
         self.payload_len = len;
+    }
+
+    fn set_segment_size(&mut self, _size: usize) {
+        panic!("segments are not supported in simple messages");
+    }
+
+    unsafe fn reset(&mut self, mtu: usize) {
+        self.address = Default::default();
+        self.set_payload_len(mtu)
     }
 
     fn payload_ptr(&self) -> *const u8 {
@@ -73,7 +81,9 @@ pub struct Ring<Payloads> {
 
     // this field holds references to allocated payloads, but is never read directly
     #[allow(dead_code)]
-    payloads: Payloads,
+    payloads: Pin<Payloads>,
+
+    mtu: usize,
 }
 
 /// Even though `Ring` contains raw pointers, it owns all of the data
@@ -82,20 +92,27 @@ unsafe impl<Payloads: Send> Send for Ring<Payloads> {}
 
 impl<Payloads: crate::buffer::Buffer + Default> Default for Ring<Payloads> {
     fn default() -> Self {
-        Self::new(Payloads::default())
+        Self::new(Payloads::default(), 1)
     }
 }
 
 impl<Payloads: crate::buffer::Buffer> Ring<Payloads> {
-    pub fn new(mut payloads: Payloads) -> Self {
-        let capacity = payloads.len();
+    pub fn new(payloads: Payloads, _max_gso: usize) -> Self {
         let mtu = payloads.mtu();
+        let capacity = payloads.len() / mtu;
+
+        let mut payloads = Pin::new(payloads);
 
         // double message capacity to enable contiguous access
         let mut messages = Vec::with_capacity(capacity * 2);
 
-        for index in 0..capacity {
-            let payload_ptr = payloads[index].as_mut_ptr() as _;
+        let mut buf = &mut payloads.as_mut()[..];
+
+        for _ in 0..capacity {
+            let (payload, remaining) = buf.split_at_mut(mtu);
+            buf = remaining;
+
+            let payload_ptr = payload.as_mut_ptr() as _;
             messages.push(Message {
                 payload_ptr,
                 payload_len: mtu,
@@ -107,25 +124,43 @@ impl<Payloads: crate::buffer::Buffer> Ring<Payloads> {
             messages.push(messages[index]);
         }
 
-        Self { messages, payloads }
+        Self {
+            messages,
+            payloads,
+            mtu,
+        }
     }
 }
 
 impl<Payloads: crate::buffer::Buffer> super::Ring for Ring<Payloads> {
     type Message = Message;
 
+    #[inline]
     fn len(&self) -> usize {
-        self.payloads.len()
+        self.messages.len() / 2
     }
 
+    #[inline]
     fn mtu(&self) -> usize {
-        self.payloads.mtu()
+        self.mtu
     }
 
+    #[inline]
+    fn max_gso(&self) -> usize {
+        1
+    }
+
+    #[inline]
+    fn disable_gso(&mut self) {
+        panic!("GSO is not supported by simple messages");
+    }
+
+    #[inline]
     fn as_slice(&self) -> &[Self::Message] {
         &self.messages[..]
     }
 
+    #[inline]
     fn as_mut_slice(&mut self) -> &mut [Self::Message] {
         &mut self.messages[..]
     }
@@ -152,28 +187,34 @@ impl tx::Entry for Message {
         Ok(len)
     }
 
+    #[inline]
     fn payload(&self) -> &[u8] {
         MessageTrait::payload(self)
     }
 
+    #[inline]
     fn payload_mut(&mut self) -> &mut [u8] {
         MessageTrait::payload_mut(self)
     }
 }
 
 impl rx::Entry for Message {
+    #[inline]
     fn remote_address(&self) -> Option<SocketAddress> {
         MessageTrait::remote_address(self)
     }
 
+    #[inline]
     fn ecn(&self) -> ExplicitCongestionNotification {
         MessageTrait::ecn(self)
     }
 
+    #[inline]
     fn payload(&self) -> &[u8] {
         MessageTrait::payload(self)
     }
 
+    #[inline]
     fn payload_mut(&mut self) -> &mut [u8] {
         MessageTrait::payload_mut(self)
     }

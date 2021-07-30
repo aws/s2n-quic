@@ -112,22 +112,32 @@ impl AsRef<[u8]> for Transmission {
 }
 
 impl tx::Message for &Transmission {
+    #[inline]
     fn remote_address(&mut self) -> SocketAddress {
         self.remote_address
     }
 
+    #[inline]
     fn ecn(&mut self) -> ExplicitCongestionNotification {
         Default::default()
     }
 
+    #[inline]
     fn delay(&mut self) -> time::Duration {
         Default::default()
     }
 
+    #[inline]
     fn ipv6_flow_label(&mut self) -> u32 {
         0
     }
 
+    #[inline]
+    fn can_gso(&self) -> bool {
+        true
+    }
+
+    #[inline]
     fn write_payload(&mut self, buffer: &mut [u8]) -> usize {
         let packet = self.as_ref();
         buffer[..packet.len()].copy_from_slice(packet);

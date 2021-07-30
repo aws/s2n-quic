@@ -11,6 +11,7 @@ use s2n_quic_core::{
     ack,
     connection::limits::Limits,
     crypto::{tls, tls::Session, CryptoSuite},
+    event,
     frame::{
         ack::AckRanges,
         crypto::CryptoRef,
@@ -71,7 +72,12 @@ macro_rules! packet_space_api {
         }
 
         $(
-            pub fn $discard(&mut self, path: &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>) {
+            pub fn $discard<Pub: event::Publisher>(
+                &mut self,
+                path: &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
+        path_id: path::Id,
+        publisher: &mut Pub,
+            ) {
                 //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.2.2
                 //# When Initial or Handshake keys are discarded, the PTO and loss
                 //# detection timers MUST be reset, because discarding keys indicates
@@ -79,7 +85,7 @@ macro_rules! packet_space_api {
                 //# a now discarded packet number space.
                 path.reset_pto_backoff();
                 if let Some(mut space) = self.$field.take() {
-                    space.on_discard(path);
+                    space.on_discard(path,  path_id, publisher);
                 }
 
                 //= https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#4.9.1
@@ -182,11 +188,12 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
     }
 
     /// Called when the connection timer expired
-    pub fn on_timeout(
+    pub fn on_timeout<Pub: event::Publisher>(
         &mut self,
         local_id_registry: &mut connection::LocalIdRegistry,
         path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
         timestamp: Timestamp,
+        publisher: &mut Pub,
     ) {
         let path_id = path_manager.active_path_id();
         let path = path_manager.active_path_mut();
@@ -195,13 +202,31 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         let max_backoff = path.pto_backoff * 2;
 
         if let Some((space, handshake_status)) = self.initial_mut() {
-            space.on_timeout(handshake_status, path_id, path_manager, timestamp)
+            space.on_timeout(
+                handshake_status,
+                path_id,
+                path_manager,
+                timestamp,
+                publisher,
+            )
         }
         if let Some((space, handshake_status)) = self.handshake_mut() {
-            space.on_timeout(handshake_status, path_id, path_manager, timestamp)
+            space.on_timeout(
+                handshake_status,
+                path_id,
+                path_manager,
+                timestamp,
+                publisher,
+            )
         }
         if let Some((space, handshake_status)) = self.application_mut() {
-            space.on_timeout(path_manager, handshake_status, local_id_registry, timestamp)
+            space.on_timeout(
+                path_manager,
+                handshake_status,
+                local_id_registry,
+                timestamp,
+                publisher,
+            )
         }
 
         let path = path_manager.active_path_mut();
@@ -405,7 +430,8 @@ pub trait PacketSpace<Config: endpoint::Config> {
         path: &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
     ) -> Result<(), transport::Error>;
 
-    fn handle_ack_frame<A: AckRanges>(
+    #[allow(clippy::too_many_arguments)]
+    fn handle_ack_frame<A: AckRanges, Pub: event::Publisher>(
         &mut self,
         frame: Ack<A>,
         datagram: &DatagramInfo,
@@ -413,6 +439,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
         path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
         handshake_status: &mut HandshakeStatus,
         local_id_registry: &mut connection::LocalIdRegistry,
+        publisher: &mut Pub,
     ) -> Result<(), transport::Error>;
 
     fn handle_connection_close_frame(
@@ -497,7 +524,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
 
     // TODO: Reduce arguments, https://github.com/awslabs/s2n-quic/issues/312
     #[allow(clippy::too_many_arguments)]
-    fn handle_cleartext_payload<'a, Rnd: random::Generator>(
+    fn handle_cleartext_payload<'a, Rnd: random::Generator, Pub: event::Publisher>(
         &mut self,
         packet_number: PacketNumber,
         mut payload: DecoderBufferMut<'a>,
@@ -507,6 +534,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
         handshake_status: &mut HandshakeStatus,
         local_id_registry: &mut connection::LocalIdRegistry,
         random_generator: &mut Rnd,
+        publisher: &mut Pub,
     ) -> Result<(), connection::Error> {
         use s2n_quic_core::{
             frame::{Frame, FrameMut},
@@ -529,6 +557,16 @@ pub trait PacketSpace<Config: endpoint::Config> {
                 .map_err(transport::Error::from)?;
             is_path_validation_probing |= frame.path_validation();
 
+            publisher.on_frame_received(event::builders::FrameReceived {
+                packet_header: event::builders::PacketHeader {
+                    packet_type: packet_number.space().into(),
+                    packet_number: packet_number.as_u64(),
+                    version: publisher.quic_version(),
+                }
+                .into(),
+                path_id: path_id.as_u8() as u64,
+                frame: frame.as_event(),
+            });
             match frame {
                 Frame::Padding(frame) => {
                     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.1
@@ -567,6 +605,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
                         path_manager,
                         handshake_status,
                         local_id_registry,
+                        publisher,
                     )
                     .map_err(on_error)?;
                 }
@@ -684,7 +723,11 @@ pub trait PacketSpace<Config: endpoint::Config> {
             payload = remaining;
         }
         if is_path_validation_probing.is_probing() {
-            path_manager.on_non_path_validation_probing_packet(path_id, random_generator)?;
+            path_manager.on_non_path_validation_probing_packet(
+                path_id,
+                random_generator,
+                publisher,
+            )?;
         }
 
         //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#13.1

@@ -12,12 +12,15 @@ pub trait Provider {
     fn start(self) -> Result<Self::Subscriber, Self::Error>;
 }
 
+/// Provides an implementation to disable all logging
+pub mod disabled;
+
 cfg_if! {
     if #[cfg(feature = "tracing-provider")] {
         pub use self::tracing as default;
         pub mod tracing;
     } else {
-        pub mod default;
+        pub use self::disabled as default;
     }
 }
 

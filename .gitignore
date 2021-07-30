@@ -9,3 +9,4 @@ Cargo.lock
 /.history
 .DS_Store
 /.idea
+dhat-heap.json

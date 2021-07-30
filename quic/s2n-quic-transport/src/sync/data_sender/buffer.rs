@@ -38,6 +38,7 @@ impl Buffer {
     }
 
     /// Returns the maximum capacity the buffer could ever hold
+    #[inline]
     pub fn capacity(&self) -> VarInt {
         VarInt::MAX - self.total_len()
     }
@@ -51,21 +52,25 @@ impl Buffer {
     }
 
     /// Returns the total number of bytes the buffer has and is currently holding
+    #[inline]
     pub fn total_len(&self) -> VarInt {
         self.head + self.pending_len
     }
 
     /// Returns the head or offset at which the first chunk in the buffer starts
+    #[inline]
     pub fn head(&self) -> VarInt {
         self.head
     }
 
     /// Returns the number of bytes enqueue for transmission/retransmission
+    #[inline]
     pub fn enqueued_len(&self) -> VarInt {
         self.pending_len
     }
 
     /// Returns true if the buffer is currently empty
+    #[inline]
     pub fn is_empty(&self) -> bool {
         self.pending_len == VarInt::from_u8(0)
     }
@@ -132,6 +137,7 @@ impl Buffer {
     }
 
     /// Returns a Viewer for the buffer
+    #[inline]
     pub fn viewer(&self) -> Viewer {
         Viewer {
             buffer: self,
@@ -174,6 +180,7 @@ impl fmt::Debug for Chunk {
 impl core::ops::Deref for Chunk {
     type Target = Bytes;
 
+    #[inline]
     fn deref(&self) -> &Self::Target {
         &self.data
     }
@@ -188,6 +195,7 @@ pub struct Viewer<'a> {
 
 impl<'a> Viewer<'a> {
     /// Returns the next view in the buffer for a given range
+    #[inline]
     pub fn next_view(&mut self, range: Interval<VarInt>, has_fin: bool) -> View<'a> {
         View::new(
             self.buffer,
@@ -209,6 +217,7 @@ pub struct View<'a> {
 }
 
 impl<'a> View<'a> {
+    #[inline]
     fn new(
         buffer: &'a Buffer,
         range: Interval<VarInt>,
@@ -262,6 +271,7 @@ impl<'a> View<'a> {
     /// Trims off an `amount` number of bytes from the end of the view
     ///
     /// If `amount` exceeds the view `len`, Err will be returned
+    #[inline]
     pub fn trim_off(&mut self, amount: usize) -> Result<(), FitError> {
         self.len = self.len.checked_sub(amount).ok_or(FitError)?;
 
@@ -272,11 +282,13 @@ impl<'a> View<'a> {
     }
 
     /// Returns the number of bytes in the current view
+    #[inline]
     pub fn len(&self) -> VarInt {
         VarInt::try_from(self.len).expect("len should always fit in a VarInt")
     }
 
     /// Returns `true` if the view includes the last byte in the stream
+    #[inline]
     pub fn is_fin(&self) -> bool {
         self.is_fin
     }
@@ -285,6 +297,7 @@ impl<'a> View<'a> {
 impl<'a> Iterator for View<'a> {
     type Item = &'a [u8];
 
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         if self.len == 0 {
             return None;
@@ -315,6 +328,7 @@ impl<'a> Iterator for View<'a> {
 }
 
 impl<'a> EncoderValue for &mut View<'a> {
+    #[inline]
     fn encode<E: Encoder>(&self, encoder: &mut E) {
         encoder.write_sized(self.len, |slice| {
             let mut offset = 0;
@@ -340,6 +354,7 @@ impl<'a> EncoderValue for &mut View<'a> {
         });
     }
 
+    #[inline]
     fn encoding_size_for_encoder<E: Encoder>(&self, _encoder: &E) -> usize {
         self.len
     }

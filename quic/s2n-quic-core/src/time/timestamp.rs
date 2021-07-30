@@ -66,6 +66,7 @@ impl Timestamp {
     /// adding the provided `Duration`. If this `Timestamp` is representable
     /// within the range of `Timestamp` it is returned as `Some(timestamp)`.
     /// Otherwise `None` is returned.
+    #[inline]
     pub fn checked_add(self, duration: Duration) -> Option<Self> {
         self.as_duration_impl()
             .checked_add(duration)
@@ -76,6 +77,7 @@ impl Timestamp {
     /// subtracting the provided `Duration`. If this `Timestamp` is representable
     /// within the range of `Timestamp` it is returned as `Some(timestamp)`.
     /// Otherwise `None` is returned.
+    #[inline]
     pub fn checked_sub(self, duration: Duration) -> Option<Self> {
         self.as_duration_impl()
             .checked_sub(duration)
@@ -84,6 +86,7 @@ impl Timestamp {
 
     /// Returns the `Duration` which elapsed since an earlier `Timestamp`.
     /// If `earlier` is more recent, the method returns a `Duration` of 0.
+    #[inline]
     pub fn saturating_duration_since(self, earlier: Self) -> Duration {
         self.checked_sub(earlier.as_duration_impl())
             .map(Self::as_duration_impl)
@@ -95,11 +98,13 @@ impl Timestamp {
     ///
     /// # Safety
     /// This should only be used by time sources
+    #[inline]
     pub unsafe fn from_duration(duration: Duration) -> Self {
         Self::from_duration_impl(duration)
     }
 
     /// Creates a `Timestamp` from a `Duration` since the time source's epoch.
+    #[inline]
     fn from_duration_impl(duration: Duration) -> Self {
         // 2^64 microseconds is ~580,000 years so casting from a u128 should be ok
         debug_assert!(duration.as_micros() <= core::u64::MAX.into());
@@ -113,11 +118,13 @@ impl Timestamp {
     ///
     /// # Safety
     /// This should only be used by time sources
+    #[inline]
     pub unsafe fn as_duration(self) -> Duration {
         Self::as_duration_impl(self)
     }
 
     /// Returns the timestamp as a [`Duration`] since the clock epoch.
+    #[inline]
     const fn as_duration_impl(self) -> Duration {
         Duration::from_micros(self.0.get())
     }
@@ -126,6 +133,7 @@ impl Timestamp {
     ///
     /// Note that this compares milliseconds, as any finer resolution would result in
     /// excessive timer churn.
+    #[inline]
     pub const fn has_elapsed(self, now: Self) -> bool {
         let mut now = now.0.get();
 
@@ -139,12 +147,14 @@ impl Timestamp {
 impl core::ops::Add<Duration> for Timestamp {
     type Output = Timestamp;
 
+    #[inline]
     fn add(self, rhs: Duration) -> Self::Output {
         Timestamp::from_duration_impl(self.as_duration_impl() + rhs)
     }
 }
 
 impl core::ops::AddAssign<Duration> for Timestamp {
+    #[inline]
     fn add_assign(&mut self, other: Duration) {
         *self = *self + other;
     }
@@ -153,6 +163,7 @@ impl core::ops::AddAssign<Duration> for Timestamp {
 impl core::ops::Sub for Timestamp {
     type Output = Duration;
 
+    #[inline]
     fn sub(self, rhs: Timestamp) -> Self::Output {
         self.as_duration_impl() - rhs.as_duration_impl()
     }
@@ -161,12 +172,14 @@ impl core::ops::Sub for Timestamp {
 impl core::ops::Sub<Duration> for Timestamp {
     type Output = Timestamp;
 
+    #[inline]
     fn sub(self, rhs: Duration) -> Self::Output {
         Timestamp::from_duration_impl(self.as_duration_impl() - rhs)
     }
 }
 
 impl core::ops::SubAssign<Duration> for Timestamp {
+    #[inline]
     fn sub_assign(&mut self, other: Duration) {
         *self = *self - other;
     }

@@ -37,6 +37,7 @@ impl StreamInterests {
     /// The `finalization` interest is the exception. A `Stream` can only
     /// be finalized if both the sending and receiving side are interested
     /// in finalization.
+    #[inline]
     pub fn merge(self, other: StreamInterests) -> StreamInterests {
         StreamInterests {
             connection_flow_control_credits: self.connection_flow_control_credits
@@ -56,6 +57,7 @@ impl StreamInterests {
     /// instance.
     ///
     /// Thereby the operation performs a field-wise logical `OR`
+    #[inline]
     pub fn merge_transmission_interest(self, other: transmission::Interest) -> StreamInterests {
         StreamInterests {
             transmission: self.transmission + other,
@@ -70,6 +72,7 @@ impl StreamInterests {
 impl core::ops::Add for StreamInterests {
     type Output = Self;
 
+    #[inline]
     fn add(self, rhs: Self) -> Self::Output {
         self.merge(rhs)
     }
@@ -78,18 +81,21 @@ impl core::ops::Add for StreamInterests {
 impl core::ops::Add<transmission::Interest> for StreamInterests {
     type Output = Self;
 
+    #[inline]
     fn add(self, rhs: transmission::Interest) -> Self::Output {
         self.merge_transmission_interest(rhs)
     }
 }
 
 impl core::ops::AddAssign for StreamInterests {
+    #[inline]
     fn add_assign(&mut self, rhs: Self) {
         *self = self.merge(rhs);
     }
 }
 
 impl core::ops::AddAssign<transmission::Interest> for StreamInterests {
+    #[inline]
     fn add_assign(&mut self, rhs: transmission::Interest) {
         *self = self.merge_transmission_interest(rhs);
     }

@@ -67,7 +67,7 @@ pub struct Annotation {
 
 impl Annotation {
     pub fn target(&self) -> Result<Target, Error> {
-        Target::from_annotation(&self)
+        Target::from_annotation(self)
     }
 
     pub fn target_path(&self) -> &str {

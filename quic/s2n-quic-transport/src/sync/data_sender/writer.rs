@@ -11,6 +11,7 @@ pub struct Stream;
 impl FrameWriter for Stream {
     type Context = VarInt;
 
+    #[inline]
     fn write_chunk<W: WriteContext>(
         &self,
         offset: VarInt,
@@ -43,11 +44,12 @@ impl FrameWriter for Stream {
         frame.data.trim_off(frame.data.encoding_size() - len)?;
         frame.is_fin = frame.data.is_fin();
 
-        context.write_frame(&frame).ok_or(FitError)?;
+        context.write_fitted_frame(&frame);
 
         Ok(())
     }
 
+    #[inline]
     fn write_fin<W: WriteContext>(
         &self,
         offset: VarInt,
@@ -64,7 +66,7 @@ impl FrameWriter for Stream {
 
         // the length is always 0 so we don't need to trim the data
         frame.try_fit(context.remaining_capacity())?;
-        context.write_frame(&frame).ok_or(FitError)?;
+        context.write_fitted_frame(&frame);
 
         Ok(())
     }
@@ -116,7 +118,7 @@ impl FrameWriter for Crypto {
 
         frame.data.trim_off(frame.data.encoding_size() - len)?;
 
-        context.write_frame(&frame).ok_or(FitError)?;
+        context.write_fitted_frame(&frame);
 
         Ok(())
     }

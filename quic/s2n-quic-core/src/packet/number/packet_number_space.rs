@@ -67,6 +67,7 @@ impl PacketNumberSpace {
     }
 
     /// Returns the tag representation of PacketNumberSpace
+    #[inline]
     pub(crate) const fn as_tag(self) -> u8 {
         self as u8
     }
@@ -76,6 +77,7 @@ impl PacketNumberSpace {
     /// # Safety
     ///
     /// Callers must ensure tag is less than `3`
+    #[inline]
     pub(crate) fn from_tag(tag: u8) -> Self {
         match tag {
             1 => Self::Initial,

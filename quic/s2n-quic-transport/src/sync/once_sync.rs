@@ -40,17 +40,20 @@ impl<T: Copy + Clone + Eq + PartialEq, S: ValueToFrameWriter<T>> OnceSync<T, S> 
 
     /// Returns `true` if the payload had been delivered to the peer and had
     /// been acknowledged by the peer.
+    #[inline]
     pub fn is_delivered(&self) -> bool {
         self.delivery.is_delivered()
     }
 
     /// Returns `true` if the delivery is current in progress.
     /// A packet has been sent, but no acknowledgement has been retrieved so far.
+    #[inline]
     pub fn is_inflight(&self) -> bool {
         self.delivery.is_inflight()
     }
 
     /// Returns `true` if the synchronization has been cancelled
+    #[inline]
     pub fn is_cancelled(&self) -> bool {
         self.delivery.is_cancelled()
     }
@@ -63,6 +66,7 @@ impl<T: Copy + Clone + Eq + PartialEq, S: ValueToFrameWriter<T>> OnceSync<T, S> 
     }
 
     /// Stop to synchronize the value to the peer
+    #[inline]
     pub fn stop_sync(&mut self) {
         self.delivery.cancel();
     }
@@ -90,6 +94,7 @@ impl<T: Copy + Clone + Eq + PartialEq, S: ValueToFrameWriter<T>> OnceSync<T, S> 
     }
 
     /// Queries the component for any outgoing frames that need to get sent
+    #[inline]
     pub fn on_transmit<W: WriteContext>(
         &mut self,
         stream_id: StreamId,

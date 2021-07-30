@@ -13,6 +13,7 @@ pub struct PacketNumberRange {
 
 impl PacketNumberRange {
     /// Creates a new packet number range.
+    #[inline]
     pub fn new(start: PacketNumber, end: PacketNumber) -> Self {
         assert!(start <= end, "start must be less than or equal to end");
         Self {
@@ -23,16 +24,19 @@ impl PacketNumberRange {
     }
 
     /// Returns true if the range contains the given packet number
+    #[inline]
     pub fn contains(&self, packet_number: PacketNumber) -> bool {
         self.start <= packet_number && packet_number <= self.end
     }
 
     /// Returns the lower bound of the range (inclusive).
+    #[inline]
     pub fn start(&self) -> PacketNumber {
         self.start
     }
 
     /// Returns the upper bound of the range (inclusive).
+    #[inline]
     pub fn end(&self) -> PacketNumber {
         self.end
     }
@@ -41,6 +45,7 @@ impl PacketNumberRange {
 impl Iterator for PacketNumberRange {
     type Item = PacketNumber;
 
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         if !self.exhausted && self.start <= self.end {
             let current = self.start;
@@ -59,6 +64,7 @@ impl Iterator for PacketNumberRange {
 }
 
 impl DoubleEndedIterator for PacketNumberRange {
+    #[inline]
     fn next_back(&mut self) -> Option<Self::Item> {
         if !self.exhausted && self.start <= self.end {
             let current = self.end;

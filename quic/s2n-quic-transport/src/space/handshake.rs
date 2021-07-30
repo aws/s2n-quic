@@ -17,6 +17,7 @@ use core::marker::PhantomData;
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
     crypto::{tls, CryptoSuite},
+    event,
     frame::{ack::AckRanges, crypto::CryptoRef, Ack, ConnectionClose},
     inet::DatagramInfo,
     packet::{
@@ -102,11 +103,9 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
         }
 
         let packet_number_encoder = self.packet_number_encoder();
-        let mut outcome = transmission::Outcome {
-            packet_number,
-            ..Default::default()
-        };
+        let mut outcome = transmission::Outcome::new(packet_number);
 
+        let destination_connection_id = context.path().peer_connection_id;
         let payload = transmission::Transmission {
             config: <PhantomData<Config>>::default(),
             outcome: &mut outcome,
@@ -121,11 +120,13 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
             transmission_constraint,
             transmission_mode: context.transmission_mode,
             tx_packet_numbers: &mut self.tx_packet_numbers,
+            path_id: context.path_id,
+            publisher: context.publisher,
         };
 
         let packet = Handshake {
             version: context.quic_version,
-            destination_connection_id: context.path().peer_connection_id.as_ref(),
+            destination_connection_id,
             source_connection_id: context.source_connection_id.as_ref(),
             packet_number,
             payload,
@@ -157,11 +158,9 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
         let packet_number = self.tx_packet_numbers.next();
 
         let packet_number_encoder = self.packet_number_encoder();
-        let mut outcome = transmission::Outcome {
-            packet_number,
-            ..Default::default()
-        };
+        let mut outcome = transmission::Outcome::new(packet_number);
 
+        let destination_connection_id = context.path().peer_connection_id;
         let payload = transmission::Transmission {
             config: <PhantomData<Config>>::default(),
             outcome: &mut outcome,
@@ -174,11 +173,13 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
             transmission_constraint: transmission::Constraint::None,
             transmission_mode: transmission::Mode::Normal,
             tx_packet_numbers: &mut self.tx_packet_numbers,
+            path_id: context.path_id,
+            publisher: context.publisher,
         };
 
         let packet = Handshake {
             version: context.quic_version,
-            destination_connection_id: context.path().peer_connection_id.as_ref(),
+            destination_connection_id,
             source_connection_id: context.source_connection_id.as_ref(),
             packet_number,
             payload,
@@ -225,26 +226,30 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
     }
 
     /// Called when the connection timer expired
-    pub fn on_timeout(
+    pub fn on_timeout<Pub: event::Publisher>(
         &mut self,
         handshake_status: &HandshakeStatus,
         path_id: path::Id,
         path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
         timestamp: Timestamp,
+        publisher: &mut Pub,
     ) {
         self.ack_manager.on_timeout(timestamp);
 
         let (recovery_manager, mut context) =
             self.recovery(handshake_status, path_id, path_manager);
-        recovery_manager.on_timeout(timestamp, &mut context);
+        recovery_manager.on_timeout(timestamp, &mut context, publisher);
     }
 
     /// Called before the Handshake packet space is discarded
-    pub fn on_discard(
+    pub fn on_discard<Pub: event::Publisher>(
         &mut self,
         path: &mut Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
+        path_id: path::Id,
+        publisher: &mut Pub,
     ) {
-        self.recovery_manager.on_packet_number_space_discarded(path);
+        self.recovery_manager
+            .on_packet_number_space_discarded(path, path_id, publisher);
     }
 
     pub fn requires_probe(&self) -> bool {
@@ -401,7 +406,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for HandshakeSpace<Config> {
         Ok(())
     }
 
-    fn handle_ack_frame<A: AckRanges>(
+    fn handle_ack_frame<A: AckRanges, Pub: event::Publisher>(
         &mut self,
         frame: Ack<A>,
         datagram: &DatagramInfo,
@@ -409,12 +414,13 @@ impl<Config: endpoint::Config> PacketSpace<Config> for HandshakeSpace<Config> {
         path_manager: &mut path::Manager<Config::CongestionControllerEndpoint>,
         handshake_status: &mut HandshakeStatus,
         _local_id_registry: &mut connection::LocalIdRegistry,
+        publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
         let path = &mut path_manager[path_id];
         path.on_peer_validated();
         let (recovery_manager, mut context) =
             self.recovery(handshake_status, path_id, path_manager);
-        recovery_manager.on_ack_frame(datagram, frame, &mut context)
+        recovery_manager.on_ack_frame(datagram, frame, &mut context, publisher)
     }
 
     fn handle_connection_close_frame(

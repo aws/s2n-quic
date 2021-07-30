@@ -172,8 +172,7 @@ fn reset<Message: message::Message>(messages: &mut [Message], mtu: usize) {
     for message in messages {
         unsafe {
             // Safety: the payloads should always be allocated regions of MTU
-            message.set_payload_len(mtu);
-            message.reset_remote_address();
+            message.reset(mtu);
         }
     }
 }
@@ -191,8 +190,7 @@ fn wipe<Message: message::Message>(messages: &mut [Message], mtu: usize) {
 
         unsafe {
             // Safety: the payloads should always be allocated regions of MTU
-            message.set_payload_len(mtu);
-            message.reset_remote_address();
+            message.reset(mtu);
         }
     }
 }

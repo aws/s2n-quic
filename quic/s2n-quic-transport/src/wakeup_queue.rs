@@ -45,11 +45,11 @@ impl<T: Copy> QueueState<T> {
     /// It will returns a queue of occurred events.
     /// If no wakeup occurred, the method will store the passed [`Waker`] and notify it as soon as
     /// a wakeup occured.
-    fn poll_pending_wakeups(&mut self, swap_queue: VecDeque<T>, context: &Context) -> VecDeque<T> {
-        let result = core::mem::replace(&mut self.woken_connections, swap_queue);
-
+    fn poll_pending_wakeups(&mut self, swap_queue: &mut VecDeque<T>, context: &Context) {
+        debug_assert!(swap_queue.is_empty());
         self.wakeup_in_progress = false;
-        if result.is_empty() {
+
+        if self.woken_connections.is_empty() {
             // If no wakeup was pending, store or update the `Waker`
             match &self.waker {
                 Some(w) => {
@@ -59,12 +59,11 @@ impl<T: Copy> QueueState<T> {
                 }
                 None => self.waker = Some(context.waker().clone()),
             }
+
+            return;
         }
 
-        // Clear the passed queue in case the caller did not clean it
-        self.woken_connections.clear();
-
-        result
+        core::mem::swap(&mut self.woken_connections, swap_queue);
     }
 }
 
@@ -99,11 +98,7 @@ impl<T: Copy> WakeupQueue<T> {
     /// memory allocations, the caller is expected to pass in a new `VecDequeue` which will
     /// by utilized for further queueing. Thereby a double-buffering approach for wakeups is
     /// enabled.
-    pub fn poll_pending_wakeups(
-        &mut self,
-        swap_queue: VecDeque<T>,
-        context: &Context,
-    ) -> VecDeque<T> {
+    pub fn poll_pending_wakeups(&mut self, swap_queue: &mut VecDeque<T>, context: &Context) {
         let mut guard = self
             .state
             .lock()
@@ -190,14 +185,14 @@ mod tests {
     fn queue_wakeups() {
         let (waker, counter) = new_count_waker();
         let mut queue = WakeupQueue::new();
-        let pending = VecDeque::new();
+        let mut pending = VecDeque::new();
 
         let mut handle1 = queue.create_wakeup_handle(1u32);
         let mut handle2 = queue.create_wakeup_handle(2u32);
         assert_eq!(counter, 0);
 
         // Initially no wakeup should be signalled - but the Waker should be stored
-        let pending = queue.poll_pending_wakeups(pending, &Context::from_waker(&waker));
+        queue.poll_pending_wakeups(&mut pending, &Context::from_waker(&waker));
         assert!(pending.is_empty());
 
         // After a wakeup the waker should be notified
@@ -212,17 +207,18 @@ mod tests {
         assert_eq!(counter, 1);
 
         // The pending wakeups should be signaled
-        let pending = queue.poll_pending_wakeups(pending, &Context::from_waker(&waker));
+        queue.poll_pending_wakeups(&mut pending, &Context::from_waker(&waker));
         assert_eq!(vec_deque![1u32, 2u32], pending);
+        pending.clear();
 
         // In the next query no wakeups should be signaled
-        let pending = queue.poll_pending_wakeups(pending, &Context::from_waker(&waker));
+        queue.poll_pending_wakeups(&mut pending, &Context::from_waker(&waker));
         assert!(pending.is_empty());
 
         // As long as wakeups are not handled, no new ones are enqueued
         handle2.wakeup();
         assert_eq!(counter, 1);
-        let pending = queue.poll_pending_wakeups(pending, &Context::from_waker(&waker));
+        queue.poll_pending_wakeups(&mut pending, &Context::from_waker(&waker));
         assert!(pending.is_empty());
 
         // If wakeups are handled, wakeups are forwarded again
@@ -231,7 +227,8 @@ mod tests {
 
         handle2.wakeup();
         assert_eq!(counter, 2);
-        let pending = queue.poll_pending_wakeups(pending, &Context::from_waker(&waker));
+        queue.poll_pending_wakeups(&mut pending, &Context::from_waker(&waker));
         assert_eq!(vec_deque![2u32], pending);
+        pending.clear();
     }
 }

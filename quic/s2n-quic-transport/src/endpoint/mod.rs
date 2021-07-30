@@ -111,6 +111,7 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
                         endpoint_type: Cfg::ENDPOINT_TYPE,
                         group_id: connection.internal_connection_id().into(),
                     },
+                    Some(connection.quic_version()),
                     endpoint_context.event_subscriber,
                 );
 
@@ -140,17 +141,23 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
             return Poll::Ready(Err(s2n_quic_core::endpoint::CloseError));
         }
 
-        // The mem::take is needed to work around a limitation which does not allow us to pass
-        // the new queue directly - even though we will populate the field again after the call.
-        let dequeued_wakeups = core::mem::take(&mut self.dequeued_wakeups);
-        self.dequeued_wakeups = self.wakeup_queue.poll_pending_wakeups(dequeued_wakeups, cx);
+        self.wakeup_queue
+            .poll_pending_wakeups(&mut self.dequeued_wakeups, cx);
         let nr_wakeups = self.dequeued_wakeups.len();
         let close_packet_buffer = &mut self.close_packet_buffer;
         let endpoint_context = self.config.context();
 
-        for internal_id in &self.dequeued_wakeups {
+        for internal_id in self.dequeued_wakeups.drain(..) {
             self.connections
-                .with_connection(*internal_id, |conn, mut shared_state| {
+                .with_connection(internal_id, |conn, mut shared_state| {
+                    let mut publisher = event::PublisherSubscriber::new(
+                        event::builders::Meta {
+                            endpoint_type: Cfg::ENDPOINT_TYPE,
+                            group_id: conn.internal_connection_id().into(),
+                        },
+                        Some(conn.quic_version()),
+                        endpoint_context.event_subscriber,
+                    );
                     if let Err(error) = conn.on_wakeup(shared_state.as_deref_mut(), timestamp) {
                         conn.close(
                             shared_state,
@@ -158,6 +165,7 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
                             endpoint_context.connection_close_formatter,
                             close_packet_buffer,
                             timestamp,
+                            &mut publisher,
                         );
                     }
                 });
@@ -247,7 +255,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 >
                     (
                     datagram,
-                    &packet,
+                    packet,
                     local_connection_id,
                     context.random_generator,
                     context.token
@@ -312,6 +320,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 endpoint_type: Cfg::ENDPOINT_TYPE,
                 group_id: 7, // TODO: generate a new internal connection id
             },
+            packet.version(),
             endpoint_context.event_subscriber,
         );
 
@@ -392,18 +401,12 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
                     // only process packets if we are open
                     if let Some(shared_state) = shared_state {
-                        //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#9
-                        //= type=TODO
-                        //= tracking-issue=https://github.com/awslabs/s2n-quic/issues/271
-                        //# An endpoint MUST
-                        //# perform path validation (Section 8.2) if it detects any change to a
-                        //# peer's address, unless it has previously validated that address.
-
                         let mut publisher = event::PublisherSubscriber::new(
                             event::builders::Meta {
                                 endpoint_type: Cfg::ENDPOINT_TYPE,
-                                group_id: internal_id.into(),
+                                group_id: conn.internal_connection_id().into(),
                             },
+                            Some(conn.quic_version()),
                             endpoint_context.event_subscriber,
                         );
                         if let Err(err) = conn.handle_packet(
@@ -425,6 +428,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                                         endpoint_context.connection_close_formatter,
                                         close_packet_buffer,
                                         datagram.timestamp,
+                                        &mut publisher,
                                     );
                                     return Err(());
                                 }
@@ -458,6 +462,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                                 endpoint_context.connection_close_formatter,
                                 close_packet_buffer,
                                 datagram.timestamp,
+                                &mut publisher,
                             );
                             return Err(());
                         }
@@ -658,12 +663,21 @@ impl<Cfg: Config> Endpoint<Cfg> {
         //# and not send any further packets on this connection.
         self.connections
             .with_connection(internal_id, |conn, shared_state| {
+                let mut publisher = event::PublisherSubscriber::new(
+                    event::builders::Meta {
+                        endpoint_type: Cfg::ENDPOINT_TYPE,
+                        group_id: conn.internal_connection_id().into(),
+                    },
+                    Some(conn.quic_version()),
+                    endpoint_context.event_subscriber,
+                );
                 conn.close(
                     shared_state,
                     connection::Error::StatelessReset,
                     endpoint_context.connection_close_formatter,
                     close_packet_buffer,
                     timestamp,
+                    &mut publisher,
                 );
             });
 
@@ -678,10 +692,20 @@ impl<Cfg: Config> Endpoint<Cfg> {
         for internal_id in self.timer_manager.expirations(timestamp) {
             self.connections
                 .with_connection(internal_id, |conn, mut shared_state| {
+                    let mut publisher = event::PublisherSubscriber::new(
+                        event::builders::Meta {
+                            endpoint_type: Cfg::ENDPOINT_TYPE,
+                            group_id: conn.internal_connection_id().into(),
+                        },
+                        Some(conn.quic_version()),
+                        endpoint_context.event_subscriber,
+                    );
+
                     if let Err(error) = conn.on_timeout(
                         shared_state.as_deref_mut(),
                         connection_id_mapper,
                         timestamp,
+                        &mut publisher,
                     ) {
                         conn.close(
                             shared_state,
@@ -689,6 +713,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                             endpoint_context.connection_close_formatter,
                             close_packet_buffer,
                             timestamp,
+                            &mut publisher,
                         );
                     }
                 });

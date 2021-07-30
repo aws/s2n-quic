@@ -356,6 +356,7 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
     }
 
     /// Queries the component for any outgoing frames that need to get sent
+    #[inline]
     pub fn on_transmit<W: WriteContext>(
         &mut self,
         writer_context: Writer::Context,

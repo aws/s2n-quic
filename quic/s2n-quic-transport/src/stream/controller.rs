@@ -5,7 +5,7 @@ use crate::{
     contexts::OnTransmitError,
     sync::{IncrementalValueSync, PeriodicSync, ValueToFrameWriter},
     transmission,
-    transmission::{Interest, WriteContext},
+    transmission::{interest::Provider, Interest, WriteContext},
 };
 use core::{
     task::{Context, Poll, Waker},
@@ -42,9 +42,8 @@ enum StreamDirection {
 #[derive(Debug)]
 pub struct Controller {
     local_endpoint_type: endpoint::Type,
-    outgoing_controller: OutgoingController,
-    incoming_controller: IncomingController,
-    bidi_controller: BidiController,
+    bidi_controller: ControllerPair,
+    uni_controller: ControllerPair,
 }
 
 impl Controller {
@@ -67,15 +66,22 @@ impl Controller {
     ) -> Self {
         Self {
             local_endpoint_type,
-            outgoing_controller: OutgoingController::new(
-                initial_peer_limits.max_streams_uni,
-                stream_limits.max_open_local_unidirectional_streams,
-            ),
-            incoming_controller: IncomingController::new(initial_local_limits.max_streams_uni),
-            bidi_controller: BidiController::new(
-                initial_peer_limits.max_streams_bidi,
-                initial_local_limits.max_streams_bidi,
-            ),
+            bidi_controller: ControllerPair {
+                stream_id: StreamId::initial(local_endpoint_type, StreamType::Bidirectional),
+                outgoing: OutgoingController::new(
+                    initial_peer_limits.max_streams_bidi,
+                    initial_local_limits.max_streams_bidi,
+                ),
+                incoming: IncomingController::new(initial_local_limits.max_streams_bidi),
+            },
+            uni_controller: ControllerPair {
+                stream_id: StreamId::initial(local_endpoint_type, StreamType::Unidirectional),
+                outgoing: OutgoingController::new(
+                    initial_peer_limits.max_streams_uni,
+                    stream_limits.max_open_local_unidirectional_streams,
+                ),
+                incoming: IncomingController::new(initial_local_limits.max_streams_uni),
+            },
         }
     }
 
@@ -84,7 +90,7 @@ impl Controller {
     pub fn on_max_streams(&mut self, frame: &MaxStreams) {
         match frame.stream_type {
             StreamType::Bidirectional => self.bidi_controller.outgoing.on_max_streams(frame),
-            StreamType::Unidirectional => self.outgoing_controller.on_max_streams(frame),
+            StreamType::Unidirectional => self.uni_controller.outgoing.on_max_streams(frame),
         }
     }
 
@@ -101,7 +107,7 @@ impl Controller {
     ) -> Poll<()> {
         match stream_type {
             StreamType::Bidirectional => self.bidi_controller.outgoing.poll_open_stream(context),
-            StreamType::Unidirectional => self.outgoing_controller.poll_open_stream(context),
+            StreamType::Unidirectional => self.uni_controller.outgoing.poll_open_stream(context),
         }
     }
 
@@ -115,7 +121,10 @@ impl Controller {
                 .bidi_controller
                 .incoming
                 .on_remote_open_stream(stream_id),
-            StreamType::Unidirectional => self.incoming_controller.on_remote_open_stream(stream_id),
+            StreamType::Unidirectional => self
+                .uni_controller
+                .incoming
+                .on_remote_open_stream(stream_id),
         }
     }
 
@@ -123,8 +132,8 @@ impl Controller {
     pub fn on_open_stream(&mut self, stream_id: StreamId) {
         match self.direction(stream_id) {
             StreamDirection::Bidirectional => self.bidi_controller.on_open_stream(),
-            StreamDirection::Outgoing => self.outgoing_controller.on_open_stream(),
-            StreamDirection::Incoming => self.incoming_controller.on_open_stream(),
+            StreamDirection::Outgoing => self.uni_controller.outgoing.on_open_stream(),
+            StreamDirection::Incoming => self.uni_controller.incoming.on_open_stream(),
         }
     }
 
@@ -132,45 +141,28 @@ impl Controller {
     pub fn on_close_stream(&mut self, stream_id: StreamId) {
         match self.direction(stream_id) {
             StreamDirection::Bidirectional => self.bidi_controller.on_close_stream(),
-            StreamDirection::Outgoing => self.outgoing_controller.on_close_stream(),
-            StreamDirection::Incoming => self.incoming_controller.on_close_stream(),
+            StreamDirection::Outgoing => self.uni_controller.outgoing.on_close_stream(),
+            StreamDirection::Incoming => self.uni_controller.incoming.on_close_stream(),
         }
     }
 
     /// This method is called when the stream manager is closed. All wakers will be woken
     /// to unblock waiting tasks.
     pub fn close(&mut self) {
-        self.bidi_controller.outgoing.wake_all();
-        self.outgoing_controller.wake_all();
-        self.bidi_controller.incoming.max_streams_sync.stop_sync();
-        self.bidi_controller
-            .outgoing
-            .streams_blocked_sync
-            .stop_sync();
-        self.incoming_controller.max_streams_sync.stop_sync();
-        self.outgoing_controller.streams_blocked_sync.stop_sync();
+        self.bidi_controller.close();
+        self.uni_controller.close();
     }
 
     /// This method is called when a packet delivery got acknowledged
     pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
         self.bidi_controller.on_packet_ack(ack_set);
-        self.incoming_controller
-            .max_streams_sync
-            .on_packet_ack(ack_set);
-        self.outgoing_controller
-            .streams_blocked_sync
-            .on_packet_ack(ack_set);
+        self.uni_controller.on_packet_ack(ack_set);
     }
 
     /// This method is called when a packet loss is reported
     pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
         self.bidi_controller.on_packet_loss(ack_set);
-        self.incoming_controller
-            .max_streams_sync
-            .on_packet_loss(ack_set);
-        self.outgoing_controller
-            .streams_blocked_sync
-            .on_packet_loss(ack_set);
+        self.uni_controller.on_packet_loss(ack_set);
     }
 
     /// Updates the period at which `STREAMS_BLOCKED` frames are sent to the peer
@@ -180,41 +172,36 @@ impl Controller {
             .outgoing
             .streams_blocked_sync
             .update_sync_period(blocked_sync_period);
-        self.outgoing_controller
+        self.uni_controller
+            .outgoing
             .streams_blocked_sync
             .update_sync_period(blocked_sync_period);
     }
 
     /// Queries the component for any outgoing frames that need to get sent
+    #[inline]
     pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) -> Result<(), OnTransmitError> {
+        if !self.has_transmission_interest() {
+            return Ok(());
+        }
+
         self.bidi_controller.on_transmit(context)?;
-        // Only the stream_type from the StreamId is transmitted
-        self.incoming_controller.max_streams_sync.on_transmit(
-            StreamId::initial(context.local_endpoint_type(), StreamType::Unidirectional),
-            context,
-        )?;
-        self.outgoing_controller.on_transmit(
-            StreamId::initial(context.local_endpoint_type(), StreamType::Unidirectional),
-            context,
-        )
+        self.uni_controller.on_transmit(context)?;
+
+        Ok(())
     }
 
     /// Returns all timers for the component
     pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
         core::iter::empty()
-            .chain(self.bidi_controller.outgoing.streams_blocked_sync.timers())
-            .chain(self.outgoing_controller.streams_blocked_sync.timers())
+            .chain(self.bidi_controller.timers())
+            .chain(self.uni_controller.timers())
     }
 
     /// Called when the connection timer expires
     pub fn on_timeout(&mut self, now: Timestamp) {
-        self.bidi_controller
-            .outgoing
-            .streams_blocked_sync
-            .on_timeout(now);
-        self.outgoing_controller
-            .streams_blocked_sync
-            .on_timeout(now);
+        self.bidi_controller.on_timeout(now);
+        self.uni_controller.on_timeout(now);
     }
 
     fn direction(&self, stream_id: StreamId) -> StreamDirection {
@@ -230,88 +217,85 @@ impl Controller {
 
 /// Queries the component for interest in transmitting frames
 impl transmission::interest::Provider for Controller {
+    #[inline]
     fn transmission_interest(&self) -> Interest {
-        self.bidi_controller.transmission_interest()
-            + self
-                .incoming_controller
-                .max_streams_sync
-                .transmission_interest()
-            + self
-                .outgoing_controller
-                .streams_blocked_sync
-                .transmission_interest()
+        self.bidi_controller.transmission_interest() + self.uni_controller.transmission_interest()
     }
 
+    #[inline]
     fn has_transmission_interest(&self) -> bool {
         self.bidi_controller.has_transmission_interest()
-            || self
-                .incoming_controller
-                .max_streams_sync
-                .has_transmission_interest()
-            || self
-                .outgoing_controller
-                .streams_blocked_sync
-                .has_transmission_interest()
+            || self.uni_controller.has_transmission_interest()
     }
 }
 
-/// The bidirectional controller consists of both outgoing and incoming
+/// The controller pair consists of both outgoing and incoming
 /// controllers that are both notified when a stream is opened, regardless
 /// of which side initiated the stream.
 #[derive(Debug)]
-struct BidiController {
+struct ControllerPair {
+    stream_id: StreamId,
     outgoing: OutgoingController,
     incoming: IncomingController,
 }
 
-impl BidiController {
-    fn new(initial_peer_maximum_streams: VarInt, concurrent_stream_limit: VarInt) -> Self {
-        Self {
-            outgoing: OutgoingController::new(
-                initial_peer_maximum_streams,
-                concurrent_stream_limit,
-            ),
-            incoming: IncomingController::new(concurrent_stream_limit),
-        }
-    }
-
+impl ControllerPair {
+    #[inline]
     fn on_open_stream(&mut self) {
         self.outgoing.on_open_stream();
         self.incoming.on_open_stream();
     }
 
+    #[inline]
     fn on_close_stream(&mut self) {
         self.outgoing.on_close_stream();
         self.incoming.on_close_stream();
     }
 
+    #[inline]
     pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
-        self.incoming.max_streams_sync.on_packet_ack(ack_set);
-        self.outgoing.streams_blocked_sync.on_packet_ack(ack_set);
+        self.incoming.on_packet_ack(ack_set);
+        self.outgoing.on_packet_ack(ack_set);
     }
 
+    #[inline]
     pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
-        self.incoming.max_streams_sync.on_packet_loss(ack_set);
-        self.outgoing.streams_blocked_sync.on_packet_loss(ack_set);
+        self.incoming.on_packet_loss(ack_set);
+        self.outgoing.on_packet_loss(ack_set);
     }
 
+    #[inline]
+    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
+        self.outgoing.timers()
+    }
+
+    #[inline]
+    pub fn on_timeout(&mut self, now: Timestamp) {
+        self.outgoing.on_timeout(now);
+    }
+
+    #[inline]
     pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) -> Result<(), OnTransmitError> {
         // Only the stream_type from the StreamId is transmitted
-        self.incoming.max_streams_sync.on_transmit(
-            StreamId::initial(context.local_endpoint_type(), StreamType::Bidirectional),
-            context,
-        )?;
-        self.outgoing.on_transmit(
-            StreamId::initial(context.local_endpoint_type(), StreamType::Bidirectional),
-            context,
-        )
+        self.incoming.on_transmit(self.stream_id, context)?;
+        self.outgoing.on_transmit(self.stream_id, context)
+    }
+
+    /// This method is called when the stream manager is closed. All wakers will be woken
+    /// to unblock waiting tasks.
+    pub fn close(&mut self) {
+        self.outgoing.close();
+        self.incoming.close();
     }
 }
 
-impl transmission::interest::Provider for BidiController {
+impl transmission::interest::Provider for ControllerPair {
     fn transmission_interest(&self) -> Interest {
-        self.incoming.max_streams_sync.transmission_interest()
-            + self.outgoing.streams_blocked_sync.transmission_interest()
+        self.incoming.transmission_interest() + self.outgoing.transmission_interest()
+    }
+
+    fn has_transmission_interest(&self) -> bool {
+        self.incoming.has_transmission_interest() || self.outgoing.has_transmission_interest()
     }
 }
 
@@ -440,6 +424,27 @@ impl OutgoingController {
         self.opened_streams - self.closed_streams
     }
 
+    #[inline]
+    pub fn timers(&self) -> impl Iterator<Item = Timestamp> {
+        self.streams_blocked_sync.timers()
+    }
+
+    #[inline]
+    pub fn on_timeout(&mut self, now: Timestamp) {
+        self.streams_blocked_sync.on_timeout(now);
+    }
+
+    #[inline]
+    pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
+        self.streams_blocked_sync.on_packet_ack(ack_set)
+    }
+
+    #[inline]
+    pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
+        self.streams_blocked_sync.on_packet_loss(ack_set)
+    }
+
+    #[inline]
     fn on_transmit<W: WriteContext>(
         &mut self,
         stream_id: StreamId,
@@ -462,6 +467,11 @@ impl OutgoingController {
         }
     }
 
+    pub fn close(&mut self) {
+        self.wake_all();
+        self.streams_blocked_sync.stop_sync();
+    }
+
     #[inline]
     fn check_integrity(&self) {
         if cfg!(debug_assertions) {
@@ -475,6 +485,13 @@ impl OutgoingController {
                 the local_initiated_concurrent_stream_limit"
             );
         }
+    }
+}
+
+impl transmission::interest::Provider for OutgoingController {
+    #[inline]
+    fn transmission_interest(&self) -> Interest {
+        self.streams_blocked_sync.transmission_interest()
     }
 }
 
@@ -582,6 +599,29 @@ impl IncomingController {
     }
 
     #[inline]
+    pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
+        self.max_streams_sync.on_packet_ack(ack_set)
+    }
+
+    #[inline]
+    pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
+        self.max_streams_sync.on_packet_loss(ack_set)
+    }
+
+    #[inline]
+    pub fn on_transmit<W: WriteContext>(
+        &mut self,
+        stream_id: StreamId,
+        context: &mut W,
+    ) -> Result<(), OnTransmitError> {
+        self.max_streams_sync.on_transmit(stream_id, context)
+    }
+
+    pub fn close(&mut self) {
+        self.max_streams_sync.stop_sync();
+    }
+
+    #[inline]
     fn check_integrity(&self) {
         if cfg!(debug_assertions) {
             assert!(
@@ -596,6 +636,14 @@ impl IncomingController {
         }
     }
 }
+
+impl transmission::interest::Provider for IncomingController {
+    #[inline]
+    fn transmission_interest(&self) -> Interest {
+        self.max_streams_sync.transmission_interest()
+    }
+}
+
 /// Writes the `MAX_STREAMS` frames based on the stream control window.
 #[derive(Debug, Default)]
 pub(super) struct MaxStreamsToFrameWriter {}
@@ -619,7 +667,7 @@ impl Controller {
     pub fn available_outgoing_stream_capacity(&self, stream_type: StreamType) -> VarInt {
         match stream_type {
             StreamType::Bidirectional => self.bidi_controller.outgoing.available_stream_capacity(),
-            StreamType::Unidirectional => self.outgoing_controller.available_stream_capacity(),
+            StreamType::Unidirectional => self.uni_controller.outgoing.available_stream_capacity(),
         }
     }
 
@@ -630,7 +678,9 @@ impl Controller {
                 .incoming
                 .max_streams_sync
                 .latest_value(),
-            StreamType::Unidirectional => self.incoming_controller.max_streams_sync.latest_value(),
+            StreamType::Unidirectional => {
+                self.uni_controller.incoming.max_streams_sync.latest_value()
+            }
         }
     }
 }

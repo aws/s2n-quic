@@ -7,6 +7,8 @@
 set -e
 set -o pipefail
 
+export RUST_LOG="debug"
+
 # Set up the routing needed for the simulation
 /setup.sh
 
@@ -28,6 +30,7 @@ fi
 if [ "$TEST_TYPE" == "MEASUREMENT" ] && [ -x "$(command -v s2n-quic-qns-release)" ]; then
     echo "using optimized build"
     QNS_BIN="s2n-quic-qns-release"
+    unset RUST_LOG
 fi
 
 CERT_ARGS=""

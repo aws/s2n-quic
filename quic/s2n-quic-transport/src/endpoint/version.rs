@@ -32,12 +32,37 @@ const SUPPORTED_VERSIONS: &[u32] = &[
 ];
 
 macro_rules! is_supported {
-    ($packet:ident) => {
-        SUPPORTED_VERSIONS
+    ($packet:ident, $publisher:ident) => {{
+        let supported = SUPPORTED_VERSIONS
             .iter()
             .cloned()
-            .any(|v| v == $packet.version)
-    };
+            .any(|v| v == $packet.version);
+
+        if supported {
+            //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.1
+            //# Upon receiving a client initial with a supported version, the
+            //# server logs this event with server_versions and chosen_version set
+            $publisher.on_version_information(event::builders::VersionInformation {
+                server_versions: &SUPPORTED_VERSIONS,
+                client_versions: &[],
+                chosen_version: Some($packet.version),
+            });
+        } else {
+            //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.1
+            //# Upon receiving a client initial with an unsupported version, the
+            //# server logs this event with server_versions set and
+            //# client_versions to the single-element array containing the
+            //# client's attempted version.  The absence of chosen_version implies
+            //# no overlap was found.
+            $publisher.on_version_information(event::builders::VersionInformation {
+                server_versions: &SUPPORTED_VERSIONS,
+                client_versions: &[$packet.version],
+                chosen_version: None,
+            });
+        }
+
+        supported
+    }};
 }
 
 impl<Config: endpoint::Config> Default for Negotiator<Config> {
@@ -73,27 +98,13 @@ impl<Config: endpoint::Config> Negotiator<Config> {
 
         let packet = match packet {
             ProtectedPacket::Initial(packet) => {
-                if is_supported!(packet) {
-                    // TODO the event needs to be propolated with real values
-                    publisher.on_version_information(event::builders::VersionInformation {
-                        server_versions: &[],
-                        client_versions: &[],
-                        chosen_version: 0,
-                    });
-
+                if is_supported!(packet, publisher) {
                     return Ok(());
                 }
                 packet
             }
             ProtectedPacket::ZeroRtt(packet) => {
-                if is_supported!(packet) {
-                    // TODO the event needs to be propolated with real values
-                    publisher.on_version_information(event::builders::VersionInformation {
-                        server_versions: &[],
-                        client_versions: &[],
-                        chosen_version: 0,
-                    });
-
+                if is_supported!(packet, publisher) {
                     return Ok(());
                 }
 
@@ -105,13 +116,6 @@ impl<Config: endpoint::Config> Negotiator<Config> {
                 return Err(Error);
             }
             ProtectedPacket::VersionNegotiation(_packet) => {
-                // TODO the event needs to be propolated with real values
-                publisher.on_version_information(event::builders::VersionInformation {
-                    server_versions: &[],
-                    client_versions: &[],
-                    chosen_version: 0,
-                });
-
                 //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#6.1
                 //# An endpoint MUST NOT send a Version Negotiation packet
                 //# in response to receiving a Version Negotiation packet.
@@ -221,22 +225,32 @@ impl AsRef<[u8]> for Transmission {
 }
 
 impl tx::Message for &Transmission {
+    #[inline]
     fn remote_address(&mut self) -> SocketAddress {
         self.remote_address
     }
 
+    #[inline]
     fn ecn(&mut self) -> ExplicitCongestionNotification {
         Default::default()
     }
 
+    #[inline]
     fn delay(&mut self) -> Duration {
         Default::default()
     }
 
+    #[inline]
     fn ipv6_flow_label(&mut self) -> u32 {
         0
     }
 
+    #[inline]
+    fn can_gso(&self) -> bool {
+        true
+    }
+
+    #[inline]
     fn write_payload(&mut self, buffer: &mut [u8]) -> usize {
         let packet = self.as_ref();
         buffer[..packet.len()].copy_from_slice(packet);

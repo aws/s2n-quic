@@ -11,6 +11,7 @@ use s2n_quic_core::{
     frame::{
         ack_elicitation::{AckElicitable, AckElicitation},
         congestion_controlled::CongestionControlled,
+        event::AsEvent,
         path_validation::Probing as PathValidationProbing,
     },
     packet::number::PacketNumber,
@@ -31,19 +32,32 @@ pub trait WriteContext {
     /// Returns the number of available bytes remaining in the current payload
     fn remaining_capacity(&self) -> usize;
 
-    /// Attempt to write a frame. If this was successful the number of the packet
+    /// Attempt to write a frame.
+    ///
+    /// If this was successful the number of the packet
     /// that will be used to send the frame will be returned.
     fn write_frame<
-        Frame: EncoderValue + AckElicitable + CongestionControlled + PathValidationProbing,
+        Frame: EncoderValue + AckElicitable + CongestionControlled + PathValidationProbing + AsEvent,
     >(
         &mut self,
         frame: &Frame,
     ) -> Option<PacketNumber>;
 
+    /// Writes a pre-fitted frame.
+    ///
+    /// Callers should ensure the frame fits within the outgoing buffer when using this function.
+    /// The context should panic if otherwise.
+    fn write_fitted_frame<
+        Frame: EncoderValue + AckElicitable + CongestionControlled + PathValidationProbing + AsEvent,
+    >(
+        &mut self,
+        frame: &Frame,
+    ) -> PacketNumber;
+
     /// Attempt to write a frame, bypassing congestion controller constraint checks.
     /// If this was successful the number of the packet that will be used to send
     /// the frame will be returned.
-    fn write_frame_forced<Frame: EncoderValue + AckElicitable + CongestionControlled>(
+    fn write_frame_forced<Frame: EncoderValue + AckElicitable + CongestionControlled + AsEvent>(
         &mut self,
         frame: &Frame,
     ) -> Option<PacketNumber>;

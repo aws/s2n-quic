@@ -60,6 +60,7 @@ impl<T> DeliveryState<T> {
     /// If a delivery was previously requested, the `Option` stored in
     /// `DeliverState::Cancelled` will contain the last value which was scheduled
     /// for delivery.
+    #[inline]
     pub fn cancel(&mut self) {
         let old_state = core::mem::replace(self, DeliveryState::Cancelled(None));
         *self = match old_state {
@@ -75,23 +76,27 @@ impl<T> DeliveryState<T> {
     }
 
     /// Returns `true` if the delivery of the value had been cancelled
+    #[inline]
     pub fn is_cancelled(&self) -> bool {
         matches!(self, Self::Cancelled(_))
     }
 
     /// Returns `true` if the delivery is current in progress.
     /// A packet has been sent, but no acknowledgement has been retrieved so far.
+    #[inline]
     pub fn is_inflight(&self) -> bool {
         matches!(self, Self::InFlight(_))
     }
 
     /// Returns `true` if the payload had been delivered to the peer and had
     /// been acknowledged by the peer.
+    #[inline]
     pub fn is_delivered(&self) -> bool {
         matches!(self, Self::Delivered(_))
     }
 
     /// Tries to transmit the delivery with the given transmission constraint
+    #[inline]
     pub fn try_transmit(&self, constraint: transmission::Constraint) -> Option<&T> {
         match self {
             DeliveryState::Requested(value) if constraint.can_transmit() => Some(value),
@@ -102,6 +107,7 @@ impl<T> DeliveryState<T> {
 }
 
 impl<T> transmission::interest::Provider for DeliveryState<T> {
+    #[inline]
     fn transmission_interest(&self) -> transmission::Interest {
         match self {
             Self::Requested(_) => transmission::Interest::NewData,

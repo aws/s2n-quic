@@ -609,7 +609,6 @@ mod tests {
             rx::{self, Entry as _},
             tx,
         },
-        path::DEFAULT_MAX_MTU,
         time::Timestamp,
     };
     use std::collections::BTreeMap;
@@ -618,7 +617,6 @@ mod tests {
         addr: SocketAddress,
         messages: BTreeMap<u32, Option<Timestamp>>,
         now: Option<Timestamp>,
-        max_mtu: MaxMtu,
     }
 
     impl TestEndpoint {
@@ -628,7 +626,6 @@ mod tests {
                 addr,
                 messages,
                 now: None,
-                max_mtu: DEFAULT_MAX_MTU,
             }
         }
     }
@@ -664,8 +661,11 @@ mod tests {
             let len = entries.len();
             for entry in entries {
                 let payload: &[u8] = entry.payload_mut();
-                let payload = payload.try_into().unwrap();
-                let id = u32::from_be_bytes(payload);
+                if payload.len() != 4 {
+                    panic!("invalid payload {:?}", payload);
+                }
+                let id = payload.try_into().unwrap();
+                let id = u32::from_be_bytes(id);
                 self.messages.remove(&id);
             }
             queue.finish(len);
@@ -689,8 +689,8 @@ mod tests {
             self.now.map(|now| now + Duration::from_millis(50))
         }
 
-        fn set_max_mtu(&mut self, max_mtu: MaxMtu) {
-            self.max_mtu = max_mtu
+        fn set_max_mtu(&mut self, _max_mtu: MaxMtu) {
+            // noop
         }
     }
 

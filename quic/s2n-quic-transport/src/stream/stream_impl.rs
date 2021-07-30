@@ -181,12 +181,14 @@ impl StreamTrait for StreamImpl {
         }
     }
 
+    #[inline]
     fn stream_id(&self) -> StreamId {
         self.stream_id
     }
 
     // These functions are called from the packet delivery thread
 
+    #[inline]
     fn on_data(
         &mut self,
         frame: &StreamRef,
@@ -195,6 +197,7 @@ impl StreamTrait for StreamImpl {
         self.receive_stream.on_data(frame, events)
     }
 
+    #[inline]
     fn on_stream_data_blocked(
         &mut self,
         frame: &StreamDataBlocked,
@@ -203,6 +206,7 @@ impl StreamTrait for StreamImpl {
         self.receive_stream.on_stream_data_blocked(frame, events)
     }
 
+    #[inline]
     fn on_reset(
         &mut self,
         frame: &ResetStream,
@@ -211,6 +215,7 @@ impl StreamTrait for StreamImpl {
         self.receive_stream.on_reset(frame, events)
     }
 
+    #[inline]
     fn on_max_stream_data(
         &mut self,
         frame: &MaxStreamData,
@@ -219,6 +224,7 @@ impl StreamTrait for StreamImpl {
         self.send_stream.on_max_stream_data(frame, events)
     }
 
+    #[inline]
     fn on_stop_sending(
         &mut self,
         frame: &StopSending,
@@ -227,34 +233,41 @@ impl StreamTrait for StreamImpl {
         self.send_stream.on_stop_sending(frame, events)
     }
 
+    #[inline]
     fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A, events: &mut StreamEvents) {
         self.receive_stream.on_packet_ack(ack_set);
         self.send_stream.on_packet_ack(ack_set, events);
     }
 
+    #[inline]
     fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A, _events: &mut StreamEvents) {
         self.receive_stream.on_packet_loss(ack_set);
         self.send_stream.on_packet_loss(ack_set);
     }
 
+    #[inline]
     fn update_blocked_sync_period(&mut self, blocked_sync_period: Duration) {
         self.send_stream
             .update_blocked_sync_period(blocked_sync_period);
     }
 
+    #[inline]
     fn timer(&self) -> Option<Timestamp> {
         self.send_stream.timers().min()
     }
 
+    #[inline]
     fn on_timeout(&mut self, now: Timestamp) {
         self.send_stream.on_timeout(now)
     }
 
+    #[inline]
     fn on_internal_reset(&mut self, error: StreamError, events: &mut StreamEvents) {
         self.receive_stream.on_internal_reset(error, events);
         self.send_stream.on_internal_reset(error, events);
     }
 
+    #[inline]
     fn on_transmit<W: WriteContext>(&mut self, context: &mut W) -> Result<(), OnTransmitError> {
         // Query the receiving side for outgoing data
         self.receive_stream.on_transmit(self.stream_id, context)?;
@@ -262,6 +275,7 @@ impl StreamTrait for StreamImpl {
         self.send_stream.on_transmit(self.stream_id, context)
     }
 
+    #[inline]
     fn on_connection_window_available(&mut self) {
         self.send_stream.on_connection_window_available()
     }
@@ -286,6 +300,7 @@ impl StreamTrait for StreamImpl {
 }
 
 impl StreamInterestProvider for StreamImpl {
+    #[inline]
     fn interests(&self) -> StreamInterests {
         self.receive_stream.interests() + self.send_stream.interests()
     }

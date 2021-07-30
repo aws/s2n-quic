@@ -1,7 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{endpoint, packet::number::PacketNumberSpace};
+use crate::{connection::PeerId, endpoint, inet::SocketAddress, packet::number::PacketNumberSpace};
+use core::time::Duration;
 use paste::paste;
 
 #[macro_use]
@@ -27,15 +28,59 @@ common!(
     }
 
     //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#A.4
-    //# Note: short vs long header is implicit through PacketType
     struct PacketHeader {
         pub packet_type: common::PacketType,
         pub packet_number: u64,
         pub version: Option<u32>,
     }
 
+    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#A.7
+    enum Frame {
+        #[non_exhaustive]
+        Padding,
+        #[non_exhaustive]
+        Ping,
+        #[non_exhaustive]
+        Ack,
+        #[non_exhaustive]
+        ResetStream,
+        #[non_exhaustive]
+        StopSending,
+        #[non_exhaustive]
+        Crypto,
+        #[non_exhaustive]
+        NewToken,
+        #[non_exhaustive]
+        Stream,
+        #[non_exhaustive]
+        MaxData,
+        #[non_exhaustive]
+        MaxStreamData,
+        #[non_exhaustive]
+        MaxStreams,
+        #[non_exhaustive]
+        DataBlocked,
+        #[non_exhaustive]
+        StreamDataBlocked,
+        #[non_exhaustive]
+        StreamsBlocked,
+        #[non_exhaustive]
+        NewConnectionId,
+        #[non_exhaustive]
+        RetireConnectionId,
+        #[non_exhaustive]
+        PathChallenge,
+        #[non_exhaustive]
+        PathResponse,
+        #[non_exhaustive]
+        ConnectionClose,
+        #[non_exhaustive]
+        HandshakeDone,
+        #[non_exhaustive]
+        Unknown,
+    }
+
     //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#A.2
-    //# PacketType
     enum PacketType {
         Initial,
         Handshake,
@@ -73,7 +118,7 @@ events!(
     struct VersionInformation<'a> {
         pub server_versions: &'a [u32],
         pub client_versions: &'a [u32],
-        pub chosen_version: u32,
+        pub chosen_version: Option<u32>,
     }
 
     #[name = "transport:alpn_information"]
@@ -99,5 +144,69 @@ events!(
     /// Packet was received
     struct PacketReceived {
         pub packet_header: common::PacketHeader,
+    }
+
+    #[name = "connectivity:active_path_updated"]
+    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.1.8
+    /// Active path was updated
+    struct ActivePathUpdated<'a> {
+        // TODO: many events seem to require PacketHeader. Make it more ergonomic
+        // to include this field.
+        // pub packet_header: common::PacketHeader,
+        pub src_addr: &'a SocketAddress,
+        pub src_cid: &'a PeerId,
+        pub src_path_id: u64,
+        pub dst_addr: &'a SocketAddress,
+        pub dst_cid: &'a PeerId,
+        pub dst_path_id: u64,
+    }
+
+    #[name = "transport:frame_sent"]
+    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.5
+    // This diverges a bit from the qlog spec, which prefers to log data as part of the
+    // packet events.
+    /// Frame was sent
+    struct FrameSent {
+        pub packet_header: common::PacketHeader,
+        pub path_id: u64,
+        pub frame: common::Frame,
+    }
+
+    #[name = "transport:frame_received"]
+    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.3.6
+    // This diverges a bit from the qlog spec, which prefers to log data as part of the
+    // packet events.
+    /// Frame was received
+    struct FrameReceived {
+        pub packet_header: common::PacketHeader,
+        pub path_id: u64,
+        pub frame: common::Frame,
+    }
+
+    #[name = "recovery:packet_lost"]
+    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.4.5
+    /// Packet was lost
+    struct PacketLost<'a> {
+        pub packet_header: common::PacketHeader,
+        pub path_id: u64,
+        pub src_addr: &'a SocketAddress,
+        pub src_cid: &'a PeerId,
+        pub bytes_lost: u16,
+        pub is_mtu_probe: bool,
+    }
+
+    #[name = "recovery:metrics_updated"]
+    //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#5.4.2
+    /// Recovery metrics updated
+    struct RecoveryMetrics {
+        pub path_id: u64,
+        pub min_rtt: Duration,
+        pub smoothed_rtt: Duration,
+        pub latest_rtt: Duration,
+        pub rtt_variance: Duration,
+        pub max_ack_delay: Duration,
+        pub pto_count: u32,
+        pub congestion_window: u32,
+        pub bytes_in_flight: u32,
     }
 );

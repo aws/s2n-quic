@@ -15,6 +15,7 @@ pub use negotiated::NegotiatedCiphersuite;
 struct IvLen;
 
 impl hkdf::KeyType for IvLen {
+    #[inline]
     fn len(&self) -> usize {
         aead::NONCE_LEN
     }
@@ -60,6 +61,7 @@ macro_rules! impl_ciphersuite {
 
             /// Update the ciphersuite as defined in
             /// https://tools.ietf.org/id/draft-ietf-quic-tls-32.txt#6
+            #[inline]
             pub fn update(&self) -> Self {
                 let secret: hkdf::Prk = self
                     .secret
@@ -72,6 +74,7 @@ macro_rules! impl_ciphersuite {
                 Self { secret, iv, key }
             }
 
+            #[inline]
             fn generate_nonce(&self, packet_number: u64) -> [u8; Self::IV_LEN] {
                 let mut nonce = [0; Self::IV_LEN];
                 let mut encoder = EncoderBuffer::new(&mut nonce);
@@ -128,6 +131,7 @@ macro_rules! impl_ciphersuite {
         }
 
         impl Key for $name {
+            #[inline]
             fn decrypt(
                 &self,
                 packet_number: u64,
@@ -146,6 +150,7 @@ macro_rules! impl_ciphersuite {
                 Ok(())
             }
 
+            #[inline]
             fn encrypt(
                 &self,
                 packet_number: u64,
@@ -170,6 +175,7 @@ macro_rules! impl_ciphersuite {
                 Ok(())
             }
 
+            #[inline]
             fn tag_len(&self) -> usize {
                 $cipher.tag_len()
             }
@@ -178,10 +184,12 @@ macro_rules! impl_ciphersuite {
             //# Any TLS cipher suite that is specified for use with QUIC MUST define
             //# limits on the use of the associated AEAD function that preserves
             //# margins for confidentiality and integrity.
+            #[inline]
             fn aead_confidentiality_limit(&self) -> u64 {
                 $confidentiality_limit
             }
 
+            #[inline]
             fn aead_integrity_limit(&self) -> u64 {
                 $integrity_limit
             }

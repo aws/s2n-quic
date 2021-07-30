@@ -8,24 +8,29 @@ use s2n_quic_core::crypto::{self, HeaderProtectionMask};
 pub struct HeaderKey(pub(crate) aead::quic::HeaderProtectionKey);
 
 impl crypto::HeaderKey for HeaderKey {
+    #[inline]
     fn opening_header_protection_mask(&self, sample: &[u8]) -> HeaderProtectionMask {
         self.header_protection_mask(sample)
     }
 
+    #[inline]
     fn opening_sample_len(&self) -> usize {
         self.0.algorithm().sample_len()
     }
 
+    #[inline]
     fn sealing_header_protection_mask(&self, sample: &[u8]) -> HeaderProtectionMask {
         self.header_protection_mask(sample)
     }
 
+    #[inline]
     fn sealing_sample_len(&self) -> usize {
         self.0.algorithm().sample_len()
     }
 }
 
 impl HeaderKey {
+    #[inline]
     fn header_protection_mask(&self, sample: &[u8]) -> HeaderProtectionMask {
         self.0
             .new_mask(sample)
@@ -46,18 +51,22 @@ pub struct HeaderKeyPair {
 }
 
 impl crypto::HeaderKey for HeaderKeyPair {
+    #[inline]
     fn opening_header_protection_mask(&self, sample: &[u8]) -> HeaderProtectionMask {
         self.opener.opening_header_protection_mask(sample)
     }
 
+    #[inline]
     fn opening_sample_len(&self) -> usize {
         self.opener.opening_sample_len()
     }
 
+    #[inline]
     fn sealing_header_protection_mask(&self, sample: &[u8]) -> HeaderProtectionMask {
         self.sealer.sealing_header_protection_mask(sample)
     }
 
+    #[inline]
     fn sealing_sample_len(&self) -> usize {
         self.sealer.sealing_sample_len()
     }
@@ -69,6 +78,7 @@ macro_rules! header_key {
         pub struct $name(crate::header_key::HeaderKeyPair);
 
         impl s2n_quic_core::crypto::HeaderKey for $name {
+            #[inline]
             fn opening_header_protection_mask(
                 &self,
                 sample: &[u8],
@@ -76,10 +86,12 @@ macro_rules! header_key {
                 self.0.opening_header_protection_mask(sample)
             }
 
+            #[inline]
             fn opening_sample_len(&self) -> usize {
                 self.0.opening_sample_len()
             }
 
+            #[inline]
             fn sealing_header_protection_mask(
                 &self,
                 sample: &[u8],
@@ -87,6 +99,7 @@ macro_rules! header_key {
                 self.0.sealing_header_protection_mask(sample)
             }
 
+            #[inline]
             fn sealing_sample_len(&self) -> usize {
                 self.0.sealing_sample_len()
             }

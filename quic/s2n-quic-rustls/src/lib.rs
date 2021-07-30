@@ -571,7 +571,7 @@ pub mod client {
             })?;
             self.config
                 .root_store
-                .add(&root_certificate)
+                .add(root_certificate)
                 .map_err(|err| TLSError::General(err.to_string()))?;
             Ok(self)
         }
