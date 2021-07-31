@@ -236,9 +236,14 @@ impl Controller {
         now: Timestamp,
         congestion_controller: &mut CC,
     ) {
-        match self.state {
+        // MTU probes are only sent in application data space
+        if !packet_number.space().is_application_data() {
+            return;
+        }
+
+        match &self.state {
             State::Disabled => {}
-            State::Searching(probe_pn, _) if probe_pn == packet_number => {
+            State::Searching(probe_pn, _) if *probe_pn == packet_number => {
                 // The MTU probe was lost
                 if self.probe_count == MAX_PROBES {
                     // We've sent MAX_PROBES without acknowledgement, so
@@ -252,8 +257,7 @@ impl Controller {
                 }
             }
             State::Searching(_, _) | State::SearchComplete | State::SearchRequested => {
-                if packet_number.space().is_application_data()
-                    && (BASE_PLPMTU + 1..=self.plpmtu).contains(&lost_bytes)
+                if (BASE_PLPMTU + 1..=self.plpmtu).contains(&lost_bytes)
                     && self
                         .largest_acked_mtu_sized_packet
                         .map_or(true, |pn| packet_number > pn)
@@ -773,16 +777,23 @@ mod test {
     fn on_packet_loss_not_application_space() {
         let mut controller = new_controller(1500);
         let mut cc = CongestionController::default();
-        let now = now();
-        controller.enable();
 
-        for i in 0..BLACK_HOLE_THRESHOLD + 1 {
-            // on_packet_loss may be called with packet numbers from Initial and Handshake space
-            // so it should not fail in this scenario.
-            let pn = PacketNumberSpace::Initial.new_packet_number(VarInt::from_u8(i));
-            controller.on_packet_loss(pn, BASE_PLPMTU + 1, now, &mut cc);
-            assert_eq!(controller.black_hole_counter, 0);
-            assert_eq!(0, cc.on_mtu_update);
+        // test the loss in each state
+        for state in vec![
+            State::Disabled,
+            State::SearchRequested,
+            State::Searching(pn(1), now()),
+            State::SearchComplete,
+        ] {
+            controller.state = state;
+            for i in 0..BLACK_HOLE_THRESHOLD + 1 {
+                // on_packet_loss may be called with packet numbers from Initial and Handshake space
+                // so it should not fail in this scenario.
+                let pn = PacketNumberSpace::Initial.new_packet_number(VarInt::from_u8(i));
+                controller.on_packet_loss(pn, BASE_PLPMTU + 1, now(), &mut cc);
+                assert_eq!(controller.black_hole_counter, 0);
+                assert_eq!(0, cc.on_mtu_update);
+            }
         }
     }
 
