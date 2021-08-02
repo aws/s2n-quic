@@ -1,0 +1,118 @@
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+name: bench
+
+env:
+  CARGO_INCREMENTAL: 0
+  CARGO_NET_RETRY: 10
+  RUSTUP_MAX_RETRIES: 10
+  RUST_BACKTRACE: 1
+  WIRESHARK_VERSION: 3.4.3
+  CDN: https://dnglbrstg7yg.cloudfront.net
+
+jobs:
+  env:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: ouzi-dev/commit-status-updater@v1.1.0
+        with:
+          name: 'bench / report'
+          status: 'pending'
+
+  tshark:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cache
+        id: cache
+        uses: actions/cache@v2.1.5
+        continue-on-error: true
+        with:
+          path: tshark
+          key: wireshark-${{ env.WIRESHARK_VERSION }}
+
+      - name: Install dependencies
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get -o Acquire::Retries=3 update
+          sudo apt-get -o Acquire::Retries=3 install -y cmake libglib2.0-dev libc-ares-dev libgcrypt20-dev flex bison byacc libpcap-dev ninja-build
+
+      - name: Build tshark
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          wget https://www.wireshark.org/download/src/all-versions/wireshark-${{ env.WIRESHARK_VERSION }}.tar.xz
+          tar xf wireshark-${{ env.WIRESHARK_VERSION }}.tar.xz
+          cd wireshark-${{ env.WIRESHARK_VERSION }}
+          cmake -GNinja -DBUILD_wireshark=0 -DBUILD_qtshark=0 -DBUILD_editcap=0 -DBUILD_capinfos=0 -DBUILD_text2pcap=0 -DBUILD_rawshark=0 -DBUILD_sdjournal=0 -DBUILD_sshdump=0 -DBUILD_ciscodump=0 -DENABLE_STATIC=1 -DENABLE_PLUGINS=0 -DENABLE_LIBXML2=0 -DUSE_STATIC=1 -DENABLE_GNUTLS=1 .
+          ninja
+          cp run/tshark ..
+
+      - name: Tshark version
+        run: ./tshark -v
+
+      - name: Upload
+        uses: actions/upload-artifact@v2
+        with:
+          name: tshark
+          path: tshark
+
+  bench:
+    runs-on: ubuntu-latest
+    needs: [env, tshark]
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: true
+
+      - uses: actions-rs/toolchain@v1.0.7
+        id: toolchain
+        with:
+          toolchain: stable
+          override: true
+
+      - uses: camshaft/rust-cache@v1
+
+      - name: Download tshark
+        uses: actions/download-artifact@v2
+        with:
+          name: tshark
+          path: .
+
+      - name: Install tshark
+        run: |
+          chmod +x tshark
+          sudo mv tshark /usr/bin
+          /usr/bin/tshark -v
+
+      - name: Install gnuplot
+        run: |
+          sudo apt-get -o Acquire::Retries=3 update
+          sudo apt-get -o Acquire::Retries=3 install -y gnuplot
+
+      - name: Run script
+        run: sudo env "PATH=$PATH" ./scripts/benchmark/run-all
+
+      - uses: aws-actions/configure-aws-credentials@v1.5.9
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-west-1
+
+      - name: Upload results
+        id: s3
+        run: |
+          TARGET="${{ github.sha }}/bench"
+          aws s3 sync target/benchmark/results "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
+          URL="$CDN/$TARGET/index.html"
+          echo "::set-output name=URL::$URL"
+
+      - uses: ouzi-dev/commit-status-updater@v1.1.0
+        with:
+          name: 'bench / report'
+          status: 'success'
+          url: "${{ steps.s3.outputs.URL }}"

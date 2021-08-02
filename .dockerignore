@@ -3,8 +3,9 @@
 **/corpus
 **/corpus.tar.gz
 **/Dockerfile*
-/rust-toolchain
-/.github
-/docs
-/scripts
-/specs
+**/docker-compose.yml
+rust-toolchain
+**/.github
+**/docs
+**/scripts
+**/specs

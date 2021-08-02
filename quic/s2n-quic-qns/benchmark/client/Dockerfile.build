@@ -1,0 +1,63 @@
+FROM rust:latest as planner
+WORKDIR app
+RUN cargo install cargo-chef
+
+#Install git
+RUN apt-get update; \
+     apt-get install -y git;
+
+RUN git clone https://github.com/quinn-rs/quinn.git .; \
+     git checkout f97cb904c2194c6b392470022fa532b65b8c7eee;
+RUN cargo chef prepare  --recipe-path recipe.json
+
+FROM rust:latest as cacher
+WORKDIR app
+RUN cargo install cargo-chef
+COPY --from=planner /app/recipe.json recipe.json
+RUN cargo chef cook --recipe-path recipe.json
+
+FROM rust:latest AS builder
+WORKDIR app
+
+ARG release="true"
+
+COPY quic/s2n-quic-qns/benchmark/client/perf_client.patch .
+
+# copy quinn sources
+RUN git init; \
+    git remote add origin https://github.com/quinn-rs/quinn; \
+    git fetch origin f97cb904c2194c6b392470022fa532b65b8c7eee; \
+    git reset --hard FETCH_HEAD; \
+    git apply --3way perf_client.patch;
+
+# Copy over the cached dependencies
+COPY --from=cacher /app/target target
+COPY --from=cacher /usr/local/cargo /usr/local/cargo
+
+RUN set -eux; \
+   cargo build \
+    --bin perf_client \
+    --release; \
+     cp target/release/perf_client .; \
+    rm -rf target
+
+FROM martenseemann/quic-network-simulator-endpoint:latest
+
+ENV RUST_BACKTRACE="1"
+
+RUN set -eux; \
+  apt-get update; \
+  apt-get install -y strace;
+
+# copy entrypoint
+COPY quic/s2n-quic-qns/benchmark/client/run_endpoint.sh .
+RUN chmod +x run_endpoint.sh
+
+# copy runner
+COPY --from=builder /app/perf_client /usr/bin/perf_client
+RUN set -eux; \
+  chmod +x /usr/bin/perf_client; \
+  ldd /usr/bin/perf_client; \
+  # ensure the binary works \
+  perf_client --help; \
+  echo done
