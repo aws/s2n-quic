@@ -86,14 +86,12 @@ impl AckManager {
 
     /// Called when an outgoing packet is being assembled
     pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) -> bool {
-        if !self.transmission_state.should_transmit() {
+        if !self
+            .transmission_state
+            .should_transmit(context.transmission_constraint())
+        {
             return false;
         }
-
-        //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7
-        //# packets containing only ACK frames do not count
-        //# towards bytes in flight and are not congestion controlled.
-        let _ = context.transmission_constraint(); // ignored
 
         let ack_delay = self.ack_delay(context.current_time());
         // TODO retrieve ECN counts from current path
@@ -111,7 +109,8 @@ impl AckManager {
     /// Called after an outgoing packet is assembled and `on_transmit` returned `true`
     pub fn on_transmit_complete<W: WriteContext>(&mut self, context: &mut W) {
         debug_assert!(
-            self.transmission_state.should_transmit(),
+            self.transmission_state
+                .should_transmit(context.transmission_constraint()),
             "`on_transmit_complete` was called when `should_transmit` is false"
         );
 

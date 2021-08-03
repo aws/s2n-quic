@@ -37,8 +37,16 @@ impl AckTransmissionState {
     }
 
     /// Returns `true` if ACK frames should be transmitted, either actively or passively
-    pub fn should_transmit(&self) -> bool {
-        !matches!(self, Self::Disabled)
+    pub fn should_transmit(&self, constraint: transmission::Constraint) -> bool {
+        match self {
+            Self::Disabled => false,
+            // Only transmit acks in Passive mode if we can transmit other frames as well
+            Self::Passive { .. } => constraint.can_transmit() || constraint.can_retransmit(),
+            //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#7
+            //# packets containing only ACK frames do not count
+            //# towards bytes in flight and are not congestion controlled.
+            Self::Active { .. } => true,
+        }
     }
 
     /// Transitions the transmission to active if there are pending retransmissions
@@ -143,18 +151,36 @@ mod tests {
 
     #[test]
     fn should_transmit_test() {
-        assert!(
-            !AckTransmissionState::Disabled.should_transmit(),
-            "disabled state should not transmit"
-        );
-        assert!(
-            AckTransmissionState::Passive { retransmissions: 1 }.should_transmit(),
-            "passive state should transmit"
-        );
-        assert!(
-            AckTransmissionState::Active { retransmissions: 1 }.should_transmit(),
-            "active state should transmit"
-        );
+        for constraint in &[
+            transmission::Constraint::None,
+            transmission::Constraint::AmplificationLimited,
+            transmission::Constraint::CongestionLimited,
+            transmission::Constraint::RetransmissionOnly,
+        ] {
+            assert!(
+                !AckTransmissionState::Disabled.should_transmit(*constraint),
+                "disabled state should not transmit"
+            );
+
+            if constraint.can_transmit() || constraint.can_retransmit() {
+                assert!(
+                    AckTransmissionState::Passive { retransmissions: 1 }
+                        .should_transmit(*constraint),
+                    "passive state should transmit if not constrained"
+                );
+            } else {
+                assert!(
+                    !AckTransmissionState::Passive { retransmissions: 1 }
+                        .should_transmit(*constraint),
+                    "passive state should not transmit if constrained"
+                );
+            }
+
+            assert!(
+                AckTransmissionState::Active { retransmissions: 1 }.should_transmit(*constraint),
+                "active state should transmit"
+            );
+        }
     }
 
     #[test]
