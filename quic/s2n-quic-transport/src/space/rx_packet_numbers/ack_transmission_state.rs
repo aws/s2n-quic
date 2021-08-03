@@ -151,33 +151,33 @@ mod tests {
 
     #[test]
     fn should_transmit_test() {
-        for constraint in vec![
+        for constraint in &[
             transmission::Constraint::None,
             transmission::Constraint::AmplificationLimited,
             transmission::Constraint::CongestionLimited,
             transmission::Constraint::RetransmissionOnly,
         ] {
             assert!(
-                !AckTransmissionState::Disabled.should_transmit(constraint),
+                !AckTransmissionState::Disabled.should_transmit(*constraint),
                 "disabled state should not transmit"
             );
 
             if constraint.can_transmit() || constraint.can_retransmit() {
                 assert!(
                     AckTransmissionState::Passive { retransmissions: 1 }
-                        .should_transmit(constraint),
+                        .should_transmit(*constraint),
                     "passive state should transmit if not constrained"
                 );
             } else {
                 assert!(
                     !AckTransmissionState::Passive { retransmissions: 1 }
-                        .should_transmit(constraint),
+                        .should_transmit(*constraint),
                     "passive state should not transmit if constrained"
                 );
             }
 
             assert!(
-                AckTransmissionState::Active { retransmissions: 1 }.should_transmit(constraint),
+                AckTransmissionState::Active { retransmissions: 1 }.should_transmit(*constraint),
                 "active state should transmit"
             );
         }
