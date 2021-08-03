@@ -74,11 +74,16 @@ common!(
         #[non_exhaustive]
         StopSending,
         #[non_exhaustive]
-        Crypto,
+        Crypto { offset: u64, len: u16 },
         #[non_exhaustive]
         NewToken,
         #[non_exhaustive]
-        Stream,
+        Stream {
+            id: u64,
+            offset: u64,
+            len: u16,
+            is_fin: bool,
+        },
         #[non_exhaustive]
         MaxData,
         #[non_exhaustive]
@@ -163,7 +168,7 @@ events!(
     struct AlpnInformation<'a> {
         pub server_alpns: &'a [&'a [u8]],
         pub client_alpns: &'a [&'a [u8]],
-        pub chosen_alpn: u32,
+        pub chosen_alpn: &'a [u8],
     }
 
     #[name = "transport:packet_sent"]

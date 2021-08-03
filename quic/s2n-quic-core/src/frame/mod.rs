@@ -3,7 +3,7 @@
 
 #![forbid(unsafe_code)]
 
-use crate::{event::common, frame::event::AsEvent as _};
+use crate::event as evt;
 use core::fmt;
 use s2n_codec::{
     DecoderBuffer, DecoderBufferMut, DecoderBufferMutResult, DecoderError,
@@ -51,9 +51,14 @@ macro_rules! frames {
                     )*
                 }
             }
+        }
 
+        impl<'a, $ack, $data> event::AsEvent for Frame<'a, $ack, $data>
+        where
+            $data: EncoderValue,
+        {
             #[inline]
-            pub fn as_event(&self)  -> common::Frame {
+            fn as_event(&self) -> evt::common::Frame {
                 match &self {
                     $(
                         Frame::$ty(inner) => inner.as_event(),

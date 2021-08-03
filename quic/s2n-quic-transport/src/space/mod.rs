@@ -15,6 +15,7 @@ use s2n_quic_core::{
     frame::{
         ack::AckRanges,
         crypto::CryptoRef,
+        event::AsEvent as _,
         path_validation::{self, Probing},
         stream::StreamRef,
         Ack, ConnectionClose, DataBlocked, HandshakeDone, MaxData, MaxStreamData, MaxStreams,

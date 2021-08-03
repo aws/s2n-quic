@@ -24,6 +24,7 @@ use s2n_quic_core::{
 };
 
 /// Configuration values for a Stream
+#[derive(Debug)]
 pub struct StreamConfig {
     /// The [`Stream`]s identifier
     pub stream_id: StreamId,

@@ -573,6 +573,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                             .is_ok()
                     {
                         count += 1;
+                        // TODO this is wrong - multiple packets can be sent in the same
+                        // transmission
                         publisher.on_packet_sent(event::builders::PacketSent {
                             packet_header: event::builders::PacketHeader {
                                 packet_type: outcome.packet_number.space().into(),
