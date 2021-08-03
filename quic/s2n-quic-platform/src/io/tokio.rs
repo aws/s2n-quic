@@ -390,7 +390,7 @@ impl<E: Endpoint> Instance<E> {
                 }
             };
 
-            let wakeups = endpoint.wakeups(clock.get_time());
+            let wakeups = endpoint.wakeups(&clock);
             // pin the wakeups future so we don't have to move it into the Select future.
             tokio::pin!(wakeups);
 
@@ -403,7 +403,7 @@ impl<E: Endpoint> Instance<E> {
                     if let Ok(result) = guard?.try_io(|socket| rx.rx(socket)) {
                         result?;
                     }
-                    endpoint.receive(&mut rx.rx_queue(), clock.get_time());
+                    endpoint.receive(&mut rx.rx_queue(), &clock);
                 }
 
                 if let Some(guard) = tx_result {
@@ -421,7 +421,7 @@ impl<E: Endpoint> Instance<E> {
                 return Ok(());
             }
 
-            endpoint.transmit(&mut tx.tx_queue(), clock.get_time());
+            endpoint.transmit(&mut tx.tx_queue(), &clock);
 
             if let Some(delay) = endpoint.timeout() {
                 let delay = unsafe {
@@ -609,7 +609,7 @@ mod tests {
             rx::{self, Entry as _},
             tx,
         },
-        time::Timestamp,
+        time::{Clock, Timestamp},
     };
     use std::collections::BTreeMap;
 
@@ -631,7 +631,8 @@ mod tests {
     }
 
     impl Endpoint for TestEndpoint {
-        fn transmit<Tx: tx::Queue>(&mut self, queue: &mut Tx, now: Timestamp) {
+        fn transmit<Tx: tx::Queue, C: Clock>(&mut self, queue: &mut Tx, clock: &C) {
+            let now = clock.get_time();
             self.now = Some(now);
 
             for (id, tx_time) in &mut self.messages {
@@ -655,7 +656,8 @@ mod tests {
             }
         }
 
-        fn receive<Rx: rx::Queue>(&mut self, queue: &mut Rx, now: Timestamp) {
+        fn receive<Rx: rx::Queue, C: Clock>(&mut self, queue: &mut Rx, clock: &C) {
+            let now = clock.get_time();
             self.now = Some(now);
             let entries = queue.as_slice_mut();
             let len = entries.len();
@@ -671,11 +673,12 @@ mod tests {
             queue.finish(len);
         }
 
-        fn poll_wakeups(
+        fn poll_wakeups<C: Clock>(
             &mut self,
             _cx: &mut Context<'_>,
-            now: Timestamp,
+            clock: &C,
         ) -> Poll<Result<usize, CloseError>> {
+            let now = clock.get_time();
             self.now = Some(now);
 
             if self.messages.is_empty() {
