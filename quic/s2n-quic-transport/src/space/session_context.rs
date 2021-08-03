@@ -17,12 +17,13 @@ use s2n_codec::{DecoderBuffer, DecoderValue};
 use s2n_quic_core::{
     ack,
     crypto::{tls, CryptoSuite},
+    event,
     packet::number::PacketNumberSpace,
     time::Timestamp,
     transport::{self, parameters::ClientTransportParameters},
 };
 
-pub struct SessionContext<'a, Config: endpoint::Config> {
+pub struct SessionContext<'a, Config: endpoint::Config, Pub: event::Publisher> {
     pub now: Timestamp,
     pub path: &'a Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
     pub initial: &'a mut Option<Box<InitialSpace<Config>>>,
@@ -34,10 +35,12 @@ pub struct SessionContext<'a, Config: endpoint::Config> {
     pub handshake_status: &'a mut HandshakeStatus,
     pub local_id_registry: &'a mut connection::LocalIdRegistry,
     pub limits: &'a mut Limits,
+    pub publisher: &'a mut Pub,
 }
 
-impl<'a, Config: endpoint::Config> tls::Context<<Config::TLSEndpoint as tls::Endpoint>::Session>
-    for SessionContext<'a, Config>
+impl<'a, Config: endpoint::Config, Pub: event::Publisher>
+    tls::Context<<Config::TLSEndpoint as tls::Endpoint>::Session>
+    for SessionContext<'a, Config, Pub>
 {
     fn on_handshake_keys(
         &mut self,
@@ -64,6 +67,9 @@ impl<'a, Config: endpoint::Config> tls::Context<<Config::TLSEndpoint as tls::End
             ack_manager,
         )));
 
+        self.publisher.on_key_update(event::builders::KeyUpdate {
+            key_type: event::common::KeyType::Handshake,
+        });
         Ok(())
     }
 
@@ -81,6 +87,9 @@ impl<'a, Config: endpoint::Config> tls::Context<<Config::TLSEndpoint as tls::End
         // TODO: also store the header_key https://github.com/awslabs/s2n-quic/issues/319
         *self.zero_rtt_crypto = Some(Box::new(key));
 
+        self.publisher.on_key_update(event::builders::KeyUpdate {
+            key_type: event::common::KeyType::ZeroRtt,
+        });
         Ok(())
     }
 
@@ -178,6 +187,9 @@ impl<'a, Config: endpoint::Config> tls::Context<<Config::TLSEndpoint as tls::End
             sni,
             alpn,
         )));
+        self.publisher.on_key_update(event::builders::KeyUpdate {
+            key_type: event::common::KeyType::OneRtt { generation: 0 },
+        });
 
         self.local_id_registry
             .set_active_connection_id_limit(peer_parameters.active_connection_id_limit.as_u64());

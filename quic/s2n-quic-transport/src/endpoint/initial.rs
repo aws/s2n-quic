@@ -234,11 +234,22 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             max_mtu: self.max_mtu,
         };
 
+        let quic_version = connection_parameters.quic_version;
+        let mut publisher = event::PublisherSubscriber::new(
+            event::builders::Meta {
+                endpoint_type: Config::ENDPOINT_TYPE,
+                group_id: internal_connection_id.into(),
+                timestamp: datagram.timestamp,
+            },
+            Some(quic_version),
+            endpoint_context.event_subscriber,
+        );
         let space_manager = PacketSpaceManager::new(
             tls_session,
             initial_key,
             initial_header_key,
             datagram.timestamp,
+            &mut publisher,
         );
 
         let shared_state = Arc::new(SynchronizedSharedConnectionState::new(
@@ -247,15 +258,12 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             internal_connection_id,
         ));
 
-        let quic_version = connection_parameters.quic_version;
         let mut connection = <Config as endpoint::Config>::Connection::new(connection_parameters);
 
         // The scope is needed in order to lock the shared state only for a certain duration.
         // It needs to be unlocked when we insert the connection in our map
         {
             let locked_shared_state = &mut *shared_state.lock();
-
-            let endpoint_context = self.config.context();
 
             let path_id = connection.on_datagram_received(
                 Some(locked_shared_state),
@@ -265,14 +273,6 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                 self.max_mtu,
             )?;
 
-            let mut publisher = event::PublisherSubscriber::new(
-                event::builders::Meta {
-                    endpoint_type: Config::ENDPOINT_TYPE,
-                    group_id: internal_connection_id.into(),
-                },
-                Some(quic_version),
-                endpoint_context.event_subscriber,
-            );
             connection
                 .handle_cleartext_initial_packet(
                     locked_shared_state,

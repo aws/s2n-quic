@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use s2n_quic_core::event::{common, Event};
-use tracing::info;
+use tracing::debug;
 
 #[derive(Debug, Default)]
 pub struct Provider;
@@ -21,6 +21,11 @@ pub struct Subscriber;
 // TODO we should implement Display for Events or maybe opt into serde as a feature
 impl super::Subscriber for Subscriber {
     fn on_event<E: Event>(&mut self, meta: &common::Meta, event: &E) {
-        info!(group_id = meta.group_id, "{:?}", event);
+        debug!(
+            group_id = meta.group_id,
+            "{:?} {:?}",
+            meta.timestamp.duration_since_start(),
+            event
+        );
     }
 }

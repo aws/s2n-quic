@@ -185,16 +185,23 @@ macro_rules! events {
 
 macro_rules! common {
     ($(
-        $(#[$attrs:meta])*
+        $(#[$struct_attrs:meta])*
         struct $name:ident $(<$lt:lifetime>)? {
-            $( pub $field_name:ident : $field_type:ty, )*
+            $(
+                $(#[$struct_field_attrs:meta])?
+                pub $struct_field_name:ident : $struct_field_type:ty,
+            )*
         }
     )*
     $(
         $(#[$enum_attrs:meta])*
         enum $enum_name:ident {
             $(
-                $(#[$enum_attr:meta])? $enum_fields: ident,
+                $(#[$enum_attr:meta])? $enum_variant: ident
+                    $({
+                        $( $enum_field:ident: $enum_field_type:ty )*
+                    })?
+                ,
             )*
         }
     )*
@@ -205,12 +212,27 @@ macro_rules! common {
 
             use super::*;
 
+            //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#4
+            //# When the qlog "group_id" field is used, it is recommended to use
+            //# QUIC's Original Destination Connection ID (ODCID, the CID chosen by
+            //# the client when first contacting the server)
+            #[non_exhaustive]
+            #[derive(Clone, Debug)]
+            pub struct Meta {
+                pub endpoint_type: endpoint::Type,
+                pub group_id: u64,
+                pub timestamp: Timestamp,
+            }
+
             $(
-                $(#[$attrs])*
+                $(#[$struct_attrs])*
                 #[non_exhaustive]
                 #[derive(Clone, Debug)]
                 pub struct $name $(<$lt>)? {
-                    $( pub $field_name : $field_type, )*
+                    $(
+                        $(#[$struct_field_attrs])?
+                        pub $struct_field_name : $struct_field_type,
+                    )*
                 }
             )*
 
@@ -219,9 +241,13 @@ macro_rules! common {
                 #[non_exhaustive]
                 #[derive(Copy, Clone, Debug)]
                 pub enum $enum_name {
-                    $(
-                        $(#[$enum_attr])? $enum_fields,
-                    )*
+                $(
+                    $(#[$enum_attr])? $enum_variant
+                        $({
+                            $( $enum_field: $enum_field_type )*
+                        })?
+                    ,
+                )*
                 }
             )*
         }
@@ -230,12 +256,30 @@ macro_rules! common {
 
             use super::*;
 
+            #[derive(Clone, Debug)]
+            pub struct Meta {
+                pub endpoint_type: endpoint::Type,
+                pub group_id: u64,
+                pub timestamp: crate::time::Timestamp,
+            }
+
+            #[doc(hidden)]
+            impl From<Meta> for common::Meta {
+                fn from(builder: Meta) -> Self {
+                    Self {
+                        endpoint_type: builder.endpoint_type,
+                        group_id: builder.group_id,
+                        timestamp: Timestamp::new(builder.timestamp),
+                    }
+                }
+            }
+
             $(
                 // Builders are an implementation detail and allow us to create
                 // `non_exhaustive` Events outside this crate.
                 #[derive(Clone, Debug)]
                 pub struct $name $(<$lt>)? {
-                    $( pub $field_name : $field_type, )*
+                    $( pub $struct_field_name : $struct_field_type, )*
                 }
 
                 #[doc(hidden)]
@@ -243,7 +287,7 @@ macro_rules! common {
                     fn from(builder: $name $(<$lt>)?) -> Self {
                         Self {
                             $(
-                                $field_name: builder.$field_name,
+                                $struct_field_name: builder.$struct_field_name,
                             )*
                         }
                     }

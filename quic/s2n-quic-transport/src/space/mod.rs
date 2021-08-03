@@ -101,14 +101,18 @@ macro_rules! packet_space_api {
 }
 
 impl<Config: endpoint::Config> PacketSpaceManager<Config> {
-    pub fn new(
+    pub fn new<Pub: event::Publisher>(
         session: <Config::TLSEndpoint as tls::Endpoint>::Session,
         initial_key: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::InitialKey,
         header_key: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::InitialHeaderKey,
         now: Timestamp,
+        publisher: &mut Pub,
     ) -> Self {
         let ack_manager = AckManager::new(PacketNumberSpace::Initial, ack::Settings::EARLY);
 
+        publisher.on_key_update(event::builders::KeyUpdate {
+            key_type: event::common::KeyType::Initial,
+        });
         Self {
             session: Some(session),
             initial: Some(Box::new(InitialSpace::new(
@@ -146,15 +150,16 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         self.zero_rtt_crypto = None;
     }
 
-    pub fn poll_crypto(
+    pub fn poll_crypto<Pub: event::Publisher>(
         &mut self,
         path: &Path<<Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController>,
         local_id_registry: &mut connection::LocalIdRegistry,
         limits: &mut Limits,
         now: Timestamp,
+        publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
         if let Some(session) = self.session.as_mut() {
-            let mut context: SessionContext<Config> = SessionContext {
+            let mut context: SessionContext<Config, Pub> = SessionContext {
                 now,
                 initial: &mut self.initial,
                 handshake: &mut self.handshake,
@@ -164,6 +169,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                 handshake_status: &mut self.handshake_status,
                 local_id_registry,
                 limits,
+                publisher,
             };
 
             session.poll(&mut context)?;

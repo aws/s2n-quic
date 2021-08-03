@@ -160,10 +160,11 @@ impl<Config: endpoint::Config> Drop for ConnectionImpl<Config> {
 }
 
 impl<Config: endpoint::Config> ConnectionImpl<Config> {
-    fn update_crypto_state(
+    fn update_crypto_state<Pub: event::Publisher>(
         &mut self,
         shared_state: &mut SharedConnectionState<Config>,
         datagram: &DatagramInfo,
+        publisher: &mut Pub,
     ) -> Result<(), connection::Error> {
         let space_manager = &mut shared_state.space_manager;
         space_manager.poll_crypto(
@@ -171,6 +172,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
             &mut self.local_id_registry,
             &mut self.limits,
             datagram.timestamp,
+            publisher,
         )?;
 
         if matches!(self.state, ConnectionState::Handshaking)
@@ -884,7 +886,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             )?;
 
             // try to move the crypto state machine forward
-            self.update_crypto_state(shared_state, datagram)?;
+            self.update_crypto_state(shared_state, datagram, publisher)?;
 
             // notify the connection a packet was processed
             self.on_processed_packet(datagram.timestamp);
@@ -958,7 +960,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             }
 
             // try to move the crypto state machine forward
-            self.update_crypto_state(shared_state, datagram)?;
+            self.update_crypto_state(shared_state, datagram, publisher)?;
 
             // notify the connection a packet was processed
             self.on_processed_packet(datagram.timestamp);
@@ -1019,6 +1021,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 packet,
                 datagram,
                 &self.path_manager.active_path().rtt_estimator,
+                publisher,
             )?;
 
             space.handle_cleartext_payload(
