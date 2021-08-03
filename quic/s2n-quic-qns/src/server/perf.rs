@@ -52,14 +52,24 @@ impl Perf {
                 }
             }
 
+            let did_panic = connections.len() != limit;
+
             try_join_all(connections).await?;
 
             println!("closing server after {} connections", limit);
+
+            if did_panic {
+                return Err("The server shut down unexpectedly".into());
+            }
+
+            return Ok(());
         } else {
             while let Some(connection) = server.accept().await {
                 // spawn a task per connection
                 spawn(handle_connection(connection));
             }
+
+            return Err("The server shut down unexpectedly".into());
         }
 
         async fn handle_connection(connection: Connection) {
@@ -219,8 +229,6 @@ impl Perf {
 
             Ok((id, chunk))
         }
-
-        Ok(())
     }
 
     fn server(&self) -> Result<Server> {

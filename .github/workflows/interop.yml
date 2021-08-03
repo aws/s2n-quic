@@ -261,6 +261,11 @@ jobs:
           name: interop-${{ matrix.client }}-client-${{ matrix.server }}-server
           path: quic-interop-runner/results/result.json
 
+      - name: Assert no crashes
+        working-directory: quic-interop-runner
+        run: |
+          ! grep -Rq 'The server shut down unexpectedly' results
+
   generate-report:
     runs-on: ubuntu-latest
     needs: [interop]

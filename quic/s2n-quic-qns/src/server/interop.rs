@@ -161,7 +161,7 @@ impl Interop {
             }
         }
 
-        Ok(())
+        Err("The server shut down unexpectedly".into())
     }
 
     fn server(&self) -> Result<Server> {
