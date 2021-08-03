@@ -594,17 +594,43 @@ impl TryFrom<u16> for MaxUdpPayloadSize {
 
 varint_transport_parameter!(InitialMaxData, 0x04);
 
+/// Computes a data window with the given configuration
+pub const fn compute_data_window(mbps: u64, rtt: Duration, rtt_count: u64) -> VarInt {
+    // ideal throughput in Mbps
+    let mut window = mbps;
+    // Mbit/sec * 125 -> bytes/ms
+    window *= 125;
+    // bytes/ms * ms/RTT -> bytes/RTT
+    window *= rtt.as_millis() as u64;
+    // bytes/RTT * rtt_count -> N * bytes/RTT
+    window *= rtt_count;
+
+    VarInt::from_u32(window as u32)
+}
+
+#[test]
+fn compute_data_window_test() {
+    assert_eq!(
+        *compute_data_window(150, Duration::from_millis(10), 1),
+        187_500
+    );
+    assert_eq!(
+        *compute_data_window(150, Duration::from_millis(10), 2),
+        375_000
+    );
+    assert_eq!(
+        *compute_data_window(150, Duration::from_millis(100), 2),
+        3_750_000
+    );
+    assert_eq!(
+        *compute_data_window(1500, Duration::from_millis(100), 2),
+        37_500_000
+    );
+}
+
 impl InitialMaxData {
-    /// Tuned for 300MiB/s throughput with a 100ms RTT
-    pub const RECOMMENDED: Self = Self(VarInt::from_u32(
-        // ideal throughput in MiB/s
-        300
-        // scaled to bytes/ms
-        * 1_000
-        // rephrase in terms of bytes/RTT
-        // ideal RTT in ms
-        / 100,
-    ));
+    /// Tuned for 150Mbps with a 100ms RTT
+    pub const RECOMMENDED: Self = Self(compute_data_window(150, Duration::from_millis(100), 2));
 }
 
 impl TransportParameterValidator for InitialMaxData {}
@@ -623,7 +649,7 @@ impl TransportParameterValidator for InitialMaxData {}
 varint_transport_parameter!(InitialMaxStreamDataBidiLocal, 0x05);
 
 impl InitialMaxStreamDataBidiLocal {
-    /// Tuned for 300MiB/s throughput with a 100ms RTT
+    /// Tuned for 150Mbps throughput with a 100ms RTT
     pub const RECOMMENDED: Self = Self(InitialMaxData::RECOMMENDED.0);
 }
 
@@ -642,7 +668,7 @@ impl TransportParameterValidator for InitialMaxStreamDataBidiLocal {}
 varint_transport_parameter!(InitialMaxStreamDataBidiRemote, 0x06);
 
 impl InitialMaxStreamDataBidiRemote {
-    /// Tuned for 300MiB/s throughput with a 100ms RTT
+    /// Tuned for 150Mbps throughput with a 100ms RTT
     pub const RECOMMENDED: Self = Self(InitialMaxData::RECOMMENDED.0);
 }
 
@@ -661,7 +687,7 @@ impl TransportParameterValidator for InitialMaxStreamDataBidiRemote {}
 varint_transport_parameter!(InitialMaxStreamDataUni, 0x07);
 
 impl InitialMaxStreamDataUni {
-    /// Tuned for 300MiB/s throughput with a 100ms RTT
+    /// Tuned for 150Mbps throughput with a 100ms RTT
     pub const RECOMMENDED: Self = Self(InitialMaxData::RECOMMENDED.0);
 }
 
