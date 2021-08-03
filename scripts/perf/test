@@ -18,6 +18,7 @@ UPLOAD_B=$(($UPLOAD_MB * 1000000))
 OUT=target/perf/results
 
 mkdir -p $OUT
+chmod 766 $OUT
 
 perf record \
   --output $TMP/$FILE.perf \
@@ -57,17 +58,20 @@ perf script \
   --input $TMP/$FILE.perf \
   2>/dev/null \
   > $OUT/$FILE.script
+chmod 666 $OUT/$FILE.script
 
 cat \
   $OUT/$FILE.script \
   | inferno-collapse-perf \
   > $OUT/$FILE.folded
+chmod 666 $OUT/$FILE.folded
 
 echo "generating flamegraph"
 mkdir -p target/perf/results
 inferno-flamegraph $OUT/$FILE.folded \
   --title "$TITLE" \
   > $OUT/$FILE.svg
+chmod 666 $OUT/$FILE.svg
 
 rm -rf $TMP
 
