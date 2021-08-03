@@ -212,21 +212,6 @@ macro_rules! common {
 
             use super::*;
 
-            #[derive(Clone, Debug)]
-            pub struct DurationSinceStart(crate::time::Timestamp);
-
-            impl DurationSinceStart {
-                pub fn new(timestamp: crate::time::Timestamp) -> Self {
-                    DurationSinceStart(timestamp)
-                }
-
-                pub fn duration_since_start(&self) -> Duration {
-                    // Safety: the duration is relative to start of program and the
-                    // new type, DurationSinceStart, captures this intent
-                    unsafe { self.0.as_duration() }
-                }
-            }
-
             //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#4
             //# When the qlog "group_id" field is used, it is recommended to use
             //# QUIC's Original Destination Connection ID (ODCID, the CID chosen by
@@ -236,7 +221,7 @@ macro_rules! common {
             pub struct Meta {
                 pub endpoint_type: endpoint::Type,
                 pub group_id: u64,
-                pub duration_since_start: DurationSinceStart,
+                pub timestamp: Timestamp,
             }
 
             $(
@@ -275,7 +260,7 @@ macro_rules! common {
             pub struct Meta {
                 pub endpoint_type: endpoint::Type,
                 pub group_id: u64,
-                pub duration_since_start: crate::time::Timestamp,
+                pub timestamp: crate::time::Timestamp,
             }
 
             #[doc(hidden)]
@@ -284,7 +269,7 @@ macro_rules! common {
                     Self {
                         endpoint_type: builder.endpoint_type,
                         group_id: builder.group_id,
-                        duration_since_start: common::DurationSinceStart::new(builder.duration_since_start),
+                        timestamp: Timestamp::new(builder.timestamp),
                     }
                 }
             }

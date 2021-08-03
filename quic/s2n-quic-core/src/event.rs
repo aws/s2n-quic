@@ -17,6 +17,42 @@ pub mod builders {
     pub use super::{common_builders::*, event_builders::*};
 }
 
+#[derive(Clone, Debug)]
+pub struct Timestamp(crate::time::Timestamp);
+
+impl Timestamp {
+    pub(super) fn new(timestamp: crate::time::Timestamp) -> Self {
+        Timestamp(timestamp)
+    }
+
+    /// The duration since the start of the s2n-quic process.
+    ///
+    /// Record the start `SystemTime` at the start of the program
+    /// to derive the absolute time at which an event is emitted.
+    ///
+    /// ```rust
+    /// use s2n_quic_core::{
+    ///     endpoint,
+    ///     event,
+    ///     time::{Duration, Timestamp},
+    /// };
+    ///
+    /// let start_time = std::time::SystemTime::now();
+    /// // Meta is included as part of each event
+    /// let meta: event::common::Meta = event::builders::Meta {
+    ///     endpoint_type: endpoint::Type::Server,
+    ///     group_id: 0,
+    ///     timestamp: unsafe { Timestamp::from_duration(Duration::from_secs(1) )},
+    /// }.into();
+    /// let event_time = start_time + meta.timestamp.duration_since_start();
+    /// ```
+    pub fn duration_since_start(&self) -> Duration {
+        // Safety: the duration is relative to start of program. This function along
+        // with it's documentation captures this intent.
+        unsafe { self.0.as_duration() }
+    }
+}
+
 common!(
     //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02.txt#A.4
     struct PacketHeader {

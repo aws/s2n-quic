@@ -24,7 +24,7 @@ impl super::Subscriber for Subscriber {
         debug!(
             group_id = meta.group_id,
             "{:?} {:?}",
-            meta.duration_since_start.duration_since_start().as_millis(),
+            meta.timestamp.duration_since_start(),
             event
         );
     }

@@ -239,7 +239,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             event::builders::Meta {
                 endpoint_type: Config::ENDPOINT_TYPE,
                 group_id: internal_connection_id.into(),
-                duration_since_start: datagram.timestamp,
+                timestamp: datagram.timestamp,
             },
             Some(quic_version),
             endpoint_context.event_subscriber,
