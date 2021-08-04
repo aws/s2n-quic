@@ -1,6 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use s2n_codec::EncoderValue;
+
 use crate::event::common;
 
 /// Trait to retrieve subcription event type of the frame
@@ -31,9 +33,7 @@ as_event! {
     ack, Ack[AckRanges];
     reset_stream, ResetStream;
     stop_sending, StopSending;
-    crypto, Crypto[Data];
     new_token, NewToken['a];
-    stream, Stream[Data];
     max_data, MaxData;
     max_stream_data, MaxStreamData;
     max_streams, MaxStreams;
@@ -46,4 +46,32 @@ as_event! {
     path_response, PathResponse['a];
     connection_close, ConnectionClose['a];
     handshake_done, HandshakeDone;
+}
+
+impl<Data> AsEvent for super::stream::Stream<Data>
+where
+    Data: EncoderValue,
+{
+    #[inline]
+    fn as_event(&self) -> common::Frame {
+        common::Frame::Stream {
+            id: self.stream_id.as_u64(),
+            offset: self.offset.as_u64(),
+            len: self.data.encoding_size() as _,
+            is_fin: self.is_fin,
+        }
+    }
+}
+
+impl<Data> AsEvent for super::crypto::Crypto<Data>
+where
+    Data: EncoderValue,
+{
+    #[inline]
+    fn as_event(&self) -> common::Frame {
+        common::Frame::Crypto {
+            offset: self.offset.as_u64(),
+            len: self.data.encoding_size() as _,
+        }
+    }
 }

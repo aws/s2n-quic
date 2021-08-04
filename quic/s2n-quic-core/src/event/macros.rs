@@ -199,7 +199,8 @@ macro_rules! common {
             $(
                 $(#[$enum_attr:meta])? $enum_variant: ident
                     $({
-                        $( $enum_field:ident: $enum_field_type:ty )*
+                        $( $enum_field:ident: $enum_field_type:ty ),*
+                        $(,)?
                     })?
                 ,
             )*
@@ -244,7 +245,7 @@ macro_rules! common {
                 $(
                     $(#[$enum_attr])? $enum_variant
                         $({
-                            $( $enum_field: $enum_field_type )*
+                            $( $enum_field: $enum_field_type ),*
                         })?
                     ,
                 )*
