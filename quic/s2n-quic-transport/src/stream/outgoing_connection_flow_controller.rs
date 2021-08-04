@@ -5,7 +5,6 @@ use crate::{
     contexts::{OnTransmitError, WriteContext},
     sync::{PeriodicSync, ValueToFrameWriter},
     transmission,
-    transmission::Interest,
 };
 use alloc::rc::Rc;
 use core::{cell::RefCell, time::Duration};
@@ -206,10 +205,13 @@ impl OutgoingConnectionFlowController {
 
 /// Queries the component for interest in transmitting frames
 impl transmission::interest::Provider for OutgoingConnectionFlowController {
-    fn transmission_interest(&self) -> Interest {
+    fn transmission_interest<Q: transmission::interest::Query>(
+        &self,
+        query: &mut Q,
+    ) -> transmission::interest::Result {
         self.inner
             .borrow()
             .data_blocked_sync
-            .transmission_interest()
+            .transmission_interest(query)
     }
 }

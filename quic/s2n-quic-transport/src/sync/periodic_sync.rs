@@ -169,7 +169,10 @@ impl<T: Copy + Clone + Default + Eq + PartialEq + PartialOrd, S: ValueToFrameWri
 
 impl<T, S> transmission::interest::Provider for PeriodicSync<T, S> {
     #[inline]
-    fn transmission_interest(&self) -> transmission::Interest {
-        self.delivery.transmission_interest()
+    fn transmission_interest<Q: transmission::interest::Query>(
+        &self,
+        query: &mut Q,
+    ) -> transmission::interest::Result {
+        self.delivery.transmission_interest(query)
     }
 }

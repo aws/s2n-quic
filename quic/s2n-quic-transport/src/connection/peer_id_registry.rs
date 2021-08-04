@@ -16,8 +16,7 @@ use crate::{
         },
         InternalConnectionId,
     },
-    transmission,
-    transmission::{Interest, WriteContext},
+    transmission::{self, WriteContext},
 };
 use alloc::rc::Rc;
 use core::cell::RefCell;
@@ -532,16 +531,18 @@ impl PeerIdRegistry {
 }
 
 impl transmission::interest::Provider for PeerIdRegistry {
-    fn transmission_interest(&self) -> Interest {
-        let mut interest = transmission::Interest::None;
-
+    #[inline]
+    fn transmission_interest<Q: transmission::interest::Query>(
+        &self,
+        query: &mut Q,
+    ) -> transmission::interest::Result {
         for id_info in self.registered_ids.iter() {
             match id_info.status {
                 PendingRetirement => {
-                    interest += transmission::Interest::NewData;
+                    query.on_new_data()?;
                 }
                 PendingRetirementRetransmission => {
-                    interest += transmission::Interest::LostData;
+                    query.on_lost_data()?;
                     // `LostData` is the highest precedent interest we provide,
                     // so we don't need to keep iterating to check other IDs
                     break;
@@ -550,7 +551,7 @@ impl transmission::interest::Provider for PeerIdRegistry {
             }
         }
 
-        interest
+        Ok(())
     }
 }
 
@@ -819,7 +820,10 @@ pub(crate) mod tests {
         assert!(reg.on_new_connection_id(&id_2, 1, 1, &TEST_TOKEN_2).is_ok());
 
         assert_eq!(PendingRetirement, reg.registered_ids[0].status);
-        assert_eq!(transmission::Interest::NewData, reg.transmission_interest());
+        assert_eq!(
+            transmission::Interest::NewData,
+            reg.get_transmission_interest()
+        );
 
         let mut frame_buffer = OutgoingFrameBuffer::new();
         let mut write_context = MockWriteContext::new(
@@ -847,7 +851,10 @@ pub(crate) mod tests {
             reg.registered_ids[0].status
         );
 
-        assert_eq!(transmission::Interest::None, reg.transmission_interest());
+        assert_eq!(
+            transmission::Interest::None,
+            reg.get_transmission_interest()
+        );
 
         reg.on_packet_loss(&PacketNumberRange::new(packet_number, packet_number));
 
@@ -857,7 +864,7 @@ pub(crate) mod tests {
         );
         assert_eq!(
             transmission::Interest::LostData,
-            reg.transmission_interest()
+            reg.get_transmission_interest()
         );
 
         // Transition ID to PendingAcknowledgement again
@@ -884,7 +891,10 @@ pub(crate) mod tests {
             mapper.remove_internal_connection_id_by_stateless_reset_token(&TEST_TOKEN_1)
         );
 
-        assert_eq!(transmission::Interest::None, reg.transmission_interest());
+        assert_eq!(
+            transmission::Interest::None,
+            reg.get_transmission_interest()
+        );
     }
 
     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.15

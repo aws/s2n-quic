@@ -322,8 +322,12 @@ impl AckManager {
 }
 
 impl transmission::interest::Provider for AckManager {
-    fn transmission_interest(&self) -> transmission::Interest {
-        self.transmission_state.transmission_interest()
+    #[inline]
+    fn transmission_interest<Q: transmission::interest::Query>(
+        &self,
+        query: &mut Q,
+    ) -> transmission::interest::Result {
+        self.transmission_state.transmission_interest(query)
     }
 }
 

@@ -95,20 +95,23 @@ impl MockStream {
 }
 
 impl StreamInterestProvider for MockStream {
-    fn interests(&self) -> StreamInterests {
-        let mut interests = self.interests;
-        interests.connection_flow_control_credits =
+    fn stream_interests(&self, interests: &mut StreamInterests) {
+        interests.merge(&self.interests);
+
+        interests.connection_flow_control_credits |=
             self.on_connection_window_available_retrieve_window > 0;
+
         if self.on_transmit_try_write_frames > 0 {
-            if self.lost_data {
-                interests.transmission = transmission::Interest::LostData;
-            } else {
-                interests.transmission = transmission::Interest::NewData;
-            }
-        } else {
-            interests.transmission = transmission::Interest::None;
+            interests.with_transmission(|query| {
+                use transmission::interest::Query;
+
+                if self.lost_data {
+                    query.on_lost_data()
+                } else {
+                    query.on_new_data()
+                }
+            });
         }
-        interests
     }
 }
 
@@ -120,7 +123,10 @@ impl StreamTrait for MockStream {
             last_on_stream_data_blocked: None,
             last_max_stream_data: None,
             last_stop_sending: None,
-            interests: StreamInterests::default(),
+            interests: StreamInterests {
+                retained: true,
+                ..Default::default()
+            },
             on_connection_window_available_count: 0,
             on_connection_window_available_retrieve_window: 0,
             on_packet_ack_count: 0,
@@ -253,7 +259,7 @@ impl StreamTrait for MockStream {
     fn on_internal_reset(&mut self, _error: StreamError, events: &mut StreamEvents) {
         self.on_internal_reset_count += 1;
         if self.set_finalize_on_internal_reset {
-            self.interests.finalization = true;
+            self.interests.retained = false;
         }
         self.store_wakers(events);
     }
@@ -541,7 +547,7 @@ fn returns_finalization_interest_after_last_stream_is_drained() {
     // The first stream is immediately interested in finalization and should
     // therefore be collected
     manager.with_asserted_stream(stream_1, |stream| {
-        stream.interests.finalization = true;
+        stream.interests.retained = false;
     });
     assert_eq!(1, manager.active_streams().len());
     assert!(manager.finalization_status().is_draining());
@@ -560,7 +566,7 @@ fn returns_finalization_interest_after_last_stream_is_drained() {
 
     // Let the last stream return the finalization interest
     manager.with_asserted_stream(stream_2, |stream| {
-        stream.interests.finalization = true;
+        stream.interests.retained = false;
     });
     assert_eq!(0, manager.active_streams().len());
     assert!(manager.finalization_status().is_final());
@@ -718,7 +724,7 @@ fn peer_closing_streams_transmits_max_streams() {
 
         assert_eq!(
             transmission::Interest::None,
-            manager.transmission_interest()
+            manager.get_transmission_interest()
         );
 
         // The peer closes MAX_STREAMS_SYNC_FRACTION of streams
@@ -727,13 +733,13 @@ fn peer_closing_streams_transmits_max_streams() {
         for i in 0..*streams_to_close {
             let stream_id = StreamId::nth(endpoint::Type::Client, stream_type, i).unwrap();
             manager.with_asserted_stream(stream_id, |stream| {
-                stream.interests.finalization = true;
+                stream.interests.retained = false;
             });
         }
 
         assert_eq!(
             transmission::Interest::NewData,
-            manager.transmission_interest()
+            manager.get_transmission_interest()
         );
 
         let mut frame_buffer = OutgoingFrameBuffer::new();
@@ -761,14 +767,14 @@ fn peer_closing_streams_transmits_max_streams() {
 
         assert_eq!(
             transmission::Interest::None,
-            manager.transmission_interest()
+            manager.get_transmission_interest()
         );
 
         manager.on_packet_loss(&PacketNumberRange::new(packet_number, packet_number));
 
         assert_eq!(
             transmission::Interest::LostData,
-            manager.transmission_interest()
+            manager.get_transmission_interest()
         );
 
         let packet_number = write_context.packet_number();
@@ -778,7 +784,7 @@ fn peer_closing_streams_transmits_max_streams() {
 
         assert_eq!(
             transmission::Interest::None,
-            manager.transmission_interest()
+            manager.get_transmission_interest()
         );
     }
 }
@@ -815,7 +821,7 @@ fn send_streams_blocked_frame_when_blocked_by_peer() {
 
         assert_eq!(
             transmission::Interest::NewData,
-            manager.transmission_interest()
+            manager.get_transmission_interest()
         );
 
         let mut frame_buffer = OutgoingFrameBuffer::new();
@@ -843,14 +849,14 @@ fn send_streams_blocked_frame_when_blocked_by_peer() {
 
         assert_eq!(
             transmission::Interest::None,
-            manager.transmission_interest()
+            manager.get_transmission_interest()
         );
 
         manager.on_packet_loss(&PacketNumberRange::new(packet_number, packet_number));
 
         assert_eq!(
             transmission::Interest::LostData,
-            manager.transmission_interest()
+            manager.get_transmission_interest()
         );
 
         let packet_number = write_context.packet_number();
@@ -860,7 +866,7 @@ fn send_streams_blocked_frame_when_blocked_by_peer() {
 
         assert_eq!(
             transmission::Interest::None,
-            manager.transmission_interest()
+            manager.get_transmission_interest()
         );
 
         let expected_next_stream_blocked_time = write_context.current_time + DEFAULT_SYNC_PERIOD;
@@ -874,7 +880,7 @@ fn send_streams_blocked_frame_when_blocked_by_peer() {
         // Another STREAM_BLOCKED frame should be sent
         assert_eq!(
             transmission::Interest::NewData,
-            manager.transmission_interest()
+            manager.get_transmission_interest()
         );
 
         // We get more credit from the peer so we should no longer send STREAM_BLOCKED
@@ -887,13 +893,13 @@ fn send_streams_blocked_frame_when_blocked_by_peer() {
 
         assert_eq!(
             transmission::Interest::None,
-            manager.transmission_interest()
+            manager.get_transmission_interest()
         );
 
         // Close currently open streams to not block on local limits
         for i in 0..*opened_streams {
             let stream_id = StreamId::nth(endpoint::Type::Server, stream_type, i).unwrap();
-            manager.with_asserted_stream(stream_id, |stream| stream.interests.finalization = true);
+            manager.with_asserted_stream(stream_id, |stream| stream.interests.retained = false);
         }
 
         // Clear out the MAX_STREAMS frame
@@ -911,7 +917,7 @@ fn send_streams_blocked_frame_when_blocked_by_peer() {
         // Another STREAM_BLOCKED frame should be sent with the updated MAX_STREAMS value
         assert_eq!(
             transmission::Interest::NewData,
-            manager.transmission_interest()
+            manager.get_transmission_interest()
         );
 
         assert!(manager.on_transmit(&mut write_context).is_ok());
@@ -1072,7 +1078,7 @@ fn send_data_blocked_frame_when_blocked_by_connection_flow_limits() {
     // No DATA_BLOCKED is sent, since the window has been fully consumed, but not exceeded
     assert_eq!(
         transmission::Interest::None,
-        manager.transmission_interest()
+        manager.get_transmission_interest()
     );
 
     // Try acquiring one more byte to exceed the window
@@ -1085,7 +1091,7 @@ fn send_data_blocked_frame_when_blocked_by_connection_flow_limits() {
 
     assert_eq!(
         transmission::Interest::NewData,
-        manager.transmission_interest()
+        manager.get_transmission_interest()
     );
 
     let mut frame_buffer = OutgoingFrameBuffer::new();
@@ -1113,14 +1119,14 @@ fn send_data_blocked_frame_when_blocked_by_connection_flow_limits() {
 
     assert_eq!(
         transmission::Interest::None,
-        manager.transmission_interest()
+        manager.get_transmission_interest()
     );
 
     manager.on_packet_loss(&PacketNumberRange::new(packet_number, packet_number));
 
     assert_eq!(
         transmission::Interest::LostData,
-        manager.transmission_interest()
+        manager.get_transmission_interest()
     );
 
     let packet_number = write_context.packet_number();
@@ -1131,7 +1137,7 @@ fn send_data_blocked_frame_when_blocked_by_connection_flow_limits() {
 
     assert_eq!(
         transmission::Interest::None,
-        manager.transmission_interest()
+        manager.get_transmission_interest()
     );
 
     let expected_next_data_blocked_time = write_context.current_time + DEFAULT_SYNC_PERIOD;
@@ -1145,7 +1151,7 @@ fn send_data_blocked_frame_when_blocked_by_connection_flow_limits() {
     // Another DATA_BLOCKED frame should be sent
     assert_eq!(
         transmission::Interest::NewData,
-        manager.transmission_interest()
+        manager.get_transmission_interest()
     );
 
     // We get more credit from the peer so we should no longer send DATA_BLOCKED
@@ -1157,7 +1163,7 @@ fn send_data_blocked_frame_when_blocked_by_connection_flow_limits() {
 
     assert_eq!(
         transmission::Interest::None,
-        manager.transmission_interest()
+        manager.get_transmission_interest()
     );
 
     // Exceed the window again
@@ -1171,7 +1177,7 @@ fn send_data_blocked_frame_when_blocked_by_connection_flow_limits() {
     // Another DATA_BLOCKED frame should be sent with the updated MAX_DATA value
     assert_eq!(
         transmission::Interest::NewData,
-        manager.transmission_interest()
+        manager.get_transmission_interest()
     );
 
     assert!(manager.on_transmit(&mut write_context).is_ok());
@@ -1269,13 +1275,13 @@ fn blocked_on_local_concurrent_stream_limit() {
 
         // No STREAMS_BLOCKED frame should be transmitted since we are blocked on the local
         // limit not the peer's limit.
-        assert!(manager.transmission_interest().is_none());
+        assert!(manager.get_transmission_interest().is_none());
 
         // Close one stream
         manager.with_asserted_stream(
             StreamId::initial(endpoint::Type::Server, stream_type),
             |stream| {
-                stream.interests.finalization = true;
+                stream.interests.retained = false;
             },
         );
 
@@ -2756,7 +2762,7 @@ fn forwards_poll_pop() {
         stream.api_call_requires_transmission = true;
     });
 
-    assert!(manager.transmission_interest().is_none());
+    assert!(manager.get_transmission_interest().is_none());
     assert_wakeups(&mut wakeup_queue, 0);
     assert_eq!(
         Err(StreamError::MaxStreamDataSizeExceeded),
@@ -2769,7 +2775,7 @@ fn forwards_poll_pop() {
     );
     assert_eq!(
         transmission::Interest::NewData,
-        manager.transmission_interest()
+        manager.get_transmission_interest()
     );
     assert_wakeups(&mut wakeup_queue, 1);
 
@@ -2809,7 +2815,7 @@ fn forwards_stop_sending() {
         stream.api_call_requires_transmission = true;
     });
 
-    assert!(manager.transmission_interest().is_none());
+    assert!(manager.get_transmission_interest().is_none());
     assert_wakeups(&mut wakeup_queue, 0);
     assert_eq!(
         Err(StreamError::MaxStreamDataSizeExceeded),
@@ -2822,7 +2828,7 @@ fn forwards_stop_sending() {
     );
     assert_eq!(
         transmission::Interest::NewData,
-        manager.transmission_interest()
+        manager.get_transmission_interest()
     );
     assert_wakeups(&mut wakeup_queue, 1);
 
@@ -2864,7 +2870,7 @@ fn forwards_poll_push() {
         stream.api_call_requires_transmission = true;
     });
 
-    assert!(manager.transmission_interest().is_none());
+    assert!(manager.get_transmission_interest().is_none());
     assert_wakeups(&mut wakeup_queue, 0);
     assert_eq!(
         Err(StreamError::MaxStreamDataSizeExceeded),
@@ -2877,7 +2883,7 @@ fn forwards_poll_push() {
     );
     assert_eq!(
         transmission::Interest::NewData,
-        manager.transmission_interest()
+        manager.get_transmission_interest()
     );
     assert_wakeups(&mut wakeup_queue, 1);
 
@@ -2918,7 +2924,7 @@ fn forwards_poll_finish() {
         stream.api_call_requires_transmission = true;
     });
 
-    assert!(manager.transmission_interest().is_none());
+    assert!(manager.get_transmission_interest().is_none());
     assert_wakeups(&mut wakeup_queue, 0);
     assert_eq!(
         Err(StreamError::MaxStreamDataSizeExceeded),
@@ -2931,7 +2937,7 @@ fn forwards_poll_finish() {
     );
     assert_eq!(
         transmission::Interest::NewData,
-        manager.transmission_interest()
+        manager.get_transmission_interest()
     );
     assert_wakeups(&mut wakeup_queue, 1);
 
@@ -2971,7 +2977,7 @@ fn forwards_reset() {
         stream.api_call_requires_transmission = true;
     });
 
-    assert!(manager.transmission_interest().is_none());
+    assert!(manager.get_transmission_interest().is_none());
     assert_wakeups(&mut wakeup_queue, 0);
     assert_eq!(
         Err(StreamError::MaxStreamDataSizeExceeded),
@@ -2984,7 +2990,7 @@ fn forwards_reset() {
     );
     assert_eq!(
         transmission::Interest::NewData,
-        manager.transmission_interest()
+        manager.get_transmission_interest()
     );
     assert_wakeups(&mut wakeup_queue, 1);
 

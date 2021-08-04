@@ -124,7 +124,11 @@ impl CryptoStream {
 }
 
 impl transmission::interest::Provider for CryptoStream {
-    fn transmission_interest(&self) -> transmission::Interest {
-        self.tx.transmission_interest()
+    #[inline]
+    fn transmission_interest<Q: transmission::interest::Query>(
+        &self,
+        query: &mut Q,
+    ) -> transmission::interest::Result {
+        self.tx.transmission_interest(query)
     }
 }

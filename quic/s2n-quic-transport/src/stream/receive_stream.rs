@@ -822,22 +822,23 @@ impl ReceiveStream {
 
 impl StreamInterestProvider for ReceiveStream {
     #[inline]
-    fn interests(&self) -> StreamInterests {
-        let delivery_notifications = self.stop_sending_sync.is_inflight()
+    fn stream_interests(&self, interests: &mut StreamInterests) {
+        if self.final_state_observed {
+            return;
+        }
+
+        // let the stream container know we still have work to do
+        interests.retained = true;
+
+        interests.delivery_notifications |= self.stop_sending_sync.is_inflight()
             || self.flow_controller.read_window_sync.is_inflight();
 
-        let transmission = self.stop_sending_sync.transmission_interest()
-            + self
-                .flow_controller
+        interests.with_transmission(|query| {
+            self.stop_sending_sync.transmission_interest(query)?;
+            self.flow_controller
                 .read_window_sync
-                .transmission_interest();
-
-        StreamInterests {
-            connection_flow_control_credits: false,
-            stream_flow_control_credits: false,
-            finalization: self.final_state_observed,
-            delivery_notifications,
-            transmission,
-        }
+                .transmission_interest(query)?;
+            Ok(())
+        });
     }
 }

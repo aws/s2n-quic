@@ -11,8 +11,7 @@ use crate::{
     space::{rx_packet_numbers::AckManager, HandshakeStatus},
     stream::{AbstractStreamManager, StreamTrait as Stream},
     sync::{flag, flag::Ping},
-    transmission,
-    transmission::{Interest, Mode},
+    transmission::{self, Mode},
 };
 use core::ops::RangeInclusive;
 use s2n_quic_core::packet::number::PacketNumberSpace;
@@ -87,19 +86,14 @@ impl<'a, Config: endpoint::Config> super::Payload for Payload<'a, Config> {
 }
 
 impl<'a, Config: endpoint::Config> transmission::interest::Provider for Payload<'a, Config> {
-    fn transmission_interest(&self) -> Interest {
+    fn transmission_interest<Q: transmission::interest::Query>(
+        &self,
+        query: &mut Q,
+    ) -> transmission::interest::Result {
         match self {
-            Payload::Normal(inner) => inner.transmission_interest(),
-            Payload::MtuProbe(inner) => inner.transmission_interest(),
-            Payload::PathValidationOnly(inner) => inner.transmission_interest(),
-        }
-    }
-
-    fn has_transmission_interest(&self) -> bool {
-        match self {
-            Payload::Normal(inner) => inner.has_transmission_interest(),
-            Payload::MtuProbe(inner) => inner.has_transmission_interest(),
-            Payload::PathValidationOnly(inner) => inner.has_transmission_interest(),
+            Payload::Normal(inner) => inner.transmission_interest(query),
+            Payload::MtuProbe(inner) => inner.transmission_interest(query),
+            Payload::PathValidationOnly(inner) => inner.transmission_interest(query),
         }
     }
 }
@@ -154,25 +148,20 @@ impl<'a, S: Stream, CCE: congestion_controller::Endpoint> Normal<'a, S, CCE> {
 impl<'a, S: Stream, CCE: congestion_controller::Endpoint> transmission::interest::Provider
     for Normal<'a, S, CCE>
 {
-    fn transmission_interest(&self) -> Interest {
-        transmission::Interest::default()
-            + self.ack_manager.transmission_interest()
-            + self.handshake_status.transmission_interest()
-            + self.stream_manager.transmission_interest()
-            + self.local_id_registry.transmission_interest()
-            + self.path_manager.transmission_interest()
-            + self.recovery_manager.transmission_interest()
-            + self.path_manager.active_path().transmission_interest()
-    }
-
-    fn has_transmission_interest(&self) -> bool {
-        self.ack_manager.has_transmission_interest()
-            || self.handshake_status.has_transmission_interest()
-            || self.stream_manager.has_transmission_interest()
-            || self.local_id_registry.has_transmission_interest()
-            || self.path_manager.has_transmission_interest()
-            || self.recovery_manager.has_transmission_interest()
-            || self.path_manager.active_path().has_transmission_interest()
+    fn transmission_interest<Q: transmission::interest::Query>(
+        &self,
+        query: &mut Q,
+    ) -> transmission::interest::Result {
+        self.ack_manager.transmission_interest(query)?;
+        self.handshake_status.transmission_interest(query)?;
+        self.stream_manager.transmission_interest(query)?;
+        self.local_id_registry.transmission_interest(query)?;
+        self.path_manager.transmission_interest(query)?;
+        self.recovery_manager.transmission_interest(query)?;
+        self.path_manager
+            .active_path()
+            .transmission_interest(query)?;
+        Ok(())
     }
 }
 
@@ -189,12 +178,11 @@ impl<'a> MtuProbe<'a> {
 }
 
 impl<'a> transmission::interest::Provider for MtuProbe<'a> {
-    fn transmission_interest(&self) -> transmission::Interest {
-        self.mtu_controller.transmission_interest()
-    }
-
-    fn has_transmission_interest(&self) -> bool {
-        self.mtu_controller.has_transmission_interest()
+    fn transmission_interest<Q: transmission::interest::Query>(
+        &self,
+        query: &mut Q,
+    ) -> transmission::interest::Result {
+        self.mtu_controller.transmission_interest(query)
     }
 }
 
@@ -213,11 +201,10 @@ impl<'a, CCE: congestion_controller::Endpoint> PathValidationOnly<'a, CCE> {
 impl<'a, CCE: congestion_controller::Endpoint> transmission::interest::Provider
     for PathValidationOnly<'a, CCE>
 {
-    fn transmission_interest(&self) -> transmission::Interest {
-        self.path.transmission_interest()
-    }
-
-    fn has_transmission_interest(&self) -> bool {
-        self.path.has_transmission_interest()
+    fn transmission_interest<Q: transmission::interest::Query>(
+        &self,
+        query: &mut Q,
+    ) -> transmission::interest::Result {
+        self.path.transmission_interest(query)
     }
 }

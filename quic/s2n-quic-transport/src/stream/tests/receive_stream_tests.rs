@@ -86,7 +86,10 @@ fn conn_flow_control_test_env_config() -> TestEnvironmentConfig {
 #[test]
 fn receive_more_data_unblocks_reader() {
     let mut test_env = setup_receive_only_test_env();
-    assert_eq!(stream_interests(&[]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&[]),
+        test_env.stream.get_stream_interests()
+    );
 
     let mut events = StreamEvents::new();
     assert!(test_env
@@ -146,15 +149,24 @@ fn receive_more_data_unblocks_reader() {
     assert_eq!(test_env.wake_counter, 2);
 
     test_env.assert_receive_data(&[7]);
-    assert_eq!(stream_interests(&[]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&[]),
+        test_env.stream.get_stream_interests()
+    );
     test_env.assert_end_of_stream();
-    assert_eq!(stream_interests(&["fin"]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&["fin"]),
+        test_env.stream.get_stream_interests()
+    );
 }
 
 #[test]
 fn receive_data_with_fin() {
     let mut test_env = setup_receive_only_test_env();
-    assert_eq!(stream_interests(&[]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&[]),
+        test_env.stream.get_stream_interests()
+    );
 
     let mut events = StreamEvents::new();
     assert!(test_env
@@ -196,15 +208,24 @@ fn receive_data_with_fin() {
     assert_eq!(test_env.wake_counter, 1);
 
     test_env.assert_receive_data(&[4, 5, 6]);
-    assert_eq!(stream_interests(&[]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&[]),
+        test_env.stream.get_stream_interests()
+    );
     test_env.assert_end_of_stream();
-    assert_eq!(stream_interests(&["fin"]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&["fin"]),
+        test_env.stream.get_stream_interests()
+    );
 }
 
 #[test]
 fn receive_data_with_fin_in_separate_frame() {
     let mut test_env = setup_receive_only_test_env();
-    assert_eq!(stream_interests(&[]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&[]),
+        test_env.stream.get_stream_interests()
+    );
 
     let mut events = StreamEvents::new();
     assert!(test_env
@@ -240,15 +261,24 @@ fn receive_data_with_fin_in_separate_frame() {
     events.wake_all();
     assert_eq!(test_env.wake_counter, 1);
 
-    assert_eq!(stream_interests(&[]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&[]),
+        test_env.stream.get_stream_interests()
+    );
     test_env.assert_end_of_stream();
-    assert_eq!(stream_interests(&["fin"]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&["fin"]),
+        test_env.stream.get_stream_interests()
+    );
 }
 
 #[test]
 fn receive_fin_only() {
     let mut test_env = setup_receive_only_test_env();
-    assert_eq!(stream_interests(&[]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&[]),
+        test_env.stream.get_stream_interests()
+    );
 
     test_env.assert_no_read_data();
     assert_eq!(test_env.wake_counter, 0);
@@ -266,9 +296,15 @@ fn receive_fin_only() {
     events.wake_all();
     assert_eq!(test_env.wake_counter, 1);
 
-    assert_eq!(stream_interests(&[]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&[]),
+        test_env.stream.get_stream_interests()
+    );
     test_env.assert_end_of_stream();
-    assert_eq!(stream_interests(&["fin"]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&["fin"]),
+        test_env.stream.get_stream_interests()
+    );
 }
 
 #[test]
@@ -313,9 +349,15 @@ fn receive_fin_with_gap() {
     assert_eq!(test_env.wake_counter, 1);
 
     test_env.assert_receive_data(&[0, 1, 2, 3, 4, 5]);
-    assert_eq!(stream_interests(&[]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&[]),
+        test_env.stream.get_stream_interests()
+    );
     test_env.assert_end_of_stream();
-    assert_eq!(stream_interests(&["fin"]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&["fin"]),
+        test_env.stream.get_stream_interests()
+    );
     assert_eq!(test_env.wake_counter, 1);
 }
 
@@ -418,7 +460,10 @@ fn reset_stream() {
     for is_waiting in &[false, true] {
         for has_buffered_data in &[false, true] {
             let mut test_env = setup_receive_only_test_env();
-            assert_eq!(stream_interests(&[]), test_env.stream.interests());
+            assert_eq!(
+                stream_interests(&[]),
+                test_env.stream.get_stream_interests()
+            );
 
             if *is_waiting {
                 test_env.assert_no_read_data();
@@ -464,14 +509,20 @@ fn reset_stream() {
             }
             events.wake_all();
 
-            assert_eq!(stream_interests(&[]), test_env.stream.interests());
+            assert_eq!(
+                stream_interests(&[]),
+                test_env.stream.get_stream_interests()
+            );
             test_env.assert_pop_error();
             if *is_waiting {
                 assert_eq!(test_env.wake_counter, 1);
             } else {
                 assert_eq!(test_env.wake_counter, 0);
             }
-            assert_eq!(stream_interests(&["fin"]), test_env.stream.interests());
+            assert_eq!(
+                stream_interests(&["fin"]),
+                test_env.stream.get_stream_interests()
+            );
         }
     }
 }
@@ -528,7 +579,10 @@ fn reset_has_no_impact_if_all_data_had_been_received() {
         if *data_is_consumed {
             test_env.assert_receive_data(&[0, 1, 2, 3]);
             test_env.assert_end_of_stream();
-            assert_eq!(stream_interests(&["fin"]), test_env.stream.interests());
+            assert_eq!(
+                stream_interests(&["fin"]),
+                test_env.stream.get_stream_interests()
+            );
         }
 
         let reset_frame = ResetStream {
@@ -544,11 +598,17 @@ fn reset_has_no_impact_if_all_data_had_been_received() {
         // after the reset.
         if !*data_is_consumed {
             test_env.assert_receive_data(&[0, 1, 2, 3]);
-            assert_eq!(stream_interests(&[]), test_env.stream.interests());
+            assert_eq!(
+                stream_interests(&[]),
+                test_env.stream.get_stream_interests()
+            );
         }
 
         test_env.assert_end_of_stream();
-        assert_eq!(stream_interests(&["fin"]), test_env.stream.interests());
+        assert_eq!(
+            stream_interests(&["fin"]),
+            test_env.stream.get_stream_interests()
+        );
     }
 }
 
@@ -591,9 +651,15 @@ fn exceed_stream_flow_control_window() {
         .stream
         .on_internal_reset(connection::Error::Unspecified.into(), &mut events);
 
-    assert_eq!(stream_interests(&[]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&[]),
+        test_env.stream.get_stream_interests()
+    );
     test_env.assert_pop_error();
-    assert_eq!(stream_interests(&["fin"]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&["fin"]),
+        test_env.stream.get_stream_interests()
+    );
 }
 
 #[test]
@@ -633,9 +699,15 @@ fn exceed_connection_flow_control_window() {
         .stream
         .on_internal_reset(connection::Error::Unspecified.into(), &mut events);
 
-    assert_eq!(stream_interests(&[]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&[]),
+        test_env.stream.get_stream_interests()
+    );
     test_env.assert_pop_error();
-    assert_eq!(stream_interests(&["fin"]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&["fin"]),
+        test_env.stream.get_stream_interests()
+    );
 }
 
 #[test]
@@ -648,14 +720,23 @@ fn receiving_data_will_lead_to_a_stream_flow_control_window_update() {
         .flow_controller
         .current_stream_receive_window()
         .into();
-    assert_eq!(stream_interests(&[]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&[]),
+        test_env.stream.get_stream_interests()
+    );
 
     // Completely fill the flow control window
     test_env.feed_data(VarInt::from_u32(0), old_window as usize);
-    assert_eq!(stream_interests(&[]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&[]),
+        test_env.stream.get_stream_interests()
+    );
     // And drain the data
     assert_eq!(old_window as usize, test_env.consume_all_data());
-    assert_eq!(stream_interests(&["tx"]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&["tx"]),
+        test_env.stream.get_stream_interests()
+    );
 
     let expected_window = old_window
         + u64::from(
@@ -688,12 +769,18 @@ fn receiving_data_will_lead_to_a_stream_flow_control_window_update() {
     );
 
     // Nothing new to write
-    assert_eq!(stream_interests(&["ack"]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&["ack"]),
+        test_env.stream.get_stream_interests()
+    );
     test_env.assert_write_frames(0);
 
     // Acknowledge the MaxStreamData frame
     test_env.ack_packet(sent_frame.packet_nr, ExpectWakeup(Some(false)));
-    assert_eq!(stream_interests(&[]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&[]),
+        test_env.stream.get_stream_interests()
+    );
 }
 
 #[test]
@@ -707,7 +794,10 @@ fn receiving_data_will_lead_to_a_connection_flow_control_window_update() {
         .flow_controller
         .remaining_connection_receive_window()
         .into();
-    assert_eq!(stream_interests(&[]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&[]),
+        test_env.stream.get_stream_interests()
+    );
 
     // Completely fill the flow control window
     test_env.feed_data(VarInt::from_u32(0), old_window as usize);
@@ -715,22 +805,28 @@ fn receiving_data_will_lead_to_a_connection_flow_control_window_update() {
         VarInt::from_u32(0),
         Into::<u64>::into(test_env.rx_connection_flow_controller.remaining_window())
     );
-    assert_eq!(stream_interests(&[]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&[]),
+        test_env.stream.get_stream_interests()
+    );
     assert_eq!(
         transmission_interests(&[]),
         test_env
             .rx_connection_flow_controller
-            .transmission_interest()
+            .get_transmission_interest()
     );
 
     // And drain the data
     assert_eq!(old_window as usize, test_env.consume_all_data());
-    assert_eq!(stream_interests(&[]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&[]),
+        test_env.stream.get_stream_interests()
+    );
     assert_eq!(
         transmission_interests(&["tx"]),
         test_env
             .rx_connection_flow_controller
-            .transmission_interest()
+            .get_transmission_interest()
     );
 
     assert_eq!(
@@ -774,19 +870,22 @@ fn receiving_data_will_lead_to_a_connection_flow_control_window_update() {
         transmission_interests(&[]),
         test_env
             .rx_connection_flow_controller
-            .transmission_interest()
+            .get_transmission_interest()
     );
     assert!(test_env.rx_connection_flow_controller.is_inflight());
     test_env.assert_write_frames(0);
 
     // Acknowledge the MaxData frame
     test_env.ack_packet(sent_frame.packet_nr, ExpectWakeup(Some(false)));
-    assert_eq!(stream_interests(&[]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&[]),
+        test_env.stream.get_stream_interests()
+    );
     assert_eq!(
         transmission_interests(&[]),
         test_env
             .rx_connection_flow_controller
-            .transmission_interest()
+            .get_transmission_interest()
     );
     assert!(!test_env.rx_connection_flow_controller.is_inflight());
 }
@@ -960,7 +1059,10 @@ fn flow_control_window_update_is_only_sent_when_minimum_data_size_is_consumed() 
         required_for_read_window_update as usize - 1,
         test_env.consume_all_data()
     );
-    assert_eq!(stream_interests(&[]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&[]),
+        test_env.stream.get_stream_interests()
+    );
 
     let expected_window = absolute_treshold as u64 - 1;
     assert_eq!(
@@ -976,14 +1078,20 @@ fn flow_control_window_update_is_only_sent_when_minimum_data_size_is_consumed() 
 
     // Nothing to write
     test_env.assert_write_frames(0);
-    assert_eq!(stream_interests(&[]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&[]),
+        test_env.stream.get_stream_interests()
+    );
 
     // Send and consume one more byte to go over the absolute treshold
     test_env.feed_data(
         VarInt::from_u32(required_for_read_window_update as u32 - 1),
         1,
     );
-    assert_eq!(stream_interests(&[]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&[]),
+        test_env.stream.get_stream_interests()
+    );
     assert_eq!(1, test_env.consume_all_data());
     assert_eq!(
         absolute_treshold,
@@ -995,7 +1103,10 @@ fn flow_control_window_update_is_only_sent_when_minimum_data_size_is_consumed() 
                 .current_stream_receive_window()
         )
     );
-    assert_eq!(stream_interests(&["tx"]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&["tx"]),
+        test_env.stream.get_stream_interests()
+    );
 
     // We expect to have sent a MaxStreamData frame
     test_env.assert_write_frames(1);
@@ -1007,7 +1118,10 @@ fn flow_control_window_update_is_only_sent_when_minimum_data_size_is_consumed() 
         }),
         sent_frame.as_frame()
     );
-    assert_eq!(stream_interests(&["ack"]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&["ack"]),
+        test_env.stream.get_stream_interests()
+    );
 
     // Nothing new to write
     test_env.assert_write_frames(0);
@@ -1039,12 +1153,15 @@ fn connection_flow_control_window_update_is_only_sent_when_minimum_data_size_is_
         required_for_read_window_update as usize - 1,
         test_env.consume_all_data()
     );
-    assert_eq!(stream_interests(&[]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&[]),
+        test_env.stream.get_stream_interests()
+    );
     assert_eq!(
         transmission_interests(&[]),
         test_env
             .rx_connection_flow_controller
-            .transmission_interest()
+            .get_transmission_interest()
     );
 
     let expected_window = absolute_treshold as u64 - 1;
@@ -1059,12 +1176,15 @@ fn connection_flow_control_window_update_is_only_sent_when_minimum_data_size_is_
 
     // Nothing to write
     test_env.assert_write_frames(0);
-    assert_eq!(stream_interests(&[]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&[]),
+        test_env.stream.get_stream_interests()
+    );
     assert_eq!(
         transmission_interests(&[]),
         test_env
             .rx_connection_flow_controller
-            .transmission_interest()
+            .get_transmission_interest()
     );
 
     // Send and consume one more byte to go over the absolute threshold
@@ -1072,7 +1192,10 @@ fn connection_flow_control_window_update_is_only_sent_when_minimum_data_size_is_
         VarInt::from_u32(required_for_read_window_update as u32 - 1),
         1,
     );
-    assert_eq!(stream_interests(&[]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&[]),
+        test_env.stream.get_stream_interests()
+    );
     assert_eq!(1, test_env.consume_all_data());
     assert_eq!(
         absolute_treshold,
@@ -1086,7 +1209,7 @@ fn connection_flow_control_window_update_is_only_sent_when_minimum_data_size_is_
         transmission_interests(&["tx"]),
         test_env
             .rx_connection_flow_controller
-            .transmission_interest()
+            .get_transmission_interest()
     );
 
     // We expect to have sent a MaxData frame
@@ -1109,7 +1232,10 @@ fn flow_control_window_update_is_not_sent_when_congestion_limited() {
     let mut test_env = setup_receive_only_test_env();
     test_env.transmission_constraint = transmission::Constraint::CongestionLimited;
 
-    assert_eq!(stream_interests(&[]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&[]),
+        test_env.stream.get_stream_interests()
+    );
 
     // Completely fill the flow control window
     test_env.feed_data(
@@ -1121,10 +1247,16 @@ fn flow_control_window_update_is_not_sent_when_congestion_limited() {
             .current_stream_receive_window()
             .as_u64() as usize,
     );
-    assert_eq!(stream_interests(&[]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&[]),
+        test_env.stream.get_stream_interests()
+    );
     // And drain the data
     test_env.consume_all_data();
-    assert_eq!(stream_interests(&["tx"]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&["tx"]),
+        test_env.stream.get_stream_interests()
+    );
 
     // No MaxStreamData frame can be written
     test_env.assert_write_frames(0);
@@ -1144,7 +1276,10 @@ fn only_lost_flow_control_update_is_sent_if_retransmission_only() {
     // Completely fill and drain the flow control window
     test_env.feed_data(VarInt::from_u32(0), old_window as usize);
     assert_eq!(old_window as usize, test_env.consume_all_data());
-    assert_eq!(stream_interests(&["tx"]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&["tx"]),
+        test_env.stream.get_stream_interests()
+    );
 
     let expected_window = old_window
         + u64::from(
@@ -1176,14 +1311,20 @@ fn only_lost_flow_control_update_is_sent_if_retransmission_only() {
         sent_frame.as_frame()
     );
     let packet_nr = sent_frame.packet_nr;
-    assert_eq!(stream_interests(&["ack"]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&["ack"]),
+        test_env.stream.get_stream_interests()
+    );
 
     // Nothing new to write
     test_env.assert_write_frames(0);
 
     // Notify the stream about packet loss
     test_env.nack_packet(packet_nr);
-    assert_eq!(stream_interests(&["lost"]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&["lost"]),
+        test_env.stream.get_stream_interests()
+    );
 
     // Now we are constrained to retransmission only
     test_env.transmission_constraint = transmission::Constraint::RetransmissionOnly;
@@ -1199,7 +1340,10 @@ fn only_lost_flow_control_update_is_sent_if_retransmission_only() {
         sent_frame.as_frame()
     );
 
-    assert_eq!(stream_interests(&["ack"]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&["ack"]),
+        test_env.stream.get_stream_interests()
+    );
 
     // Nothing new to write
     test_env.assert_write_frames(0);
@@ -1207,7 +1351,10 @@ fn only_lost_flow_control_update_is_sent_if_retransmission_only() {
     // Completely fill and drain the flow control window
     test_env.feed_data(VarInt::from_u32(old_window as u32), old_window as usize);
     assert_eq!(old_window as usize, test_env.consume_all_data());
-    assert_eq!(stream_interests(&["tx"]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&["tx"]),
+        test_env.stream.get_stream_interests()
+    );
 
     // The new MaxStreamData frame cannot be sent
     test_env.assert_write_frames(0);
@@ -1252,7 +1399,10 @@ fn if_flow_control_window_is_increased_enough_multiple_frames_are_emitted() {
         required_for_read_window_update as usize,
         test_env.consume_all_data()
     );
-    assert_eq!(stream_interests(&["tx"]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&["tx"]),
+        test_env.stream.get_stream_interests()
+    );
 
     // We expect to have sent a MaxStreamData frame
     test_env.assert_write_frames(1);
@@ -1265,7 +1415,10 @@ fn if_flow_control_window_is_increased_enough_multiple_frames_are_emitted() {
         sent_frame.as_frame()
     );
 
-    assert_eq!(stream_interests(&["ack"]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&["ack"]),
+        test_env.stream.get_stream_interests()
+    );
     test_env.assert_write_frames(0);
 
     // Feed right before next treshold and drain data
@@ -1274,7 +1427,10 @@ fn if_flow_control_window_is_increased_enough_multiple_frames_are_emitted() {
         relative_treshold - 1,
     );
     assert_eq!(relative_treshold - 1, test_env.consume_all_data());
-    assert_eq!(stream_interests(&["ack"]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&["ack"]),
+        test_env.stream.get_stream_interests()
+    );
 
     // Feed up to the next treshold and drain data
     test_env.feed_data(
@@ -1282,7 +1438,10 @@ fn if_flow_control_window_is_increased_enough_multiple_frames_are_emitted() {
         1,
     );
     assert_eq!(1, test_env.consume_all_data());
-    assert_eq!(stream_interests(&["tx"]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&["tx"]),
+        test_env.stream.get_stream_interests()
+    );
 
     // We expect to have sent a MaxStreamData frame
     test_env.assert_write_frames(1);
@@ -1299,9 +1458,15 @@ fn if_flow_control_window_is_increased_enough_multiple_frames_are_emitted() {
 
     // The acknowledgement of the first frame is now no longer interesting
     test_env.ack_packet(pn(0), ExpectWakeup(Some(false)));
-    assert_eq!(stream_interests(&["ack"]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&["ack"]),
+        test_env.stream.get_stream_interests()
+    );
     test_env.ack_packet(pn(1), ExpectWakeup(Some(false)));
-    assert_eq!(stream_interests(&[]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&[]),
+        test_env.stream.get_stream_interests()
+    );
 }
 
 #[test]
@@ -1329,12 +1494,15 @@ fn if_connection_flow_control_window_is_increased_enough_multiple_frames_are_emi
         required_for_read_window_update as usize,
         test_env.consume_all_data()
     );
-    assert_eq!(stream_interests(&[]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&[]),
+        test_env.stream.get_stream_interests()
+    );
     assert_eq!(
         transmission_interests(&["tx"]),
         test_env
             .rx_connection_flow_controller
-            .transmission_interest()
+            .get_transmission_interest()
     );
 
     // We expect to have sent a MaxData frame
@@ -1347,7 +1515,10 @@ fn if_connection_flow_control_window_is_increased_enough_multiple_frames_are_emi
         sent_frame.as_frame()
     );
 
-    assert_eq!(stream_interests(&[]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&[]),
+        test_env.stream.get_stream_interests()
+    );
     assert!(test_env.rx_connection_flow_controller.is_inflight());
     test_env.assert_write_frames(0);
 
@@ -1366,12 +1537,15 @@ fn if_connection_flow_control_window_is_increased_enough_multiple_frames_are_emi
         1,
     );
     assert_eq!(1, test_env.consume_all_data());
-    assert_eq!(stream_interests(&[]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&[]),
+        test_env.stream.get_stream_interests()
+    );
     assert_eq!(
         transmission_interests(&["tx"]),
         test_env
             .rx_connection_flow_controller
-            .transmission_interest()
+            .get_transmission_interest()
     );
 
     // We expect to have sent a MaxStreamData frame
@@ -1391,12 +1565,15 @@ fn if_connection_flow_control_window_is_increased_enough_multiple_frames_are_emi
     test_env.ack_packet(pn(0), ExpectWakeup(Some(false)));
     assert!(test_env.rx_connection_flow_controller.is_inflight());
     test_env.ack_packet(pn(1), ExpectWakeup(Some(false)));
-    assert_eq!(stream_interests(&[]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&[]),
+        test_env.stream.get_stream_interests()
+    );
     assert_eq!(
         transmission_interests(&[]),
         test_env
             .rx_connection_flow_controller
-            .transmission_interest()
+            .get_transmission_interest()
     );
     assert!(!test_env.rx_connection_flow_controller.is_inflight());
 }
@@ -1415,7 +1592,10 @@ fn resend_flow_control_update_if_lost() {
     // Completely fill and drain the flow control window
     test_env.feed_data(VarInt::from_u32(0), old_window as usize);
     assert_eq!(old_window as usize, test_env.consume_all_data());
-    assert_eq!(stream_interests(&["tx"]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&["tx"]),
+        test_env.stream.get_stream_interests()
+    );
 
     let expected_window = old_window
         + u64::from(
@@ -1447,14 +1627,20 @@ fn resend_flow_control_update_if_lost() {
         sent_frame.as_frame()
     );
     let packet_nr = sent_frame.packet_nr;
-    assert_eq!(stream_interests(&["ack"]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&["ack"]),
+        test_env.stream.get_stream_interests()
+    );
 
     // Nothing new to write
     test_env.assert_write_frames(0);
 
     // Notify the stream about packet loss
     test_env.nack_packet(packet_nr);
-    assert_eq!(stream_interests(&["lost"]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&["lost"]),
+        test_env.stream.get_stream_interests()
+    );
 
     // We expect to have sent a MaxStreamData frame
     test_env.assert_write_frames(1);
@@ -1467,17 +1653,26 @@ fn resend_flow_control_update_if_lost() {
         sent_frame.as_frame()
     );
 
-    assert_eq!(stream_interests(&["ack"]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&["ack"]),
+        test_env.stream.get_stream_interests()
+    );
 
     // Nothing new to write
     test_env.assert_write_frames(0);
 
     // Acknowledging the old packet does nothing
     test_env.ack_packet(packet_nr, ExpectWakeup(Some(false)));
-    assert_eq!(stream_interests(&["ack"]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&["ack"]),
+        test_env.stream.get_stream_interests()
+    );
     // When acknowleding the new frame we are done
     test_env.ack_packet(sent_frame.packet_nr, ExpectWakeup(Some(false)));
-    assert_eq!(stream_interests(&[]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&[]),
+        test_env.stream.get_stream_interests()
+    );
 }
 
 #[test]
@@ -1495,7 +1690,10 @@ fn do_not_send_flow_control_update_if_stream_is_reset_or_eof() {
         test_env.feed_data(VarInt::from_u32(0), to_write as usize);
         assert_eq!(to_write as usize, test_env.consume_all_data());
 
-        assert_eq!(stream_interests(&["tx"]), test_env.stream.interests());
+        assert_eq!(
+            stream_interests(&["tx"]),
+            test_env.stream.get_stream_interests()
+        );
 
         assert_eq!(
             to_write
@@ -1541,7 +1739,10 @@ fn do_not_send_flow_control_update_if_stream_is_reset_or_eof() {
         }
 
         // Expect no window update
-        assert_eq!(stream_interests(&[]), test_env.stream.interests());
+        assert_eq!(
+            stream_interests(&[]),
+            test_env.stream.get_stream_interests()
+        );
         test_env.assert_write_frames(0);
     }
 }
@@ -1573,12 +1774,18 @@ fn stop_sending_will_trigger_a_stop_sending_frame() {
             if *consume_data {
                 assert_eq!(*available_data, test_env.consume_all_data());
             }
-            assert_eq!(stream_interests(&[]), test_env.stream.interests());
+            assert_eq!(
+                stream_interests(&[]),
+                test_env.stream.get_stream_interests()
+            );
 
             assert!(test_env
                 .stop_sending(ApplicationErrorCode::new(0x1234_5678).unwrap())
                 .is_ok());
-            assert_eq!(stream_interests(&["tx"]), test_env.stream.interests());
+            assert_eq!(
+                stream_interests(&["tx"]),
+                test_env.stream.get_stream_interests()
+            );
 
             // We expect to have sent a StopSending frame
             test_env.assert_write_frames(1);
@@ -1592,7 +1799,10 @@ fn stop_sending_will_trigger_a_stop_sending_frame() {
             );
             let packet_nr = sent_frame.packet_nr;
 
-            assert_eq!(stream_interests(&["ack"]), test_env.stream.interests());
+            assert_eq!(
+                stream_interests(&["ack"]),
+                test_env.stream.get_stream_interests()
+            );
 
             // Nothing new to write
             test_env.assert_write_frames(0);
@@ -1602,7 +1812,10 @@ fn stop_sending_will_trigger_a_stop_sending_frame() {
             test_env.stream.on_packet_ack(&packet_nr, &mut events);
 
             // Nothing new to write
-            assert_eq!(stream_interests(&[]), test_env.stream.interests());
+            assert_eq!(
+                stream_interests(&[]),
+                test_env.stream.get_stream_interests()
+            );
             test_env.assert_write_frames(0);
         }
     }
@@ -1618,13 +1831,19 @@ fn do_not_retransmit_stop_sending_if_requested_twice() {
             assert!(test_env
                 .stop_sending(ApplicationErrorCode::new(0x1234_5678).unwrap())
                 .is_ok());
-            assert_eq!(stream_interests(&["tx"]), test_env.stream.interests());
+            assert_eq!(
+                stream_interests(&["tx"]),
+                test_env.stream.get_stream_interests()
+            );
 
             if *resend_before_write {
                 assert!(test_env
                     .stop_sending(ApplicationErrorCode::new(0x4321_5678).unwrap())
                     .is_ok());
-                assert_eq!(stream_interests(&["tx"]), test_env.stream.interests());
+                assert_eq!(
+                    stream_interests(&["tx"]),
+                    test_env.stream.get_stream_interests()
+                );
             }
 
             // We expect to have sent a StopSending frame
@@ -1637,7 +1856,10 @@ fn do_not_retransmit_stop_sending_if_requested_twice() {
                 }),
                 sent_frame.as_frame()
             );
-            assert_eq!(stream_interests(&["ack"]), test_env.stream.interests());
+            assert_eq!(
+                stream_interests(&["ack"]),
+                test_env.stream.get_stream_interests()
+            );
 
             if *ack_packet {
                 // Mark the frame as acknowledged
@@ -1645,7 +1867,10 @@ fn do_not_retransmit_stop_sending_if_requested_twice() {
                 test_env
                     .stream
                     .on_packet_ack(&sent_frame.packet_nr, &mut events);
-                assert_eq!(stream_interests(&[]), test_env.stream.interests());
+                assert_eq!(
+                    stream_interests(&[]),
+                    test_env.stream.get_stream_interests()
+                );
             }
 
             assert!(test_env
@@ -1654,9 +1879,15 @@ fn do_not_retransmit_stop_sending_if_requested_twice() {
 
             // Nothing new to write
             if *ack_packet {
-                assert_eq!(stream_interests(&[]), test_env.stream.interests());
+                assert_eq!(
+                    stream_interests(&[]),
+                    test_env.stream.get_stream_interests()
+                );
             } else {
-                assert_eq!(stream_interests(&["ack"]), test_env.stream.interests());
+                assert_eq!(
+                    stream_interests(&["ack"]),
+                    test_env.stream.get_stream_interests()
+                );
             }
             test_env.assert_write_frames(0);
         }
@@ -1675,12 +1906,18 @@ fn stop_sending_is_ignored_if_stream_is_already_reset() {
     };
     let mut events = StreamEvents::new();
     assert!(test_env.stream.on_reset(&reset_frame, &mut events).is_ok());
-    assert_eq!(stream_interests(&[]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&[]),
+        test_env.stream.get_stream_interests()
+    );
 
     assert!(test_env
         .stop_sending(ApplicationErrorCode::new(0x1234_5678).unwrap())
         .is_ok());
-    assert_eq!(stream_interests(&[]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&[]),
+        test_env.stream.get_stream_interests()
+    );
 
     test_env.assert_write_frames(0);
 }
@@ -1692,7 +1929,10 @@ fn stop_sending_is_cancelled_if_stream_is_reset_after_having_been_initiated() {
     assert!(test_env
         .stop_sending(ApplicationErrorCode::new(0x1234_5678).unwrap())
         .is_ok());
-    assert_eq!(stream_interests(&["tx"]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&["tx"]),
+        test_env.stream.get_stream_interests()
+    );
 
     let reset_frame = ResetStream {
         stream_id: test_env.stream.stream_id.into(),
@@ -1703,7 +1943,10 @@ fn stop_sending_is_cancelled_if_stream_is_reset_after_having_been_initiated() {
     let mut events = StreamEvents::new();
     assert!(test_env.stream.on_reset(&reset_frame, &mut events).is_ok());
 
-    assert_eq!(stream_interests(&[]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&[]),
+        test_env.stream.get_stream_interests()
+    );
     test_env.assert_write_frames(0);
 }
 
@@ -1724,12 +1967,18 @@ fn stop_sending_is_ignored_if_stream_has_already_received_all_data() {
             &mut events,
         )
         .is_ok());
-    assert_eq!(stream_interests(&[]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&[]),
+        test_env.stream.get_stream_interests()
+    );
 
     assert!(test_env
         .stop_sending(ApplicationErrorCode::new(0x1234_5678).unwrap())
         .is_ok());
-    assert_eq!(stream_interests(&[]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&[]),
+        test_env.stream.get_stream_interests()
+    );
 
     test_env.assert_write_frames(0);
 }
@@ -1751,7 +2000,10 @@ fn stop_sending_can_be_sent_if_size_is_known_but_data_is_still_missing() {
         assert!(test_env
             .stop_sending(ApplicationErrorCode::new(0x1234_5678).unwrap())
             .is_ok());
-        assert_eq!(stream_interests(&["tx"]), test_env.stream.interests());
+        assert_eq!(
+            stream_interests(&["tx"]),
+            test_env.stream.get_stream_interests()
+        );
 
         test_env.assert_write_frames(1);
         let mut sent_frame = test_env.sent_frames.pop_front().expect("Frame is written");
@@ -1762,7 +2014,10 @@ fn stop_sending_can_be_sent_if_size_is_known_but_data_is_still_missing() {
             }),
             sent_frame.as_frame()
         );
-        assert_eq!(stream_interests(&["ack"]), test_env.stream.interests());
+        assert_eq!(
+            stream_interests(&["ack"]),
+            test_env.stream.get_stream_interests()
+        );
 
         if *send_missing_data_before_ack {
             let mut events = StreamEvents::new();
@@ -1780,11 +2035,17 @@ fn stop_sending_can_be_sent_if_size_is_known_but_data_is_still_missing() {
                 .is_ok());
 
             // Now we should not require stop sending anymore
-            assert_eq!(stream_interests(&[]), test_env.stream.interests());
+            assert_eq!(
+                stream_interests(&[]),
+                test_env.stream.get_stream_interests()
+            );
         }
 
         test_env.ack_packet(sent_frame.packet_nr, ExpectWakeup(Some(false)));
-        assert_eq!(stream_interests(&[]), test_env.stream.interests());
+        assert_eq!(
+            stream_interests(&[]),
+            test_env.stream.get_stream_interests()
+        );
 
         test_env.assert_write_frames(0);
     }
@@ -1797,7 +2058,10 @@ fn stop_sending_is_aborted_if_stream_receives_all_data() {
     assert!(test_env
         .stop_sending(ApplicationErrorCode::new(0x1234_5678).unwrap())
         .is_ok());
-    assert_eq!(stream_interests(&["tx"]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&["tx"]),
+        test_env.stream.get_stream_interests()
+    );
 
     let mut events = StreamEvents::new();
     assert!(test_env
@@ -1813,7 +2077,10 @@ fn stop_sending_is_aborted_if_stream_receives_all_data() {
         )
         .is_ok());
 
-    assert_eq!(stream_interests(&[]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&[]),
+        test_env.stream.get_stream_interests()
+    );
     test_env.assert_write_frames(0);
 }
 
@@ -1824,7 +2091,10 @@ fn stop_sending_is_aborted_if_stream_receives_all_data_with_data_after_fin() {
     assert!(test_env
         .stop_sending(ApplicationErrorCode::new(0x1234_5678).unwrap())
         .is_ok());
-    assert_eq!(stream_interests(&["tx"]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&["tx"]),
+        test_env.stream.get_stream_interests()
+    );
 
     // This sends only the FIN
     let mut events = StreamEvents::new();
@@ -1835,7 +2105,10 @@ fn stop_sending_is_aborted_if_stream_receives_all_data_with_data_after_fin() {
             &mut events,
         )
         .is_ok());
-    assert_eq!(stream_interests(&["tx"]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&["tx"]),
+        test_env.stream.get_stream_interests()
+    );
 
     // And this all data in front of the FIN
     let mut events = StreamEvents::new();
@@ -1852,7 +2125,10 @@ fn stop_sending_is_aborted_if_stream_receives_all_data_with_data_after_fin() {
         )
         .is_ok());
 
-    assert_eq!(stream_interests(&[]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&[]),
+        test_env.stream.get_stream_interests()
+    );
     test_env.assert_write_frames(0);
 }
 
@@ -1882,12 +2158,12 @@ fn stop_sending_is_ignored_if_stream_has_received_or_consumed_all_data() {
             stream_interests(&[])
         };
 
-        assert_eq!(expected_interests, test_env.stream.interests());
+        assert_eq!(expected_interests, test_env.stream.get_stream_interests());
 
         assert!(test_env
             .stop_sending(ApplicationErrorCode::new(0x1234_5678).unwrap())
             .is_ok());
-        assert_eq!(expected_interests, test_env.stream.interests());
+        assert_eq!(expected_interests, test_env.stream.get_stream_interests());
 
         test_env.assert_write_frames(0);
     }
@@ -1901,7 +2177,10 @@ fn stop_sending_frames_are_retransmitted_on_loss() {
     assert!(test_env
         .stop_sending(ApplicationErrorCode::new(0x1234_5678).unwrap())
         .is_ok());
-    assert_eq!(stream_interests(&["tx"]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&["tx"]),
+        test_env.stream.get_stream_interests()
+    );
 
     // We expect to have sent a StopSending frame
     test_env.assert_write_frames(1);
@@ -1914,7 +2193,10 @@ fn stop_sending_frames_are_retransmitted_on_loss() {
         sent_frame.as_frame()
     );
     let packet_nr = sent_frame.packet_nr;
-    assert_eq!(stream_interests(&["ack"]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&["ack"]),
+        test_env.stream.get_stream_interests()
+    );
 
     // Nothing new to write
     test_env.assert_write_frames(0);
@@ -1924,7 +2206,10 @@ fn stop_sending_frames_are_retransmitted_on_loss() {
     test_env.stream.on_packet_loss(&packet_nr, &mut events);
 
     // Expect a retransmission of StopSending
-    assert_eq!(stream_interests(&["lost"]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&["lost"]),
+        test_env.stream.get_stream_interests()
+    );
     test_env.assert_write_frames(1);
     let mut sent_frame = test_env.sent_frames.pop_front().expect("Frame is written");
     assert_eq!(
@@ -1936,16 +2221,25 @@ fn stop_sending_frames_are_retransmitted_on_loss() {
     );
     let packet_nr_2 = sent_frame.packet_nr;
     assert!(packet_nr != packet_nr_2);
-    assert_eq!(stream_interests(&["ack"]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&["ack"]),
+        test_env.stream.get_stream_interests()
+    );
 
     // Nothing new to write
     test_env.assert_write_frames(0);
     // First packet does not matter anymore
     test_env.ack_packet(packet_nr, ExpectWakeup(Some(false)));
-    assert_eq!(stream_interests(&["ack"]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&["ack"]),
+        test_env.stream.get_stream_interests()
+    );
     // Acknowledge the second packet and we are done
     test_env.ack_packet(packet_nr_2, ExpectWakeup(Some(false)));
-    assert_eq!(stream_interests(&[]), test_env.stream.interests());
+    assert_eq!(
+        stream_interests(&[]),
+        test_env.stream.get_stream_interests()
+    );
     test_env.assert_write_frames(0);
 }
 

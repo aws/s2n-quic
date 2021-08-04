@@ -80,7 +80,7 @@ impl Endpoint {
         self.env.current_time = now;
         self.ack_manager.on_timeout(now);
 
-        if self.ack_manager.transmission_interest().is_none() {
+        if !self.ack_manager.has_transmission_interest() {
             return None;
         }
 
@@ -146,7 +146,7 @@ impl Endpoint {
 
     pub fn done(&mut self) {
         assert!(
-            self.ack_manager.transmission_interest().is_none(),
+            !self.ack_manager.has_transmission_interest(),
             "ack manager should be in a stable state"
         );
     }

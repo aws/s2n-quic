@@ -6,7 +6,6 @@ use crate::{
     path::{MaxMtu, MINIMUM_MTU},
     timer::VirtualTimer,
     transmission,
-    transmission::Interest,
 };
 use core::time::Duration;
 use s2n_codec::EncoderValue;
@@ -395,10 +394,14 @@ impl Controller {
 }
 
 impl transmission::interest::Provider for Controller {
-    fn transmission_interest(&self) -> Interest {
+    #[inline]
+    fn transmission_interest<Q: transmission::interest::Query>(
+        &self,
+        query: &mut Q,
+    ) -> transmission::interest::Result {
         match self.state {
-            State::SearchRequested => transmission::Interest::NewData,
-            _ => transmission::Interest::None,
+            State::SearchRequested => query.on_new_data(),
+            _ => Ok(()),
         }
     }
 }

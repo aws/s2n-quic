@@ -7,17 +7,24 @@ use bolero_generator::*;
 #[cfg(test)]
 use bolero::generator::*;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(any(feature = "generator", test), derive(TypeGenerator))]
 pub enum Constraint {
-    /// Anti-amplification limits
-    AmplificationLimited,
-    /// Congestion controller window size
-    CongestionLimited,
-    /// Congestion controller fast retransmission
-    RetransmissionOnly,
     /// No constraints
     None,
+    /// Congestion controller fast retransmission
+    RetransmissionOnly,
+    /// Congestion controller window size
+    CongestionLimited,
+    /// Anti-amplification limits
+    AmplificationLimited,
+}
+
+#[test]
+fn ordering_test() {
+    assert!(Constraint::None < Constraint::RetransmissionOnly);
+    assert!(Constraint::RetransmissionOnly < Constraint::CongestionLimited);
+    assert!(Constraint::CongestionLimited < Constraint::AmplificationLimited);
 }
 
 impl Constraint {

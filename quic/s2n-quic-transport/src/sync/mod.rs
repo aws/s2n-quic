@@ -108,11 +108,14 @@ impl<T> DeliveryState<T> {
 
 impl<T> transmission::interest::Provider for DeliveryState<T> {
     #[inline]
-    fn transmission_interest(&self) -> transmission::Interest {
+    fn transmission_interest<Q: transmission::interest::Query>(
+        &self,
+        query: &mut Q,
+    ) -> transmission::interest::Result {
         match self {
-            Self::Requested(_) => transmission::Interest::NewData,
-            Self::Lost(_) => transmission::Interest::LostData,
-            _ => transmission::Interest::None,
+            Self::Requested(_) => query.on_new_data(),
+            Self::Lost(_) => query.on_lost_data(),
+            _ => Ok(()),
         }
     }
 }

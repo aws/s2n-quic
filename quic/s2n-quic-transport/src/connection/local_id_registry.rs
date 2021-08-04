@@ -10,12 +10,12 @@ use s2n_quic_core::{
     packet::number::PacketNumber,
     stateless_reset,
     time::{Duration, Timer, Timestamp},
-    transmission,
 };
 
 use crate::{
     connection::{connection_id_mapper::ConnectionIdMapperState, InternalConnectionId},
     contexts::WriteContext,
+    transmission,
 };
 
 use crate::{connection::local_id_registry::LocalIdStatus::*, timer::VirtualTimer};
@@ -610,19 +610,26 @@ impl LocalIdRegistry {
     }
 }
 
-impl crate::transmission::interest::Provider for LocalIdRegistry {
-    fn transmission_interest(&self) -> crate::transmission::Interest {
-        let mut interest = crate::transmission::Interest::None;
-
+impl transmission::interest::Provider for LocalIdRegistry {
+    #[inline]
+    fn transmission_interest<Q: transmission::interest::Query>(
+        &self,
+        query: &mut Q,
+    ) -> transmission::interest::Result {
         for id_info in self.registered_ids.iter() {
             match id_info.status {
-                PendingReissue => return crate::transmission::Interest::LostData,
-                PendingIssuance => interest = crate::transmission::Interest::NewData,
+                PendingReissue => {
+                    query.on_lost_data()?;
+                    break;
+                }
+                PendingIssuance => {
+                    query.on_new_data()?;
+                }
                 _ => {}
             }
         }
 
-        interest
+        Ok(())
     }
 }
 
@@ -1115,7 +1122,10 @@ mod tests {
 
         reg1.set_active_connection_id_limit(3);
 
-        assert_eq!(transmission::Interest::None, reg1.transmission_interest());
+        assert_eq!(
+            transmission::Interest::None,
+            reg1.get_transmission_interest()
+        );
 
         assert!(reg1
             .register_connection_id(&ext_id_2, Some(now), TEST_TOKEN_2)
@@ -1123,7 +1133,7 @@ mod tests {
 
         assert_eq!(
             transmission::Interest::NewData,
-            reg1.transmission_interest()
+            reg1.get_transmission_interest()
         );
 
         let mut frame_buffer = OutgoingFrameBuffer::new();
@@ -1150,7 +1160,10 @@ mod tests {
             write_context.frame_buffer.pop_front().unwrap().as_frame()
         );
 
-        assert_eq!(transmission::Interest::None, reg1.transmission_interest());
+        assert_eq!(
+            transmission::Interest::None,
+            reg1.get_transmission_interest()
+        );
 
         // Retire everything
         reg1.retire_handshake_connection_id(now);
@@ -1161,7 +1174,7 @@ mod tests {
 
         assert_eq!(
             transmission::Interest::NewData,
-            reg1.transmission_interest()
+            reg1.get_transmission_interest()
         );
 
         // Switch ID 3 to PendingReissue
@@ -1169,7 +1182,7 @@ mod tests {
 
         assert_eq!(
             transmission::Interest::LostData,
-            reg1.transmission_interest()
+            reg1.get_transmission_interest()
         );
 
         reg1.on_transmit(&mut write_context);
@@ -1188,7 +1201,10 @@ mod tests {
             write_context.frame_buffer.pop_front().unwrap().as_frame()
         );
 
-        assert_eq!(transmission::Interest::None, reg1.transmission_interest());
+        assert_eq!(
+            transmission::Interest::None,
+            reg1.get_transmission_interest()
+        );
     }
 
     #[test]
@@ -1201,7 +1217,10 @@ mod tests {
 
         reg1.set_active_connection_id_limit(3);
 
-        assert_eq!(transmission::Interest::None, reg1.transmission_interest());
+        assert_eq!(
+            transmission::Interest::None,
+            reg1.get_transmission_interest()
+        );
 
         assert!(reg1
             .register_connection_id(&ext_id_2, None, TEST_TOKEN_2)
@@ -1212,7 +1231,7 @@ mod tests {
 
         assert_eq!(
             transmission::Interest::NewData,
-            reg1.transmission_interest()
+            reg1.get_transmission_interest()
         );
 
         let mut frame_buffer = OutgoingFrameBuffer::new();
@@ -1232,7 +1251,7 @@ mod tests {
 
         assert_eq!(
             transmission::Interest::LostData,
-            reg1.transmission_interest()
+            reg1.get_transmission_interest()
         );
 
         reg1.on_transmit(&mut write_context);
@@ -1256,7 +1275,7 @@ mod tests {
 
         assert_eq!(
             transmission::Interest::NewData,
-            reg1.transmission_interest()
+            reg1.get_transmission_interest()
         );
     }
 

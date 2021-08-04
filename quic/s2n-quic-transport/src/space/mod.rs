@@ -376,25 +376,26 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
 }
 
 impl<Config: endpoint::Config> transmission::interest::Provider for PacketSpaceManager<Config> {
-    fn transmission_interest(&self) -> transmission::Interest {
-        core::iter::empty()
-            .chain(
-                self.initial
-                    .iter()
-                    .map(|space| space.transmission_interest()),
-            )
-            .chain(
-                self.handshake
-                    .iter()
-                    .map(|space| space.transmission_interest()),
-            )
-            .chain(
-                self.application
-                    .iter()
-                    .map(|space| space.transmission_interest()),
-            )
-            .chain(Some(self.handshake_status.transmission_interest()))
-            .sum()
+    #[inline]
+    fn transmission_interest<Q: transmission::interest::Query>(
+        &self,
+        query: &mut Q,
+    ) -> transmission::interest::Result {
+        if let Some(space) = self.application.as_ref() {
+            space.transmission_interest(query)?;
+        }
+
+        self.handshake_status.transmission_interest(query)?;
+
+        if let Some(space) = self.initial.as_ref() {
+            space.transmission_interest(query)?;
+        }
+
+        if let Some(space) = self.handshake.as_ref() {
+            space.transmission_interest(query)?;
+        }
+
+        Ok(())
     }
 }
 

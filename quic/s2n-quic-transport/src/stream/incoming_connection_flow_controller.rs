@@ -202,7 +202,13 @@ impl IncomingConnectionFlowController {
 }
 
 impl transmission::interest::Provider for IncomingConnectionFlowController {
-    fn transmission_interest(&self) -> transmission::Interest {
-        self.inner.borrow().read_window_sync.transmission_interest()
+    fn transmission_interest<Q: transmission::interest::Query>(
+        &self,
+        query: &mut Q,
+    ) -> transmission::interest::Result {
+        self.inner
+            .borrow()
+            .read_window_sync
+            .transmission_interest(query)
     }
 }
