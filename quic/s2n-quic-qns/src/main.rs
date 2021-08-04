@@ -9,6 +9,11 @@ mod client;
 mod file;
 mod server;
 
+/// This message is searched in interop logs to ensure the application doesn't panic
+///
+/// Do not change it without updating it elsewhere
+const CRASH_ERROR_MESSAGE: &str = "The s2n-quic-qns application shut down unexpectedly";
+
 #[cfg(feature = "dhat")]
 #[global_allocator]
 static ALLOCATOR: dhat::DhatAlloc = dhat::DhatAlloc;

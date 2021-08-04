@@ -161,7 +161,7 @@ impl Interop {
             }
         }
 
-        Ok(())
+        Err(crate::CRASH_ERROR_MESSAGE.into())
     }
 
     fn server(&self) -> Result<Server> {

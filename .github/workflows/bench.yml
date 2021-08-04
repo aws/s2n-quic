@@ -116,3 +116,7 @@ jobs:
           name: 'bench / report'
           status: 'success'
           url: "${{ steps.s3.outputs.URL }}"
+
+      - name: Assert no crashes
+        run: |
+          ! grep -Rq 'The s2n-quic-qns application shut down unexpectedly' target/benchmark/results
