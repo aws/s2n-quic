@@ -827,7 +827,7 @@ impl StreamInterestProvider for ReceiveStream {
             return;
         }
 
-        // let the stream container we still have work to do
+        // let the stream container know we still have work to do
         interests.retained = true;
 
         interests.delivery_notifications |= self.stop_sending_sync.is_inflight()

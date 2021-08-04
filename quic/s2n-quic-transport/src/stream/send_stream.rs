@@ -1014,7 +1014,7 @@ impl StreamInterestProvider for SendStream {
             }),
         }
 
-        // let the stream container we still have work to do
+        // let the stream container know we still have work to do
         interests.retained = true;
 
         // Check whether the flow controller reports being blocked on the

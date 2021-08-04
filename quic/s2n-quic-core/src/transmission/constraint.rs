@@ -20,6 +20,13 @@ pub enum Constraint {
     AmplificationLimited,
 }
 
+#[test]
+fn ordering_test() {
+    assert!(Constraint::None < Constraint::RetransmissionOnly);
+    assert!(Constraint::RetransmissionOnly < Constraint::CongestionLimited);
+    assert!(Constraint::CongestionLimited < Constraint::AmplificationLimited);
+}
+
 impl Constraint {
     /// True if the transmission is constrained by anti-amplification limits
     #[inline]
