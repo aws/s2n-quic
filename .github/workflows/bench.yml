@@ -119,4 +119,4 @@ jobs:
 
       - name: Assert no crashes
         run: |
-          ! grep -Rq 'The server shut down unexpectedly' target/benchmark/results
+          ! grep -Rq 'The s2n-quic-qns application shut down unexpectedly' target/benchmark/results

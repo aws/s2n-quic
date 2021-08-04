@@ -264,7 +264,7 @@ jobs:
       - name: Assert no crashes
         working-directory: quic-interop-runner
         run: |
-          ! grep -Rq 'The server shut down unexpectedly' results
+          ! grep -Rq 'The s2n-quic-qns application shut down unexpectedly' results
 
   generate-report:
     runs-on: ubuntu-latest

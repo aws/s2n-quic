@@ -59,7 +59,7 @@ impl Perf {
             println!("closing server after {} connections", limit);
 
             if did_panic {
-                return Err("The server shut down unexpectedly".into());
+                return Err(crate::CRASH_ERROR_MESSAGE.into());
             }
 
             return Ok(());
@@ -69,7 +69,7 @@ impl Perf {
                 spawn(handle_connection(connection));
             }
 
-            return Err("The server shut down unexpectedly".into());
+            return Err(crate::CRASH_ERROR_MESSAGE.into());
         }
 
         async fn handle_connection(connection: Connection) {

@@ -161,7 +161,7 @@ impl Interop {
             }
         }
 
-        Err("The server shut down unexpectedly".into())
+        Err(crate::CRASH_ERROR_MESSAGE.into())
     }
 
     fn server(&self) -> Result<Server> {
