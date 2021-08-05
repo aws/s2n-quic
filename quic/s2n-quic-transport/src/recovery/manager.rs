@@ -103,7 +103,7 @@ impl Manager {
     ) {
         if self.loss_timer.is_armed() {
             if self.loss_timer.poll_expiration(timestamp).is_ready() {
-                self.detect_and_remove_lost_packets(timestamp, context, publisher)
+                self.detect_and_remove_lost_packets(timestamp, context, publisher);
             }
         } else {
             let pto_expired = self
@@ -596,10 +596,9 @@ impl Manager {
         let mut prev_packet: Option<(PacketNumber, path::Id, Timestamp)> = None;
 
         for (unacked_packet_number, unacked_sent_info) in self.sent_packets.iter() {
-            if unacked_packet_number > largest_acked_packet {
-                // sent_packets is ordered by packet number, so all remaining packets will be larger
-                break;
-            }
+            let packet_number_threshold_exceeded = largest_acked_packet
+                .checked_distance(unacked_packet_number)
+                .map_or(false, |distance| distance >= K_PACKET_THRESHOLD);
 
             let unacked_path_id = unacked_sent_info.path_id;
             let path = &context.path_by_id(unacked_path_id);
@@ -611,11 +610,6 @@ impl Manager {
 
             // If the `packet_lost_time` exceeds the current time, it's lost
             let time_threshold_exceeded = packet_lost_time.has_elapsed(now);
-
-            let packet_number_threshold_exceeded = largest_acked_packet
-                .checked_distance(unacked_packet_number)
-                .expect("largest_acked_packet >= unacked_packet_number")
-                >= K_PACKET_THRESHOLD;
 
             //= https://tools.ietf.org/id/draft-ietf-quic-recovery-32.txt#6.1
             //# A packet is declared lost if it meets all the following conditions:
